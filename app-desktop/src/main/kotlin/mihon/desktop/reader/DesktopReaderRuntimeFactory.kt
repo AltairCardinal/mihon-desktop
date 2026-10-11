@@ -44,6 +44,7 @@ data class DesktopReaderRuntime(
     internal val encodedPageStore: DesktopReaderEncodedPageStore,
     private val prefetchPreferenceJob: Job,
     internal val contentAdapter: DesktopReaderContentAdapter = DesktopReaderContentAdapter(),
+    internal val presentationScope: CoroutineScope? = null,
 ) : AutoCloseable {
     private class CloseAttempt(
         val ownerThread: Thread,
@@ -137,6 +138,7 @@ class DesktopReaderRuntimeFactory internal constructor(
     private val pairingCoordinator: DesktopChapterPairingCoordinator? = null,
     private val catalogPreparation: tachiyomi.domain.reader.interactor.ReaderCatalogPreparation? = null,
 ) {
+    internal val configuredReaderIoGate: ReaderIoGate get() = readerIoGate
     internal val configuredReaderIoProbe: ReaderIoProbe get() = readerIoProbe
     internal val configuredPartialDownloadSnapshotLookup: PartialDownloadSnapshotLookup
         get() = partialDownloadSnapshotLookup
@@ -155,7 +157,8 @@ class DesktopReaderRuntimeFactory internal constructor(
         val normalizedInitialContext = normalizeDownloadIdentity(initialContext)
         val ioReporter = ReaderIoReporter(readerIoProbe.bind(), readerMonotonicClock)
         val store = encodedPageStoreCoordinator.openSessionStore()
-        val pageContentOwner = DesktopReaderPageContentOwner(parentScope, store::read, ioReporter)
+        val pageContentOwner =
+            DesktopReaderPageContentOwner(parentScope, store::read, ioReporter, store::readPrefix, readerIoGate)
         lateinit var session: DesktopReaderSession
         val pageImagePipeline = DesktopReaderPageImagePipeline(
             scope = parentScope,
@@ -250,6 +253,7 @@ class DesktopReaderRuntimeFactory internal constructor(
             encodedPageStore = store,
             contentAdapter = contentAdapter,
             prefetchPreferenceJob = prefetchPreferenceJob,
+            presentationScope = parentScope,
         ).also { session.start() }
     }
 
@@ -290,7 +294,7 @@ class DesktopReaderRuntimeFactory internal constructor(
             }
         },
         readViewerFlags = { targetMangaId -> mangaRepository?.getMangaById(targetMangaId)?.viewerFlags },
-    )
+    ).also { model -> runtime.presentationScope?.let(model::bindDualFactPublisher) }
 
     fun createScreenModel(
         initialContext: DesktopReaderChapterContext,

@@ -9,25 +9,24 @@ import dev.mihon.injekt.patchInjekt
 import eu.kanade.tachiyomi.network.NetworkHelper
 import io.mockk.every
 import io.mockk.mockk
-import java.io.File
-import kotlinx.coroutines.async
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
-import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadProvider
+import mihon.desktop.test.http.ReaderIoTestEvent
+import mihon.desktop.test.http.ReaderIoTestModeBridge
+import mihon.desktop.test.http.ReaderTestModeController
 import mihon.desktop.ui.reader.DesktopReaderScreen
 import mihon.domain.reader.observability.ReaderIoEventType
 import mihon.domain.reader.observability.ReaderMonotonicClock
-import mihon.desktop.test.http.ReaderIoTestModeBridge
-import mihon.desktop.test.http.ReaderIoTestEvent
-import mihon.desktop.test.http.ReaderTestModeController
 import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -37,6 +36,7 @@ import org.junit.jupiter.api.io.TempDir
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
+import java.io.File
 
 @OptIn(ExperimentalCoroutinesApi::class, ExperimentalComposeUiApi::class)
 class ReaderIoProductionWiringTest {
@@ -101,7 +101,10 @@ class ReaderIoProductionWiringTest {
                     it.type == ReaderIoEventType.FIRST_PAGE_PRESENTED.name
                 }
             }
-            assertTrue(firstPagePresented, "The local reader did not present a first page within the bounded frame pump")
+            assertTrue(
+                firstPagePresented,
+                "The local reader did not present a first page within the bounded frame pump",
+            )
             listOf(ReaderIoGatePoint.CACHE_SCAN, ReaderIoGatePoint.ADJACENT_IO).forEach { point ->
                 withTimeout(5_000) { fixture.gate(point).awaitEntered() }
             }
@@ -109,14 +112,23 @@ class ReaderIoProductionWiringTest {
                 fixture.gate(ReaderIoGatePoint.NON_CURRENT_PAGE).isEntered,
                 "The shared presentation owner must not restore an independent background image scheduler",
             )
-            val firstFrameEvents = controller.snapshot()
+            val observedFirstFrame = controller.snapshot()
+            val firstFrameEvents = observedFirstFrame.take(
+                observedFirstFrame.indexOfFirst { it.type == ReaderIoEventType.FIRST_PAGE_PRESENTED.name } + 1,
+            )
+            assertTrue(
+                firstFrameEvents.filter { it.type == "HEADER_READ" }.all {
+                    it.byteLimit == mihon.domain.reader.ReaderDualPageFactLimits.MAX_HEADER_BYTES.toInt()
+                },
+            )
             assertTrue(firstFrameEvents.none { it.type == ReaderIoEventType.CACHE_RECONCILE.name })
             assertTrue(firstFrameEvents.none { it.type == ReaderIoEventType.ADJACENT_IO.name })
             assertTrue(
                 firstFrameEvents.none {
                     it.pageIndex != null && it.pageIndex != 0 &&
-                        it.type in setOf(ReaderIoEventType.OPEN_PAGE.name, ReaderIoEventType.DECODE.name)
+                        it.type in setOf(ReaderIoEventType.OPEN_PAGE.name, ReaderIoEventType.DECODE.name, "HEADER_READ")
                 },
+                "Non-current physical reads cannot precede the first drawn page: $firstFrameEvents",
             )
             ReaderIoGatePoint.entries.forEach { fixture.gate(it).release() }
             var cacheReconciled = false
@@ -155,8 +167,9 @@ class ReaderIoProductionWiringTest {
             assertTrue(
                 eventsBeforeFirstPresented.none {
                     it.chapterId == 7L && it.pageIndex != null && it.pageIndex != 0 &&
-                        it.type in setOf(ReaderIoEventType.OPEN_PAGE.name, ReaderIoEventType.DECODE.name)
+                        it.type in setOf(ReaderIoEventType.OPEN_PAGE.name, ReaderIoEventType.DECODE.name, "HEADER_READ")
                 },
+                "Non-current physical reads cannot precede FIRST_PAGE_PRESENTED: $eventsBeforeFirstPresented",
             )
             val eventsAfterFirstPresented = events.drop(firstPresentedIndex + 1)
             val sameChapterViewportEvents = eventsAfterFirstPresented.filter {

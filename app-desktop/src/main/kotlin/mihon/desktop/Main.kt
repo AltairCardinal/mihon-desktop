@@ -314,12 +314,15 @@ private suspend fun runDesktopComposeWindowEventLoop(
             BindDesktopWindowLifecycle(window, owner.appLock, owner.windowPrivacyController)
             mihon.desktop.test.ProvideDesktopSyncUiObservation(window) {
                 OwnerUiDependencies(owner.ingress) {
-                    CompositionLocalProvider(mihon.desktop.sync.LocalDesktopRecoveryRestart provides { root ->
-                        requestClose.stopForRecovery()
-                        val launched = mihon.desktop.platform.DesktopRecoveryLauncher.launch(root)
-                        if (launched) requestClose { exitApplication() }
-                        launched
-                    }) {
+                    CompositionLocalProvider(
+                        mihon.desktop.ui.reader.LocalReaderNativeWindow provides window,
+                        mihon.desktop.sync.LocalDesktopRecoveryRestart provides { root ->
+                            requestClose.stopForRecovery()
+                            val launched = mihon.desktop.platform.DesktopRecoveryLauncher.launch(root)
+                            if (launched) requestClose { exitApplication() }
+                            launched
+                        },
+                    ) {
                         DesktopTheme {
                             DesktopProtectedRoot(owner.appLock) {
                                 Navigator(HomeScreen()) { navigator ->

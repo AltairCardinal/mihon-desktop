@@ -1,9 +1,11 @@
 package eu.kanade.tachiyomi.ui.reader
 
 import android.annotation.SuppressLint
+import android.app.ActivityManager
 import android.app.assist.AssistContent
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
@@ -86,6 +88,8 @@ import eu.kanade.tachiyomi.util.system.openInBrowser
 import eu.kanade.tachiyomi.util.system.toShareIntent
 import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.util.view.setComposeContent
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
@@ -463,6 +467,7 @@ open class ReaderActivity : BaseActivity() {
      */
     override fun onResume() {
         super.onResume()
+        refreshOptionalReaderMemoryPressure()
         viewModel.restartReadTimer()
         setMenuVisibility(viewModel.state.value.menuVisible)
     }
@@ -474,8 +479,35 @@ open class ReaderActivity : BaseActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
+            refreshOptionalReaderMemoryPressure()
             setMenuVisibility(viewModel.state.value.menuVisible)
         }
+    }
+
+    private val optionalMemoryPressure = MutableStateFlow(false)
+    internal val optionalWorkUnderMemoryPressure = optionalMemoryPressure.asStateFlow()
+
+    /** Observe actual system pressure; ordinary reading and its original decoder remain available. */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW ||
+            level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ||
+            level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND
+        ) {
+            optionalMemoryPressure.value = true
+        }
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        optionalMemoryPressure.value = true
+    }
+
+    internal fun refreshOptionalReaderMemoryPressure() {
+        val manager = getSystemService<ActivityManager>() ?: return
+        val info = ActivityManager.MemoryInfo()
+        manager.getMemoryInfo(info)
+        optionalMemoryPressure.value = info.lowMemory
     }
 
     override fun onProvideAssistContent(outContent: AssistContent) {
@@ -621,6 +653,7 @@ open class ReaderActivity : BaseActivity() {
             isAutomaticMode = viewModel.getMangaReadingMode() == ReadingMode.AUTO.flagValue,
             isPairingSaving = state.pairingSaving,
             isPairingUnavailable = state.pairingReadUnavailable,
+            isPairingRecordReady = state.pairingRecordReady,
             onRetryPairing = viewModel::retryPairingRestore,
             onClickAdjustPairing = {
                 (state.viewer as? DualPageR2LPagerViewer)?.let(viewModel::adjustChapterPairing)
@@ -903,7 +936,9 @@ open class ReaderActivity : BaseActivity() {
         visiblePages: List<ReaderPage>,
     ) {
         if (installedViewer != null && viewModel.state.value.viewer !== source) return
-        if (changingLayout || protectedLayoutPage === page) return
+        // The dual viewer has already accepted its original shared presentation capability.
+        // A metadata-only rearrangement may still carry an unconsumed user navigation.
+        if (changingLayout) return
         viewModel.onDualViewportSettled(page, visiblePages)
     }
 

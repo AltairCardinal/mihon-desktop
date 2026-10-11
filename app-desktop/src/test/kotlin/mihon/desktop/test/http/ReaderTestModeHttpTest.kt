@@ -2,16 +2,14 @@ package mihon.desktop.test.http
 
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
-import java.io.File
-import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import mihon.desktop.download.DefaultDownloadFileOperations
@@ -19,14 +17,24 @@ import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.download.DownloadFileOperations
 import mihon.desktop.reader.DesktopReaderPartialPageFileCopyPort
+import mihon.domain.reader.observability.ReaderIoEvent
+import mihon.domain.reader.observability.ReaderIoEventType
+import mihon.domain.reader.observability.ReaderIoPurpose
+import mihon.domain.reader.session.ReaderChapterId
+import mihon.domain.reader.session.ReaderPageId
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
-import okhttp3.Request as OkHttpRequest
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import java.io.File
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import okhttp3.Request as OkHttpRequest
 
 class ReaderTestModeHttpTest {
 
@@ -71,6 +79,17 @@ class ReaderTestModeHttpTest {
                 val identity = fixture.identity()
                 val candidate = checkNotNull(manager.committedPageCandidate(fixture.chapterId, identity, 0, 0))
                 controller.beginScenario()
+                ReaderIoTestModeBridge.record(
+                    ReaderIoEvent(
+                        type = ReaderIoEventType.HEADER_READ,
+                        monotonicNanos = 1,
+                        chapterId = ReaderChapterId(fixture.chapterId),
+                        pageId = ReaderPageId(ReaderChapterId(fixture.chapterId), 0),
+                        generation = 1,
+                        purpose = ReaderIoPurpose.CURRENT_PAGE,
+                        byteLimit = 512 * 1024,
+                    ),
+                )
 
                 DesktopReaderPartialPageFileCopyPort(
                     leaseSource = manager.partialPageReadLeaseSource,
@@ -86,9 +105,26 @@ class ReaderTestModeHttpTest {
                     ).body(),
                 ).jsonObject
                 val state = readState()
+                val header = state.getValue("productionEvents").jsonArray.single().jsonObject
+                assertEquals("HEADER_READ", header.getValue("type").jsonPrimitive.content)
+                assertEquals(512 * 1024, header.getValue("byteLimit").jsonPrimitive.content.toInt())
+                assertEquals(fixture.chapterId, header.getValue("chapterId").jsonPrimitive.content.toLong())
+                assertEquals(0, header.getValue("pageIndex").jsonPrimitive.content.toInt())
+                val compatibleConsumer = Json { ignoreUnknownKeys = true }
+                val futureEvent = JsonObject(header - "byteLimit" + ("futureField" to JsonPrimitive(true)))
+                assertEquals(
+                    null,
+                    compatibleConsumer.decodeFromString(
+                        ReaderIoTestEvent.serializer(),
+                        futureEvent.toString(),
+                    ).byteLimit,
+                )
 
                 assertEquals("partial_download", state.getValue("route").jsonPrimitive.content)
-                assertEquals(fixture.partialAttemptGeneration, state.getValue("snapshotGeneration").jsonPrimitive.content.toLong())
+                assertEquals(
+                    fixture.partialAttemptGeneration,
+                    state.getValue("snapshotGeneration").jsonPrimitive.content.toLong(),
+                )
                 assertEquals(1, state.getValue("localHits").jsonPrimitive.content.toInt())
                 assertEquals(0, state.getValue("networkFallbacks").jsonPrimitive.content.toInt())
                 assertEquals(1, state.getValue("partialPageProbes").jsonPrimitive.content.toInt())
@@ -113,15 +149,16 @@ class ReaderTestModeHttpTest {
             }
         }
 
-    private fun successfulFixtureDownloadOperations() = object : DownloadFileOperations by DefaultDownloadFileOperations {
-        override fun execute(client: OkHttpClient, url: String): Response = Response.Builder()
-            .request(OkHttpRequest.Builder().url(url).build())
-            .protocol(Protocol.HTTP_1_1)
-            .code(200)
-            .message("OK")
-            .body("GIF89aDATA".toResponseBody())
-            .build()
-    }
+    private fun successfulFixtureDownloadOperations() =
+        object : DownloadFileOperations by DefaultDownloadFileOperations {
+            override fun execute(client: OkHttpClient, url: String): Response = Response.Builder()
+                .request(OkHttpRequest.Builder().url(url).build())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body("GIF89aDATA".toResponseBody())
+                .build()
+        }
 
     private fun ReaderTestFixtureDescriptor.identity() = mihon.domain.reader.content.DownloadChapterIdentity(
         sourceDisplayName = ReaderTestModeController.READER_TEST_SOURCE_NAME,

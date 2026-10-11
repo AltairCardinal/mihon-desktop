@@ -43,7 +43,7 @@ class DualPagedPresentationTest {
     }
 
     @Test
-    fun `landscape cover remains whole in the physical left slot for one and many page chapters`() {
+    fun `landscape cover remains whole across the complete viewport for one and many page chapters`() {
         for (pageCount in listOf(1, 4)) {
             for (direction in listOf(ReaderDirection.LTR, ReaderDirection.RTL)) {
                 for (splitCover in listOf(false, true)) {
@@ -52,14 +52,12 @@ class DualPagedPresentationTest {
                         pageCount = pageCount,
                         direction = direction,
                         splitPageIds = if (splitCover) setOf(coverId) else emptySet(),
-                        options = DualPagedPresentationOptions(spreadPageIds = setOf(coverId)),
+                        options = PresentationFixtureOptions(spreadPageIds = setOf(coverId)),
                     )
 
                     val cover = snapshot.displayUnits.first()
-                    assertEquals(2, cover.slots.size)
-                    assertEquals(coverId, cover.slots[0].page?.id)
-                    assertNull(cover.slots[0].splitHalf)
-                    assertNull(cover.slots[1].page)
+                    assertEquals(listOf(coverId), cover.slots.map { it.page?.id })
+                    assertNull(cover.slots.single().splitHalf)
                 }
             }
         }
@@ -111,7 +109,10 @@ class DualPagedPresentationTest {
         )
 
         assertEquals(loading.displayUnits.map(DisplayUnit::id), ready.displayUnits.map(DisplayUnit::id))
-        assertEquals(loading.displayUnits[1].slots.map(DisplaySlot::id), ready.displayUnits[1].slots.map(DisplaySlot::id))
+        assertEquals(
+            loading.displayUnits[1].slots.map(DisplaySlot::id),
+            ready.displayUnits[1].slots.map(DisplaySlot::id),
+        )
         assertEquals(
             listOf(ReaderPageLoadState.Ready, ReaderPageLoadState.Ready),
             ready.displayUnits[1].slots.map { it.page?.loadState },
@@ -129,7 +130,7 @@ class DualPagedPresentationTest {
         val spread = present(
             pageCount = 8,
             direction = ReaderDirection.LTR,
-            options = DualPagedPresentationOptions(spreadPageIds = setOf(pageId(3))),
+            options = PresentationFixtureOptions(spreadPageIds = setOf(pageId(3))),
         )
         assertEquals(
             listOf(listOf(0), listOf(1, 2), listOf(3), listOf(4, 5), listOf(6, 7)),
@@ -139,7 +140,7 @@ class DualPagedPresentationTest {
         val forced = present(
             pageCount = 8,
             direction = ReaderDirection.LTR,
-            options = DualPagedPresentationOptions(forcedSinglePageIds = setOf(pageId(3))),
+            options = PresentationFixtureOptions(forcedSinglePageIds = setOf(pageId(3))),
         )
         assertEquals(
             listOf(listOf(0), listOf(1, 2), listOf(3), listOf(4, 5), listOf(6, 7)),
@@ -149,7 +150,7 @@ class DualPagedPresentationTest {
         val matched = present(
             pageCount = 7,
             direction = ReaderDirection.LTR,
-            options = DualPagedPresentationOptions(
+            options = PresentationFixtureOptions(
                 spreadPageIds = setOf(pageId(3)),
                 matchedPagePairs = setOf(pageId(5) to pageId(6)),
             ),
@@ -169,7 +170,7 @@ class DualPagedPresentationTest {
             pageCount = 5,
             direction = ReaderDirection.RTL,
             splitPageIds = setOf(pageId(3)),
-            options = DualPagedPresentationOptions(spreadPageIds = setOf(pageId(3))),
+            options = PresentationFixtureOptions(spreadPageIds = setOf(pageId(3))),
         )
         val spread = snapshot.displayUnits.single { unit -> unit.slots.any { it.page?.id == pageId(3) } }
 
@@ -181,7 +182,10 @@ class DualPagedPresentationTest {
     @Test
     fun `registry exposes dual beside single and webtoon`() {
         assertSame(DualPagedPresentation, DesktopReaderPresentationRegistry.require(ReaderPresentationMode.DUAL_PAGED))
-        assertSame(SinglePagedPresentation, DesktopReaderPresentationRegistry.require(ReaderPresentationMode.SINGLE_PAGED))
+        assertSame(
+            SinglePagedPresentation,
+            DesktopReaderPresentationRegistry.require(ReaderPresentationMode.SINGLE_PAGED),
+        )
         assertSame(WebtoonPresentation, DesktopReaderPresentationRegistry.require(ReaderPresentationMode.WEBTOON))
     }
 
@@ -191,7 +195,7 @@ class DualPagedPresentationTest {
         hasPreviousChapter: Boolean = true,
         hasNextChapter: Boolean = true,
         splitPageIds: Set<ReaderPageId> = emptySet(),
-        options: DualPagedPresentationOptions = DualPagedPresentationOptions(),
+        options: PresentationFixtureOptions = PresentationFixtureOptions(),
         stateAt: (Int) -> ReaderPageLoadState = { ReaderPageLoadState.Queued },
         imageAt: (Int) -> String? = { null },
     ): ReaderPresentationSnapshot = DualPagedPresentation.present(
@@ -204,7 +208,7 @@ class DualPagedPresentationTest {
         hasPreviousChapter: Boolean = true,
         hasNextChapter: Boolean = true,
         splitPageIds: Set<ReaderPageId> = emptySet(),
-        options: DualPagedPresentationOptions = DualPagedPresentationOptions(),
+        options: PresentationFixtureOptions = PresentationFixtureOptions(),
         stateAt: (Int) -> ReaderPageLoadState = { ReaderPageLoadState.Queued },
         imageAt: (Int) -> String? = { null },
     ): ReaderPresentationRequest =
@@ -227,7 +231,21 @@ class DualPagedPresentationTest {
             hasPreviousChapter = hasPreviousChapter,
             hasNextChapter = hasNextChapter,
             splitPageIds = splitPageIds,
-            dualPagedOptions = options,
+            dualPagedOptions = DualPagedPresentationOptions(spreadPageIds = options.spreadPageIds),
+            pageSizes = (0 until pageCount).associate { index ->
+                pageId(index) to
+                    if (pageId(index) in options.spreadPageIds) {
+                        mihon.domain.reader.ReaderPageSize(80, 40)
+                    } else {
+                        mihon.domain.reader.ReaderPageSize(40, 60)
+                    }
+            },
+        ).withSharedOwner(
+            forcedSingles = options.forcedSinglePageIds.mapTo(linkedSetOf()) { it.sourcePageIndex },
+            matchedPairs = options.matchedPagePairs.mapTo(linkedSetOf()) {
+                it.first.sourcePageIndex to
+                    it.second.sourcePageIndex
+            },
         )
 
     private fun ReaderPresentationSnapshot.logicalGroups(): List<List<Int>> = displayUnits.map { unit ->
@@ -240,3 +258,9 @@ class DualPagedPresentationTest {
         val chapterId = ReaderChapterId(88L)
     }
 }
+
+private data class PresentationFixtureOptions(
+    val spreadPageIds: Set<ReaderPageId> = emptySet(),
+    val forcedSinglePageIds: Set<ReaderPageId> = emptySet(),
+    val matchedPagePairs: Set<Pair<ReaderPageId, ReaderPageId>> = emptySet(),
+)

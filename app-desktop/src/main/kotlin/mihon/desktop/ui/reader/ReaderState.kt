@@ -47,6 +47,13 @@ data class ReaderState(
     val currentDisplayUnitId: DisplayUnitId? = null,
     val visiblePageIds: Set<ReaderPageId> = emptySet(),
     val webtoonScrollAnchor: WebtoonScrollAnchor? = null,
+    val dualPageUnits: List<mihon.domain.reader.ReaderDualPageUnit> = emptyList(),
+    val dualPageIdentity: mihon.domain.reader.ReaderDualPageIdentity? = null,
+    val dualFactWorkRevision: Long = 0,
+    val dualPageLayoutRevision: Long = 0,
+    val dualGeometryRevision: Long = 0,
+    val dualPairingState: mihon.domain.reader.ReaderPairingPersistenceState? = null,
+    val dualPageLocation: mihon.domain.reader.ReaderDualPageLocationIntent? = null,
     val chapterTransition: ReaderChapterTransitionModel? = null,
 
     // ── Reading mode ─────────────────────────────────────────────────────────
@@ -60,8 +67,6 @@ data class ReaderState(
     // ── Spread / virtual page mappings ────────────────────────────────────────
     val forcedSinglePages: Set<Int> = emptySet(),
     val spreadPages: Set<Int> = emptySet(),
-    /** Edge-pixel matched pairs for auto spread matching in dual-page mode. */
-    val matchedPairs: Set<Pair<Int, Int>> = emptySet(),
     val virtualPages: List<VirtualPage>? = null,
 
     // ── Display settings ─────────────────────────────────────────────────────

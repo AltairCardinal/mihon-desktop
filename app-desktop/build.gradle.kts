@@ -212,6 +212,7 @@ kotlin {
             }
         }
         val jvmTest by getting {
+            resources.srcDir(project(":domain").file("src/commonTest/resources"))
             kotlin.srcDirs(
                 "src/test/kotlin",
                 "../data/src/testFixtures/kotlin",

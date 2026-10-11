@@ -6,22 +6,30 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asComposeImageBitmap
+import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.isActive
 import mihon.desktop.reader.DesktopReaderPresentationImageState
 import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.ZoomState
@@ -30,8 +38,6 @@ import org.jetbrains.skia.Bitmap as SkiaBitmap
 import org.jetbrains.skia.Canvas as SkiaCanvas
 import org.jetbrains.skia.Image as SkiaImage
 import org.jetbrains.skia.Rect as SkiaRect
-import androidx.compose.ui.graphics.asComposeImageBitmap
-import androidx.compose.ui.graphics.asSkiaBitmap
 
 internal data class ZoomableGestureCapabilities(
     val transformEnabled: Boolean,
@@ -81,6 +87,16 @@ internal fun zoomableGestureCapabilities(
 @Composable
 internal fun ZoomablePageBox(
     presentationImage: ReaderPresentationImage,
+    onPageDrawn: (() -> Unit)? = null,
+    onPagePrepared: ((Int, Int) -> Boolean)? = null,
+    canObserveFrameGeometry: ((Long) -> Boolean)? = null,
+    onObservedImageDraw: (
+        (
+            ReaderBaseImageDraw,
+            mihon.desktop.reader.DesktopReaderPresentationImageSlotIdentity,
+            mihon.domain.reader.ReaderPageDecodeKey,
+        ) -> Unit
+    )? = null,
     pageLabel: String,
     zoomState: ZoomState,
     onZoomChange: (ZoomState) -> Unit,
@@ -118,6 +134,13 @@ internal fun ZoomablePageBox(
     val readyState = presentationState as? DesktopReaderPresentationImageState.Ready
     val asset = readyState?.asset
     val renderedImage = rememberReaderPresentationRenderedImage(presentationImage, cropBorders)
+    val mountedCoordinates = remember { arrayOfNulls<LayoutCoordinates>(1) }
+    // This branch does not exist for ordinary application rendering.
+    val observedCapture = if (onObservedImageDraw != null) {
+        mihon.desktop.test.state.readerState.slotDrawCapture.collectAsState().value
+    } else {
+        0L
+    }
 
     LaunchedEffect(asset, splitHalf, onSpreadDetected) {
         if (asset != null && onSpreadDetected != null && splitHalf == null && asset.sourceWidth > asset.sourceHeight) {
@@ -145,8 +168,16 @@ internal fun ZoomablePageBox(
                             }
                             val pressedChanges = event.changes.filter { it.pressed }
                             if (pressedChanges.isNotEmpty()) {
-                                val panX = pressedChanges.sumOf { (it.position.x - it.previousPosition.x).toDouble() }.toFloat() / pressedChanges.size
-                                val panY = pressedChanges.sumOf { (it.position.y - it.previousPosition.y).toDouble() }.toFloat() / pressedChanges.size
+                                val panX =
+                                    pressedChanges.sumOf {
+                                        (it.position.x - it.previousPosition.x).toDouble()
+                                    }.toFloat() /
+                                        pressedChanges.size
+                                val panY =
+                                    pressedChanges.sumOf {
+                                        (it.position.y - it.previousPosition.y).toDouble()
+                                    }.toFloat() /
+                                        pressedChanges.size
                                 if (panX != 0f || panY != 0f) {
                                     val current = latestZoom
                                     onZoomChange(current.pan(panX, panY))
@@ -182,10 +213,12 @@ internal fun ZoomablePageBox(
                                             // Pan when zoomed in
                                             if (latestZoom.scale > 1f) {
                                                 val current = latestZoom
-                                                onZoomChange(current.pan(
-                                                    change.position.x - change.previousPosition.x,
-                                                    change.position.y - change.previousPosition.y,
-                                                ))
+                                                onZoomChange(
+                                                    current.pan(
+                                                        change.position.x - change.previousPosition.x,
+                                                        change.position.y - change.previousPosition.y,
+                                                    ),
+                                                )
                                             }
                                         }
                                     }
@@ -259,7 +292,8 @@ internal fun ZoomablePageBox(
         Box(
             modifier = modifier
                 .then(gestureModifier)
-                .then(doubleTapModifier),
+                .then(doubleTapModifier)
+                .onGloballyPositioned { mountedCoordinates[0] = it },
             contentAlignment = imageAlignment,
         ) {
             val fullDecodeFailed = presentationState is DesktopReaderPresentationImageState.Failed
@@ -307,22 +341,91 @@ internal fun ZoomablePageBox(
                     translationX = zoomState.offsetX,
                     translationY = zoomState.offsetY,
                 )
-                .observeReaderPageDraw(renderedImage?.acknowledgeDraw)
             if (renderedImage != null && !fullDecodeFailed && !presentationClosed) {
-                Image(
-                    bitmap = renderedImage.bitmap,
-                    contentDescription = pageLabel,
-                    alignment = imageAlignment,
-                    modifier = imageModifier,
-                    contentScale = resolvedScale,
-                )
-                ReaderRegionTileLayer(
-                    presentationImage = presentationImage,
-                    renderedImage = renderedImage,
-                    contentScale = resolvedScale,
-                    alignment = imageAlignment,
-                    zoomState = zoomState,
-                )
+                val observedMount = if (onObservedImageDraw != null) {
+                    remember { mihon.desktop.test.state.readerState.nextDrawMountId() }
+                } else {
+                    0L
+                }
+                val observedCoordinates = if (onObservedImageDraw != null) {
+                    remember { arrayOfNulls<LayoutCoordinates>(1) }
+                } else {
+                    null
+                }
+                val observedPainter = if (onObservedImageDraw != null) {
+                    remember(renderedImage.bitmap, observedCapture, presentationImage.holder, identity) {
+                        ReaderObservedBitmapPainter(renderedImage.bitmap)
+                    }
+                        .apply {
+                            capture = observedCapture
+                            mountId = observedMount
+                            coordinates = { observedCoordinates?.get(0) }
+                            onDraw = { command ->
+                                onObservedImageDraw?.invoke(command, identity, presentationImage.holder.decodeKey)
+                            }
+                        }
+                } else {
+                    null
+                }
+                if (observedCapture != 0L && observedPainter != null) {
+                    val latestObservedDraw by rememberUpdatedState(onObservedImageDraw)
+                    val latestCanObserve by rememberUpdatedState(canObserveFrameGeometry)
+                    LaunchedEffect(observedCapture, observedPainter, observedMount, identity) {
+                        while (isActive && latestCanObserve?.invoke(observedCapture) == true) {
+                            withFrameNanos { clock ->
+                                observedPainter.sampleAppliedGeometry(clock)?.let { sample ->
+                                    latestObservedDraw?.invoke(sample, identity, presentationImage.holder.decodeKey)
+                                }
+                            }
+                        }
+                    }
+                }
+                // The base bitmap and region tiles share one preparation boundary. A mounted
+                // prefetch page may decode, but cannot acknowledge clipped-away pixels.
+                Box(
+                    Modifier.fillMaxSize().observeReaderPageDraw(
+                        {
+                            val accepted = renderedImage.acknowledgeDraw()
+                            if (onPageDrawn != null && renderedImage.currentPixels()) onPageDrawn.invoke()
+                            accepted
+                        },
+                        prepareDraw = {
+                            mountedCoordinates[0]?.takeIf { it.isAttached }?.boundsInRoot()?.isEmpty == false &&
+                                (
+                                    onPagePrepared == null ||
+                                        asset?.let { onPagePrepared(it.bitmap.width, it.bitmap.height) } == true
+                                    )
+                        },
+                    ),
+                ) {
+                    if (observedPainter != null) {
+                        Image(
+                            painter = observedPainter,
+                            contentDescription = pageLabel,
+                            alignment = imageAlignment,
+                            modifier = imageModifier.onGloballyPositioned {
+                                observedCoordinates?.set(0, it)
+                                observedPainter.lastLayoutCallbackMonotonicNanos = System.nanoTime()
+                            },
+                            contentScale = resolvedScale,
+                        )
+                    } else {
+                        Image(
+                            bitmap = renderedImage.bitmap,
+                            contentDescription = pageLabel,
+                            alignment = imageAlignment,
+                            modifier = imageModifier,
+                            contentScale = resolvedScale,
+                        )
+                    }
+                    ReaderRegionTileLayer(
+                        presentationImage = presentationImage,
+                        renderedImage = renderedImage,
+                        contentScale = resolvedScale,
+                        alignment = imageAlignment,
+                        zoomState = zoomState,
+                    )
+                }
             }
         }
     }
@@ -383,8 +486,8 @@ internal fun transformCachedPageBitmapWithSourceBounds(
         ?: return ReaderPresentationBitmapTransform(bounded, boundedSource)
     return ReaderPresentationBitmapTransform(
         bitmap = selectPresentationCropResult(
-        base = bitmap,
-        bounded = bounded,
+            base = bitmap,
+            bounded = bounded,
             cropped = cropped.bitmap,
         ),
         renderedSourceBounds = cropped.bounds.mapBitmapBoundsToSource(
@@ -483,22 +586,42 @@ private fun cropBordersFromSkiaBitmap(src: SkiaBitmap): CroppedPresentationBitma
 
     var top = 0
     outer@ for (y in 0 until h) {
-        for (x in 0 until w) { if (!isLight(x, y)) { top = y; break@outer } }
+        for (x in 0 until w) {
+            if (!isLight(x, y)) {
+                top = y
+                break@outer
+            }
+        }
         if (y == h - 1) top = 0
     }
     var bottom = h
     outer@ for (y in h - 1 downTo 0) {
-        for (x in 0 until w) { if (!isLight(x, y)) { bottom = y + 1; break@outer } }
+        for (x in 0 until w) {
+            if (!isLight(x, y)) {
+                bottom = y + 1
+                break@outer
+            }
+        }
         if (y == 0) bottom = h
     }
     var left = 0
     outer@ for (x in 0 until w) {
-        for (y in top until bottom) { if (!isLight(x, y)) { left = x; break@outer } }
+        for (y in top until bottom) {
+            if (!isLight(x, y)) {
+                left = x
+                break@outer
+            }
+        }
         if (x == w - 1) left = 0
     }
     var right = w
     outer@ for (x in w - 1 downTo 0) {
-        for (y in top until bottom) { if (!isLight(x, y)) { right = x + 1; break@outer } }
+        for (y in top until bottom) {
+            if (!isLight(x, y)) {
+                right = x + 1
+                break@outer
+            }
+        }
         if (x == 0) right = w
     }
 

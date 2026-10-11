@@ -5,16 +5,19 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.graphics.asComposeImageBitmap
 import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
-import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.ui.reader.WebtoonPresentationViewer
 import mihon.desktop.ui.reader.ZoomablePagerViewer
+import mihon.desktop.ui.reader.presentation.desktopReaderPresentationRequest
+import mihon.desktop.ui.reader.presentation.withSharedOwner
 import mihon.domain.reader.PageDecodePurpose
 import mihon.domain.reader.PixelBounds
+import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderPageDecodeKey
+import mihon.domain.reader.ReaderPageSize
 import mihon.domain.reader.observability.ReaderIoEvent
 import mihon.domain.reader.observability.ReaderIoEventType
 import mihon.domain.reader.observability.ReaderIoProbe
@@ -27,6 +30,7 @@ import org.jetbrains.skia.Rect
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.util.concurrent.CopyOnWriteArrayList
 
 /** Proves that region ownership is mounted by all three production presentation selectors. */
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
@@ -66,20 +70,31 @@ class DesktopReaderRegionPresentationWiringTest {
 
     @Test
     fun `mounted Dual production presentation submits tiles for both physical slots`() = runTest {
-        val fixture = Fixture(this)
+        val fixture = Fixture(this) { key ->
+            coloredAsset(
+                color = when {
+                    key.purpose == PageDecodePurpose.FULL_PAGE -> PREVIEW_RED
+                    key.pageIndex == 2 -> TILE_BLUE
+                    else -> TILE_GREEN
+                },
+                sourceWidth = 4_000,
+                sourceHeight = 4_001,
+            )
+        }
+        val chapter = readerChapterSession(chapterId = CHAPTER_ID, generation = GENERATION, pageCount = 3)
+        val shared = desktopReaderPresentationRequest(chapter, ReaderDirection.LTR)
+            .copy(pageSizes = chapter.pages.associate { it.id to ReaderPageSize(4_000, 4_001) })
+            .withSharedOwner()
         val scene = ImageComposeScene(800, 600, coroutineContext = coroutineContext) {}
         try {
             fixture.owner.beginGeneration(GENERATION)
             scene.setContent {
                 ZoomablePagerViewer(
-                    chapter = readerChapterSession(
-                        chapterId = CHAPTER_ID,
-                        generation = GENERATION,
-                        pageCount = 3,
-                    ),
+                    chapter = chapter,
                     currentPage = 1,
                     isRtl = false,
                     isDualPage = true,
+                    dualPageUnits = shared.dualPageUnits,
                     zoomState = ZoomState(scale = 2f),
                     presentationImageOwner = fixture.owner,
                     onPageChange = {},

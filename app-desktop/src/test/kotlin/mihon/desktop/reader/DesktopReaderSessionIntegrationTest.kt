@@ -1,25 +1,33 @@
 package mihon.desktop.reader
 
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
+import mihon.data.reader.AcceptedReaderProgressContract
+import mihon.desktop.ui.reader.ReaderScreenModel
+import mihon.desktop.ui.reader.presentReadyPagerViewport
+import mihon.desktop.ui.reader.presentation.DualPagedPresentation
+import mihon.desktop.ui.reader.presentation.ReaderPresentationRequest
+import mihon.desktop.ui.reader.presentation.resolveDualVisiblePages
 import mihon.domain.error.AppError
 import mihon.domain.network.AppErrorException
+import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.materialize.CanonicalReaderMaterializeExecutor
-import mihon.domain.reader.materialize.ReaderChapterContentRequest
 import mihon.domain.reader.materialize.ReaderChapterContentPort
+import mihon.domain.reader.materialize.ReaderChapterContentRequest
 import mihon.domain.reader.materialize.ReaderChapterMaterializeResult
 import mihon.domain.reader.materialize.ReaderMaterializeExecutor
-import mihon.domain.reader.materialize.ReaderPageFetchRequest
 import mihon.domain.reader.materialize.ReaderPageFetchPort
+import mihon.domain.reader.materialize.ReaderPageFetchRequest
 import mihon.domain.reader.materialize.ReaderPageMaterializeEvent
 import mihon.domain.reader.materialize.ReaderPageMaterializeResult
 import mihon.domain.reader.observability.ReaderIoEvent
@@ -27,10 +35,8 @@ import mihon.domain.reader.observability.ReaderIoEventType
 import mihon.domain.reader.observability.ReaderIoProbe
 import mihon.domain.reader.observability.ReaderIoReporter
 import mihon.domain.reader.observability.ReaderMonotonicClock
-import mihon.domain.reader.progress.ReaderProgressEffect
-import mihon.data.reader.AcceptedReaderProgressContract
 import mihon.domain.reader.partial.PartialReaderPageCandidate
-import mihon.domain.reader.ReaderDirection
+import mihon.domain.reader.progress.ReaderProgressEffect
 import mihon.domain.reader.scheduler.ReaderRequestScheduler
 import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
 import mihon.domain.reader.session.EncodedPageRef
@@ -42,10 +48,6 @@ import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageLoadState
 import mihon.domain.reader.session.ReaderSessionCore
 import mihon.domain.reader.storage.EncodedPageStoreWriteResult
-import mihon.desktop.ui.reader.ReaderScreenModel
-import mihon.desktop.ui.reader.presentation.DualPagedPresentation
-import mihon.desktop.ui.reader.presentation.ReaderPresentationRequest
-import mihon.desktop.ui.reader.presentation.resolveDualVisiblePages
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
@@ -64,6 +66,109 @@ class DesktopReaderSessionIntegrationTest {
 
     @TempDir
     lateinit var tempDir: File
+
+    @Test
+    fun `expired optional consumer never cancels the original normal visible request`() = runTest {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var normalCancelled = false
+        val session = gatedFactSession(this, entered, release) { normalCancelled = true }
+        try {
+            session.start()
+            runCurrent()
+            val page = session.state.value.snapshot.activeChapter.pages.single().id
+            session.scheduleViewportWithoutProgress(setOf(page), page)
+            runCurrent()
+            assertTrue(entered.isCompleted)
+            val budget = mihon.domain.reader.ReaderDualPageFactBudget()
+            budget.reserve(listOf(page), 0)
+            val permit = mihon.domain.reader.ReaderDualPageFactReadPermit(budget, page) { testScheduler.currentTime }
+            val optional = async { kotlinx.coroutines.withTimeout(15_000) { session.loadFactPage(page, permit) } }
+            runCurrent()
+            advanceTimeBy(15_001)
+            runCurrent()
+            assertTrue(optional.isCancelled)
+            assertFalse(
+                normalCancelled,
+                "The normal visible request owns this I/O; optional timeout withdraws only its own consumer",
+            )
+            assertInstanceOf(
+                ReaderPageLoadState.Downloading::class.java,
+                session.state.value.snapshot.activeChapter.pages.single().loadState,
+            )
+            release.complete(Unit)
+            advanceUntilIdle()
+            assertEquals(ReaderPageLoadState.Ready, session.state.value.snapshot.activeChapter.pages.single().loadState)
+            budget.close()
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
+    fun `close stops the original optional waiter and cancels its actual page port`() = runTest {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var cancelled = false
+        val session = gatedFactSession(this, entered, release) { cancelled = true }
+        session.start()
+        runCurrent()
+        val page = session.state.value.snapshot.activeChapter.pages.single().id
+        val budget = mihon.domain.reader.ReaderDualPageFactBudget()
+        budget.reserve(listOf(page), 0)
+        val permit = mihon.domain.reader.ReaderDualPageFactReadPermit(budget, page) { testScheduler.currentTime }
+        val optional = async { session.loadFactPage(page, permit) }
+        runCurrent()
+        assertTrue(entered.isCompleted)
+        session.close()
+        runCurrent()
+        assertTrue(
+            optional.isCompleted,
+            "Closing the runtime must release a suspended optional consumer without another reserve call",
+        )
+        assertFalse(optional.await())
+        assertTrue(cancelled)
+        budget.close()
+    }
+
+    private fun gatedFactSession(
+        scope: kotlinx.coroutines.CoroutineScope,
+        entered: CompletableDeferred<Unit>,
+        release: CompletableDeferred<Unit>,
+        cancelled: () -> Unit,
+    ) = DesktopReaderSession(
+        initialContext = context(1),
+        core = core(1),
+        encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("gated-facts")),
+        chapterContentPortFactory = DesktopReaderChapterContentPortFactory { _, _ ->
+            ReaderChapterContentPort {
+                listOf(ReaderPageDescriptor(0, url = "/page/0", imageUrl = "https://fixture.test/0.png"))
+            }
+        },
+        pageFetchPortFactory = DesktopReaderPageFetchPortFactory { _, descriptor ->
+            object : ReaderPageFetchPort {
+                override suspend fun resolveImageUrl(request: ReaderPageFetchRequest) = requireNotNull(request.imageUrl)
+                override suspend fun findEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef? = null
+                override suspend fun fetchEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef {
+                    entered.complete(Unit)
+                    try {
+                        release.await()
+                    } catch (error: CancellationException) {
+                        cancelled()
+                        throw error
+                    }
+                    return EncodedPageRef("encoded:${descriptor.sourcePageIndex}")
+                }
+            }
+        },
+        progressPort = DesktopReaderProgressPort {
+                _,
+                _,
+            ->
+            error("Unrendered optional or normal work must not record reading")
+        },
+        parentScope = scope,
+    )
 
     @Test
     fun `active page scheduling preserves the partial candidate from the chapter descriptor`() = runTest {
@@ -153,7 +258,9 @@ class DesktopReaderSessionIntegrationTest {
 
                     override suspend fun findEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef? = null
 
-                    override suspend fun fetchEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef = prefetchedRef
+                    override suspend fun fetchEncodedPage(
+                        request: ReaderPageFetchRequest,
+                    ): EncodedPageRef = prefetchedRef
 
                     override fun encodedPageProvenance(
                         request: ReaderPageFetchRequest,
@@ -257,32 +364,29 @@ class DesktopReaderSessionIntegrationTest {
             initialSessionState = session.state.value,
             onViewportSettled = session::settleViewport,
         )
-        val presentation = DualPagedPresentation.present(
-            ReaderPresentationRequest(
-                chapter = session.state.value.snapshot.activeChapter,
-                direction = ReaderDirection.LTR,
-            ),
-        )
+        model.setDualPageMode(true)
+        session.state.value.snapshot.activeChapter.pages.forEach {
+            model.acceptDualFact(
+                requireNotNull(model.captureDualFact(it.id)),
+                mihon.domain.reader.ReaderPageFact.dimensions(40, 60),
+            )
+        }
 
         try {
-            val pair = presentation.displayUnits.single { unit ->
-                unit.slots.mapNotNull { it.page?.id?.sourcePageIndex }.toSet() == setOf(1, 2)
-            }
-            val pairViewport = presentation.resolveDualVisiblePages(pair.id)
-            model.settleDualPage(pairViewport)
+            model.goToPage(2)
+            val pairViewport = model.presentReadyPagerViewport()
             advanceUntilIdle()
 
-            assertEquals(setOf(1, 2), pairViewport.pageIds.mapTo(linkedSetOf(), ReaderPageId::sourcePageIndex))
-            assertEquals(2, progress.single().lastPageRead)
-            assertEquals(false, progress.single().isRead)
+            assertEquals(setOf(2, 3), pairViewport.pageIds.mapTo(linkedSetOf(), ReaderPageId::sourcePageIndex))
+            assertEquals(2, model.state.value.currentPage)
+            assertEquals(3, progress.single().lastPageRead)
+            assertTrue(progress.single().isRead)
 
-            val last = presentation.displayUnits.single { unit ->
-                unit.slots.any { it.page?.id?.sourcePageIndex == 3 }
-            }
-            model.settleDualPage(presentation.resolveDualVisiblePages(last.id))
+            model.goToPage(3)
+            model.presentReadyPagerViewport()
             advanceUntilIdle()
 
-            assertEquals(listOf(2, 3), progress.map(ReaderProgressEffect::lastPageRead))
+            assertTrue(progress.all { it.lastPageRead == 3 })
             assertTrue(progress.last().isRead)
         } finally {
             session.close()
@@ -498,7 +602,9 @@ class DesktopReaderSessionIntegrationTest {
             },
             pageFetchPortFactory = DesktopReaderPageFetchPortFactory { chapter, descriptor ->
                 object : ReaderPageFetchPort {
-                    override suspend fun resolveImageUrl(request: mihon.domain.reader.materialize.ReaderPageFetchRequest) =
+                    override suspend fun resolveImageUrl(
+                        request: mihon.domain.reader.materialize.ReaderPageFetchRequest,
+                    ) =
                         request.imageUrl ?: "image"
 
                     override suspend fun findEncodedPage(
@@ -821,7 +927,9 @@ class DesktopReaderSessionIntegrationTest {
             },
             pageFetchPortFactory = DesktopReaderPageFetchPortFactory { chapter, descriptor ->
                 object : ReaderPageFetchPort {
-                    override suspend fun resolveImageUrl(request: mihon.domain.reader.materialize.ReaderPageFetchRequest) =
+                    override suspend fun resolveImageUrl(
+                        request: mihon.domain.reader.materialize.ReaderPageFetchRequest,
+                    ) =
                         requireNotNull(request.imageUrl)
 
                     override suspend fun findEncodedPage(
@@ -1012,7 +1120,7 @@ class DesktopReaderSessionIntegrationTest {
     }
 
     @Test
-    fun `non cooperative page cancellation keeps physical image requests within policy plus one stale request`() = runTest {
+    fun `non cooperative page cancellation keeps physical image requests within policy`() = runTest {
         val startedPages = mutableListOf<Int>()
         val releasePages = List(3) { CompletableDeferred<Unit>() }
         val pageStarted = List(3) { CompletableDeferred<Unit>() }
@@ -1027,7 +1135,9 @@ class DesktopReaderSessionIntegrationTest {
             },
             pageFetchPortFactory = DesktopReaderPageFetchPortFactory { _, descriptor ->
                 object : ReaderPageFetchPort {
-                    override suspend fun resolveImageUrl(request: ReaderPageFetchRequest) = requireNotNull(request.imageUrl)
+                    override suspend fun resolveImageUrl(
+                        request: ReaderPageFetchRequest,
+                    ) = requireNotNull(request.imageUrl)
 
                     override suspend fun findEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef? = null
 
@@ -1072,7 +1182,7 @@ class DesktopReaderSessionIntegrationTest {
     }
 
     @Test
-    fun `non cooperative target switches keep physical chapter requests within policy plus one stale request`() = runTest {
+    fun `non cooperative target switches keep physical chapter requests within policy`() = runTest {
         val startedChapters = mutableListOf<Long>()
         val releaseChapters = (2L..4L).associateWith { CompletableDeferred<Unit>() }
         val chapterStarted = (2L..4L).associateWith { CompletableDeferred<Unit>() }
@@ -1242,10 +1352,12 @@ class DesktopReaderSessionIntegrationTest {
 
                     override suspend fun fetchEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef {
                         val ref = encodedStore.cacheRef(request.pageId, requireNotNull(request.imageUrl))
-                        return when (val result = encodedStore.store(ref) {
-                            encodedStore.destinationFile(ref).writeBytes(byteArrayOf(1, 2, 3, 4))
-                            4L
-                        }) {
+                        return when (
+                            val result = encodedStore.store(ref) {
+                                encodedStore.destinationFile(ref).writeBytes(byteArrayOf(1, 2, 3, 4))
+                                4L
+                            }
+                        ) {
                             is EncodedPageStoreWriteResult.Stored -> result.entry.ref
                             is EncodedPageStoreWriteResult.RejectedQuota -> error("fixture exceeds cache quota")
                         }
@@ -1318,7 +1430,9 @@ class DesktopReaderSessionIntegrationTest {
             },
             pageFetchPortFactory = DesktopReaderPageFetchPortFactory { _, descriptor ->
                 object : ReaderPageFetchPort {
-                    override suspend fun resolveImageUrl(request: ReaderPageFetchRequest) = requireNotNull(request.imageUrl)
+                    override suspend fun resolveImageUrl(
+                        request: ReaderPageFetchRequest,
+                    ) = requireNotNull(request.imageUrl)
 
                     override suspend fun findEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef? =
                         descriptor.encodedPageRef
@@ -1354,9 +1468,11 @@ class DesktopReaderSessionIntegrationTest {
             releaseGate.complete(Unit)
             advanceUntilIdle()
 
-            assertTrue(events.none { event ->
-                event.type == ReaderIoEventType.OPEN_PAGE && event.pageId == oldPages[1].id
-            })
+            assertTrue(
+                events.none { event ->
+                    event.type == ReaderIoEventType.OPEN_PAGE && event.pageId == oldPages[1].id
+                },
+            )
             assertTrue(oldPages[1].id !in fetchedPages)
         } finally {
             releaseGate.complete(Unit)
@@ -1521,17 +1637,23 @@ class DesktopReaderSessionIntegrationTest {
             chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter, _ ->
                 ReaderChapterContentPort {
                     List(if (chapter.chapterId == 1L) 1 else 2) { index ->
-                        if (chapter.chapterId == 1L) readyDescriptor(1L, index) else ReaderPageDescriptor(
-                            index,
-                            url = "/2/$index",
-                            imageUrl = "image:$index",
-                        )
+                        if (chapter.chapterId == 1L) {
+                            readyDescriptor(1L, index)
+                        } else {
+                            ReaderPageDescriptor(
+                                index,
+                                url = "/2/$index",
+                                imageUrl = "image:$index",
+                            )
+                        }
                     }
                 }
             },
             pageFetchPortFactory = DesktopReaderPageFetchPortFactory { chapter, descriptor ->
                 object : ReaderPageFetchPort {
-                    override suspend fun resolveImageUrl(request: mihon.domain.reader.materialize.ReaderPageFetchRequest) =
+                    override suspend fun resolveImageUrl(
+                        request: mihon.domain.reader.materialize.ReaderPageFetchRequest,
+                    ) =
                         requireNotNull(request.imageUrl)
 
                     override suspend fun findEncodedPage(
@@ -1541,7 +1663,9 @@ class DesktopReaderSessionIntegrationTest {
                     override suspend fun fetchEncodedPage(
                         request: mihon.domain.reader.materialize.ReaderPageFetchRequest,
                     ): EncodedPageRef {
-                        if (chapter.chapterId == 2L && descriptor.sourcePageIndex == 0 && ++targetFirstPageAttempts == 1) {
+                        if (chapter.chapterId == 2L && descriptor.sourcePageIndex == 0 &&
+                            ++targetFirstPageAttempts == 1
+                        ) {
                             prefetchStarted.complete(Unit)
                             try {
                                 awaitCancellation()
@@ -1589,17 +1713,23 @@ class DesktopReaderSessionIntegrationTest {
             chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter, _ ->
                 ReaderChapterContentPort {
                     List(if (chapter.chapterId == 1L) 1 else 3) { index ->
-                        if (chapter.chapterId == 1L) readyDescriptor(1L, index) else ReaderPageDescriptor(
-                            index,
-                            url = "/2/$index",
-                            imageUrl = "image:$index",
-                        )
+                        if (chapter.chapterId == 1L) {
+                            readyDescriptor(1L, index)
+                        } else {
+                            ReaderPageDescriptor(
+                                index,
+                                url = "/2/$index",
+                                imageUrl = "image:$index",
+                            )
+                        }
                     }
                 }
             },
             pageFetchPortFactory = DesktopReaderPageFetchPortFactory { chapter, descriptor ->
                 object : ReaderPageFetchPort {
-                    override suspend fun resolveImageUrl(request: mihon.domain.reader.materialize.ReaderPageFetchRequest) =
+                    override suspend fun resolveImageUrl(
+                        request: mihon.domain.reader.materialize.ReaderPageFetchRequest,
+                    ) =
                         requireNotNull(request.imageUrl)
 
                     override suspend fun findEncodedPage(
@@ -1612,10 +1742,12 @@ class DesktopReaderSessionIntegrationTest {
                         if (chapter.chapterId == 2L) {
                             nextPageFetches += descriptor.sourcePageIndex
                             val ref = encodedStore.cacheRef(request.pageId, requireNotNull(request.imageUrl))
-                            return when (val result = encodedStore.store(ref) {
-                                encodedStore.destinationFile(ref).writeBytes(byteArrayOf(1, 2, 3, 4))
-                                4L
-                            }) {
+                            return when (
+                                val result = encodedStore.store(ref) {
+                                    encodedStore.destinationFile(ref).writeBytes(byteArrayOf(1, 2, 3, 4))
+                                    4L
+                                }
+                            ) {
                                 is EncodedPageStoreWriteResult.Stored -> result.entry.ref
                                 is EncodedPageStoreWriteResult.RejectedQuota -> throw AppErrorException(
                                     AppError.Storage(IllegalStateException("quota")),
@@ -1655,11 +1787,15 @@ class DesktopReaderSessionIntegrationTest {
         chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter, _ ->
             ReaderChapterContentPort {
                 List(if (chapter.chapterId == 1L) 1 else 4) { index ->
-                    if (chapter.chapterId == 1L) readyDescriptor(1L, index) else ReaderPageDescriptor(
-                        index,
-                        url = "/2/$index",
-                        imageUrl = "image:$index",
-                    )
+                    if (chapter.chapterId == 1L) {
+                        readyDescriptor(1L, index)
+                    } else {
+                        ReaderPageDescriptor(
+                            index,
+                            url = "/2/$index",
+                            imageUrl = "image:$index",
+                        )
+                    }
                 }
             }
         },

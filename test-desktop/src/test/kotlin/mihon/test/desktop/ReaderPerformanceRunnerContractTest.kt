@@ -2,15 +2,6 @@ package mihon.test.desktop
 
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
-import java.net.InetSocketAddress
-import java.nio.charset.StandardCharsets
-import java.nio.file.Files
-import java.nio.file.Path
-import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.io.path.createTempDirectory
-import kotlin.io.path.exists
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
@@ -24,6 +15,15 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.net.InetSocketAddress
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.Path
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.io.path.createTempDirectory
+import kotlin.io.path.exists
 
 class ReaderPerformanceRunnerContractTest {
     private val repositoryRoot: Path = Path.of(System.getProperty("user.dir")).parent
@@ -243,6 +243,7 @@ class ReaderPerformanceRunnerContractTest {
             val events = buildList {
                 add(event("OPEN_READER_INTENT", 0L, null, "READER_OPEN", chapterId))
                 add(event("PAGE_LIST_READY", 100_000_000L, null, "PAGE_LIST", chapterId))
+                add(event("HEADER_READ", 150_000_000L, 0, "PAIRING_FACT", chapterId))
                 add(event("OPEN_PAGE", 200_000_000L, 0, "CURRENT_PAGE", chapterId))
                 if (!(source == CBZ && missingCbzDecode)) {
                     val decodeNanos = if (source == DIRECTORY && nonMonotonicDirectoryTimestamps) {
@@ -288,6 +289,10 @@ class ReaderPerformanceRunnerContractTest {
             put("pageIndex", pageIndex?.let(::JsonPrimitive) ?: JsonNull)
             put("generation", JsonPrimitive(1L))
             put("purpose", JsonPrimitive(purpose))
+            if (type == "HEADER_READ") {
+                put("byteLimit", JsonPrimitive(512 * 1024))
+                put("futureHeaderMetadata", JsonPrimitive("compatible"))
+            }
         }
 
         private fun HttpExchange.respond(body: String, status: Int = 200) {

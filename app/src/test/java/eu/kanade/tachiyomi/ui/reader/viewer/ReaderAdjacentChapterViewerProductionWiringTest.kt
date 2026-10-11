@@ -7,6 +7,7 @@ import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.databinding.ReaderActivityBinding
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
+import eu.kanade.tachiyomi.ui.reader.ReaderViewModel
 import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
@@ -14,12 +15,14 @@ import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.model.publishLoadedPageListForTest
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DisplayPage
+import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPagePairingStore
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerViewerAdapter
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.R2LPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonAdapter
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonViewer
+import io.mockk.every
 import io.mockk.mockk
 import mihon.domain.reader.ReaderAdjacentChapterEffect
 import org.junit.After
@@ -32,6 +35,7 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import org.robolectric.util.ReflectionHelpers
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.domain.chapter.model.Chapter
 import uy.kohesive.injekt.Injekt
@@ -216,6 +220,17 @@ class ReaderAdjacentChapterViewerProductionWiringTest {
     private fun recordingReaderActivity(): RecordingReaderActivity {
         val activity = Robolectric.buildActivity(RecordingReaderActivity::class.java).get()
         activity.binding = mockk<ReaderActivityBinding>(relaxed = true)
+        // This adapter fixture owns no Activity lifecycle or database; install its intended model
+        // before the real anchor seam accesses a SavedStateHandle-backed Activity delegate.
+        ReflectionHelpers.setField(
+            activity,
+            "viewModel\$delegate",
+            lazyOf(
+                mockk<ReaderViewModel>(relaxed = true) {
+                    every { dualPagePairings } returns DualPagePairingStore()
+                },
+            ),
+        )
         return activity
     }
 
@@ -317,6 +332,7 @@ class ReaderAdjacentChapterViewerProductionWiringTest {
 internal class RecordingReaderActivity : ReaderActivity() {
     val requests = mutableListOf<RecordedAdjacentRequest>()
     val selectedPages = mutableListOf<ReaderPage>()
+    val selectedAnchors = mutableListOf<ReaderPage>()
 
     override fun onPageSelected(page: ReaderPage) {
         selectedPages += page

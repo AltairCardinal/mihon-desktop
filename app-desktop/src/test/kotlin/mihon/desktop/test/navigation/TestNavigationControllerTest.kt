@@ -127,7 +127,8 @@ class TestNavigationControllerTest {
         olderScreen.onProductionClosed()
 
         assertTrue(readerState.isOpen)
-        assertEquals(20L, readerState.currentChapterId)
+        assertEquals(0L, readerState.currentChapterId, "A navigation request is not a mounted reader")
+        assertEquals(20L, currentScreen.chapterId)
         assertEquals("Manga B", readerState.mangaTitle)
         assertTrue(readerState.closeRequested)
         assertFalse(readerState.productionClosed)
@@ -222,10 +223,13 @@ class TestNavigationControllerTest {
             start.countDown()
             publishers.forEach { it.get(5, TimeUnit.SECONDS) }
 
-            assertEquals((1L..64L).toSet(), TestNavigationController.pushedScreens.value
-                .filterIsInstance<DesktopReaderScreen>()
-                .map(DesktopReaderScreen::chapterId)
-                .toSet())
+            assertEquals(
+                (1L..64L).toSet(),
+                TestNavigationController.pushedScreens.value
+                    .filterIsInstance<DesktopReaderScreen>()
+                    .map(DesktopReaderScreen::chapterId)
+                    .toSet(),
+            )
             assertEquals(64, TestNavigationController.pushedScreens.value.size)
         } finally {
             start.countDown()

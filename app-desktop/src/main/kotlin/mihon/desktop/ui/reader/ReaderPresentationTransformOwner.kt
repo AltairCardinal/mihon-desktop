@@ -1,7 +1,5 @@
 package mihon.desktop.ui.reader
 
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -9,7 +7,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import java.util.concurrent.atomic.AtomicBoolean
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asSkiaBitmap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -26,10 +25,11 @@ import mihon.desktop.reader.DesktopReaderImageAssetLease
 import mihon.desktop.reader.DesktopReaderImageMemoryAuthority
 import mihon.desktop.reader.DesktopReaderImageMemoryKind
 import mihon.desktop.reader.DesktopReaderImageMemoryRetention
-import mihon.desktop.reader.DesktopReaderPresentationImageState
 import mihon.desktop.reader.DesktopReaderPresentationImageSlotIdentity
+import mihon.desktop.reader.DesktopReaderPresentationImageState
 import mihon.desktop.reader.runResourceActions
 import mihon.domain.reader.PixelBounds
+import java.util.concurrent.atomic.AtomicBoolean
 
 internal data class ReaderPresentationTransformKey(
     val presentationIdentity: DesktopReaderPresentationImageSlotIdentity,
@@ -179,8 +179,16 @@ internal class ReaderPresentationTransformOwner(
     private fun closeTransformResources(resources: Pair<Job?, ReaderPresentationBitmapLease?>) {
         runResourceActions(
             listOfNotNull(
-                resources.first?.let { job -> fun() { job.cancel() } },
-                resources.second?.let { lease -> fun() { lease.close() } },
+                resources.first?.let { job ->
+                    fun() {
+                        job.cancel()
+                    }
+                },
+                resources.second?.let { lease ->
+                    fun() {
+                        lease.close()
+                    }
+                },
             ),
         )
     }
@@ -203,6 +211,7 @@ internal data class ReaderPresentationRenderedImage(
     val bitmap: ImageBitmap,
     val renderedSourceBounds: PixelBounds,
     val acknowledgeDraw: () -> Boolean,
+    val currentPixels: () -> Boolean,
 )
 
 /**
@@ -352,6 +361,20 @@ internal fun rememberReaderPresentationRenderedImage(
         renderedSourceBounds = transformed.lease.renderedSourceBounds,
         acknowledgeDraw = {
             transformOwner.acknowledgeDraw(key) && presentationImage.holder.acknowledgeDraw(identity)
+        },
+        currentPixels = {
+            // The existing I/O observer acknowledges only the first draw. A newly selected viewport
+            // may present an already-drawn offscreen image; validate its live leases independently.
+            val current = presentationImage.holder.retainReadyAssetForRender(identity)
+            if (current == null) {
+                false
+            } else {
+                try {
+                    transformOwner.acknowledgeDraw(key)
+                } finally {
+                    current.close()
+                }
+            }
         },
     )
 }

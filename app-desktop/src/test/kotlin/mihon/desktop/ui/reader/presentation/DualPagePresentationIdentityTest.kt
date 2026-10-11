@@ -10,10 +10,10 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeImageBitmap
@@ -25,18 +25,18 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.yield
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.yield
 import mihon.desktop.reader.ZoomState
 import mihon.desktop.reader.readerChapterSession
 import mihon.desktop.ui.reader.DualPageDisplayUnitCompositionIdentityKey
 import mihon.desktop.ui.reader.DualPageDisplayUnitFrame
-import mihon.desktop.ui.reader.DualPagePagerViewer
 import mihon.desktop.ui.reader.DualPageDisplayUnitIdKey
+import mihon.desktop.ui.reader.DualPagePagerViewer
 import mihon.desktop.ui.reader.DualPagePhysicalSlot
 import mihon.desktop.ui.reader.DualPagePhysicalSlotKey
 import mihon.desktop.ui.reader.DualPageSlotIdKey
@@ -44,21 +44,21 @@ import mihon.desktop.ui.reader.NavigationMode
 import mihon.desktop.ui.reader.ZoomablePagerViewer
 import mihon.domain.error.AppError
 import mihon.domain.reader.ReaderDirection
+import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderChapterLoadState
 import mihon.domain.reader.session.ReaderChapterSession
 import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageLoadState
 import mihon.domain.reader.session.ReaderPageSession
-import mihon.domain.reader.session.EncodedPageRef
+import org.jetbrains.skia.Bitmap
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import org.jetbrains.skia.Bitmap
-import java.io.File
-import java.io.ByteArrayOutputStream
 import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
+import java.io.File
 import javax.imageio.ImageIO
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -75,9 +75,11 @@ class DualPagePresentationIdentityTest {
         vectors.forEach { v ->
             val original = pairUnit(ReaderPageLoadState.Ready, ReaderPageLoadState.Ready)
             val refs = listOf(EncodedPageRef("fixture-left"), EncodedPageRef("fixture-right"))
-            val unit = original.copy(slots = original.slots.mapIndexed { index, slot ->
-                slot.copy(page = requireNotNull(slot.page).copy(encodedPageRef = refs[index]))
-            })
+            val unit = original.copy(
+                slots = original.slots.mapIndexed { index, slot ->
+                    slot.copy(page = requireNotNull(slot.page).copy(encodedPageRef = refs[index]))
+                },
+            )
             fun png(w: Int, h: Int): ByteArray {
                 val bitmap = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
                 bitmap.createGraphics().apply {
@@ -125,7 +127,11 @@ class DualPagePresentationIdentityTest {
                     assertPixel(pixels.getColor(x + w - 3, y + h - 3), expectedWhite = true)
                     if (y >= 2) assertPixel(pixels.getColor(x + w / 2, y - 2), expectedWhite = false)
                     if (offset == 6 && x >= 2) assertPixel(pixels.getColor(x - 2, y + h / 2), expectedWhite = false)
-                    if (offset == 10 && x + w + 2 < v[0]) assertPixel(pixels.getColor(x + w + 2, y + h / 2), expectedWhite = false)
+                    if (offset == 10 &&
+                        x + w + 2 < v[0]
+                    ) {
+                        assertPixel(pixels.getColor(x + w + 2, y + h / 2), expectedWhite = false)
+                    }
                 }
             } finally {
                 scene.close()
@@ -140,8 +146,28 @@ class DualPagePresentationIdentityTest {
             for (readerDirection in listOf(ReaderDirection.LTR, ReaderDirection.RTL)) {
                 val units = snapshot(readerDirection, ReaderPageLoadState.Ready, pageCount = 4).displayUnits
                 for ((unit, pageIndex, expectedSlot) in listOf(
-                    Triple(units.first(), 0, if (readerDirection == ReaderDirection.RTL) DualPagePhysicalSlot.LEFT else DualPagePhysicalSlot.RIGHT),
-                    Triple(units.last(), 3, if (readerDirection == ReaderDirection.RTL) DualPagePhysicalSlot.RIGHT else DualPagePhysicalSlot.LEFT),
+                    Triple(
+                        units.first(),
+                        0,
+                        if (readerDirection ==
+                            ReaderDirection.RTL
+                        ) {
+                            DualPagePhysicalSlot.LEFT
+                        } else {
+                            DualPagePhysicalSlot.RIGHT
+                        },
+                    ),
+                    Triple(
+                        units.last(),
+                        3,
+                        if (readerDirection ==
+                            ReaderDirection.RTL
+                        ) {
+                            DualPagePhysicalSlot.RIGHT
+                        } else {
+                            DualPagePhysicalSlot.LEFT
+                        },
+                    ),
                 )) {
                     val scene = ImageComposeScene(1_600, 900, coroutineContext = currentCoroutineContext()) {}
                     try {
@@ -196,48 +222,55 @@ class DualPagePresentationIdentityTest {
     }
 
     @Test
-    fun `full viewport FIT SCREEN geometry preserves wide screen height and honest four three letterboxing`() = runTest {
-        val cases =
-            listOf(
-                ViewportCase(3_840, 2_054, pageWidth = 703, expectTopContent = true, expectOuterBlank = true),
-                ViewportCase(1_920, 1_080, pageWidth = 703, expectTopContent = true, expectOuterBlank = true),
-                ViewportCase(2_520, 1_080, pageWidth = 703, expectTopContent = true, expectOuterBlank = true),
-                ViewportCase(1_600, 1_200, pageWidth = 703, expectTopContent = false, expectOuterBlank = false),
-                ViewportCase(1_600, 1_200, pageWidth = 667, expectTopContent = true, expectOuterBlank = false),
-            )
+    fun `full viewport FIT SCREEN geometry preserves wide screen height and honest four three letterboxing`() =
+        runTest {
+            val cases =
+                listOf(
+                    ViewportCase(3_840, 2_054, pageWidth = 703, expectTopContent = true, expectOuterBlank = true),
+                    ViewportCase(1_920, 1_080, pageWidth = 703, expectTopContent = true, expectOuterBlank = true),
+                    ViewportCase(2_520, 1_080, pageWidth = 703, expectTopContent = true, expectOuterBlank = true),
+                    ViewportCase(1_600, 1_200, pageWidth = 703, expectTopContent = false, expectOuterBlank = false),
+                    ViewportCase(1_600, 1_200, pageWidth = 667, expectTopContent = true, expectOuterBlank = false),
+                )
 
-        cases.forEach { case ->
-            val unit = pairUnit(ReaderPageLoadState.Ready, ReaderPageLoadState.Ready)
-            val page = whitePage(case.pageWidth, 1_000)
-            val scene = ImageComposeScene(case.width, case.height, coroutineContext = currentCoroutineContext()) {}
-            try {
-                scene.setContent {
-                    Box(Modifier.fillMaxSize().background(Color.Black)) {
-                        DualPageDisplayUnitFrame(unit = unit, onRetry = {}) { slot, modifier ->
-                            Image(
-                                bitmap = page,
-                                contentDescription = null,
-                                modifier = modifier,
-                                alignment = if (slot.id == unit.slots.first().id) Alignment.CenterEnd else Alignment.CenterStart,
-                                contentScale = ContentScale.Fit,
-                            )
+            cases.forEach { case ->
+                val unit = pairUnit(ReaderPageLoadState.Ready, ReaderPageLoadState.Ready)
+                val page = whitePage(case.pageWidth, 1_000)
+                val scene = ImageComposeScene(case.width, case.height, coroutineContext = currentCoroutineContext()) {}
+                try {
+                    scene.setContent {
+                        Box(Modifier.fillMaxSize().background(Color.Black)) {
+                            DualPageDisplayUnitFrame(unit = unit, onRetry = {}) { slot, modifier ->
+                                Image(
+                                    bitmap = page,
+                                    contentDescription = null,
+                                    modifier = modifier,
+                                    alignment = if (slot.id ==
+                                        unit.slots.first().id
+                                    ) {
+                                        Alignment.CenterEnd
+                                    } else {
+                                        Alignment.CenterStart
+                                    },
+                                    contentScale = ContentScale.Fit,
+                                )
+                            }
                         }
                     }
+                    val rendered = scene.render().toComposeImageBitmap().asSkiaBitmap()
+                    val frame = node(scene) { it.config.contains(DualPageDisplayUnitIdKey) }.boundsInRoot
+                    assertEquals(Rect(0f, 0f, case.width.toFloat(), case.height.toFloat()), frame)
+                    assertPixel(rendered.getColor(case.width / 2 - 8, case.height / 2), expectedWhite = true)
+                    assertPixel(rendered.getColor(0, case.height / 2), expectedWhite = !case.expectOuterBlank)
+                    assertPixel(rendered.getColor(case.width / 2 - 8, 4), expectedWhite = case.expectTopContent)
+                    if (!case.expectTopContent) {
+                        assertPixel(rendered.getColor(case.width / 2 - 8, 40), expectedWhite = true)
+                    }
+                } finally {
+                    scene.close()
                 }
-                val rendered = scene.render().toComposeImageBitmap().asSkiaBitmap()
-                val frame = node(scene) { it.config.contains(DualPageDisplayUnitIdKey) }.boundsInRoot
-                assertEquals(Rect(0f, 0f, case.width.toFloat(), case.height.toFloat()), frame)
-                assertPixel(rendered.getColor(case.width / 2 - 8, case.height / 2), expectedWhite = true)
-                assertPixel(rendered.getColor(0, case.height / 2), expectedWhite = !case.expectOuterBlank)
-                assertPixel(rendered.getColor(case.width / 2 - 8, 4), expectedWhite = case.expectTopContent)
-                if (!case.expectTopContent) {
-                    assertPixel(rendered.getColor(case.width / 2 - 8, 40), expectedWhite = true)
-                }
-            } finally {
-                scene.close()
             }
         }
-    }
 
     @Test
     fun `pair frame identity survives either page loading ready and error changes`() = runTest {
@@ -260,23 +293,37 @@ class DualPagePresentationIdentityTest {
 
             unit = pairUnit(ReaderPageLoadState.Ready, ReaderPageLoadState.Queued)
             scene.render()
-            assertSame(identity, node(scene) { it.config.contains(DualPageDisplayUnitCompositionIdentityKey) }
-                .config[DualPageDisplayUnitCompositionIdentityKey])
-            assertEquals(id, node(scene) { it.config.contains(DualPageDisplayUnitIdKey) }.config[DualPageDisplayUnitIdKey])
+            assertSame(
+                identity,
+                node(scene) { it.config.contains(DualPageDisplayUnitCompositionIdentityKey) }
+                    .config[DualPageDisplayUnitCompositionIdentityKey],
+            )
+            assertEquals(
+                id,
+                node(scene) {
+                    it.config.contains(DualPageDisplayUnitIdKey)
+                }.config[DualPageDisplayUnitIdKey],
+            )
             assertEquals(slotIds, unit.slots.map(DisplaySlot::id))
 
             unit = pairUnit(ReaderPageLoadState.Ready, ReaderPageLoadState.Error(AppError.Network()))
             scene.render()
-            assertSame(identity, node(scene) { it.config.contains(DualPageDisplayUnitCompositionIdentityKey) }
-                .config[DualPageDisplayUnitCompositionIdentityKey])
+            assertSame(
+                identity,
+                node(scene) { it.config.contains(DualPageDisplayUnitCompositionIdentityKey) }
+                    .config[DualPageDisplayUnitCompositionIdentityKey],
+            )
             assertEquals(slotIds, unit.slots.map(DisplaySlot::id))
             clickSingleRetry(scene)
             assertEquals(listOf(pageId(2)), retriedPageIds)
 
             unit = pairUnit(ReaderPageLoadState.Error(AppError.Network()), ReaderPageLoadState.Ready)
             scene.render()
-            assertSame(identity, node(scene) { it.config.contains(DualPageDisplayUnitCompositionIdentityKey) }
-                .config[DualPageDisplayUnitCompositionIdentityKey])
+            assertSame(
+                identity,
+                node(scene) { it.config.contains(DualPageDisplayUnitCompositionIdentityKey) }
+                    .config[DualPageDisplayUnitCompositionIdentityKey],
+            )
             assertEquals(slotIds, unit.slots.map(DisplaySlot::id))
             clickSingleRetry(scene)
             assertEquals(listOf(pageId(2), pageId(1)), retriedPageIds)
@@ -329,16 +376,19 @@ class DualPagePresentationIdentityTest {
     fun `production dual selector mounts registry display units`() = runTest {
         val scene = ImageComposeScene(1_600, 900, coroutineContext = currentCoroutineContext()) {}
         val imageOwner = PresentationImageOwnerFixture(this)
+        val chapter = readerChapterSession(
+            chapterId = chapterId.value,
+            generation = 19,
+            pageCount = 1,
+            pageLoadState = { ReaderPageLoadState.Queued },
+        )
+        val request = ReaderPresentationRequest(chapter, ReaderDirection.RTL).withSharedOwner()
         try {
             scene.setContent {
                 MaterialTheme {
                     ZoomablePagerViewer(
-                        chapter = readerChapterSession(
-                            chapterId = chapterId.value,
-                            generation = 19,
-                            pageCount = 1,
-                            pageLoadState = { ReaderPageLoadState.Queued },
-                        ),
+                        chapter = chapter,
+                        dualPageUnits = request.dualPageUnits,
                         currentPage = 0,
                         isRtl = true,
                         isDualPage = true,
@@ -425,8 +475,8 @@ class DualPagePresentationIdentityTest {
                 },
             ),
             direction = direction,
-            dualPagedOptions = DualPagedPresentationOptions(),
-        ),
+            pageSizes = (0 until pageCount).associate { pageId(it) to mihon.domain.reader.ReaderPageSize(40, 60) },
+        ).withSharedOwner(),
     )
 
     private fun pairUnit(

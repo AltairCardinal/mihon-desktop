@@ -16,6 +16,8 @@ import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.session.ReaderPageDescriptor
 import mihon.domain.reader.storage.EncodedPageStoreWriteResult
 import mihon.domain.reader.storage.ReaderEncodedPageStore
+import okhttp3.ResponseBody
+import okio.buffer
 import tachiyomi.domain.source.service.toSourceAppError
 import java.io.IOException
 import java.io.InputStream
@@ -23,6 +25,7 @@ import java.io.InputStream
 internal class AndroidReaderChapterContentPort(
     private val chapter: ReaderChapter,
     private val loader: PageLoader,
+    private val publishHeaderFacts: Boolean = true,
 ) : ReaderChapterContentPort {
 
     var materializedPages: List<ReaderPage> = emptyList()
@@ -36,6 +39,7 @@ internal class AndroidReaderChapterContentPort(
                     page.encodedPageRef = page.encodedPageRef ?: EncodedPageRef(
                         "android-reader:${request.chapterId.value}:${request.generation}:${page.index}",
                     )
+                    if (publishHeaderFacts) page.publishHeaderFact()
                 }
             }
         } catch (error: CancellationException) {
@@ -75,30 +79,44 @@ internal class AndroidReaderPageFetchPort(
     override suspend fun fetchEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef {
         val imageUrl = request.requireImageUrl()
         page.imageUrl = imageUrl
-        val response = sourceCall { source.getImage(page) }
-        val result = try {
-            encodedPageStore.store(EncodedPageRef(imageUrl)) {
-                if (!chapterCache.putImageToCache(imageUrl, response)) {
-                    throw IOException("Chapter cache rejected the image write: $imageUrl")
+        val originalResponse = sourceCall { source.getImage(page) }
+        originalResponse.use {
+            val response = request.factReadPermit?.let { permit ->
+                val originalBody = originalResponse.body
+                val boundedSource = permit.bound(originalBody.source(), System::nanoTime).buffer()
+                originalResponse.newBuilder().body(object : ResponseBody() {
+                    override fun contentType() = originalBody.contentType()
+                    override fun contentLength() = originalBody.contentLength()
+                    override fun source() = boundedSource
+                }).build()
+            } ?: originalResponse
+            val result = try {
+                encodedPageStore.store(EncodedPageRef(imageUrl)) {
+                    if (!chapterCache.putImageToCache(imageUrl, response)) {
+                        if (request.factReadPermit?.exhausted == true) {
+                            throw CancellationException("Optional page facts reached their read budget")
+                        }
+                        throw IOException("Chapter cache rejected the image write: $imageUrl")
+                    }
+                    chapterCache.getImageFile(imageUrl).length()
                 }
-                chapterCache.getImageFile(imageUrl).length()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: AppErrorException) {
+                throw error
+            } catch (error: Throwable) {
+                throw AppErrorException(AppError.Storage(error))
             }
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: AppErrorException) {
-            throw error
-        } catch (error: Throwable) {
-            throw AppErrorException(AppError.Storage(error))
-        }
-        return when (result) {
-            is EncodedPageStoreWriteResult.Stored -> result.entry.ref
-            is EncodedPageStoreWriteResult.RejectedQuota -> throw AppErrorException(
-                AppError.Storage(
-                    IllegalStateException(
-                        "Encoded page exceeds cache quota: ${result.entry.byteCount} > ${result.maxBytes}",
+            return when (result) {
+                is EncodedPageStoreWriteResult.Stored -> result.entry.ref
+                is EncodedPageStoreWriteResult.RejectedQuota -> throw AppErrorException(
+                    AppError.Storage(
+                        IllegalStateException(
+                            "Encoded page exceeds cache quota: ${result.entry.byteCount} > ${result.maxBytes}",
+                        ),
                     ),
-                ),
-            )
+                )
+            }
         }
     }
 

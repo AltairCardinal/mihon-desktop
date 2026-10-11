@@ -1,11 +1,6 @@
 package mihon.desktop.reader
 
 import androidx.compose.ui.ExperimentalComposeUiApi
-import androidx.compose.ui.graphics.asSkiaBitmap
-import androidx.compose.ui.graphics.toComposeImageBitmap
-import java.awt.Color
-import java.io.File
-import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.TestScope
@@ -18,6 +13,8 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.MethodSource
+import java.io.File
+import java.util.concurrent.CopyOnWriteArrayList
 
 @OptIn(ExperimentalCoroutinesApi::class, ExperimentalComposeUiApi::class)
 class ReaderProductionMutationEvidenceTest {
@@ -33,7 +30,7 @@ class ReaderProductionMutationEvidenceTest {
         val decodeKeys = CopyOnWriteArrayList<ReaderPageDecodeKey>()
         val delegate = SkiaDesktopReaderPageImageDecoder()
         val fixture = MountedReaderPresentationFixture(
-            root = tempDir.resolve("canonical-${case}"),
+            root = tempDir.resolve("canonical-$case"),
             coroutineContext = currentCoroutineContext(),
             case = case,
             pageImageDecoder = DesktopReaderPageImageDecoder { bytes, key ->
@@ -45,7 +42,9 @@ class ReaderProductionMutationEvidenceTest {
             fixture.releaseBackgroundGates()
             pumpUntil(fixture) {
                 fixture.events().any { it.type == ReaderIoEventType.FIRST_PAGE_PRESENTED.name } &&
-                    decodeKeys.map(ReaderPageDecodeKey::pageIndex).containsAll(fixture.mountedPageIndices)
+                    decodeKeys.map(ReaderPageDecodeKey::pageIndex).containsAll(fixture.mountedPageIndices) &&
+                    (!case.mode.isDualPage || fixture.visiblePagesAtViewportCenter() == fixture.visiblePageIndices) &&
+                    fixture.renderContainsFixturePixels()
             }
 
             assertEquals(
@@ -76,7 +75,7 @@ class ReaderProductionMutationEvidenceTest {
     ) = runTest {
         val decodeKeys = CopyOnWriteArrayList<ReaderPageDecodeKey>()
         val fixture = MountedReaderPresentationFixture(
-            root = tempDir.resolve("rejecting-${case}"),
+            root = tempDir.resolve("rejecting-$case"),
             coroutineContext = currentCoroutineContext(),
             case = case,
             pageImageDecoder = DesktopReaderPageImageDecoder { _, key ->
@@ -87,7 +86,13 @@ class ReaderProductionMutationEvidenceTest {
         try {
             fixture.releaseBackgroundGates()
             pumpUntil(fixture) {
-                decodeKeys.map(ReaderPageDecodeKey::pageIndex).containsAll(fixture.visiblePageIndices)
+                val mountedVisible = if (case.mode.isDualPage) {
+                    fixture.visiblePagesAtViewportCenter()
+                } else {
+                    fixture.visiblePageIndices
+                }
+                mountedVisible.isNotEmpty() &&
+                    decodeKeys.map(ReaderPageDecodeKey::pageIndex).containsAll(mountedVisible)
             }
             var bypassPixelsDrawn = false
             repeat(POST_REJECTION_RENDER_PUMPS) {
@@ -124,24 +129,10 @@ class ReaderProductionMutationEvidenceTest {
         assertTrue(complete(), "production mutation fixture did not reach its observation point after $attempts pumps")
     }
 
-    private fun MountedReaderPresentationFixture.renderContainsFixturePixels(): Boolean {
-        val rendered = scene.render().toComposeImageBitmap().asSkiaBitmap()
-        return try {
-            (0 until rendered.height).any { y ->
-                (0 until rendered.width).any { x -> sameRgb(rendered.getColor(x, y), Color.BLUE.rgb) }
-            }
-        } finally {
-            rendered.close()
-        }
-    }
-
-    private fun sameRgb(first: Int, second: Int): Boolean = (first and RGB_MASK) == (second and RGB_MASK)
-
     companion object {
         private const val MAX_RENDER_PUMPS = 200
         private const val POST_REJECTION_RENDER_PUMPS = 10
         private const val RENDER_PUMP_SCHEDULING_MILLIS = 1L
-        private const val RGB_MASK = 0x00FFFFFF
 
         @JvmStatic
         fun mutationCases(): List<MountedReaderPresentationCase> = listOf(

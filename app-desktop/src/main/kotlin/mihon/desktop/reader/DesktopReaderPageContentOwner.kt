@@ -1,6 +1,8 @@
 package mihon.desktop.reader
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import mihon.domain.reader.content.ReaderPageContentLease
 import mihon.domain.reader.content.ReaderPageContentOpenCoordinator
 import mihon.domain.reader.content.ReaderPageContentOpenPort
@@ -16,25 +18,59 @@ class DesktopReaderPageContentOwner internal constructor(
     scope: CoroutineScope,
     encodedPageReader: suspend (EncodedPageRef) -> ByteArray?,
     ioReporter: ReaderIoReporter,
+    encodedPrefixReader: (suspend (EncodedPageRef, Int) -> ByteArray?)? = null,
+    ioGate: ReaderIoGate = ReaderIoGate.None,
 ) : AutoCloseable {
+    private val contentGate = ioGate.bindContentReads()
+    internal val controlOwnerId = contentGate.registerContentOwner()
     private val coordinator = ReaderPageContentOpenCoordinator(
         scope = scope,
         port = ReaderPageContentOpenPort<ByteArray> { request ->
+            val limit = request.maxBytes
             ioReporter.report(
-                type = ReaderIoEventType.OPEN_PAGE,
+                type = if (limit == null) ReaderIoEventType.OPEN_PAGE else ReaderIoEventType.HEADER_READ,
                 chapterId = request.pageId.chapterId,
                 pageId = request.pageId,
                 generation = request.generation,
                 purpose = ReaderIoPurpose.CURRENT_PAGE,
+                byteLimit = limit,
             )
-            encodedPageReader(request.encodedPageRef)
+            try {
+                if (controlOwnerId != 0L) {
+                    contentGate.awaitContentRead(controlOwnerId, request)
+                    currentCoroutineContext().ensureActive()
+                }
+                val bytes = if (limit == null) {
+                    encodedPageReader(request.encodedPageRef)
+                } else {
+                    requireNotNull(encodedPrefixReader) {
+                        "Bounded header reader is unavailable"
+                    }(request.encodedPageRef, limit)
+                }
+                if (controlOwnerId != 0L) contentGate.contentReadCompleted(controlOwnerId, request, bytes?.size, null)
+                bytes
+            } catch (failure: Throwable) {
+                if (controlOwnerId != 0L) contentGate.contentReadCompleted(controlOwnerId, request, null, failure)
+                throw failure
+            }
         },
     )
 
     suspend fun acquire(request: ReaderPageContentOpenRequest): ReaderPageContentLease<ByteArray>? =
         coordinator.acquire(request)
 
+    suspend fun acquireHeader(request: ReaderPageContentOpenRequest): ReaderPageContentLease<ByteArray>? =
+        coordinator.acquire(
+            request.copy(maxBytes = mihon.domain.reader.ReaderDualPageFactLimits.MAX_HEADER_BYTES.toInt()),
+        )
+
     internal fun snapshot(): ReaderPageContentOpenSnapshot = coordinator.snapshot()
 
-    override fun close() = coordinator.close()
+    override fun close() {
+        try {
+            coordinator.close()
+        } finally {
+            contentGate.closeContentOwner(controlOwnerId)
+        }
+    }
 }

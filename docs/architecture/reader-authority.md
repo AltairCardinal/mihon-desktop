@@ -4,13 +4,14 @@
 
 2026-10-01 用户明确要求双端双页规则全部收归共享层，包含 `preserveParityAfterSpread`、
 宽图封面、页面分类、单页槽位和自动跨页匹配。规划权威转为
-[共享双页设计](../2026-10-01-shared-dual-page-rules-and-repair-design.md)与
+[稳定呈现设计v3](../2026-10-03-dual-page-stable-presentation-design.md)与
 [实施 roadmap](../roadmap/2026-10-01-shared-dual-page-rules-and-repair-roadmap.md)。
 下文将 cover-single、edge matching、landscape parity 等描述为 Desktop options 的段落保留为
 当前源码/历史迁移事实；不再授权生产双页使用平台独立规则。共享实现仍属于 Fork 增强，不能反向归因给固定上游。
 
-当前只完成设计，尚未实施或改变 parity manifest 状态。实施时以新的共享 owner、双端真实消费及有效证据
-更新相关归属和条目；不得删除合法自动对齐能力、降低验收或仅修改状态来宣称一致。
+DP01共享规则及接线属于已完成的历史批次；v3增量的共享接口已通过SP01.A独审和两端定向契约，
+原生呈现、资源与操作链仍在SP01.B/C实施。正式运行验收仍由DP02取得，不能以共享契约宣称新capability已交付。
+后续按真实消费及有效证据更新parity manifest相关条目；不得删除合法自动对齐能力、降低验收或仅修改状态宣称一致。
 
 ## 权威边界
 
@@ -167,7 +168,7 @@ RA-01 开始时复核的 `d7f3ceef5…55be95dd5` 区间也没有 reader 路径�
 | adjacent portrait pairing | `CROSS_PLATFORM_PRODUCT_ENHANCEMENT` | 作为 presentation 能力保留；固定原版只拆一张宽源图 |
 | Desktop 完整下一章预取 | `DESKTOP_PRODUCT_ENHANCEMENT` | RD-02 保留显式首屏/完整 encoded-only P4 decorator，但默认 OFF；canonical anchor 保留固定原版末五页 page-list-only，不改变 Android 默认流量 |
 | cached Error 的 Retry 不再强制重抓 | `PRODUCT_GAP`（RC-02 已关闭） | RC-02 已恢复显式 Retry 强制重抓；shared executor contract 与 Android production wiring 测试共同保护 |
-| Android 双页只上报 `firstPage` | `PRODUCT_GAP`（RD-01 已关闭） | RC-05 的 shared policy 已支持 settled 可见逻辑页集合；RP-03 已关闭 Desktop 双页 producer，RD-01 又让 Android Fork pager 在当前双页组空闲且两张图片均解码成功后上报全部可见页，并由真实 SQL 进度链路验证末页完成 |
+| Android 双页只上报 `firstPage` | `PRODUCT_GAP`（RD-01 已关闭；v3继续演进） | RC-05 的 shared policy 支持 settled 可见逻辑页集合；RD-01 的整组解码门禁是历史实现。SP01.B改为当前holder实际绘制页与共享票据的交集：首张停稳即可上报，同一定位追加伙伴并去重；真实View/SQL及ART开发证据见聚合报告，正式复核尚欠 |
 
 相邻 portrait pairing 的 fork 起点为 `bef51fc6924c6a9de185fa0fb2a56ce76309dc19`；固定
 `6fbf6df…` 不含 `PagePairingAlgorithm`、`PairingState` 或 `DualPageViewerAdapter`。odd-width split 保留
@@ -244,8 +245,10 @@ PageId 与首个可见 unit 的 offset + 测量高度。Ready 几何变化按相
 并服从 Lazy 边界，恢复完成前不发布错误 viewport。条漫的 side padding、crop 和覆盖 drag/fling、只在
 settled 后恢复的 auto-scroll 保持为 presentation option。Desktop 三种策略现已直接消费 canonical session
 snapshot；URL slot、`resolvedUrls` 与临时 presentation adapter 已删除。ID 43 证明三模式 production wiring。
-Android Fork 双页另由 RD-01 的 ViewPager 空闲、当前 holder 两图解码成功与真实进度事务测试证明完整
-settled visible-page 集合；单张 `firstPage` 仍只用于导航和预加载。
+Android Fork 双页在ViewPager空闲时，只提交当前holder实际绘制页与共享frame实际绘制集合的交集。
+加载或解码完成本身不是进度，history中的旧draw记录不能替新holder提供本次绘制资格；同一定位可追加
+后来实际显示的伙伴，不重复首张。逻辑目标错误不阻止健康伙伴的实际进度，末页仍须真实显示才完成。
+`firstPage` 保留组锚点职责；真实导航目标由共享源页身份决定，不能因候选伙伴尚未显示而跳过它。
 
 parity manifest 9/43/44/45/47/49/51/53/54 的 `canonicalSessionExecutor` 已由 RD-01 收口为 `WIRED`；RG-01
 又为每项记录 `legacyReaderExecutors = REMOVED` 与 `readerArchitectureGuard = ENFORCED`。该声明必须同时由

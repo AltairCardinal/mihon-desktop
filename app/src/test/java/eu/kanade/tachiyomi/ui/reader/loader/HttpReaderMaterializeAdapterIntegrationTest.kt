@@ -158,13 +158,15 @@ class HttpReaderMaterializeAdapterIntegrationTest {
         }
     }
 
-    private class TestHttpSource(private val server: MockWebServer) : HttpSource() {
+    internal class TestHttpSource(
+        private val server: MockWebServer,
+        override val client: OkHttpClient = OkHttpClient(),
+    ) : HttpSource() {
         override val id = 77L
         override val name = "Reader HTTP fixture"
         override val lang = "en"
         override val supportsLatest = false
         override val baseUrl = server.url("/").toString().removeSuffix("/")
-        override val client = OkHttpClient()
 
         override fun headersBuilder() = Headers.Builder()
 
@@ -181,6 +183,9 @@ class HttpReaderMaterializeAdapterIntegrationTest {
         override fun pageListParse(response: Response): List<Page> = when (val body = response.body.string()) {
             "empty" -> emptyList()
             "malformed" -> throw IllegalArgumentException("malformed page list")
+            "pages:17" -> List(17) { index ->
+                Page(index, url = "$baseUrl/page/${index + 1}", imageUrl = "$baseUrl/image/${index + 1}")
+            }
             else -> listOf(Page(0, url = baseUrl + body.removePrefix("page:")))
         }
 

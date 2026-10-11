@@ -155,6 +155,7 @@ android {
     }
 
     sourceSets {
+        getByName("test").resources.srcDir(project(":domain").file("src/commonTest/resources"))
         getByName("test").java.srcDir("../data/src/testFixtures/kotlin")
         getByName("test").java.srcDir("../data/src/creatorEntryContract/kotlin")
         getByName("preview").res.srcDirs("src/debug/res")

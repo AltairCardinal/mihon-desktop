@@ -1,7 +1,7 @@
 package mihon.desktop.reader
 
-import kotlinx.coroutines.test.runTest
 import androidx.compose.ui.graphics.asSkiaBitmap
+import kotlinx.coroutines.test.runTest
 import mihon.domain.reader.PageDecodeRequest
 import mihon.domain.reader.PageDecodeResult
 import mihon.domain.reader.PixelBounds
@@ -14,6 +14,41 @@ import java.io.ByteArrayOutputStream
 import javax.imageio.ImageIO
 
 class SkiaImageDecoderTest {
+    @Test
+    fun `all eight encoded EXIF orientations normalize actual Skia pixels exactly once`() {
+        val raw = requireNotNull(javaClass.classLoader?.getResourceAsStream("reader/exif-corners-raw.jpg")).use {
+            it.readBytes()
+        }
+        val colors = intArrayOf(0xffff0000.toInt(), 0xff00ff00.toInt(), 0xff0000ff.toInt(), 0xffffff00.toInt())
+        mihon.domain.reader.ReaderImageOrientation.entries.forEach { orientation ->
+            val exif = "45786966000049492a0008000000010012010300010000000100000000000000"
+                .chunked(2).map { it.toInt(16).toByte() }.toByteArray().also { it[24] = orientation.exifValue.toByte() }
+            val encoded =
+                raw.copyOfRange(0, 2) + byteArrayOf(-1, -31, 0, (exif.size + 2).toByte()) + exif +
+                    raw.copyOfRange(2, raw.size)
+            val pixels = SkiaImageDecoder.decode(encoded)
+            val size = orientation.orientedSize(60, 40)
+            assertEquals(size.width to size.height, pixels.width to pixels.height)
+            assertEquals(orientation, mihon.domain.reader.readImageOrientation(encoded))
+            val bitmap = pixels.asSkiaBitmap()
+            for ((x, y) in listOf(
+                size.width / 4 to size.height / 4,
+                size.width * 3 / 4 to size.height / 4,
+                size.width / 4 to size.height * 3 / 4,
+                size.width * 3 / 4 to size.height * 3 / 4,
+            )) {
+                val(sx, sy) = orientation.sourcePixel(x, y, 60, 40)
+                val expected = colors[(if (sy < 20) 0 else 2) + (if (sx < 30) 0 else 1)]
+                val actual = bitmap.getColor(x, y)
+                for (shift in listOf(0, 8, 16)) {
+                    assertTrue(
+                        kotlin.math.abs((actual ushr shift and 255) - (expected ushr shift and 255)) < 30,
+                        "$orientation normalized pixel($x,$y) must have the expected encoded corner color",
+                    )
+                }
+            }
+        }
+    }
 
     private fun makeJpegBytes(width: Int, height: Int): ByteArray {
         val img = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
@@ -59,6 +94,42 @@ class SkiaImageDecoderTest {
         val bitmap = SkiaImageDecoder.decode(bytes)
         assertEquals(120, bitmap.width)
         assertEquals(60, bitmap.height)
+    }
+
+    @Test
+    fun `encoded EXIF quarter turn bounds match the actual Skia decoded pixels`() {
+        val raw = makeJpegBytes(60, 40)
+        val exif = "45786966000049492a0008000000010012010300010000000600000000000000"
+            .chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val encoded =
+            raw.copyOfRange(0, 2) + byteArrayOf(-1, -31, 0, (exif.size + 2).toByte()) + exif +
+                raw.copyOfRange(2, raw.size)
+        val pixels = SkiaImageDecoder.decode(encoded)
+        assertEquals(
+            40 to 60,
+            pixels.width to pixels.height,
+            "This fixture must prove which EXIF orientation the production decoder actually renders",
+        )
+        assertEquals(
+            pixels.width to pixels.height,
+            SkiaImageDecoder.peekSize(encoded),
+            "Classification must use the same effective input orientation as rendered pixels",
+        )
+    }
+
+    @Test
+    fun `large legal JPEG dimensions remain available from the bounded encoded header`() {
+        val image = BufferedImage(1200, 1600, BufferedImage.TYPE_INT_RGB)
+        val noise = java.util.Random(19L)
+        val row = IntArray(image.width)
+        repeat(image.height) { y ->
+            repeat(row.size) { x -> row[x] = noise.nextInt(0x1000000) }
+            image.setRGB(0, y, image.width, 1, row, 0, image.width)
+        }
+        val encoded = ByteArrayOutputStream().also { ImageIO.write(image, "jpeg", it) }.toByteArray()
+        val bound = mihon.domain.reader.ReaderDualPageFactLimits.MAX_HEADER_BYTES.toInt()
+        assertTrue(encoded.size > bound, "This must exercise a truncated real JPEG, not a small complete image")
+        assertEquals(1200 to 1600, SkiaImageDecoder.peekSize(encoded.copyOf(bound)))
     }
 
     @Test
@@ -161,5 +232,4 @@ class SkiaImageDecoderTest {
         assertTrue(result.width <= 2)
         assertTrue(result.height <= 4)
     }
-
 }

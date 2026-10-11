@@ -16,7 +16,6 @@ import eu.kanade.tachiyomi.ui.reader.viewer.navigation.EdgeNavigation
 import eu.kanade.tachiyomi.ui.reader.viewer.navigation.KindlishNavigation
 import eu.kanade.tachiyomi.ui.reader.viewer.navigation.LNavigation
 import eu.kanade.tachiyomi.ui.reader.viewer.navigation.RightAndLeftNavigation
-import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagePairingAlgorithm
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -30,12 +29,9 @@ import kotlinx.coroutines.test.setMain
 import mihon.domain.reader.ChapterSkipPolicy
 import mihon.domain.reader.NavigationInversion
 import mihon.domain.reader.NavigationPreset
-import mihon.domain.reader.PageLayout
-import mihon.domain.reader.PagePairingOptions
 import mihon.domain.reader.ReaderChapterEntry
 import mihon.domain.reader.ReaderColorFilterEffect
 import mihon.domain.reader.ReaderNavigation
-import mihon.domain.reader.ReaderPagePairing
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -68,19 +64,6 @@ class ReaderSharedParityWiringTest {
             assertEquals((if (mode == 0L) unrelated and (1L shl 32).inv() else unrelated) or mode, manga.viewerFlags)
             assertEquals(mode, manga.readingMode)
         }
-    }
-
-    @Test
-    fun `fork-added pairing adapter and shared core produce the same enhancement vectors`() {
-        val android = PagePairingAlgorithm.buildPairings(5, { index -> index == 2 })
-        val shared = ReaderPagePairing.build(
-            pageCount = 5,
-            layoutAt = { index -> if (index == 2) PageLayout.SPREAD else PageLayout.PORTRAIT },
-            options = PagePairingOptions(pairAdjacentPortraitPages = true),
-        )
-
-        assertEquals(shared.map(IntArray::toList), android.map(IntArray::toList))
-        assertEquals(listOf(listOf(0, 1), listOf(2), listOf(3, 4)), android.map(IntArray::toList))
     }
 
     @Test

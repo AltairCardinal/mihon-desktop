@@ -23,13 +23,76 @@ object DatabaseMigration {
             }
             if (newVersion > familyBoundary) {
                 repairPublishedSchema40Families(driver, maxOf(oldVersion, familyBoundary))
-                Database.Schema.migrate(driver, maxOf(oldVersion, familyBoundary), newVersion)
+                migratePublishedReaderAndSyncFamilies(driver, maxOf(oldVersion, familyBoundary), newVersion)
             }
             if (newVersion >= COMPATIBILITY_SCHEMA_VERSION) {
                 validateCompatibility(driver)
             }
             driver.execute(null, "PRAGMA user_version = $newVersion", 0)
         }
+    }
+
+    /** Migration 42 was independently published for sync repair and reader pairing intent. */
+    private fun migratePublishedReaderAndSyncFamilies(driver: SqlDriver, recordedVersion: Long, newVersion: Long) {
+        val pairingPresent = requireCompletePairingIntentOrAbsent(driver)
+        if (hasObject(driver, "table", "sync_repair_failures")) requirePublishedSyncRepairShape(driver)
+        require(pairingPresent || recordedVersion < 45L) {
+            "Missing reader pairing intent in schema $recordedVersion; refusing to reconstruct lost choices"
+        }
+        if (recordedVersion >= 43L && !hasObject(driver, "table", "sync_repair_failures")) {
+            require(recordedVersion == 43L && pairingPresent) {
+                "Missing sync repair records in schema $recordedVersion; refusing to reconstruct lost failures"
+            }
+            // Only the released reader schema 43 omitted this family. Reuse published sync DDL.
+            Database.Schema.migrate(driver, 42, 43)
+        }
+        val pairingBoundary = 44L
+        if (recordedVersion < pairingBoundary) {
+            Database.Schema.migrate(driver, recordedVersion, minOf(newVersion, pairingBoundary))
+        }
+        if (newVersion > pairingBoundary) {
+            if (!pairingPresent) Database.Schema.migrate(driver, pairingBoundary, pairingBoundary + 1)
+            if (newVersion > pairingBoundary + 1) {
+                Database.Schema.migrate(driver, maxOf(recordedVersion, pairingBoundary + 1), newVersion)
+            }
+            require(requireCompletePairingIntentOrAbsent(driver))
+        }
+    }
+
+    private fun requirePublishedSyncRepairShape(driver: SqlDriver) {
+        requireTable(
+            driver,
+            "sync_repair_failures",
+            setOf("space_id", "generation", "kind", "target", "evidence_id", "path", "reason", "original", "resolved"),
+        )
+        require(
+            queryCount(
+                driver,
+                "SELECT COUNT(*) FROM pragma_table_info('sync_repair_failures') WHERE " +
+                    "(name='space_id' AND pk=1) OR (name='generation' AND pk=2) OR " +
+                    "(name='kind' AND pk=3) OR (name='target' AND pk=4) OR (name='evidence_id' AND pk=5)",
+            ) == 5L,
+        ) { "Incompatible sync repair evidence key" }
+    }
+
+    private fun requireCompletePairingIntentOrAbsent(driver: SqlDriver): Boolean {
+        val openingPresent = "opening_mode" in tableColumns(driver, "chapter_pairings")
+        val pairsPresent = hasObject(driver, "table", "chapter_pairing_pairs")
+        require(openingPresent == pairsPresent) {
+            "Incomplete reader pairing intent schema; refusing partial repair"
+        }
+        if (openingPresent) {
+            requireChapterPairingShape(driver)
+            requireChapterPairingBoundaryShape(driver, "chapter_pairing_pairs")
+            require(
+                queryCount(
+                    driver,
+                    "SELECT COUNT(*) FROM pragma_table_info('chapter_pairings') " +
+                        "WHERE name='opening_mode' AND type='TEXT' AND \"notnull\"=1 AND dflt_value='''AUTO'''",
+                ) == 1L,
+            ) { "Incompatible chapter pairing opening mode" }
+        }
+        return openingPresent
     }
 
     /** Repairs only completely absent released families; partial families fail the transaction. */
@@ -506,6 +569,8 @@ object DatabaseMigration {
                     val legacyShape = columns + "attempt"
                     val currentShape = columns + setOf("attempt_id", "network_failure_count")
                     requireTableWithOneShape(driver, table, legacyShape, currentShape)
+                } else if (table == "chapter_pairings") {
+                    requireTableWithOneShape(driver, table, columns, columns + "opening_mode")
                 } else {
                     requireTable(driver, table, columns)
                 }
@@ -513,11 +578,24 @@ object DatabaseMigration {
         }
         if (hasObject(driver, "table", "chapter_pairings")) requireChapterPairingShape(driver)
         if (hasObject(driver, "table", "chapter_pairing_boundaries")) requireChapterPairingBoundaryShape(driver)
+        if (hasObject(
+                driver,
+                "table",
+                "chapter_pairing_pairs",
+            )
+        ) {
+            requireChapterPairingBoundaryShape(driver, "chapter_pairing_pairs")
+        }
         if (hasObject(driver, "table", "chapter_pairing_revisions")) requireChapterPairingRevisionShape(driver)
     }
 
     private fun requireChapterPairingShape(driver: SqlDriver) {
-        requireTable(driver, "chapter_pairings", setOf("chapter_id", "format_version", "page_count", "revision"))
+        requireTableWithOneShape(
+            driver,
+            "chapter_pairings",
+            setOf("chapter_id", "format_version", "page_count", "revision"),
+            setOf("chapter_id", "format_version", "page_count", "revision", "opening_mode"),
+        )
         require(
             queryCount(
                 driver,
@@ -536,19 +614,19 @@ object DatabaseMigration {
         }
     }
 
-    private fun requireChapterPairingBoundaryShape(driver: SqlDriver) {
-        requireTable(driver, "chapter_pairing_boundaries", setOf("chapter_id", "page_ordinal"))
+    private fun requireChapterPairingBoundaryShape(driver: SqlDriver, table: String = "chapter_pairing_boundaries") {
+        requireTable(driver, table, setOf("chapter_id", "page_ordinal"))
         require(
             queryCount(
                 driver,
-                "SELECT COUNT(*) FROM pragma_table_info('chapter_pairing_boundaries') " +
+                "SELECT COUNT(*) FROM pragma_table_info('$table') " +
                     "WHERE (name='chapter_id' AND pk=1) OR (name='page_ordinal' AND pk=2)",
             ) == 2L,
         )
         require(
             queryCount(
                 driver,
-                "SELECT COUNT(*) FROM pragma_foreign_key_list('chapter_pairing_boundaries') " +
+                "SELECT COUNT(*) FROM pragma_foreign_key_list('$table') " +
                     "WHERE \"from\"='chapter_id' AND \"table\"='chapter_pairings' AND \"to\"='chapter_id' " +
                     "AND on_delete='CASCADE'",
             ) == 1L,

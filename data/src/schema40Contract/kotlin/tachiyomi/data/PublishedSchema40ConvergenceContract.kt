@@ -11,6 +11,126 @@ import java.util.Properties
 /** Uses the SQL actually shipped by each branch, including APK 70's sync schema 43. */
 abstract class PublishedSchema40ConvergenceContract {
     @Test
+    fun `reader schema 43 preserves saved opening manual pairs and pause clocks while adding sync repair`() {
+        withFile { driver ->
+            prepareSchema40(driver)
+            releasedMigration(driver, "sync-40")
+            releasedMigration(driver, "sync-41")
+            releasedMigration(driver, "reader-42")
+            driver.execute(null, "INSERT INTO chapter_pairing_revisions VALUES(41,7)", 0)
+            driver.execute(null, "INSERT INTO chapter_pairings VALUES(41,2,10,7,'FIRST_PAIR')", 0)
+            driver.execute(null, "INSERT INTO chapter_pairing_boundaries VALUES(41,3)", 0)
+            driver.execute(null, "INSERT INTO chapter_pairing_pairs VALUES(41,4)", 0)
+            driver.execute(null, "UPDATE sync_runtime_pause_clock SET paused_millis=7000", 0)
+            driver.execute(null, "PRAGMA user_version=43", 0)
+            DatabaseMigration.migrateAtomically(driver, 43, Database.Schema.version)
+            assertEquals(
+                1L,
+                value(driver, "SELECT COUNT(*) FROM chapter_pairings WHERE opening_mode='FIRST_PAIR' AND revision=7"),
+            )
+            assertEquals(4L, value(driver, "SELECT page_ordinal FROM chapter_pairing_pairs"))
+            assertEquals(3L, value(driver, "SELECT page_ordinal FROM chapter_pairing_boundaries"))
+            assertEquals(7L, value(driver, "SELECT revision FROM chapter_pairing_revisions"))
+            assertEquals(0L, value(driver, "SELECT COUNT(*) FROM sync_repair_failures"))
+            assertEquals(41L, value(driver, "SELECT value FROM chapter_id_floor"))
+            assertEquals(7000L, value(driver, "SELECT paused_millis FROM sync_runtime_pause_clock"))
+            assertEquals(9L, value(driver, "SELECT last_page_read FROM chapters WHERE _id=41"))
+            DatabaseMigration.migrateAtomically(driver, Database.Schema.version, Database.Schema.version)
+            assertEquals(4L, value(driver, "SELECT page_ordinal FROM chapter_pairing_pairs"))
+        }
+    }
+
+    @Test
+    fun `main schema 44 gains manual pairing intent without replacing sync repair or chapter identity`() {
+        withFile { driver ->
+            prepareSchema40(driver)
+            releasedMigration(driver, "main-40")
+            releasedMigration(driver, "sync-40")
+            releasedMigration(driver, "sync-41")
+            releasedMigration(driver, "sync-42")
+            driver.execute(null, "INSERT INTO chapter_pairing_revisions VALUES(41,7)", 0)
+            driver.execute(null, "INSERT INTO chapter_pairings VALUES(41,1,10,7)", 0)
+            driver.execute(null, "INSERT INTO chapter_pairing_boundaries VALUES(41,3)", 0)
+            driver.execute(
+                null,
+                "INSERT INTO sync_repair_failures VALUES('space',1,'BATCH','bad','evidence','path','reason','original',0)",
+                0,
+            )
+            driver.execute(null, "PRAGMA user_version=44", 0)
+            DatabaseMigration.migrateAtomically(driver, 44, Database.Schema.version)
+            assertEquals(
+                1L,
+                value(driver, "SELECT COUNT(*) FROM chapter_pairings WHERE opening_mode='AUTO' AND revision=7"),
+            )
+            assertEquals(0L, value(driver, "SELECT COUNT(*) FROM chapter_pairing_pairs"))
+            assertEquals(3L, value(driver, "SELECT page_ordinal FROM chapter_pairing_boundaries"))
+            assertEquals(1L, value(driver, "SELECT COUNT(*) FROM sync_repair_failures WHERE original='original'"))
+            assertEquals(41L, value(driver, "SELECT value FROM chapter_id_floor"))
+        }
+    }
+
+    @Test
+    fun `partial reader pairing family fails without repairing other families or advancing version`() {
+        withFile { driver ->
+            prepareSchema40(driver)
+            releasedMigration(driver, "sync-40")
+            releasedMigration(driver, "sync-41")
+            releasedMigration(driver, "reader-42")
+            driver.execute(null, "DROP TABLE chapter_pairing_pairs", 0)
+            driver.execute(null, "PRAGMA user_version=43", 0)
+            assertThrows(Exception::class.java) {
+                DatabaseMigration.migrateAtomically(driver, 43, Database.Schema.version)
+            }
+            assertEquals(43L, value(driver, "PRAGMA user_version"))
+            assertEquals(0L, value(driver, "SELECT COUNT(*) FROM sqlite_master WHERE name='chapter_id_floor'"))
+        }
+    }
+
+    @Test
+    fun `reader schema 43 rejects malformed sync repair without losing evidence or advancing version`() {
+        withFile { driver ->
+            prepareSchema40(driver)
+            releasedMigration(driver, "sync-40")
+            releasedMigration(driver, "sync-41")
+            releasedMigration(driver, "reader-42")
+            driver.execute(null, "CREATE TABLE sync_repair_failures(original TEXT)", 0)
+            driver.execute(null, "INSERT INTO sync_repair_failures VALUES('retained evidence')", 0)
+            driver.execute(null, "PRAGMA user_version=43", 0)
+            assertThrows(Exception::class.java) {
+                DatabaseMigration.migrateAtomically(driver, 43, Database.Schema.version)
+            }
+            assertEquals(43L, value(driver, "PRAGMA user_version"))
+            assertEquals(
+                1L,
+                value(driver, "SELECT COUNT(*) FROM sync_repair_failures WHERE original='retained evidence'"),
+            )
+            assertEquals(0L, value(driver, "SELECT COUNT(*) FROM sqlite_master WHERE name='chapter_id_floor'"))
+        }
+    }
+
+    @Test
+    fun `reader schema 43 rejects a sync repair table without its published key`() {
+        withFile { driver ->
+            prepareSchema40(driver)
+            releasedMigration(driver, "sync-40")
+            releasedMigration(driver, "sync-41")
+            releasedMigration(driver, "reader-42")
+            driver.execute(
+                null,
+                "CREATE TABLE sync_repair_failures(space_id TEXT, generation INTEGER, kind TEXT, " +
+                    "target TEXT, evidence_id TEXT, path TEXT, reason TEXT, original TEXT, resolved INTEGER)",
+                0,
+            )
+            driver.execute(null, "PRAGMA user_version=43", 0)
+            assertThrows(Exception::class.java) {
+                DatabaseMigration.migrateAtomically(driver, 43, Database.Schema.version)
+            }
+            assertEquals(43L, value(driver, "PRAGMA user_version"))
+            assertEquals(0L, value(driver, "SELECT COUNT(*) FROM sqlite_master WHERE name='chapter_id_floor'"))
+        }
+    }
+
+    @Test
     fun `main schema 41 retains chapter identity floor and gains durable pause clocks`() {
         withFile { driver ->
             prepareSchema40(driver)
@@ -98,6 +218,8 @@ abstract class PublishedSchema40ConvergenceContract {
 
     private fun prepareSchema40(driver: JdbcSqliteDriver) {
         Database.Schema.create(driver)
+        driver.execute(null, "DROP TABLE chapter_pairing_pairs", 0)
+        driver.execute(null, "ALTER TABLE chapter_pairings DROP COLUMN opening_mode", 0)
         listOf("insert_guard", "delete_guard", "insert", "delete").forEach { suffix ->
             driver.execute(null, "DROP TRIGGER chapter_id_floor_$suffix", 0)
         }

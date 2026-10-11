@@ -19,7 +19,13 @@ import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
+import mihon.desktop.reader.ReaderPreferences
+import mihon.desktop.reader.desktopReaderSessionState
 import mihon.desktop.test.http.testHttpServer
+import mihon.desktop.test.navigation.TestNavigationController
+import mihon.desktop.test.state.readerState
+import mihon.desktop.ui.reader.DesktopReaderScreen
+import mihon.desktop.ui.reader.ReaderScreenModel
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -27,6 +33,7 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 
 /**
  * Smoke tests for the reader HTTP API.
@@ -82,7 +89,7 @@ class ReaderScenarioSmokeTestSuite {
         assertEquals(HttpStatusCode.OK, response.status)
         val body = response.bodyAsText()
         assertTrue(body.contains("\"success\":false"))
-        assertTrue(body.contains("\"error\":\"Already at last page\""))
+        assertTrue(body.contains("\"error\":\"Reader is not mounted or target is unavailable\""))
     }
 
     @Test
@@ -95,24 +102,38 @@ class ReaderScenarioSmokeTestSuite {
 
         val state = Json.parseToJsonElement(client.get("$baseUrl/reader/state").bodyAsText()).jsonObject
         assertEquals(true, state.getValue("isOpen").jsonPrimitive.boolean)
-        assertEquals(7L, state.getValue("currentChapterId").jsonPrimitive.long)
-        assertEquals(20, state.getValue("totalPages").jsonPrimitive.int)
-        assertEquals("Chapter 7: Start, Part A", state.getValue("chapterTitle").jsonPrimitive.content)
+        val request = TestNavigationController.pendingScreenRequest.value?.screen as DesktopReaderScreen
+        assertEquals(7L, request.chapterId)
+        assertEquals(42L, request.mangaId)
+        assertEquals("Chapter 7: Start, Part A", request.chapterTitle)
+        assertEquals(0L, state.getValue("currentChapterId").jsonPrimitive.long)
+        assertEquals(0, state.getValue("totalPages").jsonPrimitive.int)
+        assertEquals(kotlinx.serialization.json.JsonNull, state.getValue("mountedReader"))
     }
 
     @Test
     fun `go to page updates current reader page`() = runBlocking {
         openReader()
+        val model = ReaderScreenModel(
+            initialSessionState = desktopReaderSessionState(chapterId = 7L, pageCount = 20),
+            prefs = ReaderPreferences(InMemoryPreferenceStore()),
+        )
+        try {
+            readerState.mount(model)
+            val response = client.post("$baseUrl/reader/go_to_page") {
+                headers.append(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                setBody("""{"page":5}""")
+            }
 
-        val response = client.post("$baseUrl/reader/go_to_page") {
-            headers.append(HttpHeaders.ContentType, ContentType.Application.Json.toString())
-            setBody("""{"page":5}""")
+            assertEquals(HttpStatusCode.OK, response.status)
+            val body = response.bodyAsText()
+            assertTrue(body.contains("\"success\":true"))
+            assertTrue(body.contains("\"page\":5"))
+            assertEquals(5, model.state.value.currentPage)
+        } finally {
+            readerState.unmount(model)
+            model.onDispose()
         }
-
-        assertEquals(HttpStatusCode.OK, response.status)
-        val body = response.bodyAsText()
-        assertTrue(body.contains("\"success\":true"))
-        assertTrue(body.contains("\"page\":5"))
     }
 
     @Test

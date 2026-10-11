@@ -1,23 +1,23 @@
 package mihon.desktop.ui.reader
 
-import mihon.desktop.reader.ReadingMode
-import mihon.desktop.reader.readingModeFromViewerFlags
-import mihon.desktop.reader.viewerFlagsWithReadingMode
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Assertions.assertFalse
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.runTest
 import mihon.desktop.reader.ReaderPreferences
+import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.desktopReaderSessionState
-import mihon.desktop.ui.reader.presentation.DisplayUnitId
+import mihon.desktop.reader.readingModeFromViewerFlags
+import mihon.desktop.reader.viewerFlagsWithReadingMode
 import mihon.desktop.ui.reader.presentation.DisplaySlotId
+import mihon.desktop.ui.reader.presentation.DisplayUnitId
 import mihon.desktop.ui.reader.presentation.ReaderPresentationMode
 import mihon.desktop.ui.reader.presentation.VisiblePageSet
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import java.util.prefs.Preferences
 
@@ -159,44 +159,78 @@ class DefaultReaderModeTest {
     }
 
     @Test
-    fun `layout settles preserve anchor and do not mark companion read but next page still reports`() = runTest {
-        val reader = desktopReaderSessionState(chapterId = 7L, pageCount = 6, initialPage = 2)
+    fun `layout settles preserve logical anchor while newly painted companion and next page report`() = runTest {
+        val initial = desktopReaderSessionState(chapterId = 7L, pageCount = 6, initialPage = 2)
+        val reader = initial.copy(context = initial.context.copy(mangaId = 1))
+        val repository = object : mihon.domain.reader.ChapterPairingRepository {
+            override suspend fun load(chapterId: Long, mangaId: Long) =
+                mihon.domain.reader.ChapterPairingSnapshot(
+                    mihon.domain.reader.ChapterPairingRecord(1, 6, setOf(4)),
+                    1,
+                )
+            override suspend fun replace(
+                chapterId: Long,
+                mangaId: Long,
+                expectedRevision: Long,
+                pageCount: Int,
+                forcedSinglePages: Set<Int>,
+            ): mihon.domain.reader.ChapterPairingSnapshot =
+                error("This fixture restores an existing manual record")
+        }
         var reports = 0
-        val model = ReaderScreenModel(prefs = prefs(), initialSessionState = reader, onViewportSettled = { _, _ -> reports++ })
-        val pages = reader.snapshot.activeChapter.pages.map { it.id }
-        fun visible(mode: ReaderPresentationMode, indices: List<Int>, active: Int) = VisiblePageSet(
-            DisplayUnitId(mode, indices.map { DisplaySlotId(pages[it]) }),
-            indices.map { pages[it] }.toSet(), pages[active],
+        lateinit var model: ReaderScreenModel
+        model = ReaderScreenModel(
+            prefs = prefs(),
+            initialSessionState = reader,
+            pairingCoordinator = mihon.desktop.reader.DesktopChapterPairingCoordinator(repository, backgroundScope),
+            onViewportSettled = { pages, active ->
+                val shared = ReaderScreenModel::class.java.getDeclaredField("dualSession")
+                    .apply { isAccessible = true }.get(model) as mihon.domain.reader.SharedDualPageSession
+                assertTrue(active in pages)
+                assertTrue(shared.displayedHistory.any { frame -> pages.all { it in frame.drawnPageIds } })
+                reports++
+            },
         )
+        runCurrent()
+        reader.snapshot.activeChapter.pages.forEach {
+            model.acceptDualFact(
+                requireNotNull(model.captureDualFact(it.id)),
+                mihon.domain.reader.ReaderPageFact.dimensions(40, 60),
+            )
+        }
         model.updateViewportSize(900, 1000, this)
-        model.settleSinglePage(visible(ReaderPresentationMode.SINGLE_PAGED, listOf(2), 2))
+        model.presentReadyPagerViewport()
         assertEquals(1, reports)
-        model.setForcedSinglePages(setOf(4))
-        model.setMatchedPairs(setOf(1 to 2))
         model.updateViewportSize(1600, 1000, this)
         runCurrent()
         advanceTimeBy(150)
         runCurrent()
-        model.settleDualPage(visible(ReaderPresentationMode.DUAL_PAGED, listOf(1, 2), 1))
-        assertEquals(1, model.state.value.currentPage)
-        assertEquals(1, reports)
+        val dual = model.presentReadyPagerViewport()
+        assertEquals(setOf(2, 3), dual.pageIds.mapTo(linkedSetOf()) { it.sourcePageIndex })
+        assertEquals(2, model.state.value.currentPage)
+        assertEquals(2, reports)
         model.updateViewportSize(900, 1000, this)
         runCurrent()
         advanceTimeBy(150)
         runCurrent()
-        model.setMatchedPairs(emptySet())
-        model.setSpreadPages(setOf(1))
-        model.settleSinglePage(visible(ReaderPresentationMode.SINGLE_PAGED, listOf(1), 1))
-        assertEquals(1, reports)
+        model.setSpreadPages(setOf(2))
+        model.presentReadyPagerViewport()
+        assertEquals(2, reports)
         assertEquals(setOf(4), model.state.value.forcedSinglePages)
         model.goToPage(3)
-        model.settleSinglePage(visible(ReaderPresentationMode.SINGLE_PAGED, listOf(3), 3))
-        assertEquals(2, reports)
+        model.presentReadyPagerViewport()
+        assertEquals(3, reports)
+        model.presentReadyPagerViewport()
+        assertEquals(3, reports, "An unchanged fully painted idle viewport is deduplicated")
+        model.onDispose()
     }
 
     @Test
     fun `per manga default and following global are independent and do not rewrite global choice`() = runTest {
-        val preferences = prefs().apply { readingMode = ReadingMode.LTR; isDualPage = true }
+        val preferences = prefs().apply {
+            readingMode = ReadingMode.LTR
+            isDualPage = true
+        }
         val model = ReaderScreenModel(prefs = preferences)
         model.updateViewportSize(900, 1000, this)
         model.setReadingMode(ReadingMode.AUTO, preferences)

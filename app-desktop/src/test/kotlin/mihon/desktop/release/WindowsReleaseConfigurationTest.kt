@@ -103,7 +103,10 @@ class WindowsReleaseConfigurationTest {
             "Runtime acceptance must enter the guarded production extension transaction",
         )
         assertTrue(validator.contains("ExpectedVersion"), "Runtime acceptance must verify the packaged app version")
-        assertTrue(validator.contains("sourceIds"), "Runtime acceptance must verify that production loading exposed sources")
+        assertTrue(
+            validator.contains("sourceIds"),
+            "Runtime acceptance must verify that production loading exposed sources",
+        )
     }
 
     @Test
@@ -203,7 +206,10 @@ class WindowsReleaseConfigurationTest {
         assertTrue(text.contains("uname -s"), "Desktop build script must detect the host platform")
         assertTrue(text.contains("MINGW") && text.contains("MSYS") && text.contains("CYGWIN"))
         assertTrue(text.contains("scripts/build-windows.ps1"), "Windows shell path must call the Windows build script")
-        assertTrue(text.contains("powershell.exe") || text.contains("pwsh"), "Windows shell path must invoke PowerShell")
+        assertTrue(
+            text.contains("powershell.exe") || text.contains("pwsh"),
+            "Windows shell path must invoke PowerShell",
+        )
         assertTrue(text.contains("-ExecutionPolicy") && text.contains("Bypass"))
         assertTrue(
             text.contains("WINDOWS_PS_SCRIPT=\"scripts/build-windows.ps1\""),

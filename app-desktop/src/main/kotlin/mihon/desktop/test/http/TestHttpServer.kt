@@ -90,7 +90,14 @@ private fun parseReaderFixtureSpec(params: Map<String, String>): ReaderTestFixtu
     val format = ReaderTestImageFormat.fromWireName(formatValue)
         ?: throw IllegalArgumentException("Unsupported reader fixture format: $formatValue")
     val partialPageCount = params["partialPageCount"]?.toIntOrNull()
-        ?: if (params.containsKey("partialPageCount")) throw IllegalArgumentException("partialPageCount must be an integer") else null
+        ?: if (params.containsKey(
+                "partialPageCount",
+            )
+        ) {
+            throw IllegalArgumentException("partialPageCount must be an integer")
+        } else {
+            null
+        }
     val offline = params["offline"]?.let { raw ->
         raw.toBooleanStrictOrNull() ?: throw IllegalArgumentException("offline must be true or false")
     } ?: false
@@ -418,7 +425,8 @@ internal fun Application.testHttpServer(
                     contentType = ContentType.Application.Json,
                     status = HttpStatusCode.OK,
                 ) {
-                    """{"success":true,"newScreen":"$screenId","type":"tab","tabFound":true,"timestamp":"${Instant.now()}"}"""
+                    """{"success":true,"newScreen":"$screenId","type":"tab","tabFound":true""" +
+                        ""","timestamp":"${Instant.now()}"}"""
                 }
             } else {
                 // Check if this is a known screen that needs special navigation
@@ -447,7 +455,9 @@ internal fun Application.testHttpServer(
                         contentType = ContentType.Application.Json,
                         status = HttpStatusCode.OK,
                     ) {
-                        """{"success":true,"newScreen":"$screenId","type":"nested","note":"Navigate to MoreTab first, then trigger action","timestamp":"${Instant.now()}"}"""
+                        """{"success":true,"newScreen":"$screenId","type":"nested"""" +
+                            ""","note":"Navigate to MoreTab first, then trigger action"""" +
+                            ""","timestamp":"${Instant.now()}"}"""
                     }
                 } else {
                     // Unknown screen
@@ -459,7 +469,8 @@ internal fun Application.testHttpServer(
                         contentType = ContentType.Application.Json,
                         status = HttpStatusCode.OK,
                     ) {
-                        """{"success":false,"newScreen":"$screenId","error":"Unknown screen: $screenId","timestamp":"${Instant.now()}"}"""
+                        """{"success":false,"newScreen":"$screenId","error":"Unknown screen: $screenId"""" +
+                            ""","timestamp":"${Instant.now()}"}"""
                     }
                 }
             }
@@ -525,16 +536,40 @@ internal fun Application.testHttpServer(
                     else -> null
                 }
                 if (intent == null) {
-                    call.respondText(jsonText(actionJson(action, false, "UNKNOWN_UPDATE_ACTION")), ContentType.Application.Json, HttpStatusCode.BadRequest)
+                    call.respondText(
+                        jsonText(actionJson(action, false, "UNKNOWN_UPDATE_ACTION")),
+                        ContentType.Application.Json,
+                        HttpStatusCode.BadRequest,
+                    )
                     return@post
                 }
                 if (updateModel == null) {
-                    call.respondText(jsonText(actionJson(action, false, "UPDATE_CONTROLLER_UNAVAILABLE")), ContentType.Application.Json, HttpStatusCode.ServiceUnavailable)
+                    call.respondText(
+                        jsonText(actionJson(action, false, "UPDATE_CONTROLLER_UNAVAILABLE")),
+                        ContentType.Application.Json,
+                        HttpStatusCode.ServiceUnavailable,
+                    )
                     return@post
                 }
                 val accepted = updateModel.intent(intent)
                 val status = if (accepted) HttpStatusCode.OK else HttpStatusCode.Conflict
-                call.respondText(jsonText(actionJson(action, accepted == true, if (accepted == true) null else "UPDATE_ACTION_REJECTED")), ContentType.Application.Json, status)
+                call.respondText(
+                    jsonText(
+                        actionJson(
+                            action,
+                            accepted == true,
+                            if (accepted ==
+                                true
+                            ) {
+                                null
+                            } else {
+                                "UPDATE_ACTION_REJECTED"
+                            },
+                        ),
+                    ),
+                    ContentType.Application.Json,
+                    status,
+                )
                 return@post
             }
 
@@ -689,7 +724,10 @@ internal fun Application.testHttpServer(
             val trackingResult = trackingController?.execute(action, params)
 
             // Process actions
-            if (!isExtensionAction && !isLibraryAction && !isBrowseAction && !isSourceLoginAction && !isDownloadAction && !isUpdatesAction && !isHistoryAction && !isBackupAction && !isSettingsAction && !isTrackingAction) {
+            if (!isExtensionAction && !isLibraryAction && !isBrowseAction && !isSourceLoginAction &&
+                !isDownloadAction && !isUpdatesAction && !isHistoryAction && !isBackupAction &&
+                !isSettingsAction && !isTrackingAction
+            ) {
                 when (action) {
                     // Read chapter - open reader
                     "read_chapter", "start_reading" -> {
@@ -749,9 +787,9 @@ internal fun Application.testHttpServer(
                     }
 
                     // Reader actions
-                    "reader_next_page", "reader_prev_page", "reader_next_chapter", "reader_prev_chapter",
-                    "reader_mode", "reader_zoom",
-                    -> { }
+                    "reader_next_page", "reader_prev_page", "reader_next_chapter", "reader_prev_chapter" ->
+                        readerState.perform(action.removePrefix("reader_"))
+                    "reader_mode", "reader_zoom" -> { }
                     // Browse actions
                     // Migration actions
                     "migration_search", "migration_select" -> { }
@@ -765,16 +803,26 @@ internal fun Application.testHttpServer(
                     }
                     "migration_pause" -> params["queueId"]?.let { MigrationBatchTestBridge.controller?.pause(it) }
                     "migration_resume" -> params["queueId"]?.let { MigrationBatchTestBridge.controller?.resume(it) }
-                    "migration_cancel_all" -> params["queueId"]?.let { MigrationBatchTestBridge.controller?.cancelAll(it) }
+                    "migration_cancel_all" -> params["queueId"]?.let {
+                        MigrationBatchTestBridge.controller?.cancelAll(it)
+                    }
                     "migration_cancel_item" -> {
                         val mangaId = params["mangaId"]?.toLongOrNull()
                         val queueId = params["queueId"]
-                        if (mangaId != null && queueId != null) MigrationBatchTestBridge.controller?.cancelItem(queueId, mangaId)
+                        if (mangaId != null &&
+                            queueId != null
+                        ) {
+                            MigrationBatchTestBridge.controller?.cancelItem(queueId, mangaId)
+                        }
                     }
                     "migration_retry" -> {
                         val mangaId = params["mangaId"]?.toLongOrNull()
                         val queueId = params["queueId"]
-                        if (mangaId != null && queueId != null) MigrationBatchTestBridge.controller?.retryItem(queueId, mangaId)
+                        if (mangaId != null &&
+                            queueId != null
+                        ) {
+                            MigrationBatchTestBridge.controller?.retryItem(queueId, mangaId)
+                        }
                     }
                 }
             }
@@ -857,7 +905,8 @@ internal fun Application.testHttpServer(
                                             BrowseSearchTestFailureCode.SOURCE_NOT_FOUND,
                                             BrowseSearchTestFailureCode.ROW_NOT_FOUND,
                                             -> HttpStatusCode.NotFound
-                                            BrowseSearchTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
+                                            BrowseSearchTestFailureCode.OWNER_CLOSED ->
+                                                HttpStatusCode.ServiceUnavailable
                                             BrowseSearchTestFailureCode.STALE_GENERATION,
                                             BrowseSearchTestFailureCode.RECOVERY_UNAVAILABLE,
                                             BrowseSearchTestFailureCode.OPERATION_REJECTED,
@@ -877,7 +926,8 @@ internal fun Application.testHttpServer(
                                                     SourceExtensionActionFailureCode.MISSING_PARAMETER,
                                                     SourceExtensionActionFailureCode.UNSUPPORTED_ACTION,
                                                     -> HttpStatusCode.BadRequest
-                                                    SourceExtensionActionFailureCode.UNKNOWN_PACKAGE -> HttpStatusCode.NotFound
+                                                    SourceExtensionActionFailureCode.UNKNOWN_PACKAGE ->
+                                                        HttpStatusCode.NotFound
                                                     SourceExtensionActionFailureCode.ACTION_UNAVAILABLE,
                                                     SourceExtensionActionFailureCode.NO_PENDING_TRUST,
                                                     SourceExtensionActionFailureCode.TRUST_PACKAGE_MISMATCH,
@@ -976,147 +1026,113 @@ internal fun Application.testHttpServer(
             }
         }
 
-        // Reader navigation endpoints
-        post("/test/reader/next_page") {
-            ProductionReaderTestModeBridge.binding?.let { binding ->
-                val accepted = binding.page(binding.snapshot().currentPage + 1)
-                call.respondText("""{"success":$accepted,"production":true}""", ContentType.Application.Json)
-                return@post
-            }
-            val currentPage = readerState.currentPage
-            val totalPages = readerState.totalPages
-
-            if (currentPage < totalPages - 1) {
-                readerState.updatePage(currentPage + 1)
-                applicationState.recordAction("reader_next_page", mapOf("page" to (currentPage + 1)))
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.OK,
-                ) {
-                    """{"success":true,"action":"next_page","page":${currentPage + 1},"totalPages":$totalPages,"timestamp":"${Instant.now()}"}"""
-                }
+        // Reader actions consume the actual mounted model on its UI thread.
+        suspend fun io.ktor.server.application.ApplicationCall.readerAction(action: String, page: Int? = null) {
+            val binding = ProductionReaderTestModeBridge.binding
+            val success = if (readerState.mountedSnapshot() != null || binding == null) {
+                readerState.perform(action, page)
             } else {
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.OK,
-                ) {
-                    """{"success":false,"action":"next_page","error":"Already at last page","page":$currentPage,"timestamp":"${Instant.now()}"}"""
+                when (action) {
+                    "next_page" -> binding.page(binding.snapshot().currentPage + 1)
+                    "prev_page" -> binding.page(binding.snapshot().currentPage - 1)
+                    "go_to_page" -> page?.let { binding.page(it) } ?: false
+                    "next_chapter" -> binding.adjacent(mihon.domain.reader.ReaderTransitionDirection.NEXT)
+                    "prev_chapter" -> binding.adjacent(mihon.domain.reader.ReaderTransitionDirection.PREVIOUS)
+                    else -> false
                 }
+            }
+            val production = binding?.snapshot()
+            val currentPage = production?.currentPage ?: readerState.currentPage
+            val totalPages = production?.totalPages ?: readerState.totalPages
+            if (success) applicationState.recordAction("reader_$action", mapOf("page" to currentPage))
+            respondText(
+                contentType = ContentType.Application.Json,
+                status = if (action == "go_to_page" && !success) HttpStatusCode.BadRequest else HttpStatusCode.OK,
+            ) {
+                buildJsonObject {
+                    put("success", JsonPrimitive(success))
+                    put("action", JsonPrimitive(action))
+                    put("page", JsonPrimitive(currentPage))
+                    put("totalPages", JsonPrimitive(totalPages))
+                    put("inputKind", JsonPrimitive("application_action"))
+                    put("production", JsonPrimitive(production != null))
+                    if (!success) put("error", JsonPrimitive("Reader is not mounted or target is unavailable"))
+                }.toString()
             }
         }
-
-        post("/test/reader/prev_page") {
-            ProductionReaderTestModeBridge.binding?.let { binding ->
-                val accepted = binding.page(binding.snapshot().currentPage - 1)
-                call.respondText("""{"success":$accepted,"production":true}""", ContentType.Application.Json)
-                return@post
-            }
-            val currentPage = readerState.currentPage
-            val totalPages = readerState.totalPages
-
-            if (currentPage > 0) {
-                readerState.updatePage(currentPage - 1)
-                applicationState.recordAction("reader_prev_page", mapOf("page" to (currentPage - 1)))
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.OK,
-                ) {
-                    """{"success":true,"action":"prev_page","page":${currentPage - 1},"totalPages":$totalPages,"timestamp":"${Instant.now()}"}"""
-                }
-            } else {
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.OK,
-                ) {
-                    """{"success":false,"action":"prev_page","error":"Already at first page","page":$currentPage,"timestamp":"${Instant.now()}"}"""
-                }
-            }
-        }
-
+        post("/test/reader/next_page") { call.readerAction("next_page") }
+        post("/test/reader/prev_page") { call.readerAction("prev_page") }
         post("/test/reader/go_to_page") {
-            val body = try {
-                call.receiveText()
-            } catch (e: Exception) {
-                "{}"
+            val params = parseJsonBody(call.receiveText())
+            call.readerAction("go_to_page", params["page"]?.toIntOrNull())
+        }
+        post("/test/reader/next_chapter") { call.readerAction("next_chapter") }
+        post("/test/reader/prev_chapter") { call.readerAction("prev_chapter") }
+
+        post("/test/reader/io_control/arm") {
+            val params = parseJsonBody(call.receiveText())
+            val chapter = params["chapterId"]?.toLongOrNull()
+            val page = params["pageIndex"]?.toIntOrNull()
+            val generation = params["generation"]?.toLongOrNull()
+            val range = params["range"]
+            val limit = if (range == "prefix") params["maxBytes"]?.toIntOrNull() else null
+            val timeout = params["timeoutMillis"]?.toLongOrNull()
+            if (chapter == null || page == null || page < 0 || generation == null || generation < 0 ||
+                range !in listOf("full", "prefix") || (range == "prefix" && (limit == null || limit <= 0)) ||
+                timeout == null || timeout !in 1..30_000
+            ) {
+                call.respondText("Invalid read control", status = HttpStatusCode.BadRequest)
+            } else {
+                val owner = readerState.controlledContentOwner(chapter, generation)
+                val controller = ReaderIoTestModeBridge.controller
+                val id = if (owner == null || controller == null) {
+                    null
+                } else {
+                    runCatching { controller.armRead(owner, chapter, page, generation, limit, timeout) }.getOrNull()
+                }
+                if (id == null) {
+                    call.respondText("Reader content owner unavailable", status = HttpStatusCode.Conflict)
+                } else {
+                    call.respondText("{\"id\":$id}", ContentType.Application.Json)
+                }
             }
-            val params = parseJsonBody(body)
-            val targetPage = params["page"]?.toIntOrNull() ?: 0
-            ProductionReaderTestModeBridge.binding?.let { binding ->
-                val accepted = binding.page(targetPage)
+        }
+        get("/test/reader/io_control/state") {
+            val rules = ReaderIoTestModeBridge.controller?.readControlSnapshot().orEmpty()
+            call.respondText("{\"rules\":${Json.encodeToJsonElement(rules)}}", ContentType.Application.Json)
+        }
+        post("/test/reader/io_control/{id}/{action}") {
+            val id = call.parameters["id"]?.toLongOrNull()
+            val action = call.parameters["action"]
+            val resolved = applicationState.testMode && id != null && action in listOf("release", "fail") &&
+                ReaderIoTestModeBridge.controller?.resolveRead(id, action == "fail") == true
+            call.respondText(
+                "{\"success\":$resolved}",
+                ContentType.Application.Json,
+                if (resolved) HttpStatusCode.OK else HttpStatusCode.Conflict,
+            )
+        }
+
+        post("/test/reader/draw_observation/start") {
+            val rawCapacity = call.request.queryParameters["capacity"]
+            val capacity = if (rawCapacity == null) 120 else rawCapacity.toIntOrNull()
+            if (capacity == null || capacity !in 1..512) {
+                call.respondText("Invalid draw observation capacity", status = HttpStatusCode.BadRequest)
+            } else {
+                val started = ReaderIoTestModeBridge.startDrawObservation(capacity)
                 call.respondText(
-                    """{"success":$accepted,"production":true}""",
+                    Json.encodeToJsonElement(readerState.slotDrawSnapshot()).toString(),
                     ContentType.Application.Json,
-                    if (accepted) HttpStatusCode.OK else HttpStatusCode.BadRequest,
+                    if (started) HttpStatusCode.OK else HttpStatusCode.Conflict,
                 )
-                return@post
-            }
-            val totalPages = readerState.totalPages
-
-            if (targetPage in 0 until totalPages) {
-                readerState.updatePage(targetPage)
-                applicationState.recordAction("reader_go_to_page", mapOf("page" to targetPage))
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.OK,
-                ) {
-                    """{"success":true,"action":"go_to_page","page":$targetPage,"totalPages":$totalPages,"timestamp":"${Instant.now()}"}"""
-                }
-            } else {
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.BadRequest,
-                ) {
-                    """{"success":false,"action":"go_to_page","error":"Invalid page number","requestedPage":$targetPage,"validRange":"0-${totalPages - 1}","timestamp":"${Instant.now()}"}"""
-                }
             }
         }
-
-        post("/test/reader/next_chapter") {
-            ProductionReaderTestModeBridge.binding?.let { binding ->
-                val accepted = binding.adjacent(mihon.domain.reader.ReaderTransitionDirection.NEXT)
-                call.respondText("""{"success":$accepted,"production":true}""", ContentType.Application.Json)
-                return@post
-            }
-            if (readerState.hasNextChapter) {
-                applicationState.recordAction("reader_next_chapter", mapOf("chapterId" to readerState.currentChapterId))
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.OK,
-                ) {
-                    """{"success":true,"action":"next_chapter","hasNext":${readerState.hasNextChapter},"timestamp":"${Instant.now()}"}"""
-                }
-            } else {
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.OK,
-                ) {
-                    """{"success":false,"action":"next_chapter","error":"No next chapter available","timestamp":"${Instant.now()}"}"""
-                }
-            }
-        }
-
-        post("/test/reader/prev_chapter") {
-            ProductionReaderTestModeBridge.binding?.let { binding ->
-                val accepted = binding.adjacent(mihon.domain.reader.ReaderTransitionDirection.PREVIOUS)
-                call.respondText("""{"success":$accepted,"production":true}""", ContentType.Application.Json)
-                return@post
-            }
-            if (readerState.hasPrevChapter) {
-                applicationState.recordAction("reader_prev_chapter", mapOf("chapterId" to readerState.currentChapterId))
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.OK,
-                ) {
-                    """{"success":true,"action":"prev_chapter","hasPrev":${readerState.hasPrevChapter},"timestamp":"${Instant.now()}"}"""
-                }
-            } else {
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.OK,
-                ) {
-                    """{"success":false,"action":"prev_chapter","error":"No previous chapter available","timestamp":"${Instant.now()}"}"""
-                }
-            }
+        post("/test/reader/draw_observation/stop") {
+            ReaderIoTestModeBridge.stopDrawObservation()
+            call.respondText(
+                Json.encodeToJsonElement(readerState.slotDrawSnapshot()).toString(),
+                ContentType.Application.Json,
+            )
         }
 
         post("/test/reader/close") {
@@ -1144,6 +1160,7 @@ internal fun Application.testHttpServer(
                 val production = ProductionReaderTestModeBridge.snapshot()
                 val events = ReaderIoTestModeBridge.controller?.snapshot().orEmpty()
                 val fixtureController = ReaderIoTestModeBridge.controller
+                val mounted = readerState.mountedSnapshot()
                 buildJsonObject {
                     put("production", JsonPrimitive(production != null))
                     put("activeChapterId", production?.activeChapterId?.let(::JsonPrimitive) ?: JsonNull)
@@ -1152,6 +1169,57 @@ internal fun Application.testHttpServer(
                     put("currentChapterIndex", production?.currentChapterIndex?.let(::JsonPrimitive) ?: JsonNull)
                     put("initialPage", production?.initialPage?.let(::JsonPrimitive) ?: JsonNull)
                     put("resumeHeadIds", kotlinx.serialization.json.buildJsonArray { production?.resumeHeadIds?.forEach { add(JsonPrimitive(it)) } })
+                    put(
+                        "mountedReader",
+                        mounted?.let { actual ->
+                            buildJsonObject {
+                                put("chapterId", JsonPrimitive(actual.context.chapterId))
+                                put("generation", JsonPrimitive(actual.session.generation))
+                                put("layoutRevision", JsonPrimitive(actual.dualPageLayoutRevision))
+                                put(
+                                    "locationSequence",
+                                    actual.dualPageLocation?.sequence?.let(::JsonPrimitive) ?: JsonNull,
+                                )
+                                put(
+                                    "pairingStatus",
+                                    actual.dualPairingState?.status?.name?.let(::JsonPrimitive) ?: JsonNull,
+                                )
+                                put("readingMode", JsonPrimitive(actual.readingMode.name))
+                                put("dualPageMode", JsonPrimitive(actual.dualPageMode))
+                                put("autoSpreadMatching", JsonPrimitive(actual.autoSpreadMatching))
+                                put(
+                                    "currentDisplayPageIndices",
+                                    kotlinx.serialization.json.JsonArray(
+                                        actual.currentDisplayUnitId?.slots.orEmpty().mapNotNull {
+                                            it.pageId?.sourcePageIndex
+                                        }.map(::JsonPrimitive),
+                                    ),
+                                )
+                                put(
+                                    "visiblePageIndices",
+                                    kotlinx.serialization.json.JsonArray(
+                                        actual.visiblePageIds.map {
+                                            JsonPrimitive(it.sourcePageIndex)
+                                        },
+                                    ),
+                                )
+                            }
+                        } ?: JsonNull,
+                    )
+                    put(
+                        "sharedUnits",
+                        kotlinx.serialization.json.JsonArray(
+                            mounted?.dualPageUnits.orEmpty().map { unit ->
+                                kotlinx.serialization.json.JsonArray(
+                                    unit.pageIds.map {
+                                        JsonPrimitive(it.sourcePageIndex)
+                                    },
+                                )
+                            },
+                        ),
+                    )
+                    put("nativeInput", readerMountedNativeInput())
+                    put("slotDrawObservation", Json.encodeToJsonElement(readerState.slotDrawSnapshot()))
                     put("isOpen", JsonPrimitive(production?.isOpen ?: readerState.isOpen))
                     put("closeRequested", JsonPrimitive(readerState.closeRequested))
                     put("productionClosed", JsonPrimitive(production?.productionClosed ?: readerState.productionClosed))
@@ -1188,7 +1256,10 @@ internal fun Application.testHttpServer(
                         "scenarioImageRequests",
                         JsonPrimitive(fixtureController?.scenarioOnlineImageRequestCount() ?: 0),
                     )
-                    put("downloadIoLockViolations", JsonPrimitive(fixtureController?.downloadIoLockViolationCount() ?: 0))
+                    put(
+                        "downloadIoLockViolations",
+                        JsonPrimitive(fixtureController?.downloadIoLockViolationCount() ?: 0),
+                    )
                     put("timestamp", JsonPrimitive(Instant.now().toString()))
                 }.toString()
             }
@@ -1267,5 +1338,103 @@ internal fun Application.testHttpServer(
                 """{"success":true,"operation":"processed","timestamp":"${Instant.now()}"}"""
             }
         }
+    }
+}
+
+/** Read-only coordinates from the mounted pager and its actual window, with no screen capture. */
+private fun readerMountedNativeInput(): kotlinx.serialization.json.JsonObject {
+    val actual = readerState.mountedSnapshot()
+    val geometry = readerState.geometry
+    val bounds = geometry?.bounds
+    val hasGeometry = bounds != null && bounds.width > 0 && bounds.height > 0 && geometry.density > 0
+    val window = geometry?.window
+    val showing = window?.isShowing == true
+    val focused = window?.isFocused == true && readerState.composeWindowFocused
+    val origin = if (showing) {
+        runCatching {
+            (window as? javax.swing.RootPaneContainer)?.contentPane?.locationOnScreen ?: window?.locationOnScreen
+        }.getOrNull()
+    } else {
+        null
+    }
+    val available = hasGeometry && origin != null && focused && readerState.ownerFocused &&
+        actual != null && !actual.showSettings && actual.currentDisplayUnitId != null
+    return buildJsonObject {
+        put("available", JsonPrimitive(available))
+        put("geometryAvailable", JsonPrimitive(hasGeometry))
+        put("windowPresent", JsonPrimitive(window != null))
+        put("windowShowing", JsonPrimitive(showing))
+        put("windowFocused", JsonPrimitive(focused))
+        put("ownerFocused", JsonPrimitive(readerState.ownerFocused))
+        put(
+            "reason",
+            JsonPrimitive(
+                when {
+                    actual == null -> "reader_not_mounted"
+                    !hasGeometry -> "pager_geometry_unavailable"
+                    origin == null -> "window_geometry_unavailable"
+                    !focused || !readerState.ownerFocused -> "reader_not_focused"
+                    actual.showSettings -> "reader_settings_open"
+                    actual.currentDisplayUnitId == null -> "presentation_not_selected"
+                    else -> "ready"
+                },
+            ),
+        )
+        put("density", geometry?.density?.let(::JsonPrimitive) ?: JsonNull)
+        put("coordinateSpace", JsonPrimitive("awt_screen_points"))
+        put(
+            "viewportPixels",
+            bounds?.let { rect ->
+                buildJsonObject {
+                    put("left", JsonPrimitive(rect.left))
+                    put("top", JsonPrimitive(rect.top))
+                    put("width", JsonPrimitive(rect.width))
+                    put("height", JsonPrimitive(rect.height))
+                }
+            } ?: JsonNull,
+        )
+        put(
+            "viewportScreenPoints",
+            if (hasGeometry && origin != null) {
+                buildJsonObject {
+                    put("left", JsonPrimitive(origin.x + bounds.left / geometry.density))
+                    put("top", JsonPrimitive(origin.y + bounds.top / geometry.density))
+                    put("width", JsonPrimitive(bounds.width / geometry.density))
+                    put("height", JsonPrimitive(bounds.height / geometry.density))
+                }
+            } else {
+                JsonNull
+            },
+        )
+        put(
+            "tapPoints",
+            kotlinx.serialization.json.JsonArray(
+                if (!hasGeometry || origin == null || actual == null) {
+                    emptyList()
+                } else {
+                    listOf(0.15f, 0.5f, 0.85f).flatMap { y ->
+                        listOf(0.1f, 0.5f, 0.9f).map { x ->
+                            buildJsonObject {
+                                put("x", JsonPrimitive(origin.x + (bounds.left + bounds.width * x) / geometry.density))
+                                put("y", JsonPrimitive(origin.y + (bounds.top + bounds.height * y) / geometry.density))
+                                put(
+                                    "action",
+                                    JsonPrimitive(
+                                        mihon.desktop.ui.reader.tapNavRegion(
+                                            x,
+                                            y,
+                                            1f,
+                                            1f,
+                                            actual.navigationMode,
+                                            actual.readingMode == mihon.desktop.reader.ReadingMode.RTL,
+                                        ).name,
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                },
+            ),
+        )
     }
 }

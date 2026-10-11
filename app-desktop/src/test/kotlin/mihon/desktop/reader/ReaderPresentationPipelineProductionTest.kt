@@ -1,7 +1,6 @@
 package mihon.desktop.reader
 
 import androidx.compose.ui.ExperimentalComposeUiApi
-import java.io.File
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.runCurrent
@@ -13,6 +12,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.MethodSource
+import java.io.File
 
 @OptIn(ExperimentalCoroutinesApi::class, ExperimentalComposeUiApi::class)
 class ReaderPresentationPipelineProductionTest {
@@ -39,9 +39,11 @@ class ReaderPresentationPipelineProductionTest {
             )
             fixture.releaseBackgroundGates()
 
+            val observedUnits = mutableSetOf<Set<Int>>()
             var renderPumps = 0
             while (!fixture.hasPresentedAndMaterializedEveryVisibleSlot() && renderPumps < MAX_RENDER_PUMPS) {
-                fixture.scene.render()
+                fixture.scene.render().close()
+                if (case.mode.isDualPage) observedUnits += fixture.visiblePagesAtViewportCenter()
                 runCurrent()
                 Thread.sleep(RENDER_PUMP_SCHEDULING_MILLIS)
                 renderPumps += 1
@@ -59,7 +61,7 @@ class ReaderPresentationPipelineProductionTest {
                 assertEquals(
                     1,
                     events.countPageEvent(ReaderIoEventType.OPEN_PAGE, pageIndex, presentationGeneration),
-                    "$case must OPEN visible page $pageIndex exactly once",
+                    "$case must OPEN visible page $pageIndex exactly once; units=$observedUnits; events=${events.summary()}",
                 )
                 assertEquals(
                     1,
@@ -117,6 +119,7 @@ class ReaderPresentationPipelineProductionTest {
         val firstPresented = events.firstOrNull { it.type == ReaderIoEventType.FIRST_PAGE_PRESENTED.name }
             ?: return false
         val generation = firstPresented.generation ?: return false
+        if (case.mode.isDualPage && visiblePagesAtViewportCenter() != visiblePageIndices) return false
         return visiblePageIndices.all { pageIndex ->
             events.countPageEvent(ReaderIoEventType.OPEN_PAGE, pageIndex, generation) >= 1 &&
                 events.countPageEvent(ReaderIoEventType.DECODE, pageIndex, generation) >= 1

@@ -303,10 +303,14 @@
       "classification": "DESKTOP_PRODUCT_ENHANCEMENT",
       "introductionRefs": ["c01771573034d2ed3492db3ddd109533bb631d99"],
       "behaviorEvidenceRefs": [
-        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt#landscape cover remains whole in the physical left slot for one and many page chapters"
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt#landscape cover remains whole across the complete viewport for one and many page chapters"
       ],
-      "description": "Desktop retains the physical left half-screen for a landscape cover, while portrait edge pages follow reading direction and a single portrait page fills the viewport.",
-      "resolutionStatus": "ACTIVE"
+      "description": "DP01 replaces the historical Desktop half-screen landscape cover with the shared whole-page FULL viewport contract; portrait edge slots still follow structural reasons and reading direction.",
+      "resolutionStatus": "REMOVED",
+      "closureTask": "DP01",
+      "resolutionEvidence": {
+        "productionBehaviorTest": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt#landscape cover remains whole across the complete viewport for one and many page chapters"
+      }
     },
     {
       "id": "DUAL_FIXED_4_3_FRAME",

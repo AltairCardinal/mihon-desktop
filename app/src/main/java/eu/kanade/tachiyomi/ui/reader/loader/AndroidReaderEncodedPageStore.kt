@@ -1,6 +1,10 @@
 package eu.kanade.tachiyomi.ui.reader.loader
 
 import eu.kanade.tachiyomi.data.cache.ChapterCache
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.storage.ByteBudgetEncodedPageStoreIndex
 import mihon.domain.reader.storage.EncodedPageEvictionResult
@@ -15,7 +19,15 @@ internal class AndroidReaderEncodedPageStore(
     private val chapterCache: ChapterCache,
     private val maxBytes: Long = ChapterCache.DEFAULT_MAX_SIZE_BYTES,
 ) : ReaderEncodedPageStore {
+    private class RefWriter {
+        val mutex = Mutex()
+        var callers = 0
+    }
+
     private val stateLock = Any()
+
+    // Waiting and executing callers retain the same mutex until their actual exit, including cancellation.
+    private val refWriters = mutableMapOf<EncodedPageRef, RefWriter>()
     private val index = ByteBudgetEncodedPageStoreIndex(maxBytes)
     private var sessionOpen = false
     private var sessionEnded = false
@@ -61,6 +73,28 @@ internal class AndroidReaderEncodedPageStore(
     }
 
     override suspend fun store(
+        ref: EncodedPageRef,
+        writer: suspend () -> Long,
+    ): EncodedPageStoreWriteResult {
+        val refWriter = synchronized(stateLock) {
+            ensureSessionLocked()
+            refWriters.getOrPut(ref, ::RefWriter).also { it.callers++ }
+        }
+        try {
+            return refWriter.mutex.withLock {
+                currentCoroutineContext().ensureActive()
+                storeExclusive(ref, writer)
+            }
+        } finally {
+            synchronized(stateLock) {
+                refWriter.callers--
+                if (refWriter.callers == 0) refWriters.remove(ref)
+            }
+        }
+    }
+
+    // Only physical writes and their cleanup share this lease. HTTP and encoded readers do not.
+    private suspend fun storeExclusive(
         ref: EncodedPageRef,
         writer: suspend () -> Long,
     ): EncodedPageStoreWriteResult {

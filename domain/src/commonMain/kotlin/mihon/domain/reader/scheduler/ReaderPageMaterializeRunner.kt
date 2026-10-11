@@ -4,6 +4,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -69,6 +72,13 @@ class ReaderPageMaterializeRunner<T>(
     private val materializeExecutor: ReaderMaterializeExecutor = CanonicalReaderMaterializeExecutor,
     private val port: ReaderPageMaterializeRunnerPort<T>,
 ) : AutoCloseable {
+    companion object {
+        private val mutableProcessPhysicalWorkCount = MutableStateFlow(0)
+
+        /** Original reader work can survive closed sessions; this is observation, not another scheduler. */
+        val processPhysicalWorkCount = mutableProcessPhysicalWorkCount.asStateFlow()
+    }
+
     private class ActiveWork<T>(
         val work: ReaderPageMaterializeWork<T>,
     ) {
@@ -82,6 +92,10 @@ class ReaderPageMaterializeRunner<T>(
     private var pumpRequested = false
     private var pumping = false
     private var closed = false
+    private val mutablePhysicalWorkCount = MutableStateFlow(0)
+
+    /** Queued/running original jobs, including logically cancelled work until actual completion. */
+    val physicalWorkCount = mutablePhysicalWorkCount.asStateFlow()
 
     init {
         require(maxConcurrentRequests > 0) { "maxConcurrentRequests must be positive" }
@@ -118,16 +132,27 @@ class ReaderPageMaterializeRunner<T>(
                         true
                     }
                 }
+                if (shouldStart) {
+                    mutableProcessPhysicalWorkCount.update { it + 1 }
+                    mutablePhysicalWorkCount.update { it + 1 }
+                }
                 registration.job.invokeOnCompletion { cause ->
-                    if (cause != null) {
-                        finalize(
-                            registration,
-                            if (cause is CancellationException) {
-                                ReaderPageMaterializeCompletion.Cancelled(cause)
-                            } else {
-                                ReaderPageMaterializeCompletion.Failed(cause)
-                            },
-                        )
+                    try {
+                        if (cause != null) {
+                            finalize(
+                                registration,
+                                if (cause is CancellationException) {
+                                    ReaderPageMaterializeCompletion.Cancelled(cause)
+                                } else {
+                                    ReaderPageMaterializeCompletion.Failed(cause)
+                                },
+                            )
+                        }
+                    } finally {
+                        if (shouldStart) {
+                            mutablePhysicalWorkCount.update { it - 1 }
+                            mutableProcessPhysicalWorkCount.update { it - 1 }
+                        }
                     }
                 }
                 if (shouldStart) registration.job.start() else registration.job.cancel()

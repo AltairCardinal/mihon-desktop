@@ -48,7 +48,16 @@ class PagerConfig(
     var landscapeZoom = false
         private set
 
+    var automaticSpreadMatching = readerPreferences.automaticSpreadMatching().get()
+        private set
+
+    var automaticSpreadMatchingChangedListener: (() -> Unit)? = null
+
     init {
+        readerPreferences.automaticSpreadMatching().register(
+            { automaticSpreadMatching = it },
+            { automaticSpreadMatchingChangedListener?.invoke() },
+        )
         readerPreferences.readerTheme()
             .register(
                 {

@@ -50,6 +50,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -74,9 +75,10 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowChoreographer
 import org.robolectric.shadows.ShadowToast
 import org.robolectric.util.ReflectionHelpers
-import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.core.common.preference.AndroidPreferenceStore
 import tachiyomi.core.common.util.system.ImageUtil
 import tachiyomi.data.Database
 import tachiyomi.data.DateColumnAdapter
@@ -97,14 +99,16 @@ import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.InjektScope
 import uy.kohesive.injekt.api.addSingleton
+import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.registry.default.DefaultRegistrar
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.time.Duration
 import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
 import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35], manifest = Config.NONE)
+@Config(sdk = [35], manifest = Config.NONE, qualifiers = "w480dp-h1040dp-xxhdpi")
 class DualPageProgressProductionWiringTest {
     private lateinit var previousInjekt: InjektScope
     private lateinit var viewer: DualPageR2LPagerViewer
@@ -130,13 +134,24 @@ class DualPageProgressProductionWiringTest {
     private var releasePendingWrite: CompletableDeferred<Unit>? = null
     private var failWritePage: Int? = null
     private var failWriteChapterId: Long? = null
+    private var previousFramePause = false
+    private lateinit var previousFrameDelay: Duration
     private var removeAfterReadSlots = -1
 
     @Before
-    fun setUp() = runBlocking {
+    fun setUp() = runBlocking<Unit> {
+        // Automatic Robolectric vsync advances its own clock while idle drains messages;
+        // a visible Compose loading spinner otherwise schedules frames without an end.
+        previousFramePause = ShadowChoreographer.isPaused()
+        previousFrameDelay = ShadowChoreographer.getFrameDelay()
+        ShadowChoreographer.setPaused(true)
+        ShadowChoreographer.setFrameDelay(Duration.ofMillis(16))
         previousInjekt = Injekt
         Injekt = InjektScope(DefaultRegistrar())
-        val preferences = InMemoryPreferenceStore()
+        val application = RuntimeEnvironment.getApplication() as Application
+        val sharedPreferences = application.getSharedPreferences("dual-page-progress-fixture", 0)
+        sharedPreferences.edit().clear().commit()
+        val preferences = AndroidPreferenceStore(application, sharedPreferences)
         val readerPreferences = ReaderPreferences(preferences).apply { skipFiltered().set(false) }
         Injekt.addSingleton(readerPreferences)
         Injekt.addSingleton(UiPreferences(preferences))
@@ -316,6 +331,274 @@ class DualPageProgressProductionWiringTest {
         Dispatchers.resetMain()
         Injekt = previousInjekt
         unmockkObject(ImageUtil)
+        ShadowChoreographer.setFrameDelay(previousFrameDelay)
+        ShadowChoreographer.setPaused(previousFramePause)
+    }
+
+    @Test
+    fun `real delayed adjacent activation retains both partial callbacks on the original token`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val next = prepareNextChapter()
+        mountReadyViewer(renderFirstGroup = false, nextChapter = next)
+        val pages = requireNotNull(next.pages)
+        pages[1].status = Page.State.Ready
+        pages[2].status = Page.State.Ready
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        coEvery { chapterLoader.loadChapter(next, any()) } coAnswers {
+            entered.complete(Unit)
+            release.await()
+        }
+        try {
+            model.onPageSelected(pages[1], listOf(pages[1]), recordProgress = false)
+            withContext(Dispatchers.Default) { withTimeout(5000) { entered.await() } }
+            val pending = ReflectionHelpers.getField<Any>(model, "pendingDualViewport")
+            model.onDualViewportSettled(pages[1], listOf(pages[1]))
+            runCurrent()
+            assertTrue(ReflectionHelpers.getField<Boolean>(pending, "settling"))
+            model.onDualViewportSettled(pages[1], listOf(pages[1], pages[2]))
+            release.complete(Unit)
+            val event = requireNotNull(awaitRenderedEvent())
+            assertEquals(3L, event.chapterId)
+            assertEquals("The second actual callback arrived while activation was still pending", 2, event.lastPageRead)
+            withContext(Dispatchers.IO) { progressCoordinator.awaitAccepted(1) }
+            runCurrent()
+            assertSame(pending, ReflectionHelpers.getField<Any>(model, "pendingDualViewport"))
+            assertEquals(2L, database.chaptersQueries.getChapterById(3).executeAsOne().last_page_read)
+            assertEquals(1L, database.reading_eventsQueries.countByChapter(3).executeAsOne())
+            coVerify(exactly = 1) { chapterLoader.loadChapter(next, any()) }
+        } finally {
+            release.complete(Unit)
+        }
+    }
+
+    @Test
+    fun `actual partner callback can persist while logical target has an image error`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        mountReadyViewer(renderFirstGroup = false)
+        val pages = requireNotNull(current.pages)
+        pages[1].status = Page.State.Error(java.io.IOException("fixture image unavailable"))
+        model.onDualViewportSettled(pages[1], listOf(pages[2]))
+        assertEquals(2, requireNotNull(awaitRenderedEvent()).lastPageRead)
+        withContext(Dispatchers.IO) { progressCoordinator.awaitAccepted(1) }
+        runCurrent()
+        assertPersistedProgress(2, false)
+        assertEquals(1L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
+    }
+
+    @Test
+    fun `actual VM appends partial viewport progress without replaying page selection`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        mountReadyViewer(renderFirstGroup = false)
+        val pages = requireNotNull(current.pages)
+        val pending = ReflectionHelpers.getField<Any>(model, "pendingDualViewport")
+        model.onDualViewportSettled(pages[1], listOf(pages[1]))
+        assertEquals(1, requireNotNull(awaitRenderedEvent()).lastPageRead)
+        withContext(Dispatchers.IO) { progressCoordinator.awaitAccepted(1) }
+        runCurrent()
+        assertPersistedProgress(1, false)
+        model.onDualViewportSettled(pages[1], listOf(pages[1], pages[2]))
+        assertEquals(2, requireNotNull(awaitRenderedEvent()).lastPageRead)
+        withContext(Dispatchers.IO) { progressCoordinator.awaitAccepted(1) }
+        runCurrent()
+        assertSame(
+            "Appending pixels must not manufacture a new page selection",
+            pending,
+            ReflectionHelpers.getField<Any>(model, "pendingDualViewport"),
+        )
+        assertPersistedProgress(2, false)
+        model.onDualViewportSettled(pages[1], listOf(pages[1], pages[2]))
+        runCurrent()
+        assertEquals(2L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
+        model.onPageSelected(pages[3], listOf(pages[3]), recordProgress = false)
+        model.onDualViewportSettled(pages[1], listOf(pages[1], pages[2]))
+        runCurrent()
+        assertEquals(2L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
+    }
+
+    @Test
+    fun `mounted ready dual holder has no geometry commitment before actual native drawing`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        mountReadyViewer(renderFirstGroup = false)
+        runCurrent()
+        val holder = viewer.pager.children.filterIsInstance<DualPagerPageHolder>()
+            .single { it.displayPage.containsPage(requireNotNull(current.pages)[1]) }
+        val (owner, ticket) = requireNotNull(holder.presentationScope)
+        assertTrue(
+            "Mounted ready bytes are not yet actual pixel preparation",
+            requireNotNull(owner.frame(ticket)).lockedPageIds.isEmpty(),
+        )
+        assertTrue(requireNotNull(owner.frame(ticket)).drawnPageIds.isEmpty())
+        assertEquals(0L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
+    }
+
+    @Test
+    fun `ordinary native RTL pager keeps unrendered and failed images out of actual VM progress`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val single = R2LPagerViewer(readerActivity)
+        try {
+            val holder = mountSingle(single)
+            runCurrent()
+            assertNull(
+                "Selection before image presentation cannot create a reading event",
+                withContext(Dispatchers.Default) { withTimeoutOrNull(200) { events.receive() } },
+            )
+            assertPersistedProgress(0, false)
+            holder.onImageLoadError(IllegalStateException("fixture decode failed"))
+            runCurrent()
+            assertNull(withContext(Dispatchers.Default) { withTimeoutOrNull(200) { events.receive() } })
+            assertEquals(0L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
+            bindSingle(holder)
+            holder.onImageLoaded()
+            assertSinglePresented(holder)
+            assertEquals(1, requireNotNull(awaitRenderedEvent()).lastPageRead)
+            withContext(Dispatchers.IO) { progressCoordinator.awaitAccepted(1) }
+            runCurrent()
+            assertPersistedProgress(1, false)
+            holder.onImageLoaded()
+            runCurrent()
+            assertEquals(1L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
+        } finally {
+            single.destroy()
+        }
+    }
+
+    @Test
+    fun `ordinary loaded single replaces content through a fresh identity without reusing the old frame`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val single = L2RPagerViewer(readerActivity)
+        try {
+            val holder = mountSingle(single)
+            bindSingle(holder)
+            holder.onImageLoaded()
+            assertEquals(1, requireNotNull(awaitRenderedEvent()).lastPageRead)
+            val (owner, ticket) = requireNotNull(holder.presentationScope)
+            val page = holder.page
+            val replacement = readerTestPng(60, 40)
+            page.stream = { replacement.inputStream() }
+            page.publishHeaderFact()
+            runCurrent()
+            bindSingle(holder)
+            val next = requireNotNull(holder.presentationScope)
+            assertFalse("The original Single replacement cannot reuse the old content owner", owner === next.first)
+            assertNull(owner.frame(ticket))
+            assertEquals(page.encodedContentIdentity(), next.first.identity.content[page.index].contentVersion)
+            holder.onImageLoaded()
+            assertSinglePresented(holder, expectedReadingEligibility = false)
+            assertEquals(1L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
+        } finally {
+            single.destroy()
+        }
+    }
+
+    @Test
+    fun `ordinary native LTR pager rejects old image completion after actual content replacement`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val single = L2RPagerViewer(readerActivity)
+        try {
+            val holder = mountSingle(single)
+            bindSingle(holder)
+            val page = holder.page
+            val replacement = readerTestPng(40, 60)
+            page.stream = { replacement.inputStream() }
+            page.publishHeaderFact()
+            runCurrent()
+            holder.onImageLoaded()
+            runCurrent()
+            assertNull(
+                "Old decoded pixels cannot commit newly bound content",
+                withContext(Dispatchers.Default) { withTimeoutOrNull(200) { events.receive() } },
+            )
+            assertPersistedProgress(0, false)
+            bindSingle(holder)
+            holder.onImageLoaded()
+            assertSinglePresented(holder)
+            assertEquals(1, requireNotNull(awaitRenderedEvent()).lastPageRead)
+        } finally {
+            single.destroy()
+        }
+    }
+
+    @Test
+    fun `explicit second logical page survives real VM mode change after dual rearrangement`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        mountReadyViewer(renderFirstGroup = false, imageBytes = readerTestPng(1125, 1600))
+        val pages = requireNotNull(current.pages)
+        withContext(Dispatchers.IO) { pages.forEach { it.publishHeaderFact() } }
+        runCurrent()
+        viewer.pager.measure(
+            View.MeasureSpec.makeMeasureSpec(1440, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(3120, View.MeasureSpec.EXACTLY),
+        )
+        viewer.pager.layout(0, 0, 1440, 3120)
+        assertTrue(
+            "Fixture must expose the paired second logical page",
+            viewer.adapter.items.any {
+                it is DisplayPage.Double && it.visiblePages.map(ReaderPage::index) == listOf(3, 4)
+            },
+        )
+        viewer.moveToPage(pages[4])
+        runCurrent()
+        val selected = viewer.adapter.items[viewer.pager.currentItem] as DisplayPage
+        assertEquals(
+            "Actual selected viewport must be group four-five",
+            listOf(3, 4),
+            selected.visiblePages.map(ReaderPage::index),
+        )
+        assertSame(
+            "VM must retain explicit logical page five, even inside group four-five",
+            pages[4],
+            model.currentReaderPage,
+        )
+        val internalIdleEvents = mutableListOf<String>()
+        viewer.pager.addOnPageChangeListener(object : ViewPager.SimpleOnPageChangeListener() {
+            override fun onPageScrollStateChanged(state: Int) {
+                if (state == ViewPager.SCROLL_STATE_IDLE &&
+                    ReflectionHelpers.getField<Boolean>(viewer, "replacingPairing") && internalIdleEvents.size < 8
+                ) {
+                    internalIdleEvents +=
+                        "owner=${viewer.adapter.session(current)?.location?.pageId?.sourcePageIndex}" +
+                        ",native=${viewer.pager.currentItem}"
+                }
+            }
+        })
+        viewer.adapter.updatePageDimensions(pages[0], 1800, 1000)
+        runCurrent()
+        assertSame(
+            "Explicit source=${pages[4].index}, VM=${model.currentReaderPage?.index}, " +
+                "owner=${viewer.adapter.session(current)?.location?.pageId?.sourcePageIndex}, " +
+                "native=${(viewer.adapter.items[viewer.pager.currentItem] as? DisplayPage)?.visiblePages?.map {
+                    it.index
+                }}, " +
+                "internalIdle=$internalIdleEvents",
+            pages[4],
+            model.currentReaderPage,
+        )
+        assertTrue("Regrouping must cover native idle reentrancy during replacement", internalIdleEvents.isNotEmpty())
+        val rtl = eu.kanade.tachiyomi.ui.reader.setting.ReadingMode.RIGHT_TO_LEFT
+        coEvery { getMangaUseCase.await(1) } returns
+            requireNotNull(model.manga).copy(viewerFlags = rtl.flagValue.toLong())
+        model.setMangaReadingMode(rtl)
+        withContext(Dispatchers.IO) {
+            withTimeout(5000) {
+                model.state.first {
+                    it.manga?.viewerFlags ==
+                        rtl.flagValue.toLong()
+                }
+            }
+        }
+        assertEquals(4, current.requestedPage)
+        val single = eu.kanade.tachiyomi.ui.reader.setting.ReadingMode.toViewer(
+            model.getMangaReadingMode(),
+            readerActivity,
+        )
+        try {
+            model.onViewerLoaded(single)
+            single.setChapters(requireNotNull(model.state.value.viewerChapters))
+            assertSame(pages[4], model.currentReaderPage)
+        } finally {
+            single.destroy()
+        }
     }
 
     @Test
@@ -358,7 +641,10 @@ class DualPageProgressProductionWiringTest {
                 "holders=${viewer.pager.children.filterIsInstance<DualPagerPageHolder>().map { holder ->
                     "${holder.displayPage.visiblePages.map { it.index }}:" +
                         "${holder.hasRenderedVisiblePages()}:" +
-                        "rendered=${ReflectionHelpers.getField<Set<ReaderPage>>(holder, "renderedPages").map {
+                        "rendered=${ReflectionHelpers.getField<Map<ReaderPage, String>>(
+                            holder,
+                            "renderedPages",
+                        ).keys.map {
                             it.index
                         }}:" +
                         "error=${ReflectionHelpers.getField<ReaderPage?>(holder, "errorPage")?.index}:" +
@@ -410,7 +696,7 @@ class DualPageProgressProductionWiringTest {
             assertTrue(ReflectionHelpers.getField<Boolean>(pending, "settled"))
             assertPersistedProgress(2, false)
 
-            selectGroup(requireNotNull(next.pages)[0], decode = false)
+            selectGroup(requireNotNull(next.pages)[0])
             withContext(Dispatchers.Default) {
                 withTimeout(10_000) { model.state.first { it.currentChapter === next } }
             }
@@ -442,7 +728,7 @@ class DualPageProgressProductionWiringTest {
             val completion = requireNotNull(awaitRenderedEvent())
             assertEquals(4, completion.lastPageRead)
             assertTrue(completion.isRead)
-            selectGroup(requireNotNull(next.pages)[0], decode = false)
+            selectGroup(requireNotNull(next.pages)[0])
             awaitNextChapterEvent()
             model.onActivityFinish()
 
@@ -662,7 +948,20 @@ class DualPageProgressProductionWiringTest {
         readerController.setup()
         runCurrent()
         failWritePage = 4
-        model.onPageSelected(requireNotNull(current.pages)[4])
+        val installed = model.state.value.viewer as PagerViewer
+        mountSingle(installed, positionWithoutAnimation = true)
+        val last = requireNotNull(current.pages)[4]
+        val actualAdapter = installed.pager.adapter as PagerViewerAdapter
+        installed.pager.setCurrentItem(actualAdapter.items.indexOf(last), false)
+        installed.pager.measure(
+            View.MeasureSpec.makeMeasureSpec(1440, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(3120, View.MeasureSpec.EXACTLY),
+        )
+        installed.pager.layout(0, 0, 1440, 3120)
+        val holder = installed.pager.children.filterIsInstance<PagerPageHolder>().single { it.page === last }
+        bindSingle(holder)
+        holder.onImageLoaded()
+        assertSinglePresented(holder)
 
         val deadline = System.nanoTime() + 10_000_000_000L
         while (ShadowToast.getTextOfLatestToast() == null && System.nanoTime() < deadline) {
@@ -812,7 +1111,7 @@ class DualPageProgressProductionWiringTest {
     }
 
     @Test
-    fun `Android mounted reader drains an accepted blocked write after close through the shared contract`() = runTest {
+    fun `Android mounted reader drains accepted writes after close through the shared contract`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val started = CompletableDeferred<Unit>().also { pendingWriteStarted = it }
         val release = CompletableDeferred<Unit>().also { releasePendingWrite = it }
@@ -859,7 +1158,7 @@ class DualPageProgressProductionWiringTest {
     }
 
     @Test
-    fun `same manga A completion then B viewport preserves B resume and both real sync journal operations`() = runTest {
+    fun `same manga A completion preserves B resume and both real sync operations`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val release = CompletableDeferred<Unit>().also { releaseMiddleWrite = it }
         try {
@@ -899,7 +1198,7 @@ class DualPageProgressProductionWiringTest {
         selectGroup(requireNotNull(current.pages)[3], decode = false)
         val pending = ReflectionHelpers.getField<Any>(model, "pendingDualViewport")
         assertFalse(ReflectionHelpers.getField<Boolean>(pending, "settled"))
-        selectGroup(requireNotNull(next.pages)[0], decode = false)
+        selectGroup(requireNotNull(next.pages)[0])
         awaitNextChapterEvent()
         model.onActivityFinish()
 
@@ -953,6 +1252,102 @@ class DualPageProgressProductionWiringTest {
     }
 
     @Test
+    fun `actual viewport resize revokes geometry capabilities while retaining source history and progress`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        mountReadyViewer()
+        assertEquals(2, requireNotNull(awaitRenderedEvent()).lastPageRead)
+        val page = requireNotNull(current.pages)[1]
+        val originalHolder = viewer.pager.children.filterIsInstance<DualPagerPageHolder>()
+            .first { it.displayPage.containsPage(page) }
+        val (owner, ticket) = requireNotNull(originalHolder.presentationScope)
+        val pages = requireNotNull(owner.frame(ticket)).unit.pageIds
+        val location = owner.location
+        viewer.pager.measure(
+            View.MeasureSpec.makeMeasureSpec(1000, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(1800, View.MeasureSpec.EXACTLY),
+        )
+        viewer.pager.layout(0, 0, 1000, 1800)
+        runCurrent()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertNull("Old geometry cannot prepare pixels in a different viewport", owner.frame(ticket))
+        val nextHolder = viewer.pager.children.filterIsInstance<DualPagerPageHolder>()
+            .first { it.displayPage.containsPage(page) }
+        val next = requireNotNull(nextHolder.presentationScope)
+        assertEquals(pages, requireNotNull(next.first.frame(next.second)).unit.pageIds)
+        assertEquals(location, next.first.location)
+        assertEquals(1L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
+    }
+
+    @Test
+    fun `original crop setting starts a new valid geometry context without a reading event`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        mountReadyViewer()
+        assertEquals(2, requireNotNull(awaitRenderedEvent()).lastPageRead)
+        val page = requireNotNull(current.pages)[1]
+        val holder = viewer.pager.children.filterIsInstance<DualPagerPageHolder>()
+            .first { it.displayPage.containsPage(page) }
+        val (owner, ticket) = requireNotNull(holder.presentationScope)
+        val originalPages = requireNotNull(owner.frame(ticket)).unit.pageIds
+        val location = owner.location
+        Injekt.get<ReaderPreferences>().cropBorders().set(true)
+        runCurrent()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(
+            "The original preference event must reach the production PagerConfig",
+            viewer.config.imageCropBorders,
+        )
+        assertNull("The original setting must revoke the old geometry ticket", owner.frame(ticket))
+        val replacement = viewer.pager.children.filterIsInstance<DualPagerPageHolder>()
+            .first { it.displayPage.containsPage(page) }
+        val next = requireNotNull(replacement.presentationScope)
+        assertTrue(ticket.frameId.context != next.second.frameId.context)
+        assertEquals(originalPages, requireNotNull(next.first.frame(next.second)).unit.pageIds)
+        assertEquals(location, next.first.location)
+        assertEquals(1L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
+    }
+
+    @Test
+    fun `normal content snapshot replacement retains the visible original owner and decoded lease`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        mountReadyViewer()
+        assertEquals(2, requireNotNull(awaitRenderedEvent()).lastPageRead)
+        val page = requireNotNull(current.pages)[1]
+        val holder = viewer.pager.children.filterIsInstance<DualPagerPageHolder>()
+            .first { it.displayPage.containsPage(page) }
+        val scope = requireNotNull(holder.presentationScope)
+        val originalIdentity = scope.first.identity
+        val image = ReflectionHelpers.getField<ReaderPageImageView>(holder, "rightHolder")
+        val native = ReflectionHelpers.getField<com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView>(
+            image,
+            "pageView",
+        )
+        val replacement = readerTestPng(900, 600)
+        page.stream = { replacement.inputStream() }
+        withContext(Dispatchers.IO) { page.publishHeaderFact() }
+        runCurrent()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertSame(scope.first, viewer.adapter.session(current))
+        assertEquals(originalIdentity, scope.first.identity)
+        assertSame(image, ReflectionHelpers.getField<ReaderPageImageView>(holder, "rightHolder"))
+        assertEquals(1125, native.sWidth)
+        assertEquals(1600, native.sHeight)
+        assertEquals(1L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
+        viewer.pager.measure(
+            View.MeasureSpec.makeMeasureSpec(1000, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(1800, View.MeasureSpec.EXACTLY),
+        )
+        viewer.pager.layout(0, 0, 1000, 1800)
+        paintReaderImage(image, readerTestPng(1125, 1600))
+        shadowOf(Looper.getMainLooper()).idle()
+        runCurrent()
+        val next = requireNotNull(holder.presentationScope)
+        assertEquals(originalIdentity, next.first.identity)
+        assertTrue(next.second.frameId.context != scope.second.frameId.context)
+        assertTrue(next.first.identity.pageIds[1] in requireNotNull(next.first.frame(next.second)).drawnPageIds)
+        assertEquals(1L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
+    }
+
+    @Test
     fun `image property refresh does not create a second reading event for the same selected group`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val pages = requireNotNull(current.pages)
@@ -973,7 +1368,7 @@ class DualPageProgressProductionWiringTest {
     }
 
     @Test
-    fun `ready source pages with a failed displayed image cannot complete chapter`() = runTest {
+    fun `healthy partial image records itself while failed final partner cannot complete chapter`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val pages = requireNotNull(current.pages)
         mountReadyViewer()
@@ -981,14 +1376,15 @@ class DualPageProgressProductionWiringTest {
 
         selectGroup(pages[3], failLeft = true)
         assertEquals(Page.State.Ready, pages[4].status)
-        assertNull(withTimeoutOrNull(200) { events.receive() })
+        assertEquals(3, requireNotNull(awaitRenderedEvent()).lastPageRead)
         assertFalse(current.chapter.read)
-        assertPersistedProgress(2, false)
-        assertEquals(1L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
+        assertPersistedProgress(3, false)
+        assertEquals(2L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
 
         decodeAndSignal(pages[3])
         assertEquals(4, requireNotNull(awaitRenderedEvent()).lastPageRead)
         assertPersistedProgress(4, true)
+        assertEquals(3L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
     }
 
     @Test
@@ -1013,7 +1409,7 @@ class DualPageProgressProductionWiringTest {
     }
 
     @Test
-    fun `neighbor dual group activates before images display and records only after successful retry`() = runTest {
+    fun `neighbor dual group activates before paint and appends the successful partner retry`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val next = requireNotNull(model.state.value.viewerChapters?.nextChapter)
         next.publishLoadedPageListForTest(
@@ -1032,8 +1428,11 @@ class DualPageProgressProductionWiringTest {
 
         nextPages.forEach { it.status = Page.State.Ready }
         decodeAndSignal(nextPages[1], failLeft = true)
-        assertNull(withTimeoutOrNull(200) { events.receive() })
-        assertEquals(0L, database.reading_eventsQueries.countByChapter(3).executeAsOne())
+        val partial = requireNotNull(awaitRenderedEvent())
+        assertEquals(3L, partial.chapterId)
+        assertEquals(1, partial.lastPageRead)
+        assertFalse(partial.isRead)
+        assertEquals(1L, database.reading_eventsQueries.countByChapter(3).executeAsOne())
 
         decodeAndSignal(nextPages[1])
         val progress = requireNotNull(awaitRenderedEvent())
@@ -1041,11 +1440,14 @@ class DualPageProgressProductionWiringTest {
         assertEquals(2, progress.lastPageRead)
         assertFalse(progress.isRead)
         assertEquals(2L, database.chaptersQueries.getChapterById(3).executeAsOne().last_page_read)
+        assertEquals(2L, database.reading_eventsQueries.countByChapter(3).executeAsOne())
         coVerify(exactly = 1) { chapterLoader.loadChapter(next, any()) }
     }
 
     @Test
-    fun `layout only pairing never records progress and a single page reports itself`() = runBlocking {
+    fun `layout only pairing never records progress and a single page reports itself`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        mountReadyViewer(renderFirstGroup = false)
         val pages = requireNotNull(current.pages)
         viewer.onDisplayPageSelected(DisplayPage.Double(pages[3], pages[4]), layoutOnly = true)
         assertTrue(events.tryReceive().isFailure)
@@ -1053,8 +1455,10 @@ class DualPageProgressProductionWiringTest {
         assertPersistedProgress(0, false)
         assertEquals(0L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
 
-        viewer.onDisplayPageSelected(DisplayPage.Single(pages[0]))
-        val single = withTimeout(5_000) { events.receive() }
+        selectGroup(pages[0], decode = false)
+        assertTrue(events.tryReceive().isFailure)
+        decodeAndSignal(pages[0])
+        val single = requireNotNull(awaitRenderedEvent())
         assertEquals(0, single.lastPageRead)
         assertFalse(single.isRead)
         assertPersistedProgress(0, false)
@@ -1092,22 +1496,146 @@ class DualPageProgressProductionWiringTest {
         }
     }
 
-    private suspend fun mountReadyViewer(renderFirstGroup: Boolean = true, nextChapter: ReaderChapter? = null) {
+    private suspend fun TestScope.mountSingle(
+        single: PagerViewer,
+        positionWithoutAnimation: Boolean = false,
+    ): PagerPageHolder {
         val pages = requireNotNull(current.pages)
-        val bytes = ByteArrayOutputStream().also { output ->
-            Bitmap.createBitmap(1125, 1600, Bitmap.Config.ARGB_8888)
-                .compress(Bitmap.CompressFormat.PNG, 100, output)
-        }.toByteArray()
+        val bytes = readerTestPng(40, 60)
+        pages.forEach { page ->
+            page.stream = { bytes.inputStream() }
+            page.status = Page.State.Ready
+            page.publishHeaderFact()
+        }
+        current.requestedPage = 1
+        model.onViewerLoaded(single)
+        single.config.navigationModeChangedListener = null
+        if (single.pager.parent == null) {
+            host = Robolectric.buildActivity(ComponentActivity::class.java).setup().visible().get().also {
+                it.setContentView(single.pager)
+            }
+        }
+        single.setChapters(ViewerChapters(current, null, null))
+        repeat(2) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16)) }
+        single.pager.measure(
+            View.MeasureSpec.makeMeasureSpec(1440, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(3120, View.MeasureSpec.EXACTLY),
+        )
+        single.pager.layout(0, 0, 1440, 3120)
+        // Initial preference emissions refresh the real adapter. Capture its attached holder only
+        // after that initialization, rather than reporting pixels through a disposed predecessor.
+        runCurrent()
+        // An already-installed Activity has a real restored owner; requestedPage alone cannot
+        // replace its logical position. Use the actual viewer action for this fixture's target.
+        if (positionWithoutAnimation) {
+            val actualAdapter = single.pager.adapter as PagerViewerAdapter
+            single.pager.setCurrentItem(actualAdapter.items.indexOf(pages[1]), false)
+        } else {
+            single.moveToPage(pages[1])
+        }
+        single.pager.measure(
+            View.MeasureSpec.makeMeasureSpec(1440, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(3120, View.MeasureSpec.EXACTLY),
+        )
+        single.pager.layout(0, 0, 1440, 3120)
+        // Smooth navigation needs actual ViewRoot frames after automatic vsync is paused.
+        var frames = 0
+        while (single.pager.children.none { it is PagerPageHolder && it.page === pages[1] } && frames++ < 64) {
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+        }
+        assertSame(pages[1], model.currentReaderPage)
+        return single.pager.children.filterIsInstance<PagerPageHolder>().single { it.page === pages[1] }
+    }
+
+    private suspend fun bindSingle(holder: PagerPageHolder) {
+        val method = PagerPageHolder::class.java.declaredMethods.single {
+            it.name == "setImage" &&
+                it.parameterCount == 1
+        }
+            .apply { isAccessible = true }
+        suspendCoroutineUninterceptedOrReturn<Unit> { continuation ->
+            val result = method.invoke(holder, continuation)
+            if (result === COROUTINE_SUSPENDED) COROUTINE_SUSPENDED else Unit
+        }
+    }
+
+    private fun assertSinglePresented(holder: PagerPageHolder, expectedReadingEligibility: Boolean = true) {
+        val error = ReflectionHelpers.getField<eu.kanade.tachiyomi.databinding.ReaderErrorBinding?>(
+            holder,
+            "errorLayout",
+        )
+        assertTrue(
+            "Actual single pixels must be rendered, error=${error?.errorMessage?.text}",
+            holder.hasRenderedPage(),
+        )
+        assertTrue(
+            "The actual selected holder must carry its original presentation scope",
+            holder.presentationScope != null,
+        )
+        assertSame(holder.page, ReflectionHelpers.getField<ReaderPage>(holder.viewer, "currentPage"))
+        assertFalse(
+            "Actual native presenter must remain alive",
+            ReflectionHelpers.getField<Boolean>(holder.viewer, "destroyed"),
+        )
+        val actualAdapter = ReflectionHelpers.getField<PagerViewerAdapter>(holder.viewer, "adapter")
+        assertSame(
+            "Actual current adapter position must identify these rendered pixels",
+            holder.page,
+            actualAdapter.items.getOrNull(holder.viewer.pager.currentItem),
+        )
+        assertSame(
+            "Actual callback must use the attached selected holder",
+            holder,
+            holder.viewer.pager.children.filterIsInstance<PagerPageHolder>().firstOrNull { it.item == holder.page },
+        )
+        assertTrue(
+            "The actual single pager must be idle before it reports rendering",
+            ReflectionHelpers.getField<Boolean>(holder.viewer, "isIdle"),
+        )
+        val (owner, ticket) = requireNotNull(holder.presentationScope)
+        assertSame(
+            "Selected native scope must retain the actual store owner",
+            model.dualPagePairings.chapters[holder.page.chapter]?.session,
+            owner,
+        )
+        assertFalse("Selected native owner must still be open", ReflectionHelpers.getField<Boolean>(owner, "closed"))
+        assertEquals("Selected native callback must retain its active frame", ticket.frameId, owner.frame(ticket)?.id)
+        assertEquals(owner.layoutRevision, ticket.layoutRevision)
+        assertEquals(owner.location!!.sequence, ticket.locationSequence)
+        assertEquals(owner.targetUnit!!.id, ticket.unitId)
+        assertEquals(expectedReadingEligibility, ticket.readingEligible)
+        assertTrue(
+            "Shared owner must have accepted the original actual single callback; " +
+                "layout=${owner.layoutRevision}/${ticket.layoutRevision}, location=${owner.location}, " +
+                "VMpending=${ReflectionHelpers.getField<Any?>(model, "pendingDualViewport")}",
+            owner.identity.pageIds[holder.page.index] in requireNotNull(owner.frame(ticket)).drawnPageIds,
+        )
+    }
+
+    private suspend fun mountReadyViewer(
+        renderFirstGroup: Boolean = true,
+        nextChapter: ReaderChapter? = null,
+        imageBytes: ByteArray? = null,
+    ) {
+        val pages = requireNotNull(current.pages)
+        val bytes = imageBytes ?: readerTestPng(1125, 1600)
         pages.forEach { page ->
             page.stream = { bytes.inputStream() }
             page.status = Page.State.Ready
         }
-        nextChapter?.pages?.forEach { page -> page.stream = { bytes.inputStream() } }
+        withContext(Dispatchers.IO) { pages.forEach { it.publishHeaderFact() } }
+        // The adjacent fixture has cached encoded content but remains Queued/unrendered. Real
+        // bounded header facts establish its groups without manufacturing a displayed image.
+        nextChapter?.pages?.let { adjacent ->
+            adjacent.forEach { page -> page.stream = { bytes.inputStream() } }
+            withContext(Dispatchers.IO) { adjacent.forEach { it.publishHeaderFact() } }
+        }
         current.requestedPage = 1
         host = Robolectric.buildActivity(ComponentActivity::class.java).setup().visible().get().also {
             it.setContentView(viewer.pager)
         }
         viewer.setChapters(ViewerChapters(current, null, nextChapter))
+        repeat(2) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16)) }
         val width = View.MeasureSpec.makeMeasureSpec(1440, View.MeasureSpec.EXACTLY)
         val height = View.MeasureSpec.makeMeasureSpec(3120, View.MeasureSpec.EXACTLY)
         viewer.pager.measure(width, height)
@@ -1128,35 +1656,54 @@ class DualPageProgressProductionWiringTest {
         assertTrue(position >= 0)
         viewer.pager.setCurrentItem(position, false)
         viewer.pager.layout(0, 0, 1440, 3120)
-        if (decode) decodeAndSignal(page, failLeft)
+        if (decode) {
+            val displayed = viewer.adapter.items[position] as DisplayPage
+            displayed.visiblePages.forEach { it.status = Page.State.Ready }
+            decodeAndSignal(page, failLeft)
+        }
     }
 
-    /** Bind the mounted image views, then simulate their external decode completion callbacks. */
+    /** Bind original encoded content, then paint the mounted production SSIV children. */
     private suspend fun decodeAndSignal(page: ReaderPage, failLeft: Boolean = false) {
         val holder = viewer.pager.children.filterIsInstance<DualPagerPageHolder>()
             .first { it.displayPage.containsPage(page) }
-        val sideType = DualPagerPageHolder::class.java.declaredClasses.single { it.simpleName == "Side" }
         val bind = DualPagerPageHolder::class.java.declaredMethods.single { it.name == "setImage" }
             .apply { isAccessible = true }
-        for ((visiblePage, sideName) in holder.displayPage.visiblePages.zip(listOf("RIGHT", "LEFT"))) {
-            val side = requireNotNull(sideType.enumConstants).single { it.toString() == sideName }
+        val readyImages = mutableListOf<Pair<ReaderPageImageView, ByteArray>>()
+        val sides = ReflectionHelpers.callInstanceMethod<Map<ReaderPage, Any>>(
+            holder,
+            "pageSides",
+            ReflectionHelpers.ClassParameter.from(DisplayPage::class.java, holder.displayPage),
+        )
+        for ((visiblePage, side) in sides) {
+            val sideName = side.toString()
             suspendCoroutineUninterceptedOrReturn<Unit> { continuation ->
                 val result = bind.invoke(holder, visiblePage, side, continuation)
                 if (result === COROUTINE_SUSPENDED) COROUTINE_SUSPENDED else Unit
             }
-            val subHolder = ReflectionHelpers.getField<ReaderPageImageView>(holder, "${sideName.lowercase()}Holder")
+            val fieldName = if (sideName == "LEFT") "leftHolder" else "rightHolder"
+            val subHolder = ReflectionHelpers.getField<ReaderPageImageView>(holder, fieldName)
             if (failLeft && sideName == "LEFT") {
                 subHolder.onImageLoadError(IllegalStateException("fixture decode failed"))
             } else {
-                subHolder.onImageLoaded()
+                readyImages += subHolder to requireNotNull(visiblePage.stream).invoke().use { it.readBytes() }
             }
         }
+        viewer.pager.measure(
+            View.MeasureSpec.makeMeasureSpec(1440, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(3120, View.MeasureSpec.EXACTLY),
+        )
+        viewer.pager.layout(0, 0, 1440, 3120)
+        readyImages.forEach { (image, encoded) -> paintReaderImage(image, encoded) }
+        // Drive the actual ViewRoot traversal so its sync barrier releases the image's
+        // original posted presentation callback; draining only due messages cannot do that.
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
     }
 
     private suspend fun awaitRenderedEvent(): ReadingProgressEvent? {
         val deadline = System.nanoTime() + 10_000_000_000L
         while (System.nanoTime() < deadline) {
-            shadowOf(Looper.getMainLooper()).idle()
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
             events.tryReceive().getOrNull()?.let { return it }
             withContext(Dispatchers.Default) { delay(20) }
         }

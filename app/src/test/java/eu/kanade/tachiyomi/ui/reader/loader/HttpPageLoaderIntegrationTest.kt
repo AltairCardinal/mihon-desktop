@@ -209,6 +209,7 @@ class HttpPageLoaderIntegrationTest {
         val source = mockk<HttpSource>()
         val cache = mockk<ChapterCache>()
         val response = mockk<Response>()
+        every { response.close() } returns Unit
         val releaseFirst = Channel<Unit>(Channel.UNLIMITED)
         val cachedUrls = mutableSetOf<String>()
         var attempts = 0
@@ -279,6 +280,7 @@ class HttpPageLoaderIntegrationTest {
             val source = mockk<HttpSource>()
             val cache = mockk<ChapterCache>()
             val response = mockk<Response>()
+            every { response.close() } returns Unit
             val cachedUrls = mutableSetOf<String>()
             every { cache.isImageInCache(any()) } answers { firstArg<String>() in cachedUrls }
             every { cache.putImageToCache(any(), any()) } answers {

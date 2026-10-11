@@ -10,6 +10,7 @@ import eu.kanade.tachiyomi.ui.reader.loader.ChapterLoader
 import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
+import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -68,6 +69,38 @@ class ReaderSyncResumeWiringTest {
             assertEquals(0, record.first.lastPageRead)
             assertEquals(mihon.domain.sync.SyncMutationContext.User, record.first.syncContext)
             assertEquals(fixture.original.snapshot, record.second)
+        } finally {
+            collector.cancel()
+            fixture.close()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `confirming invalid resume retains a dual viewport for its late drawn partner`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val fixture = Fixture(pageIndex = 8)
+        fixture.repository.openedContext = fixture.repository.responses.getValue(1).copy(
+            pageIndex = 8,
+            snapshot = fixture.original.snapshot,
+            resumedWithinChapter = true,
+        )
+        val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            fixture.model.eventFlow.collect { }
+        }
+        try {
+            assertTrue(fixture.model.init(1, 1).getOrThrow())
+            val pages = fixture.model.state.value.currentChapter!!.pages!!
+            fixture.model.onPageSelected(pages[0], listOf(pages[0], pages[1]), recordProgress = false)
+            fixture.model.onDualViewportSettled(pages[0], listOf(pages[0]))
+            assertEquals(null, kotlinx.coroutines.withTimeoutOrNull(500) { fixture.repository.records.receive() })
+            assertTrue(fixture.model.confirmSyncResumePosition(0))
+            assertEquals(0, awaitValue(fixture.repository.records).first.lastPageRead)
+            fixture.model.onDualViewportSettled(pages[0], listOf(pages[1]))
+            val partner = awaitValue(fixture.repository.records)
+            assertEquals(1, partner.first.lastPageRead)
+            assertEquals(fixture.original.snapshot, partner.second)
+            assertEquals(mihon.domain.sync.SyncMutationContext.User, partner.first.syncContext)
         } finally {
             collector.cancel()
             fixture.close()
@@ -465,6 +498,7 @@ class ReaderSyncResumeWiringTest {
             downloadProvider = mockk(relaxed = true),
             imageSaver = mockk(relaxed = true),
             readerPreferences = mockk<ReaderPreferences>(relaxed = true) {
+                every { defaultReadingMode().get() } returns ReadingMode.AUTO.flagValue
                 every { skipRead().get() } returns false
                 every { skipFiltered().get() } returns false
                 every { skipDupe().get() } returns false

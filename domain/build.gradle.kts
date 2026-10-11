@@ -23,21 +23,17 @@ kotlin {
                 implementation(libs.okio)
 
                 implementation(project.dependencies.platform(kotlinx.coroutines.bom))
-                implementation(kotlinx.bundles.coroutines)
+                implementation(kotlinx.coroutines.core)
+                implementation(kotlinx.coroutines.guava)
                 implementation(kotlinx.bundles.serialization)
                 implementation(libs.stringSimilarity)
             }
         }
         androidMain {
             dependencies {
+                implementation(kotlinx.coroutines.android)
                 implementation(libs.unifile)
                 api(libs.sqldelight.android.paging)
-            }
-        }
-        jvmMain {
-            dependencies {
-                implementation(project.dependencies.platform(kotlinx.coroutines.bom))
-                implementation(kotlinx.coroutines.core)
             }
         }
         val androidUnitTest by getting {

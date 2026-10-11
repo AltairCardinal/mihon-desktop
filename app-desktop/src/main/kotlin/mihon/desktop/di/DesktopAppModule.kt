@@ -1286,6 +1286,7 @@ internal suspend fun initUILayer(
                     Injekt.get(),
                 ),
                 readerIoProbe = mihon.desktop.test.http.ReaderIoTestModeBridge,
+                readerIoGate = mihon.desktop.test.http.ReaderIoTestModeBridge,
                 disallowNonAsciiFilenames = {
                     Injekt.get<LibraryPreferences>().disallowNonAsciiFilenames().get()
                 },

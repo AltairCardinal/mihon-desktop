@@ -1,0 +1,27 @@
+# real-source topology, acquired 2026-10-01 from the production source/encoded route
+# Source: 拷贝漫画; 《花甲公主》19话; page numbers are one based
+# Acquisition runtime: Windows 0.11.19.65.1a3246a; RTL, dual page, auto matching enabled, no manual boundaries
+# Dimensions only, no private identity, source URL or image; not repair runtime evidence
+# page,width,height
+1,1115,1600
+2,1130,1596
+3,1500,1060
+4,1130,1596
+5,1130,1596
+6,1130,1596
+7,1130,1596
+8,1130,1596
+9,1130,1596
+10,1500,1060
+11,1130,1596
+12,1130,1596
+13,1130,1596
+14,1130,1596
+15,1130,1596
+16,1130,1596
+17,1130,1596
+18,1130,1596
+19,1500,1060
+20,1130,1596
+21,1500,1000
+22,1130,1181

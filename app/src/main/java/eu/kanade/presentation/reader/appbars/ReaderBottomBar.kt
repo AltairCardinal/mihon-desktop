@@ -37,6 +37,7 @@ fun ReaderBottomBar(
     isAutomaticMode: Boolean = false,
     isPairingSaving: Boolean = false,
     isPairingUnavailable: Boolean = false,
+    isPairingRecordReady: Boolean = true,
     onRetryPairing: () -> Unit = {},
     onClickAdjustPairing: () -> Unit = {},
 ) {
@@ -77,7 +78,7 @@ fun ReaderBottomBar(
             val savingDescription = stringResource(MR.strings.desktop_reader_pairing_saving)
             IconButton(
                 onClick = onClickAdjustPairing,
-                enabled = !isPairingSaving && !isPairingUnavailable,
+                enabled = isPairingRecordReady && !isPairingSaving && !isPairingUnavailable,
                 modifier = if (isPairingSaving) {
                     Modifier.semantics { stateDescription = savingDescription }
                 } else {

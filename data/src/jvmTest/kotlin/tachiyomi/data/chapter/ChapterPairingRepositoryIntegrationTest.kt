@@ -19,6 +19,125 @@ import java.nio.file.Files
 
 class ChapterPairingRepositoryIntegrationTest {
     @Test
+    fun `real schema42 file upgrades old format1 boundaries and new layout survives reopen`() = runBlocking {
+        val path = Files.createTempFile("pairing-schema42", ".sqlite")
+        try {
+            JdbcSqliteDriver("jdbc:sqlite:$path").use { driver ->
+                // DDL captured from the baseline's generated schema42 (d52fa599c9), not downgraded current schema.
+                val ddl = requireNotNull(javaClass.getResource("/chapter-pairing-schema42.jsonl")).readText()
+                ddl.lineSequence().filter { it.isNotBlank() }.forEach {
+                    driver.execute(null, kotlinx.serialization.json.Json.decodeFromString<String>(it), 0)
+                }
+                driver.execute(
+                    null,
+                    "INSERT INTO mangas(_id, source, url, title, status, favorite, initialized, viewer, chapter_flags, cover_last_modified, date_added) VALUES (10, 1, '/', 'M', 0, 0, 0, 0, 0, 0, 0)",
+                    0,
+                )
+                driver.execute(
+                    null,
+                    "INSERT INTO chapters(_id, manga_id, url, name, read, bookmark, last_page_read, chapter_number, source_order, date_fetch, date_upload) VALUES (11, 10, '/c', 'C', 0, 0, 0, 1, 0, 0, 0)",
+                    0,
+                )
+                driver.execute(
+                    null,
+                    "INSERT INTO chapter_pairings(chapter_id, format_version, page_count, revision) VALUES (11, 1, 8, 1)",
+                    0,
+                )
+                driver.execute(
+                    null,
+                    "INSERT INTO chapter_pairing_boundaries(chapter_id, page_ordinal) VALUES (11, 3)",
+                    0,
+                )
+                driver.execute(null, "INSERT INTO chapter_pairing_revisions(chapter_id, revision) VALUES (11, 1)", 0)
+                driver.execute(null, "PRAGMA user_version=42", 0)
+            }
+            JdbcSqliteDriver("jdbc:sqlite:$path").use { driver ->
+                tachiyomi.data.DatabaseMigration.migrateAtomically(driver, 42, Database.Schema.version)
+                assertEquals(Database.Schema.version, queryLong(driver, "PRAGMA user_version"))
+            }
+            open(path.toString()).use { migrated ->
+                val repo = ChapterPairingRepositoryImpl(migrated)
+                assertEquals(setOf(3), repo.load(11, 10).record?.forcedSinglePages)
+                assertEquals(true, repo.load(11, 10).record?.isValidFor(8))
+                repo.replaceLayout(
+                    11,
+                    10,
+                    1,
+                    8,
+                    mihon.domain.reader.ReaderPairingAdjustment(
+                        emptySet(),
+                        0,
+                        mihon.domain.reader.ReaderChapterOpeningMode.FIRST_PAIR,
+                    ),
+                )
+            }
+            open(path.toString()).use { reopened ->
+                assertEquals(
+                    mihon.domain.reader.ReaderChapterOpeningMode.FIRST_PAIR,
+                    ChapterPairingRepositoryImpl(reopened).load(11, 10).record?.openingMode,
+                )
+            }
+        } finally {
+            Files.deleteIfExists(path)
+        }
+    }
+
+    @Test
+    fun `invalid overlapping or out of range explicit layout never changes committed SQL state`() = runBlocking {
+        open(JdbcSqliteDriver.IN_MEMORY, create = true).use { handler ->
+            seed(handler)
+            val repository = ChapterPairingRepositoryImpl(handler)
+            repository.replace(11, 10, 0, 8, setOf(3))
+            listOf(
+                mihon.domain.reader.ReaderPairingAdjustment(emptySet(), 1, manualPairStarts = setOf(2, 3)),
+                mihon.domain.reader.ReaderPairingAdjustment(emptySet(), 1, manualPairStarts = setOf(7)),
+                mihon.domain.reader.ReaderPairingAdjustment(setOf(3), 1, manualPairStarts = setOf(2)),
+                mihon.domain.reader.ReaderPairingAdjustment(
+                    setOf(1),
+                    1,
+                    mihon.domain.reader.ReaderChapterOpeningMode.FIRST_PAIR,
+                ),
+            ).forEach { bad ->
+                assertThrows(IllegalArgumentException::class.java) {
+                    runBlocking { repository.replaceLayout(11, 10, 1, 8, bad) }
+                }
+                assertEquals(setOf(3), repository.load(11, 10).record?.forcedSinglePages)
+                assertEquals(1L, repository.load(11, 10).revision)
+            }
+        }
+    }
+
+    @Test
+    fun `explicit pairs and opening survive file reopen without boundaries`() = runBlocking {
+        val path = Files.createTempFile("manual-layout", ".sqlite")
+        try {
+            open(path.toString(), create = true).use { first ->
+                seed(first)
+                ChapterPairingRepositoryImpl(first).replaceLayout(
+                    11,
+                    10,
+                    0,
+                    8,
+                    mihon.domain.reader.ReaderPairingAdjustment(
+                        emptySet(),
+                        0,
+                        mihon.domain.reader.ReaderChapterOpeningMode.FIRST_PAIR,
+                        setOf(2),
+                    ),
+                )
+            }
+            open(path.toString()).use { reopened ->
+                val record = ChapterPairingRepositoryImpl(reopened).load(11, 10).record!!
+                assertEquals(mihon.domain.reader.ReaderChapterOpeningMode.FIRST_PAIR, record.openingMode)
+                assertEquals(setOf(2), record.manualPairStarts)
+                assertEquals(true, record.isValidFor(8))
+            }
+        } finally {
+            Files.deleteIfExists(path)
+        }
+    }
+
+    @Test
     fun `file database persists two boundaries then atomically clears only one chapter`() = runBlocking {
         val path = Files.createTempFile("chapter-pairing", ".sqlite")
         try {

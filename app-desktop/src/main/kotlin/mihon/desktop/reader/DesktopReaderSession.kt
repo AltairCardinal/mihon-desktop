@@ -10,6 +10,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
@@ -18,6 +20,7 @@ import kotlinx.coroutines.sync.withPermit
 import mihon.domain.error.AppError
 import mihon.domain.reader.ReaderAdjacentChapterEffect
 import mihon.domain.reader.ReaderAdjacentChapterPolicy
+import mihon.domain.reader.ReaderDualPageFactReadPermit
 import mihon.domain.reader.content.ReaderPageContentOpenRequest
 import mihon.domain.reader.materialize.CanonicalReaderMaterializeExecutor
 import mihon.domain.reader.materialize.ReaderChapterContentPort
@@ -41,6 +44,7 @@ import mihon.domain.reader.scheduler.ReaderPageMaterializeRunnerPort
 import mihon.domain.reader.scheduler.ReaderPageMaterializeRunnerSnapshot
 import mihon.domain.reader.scheduler.ReaderPageMaterializeWork
 import mihon.domain.reader.scheduler.ReaderRequestCancellation
+import mihon.domain.reader.scheduler.ReaderRequestKey
 import mihon.domain.reader.scheduler.ReaderSchedulePlan
 import mihon.domain.reader.scheduler.ReaderScheduledRequest
 import mihon.domain.reader.session.ReaderChapterId
@@ -177,6 +181,9 @@ class DesktopReaderSession(
     private var storeReconcileStarted = false
     private var started = false
     private var closed = false
+    private val lifecycleClosed = MutableStateFlow(false)
+    private val requestRevision = MutableStateFlow(0L)
+    private val factPermits = mutableMapOf<ReaderRequestKey, ReaderDualPageFactReadPermit>()
 
     private val pageRunner = ReaderPageMaterializeRunner(
         scope = scope,
@@ -192,6 +199,10 @@ class DesktopReaderSession(
     internal val currentNextChapterPrefetchMode: NextChapterPrefetchMode
         get() = synchronized(lock) { nextChapterPrefetchMode }
     internal fun pageRunnerSnapshot(): ReaderPageMaterializeRunnerSnapshot = pageRunner.snapshot()
+    internal val physicalWorkCount get() = ReaderPageMaterializeRunner.processPhysicalWorkCount
+    internal val foregroundRequestRevision = requestRevision.asStateFlow()
+    internal val foregroundRequestsIdle: Boolean
+        get() = synchronized(lock) { schedulerIdleLocked() } && physicalWorkCount.value == 0
 
     fun start() {
         synchronized(lock) {
@@ -449,6 +460,49 @@ class DesktopReaderSession(
         pumpPageRequests()
     }
 
+    /** Withdraw only this optional consumer's original request; an existing normal owner survives. */
+    internal suspend fun loadFactPage(pageId: ReaderPageId, permit: ReaderDualPageFactReadPermit): Boolean {
+        val generation: Long
+        val result = synchronized(lock) {
+            if (closed) return false
+            val page = core.snapshot.activeChapter.pages.firstOrNull { it.id == pageId } ?: return false
+            if (page.loadState is ReaderPageLoadState.Ready) return true
+            if (page.loadState is ReaderPageLoadState.Error) return false
+            generation = core.snapshot.generation
+            core.enqueueFactPage(pageId).also { update ->
+                update.request?.let { factPermits[it.jobKey] = permit }
+                applyEnqueueResultLocked(update)
+            }
+        }
+        pumpPageRequests()
+        try {
+            combine(state, lifecycleClosed, requestRevision) { current, disposed, _ ->
+                val page = current.snapshot.activeChapter.pages.firstOrNull { it.id == pageId }
+                disposed || current.snapshot.generation != generation || page == null ||
+                    page.loadState is ReaderPageLoadState.Ready || page.loadState is ReaderPageLoadState.Error ||
+                    result.request?.let { request ->
+                        synchronized(lock) { !core.acceptsPageRequest(request.jobKey) }
+                    } ==
+                    true
+            }.first { it }
+            return synchronized(lock) {
+                !closed && core.snapshot.generation == generation &&
+                    core.snapshot.activeChapter.pages.any {
+                        it.id == pageId && it.loadState is ReaderPageLoadState.Ready
+                    }
+            }
+        } finally {
+            result.request?.let { request ->
+                synchronized(lock) {
+                    core.cancelFactPageRequest(request.jobKey)
+                    factPermits.remove(request.jobKey)
+                }
+                pageRunner.cancel(setOf(request.jobKey))
+                pumpPageRequests()
+            }
+        }
+    }
+
     internal suspend fun handlePartialPageDecodeFailure(request: ReaderPageContentOpenRequest): Boolean {
         val provenance = request.encodedPageProvenance as? ReaderEncodedPageProvenance.Partial ?: return false
         val isCurrent = synchronized(lock) {
@@ -498,6 +552,8 @@ class DesktopReaderSession(
         synchronized(lock) {
             if (closed) return
             closed = true
+            lifecycleClosed.value = true
+            factPermits.clear()
             leaseOwnersToRelease = buildSet {
                 activeLeaseOwnerOrNull()?.let(::add)
                 adjacentLeaseOwnerOrNull()?.let(::add)
@@ -608,6 +664,7 @@ class DesktopReaderSession(
                     val request = core.pollNextPageRequest()
                     if (request == null) {
                         if (!completedWithoutMaterialization) return@synchronized null
+                        requestRevision.value++
                         // Completing a missing or already-ready entry can be the transition to shared scheduler idle.
                         adjacentPageListJob = maybeStartAdjacentPageListLocked()
                         enqueueAdjacentImagesLocked()
@@ -636,6 +693,7 @@ class DesktopReaderSession(
                             url = scheduledPage.descriptor.url,
                             imageUrl = scheduledPage.descriptor.imageUrl,
                             attemptGeneration = scheduledPage.attemptGeneration,
+                            factReadPermit = factPermits[request.jobKey],
                         ),
                         fetchPort = pageFetchPortFactory.create(scheduledPage.context, scheduledPage.descriptor),
                         binding = scheduledPage,
@@ -724,6 +782,8 @@ class DesktopReaderSession(
                         adjacentContext?.chapterId == scheduledPage.context.chapterId &&
                         core.acceptsPageRequest(request.jobKey)
                 core.completePageRequest(request.jobKey)
+                factPermits.remove(request.jobKey)
+                requestRevision.value++
                 if (blocksCurrentAdjacentTarget) {
                     adjacentQuotaBlocked = true
                     adjacentContext?.let { chapter ->
@@ -936,15 +996,18 @@ class DesktopReaderSession(
 
     private fun applyEnqueueResultLocked(result: ReaderEnqueueResult) {
         pageRunner.cancel(result.cancelRequests)
+        requestRevision.value++
     }
 
     private fun applyRequestCancellationLocked(cancellation: ReaderRequestCancellation) {
         pageRunner.cancel(cancellation.cancelRequests)
+        requestRevision.value++
     }
 
     private fun applySchedulePlanLocked(plan: ReaderSchedulePlan?) {
         plan ?: return
         pageRunner.cancel(plan.cancelRequests)
+        requestRevision.value++
     }
 
     private fun publishStateLocked() {

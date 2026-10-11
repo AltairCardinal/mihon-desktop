@@ -17,8 +17,8 @@ import mihon.domain.reader.content.DownloadChapterIdentity
 import mihon.domain.reader.content.ReaderChapterContentResolver
 import mihon.domain.reader.content.ReaderChapterRoute
 import mihon.domain.reader.content.ReaderChapterRouteResolver
-import mihon.domain.reader.content.ReaderSourceContentKind
 import mihon.domain.reader.content.ReaderImageSortMode
+import mihon.domain.reader.content.ReaderSourceContentKind
 import mihon.domain.reader.materialize.ReaderChapterContentPort
 import mihon.domain.reader.materialize.ReaderChapterContentRequest
 import mihon.domain.reader.materialize.ReaderPageFetchPort
@@ -44,7 +44,9 @@ class DesktopReaderChapterContentPort(
     private val downloadProvider: DesktopDownloadProvider,
     private val sourceManager: SourceManager,
     private val contentAdapter: DesktopReaderContentAdapter = DesktopReaderContentAdapter(),
-    private val downloadArtifactLocator: DownloadArtifactLookup = downloadProvider.downloadArtifactLookup(context.sourceId),
+    private val downloadArtifactLocator: DownloadArtifactLookup = downloadProvider.downloadArtifactLookup(
+        context.sourceId,
+    ),
     private val disallowNonAsciiFilenames: Boolean = context.disallowNonAsciiFilenames,
     private val leaseGeneration: Long = 0L,
     private val routeResolver: ReaderChapterRouteResolver = ReaderChapterContentResolver,
@@ -178,7 +180,10 @@ class DesktopReaderChapterContentPort(
         }
     }
 
-    private fun findSource(): CatalogueSource? = sourceManager.getCatalogueSources().firstOrNull { it.id == context.sourceId }
+    private fun findSource(): CatalogueSource? = sourceManager.getCatalogueSources().firstOrNull {
+        it.id ==
+            context.sourceId
+    }
 
     private fun missingSourceError() = AppErrorException(
         AppError.MalformedData(IllegalStateException("Source not found (id=${context.sourceId})")),
@@ -288,7 +293,10 @@ class DesktopReaderPageFetchPort(
         ?.let { candidate -> ReaderEncodedPageProvenance.Partial(candidate) }
         ?: descriptor.encodedPageProvenance.takeIf { descriptor.encodedPageRef == ref }
 
-    private fun cacheRef(request: ReaderPageFetchRequest, discriminator: String): EncodedPageRef = encodedPageStore.cacheRef(
+    private fun cacheRef(
+        request: ReaderPageFetchRequest,
+        discriminator: String,
+    ): EncodedPageRef = encodedPageStore.cacheRef(
         request.pageId,
         discriminator,
     )
@@ -330,7 +338,13 @@ class DesktopReaderPageFetchPort(
         val ref = cacheRef(resolvedRequest, imageUrl)
         val writer: suspend () -> Long = {
             val page = sourcePage(resolvedRequest).apply { this.imageUrl = imageUrl }
-            when (val result = sourceFetcher().fetchToDestination(page, encodedPageStore.destinationFile(ref))) {
+            when (
+                val result = sourceFetcher().fetchToDestination(
+                    page,
+                    encodedPageStore.destinationFile(ref),
+                    request.factReadPermit,
+                )
+            ) {
                 is SourcePageFetchResult.Success -> encodedPageStore.destinationFile(ref).length()
                 is SourcePageFetchResult.Failure -> throw AppErrorException(result.error)
             }

@@ -1,12 +1,19 @@
 package mihon.domain.reader.scheduler
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import mihon.domain.reader.materialize.ReaderPageFetchPort
 import mihon.domain.reader.materialize.ReaderPageFetchRequest
 import mihon.domain.reader.materialize.ReaderPageMaterializeEvent
@@ -17,11 +24,13 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.util.concurrent.Executors
 
 class ReaderPageMaterializeRunnerTest {
 
     @Test
     fun `cancel before dispatched body still completes work exactly once`() = runTest {
+        val processBaseline = ReaderPageMaterializeRunner.processPhysicalWorkCount.value
         val scheduler = ReaderRequestScheduler(
             ReaderSchedulerPolicy(nearbyForward = 0, nearbyBackward = 0, maxConcurrentRequests = 1),
         )
@@ -39,6 +48,8 @@ class ReaderPageMaterializeRunnerTest {
         scheduler.moveTo(TEST_CHAPTER_ID, currentPage = 0, pageCount = 2)
         runner.pump()
         assertEquals(setOf(0), runner.snapshot().activeRequestKeys.mapTo(mutableSetOf()) { it.pageIndex })
+        assertEquals(1, runner.physicalWorkCount.value)
+        assertEquals(processBaseline + 1, ReaderPageMaterializeRunner.processPhysicalWorkCount.value)
 
         val replacement = scheduler.moveTo(TEST_CHAPTER_ID, currentPage = 1, pageCount = 2)
         runner.cancel(replacement.cancelRequests)
@@ -47,11 +58,75 @@ class ReaderPageMaterializeRunnerTest {
         val oldCompletions = completions.filter { it.first == 0 }
         assertEquals(1, oldCompletions.size)
         assertInstanceOf(ReaderPageMaterializeCompletion.Cancelled::class.java, oldCompletions.single().second)
+        assertEquals(0, runner.physicalWorkCount.value)
+        assertEquals(processBaseline + 0, ReaderPageMaterializeRunner.processPhysicalWorkCount.value)
+        assertEquals(processBaseline, ReaderPageMaterializeRunner.processPhysicalWorkCount.value)
         runner.close()
     }
 
     @Test
+    fun `already cancelled scope balances queued physical work without running the body`() = runTest {
+        val processBaseline = ReaderPageMaterializeRunner.processPhysicalWorkCount.value
+        val scheduler = ReaderRequestScheduler(
+            ReaderSchedulerPolicy(nearbyForward = 0, nearbyBackward = 0, maxConcurrentRequests = 1),
+        )
+        val completions = mutableListOf<Pair<Int, ReaderPageMaterializeCompletion>>()
+        val cancelledScope = CoroutineScope(coroutineContext + SupervisorJob().apply { cancel() })
+        val runner = ReaderPageMaterializeRunner(
+            scope = cancelledScope,
+            maxConcurrentRequests = 1,
+            port = schedulerPort(scheduler, { readyFetchPort(it) }, completions),
+        )
+        scheduler.moveTo(TEST_CHAPTER_ID, currentPage = 0, pageCount = 1)
+        runner.pump()
+        runCurrent()
+        assertEquals(0, runner.physicalWorkCount.value)
+        assertEquals(processBaseline + 0, ReaderPageMaterializeRunner.processPhysicalWorkCount.value)
+        assertEquals(1, completions.size)
+        assertInstanceOf(ReaderPageMaterializeCompletion.Cancelled::class.java, completions.single().second)
+        assertEquals(processBaseline, ReaderPageMaterializeRunner.processPhysicalWorkCount.value)
+        runner.close()
+    }
+
+    @Test
+    fun `rejected executor submission completes original work and releases physical qualification`() = runTest {
+        val processBaseline = ReaderPageMaterializeRunner.processPhysicalWorkCount.value
+        val executor = Executors.newSingleThreadExecutor()
+        val dispatcher = executor.asCoroutineDispatcher()
+        executor.shutdown()
+        val rejectedScope = CoroutineScope(SupervisorJob() + dispatcher)
+        val scheduler = ReaderRequestScheduler(
+            ReaderSchedulerPolicy(nearbyForward = 0, nearbyBackward = 0, maxConcurrentRequests = 1),
+        )
+        val completions = java.util.concurrent.CopyOnWriteArrayList<Pair<Int, ReaderPageMaterializeCompletion>>()
+        val runner = ReaderPageMaterializeRunner(
+            scope = rejectedScope,
+            maxConcurrentRequests = 1,
+            port = schedulerPort(scheduler, { readyFetchPort(it) }, completions),
+        )
+        try {
+            scheduler.moveTo(TEST_CHAPTER_ID, currentPage = 0, pageCount = 1)
+            runner.pump()
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) {
+                    runner.physicalWorkCount.first { it == 0 }
+                    ReaderPageMaterializeRunner.processPhysicalWorkCount.first { it == processBaseline }
+                }
+            }
+            assertEquals(1, completions.size)
+            assertInstanceOf(ReaderPageMaterializeCompletion.Cancelled::class.java, completions.single().second)
+            assertTrue(runner.snapshot().activeRequestKeys.isEmpty())
+        } finally {
+            assertEquals(processBaseline, ReaderPageMaterializeRunner.processPhysicalWorkCount.value)
+            runner.close()
+            rejectedScope.cancel()
+            dispatcher.close()
+        }
+    }
+
+    @Test
     fun `P0 preempts P4 and cooperative cancellation stays cancellation`() = runTest {
+        val processBaseline = ReaderPageMaterializeRunner.processPhysicalWorkCount.value
         val scheduler = serialSchedulerAfterInitialWindow()
         val backgroundStarted = CompletableDeferred<Unit>()
         val backgroundCancelled = CompletableDeferred<Unit>()
@@ -106,11 +181,13 @@ class ReaderPageMaterializeRunnerTest {
             ReaderPageMaterializeCompletion.Completed::class.java,
             completions.first { it.first == 1 }.second,
         )
+        assertEquals(processBaseline, ReaderPageMaterializeRunner.processPhysicalWorkCount.value)
         runner.close()
     }
 
     @Test
     fun `non cooperative old generation cannot publish after replacement`() = runTest {
+        val processBaseline = ReaderPageMaterializeRunner.processPhysicalWorkCount.value
         val scheduler = ReaderRequestScheduler(
             ReaderSchedulerPolicy(nearbyForward = 0, nearbyBackward = 0, maxConcurrentRequests = 1),
         )
@@ -152,12 +229,16 @@ class ReaderPageMaterializeRunnerTest {
         val oldPlan = scheduler.moveTo(TEST_CHAPTER_ID, currentPage = 0, pageCount = 2)
         runner.pump()
         oldStarted.await()
+        assertEquals(1, runner.physicalWorkCount.value)
+        assertEquals(processBaseline + 1, ReaderPageMaterializeRunner.processPhysicalWorkCount.value)
 
         val replacement = scheduler.moveTo(TEST_CHAPTER_ID, currentPage = 1, pageCount = 2)
         runner.cancel(replacement.cancelRequests)
         runner.pump()
         runCurrent()
         assertEquals(listOf(1), acceptedReadyPages)
+        assertEquals(1, runner.physicalWorkCount.value, "Old native work still runs after logical cancellation")
+        assertEquals(processBaseline + 1, ReaderPageMaterializeRunner.processPhysicalWorkCount.value)
 
         releaseOld.complete(Unit)
         advanceUntilIdle()
@@ -173,6 +254,9 @@ class ReaderPageMaterializeRunnerTest {
             },
         )
         assertTrue(oldPlan.cancelRequests.isEmpty())
+        assertEquals(0, runner.physicalWorkCount.value)
+        assertEquals(processBaseline + 0, ReaderPageMaterializeRunner.processPhysicalWorkCount.value)
+        assertEquals(processBaseline, ReaderPageMaterializeRunner.processPhysicalWorkCount.value)
         runner.close()
     }
 

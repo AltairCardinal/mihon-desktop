@@ -27,7 +27,8 @@ flowchart TD
     L -- 否 --> N
 ```
 
-对比旧流程：roadmap 勾选完不再自动触发完整发布矩阵；日常体验包不递增正式版本；已通过且未受影响的证据可以复用；平台阻塞不会要求其他平台重测。详细审计与两个历史会话的证据见[流程评估](TEST_WORKFLOW_REVIEW_2026-10-06.md)。
+对比旧流程：roadmap 勾选完不再自动触发完整发布矩阵；日常体验包不递增正式版本；已通过且未受影响的证据可以复用；平台阻塞不会要求其他平台重测。详细审计与两个历史会话的证据见[流程实施与试点证据](../evidence/testing-workflow-rollout-2026-10-06.md)。
+流程审计另见[流程评估](TEST_WORKFLOW_REVIEW_2026-10-06.md)。
 
 ## 快速开始
 
@@ -46,6 +47,8 @@ flowchart TD
 外部跳页尚在动画中时，首次用户点击以先前停稳页为基准；随后连续点击以最新用户目标为基准。
 拖动或新的外部跳页会清除该用户目标。此规则同时适用于单页、双页及左右阅读方向。
 
+分页背景点击监听必须尊重子控件在 Main 阶段消费的指针事件；点击图片错误状态中的 Retry 只重试对应页，不同时触发背景翻页。回归须派发实际按钮矩形内的公开 Press／Release，断言真实尝试代际增长、当前位置不变及原图恢复；直接调用 Semantics 动作不能覆盖父子手势竞争。Scene 指针验证仍不代替正式窗口的鼠标验收。
+
 `ReaderPageTurnPresentationTest` 挂载真实 ReaderContent 与图片 owner，以离屏帧检查
 动画、无黑帧、设置实时生效、跨帧点击与快速请求；mounted production 测试同时约束相邻窗口
 之外不得提前解码、可见页不得重复解码。
@@ -61,6 +64,24 @@ $env:PYTHONUTF8 = '1'
 $env:PYTHONIOENCODING = 'utf-8'
 python scripts/gradle-coordinator.py run --key reader-page-turn -- .\gradlew.bat :app-desktop:jvmTest --tests mihon.desktop.ui.reader.ReaderPageTurnPresentationTest
 ```
+
+### 阅读器基础图片绘制观察
+
+当前观察接线覆盖双页分页视图中的基础图片，单页与条漫未接入；不能用观察开关成功推断所有阅读模式均有记录。
+
+包含新观察接口的 Test Mode 候选可用 `POST /test/reader/draw_observation/start?capacity=120` 开始一次有界捕获，通过 `GET /test/reader/state` 读取 `slotDrawObservation`，最后用 `POST /test/reader/draw_observation/stop` 关闭。端口和进程须为本次已核对的候选；实际章节、图片与 tracker 仍从真实产品入口进入。HTTP 只负责观察控制和读取，不替代原生键鼠或用户阅读动作。字段和失败边界见 [API Reference](API_REFERENCE.md)。
+
+原 BitmapPainter 仍执行实际绘制；观察读取 Image 裁剪记录层中的原命令、矩阵和附着坐标，不按 fit 算法重建预期矩形，不制造 prepare／draw 回执，不持有图片 lease。基础图片命令的根坐标是未裁剪几何；缩放／平移后的像素比对必须在实际槽和视口可见交集中取原图样本，不能把正常裁剪判为产品失败。启用造成的正常 Painter 重新安装不计为匹配性能数据。
+
+`base-image-draw-command` 记录基础图片实际命令；`compose-frame-geometry` 在显式捕获时用公共帧时钟读取最近已应用的 Image 布局，关联最近真实命令、资产与挂载，不制造新绘制回执。其 `coordinatePhase` 明确为 `last-applied-layout-at-compose-clock-callback`；回调发生在本 tick 布局工作之前，不能将读到的上一布局称为本 tick 新 draw 或 GPU 呈现。region tile、系统屏幕每帧与 GPU 继续需要相应证据。`frameId` 是可复用的 display ticket 标识，`sequence` 是观察顺序。容量耗尽的 `dropped`、坐标域不支持、旧候选404或未挂载409都必须保留，不能改成通过。Windows Computer Use、Mac 原生生命周期与真实发布身份要求维持。
+
+这项定向接线验证使用 `SharedDualPageOriginalImagesProductionTest` 的真实 ZIP／Factory／Skia／HTTP 场景；只选择本次观察行为方法和具体守卫，不因此运行整类、完整模块、正式构建或发布矩阵。关闭观察和普通启动继续走原绘制链。
+
+### 阅读器前台读取的显式控制
+
+仅包含新接口的 Test Mode 候选支持 `/test/reader/io_control/arm`、`state` 及 `/{id}/release`、`/{id}/fail`。控制绑定当前实际 reader 的内容 owner、章节、资产代际、零基源页及 full／prefix 范围；不会模拟图片 Ready、配对事实、绘制或保存。先确认真实产品入口、实际 owner 与章节，再按 [API Reference](API_REFERENCE.md) 设置最长30秒的有界规则。`HOLDING` 及 `enteredNanos` 才证明真实读取已进入门闩，`ARMED` 不证明读取发生；full 挂起不同时挂起 prefix。
+
+释放后继续原 encoded reader；显式失败或门闩自身超时产生 IOException，进入现有图片错误／重试路径。调用方作用域取消仍是取消，不转为加载错误；关闭 owner 只取消自身规则。重试通过原按钮及真实 attempt 递增验收，不用 HTTP 写页状态。离屏 Semantics 按钮动作只能验证动作接线，不能替代原生鼠标命中。普通启动绑定 None，不安装这些控制；最多16个活动规则、32条历史，未进入规则到期在状态／匹配／新增检查时回收，不建立后台定时服务。
 
 ### 构建与测试
 
@@ -190,6 +211,8 @@ Windows 输入桌面、显示拓扑和 Computer Use 是独立检查。WTS 会话
 
 显示条件恢复后，使用新的 profile 和当前空闲端口续验；既有实例及失败记录保持独立。先按上节集中安排原生操作及收尾，再执行以下顺序：
 
+执行上下文也须单独确认：CLI 沙箱可能将应用启动到 `CodexSandboxDesktop-*`，与 Computer Use 所在的交互桌面不同。正常输入桌面、有效显示路径和 visible 窗口不能证明二者一致；无法枚举精确候选时只读核对本次进程及窗口所属桌面，保留具体缺口，不改权限或绕开隔离。流程迁移后由用户在原 Codex 应用会话启动开发，不以另起 CLI 会话替代。
+
 | 步骤 | 操作与通过依据 |
 |---|---|
 | 核对候选及条件 | 核对实际 EXE、launcher 哈希、preview manifest 的源码/差异指纹；记录当次显示连接条件。正的显示容量只是元数据，实际截图另验。 |
@@ -202,6 +225,18 @@ Windows 输入桌面、显示拓扑和 Computer Use 是独立检查。WTS 会话
 动画会让动作后的即时截图仍保留旧画面，或显示面板正在进入/退出。此时保持本次动作已经派发的事实，同一动作最多补两次观察；仍未稳定则记录结果未确认并停止该项，不重复输入或无限等待。布局未稳定时不复用旧截图 ID、坐标或索引。只读业务状态可辅助判断已经打开/关闭，但不能替代实际截图或真实输入。
 
 2026-10-07 已在物理显示器连接时，用两个全新 profile 完成书架截图 → 同步入口单击 → 同步面板稳定截图 → 单次 Escape → 书架稳定截图及精确关停。首轮坐标与窗口对象只是该次观察结果，后续仍须重新选取；物理关屏、仅欺骗器/虚拟显示条件仍未验证。preview manifest 的原生层保持 `NOT_RUN`，通过证据单列，详见[双轮记录](../evidence/testing-workflow-rollout-2026-10-06.md#windows-物理显示器连接后的双轮收口)。
+
+### Android 模拟器的日常验收
+
+日常默认使用任务专属模拟器；只有真实硬件、厂商行为或无法在模拟器复现的风险需要时才补真机。使用已有 SDK/system image 和独立 userdata，先检查资源、空闲端口，再通过 `adb -s <serial> emu avd name` 核对本次 AVD；不复用或清空其他实例。
+
+APK 继续走 `scripts/build-android.py debug` 或已有候选的 `verify` / `install --serial`，同一有效候选重复验收不重新构建。启动实际 APK 声明的正常 MainActivity，不把多入口产生的系统选择器误报为安装失败。API 36 的 `mWakefulness=Awake` 与已知 `mInteractive` 形状可分别提供电源观察，未知状态保留未确认。
+
+输入前及读取 hierarchy 前后，复用 `scripts/android-sync-native-acceptance.py` 的 `Device.guard()` 核对当前设备、未锁屏和目标包前台。从当次唯一、启用、实际 clickable 节点取得 bounds；点击后重新读取结果并观察截图。该脚本自带的是全新、无旧授权 Debug 实例的同步导航小场景；双页、正式候选或其他功能继续使用各自的真实行为契约，不把同步导航通过代签其验收。
+
+基础通路可选正常欢迎页 Next → 存储步骤 → 系统 Back。各步骤共用 `Welcome!` 标题，应以 `Select a folder` / `Storage guide` 与 System/Light/Dark 主题控件的出现和消失判断，不按标题是否改变判失败，也不为该场景授予存储或账号权限。脚本只读检查与实际原生结果分层记录。
+
+收尾再次核对 AVD 名称，仅关闭本次 serial，确认进程退出和 serial 消失。独立复验使用另一个新 AVD；Android 无窗口模式仍有自己的真实 framebuffer，不以 Windows 物理显示器状态判断模拟器截图能力。当前 DP02 已有 Android 正式 72 样本及剩余边界保持，不因本次迁移重跑。
 
 ### macOS 原生与无界面验收入口
 

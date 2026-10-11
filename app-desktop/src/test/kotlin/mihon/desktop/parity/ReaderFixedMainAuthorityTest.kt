@@ -1,23 +1,23 @@
 package mihon.desktop.parity
 
-import java.nio.file.Files
-import java.nio.file.Path
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertThrows
-import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Test
 import mihon.domain.reader.progress.ReaderProgressPolicy
 import mihon.domain.reader.progress.ReaderProgressSignal
 import mihon.domain.reader.scheduler.ReaderRequestScheduler
 import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageId
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import java.nio.file.Files
+import java.nio.file.Path
 
 class ReaderFixedMainAuthorityTest {
     private val repositoryRoot = repositoryRoot()
@@ -46,7 +46,10 @@ class ReaderFixedMainAuthorityTest {
 
             val source = runGit("cat-file", "blob", expectedBlob).joinToString("\n")
             symbol.getValue("markers").jsonArray.forEach { marker ->
-                assertTrue(source.contains(marker.jsonPrimitive.content), "$path is missing ${marker.jsonPrimitive.content}")
+                assertTrue(
+                    source.contains(marker.jsonPrimitive.content),
+                    "$path is missing ${marker.jsonPrimitive.content}",
+                )
             }
         }
         fixture.getValue("trackedUpstreamChanges").jsonArray.map { it.jsonObject }.forEach { change ->
@@ -74,7 +77,12 @@ class ReaderFixedMainAuthorityTest {
             }
         }
         DEVIATION_INTRODUCTION_PATHS.forEach { (id, requiredPaths) ->
-            val changedPaths = runGit("show", "--format=", "--name-only", deviations.getValue(id).requiredText("evidenceRef")).toSet()
+            val changedPaths = runGit(
+                "show",
+                "--format=",
+                "--name-only",
+                deviations.getValue(id).requiredText("evidenceRef"),
+            ).toSet()
             assertTrue(changedPaths.containsAll(requiredPaths), "$id evidence commit is missing $requiredPaths")
         }
         DEVIATION_BASELINE_PATHS.forEach { (id, path) ->
@@ -103,7 +111,11 @@ class ReaderFixedMainAuthorityTest {
         REQUIRED_AUTHORITY_BLOBS.forEach { (path, blobId) ->
             mutations += fixture.replaceFirst(path, "app/src/main/java/missing/${path.substringAfterLast('/')}")
             mutations += fixture.replaceFirst(blobId, "0".repeat(40))
-            mutations += fixture.replaceFirst(REQUIRED_AUTHORITY_MARKERS.getValue(path), "REMOVED_${path.substringAfterLast('/')}")
+            mutations +=
+                fixture.replaceFirst(
+                    REQUIRED_AUTHORITY_MARKERS.getValue(path),
+                    "REMOVED_${path.substringAfterLast('/')}",
+                )
         }
         REQUIRED_BEHAVIOR_MARKERS.values.flatten().forEach { marker ->
             mutations += fixture.replaceFirst(marker, "REMOVED_${marker.hashCode()}")
@@ -200,7 +212,10 @@ class ReaderFixedMainAuthorityTest {
 
         listOf(pagerBody, webtoonBody, activityBody, viewModelBody, chapterLoaderBody).forEach { body ->
             ACTUAL_IMAGE_MATERIALIZATION_CALLS.forEach { forbiddenCall ->
-                assertFalse(body.contains(forbiddenCall), "Adjacent page-list call body unexpectedly contains $forbiddenCall")
+                assertFalse(
+                    body.contains(forbiddenCall),
+                    "Adjacent page-list call body unexpectedly contains $forbiddenCall",
+                )
             }
         }
     }
@@ -241,12 +256,24 @@ class ReaderFixedMainAuthorityTest {
             assertEquals("RD-01", scope.requiredText("desktopCoreCutoverTask"), "ID $id Desktop cutover owner")
             assertEquals("WIRED", scope.requiredText("desktopCanonicalSession"), "ID $id Desktop canonical session")
             assertTrue(
-                item.requiredText("verificationScope").contains("Desktop canonical ReaderSessionCore"),
+                if (id == 43) {
+                    item.getValue("sharedImplementationPaths").jsonArray.any {
+                        it.jsonPrimitive.content ==
+                            "domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageSession.kt"
+                    }
+                } else {
+                    item.requiredText("verificationScope").contains("Desktop canonical ReaderSessionCore")
+                },
                 "ID $id must record the integrated Desktop canonical session evidence",
             )
             assertFalse(item.requiredText("verificationScope").contains("does not prove shared ReaderSessionCore"))
             desktopCoreContracts[id]?.let { desktopCoreContract ->
-                assertTrue(item.getValue("protectionTests").jsonArray.any { it.jsonPrimitive.content == desktopCoreContract })
+                assertTrue(
+                    item.getValue("protectionTests").jsonArray.any {
+                        it.jsonPrimitive.content ==
+                            desktopCoreContract
+                    },
+                )
             }
         }
 
@@ -297,7 +324,8 @@ class ReaderFixedMainAuthorityTest {
         assertEquals(
             setOf(45),
             items.filterValues { item ->
-                item.jsonObject["statusDecision"]?.jsonObject?.get("scope")?.jsonPrimitive?.content == preloadDecisionScope
+                item.jsonObject["statusDecision"]?.jsonObject?.get("scope")?.jsonPrimitive?.content ==
+                    preloadDecisionScope
             }.keys,
             "Reader preload decision scope must not leak into another capability",
         )
@@ -383,7 +411,8 @@ class ReaderFixedMainAuthorityTest {
         )
         assertTrue(
             chapterWindowItem.getValue("sharedImplementationPaths").jsonArray.any {
-                it.jsonPrimitive.content == "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderSessionCore.kt"
+                it.jsonPrimitive.content ==
+                    "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderSessionCore.kt"
             },
         )
         assertTrue(
@@ -453,7 +482,9 @@ class ReaderFixedMainAuthorityTest {
         )
         assertTrue(
             progressItem.getValue("behaviorMethods").jsonObject
-                .getValue("app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPageProgressProductionWiringTest.kt")
+                .getValue(
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPageProgressProductionWiringTest.kt",
+                )
                 .jsonArray
                 .any {
                     it.jsonPrimitive.content ==
@@ -467,7 +498,11 @@ class ReaderFixedMainAuthorityTest {
         val androidSessionContract =
             "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderSessionProductionWiringTest.kt"
         listOf(preloadItem, chapterWindowItem, progressItem).forEach { item ->
-            assertTrue(item.getValue("protectionTests").jsonArray.any { it.jsonPrimitive.content == androidCoreContract })
+            assertTrue(
+                item.getValue("protectionTests").jsonArray.any {
+                    it.jsonPrimitive.content == androidCoreContract
+                },
+            )
             assertEquals(
                 "RA-01",
                 item.getValue("readerCoreMigrationScope").jsonObject.requiredText("androidCoreCutoverTask"),
@@ -592,16 +627,19 @@ class ReaderFixedMainAuthorityTest {
                         "switching off cancels a policy-only next chapter page-list request",
                         "activating a prefetched chapter cancels P4 and retries its visible page as P0",
                         "adjacent storage failure stops the remaining background chapter without changing active state",
-                        "non cooperative page cancellation keeps physical image requests within policy plus one stale request",
-                        "non cooperative target switches keep physical chapter requests within policy plus one stale request",
+                        "non cooperative page cancellation keeps physical image requests within policy",
+                        "non cooperative target switches keep physical chapter requests within policy",
                         "late storage failure from an old target cannot cancel the new target prefetch",
                     ),
                 "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt" to
                     setOf(
                         "production runtime follows persisted next chapter prefetch changes",
-                        "production runtime preference changes drive off first viewport and full request sets",
+                        "production runtime preference changes drive the full viewport request sets",
                     ),
-                "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to
+                (
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/" +
+                        "DesktopReaderChapterTransitionIntegrationTest.kt"
+                    ) to
                     setOf("mounted production screen wires prefetch and retains runtime through outgoing composition"),
                 "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt" to
                     setOf(
@@ -657,7 +695,8 @@ class ReaderFixedMainAuthorityTest {
             "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/ReaderPresentation.kt" in desktopPaths,
         )
         assertTrue(
-            "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentation.kt" in desktopPaths,
+            "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentation.kt" in
+                desktopPaths,
         )
         assertTrue(
             "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentation.kt" in desktopPaths,
@@ -685,7 +724,10 @@ class ReaderFixedMainAuthorityTest {
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt",
                 )
                 .jsonArray
-                .any { it.jsonPrimitive.content == "late content and load-state changes preserve display-unit identities" },
+                .any {
+                    it.jsonPrimitive.content ==
+                        "late content and load-state changes preserve display-unit identities"
+                },
         )
         assertTrue(
             behaviorMethods
@@ -701,7 +743,10 @@ class ReaderFixedMainAuthorityTest {
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationTest.kt",
                 )
                 .jsonArray
-                .any { it.jsonPrimitive.content == "viewport reports every visible page and uses fixed-main last end-visible active rule" },
+                .any {
+                    it.jsonPrimitive.content ==
+                        "viewport reports every visible page and uses fixed-main last end-visible active rule"
+                },
         )
         assertTrue(
             behaviorMethods
@@ -709,7 +754,10 @@ class ReaderFixedMainAuthorityTest {
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt",
                 )
                 .jsonArray
-                .any { it.jsonPrimitive.content == "production webtoon selector mounts registry display units with stable lazy identities" },
+                .any {
+                    it.jsonPrimitive.content ==
+                        "production webtoon selector mounts registry display units with stable lazy identities"
+                },
         )
         assertTrue(
             behaviorMethods
@@ -717,7 +765,10 @@ class ReaderFixedMainAuthorityTest {
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt",
                 )
                 .jsonArray
-                .any { it.jsonPrimitive.content == "portrait pairs follow physical LTR and RTL slots while reporting both pages" },
+                .any {
+                    it.jsonPrimitive.content ==
+                        "portrait pairs follow physical LTR and RTL slots while reporting both pages"
+                },
         )
         assertTrue(
             behaviorMethods
@@ -730,8 +781,12 @@ class ReaderFixedMainAuthorityTest {
                         "mounted portrait edges keep direction aware halves independent of ambient layout"
                 },
         )
-        assertTrue(item.requiredText("verificationScope").contains("Desktop canonical ReaderSessionCore"))
-        assertTrue(item.requiredText("verificationScope").contains("three same-level presentation strategies"))
+        assertEquals("WIRED", scope.requiredText("desktopCanonicalSession"))
+        assertTrue(
+            item.getValue("sharedImplementationPaths").jsonArray.any {
+                it.jsonPrimitive.content == "domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageSession.kt"
+            },
+        )
 
         val singlePresentation = Files.readString(
             repositoryRoot.resolve(
@@ -759,7 +814,9 @@ class ReaderFixedMainAuthorityTest {
     @Test
     fun `shared scheduler is the sole preload policy consumed by Android and Desktop adapters`() {
         val sharedScheduler = Files.readString(
-            repositoryRoot.resolve("domain/src/commonMain/kotlin/mihon/domain/reader/scheduler/ReaderRequestScheduler.kt"),
+            repositoryRoot.resolve(
+                "domain/src/commonMain/kotlin/mihon/domain/reader/scheduler/ReaderRequestScheduler.kt",
+            ),
         )
         val legacyPageModel = Files.readString(
             repositoryRoot.resolve("domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt"),
@@ -808,12 +865,19 @@ class ReaderFixedMainAuthorityTest {
         symbols.forEach { symbol ->
             val path = symbol.requiredText("path")
             assertEquals(REQUIRED_AUTHORITY_BLOBS.getValue(path), inventory[path], "Wrong inventory blob for $path")
-            assertEquals(REQUIRED_AUTHORITY_BLOBS.getValue(path), symbol.requiredText("blobId"), "Wrong fixture blob for $path")
+            assertEquals(
+                REQUIRED_AUTHORITY_BLOBS.getValue(path),
+                symbol.requiredText("blobId"),
+                "Wrong fixture blob for $path",
+            )
             assertTrue(symbol.requiredText("responsibility").isNotBlank())
             val markers = symbol.getValue("markers").jsonArray.map { it.jsonPrimitive.content }
             assertTrue(markers.isNotEmpty(), "$path must pin at least one symbol marker")
             assertTrue(markers.all(String::isNotBlank), "$path contains a blank symbol marker")
-            assertTrue(REQUIRED_AUTHORITY_MARKERS.getValue(path) in markers, "$path is missing its canonical symbol marker")
+            assertTrue(
+                REQUIRED_AUTHORITY_MARKERS.getValue(path) in markers,
+                "$path is missing its canonical symbol marker",
+            )
             REQUIRED_BEHAVIOR_MARKERS[path].orEmpty().forEach { marker ->
                 assertTrue(marker in markers, "$path is missing required behavior marker $marker")
             }
@@ -941,7 +1005,8 @@ class ReaderFixedMainAuthorityTest {
         const val CHAPTER_LOADER_PATH = "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoader.kt"
         const val HTTP_PAGE_LOADER_PATH = "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt"
         const val PAGER_VIEWER_PATH = "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewer.kt"
-        const val WEBTOON_VIEWER_PATH = "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonViewer.kt"
+        const val WEBTOON_VIEWER_PATH =
+            "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonViewer.kt"
         const val DUAL_PAGE_VIEWER_PATH =
             "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPageR2LPagerViewer.kt"
 
@@ -1001,52 +1066,91 @@ class ReaderFixedMainAuthorityTest {
 
         val REQUIRED_AUTHORITY_BLOBS =
             mapOf(
-                "app/src/main/java/eu/kanade/tachiyomi/data/cache/ChapterCache.kt" to "1d47f5b7d7acbc89e4a9722cd1caf0ebbf1e78fd",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt" to "4c227636a85e44c8abb35e6b73ec524a54931b41",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt" to "830c6ccc245326150a008a990d954bdbe8378296",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/ArchivePageLoader.kt" to "9332c8a0ca8fd7aad9fe35862cc597c1fd30db9b",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoader.kt" to "761c212a12a2b4f202b077494f33ffde8746f4e2",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/DirectoryPageLoader.kt" to "adb92c1b4fb2d3f6ee0fb8823dea775403e64072",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/DownloadPageLoader.kt" to "026faac3e3672cd6b71f9014f8df1dc3a1fce5e7",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/EpubPageLoader.kt" to "5139fe2b7d15872217d12bfb97bed84fa5d8fb08",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt" to "81530afa36ad08b037af44275777d37da608faaf",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/PageLoader.kt" to "164de6bda4d710c12e228437f0e311c4ee05d168",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ChapterTransition.kt" to "2da46e5b0a5ff4f3c2fe1eb3e615ca528917d366",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/InsertPage.kt" to "40bb702f142bf800231f77001710d8bdbdf0de45",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt" to "cb3bca256878a56612f43980ee837c313c742b5c",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderPage.kt" to "6602b96185a2c1f8cedc9163907c9fef1f35f816",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ViewerChapters.kt" to "6fb5905c3356ca694d6a8f33215cf331e59b1ce1",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt" to "4569f43700281b6b24694e9e859f30c5e7f47fe9",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewer.kt" to "1d39507b31cc56c178110800a7d8257e53d25a26",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewerAdapter.kt" to "0fef0b8bc0c42b13b704ebd0c5de77b1cce26426",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonAdapter.kt" to "29727f696845dae7b8d1df9b1581b84aeb8d5671",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonTransitionHolder.kt" to "57036d070d058fe3bed425d117deffebd87c3075",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonViewer.kt" to "33d21d1eba913728ca1b9770855400166fafee78",
-                "source-api/src/commonMain/kotlin/eu/kanade/tachiyomi/source/model/Page.kt" to "1119850439480370948570b61d61055b7a546562",
+                "app/src/main/java/eu/kanade/tachiyomi/data/cache/ChapterCache.kt" to
+                    "1d47f5b7d7acbc89e4a9722cd1caf0ebbf1e78fd",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt" to
+                    "4c227636a85e44c8abb35e6b73ec524a54931b41",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt" to
+                    "830c6ccc245326150a008a990d954bdbe8378296",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/ArchivePageLoader.kt" to
+                    "9332c8a0ca8fd7aad9fe35862cc597c1fd30db9b",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoader.kt" to
+                    "761c212a12a2b4f202b077494f33ffde8746f4e2",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/DirectoryPageLoader.kt" to
+                    "adb92c1b4fb2d3f6ee0fb8823dea775403e64072",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/DownloadPageLoader.kt" to
+                    "026faac3e3672cd6b71f9014f8df1dc3a1fce5e7",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/EpubPageLoader.kt" to
+                    "5139fe2b7d15872217d12bfb97bed84fa5d8fb08",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt" to
+                    "81530afa36ad08b037af44275777d37da608faaf",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/PageLoader.kt" to
+                    "164de6bda4d710c12e228437f0e311c4ee05d168",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ChapterTransition.kt" to
+                    "2da46e5b0a5ff4f3c2fe1eb3e615ca528917d366",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/InsertPage.kt" to
+                    "40bb702f142bf800231f77001710d8bdbdf0de45",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt" to
+                    "cb3bca256878a56612f43980ee837c313c742b5c",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderPage.kt" to
+                    "6602b96185a2c1f8cedc9163907c9fef1f35f816",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ViewerChapters.kt" to
+                    "6fb5905c3356ca694d6a8f33215cf331e59b1ce1",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt" to
+                    "4569f43700281b6b24694e9e859f30c5e7f47fe9",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewer.kt" to
+                    "1d39507b31cc56c178110800a7d8257e53d25a26",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewerAdapter.kt" to
+                    "0fef0b8bc0c42b13b704ebd0c5de77b1cce26426",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonAdapter.kt" to
+                    "29727f696845dae7b8d1df9b1581b84aeb8d5671",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonTransitionHolder.kt" to
+                    "57036d070d058fe3bed425d117deffebd87c3075",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonViewer.kt" to
+                    "33d21d1eba913728ca1b9770855400166fafee78",
+                "source-api/src/commonMain/kotlin/eu/kanade/tachiyomi/source/model/Page.kt" to
+                    "1119850439480370948570b61d61055b7a546562",
             )
         val REQUIRED_AUTHORITY_MARKERS =
             mapOf(
                 "app/src/main/java/eu/kanade/tachiyomi/data/cache/ChapterCache.kt" to "class ChapterCache(",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt" to "class ReaderViewModel @JvmOverloads constructor(",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt" to "class ReaderActivity : BaseActivity()",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/ArchivePageLoader.kt" to "internal class ArchivePageLoader",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt" to
+                    "class ReaderViewModel @JvmOverloads constructor(",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt" to
+                    "class ReaderActivity : BaseActivity()",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/ArchivePageLoader.kt" to
+                    "internal class ArchivePageLoader",
                 "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoader.kt" to "class ChapterLoader(",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/DirectoryPageLoader.kt" to "internal class DirectoryPageLoader",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/DownloadPageLoader.kt" to "internal class DownloadPageLoader(",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/EpubPageLoader.kt" to "internal class EpubPageLoader",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt" to "internal class HttpPageLoader(",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/DirectoryPageLoader.kt" to
+                    "internal class DirectoryPageLoader",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/DownloadPageLoader.kt" to
+                    "internal class DownloadPageLoader(",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/EpubPageLoader.kt" to
+                    "internal class EpubPageLoader",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt" to
+                    "internal class HttpPageLoader(",
                 "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/PageLoader.kt" to "abstract class PageLoader",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ChapterTransition.kt" to "sealed class ChapterTransition",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/InsertPage.kt" to "class InsertPage(val parent: ReaderPage)",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt" to "data class ReaderChapter(val chapter: Chapter)",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ChapterTransition.kt" to
+                    "sealed class ChapterTransition",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/InsertPage.kt" to
+                    "class InsertPage(val parent: ReaderPage)",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt" to
+                    "data class ReaderChapter(val chapter: Chapter)",
                 "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderPage.kt" to "open class ReaderPage(",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ViewerChapters.kt" to "data class ViewerChapters(",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt" to "class PagerTransitionHolder(",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewer.kt" to "abstract class PagerViewer(val activity: ReaderActivity)",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewerAdapter.kt" to "class PagerViewerAdapter(private val viewer: PagerViewer)",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonAdapter.kt" to "class WebtoonAdapter(val viewer: WebtoonViewer)",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonTransitionHolder.kt" to "class WebtoonTransitionHolder(",
-                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonViewer.kt" to "class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = true)",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ViewerChapters.kt" to
+                    "data class ViewerChapters(",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt" to
+                    "class PagerTransitionHolder(",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewer.kt" to
+                    "abstract class PagerViewer(val activity: ReaderActivity)",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewerAdapter.kt" to
+                    "class PagerViewerAdapter(private val viewer: PagerViewer)",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonAdapter.kt" to
+                    "class WebtoonAdapter(val viewer: WebtoonViewer)",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonTransitionHolder.kt" to
+                    "class WebtoonTransitionHolder(",
+                "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonViewer.kt" to
+                    "class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = true)",
                 "source-api/src/commonMain/kotlin/eu/kanade/tachiyomi/source/model/Page.kt" to "open class Page(",
             )
         val REQUIRED_BEHAVIOR_MARKERS =
@@ -1103,7 +1207,10 @@ class ReaderFixedMainAuthorityTest {
                         "adapter.nextTransition?.to?.let(activity::requestPreloadChapter)",
                     ),
                 "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewerAdapter.kt" to
-                    setOf("nextTransition = ChapterTransition.Next", "chapters.nextChapter?.pages?.let(newItems::addAll)"),
+                    setOf(
+                        "nextTransition = ChapterTransition.Next",
+                        "chapters.nextChapter?.pages?.let(newItems::addAll)",
+                    ),
                 "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonAdapter.kt" to
                     setOf("newItems.add(ChapterTransition.Next", "chapters.nextChapter?.pages?.let(newItems::addAll)"),
                 "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonTransitionHolder.kt" to
@@ -1148,7 +1255,8 @@ class ReaderFixedMainAuthorityTest {
                 "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoader.kt",
                 "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/PageLoader.kt",
             )
-        val ADJACENT_PAGE_LIST_FORBIDDEN_OPERATIONS = setOf("PageLoader.loadPage", "HttpSource.getImageUrl", "HttpSource.getImage")
+        val ADJACENT_PAGE_LIST_FORBIDDEN_OPERATIONS =
+            setOf("PageLoader.loadPage", "HttpSource.getImageUrl", "HttpSource.getImage")
         val REQUIRED_DEVIATIONS =
             setOf(
                 "DISPLAY_UNIT_STABLE_IDENTITY",

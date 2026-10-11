@@ -1,9 +1,6 @@
 package mihon.desktop.reader
 
 import androidx.compose.ui.graphics.asComposeImageBitmap
-import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -28,6 +25,9 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * RUA-04D2 contract for the large-static preview/region path.
@@ -248,8 +248,17 @@ class DesktopReaderRegionPresentationOwnerTest {
             detached.acquire()
             awaitCondition { detached.snapshot().previewAsset != null }
             assertEquals(mapOf(contentKey(2L) to 1), fixture.contentOwner.snapshot().activeLeaseCounts)
+            val cached = fixture.holder(generation = 2L)
+            cached.acquire()
+            awaitCondition { cached.snapshot().previewAsset != null }
             detached.close()
             assertTrue(detached.snapshot().closed)
+            assertEquals(
+                mapOf(contentKey(2L) to 1),
+                fixture.contentOwner.snapshot().activeLeaseCounts,
+                "A cached large preview must retain encoded content for its remaining region holder",
+            )
+            cached.close()
             assertTrue(fixture.contentOwner.snapshot().activeLeaseCounts.isEmpty())
         } finally {
             fixture.close()

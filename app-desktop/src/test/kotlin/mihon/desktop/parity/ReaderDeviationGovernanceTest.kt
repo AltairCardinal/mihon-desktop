@@ -1,7 +1,5 @@
 package mihon.desktop.parity
 
-import java.nio.file.Files
-import java.nio.file.Path
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -14,6 +12,8 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.nio.file.Files
+import java.nio.file.Path
 
 class ReaderDeviationGovernanceTest {
     private val repositoryRoot = repositoryRoot()
@@ -62,7 +62,9 @@ class ReaderDeviationGovernanceTest {
             entries.replace(
                 "DUAL_FIXED_4_3_FRAME",
                 "behaviorEvidenceRefs",
-                JsonArray(listOf(JsonPrimitive("app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DualPagePagerViewer.kt"))),
+                JsonArray(
+                    listOf(JsonPrimitive("app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DualPagePagerViewer.kt")),
+                ),
             )
         }
         assertMutationFails(valid, "ownerCapabilityId") { entries ->
@@ -84,6 +86,12 @@ class ReaderDeviationGovernanceTest {
         }
         assertMutationFails(valid, "resolutionStatus") { entries ->
             entries.replace("DUAL_FIXED_4_3_FRAME", "resolutionStatus", JsonPrimitive("ACTIVE"))
+        }
+        assertMutationFails(valid, "resolutionStatus") { entries ->
+            entries.replace("DUAL_COVER_LEFT_SLOT", "resolutionStatus", JsonPrimitive("ACTIVE"))
+        }
+        assertMutationFails(valid, "closureTask") { entries ->
+            entries.replace("DUAL_COVER_LEFT_SLOT", "closureTask", JsonPrimitive("RNC-02"))
         }
         assertMutationFails(valid, "classification") { entries ->
             entries.replace(
@@ -132,7 +140,9 @@ class ReaderDeviationGovernanceTest {
             val expected = REQUIRED_READER_DEVIATIONS.getValue(id)
             require(owned.ownerCapabilityId == expected.ownerCapabilityId) { "$id ownerCapabilityId" }
             require(owned.value.requiredText("classification") == expected.classification) { "$id classification" }
-            require(owned.value.requiredText("resolutionStatus") == expected.resolutionStatus) { "$id resolutionStatus" }
+            require(owned.value.requiredText("resolutionStatus") == expected.resolutionStatus) {
+                "$id resolutionStatus"
+            }
             require(owned.value.requiredText("description").isNotBlank()) { "$id description" }
 
             val introductionRefs = owned.value.requiredStringArray("introductionRefs")
@@ -144,11 +154,12 @@ class ReaderDeviationGovernanceTest {
             require(
                 behaviorEvidenceRefs.all { ref ->
                     val split = ref.split('#', limit = 2)
-                    split.size == 2 && split[0].contains("/src/test/") && split[0].endsWith("Test.kt") && split[1].isNotBlank()
+                    split.size == 2 && split[0].contains("/src/test/") && split[0].endsWith("Test.kt") &&
+                        split[1].isNotBlank()
                 },
             ) { "$id behaviorEvidenceRefs must use test path#method production behavior evidence" }
             if (expected.resolutionStatus == "REMOVED") {
-                require(owned.value.requiredText("closureTask") == "RNC-02") { "$id closureTask" }
+                require(owned.value.requiredText("closureTask") == expected.closureTask) { "$id closureTask" }
                 require(
                     owned.value.getValue("resolutionEvidence").jsonObject.requiredText("productionBehaviorTest") in
                         behaviorEvidenceRefs,
@@ -179,7 +190,7 @@ class ReaderDeviationGovernanceTest {
                         put("description", JsonPrimitive("Explicit user result or reliability boundary."))
                         put("resolutionStatus", JsonPrimitive(expected.resolutionStatus))
                         if (expected.resolutionStatus == "REMOVED") {
-                            put("closureTask", JsonPrimitive("RNC-02"))
+                            put("closureTask", JsonPrimitive(expected.closureTask))
                             put(
                                 "resolutionEvidence",
                                 JsonObject(
@@ -246,6 +257,7 @@ class ReaderDeviationGovernanceTest {
         val classification: String,
         val introductionRefs: List<String>,
         val resolutionStatus: String = "ACTIVE",
+        val closureTask: String = "RNC-02",
     )
 
     private companion object {
@@ -265,11 +277,22 @@ class ReaderDeviationGovernanceTest {
             )
         val REQUIRED_READER_DEVIATIONS =
             mapOf(
-                "DISPLAY_UNIT_STABLE_IDENTITY" to expected(43, "DESKTOP_PRESENTATION_POLICY", "464cbefafc2153de286963224694eafceda5e0d1"),
-                "WEBTOON_RELATIVE_ANCHOR_RECOVERY" to expected(43, "DESKTOP_PRESENTATION_POLICY", "71aa3c458ff5b9a24b04a14820d6d2bb636c3e04"),
-                "WEBTOON_AUTOSCROLL_INTERACTION_PAUSE" to expected(43, "DESKTOP_PRODUCT_ENHANCEMENT", "71aa3c458ff5b9a24b04a14820d6d2bb636c3e04"),
-                "DUAL_PHYSICAL_SLOT_IDENTITY" to expected(43, "DESKTOP_PRESENTATION_POLICY", "c01771573034d2ed3492db3ddd109533bb631d99"),
-                "DUAL_COVER_LEFT_SLOT" to expected(43, "DESKTOP_PRODUCT_ENHANCEMENT", "c01771573034d2ed3492db3ddd109533bb631d99"),
+                "DISPLAY_UNIT_STABLE_IDENTITY" to
+                    expected(43, "DESKTOP_PRESENTATION_POLICY", "464cbefafc2153de286963224694eafceda5e0d1"),
+                "WEBTOON_RELATIVE_ANCHOR_RECOVERY" to
+                    expected(43, "DESKTOP_PRESENTATION_POLICY", "71aa3c458ff5b9a24b04a14820d6d2bb636c3e04"),
+                "WEBTOON_AUTOSCROLL_INTERACTION_PAUSE" to
+                    expected(43, "DESKTOP_PRODUCT_ENHANCEMENT", "71aa3c458ff5b9a24b04a14820d6d2bb636c3e04"),
+                "DUAL_PHYSICAL_SLOT_IDENTITY" to
+                    expected(43, "DESKTOP_PRESENTATION_POLICY", "c01771573034d2ed3492db3ddd109533bb631d99"),
+                "DUAL_COVER_LEFT_SLOT" to
+                    ExpectedDeviation(
+                        43,
+                        "DESKTOP_PRODUCT_ENHANCEMENT",
+                        listOf("c01771573034d2ed3492db3ddd109533bb631d99"),
+                        "REMOVED",
+                        "DP01",
+                    ),
                 "DUAL_FIXED_4_3_FRAME" to
                     ExpectedDeviation(
                         43,
@@ -283,7 +306,8 @@ class ReaderDeviationGovernanceTest {
                     "6330c6198e827622a74dc48b1ac50f15e7470380",
                     "c01771573034d2ed3492db3ddd109533bb631d99",
                 ),
-                "LATEST_SETTLEMENT_ORDERING" to expected(53, "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT", "6330c6198e827622a74dc48b1ac50f15e7470380"),
+                "LATEST_SETTLEMENT_ORDERING" to
+                    expected(53, "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT", "6330c6198e827622a74dc48b1ac50f15e7470380"),
                 "PROGRESS_IDEMPOTENCY_AND_DRAIN" to expected(
                     53,
                     "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT",
@@ -296,8 +320,10 @@ class ReaderDeviationGovernanceTest {
                     "06a1138d2deefb67a565c1c33450d69e734029f7",
                     "dcb2dfb24cb4181d3703a5bf02c5b9e535adb0f8",
                 ),
-                "DESKTOP_ENCODED_CACHE_POLICY" to expected(45, "DESKTOP_CACHE_POLICY", "dcb2dfb24cb4181d3703a5bf02c5b9e535adb0f8"),
-                "DESKTOP_FULL_NEXT_CHAPTER_PREFETCH" to expected(45, "DESKTOP_PRODUCT_ENHANCEMENT", "6ee9473cde839fe5ee932bdb5263c78567c2ff12"),
+                "DESKTOP_ENCODED_CACHE_POLICY" to
+                    expected(45, "DESKTOP_CACHE_POLICY", "dcb2dfb24cb4181d3703a5bf02c5b9e535adb0f8"),
+                "DESKTOP_FULL_NEXT_CHAPTER_PREFETCH" to
+                    expected(45, "DESKTOP_PRODUCT_ENHANCEMENT", "6ee9473cde839fe5ee932bdb5263c78567c2ff12"),
             )
 
         private fun expected(
@@ -305,6 +331,5 @@ class ReaderDeviationGovernanceTest {
             classification: String,
             vararg introductionRefs: String,
         ) = ExpectedDeviation(ownerCapabilityId, classification, introductionRefs.toList())
-
     }
 }

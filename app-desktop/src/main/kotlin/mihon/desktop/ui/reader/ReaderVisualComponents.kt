@@ -1,9 +1,5 @@
 package mihon.desktop.ui.reader
 
-import mihon.desktop.ui.source.desktopSourceErrorMessage
-import tachiyomi.i18n.MR
-import java.util.Locale
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -57,6 +53,7 @@ import mihon.desktop.ui.reader.presentation.VisiblePageSet
 import mihon.desktop.ui.reader.presentation.WebtoonScrollAnchor
 import mihon.desktop.ui.reader.presentation.WebtoonViewportUpdate
 import mihon.desktop.ui.reader.presentation.desktopReaderPresentationRequest
+import mihon.desktop.ui.source.desktopSourceErrorMessage
 import mihon.domain.error.AppError
 import mihon.domain.reader.ReaderChapterState
 import mihon.domain.reader.ReaderChapterTransitionModel
@@ -64,6 +61,8 @@ import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.session.ReaderChapterSession
 import mihon.domain.reader.session.ReaderPageId
+import tachiyomi.i18n.MR
+import java.util.Locale
 
 internal val LocalReaderChapterTransitionContext = staticCompositionLocalOf<DesktopReaderChapterContext?> { null }
 internal val LocalReaderChapterTransitionContentColor = staticCompositionLocalOf { Color.Unspecified }
@@ -72,13 +71,21 @@ internal val LocalReaderChapterTransitionContentColor = staticCompositionLocalOf
 internal fun ColorFilterOverlay(colorFilter: ReaderColorFilter) {
     if (!colorFilter.isEffective) return
     val overlayColor = if (colorFilter.tintEnabled && colorFilter.alpha > 0) {
-        Color(red = colorFilter.r / 255f, green = colorFilter.g / 255f, blue = colorFilter.b / 255f, alpha = colorFilter.alpha / 255f)
+        Color(
+            red = colorFilter.r / 255f,
+            green = colorFilter.g / 255f,
+            blue = colorFilter.b / 255f,
+            alpha =
+            colorFilter.alpha / 255f,
+        )
     } else {
         Color.Transparent
     }
     val brightnessColor = when {
         colorFilter.brightnessEnabled && colorFilter.brightness > 0f -> Color.White.copy(alpha = colorFilter.brightness)
-        colorFilter.brightnessEnabled && colorFilter.brightness < 0f -> Color.Black.copy(alpha = -colorFilter.brightness)
+        colorFilter.brightnessEnabled && colorFilter.brightness < 0f -> Color.Black.copy(
+            alpha = -colorFilter.brightness,
+        )
         else -> Color.Transparent
     }
     if (overlayColor != Color.Transparent) Box(Modifier.fillMaxSize().background(overlayColor))
@@ -125,8 +132,8 @@ internal fun ZoomablePagerViewer(
     mangaTitle: String = "",
     chapterTitle: String = "",
     zoomState: ZoomState,
-    forcedSinglePages: Set<Int> = emptySet(),
-    matchedPairs: Set<Pair<Int, Int>> = emptySet(),
+    dualPageUnits: List<mihon.domain.reader.ReaderDualPageUnit>? = null,
+    pagerPresentationBinding: ReaderPagerPresentationBinding? = null,
     splitPageIndices: Set<Int> = emptySet(),
     presentationImageOwner: DesktopReaderPresentationImageOwner,
     scaleType: ScaleType = ScaleType.FIT_SCREEN,
@@ -154,9 +161,8 @@ internal fun ZoomablePagerViewer(
             hasPreviousChapter,
             hasNextChapter,
             splitPageIndices,
-            forcedSinglePages,
-            matchedPairs,
             autoSplitPages,
+            dualPageUnits,
         ) {
             desktopReaderPresentationRequest(
                 chapter = chapter,
@@ -164,10 +170,8 @@ internal fun ZoomablePagerViewer(
                 hasPreviousChapter = hasPreviousChapter,
                 hasNextChapter = hasNextChapter,
                 spreadPageIndices = splitPageIndices,
-                forcedSinglePageIndices = forcedSinglePages,
-                matchedPagePairs = matchedPairs,
                 splitWidePages = autoSplitPages,
-            )
+            ).copy(dualPageUnits = dualPageUnits)
         }
         val presentation = remember(request) {
             DesktopReaderPresentationRegistry
@@ -176,6 +180,7 @@ internal fun ZoomablePagerViewer(
         }
         val currentPageId = request.chapter.pages[currentPage.coerceIn(chapter.pages.indices)].id
         DualPagePagerViewer(
+            pagerPresentationBinding = pagerPresentationBinding,
             pageTurnAnimation = pageTurnAnimation,
             allowAdjacentViewport = allowAdjacentViewport,
             presentation = presentation, currentPageId = currentPageId,
@@ -222,6 +227,7 @@ internal fun ZoomablePagerViewer(
         val currentPageId = request.chapter.pages[currentPage.coerceIn(chapter.pages.indices)]
             .id
         SinglePagePagerViewer(
+            pagerPresentationBinding = pagerPresentationBinding,
             pageTurnAnimation = pageTurnAnimation,
             allowAdjacentViewport = allowAdjacentViewport,
             presentation = presentation, currentPageId = currentPageId,
@@ -330,7 +336,12 @@ internal fun LoadingState() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator(color = Color.White)
-            Text(MR.strings.transition_pages_loading.localized(), color = Color.White, modifier = Modifier.padding(top = 12.dp), style = MaterialTheme.typography.bodySmall)
+            Text(
+                MR.strings.transition_pages_loading.localized(),
+                color = Color.White,
+                modifier = Modifier.padding(top = 12.dp),
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }
@@ -339,10 +350,23 @@ internal fun LoadingState() {
 internal fun ErrorState(message: String, onRetry: () -> Unit, onBack: () -> Unit) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
-            Text(MR.strings.desktop_ui_failed_to_load_pages.localized(), color = Color.White, style = MaterialTheme.typography.titleMedium)
-            Text(message, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
-            Button(onClick = onRetry, modifier = Modifier.padding(top = 16.dp)) { Text(MR.strings.action_retry.localized()) }
-            Button(onClick = onBack, modifier = Modifier.padding(top = 8.dp)) { Text(MR.strings.desktop_ui_go_back.localized()) }
+            Text(
+                MR.strings.desktop_ui_failed_to_load_pages.localized(),
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                message,
+                color = Color.White.copy(alpha = 0.7f),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            Button(onClick = onRetry, modifier = Modifier.padding(top = 16.dp)) {
+                Text(MR.strings.action_retry.localized())
+            }
+            Button(onClick = onBack, modifier = Modifier.padding(top = 8.dp)) {
+                Text(MR.strings.desktop_ui_go_back.localized())
+            }
         }
     }
 }
@@ -498,6 +522,7 @@ private fun ChapterText(
 }
 
 private const val DOWNLOADED_ICON_ID = "downloaded"
+
 // Keep this in lockstep with presentation-core's SECONDARY_ALPHA.
 private const val READER_SECONDARY_ALPHA = 0.78f
 
@@ -552,7 +577,9 @@ internal fun EmptyState(onBack: () -> Unit) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(MR.strings.desktop_ui_no_pages_available.localized(), color = Color.White)
-            Button(onClick = onBack, modifier = Modifier.padding(top = 16.dp)) { Text(MR.strings.desktop_ui_go_back.localized()) }
+            Button(onClick = onBack, modifier = Modifier.padding(top = 16.dp)) {
+                Text(MR.strings.desktop_ui_go_back.localized())
+            }
         }
     }
 }

@@ -22,17 +22,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -42,20 +44,19 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.reader.DesktopReaderChapterContext
 import mihon.desktop.reader.DesktopReaderPresentationImageOwner
 import mihon.desktop.reader.DesktopReaderRuntimeFactory
-import mihon.desktop.reader.EdgePixelMatcher
 import mihon.desktop.reader.ReaderBackgroundTheme
 import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderColorFilter
@@ -70,7 +71,6 @@ import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.reader.ZoomState
 import mihon.desktop.reader.buildVirtualPageList
 import mihon.desktop.reader.desktopReaderRuntimeFactory
-import mihon.desktop.reader.runResourceActions
 import mihon.desktop.ui.reader.presentation.DesktopReaderPresentationRegistry
 import mihon.desktop.ui.reader.presentation.ReaderPresentationMode
 import mihon.desktop.ui.reader.presentation.ReaderPresentationSnapshot
@@ -196,7 +196,7 @@ data class DesktopReaderScreen(
         }
 
         // Compute: zoom reset, focus, edge-scan, virtual pages
-        ReaderSideEffects(state, model, runtime.presentationImageOwner, focusRequester)
+        ReaderSideEffects(state, model, focusRequester)
 
         // Chapter navigation lambdas
         val skipRead = state.skipReadChapters
@@ -416,9 +416,6 @@ internal fun initialPageForChapterNavigation(direction: ReaderChapterNavigationD
         ReaderChapterNavigationDirection.Next -> ReaderInitialPage.FIRST
     }
 
-internal fun ReaderState.effectiveMatchedPairs(): Set<Pair<Int, Int>> =
-    if (forcedSinglePages.isEmpty()) matchedPairs else emptySet()
-
 internal fun ReaderState.dualPresentationSnapshot(
     hasPreviousChapter: Boolean = true,
     hasNextChapter: Boolean = true,
@@ -430,10 +427,8 @@ internal fun ReaderState.dualPresentationSnapshot(
         hasPreviousChapter = hasPreviousChapter,
         hasNextChapter = hasNextChapter,
         spreadPageIndices = spreadPages,
-        forcedSinglePageIndices = forcedSinglePages,
-        matchedPagePairs = effectiveMatchedPairs(),
         splitWidePages = autoSplitPages,
-    )
+    ).copy(dualPageUnits = dualPageUnits.takeIf { dualPageIdentity != null })
     return DesktopReaderPresentationRegistry.require(ReaderPresentationMode.DUAL_PAGED).present(request)
 }
 
@@ -474,21 +469,10 @@ internal fun adjustedSpread(state: ReaderState): ReaderSpreadAdjustment {
 private fun ReaderSideEffects(
     state: ReaderState,
     model: ReaderScreenModel,
-    presentationImageOwner: DesktopReaderPresentationImageOwner,
     focusRequester: FocusRequester,
 ) {
     LaunchedEffect(state.currentPage) { model.setZoomState(ZoomState()) }
     LaunchedEffect(state.showSettings) { if (!state.showSettings) focusRequester.requestFocus() }
-    LaunchedEffect(state.session.activeChapter.pages.size, state.autoSpreadMatching, state.dualPageMode) {
-        observeDesktopMatchedPairs(
-            presentationImageOwner = presentationImageOwner,
-            autoSpreadMatching = state.autoSpreadMatching,
-            dualPageMode = state.dualPageMode,
-            pageCount = state.session.activeChapter.pages.size,
-            retainedMatchedPairs = state.matchedPairs,
-            onMatchedPairsChanged = model::setMatchedPairs,
-        )
-    }
     LaunchedEffect(
         state.session.activeChapter.pages.size,
         state.spreadPages,
@@ -517,57 +501,6 @@ private fun ReaderSideEffects(
     }
 }
 
-internal suspend fun observeDesktopMatchedPairs(
-    presentationImageOwner: DesktopReaderPresentationImageOwner,
-    autoSpreadMatching: Boolean,
-    dualPageMode: Boolean,
-    pageCount: Int,
-    retainedMatchedPairs: Set<Pair<Int, Int>>,
-    findMatchedPairs: suspend (Int, (Int) -> androidx.compose.ui.graphics.ImageBitmap?) -> Set<Pair<Int, Int>> =
-        { count, provider -> EdgePixelMatcher().findMatchedPairs(count, provider) },
-    onMatchedPairsChanged: (Set<Pair<Int, Int>>) -> Unit,
-) {
-    var retained = retainedMatchedPairs
-    presentationImageOwner.cacheRevision.collectLatest { revision ->
-        val cachedAssets = presentationImageOwner.tryRetainCachedFullPageAssets() ?: return@collectLatest
-        val nextRetained =
-            try {
-                if (autoSpreadMatching && dualPageMode) {
-                    retained + resolveDesktopMatchedPairs(
-                        autoSpreadMatching = true,
-                        dualPageMode = true,
-                        pageCount = pageCount,
-                        pageAt = { pageIndex -> cachedAssets[pageIndex]?.asset?.bitmap },
-                        findMatchedPairs = findMatchedPairs,
-                    )
-                } else {
-                    emptySet()
-                }
-            } finally {
-                runResourceActions(cachedAssets.values.map { lease -> lease::close })
-            }
-        if (presentationImageOwner.isClosed() || presentationImageOwner.cacheRevision.value != revision) {
-            return@collectLatest
-        }
-        retained = nextRetained
-        onMatchedPairsChanged(retained)
-    }
-}
-
-internal suspend fun resolveDesktopMatchedPairs(
-    autoSpreadMatching: Boolean,
-    dualPageMode: Boolean,
-    pageCount: Int,
-    pageAt: (Int) -> androidx.compose.ui.graphics.ImageBitmap?,
-    findMatchedPairs: suspend (Int, (Int) -> androidx.compose.ui.graphics.ImageBitmap?) -> Set<Pair<Int, Int>> =
-        { count, provider -> EdgePixelMatcher().findMatchedPairs(count, provider) },
-): Set<Pair<Int, Int>> =
-    if (autoSpreadMatching && dualPageMode && pageCount > 1) {
-        findMatchedPairs(pageCount, pageAt)
-    } else {
-        emptySet()
-    }
-
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalMaterial3Api::class)
 @Composable
 internal fun ReaderViewport(
@@ -583,6 +516,20 @@ internal fun ReaderViewport(
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
 ) {
+    val testReader = mihon.desktop.test.state.readerState
+    val windowInfo = LocalWindowInfo.current
+    DisposableEffect(model) {
+        testReader.mount(model)
+        onDispose { testReader.unmount(model) }
+    }
+    SideEffect {
+        testReader.updateActions(
+            model,
+            onPrevChapter.takeIf { readerNav?.previousRead != null },
+            onNextChapter.takeIf { readerNav?.nextToRead != null },
+        )
+        testReader.updateFocus(model, window = windowInfo.isWindowFocused)
+    }
     val bgColor = when (state.backgroundTheme) {
         ReaderBackgroundTheme.BLACK -> Color.Black
         ReaderBackgroundTheme.GRAY -> Color(0xFF444444)
@@ -593,6 +540,7 @@ internal fun ReaderViewport(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .onFocusChanged { testReader.updateFocus(model, owner = it.hasFocus) }
                 .readerKeyboardFocus(focusRequester) { event ->
                     handleReaderKeyEvent(event, state, model, navigator, readerNav, onPrevChapter, onNextChapter)
                 }
@@ -638,6 +586,14 @@ internal fun ReaderViewport(
                         )
                     }
                     ColorFilterOverlay(state.colorFilter)
+                    if (state.dualPageMode && state.pairingLoad == PairingLoad.ERROR) {
+                        PairingRestoreError(
+                            onRetry = model::retryPairingRestore,
+                            onUseDefault = model::useDefaultPairingThisSession,
+                            modifier = Modifier.align(Alignment.Center)
+                                .background(Color.Black.copy(alpha = 0.7f)).padding(16.dp),
+                        )
+                    }
                     if (state.showUI) {
                         ReaderBottomBar(
                             currentPage = state.currentPage, totalPages = state.session.activeChapter.pages.size,
@@ -745,6 +701,7 @@ internal fun readerViewportBody(state: ReaderState): ReaderViewportBody {
             else -> ReaderViewportBody.EMPTY
         }
     }
+    if (state.dualPageMode) return ReaderViewportBody.CONTENT
     return when {
         state.pairingLoad == PairingLoad.ERROR -> ReaderViewportBody.PAIRING_ERROR
         state.pairingLoad == PairingLoad.LOADING -> ReaderViewportBody.LOADING
@@ -753,8 +710,12 @@ internal fun readerViewportBody(state: ReaderState): ReaderViewportBody {
 }
 
 @Composable
-private fun PairingRestoreError(onRetry: () -> Unit, onUseDefault: () -> Unit) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+private fun PairingRestoreError(
+    onRetry: () -> Unit,
+    onUseDefault: () -> Unit,
+    modifier: Modifier = Modifier.fillMaxSize(),
+) {
+    Box(modifier, contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(MR.strings.desktop_reader_pairing_load_failed.localized(), color = Color.White)
             Button(onClick = onRetry) { Text(MR.strings.action_retry.localized()) }
@@ -794,6 +755,7 @@ internal fun handleReaderWheelEvent(
         ReaderWheelIntent.PREVIOUS_PAGE,
         ReaderWheelIntent.NEXT_PAGE,
         -> {
+            if (model.navigateDualPage(intent == ReaderWheelIntent.NEXT_PAGE)) return true
             val navPosition = readerKeyboardNavigationPosition(
                 state = state,
                 hasPreviousChapter = hasPreviousChapter,
@@ -852,6 +814,14 @@ internal fun handleReaderKeyEvent(
         }
     }
     val isRtl = state.readingMode == ReadingMode.RTL
+    val adjacentForward = when (event.key) {
+        Key.DirectionLeft, Key.A -> isRtl
+        Key.DirectionRight, Key.D, Key.Spacebar -> !isRtl
+        Key.PageUp -> false
+        Key.PageDown -> true
+        else -> null
+    }
+    if (adjacentForward != null && model.navigateDualPage(adjacentForward)) return true
     val action = when (event.key) {
         Key.DirectionLeft, Key.A -> ReaderKeyboardAction.forLeft(isRtl, navCurrent, totalPages)
         Key.DirectionRight, Key.D, Key.Spacebar -> ReaderKeyboardAction.forRight(isRtl, navCurrent, totalPages)
@@ -886,7 +856,7 @@ internal fun handleReaderKeyEvent(
     )
 }
 
-private fun applyReaderPageAction(
+internal fun applyReaderPageAction(
     action: ReaderPageAction,
     state: ReaderState,
     model: ReaderScreenModel,
@@ -1008,7 +978,20 @@ internal fun ReaderContent(
                         initial = animationPreference.get(),
                     )
                     val firstPresentedGeneration by presentationImageOwner.firstPresentedGeneration.collectAsState()
+                    val presentationEpoch = listOf(
+                        state.session.generation,
+                        state.readingMode,
+                        state.dualPageMode,
+                        state.dualGeometryRevision,
+                        state.cropBordersPager,
+                        state.scaleType,
+                    )
+                    val pagerBinding = remember(model, presentationEpoch) {
+                        ReaderPagerPresentationBinding(presentationEpoch, model)
+                    }
                     ZoomablePagerViewer(
+                        dualPageUnits = state.dualPageUnits,
+                        pagerPresentationBinding = pagerBinding,
                         pageTurnAnimation = pageTurnAnimation,
                         allowAdjacentViewport = firstPresentedGeneration == state.session.generation,
                         chapter = state.session.activeChapter, currentPage = state.currentPage,
@@ -1016,7 +999,6 @@ internal fun ReaderContent(
                         isDualPage = state.dualPageMode, autoSplitPages = state.autoSplitPages,
                         cropBorders = state.cropBordersPager, contextMenuScope = contextMenuScope,
                         mangaTitle = mangaTitle, chapterTitle = chapterTitle, zoomState = state.zoomState,
-                        forcedSinglePages = state.forcedSinglePages, matchedPairs = state.effectiveMatchedPairs(),
                         splitPageIndices = state.spreadPages,
                         presentationImageOwner = presentationImageOwner,
                         scaleType = state.scaleType,
@@ -1024,8 +1006,6 @@ internal fun ReaderContent(
                         onPageChange = model::goToPage,
                         onZoomChange = { model.setZoomState(it) },
                         onRetryPage = model::retryPage,
-                        onSingleVisiblePagesChanged = model::settleSinglePage,
-                        onDualVisiblePagesChanged = model::settleDualPage,
                         onSpreadDetected = { realIdx ->
                             if (realIdx !in
                                 state.spreadPages

@@ -10,10 +10,12 @@ import kotlinx.coroutines.withContext
 import mihon.desktop.extension.resolveSourceImageUrl
 import mihon.domain.error.AppError
 import mihon.domain.network.AppErrorException
+import mihon.domain.reader.ReaderDualPageFactReadPermit
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import okio.buffer
 import tachiyomi.domain.source.service.toSourceAppError
 import java.io.File
 import java.lang.reflect.InvocationTargetException
@@ -64,7 +66,11 @@ class SourcePageFetcher(
             )
     }
 
-    suspend fun fetchToDestination(page: Page, destFile: File): SourcePageFetchResult {
+    suspend fun fetchToDestination(
+        page: Page,
+        destFile: File,
+        factReadPermit: ReaderDualPageFactReadPermit? = null,
+    ): SourcePageFetchResult {
         val imageUrl = try {
             resolveImageUrl(page)
         } catch (error: AppErrorException) {
@@ -88,7 +94,17 @@ class SourcePageFetcher(
                 response.use {
                     if (!response.isSuccessful) throw HttpException(response.code)
                     destFile.outputStream().buffered().use { out ->
-                        response.body.byteStream().copyTo(out)
+                        if (factReadPermit == null) {
+                            response.body.byteStream().copyTo(out)
+                        } else {
+                            factReadPermit.bound(
+                                DesktopReaderFactBodySource.unbuffered(response.body.source()),
+                                System::nanoTime,
+                            )
+                                .buffer().use { input ->
+                                    input.inputStream().copyTo(out)
+                                }
+                        }
                     }
                     check(destFile.isDecodableImage()) {
                         "Page ${page.index + 1} response is not a decodable image"

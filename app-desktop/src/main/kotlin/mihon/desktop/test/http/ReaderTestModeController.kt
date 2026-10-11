@@ -1,9 +1,31 @@
 package mihon.desktop.test.http
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.Serializable
+import mihon.desktop.download.CbzCreator
+import mihon.desktop.download.DesktopDownloadManager
+import mihon.desktop.download.DesktopDownloadProvider
+import mihon.desktop.download.DownloadIoEvent
+import mihon.desktop.download.DownloadIoOperation
+import mihon.desktop.download.DownloadIoProbe
+import mihon.desktop.download.DownloadItem
+import mihon.desktop.download.DownloadStatus
+import mihon.desktop.reader.ReaderIoGate
+import mihon.desktop.reader.ReaderIoGatePoint
+import mihon.domain.reader.content.DownloadChapterIdentity
+import mihon.domain.reader.content.ReaderPageContentOpenRequest
+import mihon.domain.reader.observability.ReaderIoEvent
+import mihon.domain.reader.observability.ReaderIoEventType
+import mihon.domain.reader.observability.ReaderIoProbe
 import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -12,21 +34,6 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import javax.imageio.ImageIO
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withTimeout
-import kotlinx.serialization.Serializable
-import mihon.desktop.download.CbzCreator
-import mihon.desktop.download.DesktopDownloadManager
-import mihon.desktop.download.DesktopDownloadProvider
-import mihon.desktop.download.DownloadItem
-import mihon.desktop.download.DownloadStatus
-import mihon.desktop.download.DownloadIoEvent
-import mihon.desktop.download.DownloadIoOperation
-import mihon.desktop.download.DownloadIoProbe
-import mihon.domain.reader.content.DownloadChapterIdentity
-import mihon.domain.reader.observability.ReaderIoEvent
-import mihon.domain.reader.observability.ReaderIoEventType
-import mihon.domain.reader.observability.ReaderIoProbe
 
 @Serializable
 data class ReaderIoTestEvent(
@@ -36,6 +43,7 @@ data class ReaderIoTestEvent(
     val pageIndex: Int?,
     val generation: Long,
     val purpose: String,
+    val byteLimit: Int? = null,
 )
 
 enum class ReaderTestFixtureKind {
@@ -120,11 +128,182 @@ data class ReaderTestFixtureDescriptor(
     val partialAttemptGeneration: Long? = null,
 )
 
+@Serializable
+data class ReaderReadControlSnapshot(
+    val id: Long,
+    val ownerId: Long,
+    val chapterId: Long,
+    val pageIndex: Int,
+    val generation: Long,
+    val maxBytes: Int?,
+    val status: String,
+    val enteredNanos: Long?,
+    val completedNanos: Long?,
+    val byteCount: Int?,
+    val attemptGeneration: Long?,
+)
+
 class ReaderTestModeController(
     configuredDownloadProvider: DesktopDownloadProvider? = null,
     private val downloadManager: DesktopDownloadManager? = null,
     private val baseUrl: String = "http://127.0.0.1:8080",
-) : ReaderIoProbe, DownloadIoProbe, AutoCloseable {
+) : ReaderIoProbe, DownloadIoProbe, ReaderIoGate, AutoCloseable {
+    private class ControlledRead(
+        val id: Long,
+        val ownerId: Long,
+        val chapterId: Long,
+        val pageIndex: Int,
+        val generation: Long,
+        val maxBytes: Int?,
+        val deadlineNanos: Long,
+    ) {
+        val action = CompletableDeferred<Boolean>()
+        var status = "ARMED"
+        var enteredNanos: Long? = null
+        var completedNanos: Long? = null
+        var byteCount: Int? = null
+        var attemptGeneration: Long? = null
+        fun snapshot() = ReaderReadControlSnapshot(
+            id, ownerId, chapterId, pageIndex, generation, maxBytes, status,
+            enteredNanos, completedNanos, byteCount, attemptGeneration,
+        )
+    }
+    private val readControlLock = Any()
+    private val readOwners = mutableSetOf<Long>()
+    private val controlledReads = linkedMapOf<Long, ControlledRead>()
+    private var readControlsClosed = false
+
+    private fun expireArmedReadsLocked() {
+        val now = System.nanoTime()
+        controlledReads.values.filter { it.status == "ARMED" && it.deadlineNanos <= now }
+            .forEach {
+                it.status = "TIMED_OUT"
+                it.completedNanos = now
+            }
+    }
+
+    override suspend fun await(point: ReaderIoGatePoint) = Unit
+
+    override fun registerContentOwner(): Long = synchronized(readControlLock) {
+        if (readControlsClosed) return@synchronized 0L
+        contentOwnerSequence.incrementAndGet().also(readOwners::add)
+    }
+
+    fun armRead(
+        ownerId: Long,
+        chapterId: Long,
+        pageIndex: Int,
+        generation: Long,
+        maxBytes: Int?,
+        timeoutMillis: Long,
+    ): Long = synchronized(readControlLock) {
+        expireArmedReadsLocked()
+        require(timeoutMillis in 1..30_000 && pageIndex >= 0 && generation >= 0 && (maxBytes == null || maxBytes > 0))
+        check(!readControlsClosed && ownerId in readOwners) { "Reader content owner is not active" }
+        check(controlledReads.values.count { it.status == "ARMED" || it.status == "HOLDING" } < 16)
+        check(
+            controlledReads.values.none {
+                it.ownerId == ownerId && it.chapterId == chapterId &&
+                    it.pageIndex == pageIndex && it.generation == generation && it.maxBytes == maxBytes &&
+                    (it.status == "ARMED" || it.status == "HOLDING")
+            },
+        ) { "Read is already controlled" }
+        while (controlledReads.size >= 32) {
+            val expired = controlledReads.values.firstOrNull { it.status != "ARMED" && it.status != "HOLDING" }
+            checkNotNull(expired)
+            controlledReads.remove(expired.id)
+        }
+        val id = readControlSequence.incrementAndGet()
+        controlledReads[id] = ControlledRead(
+            id,
+            ownerId,
+            chapterId,
+            pageIndex,
+            generation,
+            maxBytes,
+            System.nanoTime() + timeoutMillis * 1_000_000,
+        )
+        id
+    }
+
+    fun readControlSnapshot(): List<ReaderReadControlSnapshot> = synchronized(readControlLock) {
+        expireArmedReadsLocked()
+        controlledReads.values.map { it.snapshot() }
+    }
+
+    fun resolveRead(id: Long, fail: Boolean): Boolean {
+        val rule = synchronized(readControlLock) {
+            expireArmedReadsLocked()
+            controlledReads[id]?.takeIf { it.status == "ARMED" || it.status == "HOLDING" }
+        } ?: return false
+        return rule.action.complete(fail)
+    }
+
+    override suspend fun awaitContentRead(ownerId: Long, request: ReaderPageContentOpenRequest) {
+        val rule = synchronized(readControlLock) {
+            expireArmedReadsLocked()
+            controlledReads.values.firstOrNull {
+                it.ownerId == ownerId && it.status == "ARMED" &&
+                    it.chapterId == request.pageId.chapterId.value && it.pageIndex == request.pageId.sourcePageIndex &&
+                    it.generation == request.generation && it.maxBytes == request.maxBytes
+            }
+                ?.also {
+                    it.status = "HOLDING"
+                    it.enteredNanos = System.nanoTime()
+                    it.attemptGeneration = request.attemptGeneration
+                }
+        } ?: return
+        try {
+            val remaining = ((rule.deadlineNanos - System.nanoTime()) / 1_000_000).coerceAtLeast(1)
+            val fail = withTimeoutOrNull(remaining) { rule.action.await() } ?: run {
+                synchronized(readControlLock) { if (rule.status != "CANCELLED") rule.status = "TIMED_OUT" }
+                throw IOException("Explicit reader read control timed out")
+            }
+            synchronized(readControlLock) {
+                if (readControlsClosed || ownerId !in readOwners || rule.status == "CANCELLED") {
+                    throw CancellationException("Reader content owner closed")
+                }
+                rule.status = if (fail) "FAILED" else "RELEASED"
+            }
+            if (fail) throw IOException("Explicit reader read control failed")
+        } catch (failure: CancellationException) {
+            synchronized(readControlLock) { rule.status = "CANCELLED" }
+            throw failure
+        }
+    }
+
+    override fun contentReadCompleted(
+        ownerId: Long,
+        request: ReaderPageContentOpenRequest,
+        bytes: Int?,
+        failure: Throwable?,
+    ) = synchronized(readControlLock) {
+        controlledReads.values.firstOrNull {
+            it.ownerId == ownerId && it.enteredNanos != null &&
+                it.completedNanos == null && it.chapterId == request.pageId.chapterId.value &&
+                it.pageIndex == request.pageId.sourcePageIndex && it.generation == request.generation &&
+                it.maxBytes == request.maxBytes && it.attemptGeneration == request.attemptGeneration
+        }
+            ?.also {
+                it.completedNanos = System.nanoTime()
+                it.byteCount = bytes
+                if (failure == null && it.status != "CANCELLED") it.status = "COMPLETED"
+            }
+        Unit
+    }
+
+    override fun closeContentOwner(ownerId: Long) {
+        val own = synchronized(readControlLock) {
+            readOwners.remove(ownerId)
+            controlledReads.values.filter {
+                it.ownerId == ownerId &&
+                    (it.status == "ARMED" || it.status == "HOLDING")
+            }
+                .onEach { it.status = "CANCELLED" }
+        }
+        own.forEach { it.action.cancel(CancellationException("Reader content owner closed")) }
+    }
+
     private enum class PartialFixtureStage {
         PREPARING,
         ACTIVE,
@@ -148,7 +327,8 @@ class ReaderTestModeController(
     private val downloadEvents = CopyOnWriteArrayList<ScenarioDownloadEvent>()
     private val scenario = AtomicLong(0L)
     private val fixtureRoot = Files.createTempDirectory("mihon-reader-test-mode-").toFile()
-    private val downloadProvider = configuredDownloadProvider ?: DesktopDownloadProvider(fixtureRoot.resolve("downloads"))
+    private val downloadProvider =
+        configuredDownloadProvider ?: DesktopDownloadProvider(fixtureRoot.resolve("downloads"))
     private val imageBytes = ConcurrentHashMap<ImageKey, ByteArray>()
     private val currentFixture = AtomicReference<ReaderTestFixtureDescriptor?>()
     private val sourcePageListCalls = AtomicInteger()
@@ -193,6 +373,7 @@ class ReaderTestModeController(
                     pageIndex = event.pageId?.sourcePageIndex,
                     generation = event.generation,
                     purpose = event.purpose.name,
+                    byteLimit = event.byteLimit,
                 ),
             )
         }
@@ -589,6 +770,11 @@ class ReaderTestModeController(
     }
 
     override fun close() {
+        val owners = synchronized(readControlLock) {
+            readControlsClosed = true
+            readOwners.toList()
+        }
+        owners.forEach(::closeContentOwner)
         clearFixtureDescriptor()
         val deletionFailures = mutableListOf<String>()
 
@@ -608,7 +794,11 @@ class ReaderTestModeController(
             deleteOwnedDirectory(artifact.chapterDirectory)
             artifact.cbz?.let(::deleteOwnedFile)
             if (artifact.mangaDirectoryCreated) runCatching { artifact.chapterDirectory.parentFile.delete() }
-            if (artifact.sourceDirectoryCreated) runCatching { artifact.chapterDirectory.parentFile.parentFile.delete() }
+            if (artifact.sourceDirectoryCreated) {
+                runCatching {
+                    artifact.chapterDirectory.parentFile.parentFile.delete()
+                }
+            }
         }
         createdDownloadArtifacts.clear()
         val fixtureRootPath = fixtureRoot.toPath().toAbsolutePath().normalize()
@@ -630,13 +820,18 @@ class ReaderTestModeController(
     }
 
     companion object {
+        private val contentOwnerSequence = AtomicLong()
+        private val readControlSequence = AtomicLong()
         const val READER_TEST_SOURCE_ID = -7_070_707_070_707L
         const val READER_TEST_SOURCE_NAME = "Mihon Test Mode Reader"
         private const val PARTIAL_FIXTURE_TIMEOUT_MS = 10_000L
     }
 }
 
-object ReaderIoTestModeBridge : ReaderIoProbe, DownloadIoProbe {
+object ReaderIoTestModeBridge : ReaderIoProbe, DownloadIoProbe, ReaderIoGate {
+    override suspend fun await(point: ReaderIoGatePoint) = Unit
+    override fun bindContentReads(): ReaderIoGate =
+        if (mihon.desktop.test.state.applicationState.testMode) controller ?: ReaderIoGate.None else ReaderIoGate.None
     private val value = AtomicReference<ReaderTestModeController?>()
     val controller: ReaderTestModeController? get() = value.get()
     override val enabled: Boolean get() = controller != null
@@ -655,5 +850,14 @@ object ReaderIoTestModeBridge : ReaderIoProbe, DownloadIoProbe {
 
     fun beginScenario(currentPageIndex: Int = 0) = controller?.beginScenario(currentPageIndex)
 
-    fun clear(expected: ReaderTestModeController): Boolean = value.compareAndSet(expected, null)
+    fun startDrawObservation(capacity: Int = 120): Boolean =
+        mihon.desktop.test.state.readerState.startSlotDrawObservation(capacity)
+
+    fun stopDrawObservation(): Boolean = mihon.desktop.test.state.readerState.stopSlotDrawObservation()
+
+    fun clear(expected: ReaderTestModeController): Boolean {
+        val cleared = value.compareAndSet(expected, null)
+        if (cleared) stopDrawObservation()
+        return cleared
+    }
 }

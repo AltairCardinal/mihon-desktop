@@ -2,10 +2,12 @@ package mihon.desktop.ui.reader
 
 import mihon.desktop.reader.ReaderKeyboardAction
 import mihon.desktop.reader.ReaderPageAction
+import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.reader.desktopReaderSessionState
 import mihon.domain.reader.ReaderNavigationCommand
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 
 class ReaderKeyboardNavigationPositionTest {
 
@@ -90,20 +92,36 @@ class ReaderKeyboardNavigationPositionTest {
     @Test
     fun `dual page keyboard position uses display groups at last paired spread`() {
         val reader = desktopReaderSessionState(pageCount = 43)
-        val state = ReaderState(
-            context = reader.context,
-            session = reader.snapshot,
-            currentPage = 41,
-            dualPageMode = true,
+        val model = ReaderScreenModel(
+            initialSessionState = reader,
+            dualPageOverride = true,
+            prefs = ReaderPreferences(InMemoryPreferenceStore()).apply { isAutoSpreadMatching = false },
         )
+        try {
+            reader.snapshot.activeChapter.pages.forEach { page ->
+                assertEquals(
+                    true,
+                    model.acceptDualFact(
+                        requireNotNull(model.captureDualFact(page.id)),
+                        mihon.domain.reader.ReaderPageFact.dimensions(32, 48),
+                    ),
+                )
+            }
+            model.goToPage(41)
+            val position = readerKeyboardNavigationPosition(model.state.value)
 
-        val position = readerKeyboardNavigationPosition(state)
-
-        assertEquals(21, position.current)
-        assertEquals(22, position.total)
-        assertEquals(
-            ReaderPageAction.NoNextPage,
-            ReaderKeyboardAction.forRight(isRtl = false, currentPage = position.current, totalPages = position.total),
-        )
+            assertEquals(21, position.current)
+            assertEquals(22, position.total)
+            assertEquals(
+                ReaderPageAction.NoNextPage,
+                ReaderKeyboardAction.forRight(
+                    isRtl = false,
+                    currentPage = position.current,
+                    totalPages = position.total,
+                ),
+            )
+        } finally {
+            model.onDispose()
+        }
     }
 }

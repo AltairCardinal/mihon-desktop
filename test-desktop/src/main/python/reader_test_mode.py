@@ -188,6 +188,11 @@ def validate_reader_state(state: dict[str, Any], source: str) -> ReaderMeasureme
         for event in before_first
         if event.get("type") == "OPEN_PAGE" and event.get("pageIndex") != 0
     ]
+    non_current_headers = [
+        event
+        for event in before_first
+        if event.get("type") == "HEADER_READ" and event.get("pageIndex") != 0
+    ]
     non_current_decodes = [
         event
         for event in before_first
@@ -213,6 +218,8 @@ def validate_reader_state(state: dict[str, Any], source: str) -> ReaderMeasureme
         )
     if non_current_opens:
         raise ReaderContractError(f"{source}: non-current OPEN_PAGE occurred before first frame")
+    if non_current_headers:
+        raise ReaderContractError(f"{source}: non-current HEADER_READ occurred before first frame")
     if non_current_decodes:
         raise ReaderContractError(
             f"{source}: non-current or missing pageIndex DECODE occurred before first frame"

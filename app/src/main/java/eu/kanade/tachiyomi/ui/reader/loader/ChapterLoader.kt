@@ -21,6 +21,7 @@ import mihon.domain.reader.materialize.ReaderChapterContentRequest
 import mihon.domain.reader.materialize.ReaderChapterMaterializeResult
 import mihon.domain.reader.materialize.ReaderMaterializeExecutor
 import mihon.domain.reader.session.ReaderChapterId
+import mihon.domain.reader.session.ReaderChapterLoadPurpose
 import mihon.domain.reader.session.ReaderChapterLoadState
 import mihon.domain.reader.session.ReaderChapterWindowEffect
 import tachiyomi.core.common.i18n.stringResource
@@ -88,7 +89,11 @@ class ChapterLoader(
                     return@withIOContext
                 }
 
-                val port = AndroidReaderChapterContentPort(chapter, loader)
+                val port = AndroidReaderChapterContentPort(
+                    chapter,
+                    loader,
+                    publishHeaderFacts = pageListEffect?.purpose != ReaderChapterLoadPurpose.PREFETCH,
+                )
                 val request = ReaderChapterContentRequest(
                     chapterId = ReaderChapterId(checkNotNull(chapter.chapter.id)),
                     generation = generation,

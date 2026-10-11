@@ -18,6 +18,7 @@ import mihon.desktop.reader.readerChapterSession
 import mihon.desktop.ui.reader.NavigationMode
 import mihon.desktop.ui.reader.WebtoonPresentationViewer
 import mihon.desktop.ui.reader.ZoomablePagerViewer
+import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.observability.ReaderIoProbe
 import mihon.domain.reader.observability.ReaderIoReporter
 import mihon.domain.reader.observability.ReaderMonotonicClock
@@ -51,12 +52,14 @@ class ReaderDecodedImageRetryWiringTest {
     @Test
     fun `dual page exposes Retry for a full decode failure and targets that slot page`() = runTest {
         val chapter = readerChapterSession(chapterId = 72L, generation = 10L, pageCount = 1)
+        val shared = desktopReaderPresentationRequest(chapter, ReaderDirection.RTL).withSharedOwner()
         verifyRetry(chapter.pages.single().id, sceneWidth = 1_600, sceneHeight = 900) { owner, retries ->
             ZoomablePagerViewer(
                 chapter = chapter,
                 currentPage = 0,
                 isRtl = true,
                 isDualPage = true,
+                dualPageUnits = shared.dualPageUnits,
                 zoomState = ZoomState(),
                 navigationMode = NavigationMode.RightAndLeft,
                 presentationImageOwner = owner,

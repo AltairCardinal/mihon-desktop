@@ -8,6 +8,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import mihon.desktop.reader.DesktopChapterPairingCoordinator
@@ -41,6 +43,7 @@ import mihon.domain.reader.StaleChapterPairingException
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderChapterLoadState
 import mihon.domain.reader.session.ReaderPageId
+import mihon.domain.reader.session.ReaderPageLoadState
 import mihon.domain.reader.session.ReaderSessionSnapshot
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -95,11 +98,12 @@ class ReaderScreenModel(
     val state: StateFlow<ReaderState> = _state.asStateFlow()
     private var lastSettledViewport: SettledViewportIdentity? = null
     private var lastLayoutScheduledViewport: SettledViewportIdentity? = null
+    private var pendingResumePresentedViewport: SettledViewportIdentity? = null
     private var viewportSize: Pair<Int, Int>? = null
     private var adaptiveInitialized = false
     private var pendingLayout: Boolean? = null
     private var pendingLayoutJob: Job? = null
-    private var layoutProgressAnchor: ReaderPageId? = null
+    private var webtoonRestoreAnchor: ReaderPageId? = null
     private var manualDualPage = dualPageFromViewerFlags(mangaViewerFlags) ?: dualPageOverride ?: prefs.isDualPage
     private val productionRuntimeLifecycleLock = Any()
     private var retainedCompositionCount = 0
@@ -113,7 +117,15 @@ class ReaderScreenModel(
 
     @Volatile private var pairingRequest: PairingRequest? = null
 
+    private var dualSession: mihon.domain.reader.SharedDualPageSession? = null
+    private var dualContentRevision = 0L
+    private var dualMangaId: Long? = null
+    private val dualContentStamps = mutableMapOf<ReaderPageId, DualContentStamp>()
+    private val dualContentVersions = mutableMapOf<ReaderPageId, Long>()
+    private var deferredContentState: DesktopReaderSessionState? = null
+
     init {
+        synchronized(productionRuntimeLifecycleLock) { ensureDualSession() }
         beginPairingRestore(initialSessionState)
     }
 
@@ -183,6 +195,370 @@ class ReaderScreenModel(
         }
     }
 
+    /** All shared presentation operations run under the existing model lifecycle owner lock. */
+    private fun ensureDualSession(): mihon.domain.reader.SharedDualPageSession? {
+        if (disposeRequested) return null
+        val current = _state.value
+        val pages = current.session.activeChapter.pages
+        if (pages.isEmpty()) {
+            dualSession?.close()
+            dualSession = null
+            dualContentStamps.clear()
+            dualContentVersions.clear()
+            return null
+        }
+        val ids = pages.map { it.id }
+        val previous = dualSession
+        val sameOrder = previous?.identity?.pageIds == ids &&
+            previous.identity.generation == current.session.generation && dualMangaId == current.context.mangaId
+        if (!sameOrder) {
+            dualContentStamps.clear()
+            dualContentVersions.clear()
+        }
+        pages.forEach { page ->
+            val stamp = DualContentStamp(page.url, page.imageUrl, page.encodedPageRef, page.attemptGeneration)
+            val old = dualContentStamps[page.id]
+            val replaced = old != null && (
+                old.url != stamp.url || old.attempt != stamp.attempt ||
+                    (old.imageUrl != null && old.imageUrl != stamp.imageUrl) ||
+                    (old.encoded != null && old.encoded != stamp.encoded)
+                )
+            if (replaced) dualContentVersions[page.id] = (dualContentVersions[page.id] ?: 0L) + 1
+            dualContentStamps[page.id] = stamp
+        }
+        val content = ids.map { id ->
+            val version = "desktop:${dualContentVersions[id] ?: 0L}"
+            mihon.domain.reader.ReaderDualPageContentIdentity(
+                id,
+                version,
+                sourceOrientation = previous?.identity?.content?.firstOrNull {
+                    it.pageId == id &&
+                        it.contentVersion == version
+                }
+                    ?.sourceOrientation ?: mihon.domain.reader.ReaderImageOrientation.NORMAL,
+            )
+        }
+        if (!sameOrder || previous?.identity?.content != content) {
+            dualMangaId = current.context.mangaId
+            val identity = mihon.domain.reader.ReaderDualPageIdentity(
+                current.session.generation,
+                ++dualContentRevision,
+                content,
+            )
+            dualSession = if (sameOrder) {
+                requireNotNull(previous).rebindContent(identity)
+            } else {
+                previous?.close()
+                mihon.domain.reader.SharedDualPageSession(
+                    identity,
+                    dualDirection(current),
+                    ids.getOrNull(current.currentPage) ?: ids.first(),
+                    current.context.mangaId.takeIf {
+                        pairingCoordinator != null &&
+                            !current.context.isTemporaryReaderFile()
+                    },
+                )
+            }
+        }
+        val owner = requireNotNull(dualSession)
+        owner.configure(
+            dualDirection(current),
+            current.autoSpreadMatching,
+        )
+        owner.configurePresentationMode(
+            if (current.dualPageMode) {
+                mihon.domain.reader.ReaderPresentationMode.DUAL
+            } else {
+                mihon.domain.reader.ReaderPresentationMode.SINGLE
+            },
+        )
+        publishDualSession(owner)
+        return owner
+    }
+
+    private fun dualDirection(state: ReaderState) = if (state.readingMode == ReadingMode.RTL) {
+        mihon.domain.reader.ReaderDirection.RTL
+    } else {
+        mihon.domain.reader.ReaderDirection.LTR
+    }
+
+    private fun publishDualSession(owner: mihon.domain.reader.SharedDualPageSession) {
+        val pairing = owner.pairingState
+        val status = pairing.status
+        _state.update { current ->
+            val notice = when {
+                status == mihon.domain.reader.ReaderPairingPersistenceStatus.SAVE_FAILED ||
+                    status == mihon.domain.reader.ReaderPairingPersistenceStatus.CONFLICT -> PairingNotice.SAVE_FAILED
+                pairing.notice == mihon.domain.reader.ReaderPairingPersistenceNotice.INVALID_RECORD ->
+                    PairingNotice.INVALID
+                status == mihon.domain.reader.ReaderPairingPersistenceStatus.TEMPORARY &&
+                    pairingCoordinator != null -> PairingNotice.SESSION_ONLY
+                else -> current.pairingNotice
+            }
+            current.copy(
+                dualPageUnits = owner.units, dualPageIdentity = owner.identity,
+                dualPageLayoutRevision = owner.layoutRevision, dualFactWorkRevision = owner.factWorkRevision,
+                dualPageLocation = owner.location, dualPairingState = pairing,
+                forcedSinglePages = pairing.committedForcedSinglePages, pairingRevision = pairing.revision ?: 0,
+                pairingSaving = status == mihon.domain.reader.ReaderPairingPersistenceStatus.SAVING,
+                pairingSessionOnly = status == mihon.domain.reader.ReaderPairingPersistenceStatus.TEMPORARY,
+                pairingLoad = when (status) {
+                    mihon.domain.reader.ReaderPairingPersistenceStatus.WAITING_FOR_RESTORE,
+                    mihon.domain.reader.ReaderPairingPersistenceStatus.RESTORING,
+                    -> PairingLoad.LOADING
+                    mihon.domain.reader.ReaderPairingPersistenceStatus.RESTORE_FAILED -> PairingLoad.ERROR
+                    mihon.domain.reader.ReaderPairingPersistenceStatus.DEFAULT_UNVERIFIED ->
+                        PairingLoad.DEFAULT_UNVERIFIED
+                    else -> PairingLoad.READY
+                },
+            ).let { if (notice != null && notice != current.pairingNotice) it.withPairingNotice(notice) else it }
+        }
+    }
+
+    private data class DualContentStamp(
+        val url: String,
+        val imageUrl: String?,
+        val encoded: Any?,
+        val attempt: Long,
+    )
+
+    private var factPublisherJob: Job? = null
+    private var spreadPublisherJob: Job? = null
+    private val optionalWorkRevision = kotlinx.coroutines.flow.MutableStateFlow(0L)
+    private var spreadPublisherOwner: mihon.domain.reader.SharedDualPageSession? = null
+    private val failedSpreadReads = mutableSetOf<mihon.domain.reader.ReaderDualPageContentIdentity>()
+    private val headerJobs = mutableMapOf<HeaderWork, Job>()
+    private val pendingHeaderTickets = mutableMapOf<ReaderPageId, mihon.domain.reader.ReaderDualPageFactRequest>()
+    private data class HeaderWork(
+        val owner: mihon.domain.reader.SharedDualPageSession,
+        val workRevision: Long,
+        val request: mihon.domain.reader.content.ReaderPageContentOpenRequest,
+    )
+
+    internal fun bindDualFactPublisher(scope: CoroutineScope) {
+        val runtime = runtime ?: return
+        synchronized(productionRuntimeLifecycleLock) {
+            if (factPublisherJob != null || disposeRequested) return
+            val parallelism = kotlinx.coroutines.sync.Semaphore(1)
+            factPublisherJob = scope.launch {
+                kotlinx.coroutines.flow.combine(
+                    state,
+                    runtime.pageImagePipeline.foregroundWork,
+                    runtime.session.physicalWorkCount,
+                    runtime.session.foregroundRequestRevision,
+                    kotlinx.coroutines.flow.combine(
+                        optionalWorkRevision,
+                        runtime.pageImagePipeline.optionalWork,
+                        runtime.pageImagePipeline.memoryAuthority.snapshots.map {
+                            it.overBudgetBytes > 0
+                        }.distinctUntilChanged(),
+                    ) { _, _, _ -> Unit },
+                ) { current, _, _, _, _ ->
+                    current
+                }.collect { current ->
+                    synchronized(productionRuntimeLifecycleLock) {
+                        val owner = ensureDualSession() ?: return@synchronized
+                        if (current.dualPageIdentity != owner.identity ||
+                            current.dualFactWorkRevision != owner.factWorkRevision
+                        ) {
+                            return@synchronized
+                        }
+                        val nearby = owner.factDependencies().toSet() + owner.targetUnit?.pageIds.orEmpty()
+                        val work = current.session.activeChapter.pages.filter {
+                            it.id in nearby && it.loadState is mihon.domain.reader.session.ReaderPageLoadState.Ready &&
+                                (it.id == owner.location?.pageId || optionalWorkCanRun(runtime))
+                        }
+                            .mapNotNull { page ->
+                                page.encodedPageRef?.let { ref ->
+                                    HeaderWork(
+                                        owner,
+                                        owner.factWorkRevision,
+                                        mihon.domain.reader.content.ReaderPageContentOpenRequest(
+                                            page.id,
+                                            current.session.generation,
+                                            ref,
+                                            page.attemptGeneration,
+                                            page.encodedPageProvenance,
+                                        ),
+                                    )
+                                }
+                            }
+                        headerJobs.keys.toList().filter { it !in work }.forEach { headerJobs.remove(it)?.cancel() }
+                        work.filter { it !in headerJobs }.forEach { item ->
+                            val original = pendingHeaderTickets[item.request.pageId]?.takeIf {
+                                owner.ownsFactRequest(it)
+                            } ?: owner.requestFact(item.request.pageId)
+                            pendingHeaderTickets[item.request.pageId] = original
+                            headerJobs[item] = scope.launch {
+                                parallelism.acquire()
+                                try {
+                                    if (item.request.pageId != owner.location?.pageId && !optionalWorkCanRun(runtime)) {
+                                        throw mihon.desktop.reader.DesktopReaderOptionalWorkPaused()
+                                    }
+                                    val lease = runtime.pageContentOwner.acquireHeader(item.request)
+                                    val fact = lease?.use {
+                                        mihon.desktop.reader.SkiaImageDecoder.peekSize(it.content)?.let { size ->
+                                            mihon.domain.reader.ReaderPageFact.dimensions(
+                                                size.first,
+                                                size.second,
+                                                sourceOrientation =
+                                                mihon.domain.reader.readImageOrientation(it.content),
+                                            )
+                                        }
+                                    }
+                                        ?: mihon.domain.reader.ReaderPageFact(
+                                            mihon.domain.reader.ReaderPageFactState.FAILED,
+                                        )
+                                    acceptDualFact(original, fact)
+                                } catch (_: mihon.desktop.reader.DesktopReaderOptionalWorkPaused) {
+                                    synchronized(productionRuntimeLifecycleLock) { headerJobs.remove(item) }
+                                    optionalWorkRevision.update { it + 1 }
+                                } catch (error: kotlinx.coroutines.CancellationException) {
+                                    throw error
+                                } catch (_: Exception) {
+                                    acceptDualFact(
+                                        original,
+                                        mihon.domain.reader.ReaderPageFact(
+                                            mihon.domain.reader.ReaderPageFactState.FAILED,
+                                        ),
+                                    )
+                                } finally {
+                                    parallelism.release()
+                                    synchronized(productionRuntimeLifecycleLock) {
+                                        pendingHeaderTickets.remove(item.request.pageId, original)
+                                    }
+                                }
+                            }
+                        }
+                        startSpreadSamplesLocked(owner, runtime, scope, parallelism)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun optionalWorkCanRun(runtime: DesktopReaderRuntime): Boolean =
+        runtime.session.foregroundRequestsIdle && runtime.pageImagePipeline.foregroundWork.value == 0 &&
+            runtime.pageImagePipeline.memoryAuthority.snapshots.value.overBudgetBytes == 0L
+
+    /** One optional pass; resource deferral is distinct from failed evidence. */
+    private fun startSpreadSamplesLocked(
+        owner: mihon.domain.reader.SharedDualPageSession,
+        runtime: DesktopReaderRuntime,
+        scope: CoroutineScope,
+        parallelism: kotlinx.coroutines.sync.Semaphore,
+    ) {
+        val state = _state.value
+        if (!state.autoSpreadMatching || !state.dualPageMode || spreadPublisherOwner !== owner) {
+            spreadPublisherJob?.cancel()
+            failedSpreadReads.clear()
+            spreadPublisherOwner = owner
+        }
+        if (!state.autoSpreadMatching || !state.dualPageMode || spreadPublisherJob?.isCompleted == false ||
+            owner.spreadSampleDependencies().isEmpty() || !optionalWorkCanRun(runtime) ||
+            runtime.pageImagePipeline.optionalWork.value != 0
+        ) {
+            return
+        }
+        val sequence = owner.location?.sequence
+        var paused = false
+        val job = scope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
+            try {
+                while (true) {
+                    val work = synchronized(productionRuntimeLifecycleLock) {
+                        if (disposeRequested || dualSession !== owner || owner.location?.sequence != sequence) {
+                            return@synchronized null
+                        }
+                        if (!optionalWorkCanRun(runtime)) throw mihon.desktop.reader.DesktopReaderOptionalWorkPaused()
+                        val id = owner.spreadSampleDependencies().firstOrNull() ?: return@synchronized null
+                        val content = owner.identity.content.single { it.pageId == id }
+                        if (content in failedSpreadReads) return@synchronized null
+                        val page = _state.value.session.activeChapter.pages.firstOrNull { it.id == id }
+                            ?.takeIf { it.loadState is ReaderPageLoadState.Ready } ?: return@synchronized null
+                        val encoded = page.encodedPageRef ?: return@synchronized null
+                        val sample = owner.requestSpreadSample(id) ?: return@synchronized null
+                        sample to mihon.domain.reader.content.ReaderPageContentOpenRequest(
+                            id,
+                            _state.value.session.generation,
+                            encoded,
+                            page.attemptGeneration,
+                            page.encodedPageProvenance,
+                        )
+                    } ?: break
+                    val (sample, content) = work
+                    parallelism.acquire()
+                    val samples = try {
+                        if (!optionalWorkCanRun(runtime)) throw mihon.desktop.reader.DesktopReaderOptionalWorkPaused()
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            // Settings can consume a retried encoded page before a new presentation
+                            // mounts. Advance only the attempt captured from our accepted snapshot.
+                            if (!runtime.pageImagePipeline.beginPageAttempt(
+                                    content.pageId,
+                                    content.generation,
+                                    content.attemptGeneration,
+                                )
+                            ) {
+                                throw mihon.desktop.reader.DesktopReaderOptionalWorkPaused()
+                            }
+                            runtime.pageImagePipeline.openRegionSession(content).use { region ->
+                                if (!optionalWorkCanRun(runtime)) {
+                                    throw mihon.desktop.reader.DesktopReaderOptionalWorkPaused()
+                                }
+                                val size = region.withContent(mihon.desktop.reader.SkiaImageDecoder::peekSize)
+                                    ?: return@use null
+                                val raw = sample.content.sourceOrientation.orientedSize(size.first, size.second)
+                                mihon.desktop.reader.DesktopReaderSpreadSampler.sample(
+                                    runtime.pageImagePipeline,
+                                    region,
+                                    raw.width,
+                                    raw.height,
+                                    sample.content.sourceOrientation,
+                                    canContinue = { optionalWorkCanRun(runtime) },
+                                )
+                            }
+                        }
+                    } catch (error: kotlinx.coroutines.CancellationException) {
+                        throw error
+                    } catch (_: Exception) {
+                        null
+                    } finally {
+                        parallelism.release()
+                    }
+                    val progressed = synchronized(productionRuntimeLifecycleLock) {
+                        if (dualSession === owner && !owner.ownsSpreadSampleRequest(sample) &&
+                            owner.identity.content.any { it.pageId == sample.content.pageId && it != sample.content }
+                        ) {
+                            true // Same-byte metadata changed; re-enter using the renewed original capability.
+                        } else if (dualSession !== owner || !owner.ownsSpreadSampleRequest(sample)) {
+                            false
+                        } else if (samples == null) {
+                            failedSpreadReads += sample.content
+                            false
+                        } else {
+                            owner.acceptSpreadSample(sample, samples).also { if (it) publishDualSession(owner) }
+                        }
+                    }
+                    if (!progressed) break
+                }
+            } catch (_: mihon.desktop.reader.DesktopReaderOptionalWorkPaused) {
+                paused = true
+            }
+        }
+        spreadPublisherJob = job
+        job.invokeOnCompletion { cause ->
+            // Idle can arrive while a final region lease is still closing. Re-evaluate after the
+            // original job actually completes, rather than relying on that earlier single signal.
+            if (!disposeRequested && (
+                    paused || cause != null || dualSession !== owner ||
+                        owner.location?.sequence != sequence || _state.value.readingMode != state.readingMode
+                    )
+            ) {
+                optionalWorkRevision.update { it + 1 }
+            }
+        }
+        job.start()
+    }
+
     private fun buildInitialState(
         prefs: ReaderPreferences,
         reader: DesktopReaderSessionState,
@@ -205,8 +581,7 @@ class ReaderScreenModel(
             automaticLayout = resolvedMode == ReadingMode.AUTO,
             followsGlobalReadingMode = !isWebtoon && readingModeFromViewerFlags(mangaViewerFlags) == null &&
                 dualPageFromViewerFlags(mangaViewerFlags) == null && dualPageOverride == null,
-            dualPageMode =
-            resolvedMode != ReadingMode.AUTO &&
+            dualPageMode = resolvedMode != ReadingMode.AUTO &&
                 (dualPageFromViewerFlags(mangaViewerFlags) ?: dualPageOverride ?: prefs.isDualPage),
             autoSplitPages = prefs.autoSplitPages,
             autoSpreadMatching = prefs.isAutoSpreadMatching,
@@ -236,30 +611,63 @@ class ReaderScreenModel(
         )
     }
 
-    fun acceptSessionState(reader: DesktopReaderSessionState) {
+    fun acceptSessionState(reader: DesktopReaderSessionState) = synchronized(productionRuntimeLifecycleLock) {
+        val previous = _state.value
+        val sameContentList = previous.session.generation == reader.snapshot.generation &&
+            previous.context.chapterId == reader.context.chapterId &&
+            previous.context.mangaId == reader.context.mangaId &&
+            previous.session.activeChapter.pages.map { it.id } == reader.snapshot.activeChapter.pages.map { it.id }
+        val protected = if (sameContentList) dualSession?.visibleContentPageIds.orEmpty() else emptySet()
+        val originals = previous.session.activeChapter.pages.filter { it.id in protected }.associateBy { it.id }
+        var deferred = false
+        val acceptedPages = reader.snapshot.activeChapter.pages.map { incoming ->
+            val original = originals[incoming.id]
+            if (original != null &&
+                (
+                    original.url != incoming.url || original.imageUrl != incoming.imageUrl ||
+                        original.attemptGeneration != incoming.attemptGeneration ||
+                        (original.encodedPageRef != null && original.encodedPageRef != incoming.encodedPageRef)
+                    )
+            ) {
+                deferred = true
+                original
+            } else {
+                incoming
+            }
+        }
+        deferredContentState = reader.takeIf { deferred }
+        val accepted = if (deferred) {
+            reader.copy(
+                snapshot = reader.snapshot.copy(
+                    activeChapter = reader.snapshot.activeChapter.copy(pages = acceptedPages),
+                ),
+            )
+        } else {
+            reader
+        }
         var newIdentity = false
         _state.update { current ->
-            val chapterChanged = current.context.chapterId != reader.context.chapterId
-            newIdentity = chapterChanged || current.context.mangaId != reader.context.mangaId ||
-                current.session.generation != reader.snapshot.generation ||
-                current.session.activeChapter.pages.size != reader.snapshot.activeChapter.pages.size
+            val chapterChanged = current.context.chapterId != accepted.context.chapterId
+            newIdentity = chapterChanged || current.context.mangaId != accepted.context.mangaId ||
+                current.session.generation != accepted.snapshot.generation ||
+                current.session.activeChapter.pages.size != accepted.snapshot.activeChapter.pages.size
             val firstStablePageList = current.session.activeChapter.pages.isEmpty() &&
-                reader.snapshot.activeChapter.pages.isNotEmpty()
-            val pageCount = reader.snapshot.activeChapter.pages.size
+                accepted.snapshot.activeChapter.pages.isNotEmpty()
+            val pageCount = accepted.snapshot.activeChapter.pages.size
             val currentPage = if (chapterChanged || firstStablePageList) {
-                resolveInitialPage(reader.context.initialPage, pageCount)
+                resolveInitialPage(accepted.context.initialPage, pageCount)
             } else {
                 current.currentPage.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
             }
             current.copy(
-                context = reader.context.copy(
-                    chapterIndex = current.chapterRefs.indexOfFirst { it.id == reader.context.chapterId }
-                        .takeIf { it >= 0 } ?: reader.context.chapterIndex,
+                context = accepted.context.copy(
+                    chapterIndex = current.chapterRefs.indexOfFirst { it.id == accepted.context.chapterId }
+                        .takeIf { it >= 0 } ?: accepted.context.chapterIndex,
                 ),
-                session = reader.snapshot,
+                session = accepted.snapshot,
                 currentPage = currentPage,
                 resumePageUnavailable = if (chapterChanged || firstStablePageList) {
-                    invalidSavedPage(reader.context.initialPage, pageCount)
+                    invalidSavedPage(accepted.context.initialPage, pageCount)
                 } else {
                     current.resumePageUnavailable
                 },
@@ -270,7 +678,7 @@ class ReaderScreenModel(
                 forcedSinglePages = if (newIdentity) emptySet() else current.forcedSinglePages,
                 pairingLoad = if (newIdentity) {
                     if (pairingCoordinator != null &&
-                        !reader.context.isTemporaryReaderFile()
+                        !accepted.context.isTemporaryReaderFile()
                     ) {
                         PairingLoad.LOADING
                     } else {
@@ -281,133 +689,85 @@ class ReaderScreenModel(
                 },
                 pairingRevision = if (newIdentity) 0L else current.pairingRevision,
                 pairingSessionOnly = if (newIdentity) {
-                    pairingCoordinator != null && reader.context.isTemporaryReaderFile()
+                    pairingCoordinator != null && accepted.context.isTemporaryReaderFile()
                 } else {
                     current.pairingSessionOnly
                 },
                 pairingSaving = if (newIdentity) false else current.pairingSaving,
                 pairingNotice = if (newIdentity) null else current.pairingNotice,
                 spreadPages = if (newIdentity) emptySet() else current.spreadPages,
-                matchedPairs = if (newIdentity) emptySet() else current.matchedPairs,
                 virtualPages = if (newIdentity) null else current.virtualPages,
             )
         }
         if (newIdentity) {
-            layoutProgressAnchor = null
+            pendingResumePresentedViewport = null
+            webtoonRestoreAnchor = null
             pairingEpoch++
             pairingRequest = null
         }
-        beginPairingRestore(reader)
+        ensureDualSession()
+        beginPairingRestore(accepted)
     }
 
-    private fun beginPairingRestore(reader: DesktopReaderSessionState) {
-        val coordinator = pairingCoordinator ?: return
+    private fun beginPairingRestore(reader: DesktopReaderSessionState) = synchronized(productionRuntimeLifecycleLock) {
+        val coordinator = pairingCoordinator ?: return@synchronized
+        val owner = ensureDualSession() ?: return@synchronized
         val context = reader.context
         if (context.isTemporaryReaderFile()) {
-            _state.update { state ->
-                state.copy(pairingLoad = PairingLoad.READY, pairingSessionOnly = true)
-                    .let {
-                        if (it.pairingNotice ==
-                            PairingNotice.SESSION_ONLY
-                        ) {
-                            it
-                        } else {
-                            it.withPairingNotice(PairingNotice.SESSION_ONLY)
-                        }
-                    }
-            }
-            return
+            publishDualSession(owner)
+            return@synchronized
         }
-        if (context.chapterId <= 0L || context.mangaId <= 0L) {
+        if (context.chapterId <= 0 || context.mangaId <= 0) {
             _state.update { it.copy(pairingLoad = PairingLoad.ERROR) }
-            return
+            return@synchronized
         }
-        val pageCount = reader.snapshot.activeChapter.pages.size
-        if (pageCount == 0) return
-        val request =
-            PairingRequest(context.chapterId, context.mangaId, reader.snapshot.generation, pageCount, pairingEpoch)
-        if (pairingRequest == request) return
-        pairingRequest = request
-        _state.update { it.copy(pairingLoad = PairingLoad.LOADING) }
+        if (owner.pairingState.status !in setOf(
+                mihon.domain.reader.ReaderPairingPersistenceStatus.WAITING_FOR_RESTORE,
+                mihon.domain.reader.ReaderPairingPersistenceStatus.RESTORE_FAILED,
+                mihon.domain.reader.ReaderPairingPersistenceStatus.CONFLICT,
+                mihon.domain.reader.ReaderPairingPersistenceStatus.DEFAULT_UNVERIFIED,
+            )
+        ) {
+            return@synchronized
+        }
+        val request = owner.beginPairingRestore() ?: return@synchronized
+        publishDualSession(owner)
         coordinator.submit(context.chapterId) {
-            runCatching { load(context.chapterId, context.mangaId) }
-                .onSuccess { snapshot ->
-                    if (isCurrentPairingRequest(request)) {
-                        val record = snapshot.record
-                        val valid = record?.isValidFor(pageCount) != false
-                        changePresentation { state ->
-                            if (!isCurrentPairingRequest(request) ||
-                                !state.matchesPairingRequest(request)
-                            ) {
-                                return@changePresentation state
-                            }
-                            state.copy(
-                                forcedSinglePages = if (valid) record?.forcedSinglePages.orEmpty() else emptySet(),
-                                pairingRevision = snapshot.revision,
-                                pairingLoad = PairingLoad.READY,
-                                pairingSaving = false,
-                            ).let { updated ->
-                                if (valid) updated else updated.withPairingNotice(PairingNotice.INVALID)
-                            }
+            runCatching { load(context.chapterId, request.mangaId) }.fold(
+                onSuccess = { snapshot ->
+                    synchronized(productionRuntimeLifecycleLock) {
+                        if (!disposeRequested && dualSession === owner && owner.acceptPairingRestore(
+                                request,
+                                snapshot,
+                            )
+                        ) {
+                            publishDualSession(owner)
                         }
                     }
-                }
-                .onFailure {
-                    if (isCurrentPairingRequest(request)) {
-                        _state.update { state ->
-                            if (isCurrentPairingRequest(request) && state.matchesPairingRequest(request)) {
-                                state.copy(pairingLoad = PairingLoad.ERROR)
-                            } else {
-                                state
-                            }
+                },
+                onFailure = {
+                    synchronized(productionRuntimeLifecycleLock) {
+                        if (!disposeRequested && dualSession === owner &&
+                            owner.failPairingRestore(request)
+                        ) {
+                            publishDualSession(owner)
                         }
                     }
-                }
+                },
+            )
         }
     }
 
-    fun retryPairingRestore() {
+    fun retryPairingRestore() = synchronized(productionRuntimeLifecycleLock) {
         val current = _state.value
-        if (current.pairingLoad != PairingLoad.ERROR && current.pairingLoad != PairingLoad.DEFAULT_UNVERIFIED) return
-        pairingEpoch++
-        pairingRequest = null
-        _state.update { it.copy(pairingLoad = PairingLoad.LOADING) }
-        beginPairingRestore(DesktopReaderSessionState(current.context, current.session))
-    }
-
-    fun useDefaultPairingThisSession() {
-        _state.update { state ->
-            if (state.pairingLoad ==
-                PairingLoad.ERROR
-            ) {
-                state.copy(pairingLoad = PairingLoad.DEFAULT_UNVERIFIED)
-            } else {
-                state
-            }
+        if (current.pairingLoad == PairingLoad.ERROR || current.pairingLoad == PairingLoad.DEFAULT_UNVERIFIED) {
+            beginPairingRestore(DesktopReaderSessionState(current.context, current.session))
         }
     }
 
-    private fun isCurrentPairingRequest(request: PairingRequest): Boolean =
-        pairingRequest == request &&
-            isCurrentPairingSession(
-                request.chapterId,
-                request.mangaId,
-                request.generation,
-                request.pageCount,
-                request.epoch,
-            ) &&
-            _state.value.matchesPairingRequest(request)
-
-    private fun isCurrentPairingSession(
-        chapterId: Long,
-        mangaId: Long,
-        generation: Long,
-        pageCount: Int,
-        epoch: Long,
-    ): Boolean =
-        !disposeRequested && pairingEpoch == epoch && _state.value.context.chapterId == chapterId &&
-            _state.value.context.mangaId == mangaId &&
-            _state.value.session.generation == generation && _state.value.session.activeChapter.pages.size == pageCount
+    fun useDefaultPairingThisSession() = synchronized(productionRuntimeLifecycleLock) {
+        dualSession?.let { if (it.useDefaultPairingForSession()) publishDualSession(it) }
+    }
 
     fun activateChapter(context: DesktopReaderChapterContext) {
         catalogActivationEpoch++
@@ -424,20 +784,25 @@ class ReaderScreenModel(
     fun confirmSyncResumePosition(page: Int): Boolean {
         val current = _state.value
         if (!current.resumePageUnavailable || page !in current.session.activeChapter.pages.indices) return false
-        layoutProgressAnchor = null
+        webtoonRestoreAnchor = null
         _state.update { it.copy(resumePageUnavailable = false) }
         lastSettledViewport = null
         val id = current.session.activeChapter.pages[page].id
-        if (current.currentPage == page && id in current.visiblePageIds) {
-            lastSettledViewport = SettledViewportIdentity(current.session.generation, current.visiblePageIds, id)
-            onViewportSettled(current.visiblePageIds, id)
+        val presented = pendingResumePresentedViewport
+        pendingResumePresentedViewport = null
+        if (current.currentPage == page && presented?.generation == current.session.generation &&
+            presented.pageIds.isNotEmpty()
+        ) {
+            val actualAnchor = id.takeIf { it in presented.pageIds } ?: presented.activePageId
+            lastSettledViewport = SettledViewportIdentity(current.session.generation, presented.pageIds, actualAnchor)
+            onViewportSettled(presented.pageIds, actualAnchor)
         }
         return true
     }
 
-    fun goToPage(page: Int) {
+    fun goToPage(page: Int) = synchronized(productionRuntimeLifecycleLock) {
         confirmSyncResumePosition(page)
-        layoutProgressAnchor = null
+        webtoonRestoreAnchor = null
         _state.update { state ->
             val max = (state.session.activeChapter.pages.size - 1).coerceAtLeast(0)
             state.copy(
@@ -447,10 +812,35 @@ class ReaderScreenModel(
                 webtoonScrollAnchor = null,
             )
         }
+        ensureDualSession()?.let { owner ->
+            _state.value.session.activeChapter.pages.getOrNull(_state.value.currentPage)?.id?.let(owner::goToPage)
+            publishDualSession(owner)
+        }
+    }
+
+    /** Adjacent user turns follow actual shared presentation history, including missing partners. */
+    internal fun navigateDualPage(forward: Boolean): Boolean = synchronized(productionRuntimeLifecycleLock) {
+        if (!_state.value.dualPageMode ||
+            _state.value.currentDisplayUnitId?.slots?.any { it.transitionDirection != null } == true
+        ) {
+            return@synchronized false
+        }
+        val owner = ensureDualSession() ?: return@synchronized false
+        if (!owner.navigate(forward)) return@synchronized false
+        confirmSyncResumePosition(owner.location!!.pageId.sourcePageIndex)
+        _state.update {
+            it.copy(
+                currentPage = owner.location!!.pageId.sourcePageIndex,
+                currentDisplayUnitId = null,
+                visiblePageIds = emptySet(),
+            )
+        }
+        publishDualSession(owner)
+        true
     }
 
     internal fun selectDisplayUnit(displayUnitId: DisplayUnitId) {
-        layoutProgressAnchor = null
+        webtoonRestoreAnchor = null
         _state.update { state ->
             state.copy(
                 currentDisplayUnitId = displayUnitId,
@@ -460,19 +850,165 @@ class ReaderScreenModel(
         }
     }
 
-    internal fun settleSinglePage(visiblePages: VisiblePageSet) {
-        settleVisiblePages(visiblePages, webtoonScrollAnchor = null)
-    }
-
     internal fun settleWebtoon(update: WebtoonViewportUpdate) {
-        settleVisiblePages(update.visiblePages, update.anchor)
+        settleWebtoonVisiblePages(update.visiblePages, update.anchor)
     }
 
-    internal fun settleDualPage(visiblePages: VisiblePageSet) {
-        settleVisiblePages(visiblePages, webtoonScrollAnchor = null)
+    internal fun captureDualFact(pageId: ReaderPageId): mihon.domain.reader.ReaderDualPageFactRequest? =
+        synchronized(productionRuntimeLifecycleLock) {
+            ensureDualSession()?.takeIf { pageId in it.identity.pageIds }?.requestFact(pageId)
+        }
+
+    internal fun acceptDualFact(
+        request: mihon.domain.reader.ReaderDualPageFactRequest,
+        fact: mihon.domain.reader.ReaderPageFact,
+    ): Boolean = synchronized(productionRuntimeLifecycleLock) {
+        val owner = ensureDualSession() ?: return@synchronized false
+        (owner.acceptOrientedFact(request, fact) != null).also { if (it) publishDualSession(owner) }
     }
 
-    private fun settleVisiblePages(
+    /** Called at actual selected presentation start, before its image leases begin. */
+    internal fun beginPagerViewport(
+        visiblePages: VisiblePageSet,
+        userNavigation: Boolean,
+        logicalLocation: mihon.domain.reader.ReaderDualPageLocationIntent? = _state.value.dualPageLocation,
+        selected: Boolean = true,
+    ): mihon.domain.reader.ReaderDualPageViewportTicket? = synchronized(productionRuntimeLifecycleLock) {
+        val owner = ensureDualSession() ?: return@synchronized null
+        val currentUserNavigation = userNavigation && logicalLocation == owner.location
+        if (visiblePages.transitionDirection != null) {
+            // An outgoing native transition cannot replace a newer logical-page navigation.
+            if (!currentUserNavigation && _state.value.currentDisplayUnitId != visiblePages.displayUnitId) {
+                return@synchronized null
+            }
+            _state.update { it.copy(currentDisplayUnitId = visiblePages.displayUnitId, visiblePageIds = emptySet()) }
+            return@synchronized null
+        }
+        if (currentUserNavigation && owner.location?.pageId !in visiblePages.pageIds) {
+            val anchor = visiblePages.activePageId ?: return@synchronized null
+            val current = owner.location?.pageId ?: return@synchronized null
+            if (!owner.navigate(anchor.sourcePageIndex > current.sourcePageIndex)) return@synchronized null
+            _state.update {
+                it.copy(
+                    currentPage = owner.location!!.pageId.sourcePageIndex,
+                    currentDisplayUnitId = null,
+                    visiblePageIds = emptySet(),
+                )
+            }
+            publishDualSession(owner)
+        }
+        if (!selected) {
+            val anchor = visiblePages.activePageId ?: return@synchronized null
+            return@synchronized owner.captureViewport(anchor, preparingPageIds = emptySet())
+        }
+        if (owner.targetUnit?.pageIds?.toSet() != visiblePages.pageIds) return@synchronized null
+        _state.update {
+            it.copy(
+                currentPage = owner.location!!.pageId.sourcePageIndex,
+                currentDisplayUnitId = visiblePages.displayUnitId,
+                visiblePageIds = visiblePages.pageIds,
+            )
+        }
+        // Pixel readiness gates progress, while selected normal image work starts immediately.
+        val scheduled = SettledViewportIdentity(
+            owner.identity.generation,
+            visiblePages.pageIds,
+            owner.location!!.pageId,
+        )
+        if (lastLayoutScheduledViewport != scheduled) {
+            lastLayoutScheduledViewport = scheduled
+            onViewportLayoutSettled(visiblePages.pageIds, owner.location!!.pageId)
+        }
+        owner.captureViewport(preparingPageIds = emptySet())
+    }
+
+    internal fun prepareDualViewportPage(ticket: mihon.domain.reader.ReaderDualPageViewportTicket, page: ReaderPageId) =
+        synchronized(productionRuntimeLifecycleLock) { dualSession?.preparePage(ticket, page) == true }
+
+    internal fun isDualViewportPageLocked(
+        ticket: mihon.domain.reader.ReaderDualPageViewportTicket,
+        page: ReaderPageId,
+    ) =
+        synchronized(productionRuntimeLifecycleLock) { page in dualSession?.frame(ticket)?.lockedPageIds.orEmpty() }
+
+    internal fun isCurrentDualContent(page: mihon.domain.reader.session.ReaderPageSession): Boolean =
+        synchronized(productionRuntimeLifecycleLock) {
+            val current = _state.value.session.activeChapter.pages.getOrNull(page.id.sourcePageIndex)
+            current?.id == page.id && current.attemptGeneration == page.attemptGeneration &&
+                current.encodedPageRef == page.encodedPageRef && current.url == page.url &&
+                current.imageUrl == page.imageUrl
+        }
+
+    internal fun prepareDecodedDualViewportPage(
+        ticket: mihon.domain.reader.ReaderDualPageViewportTicket,
+        page: mihon.domain.reader.session.ReaderPageSession,
+        width: Int,
+        height: Int,
+        sideHint: mihon.domain.reader.ReaderPageSideHint = mihon.domain.reader.ReaderPageSideHint.UNKNOWN,
+    ): Boolean = synchronized(productionRuntimeLifecycleLock) {
+        if (!isCurrentDualContent(page)) return@synchronized false
+        val owner = dualSession ?: return@synchronized false
+        if (owner.frame(ticket) == null) return@synchronized false
+        val revision = owner.layoutRevision
+        if (!owner.acceptDecodedFact(ticket, page.id, width, height, sideHint)) return@synchronized false
+        if (revision != owner.layoutRevision) publishDualSession(owner)
+        owner.preparePage(ticket, page.id)
+    }
+
+    internal fun isCurrentDualViewport(ticket: mihon.domain.reader.ReaderDualPageViewportTicket) =
+        synchronized(productionRuntimeLifecycleLock) { dualSession?.frame(ticket) != null }
+
+    internal fun drawDualViewportPage(ticket: mihon.domain.reader.ReaderDualPageViewportTicket, page: ReaderPageId) =
+        synchronized(productionRuntimeLifecycleLock) { dualSession?.reportDrawn(ticket, setOf(page)) == true }
+
+    internal fun releaseDualViewport(ticket: mihon.domain.reader.ReaderDualPageViewportTicket) {
+        synchronized(productionRuntimeLifecycleLock) {
+            if (dualSession?.releaseViewport(ticket) == true) {
+                deferredContentState?.let(::acceptSessionState)
+            }
+        }
+    }
+
+    internal fun settleDualPage(
+        visiblePages: VisiblePageSet,
+        ticket: mihon.domain.reader.ReaderDualPageViewportTicket,
+    ) = synchronized(productionRuntimeLifecycleLock) {
+        val owner = ensureDualSession() ?: return@synchronized
+        val current = _state.value
+        val event = mihon.domain.reader.ReaderDualPageSettlement(
+            ticket.identity, ticket.layoutRevision,
+            ticket.locationSequence, ticket.unitId, visiblePages.pageIds, true,
+            mihon.domain.reader.ReaderDualPageSettlementReason.USER_NAVIGATION, ticket.locationSequence, ticket,
+        )
+        owner.settle(
+            event,
+            current.context.wasRead,
+            "desktop:${current.context.chapterId}",
+        ) ?: return@synchronized
+        val presented = owner.frame(ticket)?.drawnPageIds ?: return@synchronized
+        val target = owner.location?.pageId ?: return@synchronized
+        _state.update {
+            it.copy(
+                currentPage = target.sourcePageIndex,
+                currentDisplayUnitId = visiblePages.displayUnitId,
+                visiblePageIds = presented,
+            )
+        }
+        // The logical target may still be loading while its partner already painted.
+        // Scheduling requires an actual visible anchor; source navigation retains the target.
+        val actualAnchor = target.takeIf { it in presented } ?: presented.minBy { it.sourcePageIndex }
+        if (current.resumePageUnavailable) {
+            pendingResumePresentedViewport = SettledViewportIdentity(
+                current.session.generation,
+                presented,
+                actualAnchor,
+            )
+        } else {
+            onViewportSettled(presented, actualAnchor)
+        }
+    }
+
+    private fun settleWebtoonVisiblePages(
         visiblePages: VisiblePageSet,
         webtoonScrollAnchor: mihon.desktop.ui.reader.presentation.WebtoonScrollAnchor?,
     ) {
@@ -487,13 +1023,13 @@ class ReaderScreenModel(
             }
             return
         }
-        val layoutOnly = layoutProgressAnchor?.let { it in visiblePages.pageIds } == true
+        val layoutOnly = webtoonRestoreAnchor?.let { it in visiblePages.pageIds } == true
         val activePageId = visiblePages.activePageId ?: visiblePages.pageIds.maxByOrNull(ReaderPageId::sourcePageIndex)
             ?: return
         val current = _state.value
         val pages = current.session.activeChapter.pages
         if (activePageId.chapterId != current.session.activeChapter.id || pages.none { it.id == activePageId }) return
-        layoutProgressAnchor = activePageId.takeIf { layoutOnly }
+        webtoonRestoreAnchor = activePageId.takeIf { layoutOnly }
         _state.update { state ->
             state.copy(
                 currentPage = activePageId.sourcePageIndex,
@@ -508,6 +1044,7 @@ class ReaderScreenModel(
             activePageId = activePageId,
         )
         if (layoutOnly || current.resumePageUnavailable) {
+            if (current.resumePageUnavailable) pendingResumePresentedViewport = identity
             if (lastSettledViewport != identity && lastLayoutScheduledViewport != identity) {
                 lastLayoutScheduledViewport = identity
                 onViewportLayoutSettled(visiblePages.pageIds, activePageId)
@@ -519,6 +1056,23 @@ class ReaderScreenModel(
     }
 
     fun retryPage(pageId: ReaderPageId) {
+        synchronized(productionRuntimeLifecycleLock) {
+            spreadPublisherJob?.cancel()
+            spreadPublisherJob = null
+            failedSpreadReads.clear()
+            ensureDualSession()?.let {
+                val changedVisible = it.reloadContent(pageId)
+                if (it.retryFacts()) publishDualSession(it)
+                if (changedVisible) {
+                    _state.update { state ->
+                        state.copy(
+                            dualGeometryRevision =
+                            state.dualGeometryRevision + 1,
+                        )
+                    }
+                }
+            }
+        }
         onPageRetry(pageId)
     }
 
@@ -526,11 +1080,12 @@ class ReaderScreenModel(
         val state = _state.value
         val chapter = state.session.activeChapter
         if (chapter.loadState is ReaderChapterLoadState.Error || chapter.pages.isEmpty()) {
+            synchronized(productionRuntimeLifecycleLock) { dualSession?.retryFacts() }
             onChapterRetry()
             return
         }
         val page = chapter.pages.getOrNull(state.currentPage) ?: return
-        onPageRetry(page.id)
+        retryPage(page.id)
     }
 
     fun showChapterBoundary(
@@ -581,7 +1136,11 @@ class ReaderScreenModel(
             cancelPendingLayout()
             return
         }
-        viewportSize = width to height
+        val next = width to height
+        if (viewportSize == next) return
+        val geometryChanged = viewportSize != null
+        viewportSize = next
+        if (geometryChanged) invalidateDualGeometry()
         val current = _state.value
         if (!current.automaticLayout) return
         val target = AdaptiveReaderLayout.dualPage(width, height, current.dualPageMode) ?: return
@@ -602,6 +1161,20 @@ class ReaderScreenModel(
         }
     }
 
+    private fun invalidateDualGeometry() = synchronized(productionRuntimeLifecycleLock) {
+        if (!_state.value.dualPageMode) return@synchronized
+        val owner = dualSession ?: return@synchronized
+        owner.invalidateViewport()
+        _state.update {
+            it.copy(
+                dualGeometryRevision = it.dualGeometryRevision + 1,
+                currentDisplayUnitId = null,
+                visiblePageIds = emptySet(),
+            )
+        }
+        publishDualSession(owner)
+    }
+
     private fun cancelPendingLayout() {
         pendingLayoutJob?.cancel()
         pendingLayoutJob = null
@@ -614,106 +1187,79 @@ class ReaderScreenModel(
     }
 
     /** Resolve display position independently of whether a layout-only settle may report progress. */
-    private fun changePresentation(preserveProgress: Boolean = true, transform: (ReaderState) -> ReaderState) {
-        _state.update { current ->
-            val changed = transform(current)
-            if (changed == current) return@update current
-            val currentPage = if (changed.dualPageMode && changed.session.activeChapter.pages.isNotEmpty()) {
-                val presentation = changed.dualPresentationSnapshot()
-                val index = presentation.dualDisplayUnitIndexForSourcePage(changed.currentPage)
-                if (index >= 0) presentation.firstDualPageIndex(index) else changed.currentPage
-            } else {
-                changed.currentPage
+    private fun changePresentation(preserveProgress: Boolean = true, transform: (ReaderState) -> ReaderState) =
+        synchronized(productionRuntimeLifecycleLock) {
+            _state.update { current ->
+                val changed = transform(current)
+                if (changed == current) return@update current
+                webtoonRestoreAnchor =
+                    changed.session.activeChapter.pages.getOrNull(changed.currentPage)?.id.takeIf {
+                        preserveProgress &&
+                            changed.readingMode == ReadingMode.WEBTOON
+                    }
+                changed.copy(currentDisplayUnitId = null, visiblePageIds = emptySet(), webtoonScrollAnchor = null)
             }
-            layoutProgressAnchor =
-                changed.session.activeChapter.pages.getOrNull(currentPage)?.id.takeIf { preserveProgress }
-            changed.copy(
-                currentPage = currentPage,
-                currentDisplayUnitId = null,
-                visiblePageIds = emptySet(),
-                webtoonScrollAnchor = null,
-            )
+            ensureDualSession()
         }
-    }
 
-    fun adjustSpread() {
-        val current = _state.value
-        if (current.pairingSaving || current.pairingLoad != PairingLoad.READY) return
-        val adjustment = adjustedSpread(current)
-        if (adjustment.forcedSinglePages == current.forcedSinglePages) return
-        val coordinator = pairingCoordinator
-        val context = current.context
-        if (coordinator != null && !current.pairingSessionOnly && context.chapterId > 0L && context.mangaId > 0L) {
-            val epoch = pairingEpoch
-            val generation = current.session.generation
-            val pageCount = current.session.activeChapter.pages.size
-            _state.update { it.copy(pairingSaving = true) }
-            coordinator.submit(context.chapterId) {
-                runCatching {
-                    replace(
-                        context.chapterId,
-                        context.mangaId,
-                        current.pairingRevision,
-                        pageCount,
-                        adjustment.forcedSinglePages,
-                    )
-                }.onSuccess { snapshot ->
-                    if (isCurrentPairingSession(context.chapterId, context.mangaId, generation, pageCount, epoch)) {
-                        changePresentation { state ->
-                            if (!isCurrentPairingSession(
-                                    context.chapterId,
-                                    context.mangaId,
-                                    generation,
-                                    pageCount,
-                                    epoch,
-                                ) ||
-                                state.context.chapterId != context.chapterId ||
-                                state.session.generation != generation ||
-                                state.context.mangaId != context.mangaId ||
-                                state.session.activeChapter.pages.size != pageCount
-                            ) {
-                                return@changePresentation state
-                            }
-                            state.copy(
-                                forcedSinglePages = adjustment.forcedSinglePages,
-                                currentPage = adjustment.currentPage,
-                                pairingRevision = snapshot.revision,
-                                pairingSaving = false,
-                            )
-                        }
-                    }
-                }.onFailure { failure ->
-                    if (isCurrentPairingSession(context.chapterId, context.mangaId, generation, pageCount, epoch)) {
-                        _state.update { state ->
-                            if (isCurrentPairingSession(
-                                    context.chapterId,
-                                    context.mangaId,
-                                    generation,
-                                    pageCount,
-                                    epoch,
-                                ) &&
-                                state.context.chapterId == context.chapterId &&
-                                state.session.generation == generation &&
-                                state.context.mangaId == context.mangaId &&
-                                state.session.activeChapter.pages.size == pageCount
-                            ) {
-                                state.copy(pairingSaving = false).withPairingNotice(PairingNotice.SAVE_FAILED)
-                            } else {
-                                state
-                            }
-                        }
-                        if (failure is StaleChapterPairingException) {
-                            pairingEpoch++
-                            pairingRequest = null
-                            beginPairingRestore(DesktopReaderSessionState(_state.value.context, _state.value.session))
-                        }
-                    }
-                }
+    fun adjustSpread() = synchronized(productionRuntimeLifecycleLock) {
+        val owner = ensureDualSession() ?: return@synchronized
+        val previousLocation = owner.location
+        val request = owner.adjustPairing()
+        publishDualSession(owner)
+        if (owner.location != previousLocation) {
+            _state.update {
+                it.copy(
+                    currentPage = owner.location!!.pageId.sourcePageIndex,
+                    currentDisplayUnitId = null,
+                    visiblePageIds = emptySet(),
+                )
             }
-            return
         }
-        changePresentation { current ->
-            current.copy(forcedSinglePages = adjustment.forcedSinglePages, currentPage = adjustment.currentPage)
+        if (request == null) return@synchronized
+        val coordinator = pairingCoordinator ?: return@synchronized
+        val context = _state.value.context
+        coordinator.submit(context.chapterId) {
+            runCatching {
+                replaceLayout(
+                    context.chapterId,
+                    request.mangaId,
+                    request.expectedRevision,
+                    request.identity.pageIds.size,
+                    request.adjustment,
+                )
+            }.fold(
+                onSuccess = { snapshot ->
+                    synchronized(productionRuntimeLifecycleLock) {
+                        if (!disposeRequested && dualSession === owner && owner.acceptPairingSave(request, snapshot)) {
+                            publishDualSession(owner)
+                            _state.update {
+                                it.copy(
+                                    currentPage =
+                                    owner.location?.pageId?.sourcePageIndex ?: it.currentPage,
+                                )
+                            }
+                        }
+                    }
+                },
+                onFailure = { failure ->
+                    synchronized(productionRuntimeLifecycleLock) {
+                        if (!disposeRequested && dualSession === owner &&
+                            owner.failPairingSave(request, failure is StaleChapterPairingException)
+                        ) {
+                            publishDualSession(owner)
+                            if (failure is StaleChapterPairingException) {
+                                beginPairingRestore(
+                                    DesktopReaderSessionState(
+                                        _state.value.context,
+                                        _state.value.session,
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                },
+            )
         }
     }
 
@@ -791,7 +1337,7 @@ class ReaderScreenModel(
     }
 
     fun setAutoSpreadMatching(on: Boolean, prefs: ReaderPreferences? = null) {
-        _state.update { it.copy(autoSpreadMatching = on) }
+        changePresentation { it.copy(autoSpreadMatching = on) }
         prefs?.isAutoSpreadMatching = on
     }
 
@@ -799,21 +1345,13 @@ class ReaderScreenModel(
         if (_state.value.dualPageMode) {
             changePresentation(transform = transform)
         } else {
-            // Single-page metadata updates must retain any pending layout progress protection.
+            // Metadata updates outside dual mode retain the Webtoon restoration protection.
             _state.update(transform)
         }
     }
 
     fun setSpreadPages(pages: Set<Int>) {
         changeDualPresentation { it.copy(spreadPages = pages) }
-    }
-
-    fun setForcedSinglePages(pages: Set<Int>) {
-        changeDualPresentation { it.copy(forcedSinglePages = pages) }
-    }
-
-    fun setMatchedPairs(pairs: Set<Pair<Int, Int>>) {
-        changeDualPresentation { it.copy(matchedPairs = pairs) }
     }
 
     fun setVirtualPages(pages: List<mihon.desktop.reader.VirtualPage>?) {
@@ -833,6 +1371,7 @@ class ReaderScreenModel(
     }
 
     fun setCropBordersPager(on: Boolean, prefs: ReaderPreferences? = null) {
+        if (_state.value.cropBordersPager != on) invalidateDualGeometry()
         _state.update { it.copy(cropBordersPager = on) }
         prefs?.cropBordersPager = on
     }
@@ -858,6 +1397,7 @@ class ReaderScreenModel(
     }
 
     fun setScaleType(type: ScaleType, prefs: ReaderPreferences? = null) {
+        if (_state.value.scaleType != type) invalidateDualGeometry()
         _state.update { it.copy(scaleType = type) }
         prefs?.scaleType = type
     }
@@ -927,6 +1467,13 @@ class ReaderScreenModel(
         cancelPendingLayout()
         val closeRuntime = synchronized(productionRuntimeLifecycleLock) {
             disposeRequested = true
+            dualSession?.close()
+            factPublisherJob?.cancel()
+            spreadPublisherJob?.cancel()
+            failedSpreadReads.clear()
+            pendingHeaderTickets.clear()
+            headerJobs.values.forEach(Job::cancel)
+            headerJobs.clear()
             markProductionRuntimeClosedIfReady()
         }
         if (closeRuntime) closeProductionRuntime()

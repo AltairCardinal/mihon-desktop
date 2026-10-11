@@ -3,16 +3,30 @@ package mihon.domain.reader
 /** Physical viewport slot for a portrait page that is alone in a dual-page display unit. */
 enum class ReaderPortraitSingleSlot { FULL, LEFT, RIGHT }
 
-/** Pairing determines the units; this rule only places an already independent portrait page. */
+/** Physical placement consumes the shared structural reason, not a platform's pager index. */
 fun portraitSinglePageSlot(
     direction: ReaderDirection,
-    groupIndex: Int,
-    groupCount: Int,
+    reason: ReaderDualPageSingleReason,
 ): ReaderPortraitSingleSlot {
-    require(direction != ReaderDirection.VERTICAL) { "A dual-page slot requires a horizontal direction" }
-    require(groupCount > 0 && groupIndex in 0 until groupCount)
-    if (groupCount == 1) return ReaderPortraitSingleSlot.FULL
-    val isTrailing = groupIndex == groupCount - 1
-    val onRight = (direction == ReaderDirection.RTL) == isTrailing
-    return if (onRight) ReaderPortraitSingleSlot.RIGHT else ReaderPortraitSingleSlot.LEFT
+    require(direction != ReaderDirection.VERTICAL)
+    val trailing = when (reason) {
+        ReaderDualPageSingleReason.FIRST_PAGE,
+        ReaderDualPageSingleReason.OPENING,
+        ReaderDualPageSingleReason.MANUAL_BOUNDARY,
+        ReaderDualPageSingleReason.MATCH_BOUNDARY,
+        -> false
+        ReaderDualPageSingleReason.CHAPTER_TAIL,
+        ReaderDualPageSingleReason.REMAINDER_BEFORE_SPREAD,
+        -> true
+        ReaderDualPageSingleReason.ONLY_PAGE,
+        ReaderDualPageSingleReason.SPREAD,
+        ReaderDualPageSingleReason.AMBIGUOUS,
+        ReaderDualPageSingleReason.UNRESOLVED,
+        -> return ReaderPortraitSingleSlot.FULL
+    }
+    return if ((direction == ReaderDirection.RTL) == trailing) {
+        ReaderPortraitSingleSlot.RIGHT
+    } else {
+        ReaderPortraitSingleSlot.LEFT
+    }
 }

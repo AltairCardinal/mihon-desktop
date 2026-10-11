@@ -12,12 +12,8 @@ import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
-import io.mockk.mockk
 import io.mockk.every
-import java.io.File
-import java.util.concurrent.CopyOnWriteArrayList
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
+import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.TestScope
@@ -46,6 +42,10 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
+import java.io.File
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 @OptIn(ExperimentalCoroutinesApi::class, ExperimentalComposeUiApi::class)
 class ReaderCriticalPathProductionTest {
@@ -220,7 +220,10 @@ class ReaderCriticalPathProductionTest {
                 }
             }
             assertTrue(firstPagePresented, "$route did not present a first page within the bounded frame pump")
-            val firstFrameEvents = controller.snapshot()
+            val observedFirstFrame = controller.snapshot()
+            val firstFrameEvents = observedFirstFrame.take(
+                observedFirstFrame.indexOfFirst { it.type == ReaderIoEventType.FIRST_PAGE_PRESENTED.name } + 1,
+            )
             val requiredGates = setOf(ReaderIoGatePoint.CACHE_SCAN)
             var gatePumpAttempts = 0
             while (requiredGates.any { !fixture.gate(it).isEntered } && gatePumpAttempts < 100) {
@@ -264,12 +267,23 @@ class ReaderCriticalPathProductionTest {
         assertEquals(1, trace.currentPageDecodeCount)
         assertEquals(1, types.count { it == ReaderIoEventType.DECODE.name })
         assertEquals(1, types.count { it == ReaderIoEventType.OPEN_PAGE.name })
+        assertTrue(
+            types.count {
+                it == "HEADER_READ"
+            } <= 1,
+            "The bounded current-page prefix stays in first-frame cost: $events",
+        )
+        assertTrue(
+            events.filter { it.type == "HEADER_READ" }.all {
+                it.byteLimit == mihon.domain.reader.ReaderDualPageFactLimits.MAX_HEADER_BYTES.toInt()
+            },
+        )
         assertTrue(ReaderIoEventType.CACHE_RECONCILE.name !in types)
         assertTrue(ReaderIoEventType.ADJACENT_IO.name !in types)
         assertTrue(
             events.none { event ->
                 event.pageIndex != null && event.pageIndex != 0 &&
-                    event.type in setOf(ReaderIoEventType.OPEN_PAGE.name, ReaderIoEventType.DECODE.name)
+                    event.type in setOf(ReaderIoEventType.OPEN_PAGE.name, ReaderIoEventType.DECODE.name, "HEADER_READ")
             },
         )
         assertEquals(1, events.single { it.type == ReaderIoEventType.FIRST_PAGE_PRESENTED.name }.generation)

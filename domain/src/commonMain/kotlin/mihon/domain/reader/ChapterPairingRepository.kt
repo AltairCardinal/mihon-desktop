@@ -1,20 +1,35 @@
 package mihon.domain.reader
 
+enum class ReaderChapterOpeningMode { AUTO, FIRST_SINGLE, FIRST_PAIR }
+
 /** Device-local manual layout for one stable database chapter. Ordinals are zero based. */
 data class ChapterPairingRecord(
     val formatVersion: Long,
     val pageCount: Int,
     val forcedSinglePages: Set<Int>,
     val corrupt: Boolean = false,
+    val openingMode: ReaderChapterOpeningMode = ReaderChapterOpeningMode.AUTO,
+    val manualPairStarts: Set<Int> = emptySet(),
 ) {
     fun isValidFor(currentPageCount: Int): Boolean =
-        !corrupt && formatVersion == FORMAT_VERSION &&
-            pageCount == currentPageCount &&
-            forcedSinglePages.isNotEmpty() &&
-            forcedSinglePages.all { it in 1 until currentPageCount }
+        currentPageCount > 0 && !corrupt && formatVersion in 1L..FORMAT_VERSION && pageCount == currentPageCount &&
+            (formatVersion != 1L || (openingMode == ReaderChapterOpeningMode.AUTO && manualPairStarts.isEmpty())) &&
+            hasManualChoice() &&
+            forcedSinglePages.all { it in 1 until currentPageCount } &&
+            openingCompatible() &&
+            manualPairStarts.all {
+                it in 1 until currentPageCount - 1 && it !in forcedSinglePages &&
+                    it + 1 !in forcedSinglePages && it + 1 !in manualPairStarts
+            }
+
+    private fun hasManualChoice() = forcedSinglePages.isNotEmpty() || manualPairStarts.isNotEmpty() ||
+        openingMode != ReaderChapterOpeningMode.AUTO
+
+    private fun openingCompatible() = openingMode != ReaderChapterOpeningMode.FIRST_PAIR ||
+        (1 !in forcedSinglePages && 1 !in manualPairStarts)
 
     companion object {
-        const val FORMAT_VERSION = 1L
+        const val FORMAT_VERSION = 2L
     }
 }
 
@@ -37,4 +52,15 @@ interface ChapterPairingRepository {
         pageCount: Int,
         forcedSinglePages: Set<Int>,
     ): ChapterPairingSnapshot
+
+    suspend fun replaceLayout(
+        chapterId: Long,
+        mangaId: Long,
+        expectedRevision: Long,
+        pageCount: Int,
+        adjustment: ReaderPairingAdjustment,
+    ): ChapterPairingSnapshot {
+        require(adjustment.openingMode == ReaderChapterOpeningMode.AUTO && adjustment.manualPairStarts.isEmpty())
+        return replace(chapterId, mangaId, expectedRevision, pageCount, adjustment.forcedSinglePages)
+    }
 }
