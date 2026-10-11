@@ -1242,11 +1242,11 @@ private fun CreatorArchiveWorkCover(
     }
 }
 
-private fun SourceWorkArchiveVersion.toMangaCover() = tachiyomi.domain.manga.model.MangaCover(
+internal fun SourceWorkArchiveVersion.toMangaCover() = tachiyomi.domain.manga.model.MangaCover(
     mangaId = mangaId ?: -sourceWorkId,
     sourceId = naturalKey.sourceId,
     isMangaFavorite = inLibrary,
-    url = naturalKey.stableSourceUrl,
+    url = thumbnailUrl,
     lastModified = detailsFetchedAt ?: 0L,
 )
 
