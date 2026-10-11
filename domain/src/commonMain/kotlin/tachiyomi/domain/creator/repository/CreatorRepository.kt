@@ -19,6 +19,8 @@ interface CreatorRepository {
 
     suspend fun getCreator(id: Long): Creator?
 
+    suspend fun hasTitleAttribution(creatorId: Long): Boolean = false
+
     fun getCreatorsAsFlow(): Flow<List<Creator>>
 
     suspend fun linkMangaCreator(

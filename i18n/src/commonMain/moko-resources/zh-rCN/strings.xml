@@ -2285,11 +2285,11 @@
     <string name="sync_setup_selected_access_unconfirmed">尚未确认对 %1$s 的访问权限。请将此仓库授权给同步应用，再检查连接。</string>
     <string name="sync_setup_installed_status">同步应用已安装，待授权此空间</string>
     <string name="desktop_ui_add_author_alias">关联别名</string>
-    <string name="creator_title_attribution_title">标题署名（预研）</string>
-    <string name="creator_title_attribution_description">为此设备上的此图源使用前置 [社团（作者）] 署名。保存后更新当前作品；其他书架作品可单独整理。无法识别的标题仍沿用图源署名。</string>
+    <string name="creator_title_attribution_title">标题自动归属设置</string>
+    <string name="creator_title_attribution_description">详情中的标题姓名可直接进入作者页，无需启用此项。此设置为本图源启用 [社团（作者）] 或明确个人署名的自动归属。保存后更新当前作品；其他书架作品可另行整理。无法识别时沿用图源字段。</string>
     <string name="creator_title_attribution_enabled">此图源使用标题署名</string>
     <string name="creator_title_attribution_preview">当前标题识别结果</string>
-    <string name="creator_title_attribution_no_preview">未找到支持的标题署名。多人合作或含歧义括号的格式暂不识别。</string>
+    <string name="creator_title_attribution_no_preview">未识别到可自动归属的署名。单独名字仅作为详情候选；多人及歧义格式暂不处理。</string>
     <string name="creator_title_attribution_reindex">重新整理此图源书架作者</string>
     <string name="creator_title_attribution_progress">已整理 %d 部书架作品</string>
     <string name="creator_title_attribution_enabled_result">已启用此图源的标题署名</string>

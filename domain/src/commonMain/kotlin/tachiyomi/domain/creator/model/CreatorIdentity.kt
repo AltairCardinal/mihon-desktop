@@ -24,6 +24,14 @@ enum class CreatorMetadataField {
     TITLE_CIRCLE,
 }
 
+/** Exact LF-delimited markers; explanations and lookalike substrings never select a mode. */
+object CreatorTitleEvidence {
+    const val CREATOR = "title-attribution:v1:TITLE_CREATOR"
+    const val CIRCLE = "title-attribution:v1:TITLE_CIRCLE"
+    const val CREATOR_AND_CIRCLE = "title-attribution:v1:TITLE_CREATOR+TITLE_CIRCLE"
+    const val CIRCLE_AND_CREATOR = "title-attribution:v1:TITLE_CIRCLE+TITLE_CREATOR"
+}
+
 /** Persisted in the existing free-form relation evidence column and portable backup field. */
 fun List<CreatorMention>.titleAttributionEvidence(): String? = flatMap { it.evidence }
     .map { it.field }

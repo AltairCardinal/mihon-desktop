@@ -66,6 +66,7 @@ import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga
 import tachiyomi.domain.creator.model.CreatorMention
 import tachiyomi.domain.creator.model.CreatorMentionResolution
 import tachiyomi.domain.creator.service.CreatorTitleAttributionEditor
@@ -117,9 +118,8 @@ class MangaScreen(
         val isHttpSource = remember { successState.source is HttpSource }
         val creatorNavigator = remember { AndroidMangaCreatorNavigator() }
         val titleAttributionEditor = remember { Injekt.get<CreatorTitleAttributionEditor>() }
-        val titleAttributionSources by titleAttributionEditor.enabledSourcesFlow.collectAsState(initial = emptySet())
-        val creatorMentions = remember(successState.manga, titleAttributionSources) {
-            titleAttributionEditor.extract(successState.manga)
+        val creatorMentions = remember(successState.manga) {
+            ExtractCreatorsFromManga().await(successState.manga)
         }
         var creatorIdentityPreparing by remember { mutableStateOf(false) }
         val creatorOpenCoordinator = remember(successState.manga, creatorNavigator) {

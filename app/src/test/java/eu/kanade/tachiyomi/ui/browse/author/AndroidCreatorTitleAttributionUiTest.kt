@@ -3,10 +3,9 @@ package eu.kanade.tachiyomi.ui.browse.author
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -38,6 +37,29 @@ import tachiyomi.domain.manga.repository.MangaRepository
 @Config(sdk = [35], application = android.app.Application::class, qualifiers = "zh-rCN-w400dp-h900dp-mdpi")
 class AndroidCreatorTitleAttributionUiTest {
     @get:Rule val compose = createEmptyComposeRule()
+    private var clickedMention: tachiyomi.domain.creator.model.CreatorMention? = null
+
+    @Test
+    fun `title names appear below original author and open without source opt in`() = fixture { editor, writer, _, _ ->
+        compose.onNodeWithTag("creator-mention-0").assertTextContains("Uploader", substring = true)
+        compose.onNodeWithTag("title-credit-0").assertTextContains("Artist", substring = true)
+        compose.onNodeWithTag("title-credit-1").assertTextContains("Circle", substring = true)
+        val original = compose.onNodeWithTag("creator-mention-0").fetchSemanticsNode().boundsInRoot
+        val credit = compose.onNodeWithTag("title-credit-0").fetchSemanticsNode().boundsInRoot
+        assertTrue(credit.top >= original.bottom)
+        compose.onNodeWithTag("title-credit-0").performClick()
+        org.junit.Assert.assertEquals("Artist", clickedMention?.displayName)
+        assertFalse(editor.policy.isEnabled(10L))
+        coVerify(exactly = 0) { writer.indexLibraryMangaBatch(any()) }
+    }
+
+    @Test
+    fun `title with only an individual shows no circle`() = fixture { _, _, manga, _ ->
+        compose.runOnIdle { manga.value = manga.value.copy(title = "[Solo Artist] Another work") }
+        compose.onNodeWithTag("title-credit-0").assertTextEquals("Solo Artist")
+        compose.onNodeWithTag("title-credit-1").assertDoesNotExist()
+        compose.onNodeWithTag("creator-mention-0").assertTextContains("Uploader", substring = true)
+    }
 
     @Test
     fun `native header opens confirmation and only save reaches real title indexing`() = fixture {
@@ -56,8 +78,9 @@ class AndroidCreatorTitleAttributionUiTest {
         compose.onNodeWithTag("creator-title-attribution-save").performClick()
         compose.waitForIdle()
         assertTrue(editor.policy.isEnabled(10L))
-        compose.onNodeWithTag("creator-mention-0").assertTextContains("创作者: Artist", substring = true)
-        compose.onNodeWithTag("creator-mention-1").assertTextContains("社团: Circle", substring = true)
+        compose.onNodeWithTag("creator-mention-0").assertTextContains("Uploader", substring = true)
+        compose.onNodeWithTag("title-credit-0").assertTextContains("创作者: Artist", substring = true)
+        compose.onNodeWithTag("title-credit-1").assertTextContains("社团: Circle", substring = true)
         coVerify(exactly = 1) {
             writer.indexLibraryMangaBatch(
                 match {
@@ -140,13 +163,14 @@ class AndroidCreatorTitleAttributionUiTest {
                     policy,
                 )
             activity.get().setContent {
-                val sources by editor.enabledSourcesFlow.collectAsState(emptySet())
-                sources.size
                 MaterialTheme {
                     eu.kanade.presentation.manga.components.MangaInfoBox(
                         isTabletUi = false, appBarPadding = 0.dp, manga = manga.value,
                         sourceName = "Fixture source", isStubSource = true, onCoverClick = {}, doSearch = { _, _ -> },
-                        creatorMentions = editor.extract(manga.value), onCreatorClick = {},
+                        creatorMentions = ExtractCreatorsFromManga().await(manga.value), onCreatorClick = {
+                            clickedMention =
+                                it
+                        },
                         creatorTitleAttributionControl = {
                             CreatorTitleAttributionControl(manga.value, "Fixture source", editor)
                         },

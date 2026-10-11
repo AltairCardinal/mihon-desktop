@@ -124,6 +124,7 @@ import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.service.filterAndSortChapters
 import tachiyomi.domain.chapter.service.hasActiveChapterFilters
+import tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga
 import tachiyomi.domain.creator.model.CreatorMentionResolution
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.toSourceManga
@@ -149,8 +150,6 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         val model = rememberScreenModel { screenModelFactory(mangaId) }
         val dependencies = LocalDesktopUiDependencies.current
         val titleAttributionEditor = dependencies.creatorTitleAttributionEditor
-        val titleAttributionSources by (titleAttributionEditor?.enabledSourcesFlow ?: kotlinx.coroutines.flow.flowOf(emptySet()))
-            .collectAsState(initial = emptySet())
         val state by model.state.collectAsState()
         val downloadQueue by model.downloadQueueFlow().collectAsState()
         val downloadedOnly by model.downloadedOnlyFlow().collectAsState(false)
@@ -1250,8 +1249,8 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                     dependencies.shareService.copyText(text).toDesktopNotification(),
                                 )
                             },
-                            creatorMentions = remember(manga, titleAttributionSources) {
-                                titleAttributionEditor?.extract(manga!!) ?: model.creatorMentions(manga!!)
+                            creatorMentions = remember(manga) {
+                                ExtractCreatorsFromManga().await(manga!!)
                             },
                             creatorTitleAttributionControl = {
                                 titleAttributionEditor?.let {

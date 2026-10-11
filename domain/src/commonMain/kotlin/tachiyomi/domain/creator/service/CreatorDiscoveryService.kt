@@ -268,13 +268,6 @@ class CreatorDiscoveryService(
     ): CreatorDiscoveryResult {
         val startedAt = clock()
         val enabledSources = port.enabledSourcesSnapshot()
-        val plan = CreatorDiscoveryQueryPlanner(bounds).plan(
-            creatorId = creator.id,
-            aliases = listOf(creator.displayName) + creator.aliases,
-            enabledSources = enabledSources,
-            watchPolicy = policy,
-            startedAtMillis = startedAt,
-        )
         val baselines = if (dueSources != null) {
             dueSources.associate {
                 it.sourceId to WatchSourceBaseline(it.sourceId, it.baselineState, it.baselineGeneration)
@@ -282,6 +275,14 @@ class CreatorDiscoveryService(
         } else {
             archive.getWatchSourceBaselines(creator.id).associateBy(WatchSourceBaseline::sourceId)
         }
+        val plan = CreatorDiscoveryQueryPlanner(bounds).plan(
+            creatorId = creator.id,
+            aliases = listOf(creator.displayName) + creator.aliases,
+            enabledSources = enabledSources,
+            watchPolicy = policy,
+            startedAtMillis = startedAt,
+            titleSearch = creatorRepository.hasTitleAttribution(creator.id),
+        )
         val plannedSources = plan.sources
             .filter { dueSources == null || it.source.sourceId in baselines }
             .take(maxSources)
@@ -346,14 +347,15 @@ class CreatorDiscoveryService(
     ): CreatorDiscoveryResult {
         val startedAt = clock()
         val enabledSources = port.enabledSourcesSnapshot()
+        val baselines = archive.getWatchSourceBaselines(creator.id).associateBy(WatchSourceBaseline::sourceId)
         val plan = CreatorDiscoveryQueryPlanner(bounds).plan(
             creatorId = creator.id,
             aliases = listOf(creator.displayName) + creator.aliases,
             enabledSources = enabledSources,
             watchPolicy = policy,
             startedAtMillis = startedAt,
+            titleSearch = creatorRepository.hasTitleAttribution(creator.id),
         )
-        val baselines = archive.getWatchSourceBaselines(creator.id).associateBy(WatchSourceBaseline::sourceId)
         val plannedSources = plan.sources.take(bounds.maxSourcesPerWatch)
         if (plannedSources.isEmpty()) {
             return CreatorDiscoveryResult(0, 0, emptyList(), skipped = true)
@@ -539,6 +541,7 @@ class CreatorDiscoveryService(
                 nextDueAt = nextDueAt,
                 baselineState = baselineState,
                 baselineGeneration = baselineGeneration,
+                observedBaselineGeneration = baseline.baselineGeneration,
             ),
         )
     }
@@ -556,6 +559,7 @@ class CreatorDiscoveryService(
             enabledSources = enabledSources,
             watchPolicy = policy,
             startedAtMillis = startedAt,
+            titleSearch = creatorRepository.hasTitleAttribution(creator.id),
         )
         val semaphore = Semaphore(plan.maxConcurrentSources)
         val sourceResults = coroutineScope {
@@ -598,6 +602,7 @@ class CreatorDiscoveryService(
                         page = aliasPage,
                         pageLimit = sourcePlan.maxPagesPerAlias,
                         deadlineAtMillis = plan.deadlineAtMillis,
+                        titleSearch = plan.titleSearch,
                     ),
                 )
                 pageCount += 1
@@ -649,7 +654,16 @@ class CreatorDiscoveryService(
                 )
             }
             val detailsResult = try {
-                withTimeout(remainingMillis) { port.loadDetails(listedWork.key) }
+                withTimeout(remainingMillis) {
+                    if (plan.titleSearch) {
+                        port.loadDetails(
+                            listedWork.key,
+                            titleSearch = true,
+                        )
+                    } else {
+                        port.loadDetails(listedWork.key)
+                    }
+                }
             } catch (_: TimeoutCancellationException) {
                 CreatorSourceDetailsResult.Failure(CreatorSourceFailure.Timeout)
             } catch (error: CancellationException) {
@@ -672,6 +686,7 @@ class CreatorDiscoveryService(
                 listOf(creator.displayName) + creator.aliases,
                 details.work,
                 titleAttributionPolicy,
+                titleSearch = plan.titleSearch,
             )
             if (identity.verification != CreatorRelationVerification.VERIFIED) {
                 possible += 1
@@ -787,6 +802,7 @@ class CreatorDiscoveryService(
                         page = aliasPage,
                         pageLimit = sourcePlan.maxPagesPerAlias,
                         deadlineAtMillis = plan.deadlineAtMillis,
+                        titleSearch = plan.titleSearch,
                     ),
                 )
                 pageCount += 1
@@ -841,7 +857,16 @@ class CreatorDiscoveryService(
                 )
             }
             val detailsResult = try {
-                withTimeout(remainingMillis) { port.loadDetails(listedWork.key) }
+                withTimeout(remainingMillis) {
+                    if (plan.titleSearch) {
+                        port.loadDetails(
+                            listedWork.key,
+                            titleSearch = true,
+                        )
+                    } else {
+                        port.loadDetails(listedWork.key)
+                    }
+                }
             } catch (_: TimeoutCancellationException) {
                 CreatorSourceDetailsResult.Failure(CreatorSourceFailure.Timeout)
             } catch (error: CancellationException) {
@@ -864,6 +889,7 @@ class CreatorDiscoveryService(
                 listOf(creator.displayName) + creator.aliases,
                 details.work,
                 titleAttributionPolicy,
+                titleSearch = plan.titleSearch,
             )
             if (identity.verification != CreatorRelationVerification.VERIFIED) {
                 possible += 1

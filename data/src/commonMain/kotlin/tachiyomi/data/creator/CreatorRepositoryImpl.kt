@@ -56,6 +56,7 @@ import tachiyomi.domain.creator.model.CreatorRelationVerification
 import tachiyomi.domain.creator.model.CreatorRepresentativeWorkCache
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.model.CreatorSelectedWorkKey
+import tachiyomi.domain.creator.model.CreatorTitleEvidence
 import tachiyomi.domain.creator.model.CreatorWatch
 import tachiyomi.domain.creator.model.CreatorWorkArchive
 import tachiyomi.domain.creator.model.DecisionActor
@@ -986,6 +987,11 @@ class CreatorRepositoryImpl(
                 .getArchiveWatchSourceState(update.sourceId, update.creatorId)
                 .executeAsOne()
             val currentBaselineState = WatchBaselineState.valueOf(currentBaseline.baseline_state)
+            if (update.observedBaselineGeneration != null &&
+                update.observedBaselineGeneration != currentBaseline.baseline_generation
+            ) {
+                return@await
+            }
             if (currentBaselineState != update.baselineState) {
                 require(
                     CreatorArchiveV2Policy.canTransitionBaseline(
@@ -1077,6 +1083,18 @@ class CreatorRepositoryImpl(
                     ArchiveUpsertOutcome.Unchanged(observation.sourceWork),
                     null,
                 )
+            }
+            if (observation.requiresActiveWatch) {
+                val current = author_archiveQueries.getArchiveWatchSourceState(
+                    observation.sourceWork.sourceId,
+                    observation.creatorId,
+                ).executeAsOneOrNull()
+                if (current != null && current.baseline_generation != observation.baselineGeneration) {
+                    return@await SourceDiscoveryObservationResult(
+                        ArchiveUpsertOutcome.Unchanged(observation.sourceWork),
+                        null,
+                    )
+                }
             }
             val work = upsertSourceWorkRecord(
                 sourceId = observation.sourceWork.sourceId,
@@ -1695,6 +1713,22 @@ class CreatorRepositoryImpl(
         return handler.awaitOneOrNull { author_archiveQueries.getArchiveCreator(rootId, ::mapCreator) }
     }
 
+    override suspend fun hasTitleAttribution(creatorId: Long): Boolean {
+        bootstrap.awaitReady()
+        ensureExactIdentityInvariant()
+        val rootId = resolveActiveCreatorRootId(creatorId) ?: return false
+        return handler.await { hasCreatorTitleAttribution(rootId) }
+    }
+
+    private fun Database.hasCreatorTitleAttribution(creatorId: Long): Boolean =
+        author_archiveQueries.hasArchiveCreatorTitleAttribution(
+            creatorId,
+            CreatorTitleEvidence.CREATOR,
+            CreatorTitleEvidence.CIRCLE,
+            CreatorTitleEvidence.CREATOR_AND_CIRCLE,
+            CreatorTitleEvidence.CIRCLE_AND_CREATOR,
+        ).executeAsOne() > 0L
+
     override fun getCreatorsAsFlow(): Flow<List<Creator>> {
         return handler.subscribeToList { author_archiveQueries.getArchiveCreators(::mapCreator) }
             .onStart {
@@ -1771,6 +1805,7 @@ class CreatorRepositoryImpl(
         ensureExactIdentityInvariant()
         return handler.await(inTransaction = true) {
             val now = clock()
+            validateClickedTitle(manga, mention)
             val creatorId = resolveOrCreateExactIdentity(
                 displayName = mention.displayName,
                 normalizedName = mention.normalizedName,
@@ -1780,7 +1815,8 @@ class CreatorRepositoryImpl(
                 aliasEvidence = "NAME_EXACT",
                 aliasManual = false,
             )
-            bindMangaCreatorIdentity(manga, mention, creatorId, now)
+            val origin = if (listOf(mention).titleAttributionEvidence() != null) "USER" else "AUTOMATIC"
+            bindMangaCreatorIdentity(manga, mention, creatorId, now, origin)
             creatorId
         }
     }
@@ -3155,11 +3191,14 @@ class CreatorRepositoryImpl(
         now: Long,
         origin: String = "AUTOMATIC",
     ) {
+        validateClickedTitle(manga, mention)
+        val titleMarker = listOf(mention).titleAttributionEvidence()
         val exactName = mention.displayName.trim()
         val effectiveCreatorId = author_archiveQueries.getArchiveCreatorIdByExactName(exactName)
             .executeAsOneOrNull()
             ?: creatorId.also { registerExactName(exactName, it, "BIBLIOGRAPHY", now) }
         requireActiveIdentity(effectiveCreatorId)
+        val hadTitleMode = if (titleMarker != null) hasCreatorTitleAttribution(effectiveCreatorId) else false
         val sourceWork = upsertSourceWorkRecord(
             sourceId = manga.source,
             stableSourceUrl = manga.archiveStableUrl(),
@@ -3196,35 +3235,77 @@ class CreatorRepositoryImpl(
             .filter {
                 author_archiveQueries.getArchiveCreatorIdByExactName(it.displayName).executeAsOneOrNull() ==
                     effectiveCreatorId
-            }.ifEmpty { listOf(mention) }
+            }.let { extracted ->
+                if (titleMarker != null) extracted + mention else extracted.ifEmpty { listOf(mention) }
+            }
         val role = sameRootMentions.map { it.role.name }.reduce(::unionCreatorRole)
         val sourceText = sameRootMentions.flatMap { it.sourceTexts }.distinct().joinToString(" | ")
         val attributionEvidence = sameRootMentions.titleAttributionEvidence() ?: "NAME_EXACT"
-        author_archiveQueries.upsertArchiveMangaLink(
-            mangaId = manga.id,
-            creatorId = effectiveCreatorId,
-            role = role,
-            creatorOrder = sameRootMentions.minOf { it.order },
-            origin = origin,
-            sourceText = sourceText,
-            confidence = 1.0,
-            evidence = attributionEvidence,
-            createdAt = now,
-            lastModifiedAt = now,
+        val protectedManga = titleMarker != null && author_archiveQueries.getArchiveMangaLinksForIndex(manga.id)
+            .executeAsList().any { it.creator_id == effectiveCreatorId && it.origin in setOf("USER", "RESTORE") }
+        if (protectedManga) {
+            author_archiveQueries.appendArchiveMangaTitleEvidence(
+                checkNotNull(titleMarker),
+                manga.id,
+                effectiveCreatorId,
+            )
+        } else {
+            author_archiveQueries.upsertArchiveMangaLink(
+                mangaId = manga.id,
+                creatorId = effectiveCreatorId,
+                role = role,
+                creatorOrder = sameRootMentions.minOf { it.order },
+                origin = origin,
+                sourceText = sourceText,
+                confidence = 1.0,
+                evidence = attributionEvidence,
+                createdAt = now,
+                lastModifiedAt = now,
+            )
+        }
+        val protectedSource =
+            titleMarker != null && author_archiveQueries.getArchiveSourceWorkCreatorsForIndex(sourceWork.sourceWorkId)
+                .executeAsList().any { it.creator_id == effectiveCreatorId && it.origin in setOf("USER", "RESTORE") }
+        if (protectedSource) {
+            author_archiveQueries.appendArchiveSourceWorkTitleEvidence(
+                checkNotNull(titleMarker),
+                sourceWork.sourceWorkId,
+                effectiveCreatorId,
+            )
+        } else {
+            author_archiveQueries.upsertArchiveSourceWorkCreator(
+                sourceWorkId = sourceWork.sourceWorkId,
+                creatorId = effectiveCreatorId,
+                role = role,
+                creatorOrder = sameRootMentions.minOf { it.order },
+                origin = origin,
+                verification = "VERIFIED",
+                sourceText = sourceText,
+                confidence = 1.0,
+                evidence = attributionEvidence,
+                createdAt = now,
+                lastModifiedAt = now,
+            )
+        }
+        if (titleMarker != null && !hadTitleMode && hasCreatorTitleAttribution(effectiveCreatorId)) {
+            author_archiveQueries.resetArchiveTitleModeBaselines(effectiveCreatorId)
+        }
+    }
+
+    private fun Database.validateClickedTitle(manga: Manga, mention: CreatorMention) {
+        if (listOf(mention).titleAttributionEvidence() == null) return
+        val current = mangasQueries.getMangaById(manga.id, tachiyomi.data.manga.MangaMapper::mapManga).executeAsOne()
+        val parsed = tachiyomi.domain.creator.service.TitleCreditParser.parse(
+            current.title,
+            allowStandaloneCreator = true,
         )
-        author_archiveQueries.upsertArchiveSourceWorkCreator(
-            sourceWorkId = sourceWork.sourceWorkId,
-            creatorId = effectiveCreatorId,
-            role = role,
-            creatorOrder = sameRootMentions.minOf { it.order },
-            origin = origin,
-            verification = "VERIFIED",
-            sourceText = sourceText,
-            confidence = 1.0,
-            evidence = attributionEvidence,
-            createdAt = now,
-            lastModifiedAt = now,
-        )
+        check(
+            current.source == manga.source && current.url == manga.url && current.title == manga.title &&
+                parsed.any { candidate ->
+                    candidate.displayName == mention.displayName &&
+                        mention.evidence.all { evidence -> evidence in candidate.evidence }
+                },
+        ) { "作品图源、地址或标题已变化，请返回详情后重试" }
     }
 
     private fun Database.requireActiveIdentity(creatorId: Long) =

@@ -67,6 +67,27 @@ class AndroidAuthorArchiveWiringTest {
     }
 
     @Test
+    fun `Android title author uses shared confirmed title discovery across sources`() = runTest {
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
+            app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY,
+        )
+        Database.Schema.create(driver)
+        val handler = AndroidDatabaseHandler(
+            Database(
+                driver,
+                historyAdapter = History.Adapter(DateColumnAdapter),
+                mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+            ),
+            driver,
+        )
+        try {
+            tachiyomi.data.creator.verifyTitleCreatorDiscoveryAcrossSources(handler)
+        } finally {
+            driver.close()
+        }
+    }
+
+    @Test
     fun `Android discovery verifies authors before exposing archive works`() = runTest {
         val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
             app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY,

@@ -37,6 +37,46 @@ class CreatorIdentityEditingTest {
     private lateinit var handler: JvmDatabaseHandler
     private lateinit var repository: CreatorRepositoryImpl
 
+    @Test
+    fun `title click rejects stale source url and title without creating an orphan root`() = runBlocking {
+        verifyStaleTitleClick(handler)
+    }
+
+    @Test
+    fun `first creator title mode quietly rebuilds existing source baselines once`() = runBlocking {
+        verifyTitleModeBaselineTransition(handler, delayedOldScan = false)
+    }
+
+    @Test
+    fun `late metadata scan cannot overwrite a newly selected title baseline`() = runBlocking {
+        verifyTitleModeBaselineTransition(handler, delayedOldScan = true)
+    }
+
+    @Test
+    fun `clicked title survives ordinary indexing with source policy disabled`() = runBlocking {
+        verifyClickedTitleSurvivesOrdinaryIndex(handler, sameName = false)
+    }
+
+    @Test
+    fun `existing exact metadata root retains explicit title evidence`() = runBlocking {
+        verifyClickedTitleSurvivesOrdinaryIndex(handler, sameName = true)
+    }
+
+    @Test
+    fun `title click appends evidence without overriding restored authority`() = runBlocking {
+        verifyRestoredTitleAuthority(handler)
+    }
+
+    @Test
+    fun `title discovery mode requires exact verified evidence markers`() = runBlocking {
+        verifyTitleEvidenceMarkers(handler)
+    }
+
+    @Test
+    fun `title creator is found across enabled sources without source opt in`() = runBlocking {
+        verifyTitleCreatorDiscoveryAcrossSources(handler)
+    }
+
     @BeforeEach
     fun setup() {
         driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)

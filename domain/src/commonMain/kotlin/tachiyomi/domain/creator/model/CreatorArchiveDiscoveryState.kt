@@ -64,6 +64,7 @@ data class SourceCheckpointUpdate(
     val nextDueAt: Long?,
     val baselineState: WatchBaselineState,
     val baselineGeneration: Long,
+    val observedBaselineGeneration: Long? = null,
 )
 
 data class SourceCheckpoint(

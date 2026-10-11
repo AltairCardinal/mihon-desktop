@@ -1,8 +1,6 @@
 package mihon.desktop.ui.authors
 
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
@@ -34,6 +32,30 @@ import java.util.prefs.Preferences
 
 @OptIn(ExperimentalComposeUiApi::class)
 class CreatorTitleAttributionUiTest {
+    private var clickedMention: tachiyomi.domain.creator.model.CreatorMention? = null
+
+    @Test
+    fun `title credits appear below original author without enabling source or opening settings`() = fixture { scene, editor, writer, _, _ ->
+        val original = nodes(scene).first { text(it) == "Uploader" }
+        val artist = nodes(scene).single { tag(it) == "title-credit-0" }
+        assertTrue(text(artist).contains("Artist"))
+        assertTrue(artist.boundsInRoot.top >= original.boundsInRoot.bottom)
+        assertTrue(nodes(scene).any { tag(it) == "title-credit-1" && text(it).contains("Circle") })
+        click(scene, "title-credit-0")
+        assertEquals("Artist", clickedMention?.displayName)
+        assertFalse(editor.policy.isEnabled(10L))
+        coVerify(exactly = 0) { writer.indexLibraryMangaBatch(any()) }
+    }
+
+    @Test
+    fun `individual-only title credit has no circle row and follows title updates`() = fixture { scene, _, _, manga, _ ->
+        manga.value = manga.value.copy(title = "[Solo Artist] Another work")
+        settle(scene) { nodes(scene).any { tag(it) == "title-credit-0" && text(it).contains("Solo Artist") } }
+        assertEquals("Solo Artist", text(nodes(scene).single { tag(it) == "title-credit-0" }))
+        assertFalse(nodes(scene).any { tag(it) == "title-credit-1" })
+        assertTrue(nodes(scene).any { text(it) == "Uploader" })
+    }
+
     @Test
     fun `detail header invokes source confirmation and real indexing only after save`() = fixture { scene, editor, writer, _, _ ->
         click(scene, "creator-title-attribution-open")
@@ -101,15 +123,13 @@ class CreatorTitleAttributionUiTest {
         val writer = mockk<CreatorLibraryIndexWriter>(relaxed = true)
         val editor = CreatorTitleAttributionEditor(preferences, repository, source, writer, ExtractCreatorsFromManga(policy), policy)
         val scene = ImageComposeScene(640, 1000, coroutineContext = coroutineContext) {
-            val sources by editor.enabledSourcesFlow.collectAsState(emptySet())
-            sources.size // subscribe to source changes exactly as the detail screen
             MaterialTheme {
                 mihon.desktop.ui.library.MangaHeader(
                     manga = manga.value, coverModel = null, coverLastModified = 0L, coverFeedback = null,
                     coverFailed = false, sourceName = "Fixture source", sourceLanguage = "en",
                     onSourceSearch = {}, onTagSearch = {}, onTagGlobalSearch = {}, onTagCopy = {},
-                    creatorMentions = editor.extract(manga.value), creatorIdentityLoading = false,
-                    onCreatorClick = {}, onCreatorSearch = {}, onTitleSearch = {}, onNotes = {},
+                    creatorMentions = ExtractCreatorsFromManga().await(manga.value), creatorIdentityLoading = false,
+                    onCreatorClick = { clickedMention = it }, onCreatorSearch = {}, onTitleSearch = {}, onNotes = {},
                     onViewCover = {}, coverFocus = FocusRequester(),
                     creatorTitleAttributionControl = { CreatorTitleAttributionControl(manga.value, "Fixture source", editor) },
                 )

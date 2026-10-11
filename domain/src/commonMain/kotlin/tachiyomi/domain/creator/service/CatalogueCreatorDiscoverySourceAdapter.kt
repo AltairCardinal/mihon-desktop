@@ -41,7 +41,7 @@ class CatalogueCreatorDiscoverySourceAdapter(
 ) : CreatorDiscoverySourcePort {
     private val mutex = Mutex()
     private var snapshotSources = emptyMap<Long, CatalogueSource>()
-    private val searchHits = mutableMapOf<SourceWorkNaturalKey, CachedSearchHit>()
+    private val searchHits = mutableMapOf<SearchHitKey, CachedSearchHit>()
 
     override suspend fun enabledSourcesSnapshot(): List<EnabledCreatorSource> {
         val sources = enabledSourcesProvider()
@@ -49,7 +49,7 @@ class CatalogueCreatorDiscoverySourceAdapter(
             .distinctBy(CatalogueSource::id)
         mutex.withLock {
             snapshotSources = sources.associateBy(CatalogueSource::id)
-            searchHits.keys.removeAll { it.sourceId !in snapshotSources }
+            searchHits.keys.removeAll { it.work.sourceId !in snapshotSources }
         }
         return sources.map { source ->
             EnabledCreatorSource(
@@ -57,7 +57,7 @@ class CatalogueCreatorDiscoverySourceAdapter(
                 displayName = source.name,
                 capabilities = buildSet {
                     add(CreatorSourceCapability.DETAILS)
-                    if (source is AuthorSearchSource) {
+                    if (source is AuthorSearchSource && !titleAttributionPolicy.isEnabled(source.id)) {
                         add(CreatorSourceCapability.AUTHOR_SEARCH)
                     } else {
                         add(CreatorSourceCapability.CATALOGUE_SEARCH_FALLBACK)
@@ -79,7 +79,9 @@ class CatalogueCreatorDiscoverySourceAdapter(
 
         return try {
             withTimeout(remainingMillis) {
-                val page = if (source is AuthorSearchSource) {
+                val page = if (source is AuthorSearchSource && !request.titleSearch &&
+                    !titleAttributionPolicy.isEnabled(source.id)
+                ) {
                     try {
                         source.getAuthorSearchManga(request.page, request.alias).let { result ->
                             SearchPage(result.mangas, result.hasNextPage)
@@ -107,7 +109,9 @@ class CatalogueCreatorDiscoverySourceAdapter(
                         .map { item -> item.toSnapshot(source.id) }
                         .distinctBy(CreatorSourceWorkSnapshot::key)
                     mutex.withLock {
-                        page.items.forEach { item -> searchHits[item.key(source.id)] = item.toCachedHit() }
+                        page.items.forEach { item ->
+                            searchHits[SearchHitKey(item.key(source.id), request.titleSearch)] = item.toCachedHit()
+                        }
                     }
                     CreatorSourcePageResult.Content(works, page.hasNextPage)
                 }
@@ -121,10 +125,12 @@ class CatalogueCreatorDiscoverySourceAdapter(
         }
     }
 
-    override suspend fun loadDetails(key: SourceWorkNaturalKey): CreatorSourceDetailsResult {
+    override suspend fun loadDetails(key: SourceWorkNaturalKey): CreatorSourceDetailsResult = loadDetails(key, false)
+
+    override suspend fun loadDetails(key: SourceWorkNaturalKey, titleSearch: Boolean): CreatorSourceDetailsResult {
         val source = mutex.withLock { snapshotSources[key.sourceId] }
             ?: return CreatorSourceDetailsResult.Failure(CreatorSourceFailure.MissingSource)
-        val cached = mutex.withLock { searchHits[key] }
+        val cached = mutex.withLock { searchHits[SearchHitKey(key, titleSearch)] }
         val listedManga = cached?.manga?.copy() ?: SManga.create().also {
             it.url = key.stableSourceUrl
             it.title = key.stableSourceUrl
@@ -224,6 +230,8 @@ class CatalogueCreatorDiscoverySourceAdapter(
         val readingLanguageTag: String?,
         val originalLanguageTag: String?,
     )
+
+    private data class SearchHitKey(val work: SourceWorkNaturalKey, val titleSearch: Boolean)
 }
 
 private fun Throwable.toCreatorSourceFailure(): CreatorSourceFailure = when (val error = toSourceAppError()) {

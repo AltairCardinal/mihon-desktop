@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.author
 
 import android.content.Intent
 import android.os.Build
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -13,6 +14,7 @@ import eu.kanade.tachiyomi.ui.main.MainActivity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -53,21 +55,19 @@ class TitleAttributionPreviewInstrumentationTest {
                 ),
             ).single()
         }
+        runBlocking { editor.setEnabled(fixture.id, fixture.source, false) }
+        assertFalse(editor.policy.isEnabled(fixture.source))
         val intent = Intent(context, MainActivity::class.java)
             .setAction(Constants.SHORTCUT_MANGA)
             .putExtra(Constants.MANGA_EXTRA, fixture.id)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         ActivityScenario.launch<MainActivity>(intent).use {
             compose.waitUntil(15_000) {
-                compose.onAllNodes(androidx.compose.ui.test.hasTestTag("creator-title-attribution-open"))
+                compose.onAllNodes(androidx.compose.ui.test.hasTestTag("title-credit-0"))
                     .fetchSemanticsNodes().isNotEmpty()
             }
-            compose.onNodeWithTag("creator-title-attribution-open").performClick()
-            compose.onNodeWithTag("creator-title-attribution-preview-0").assertExists()
-            compose.onNodeWithTag("creator-title-attribution-toggle").performClick()
-            compose.onNodeWithTag("creator-title-attribution-save").performClick()
-            compose.waitUntil(10_000) { editor.policy.isEnabled(fixture.source) }
-            compose.onNodeWithTag("creator-mention-0").performClick()
+            compose.onNodeWithTag("creator-mention-0").assertTextContains("上传者甲", substring = true)
+            compose.onNodeWithTag("title-credit-0").performClick()
             compose.waitUntil(10_000) {
                 compose.onAllNodes(
                     androidx.compose.ui.test.hasText(context.getString(MR.strings.desktop_ui_follow.resourceId)),
@@ -97,6 +97,8 @@ class TitleAttributionPreviewInstrumentationTest {
             assertEquals("上传者甲", original.author)
             assertEquals("上传者甲", original.artist)
             assertTrue(runBlocking { creators.getMangaCreatorsForCreator(artist.id).any { it.mangaId == fixture.id } })
+            assertFalse(editor.policy.isEnabled(fixture.source))
+            compose.onNodeWithText(context.getString(MR.strings.desktop_ui_check_new_works.resourceId)).assertExists()
         }
     }
 }

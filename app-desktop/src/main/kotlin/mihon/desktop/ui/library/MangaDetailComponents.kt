@@ -153,6 +153,7 @@ import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.creator.model.CreatorMention
 import tachiyomi.domain.creator.model.CreatorMentionResolution
 import tachiyomi.domain.creator.model.CreatorRole
+import tachiyomi.domain.creator.service.TitleCreditParser
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
 import java.util.Locale
@@ -243,6 +244,41 @@ internal fun MangaHeader(
                         }
                         if (creatorIdentityLoading) {
                             CircularProgressIndicator(Modifier.layoutSize(24.dp))
+                        }
+                    }
+                }
+                val titleCredits = remember(manga.title) {
+                    TitleCreditParser.parse(manga.title, allowStandaloneCreator = true)
+                }
+                if (titleCredits.isNotEmpty()) {
+                    val standaloneCredit = remember(manga.title) { TitleCreditParser.parse(manga.title).isEmpty() }
+                    Text(
+                        MR.strings.creator_title_attribution_preview.localized(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        titleCredits.forEach { mention ->
+                            val label = if (standaloneCredit) mention.displayName else mihon.desktop.ui.authors.creatorTitleCreditText(mention)
+                            DetailMetadataContext(
+                                title = label,
+                                searchLabel = MR.strings.action_search.localized(),
+                                enabled = !creatorIdentityLoading,
+                                onPrimary = { onCreatorClick(mention) },
+                                onSearch = { onCreatorSearch(mention) },
+                                onCopy = { onTagCopy(mention.displayName) },
+                                modifier = Modifier.testTag("title-credit-${mention.order}"),
+                            ) {
+                                Text(
+                                    label,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
                         }
                     }
                 }
@@ -360,6 +396,7 @@ private fun DetailMetadataContext(
     onPrimary: () -> Unit,
     onSearch: () -> Unit,
     onCopy: () -> Unit,
+    modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -370,7 +407,7 @@ private fun DetailMetadataContext(
         Unit
     }
     Box(
-        Modifier.focusRequester(trigger)
+        modifier.focusRequester(trigger)
             .onPointerEvent(PointerEventType.Press) {
                 if (enabled && it.button == PointerButton.Secondary) {
                     expanded = true
