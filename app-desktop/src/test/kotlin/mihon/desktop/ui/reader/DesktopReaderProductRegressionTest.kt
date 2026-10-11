@@ -31,15 +31,39 @@ class DesktopReaderProductRegressionTest {
     }
 
     @Test
-    fun `manual boundary removes conflicting automatic edge and retains unrelated edge`() {
+    fun `legacy manual boundary and its following pair override overlapping automatic edges`() {
         val groups = dualGroups(
             pageCount = 7,
             forcedSinglePages = setOf(2),
             matchedPairs = setOf(2 to 3, 4 to 5),
         )
-        assertTrue(listOf(4, 5) in groups)
+        // A legacy boundary also promises the immediately following legal pair (3, 4).
+        // Both automatic edges overlap that manual intent; (4, 5) is not unrelated.
+        assertEquals(listOf(listOf(0), listOf(1), listOf(2), listOf(3, 4), listOf(5, 6)), groups)
         assertFalse(listOf(2, 3) in groups)
-        assertTrue(listOf(2) in groups)
+        assertFalse(listOf(4, 5) in groups)
+    }
+
+    @Test
+    fun `legacy manual boundary retains a distant automatic edge that is not a default pair`() {
+        val overlapping = setOf(2 to 3, 4 to 5)
+        val withoutDistantMatch = dualGroups(
+            pageCount = 9,
+            forcedSinglePages = setOf(2),
+            matchedPairs = overlapping,
+        )
+        val withDistantMatch = dualGroups(
+            pageCount = 9,
+            forcedSinglePages = setOf(2),
+            matchedPairs = overlapping + (6 to 7),
+        )
+
+        assertFalse(listOf(6, 7) in withoutDistantMatch, "Control must not pair by default: $withoutDistantMatch")
+        assertTrue(listOf(6, 7) in withDistantMatch, "Distant automatic match must survive: $withDistantMatch")
+        assertTrue(listOf(2) in withDistantMatch)
+        assertTrue(listOf(3, 4) in withDistantMatch)
+        assertFalse(listOf(2, 3) in withDistantMatch)
+        assertFalse(listOf(4, 5) in withDistantMatch)
     }
 
     @Test
