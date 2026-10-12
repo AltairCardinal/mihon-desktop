@@ -196,9 +196,14 @@ object SharedDualPageRules {
                     ) -> ReaderPortraitSingleSlot.FULL
                     side(i) == ReaderPageSideHint.LEFT -> ReaderPortraitSingleSlot.LEFT
                     side(i) == ReaderPageSideHint.RIGHT -> ReaderPortraitSingleSlot.RIGHT
+                    reason == ReaderDualPageSingleReason.MANUAL_BOUNDARY -> if (direction == ReaderDirection.RTL) {
+                        ReaderPortraitSingleSlot.RIGHT
+                    } else {
+                        ReaderPortraitSingleSlot.LEFT
+                    }
                     else -> portraitSinglePageSlot(direction, reason)
                 }
-                if (reason == ReaderDualPageSingleReason.MATCH_BOUNDARY) reservedStart = i + 1
+                if (reason == ReaderDualPageSingleReason.MATCH_BOUNDARY && allowed(i)) reservedStart = i + 1
                 add(ReaderDualPageUnit(listOf(ReaderDualPageSlot(pages[i], position)), known(i), reason))
                 i++
             }

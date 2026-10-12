@@ -19,6 +19,7 @@ class ReaderSpreadSamplesOwner(
 
     var identity = identity
         private set
+    private var contentByPage = identity.content.associateBy { it.pageId }
     private var closed = false
     private val requests = mutableMapOf<ReaderPageId, ReaderSpreadSampleRequest>()
     private val samples = linkedMapOf<ReaderPageId, ReaderSpreadEdgeSamples>()
@@ -29,7 +30,7 @@ class ReaderSpreadSamplesOwner(
 
     fun request(pageId: ReaderPageId): ReaderSpreadSampleRequest {
         check(!closed)
-        return ReaderSpreadSampleRequest(identity, identity.content.single { it.pageId == pageId }).also {
+        return ReaderSpreadSampleRequest(identity, contentByPage.getValue(pageId)).also {
             requests[pageId] = it
         }
     }
@@ -39,7 +40,7 @@ class ReaderSpreadSamplesOwner(
         !closed && requests[request.content.pageId] === request &&
             request.identity.generation == identity.generation &&
             request.identity.pageListRevision == identity.pageListRevision &&
-            request.identity.pageIds == identity.pageIds && identity.content.any { it == request.content }
+            request.identity.pageIds == identity.pageIds && contentByPage[request.content.pageId] == request.content
 
     fun accept(request: ReaderSpreadSampleRequest, value: ReaderSpreadEdgeSamples): Boolean {
         if (!owns(request)) return false
@@ -79,12 +80,13 @@ class ReaderSpreadSamplesOwner(
         }
         scores.keys.removeAll { it.first in changed || it.second in changed }
         identity = next
+        contentByPage = next.content.associateBy { it.pageId }
     }
 
     fun rebind(next: ReaderDualPageIdentity): ReaderSpreadSamplesOwner {
         check(!closed)
         val replacement = ReaderSpreadSamplesOwner(next, sampleCapacity)
-        val unchanged = next.content.filter { it in identity.content }.map { it.pageId }.toSet()
+        val unchanged = next.content.filter { contentByPage[it.pageId] == it }.map { it.pageId }.toSet()
         replacement.samples.putAll(samples.filterKeys { it in unchanged })
         replacement.scores.putAll(scores.filterKeys { it.first in unchanged && it.second in unchanged })
         close()
@@ -105,7 +107,7 @@ class ReaderSpreadSamplesOwner(
                 return@mapNotNull null
             }
             if (listOf(pair.first, pair.second).any { pageId ->
-                    val content = identity.content.single { it.pageId == pageId }
+                    val content = contentByPage.getValue(pageId)
                     facts[pageId]?.sourceOrientation != content.sourceOrientation ||
                         facts[pageId]?.rotation != content.rotation
                 }
@@ -127,7 +129,7 @@ class ReaderSpreadSamplesOwner(
     ): Double? {
         if (closed || direction == ReaderDirection.VERTICAL) return null
         for (page in listOf(first, second)) {
-            val content = identity.content.firstOrNull { it.pageId == page } ?: return null
+            val content = contentByPage[page] ?: return null
             val fact = facts[page] ?: return null
             if (fact.state != ReaderPageFactState.PORTRAIT || fact.sourceOrientation != content.sourceOrientation ||
                 fact.rotation != content.rotation

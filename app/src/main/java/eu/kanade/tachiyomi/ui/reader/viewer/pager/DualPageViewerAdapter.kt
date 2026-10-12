@@ -315,6 +315,18 @@ class DualPageViewerAdapter(
 
     fun refreshPairing() = rebuildItems()
 
+    private var presentationRefreshScheduled = false
+
+    internal fun presentationReleased(owner: SharedDualPageSession) {
+        if (!ownsSession(owner) || presentationRefreshScheduled) return
+        presentationRefreshScheduled = true
+        scope.launch {
+            kotlinx.coroutines.yield()
+            presentationRefreshScheduled = false
+            if (ownsSession(owner)) rebuildItems()
+        }
+    }
+
     internal fun releaseContent(chapter: ReaderChapter) {
         val pages = chapter.pages ?: return
         val previous = chapterPairings[chapter]?.session ?: return
@@ -542,7 +554,7 @@ class DualPageViewerAdapter(
         chapter?.state is ReaderChapter.State.Loaded
 
     private fun buildDisplayPages(pages: List<ReaderPage>, session: SharedDualPageSession): List<DisplayPage> {
-        return session.units.map { unit ->
+        return session.presentationFrameProjection.map { unit ->
             if (unit.pageIds.size == 1) {
                 DisplayPage.Single(pages[unit.pageIds.single().sourcePageIndex], unit.slots.single().position)
             } else {

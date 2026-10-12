@@ -481,7 +481,7 @@ class DualPageR2LPagerViewer(
 
     internal fun releasePresentation(scope: Pair<SharedDualPageSession, ReaderDualPageViewportTicket>) {
         val (owner, ticket) = scope
-        owner.releaseViewport(ticket)
+        if (owner.releaseViewport(ticket)) adapter.presentationReleased(owner)
         presentedViewports[owner]?.let { tickets ->
             tickets.remove(ticket)
             if (tickets.isEmpty()) presentedViewports.remove(owner)

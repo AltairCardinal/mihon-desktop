@@ -28,6 +28,7 @@ import io.mockk.every
 import io.mockk.mockkConstructor
 import io.mockk.unmockkConstructor
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import mihon.domain.reader.ReaderImageOrientation
 import mihon.domain.reader.ReaderPortraitSingleSlot
@@ -60,6 +61,60 @@ import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 class DualPageViewportZoomTest {
     private val fixture = DualPagerPageHolderLayoutTest()
     private val mounted = mutableListOf<DualPagerPageHolder>()
+
+    @Test
+    fun lateWidePartnerKeepsThePaintedNativeImageAndRemainsTheNextPage() = runTest {
+        val viewer = ReflectionHelpers.getField<DualPageR2LPagerViewer>(fixture, "viewer")
+        fun png(width: Int, height: Int): ByteArray {
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+            return ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                .toByteArray().also { bitmap.recycle() }
+        }
+        val portrait = png(400, 800)
+        val wide = png(1200, 800)
+        val chapter = ReaderChapter(Chapter.create().copy(id = 61091, mangaId = 1))
+        val pages = List(7) { index ->
+            ReaderPage(index, stream = { (if (index == 2) wide else portrait).inputStream() }).apply {
+                this.chapter = chapter
+                status = Page.State.Ready
+            }
+        }
+        chapter.publishLoadedPageListForTest(pages)
+        pages.filter { it.index != 2 }.forEach { it.publishHeaderFact() }
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        viewer.moveToPage(pages[1])
+        val display = viewer.adapter.items.filterIsInstance<DisplayPage>().single { it.containsPage(pages[1]) }
+        val holder = DualPagerPageHolder(viewer.activity, viewer, display)
+        mounted += holder
+        load(holder, pages[1], "CENTER")
+        invokeFixture("measure", holder, 1400, 1000)
+        val image = descendants(holder).filterIsInstance<ReaderPageImageView>().first { it.childCount > 0 }
+        paintReaderImage(image, portrait)
+        settle(holder)
+        val before = pixels(holder)
+        val native = image.getChildAt(0)
+        val decoded = ReflectionHelpers.getField<Bitmap>(native, "bitmap")
+        val owner = requireNotNull(viewer.adapter.session(chapter))
+        val id = owner.identity.pageIds[1]
+        val frame = holder.presentationScope!!.second.frameId
+        assertTrue(owner.frame(holder.presentationScope!!.second)!!.drawnPageIds.contains(id))
+        pages[2].publishHeaderFact()
+        runCurrent()
+        assertTrue(viewer.adapter.getItemPosition(holder) != androidx.viewpager.widget.PagerAdapter.POSITION_NONE)
+        invokeFixture("measure", holder, 1400, 1000)
+        settle(holder)
+        assertEquals(before, pixels(holder))
+        assertSame(native, image.getChildAt(0))
+        assertSame(decoded, ReflectionHelpers.getField<Bitmap>(native, "bitmap"))
+        assertEquals(frame, holder.presentationScope!!.second.frameId)
+        assertEquals(listOf(id), owner.targetUnit!!.pageIds)
+        assertSame(pages[2], viewer.adapter.navigate(chapter, true))
+        val wideDisplay = viewer.adapter.items.filterIsInstance<DisplayPage>().single { it.containsPage(pages[2]) }
+        assertEquals(ReaderPortraitSingleSlot.FULL, (wideDisplay as DisplayPage.Single).slot)
+        invokeFixture("detach", holder)
+        runCurrent()
+        assertEquals(owner.canonicalUnits, owner.presentationFrameProjection)
+    }
 
     @Test
     fun partialNeighbourNativePaintReleaseKeepsItsUndrawnPartnerOnEntry() = runTest {

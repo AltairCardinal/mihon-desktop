@@ -113,9 +113,12 @@ class SharedDualPageSession(
         private set
     var layoutRevision: Long = 0
         private set
-    val units: List<ReaderDualPageUnit> get() = presentation.units(location?.pageId)
-    val presentationUnits: List<ReaderDualPageUnit> get() = units
-    val targetUnit: ReaderDualPageUnit? get() = location?.pageId?.let(presentation::unit)
+    val canonicalUnits: List<ReaderDualPageUnit> get() = presentation.canonicalUnits()
+    val canonicalTargetUnit: ReaderDualPageUnit? get() = location?.pageId?.let(presentation::unit)
+    val presentationFrameProjection: List<ReaderDualPageUnit> get() = presentation.presentationFrameProjection()
+    val units: List<ReaderDualPageUnit> get() = presentationFrameProjection
+    val presentationUnits: List<ReaderDualPageUnit> get() = presentationFrameProjection
+    val targetUnit: ReaderDualPageUnit? get() = location?.pageId?.let(presentation::presentationUnit)
     val displayedHistory: List<ReaderDualPageFrame> get() = presentation.history
     val reservedPairs: Set<Pair<ReaderPageId, ReaderPageId>> get() = presentation.reservedPairs
     fun pageFact(pageId: ReaderPageId): ReaderPageFact? = facts[pageId]
@@ -453,13 +456,9 @@ class SharedDualPageSession(
         if (closed) return null
         val current = location ?: return null
         val page = pageId?.takeIf { it in identity.pageIds } ?: return null
-        val unit = presentation.unit(page)
+        val unit = presentation.presentationUnit(page)
         val ready = preparingPageIds ?: unit.pageIds.filterTo(mutableSetOf()) {
-            facts[it]?.state in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD) &&
-                (
-                    it == unit.anchor || presentation.isManualUnit(unit) ||
-                        facts[unit.anchor]?.state in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD)
-                    )
+            facts[it]?.state in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD)
         }
         return presentation.prepare(
             page,
@@ -521,7 +520,7 @@ class SharedDualPageSession(
         val location = location ?: return null
         if (closed || event.identity != event.ticket.identity || event.layoutRevision != event.ticket.layoutRevision ||
             event.locationSequence != event.ticket.locationSequence || event.unitId != event.ticket.unitId ||
-            !presentation.drawn(event.ticket, event.renderedPageIds) || !event.settled ||
+            !presentation.hasDrawn(event.ticket, event.renderedPageIds) || !event.settled ||
             event.locationSequence != location.sequence || !event.ticket.readingEligible ||
             event.reason != ReaderDualPageSettlementReason.USER_NAVIGATION ||
             event.settlementSequence < lastSettlementSequence

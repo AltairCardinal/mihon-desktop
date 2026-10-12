@@ -12,6 +12,34 @@ import kotlin.random.Random
 /** Synthetic facts replay the production session failures without distributing source images. */
 class SharedDualPageCanonicalResearchTest {
     @Test
+    fun `a forbidden boundary cannot leak an earlier prefix reservation into the next segment`() {
+        session(1, 6).use { owner ->
+            val ids = owner.identity.pageIds
+            fun rightSegment(widePrefix: Boolean): List<List<Int>> {
+                val facts = ids.associateWith { portrait }.toMutableMap()
+                if (widePrefix) facts[ids[1]] = ReaderPageFact.dimensions(200, 100)
+                facts[ids[3]] = portrait.copy(sideHint = ReaderPageSideHint.RIGHT)
+                facts[ids[5]] = portrait.copy(sideHint = ReaderPageSideHint.LEFT)
+                return SharedDualPageRules.canonicalPlan(
+                    ids,
+                    facts,
+                    ReaderDirection.RTL,
+                    automatic = true,
+                    distance = { a, b ->
+                        when (a.sourcePageIndex to b.sourcePageIndex) {
+                            3 to 4 -> 15.0
+                            4 to 5 -> 0.0
+                            else -> null
+                        }
+                    },
+                ).filter { it.anchor.sourcePageIndex >= 3 }.map { it.pageIds.map { page -> page.sourcePageIndex } }
+            }
+            assertEquals(listOf(listOf(3), listOf(4, 5)), rightSegment(false))
+            assertEquals(rightSegment(false), rightSegment(true))
+        }
+    }
+
+    @Test
     fun `portrait cover uses trailing half while real spread uses full width in both directions`() {
         for (direction in listOf(ReaderDirection.RTL, ReaderDirection.LTR)) {
             session(1, 8).use { owner ->
@@ -225,9 +253,9 @@ class SharedDualPageCanonicalResearchTest {
     }
 
     private fun assertPartition(owner: SharedDualPageSession) {
-        val flattened = owner.units.flatMap { it.pageIds }
+        val flattened = owner.canonicalUnits.flatMap { it.pageIds }
         assertEquals(owner.identity.pageIds, flattened, "Every source occurs exactly once in chapter order")
-        owner.units.forEach { unit ->
+        owner.canonicalUnits.forEach { unit ->
             assertTrue(unit.pageIds.size in 1..2)
             assertTrue(unit.pageIds.zipWithNext().all { (a, b) -> b.sourcePageIndex == a.sourcePageIndex + 1 })
         }
@@ -235,7 +263,9 @@ class SharedDualPageCanonicalResearchTest {
 
     private fun SharedDualPageSession.id(page: Int) = identity.pageIds[page - 1]
     private fun SharedDualPageSession.group() = targetUnit!!.pageIds.map { it.sourcePageIndex + 1 }
-    private fun SharedDualPageSession.partition() = units.map { it.pageIds.map { id -> id.sourcePageIndex + 1 } }
+    private fun SharedDualPageSession.partition() = canonicalUnits.map {
+        it.pageIds.map { id -> id.sourcePageIndex + 1 }
+    }
     private inline fun <T> SharedDualPageSession.use(block: (SharedDualPageSession) -> T): T = try {
         block(this)
     } finally {
