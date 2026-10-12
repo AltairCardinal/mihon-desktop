@@ -144,11 +144,16 @@ object ReaderPairingCertifier {
         fun dimension(index: Int): ReaderPageFact? {
             val page = pages.getOrNull(index) ?: return null
             val fact = effectiveFact(owner, headers, page)
-            if (fact?.state == ReaderPageFactState.FAILED) failures[page] = ReaderAnalysisFailure.READ
             if (fact == null || !fact.hasOriginalGeometry() ||
                 fact.rotation != contents.getValue(page).rotation ||
                 fact.sourceOrientation != contents.getValue(page).sourceOrientation
             ) {
+                val unavailable = owner.pageAnalysis(page) as? ReaderPageAnalysisEvidence.RetryableFailure
+                if (unavailable != null) {
+                    failures[page] = unavailable.reason
+                } else if (fact?.state == ReaderPageFactState.FAILED) {
+                    failures[page] = ReaderAnalysisFailure.READ
+                }
                 needs += ReaderPairingFactNeed(page, ReaderPairingFactKind.DIMENSIONS)
                 return null
             }

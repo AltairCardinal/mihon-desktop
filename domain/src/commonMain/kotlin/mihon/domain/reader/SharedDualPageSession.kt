@@ -133,6 +133,28 @@ class SharedDualPageSession(
     fun requestOriginalAnalysis(pageId: ReaderPageId): ReaderSpreadSampleRequest? =
         if (closed || pageId !in identity.pageIds) null else spreadSamples.request(pageId)
 
+    fun ownsOriginalAnalysisRequest(request: ReaderSpreadSampleRequest): Boolean =
+        !closed && spreadSamples.owns(request)
+
+    fun originalAnalysis(pageId: ReaderPageId): ReaderPageAnalysisEvidence = spreadSamples.pageAnalysis(pageId)
+
+    fun failOriginalAnalysis(request: ReaderSpreadSampleRequest, reason: ReaderAnalysisFailure): Boolean {
+        if (closed || !spreadSamples.failOriginal(request, reason)) return false
+        sampleWorkRevision++
+        return true
+    }
+
+    /** A platform requests a physical slot only after the same canonical reducer has proved it. */
+    fun captureCertifiedViewport(pageId: ReaderPageId): ReaderDualPageViewportTicket? {
+        if (closed) return null
+        if (presentationMode == ReaderPresentationMode.DUAL &&
+            certifyPairing(pageId) !is ReaderPairingCertification.Certified
+        ) {
+            return null
+        }
+        return captureViewport(pageId, preparingPageIds = emptySet())
+    }
+
     fun acceptOriginalAnalysis(
         request: ReaderSpreadSampleRequest,
         fact: ReaderPageFact,

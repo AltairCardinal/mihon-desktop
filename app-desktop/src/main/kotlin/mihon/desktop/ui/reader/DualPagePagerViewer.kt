@@ -17,8 +17,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -37,11 +37,10 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -67,6 +66,7 @@ import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageLoadState
 import tachiyomi.i18n.MR
 import java.util.Locale
+import kotlin.math.roundToInt
 
 internal enum class DualPageLoadingIndicatorPlacement {
     None,
@@ -446,6 +446,15 @@ internal fun DualPagePagerViewer(
                     splitHalf = slot.splitHalf,
                     sourceBounds = slot.sourceBounds,
                 )
+                androidx.compose.runtime.SideEffect {
+                    if (presentationImage.state is DesktopReaderPresentationImageState.Ready) {
+                        pagerPresentationBinding?.model?.acceptDecodedOriginal(page, presentationImage.holder)
+                    }
+                }
+                if (pagerPresentationBinding?.model?.state?.value?.dualPairingFailures?.containsKey(page.id) == true) {
+                    ReaderPageRetryContent(onRetry = { onRetryPage(page.id) }, modifier = modifier.fillMaxSize())
+                    return@DualPageDisplayUnitFrame
+                }
                 val matching = pagerPresentationBinding?.model?.state?.value?.autoSpreadMatching == true
                 val sideHint = remember(presentationImage.state, matching, slot.splitHalf, slot.sourceBounds) {
                     if (!matching || slot.splitHalf != null || slot.sourceBounds != null ||
@@ -494,7 +503,13 @@ internal fun DualPagePagerViewer(
                         ReaderImageViewport(
                             viewportSize,
                             IntOffset(
-                                if (physicalSlot == 0) 0 else viewportSize.width - (viewportSize.width * 0.5f).roundToInt(),
+                                if (physicalSlot ==
+                                    0
+                                ) {
+                                    0
+                                } else {
+                                    viewportSize.width - (viewportSize.width * 0.5f).roundToInt()
+                                },
                                 0,
                             ),
                         )

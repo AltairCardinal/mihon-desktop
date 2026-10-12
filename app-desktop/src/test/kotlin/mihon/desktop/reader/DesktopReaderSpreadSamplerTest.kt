@@ -1,6 +1,8 @@
 package mihon.desktop.reader
 
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
+import mihon.domain.reader.PageDecodePurpose
 import mihon.domain.reader.ReaderImageOrientation
 import mihon.domain.reader.ReaderOriginalPageSamples
 import mihon.domain.reader.ReaderPageSideHint
@@ -24,7 +26,7 @@ import java.util.zip.CRC32
 import java.util.zip.DeflaterOutputStream
 import javax.imageio.ImageIO
 
-@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class)
 class DesktopReaderSpreadSamplerTest {
     @Test
     fun `actual ICC JPEG region leases expose fixed sRGB rather than untagged linear channels`() = runTest {
@@ -49,14 +51,27 @@ class DesktopReaderSpreadSamplerTest {
     }
 
     @Test
-    fun `large legacy original edges remain available when combined side sampling is resource limited`() = runTest {
+    fun `large original edges and side samples remain available through bounded production regions`() = runTest {
         val encoded = largePng(8192, 12000)
         sample(encoded, 8192, 12000, ReaderImageOrientation.NORMAL, legacy = true) { edges ->
             assertEquals(List(50) { 0xff204080.toInt() }, edges.left)
             assertEquals(List(50) { 0xff204080.toInt() }, edges.right)
         }
-        sample(encoded, 8192, 12000, ReaderImageOrientation.NORMAL, expectLimited = true) {
-            error("Resource-limited sampling must not manufacture computed side evidence")
+        sample(encoded, 8192, 12000, ReaderImageOrientation.NORMAL) { edges ->
+            assertEquals(List(50) { 0xff204080.toInt() }, edges.left)
+            assertEquals(List(50) { 0xff204080.toInt() }, edges.right)
+        }
+    }
+
+    @Test
+    fun `original region samples preserve the independent mixed alpha golden`() = runTest {
+        val encoded = requireNotNull(javaClass.classLoader.getResourceAsStream("reader/mixed-alpha-original.png")).use {
+            it.readBytes()
+        }
+        val image = ImageIO.read(encoded.inputStream())
+        sample(encoded, image.width, image.height, ReaderImageOrientation.NORMAL) { edges ->
+            assertEquals(List(50) { 0x804080c0.toInt() }, edges.left)
+            assertEquals(List(50) { 0xefffffff.toInt() }, edges.right)
         }
     }
 
@@ -154,7 +169,30 @@ class DesktopReaderSpreadSamplerTest {
             opens++
             encoded
         }, reporter)
-        val pipeline = DesktopReaderPageImagePipeline(this, contentOwner, reporter)
+        val regionDecoder = SkiaDesktopReaderPageImageDecoder()
+        var regions = 0
+        val pipeline = DesktopReaderPageImagePipeline(
+            this,
+            contentOwner,
+            reporter,
+            decoder = DesktopReaderPageImageDecoder { bytes, key ->
+                assertEquals(PageDecodePurpose.REGION_TILE, key.purpose)
+                val requestedBytes = key.maxWidth.toLong() * key.maxHeight * 4
+                assertTrue(
+                    requestedBytes <= 4L * 1024 * 1024,
+                    "Every requested native region is bounded before allocation",
+                )
+                regionDecoder.decode(bytes, key).also { lease ->
+                    if (lease != null) {
+                        regions++
+                        assertTrue(
+                            lease.asset.estimatedBytes <= 4L * 1024 * 1024,
+                            "The actual decoded raster is bounded",
+                        )
+                    }
+                }
+            },
+        )
         val request = ReaderPageContentOpenRequest(
             ReaderPageId(ReaderChapterId(87), 1),
             3,
@@ -185,6 +223,7 @@ class DesktopReaderSpreadSamplerTest {
                 assertEquals(50, edges.left.size)
                 assertEquals(50, edges.right.size)
                 verify(edges)
+                assertTrue(regions >= 2)
                 assertEquals(1, opens, "Both original edges share the same encoded lease")
                 assertEquals(0L, pipeline.memoryAuthority.snapshot().residentBytes)
                 assertEquals(0, pipeline.snapshot().inFlightCount)

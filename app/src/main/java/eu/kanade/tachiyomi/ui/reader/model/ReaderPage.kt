@@ -112,8 +112,17 @@ open class ReaderPage(
     }
 
     /** Called by the existing materialization worker, while its encoded stream remains owned by the loader. */
-    internal fun publishHeaderFact() {
+    internal fun publishCompleteHeaderFact() = publishHeaderFact(ReaderDualPageFactLimits.MAX_NEW_BYTES)
+
+    internal fun publishHeaderFact(headerByteLimit: Long = ReaderDualPageFactLimits.MAX_HEADER_BYTES) {
         val captured = synchronized(contentLock) {
+            // Activation and a holder consume the same loader-owned original metadata.
+            // A content replacement clears this fact; a failed read remains retryable.
+            if (mutableContentFact.value.encodedVersion == encodedVersion &&
+                mutablePageFact.value.width > 0 && mutablePageFact.value.height > 0
+            ) {
+                return
+            }
             HeaderSnapshot(
                 stream ?: return,
                 encodedVersion,
@@ -125,14 +134,18 @@ open class ReaderPage(
         val openStream = captured.openStream
         val fact = try {
             val bounded = object : ForwardingSource(openStream().source()) {
-                private var remaining = ReaderDualPageFactLimits.MAX_HEADER_BYTES
+                private var remaining = headerByteLimit
                 override fun read(sink: Buffer, byteCount: Long): Long {
                     if (remaining == 0L) return -1
                     return super.read(sink, minOf(byteCount, remaining)).also { if (it > 0) remaining -= it }
                 }
             }
             bounded.buffer().use { source ->
-                val orientation = mihon.domain.reader.readImageOrientation(source.peek().readByteArray())
+                val header = source.peek().readByteArray()
+                check(mihon.domain.reader.hasCompleteImageOrientationMetadata(header)) {
+                    "Original orientation metadata is incomplete"
+                }
+                val orientation = mihon.domain.reader.readImageOrientation(header)
                 val (rawWidth, rawHeight) = ImageUtil.getImageDimensions(source.peek())
                 val (width, height) = orientation.orientedSize(rawWidth, rawHeight)
                 if (width > 0 && height > 0) {

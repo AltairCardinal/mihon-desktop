@@ -130,7 +130,52 @@ class AndroidReaderSpreadSamplerTest {
     }
 
     @Test
-    fun `legacy large original edges stay bounded while new side regions report the resource limit`() = runBlocking {
+    fun `large and very tall originals use bounded blocks through one decoder`() = runBlocking {
+        for ((width, height) in listOf(8192 to 12000, 64 to 250000)) {
+            var opened = 0
+            var recycled = 0
+            val decoded = mutableListOf<Rect>()
+            val page = ReaderPage(1, stream = {
+                opened++
+                byteArrayOf().inputStream()
+            })
+            val session = session(page)
+            try {
+                val samples = requireNotNull(
+                    AndroidReaderSpreadSampler.sampleOriginal(
+                        page,
+                        requireNotNull(session.requestSpreadSample(id(1))),
+                        width,
+                        height,
+                        {
+                            object : ReaderPageRegionDecoder {
+                                override fun decode(region: Rect): Bitmap {
+                                    decoded += Rect(region)
+                                    assertTrue(region.width().toLong() * region.height() * 4 <= 4L * 1024 * 1024)
+                                    return Bitmap.createBitmap(region.width(), region.height(), Bitmap.Config.ARGB_8888)
+                                        .apply { eraseColor(if (region.left < width / 2) -1 else 0xff202020.toInt()) }
+                                }
+                                override fun recycle() {
+                                    recycled++
+                                }
+                            }
+                        },
+                    ),
+                )
+                assertEquals(ReaderPageSideHint.RIGHT, samples.sideHint)
+                assertEquals(List(50) { -1 }, samples.edges!!.left)
+                assertEquals(List(50) { 0xff202020.toInt() }, samples.edges!!.right)
+                assertEquals(1, opened)
+                assertEquals(1, recycled)
+                assertTrue("The large input must split without full-image fallback", decoded.size > 2)
+            } finally {
+                session.close()
+            }
+        }
+    }
+
+    @Test
+    fun `legacy large original edges stay bounded without requesting side strips`() = runBlocking {
         var opened = 0
         var closed = 0
         var decoded = 0
@@ -162,9 +207,6 @@ class AndroidReaderSpreadSamplerTest {
             assertEquals(2, decoded)
             assertEquals(1, opened)
             assertEquals(1, closed)
-            assertEquals(null, AndroidReaderSpreadSampler.sampleOriginal(page, request, 8192, 12000, regionsOnly))
-            assertEquals("The side resource limit is decided before any additional I/O", 1, opened)
-            assertEquals(2, decoded)
         } finally {
             session.close()
         }

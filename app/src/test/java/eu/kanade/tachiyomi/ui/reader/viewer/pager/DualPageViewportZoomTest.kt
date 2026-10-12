@@ -46,6 +46,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.util.ReflectionHelpers
 import tachiyomi.domain.chapter.model.Chapter
+import uy.kohesive.injekt.api.get
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.time.Duration
@@ -61,10 +62,261 @@ import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 class DualPageViewportZoomTest {
     private val fixture = DualPagerPageHolderLayoutTest()
     private val mounted = mutableListOf<DualPagerPageHolder>()
+    private lateinit var mainScheduler: kotlinx.coroutines.test.TestCoroutineScheduler
+
+    @Test
+    fun uncertifiedOriginalNeverPreparesNativeSlot() = runTest {
+        val viewer = ReflectionHelpers.getField<DualPageR2LPagerViewer>(fixture, "viewer")
+        viewer.adapter.spreadDecoderFactory = { error("Original analysis unavailable until an explicit retry") }
+        uy.kohesive.injekt.Injekt.get<eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences>()
+            .automaticSpreadMatching().set(true)
+        runCurrent()
+        val bitmap = Bitmap.createBitmap(80, 120, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+        val encoded = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+        bitmap.recycle()
+        val chapter = ReaderChapter(Chapter.create().copy(id = 73003, mangaId = 1))
+        val pages = List(5) { index ->
+            ReaderPage(index, stream = { encoded.inputStream() }).apply {
+                this.chapter = chapter
+                status = Page.State.Ready
+                publishHeaderFact()
+            }
+        }
+        chapter.publishLoadedPageListForTest(pages)
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        viewer.moveToPage(pages[2])
+        val display = viewer.adapter.items.filterIsInstance<DisplayPage>().single { it.containsPage(pages[2]) }
+        val holder = DualPagerPageHolder(viewer.activity, viewer, display)
+        mounted += holder
+        org.junit.Assert.assertNull(
+            "Header/Ready alone must not issue a native slot capability",
+            holder.presentationScope,
+        )
+        assertTrue(requireNotNull(viewer.adapter.session(chapter)).displayedHistory.isEmpty())
+    }
+
+    @Test
+    fun originalProducerPublishesReadFailureAndRecoversThroughExistingRetry() = runTest {
+        val viewer = ReflectionHelpers.getField<DualPageR2LPagerViewer>(fixture, "viewer")
+        val failedReads = java.util.concurrent.atomic.AtomicInteger()
+        viewer.adapter.spreadDecoderFactory =
+            {
+                failedReads.incrementAndGet()
+                throw java.io.IOException("fixture read failed")
+            }
+        uy.kohesive.injekt.Injekt.get<eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences>()
+            .automaticSpreadMatching().set(true)
+        runCurrent()
+        val bitmap = Bitmap.createBitmap(80, 120, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+        val encoded = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+        bitmap.recycle()
+        val chapter = ReaderChapter(Chapter.create().copy(id = 73004, mangaId = 1))
+        val pages = List(5) { index ->
+            ReaderPage(index, stream = { encoded.inputStream() }).apply {
+                this.chapter = chapter
+                status = Page.State.Ready
+                publishHeaderFact()
+            }
+        }
+        chapter.publishLoadedPageListForTest(pages)
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        viewer.moveToPage(pages[2])
+        val owner = requireNotNull(viewer.adapter.session(chapter))
+        fun awaitCertification(predicate: (mihon.domain.reader.ReaderPairingCertification) -> Boolean) {
+            awaitProduction({
+                "Actual decoder failures=${failedReads.get()}, result=${owner.certifyPairing(
+                    owner.identity.pageIds[2],
+                )}"
+            }) {
+                predicate(owner.certifyPairing(owner.identity.pageIds[2]))
+            }
+        }
+        awaitCertification { it is mihon.domain.reader.ReaderPairingCertification.RetryableBlocked }
+        assertTrue("The actual original decoder factory must have failed", failedReads.get() > 0)
+        val failed = owner.certifyPairing(
+            owner.identity.pageIds[2],
+        ) as mihon.domain.reader.ReaderPairingCertification.RetryableBlocked
+        assertTrue(failed.failures.values.all { it == mihon.domain.reader.ReaderAnalysisFailure.READ })
+        viewer.adapter.spreadDecoderFactory = { input ->
+            val original = requireNotNull(BitmapFactory.decodeStream(input))
+            object : eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageRegionDecoder {
+                override fun decode(
+                    region: Rect,
+                ) = Bitmap.createBitmap(original, region.left, region.top, region.width(), region.height())
+                override fun recycle() = original.recycle()
+            }
+        }
+        pages[2].retryHeaderFact()
+        awaitCertification { it is mihon.domain.reader.ReaderPairingCertification.Certified }
+        val display = viewer.adapter.items.filterIsInstance<DisplayPage>().single { it.containsPage(pages[2]) }
+        assertTrue(viewer.capturePresentation(display) != null)
+        assertTrue(
+            "Analysis and a prepared capability still do not count as reading",
+            owner.displayedHistory.none {
+                it.drawnPageIds.isNotEmpty()
+            },
+        )
+    }
+
+    @Test
+    fun missingHeaderReadAndQuotaFailuresAreRecoverableWithoutNavigationOrSpin() = runTest {
+        val viewer = ReflectionHelpers.getField<DualPageR2LPagerViewer>(fixture, "viewer")
+        uy.kohesive.injekt.Injekt.get<eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences>()
+            .automaticSpreadMatching().set(true)
+        runCurrent()
+        val bitmap = Bitmap.createBitmap(80, 120, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+        val encoded = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+        bitmap.recycle()
+        viewer.adapter.spreadDecoderFactory = { input ->
+            val original = requireNotNull(BitmapFactory.decodeStream(input))
+            object : eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageRegionDecoder {
+                override fun decode(
+                    region: Rect,
+                ) = Bitmap.createBitmap(original, region.left, region.top, region.width(), region.height())
+                override fun recycle() = original.recycle()
+            }
+        }
+        for (reason in listOf(
+            mihon.domain.reader.ReaderAnalysisFailure.READ,
+            mihon.domain.reader.ReaderAnalysisFailure.RESOURCE,
+        )) {
+            val chapter = ReaderChapter(Chapter.create().copy(id = 73005 + reason.ordinal.toLong(), mangaId = 1))
+            val page = ReaderPage(0).apply { this.chapter = chapter }
+            chapter.publishLoadedPageListForTest(listOf(page))
+            var failing = true
+            var reads = 0
+            chapter.pageLoader = object : eu.kanade.tachiyomi.ui.reader.loader.PageLoader() {
+                override var isLocal = false
+                override suspend fun getPages() = listOf(page)
+                override suspend fun loadFactPage(
+                    page: ReaderPage,
+                    permit: mihon.domain.reader.ReaderDualPageFactReadPermit,
+                ) {
+                    reads++
+                    if (failing) {
+                        if (reason == mihon.domain.reader.ReaderAnalysisFailure.RESOURCE) {
+                            viewer.adapter.session(chapter)!!.factBudget.close()
+                            throw kotlinx.coroutines.CancellationException("Fact read permit exhausted")
+                        }
+                        throw java.io.IOException("Encoded content failed before a header existed")
+                    }
+                    page.stream = { encoded.inputStream() }
+                    page.status = Page.State.Ready
+                    super.loadFactPage(page, permit)
+                }
+            }
+            viewer.setChapters(ViewerChapters(chapter, null, null))
+            val owner = viewer.adapter.session(chapter)!!
+            val location = owner.location
+            fun awaitResult(predicate: (mihon.domain.reader.ReaderPairingCertification) -> Boolean) {
+                awaitProduction({
+                    "Read count=$reads, result=${owner.certifyPairing()}"
+                }) { predicate(owner.certifyPairing()) }
+            }
+            awaitResult { it is mihon.domain.reader.ReaderPairingCertification.RetryableBlocked }
+            val failed = owner.certifyPairing() as mihon.domain.reader.ReaderPairingCertification.RetryableBlocked
+            assertEquals(reason, failed.failures[owner.identity.pageIds[0]])
+            assertEquals(1, reads)
+            repeat(5) { runCurrent() }
+            assertEquals("A terminal preparation failure must not spin", 1, reads)
+            failing = false
+            page.retryHeaderFact()
+            awaitResult { it is mihon.domain.reader.ReaderPairingCertification.Certified }
+            assertEquals(location, owner.location)
+            assertEquals(2, reads)
+        }
+    }
+
+    @Test
+    fun replacingCompletedOriginalWhilePartnerIsPendingRejectsTheWholeBatch() = runTest {
+        val viewer = ReflectionHelpers.getField<DualPageR2LPagerViewer>(fixture, "viewer")
+        uy.kohesive.injekt.Injekt.get<eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences>()
+            .automaticSpreadMatching().set(true)
+        runCurrent()
+        fun png(color: Int): ByteArray {
+            val bitmap = Bitmap.createBitmap(80, 120, Bitmap.Config.ARGB_8888).apply { eraseColor(color) }
+            return ByteArrayOutputStream().also {
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+            }.toByteArray().also { bitmap.recycle() }
+        }
+        val red = png(Color.RED)
+        val blue = png(Color.BLUE)
+        val replacement = png(Color.GREEN)
+        val firstComplete = java.util.concurrent.CountDownLatch(1)
+        val partnerStarted = java.util.concurrent.CountDownLatch(1)
+        val releasePartner = java.util.concurrent.CountDownLatch(1)
+        viewer.adapter.spreadDecoderFactory = { input ->
+            val original = requireNotNull(BitmapFactory.decodeStream(input))
+            val partner = original.getPixel(0, 0) == Color.BLUE
+            if (partner) {
+                partnerStarted.countDown()
+                check(releasePartner.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            }
+            object : eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageRegionDecoder {
+                override fun decode(
+                    region: Rect,
+                ) = Bitmap.createBitmap(original, region.left, region.top, region.width(), region.height())
+                override fun recycle() {
+                    original.recycle()
+                    if (!partner) firstComplete.countDown()
+                }
+            }
+        }
+        val chapter = ReaderChapter(Chapter.create().copy(id = 73010, mangaId = 1)).apply { requestedPage = 2 }
+        val pages = List(5) { index ->
+            ReaderPage(index, stream = { (if (index == 2) blue else red).inputStream() }).apply {
+                this.chapter = chapter
+                status = Page.State.Ready
+                publishHeaderFact()
+            }
+        }
+        chapter.publishLoadedPageListForTest(pages)
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        val owner = viewer.adapter.session(chapter)!!
+        try {
+            awaitProduction { partnerStarted.count == 0L && firstComplete.count == 0L }
+            runCurrent()
+            // Withhold this ordinary subscriber to exercise the real publication capability,
+            // rather than relying on the usual metadata collector winning the completion race.
+            val collectors = ReflectionHelpers.getField<MutableMap<ReaderPage, kotlinx.coroutines.Job>>(
+                viewer.adapter,
+                "factCollectors",
+            )
+            collectors.getValue(pages[1]).cancel()
+            runCurrent()
+            pages[1].stream = { replacement.inputStream() }
+            val publishingJob = ReflectionHelpers.getField<kotlinx.coroutines.Job>(viewer.adapter, "matchingJob")
+            releasePartner.countDown()
+            awaitProduction { publishingJob.isCompleted }
+            assertTrue(
+                "The completed page's old physical bytes cannot be published",
+                owner.originalAnalysis(
+                    owner.identity.pageIds[1],
+                ) !is mihon.domain.reader.ReaderPageAnalysisEvidence.Computed,
+            )
+            assertTrue(
+                "An invalid batch cannot publish its otherwise valid partner",
+                owner.originalAnalysis(
+                    owner.identity.pageIds[2],
+                ) !is mihon.domain.reader.ReaderPageAnalysisEvidence.Computed,
+            )
+            collectors.remove(pages[1])
+            viewer.setChapters(ViewerChapters(chapter, null, null))
+            pages[2].retryHeaderFact()
+            awaitCertified(viewer, chapter, 2)
+            assertEquals(2, viewer.adapter.session(chapter)!!.location!!.pageId.sourcePageIndex)
+        } finally {
+            releasePartner.countDown()
+        }
+    }
 
     @Test
     fun lateWidePartnerKeepsThePaintedNativeImageAndRemainsTheNextPage() = runTest {
         val viewer = ReflectionHelpers.getField<DualPageR2LPagerViewer>(fixture, "viewer")
+        useEncodedOriginalProducer(viewer)
+        uy.kohesive.injekt.Injekt.get<eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences>()
+            .automaticSpreadMatching().set(true)
+        runCurrent()
         fun png(width: Int, height: Int): ByteArray {
             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
             return ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
@@ -83,9 +335,11 @@ class DualPageViewportZoomTest {
         pages.filter { it.index != 2 }.forEach { it.publishHeaderFact() }
         viewer.setChapters(ViewerChapters(chapter, null, null))
         viewer.moveToPage(pages[1])
+        val certificate = awaitCertified(viewer, chapter, 1)
         val display = viewer.adapter.items.filterIsInstance<DisplayPage>().single { it.containsPage(pages[1]) }
         val holder = DualPagerPageHolder(viewer.activity, viewer, display)
         mounted += holder
+        assertCertifiedNativeFrame(holder, certificate)
         load(holder, pages[1], "CENTER")
         invokeFixture("measure", holder, 1400, 1000)
         val image = descendants(holder).filterIsInstance<ReaderPageImageView>().first { it.childCount > 0 }
@@ -119,6 +373,10 @@ class DualPageViewportZoomTest {
     @Test
     fun partialNeighbourNativePaintReleaseKeepsItsUndrawnPartnerOnEntry() = runTest {
         val viewer = ReflectionHelpers.getField<DualPageR2LPagerViewer>(fixture, "viewer")
+        useEncodedOriginalProducer(viewer)
+        uy.kohesive.injekt.Injekt.get<eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences>()
+            .automaticSpreadMatching().set(true)
+        runCurrent()
         val bitmap = Bitmap.createBitmap(400, 800, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
         val encoded = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
         bitmap.recycle()
@@ -133,9 +391,13 @@ class DualPageViewportZoomTest {
         pages.forEach { it.publishHeaderFact() }
         viewer.setChapters(ViewerChapters(chapter, null, null))
         viewer.moveToPage(pages[1])
+        val candidate = viewer.adapter.items.filterIsInstance<DisplayPage>().single { it.containsPage(pages[3]) }
+        viewer.adapter.requirePairing(candidate)
+        val certificate = awaitCertified(viewer, chapter, 3)
         val display = viewer.adapter.items.filterIsInstance<DisplayPage>().single { it.containsPage(pages[3]) }
         val holder = DualPagerPageHolder(viewer.activity, viewer, display)
         mounted += holder
+        assertCertifiedNativeFrame(holder, certificate)
         load(holder, pages[3], "CENTER")
         invokeFixture("measure", holder, 1400, 1000)
         val image = descendants(holder).filterIsInstance<ReaderPageImageView>().first { it.childCount > 0 }
@@ -151,6 +413,539 @@ class DualPageViewportZoomTest {
         assertEquals(listOf(ids[3], ids[4]), owner.targetUnit!!.pageIds)
         val reentered = viewer.adapter.items.filterIsInstance<DisplayPage>().single { it.containsPage(pages[3]) }
         assertTrue("Production adapter retains the unpainted partner", reentered.containsPage(pages[4]))
+    }
+
+    private fun useEncodedOriginalProducer(viewer: DualPageR2LPagerViewer) {
+        // Replace the unavailable Windows JNI boundary only; sampler, owner and holder remain real.
+        viewer.adapter.spreadDecoderFactory = { input ->
+            eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(input)
+        }
+    }
+
+    @Test
+    fun realNavigationCancelsOnlyTheOldRequiredCallsAndCloseReleasesTheRemainder() = runTest {
+        val viewer = ReflectionHelpers.getField<DualPageR2LPagerViewer>(fixture, "viewer")
+        uy.kohesive.injekt.Injekt.get<eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences>()
+            .automaticSpreadMatching().set(true)
+        runCurrent()
+        val chapter = originalChapter(73024, 12, 2)
+        val pages = requireNotNull(chapter.pages)
+        pages.forEach { it.status = Page.State.Queue }
+        val entered = mutableSetOf<Int>()
+        val cancelled = mutableSetOf<Int>()
+        chapter.pageLoader = object : eu.kanade.tachiyomi.ui.reader.loader.PageLoader() {
+            override var isLocal = false
+            override suspend fun getPages() = pages
+            override suspend fun loadFactPage(
+                page: ReaderPage,
+                permit: mihon.domain.reader.ReaderDualPageFactReadPermit,
+            ) {
+                entered += page.index
+                try {
+                    kotlinx.coroutines.awaitCancellation()
+                } finally {
+                    cancelled += page.index
+                }
+            }
+        }
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        viewer.moveToPage(pages[2])
+        awaitProduction { entered.size == 2 }
+        val initial = entered.toSet()
+        val owner = requireNotNull(viewer.adapter.session(chapter))
+        val budget = owner.factBudget
+        viewer.moveToPage(pages[8])
+        runCurrent()
+        assertTrue("Actual navigation must promptly cancel the old loader calls", cancelled.containsAll(initial))
+        assertTrue(owner.factBudget !== budget)
+        assertEquals(8, owner.location!!.pageId.sourcePageIndex)
+        viewer.destroy()
+        runCurrent()
+        assertEquals(entered, cancelled)
+        assertTrue(
+            owner.identity.pageIds.all {
+                owner.originalAnalysis(it) !is mihon.domain.reader.ReaderPageAnalysisEvidence.Computed
+            },
+        )
+        assertEquals(0, eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.optionalWork.value)
+    }
+
+    @Test
+    fun requiredPreparationDeadlineCancelsItsLoaderAndRetriesAtTheSameLocation() = runTest {
+        val viewer = ReflectionHelpers.getField<DualPageR2LPagerViewer>(fixture, "viewer")
+        useEncodedOriginalProducer(viewer)
+        uy.kohesive.injekt.Injekt.get<eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences>()
+            .automaticSpreadMatching().set(true)
+        runCurrent()
+        val chapter = originalChapter(73020, 7, 2)
+        val pages = requireNotNull(chapter.pages)
+        pages.forEach { it.status = Page.State.Queue }
+        val entered = mutableSetOf<Int>()
+        val cancelled = mutableSetOf<Int>()
+        var hanging = true
+        chapter.pageLoader = object : eu.kanade.tachiyomi.ui.reader.loader.PageLoader() {
+            override var isLocal = false
+            override suspend fun getPages() = pages
+            override suspend fun loadFactPage(
+                page: ReaderPage,
+                permit: mihon.domain.reader.ReaderDualPageFactReadPermit,
+            ) {
+                entered += page.index
+                if (hanging) {
+                    try {
+                        kotlinx.coroutines.awaitCancellation()
+                    } finally {
+                        cancelled += page.index
+                    }
+                }
+                page.status = Page.State.Ready
+            }
+        }
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        viewer.moveToPage(pages[2])
+        val owner = requireNotNull(viewer.adapter.session(chapter))
+        awaitProduction({
+            "entered=$entered location=${owner.location} proof=${owner.certifyPairing()} optional=${eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.optionalWork.value}"
+        }) {
+            entered.size ==
+                2
+        }
+        val location = owner.location
+        val budget = owner.factBudget
+        assertEquals(
+            "Both required consumers must actually be suspended before advancing their deadline",
+            2,
+            entered.size,
+        )
+        testScheduler.advanceTimeBy(mihon.domain.reader.ReaderDualPageFactLimits.MAX_WAIT_MILLIS + 1)
+        runCurrent()
+        assertEquals("The deadline must cancel the actual suspended loader calls", entered, cancelled)
+        val blocked = owner.certifyPairing() as mihon.domain.reader.ReaderPairingCertification.RetryableBlocked
+        assertTrue(blocked.failures.values.all { it == mihon.domain.reader.ReaderAnalysisFailure.RESOURCE })
+        repeat(5) { runCurrent() }
+        assertEquals(2, entered.size)
+        assertSame(budget, owner.factBudget)
+        assertEquals(location, owner.location)
+        hanging = false
+        chapter.pageLoader!!.retryPage(pages[2])
+        awaitCertified(viewer, chapter, 2)
+        assertEquals(location, owner.location)
+        assertTrue(owner.factBudget !== budget)
+    }
+
+    @Test
+    fun longPrefixStopsAtSixteenOriginalPagesWithoutResettingItsLocationBudget() = runTest {
+        val viewer = ReflectionHelpers.getField<DualPageR2LPagerViewer>(fixture, "viewer")
+        uy.kohesive.injekt.Injekt.get<eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences>()
+            .automaticSpreadMatching().set(true)
+        runCurrent()
+        val chapter = originalChapter(73021, 64, 40)
+        val started = java.util.concurrent.atomic.AtomicInteger()
+        val active = java.util.concurrent.atomic.AtomicInteger()
+        val peak = java.util.concurrent.atomic.AtomicInteger()
+        val recycled = java.util.concurrent.atomic.AtomicInteger()
+        val firstBatch = java.util.concurrent.CountDownLatch(1)
+        viewer.adapter.spreadDecoderFactory = { input ->
+            val number = started.incrementAndGet()
+            peak.accumulateAndGet(active.incrementAndGet(), ::maxOf)
+            if (number <= 2) check(firstBatch.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(input) {
+                active.decrementAndGet()
+                recycled.incrementAndGet()
+            }
+        }
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        viewer.moveToPage(requireNotNull(chapter.pages)[40])
+        val owner = requireNotNull(viewer.adapter.session(chapter))
+        val location = owner.location
+        val budget = owner.factBudget
+        try {
+            awaitProduction({
+                "started=${started.get()} location=${owner.location} proof=${owner.certifyPairing()} optional=${eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.optionalWork.value}"
+            }) {
+                started.get() ==
+                    2
+            }
+            assertEquals(2, peak.get())
+            firstBatch.countDown()
+            awaitProduction {
+                owner.certifyPairing() is mihon.domain.reader.ReaderPairingCertification.RetryableBlocked
+            }
+            assertEquals(16, started.get())
+            assertEquals(16, recycled.get())
+            assertEquals(2, peak.get())
+            assertSame(budget, owner.factBudget)
+            assertEquals(location, owner.location)
+            repeat(5) {
+                viewer.adapter.refreshPairing()
+                runCurrent()
+            }
+            assertEquals("Completion and refresh cannot admit another page", 16, started.get())
+            assertEquals(location, owner.location)
+        } finally {
+            firstBatch.countDown()
+        }
+    }
+
+    @Test
+    fun simultaneousRequiredReadsCannotExceedThirtyTwoMiB() = runTest {
+        val viewer = ReflectionHelpers.getField<DualPageR2LPagerViewer>(fixture, "viewer")
+        useEncodedOriginalProducer(viewer)
+        uy.kohesive.injekt.Injekt.get<eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences>()
+            .automaticSpreadMatching().set(true)
+        runCurrent()
+        val chapter = originalChapter(73022, 7, 2)
+        val pages = requireNotNull(chapter.pages)
+        pages.forEach { it.status = Page.State.Queue }
+        val bytes = java.util.concurrent.atomic.AtomicLong()
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
+        chapter.pageLoader = object : eu.kanade.tachiyomi.ui.reader.loader.PageLoader() {
+            override var isLocal = false
+            override suspend fun getPages() = pages
+            override suspend fun loadFactPage(
+                page: ReaderPage,
+                permit: mihon.domain.reader.ReaderDualPageFactReadPermit,
+            ) {
+                if (calls.incrementAndGet() == 2) entered.complete(Unit)
+                entered.await()
+                val source = object : okio.Source {
+                    private var remaining = 17L * 1024 * 1024
+                    private val timeout = okio.Timeout()
+                    override fun timeout() = timeout
+                    override fun close() = Unit
+                    override fun read(sink: Buffer, byteCount: Long): Long {
+                        if (remaining == 0L) return -1
+                        val count = minOf(remaining, byteCount)
+                        sink.write(ByteArray(count.toInt()))
+                        remaining -= count
+                        bytes.addAndGet(count)
+                        return count
+                    }
+                }
+                permit.bound(source, System::nanoTime).use { bounded ->
+                    val sink = Buffer()
+                    while (bounded.read(sink, 8192) != -1L) sink.clear()
+                }
+                page.status = Page.State.Ready
+            }
+        }
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        viewer.moveToPage(pages[2])
+        val owner = requireNotNull(viewer.adapter.session(chapter))
+        val location = owner.location
+        val budget = owner.factBudget
+        awaitProduction { owner.certifyPairing() is mihon.domain.reader.ReaderPairingCertification.RetryableBlocked }
+        assertEquals(2, calls.get())
+        assertEquals(mihon.domain.reader.ReaderDualPageFactLimits.MAX_NEW_BYTES, bytes.get())
+        assertSame(budget, owner.factBudget)
+        assertEquals(location, owner.location)
+        repeat(5) { runCurrent() }
+        assertEquals(2, calls.get())
+    }
+
+    @Test
+    fun cancelledOriginalPreparationWaitsForPhysicalReleaseBeforeRetryPublishes() = runTest {
+        val viewer = ReflectionHelpers.getField<DualPageR2LPagerViewer>(fixture, "viewer")
+        uy.kohesive.injekt.Injekt.get<eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences>()
+            .automaticSpreadMatching().set(true)
+        runCurrent()
+        val chapter = originalChapter(73023, 7, 2)
+        val entered = java.util.concurrent.atomic.AtomicInteger()
+        val physicalEntered = java.util.concurrent.atomic.AtomicInteger()
+        val recycled = java.util.concurrent.atomic.AtomicInteger()
+        val release = java.util.concurrent.CountDownLatch(1)
+        viewer.adapter.spreadDecoderFactory = { input ->
+            val number = entered.incrementAndGet()
+            val actual = eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(input) { recycled.incrementAndGet() }
+            object : eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageRegionDecoder {
+                override fun decode(region: Rect): Bitmap {
+                    if (number <= 2) {
+                        physicalEntered.incrementAndGet()
+                        check(release.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                    }
+                    return actual.decode(region)
+                }
+                override fun recycle() = actual.recycle()
+            }
+        }
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        viewer.moveToPage(requireNotNull(chapter.pages)[2])
+        val owner = requireNotNull(viewer.adapter.session(chapter))
+        val location = owner.location
+        val budget = owner.factBudget
+        try {
+            awaitProduction({
+                "entered=${entered.get()} physical=${physicalEntered.get()} location=${owner.location} proof=${owner.certifyPairing()} optional=${eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.optionalWork.value}"
+            }) {
+                physicalEntered.get() ==
+                    2
+            }
+            requireNotNull(chapter.pages)[2].retryHeaderFact()
+            runCurrent()
+            assertEquals(location, owner.location)
+            assertTrue(owner.factBudget !== budget)
+            assertEquals(0, recycled.get())
+            assertEquals("Logical cancellation must not hide still-running physical decoders", 2, entered.get())
+            assertTrue(
+                owner.identity.pageIds.all {
+                    owner.originalAnalysis(it) !is mihon.domain.reader.ReaderPageAnalysisEvidence.Computed
+                },
+            )
+            release.countDown()
+            awaitCertified(viewer, chapter, 2)
+            awaitProduction { entered.get() == recycled.get() }
+            assertTrue("Retry must run after original resources really exit", entered.get() > 2)
+            assertEquals(location, owner.location)
+            viewer.destroy()
+            runCurrent()
+            assertEquals(entered.get(), recycled.get())
+            assertEquals(0, eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.optionalWork.value)
+        } finally {
+            release.countDown()
+        }
+    }
+
+    private fun originalChapter(id: Long, count: Int, target: Int): ReaderChapter {
+        val bitmap = Bitmap.createBitmap(80, 120, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+        val encoded = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+        bitmap.recycle()
+        val ownerChapter = ReaderChapter(Chapter.create().copy(id = id, mangaId = 1)).apply { requestedPage = target }
+        val pages = List(count) { index ->
+            ReaderPage(index, stream = { encoded.inputStream() }).apply {
+                chapter = ownerChapter
+                status = Page.State.Ready
+                publishHeaderFact()
+            }
+        }
+        ownerChapter.publishLoadedPageListForTest(pages)
+        return ownerChapter
+    }
+
+    @Test
+    fun readyNativeImageCertificationErrorRetriesFromItsActualWidgetAndClearsFeedback() = runTest {
+        val viewer = ReflectionHelpers.getField<DualPageR2LPagerViewer>(fixture, "viewer")
+        uy.kohesive.injekt.Injekt.get<eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences>()
+            .automaticSpreadMatching().set(true)
+        viewer.adapter.spreadDecoderFactory = { throw java.io.IOException("actual original read fails") }
+        runCurrent()
+        val bitmap = Bitmap.createBitmap(400, 800, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+        val encoded = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            .toByteArray()
+        bitmap.recycle()
+        val chapter = ReaderChapter(Chapter.create().copy(id = 73060, mangaId = 1)).apply { requestedPage = 2 }
+        val pages = List(5) { index ->
+            ReaderPage(index, stream = { encoded.inputStream() }).apply {
+                this.chapter = chapter
+                status = Page.State.Ready
+                publishHeaderFact()
+            }
+        }
+        chapter.publishLoadedPageListForTest(pages)
+        val retries = mutableListOf<ReaderPage>()
+        chapter.pageLoader = object : eu.kanade.tachiyomi.ui.reader.loader.PageLoader() {
+            override var isLocal = true
+            override suspend fun getPages() = pages
+            override fun retryPage(page: ReaderPage) {
+                retries += page
+                super.retryPage(page)
+            }
+        }
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        viewer.moveToPage(pages[2])
+        val owner = requireNotNull(viewer.adapter.session(chapter))
+        awaitProduction { owner.certifyPairing() is mihon.domain.reader.ReaderPairingCertification.RetryableBlocked }
+        val location = owner.location
+        val display = viewer.adapter.items.filterIsInstance<DisplayPage>().single { it.containsPage(pages[2]) }
+        val holder = DualPagerPageHolder(viewer.activity, viewer, display)
+        mounted += holder
+        suspend fun bindReady(page: ReaderPage, sideName: String) {
+            val sideType = DualPagerPageHolder::class.java.declaredClasses.single { it.simpleName == "Side" }
+            val side = sideType.enumConstants.single { it.toString() == sideName }
+            val method = DualPagerPageHolder::class.java.declaredMethods.single { it.name == "setImage" }
+                .apply { isAccessible = true }
+            suspendCoroutineUninterceptedOrReturn<Unit> { continuation ->
+                val result = method.invoke(holder, page, side, continuation)
+                if (result === COROUTINE_SUSPENDED) COROUTINE_SUSPENDED else Unit
+            }
+        }
+        bindReady(pages[1], "RIGHT")
+        bindReady(pages[2], "LEFT")
+        invokeFixture("measure", holder, 1400, 1000)
+        descendants(holder).filterIsInstance<ReaderPageImageView>().forEach { image ->
+            val native = ReflectionHelpers.getField<SubsamplingScaleImageView>(image, "pageView")
+            native.setImage(
+                com.davemorrissey.labs.subscaleview.ImageSource.bitmap(
+                    requireNotNull(BitmapFactory.decodeByteArray(encoded, 0, encoded.size)),
+                ),
+            )
+            val output = Bitmap.createBitmap(image.width, image.height, Bitmap.Config.ARGB_8888)
+            try {
+                image.draw(Canvas(output))
+                assertTrue("The actual normal bitmap is Ready while certification refuses painting", native.isReady)
+                org.junit.Assert.assertNull(holder.presentationScope)
+            } finally {
+                output.recycle()
+            }
+        }
+        holder.beginPresentation()
+        invokeFixture("measure", holder, 1400, 1000)
+        val error = ReflectionHelpers.getField<eu.kanade.tachiyomi.databinding.ReaderErrorBinding>(
+            holder,
+            "errorLayout",
+        )
+        assertEquals(View.VISIBLE, error.root.visibility)
+        assertEquals(View.VISIBLE, error.actionRetry.visibility)
+        assertTrue(error.actionRetry.width > 0 && error.actionRetry.height > 0)
+        descendants(holder).filterIsInstance<ReaderPageImageView>().forEach { it.onImageLoaded?.invoke() }
+        assertEquals(
+            "Normal Loaded callbacks cannot hide a still-blocked certification error",
+            View.VISIBLE,
+            error.root.visibility,
+        )
+        assertTrue(owner.displayedHistory.none { it.drawnPageIds.isNotEmpty() })
+        val clickedPage = ReflectionHelpers.getField<ReaderPage>(holder, "errorPage")
+        useEncodedOriginalProducer(viewer)
+        assertTrue(error.actionRetry.performClick())
+        awaitCertified(viewer, chapter, 2)
+        assertEquals(listOf(clickedPage), retries)
+        assertEquals(location, owner.location)
+        holder.beginPresentation()
+        assertTrue(
+            "A recovered certificate must clear the actual error overlay without re-decoding an already Ready image",
+            error.root.visibility != View.VISIBLE,
+        )
+        descendants(holder).filterIsInstance<ReaderPageImageView>().forEach { paintReaderImage(it, encoded) }
+        settle(holder)
+        val ticket = requireNotNull(holder.presentationScope).second
+        assertEquals(setOf(owner.identity.pageIds[1], owner.identity.pageIds[2]), owner.frame(ticket)!!.drawnPageIds)
+    }
+
+    @Test
+    fun releasedSecondOwnerRefreshesAfterFirstScheduledOwnerLeavesTheChapterWindow() = runTest {
+        val viewer = ReflectionHelpers.getField<DualPageR2LPagerViewer>(fixture, "viewer")
+        useEncodedOriginalProducer(viewer)
+        val preference = uy.kohesive.injekt.Injekt
+            .get<eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences>().automaticSpreadMatching()
+        preference.set(true)
+        runCurrent()
+        fun png(rightPage: Boolean): ByteArray {
+            val bitmap = Bitmap.createBitmap(400, 800, Bitmap.Config.ARGB_8888)
+            bitmap.eraseColor(Color.RED)
+            if (rightPage) for (y in 0 until 800) for (x in 0..14) bitmap.setPixel(x, y, Color.WHITE)
+            return ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                .toByteArray().also { bitmap.recycle() }
+        }
+        val red = png(false)
+        val right = png(true)
+        fun chapter(id: Long, target: Int, special: Boolean): ReaderChapter {
+            val chapter = ReaderChapter(Chapter.create().copy(id = id, mangaId = 1)).apply { requestedPage = target }
+            val pages = List(7) { index ->
+                ReaderPage(index, stream = { (if (special && index == 4) right else red).inputStream() }).apply {
+                    this.chapter = chapter
+                    status = Page.State.Ready
+                    publishHeaderFact()
+                }
+            }
+            chapter.publishLoadedPageListForTest(pages)
+            return chapter
+        }
+        val first = chapter(73051, 1, false)
+        val second = chapter(73052, 3, true)
+        viewer.setChapters(ViewerChapters(first, null, second))
+        viewer.moveToPage(first.pages!![1])
+        fun display(chapter: ReaderChapter, index: Int) = viewer.adapter.items.filterIsInstance<DisplayPage>()
+            .single { it.containsPage(chapter.pages!![index]) }
+        suspend fun paint(chapter: ReaderChapter, index: Int): DualPagerPageHolder {
+            viewer.adapter.requirePairing(display(chapter, index))
+            val certificate = awaitCertified(viewer, chapter, index)
+            val holder = DualPagerPageHolder(viewer.activity, viewer, display(chapter, index))
+            mounted += holder
+            assertCertifiedNativeFrame(holder, certificate)
+            load(holder, chapter.pages!![index], "CENTER")
+            invokeFixture("measure", holder, 1400, 1000)
+            val image = descendants(holder).filterIsInstance<ReaderPageImageView>().first { it.childCount > 0 }
+            paintReaderImage(image, red)
+            settle(holder)
+            val (owner, ticket) = requireNotNull(holder.presentationScope)
+            assertTrue(requireNotNull(owner.frame(ticket)).drawnPageIds.contains(owner.identity.pageIds[index]))
+            return holder
+        }
+        val firstHolder = paint(first, 1)
+        val secondHolder = paint(second, 3)
+        val firstOwner = requireNotNull(viewer.adapter.session(first))
+        val secondOwner = requireNotNull(viewer.adapter.session(second))
+        assertEquals(
+            listOf(secondOwner.identity.pageIds[3]),
+            secondHolder.presentationScope!!.let {
+                secondOwner.frame(it.second)!!.unit.pageIds
+            },
+        )
+        awaitProduction { eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.optionalWork.value == 0 }
+        preference.set(false)
+        runCurrent()
+        assertTrue(
+            "The native painted frame must still protect the old presentation",
+            secondOwner.canonicalUnits != secondOwner.presentationFrameProjection,
+        )
+        invokeFixture("detach", firstHolder)
+        viewer.setChapters(ViewerChapters(second, null, null))
+        assertTrue(!viewer.adapter.ownsSession(firstOwner))
+        assertTrue(viewer.adapter.ownsSession(secondOwner))
+        assertTrue(
+            "The second holder is still painted before its release",
+            secondOwner.canonicalUnits != secondOwner.presentationFrameProjection,
+        )
+        invokeFixture("detach", secondHolder)
+        runCurrent()
+        val actual = viewer.adapter.items.filterIsInstance<DisplayPage>().filter { it.firstPage.chapter === second }
+            .map { it.visiblePages.map(ReaderPage::index).toSet() }.sortedBy { it.minOrNull() }
+        val expected = secondOwner.presentationFrameProjection.map { unit ->
+            unit.pageIds.map { it.sourcePageIndex }.toSet()
+        }
+            .sortedBy { it.minOrNull() }
+        assertEquals("A still-owned release cannot be lost when the first scheduled owner leaves", expected, actual)
+    }
+
+    private fun kotlinx.coroutines.test.TestScope.awaitProduction(
+        diagnostic: () -> String = { "Expected production event did not arrive" },
+        predicate: () -> Boolean,
+    ) {
+        val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5)
+        // Native IO runs in real time. Do not auto-advance the Main test clock to its 15s timer
+        // while a controlled physical decoder is held; the deadline test advances it explicitly.
+        do {
+            runCurrent()
+            if (predicate()) return
+            Thread.sleep(5)
+        } while (System.nanoTime() < deadline)
+        throw AssertionError(diagnostic())
+    }
+
+    private fun kotlinx.coroutines.test.TestScope.awaitCertified(
+        viewer: DualPageR2LPagerViewer,
+        chapter: ReaderChapter,
+        index: Int,
+    ): mihon.domain.reader.ReaderPairingCertification.Certified {
+        var result: mihon.domain.reader.ReaderPairingCertification? = null
+        awaitProduction({ "Expected certificate, got $result" }) {
+            val owner = requireNotNull(viewer.adapter.session(chapter))
+            result = owner.certifyPairing(owner.identity.pageIds[index])
+            result is mihon.domain.reader.ReaderPairingCertification.Certified
+        }
+        return result as mihon.domain.reader.ReaderPairingCertification.Certified
+    }
+
+    private fun assertCertifiedNativeFrame(
+        holder: DualPagerPageHolder,
+        certificate: mihon.domain.reader.ReaderPairingCertification.Certified,
+    ) {
+        val (owner, ticket) = requireNotNull(holder.presentationScope)
+        val frame = requireNotNull(owner.frame(ticket))
+        assertEquals(certificate.segment.unit.pageIds, frame.unit.pageIds)
+        assertEquals(certificate.segment.unit.slots, frame.unit.slots)
+        assertTrue("Certification must not acknowledge or prepare native pixels", frame.drawnPageIds.isEmpty())
+        assertTrue(frame.lockedPageIds.isEmpty())
     }
 
     @Test
@@ -196,7 +991,10 @@ class DualPageViewportZoomTest {
     }
 
     @Before
-    fun setUp() = fixture.setUp()
+    fun setUp() {
+        fixture.setUp()
+        mainScheduler = kotlinx.coroutines.test.TestScope().testScheduler
+    }
 
     @After
     fun tearDown() {
@@ -204,6 +1002,18 @@ class DualPageViewportZoomTest {
             descendants(holder).filterIsInstance<ReaderPageImageView>().forEach { it.recycle() }
             invokeFixture("detach", holder)
         }
+        ReflectionHelpers.getField<DualPageR2LPagerViewer>(fixture, "viewer").destroy()
+        val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5)
+        do {
+            mainScheduler.runCurrent()
+            if (eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.optionalWork.value == 0) break
+            Thread.sleep(5)
+        } while (System.nanoTime() < deadline)
+        assertEquals(
+            "Finish real cancelled work before resetting this fixture's Main dispatcher",
+            0,
+            eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.optionalWork.value,
+        )
         fixture.tearDown()
     }
 

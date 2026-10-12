@@ -17,6 +17,57 @@ class ReaderPairingCertificationResearchTest {
     private val portrait = ReaderPageFact.dimensions(980, 1403)
     private val white = ReaderSpreadEdgeSamples(List(50) { -1 }, List(50) { -1 })
 
+    @Test
+    fun `failure before original dimensions is blocked with its actual recoverable cause`() {
+        for (reason in listOf(ReaderAnalysisFailure.READ, ReaderAnalysisFailure.RESOURCE)) {
+            for (failedHeader in listOf(false, true)) {
+                val session = SharedDualPageSession(identity, ReaderDirection.RTL, ids[7])
+                try {
+                    session.configure(ReaderDirection.RTL, true)
+                    if (failedHeader) {
+                        assertTrue(
+                            session.acceptFact(session.requestFact(ids[7]), ReaderPageFact(ReaderPageFactState.FAILED)),
+                        )
+                    }
+                    assertTrue(session.failOriginalAnalysis(session.requestOriginalAnalysis(ids[7])!!, reason))
+                    val result = session.certifyPairing(ids[7])
+                    assertTrue(
+                        result is ReaderPairingCertification.RetryableBlocked,
+                        "Absent dimensions must retain the real failure: $result",
+                    )
+                    assertEquals(reason, (result as ReaderPairingCertification.RetryableBlocked).failures[ids[7]])
+                    session.retryFacts()
+                    assertTrue(session.certifyPairing(ids[7]) is ReaderPairingCertification.NeedFacts)
+                } finally {
+                    session.close()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `trusted wide geometry does not consume an irrelevant failed side read`() {
+        val session = SharedDualPageSession(identity, ReaderDirection.RTL, ids[7])
+        try {
+            session.configure(ReaderDirection.RTL, true)
+            assertTrue(session.acceptFact(session.requestFact(ids[7]), ReaderPageFact.dimensions(1403, 980)))
+            assertTrue(
+                session.failOriginalAnalysis(session.requestOriginalAnalysis(ids[7])!!, ReaderAnalysisFailure.RESOURCE),
+            )
+            val proof = session.certifyPairing(ids[7])
+            assertTrue(
+                proof is ReaderPairingCertification.Certified,
+                "A known spread needs only trusted geometry: $proof",
+            )
+            assertEquals(
+                ReaderPortraitSingleSlot.FULL,
+                (proof as ReaderPairingCertification.Certified).segment.unit.slots.single().position,
+            )
+        } finally {
+            session.close()
+        }
+    }
+
     private fun owner(hints: Map<Int, ReaderPageSideHint> = emptyMap()): ReaderSpreadSamplesOwner =
         ReaderSpreadSamplesOwner(identity, sampleCapacity = 2).also { owner ->
             ids.forEachIndexed { index, id ->

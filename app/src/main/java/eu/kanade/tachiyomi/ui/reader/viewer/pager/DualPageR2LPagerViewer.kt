@@ -470,9 +470,15 @@ class DualPageR2LPagerViewer(
         if (destroyed) return null
         discardObsoletePresentations()
         val owner = adapter.session(displayPage.firstPage.chapter) ?: return null
+        if (adapter.requirePairing(
+                displayPage,
+            ) !is mihon.domain.reader.ReaderPairingCertification.Certified
+        ) {
+            return null
+        }
         val visible = displayPage.visiblePages.map { owner.identity.pageIds[it.index] }
         val pageId = owner.location?.pageId?.takeIf { it in visible } ?: visible.firstOrNull() ?: return null
-        return owner.captureViewport(pageId, preparingPageIds = emptySet())?.let { ticket ->
+        return owner.captureCertifiedViewport(pageId)?.let { ticket ->
             // Native neighbours may expose pixels during a drag; only the logical scope can read.
             presentedViewports.getOrPut(owner) { mutableSetOf() } += ticket
             owner to ticket

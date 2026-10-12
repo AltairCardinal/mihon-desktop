@@ -94,8 +94,10 @@ internal class MountedReaderPresentationFixture(
     progressTracker: ReaderProgressTracker = mockk(relaxed = true),
     automaticSpreadMatching: Boolean = false,
     heldResponsePage: Int? = null,
+    encodedPageBytes: ByteArray? = null,
 ) : AutoCloseable {
     private val productionFixture = ReaderProductionTestFixture(root, coroutineContext)
+    private val pageBytes = encodedPageBytes ?: productionFixture.pageBytes
     private val previousInjekt = Injekt
     private val controller = ReaderTestModeController()
     private val responseGate = java.util.concurrent.CountDownLatch(1)
@@ -103,7 +105,7 @@ internal class MountedReaderPresentationFixture(
         if (heldResponsePage == null) {
             repeat(pageCount) {
                 productionFixture.server.enqueue(
-                    MockResponse.Builder().body(Buffer().write(productionFixture.pageBytes)).build(),
+                    MockResponse.Builder().body(Buffer().write(pageBytes)).build(),
                 )
             }
         } else {
@@ -111,7 +113,7 @@ internal class MountedReaderPresentationFixture(
                 override fun dispatch(request: mockwebserver3.RecordedRequest): MockResponse {
                     val page = request.url.encodedPath.substringAfterLast('/').substringBefore('.').toInt()
                     if (page == heldResponsePage) responseGate.await(30, java.util.concurrent.TimeUnit.SECONDS)
-                    return MockResponse.Builder().body(Buffer().write(productionFixture.pageBytes)).build()
+                    return MockResponse.Builder().body(Buffer().write(pageBytes)).build()
                 }
             }
         }
@@ -226,7 +228,7 @@ internal class MountedReaderPresentationFixture(
         it.mkdirs()
         repeat(pageCount) { index ->
             it.resolve("${(index + 1).toString().padStart(3, '0')}.png")
-                .writeBytes(productionFixture.pageBytes)
+                .writeBytes(pageBytes)
         }
     }.absolutePath
 
@@ -235,7 +237,7 @@ internal class MountedReaderPresentationFixture(
         ZipOutputStream(it.outputStream().buffered()).use { output ->
             repeat(pageCount) { index ->
                 output.putNextEntry(ZipEntry("${(index + 1).toString().padStart(3, '0')}.png"))
-                output.write(productionFixture.pageBytes)
+                output.write(pageBytes)
                 output.closeEntry()
             }
         }
@@ -253,6 +255,9 @@ internal class MountedReaderPresentationFixture(
 
         @Suppress("unused")
         fun getClient(): OkHttpClient = httpClient
+
+        @Suppress("unused")
+        suspend fun getImageUrl(page: Page): String = imageUrl(page.index)
 
         override suspend fun getPageList(chapter: SChapter): List<Page> =
             List(pageCount) { index ->

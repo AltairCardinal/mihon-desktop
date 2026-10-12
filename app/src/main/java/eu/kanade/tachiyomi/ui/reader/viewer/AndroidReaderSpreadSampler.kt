@@ -11,6 +11,7 @@ import mihon.domain.reader.ReaderOriginalPageSampling
 import mihon.domain.reader.ReaderSpreadEdgeSamples
 import mihon.domain.reader.ReaderSpreadSampleRequest
 import mihon.domain.reader.SharedSpreadMatching
+import mihon.domain.reader.boundedReaderSamplingRegions
 import tachiyomi.decoder.ImageDecoder
 import java.io.FilterInputStream
 import java.io.InputStream
@@ -111,23 +112,6 @@ internal object AndroidReaderSpreadSampler {
         requireResources()
         if (page.captureEncodedStream(request.content.contentVersion) == null) return null
         if (leftPoints.isEmpty() && rightPoints.isEmpty()) return emptyList<Int>() to emptyList()
-        fun region(points: List<Pair<Int, Int>>): Rect {
-            // libwebp snaps crop origins to even pixels. Keep chroma interpolation context too,
-            // so a sample at either region boundary agrees with decoding the complete original.
-            val left = (points.minOf { it.first } / 2 * 2 - 2).coerceAtLeast(0)
-            val top = (points.minOf { it.second } / 2 * 2 - 2).coerceAtLeast(0)
-            val right = minOf(rawWidth.toLong(), points.maxOf { it.first }.toLong() + 2).toInt()
-            val bottom = minOf(rawHeight.toLong(), points.maxOf { it.second }.toLong() + 2).toInt()
-            return Rect(left, top, right, bottom)
-        }
-        val leftRegion = region(leftPoints)
-        val rightRegion = region(rightPoints)
-        if (listOf(leftRegion, rightRegion).any {
-                it.width().toLong() * it.height() > MAX_REGION_BYTES / 4
-            }
-        ) {
-            return null
-        }
         val stream = page.captureEncodedStream(request.content.contentVersion) ?: return null
         currentCoroutineContext().ensureActive()
         requireResources()
@@ -139,28 +123,33 @@ internal object AndroidReaderSpreadSampler {
                 override fun close() = Unit
             })
             try {
-                suspend fun edge(points: List<Pair<Int, Int>>, bounds: Rect): List<Int>? {
-                    currentCoroutineContext().ensureActive()
-                    requireResources()
-                    val bitmap = decoder.decode(bounds)
-                    try {
-                        if (bitmap.width != bounds.width() || bitmap.height != bounds.height() ||
-                            bitmap.allocationByteCount.toLong() > MAX_REGION_BYTES
-                        ) {
-                            return null
+                suspend fun edge(points: List<Pair<Int, Int>>): List<Int>? {
+                    val values = IntArray(points.size)
+                    for (region in boundedReaderSamplingRegions(points, rawWidth, rawHeight, MAX_REGION_BYTES / 4, 2)) {
+                        currentCoroutineContext().ensureActive()
+                        requireResources()
+                        val bounds = region.bounds.let { Rect(it.x, it.y, it.x + it.width, it.y + it.height) }
+                        val bitmap = decoder.decode(bounds)
+                        try {
+                            if (bitmap.width != bounds.width() || bitmap.height != bounds.height() ||
+                                bitmap.allocationByteCount.toLong() > MAX_REGION_BYTES
+                            ) {
+                                return null
+                            }
+                            for (index in region.pointIndices) {
+                                currentCoroutineContext().ensureActive()
+                                requireResources()
+                                val (x, y) = points[index]
+                                values[index] = bitmap.getPixel(x - bounds.left, y - bounds.top)
+                            }
+                        } finally {
+                            bitmap.recycle()
                         }
-                        // Native false/null decoding targets sRGB. getPixel exposes straight ARGB,
-                        // not the premultiplied native storage; the common owner composites white.
-                        return points.map { (x, y) ->
-                            currentCoroutineContext().ensureActive()
-                            bitmap.getPixel(x - bounds.left, y - bounds.top)
-                        }
-                    } finally {
-                        bitmap.recycle()
                     }
+                    return values.toList()
                 }
-                val left = edge(leftPoints, leftRegion) ?: return@use null
-                val right = edge(rightPoints, rightRegion) ?: return@use null
+                val left = edge(leftPoints) ?: return@use null
+                val right = edge(rightPoints) ?: return@use null
                 currentCoroutineContext().ensureActive()
                 requireResources()
                 if (page.captureEncodedStream(request.content.contentVersion) == null) return@use null

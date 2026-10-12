@@ -5,15 +5,15 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import mihon.desktop.reader.DesktopReaderPresentationImageHolder
-import mihon.desktop.reader.DesktopReaderPresentationImageOwner
-import mihon.desktop.reader.DesktopReaderPresentationImageSlotIdentity
-import mihon.desktop.reader.DesktopReaderPresentationImageState
 import mihon.desktop.reader.DesktopReaderAnimatedPresentationImageHolder
 import mihon.desktop.reader.DesktopReaderAnimatedPresentationImageSnapshot
 import mihon.desktop.reader.DesktopReaderAnimationDrawToken
 import mihon.desktop.reader.DesktopReaderImageAssetLease
 import mihon.desktop.reader.DesktopReaderImageMemoryAuthority
+import mihon.desktop.reader.DesktopReaderPresentationImageHolder
+import mihon.desktop.reader.DesktopReaderPresentationImageOwner
+import mihon.desktop.reader.DesktopReaderPresentationImageSlotIdentity
+import mihon.desktop.reader.DesktopReaderPresentationImageState
 import mihon.desktop.reader.DesktopReaderRegionPresentationHolder
 import mihon.desktop.reader.DesktopReaderRegionPresentationSnapshot
 import mihon.domain.reader.PageDecodePurpose
@@ -129,4 +129,4 @@ internal fun rememberReaderPresentationImage(
     )
 }
 
-private const val PRESENTATION_DECODE_BOUND = 2_048
+internal const val PRESENTATION_DECODE_BOUND = 2_048
