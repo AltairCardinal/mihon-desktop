@@ -263,6 +263,7 @@ class BackupRestoreSyncWiringTest {
             getTracks = mockk { coEvery { await(any()) } returns emptyList() },
             insertTrack = mockk(relaxed = true),
             creatorIndexWriter = creators,
+            extractCreators = tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga(),
             fetchInterval = FetchInterval(GetChaptersByMangaId(chapters)),
         )
         fun restore(

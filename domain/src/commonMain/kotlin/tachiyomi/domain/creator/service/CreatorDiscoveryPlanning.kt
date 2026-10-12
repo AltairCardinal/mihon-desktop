@@ -5,6 +5,7 @@ import tachiyomi.domain.creator.model.CreatorRelationVerification
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.model.LanguageCertainty
 import tachiyomi.domain.creator.model.LanguageProjectionContract
+import tachiyomi.domain.creator.model.titleAttributionEvidence
 
 data class CreatorDiscoveryBounds(
     val maxAliases: Int = 4,
@@ -56,6 +57,7 @@ data class CreatorDiscoveryQueryPlan(
     val sources: List<CreatorSourceQueryPlan>,
     val maxConcurrentSources: Int,
     val deadlineAtMillis: Long,
+    val titleSearch: Boolean = false,
 )
 
 data class CreatorSourceQueryPlan(
@@ -73,6 +75,7 @@ class CreatorDiscoveryQueryPlanner(
         enabledSources: List<EnabledCreatorSource>,
         watchPolicy: ArchiveWatchPolicy,
         startedAtMillis: Long,
+        titleSearch: Boolean = false,
     ): CreatorDiscoveryQueryPlan {
         val reducedAliases = aliases
             .map(String::trim)
@@ -103,6 +106,7 @@ class CreatorDiscoveryQueryPlanner(
             sources = selectedSources,
             maxConcurrentSources = bounds.maxConcurrentSources,
             deadlineAtMillis = startedAtMillis + bounds.sourceTimeoutMillis,
+            titleSearch = titleSearch,
         )
     }
 
@@ -127,14 +131,54 @@ data class CreatorIdentityEvidence(
     val matchedAlias: String?,
     val confidence: Double,
     val evidence: String,
+    val sourceText: String? = null,
 )
 
 object CreatorIdentityEvidenceEvaluator {
-    fun evaluate(aliases: List<String>, work: CreatorSourceWorkSnapshot): CreatorIdentityEvidence {
+    fun evaluate(
+        aliases: List<String>,
+        work: CreatorSourceWorkSnapshot,
+        titleAttributionPolicy: CreatorTitleAttributionPolicy = CreatorTitleAttributionPolicy.Disabled,
+        titleSearch: Boolean = false,
+    ): CreatorIdentityEvidence {
         val aliasesByExactName = aliases
             .map(String::trim)
             .filter(String::isNotBlank)
             .associateBy { it }
+
+        if (titleSearch || work.titleAttributionEnabled || titleAttributionPolicy.isEnabled(work.key.sourceId)) {
+            val titleCredits = TitleCreditParser.parse(work.title, allowStandaloneCreator = titleSearch)
+            if (titleCredits.isNotEmpty()) {
+                val matched = titleCredits.firstOrNull { it.displayName in aliasesByExactName }
+                return if (matched != null) {
+                    CreatorIdentityEvidence(
+                        verification = CreatorRelationVerification.VERIFIED,
+                        role = matched.role,
+                        matchedAlias = aliasesByExactName.getValue(matched.displayName),
+                        confidence = 0.95,
+                        evidence = checkNotNull(listOf(matched).titleAttributionEvidence()),
+                        sourceText = matched.sourceTexts.distinct().joinToString(" | "),
+                    )
+                } else {
+                    CreatorIdentityEvidence(
+                        CreatorRelationVerification.POSSIBLE,
+                        CreatorRole.UNKNOWN,
+                        null,
+                        0.2,
+                        "title attribution without matching confirmed creator name",
+                    )
+                }
+            }
+            if (titleSearch) {
+                return CreatorIdentityEvidence(
+                    CreatorRelationVerification.POSSIBLE,
+                    CreatorRole.UNKNOWN,
+                    null,
+                    0.2,
+                    "creator title search without a qualified detail title credit",
+                )
+            }
+        }
 
         // Search evidence only selects candidates; fetched detail credits decide authorship.
         val authorAlias = matchingAlias(work.authorText, aliasesByExactName)
@@ -150,6 +194,7 @@ object CreatorIdentityEvidenceEvaluator {
                 matchedAlias = authorAlias ?: artistAlias,
                 confidence = 0.95,
                 evidence = "exact creator metadata field",
+                sourceText = authorAlias ?: artistAlias,
             )
         }
 

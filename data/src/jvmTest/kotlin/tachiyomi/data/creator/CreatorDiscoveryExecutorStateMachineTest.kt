@@ -81,6 +81,11 @@ class CreatorDiscoveryExecutorStateMachineTest {
     private var nextKey = 0L
 
     @Test
+    fun `title creator and circle details gate uploader search and aliases through real archive`() = runBlocking {
+        verifyCreatorTitleAttributionDiscovery(handler)
+    }
+
+    @Test
     fun `discovery verifies detail authors through the real catalogue adapter and SQL archive`() = runBlocking {
         verifyCreatorDiscoveryMetadata(handler)
     }

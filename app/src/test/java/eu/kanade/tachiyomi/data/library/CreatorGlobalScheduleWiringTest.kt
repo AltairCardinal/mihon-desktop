@@ -98,6 +98,22 @@ class CreatorGlobalScheduleWiringTest {
             Injekt.addSingleton<SourceManager>(testSources(listOf(source)))
             Injekt.addSingleton<ExtensionManager>(mockk(relaxed = true))
             val preferences = Injekt.get<CreatorDiscoveryPreferences>()
+            preferences.titleAttributionSources().set(setOf("10"))
+            val titleEditor = Injekt.get<tachiyomi.domain.creator.service.CreatorTitleAttributionEditor>()
+            check(titleEditor.policy === Injekt.get<tachiyomi.domain.creator.service.CreatorTitleAttributionPolicy>())
+            val titleManga = tachiyomi.domain.manga.model.Manga.create().copy(
+                source = 10L,
+                title = "[Circle (Artist)] Work",
+                author = "Uploader",
+                artist = "Uploader",
+            )
+            check(
+                Injekt.get<tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga>().await(titleManga).map {
+                    it.displayName
+                } ==
+                    listOf("Artist", "Circle"),
+            )
+            check(titleEditor.extract(titleManga).map { it.displayName } == listOf("Artist", "Circle"))
             preferences.frequency().set("weekly")
             tachiyomi.data.creator.verifyCreatorBackupReadiness(
                 Injekt.get<DatabaseHandler>(),

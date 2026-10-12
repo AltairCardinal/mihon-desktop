@@ -1,0 +1,154 @@
+{
+    "engine":  "Windows.Media.Ocr",
+    "os":  "10.0.28000.0",
+    "packs":  [
+                  "en-US",
+                  "zh-Hans-CN"
+              ],
+    "results":  [
+                    {
+                        "sample":  "en_body_zh_credit",
+                        "language":  "en-US",
+                        "text":  "Let us go to the library today. We can leave this afternoon. fiJfrogiBj:",
+                        "lines":  [
+                                      "Let us go to the library today.",
+                                      "We can leave this afternoon.",
+                                      "fiJfrogiBj:"
+                                  ],
+                        "elapsedMs":  21
+                    },
+                    {
+                        "sample":  "en_body_zh_credit",
+                        "language":  "zh-Hans-CN",
+                        "text":  "Let us go t0 the library today. We can leave this afternoon. 制 作 鸣 谢 ： 青 叶 汉 化 组",
+                        "lines":  [
+                                      "Let us go t0 the library today.",
+                                      "We can leave this afternoon.",
+                                      "制 作 鸣 谢 ： 青 叶 汉 化 组"
+                                  ],
+                        "elapsedMs":  30
+                    },
+                    {
+                        "sample":  "en_dialogue",
+                        "language":  "en-US",
+                        "text":  "Let us go to the library today. I want a book about the ocean. We can leave this afternoon.",
+                        "lines":  [
+                                      "Let us go to the library today.",
+                                      "I want a book about the ocean.",
+                                      "We can leave this afternoon."
+                                  ],
+                        "elapsedMs":  10
+                    },
+                    {
+                        "sample":  "en_dialogue",
+                        "language":  "zh-Hans-CN",
+                        "text":  "Let us go t0 the library today. 丨 want a book about the ocean. We can leave this afternoon.",
+                        "lines":  [
+                                      "Let us go t0 the library today.",
+                                      "丨 want a book about the ocean.",
+                                      "We can leave this afternoon."
+                                  ],
+                        "elapsedMs":  15
+                    },
+                    {
+                        "sample":  "han_only_cover",
+                        "language":  "en-US",
+                        "text":  "LIE-käß",
+                        "lines":  [
+                                      "LIE-käß"
+                                  ],
+                        "elapsedMs":  7
+                    },
+                    {
+                        "sample":  "han_only_cover",
+                        "language":  "zh-Hans-CN",
+                        "text":  "東 京 旅 行 山 田 太 郎",
+                        "lines":  [
+                                      "東 京 旅 行",
+                                      "山 田 太 郎"
+                                  ],
+                        "elapsedMs":  7
+                    },
+                    {
+                        "sample":  "hans_dialogue",
+                        "language":  "en-US",
+                        "text":  "",
+                        "lines":  [
+
+                                  ],
+                        "elapsedMs":  12
+                    },
+                    {
+                        "sample":  "hans_dialogue",
+                        "language":  "zh-Hans-CN",
+                        "text":  "今 天 我 们 去 图 书 馆 吧 。 我 想 借 一 本 介 绍 海 洋 的 书 。 太 好 了 ， 我 们 下 午 一 起 出 发 。",
+                        "lines":  [
+                                      "今 天 我 们 去 图 书 馆 吧 。",
+                                      "我 想 借 一 本 介 绍 海 洋 的 书 。",
+                                      "太 好 了 ， 我 们 下 午 一 起 出 发 。"
+                                  ],
+                        "elapsedMs":  10
+                    },
+                    {
+                        "sample":  "hant_dialogue",
+                        "language":  "en-US",
+                        "text":  "",
+                        "lines":  [
+
+                                  ],
+                        "elapsedMs":  12
+                    },
+                    {
+                        "sample":  "hant_dialogue",
+                        "language":  "zh-Hans-CN",
+                        "text":  "今 天 我 們 去 圖 書 館 吧 。 我 想 借 一 本 介 紹 海 洋 的 書 。 太 好 了 ， 我 們 下 午 一 起 出 發 。",
+                        "lines":  [
+                                      "今 天 我 們 去 圖 書 館 吧 。",
+                                      "我 想 借 一 本 介 紹 海 洋 的 書 。",
+                                      "太 好 了 ， 我 們 下 午 一 起 出 發 。"
+                                  ],
+                        "elapsedMs":  10
+                    },
+                    {
+                        "sample":  "ja_dialogue",
+                        "language":  "en-US",
+                        "text":  "-30",
+                        "lines":  [
+                                      "-30"
+                                  ],
+                        "elapsedMs":  11
+                    },
+                    {
+                        "sample":  "ja_dialogue",
+                        "language":  "zh-Hans-CN",
+                        "text":  "今 日 囡 書 館 仁 行 二 讠 。 海 ． 本 朰 借 化 、 ℃ 矿 。 午 後 仁 、 0 匕 出 。",
+                        "lines":  [
+                                      "今 日 囡 書 館 仁 行 二 讠 。",
+                                      "海 ． 本 朰 借 化 、 ℃ 矿 。",
+                                      "午 後 仁 、 0 匕 出 。"
+                                  ],
+                        "elapsedMs":  11
+                    },
+                    {
+                        "sample":  "mixed_dialogue",
+                        "language":  "en-US",
+                        "text":  "",
+                        "lines":  [
+
+                                  ],
+                        "elapsedMs":  13
+                    },
+                    {
+                        "sample":  "mixed_dialogue",
+                        "language":  "zh-Hans-CN",
+                        "text":  "今 天 我 们 去 图 书 馆 吧 。 今 日 囡 書 館 仁 行 二 讠 。 我 们 下 午 一 起 出 发 。 午 後 仁 、 0 匕 出 。",
+                        "lines":  [
+                                      "今 天 我 们 去 图 书 馆 吧 。",
+                                      "今 日 囡 書 館 仁 行 二 讠 。",
+                                      "我 们 下 午 一 起 出 发 。",
+                                      "午 後 仁 、 0 匕 出 。"
+                                  ],
+                        "elapsedMs":  13
+                    }
+                ]
+}

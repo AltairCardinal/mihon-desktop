@@ -44,6 +44,7 @@ data class BoundedAuthorSearchPageRequest(
     val page: Int,
     val pageLimit: Int,
     val deadlineAtMillis: Long,
+    val titleSearch: Boolean = false,
 ) {
     init {
         require(alias.isNotBlank())
@@ -62,6 +63,7 @@ data class CreatorSourceWorkSnapshot(
     val thumbnailUrl: String?,
     val structuredCreatorMatches: List<CreatorStructuredIdentityMatch> = emptyList(),
     val publishedDate: SourceDateValue? = null,
+    val titleAttributionEnabled: Boolean = false,
 )
 
 data class CreatorStructuredIdentityMatch(
@@ -128,4 +130,8 @@ interface CreatorDiscoverySourcePort {
     suspend fun searchPage(request: BoundedAuthorSearchPageRequest): CreatorSourcePageResult
 
     suspend fun loadDetails(key: SourceWorkNaturalKey): CreatorSourceDetailsResult
+
+    suspend fun loadDetails(key: SourceWorkNaturalKey, titleSearch: Boolean): CreatorSourceDetailsResult = loadDetails(
+        key,
+    )
 }

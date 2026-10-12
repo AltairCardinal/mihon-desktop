@@ -172,6 +172,7 @@ data class DesktopUiDependencies(
     val categorySortSettings: mihon.desktop.settings.DesktopCategorySortSettings? = null,
     val deviceConditions: mihon.desktop.platform.DesktopDeviceConditions? = null,
     val creatorDiscoveryPreferences: tachiyomi.domain.creator.service.CreatorDiscoveryPreferences? = null,
+    val creatorTitleAttributionEditor: tachiyomi.domain.creator.service.CreatorTitleAttributionEditor? = null,
     val syncPanel: mihon.data.sync.runtime.SyncPanel? = null,
     val layoutSnapshot: mihon.desktop.platform.DesktopLayoutSnapshot = mihon.desktop.platform.DesktopLayoutSnapshot(
         appPreferences.tabletUiMode.get(),
@@ -277,6 +278,7 @@ data class DesktopUiDependencies(
                 categorySortSettings = Injekt.get(),
                 deviceConditions = Injekt.get(),
                 creatorDiscoveryPreferences = Injekt.get(),
+                creatorTitleAttributionEditor = Injekt.get(),
                 syncPanel = Injekt.get<mihon.data.sync.runtime.SyncRuntime>().panel,
             )
         }

@@ -70,6 +70,14 @@ class CreatorGlobalScheduleWiringTest {
             context = mihon.desktop.di.initDesktopDIForTest(directory.toFile(), store,
                 trackerConnectivity = mihon.desktop.tracking.DesktopNetworkConnectivity { true })
             val preferences = Injekt.get<tachiyomi.domain.creator.service.CreatorDiscoveryPreferences>()
+            preferences.titleAttributionSources().set(setOf(sourceId.toString()))
+            val titleEditor = Injekt.get<tachiyomi.domain.creator.service.CreatorTitleAttributionEditor>()
+            check(titleEditor.policy === Injekt.get<tachiyomi.domain.creator.service.CreatorTitleAttributionPolicy>())
+            val titleManga = tachiyomi.domain.manga.model.Manga.create().copy(
+                source = sourceId, title = "[Circle (Artist)] Work", author = "Uploader", artist = "Uploader",
+            )
+            check(Injekt.get<tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga>().await(titleManga).map { it.displayName } == listOf("Artist", "Circle"))
+            check(titleEditor.extract(titleManga).map { it.displayName } == listOf("Artist", "Circle"))
             preferences.frequency().set("weekly")
             Injekt.get<mihon.desktop.settings.DesktopAppPreferences>().enabledLanguages.set(setOf("en"))
             check(Injekt.get<tachiyomi.domain.creator.service.CreatorDiscoverySourcePort>().enabledSourcesSnapshot().any { it.sourceId == sourceId })
@@ -88,6 +96,7 @@ class CreatorGlobalScheduleWiringTest {
             check(repository.getDueWatchSources(success + 8 * 86_400_000L, 10).size == 1)
             val dependencies = mihon.desktop.DesktopUiDependencies.fromInjekt()
             check(dependencies.creatorDiscoveryPreferences === preferences)
+            check(dependencies.creatorTitleAttributionEditor === titleEditor)
         } finally {
             try {
                 context?.closeAndJoin()

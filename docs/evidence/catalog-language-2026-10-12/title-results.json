@@ -1,0 +1,1126 @@
+{
+  "summary": {
+    "scope": "Synthetic adversarial cases, not a representative accuracy estimate or production test",
+    "python": "3.14.4",
+    "case_count": 60,
+    "script_sha256": "ee2354f6e779f4ef523078111826f8578378a92f3cb0a7aff1b21d21708c743e",
+    "han_baseline": {
+      "tp": 27,
+      "fp": 18,
+      "fn": 6,
+      "tn": 9,
+      "precision": 0.6,
+      "recall": 0.8182
+    },
+    "marker_baseline": {
+      "tp": 22,
+      "fp": 12,
+      "fn": 11,
+      "tn": 15,
+      "precision": 0.6471,
+      "recall": 0.6667
+    },
+    "evidence_rule": {
+      "tp": 25,
+      "fp": 2,
+      "fn": 8,
+      "tn": 25,
+      "precision": 0.9259,
+      "recall": 0.7576
+    },
+    "group_exact_matches": 60,
+    "abstentions": 25
+  },
+  "cases": [
+    {
+      "id": "explicit_en_tag",
+      "title": "A Journey [Chinese]",
+      "truth_zh": true,
+      "expected_groups": [],
+      "han_baseline": false,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "zh"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "casefold",
+      "title": "A Journey [cHiNeSe]",
+      "truth_zh": true,
+      "expected_groups": [],
+      "han_baseline": false,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "zh"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "hans",
+      "title": "A Journey [简体中文]",
+      "truth_zh": true,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "zh-Hans"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "hant",
+      "title": "A Journey [繁體中文]",
+      "truth_zh": true,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "zh-Hant"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "zh_code",
+      "title": "A Journey [zh]",
+      "truth_zh": true,
+      "expected_groups": [],
+      "han_baseline": false,
+      "marker_baseline": false,
+      "state": "supported",
+      "languages": [
+        "zh"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "hans_code",
+      "title": "A Journey [zh-Hans]",
+      "truth_zh": true,
+      "expected_groups": [],
+      "han_baseline": false,
+      "marker_baseline": false,
+      "state": "supported",
+      "languages": [
+        "zh-Hans"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "hant_code",
+      "title": "A Journey [zh-Hant]",
+      "truth_zh": true,
+      "expected_groups": [],
+      "han_baseline": false,
+      "marker_baseline": false,
+      "state": "supported",
+      "languages": [
+        "zh-Hant"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "fullwidth",
+      "title": "旅程 ［Ｃｈｉｎｅｓｅ］",
+      "truth_zh": true,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": false,
+      "state": "supported",
+      "languages": [
+        "zh"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "cjk_brackets",
+      "title": "旅程【中文】",
+      "truth_zh": true,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "zh"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "china_translation",
+      "title": "旅の記録 [中国翻訳]",
+      "truth_zh": true,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "zh"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "chinese_translation",
+      "title": "旅の記録 [中国翻译]",
+      "truth_zh": true,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "zh"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "group_hans",
+      "title": "旅の記録 [青叶汉化组]",
+      "truth_zh": true,
+      "expected_groups": [
+        "青叶汉化组"
+      ],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "zh"
+      ],
+      "groups": [
+        "青叶汉化组"
+      ],
+      "evidence": [
+        "translation-credit"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "group_hant",
+      "title": "旅の記録 [青葉漢化組]",
+      "truth_zh": true,
+      "expected_groups": [
+        "青葉漢化組"
+      ],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "zh"
+      ],
+      "groups": [
+        "青葉漢化組"
+      ],
+      "evidence": [
+        "translation-credit"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "group_no_suffix",
+      "title": "旅の記録 [星空☆漢化]",
+      "truth_zh": true,
+      "expected_groups": [
+        "星空☆漢化"
+      ],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "zh"
+      ],
+      "groups": [
+        "星空☆漢化"
+      ],
+      "evidence": [
+        "translation-credit"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "group_prefix",
+      "title": "[白云汉化组] 旅の記録",
+      "truth_zh": true,
+      "expected_groups": [
+        "白云汉化组"
+      ],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "zh"
+      ],
+      "groups": [
+        "白云汉化组"
+      ],
+      "evidence": [
+        "translation-credit"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "two_groups",
+      "title": "旅程 [青叶汉化组] [白云汉化组]",
+      "truth_zh": true,
+      "expected_groups": [
+        "白云汉化组",
+        "青叶汉化组"
+      ],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "zh"
+      ],
+      "groups": [
+        "白云汉化组",
+        "青叶汉化组"
+      ],
+      "evidence": [
+        "translation-credit"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "joint_groups",
+      "title": "旅程 [青叶汉化组×白云汉化组]",
+      "truth_zh": true,
+      "expected_groups": [
+        "白云汉化组",
+        "青叶汉化组"
+      ],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "zh"
+      ],
+      "groups": [
+        "白云汉化组",
+        "青叶汉化组"
+      ],
+      "evidence": [
+        "translation-credit"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "joint_ambiguous",
+      "title": "旅程 [青叶×白云汉化组]",
+      "truth_zh": true,
+      "expected_groups": [
+        "青叶×白云汉化组"
+      ],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "zh"
+      ],
+      "groups": [
+        "青叶×白云汉化组"
+      ],
+      "evidence": [
+        "translation-credit"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "generic_hanhua",
+      "title": "旅程 [汉化]",
+      "truth_zh": true,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "zh"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "machine",
+      "title": "旅程 [中文机翻]",
+      "truth_zh": true,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "zh"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "revised",
+      "title": "旅程 [青叶汉化组] [修正版]",
+      "truth_zh": true,
+      "expected_groups": [
+        "青叶汉化组"
+      ],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "zh"
+      ],
+      "groups": [
+        "青叶汉化组"
+      ],
+      "evidence": [
+        "translation-credit"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "creator_and_group",
+      "title": "[星舟社 (青岚)] 旅程 [青叶汉化组]",
+      "truth_zh": true,
+      "expected_groups": [
+        "青叶汉化组"
+      ],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "zh"
+      ],
+      "groups": [
+        "青叶汉化组"
+      ],
+      "evidence": [
+        "translation-credit"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "bilingual_title",
+      "title": "旅の記録｜我们的旅行日记",
+      "truth_zh": true,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": false,
+      "state": "unknown",
+      "languages": [],
+      "groups": [],
+      "evidence": [],
+      "strict_zh": false
+    },
+    {
+      "id": "bilingual_with_group",
+      "title": "旅の記録｜我们的旅行日记 [青叶汉化组]",
+      "truth_zh": true,
+      "expected_groups": [
+        "青叶汉化组"
+      ],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "zh"
+      ],
+      "groups": [
+        "青叶汉化组"
+      ],
+      "evidence": [
+        "translation-credit"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "translated_title_only",
+      "title": "我们一起去看海",
+      "truth_zh": true,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": false,
+      "state": "unknown",
+      "languages": [],
+      "groups": [],
+      "evidence": [],
+      "strict_zh": false
+    },
+    {
+      "id": "traditional_title_only",
+      "title": "我們一起去看海",
+      "truth_zh": true,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": false,
+      "state": "unknown",
+      "languages": [],
+      "groups": [],
+      "evidence": [],
+      "strict_zh": false
+    },
+    {
+      "id": "han_ambiguous_zh",
+      "title": "東京旅行",
+      "truth_zh": true,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": false,
+      "state": "unknown",
+      "languages": [],
+      "groups": [],
+      "evidence": [],
+      "strict_zh": false
+    },
+    {
+      "id": "han_ambiguous_ja",
+      "title": "東京旅行",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": false,
+      "state": "unknown",
+      "languages": [],
+      "groups": [],
+      "evidence": [],
+      "strict_zh": false
+    },
+    {
+      "id": "ja_title",
+      "title": "明日は図書館へ行こう",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": false,
+      "state": "unknown",
+      "languages": [],
+      "groups": [],
+      "evidence": [],
+      "strict_zh": false
+    },
+    {
+      "id": "ja_creator",
+      "title": "[山田太郎] A Journey [English]",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": false,
+      "state": "supported",
+      "languages": [
+        "en"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": false
+    },
+    {
+      "id": "ja_chinese_place",
+      "title": "中国旅行 [Japanese]",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": false,
+      "state": "supported",
+      "languages": [
+        "ja"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": false
+    },
+    {
+      "id": "han_creator",
+      "title": "[青岚] A Journey",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": false,
+      "state": "unknown",
+      "languages": [],
+      "groups": [],
+      "evidence": [],
+      "strict_zh": false
+    },
+    {
+      "id": "circle_not_translator",
+      "title": "[青叶组 (青岚)] 旅の記録",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": false,
+      "state": "unknown",
+      "languages": [],
+      "groups": [],
+      "evidence": [],
+      "strict_zh": false
+    },
+    {
+      "id": "english",
+      "title": "A Journey [English] [Azure Scans]",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": false,
+      "marker_baseline": false,
+      "state": "supported",
+      "languages": [
+        "en"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": false
+    },
+    {
+      "id": "japanese",
+      "title": "旅の記録 [Japanese]",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": false,
+      "state": "supported",
+      "languages": [
+        "ja"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": false
+    },
+    {
+      "id": "korean",
+      "title": "여행 일기 [Korean]",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": false,
+      "marker_baseline": false,
+      "state": "supported",
+      "languages": [
+        "ko"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": false
+    },
+    {
+      "id": "spanish",
+      "title": "Un viaje [Spanish]",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": false,
+      "marker_baseline": false,
+      "state": "supported",
+      "languages": [
+        "es"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": false
+    },
+    {
+      "id": "no_hanhua",
+      "title": "旅の記録 [未汉化]",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "unknown",
+      "languages": [],
+      "groups": [],
+      "evidence": [],
+      "strict_zh": false
+    },
+    {
+      "id": "not_hanhua",
+      "title": "旅の記録 [非汉化]",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "unknown",
+      "languages": [],
+      "groups": [],
+      "evidence": [],
+      "strict_zh": false
+    },
+    {
+      "id": "wanted",
+      "title": "旅の記録 [求汉化]",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "unknown",
+      "languages": [],
+      "groups": [],
+      "evidence": [],
+      "strict_zh": false
+    },
+    {
+      "id": "recruit",
+      "title": "旅の記録 [汉化组招募]",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "unknown",
+      "languages": [],
+      "groups": [],
+      "evidence": [],
+      "strict_zh": false
+    },
+    {
+      "id": "not_chinese",
+      "title": "A Journey [Not Chinese]",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": false,
+      "marker_baseline": true,
+      "state": "unknown",
+      "languages": [],
+      "groups": [],
+      "evidence": [],
+      "strict_zh": false
+    },
+    {
+      "id": "description_quote",
+      "title": "关于汉化组的故事 [Japanese]",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "ja"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": false
+    },
+    {
+      "id": "raw",
+      "title": "旅の記録 [RAW]",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": false,
+      "state": "unknown",
+      "languages": [],
+      "groups": [],
+      "evidence": [],
+      "strict_zh": false
+    },
+    {
+      "id": "english_scans_no_tag",
+      "title": "A Journey [Azure Scans]",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": false,
+      "marker_baseline": false,
+      "state": "unknown",
+      "languages": [],
+      "groups": [],
+      "evidence": [],
+      "strict_zh": false
+    },
+    {
+      "id": "ambiguous_cn",
+      "title": "A Journey [CN]",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": false,
+      "marker_baseline": false,
+      "state": "unknown",
+      "languages": [],
+      "groups": [],
+      "evidence": [],
+      "strict_zh": false
+    },
+    {
+      "id": "truncated",
+      "title": "旅程 [青叶汉化组…",
+      "truth_zh": true,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "unknown",
+      "languages": [],
+      "groups": [],
+      "evidence": [],
+      "strict_zh": false
+    },
+    {
+      "id": "group_false_friend",
+      "title": "[中国研究会] 旅の記録",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": false,
+      "state": "unknown",
+      "languages": [],
+      "groups": [],
+      "evidence": [],
+      "strict_zh": false
+    },
+    {
+      "id": "language_conflict",
+      "title": "旅程 [Chinese] [Japanese]",
+      "truth_zh": true,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "conflict",
+      "languages": [
+        "ja",
+        "zh"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": false
+    },
+    {
+      "id": "group_language_conflict",
+      "title": "旅程 [青叶汉化组] [English]",
+      "truth_zh": false,
+      "expected_groups": [
+        "青叶汉化组"
+      ],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "conflict",
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "groups": [
+        "青叶汉化组"
+      ],
+      "evidence": [
+        "explicit-language",
+        "translation-credit"
+      ],
+      "strict_zh": false
+    },
+    {
+      "id": "explicit_bilingual",
+      "title": "Journey [中英双语]",
+      "truth_zh": true,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": false,
+      "state": "supported",
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-multilingual"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "credit_no_lang",
+      "title": "Journey [翻译：Azure Team]",
+      "truth_zh": false,
+      "expected_groups": [
+        "Azure Team"
+      ],
+      "han_baseline": true,
+      "marker_baseline": false,
+      "state": "unknown",
+      "languages": [],
+      "groups": [
+        "Azure Team"
+      ],
+      "evidence": [
+        "translation-credit-without-language"
+      ],
+      "strict_zh": false
+    },
+    {
+      "id": "official_zh",
+      "title": "Journey [官方中文]",
+      "truth_zh": true,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "zh"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "unknown_group",
+      "title": "Journey [晨光]",
+      "truth_zh": true,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": false,
+      "state": "unknown",
+      "languages": [],
+      "groups": [],
+      "evidence": [],
+      "strict_zh": false
+    },
+    {
+      "id": "wrong_site_tag",
+      "title": "Journey [Chinese]",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": false,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "zh"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "credit_only_chinese",
+      "title": "Journey [青叶汉化组]",
+      "truth_zh": false,
+      "expected_groups": [
+        "青叶汉化组"
+      ],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "zh"
+      ],
+      "groups": [
+        "青叶汉化组"
+      ],
+      "evidence": [
+        "translation-credit"
+      ],
+      "strict_zh": true
+    },
+    {
+      "id": "quoted_language",
+      "title": "The word Chinese",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": false,
+      "marker_baseline": true,
+      "state": "unknown",
+      "languages": [],
+      "groups": [],
+      "evidence": [],
+      "strict_zh": false
+    },
+    {
+      "id": "zh_romanization",
+      "title": "Wo men yi qi qu kan hai",
+      "truth_zh": true,
+      "expected_groups": [],
+      "han_baseline": false,
+      "marker_baseline": false,
+      "state": "unknown",
+      "languages": [],
+      "groups": [],
+      "evidence": [],
+      "strict_zh": false
+    },
+    {
+      "id": "uploader",
+      "title": "Journey [上传者：青叶汉化组] [English]",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": true,
+      "marker_baseline": true,
+      "state": "supported",
+      "languages": [
+        "en"
+      ],
+      "groups": [],
+      "evidence": [
+        "explicit-language"
+      ],
+      "strict_zh": false
+    },
+    {
+      "id": "unbalanced_nested",
+      "title": "Journey [[Chinese]",
+      "truth_zh": false,
+      "expected_groups": [],
+      "han_baseline": false,
+      "marker_baseline": true,
+      "state": "unknown",
+      "languages": [],
+      "groups": [],
+      "evidence": [],
+      "strict_zh": false
+    }
+  ],
+  "ocr_cer": [
+    {
+      "sample": "en_body_zh_credit",
+      "pack": "en-US",
+      "edits": 11,
+      "characters": 59,
+      "cer": 0.1864
+    },
+    {
+      "sample": "en_body_zh_credit",
+      "pack": "zh-Hans-CN",
+      "edits": 1,
+      "characters": 59,
+      "cer": 0.0169
+    },
+    {
+      "sample": "en_dialogue",
+      "pack": "en-US",
+      "edits": 0,
+      "characters": 73,
+      "cer": 0.0
+    },
+    {
+      "sample": "en_dialogue",
+      "pack": "zh-Hans-CN",
+      "edits": 2,
+      "characters": 73,
+      "cer": 0.0274
+    },
+    {
+      "sample": "han_only_cover",
+      "pack": "en-US",
+      "edits": 8,
+      "characters": 8,
+      "cer": 1.0
+    },
+    {
+      "sample": "han_only_cover",
+      "pack": "zh-Hans-CN",
+      "edits": 0,
+      "characters": 8,
+      "cer": 0.0
+    },
+    {
+      "sample": "hans_dialogue",
+      "pack": "en-US",
+      "edits": 35,
+      "characters": 35,
+      "cer": 1.0
+    },
+    {
+      "sample": "hans_dialogue",
+      "pack": "zh-Hans-CN",
+      "edits": 0,
+      "characters": 35,
+      "cer": 0.0
+    },
+    {
+      "sample": "hant_dialogue",
+      "pack": "en-US",
+      "edits": 35,
+      "characters": 35,
+      "cer": 1.0
+    },
+    {
+      "sample": "hant_dialogue",
+      "pack": "zh-Hans-CN",
+      "edits": 0,
+      "characters": 35,
+      "cer": 0.0
+    },
+    {
+      "sample": "ja_dialogue",
+      "pack": "en-US",
+      "edits": 36,
+      "characters": 36,
+      "cer": 1.0
+    },
+    {
+      "sample": "ja_dialogue",
+      "pack": "zh-Hans-CN",
+      "edits": 22,
+      "characters": 36,
+      "cer": 0.6111
+    },
+    {
+      "sample": "mixed_dialogue",
+      "pack": "en-US",
+      "edits": 44,
+      "characters": 44,
+      "cer": 1.0
+    },
+    {
+      "sample": "mixed_dialogue",
+      "pack": "zh-Hans-CN",
+      "edits": 15,
+      "characters": 44,
+      "cer": 0.3409
+    }
+  ]
+}

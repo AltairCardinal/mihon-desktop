@@ -198,7 +198,7 @@ class AuthorParityUiContractTest {
             opened.cancel()
             release.complete(Unit)
             model.closeAndJoin()
-            scheduler.stop()
+            scheduler.stopAndJoin()
         }
     }
 

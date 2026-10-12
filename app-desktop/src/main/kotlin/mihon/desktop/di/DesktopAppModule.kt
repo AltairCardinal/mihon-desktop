@@ -413,6 +413,9 @@ internal fun initConfigLayer(
 private fun registerDesktopSettings(preferenceStore: PreferenceStore) {
     val creatorPreferences = tachiyomi.domain.creator.service.CreatorDiscoveryPreferences(preferenceStore)
     Injekt.addSingleton(creatorPreferences)
+    val titlePolicy = tachiyomi.domain.creator.service.CreatorTitleAttributionPolicy(creatorPreferences)
+    Injekt.addSingleton(titlePolicy)
+    Injekt.addSingleton(tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga(titlePolicy))
     Injekt.addSingleton(tachiyomi.domain.creator.service.CreatorDiscoverySchedule(creatorPreferences::current))
     Injekt.addSingleton(
         if (preferenceStore is DesktopPreferenceStore) {
@@ -547,17 +550,20 @@ internal fun initDataLayer(
         handler = handler,
         bootstrap = creatorArchiveBootstrap,
         discoverySchedule = Injekt.get(),
+        extractCreators = Injekt.get(),
     )
-    val chapterRepository: ChapterRepository = ChapterRepositoryImpl(handler, creatorRepositoryImpl).let { repository ->
+    val chapterRepository: ChapterRepository = ChapterRepositoryImpl(
+        handler, creatorRepositoryImpl, Injekt.get(),
+    ).let { repository ->
         chapterRepositoryOverride?.invoke(repository) ?: repository
     }
-    val mangaRepositoryImpl = MangaRepositoryImpl(handler, creatorRepositoryImpl)
+    val mangaRepositoryImpl = MangaRepositoryImpl(handler, creatorRepositoryImpl, Injekt.get())
     val mangaRepository: MangaRepository = mangaRepositoryOverride?.invoke(mangaRepositoryImpl) ?: mangaRepositoryImpl
     val creatorRepository: CreatorRepository = creatorRepositoryImpl
     val creatorLibraryIndexer = CreatorLibraryIndexer(
         mangaSource = mangaRepositoryImpl,
         indexWriter = creatorRepositoryImpl,
-        extractCreators = tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga(),
+        extractCreators = Injekt.get(),
     )
     val authorArchiveBackupContributor = tachiyomi.data.backup.SqlDelightAuthorArchiveBackupContributor(
         handler,
@@ -580,6 +586,11 @@ internal fun initDataLayer(
     Injekt.addSingleton<CreatorLibraryIndexWriter>(creatorRepositoryImpl)
     Injekt.addSingleton<CreatorLibraryMangaSource>(mangaRepositoryImpl)
     Injekt.addSingleton(creatorLibraryIndexer)
+    Injekt.addSingleton(
+        tachiyomi.domain.creator.service.CreatorTitleAttributionEditor(
+            Injekt.get(), mangaRepository, mangaRepositoryImpl, creatorRepositoryImpl, Injekt.get(), Injekt.get(),
+        ),
+    )
     Injekt.addSingleton<tachiyomi.data.backup.AuthorArchiveBackupContributor>(authorArchiveBackupContributor)
     Injekt.addSingleton(extensionRepoRepository)
     Injekt.addSingleton(trackRepository)
@@ -930,6 +941,7 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
                 ?.get(sourceId) as? CatalogueSource
         },
         sourceMangaSearchService = sourceMangaSearchService,
+        titleAttributionPolicy = Injekt.get(),
         extensionPackageProvider = { source ->
             runCatching { Injekt.get<DesktopExtensionManager>().getExtensionPackage(source.id) }
                 .getOrNull()
@@ -947,6 +959,7 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
         archiveRepository = Injekt.get<CreatorArchiveRepository>(),
         sourcePort = creatorDiscoverySourcePort,
         schedule = Injekt.get(),
+        titleAttributionPolicy = Injekt.get(),
     )
     Injekt.addSingleton(creatorDiscoveryService)
     Injekt.addSingleton(DiscoverCreatorWorks(creatorDiscoveryService, getCreatorDetails))
@@ -1306,6 +1319,7 @@ internal suspend fun initUILayer(
             bootstrap = Injekt.get(),
             creatorIndexWriter = Injekt.get(),
             creatorRepository = Injekt.get(),
+            extractCreators = Injekt.get(),
             sourceAvailable = { Injekt.get<SourceManager>().get(it) != null },
             secureStore = syncSecureStore,
             preferenceStore = preferenceStore,

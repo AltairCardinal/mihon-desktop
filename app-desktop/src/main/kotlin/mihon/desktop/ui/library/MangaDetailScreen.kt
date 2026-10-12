@@ -124,6 +124,7 @@ import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.service.filterAndSortChapters
 import tachiyomi.domain.chapter.service.hasActiveChapterFilters
+import tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga
 import tachiyomi.domain.creator.model.CreatorMentionResolution
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.toSourceManga
@@ -147,11 +148,11 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
 
         val screenModelFactory = LocalMangaDetailScreenModelFactory.current
         val model = rememberScreenModel { screenModelFactory(mangaId) }
+        val dependencies = LocalDesktopUiDependencies.current
         val state by model.state.collectAsState()
         val downloadQueue by model.downloadQueueFlow().collectAsState()
         val downloadedOnly by model.downloadedOnlyFlow().collectAsState(false)
         val downloadAvailability by model.downloadAvailabilityFlow().collectAsState(0L)
-        val dependencies = LocalDesktopUiDependencies.current
         val appPreferences = dependencies.appPreferences
         val hideMissingChapterIndicators by appPreferences.hideMissingChapterIndicators.changes().collectAsState(
             initial = appPreferences.hideMissingChapterIndicators.get(),
@@ -1247,7 +1248,9 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                     dependencies.shareService.copyText(text).toDesktopNotification(),
                                 )
                             },
-                            creatorMentions = model.creatorMentions(manga!!),
+                            creatorMentions = remember(manga) {
+                                ExtractCreatorsFromManga().await(manga!!)
+                            },
                             creatorIdentityLoading = creatorIdentityLoading,
                             onCreatorSearch = { mention ->
                                 navigator.push(GlobalSearchScreen(initialQuery = mention.displayName))

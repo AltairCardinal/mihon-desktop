@@ -25,6 +25,78 @@ import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.service.CatalogueCreatorDiscoverySourceAdapter
 import tachiyomi.domain.creator.service.CreatorDiscoveryService
 
+/** Detail title credits use the same production adapter, identity gate and persisted archive. */
+suspend fun verifyCreatorTitleAttributionDiscovery(handler: DatabaseHandler) {
+    val repository = CreatorRepositoryImpl(handler)
+    val artist = repository.upsertCreator("Artist", listOf("Alias A", "Alias B", "Alias C", "黒本君"))
+    val circle = repository.upsertCreator("Circle")
+    val uploader = repository.upsertCreator("Uploader")
+    listOf(artist, circle, uploader).forEach { creator ->
+        repository.upsertWatchPolicy(
+            ArchiveWatchPolicy(
+                creator.id,
+                false,
+                60_000L,
+                emptySet(),
+                emptySet(),
+                includeProbable = true,
+                includeUnknown = true,
+            ),
+            now = 1L,
+        )
+    }
+    val titles = mapOf(
+        "/valid" to "[Circle (Artist)] Work",
+        "/alias" to "[Another Circle (黒本君)] Other work",
+        "/other" to "[Circle (Other)] Other artist",
+        "/false" to "[Other Circle (Other)] Artist in regular title",
+        "/suffix" to "Work [Circle (Artist)]",
+    )
+    val source = mockk<CatalogueSource>()
+    every { source.id } returns 91L
+    every { source.name } returns "Title fixture"
+    every { source.lang } returns "en"
+    every { source.getFilterList() } returns FilterList()
+    coEvery { source.getSearchManga(any(), any(), any()) } returns MangasPage(
+        titles.map { (url, _) -> discoveryManga(url, "[Circle (Artist)] misleading card", "Artist") },
+        false,
+    )
+    coEvery { source.getMangaDetails(any()) } answers {
+        val url = firstArg<SManga>().url
+        discoveryManga(url, titles.getValue(url), "Uploader", "Uploader")
+    }
+    val policy = tachiyomi.domain.creator.service.CreatorTitleAttributionPolicy { setOf("91") }
+    val adapter = CatalogueCreatorDiscoverySourceAdapter(
+        enabledSourcesProvider = { listOf(source) },
+        sourceResolver = { source },
+        titleAttributionPolicy = policy,
+    )
+    val service = CreatorDiscoveryService(repository, repository, adapter)
+    service.discoverCreator(artist.id)
+    service.discoverCreator(circle.id)
+    service.discoverCreator(uploader.id)
+    check(
+        repository.getCreatorWorkArchive(artist.id).pending.map { it.naturalKey.stableSourceUrl }.toSet() ==
+            setOf("/valid", "/alias"),
+    )
+    check(
+        repository.getCreatorWorkArchive(circle.id).pending.map { it.naturalKey.stableSourceUrl }.toSet() ==
+            setOf("/valid", "/other"),
+    )
+    // Unqualified suffix safely falls back to raw fields in this explicitly scoped preview rule.
+    check(
+        repository.getCreatorWorkArchive(uploader.id).pending.map { it.naturalKey.stableSourceUrl }.toSet() ==
+            setOf("/suffix"),
+    )
+    handler.await {
+        val bindings = author_archiveQueries.getArchiveSourceWorkBindingsForBackup().executeAsList()
+        check(bindings.filter { it.stable_source_url != "/suffix" }.all { it.source_text != "Uploader" })
+        check(bindings.any { it.evidence == "title-attribution:v1:TITLE_CREATOR" })
+        check(bindings.any { it.evidence == "title-attribution:v1:TITLE_CIRCLE" })
+    }
+    check(repository.getUnreadDiscoveries(100).isEmpty())
+}
+
 /** Both platforms execute the real source adapter, discovery interactor, SQL writes and archive projection. */
 suspend fun verifyCreatorDiscoveryMetadata(handler: DatabaseHandler) {
     val repository = CreatorRepositoryImpl(handler)

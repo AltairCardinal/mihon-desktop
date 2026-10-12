@@ -1,7 +1,7 @@
 package tachiyomi.domain.creator.model
 
 /**
- * One person mention extracted from a manga's author/artist bibliography.
+ * One effective creator credit extracted from source bibliography or an opted-in title rule.
  *
  * [sourceTexts] retains the exact source values used as evidence while [normalizedName] is only a
  * lookup key. Equal normalized names are not, by themselves, proof that two people are identical.
@@ -20,7 +20,25 @@ data class CreatorMention(
 enum class CreatorMetadataField {
     AUTHOR,
     ARTIST,
+    TITLE_CREATOR,
+    TITLE_CIRCLE,
 }
+
+/** Exact LF-delimited markers; explanations and lookalike substrings never select a mode. */
+object CreatorTitleEvidence {
+    const val CREATOR = "title-attribution:v1:TITLE_CREATOR"
+    const val CIRCLE = "title-attribution:v1:TITLE_CIRCLE"
+    const val CREATOR_AND_CIRCLE = "title-attribution:v1:TITLE_CREATOR+TITLE_CIRCLE"
+    const val CIRCLE_AND_CREATOR = "title-attribution:v1:TITLE_CIRCLE+TITLE_CREATOR"
+}
+
+/** Persisted in the existing free-form relation evidence column and portable backup field. */
+fun List<CreatorMention>.titleAttributionEvidence(): String? = flatMap { it.evidence }
+    .map { it.field }
+    .filter { it == CreatorMetadataField.TITLE_CREATOR || it == CreatorMetadataField.TITLE_CIRCLE }
+    .distinct()
+    .takeIf { it.isNotEmpty() }
+    ?.joinToString(prefix = "title-attribution:v1:", separator = "+") { it.name }
 
 data class CreatorMentionEvidence(
     val field: CreatorMetadataField,

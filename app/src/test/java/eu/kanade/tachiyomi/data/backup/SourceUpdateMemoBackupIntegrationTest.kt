@@ -457,7 +457,9 @@ class SourceUpdateMemoBackupIntegrationTest {
         val restorer = MangaRestorer(
             handler, getCategories, GetMangaByUrlAndSourceId(mangas), getChapters,
             UpdateManga(mangas, fetchInterval), GetTracks(tracks), InsertTrack(tracks),
-            NoopCreatorLibraryIndexWriter, fetchInterval = fetchInterval,
+            NoopCreatorLibraryIndexWriter,
+            extractCreators = tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga(),
+            fetchInterval = fetchInterval,
         )
         override fun close() {
             driver.close()

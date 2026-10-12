@@ -71,6 +71,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.style.TextAlign
@@ -90,10 +91,12 @@ import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.components.DropdownMenu
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.ui.browse.author.creatorTitleCreditText
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import tachiyomi.core.common.util.lang.DescriptionMarkdownFragment
 import tachiyomi.core.common.util.lang.descriptionMarkdownFragment
 import tachiyomi.domain.creator.model.CreatorMention
+import tachiyomi.domain.creator.service.TitleCreditParser
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.DISABLED_ALPHA
@@ -122,55 +125,57 @@ fun MangaInfoBox(
     onCreatorClick: (CreatorMention) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier = modifier) {
-        // Backdrop
-        val backdropGradientColors = listOf(
-            Color.Transparent,
-            MaterialTheme.colorScheme.background,
-        )
-        AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(manga)
-                .crossfade(true)
-                .build(),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .matchParentSize()
-                .drawWithContent {
-                    drawContent()
-                    drawRect(
-                        brush = Brush.verticalGradient(colors = backdropGradientColors),
+    Column(modifier = modifier) {
+        Box {
+            // Backdrop
+            val backdropGradientColors = listOf(
+                Color.Transparent,
+                MaterialTheme.colorScheme.background,
+            )
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(manga)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .matchParentSize()
+                    .drawWithContent {
+                        drawContent()
+                        drawRect(
+                            brush = Brush.verticalGradient(colors = backdropGradientColors),
+                        )
+                    }
+                    .blur(4.dp)
+                    .alpha(0.2f),
+            )
+
+            // Manga & source info
+            CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+                if (!isTabletUi) {
+                    MangaAndSourceTitlesSmall(
+                        appBarPadding = appBarPadding,
+                        manga = manga,
+                        sourceName = sourceName,
+                        isStubSource = isStubSource,
+                        onCoverClick = onCoverClick,
+                        doSearch = doSearch,
+                        creatorMentions = creatorMentions,
+                        onCreatorClick = onCreatorClick,
+                    )
+                } else {
+                    MangaAndSourceTitlesLarge(
+                        appBarPadding = appBarPadding,
+                        manga = manga,
+                        sourceName = sourceName,
+                        isStubSource = isStubSource,
+                        onCoverClick = onCoverClick,
+                        doSearch = doSearch,
+                        creatorMentions = creatorMentions,
+                        onCreatorClick = onCreatorClick,
                     )
                 }
-                .blur(4.dp)
-                .alpha(0.2f),
-        )
-
-        // Manga & source info
-        CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
-            if (!isTabletUi) {
-                MangaAndSourceTitlesSmall(
-                    appBarPadding = appBarPadding,
-                    manga = manga,
-                    sourceName = sourceName,
-                    isStubSource = isStubSource,
-                    onCoverClick = onCoverClick,
-                    doSearch = doSearch,
-                    creatorMentions = creatorMentions,
-                    onCreatorClick = onCreatorClick,
-                )
-            } else {
-                MangaAndSourceTitlesLarge(
-                    appBarPadding = appBarPadding,
-                    manga = manga,
-                    sourceName = sourceName,
-                    isStubSource = isStubSource,
-                    onCoverClick = onCoverClick,
-                    doSearch = doSearch,
-                    creatorMentions = creatorMentions,
-                    onCreatorClick = onCreatorClick,
-                )
             }
         }
     }
@@ -474,14 +479,19 @@ private fun ColumnScope.MangaContentInfo(
         } else {
             creatorMentions.forEach { mention ->
                 Row(
-                    modifier = Modifier.secondaryItemAlpha().clickableNoIndication(onClick = {
+                    modifier = Modifier.testTag(
+                        "creator-mention-${mention.order}",
+                    ).secondaryItemAlpha().clickableNoIndication(onClick = {
                         onCreatorClick(mention)
                     }),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(Icons.Filled.PersonOutline, null, Modifier.size(16.dp))
-                    Text(mention.displayName, style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        creatorTitleCreditText(mention),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
                 }
             }
         }
@@ -508,6 +518,30 @@ private fun ColumnScope.MangaContentInfo(
                     ),
                 textAlign = textAlign,
             )
+        }
+    }
+
+    val titleCredits = remember(title) {
+        TitleCreditParser.parse(title, allowStandaloneCreator = true)
+    }
+    if (titleCredits.isNotEmpty()) {
+        val standaloneCredit = remember(title) { TitleCreditParser.parse(title).isEmpty() }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                stringResource(MR.strings.creator_title_attribution_preview),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.align(Alignment.CenterVertically),
+            )
+            titleCredits.forEach { mention ->
+                Text(
+                    if (standaloneCredit) mention.displayName else creatorTitleCreditText(mention),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.testTag("title-credit-${mention.order}")
+                        .clickableNoIndication(onClick = { onCreatorClick(mention) }),
+                )
+            }
         }
     }
 

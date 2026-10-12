@@ -84,6 +84,8 @@ class SyncRuntime(
     val repositoryScope: mihon.data.sync.auth.SyncRepositoryScope = mihon.data.sync.auth.SyncRepositoryScope.Default,
     val diagnosticDirectory: Path? = null,
     diagnosticEnvironment: SyncDiagnosticEnvironment = SyncDiagnosticEnvironment(),
+    extractCreators: tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga =
+        tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga(),
 ) : SyncRunPort {
     val preferences = SyncPreferences(preferenceStore)
     val credentials = PersistentGitHubCredentialStore(secureStore)
@@ -137,6 +139,7 @@ class SyncRuntime(
                     val sort = tachiyomi.domain.library.service.LibraryPreferences(preferenceStore).sortingMode().get()
                     sort.type.flag or sort.direction.flag
                 },
+                extractCreators = extractCreators,
             ),
         )
     private val refresher = GitHubTokenRefresher(

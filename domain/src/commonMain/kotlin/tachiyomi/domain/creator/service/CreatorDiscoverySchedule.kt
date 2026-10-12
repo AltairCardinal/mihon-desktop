@@ -21,6 +21,8 @@ enum class CreatorCheckFrequency(val value: String) {
 class CreatorDiscoveryPreferences(private val store: PreferenceStore) {
     fun frequency() = store.getString(FREQUENCY_KEY, CreatorCheckFrequency.DAILY.value)
 
+    fun titleAttributionSources() = store.getStringSet(TITLE_ATTRIBUTION_SOURCES_KEY, emptySet())
+
     @Synchronized
     fun migrate() {
         val migrated = store.getBoolean(Preference.appStateKey("creator_global_frequency_migrated"))
@@ -36,6 +38,7 @@ class CreatorDiscoveryPreferences(private val store: PreferenceStore) {
 
     companion object {
         const val FREQUENCY_KEY = "creator_discovery_frequency"
+        const val TITLE_ATTRIBUTION_SOURCES_KEY = "creator_title_attribution_sources"
     }
 }
 

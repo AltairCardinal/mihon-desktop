@@ -1741,6 +1741,38 @@ FROM author_archive_source_work_creators
 WHERE creator_id = :creatorId
 ORDER BY source_work_id, creator_order;
 
+hasArchiveCreatorTitleAttribution:
+SELECT CASE WHEN EXISTS (
+    SELECT 1 FROM author_archive_source_work_creators
+    WHERE creator_id = :creatorId
+    AND origin IN ('USER', 'RESTORE') AND verification = 'VERIFIED'
+    AND (
+        instr(char(10) || evidence || char(10), char(10) || :creatorMarker || char(10)) > 0
+        OR instr(char(10) || evidence || char(10), char(10) || :circleMarker || char(10)) > 0
+        OR instr(char(10) || evidence || char(10), char(10) || :bothMarker || char(10)) > 0
+        OR instr(char(10) || evidence || char(10), char(10) || :reverseBothMarker || char(10)) > 0
+    )
+) THEN 1 ELSE 0 END;
+
+appendArchiveMangaTitleEvidence:
+UPDATE author_archive_manga_links
+SET evidence = evidence || char(10) || :marker
+WHERE manga_id = :mangaId AND creator_id = :creatorId
+AND origin IN ('USER', 'RESTORE')
+AND instr(char(10) || evidence || char(10), char(10) || :marker || char(10)) = 0;
+
+appendArchiveSourceWorkTitleEvidence:
+UPDATE author_archive_source_work_creators
+SET evidence = evidence || char(10) || :marker
+WHERE source_work_id = :sourceWorkId AND creator_id = :creatorId
+AND origin IN ('USER', 'RESTORE')
+AND instr(char(10) || evidence || char(10), char(10) || :marker || char(10)) = 0;
+
+resetArchiveTitleModeBaselines:
+UPDATE author_archive_watch_sources
+SET baseline_state = 'NEEDS_BASELINE', baseline_generation = baseline_generation + 1
+WHERE watch_id = (SELECT _id FROM author_archive_watches WHERE creator_id = :creatorId);
+
 getArchiveSourceWorkRelationsForIdentityMerge:
 SELECT source_work_id, role, creator_order, origin, verification, source_text, confidence, evidence,
        created_at, last_modified_at
@@ -4620,3 +4652,8 @@ AND discovery_id IN (
     JOIN author_archive_watches W ON W._id = D.watch_id
     WHERE W.creator_id = :creatorId
 );
+
+cancelArchiveDiscoveryNotifications:
+UPDATE author_archive_notification_outbox
+SET state = 'CANCELLED', next_attempt_at = NULL
+WHERE discovery_id = :discoveryId AND state IN ('PENDING', 'FAILED');

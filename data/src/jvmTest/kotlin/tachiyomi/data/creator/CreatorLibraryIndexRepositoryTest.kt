@@ -51,6 +51,85 @@ class CreatorLibraryIndexRepositoryTest {
     private lateinit var handler: JvmDatabaseHandler
     private val extract = ExtractCreatorsFromManga()
 
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    @Test
+    fun `title evidence and raw fields survive backup codec and repeated restore`() = runBlocking<Unit> {
+        val original = manga(id = 81L, author = "Uploader", artist = "Uploader")
+            .copy(title = "[Circle (Artist)] Work")
+        seedManga(original)
+        val titleExtract = ExtractCreatorsFromManga(
+            tachiyomi.domain.creator.service.CreatorTitleAttributionPolicy { setOf(original.source.toString()) },
+        )
+        repository.indexLibraryManga(original, titleExtract.await(original))
+        val contributor = tachiyomi.data.backup.SqlDelightAuthorArchiveBackupContributor(handler)
+        val section = checkNotNull(contributor.createSection())
+        val serializer = eu.kanade.tachiyomi.data.backup.models.BackupAuthorArchiveSection.serializer()
+        val bytes = kotlinx.serialization.protobuf.ProtoBuf.encodeToByteArray(serializer, section)
+        val decoded = kotlinx.serialization.protobuf.ProtoBuf.decodeFromByteArray(serializer, bytes)
+        driver.close()
+        setup()
+        val restorer = tachiyomi.data.backup.SqlDelightAuthorArchiveBackupContributor(handler)
+        restorer.restoreSection(decoded)
+        restorer.restoreSection(decoded)
+        queryStrings("SELECT evidence FROM author_archive_source_work_creators ORDER BY creator_order")
+            .shouldContainExactly("title-attribution:v1:TITLE_CREATOR", "title-attribution:v1:TITLE_CIRCLE")
+        queryStrings("SELECT role FROM author_archive_source_work_creators ORDER BY creator_order")
+            .shouldContainExactly("UNKNOWN", "UNKNOWN")
+        queryStrings("SELECT title || '|' || author_text || '|' || artist_text FROM author_archive_source_works")
+            .shouldContainExactly("[Circle (Artist)] Work|Uploader|Uploader")
+        queryLong("SELECT COUNT(*) FROM author_archive_source_work_creators") shouldBe 2L
+    }
+
+    @Test
+    fun `title opt in replaces automatic uploader links preserves users and supports rollback`() = runBlocking<Unit> {
+        val original = manga(id = 80L, author = "Uploader", artist = "Uploader")
+            .copy(title = "[Circle (Artist)] Work")
+        seedManga(original)
+        repository.indexLibraryManga(original, extract.await(original))
+        val uploader = repository.resolveCreatorIdByExactName("Uploader")!!
+        repository.followCreator(uploader)
+        val watchId = queryLong("SELECT _id FROM author_archive_watches WHERE creator_id = $uploader")
+        val sourceWorkId = queryLong("SELECT _id FROM author_archive_source_works WHERE manga_id = 80")
+        executeSql(
+            "INSERT INTO author_archive_discoveries(watch_id, source_work_id, kind, reason, baseline_generation, " +
+                "read_state, review_disposition, first_discovered_at, last_modified_at) VALUES " +
+                "($watchId, $sourceWorkId, 'NEW_WORK_CANDIDATE', 'old uploader discovery', 1, 'UNSEEN', 'PENDING', 10, 10)",
+        )
+        val discoveryId = queryLong("SELECT _id FROM author_archive_discoveries WHERE source_work_id = $sourceWorkId")
+        executeSql(
+            "INSERT INTO author_archive_notification_outbox(discovery_id, channel, idempotency_key, " +
+                "attempt_count, state, created_at) " +
+                "VALUES ($discoveryId, 'DESKTOP', 'old-uploader-outbox', 0, 'PENDING', 10)",
+        )
+        repository.getUnreadDiscoveries(100).size shouldBe 1
+        val protected = repository.upsertCreator("Manual")
+        repository.linkMangaCreator(original.id, protected.id, CreatorRole.UNKNOWN, "Manual", 1.0, "manual")
+        val titleExtract = ExtractCreatorsFromManga(
+            tachiyomi.domain.creator.service.CreatorTitleAttributionPolicy { setOf(original.source.toString()) },
+        )
+        repository.indexLibraryManga(original, titleExtract.await(original))
+        queryStrings(
+            "SELECT c.display_name FROM author_archive_manga_links l JOIN author_archive_creators c ON c._id = l.creator_id ORDER BY c.display_name",
+        )
+            .shouldContainExactly("Artist", "Circle", "Manual")
+        queryStrings("SELECT role FROM author_archive_source_work_creators ORDER BY creator_order")
+            .shouldContainExactly("UNKNOWN", "UNKNOWN")
+        queryStrings("SELECT evidence FROM author_archive_source_work_creators ORDER BY creator_order")
+            .shouldContainExactly("title-attribution:v1:TITLE_CREATOR", "title-attribution:v1:TITLE_CIRCLE")
+        queryStrings("SELECT title || '|' || author || '|' || artist FROM mangas WHERE _id = 80")
+            .shouldContainExactly("[Circle (Artist)] Work|Uploader|Uploader")
+        queryStrings("SELECT title || '|' || author_text || '|' || artist_text FROM author_archive_source_works")
+            .shouldContainExactly("[Circle (Artist)] Work|Uploader|Uploader")
+        repository.getFollowedCreators().single().creatorId shouldBe uploader
+        repository.getUnreadDiscoveries(100).size shouldBe 0
+        queryStrings("SELECT state FROM author_archive_notification_outbox").shouldContainExactly("CANCELLED")
+        repository.indexLibraryManga(original, extract.await(original))
+        queryStrings(
+            "SELECT c.display_name FROM author_archive_manga_links l JOIN author_archive_creators c ON c._id = l.creator_id ORDER BY c.display_name",
+        )
+            .shouldContainExactly("Manual", "Uploader")
+    }
+
     @BeforeEach
     fun setup() {
         driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)

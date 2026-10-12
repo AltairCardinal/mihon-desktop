@@ -2,6 +2,7 @@ package mihon.desktop.ui.browse
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -45,13 +47,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -68,8 +71,9 @@ import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.SaveSourceMangaForDetails
@@ -81,11 +85,13 @@ import mihon.desktop.ui.library.MangaDetailScreen
 import mihon.desktop.ui.source.desktopSourceErrorMessage
 import mihon.domain.error.AppError
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.source.service.CatalogResultFilter
 import tachiyomi.domain.source.service.SourceLoginState
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceQueryState
+import tachiyomi.domain.source.service.SourceResultMetadata
 import tachiyomi.i18n.MR
 import java.util.Locale
 
@@ -298,6 +304,29 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
         }
         val canonicalContent = canonicalResult as? CanonicalSearchResult.Content
         val canonicalFailure = canonicalResult as? CanonicalSearchResult.Failure
+        // Observe the same canonical rows for filtering and cards, including currently hidden results.
+        val catalogMangas = remember(canonicalContent) { mutableStateOf(canonicalContent?.items.orEmpty()) }
+        LaunchedEffect(canonicalContent, getManga) {
+            val initial = canonicalContent?.items.orEmpty()
+            if (initial.isNotEmpty()) {
+                combine(
+                    initial.map { manga ->
+                        getManga.subscribe(manga.url, manga.source).map { it ?: manga }.onStart { emit(manga) }
+                    },
+                ) { it.toList() }.collect { catalogMangas.value = it }
+            }
+        }
+        val catalogItems = remember(catalogMangas.value) {
+            catalogMangas.value.map { it to SourceResultMetadata.from(it) }
+        }
+        var resultFilter by remember { mutableStateOf(CatalogResultFilter()) }
+        var showResultFilter by remember { mutableStateOf(false) }
+        val resultFilterFocus = remember { FocusRequester() }
+        val visibleItems = remember(catalogItems, resultFilter) {
+            catalogItems.filter { resultFilter.matches(it.second) }
+        }
+        val catalogGridState = rememberLazyGridState()
+        LaunchedEffect(resultFilter) { catalogGridState.scrollToItem(0) }
         var openingMangaUrl by remember { mutableStateOf<String?>(null) }
         val loginController = remember(queryCoordinator, dependencies.sourceLoginSessionFactory) {
             DesktopSourceLoginController(dependencies.sourceLoginSessionFactory, queryCoordinator)
@@ -410,6 +439,26 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
             )
         }
 
+        fun dismissResultFilter() {
+            showResultFilter = false
+            scope.launch {
+                androidx.compose.runtime.withFrameNanos { }
+                resultFilterFocus.requestFocus()
+            }
+        }
+
+        if (showResultFilter) {
+            CatalogResultFilterDialog(
+                applied = resultFilter,
+                metadata = catalogItems.map { it.second },
+                onApply = {
+                    resultFilter = it
+                    dismissResultFilter()
+                },
+                onDismiss = ::dismissResultFilter,
+            )
+        }
+
         Scaffold(
             topBar = {
                 TopAppBar(
@@ -466,7 +515,8 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
                 }
 
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     modes.forEach { mode ->
@@ -498,6 +548,30 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
                             onClick = { showFilterDialog = true },
                             leadingIcon = { Icon(Icons.Default.FilterList, contentDescription = null) },
                             label = { Text(MR.strings.action_filter.localized()) },
+                        )
+                    }
+                    FilterChip(
+                        selected = resultFilter.isActive,
+                        onClick = { showResultFilter = true },
+                        label = { Text(MR.strings.catalog_result_filter.localized()) },
+                        modifier = Modifier.focusRequester(resultFilterFocus).testTag("catalog-result-filter-open"),
+                    )
+                }
+
+                if (resultFilter.isActive) {
+                    Text(
+                        MR.strings.catalog_result_scope.localized(
+                            Locale.getDefault(),
+                            catalogItems.size,
+                            visibleItems.size,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                    if (catalogItems.isNotEmpty() && visibleItems.isEmpty()) {
+                        Text(
+                            MR.strings.catalog_result_no_match.localized(),
+                            modifier = Modifier.padding(horizontal = 16.dp).testTag("catalog-result-no-match"),
                         )
                     }
                 }
@@ -594,18 +668,14 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
                     else -> {
                         LazyVerticalGrid(
                             columns = GridCells.Adaptive(minSize = 120.dp),
+                            state = catalogGridState,
                             contentPadding = PaddingValues(8.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxSize(),
                         ) {
-                            items(canonicalContent?.items.orEmpty(), key = { it.source to it.url }) { initialManga ->
-                                val manga by produceState(initialManga, initialManga.source, initialManga.url) {
-                                    getManga.subscribe(initialManga.url, initialManga.source)
-                                        .filterNotNull()
-                                        .collectLatest { value = it }
-                                }
-                                MangaCard(manga = manga) {
+                            items(visibleItems, key = { it.first.source to it.first.url }) { (manga, metadata) ->
+                                MangaCard(manga = manga, metadata = metadata) {
                                     val catalogueSource = source ?: return@MangaCard
                                     val listed = canonicalContent?.listedByUrl?.get(manga.url) ?: return@MangaCard
                                     if (openingMangaUrl != null) return@MangaCard
@@ -647,7 +717,26 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
                             }
 
                             // Load-more trigger
-                            if (queryUiState.hasNextPage) {
+                            if (queryUiState.hasNextPage && queryUiState.pageError == null && resultFilter.isActive) {
+                                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                                    TextButton(
+                                        enabled = !queryUiState.loading,
+                                        onClick = {
+                                            loadPage(
+                                                (queryUiState.request?.page ?: 0) + 1,
+                                                queryUiState.request?.query ?: listingQuery,
+                                            )
+                                        },
+                                        modifier = Modifier.fillMaxWidth().testTag("catalog-result-continue"),
+                                    ) {
+                                        if (queryUiState.loading) {
+                                            CircularProgressIndicator()
+                                        } else {
+                                            Text(MR.strings.catalog_result_continue.localized())
+                                        }
+                                    }
+                                }
+                            } else if (queryUiState.hasNextPage && !resultFilter.isActive) {
                                 item {
                                     LaunchedEffect(queryUiState.items.size) {
                                         loadPage(
@@ -829,7 +918,7 @@ private fun FilterChoice(label: String, selected: Boolean, onClick: () -> Unit) 
 }
 
 @Composable
-private fun MangaCard(manga: Manga, onClick: () -> Unit) {
+private fun MangaCard(manga: Manga, metadata: SourceResultMetadata, onClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
     ) {
@@ -868,5 +957,6 @@ private fun MangaCard(manga: Manga, onClick: () -> Unit) {
                 Text(MR.strings.in_library.localized(), color = Color.White, modifier = Modifier.padding(6.dp))
             }
         }
+        CatalogResultMetadataLabel(metadata, manga.url)
     }
 }

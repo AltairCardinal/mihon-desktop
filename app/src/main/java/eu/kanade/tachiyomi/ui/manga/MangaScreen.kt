@@ -66,11 +66,14 @@ import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga
 import tachiyomi.domain.creator.model.CreatorMention
 import tachiyomi.domain.creator.model.CreatorMentionResolution
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.screens.LoadingScreen
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 class MangaScreen(
     private val mangaId: Long,
@@ -113,8 +116,8 @@ class MangaScreen(
         val successState = state as MangaScreenModel.State.Success
         val isHttpSource = remember { successState.source is HttpSource }
         val creatorNavigator = remember { AndroidMangaCreatorNavigator() }
-        val creatorMentions = remember(successState.manga.author, successState.manga.artist) {
-            creatorNavigator.mentions(successState.manga)
+        val creatorMentions = remember(successState.manga) {
+            ExtractCreatorsFromManga().await(successState.manga)
         }
         var creatorIdentityPreparing by remember { mutableStateOf(false) }
         val creatorOpenCoordinator = remember(successState.manga, creatorNavigator) {

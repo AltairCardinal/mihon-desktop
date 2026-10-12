@@ -43,6 +43,7 @@ import eu.kanade.core.util.ifSourcesLoaded
 import eu.kanade.presentation.browse.BrowseSourceContent
 import eu.kanade.presentation.browse.MissingSourceScreen
 import eu.kanade.presentation.browse.components.BrowseSourceToolbar
+import eu.kanade.presentation.browse.components.CatalogResultFilterControl
 import eu.kanade.presentation.browse.components.RemoveMangaDialog
 import eu.kanade.presentation.category.components.ChangeCategoryDialog
 import eu.kanade.presentation.manga.DuplicateMangaDialog
@@ -66,8 +67,10 @@ import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.model.StubSource
+import tachiyomi.domain.source.service.CatalogResultFilter
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourceRecoveryAction
+import tachiyomi.domain.source.service.SourceResultMetadata
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.padding
@@ -114,6 +117,11 @@ data class BrowseSourceScreen(
         val haptic = LocalHapticFeedback.current
         val uriHandler = LocalUriHandler.current
         val snackbarHostState = remember { SnackbarHostState() }
+        val mangaList = screenModel.mangaPagerFlowFlow.collectAsLazyPagingItems()
+        val resultMetadata = mangaList.itemSnapshotList.items.map { item ->
+            val manga by item.collectAsState()
+            remember(manga) { SourceResultMetadata.from(manga) }
+        }
 
         val onHelpClick = { uriHandler.openUri(LocalSource.HELP_URL) }
         val onWebViewClick = f@{
@@ -160,6 +168,9 @@ data class BrowseSourceScreen(
                             screenModel.setListing(it)
                         },
                         onFilterClick = screenModel::openFilterSheet,
+                        catalogFilter = state.catalogFilter,
+                        resultMetadata = resultMetadata,
+                        onCatalogFilterChange = screenModel::setCatalogFilter,
                     )
 
                     HorizontalDivider()
@@ -169,12 +180,14 @@ data class BrowseSourceScreen(
         ) { paddingValues ->
             BrowseSourceScreenContent(
                 source = screenModel.source,
-                mangaList = screenModel.mangaPagerFlowFlow.collectAsLazyPagingItems(),
+                mangaList = mangaList,
                 navigator = navigator,
                 columns = screenModel.getColumnsPreference(LocalConfiguration.current.orientation),
                 displayMode = screenModel.displayMode,
                 snackbarHostState = snackbarHostState,
                 contentPadding = paddingValues,
+                catalogFilter = state.catalogFilter,
+                hideInLibraryItems = screenModel.hideInLibraryItems,
                 onWebViewClick = onWebViewClick,
                 onHelpClick = { uriHandler.openUri(Constants.URL_HELP) },
                 onLocalSourceHelpClick = onHelpClick,
@@ -278,6 +291,9 @@ internal fun BrowseSourceListingChips(
     hasFilters: Boolean,
     onListingSelected: (Listing) -> Unit,
     onFilterClick: () -> Unit,
+    catalogFilter: CatalogResultFilter = CatalogResultFilter(),
+    resultMetadata: List<SourceResultMetadata> = emptyList(),
+    onCatalogFilterChange: (CatalogResultFilter) -> Unit = {},
 ) {
     Row(
         modifier = Modifier
@@ -285,6 +301,11 @@ internal fun BrowseSourceListingChips(
             .padding(horizontal = MaterialTheme.padding.small),
         horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
     ) {
+        CatalogResultFilterControl(
+            filter = catalogFilter,
+            metadata = resultMetadata,
+            onApply = onCatalogFilterChange,
+        )
         FilterChip(
             selected = listing == Listing.Popular,
             onClick = {
@@ -355,6 +376,8 @@ internal fun BrowseSourceScreenContent(
     onLocalSourceHelpClick: () -> Unit,
     onMangaClick: (Manga) -> Unit = { navigator.push(MangaScreen(it.id, true)) },
     onMangaLongClick: (Manga) -> Unit,
+    catalogFilter: CatalogResultFilter = CatalogResultFilter(),
+    hideInLibraryItems: Boolean = false,
 ) {
     BrowseSourceContent(
         source = source,
@@ -371,6 +394,8 @@ internal fun BrowseSourceScreenContent(
         onLocalSourceHelpClick = onLocalSourceHelpClick,
         onMangaClick = onMangaClick,
         onMangaLongClick = onMangaLongClick,
+        catalogFilter = catalogFilter,
+        hideInLibraryItems = hideInLibraryItems,
     )
 }
 

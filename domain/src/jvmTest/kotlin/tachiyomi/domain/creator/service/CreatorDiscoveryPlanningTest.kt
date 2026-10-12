@@ -31,6 +31,52 @@ import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 class CreatorDiscoveryPlanningTest {
 
     @Test
+    fun `source title policy uses keyword recall instead of uploader author filtering`() = runBlocking {
+        val source = StructuredSource(1)
+        val adapter = CatalogueCreatorDiscoverySourceAdapter(
+            enabledSourcesProvider = { listOf(source) },
+            sourceResolver = { source },
+            titleAttributionPolicy = CreatorTitleAttributionPolicy { setOf("1") },
+            clock = { 1_000 },
+        )
+        val enabled = adapter.enabledSourcesSnapshot().single()
+        adapter.searchPage(BoundedAuthorSearchPageRequest(1, "ONE", 1, 2, 2_000))
+        assertTrue(CreatorSourceCapability.CATALOGUE_SEARCH_FALLBACK in enabled.capabilities)
+        assertEquals(0, source.authorSearchCalls)
+        assertEquals(1, source.fallbackSearchCalls)
+    }
+
+    @Test
+    fun `creator title request uses keyword recall independently of source indexing policy`() = runBlocking {
+        val source = StructuredSource(1)
+        val adapter = CatalogueCreatorDiscoverySourceAdapter(
+            enabledSourcesProvider = { listOf(source) },
+            sourceResolver = { source },
+            clock = { 1_000 },
+        )
+        adapter.enabledSourcesSnapshot()
+        adapter.searchPage(BoundedAuthorSearchPageRequest(1, "ONE", 1, 2, 2_000, titleSearch = true))
+        assertEquals(0, source.authorSearchCalls)
+        assertEquals(1, source.fallbackSearchCalls)
+    }
+
+    @Test
+    fun `requested title identity gate does not depend on shared snapshot flags`() {
+        val detail = work(author = "Uploader").copy(title = "[ONE] Work", titleAttributionEnabled = false)
+        val verified = CreatorIdentityEvidenceEvaluator.evaluate(listOf("ONE"), detail, titleSearch = true)
+        assertEquals(CreatorRelationVerification.VERIFIED, verified.verification)
+        assertEquals("ONE", verified.sourceText)
+        val ordinary = CreatorIdentityEvidenceEvaluator.evaluate(listOf("ONE"), detail)
+        assertEquals(CreatorRelationVerification.POSSIBLE, ordinary.verification)
+        val invalid = CreatorIdentityEvidenceEvaluator.evaluate(
+            listOf("ONE"),
+            detail.copy(title = "[English] ONE work", authorText = "ONE"),
+            titleSearch = true,
+        )
+        assertEquals(CreatorRelationVerification.POSSIBLE, invalid.verification)
+    }
+
+    @Test
     fun `query plan uses enabled scoped searchable sources and only prefilters proven single language`() {
         val planner = CreatorDiscoveryQueryPlanner(
             CreatorDiscoveryBounds(

@@ -39,7 +39,7 @@ class MangaRestorer(
     private val getTracks: GetTracks = Injekt.get(),
     private val insertTrack: InsertTrack = Injekt.get(),
     private val creatorIndexWriter: CreatorLibraryIndexWriter = Injekt.get(),
-    private val extractCreators: ExtractCreatorsFromManga = ExtractCreatorsFromManga(),
+    private val extractCreators: ExtractCreatorsFromManga = Injekt.get(),
     fetchInterval: FetchInterval = Injekt.get(),
 ) {
 

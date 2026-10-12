@@ -19,6 +19,8 @@ class ChapterRepositoryImpl(
     private val handler: DatabaseHandler,
     private val creatorIndexWriter: tachiyomi.domain.creator.repository.CreatorLibraryIndexWriter =
         tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter,
+    private val extractCreators: tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga =
+        tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga(),
 ) : ChapterRepository {
 
     override suspend fun pendingDirectoryPhase(mangaId: Long): tachiyomi.domain.chapter.service.ChapterDirectoryPhase? =
@@ -177,7 +179,9 @@ class ChapterRepositoryImpl(
                     metadata
                 }
                 applyMangaUpdateFields(effective)
-                if (effective.affectsCreatorIndex()) reconcileMangaCreatorIndex(request.mangaId, creatorIndexWriter)
+                if (effective.affectsCreatorIndex()) {
+                    reconcileMangaCreatorIndex(request.mangaId, creatorIndexWriter, extractCreators)
+                }
             }
             val added = inserted.filter { it.url in plan.newlyAvailableUrls }
             val phase = request.effects?.let { effects ->

@@ -1,10 +1,13 @@
 package eu.kanade.presentation.browse.components
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
@@ -21,6 +24,8 @@ fun BrowseSourceList(
     contentPadding: PaddingValues,
     onMangaClick: (Manga) -> Unit,
     onMangaLongClick: (Manga) -> Unit,
+    visibleIndices: List<Int> = (0 until mangaList.itemCount).toList(),
+    automaticPaging: Boolean = true,
 ) {
     LazyColumn(
         contentPadding = contentPadding + PaddingValues(vertical = 8.dp),
@@ -31,13 +36,21 @@ fun BrowseSourceList(
             }
         }
 
-        items(count = mangaList.itemCount) { index ->
-            val manga by mangaList[index]?.collectAsState() ?: return@items
-            BrowseSourceListItem(
-                manga = manga,
-                onClick = { onMangaClick(manga) },
-                onLongClick = { onMangaLongClick(manga) },
-            )
+        items(count = visibleIndices.size) { visibleIndex ->
+            val index = visibleIndices[visibleIndex]
+            val item = if (automaticPaging) mangaList[index] else mangaList.peek(index)
+            val manga by item?.collectAsState() ?: return@items
+            Column {
+                BrowseSourceListItem(
+                    manga = manga,
+                    onClick = { onMangaClick(manga) },
+                    onLongClick = { onMangaLongClick(manga) },
+                )
+                BrowseSourceResultMetadata(
+                    manga = manga,
+                    modifier = Modifier.padding(start = 72.dp, end = 16.dp, bottom = 8.dp),
+                )
+            }
         }
 
         item {
