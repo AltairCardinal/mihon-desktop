@@ -121,12 +121,12 @@ private fun CatalogFilterOption(label: String, checked: Boolean, tag: String, on
 @Composable
 internal fun CatalogResultMetadataLabel(metadata: SourceResultMetadata, url: String) {
     val language = if (metadata.readingLanguageTags.isEmpty()) {
-        MR.strings.catalog_result_unknown.localized()
+        null
     } else {
         metadata.readingLanguageTags.joinToString(" / ", transform = ::languageName)
     }
     Text(
-        text = (listOf(language) + metadata.translationGroups.map { it.displayName }).joinToString(" · "),
+        text = (listOfNotNull(language) + metadata.translationGroups.map { it.displayName }).joinToString(" · "),
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         maxLines = 3,

@@ -131,3 +131,14 @@ Android候选预留 `versionCode=80`、`versionName=0.19.4-aex.62`，原树及�
 - Android `scripts/build-android.py candidate` 成功，内部串行协调器 `android-candidate` 的Gradle用时3m24；[签名APK code81](D:/Codex/worktrees/e63b/mihon/app/artifacts/android/0.19.4-aex.63-vc81-b5c51ecd48-release/Mihon-Fork-0.19.4-aex.63-vc81-release-universal.apk) 已核对存在。包名 `app.mihon.desktop.fork`、版本 `0.19.4-aex.63`、原证书连续，四ABI、R8及资源压缩均启用；统一入口已完成签名后verify。SHA256：`a6a6ff1ae04de3c502e508891a731c56314ba86f6da35a4ce0c4ac51641890b8`。
 - 两端实际production输入摘要一致：`93b7a4b77a5f4bc27b1ec95737f40c45bcbad64b91c2955d212eb0d255f5efe2`。产物中的版本hash为构建基线 `b5c51ecd48`，清单同时记录本轮dirty修复，不能将产物误称为仅含旧基线。本轮提交包含相同功能代码；构建后仅补此交付记录，不修改产品输入。
 - 未跑全量测试、未安装设备、未执行APK运行／升级验证或Windows系统级窗口交互；本轮为修复后的体验候选，不宣称稳定发布验收。重新进入源内搜索后，含完整 `轟媽無修正版` 署名标记的作品应显示中文及组名“轟媽”，可通过“中文＋轟媽”筛选；简介组合规则只使用已经取得的元数据，未知／冲突及正文OCR边界仍保留。
+
+
+## 2026-10-12 隐藏未知语言文案并整合主干
+
+用户授权：语言未知时去掉“待确认”文字但保留标签框；完成后将e63b整体合入main，按既有合并交接说明保留作者与筛选功能。
+
+主代理直接执行，无新增子代理。预计15–25分钟；先双端标签红绿重构和四个Kotlin文件限定格式检查，再建立独立整合工作树，运行交接要求的双端标题详情／筛选定向测试。对自动合并的作者页测试增加相关接线与主干parity覆盖；不运行完整模块或全量，不分配版本或构建新候选。主干的未提交研究文件原位保留。
+
+本次页面契约：SOURCE为现有卡片／列表共享的metadata文字行及调用方背景、padding；PROJECT_POLICY为未知和冲突时留空，文字行不消失，已有组名独立显示，单行标签宽高与已知语言一致。无导航或DI变化。Desktop真实Compose与Android真实组件测量需同时检查空文字、非零占位、等宽等高；原筛选／分页页面测试继续通过。
+
+红测 `catalog-empty-language-red`：Desktop4项中1失败（仍显示Unconfirmed），Android5项中2失败（仍显示“待确认”以及“待确认 · Saved Group”）；均为真实语义文字断言。绿阶段Desktop4项通过，Android发现空行比中文矮1像素和同名组选择器歧义；补局部最小高度及可点击控件选择器，并保留异步分页等待。`catalog-empty-language-final` 完成格式后的Desktop4项、Android5项全部通过，无失败／错误／跳过；四个Kotlin文件的双端限定Spotless检查通过。Android高度采用已有labelSmall行高加2sp字体余量，随字号缩放，保留多行扩展；其他样式与框的绘制沿用调用方。

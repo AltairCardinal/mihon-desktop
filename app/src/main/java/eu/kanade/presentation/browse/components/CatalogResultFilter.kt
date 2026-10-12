@@ -22,9 +22,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.CatalogResultFilter
 import tachiyomi.domain.source.service.SourceResultMetadata
@@ -161,16 +163,22 @@ internal fun CatalogResultFilterControl(
 internal fun BrowseSourceResultMetadata(manga: Manga, modifier: Modifier = Modifier) {
     val metadata = remember(manga) { SourceResultMetadata.from(manga) }
     val language = if (metadata.readingLanguageTags.isEmpty() || metadata.language.conflict) {
-        stringResource(MR.strings.catalog_result_unknown)
+        null
     } else {
         metadata.readingLanguageTags.joinToString(" / ") { languageName(it) }
     }
     val groups = metadata.translationGroups.firstOrNull()?.displayName?.let {
         if (metadata.translationGroups.size > 1) "$it +${metadata.translationGroups.size - 1}" else it
     }
+    // Keep empty rows aligned with labels using CJK fallback fonts, including scaled text.
+    val minimumHeight = with(LocalDensity.current) {
+        (MaterialTheme.typography.labelSmall.lineHeight.value + 2).sp.toDp()
+    }
     Text(
         text = listOfNotNull(language, groups).joinToString(" · "),
-        modifier = modifier.fillMaxWidth().testTag("catalog-result-metadata-${manga.url}"),
+        modifier = modifier.fillMaxWidth().heightIn(
+            min = minimumHeight,
+        ).testTag("catalog-result-metadata-${manga.url}"),
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         maxLines = 2,

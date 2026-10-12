@@ -8,6 +8,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -69,6 +71,32 @@ import uy.kohesive.injekt.registry.default.DefaultRegistrar
 class AndroidCatalogResultFilterUiTest {
     @get:Rule
     val compose = createEmptyComposeRule()
+
+    @Test
+    fun `unknown and conflicting languages keep an empty metadata row matching a known language`() {
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        val entries = listOf(
+            Manga.create().copy(url = "/known", title = "Journey [Chinese]"),
+            Manga.create().copy(url = "/unknown", title = "Journey"),
+            Manga.create().copy(url = "/conflict", title = "Journey [Chinese] [English]"),
+        )
+        try {
+            activity.get().setContent {
+                MaterialTheme {
+                    Column { entries.forEach { BrowseSourceResultMetadata(it) } }
+                }
+            }
+            val known = compose.onNodeWithTag("catalog-result-metadata-/known", true).fetchSemanticsNode()
+            org.junit.Assert.assertTrue(known.boundsInRoot.height > 0)
+            entries.drop(1).forEach {
+                val row = compose.onNodeWithTag("catalog-result-metadata-${it.url}", true)
+                row.assertExists().assertTextEquals("")
+                assertEquals(known.boundsInRoot.size, row.fetchSemanticsNode().boundsInRoot.size)
+            }
+        } finally {
+            activity.pause().stop().destroy()
+        }
+    }
 
     @Test
     fun `real browse screen keeps author query and scans only one original page per continue click`() {
@@ -145,6 +173,10 @@ class AndroidCatalogResultFilterUiTest {
             compose.onNodeWithTag("catalog-result-no-match").assertExists()
             compose.onNodeWithTag("catalog-result-continue").performClick()
             compose.waitUntil(10_000) { calls.size >= 3 }
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("中文译本 [轟媽無修正版]", useUnmergedTree = true)
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
             compose.onNodeWithText("中文译本 [轟媽無修正版]", useUnmergedTree = true).assertExists()
             compose.onNodeWithText("[Chinese] [柠檬汉化组] 另一中文译本", useUnmergedTree = true).assertExists()
             compose.onNodeWithText("[Japanese] 日文版", useUnmergedTree = true).assertDoesNotExist()
@@ -245,11 +277,11 @@ class AndroidCatalogResultFilterUiTest {
             }
             compose.onNodeWithTag("catalog-result-metadata-/credit", true)
                 .assertTextEquals(
-                    activity.get().getString(MR.strings.catalog_result_unknown.resourceId) + " · Saved Group",
+                    "Saved Group",
                 )
             compose.runOnIdle { metadata.value = emptyList() }
             compose.onNodeWithTag("catalog-result-filter-open").performClick()
-            compose.onNodeWithText("Saved Group").performScrollTo().performClick()
+            compose.onNode(hasText("Saved Group") and hasClickAction()).performScrollTo().performClick()
             compose.onNodeWithTag("catalog-result-filter-apply").performClick()
             compose.runOnIdle { assertEquals(emptySet<String>(), filter.value.translationGroupKeys) }
         } finally {

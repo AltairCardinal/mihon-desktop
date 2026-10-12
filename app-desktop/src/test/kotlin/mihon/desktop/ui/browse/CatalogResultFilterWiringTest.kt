@@ -1,5 +1,6 @@
 package mihon.desktop.ui.browse
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
@@ -46,6 +47,39 @@ import tachiyomi.i18n.MR
 
 @OptIn(ExperimentalComposeUiApi::class)
 class CatalogResultFilterWiringTest {
+    @Test
+    fun `unknown and conflicting languages leave an empty metadata row of the same size`() = runBlocking {
+        val entries = listOf(
+            listed("/known", "Journey [Chinese]"),
+            listed("/unknown", "Journey"),
+            listed("/conflict", "Journey [Chinese] [English]"),
+            listed("/credit", "Journey [翻译：Saved Group]"),
+        )
+        val scene = ImageComposeScene(360, 200, coroutineContext = coroutineContext) {}
+        try {
+            scene.setContent {
+                Column {
+                    entries.forEach { CatalogResultMetadataLabel(SourceResultMetadata.from(it), it.url) }
+                }
+            }
+            scene.render().close()
+            val rows = entries.map { entry ->
+                nodes(scene).single {
+                    it.config.contains(SemanticsProperties.TestTag) &&
+                        it.config[SemanticsProperties.TestTag] == "catalog-result-metadata:${entry.url}"
+                }
+            }
+            assertTrue(rows.first().boundsInRoot.height > 0)
+            rows.drop(1).forEach { assertEquals(rows.first().boundsInRoot.size, it.boundsInRoot.size) }
+            assertEquals("", rows[1].config[SemanticsProperties.Text].joinToString { it.text })
+            assertEquals("", rows[2].config[SemanticsProperties.Text].joinToString { it.text })
+            assertEquals("Saved Group", rows[3].config[SemanticsProperties.Text].joinToString { it.text })
+            snapshot(scene, "empty-metadata-row")
+        } finally {
+            scene.close()
+        }
+    }
+
     @Test
     fun `source genre language is displayed without an inferred suffix`() = runBlocking {
         val metadata = SourceResultMetadata.from(listed("/genre", "Travel diary").apply { genre = "Chinese" })
