@@ -35,6 +35,12 @@ data class ReaderDualPageFactRequest(
     val requestId: Long,
 )
 
+data class ReaderOriginalAnalysisPublication(
+    val request: ReaderSpreadSampleRequest,
+    val fact: ReaderPageFact,
+    val samples: ReaderOriginalPageSamples,
+)
+
 enum class ReaderDualPageSettlementReason { USER_NAVIGATION, LAYOUT_ONLY }
 
 enum class ReaderPresentationMode { SINGLE, DUAL }
@@ -81,6 +87,7 @@ class SharedDualPageSession(
     private var automaticMatching = false
     private var navigationForward = true
     private val facts = mutableMapOf<ReaderPageId, ReaderPageFact>()
+    private val originalHeaders = mutableMapOf<ReaderPageId, ReaderPageFact>()
     private val requests = mutableMapOf<ReaderPageId, ReaderDualPageFactRequest>()
     private val accepted = mutableMapOf<Long, ReaderPageFact>()
     private var nextRequestId = 0L
@@ -122,6 +129,77 @@ class SharedDualPageSession(
     val displayedHistory: List<ReaderDualPageFrame> get() = presentation.history
     val reservedPairs: Set<Pair<ReaderPageId, ReaderPageId>> get() = presentation.reservedPairs
     fun pageFact(pageId: ReaderPageId): ReaderPageFact? = facts[pageId]
+
+    fun requestOriginalAnalysis(pageId: ReaderPageId): ReaderSpreadSampleRequest? =
+        if (closed || pageId !in identity.pageIds) null else spreadSamples.request(pageId)
+
+    fun acceptOriginalAnalysis(
+        request: ReaderSpreadSampleRequest,
+        fact: ReaderPageFact,
+        samples: ReaderOriginalPageSamples,
+    ): Boolean {
+        return acceptOriginalAnalyses(listOf(ReaderOriginalAnalysisPublication(request, fact, samples)))
+    }
+
+    fun certifyPairing(pageId: ReaderPageId = checkNotNull(location).pageId): ReaderPairingCertification {
+        check(!closed)
+        require(pageId in identity.pageIds)
+        val pairingNeed = setOf(ReaderPairingFactNeed(pageId, ReaderPairingFactKind.PAIRING_RULES))
+        when (pairingState.status) {
+            ReaderPairingPersistenceStatus.WAITING_FOR_RESTORE, ReaderPairingPersistenceStatus.RESTORING ->
+                return ReaderPairingCertification.NeedFacts(pairingNeed, 0, 0)
+            ReaderPairingPersistenceStatus.RESTORE_FAILED, ReaderPairingPersistenceStatus.CONFLICT ->
+                return ReaderPairingCertification.RetryableBlocked(
+                    mapOf(pageId to ReaderAnalysisFailure.PAIRING_RESTORE),
+                    pairingNeed,
+                    0,
+                    0,
+                )
+            else -> Unit
+        }
+        return ReaderPairingCertifier.certify(
+            identity,
+            originalHeaders,
+            spreadSamples,
+            ReaderPairingSettings(
+                direction,
+                automaticMatching,
+                forcedSinglePages,
+                pairingState.manualPairStarts,
+                pairingState.openingMode,
+                pairingState.revision ?: -1,
+            ),
+            pageId,
+        )
+    }
+
+    fun acceptOriginalAnalyses(publications: List<ReaderOriginalAnalysisPublication>): Boolean {
+        if (closed || publications.isEmpty() ||
+            publications.map { it.request.content.pageId }.distinct().size != publications.size
+        ) {
+            return false
+        }
+        val originals = publications.map { it.fact.copy(sideHint = it.samples.sideHint) }
+        if (!publications.indices.all { index ->
+                spreadSamples.canAcceptOriginal(
+                    publications[index].request,
+                    originals[index],
+                    publications[index].samples.edges,
+                )
+            }
+        ) {
+            return false
+        }
+        publications.forEachIndexed { index, publication ->
+            check(spreadSamples.acceptOriginal(publication.request, originals[index], publication.samples.edges))
+            facts[publication.request.content.pageId] = originals[index]
+            originalHeaders[publication.request.content.pageId] =
+                originals[index].copy(sideHint = ReaderPageSideHint.UNKNOWN)
+        }
+        sampleWorkRevision++
+        rebuild()
+        return true
+    }
 
     /** Existing encoded sample reads share the platform's bounded decode/lease resources. */
     fun spreadSampleDependencies(): List<ReaderPageId> =
@@ -215,6 +293,7 @@ class SharedDualPageSession(
         ownsFactBudget = false
         val unchanged = nextIdentity.content.filter { content -> content in identity.content }.map { it.pageId }.toSet()
         next.facts.putAll(facts.filterKeys { it in unchanged })
+        next.originalHeaders.putAll(originalHeaders.filterKeys { it in unchanged })
         next.layoutRevision = layoutRevision + 1
         next.presentation.configure(direction, automaticMatching, presentationMode == ReaderPresentationMode.SINGLE)
         next.presentation.inheritProgress(presentation)
@@ -247,6 +326,8 @@ class SharedDualPageSession(
         requests.clear()
         accepted.clear()
         facts.entries.removeAll { it.value.state == ReaderPageFactState.FAILED }
+        originalHeaders.entries.removeAll { it.value.state == ReaderPageFactState.FAILED }
+        spreadSamples.retryFailures()
         factBudget.close()
         factBudget = ReaderDualPageFactBudget()
         factWorkRevision++
@@ -297,6 +378,11 @@ class SharedDualPageSession(
     }
 
     private fun acceptOriginalFact(request: ReaderDualPageFactRequest, fact: ReaderPageFact): Boolean {
+        if (fact.state in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD) &&
+            !fact.hasOriginalGeometry()
+        ) {
+            return false
+        }
         if (!isCurrentFactRequest(request) || request.locationSequence != (location?.sequence ?: 0) ||
             requests[request.content.pageId] !== request || fact.rotation != request.content.rotation
         ) {
@@ -304,7 +390,23 @@ class SharedDualPageSession(
         }
         accepted[request.requestId]?.let { return it == fact }
         accepted[request.requestId] = fact
-        val retained = if (fact.state == ReaderPageFactState.PORTRAIT && fact.sideHint == ReaderPageSideHint.UNKNOWN) {
+        val previousHeader = originalHeaders[request.content.pageId]
+        if (fact.state in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD) ||
+            previousHeader?.state !in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD)
+        ) {
+            originalHeaders[request.content.pageId] = fact.copy(sideHint = ReaderPageSideHint.UNKNOWN)
+        }
+        val original = spreadSamples.pageAnalysis(request.content.pageId) as? ReaderPageAnalysisEvidence.Computed
+        val retained = if (original != null && original.content.sourceOrientation == fact.sourceOrientation) {
+            original.fact
+        } else if (fact.state !in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD) &&
+            previousHeader?.state in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD)
+        ) {
+            checkNotNull(previousHeader).copy(
+                sideHint =
+                facts[request.content.pageId]?.sideHint ?: ReaderPageSideHint.UNKNOWN,
+            )
+        } else if (fact.state == ReaderPageFactState.PORTRAIT && fact.sideHint == ReaderPageSideHint.UNKNOWN) {
             fact.copy(sideHint = facts[request.content.pageId]?.sideHint ?: ReaderPageSideHint.UNKNOWN)
         } else {
             fact
@@ -486,8 +588,13 @@ class SharedDualPageSession(
         val content = identity.content.firstOrNull { it.pageId == pageId } ?: return false
         val captured = ticket.identity.content.firstOrNull { it.pageId == pageId } ?: return false
         if (captured.copy(sourceOrientation = content.sourceOrientation) != content) return false
+        if (spreadSamples.pageAnalysis(pageId) is ReaderPageAnalysisEvidence.Computed) return true
         // Width/height already describe the native oriented drawable; keep encoded metadata separate.
-        val actual = ReaderPageFact.dimensions(width, height).copy(
+        val actual = (
+            originalHeaders[pageId]?.takeIf {
+                it.state in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD)
+            } ?: ReaderPageFact.dimensions(width, height)
+            ).copy(
             rotation = content.rotation,
             sourceOrientation = content.sourceOrientation,
             sideHint = if (width < height) {
