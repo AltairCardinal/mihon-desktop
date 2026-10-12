@@ -204,3 +204,101 @@ Android 原生两项分别覆盖：单侧邻屏真实画像素、离开释放再
 - 同一 Android 运行环境中冷旧下载／热缓存／冷跳／连续翻页的首个正确像素与双页完成时间对照。此项尚未执行；主机 0.10 ms 提取成本不能代替实际体验。
 
 当前文档与原型是可复查的进一步进展；没有生成或安装修复 APK，不能宣称用户设备上的 BUG 已修复。
+
+## R3 执行记录：固定原图采样开始
+
+用户已明确要求按设计第 7 节从 R3-01 开始执行。实验代码基线为 `4d65d3d67bd98cf8916edcd597976927972f7e0e`，开始时工作区干净，无活动 Gradle 或已连接设备；主工作区设计基线 `98ed60e65d3c75a31a8fa51adcf1444cc11bfe52`，用户 `docs/human/` 保留。
+
+新实施代理继承切换后的当前模型，负责 R3 主要实现与串行 Gradle；上一模型的代理未恢复。预算沿用设计第 7.2 节。干净成本基线 worktree 为 `D:/Codex/worktrees/reader-pairing-r3-baseline-20261012`，仍为 `4d65d3d67b`。
+
+仅使用已安装 API36/google_apis/x86_64 镜像新建专用 AVD `mihon-pairing-r3-20261012`，数据位于实验工作区忽略目录。配置为 1280×800、160dpi、60Hz、2 核、1536 MiB、Swiftshader；没有复用或清理其他 AVD 数据。创建工具提示多个既有镜像缺 `devices.xml`，但新 config 与镜像路径实际已生成；这不作为启动／ART 通过证据。主机当时约 4 GiB 空闲，重型 Gradle 与模拟器成本测量串行。
+
+23 张原始 WebP 按既有取证 manifest 逐张核 SHA-256，暂存于实验工作区 `.gradle-coordinator/pairing-r3-inputs/`，总计 3,849,732 字节；原图及机器路径不提交 Git。`inputs.json` 保存此研究输入的尺寸、原图侧向结果与字节指纹，缺输入时 native probe 必须失败。
+
+R3-01 初始红测 `.gradle-coordinator/pairing-r3-sampling-red` 实际执行 3 项，新增 3.5% 内侧区域覆盖断言因旧边缘 sampler 只采最外侧而失败，另 2 项通过；红证据已由实施代理保存。此时尚未完成新采样实现、APK 或模拟器运行，不能把已准备环境写成验收通过。
+
+### R3-01 审查中的具体修正
+
+新增独立审查代理同样继承当前模型。连续审查确认新采样不能令 legacy edge-only 入口也扩大到 3.5% 条带：8192×12000 原图的旧细边可在 4 MiB 输出限制内采样，新内侧区域则超过上限。两端改为保留各自取样计划、共用区域执行／回收函数；新 original 资源不足仍返回未取得证据，不降低上限或退回整图。首次新增区域覆盖测试随后改为验证新 original 能力；旧 API 以独立大图回归保护，不能把旧 API 不支持新侧向能力描述为旧评分 bug。
+
+实际依赖 `image-decoder:41c059e540` 的 [Kotlin 工厂](https://github.com/tachiyomiorg/image-decoder/blob/41c059e540/library/src/main/java/tachiyomi/decoder/ImageDecoder.kt) 在 `newInstance` 内对 stream 使用 `use`；当前 sampler 外层也拥有源流。这在 Windows 不自关流的 decoder boundary 中不会显现。新增测试模拟真实工厂关闭输入，独立复现双 close；采样器将向工厂传不关闭底层的 borrowed view，由外层唯一回收原流，native probe 的实际源 close==1 断言保留。
+
+颜色约定已读取同一精确版本的 [native wrapper](https://github.com/tachiyomiorg/image-decoder/blob/41c059e540/library/src/main/cpp/java_wrapper.cpp) 与 [WebP decoder](https://github.com/tachiyomiorg/image-decoder/blob/41c059e540/library/src/main/cpp/decoder_webp.cpp)：无 displayProfile 时 target 为 sRGB，源 ICC 经 CMS 转换为该目标；此为源码约定，仍需实际 JNI bitmap／像素验证。生成的 400×600 合成 JPEG 带 JDK 线性 RGB 的 488 字节真实 ICC APP2，四个原始坐标的独立线性→sRGB golden 与 JDK tagged raster 的 getRGB 一致；这只校准夹具，Desktop 的 region lease→PNG→Skia 及 Android JNI 仍须各自通过真实行为断言。源脚本与外部输入留在忽略目录，合成测试资源可进入 Git，漫画原图仍不提交。
+
+### R3-01 实际 ART 红绿与组件结果
+
+原生运行只使用专用 AVD，宿主／测试包为 `.dev`／`.dev.test`。首次 `r3-art-initial` 两方法因 shell 暂存目录的归属而 EACCES，尚未到采样，不能当行为红。仅修复该研究目录归属；虚拟机 adbd 临时 root 后恢复 nonroot，测试仍在宿主应用 UID 下运行。采集脚本一度把日志写到未忽略目录，已校正并把原记录完整移入忽略 evidence；没有提交采集文件。
+
+随后取得两项真实行为红：
+
+| 运行 | 宿主 SHA-256／测试 SHA-256 | 实际结果 |
+|---|---|---|
+| `r3-art-access-fixed` | `396453006b288834a84f827f71749946f0355e568cf117bbea91623435064d64`／`8aa764e5b73e267b959df38e5d19389de0324800a280e75e6d4bf392130ba7eb` | 2 方法，WebP 左边缘不等价失败；ICC 通过 |
+| `r3-art-crop-alpha-red` | 同一旧宿主／`8eaf1201014bc7582994a2e021a08267551779f834dae82d6ecfb78c22e19900` | 3 方法，WebP 与完整原图不等价、独立 alpha PNG 失败；ICC 通过 |
+| `r3-art-corrected` | `1391830b7c28980f621b97a43baa1f2e2a4bba38d95747262c834f703f4b83c1`／`1f3a5a3f8507a22f2a25f31f4921f7519399a6e4e983b66e602a0359fbb656fb` | 3/3，通过；runner `OK (3 tests)`／终态 -1，实际已安装 APK 字节哈希与 manifest 一致 |
+
+WebP 证据为首张 `08-111` 的 18/50 左边缘点不同，三路 JSON 保存 original、legacy 和同 JNI 完整解码值。底层 WebP 对 crop 起点按偶数对齐，而旧执行器用请求的奇数原点索引；新合并计划暴露此偏移。区域执行器在 Android adapter 内按偶数扩展并留固定 chroma 上下文，按真实扩展 bounds 索引、扩展面积仍须 ≤4 MiB；共享数学点与评分阈值没有修改。
+
+独立 PNG 直接编码 RGBA8，不经 Bitmap premul 量化：原始左侧 `0x804080C0`，旧 native 读为 `0x8080FFFF`，两区域 Bitmap 的 premultiplied flag 都为 true。采样工厂仅把真实 JNI 的 straight RGBA Bitmap 标成 nonpremultiplied，注入的正常 Bitmap 与显示 decoder／ReaderPageImageView 未改；纠正后 50 个左值和 50 个右值均精确匹配独立黄金值。它也纠正 legacy 采样的既有错误原生像素，不能说所有旧实际输出保持不变。
+
+宿主验证组合：新共享计划 4 项＋既有边缘规则 12 项，共 16/16；Android 早期 9/9 后新增 codec even-snap 模拟回归成为 10/10；Desktop PNG/JPEG 6/6（包含真实 ICC region lease／PNG／Skia 四点独立 golden）；目标格式检查与 diff 检查通过。每个旧 red／中间失败都保留，未重新执行全模块或旧 98 项。原生纠正通过后重复取证仅采集输出、核 JSON，没有重跑已过的 ART。
+
+纠正原型实际过程产物：[Debug APK](D:/Codex/worktrees/reader-pairing-research-20261012/app/artifacts/android/0.19.4-aex.59-vc77-4d65d3d67b-debug-3a3519e0d36c/Mihon-Fork-0.19.4-aex.59-vc77-debug-universal.apk)，production 输入指纹 `d2403fd9307028ff6874b0df84528e7f794de1a860ee89d87d1a44f09f659de3`。它只用于组件研究，没有安装用户真机，也不作为正式修复 APK 交付。
+
+### R3-01 成本与放行边界
+
+证据在实验工作区 `.gradle-coordinator/research-evidence/r3-art-corrected/`：`runner.log`、`run.json`、`native-sampling.json`、`native-alpha.json`、`sampling-summary.json`。主代理和独立审查各自核了实际 runner、APK 哈希、161 条数据及 alpha 精确值。每页 stream 打开／底层关闭各一次，各轮总读入 3,849,732 字节。23 原图冻结页侧、同 JNI 完整／legacy／新路径边点与独立 BitmapFactory 对照全部通过，95 的显示下采样反例继续为 1/2 UNKNOWN、4 RIGHT。
+
+环境为同一 API36/x86_64/Swiftshader Debug；两轮预热后七轮×23 张，**OS 文件缓存已热，不是阅读器首像素，也不是基线／候选打开和翻页对照**。
+
+| 实际组件阶段 | p50 | p95 | 最大值 |
+|---|---:|---:|---:|
+| 打开原流、原图计划、创建 decoder、两区域 decode、取样／释放、分类、返回总计 | 19.302746 ms | 25.410202 ms | 27.020430 ms |
+| 两区域 decode 合计 | 18.332401 ms | 24.360665 ms | 26.124342 ms |
+| 取样／区域回收及间隔检查，不含最后分类 | 0.338132 ms | 0.674641 ms | 4.503184 ms |
+| 源流关闭后的最终分类与返回 | 0.039226 ms | 0.080691 ms | 0.207937 ms |
+
+两区域 decode 占总计时约 95.1%。单个采样输出 Bitmap 的实际峰值为 209,152 字节；不代表 native 内部、完整对照图片或阅读器总内存峰值。此数据支持后续减少必要取证范围、复用已确认标量并接入已有预取，不能凭它写“无新增可感知等待”。
+
+独立审查结论为 `PASS_FIXED_INPUT_INTERFACE`，可进入 R3-02。下游必须继续覆盖：扩 context 会令旧 legacy 的部分极长图（例如 64×250000）更早到达 4 MiB 限制，新 original 的大区域也会不可用；Desktop ImageIO 区域路径的 WebP 支持尚未实际验证。这些不能变成 Computed UNKNOWN、永久单页或永久 Loading，后续门卫接线前必须核与处理。尚未完成通用闭包、真实三入口或整条用户路径，无用户设备 BUG 修复声明。
+
+R3-01 源码与测试已提交实验分支：`54d847c771`，父为 `4d65d3d67b`，提交后工作区干净；它将已验证的原始采样接口作为下一批基线，未合入主干。实施代理随后发生一次流连接中断，主代理核实提交、差异与协调器均已完成，再恢复同代理继续 R3-02，没有重跑／复制本批工作或新增代理。
+
+
+## R3-02：通用认证接口与原图证据闭包
+
+实验提交 `23a5582e329eec51566313be4f2ebf1b9152d797`，父为 `54d847c771`，6 文件、1407 行新增／93 行删除，包含同一证据与认证能力的共享生产扫描、owner/session 接口及 28 项内聚回归；大于估算规模主要来自显式状态与失败分支、完整格式以及逐项行为测试，不按文件机械拆分。没有图片、外部探针或机器配置进入提交；主干产品未合入。
+
+实施代理连续三次在远程 compact 时断连，没有产生 R3-02 diff 或测试进程。主代理核实状态并收回实现，沿用原独立审查者；没有因此新增代理、重做 R3-01 或并发 Gradle。2026-10-13 用户撤销耗时限制，授权账户余额不低于 60,000 credits 时继续；旧 8 小时追加询问不再是待决条件。实际账户余额不写入本仓库。后续主代理不读取图片，目视检查由子代理返回文本及路径。
+
+### 生产接口与证明范围
+
+- `canonicalPlan` 与认证器共用 `ReaderCanonicalPairingScan` 的同一生产 transition，保留全章 ordinal、opening、预留及左邻宽图。有限 U/R/P 入态不同则向左扩；使用游标 memo 避免每次左扩重扫整个后缀。被丢弃的前缀 unit 不再为其物理单页槽位请求无关页侧，transition 保持不变。
+- `ReaderSpreadSamplesOwner` 区分未分析、Computed UNKNOWN／null、可恢复页侧／边样本读取失败。标量在有界原始样本淘汰后保留；缺边的重新取样失败单独记录，不抹掉页侧，也不撤销已有完整 scalar。原图边来源必须为两份 original 样本，legacy 样本不能冒充或覆盖它。
+- 证书绑定完整页序 revision、设置／手动 revision及实际依赖的内容、原始头、页侧、边 scalar；不以全局 fact revision 使无关事实撤证。批次先检查全部原始能力，再原子接受并一次失效计划；拒收批次不发布其第一半。
+- Session 的可信原始头与显示事实分离。原图 UNKNOWN 覆盖旧显示 RIGHT；显示裁边／缩略尺寸不改原始几何。EXIF 已消费于头尺寸，用户 rotation 仅分类一次；复制 rotation 却不重算 state 的输入拒收。手动恢复未完成不能认证，失败沿用明确阻塞／本会话默认恢复；关闭的 session/owner 不发行证书。
+- 已知真实宽图只需其有效原始头即可证明 FULL，不等待无关前缀页侧。已收敛窗口先认证，不为可选跨边剪枝先取无关 lookbehind。重叠 manual cluster 在最近已知无效候选／强制单页处截断实际必要依赖。
+
+### 红绿与有效验证
+
+首先 API 缺失导致编译红，该结果不当作行为红。随后的 `r3-certification-behavior-red` 实际 5 项／1 失败，具体复现原图 UNKNOWN 仍保留旧 RIGHT；纠正后同范围绿。新增审查反例分别保留 batch 部分接受、legacy 来源污染、manual 过度前缀请求、未恢复手动意图／disposed owner、lookbehind 无谓依赖、必要 header 失败、淘汰样本重取失败、显示尺寸冒充原图、宽图依赖和旋转几何的 focused 红及后续绿，未删除历史反例或重复旧 98 项审计。
+
+最终冻结验证为 `.gradle-coordinator/pairing-r3-certification-integration.json`，终态 PASSED／exit 0；紧凑证据在实验目录 `.gradle-coordinator/research-evidence/r3-certification-integration/summary.json`，含实际 argv、时间、6 份源码 SHA-256 和原始 XML。独立审查者重新计算哈希并核对全部 XML，结论 `PASS_R3_02_INTERFACE`。
+
+| 实际范围 | 结果 | 限制 |
+|---|---|---|
+| 新认证器＋实际 owner/session 28 项 | 28/28 | 含四故障窗口 16,384 次原始 owner 前缀排列；卷 9 头尺寸 980×1393，其余卷 8 为 980×1403；边变量为合成像素的生产评分，不分发漫画原图 |
+| 已有 canonical 原型 10 项＋距离 lookup 2 项 | 12/12 | 复用完整生产扫描作为 oracle，检查图像历史／前缀预留及热查询 |
+| Android 原生 holder 两项 | 2/2 | Windows Robolectric/native Skia 的真实 View/bitmap 绘制，保护半侧曝光后伙伴可达与晚到宽图像素不移动；不是 ART 阅读器耗时 |
+| Desktop wiring 5 项＋运行时进度 2 项 | 7/7 | 保护现有真实消费者；新的持证显示门卫尚未接入 |
+| 6 文件定向严格 Spotless Apply/Check 与 diff | PASS | 中间格式错误修正后执行严格规则；一次机械布局操作临时不检查行长，未当作严格验收，最终没有规则豁免 |
+
+加强 124→125 生产 scalar 后，旧五页证书失效，认证器向左扩展，并与完整 oracle 一致。长无重置前缀的 1024 页用例实际执行生产 step，工作量不超过 4×页数，需扩至真实封面边界；这不保证额外读取在 16 页可选预算内完成，也不证明冷阅读耗时符合门禁。
+
+### R3-03 前仍需处理的输入及呈现缺口
+
+实际 Desktop 探针 `pairing-r3-desktop-webp-capability-red` 通过正常 Skia 路径读取已核 SHA 的 08-111 WebP（980×1403），但 ImageIO 无 WebP provider，真实区域 lease 的 `sampleOriginal` 返回 null，1/1 行为失败。XML 已保存在 `.gradle-coordinator/research-evidence/r3-desktop-webp-capability-red/`；这是已证实的能力缺口，不能写成 Computed UNKNOWN 或直接启用会永久等待的门卫。
+
+R3-03 须落实真实 original producer 与 DIRECT／PREFETCH→ACTIVE／已加载复用接线、当前／将露出邻帧的持证准备、可恢复反馈和取消；原图 sampler 的扩 crop context 大于 4 MiB 的情况仍未解决。可先检查 Desktop 普通 decode 是否能在同一受控原图生命周期提供等价原始像素，但未实测不能假定 Skia 子集读取不解码整图；不擅自增加依赖、fork 或放松资源限制。
+
+当前只放行共享接口，尚未完成 R3-03/04，也没有把新的阅读门卫打入 APK。R3-01 ART 3/3、组件 p95 25.41 ms 的证据仍有效，但不能代表实际 intent→正确像素对照。没有安装用户真机，三起现场问题仍不能宣称已经修复。
