@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -92,7 +93,7 @@ class AndroidCatalogResultFilterUiTest {
                                 1 -> "[English] Work $index"
                                 2 -> "Unknown work $index"
                                 else -> when (index) {
-                                    0 -> "[Chinese] [橙子汉化组] 中文译本"
+                                    0 -> "中文译本 [轟媽無修正版]"
                                     1 -> "[Chinese] [柠檬汉化组] 另一中文译本"
                                     2 -> "[Chinese] 中文无署名"
                                     4 -> "[简体中文] 简体版"
@@ -144,16 +145,16 @@ class AndroidCatalogResultFilterUiTest {
             compose.onNodeWithTag("catalog-result-no-match").assertExists()
             compose.onNodeWithTag("catalog-result-continue").performClick()
             compose.waitUntil(10_000) { calls.size >= 3 }
-            compose.onNodeWithText("[Chinese] [橙子汉化组] 中文译本", useUnmergedTree = true).assertExists()
+            compose.onNodeWithText("中文译本 [轟媽無修正版]", useUnmergedTree = true).assertExists()
             compose.onNodeWithText("[Chinese] [柠檬汉化组] 另一中文译本", useUnmergedTree = true).assertExists()
             compose.onNodeWithText("[Japanese] 日文版", useUnmergedTree = true).assertDoesNotExist()
             compose.onNodeWithTag("catalog-result-metadata-/page/3/0", true)
-                .assertTextContains("橙子汉化组", substring = true)
+                .assertTextContains("轟媽", substring = true)
             compose.onNodeWithTag("catalog-result-continue").assertDoesNotExist()
             compose.runOnIdle { assertEquals(3, calls.size) }
 
             compose.onNodeWithTag("catalog-result-filter-open").performClick()
-            compose.onNodeWithText("橙子汉化组").performScrollTo().performClick()
+            compose.onNodeWithText("轟媽").performScrollTo().performClick()
             compose.onNodeWithTag("catalog-result-filter-apply").performClick()
             compose.onNodeWithText("[Chinese] [柠檬汉化组] 另一中文译本", useUnmergedTree = true).assertDoesNotExist()
             compose.onNodeWithText("[Chinese] 中文无署名", useUnmergedTree = true).assertDoesNotExist()
@@ -168,7 +169,7 @@ class AndroidCatalogResultFilterUiTest {
                     .performClick()
                 compose.onNodeWithText(activity.get().getString(mode.resourceId)).performClick()
                 compose.onNodeWithTag("catalog-result-metadata-/page/3/0", true)
-                    .assertTextContains("橙子汉化组", substring = true)
+                    .assertTextContains("轟媽", substring = true)
             }
 
             compose.onNodeWithTag("catalog-result-filter-open").performClick()
@@ -182,7 +183,7 @@ class AndroidCatalogResultFilterUiTest {
                 compose.onNodeWithTag("catalog-result-language-$tag").performScrollTo().performClick()
                 compose.onNodeWithTag("catalog-result-filter-apply").performClick()
                 compose.onNodeWithText(title, useUnmergedTree = true).assertExists()
-                compose.onNodeWithText("[Chinese] [橙子汉化组] 中文译本", useUnmergedTree = true).assertDoesNotExist()
+                compose.onNodeWithText("中文译本 [轟媽無修正版]", useUnmergedTree = true).assertDoesNotExist()
             }
 
             compose.onNodeWithTag("catalog-result-filter-open").performClick()
@@ -228,7 +229,7 @@ class AndroidCatalogResultFilterUiTest {
     }
 
     @Test
-    fun `selected group stays removable without current matches and a translator only label remains inferred`() {
+    fun `selected group stays removable without current matches and a translator label has no inferred suffix`() {
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         val manga = Manga.create().copy(url = "/credit", title = "A Journey [翻译：Saved Group]")
         val filter = mutableStateOf(CatalogResultFilter(translationGroupKeys = setOf("Saved Group")))
@@ -243,9 +244,8 @@ class AndroidCatalogResultFilterUiTest {
                 }
             }
             compose.onNodeWithTag("catalog-result-metadata-/credit", true)
-                .assertTextContains(
-                    activity.get().getString(MR.strings.catalog_result_inferred.resourceId),
-                    substring = true,
+                .assertTextEquals(
+                    activity.get().getString(MR.strings.catalog_result_unknown.resourceId) + " · Saved Group",
                 )
             compose.runOnIdle { metadata.value = emptyList() }
             compose.onNodeWithTag("catalog-result-filter-open").performClick()

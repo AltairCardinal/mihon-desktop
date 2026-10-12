@@ -168,11 +168,8 @@ internal fun BrowseSourceResultMetadata(manga: Manga, modifier: Modifier = Modif
     val groups = metadata.translationGroups.firstOrNull()?.displayName?.let {
         if (metadata.translationGroups.size > 1) "$it +${metadata.translationGroups.size - 1}" else it
     }
-    val inferred = stringResource(MR.strings.catalog_result_inferred).takeIf {
-        groups != null || (metadata.readingLanguageTags.isNotEmpty() && !metadata.language.conflict)
-    }
     Text(
-        text = listOfNotNull(language, groups, inferred).joinToString(" · "),
+        text = listOfNotNull(language, groups).joinToString(" · "),
         modifier = modifier.fillMaxWidth().testTag("catalog-result-metadata-${manga.url}"),
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -125,12 +125,8 @@ internal fun CatalogResultMetadataLabel(metadata: SourceResultMetadata, url: Str
     } else {
         metadata.readingLanguageTags.joinToString(" / ", transform = ::languageName)
     }
-    val inferred = metadata.readingLanguageTags.isNotEmpty() || metadata.translationGroups.isNotEmpty()
     Text(
-        text = (
-            listOf(language) + metadata.translationGroups.map { it.displayName } +
-                if (inferred) listOf(MR.strings.catalog_result_inferred.localized()) else emptyList()
-            ).joinToString(" · "),
+        text = (listOf(language) + metadata.translationGroups.map { it.displayName }).joinToString(" · "),
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         maxLines = 3,

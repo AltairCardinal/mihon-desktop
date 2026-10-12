@@ -8,7 +8,7 @@ active-task: none
 
 图源搜索已有作者词 → 打开应用侧语言／翻译组筛选 → 选择中文和任一翻译组 → 原有卡片显示语言及组名，结果同时满足条件 → 当前页无匹配时仍可继续加载原始下一页 → 清除筛选恢复原查询和已加载结果。Android 与 Desktop 使用相同领域判断。
 
-本批识别明确标题语言、翻译署名及现有元数据线索，保留未知／冲突；标签注明推断属性，不声称已核验正文。原题含日语不抹掉明确中文翻译证据，纯汉字不直接判中文。自动全文 OCR、长期人工纠错和备份迁移是研究提出的后续升级手段，不是原请求必须采用的实现方式；本批不使用尚未验证的 OCR 自动裁决。
+本批识别明确标题语言、翻译署名及现有元数据线索，保留未知／冲突；按最新用户反馈，标签仅显示语言与组名，内部保留证据属性，不声称已核验正文。原题含日语不抹掉明确中文翻译证据，纯汉字不直接判中文。自动全文 OCR、长期人工纠错和备份迁移是研究提出的后续升级手段，不是原请求必须采用的实现方式；本批不使用尚未验证的 OCR 自动裁决。
 
 - [x] CF-01 共享识别和筛选：先写真实 detector 红测；最小实现覆盖中文、简繁、其他明确语言、否定／招募、截断、冲突、翻译组和联合组；语言同类 OR、与组选项 AND，未识别可显式保留。复用现有语言契约，不改变作者归属／持久化 schema。
 - [x] CF-02 双端原生搜索接线：即使 source filters 为空也有入口，保留关键词与原生筛选；卡片／列表显示语言和翻译署名，窄屏可操作，取消草稿不生效；过滤后零可见项保留原始页游标，有继续加载和范围反馈，不无界抓取。
@@ -21,7 +21,7 @@ active-task: none
 - SOURCE：继续使用现有 SourceBrowseScreen／BrowseSourceScreen 的图源请求、原生过滤树、查询代次、登录恢复、canonical 漫画和详情入口。Desktop 封面仍为 7:10，Android 仍沿其 Book 组件；presentation-core 当前是 Android 模块，不能直接供 Desktop 消费，两端只分别适配 Compose 控件，识别与筛选语义在 domain 共用。
 - PROJECT_POLICY：在现有筛选附近提供“语言／翻译组”，不依赖扩展提供过滤项；横向滚动的入口行与独立纵向滚动弹窗保证窄屏操作。中文、简体、繁体及常见语言可多选，组名来自已加载元数据；未知可单独保留，冲突归待确认。不重新创建 Pager／query generation，不清作者查询或原生 FilterList。
 - PROJECT_POLICY：弹窗持有本次草稿，应用才更新当前浏览会话。重置只重置草稿；取消、Escape／Android 返回、遮罩关闭不修改条件，保留页面，返回触发器焦点。关闭搜索页结束本次局部筛选，不新增全局持久化偏好。
-- PROJECT_POLICY：卡片／列表展示阅读语言和翻译署名，推断标记明确；未知不假定日文，简繁不从组名猜测。查询中、原始空结果、过滤后暂无匹配、请求错误分别反馈；错误仍用原有恢复动作。选项作用于已检查范围，不能声称图源全量计数。
+- PROJECT_POLICY：卡片／列表展示阅读语言和翻译署名，移除“推断”后缀；未知不假定日文，简繁不从组名猜测。查询中、原始空结果、过滤后暂无匹配、请求错误分别反馈；错误仍用原有恢复动作。选项作用于已检查范围，不能声称图源全量计数。
 - 验收：真实双端入口／草稿取消／应用／清除／下一页事件测试，Android 三种布局、Desktop 原生 Compose 离屏宽窄窗口检查；共用 domain 契约覆盖语言／组 AND/OR 与未知。正式安装包和系统级键盘焦点验收不在本批发布声明中，不能用离屏测试声称已经发布。
 
 - 实施子代理一：`MangaLanguageDetector.kt`、独立的 `domain/source/service` 结果元数据／过滤文件，以及对应 domain 测试。不修改另一会话的 `TitleCreditParser`、CreatorDiscovery*、CreatorRole、SQL、DI、备份。
@@ -111,3 +111,23 @@ Android候选预留 `versionCode=80`、`versionName=0.19.4-aex.62`，原树及�
 - 体验范围：源内搜索 → 语言／翻译组 → 中文、未知和组条件 → 查看派生标记及继续加载；作品详情显示已提交的同行标题作者署名并可进入完整作者页。正文OCR、真实来源语言精度认证仍未实现；本批不宣称Android运行/升级或Windows整窗人工交互PASS。
 
 隔离工作树和其中完整产物目录保留供用户体验，不执行清理。版本预留及本段交付记录在原e63b只暂存这份计划和 `gradle/android-release.properties`；不合并main、不覆盖先前体验包、不提交生成产物。双方可通过本文件读取构建完成状态，无需消息回执。
+
+
+## 2026-10-12 体验反馈修正（本轮）
+
+范围：移除双端“推断”后缀；中文优先规则补充“轟媽＋版本后缀”和“标题中文词句＋简介多项中文词句”。仅修改现有共享检测／扫描器、双端标签及对应三份测试；复用搜索、分页、过滤与详情元数据投影。作者角色、索引、DI、数据库与公共 schema 不变。跨会话继续通过本文件共享，不发送往返消息。
+
+主代理直接修复，无新增代理或独立审查轮次。原修复预算20–35分钟；沿用用户已授权的双端体验包交付，测试后追加约10–15分钟构建。只运行29项共享契约／detector、3项Desktop真实Compose和4项Android真实Screen测试，以及七个Kotlin文件的限定格式检查；不执行全量或稳定发布矩阵。Windows preview、Android candidate 串行构建，不安装设备；额外失败仅按受阻入口诊断。
+
+- 红：协调器 `catalog-chinese-feedback-red`，29项共享测试中3失败（缺少组版本识别、中文组合识别及对应冲突处理）；Desktop3项中标签断言1失败，Android4项中标签断言1失败。失败均为行为断言，旧detector7项全部通过。
+- 真实页面夹具同步加入无 `[Chinese]` 的 `轟媽無修正版`；Desktop宽窄页面需在中文过滤后显示该结果，Android需通过中文与“轟媽”组合过滤并在三种布局显示组名。已选组消失时仍能移除的原行为继续覆盖。
+- 绿：`catalog-chinese-feedback-green` 的共享29、Desktop3、Android4全部通过。格式／重构后同范围复验 `catalog-chinese-feedback-refactor` 的36项全部通过，无失败／错误／跳过；七个Kotlin文件的三个限定Spotless检查通过。未运行未限定模块测试。
+- 新体验包使用当前e63b工作树冻结输入（基线 `b5c51ecd48` 加本轮修复），Android预留 `versionCode=81`、`versionName=0.19.4-aex.63`，Windows preview不分配正式版本。构建期间不再修改输入；旧包保留，产物清单如实记录dirty源码。
+- 本轮共10个文件：7个实现／测试、2份既有文档、1份候选版本；它们共同交付双端修复及更新体验包，不拆开共享语义。没有迁移、公共接线或签名机制变更。
+
+本轮构建已完成（2026-10-12）：
+
+- Windows `catalog-chinese-windows-preview` 成功，Gradle 19秒；本轮 `Final unpacked EXE:` 为 [Mihon Desktop.exe](<D:/Codex/worktrees/e63b/mihon/app-desktop/artifacts/preview/windows/20261012T084952Z-289abdaa/Mihon-Desktop-0.11.19.91.b5c51ec-unpacked/Mihon Desktop.exe>)，文件存在，build/sourceIntegrity/productionRuntime均PASS，nativeInteraction为NOT_RUN。360／900宽真实Compose测试通过，已检查360宽截图显示语言与“轟媽”，无“推断”后缀；该截图不替代发布EXE整窗交互。
+- Android `scripts/build-android.py candidate` 成功，内部串行协调器 `android-candidate` 的Gradle用时3m24；[签名APK code81](D:/Codex/worktrees/e63b/mihon/app/artifacts/android/0.19.4-aex.63-vc81-b5c51ecd48-release/Mihon-Fork-0.19.4-aex.63-vc81-release-universal.apk) 已核对存在。包名 `app.mihon.desktop.fork`、版本 `0.19.4-aex.63`、原证书连续，四ABI、R8及资源压缩均启用；统一入口已完成签名后verify。SHA256：`a6a6ff1ae04de3c502e508891a731c56314ba86f6da35a4ce0c4ac51641890b8`。
+- 两端实际production输入摘要一致：`93b7a4b77a5f4bc27b1ec95737f40c45bcbad64b91c2955d212eb0d255f5efe2`。产物中的版本hash为构建基线 `b5c51ecd48`，清单同时记录本轮dirty修复，不能将产物误称为仅含旧基线。本轮提交包含相同功能代码；构建后仅补此交付记录，不修改产品输入。
+- 未跑全量测试、未安装设备、未执行APK运行／升级验证或Windows系统级窗口交互；本轮为修复后的体验候选，不宣称稳定发布验收。重新进入源内搜索后，含完整 `轟媽無修正版` 署名标记的作品应显示中文及组名“轟媽”，可通过“中文＋轟媽”筛选；简介组合规则只使用已经取得的元数据，未知／冲突及正文OCR边界仍保留。

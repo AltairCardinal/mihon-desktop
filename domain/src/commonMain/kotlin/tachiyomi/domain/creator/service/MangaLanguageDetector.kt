@@ -22,6 +22,24 @@ enum class LanguageEvidence {
 
 object MangaLanguageDetector {
 
+    // Lexical phrases, not Han-character counts: Japanese shares much of the Han script.
+    // Alternative scripts of the same phrase count as one cue, and repeated cues count once.
+    private val chineseTitleCues = listOf(
+        "小姐", "我们", "我們", "他们", "他們", "她们", "她們", "这个", "這個", "我的", "你的", "没想到", "沒想到",
+    )
+    private val chineseDescriptionCues = listOf(
+        listOf("这是", "這是"),
+        listOf("我们", "我們"),
+        listOf("他们", "他們"),
+        listOf("她们", "她們"),
+        listOf("没有", "沒有"),
+        listOf("所以"),
+        listOf("就是"),
+        listOf("一个", "一個"),
+        listOf("觉得", "覺得"),
+        listOf("好好看"),
+    )
+
     private val languageAliases = mapOf(
         "english" to "en",
         "en" to "en",
@@ -84,7 +102,20 @@ object MangaLanguageDetector {
         }
         if (!titleEvidence.complete) return LanguageDetection("und", 0.0, LanguageEvidence.UNKNOWN)
 
-        detectFromText("${titleEvidence.textOutsideMarkers} ${description.orEmpty().take(4096)}")?.let {
+        val readingTitle = titleEvidence.textOutsideMarkers
+        val boundedDescription = description.orEmpty().take(4096)
+        if (chineseTitleCues.any(readingTitle::contains) &&
+            chineseDescriptionCues.count { alternatives -> alternatives.any(boundedDescription::contains) } >= 2
+        ) {
+            return LanguageDetection(
+                "zh",
+                0.7,
+                LanguageEvidence.TEXT_DETECTED,
+                rawEvidence = listOf("title: $readingTitle", "description: $boundedDescription"),
+            )
+        }
+
+        detectFromText("$readingTitle $boundedDescription")?.let {
             return LanguageDetection(it, 0.7, LanguageEvidence.TEXT_DETECTED)
         }
 

@@ -12,6 +12,93 @@ import tachiyomi.domain.manga.model.Manga
 /** Shared Android/Desktop contract: exercise the production detector and result projection. */
 class SourceResultMetadataContractTest {
     @Test
+    fun `Chinese edition credits separate the translation group from the edition suffix`() {
+        for ((title, raw) in listOf(
+            "代代木千金小姐 [轟媽無修正版] [40010試作型]" to "[轟媽無修正版]",
+            "[40010試作型] Secret Brown 轟媽無修正版" to "轟媽無修正版",
+            "[40010試作型] 暫時停止時間【轟媽無修正版】" to "【轟媽無修正版】",
+            "旅の記録 ［轟媽无修正版］" to "［轟媽无修正版］",
+        )) {
+            val source = sourceManga(title)
+            val metadata = SourceResultMetadata.from(source)
+            assertEquals("zh", metadata.language.tag, title)
+            assertEquals(listOf(TranslationGroupCredit("轟媽", "轟媽", raw)), metadata.translationGroups, title)
+            assertTrue(CatalogResultFilter(setOf("zh"), setOf("轟媽")).matches(metadata), title)
+            assertEquals(listOf(raw), metadata.language.rawEvidence, title)
+            assertEquals(metadata, SourceResultMetadata.from(Manga.create().copy(title = title)), title)
+            assertEquals(title, source.title)
+        }
+        val named = SourceResultMetadata.from(sourceManga("Journey [青叶汉化组无修正版]"))
+        assertEquals("zh", named.language.tag)
+        assertEquals(listOf("青叶汉化组"), named.translationGroups.map { it.key })
+    }
+
+    @Test
+    fun `edition wording alone or embedded credit mentions do not prove Chinese`() {
+        for (title in listOf(
+            "Journey [無修正版]",
+            "Journey 无修正版",
+            "Journey [無修正]",
+            "Journey [未知無修正版]",
+            "Journey [不是轟媽無修正版]",
+            "Journey 未轟媽無修正版",
+            "Journey 轟媽無修正版待确认",
+            "Journey [作者 (轟媽無修正版)]",
+        )) {
+            val metadata = SourceResultMetadata.from(sourceManga(title))
+            assertEquals("und", metadata.language.tag, title)
+            assertTrue(metadata.translationGroups.isEmpty(), title)
+        }
+        assertEquals("ja", detect("旅の記録 [無修正版]").tag)
+        assertTrue(detect("Journey [English] [轟媽無修正版]").conflict)
+    }
+
+    @Test
+    fun `Chinese title and independent Chinese description cues support Chinese with retained original names`() {
+        for ((title, description) in listOf(
+            "代代木千金小姐" to "プロトタイプ 千金小姐 好好看但都沒有無修正 所以只好另外找，就是這麼簡單",
+            "我们的旅行" to "旅の記録 这是我们的旅行日记，没有错过沿途的风景。",
+            "我們的旅行" to "這是我們的旅行日記，沒有錯過沿途的風景。",
+        )) {
+            val source = sourceManga(title).also { it.description = description }
+            val metadata = SourceResultMetadata.from(source)
+            assertEquals("zh", metadata.language.tag, title)
+            assertEquals(LanguageEvidence.TEXT_DETECTED, metadata.language.evidence)
+            assertTrue(metadata.language.rawEvidence.any { it.contains(title) })
+            assertTrue(metadata.language.rawEvidence.any { it.contains(description) })
+            assertTrue(metadata.translationGroups.isEmpty())
+            assertEquals(
+                metadata,
+                SourceResultMetadata.from(Manga.create().copy(title = title, description = description)),
+            )
+            assertTrue(CatalogResultFilter(setOf("zh")).matches(metadata))
+        }
+    }
+
+    @Test
+    fun `Chinese description alone shared Han characters and single phrases remain insufficient`() {
+        for ((title, description) in listOf(
+            "東京旅行" to "山田太郎 東京旅行 完全版",
+            "我们的旅行" to "这是旅行记录。",
+            "Journey" to "这是我们的旅行日记，没有错过沿途的风景。",
+            "Journey" to "轟媽無修正版，这是我们的旅行日记。",
+            "我们的旅行" to "这是".repeat(20),
+        )) {
+            val metadata = SourceResultMetadata.from(sourceManga(title).also { it.description = description })
+            assertEquals("und", metadata.language.tag, title)
+            assertTrue(metadata.translationGroups.isEmpty())
+        }
+        assertEquals(
+            "ja",
+            MangaLanguageDetector.detect(null, null, "旅の記録", "这是我们的旅行日记，没有遗漏。", emptyList()).tag,
+        )
+        assertEquals(
+            "en",
+            MangaLanguageDetector.detect(null, null, "我们的旅行", "这是我们的日记，没有遗漏。", listOf("English")).tag,
+        )
+    }
+
+    @Test
     fun `complete language markers and translation credits override retained Japanese original title`() {
         for ((title, expected) in listOf(
             "旅の記録 [Chinese]" to "zh",

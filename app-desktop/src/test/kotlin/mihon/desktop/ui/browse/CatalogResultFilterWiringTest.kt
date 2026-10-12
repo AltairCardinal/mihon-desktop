@@ -47,12 +47,17 @@ import tachiyomi.i18n.MR
 @OptIn(ExperimentalComposeUiApi::class)
 class CatalogResultFilterWiringTest {
     @Test
-    fun `source genre language is labelled inferred until reading content is verified`() = runBlocking {
+    fun `source genre language is displayed without an inferred suffix`() = runBlocking {
         val metadata = SourceResultMetadata.from(listed("/genre", "Travel diary").apply { genre = "Chinese" })
         val scene = ImageComposeScene(360, 200, coroutineContext = coroutineContext) {}
         try {
             scene.setContent { CatalogResultMetadataLabel(metadata, "/genre") }
-            assertTrue(text(scene).contains(MR.strings.catalog_result_inferred.localized()))
+            assertTrue(
+                text(
+                    scene,
+                ).contains(java.util.Locale.forLanguageTag("zh").getDisplayName(java.util.Locale.getDefault())),
+            )
+            assertFalse(text(scene).contains(MR.strings.catalog_result_inferred.localized()))
         } finally {
             scene.close()
         }
@@ -77,7 +82,7 @@ class CatalogResultFilterWiringTest {
             SaveSourceMangaForDetails(NetworkToLocalManga(repository), repository, ChapterRepositoryImpl(handler))
         val firstPage = (1..40).map { index -> listed("/en-$index", "English edition $index [English]") }
         val secondPage = listOf(
-            listed("/zh-a", "中文版本甲 [Chinese] [青叶汉化组]"),
+            listed("/zh-a", "中文版本甲 [轟媽無修正版]"),
             listed("/zh-b", "中文版本乙 [Chinese] [白云汉化组]"),
         )
         val calls = mutableListOf<Pair<Int, String>>()
@@ -136,6 +141,9 @@ class CatalogResultFilterWiringTest {
             }
             assertEquals(listOf(1 to "author:Alice", 2 to "author:Alice"), calls)
             assertTrue(text(scene).contains("白云汉化组"))
+            assertTrue(text(scene).contains("中文版本甲"))
+            assertTrue(text(scene).contains("轟媽"))
+            assertFalse(text(scene).contains(MR.strings.catalog_result_inferred.localized()))
             snapshot(scene, "results-$width")
             click(scene, "catalog-result-filter-open")
             click(scene, "catalog-result-group:白云汉化组")

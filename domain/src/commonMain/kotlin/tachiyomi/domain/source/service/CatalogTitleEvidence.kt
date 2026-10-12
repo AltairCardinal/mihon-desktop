@@ -105,6 +105,11 @@ internal object CatalogTitleEvidenceParser {
         "機翻漢化",
     )
     private val chineseGroupSuffixes = listOf("汉化组", "漢化組", "汉化組", "漢化组", "汉化", "漢化")
+
+    // User-confirmed translation credit. Require edition-credit context, not a bare name mention.
+    private val knownChineseEditionGroups = setOf("轟媽")
+    private val editionSuffixes = listOf("無修正版", "无修正版")
+    private val whitespace = Regex("\\s+")
     private val translationRole = Regex(
         "^(翻译|翻譯|译者|譯者|translator|translation|汉化|漢化)\\s*[:：]\\s*(.+)$",
         RegexOption.IGNORE_CASE,
@@ -161,6 +166,12 @@ internal object CatalogTitleEvidenceParser {
         }
         if (stack.isNotEmpty()) return CatalogTitleEvidence(complete = false)
 
+        // Some catalogues omit brackets around the trailing edition credit. Whole tokens only:
+        // never extract a group from an embedded mention, an author marker or a description.
+        outside.toString().split(whitespace).filter { chineseEditionGroup(it) != null }.forEach {
+            segments += Marker(it, it)
+        }
+
         val languageAssertions = mutableListOf<Set<String>>()
         val rawEvidence = mutableListOf<String>()
         val groups = mutableListOf<TranslationGroupCredit>()
@@ -169,11 +180,12 @@ internal object CatalogTitleEvidenceParser {
             val label = CatalogLanguageLabels.normalizeLabel(name)
             if (excludedRoleLabel.matches(label)) continue
             val role = translationRole.matchEntire(name)
+            val editionGroup = chineseEditionGroup(name)
             val explicitLanguage = CatalogLanguageLabels.languageTag(label)
             val languages = bilingualLabels[label]
                 ?: explicitLanguage?.let(::setOf)
                 ?: setOf("zh").takeIf {
-                    label in chineseRoleLabels || chineseGroupSuffixes.any(name::endsWith) ||
+                    editionGroup != null || label in chineseRoleLabels || chineseGroupSuffixes.any(name::endsWith) ||
                         role?.groupValues?.get(1) in setOf("汉化", "漢化")
                 }
             if (languages != null) {
@@ -181,6 +193,7 @@ internal object CatalogTitleEvidenceParser {
                 rawEvidence += marker.raw
             }
             val groupName = when {
+                editionGroup != null -> editionGroup
                 label in chineseRoleLabels || explicitLanguage != null || label in bilingualLabels -> null
                 role != null -> role.groupValues[2].trim().takeIf { it.isNotBlank() }
                 else -> name.takeIf(::isNamedChineseGroup)
@@ -207,6 +220,12 @@ internal object CatalogTitleEvidenceParser {
         if (label in chineseRoleLabels || excludedRoleLabel.matches(label)) return false
         val suffix = chineseGroupSuffixes.firstOrNull(name::endsWith) ?: return false
         return name.removeSuffix(suffix).any(Char::isLetterOrDigit)
+    }
+
+    private fun chineseEditionGroup(name: String): String? {
+        val suffix = editionSuffixes.firstOrNull(name::endsWith) ?: return null
+        val group = name.removeSuffix(suffix).trim()
+        return group.takeIf { it in knownChineseEditionGroups || isNamedChineseGroup(it) }
     }
 
     private fun resolveLanguages(assertions: List<Set<String>>): Set<String>? {
