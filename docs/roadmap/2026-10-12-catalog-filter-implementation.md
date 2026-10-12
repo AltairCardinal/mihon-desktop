@@ -89,8 +89,25 @@ python scripts/gradle-coordinator.py run --key catalog-android-recheck -- .\grad
 
 仅本批18个Kotlin文件、2份文档以及3份共享资源中的36个 `catalog_result_*` 新增条目进入同一功能提交。目录内没有新增独立状态服务或报告；格式 init script、截图和日志是忽略的过程产物。共享Gradle执行权在本批提交后释放，后续任务仍须经协调器串行。
 
-## 预算与退出规则
+## 原实现批次预算与退出规则
 
 最多 2 个实施子代理，主代理对未实施的共享识别部分作一轮独立验收；不扩大到数据迁移或公共 HTTP 重构。focused 红绿、双端接线及格式检查各按真实需要串行执行，不运行未限定测试类的完整模块或全量测试。本轮不分配正式版本，不构建正式安装包。预计 1–2 小时，主要成本为 Kotlin 编译和双端 UI 验证。
 
 超过 8 文件／400 行时按该完整功能闭环评估内聚性，不为压行拆开接线。相关验证不能完成时保留未完成项，继续处理可独立工作；不得再次把文档交付当作实现完成。
+
+## 用户体验包构建（2026-10-12）
+
+用户已明确要求Windows和Android体验包。在隔离目录 `D:/Codex/worktrees/catalog-pack-20261012` 构建。准备期间对方第三批已完成focused验证并提交，因此在首次构建前把冻结基线从 `7d3c3d34bf` 更新为 `1d26852128`，包含本批 `993aa6e0ee`、作者追踪第二批和已验收详情同行署名调整 `6c34c05e25`。双方通过此文件核对范围；不请求原树的Gradle窗口、不改对方文件、不合入main。
+
+Android候选预留 `versionCode=80`、`versionName=0.19.4-aex.62`，原树及隔离构建树同步该唯一版本文件；其他候选必须使用更高号码。Windows采用 `scripts/build-desktop.sh preview`，Android采用 `scripts/build-android.py candidate`，不运行全量测试、不安装设备；两端在隔离树串行构建。两端源码冻结输入一致，Android正式签名和Windows production runtime由统一入口验证。原生用户体验交由用户，本轮不宣称正式发布或整窗交互验收。
+
+预算：主代理直接执行，无子代理／额外独立审查，预计15–30分钟；复用本批50项focused证据与作者第二批已记录证据。失败仅诊断和重试受阻入口，不扩张产品范围；交付实际EXE／APK及可追溯清单，在同一构建交付提交记录版本与结果。
+
+构建完成：Windows协调器 `catalog-windows-preview` 成功，实际Gradle 1m05；Android统一入口自身协调器 `android-candidate` 成功，实际Gradle 3m56。没有执行测试任务或全量矩阵，没有安装或操作模拟器／实体设备。
+
+- [Windows体验EXE](<D:/Codex/worktrees/catalog-pack-20261012/app-desktop/artifacts/preview/windows/20261012T043610Z-610be4a7/Mihon-Desktop-0.11.19.91.1d26852-unpacked/Mihon Desktop.exe>)：版本 `0.11.19.91.1d26852`，来自本轮日志的 `Final unpacked EXE:`，文件已核对存在。退出旧实例后打开；运行依赖同目录完整应用文件，不能单独搬走EXE。preview-manifest 的 build/sourceIntegrity/productionRuntime均PASS，nativeInteraction保持NOT_RUN。
+- [Android签名APK](D:/Codex/worktrees/catalog-pack-20261012/app/artifacts/android/0.19.4-aex.62-vc80-1d26852128-release/Mihon-Fork-0.19.4-aex.62-vc80-release-universal.apk)：版本 `0.19.4-aex.62`／code80，包名 `app.mihon.desktop.fork`，四ABI universal、minSdk26、R8及资源压缩开启。统一 `verify` 再次成功，原证书连续，签名v2/v3有效；SHA256 `e9944cb51d5b2477272d01dab9a9001eec9dc816abe4d92a11ad47ee6ce1d3ad`。
+- 两端冻结product输入摘要相同：`6fb813d3f34f506e8ebca9b462e60dbc331711377d560e332a0a0503933025f7`。源码为 `1d26852128` 加已预留80/.62版本文件，清单如实记录dirty版本分配，未把未提交内容称为该hash本身。与已交付vc79隔离树相比，45个SQL迁移文件逐字节一致，最高45；本批未更改schema。此检查不替代实体设备升级验证。
+- 体验范围：源内搜索 → 语言／翻译组 → 中文、未知和组条件 → 查看派生标记及继续加载；作品详情显示已提交的同行标题作者署名并可进入完整作者页。正文OCR、真实来源语言精度认证仍未实现；本批不宣称Android运行/升级或Windows整窗人工交互PASS。
+
+隔离工作树和其中完整产物目录保留供用户体验，不执行清理。版本预留及本段交付记录在原e63b只暂存这份计划和 `gradle/android-release.properties`；不合并main、不覆盖先前体验包、不提交生成产物。双方可通过本文件读取构建完成状态，无需消息回执。
