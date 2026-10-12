@@ -199,7 +199,7 @@ TDD 先让旧 production 因正确断言失败，再写最小改动，同范围�
 
 状态：**已授权执行，R3-01／R3-02 已完成，当前 R3-03**。本节是本轮唯一执行计划，复用配套证据报告；不新增 roadmap、逐任务快照或第二份报告。
 
-`active-task: R3-03`
+`active-task: R3-04`
 
 ### 7.1 给执行模型的任务与基线
 
@@ -300,7 +300,7 @@ TDD 先让旧 production 因正确断言失败，再写最小改动，同范围�
 
 #### R3-03：把认证接入现有加载与真实呈现链
 
-- [ ] 完成 Android 三入口幂等准备和共享呈现门卫，并补 Desktop 协议接线。
+- [x] 完成 Android 三入口幂等准备和共享呈现门卫，并补 Desktop 协议接线。实验提交 `0c56d359d3`；Android 最终 29/29、Desktop 最终 27/27、共享定向 30/30、严格 29 文件格式及同轮独立审查通过。只放行 R3-04 的真实下载 ART 对照，不代表用户真机、Release/R8 或性能目标已经通过。
 
 **范围：** Android `AndroidReaderMaterializePorts.kt`、`ChapterLoader.kt`、`ReaderPage.kt`、`DualPageViewerAdapter.kt`／必要的 holder 接口；共享 Session；Desktop `ReaderScreenModel.kt` 与已有 sampler/presentation adapter 的必要调用。不改漫画源、下载协议、数据库 schema、手动布局格式、导航入口或缩放算法。
 

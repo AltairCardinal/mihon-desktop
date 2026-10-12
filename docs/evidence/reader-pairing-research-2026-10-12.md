@@ -302,3 +302,51 @@ R3-01 源码与测试已提交实验分支：`54d847c771`，父为 `4d65d3d67b`�
 R3-03 须落实真实 original producer 与 DIRECT／PREFETCH→ACTIVE／已加载复用接线、当前／将露出邻帧的持证准备、可恢复反馈和取消；原图 sampler 的扩 crop context 大于 4 MiB 的情况仍未解决。可先检查 Desktop 普通 decode 是否能在同一受控原图生命周期提供等价原始像素，但未实测不能假定 Skia 子集读取不解码整图；不擅自增加依赖、fork 或放松资源限制。
 
 当前只放行共享接口，尚未完成 R3-03/04，也没有把新的阅读门卫打入 APK。R3-01 ART 3/3、组件 p95 25.41 ms 的证据仍有效，但不能代表实际 intent→正确像素对照。没有安装用户真机，三起现场问题仍不能宣称已经修复。
+
+### R3-03 进行中的补证与 R3-04 夹具
+
+2026-10-13，DIRECT／PREFETCH→ACTIVE／已加载复用三个实际 ChapterLoader 入口的 focused 测试 3/3 通过；原始坐标分块取样的 Android sampler 11/11 通过，`pairing-r3-bounded-original-green` 终态 PASSED。Desktop 普通 lazy Image 复用探针 4 项中 WebP／ICC／EXIF 三项通过，透明 RGBA 一项失败：预期 `0x804080C0` 实际 `0x804080BF`，UNPREMUL 输出无法恢复内部预乘量化。`pairing-r3-desktop-normal-evidence-green` 的失败保留，不放宽输入等价门槛；下一候选是在正常完整解码链内复用一次受预算约束的原始 UNPREMUL bitmap，尚未验收。当前没有开启持证显示门卫，也未增加宿主 APK。
+
+主代理已准备 ignored `pairing-r3-download-fixtures/manifest.json`：卷 8 的 176 页夹具含 18 张冻结原图，卷 9 的 **合成 176 页代理章节**含 5 张冻结原图，另有 176 页无重置前缀的纯合成控制章节；各有普通目录与 CBZ。其余页均明确标为合成，固定灰边没有页侧锚点和有效连续边方差，中心二进制 badge 区分页码。所有 CBZ 条目 CRC／SHA 已核，23 张原图与输入 SHA 全部一致。独立审查者仅自行读取图片、向主代理回传文本，指定三图抽查通过；中心 badge 外像素均为灰色，未污染取样边缘。该检查不代表 DownloadProvider 命名、ChapterLoader 实际选择或首像素性能通过；后续运行必须走这些真实接线。图中印刷页码与 readerPage 不必一致，定位以 manifest 的阅读器页码为准。
+
+后续窄验证 `pairing-r3-desktop-codec-evidence-green2` 4/4 通过：显式正常 Codec 解码的透明 RGBA 原始点完全匹配，另覆盖 WebP、ICC 与 EXIF；不包含最终 EXIF 显示矩阵、实际原生解码复用、峰值和延迟验收。原 lazy Image 的透明像素红保留。检查还发现大图先经 FULL_PAGE preview 才启用 region tiles，不能通过新增 16 MP 硬限制破坏既有预览入口；超预算大型 WebP 的有界能力仍未解决，不宣称全格式通过。
+
+Android 原型 Adapter 已接原始分析 producer 和持证绘制门卫。`pairing-r3-original-producer-metadata-green` 的实际 XML 为 6/6：三入口／晚 EXIF 完整恢复 4 项，原生资料不足拒票据／READ 失败到现有 Retry 恢复 2 项，无失败、错误或跳过。首次恢复测试的虚拟时钟 deadline 失败不算行为红；实施者改用真实 IO 等待，并在旧 Adapter／Viewer／Holder 上取得正确的 READ 原因缺失行为红，随后恢复当前实现。
+
+同一轮 Android 局部独立审查**暂未放行**，两个窗口已交原实施者做受控回归：未知尺寸时读取异常可能早于分析 request，或配额失败只记录在页侧分析、未被 dimension 认证消费，可能一直 NeedFacts／无票据；首个分析完成后换源、其余分析仍等待时，单页早期空校验不能证明最终批发布仍绑定真实 encoded 能力。后者为源码可达窗口待复现，不能写成现场已发生。还需证明证书成员／slots 与首次原生 frame 一致，完成取消／预算及既有半侧／晚宽图像素补验，并闭合 Desktop 消费链。尚未构建 R3-03/04 APK，也未开始实际翻页／首像素 A/B。
+
+上述窗口后续取得实际补证：`pairing-r3-load-before-header-red` 复现 optionalWork 通知到任务重排的忙循环，线程栈记录主线程 CPU 约 201 秒、elapsed 222 秒；仅通过协调器停止该验证，终态 CANCELLED／130，**不是 JUnit 失败或通过**。修正终态阻塞仍入队后，`pairing-r3-load-before-header-cause-red` 得到有限 JUnit 1/1 正确红，真实 READ 被误报 RESOURCE。前移请求能力并让缺尺寸认证消费原始失败原因后，`pairing-r3-load-before-header-green` 1/1 通过：READ／RESOURCE 分支各只读取一次，五轮调度无忙循环，现有 Retry 后各累计两次读取并恢复，位置不变。
+
+`pairing-r3-final-physical-batch-red` 1/1 实际证实：第一页完成后更换真实 stream、第二页仍阻塞且普通事实订阅尚未重绑定时，旧结果仍被接受为 Computed。最终发布按稳定故事序持有两页实际 content 锁，重新校验原始 fact／encoded 能力，才原子接受 owner 批次；`pairing-r3-final-physical-batch-green2` 1/1 通过，拒收整批过期结果，恢复订阅并经现有 Retry 后新内容认证成功，逻辑位置仍为 2。首次修复验证的等待超时随后改为等待真实 publication job，没有改变拒收期望。以上为专项补验，最终锁／回调边界及完整消费链尚待同一轮审查闭合，不能据此放行 R3-04。
+
+实施代理在稳定工具边界保存唯一紧凑恢复回执并结束该 turn，随后沿用原代理和回执恢复，没有新增代理或重新执行 R3-01/02。Desktop 正常 Codec 的实际 raster 4/4、真实 ONLINE route 的 producer→cert→native pixels→SQL 2/2 已通过；目录直开 route 原本不写 SQL，不能拿它当 SQL 进度失败或通过依据。Desktop 当前仍需实际 READY lease／decodeKey 和最终 session 能力批校验、区域资源与成本补证。
+
+该恢复点涉及 25 个未提交文件，超过审查估算范围：同一共享证据契约必须接通两端正常解码、原始分析、证书、物理槽位与既有重试／进度，平台接线及行为测试需一并评估。按完整生产链保持内聚，未为压缩文件数复制规则或拆开不可独立验收的代码；对应风险为内容能力跨异步任务失效、资源生命周期和首次绘制许可，按上述专项及最终同轮审查收口。
+
+恢复后的 Android 首簇已冻结：`pairing-r3-android-cluster-refactor` PASSED，`research-evidence/r3-android-cluster-refactor/` 保存真实命令、日志和 XML，主代理独立核 XML 为 10 项、失败／错误／跳过均 0；两文件严格 SpotlessCheck 与 diff 检查通过。包含原生 PNG producer→cert→ticket→prepare／draw／release 两项，首次 unit 成员／slots 与证书相同，保留像素与 bitmap 身份、未画伙伴及晚宽图可达性。旧夹具故意缺可信 partner header 的门卫拒绝属于旧测试前提不成立，不算产品布局红。
+
+另外五项预算／取消专项与受其影响的 READ、未知尺寸和批发布三项均复验通过：真正挂起读取的 15 秒期限和真实翻页未取消旧请求各先得到产品红，再加入剩余预算 timeout 与对应 owner-location 撤销；原 location 16 个额外页、两 decoder 峰值、32 MiB source、刷新不续预算、实际 region 挂起后 Retry 等待物理释放和退出回收均有定向证据。测试清理时未排空取消 job、以及虚拟 Main 期限越过真实 IO 的问题单独修正，不当产品红，也未降低拒收／READ 期望。整体 R3-03 尚未完成或提交，没有构建新的 APK／运行 ART；首图性能和三起现场故障仍未获本轮完整验收。
+
+2026-10-13 同一轮独立审查复核 Android 稳定簇，结论为 `ANDROID_R3_03_KNOWN_BLOCKERS_CLOSED`，仅关闭原有 Android 阻塞，不放行完整 R3-03/04。审查核对冻结命令／日志／10 项 XML、原红证据、未知尺寸失败与现有 Retry、终态阻塞不重排、原 location 期限与真实导航取消，以及两项原生首次成员／slots、像素保护和伙伴可达。最终批按故事序持最多两页 content 锁，全部真实能力有效后才调用 owner 原子接受；锁内无 suspend／IO，未发现反向多页锁。Desktop 仍在闭合真实核心与模型订阅滞后的取证窗口，最终批内容预检、资源及成本尚未完成；没有据局部绿构建 APK 或开始 ART 对照。
+
+Desktop 后续补证：原实施代理两次短恢复后仍报告长上下文影响高风险推理，保存唯一回执并停止产品实施，主代理明确收回后接管；未新增代理。普通入口先取真实 core 已 Ready 的内容而非滞后 Queued 投影，受控 READY 抢先消费后继续处理其他准入页并完整退出预算。SQL 校正为每次实际已绘集合的 settlement，而非每页一行；观察真实回调并继续原 tracker，每行核 max 页、次数与幂等。一次复验只等 last_page_read=2 提前结束（右页单独已绘也可到 2），随后改等完整真实已绘集合和对应落库，未降低双页断言。
+
+真实 core 替换／延迟 UI 绑定取得旧样本批误收红，session 私有锁内核 generation／Ready／attempt／ref／provenance，纯 owner 原子提交，UI 发布锁外；显式 Retry 后原始取证先推进既有 pipeline attempt，无须先创建新 holder。审查发现 metadata 早于最终批接纳，随后普通 metadata、单页 READY 和有界 header 都补真实 core 预检，两个受控红保留。进一步真实复现当前物理内容被写入旧逻辑绑定，增加绑定核验：允许首次 materialize 尚未同步的空 ref，拒绝已有 ref／attempt／provenance 不符。当前 `r3-desktop-binding-capture-green` 两条真实呈现／进度类 15/15，无失败／错误／跳过；完整 R3-03 尚未闭合审查。
+
+区域原图取样的两个正确红为整条固定点包围区超限与 mixed-alpha 蓝通道少 1；共享分块保留坐标，每次实际区域请求／输出不超 4 MiB，使用采样专用直通 sRGB RGBA bitmap；`r3-desktop-bounded-alpha-green` 11/11。真实 native cache clear 后已确认标量和露出像素保留，正常解码计数及 SQL settlement 不增加。23 张冻结原图、每图两次预热后 20 组交错 A/B 共 460 对：旧 normal raster p50/p95/max 9.975/12.255/14.633 ms，新 normal raster 12.973/15.407/17.674 ms；配对差值 p50/p95/max 2.949/3.898/5.611 ms，登记的同时存活 raster 峰值 10,999,520 bytes。`r3-desktop-native-cost/native-cost.json` 保存原始数组；该峰值不是全进程 native RSS，耗时不是 Android intent→像素。
+
+定向回归中 shared certification 30/30、Desktop wiring 6/6 通过，既有单侧 Native→SQL 用例失败：auto-off 尺寸准备被伙伴完整正常解码占住。关闭自动匹配时优先复用现有有界 header，完整信息不足才走原始正常解码。另以真实带 EXIF 的 JPEG 输入得到接线红：原始 40×60 被错当 normalized，应为 60×40；统一 header、READY 和 normal producer 的坐标，用户 rotation 仍单独保留。`r3-desktop-header-fast-exif-green` 3/3，随后的 `r3-desktop-final-behaviour` 四个受影响类 27/27。前述旧 header 控制改为实际有界 lease 读完后延迟正常回调，保持 auto-off、真实 Retry、旧逻辑绑定和拒收断言；不强制 header 路径等待已不需要的完整 decoder。
+
+严格 29 个文件格式在新增分块文件名和长行清理后通过（`pairing-r3-format-strict-final8`）；新增文件按类名改为 `ReaderBoundedSamplingRegion.kt`。中间仅排版时关闭长行项以落下其他格式，再以项目原规则完整检查；没有留下规则豁免。随后 EXIF／header 与绑定修复仍需补最终严格格式、受影响 Android 定向复验、同轮最终审查及提交。未构建新宿主 APK／运行 ART，三个现场问题仍不宣称已修复。
+
+
+R3-03 最终补验：跨 owner 的 release 合并窗口已实际复现。第一个 owner 的刷新已入队后离开章节窗口，第二个 owner 的 release 被单一 scheduled 标志吞掉，canonical 已为双页而 Adapter 仍留两个单页。`r3-cross-owner-release-red` 保存正确红；刷新积累当前待处理 owner，执行时检查仍在章节窗口的任一 owner，退出清理集合。`r3-cross-owner-release-green` 1/1 通过，并纳入最终原生回归。该窗口是受控接线故障，不能反向声称它是卷 9 现场唯一原因。
+
+现有认证 Retry 反馈也取得真实控件红：图片 native Ready 但认证 READ 失败时，点击实际 ReaderErrorBinding.actionRetry 恢复认证后，旧错误 overlay 因不会再收到第二次 onImageLoaded 而仍可见。`r3-real-retry-widget-red` 保留正确红；前三次夹具前提／页身份校正单独记录，不当产品红。holder 只跟踪和清理认证错误，普通解码错误仍沿用原路径；认证未恢复时真实 onImageLoaded 不得提前隐藏反馈。`r3-real-retry-widget-green` 1/1 及最终回归通过。
+
+最终 XML 核验：`pairing-r3-feedback-final-focused` PASSED，Android 三入口 4、sampler 11、原生绘制／预算／内容能力／实际重试控件 12、既有普通错误控件 2，合计 29/29；`pairing-r3-desktop-final-refactor` PASSED，正常原图 5、sampler 7、实际呈现／SQL 9、wiring 6，合计 27/27。均无失败、错误、跳过。冻结目录为研究 worktree 的 `.gradle-coordinator/r3-android-feedback-final/` 与 `r3-desktop-final-refactor/`，保存命令、日志、XML 和核验计数。最后 29 个任务文件按项目原规则严格格式检查 `pairing-r3-format-feedback-final` 通过，`git diff --check` 通过。尚待同轮独立审查闭合与本批提交，仍未构建当前宿主 APK、启动 R3-04 ART 或宣称真机修复。
+
+
+R3-03 同轮最终独立审查结论 `PASS_R3_03 / R3_04_GO`，最后实际控件反馈及此前内容身份、锁内纯原子提交、失败原因、取消预算、原始 alpha/ICC/坐标、native slots/像素保护和跨 owner 可达性均无未关闭实质阻塞。研究提交 `0c56d359d392227c1d477d41954ed702f07d4885`，29 文件、3975 新增／647 删除，父为 `23a5582e32`；测试与双端生产接线属于同一证据到原生绘制协议批次，规模和高风险边界按专项证据审查，没有复制算法或机械拆分。研究树提交后干净，主干未合入产品。最后 29 个文件 SHA 冻结在 `r3-android-feedback-final/source-fingerprints.json`。
+
+进入 R3-04：原独立审查者结束 R3-03 职责后，复用为真实下载 instrumentation 实施者；主代理对其新增探针独立核验并仍是唯一重型 Gradle／设备计时协调者。原实施代理因长上下文无法稳定恢复保持停止，没有新增代理；此角色调整不增加已有代理／审查轮预算。先做真实 DownloadProvider→ChapterLoader→DownloadPageLoader 的目录及 CBZ 冒烟和 GPU 提交观察，再运行已冻结的冷／热、顺读／回翻／快翻及最坏前缀对照；仍只有基线与最终候选两次宿主 Debug 构建额度，不操作用户设备。
