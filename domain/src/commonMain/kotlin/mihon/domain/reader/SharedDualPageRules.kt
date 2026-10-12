@@ -101,6 +101,110 @@ data class ReaderDualPageDecision(
 
 /** The sole dual-page product policy. Platforms supply facts and user choices, not rule switches. */
 object SharedDualPageRules {
+    /**
+     * Research contract: one partition for one fact snapshot, independent of target and exposure.
+     * This scans metadata only. Unknown facts are provisional; this is not a complete-content index.
+     */
+    fun canonicalPlan(
+        pages: List<ReaderPageId>,
+        facts: Map<ReaderPageId, ReaderPageFact>,
+        direction: ReaderDirection,
+        forcedSinglePages: Set<ReaderPageId> = emptySet(),
+        manualPairStarts: Set<Int> = emptySet(),
+        openingMode: ReaderChapterOpeningMode = ReaderChapterOpeningMode.AUTO,
+        automatic: Boolean = false,
+        distance: (ReaderPageId, ReaderPageId) -> Double? = { _, _ -> null },
+    ): List<ReaderDualPageUnit> {
+        require(direction != ReaderDirection.VERTICAL)
+        require(pages.distinct().size == pages.size)
+        require(pages.map { it.chapterId }.distinct().size <= 1)
+        val leading = if (direction == ReaderDirection.RTL) ReaderPageSideHint.RIGHT else ReaderPageSideHint.LEFT
+        val trailing = if (direction == ReaderDirection.RTL) ReaderPageSideHint.LEFT else ReaderPageSideHint.RIGHT
+        fun fact(i: Int) = pages.getOrNull(i)?.let(facts::get)
+        fun side(
+            i: Int,
+        ) = if (automatic) fact(i)?.sideHint ?: ReaderPageSideHint.UNKNOWN else ReaderPageSideHint.UNKNOWN
+        fun wide(i: Int) = fact(i)?.state == ReaderPageFactState.SPREAD
+        fun known(i: Int) = fact(i)?.state in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD)
+        val starts = manualPairStarts + setOfNotNull(0.takeIf { openingMode == ReaderChapterOpeningMode.FIRST_PAIR })
+        val manual = starts.filter { i ->
+            i in 0 until pages.lastIndex && !wide(i) && !wide(i + 1) &&
+                pages[i] !in forcedSinglePages && pages[i + 1] !in forcedSinglePages
+        }.sorted().fold(mutableSetOf<Int>()) { accepted, i ->
+            if (i - 1 !in accepted) accepted += i
+            accepted
+        }
+        fun allowed(i: Int): Boolean {
+            if (i !in 0 until pages.lastIndex || wide(i) || wide(i + 1) ||
+                pages[i] in forcedSinglePages || pages[i + 1] in forcedSinglePages
+            ) {
+                return false
+            }
+            if (i in manual) return true
+            if (i - 1 in manual || i + 1 in manual) return false
+            if (i == 0 && (
+                    openingMode != ReaderChapterOpeningMode.AUTO ||
+                        !known(0) || !known(1) || side(1) != trailing || side(0) == trailing
+                    )
+            ) {
+                return false
+            }
+            return side(i) != trailing && side(i + 1) != leading
+        }
+        fun strength(i: Int): Int = when {
+            !allowed(i) -> -1
+            i in manual -> 3
+            side(i) == leading || side(i + 1) == trailing -> 2
+            else -> 0
+        }
+        fun laterWins(i: Int): Boolean {
+            val near = strength(i)
+            val later = strength(i + 1)
+            if (later != near) return later > near
+            if (!automatic || later < 0 || i + 2 > pages.lastIndex) return false
+            val nearDistance = distance(pages[i], pages[i + 1])
+            val laterDistance = distance(pages[i + 1], pages[i + 2])
+            return laterDistance != null && (nearDistance == null || laterDistance < nearDistance)
+        }
+        return buildList {
+            var i = 0
+            var opening = true
+            var reservedStart = -1
+            while (i < pages.size) {
+                if (allowed(i) && (i == reservedStart || !laterWins(i))) {
+                    add(pairedUnit(pages[i], pages[i + 1], direction, known(i) && known(i + 1)))
+                    opening = false
+                    i += 2
+                    continue
+                }
+                val reason = when {
+                    pages.size == 1 -> ReaderDualPageSingleReason.ONLY_PAGE
+                    wide(i) -> ReaderDualPageSingleReason.SPREAD
+                    i == 0 -> ReaderDualPageSingleReason.FIRST_PAGE
+                    pages[i] in forcedSinglePages -> ReaderDualPageSingleReason.MANUAL_BOUNDARY
+                    i == pages.lastIndex -> ReaderDualPageSingleReason.CHAPTER_TAIL
+                    opening && wide(i + 1) -> ReaderDualPageSingleReason.OPENING
+                    wide(i - 1) && wide(i + 1) -> ReaderDualPageSingleReason.AMBIGUOUS
+                    wide(i + 1) -> ReaderDualPageSingleReason.REMAINDER_BEFORE_SPREAD
+                    laterWins(i) -> ReaderDualPageSingleReason.MATCH_BOUNDARY
+                    else -> ReaderDualPageSingleReason.UNRESOLVED
+                }
+                val position = when {
+                    reason in setOf(
+                        ReaderDualPageSingleReason.SPREAD,
+                        ReaderDualPageSingleReason.ONLY_PAGE,
+                    ) -> ReaderPortraitSingleSlot.FULL
+                    side(i) == ReaderPageSideHint.LEFT -> ReaderPortraitSingleSlot.LEFT
+                    side(i) == ReaderPageSideHint.RIGHT -> ReaderPortraitSingleSlot.RIGHT
+                    else -> portraitSinglePageSlot(direction, reason)
+                }
+                if (reason == ReaderDualPageSingleReason.MATCH_BOUNDARY) reservedStart = i + 1
+                add(ReaderDualPageUnit(listOf(ReaderDualPageSlot(pages[i], position)), known(i), reason))
+                i++
+            }
+        }
+    }
+
     /** Reads only the local three-page window and already available boundary/occupancy summaries. */
     fun decide(
         pages: List<ReaderPageId>,

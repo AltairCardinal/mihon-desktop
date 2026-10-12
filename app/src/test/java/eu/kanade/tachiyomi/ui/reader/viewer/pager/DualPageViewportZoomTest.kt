@@ -62,6 +62,43 @@ class DualPageViewportZoomTest {
     private val mounted = mutableListOf<DualPagerPageHolder>()
 
     @Test
+    fun partialNeighbourNativePaintReleaseKeepsItsUndrawnPartnerOnEntry() = runTest {
+        val viewer = ReflectionHelpers.getField<DualPageR2LPagerViewer>(fixture, "viewer")
+        val bitmap = Bitmap.createBitmap(400, 800, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+        val encoded = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+        bitmap.recycle()
+        val chapter = ReaderChapter(Chapter.create().copy(id = 61090, mangaId = 1))
+        val pages = List(7) { index ->
+            ReaderPage(index, stream = { encoded.inputStream() }).apply {
+                this.chapter = chapter
+                status = Page.State.Ready
+            }
+        }
+        chapter.publishLoadedPageListForTest(pages)
+        pages.forEach { it.publishHeaderFact() }
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        viewer.moveToPage(pages[1])
+        val display = viewer.adapter.items.filterIsInstance<DisplayPage>().single { it.containsPage(pages[3]) }
+        val holder = DualPagerPageHolder(viewer.activity, viewer, display)
+        mounted += holder
+        load(holder, pages[3], "CENTER")
+        invokeFixture("measure", holder, 1400, 1000)
+        val image = descendants(holder).filterIsInstance<ReaderPageImageView>().first { it.childCount > 0 }
+        paintReaderImage(image, encoded)
+        settle(holder)
+        assertTrue("The unselected neighbouring holder paints real pixels", !pixels(holder).isEmpty)
+        val owner = requireNotNull(viewer.adapter.session(chapter))
+        val ids = owner.identity.pageIds
+        assertTrue(owner.displayedHistory.any { ids[3] in it.drawnPageIds })
+        assertTrue(owner.displayedHistory.none { ids[4] in it.drawnPageIds })
+        invokeFixture("detach", holder)
+        viewer.moveToPage(pages[3])
+        assertEquals(listOf(ids[3], ids[4]), owner.targetUnit!!.pageIds)
+        val reentered = viewer.adapter.items.filterIsInstance<DisplayPage>().single { it.containsPage(pages[3]) }
+        assertTrue("Production adapter retains the unpainted partner", reentered.containsPage(pages[4]))
+    }
+
+    @Test
     fun diagnosticFileReceivesRealLoadingAndDrawCallbacks() = runTest {
         val directory = kotlin.io.path.createTempDirectory("reader-diagnostics").toFile()
         val sink = eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnosticSink({ directory })
