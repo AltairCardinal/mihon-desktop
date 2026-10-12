@@ -35,6 +35,18 @@ class CreatorTitleAttributionUiTest {
     private var clickedMention: tachiyomi.domain.creator.model.CreatorMention? = null
 
     @Test
+    fun `dated event title displays clickable author in the real detail header`() = fixture { scene, editor, _, manga, _ ->
+        val title = "(2021-03 Akihabara Chou Doujinsai) [Popochichi (Yahiro Pochi)] Example"
+        manga.value = manga.value.copy(title = title)
+        settle(scene) { nodes(scene).any { text(it) == title } }
+        assertTrue(nodes(scene).any { tag(it) == "title-credit-0" && text(it).contains("Yahiro Pochi") })
+        assertTrue(nodes(scene).any { text(it) == "Title-recognized authors" })
+        click(scene, "title-credit-0")
+        assertEquals("Yahiro Pochi", clickedMention?.displayName)
+        assertFalse(editor.policy.isEnabled(10L))
+    }
+
+    @Test
     fun `title credits appear below original author without enabling source or opening settings`() = fixture { scene, editor, writer, _, _ ->
         assertFalse(nodes(scene).any { tag(it) == "creator-title-attribution-open" })
         val caption = nodes(scene).single { text(it) == "Title-recognized authors" }

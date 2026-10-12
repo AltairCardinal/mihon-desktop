@@ -7,6 +7,34 @@ import tachiyomi.domain.creator.model.CreatorRole
 
 class TitleCreditParserTest {
     @Test
+    fun `dated event prefix preserves following creator and circle credits`() {
+        val title = "(2021-03 Akihabara Chou Doujinsai) [Popochichi (Yahiro Pochi)] Example [Chinese]"
+        TitleCreditParser.parse(title, allowStandaloneCreator = true).map { it.displayName } shouldBe
+            listOf("Yahiro Pochi", "Popochichi")
+        TitleCreditParser.parse(title).map { it.evidence.single().field } shouldBe
+            listOf(CreatorMetadataField.TITLE_CREATOR, CreatorMetadataField.TITLE_CIRCLE)
+    }
+
+    @Test
+    fun `dated event parsing stays bounded and preserves creator exclusions`() {
+        TitleCreditParser.parse("（2021-03 秋葉原同人祭）［星舟社（青岚）］ 示例").map { it.displayName } shouldBe
+            listOf("青岚", "星舟社")
+        listOf(
+            "(2021-00 Event) [Circle (Artist)] Work",
+            "(2021-13 Event) [Circle (Artist)] Work",
+            "(2021-03) [Circle (Artist)] Work",
+            "(2021-03 Event [Nested]) [Circle (Artist)] Work",
+            "(2021-03 ${"E".repeat(97)}) [Circle (Artist)] Work",
+            "(2021-03 Event） [Circle (Artist)] Work",
+            "(2021-03 Event) [Chinese] Work",
+            "(2021-03 Event) [Translation] Work",
+            "(2021-03 Event) [Artist / Other] Work",
+        ).forEach { title ->
+            TitleCreditParser.parse(title, allowStandaloneCreator = true) shouldBe emptyList()
+        }
+    }
+
+    @Test
     fun `explicit personal credits do not manufacture a circle`() {
         listOf("[(青岚)] 作品", "（C105）［（青岚）］ 作品", "[作者: 青岚] 作品", "[artist：青岚] 作品").forEach { title ->
             val mention = TitleCreditParser.parse(title).single()

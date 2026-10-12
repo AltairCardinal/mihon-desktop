@@ -150,3 +150,19 @@ Gradle：catalog 批次993aa6e0ee已提交并按其计划释放执行权；本�
 复验命令：协调器串行包装 `gradlew.bat --no-parallel --max-workers=2 :app-desktop:jvmTest --tests mihon.desktop.ui.authors.CreatorTitleAttributionUiTest :app:testDebugUnitTest --tests eu.kanade.tachiyomi.ui.browse.author.AndroidCreatorTitleAttributionUiTest`。本轮日志key为title-inline-red/green/final，位于忽略目录.gradle-coordinator；红绿期间关闭自动重试。最后命令已退出，Gradle执行权释放。
 
 手动验收：两端打开有标题署名的作品详情 → 原作者下方依次显示“标题识别作者”、识别姓名，未显示“标题自动归属设置”按钮 → 点击姓名继续进入完整作者页。窄布局/长名称允许换行；无标题候选不出现署名行、无社团不补占位。此次仅源码提交，之前第二批EXE/APK尚未包含该调整；main及此前隔离接入分支均未更新。
+
+## 主干体验问题：日期活动前缀漏识别（2026-10-12）
+
+基线为已整合main `27f4f94ff4`。用户使用该提交的Windows preview，实际失败详情标题前缀为 `(2021-03 Akihabara Chou Doujinsai)`。只读核对提交、源文件和包内类后，用相同EXE的隔离Test Mode及虚构 `(C102) [星舟社 (青岚)] 示例作品` 在真实窗口确认旧活动格式仍显示署名；随后读取用户停留的实际失败页面，确认解析器activity只接受C加数字，日期活动在署名读取前被拒绝。没有以源码存在或正例测试否定用户报告。
+
+本次局部修复由主代理直接完成；不增加代理或完整测试。固定验收：YYYY-MM加活动名的有限前缀可继续解析后续作者/社团，畸形月份、嵌套括号和无活动名不放行；来源字段不变，已有C前缀/歧义排除回归保留。先共享解析及真实Desktop详情红测，再最小实现、同范围与Android既有UI定向验证、限定格式；Windows使用preview并在隔离配置中用实际EXE复验日期前缀。预计10–20分钟，不生成Android候选、不分配正式版本，不跑全量。
+
+Gradle本轮通过协调器串行title-event-*；当前工作树由a7c0c60444快进到main，未回滚或覆盖其他研究；用户主干的docs/human未跟踪目录保留。隔离诊断配置位于忽略的.tmp/title-main-diagnostic，虚构数据不写用户数据库。先前诊断实例已经退出。
+
+验证结果：`title-event-red` 的共享新例及Desktop真实header新例均按空识别/缺少署名正确失败，9项原用例通过；`title-event-green` 与格式后 `title-event-final` 为共享12项（parser5、extract7）、Desktop7项、Android5项，共24项，0失败/错误/跳过。最终命令可复用UP-TO-DATE的未变部分；限定domain两文件Spotless通过，Desktop沿用当前模块格式，git diff --check通过。未跑全量或数据库迁移。
+
+`title-event-windows-preview` 成功；[本轮实际EXE](<D:/Codex/worktrees/e63b/mihon/app-desktop/artifacts/preview/windows/20261012T095220Z-f0a2e363/Mihon-Desktop-0.11.19.91.27f4f94-unpacked/Mihon Desktop.exe>)来自Final unpacked EXE，文件已核对存在，manifest build/sourceIntegrity/productionRuntime均PASS。构建基线为main27f4f94ff4加本次dirty修复，未分配正式版本；与用户原包显示版本相同但目录及production输入不同，不能只凭窗口版本号分辨。源码冻结后只补此记录，不再改产品代码。
+
+新EXE在隔离profile上通过Test Mode打开虚构日期活动作品，真实Windows窗口（1536×1152，150%缩放，中文深色）可见“标题识别作者”、可点击样式的Yahiro Pochi和社团Popochichi，原作者Uploader保留，未出现设置按钮；截图位于忽略目录.tmp/title-event-fixed-native.png。点击回调由真实Compose事件测试覆盖；此项原生检查验证显示，不冒充发布矩阵或所有窗口交互，原preview-manifest的nativeInteraction仍是构建脚本默认NOT_RUN。只关闭本任务隔离实例，用户原实例未关闭，用户数据未写入；未生成/安装Android包。
+
+本修复支持C编号和1900–2099年有效YYYY-MM日期加有限长度、无嵌套括号的活动名前缀，保留署名语法/歧义排除；没有扩展为任意活动名、日期或任意标题位置扫描。上述实际失败样例的原因已确认，不能据此保证所有其他标题都会识别。窗口可见性与作者归属校验维持既有设计。Gradle验证和体验包构建均已退出，串行执行权释放。

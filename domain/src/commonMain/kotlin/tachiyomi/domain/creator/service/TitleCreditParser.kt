@@ -9,7 +9,9 @@ import tachiyomi.domain.creator.model.CreatorRole
 object TitleCreditParser {
     private const val MAX_TITLE_LENGTH = 4096
     private const val MAX_PREFIX_LENGTH = 512
-    private val activity = Regex("[（(]C[0-9]{1,4}[）)]")
+    private val activity = Regex(
+        """[（(](?:C[0-9]{1,4}|(?:19|20)[0-9]{2}-(?:0[1-9]|1[0-2]) +[^()（）\[\]［］\r\n]{1,96})[）)]""",
+    )
     private val ambiguousNameCharacters = setOf(',', '，', '、', '/', '／', ';', '；', '&', '+', '|')
     private val brackets = setOf('(', ')', '（', '）', '[', ']', '［', '］')
     private val nonCreatorLabels = listOf(
