@@ -2288,7 +2288,7 @@
     <string name="creator_title_attribution_title">标题自动归属设置</string>
     <string name="creator_title_attribution_description">详情中的标题姓名可直接进入作者页，无需启用此项。此设置为本图源启用 [社团（作者）] 或明确个人署名的自动归属。保存后更新当前作品；其他书架作品可另行整理。无法识别时沿用图源字段。</string>
     <string name="creator_title_attribution_enabled">此图源使用标题署名</string>
-    <string name="creator_title_attribution_preview">当前标题识别结果</string>
+    <string name="creator_title_attribution_preview">标题识别作者</string>
     <string name="creator_title_attribution_no_preview">未识别到可自动归属的署名。单独名字仅作为详情候选；多人及歧义格式暂不处理。</string>
     <string name="creator_title_attribution_reindex">重新整理此图源书架作者</string>
     <string name="creator_title_attribution_progress">已整理 %d 部书架作品</string>

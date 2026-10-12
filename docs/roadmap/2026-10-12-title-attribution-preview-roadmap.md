@@ -129,3 +129,24 @@ python scripts/gradle-coordinator.py run --key title-author-discovery-red -- .\g
 用户验收：打开一部有标题署名的作品 → 原始作者下方直接显示姓名 → 点击姓名进入完整作者页 → 点击“检查新作”，在现有启用图源和关注范围中按名称召回、详情标题复核 → 可关注与使用原有别名/作品筛选。单个人署名不显示社团；裸名字不标个人/社团角色。失败保留既有错误/重试反馈。
 
 边界：单次沿用最多8源、4查询名、每源8页、3源并发；不是全站/全作品保证。标题追踪要求详情中可识别并匹配已确认名称的署名，搜索卡片或上传者字段命中不足以确认；既有归档保留。多人、歧义、失效图源不自动猜测，个人与社团不自动合并。已有人工/恢复POSSIBLE关系不会因点击静默升级，也不会开启作者级标题模式。图源自动归属设置与作者级确认相互独立。
+
+
+## 第三批详情署名排版调整（2026-10-12）
+
+用户要求暂不合入主干，等待同工作树另一项研究一起整合；此前接入分支和体验包仅代表第二批，不包含本次调整。
+
+本批为局部 UI 修正，主代理直接实施，无子代理、无独立审查。SOURCE：双端现有详情 header 与 FlowRow；PROJECT_POLICY：移除详情中的标题自动归属设置按钮，把“标题识别作者”作为署名 FlowRow 第一项，空间不足时自然换行；姓名点击仍走既有完整作者页。无新增导航、数据变更或 HTML adapter。来源自动索引偏好及已有归属数据不删除、不暗中修改。
+
+验收固定为双端真实 Compose header：无设置按钮、标签文字正确且在首个名字同一行前面、名字仍可点击、原作者保留、无社团时不增加社团。旧自动归属控制器仅保留独立组件回归，不再作为详情入口。focused 红绿及同范围复验，格式和 diff 检查；不跑全量、不分配版本、不生成新体验包。预计15–25分钟，主要成本为双端 Kotlin 编译。
+
+Gradle：catalog 批次993aa6e0ee已提交并按其计划释放执行权；本批通过协调器串行执行 title-inline-*，命令退出后可交接，不允许同时启动重型验证。
+
+- [x] 双端入口移除与同行署名、focused TDD、格式检查及提交。
+
+红测 `title-inline-red`：11项执行，2项新入口断言因实际仍显示按钮而失败，9项既有回归通过。修改涉及12文件，内聚于双端详情接线、两套真实UI测试、三语言标签与既有两份文档；超过8文件主要由于Android分层参数贯穿，未扩展领域行为。
+
+绿测 `title-inline-green`：Desktop6项、Android5项全部通过。重构阶段仅调整测试夹具与格式；`title-inline-format` 发现一处120字符限制，拆行后 `title-inline-format-fixed` 通过；`title-inline-final` 再执行同一focused范围并通过限定Android四文件格式检查，Desktop未再修改，复用该任务UP-TO-DATE有效结果。三语言XML标签唯一且文本正确，git diff --check通过；Desktop沿用现有格式（该模块未启用Spotless）。无全量、原生整窗/设备操作或新构建产物。
+
+复验命令：协调器串行包装 `gradlew.bat --no-parallel --max-workers=2 :app-desktop:jvmTest --tests mihon.desktop.ui.authors.CreatorTitleAttributionUiTest :app:testDebugUnitTest --tests eu.kanade.tachiyomi.ui.browse.author.AndroidCreatorTitleAttributionUiTest`。本轮日志key为title-inline-red/green/final，位于忽略目录.gradle-coordinator；红绿期间关闭自动重试。最后命令已退出，Gradle执行权释放。
+
+手动验收：两端打开有标题署名的作品详情 → 原作者下方依次显示“标题识别作者”、识别姓名，未显示“标题自动归属设置”按钮 → 点击姓名继续进入完整作者页。窄布局/长名称允许换行；无标题候选不出现署名行、无社团不补占位。此次仅源码提交，之前第二批EXE/APK尚未包含该调整；main及此前隔离接入分支均未更新。

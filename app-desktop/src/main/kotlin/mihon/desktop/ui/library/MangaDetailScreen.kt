@@ -149,7 +149,6 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         val screenModelFactory = LocalMangaDetailScreenModelFactory.current
         val model = rememberScreenModel { screenModelFactory(mangaId) }
         val dependencies = LocalDesktopUiDependencies.current
-        val titleAttributionEditor = dependencies.creatorTitleAttributionEditor
         val state by model.state.collectAsState()
         val downloadQueue by model.downloadQueueFlow().collectAsState()
         val downloadedOnly by model.downloadedOnlyFlow().collectAsState(false)
@@ -1251,11 +1250,6 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                             },
                             creatorMentions = remember(manga) {
                                 ExtractCreatorsFromManga().await(manga!!)
-                            },
-                            creatorTitleAttributionControl = {
-                                titleAttributionEditor?.let {
-                                    mihon.desktop.ui.authors.CreatorTitleAttributionControl(manga!!, source?.name, it)
-                                }
                             },
                             creatorIdentityLoading = creatorIdentityLoading,
                             onCreatorSearch = { mention ->

@@ -36,6 +36,12 @@ class CreatorTitleAttributionUiTest {
 
     @Test
     fun `title credits appear below original author without enabling source or opening settings`() = fixture { scene, editor, writer, _, _ ->
+        assertFalse(nodes(scene).any { tag(it) == "creator-title-attribution-open" })
+        val caption = nodes(scene).single { text(it) == "Title-recognized authors" }
+        val firstCredit = nodes(scene).single { tag(it) == "title-credit-0" }
+        assertTrue(caption.boundsInRoot.right <= firstCredit.boundsInRoot.left)
+        assertTrue(caption.boundsInRoot.top < firstCredit.boundsInRoot.bottom)
+        assertTrue(firstCredit.boundsInRoot.top < caption.boundsInRoot.bottom)
         val original = nodes(scene).first { text(it) == "Uploader" }
         val artist = nodes(scene).single { tag(it) == "title-credit-0" }
         assertTrue(text(artist).contains("Artist"))
@@ -57,7 +63,7 @@ class CreatorTitleAttributionUiTest {
     }
 
     @Test
-    fun `detail header invokes source confirmation and real indexing only after save`() = fixture { scene, editor, writer, _, _ ->
+    fun `standalone control invokes source confirmation and real indexing only after save`() = fixture(showStandaloneControl = true) { scene, editor, writer, _, _ ->
         click(scene, "creator-title-attribution-open")
         click(scene, "creator-title-attribution-toggle")
         click(scene, "creator-title-attribution-close")
@@ -77,7 +83,7 @@ class CreatorTitleAttributionUiTest {
     }
 
     @Test
-    fun `failed indexing retains the confirmation and does not enable the source`() = fixture { scene, editor, writer, _, _ ->
+    fun `failed indexing retains the confirmation and does not enable the source`() = fixture(showStandaloneControl = true) { scene, editor, writer, _, _ ->
         coEvery { writer.indexLibraryMangaBatch(any()) } throws IllegalStateException("磁盘已满")
         click(scene, "creator-title-attribution-open")
         click(scene, "creator-title-attribution-toggle")
@@ -88,7 +94,7 @@ class CreatorTitleAttributionUiTest {
     }
 
     @Test
-    fun `reopening previews the updated title rather than the old uploader`() = fixture { scene, _, _, manga, _ ->
+    fun `reopening previews the updated title rather than the old uploader`() = fixture(showStandaloneControl = true) { scene, _, _, manga, _ ->
         manga.value = manga.value.copy(title = "(C123) [New Circle (New Artist)] Another work")
         settle(scene) { nodes(scene).any { tag(it) == "creator-title-attribution-open" } }
         click(scene, "creator-title-attribution-open")
@@ -98,7 +104,7 @@ class CreatorTitleAttributionUiTest {
     }
 
     @Test
-    fun `partial reindex failure keeps completed count visible`() = fixture { scene, _, writer, manga, source ->
+    fun `partial reindex failure keeps completed count visible`() = fixture(showStandaloneControl = true) { scene, _, writer, manga, source ->
         coEvery { source.getLibraryMangaForCreatorIndex(Long.MIN_VALUE, 250L) } returns (1L..250L).map { manga.value.copy(id = it) }
         coEvery { source.getLibraryMangaForCreatorIndex(250L, 250L) } returns listOf(manga.value.copy(id = 251L))
         coEvery { writer.indexLibraryMangaBatch(match { it.size == 1 }) } throws IllegalStateException("磁盘已满")
@@ -111,7 +117,7 @@ class CreatorTitleAttributionUiTest {
     private val mangaForLabels = Manga.create().copy(source = 10L, title = "[Circle (Artist)] Work")
     private fun text(node: SemanticsNode) = if (node.config.contains(SemanticsProperties.Text)) node.config[SemanticsProperties.Text].joinToString { it.text } else ""
 
-    private fun fixture(block: suspend (ImageComposeScene, CreatorTitleAttributionEditor, CreatorLibraryIndexWriter, androidx.compose.runtime.MutableState<Manga>, CreatorLibraryMangaSource) -> Unit) = runBlocking {
+    private fun fixture(showStandaloneControl: Boolean = false, block: suspend (ImageComposeScene, CreatorTitleAttributionEditor, CreatorLibraryIndexWriter, androidx.compose.runtime.MutableState<Manga>, CreatorLibraryMangaSource) -> Unit) = runBlocking {
         val manga = mutableStateOf(Manga.create().copy(id = 8L, source = 10L, favorite = true, title = "[Circle (Artist)] Work", author = "Uploader"))
         val node = Preferences.userRoot().node("/mihon-tests/title-native-ui-${UUID.randomUUID()}")
         val preferences = CreatorDiscoveryPreferences(DesktopPreferenceStore(node))
@@ -131,13 +137,14 @@ class CreatorTitleAttributionUiTest {
                     creatorMentions = ExtractCreatorsFromManga().await(manga.value), creatorIdentityLoading = false,
                     onCreatorClick = { clickedMention = it }, onCreatorSearch = {}, onTitleSearch = {}, onNotes = {},
                     onViewCover = {}, coverFocus = FocusRequester(),
-                    creatorTitleAttributionControl = { CreatorTitleAttributionControl(manga.value, "Fixture source", editor) },
                 )
+                if (showStandaloneControl) {
+                    CreatorTitleAttributionControl(manga.value, "Fixture source", editor)
+                }
             }
         }
         try {
             scene.render().close()
-            assertTrue(nodes(scene).any { tag(it) == "creator-title-attribution-open" }, "The production detail header must expose title-attribution controls")
             block(scene, editor, writer, manga, source)
         } finally { scene.close(); node.removeNode() }
     }

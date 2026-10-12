@@ -181,7 +181,6 @@ internal fun MangaHeader(
     onNotes: () -> Unit,
     onViewCover: () -> Unit,
     coverFocus: FocusRequester,
-    creatorTitleAttributionControl: @Composable (() -> Unit)? = null,
 ) {
     val coverRequestState = rememberMangaCoverRequestState(manga.id, manga.source, coverModel, coverLastModified)
     Column(Modifier.fillMaxWidth().padding(16.dp)) {
@@ -252,16 +251,16 @@ internal fun MangaHeader(
                 }
                 if (titleCredits.isNotEmpty()) {
                     val standaloneCredit = remember(manga.title) { TitleCreditParser.parse(manga.title).isEmpty() }
-                    Text(
-                        MR.strings.creator_title_attribution_preview.localized(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
+                        Text(
+                            MR.strings.creator_title_attribution_preview.localized(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.align(Alignment.CenterVertically),
+                        )
                         titleCredits.forEach { mention ->
                             val label = if (standaloneCredit) mention.displayName else mihon.desktop.ui.authors.creatorTitleCreditText(mention)
                             DetailMetadataContext(
@@ -304,7 +303,6 @@ internal fun MangaHeader(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
-                creatorTitleAttributionControl?.invoke()
                 if (manga.notes.isNotBlank()) {
                     Spacer(Modifier.height(8.dp))
                     Column(Modifier.fillMaxWidth().clickable(onClick = onNotes).padding(8.dp)) {

@@ -1577,7 +1577,7 @@
     <string name="creator_title_attribution_title">標題自動歸屬設定</string>
     <string name="creator_title_attribution_description">詳情中的標題姓名可直接進入作者頁，無需啟用此項。此設定為本圖源啟用 [社團（作者）] 或明確個人署名的自動歸屬。儲存後更新目前作品；其他書架作品可另行整理。無法辨識時沿用圖源欄位。</string>
     <string name="creator_title_attribution_enabled">此圖源使用標題署名</string>
-    <string name="creator_title_attribution_preview">目前標題辨識結果</string>
+    <string name="creator_title_attribution_preview">標題識別作者</string>
     <string name="creator_title_attribution_no_preview">未辨識到可自動歸屬的署名。單獨名字僅作為詳情候選；多人及歧義格式暫不處理。</string>
     <string name="creator_title_attribution_reindex">重新整理此圖源書架作者</string>
     <string name="creator_title_attribution_progress">已整理 %d 部書架作品</string>

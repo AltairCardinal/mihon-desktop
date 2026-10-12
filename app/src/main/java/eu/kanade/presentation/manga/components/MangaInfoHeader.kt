@@ -124,7 +124,6 @@ fun MangaInfoBox(
     creatorMentions: List<CreatorMention>,
     onCreatorClick: (CreatorMention) -> Unit,
     modifier: Modifier = Modifier,
-    creatorTitleAttributionControl: @Composable (() -> Unit)? = null,
 ) {
     Column(modifier = modifier) {
         Box {
@@ -179,7 +178,6 @@ fun MangaInfoBox(
                 }
             }
         }
-        creatorTitleAttributionControl?.invoke()
     }
 }
 
@@ -528,13 +526,13 @@ private fun ColumnScope.MangaContentInfo(
     }
     if (titleCredits.isNotEmpty()) {
         val standaloneCredit = remember(title) { TitleCreditParser.parse(title).isEmpty() }
-        Text(
-            stringResource(MR.strings.creator_title_attribution_preview),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp),
-        )
         FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                stringResource(MR.strings.creator_title_attribution_preview),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.align(Alignment.CenterVertically),
+            )
             titleCredits.forEach { mention ->
                 Text(
                     if (standaloneCredit) mention.displayName else creatorTitleCreditText(mention),

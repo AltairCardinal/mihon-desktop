@@ -131,7 +131,6 @@ fun MangaScreen(
     onChapterSelected: (ChapterList.Item, Boolean, Boolean) -> Unit,
     onAllChapterSelected: (Boolean) -> Unit,
     onInvertSelection: () -> Unit,
-    creatorTitleAttributionControl: @Composable (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val onCopyTagToClipboard: (tag: String) -> Unit = {
@@ -162,7 +161,6 @@ fun MangaScreen(
             onSearch = onSearch,
             creatorMentions = creatorMentions,
             onCreatorClick = onCreatorClick,
-            creatorTitleAttributionControl = creatorTitleAttributionControl,
             onCoverClicked = onCoverClicked,
             onShareClicked = onShareClicked,
             onDownloadActionClicked = onDownloadActionClicked,
@@ -201,7 +199,6 @@ fun MangaScreen(
             onSearch = onSearch,
             creatorMentions = creatorMentions,
             onCreatorClick = onCreatorClick,
-            creatorTitleAttributionControl = creatorTitleAttributionControl,
             onCoverClicked = onCoverClicked,
             onShareClicked = onShareClicked,
             onDownloadActionClicked = onDownloadActionClicked,
@@ -271,7 +268,6 @@ private fun MangaScreenSmallImpl(
     onChapterSelected: (ChapterList.Item, Boolean, Boolean) -> Unit,
     onAllChapterSelected: (Boolean) -> Unit,
     onInvertSelection: () -> Unit,
-    creatorTitleAttributionControl: @Composable (() -> Unit)? = null,
 ) {
     val chapterListState = rememberLazyListState()
 
@@ -398,7 +394,6 @@ private fun MangaScreenSmallImpl(
                             doSearch = onSearch,
                             creatorMentions = creatorMentions,
                             onCreatorClick = onCreatorClick,
-                            creatorTitleAttributionControl = creatorTitleAttributionControl,
                         )
                     }
 
@@ -517,7 +512,6 @@ fun MangaScreenLargeImpl(
     onChapterSelected: (ChapterList.Item, Boolean, Boolean) -> Unit,
     onAllChapterSelected: (Boolean) -> Unit,
     onInvertSelection: () -> Unit,
-    creatorTitleAttributionControl: @Composable (() -> Unit)? = null,
 ) {
     val layoutDirection = LocalLayoutDirection.current
     val density = LocalDensity.current
@@ -638,7 +632,6 @@ fun MangaScreenLargeImpl(
                             doSearch = onSearch,
                             creatorMentions = creatorMentions,
                             onCreatorClick = onCreatorClick,
-                            creatorTitleAttributionControl = creatorTitleAttributionControl,
                         )
                         MangaActionRow(
                             favorite = state.manga.favorite,

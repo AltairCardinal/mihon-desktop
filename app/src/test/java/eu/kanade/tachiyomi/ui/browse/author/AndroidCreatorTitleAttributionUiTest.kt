@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import io.mockk.coEvery
@@ -41,6 +42,11 @@ class AndroidCreatorTitleAttributionUiTest {
 
     @Test
     fun `title names appear below original author and open without source opt in`() = fixture { editor, writer, _, _ ->
+        compose.onNodeWithTag("creator-title-attribution-open").assertDoesNotExist()
+        val caption = compose.onNodeWithText("标题识别作者").fetchSemanticsNode().boundsInRoot
+        val firstCredit = compose.onNodeWithTag("title-credit-0").fetchSemanticsNode().boundsInRoot
+        assertTrue(caption.right <= firstCredit.left)
+        assertTrue(caption.top < firstCredit.bottom && firstCredit.top < caption.bottom)
         compose.onNodeWithTag("creator-mention-0").assertTextContains("Uploader", substring = true)
         compose.onNodeWithTag("title-credit-0").assertTextContains("Artist", substring = true)
         compose.onNodeWithTag("title-credit-1").assertTextContains("Circle", substring = true)
@@ -62,66 +68,71 @@ class AndroidCreatorTitleAttributionUiTest {
     }
 
     @Test
-    fun `native header opens confirmation and only save reaches real title indexing`() = fixture {
-            editor,
-            writer,
-            _,
-            _,
-        ->
-        compose.onNodeWithTag("creator-title-attribution-open").performClick()
-        compose.onNodeWithTag("creator-title-attribution-toggle").performClick()
-        compose.onNodeWithTag("creator-title-attribution-close").performClick()
-        assertFalse(editor.policy.isEnabled(10L))
-        coVerify(exactly = 0) { writer.indexLibraryMangaBatch(any()) }
-        compose.onNodeWithTag("creator-title-attribution-open").performClick()
-        compose.onNodeWithTag("creator-title-attribution-toggle").performClick()
-        compose.onNodeWithTag("creator-title-attribution-save").performClick()
-        compose.waitForIdle()
-        assertTrue(editor.policy.isEnabled(10L))
-        compose.onNodeWithTag("creator-mention-0").assertTextContains("Uploader", substring = true)
-        compose.onNodeWithTag("title-credit-0").assertTextContains("创作者: Artist", substring = true)
-        compose.onNodeWithTag("title-credit-1").assertTextContains("社团: Circle", substring = true)
-        coVerify(exactly = 1) {
-            writer.indexLibraryMangaBatch(
-                match {
-                    it.single().mentions.map { mention -> mention.displayName } ==
-                        listOf("Artist", "Circle")
-                },
-            )
+    fun `standalone control opens confirmation and only save reaches real title indexing`() =
+        fixture(showStandaloneControl = true) {
+                editor,
+                writer,
+                _,
+                _,
+            ->
+            compose.onNodeWithTag("creator-title-attribution-open").performClick()
+            compose.onNodeWithTag("creator-title-attribution-toggle").performClick()
+            compose.onNodeWithTag("creator-title-attribution-close").performClick()
+            assertFalse(editor.policy.isEnabled(10L))
+            coVerify(exactly = 0) { writer.indexLibraryMangaBatch(any()) }
+            compose.onNodeWithTag("creator-title-attribution-open").performClick()
+            compose.onNodeWithTag("creator-title-attribution-toggle").performClick()
+            compose.onNodeWithTag("creator-title-attribution-save").performClick()
+            compose.waitForIdle()
+            assertTrue(editor.policy.isEnabled(10L))
+            compose.onNodeWithTag("creator-mention-0").assertTextContains("Uploader", substring = true)
+            compose.onNodeWithTag("title-credit-0").assertTextContains("创作者: Artist", substring = true)
+            compose.onNodeWithTag("title-credit-1").assertTextContains("社团: Circle", substring = true)
+            coVerify(exactly = 1) {
+                writer.indexLibraryMangaBatch(
+                    match {
+                        it.single().mentions.map { mention -> mention.displayName } ==
+                            listOf("Artist", "Circle")
+                    },
+                )
+            }
         }
-    }
 
     @Test
-    fun `failed native save preserves dialog and preview follows changed title`() = fixture {
-            editor,
-            writer,
-            manga,
-            _,
-        ->
-        compose.runOnIdle { manga.value = manga.value.copy(title = "[New Circle (New Artist)] Another work") }
-        compose.onNodeWithTag("creator-title-attribution-open").performClick()
-        compose.onNodeWithTag("creator-title-attribution-preview-0").assertTextContains("New Artist", substring = true)
-        coEvery { writer.indexLibraryMangaBatch(any()) } throws IllegalStateException("磁盘已满")
-        compose.onNodeWithTag("creator-title-attribution-toggle").performClick()
-        compose.onNodeWithTag("creator-title-attribution-save").performClick()
-        compose.onNodeWithTag("creator-title-attribution-error").assertTextContains("磁盘已满")
-        compose.onNodeWithTag("creator-title-attribution-save").assertExists()
-        assertFalse(editor.policy.isEnabled(10L))
-    }
+    fun `failed native save preserves dialog and preview follows changed title`() =
+        fixture(showStandaloneControl = true) {
+                editor,
+                writer,
+                manga,
+                _,
+            ->
+            compose.runOnIdle { manga.value = manga.value.copy(title = "[New Circle (New Artist)] Another work") }
+            compose.onNodeWithTag("creator-title-attribution-open").performClick()
+            compose.onNodeWithTag("creator-title-attribution-preview-0")
+                .assertTextContains("New Artist", substring = true)
+            coEvery { writer.indexLibraryMangaBatch(any()) } throws IllegalStateException("磁盘已满")
+            compose.onNodeWithTag("creator-title-attribution-toggle").performClick()
+            compose.onNodeWithTag("creator-title-attribution-save").performClick()
+            compose.onNodeWithTag("creator-title-attribution-error").assertTextContains("磁盘已满")
+            compose.onNodeWithTag("creator-title-attribution-save").assertExists()
+            assertFalse(editor.policy.isEnabled(10L))
+        }
 
     @Test
-    fun `native partial reindex failure retains completed count`() = fixture { _, writer, manga, source ->
-        coEvery { source.getLibraryMangaForCreatorIndex(Long.MIN_VALUE, 250L) } returns
-            (1L..250L).map { manga.value.copy(id = it) }
-        coEvery { source.getLibraryMangaForCreatorIndex(250L, 250L) } returns listOf(manga.value.copy(id = 251L))
-        coEvery { writer.indexLibraryMangaBatch(match { it.size == 1 }) } throws IllegalStateException("磁盘已满")
-        compose.onNodeWithTag("creator-title-attribution-open").performClick()
-        compose.onNodeWithTag("creator-title-attribution-reindex").performClick()
-        compose.onNodeWithTag("creator-title-attribution-error").assertTextContains("磁盘已满")
-        compose.onNodeWithTag("creator-title-attribution-feedback").assertTextContains("250", substring = true)
-    }
+    fun `native partial reindex failure retains completed count`() =
+        fixture(showStandaloneControl = true) { _, writer, manga, source ->
+            coEvery { source.getLibraryMangaForCreatorIndex(Long.MIN_VALUE, 250L) } returns
+                (1L..250L).map { manga.value.copy(id = it) }
+            coEvery { source.getLibraryMangaForCreatorIndex(250L, 250L) } returns listOf(manga.value.copy(id = 251L))
+            coEvery { writer.indexLibraryMangaBatch(match { it.size == 1 }) } throws IllegalStateException("磁盘已满")
+            compose.onNodeWithTag("creator-title-attribution-open").performClick()
+            compose.onNodeWithTag("creator-title-attribution-reindex").performClick()
+            compose.onNodeWithTag("creator-title-attribution-error").assertTextContains("磁盘已满")
+            compose.onNodeWithTag("creator-title-attribution-feedback").assertTextContains("250", substring = true)
+        }
 
     private fun fixture(
+        showStandaloneControl: Boolean = false,
         block: (
             CreatorTitleAttributionEditor,
             CreatorLibraryIndexWriter,
@@ -171,13 +182,12 @@ class AndroidCreatorTitleAttributionUiTest {
                             clickedMention =
                                 it
                         },
-                        creatorTitleAttributionControl = {
-                            CreatorTitleAttributionControl(manga.value, "Fixture source", editor)
-                        },
                     )
+                    if (showStandaloneControl) {
+                        CreatorTitleAttributionControl(manga.value, "Fixture source", editor)
+                    }
                 }
             }
-            compose.onNodeWithTag("creator-title-attribution-open").assertExists()
             block(editor, writer, manga, source)
         } finally {
             activity.pause().stop().destroy()

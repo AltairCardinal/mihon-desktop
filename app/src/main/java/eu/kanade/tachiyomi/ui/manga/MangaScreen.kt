@@ -69,7 +69,6 @@ import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga
 import tachiyomi.domain.creator.model.CreatorMention
 import tachiyomi.domain.creator.model.CreatorMentionResolution
-import tachiyomi.domain.creator.service.CreatorTitleAttributionEditor
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.screens.LoadingScreen
@@ -117,7 +116,6 @@ class MangaScreen(
         val successState = state as MangaScreenModel.State.Success
         val isHttpSource = remember { successState.source is HttpSource }
         val creatorNavigator = remember { AndroidMangaCreatorNavigator() }
-        val titleAttributionEditor = remember { Injekt.get<CreatorTitleAttributionEditor>() }
         val creatorMentions = remember(successState.manga) {
             ExtractCreatorsFromManga().await(successState.manga)
         }
@@ -202,13 +200,6 @@ class MangaScreen(
             onSearch = { query, global -> scope.launch { performSearch(navigator, query, global) } },
             creatorMentions = creatorMentions,
             onCreatorClick = openCreator,
-            creatorTitleAttributionControl = {
-                eu.kanade.tachiyomi.ui.browse.author.CreatorTitleAttributionControl(
-                    successState.manga,
-                    successState.source.name,
-                    titleAttributionEditor,
-                )
-            },
             onCoverClicked = screenModel::showCoverDialog,
             onShareClicked = { shareManga(context, screenModel.manga, screenModel.source) }.takeIf { isHttpSource },
             onDownloadActionClicked = screenModel::runDownloadAction.takeIf { !successState.source.isLocalOrStub() },
