@@ -2,9 +2,14 @@ package mihon.desktop.reader
 
 import androidx.compose.ui.graphics.asSkiaBitmap
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import mihon.domain.reader.PageDecodePurpose
+import mihon.domain.reader.PageRotation
 import mihon.domain.reader.PixelBounds
 import mihon.domain.reader.ReaderImageOrientation
+import mihon.domain.reader.ReaderOriginalPageSamples
+import mihon.domain.reader.ReaderOriginalPageSampling
 import mihon.domain.reader.ReaderPageDecodeKey
 import mihon.domain.reader.ReaderSpreadEdgeSamples
 import mihon.domain.reader.SharedSpreadMatching
@@ -23,7 +28,36 @@ internal object DesktopReaderSpreadSampler {
         canContinue: () -> Boolean = { true },
     ): ReaderSpreadEdgeSamples? {
         val plan = SharedSpreadMatching.plan(rawWidth, rawHeight, orientation) ?: return null
+        val (left, right) = sampleRegions(session, plan.left, plan.right, canContinue) ?: return null
+        return ReaderSpreadEdgeSamples(left, right)
+    }
+
+    suspend fun sampleOriginal(
+        pipeline: DesktopReaderPageImagePipeline,
+        session: DesktopReaderRegionContentSession,
+        rawWidth: Int,
+        rawHeight: Int,
+        orientation: ReaderImageOrientation,
+        rotation: PageRotation = PageRotation.NONE,
+        canContinue: () -> Boolean = { true },
+    ): ReaderOriginalPageSamples? {
+        currentCoroutineContext().ensureActive()
+        val plan = ReaderOriginalPageSampling.plan(rawWidth, rawHeight, orientation, rotation) ?: return null
+        val (left, right) = sampleRegions(session, plan.left, plan.right, canContinue) ?: return null
+        return plan.samples(left, right)
+    }
+
+    private suspend fun sampleRegions(
+        session: DesktopReaderRegionContentSession,
+        leftPoints: List<Pair<Int, Int>>,
+        rightPoints: List<Pair<Int, Int>>,
+        canContinue: () -> Boolean,
+    ): Pair<List<Int>, List<Int>>? {
+        currentCoroutineContext().ensureActive()
+        if (!canContinue()) throw DesktopReaderOptionalWorkPaused()
+        if (leftPoints.isEmpty() && rightPoints.isEmpty()) return emptyList<Int>() to emptyList()
         suspend fun edge(points: List<Pair<Int, Int>>): List<Int>? {
+            currentCoroutineContext().ensureActive()
             if (!canContinue()) throw DesktopReaderOptionalWorkPaused()
             val left = points.minOf { it.first }
             val top = points.minOf { it.second }
@@ -51,12 +85,18 @@ internal object DesktopReaderSpreadSampler {
                 // ImageIO's bounded source raster becomes sRGB PNG. getColor returns straight ARGB,
                 // rather than exposing Skia's premultiplied storage to the shared white composition.
                 val pixels = asset.bitmap.asSkiaBitmap()
-                points.map { (x, y) -> pixels.getColor(x - bounds.x, y - bounds.y) }
+                points.map { (x, y) ->
+                    currentCoroutineContext().ensureActive()
+                    if (!canContinue()) throw DesktopReaderOptionalWorkPaused()
+                    pixels.getColor(x - bounds.x, y - bounds.y)
+                }
             }
         }
-        val left = edge(plan.left) ?: return null
-        val right = edge(plan.right) ?: return null
-        return ReaderSpreadEdgeSamples(left, right)
+        val left = edge(leftPoints) ?: return null
+        val right = edge(rightPoints) ?: return null
+        currentCoroutineContext().ensureActive()
+        if (!canContinue()) throw DesktopReaderOptionalWorkPaused()
+        return left to right
     }
 
     private const val MAX_REGION_BYTES = 4L * 1024 * 1024

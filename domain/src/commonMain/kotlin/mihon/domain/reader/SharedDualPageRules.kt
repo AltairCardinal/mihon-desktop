@@ -4,26 +4,36 @@ import mihon.domain.reader.session.ReaderPageId
 
 enum class ReaderPageSideHint { UNKNOWN, LEFT, RIGHT }
 
+data class ReaderPageSideSamplingPlan(val left: List<Pair<Int, Int>>, val right: List<Pair<Int, Int>>)
+
 /** Conservative evidence from the oriented, uncropped decoded image; never performs I/O. */
 object ReaderPageSideHints {
-    fun classify(width: Int, height: Int, argbAt: (Int, Int) -> Int): ReaderPageSideHint {
-        if (width < 64 || height < 64 || width >= height) return ReaderPageSideHint.UNKNOWN
-        val left = mutableListOf<Double>()
-        val right = mutableListOf<Double>()
-        for (offset in listOf(.002, .015, .035)) {
+    const val SAMPLE_POINTS_PER_SIDE = 144
+
+    fun plan(width: Int, height: Int): ReaderPageSideSamplingPlan? {
+        if (width < 64 || height < 64 || width >= height) return null
+        fun side(mirror: Boolean) = listOf(.002, .015, .035).flatMap { offset ->
             val x = (width * offset).toInt().coerceIn(1, width - 2)
-            var a = 0
-            var b = 0
-            repeat(48) { sample ->
+            List(48) { sample ->
                 val y = (height * (.04 + .90 * sample / 47)).toInt().coerceIn(0, height - 1)
-                fun white(color: Int) = color ushr 24 >= 240 &&
-                    (color ushr 16 and 255) >= 242 && (color ushr 8 and 255) >= 242 && (color and 255) >= 242
-                if (white(argbAt(x, y))) a++
-                if (white(argbAt(width - 1 - x, y))) b++
+                (if (mirror) width - 1 - x else x) to y
             }
-            left += a / 48.0
-            right += b / 48.0
         }
+        return ReaderPageSideSamplingPlan(side(false), side(true))
+    }
+
+    fun classify(width: Int, height: Int, argbAt: (Int, Int) -> Int): ReaderPageSideHint {
+        val plan = plan(width, height) ?: return ReaderPageSideHint.UNKNOWN
+        return classify(plan.left.map { (x, y) -> argbAt(x, y) }, plan.right.map { (x, y) -> argbAt(x, y) })
+    }
+
+    fun classify(leftSamples: List<Int>, rightSamples: List<Int>): ReaderPageSideHint {
+        require(leftSamples.size == SAMPLE_POINTS_PER_SIDE && rightSamples.size == SAMPLE_POINTS_PER_SIDE)
+        fun white(color: Int) = color ushr 24 >= 240 &&
+            (color ushr 16 and 255) >= 242 && (color ushr 8 and 255) >= 242 && (color and 255) >= 242
+        fun proportions(samples: List<Int>) = samples.chunked(48).map { band -> band.count(::white) / 48.0 }
+        val left = proportions(leftSamples)
+        val right = proportions(rightSamples)
         return when {
             left.all { it >= .90 } && right.all { it <= .75 } && left.zip(right).all { (a, b) -> a - b >= .25 } ->
                 ReaderPageSideHint.RIGHT

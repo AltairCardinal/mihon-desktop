@@ -1,0 +1,9 @@
+{
+  "width": 400,
+  "height": 600,
+  "sha256": "726b5195d7ac1cf33aec83498aa44a543a30f3ee730d11cfb387fb8806389721",
+  "leftArgbHex": "804080c0",
+  "rightArgbHex": "efffffff",
+  "sideHint": "UNKNOWN",
+  "method": "Direct PNG RGBA8 scanline bytes, filter 0, explicit sRGB chunk; no Bitmap, JPEG, or production decoder used"
+}

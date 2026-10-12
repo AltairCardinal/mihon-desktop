@@ -5,10 +5,14 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.update
+import mihon.domain.reader.PageRotation
+import mihon.domain.reader.ReaderOriginalPageSamples
+import mihon.domain.reader.ReaderOriginalPageSampling
 import mihon.domain.reader.ReaderSpreadEdgeSamples
 import mihon.domain.reader.ReaderSpreadSampleRequest
 import mihon.domain.reader.SharedSpreadMatching
 import tachiyomi.decoder.ImageDecoder
+import java.io.FilterInputStream
 import java.io.InputStream
 
 /** Optional resource pause retains unknown samples and never marks original content malformed. */
@@ -28,7 +32,11 @@ internal object AndroidReaderSpreadSampler {
     val nativeDecoder: (InputStream) -> ReaderPageRegionDecoder = { encoded ->
         val original = checkNotNull(ImageDecoder.newInstance(encoded, false, null))
         object : ReaderPageRegionDecoder {
-            override fun decode(region: Rect) = checkNotNull(original.decode(region = region, sampleSize = 1))
+            override fun decode(region: Rect) = checkNotNull(original.decode(region = region, sampleSize = 1)).apply {
+                // The dependency writes straight RGBA into a bitmap whose default flag is premultiplied.
+                // This sampler only reads pixels; mark the storage correctly before getPixel unpremultiplies it.
+                setPremultiplied(false)
+            }
             override fun recycle() = original.recycle()
         }
     }
@@ -41,18 +49,79 @@ internal object AndroidReaderSpreadSampler {
         decoderFactory: (InputStream) -> ReaderPageRegionDecoder = nativeDecoder,
         canContinue: () -> Boolean = { true },
     ): ReaderSpreadEdgeSamples? {
+        val plan = SharedSpreadMatching.plan(rawWidth, rawHeight, request.content.sourceOrientation) ?: return null
+        val (left, right) = sampleRegions(
+            page,
+            request,
+            plan.left,
+            plan.right,
+            rawWidth,
+            rawHeight,
+            decoderFactory,
+            canContinue,
+        )
+            ?: return null
+        return ReaderSpreadEdgeSamples(left, right)
+    }
+
+    suspend fun sampleOriginal(
+        page: ReaderPage,
+        request: ReaderSpreadSampleRequest,
+        rawWidth: Int,
+        rawHeight: Int,
+        decoderFactory: (InputStream) -> ReaderPageRegionDecoder = nativeDecoder,
+        canContinue: () -> Boolean = { true },
+        rotation: PageRotation = request.content.rotation,
+    ): ReaderOriginalPageSamples? {
+        currentCoroutineContext().ensureActive()
+        val plan = ReaderOriginalPageSampling.plan(
+            rawWidth,
+            rawHeight,
+            request.content.sourceOrientation,
+            rotation,
+        ) ?: return null
+        val (left, right) = sampleRegions(
+            page,
+            request,
+            plan.left,
+            plan.right,
+            rawWidth,
+            rawHeight,
+            decoderFactory,
+            canContinue,
+        )
+            ?: return null
+        return plan.samples(left, right)
+    }
+
+    private suspend fun sampleRegions(
+        page: ReaderPage,
+        request: ReaderSpreadSampleRequest,
+        leftPoints: List<Pair<Int, Int>>,
+        rightPoints: List<Pair<Int, Int>>,
+        rawWidth: Int,
+        rawHeight: Int,
+        decoderFactory: (InputStream) -> ReaderPageRegionDecoder,
+        canContinue: () -> Boolean,
+    ): Pair<List<Int>, List<Int>>? {
         fun requireResources() {
             if (!canContinue()) throw AndroidReaderOptionalWorkPaused()
         }
+        currentCoroutineContext().ensureActive()
         requireResources()
-        val plan = SharedSpreadMatching.plan(rawWidth, rawHeight, request.content.sourceOrientation) ?: return null
+        if (page.captureEncodedStream(request.content.contentVersion) == null) return null
+        if (leftPoints.isEmpty() && rightPoints.isEmpty()) return emptyList<Int>() to emptyList()
         fun region(points: List<Pair<Int, Int>>): Rect {
-            val left = points.minOf { it.first }
-            val top = points.minOf { it.second }
-            return Rect(left, top, points.maxOf { it.first } + 1, points.maxOf { it.second } + 1)
+            // libwebp snaps crop origins to even pixels. Keep chroma interpolation context too,
+            // so a sample at either region boundary agrees with decoding the complete original.
+            val left = (points.minOf { it.first } / 2 * 2 - 2).coerceAtLeast(0)
+            val top = (points.minOf { it.second } / 2 * 2 - 2).coerceAtLeast(0)
+            val right = minOf(rawWidth.toLong(), points.maxOf { it.first }.toLong() + 2).toInt()
+            val bottom = minOf(rawHeight.toLong(), points.maxOf { it.second }.toLong() + 2).toInt()
+            return Rect(left, top, right, bottom)
         }
-        val leftRegion = region(plan.left)
-        val rightRegion = region(plan.right)
+        val leftRegion = region(leftPoints)
+        val rightRegion = region(rightPoints)
         if (listOf(leftRegion, rightRegion).any {
                 it.width().toLong() * it.height() > MAX_REGION_BYTES / 4
             }
@@ -64,7 +133,11 @@ internal object AndroidReaderSpreadSampler {
         requireResources()
         return stream().use { encoded ->
             requireResources()
-            val decoder = decoderFactory(encoded)
+            // ImageDecoder.newInstance closes its argument. The sampler owns the original stream;
+            // a decoder factory only borrows it, including when construction throws or is cancelled.
+            val decoder = decoderFactory(object : FilterInputStream(encoded) {
+                override fun close() = Unit
+            })
             try {
                 suspend fun edge(points: List<Pair<Int, Int>>, bounds: Rect): List<Int>? {
                     currentCoroutineContext().ensureActive()
@@ -86,9 +159,12 @@ internal object AndroidReaderSpreadSampler {
                         bitmap.recycle()
                     }
                 }
-                val left = edge(plan.left, leftRegion) ?: return@use null
-                val right = edge(plan.right, rightRegion) ?: return@use null
-                ReaderSpreadEdgeSamples(left, right)
+                val left = edge(leftPoints, leftRegion) ?: return@use null
+                val right = edge(rightPoints, rightRegion) ?: return@use null
+                currentCoroutineContext().ensureActive()
+                requireResources()
+                if (page.captureEncodedStream(request.content.contentVersion) == null) return@use null
+                left to right
             } finally {
                 decoder.recycle()
             }
