@@ -84,9 +84,10 @@ class AuthorCardProductionWiringTest {
     lateinit var directory: java.nio.file.Path
 
     @Test
-    fun `mounted authors root defaults to followed and shows real repository representative work`(): Unit = runBlocking {
-        mountedAuthorsScenario(gateRestoredScope = false)
-    }
+    fun `mounted authors root defaults to followed and shows real repository representative work`(): Unit =
+        runBlocking {
+            mountedAuthorsScenario(gateRestoredScope = false)
+        }
 
     @Test
     fun `scope restoration survives an empty loading frame before remount`(): Unit = runBlocking {
@@ -98,7 +99,10 @@ class AuthorCardProductionWiringTest {
         mountedAuthorsScenario(gateRestoredScope = false, seedSavedScope = true)
     }
 
-    private suspend fun mountedAuthorsScenario(gateRestoredScope: Boolean, seedSavedScope: Boolean = false) = kotlinx.coroutines.coroutineScope {
+    private suspend fun mountedAuthorsScenario(
+        gateRestoredScope: Boolean,
+        seedSavedScope: Boolean = false,
+    ) = kotlinx.coroutines.coroutineScope {
         val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
             app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY,
         )
@@ -181,12 +185,17 @@ class AuthorCardProductionWiringTest {
         val indexer = CreatorLibraryIndexer(
             mangaSource = object : CreatorLibraryMangaSource {
                 override suspend fun countLibraryMangaForCreatorIndex(): Long = 0L
-                override suspend fun getLibraryMangaForCreatorIndex(afterId: Long, limit: Long): List<Manga> = emptyList()
+                override suspend fun getLibraryMangaForCreatorIndex(
+                    afterId: Long,
+                    limit: Long,
+                ): List<Manga> = emptyList()
             },
             indexWriter = NoopCreatorLibraryIndexWriter,
             extractCreators = ExtractCreatorsFromManga(),
         )
-        val preferenceNode = java.util.prefs.Preferences.userRoot().node("/mihon-tests/ax01-author-${UUID.randomUUID()}")
+        val preferenceNode = java.util.prefs.Preferences.userRoot().node(
+            "/mihon-tests/ax01-author-${UUID.randomUUID()}",
+        )
         val desktopPreferences = DesktopAppPreferences(DesktopPreferenceStore(preferenceNode)).apply {
             enabledLanguages.set(setOf("en"))
         }
@@ -254,7 +263,14 @@ class AuthorCardProductionWiringTest {
                 val representativeCoverNodes = unmergedNodes.filter { node ->
                     node.config.getOrElse(SemanticsProperties.TestTag) { "" }.startsWith("creator-cover-")
                 }
-                assertTrue(representativeCoverNodes.size == 3, "The followed author should show three representative covers")
+                assertTrue(
+                    representativeCoverNodes.size == 3,
+                    "The followed author should show three representative covers",
+                )
+                representativeCoverNodes.forEach { cover ->
+                    assertEquals(48f, cover.boundsInRoot.width, 1f)
+                    assertEquals(2f / 3f, cover.boundsInRoot.width / cover.boundsInRoot.height, 0.01f)
+                }
                 assertTrue(
                     representativeCoverNodes.all { it.boundsInRoot.top >= authorNameNode.boundsInRoot.bottom },
                     "Representative covers should sit below the author card heading at 320dp",
@@ -280,7 +296,9 @@ class AuthorCardProductionWiringTest {
 
             if (seedSavedScope) {
                 // The persisted viewport can outlive the inactive Compose list's measured position.
-                checkNotNull(modelOwner.latestRoot).saveScrollPosition(false, index = 49, offset = 1, lastVisibleIndex = 51)
+                checkNotNull(
+                    modelOwner.latestRoot,
+                ).saveScrollPosition(false, index = 49, offset = 1, lastVisibleIndex = 51)
                 clickableTagNode(scene, "creator-tab-all").config[SemanticsActions.OnClick].action?.invoke()
                 awaitScope(followedOnly = false)
                 assertEquals(52, checkNotNull(modelOwner.latestRoot).state.value.cards.size)
@@ -312,8 +330,15 @@ class AuthorCardProductionWiringTest {
                         delay(10)
                     }
                 }
-                assertEquals(0, checkNotNull(modelOwner.latestRoot).scrollPosition(false).index, "Refresh must preserve subsequent user scrolling")
-                assertTrue(lateCreator.displayName !in texts(scene), "Refresh must not replay the scope's previous restore target")
+                assertEquals(
+                    0,
+                    checkNotNull(modelOwner.latestRoot).scrollPosition(false).index,
+                    "Refresh must preserve subsequent user scrolling",
+                )
+                assertTrue(
+                    lateCreator.displayName !in texts(scene),
+                    "Refresh must not replay the scope's previous restore target",
+                )
                 return@coroutineScope
             }
             clickableTagNode(scene, "creator-tab-all").config[SemanticsActions.OnClick].action?.invoke()
@@ -325,8 +350,8 @@ class AuthorCardProductionWiringTest {
                 }
             }
             assertTrue(
-                MR.strings.creator_no_representative_work.localized(Locale.getDefault()) in texts(scene),
-                "Authors without representative works should show the empty card label",
+                MR.strings.creator_no_representative_work.localized(Locale.getDefault()) !in texts(scene),
+                "Authors without representative works match Android without an extra empty label",
             )
 
             val authorList = nodes(scene).single { node ->
@@ -341,7 +366,8 @@ class AuthorCardProductionWiringTest {
                     val currentList = nodes(scene).single { node ->
                         node.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-author-list"
                     }
-                    expanded = currentList.config[SemanticsProperties.VerticalScrollAxisRange].maxValue() > initialScrollRange
+                    expanded =
+                        currentList.config[SemanticsProperties.VerticalScrollAxisRange].maxValue() > initialScrollRange
                     delay(10)
                 }
             }
@@ -392,7 +418,10 @@ class AuthorCardProductionWiringTest {
                 clickableTagNode(scene, "creator-tab-all").config.getOrElse(SemanticsProperties.Selected) { false },
                 "Returning from detail should restore the All authors scope",
             )
-            assertTrue(lateCreator.displayName in texts(scene), "Returning from detail should restore the selected author row")
+            assertTrue(
+                lateCreator.displayName in texts(scene),
+                "Returning from detail should restore the selected author row",
+            )
 
             val savedAllPosition = modelOwner.latestRoot?.scrollPosition(followedOnly = false)
             clickableTagNode(scene, "creator-tab-following")
@@ -438,7 +467,9 @@ class AuthorCardProductionWiringTest {
             if (gateRestoredScope) pageGate = CompletableDeferred()
             clickableTagNode(scene, "creator-tab-all").config[SemanticsActions.OnClick].action?.invoke()
             if (gateRestoredScope) {
-                withTimeout(5_000) { checkNotNull(modelOwner.latestRoot).state.first { !it.followedOnly && it.loading } }
+                withTimeout(5_000) {
+                    checkNotNull(modelOwner.latestRoot).state.first { !it.followedOnly && it.loading }
+                }
                 withTimeout(5_000) {
                     while (nodes(scene).any {
                             it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-author-list"
@@ -494,7 +525,9 @@ class AuthorCardProductionWiringTest {
                     val filteredRange = filteredList?.config?.let { config ->
                         runCatching { config[SemanticsProperties.VerticalScrollAxisRange].maxValue() }.getOrNull()
                     }
-                    if (lateCreator.displayName in texts(scene) && filteredRange != null && filteredRange < initialScrollRange / 2f) {
+                    if (lateCreator.displayName in texts(scene) && filteredRange != null &&
+                        filteredRange < initialScrollRange / 2f
+                    ) {
                         break
                     }
                     scene.render()
@@ -552,7 +585,10 @@ class AuthorCardProductionWiringTest {
                     delay(10)
                 }
             }
-            assertFalse(otherCreator.displayName in texts(scene), "Re-entering Authors should restore the Followed page")
+            assertFalse(
+                otherCreator.displayName in texts(scene),
+                "Re-entering Authors should restore the Followed page",
+            )
             val followingTab = nodes(scene).single { node ->
                 node.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-tab-following"
             }
@@ -576,7 +612,10 @@ class AuthorCardProductionWiringTest {
                     delay(10)
                 }
             }
-            assertTrue(modelOwner.rootCount >= 2, "The fixture must retain both the disposed root and its reentry replacement")
+            assertTrue(
+                modelOwner.rootCount >= 2,
+                "The fixture must retain both the disposed root and its reentry replacement",
+            )
             assertTrue(modelOwner.detailCount >= 1, "The fixture must retain the real detail model removed by Back")
         } finally {
             try {

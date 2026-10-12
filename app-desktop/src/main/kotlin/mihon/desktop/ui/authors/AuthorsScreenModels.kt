@@ -155,7 +155,9 @@ class AuthorsRootScreenModel(
         CreatorWorkPresentationExclusions(it.creatorWorkPresentationExclusions())
     }
     private var legacyPresentationExclusionsImported = false
-    val settingsEditor = preferences?.let { tachiyomi.domain.creator.service.CreatorSettingsEditor(it, scope, onSettingsSaved) }
+    val settingsEditor = preferences?.let {
+        tachiyomi.domain.creator.service.CreatorSettingsEditor(it, scope, onSettingsSaved)
+    }
     private val mutableState = MutableStateFlow(AuthorsRootState(indexState = indexer.state.value))
     val state: StateFlow<AuthorsRootState> = mutableState.asStateFlow()
     private var pageGeneration = 0L
@@ -271,7 +273,11 @@ class AuthorsRootScreenModel(
     private fun showTab(followedOnly: Boolean) {
         if (followedOnly == state.value.followedOnly) return
         val restorePosition = if (followedOnly) followedScrollPosition else allAuthorsScrollPosition
-        requestPages(targetCount = restorePosition.lastVisibleIndex + 1, preserveCards = false, followedOnly = followedOnly)
+        requestPages(
+            targetCount = restorePosition.lastVisibleIndex + 1,
+            preserveCards = false,
+            followedOnly = followedOnly,
+        )
     }
 
     private fun loadFirstPage() {
@@ -291,7 +297,11 @@ class AuthorsRootScreenModel(
     ) {
         pageJob?.cancel()
         val generation = ++pageGeneration
-        val current = state.value.copy(query = query, queryResetRevision = queryResetRevision, followedOnly = followedOnly)
+        val current = state.value.copy(
+            query = query,
+            queryResetRevision = queryResetRevision,
+            followedOnly = followedOnly,
+        )
         mutableState.update {
             it.copy(
                 query = query,
@@ -390,6 +400,8 @@ data class AuthorDetailState(
     val shelfDisplayMode: LibraryDisplayMode = LibraryDisplayMode.default,
     val workDisplayModeError: String? = null,
     val workOpenError: String? = null,
+    val workOpening: Boolean = false,
+    val presentationUpdating: Boolean = false,
 ) {
     fun allVersionsForWork(workId: Long): List<SourceWorkArchiveVersion> =
         workArchive.works.firstOrNull { it.workId == workId }?.versions.orEmpty()
@@ -635,8 +647,8 @@ internal class AuthorDetailScreenModel(
     }
 
     fun openVersion(version: SourceWorkArchiveVersion) = scope.launch {
-        if (mutableState.value.actionRunning) return@launch
-        mutableState.update { it.copy(actionRunning = true, workOpenError = null) }
+        if (mutableState.value.workOpening) return@launch
+        mutableState.update { it.copy(workOpening = true, workOpenError = null) }
         runCatching {
             val opener = OpenCreatorWorkVersion { listed ->
                 requireNotNull(saveSourceMangaForDetails).awaitListedForDetails(
@@ -644,11 +656,13 @@ internal class AuthorDetailScreenModel(
                     listed.naturalKey.sourceId,
                 ).manga.id
             }
-            mutableEffects.emit(AuthorDetailEffect.OpenManga(opener.await(version), activeCreatorId, version.naturalKey))
+            mutableEffects.emit(
+                AuthorDetailEffect.OpenManga(opener.await(version), activeCreatorId, version.naturalKey),
+            )
         }.onFailure { error ->
             mutableState.update { it.copy(workOpenError = error.message ?: error::class.simpleName) }
         }
-        mutableState.update { it.copy(actionRunning = false) }
+        mutableState.update { it.copy(workOpening = false) }
     }
 
     fun clearWorkOpenError() = mutableState.update { it.copy(workOpenError = null) }
@@ -664,7 +678,9 @@ internal class AuthorDetailScreenModel(
     }
 
     fun searchWorks(query: String) = mutableState.update { it.copy(workFilter = it.workFilter.copy(query = query)) }
-    fun filterSource(sourceId: Long?) = mutableState.update { it.copy(workFilter = it.workFilter.copy(sourceId = sourceId)) }
+    fun filterSource(
+        sourceId: Long?,
+    ) = mutableState.update { it.copy(workFilter = it.workFilter.copy(sourceId = sourceId)) }
 
     fun setWorkDisplayMode(mode: LibraryDisplayMode) {
         val preference = libraryPreferences?.creatorWorkDisplayModeOverride()
@@ -690,19 +706,25 @@ internal class AuthorDetailScreenModel(
     fun clearWorkDisplayModeError() = mutableState.update { it.copy(workDisplayModeError = null) }
 
     suspend fun excludePresentationVersion(version: SourceWorkArchiveVersion): Boolean {
+        if (mutableState.value.workOpening || mutableState.value.presentationUpdating) return false
         val exclusions = presentationExclusions ?: return false
         val root = activeCreatorId
-        mutableState.update { it.copy(actionRunning = true, error = null) }
+        mutableState.update { it.copy(presentationUpdating = true, error = null) }
         return try {
             if (creatorArchive != null) {
-                creatorArchive.setPresentationExclusion(root, version.naturalKey, excluded = true, now = System.currentTimeMillis())
+                creatorArchive.setPresentationExclusion(
+                    root,
+                    version.naturalKey,
+                    excluded = true,
+                    now = System.currentTimeMillis(),
+                )
             } else {
                 exclusions.exclude(root, version.naturalKey)
             }
             mutableState.update { state ->
                 val next = state.presentationExcluded + version.naturalKey
                 state.copy(
-                    actionRunning = false,
+                    presentationUpdating = false,
                     presentationExcluded = next,
                     presentationGroups = projectPresentationGroups(state.workArchive, next),
                 )
@@ -710,26 +732,32 @@ internal class AuthorDetailScreenModel(
             true
         } catch (error: Throwable) {
             mutableState.update {
-                it.copy(actionRunning = false, error = error.message ?: error::class.simpleName)
+                it.copy(presentationUpdating = false, error = error.message ?: error::class.simpleName)
             }
             false
         }
     }
 
     suspend fun restorePresentationVersion(version: SourceWorkArchiveVersion): Boolean {
+        if (mutableState.value.workOpening || mutableState.value.presentationUpdating) return false
         val exclusions = presentationExclusions ?: return false
         val root = activeCreatorId
-        mutableState.update { it.copy(actionRunning = true, error = null) }
+        mutableState.update { it.copy(presentationUpdating = true, error = null) }
         return try {
             if (creatorArchive != null) {
-                creatorArchive.setPresentationExclusion(root, version.naturalKey, excluded = false, now = System.currentTimeMillis())
+                creatorArchive.setPresentationExclusion(
+                    root,
+                    version.naturalKey,
+                    excluded = false,
+                    now = System.currentTimeMillis(),
+                )
             } else {
                 exclusions.restore(root, version.naturalKey)
             }
             mutableState.update { state ->
                 val next = state.presentationExcluded - version.naturalKey
                 state.copy(
-                    actionRunning = false,
+                    presentationUpdating = false,
                     presentationExcluded = next,
                     presentationGroups = projectPresentationGroups(state.workArchive, next),
                 )
@@ -737,7 +765,7 @@ internal class AuthorDetailScreenModel(
             true
         } catch (error: Throwable) {
             mutableState.update {
-                it.copy(actionRunning = false, error = error.message ?: error::class.simpleName)
+                it.copy(presentationUpdating = false, error = error.message ?: error::class.simpleName)
             }
             false
         }
@@ -957,7 +985,9 @@ internal class WorkCompareScreenModel(
             language = version.readingLanguage.tag.takeUnless { it == "und" },
             chapterCount = chapterCountForWorkMatching(version),
         )
-        val canonicalWorkIds = archive.works.flatMap { work -> work.versions.map { it.sourceWorkId to work.workId } }.toMap()
+        val canonicalWorkIds = archive.works.flatMap { work ->
+            work.versions.map { it.sourceWorkId to work.workId }
+        }.toMap()
         val currentCanonicalWorkId = canonicalWorkIds[version.sourceWorkId]
         val suggestions = versions.filter { other ->
             other.sourceWorkId != version.sourceWorkId &&
@@ -1004,7 +1034,8 @@ internal class WorkCompareScreenModel(
         if (saved.needsRefresh) {
             val source = sourceManager.get(version.naturalKey.sourceId) as? CatalogueSource
             if (source != null) {
-                saved = saved.copy(manga = saveSourceMangaForDetails.awaitFromSource(source, listed), needsRefresh = false)
+                saved =
+                    saved.copy(manga = saveSourceMangaForDetails.awaitFromSource(source, listed), needsRefresh = false)
             }
         }
         val inputs = getChaptersByMangaId.await(saved.manga.id).map { chapter ->

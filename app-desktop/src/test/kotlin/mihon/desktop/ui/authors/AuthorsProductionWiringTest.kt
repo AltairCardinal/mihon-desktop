@@ -176,7 +176,16 @@ class AuthorsProductionWiringTest {
             ArchiveWatchPolicy(creator.id, true, 1_000L, setOf(sourceWork.sourceId), emptySet()),
             now = 1L,
         )
-        repository.upsertSourceWork(42L, sourceWork.stableSourceUrl, 321L, "Navigation Work", creator.displayName, null, null, 2L)
+        repository.upsertSourceWork(
+            42L,
+            sourceWork.stableSourceUrl,
+            321L,
+            "Navigation Work",
+            creator.displayName,
+            null,
+            null,
+            2L,
+        )
         repository.upsertSourceWorkCreator(
             sourceWork,
             creator.id,
@@ -290,19 +299,39 @@ class AuthorsProductionWiringTest {
             add(20L, "/traditional", "詭譎屋")
             add(30L, "/simplified", "诡谲屋")
             detail = model(tachiyomi.domain.creator.service.WorkTitleNormalizer.DisplayScript.TRADITIONAL)
-            withTimeout(5_000) { checkNotNull(detail).state.first { it.presentationGroups.singleOrNull()?.sourceCount == 2 } }
+            withTimeout(5_000) {
+                checkNotNull(detail).state.first {
+                    it.presentationGroups.singleOrNull()?.sourceCount ==
+                        2
+                }
+            }
             assertEquals("詭譎屋", checkNotNull(detail).state.value.presentationGroups.single().title)
 
             add(10L, "/new-traditional", "《詭譎屋》")
-            withTimeout(5_000) { checkNotNull(detail).state.first { it.presentationGroups.singleOrNull()?.sourceCount == 3 } }
+            withTimeout(5_000) {
+                checkNotNull(detail).state.first {
+                    it.presentationGroups.singleOrNull()?.sourceCount ==
+                        3
+                }
+            }
             assertEquals("詭譎屋", checkNotNull(detail).state.value.presentationGroups.single().title)
             detail?.closeAndJoin()
             detail = model(tachiyomi.domain.creator.service.WorkTitleNormalizer.DisplayScript.TRADITIONAL)
-            withTimeout(5_000) { checkNotNull(detail).state.first { it.presentationGroups.singleOrNull()?.sourceCount == 3 } }
+            withTimeout(5_000) {
+                checkNotNull(detail).state.first {
+                    it.presentationGroups.singleOrNull()?.sourceCount ==
+                        3
+                }
+            }
             assertEquals("詭譎屋", checkNotNull(detail).state.value.presentationGroups.single().title)
             detail?.closeAndJoin()
             detail = model(tachiyomi.domain.creator.service.WorkTitleNormalizer.DisplayScript.SIMPLIFIED)
-            withTimeout(5_000) { checkNotNull(detail).state.first { it.presentationGroups.singleOrNull()?.sourceCount == 3 } }
+            withTimeout(5_000) {
+                checkNotNull(detail).state.first {
+                    it.presentationGroups.singleOrNull()?.sourceCount ==
+                        3
+                }
+            }
             assertEquals("诡谲屋", checkNotNull(detail).state.value.presentationGroups.single().title)
         } finally {
             detail?.closeAndJoin()
@@ -337,6 +366,29 @@ class AuthorsProductionWiringTest {
             )
         }
         val preferenceNode = Preferences.userRoot().node("/mihon-tests/author-focus-${UUID.randomUUID()}")
+        val openEntered = CompletableDeferred<Unit>()
+        val openRelease = CompletableDeferred<Unit>()
+        val saver = mockk<mihon.desktop.domain.SaveSourceMangaForDetails> {
+            coEvery { awaitListedForDetails(any(), any()) } coAnswers {
+                openEntered.complete(Unit)
+                openRelease.await()
+                error("fixture open failed")
+            }
+        }
+        val separationEntered = CompletableDeferred<Unit>()
+        val separationRelease = CompletableDeferred<Unit>()
+        val gatedArchive = object : CreatorArchiveRepository by repository {
+            override suspend fun setPresentationExclusion(
+                creatorRootId: Long,
+                sourceWork: SourceWorkNaturalKey,
+                excluded: Boolean,
+                now: Long,
+            ) {
+                separationEntered.complete(Unit)
+                separationRelease.await()
+                repository.setPresentationExclusion(creatorRootId, sourceWork, excluded, now)
+            }
+        }
         val sources = mockk<tachiyomi.domain.source.service.SourceManager> {
             every { get(any<Long>()) } returns null
             every { getOrStub(any()) } answers {
@@ -348,15 +400,17 @@ class AuthorsProductionWiringTest {
             }
         }
         val dependencies = mockk<DesktopUiDependencies> {
+            every { this@mockk.customCoverStore } returns
+                mihon.desktop.domain.DesktopCustomCoverStore(directory.resolve("covers").toFile())
             every { getCreators } returns GetCreators(repository)
             every { getCreatorDetails } returns GetCreatorDetails(repository)
             every { setCreatorFollow } returns SetCreatorFollow(repository)
-            every { creatorArchive } returns CreatorArchive(repository, repository)
+            every { creatorArchive } returns CreatorArchive(repository, gatedArchive)
             every { creatorArchiveRepository } returns repository
             every { manageCreatorIdentity } returns ManageCreatorIdentity(repository)
             every { creatorDiscoveryScheduler } returns null
             every { sourceManager } returns sources
-            every { saveSourceMangaForDetails } returns mockk()
+            every { saveSourceMangaForDetails } returns saver
             every { libraryPreferences } returns LibraryPreferences(DesktopPreferenceStore(preferenceNode))
         }
         val modelOwner = AuthorsModelsFixtureOwner()
@@ -392,11 +446,51 @@ class AuthorsProductionWiringTest {
                     kotlinx.coroutines.delay(10)
                 }
             }
+            val sourceCard = tagged("creator-source-version-1")
+            assertTrue(sourceCard.config.contains(SemanticsActions.OnClick), "The whole version card opens its source")
+            val separate = nodes(scene).first { node ->
+                node.config.contains(SemanticsActions.OnClick) &&
+                    node.config.getOrElse(SemanticsProperties.Text) { emptyList() }
+                        .any { it.text == MR.strings.creator_work_separate_display.localized() }
+            }
+            assertTrue(
+                separate.boundsInRoot.top >= sourceCard.boundsInRoot.bottom,
+                "Separate display sits outside the version card",
+            )
+            sourceCard.config[SemanticsActions.OnClick].action?.invoke()
+            withTimeout(5_000) { openEntered.await() }
+            scene.render()
+            val busySeparate = nodes(scene).first { node ->
+                node.config.getOrElse(SemanticsProperties.Text) { emptyList() }
+                    .any { it.text == MR.strings.creator_work_separate_display.localized() }
+            }
+            assertTrue(
+                busySeparate.config.contains(SemanticsProperties.Disabled),
+                "Opening a source disables separate display",
+            )
+            openRelease.complete(Unit)
+            withTimeout(5_000) {
+                while ("fixture open failed" !in texts(scene)) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
+            }
             nodes(scene).first { node ->
                 node.config.contains(SemanticsActions.OnClick) &&
                     node.config.getOrElse(SemanticsProperties.Text) { emptyList() }
                         .any { it.text == MR.strings.creator_work_separate_display.localized() }
             }.config[SemanticsActions.OnClick].action?.invoke()
+            withTimeout(5_000) { separationEntered.await() }
+            scene.render()
+            val submittingSeparate = nodes(scene).first { node ->
+                node.config.getOrElse(SemanticsProperties.Text) { emptyList() }
+                    .any { it.text == MR.strings.creator_work_separate_display.localized() }
+            }
+            assertTrue(
+                submittingSeparate.config.contains(SemanticsProperties.Disabled),
+                "Separating disables repeat submission",
+            )
+            separationRelease.complete(Unit)
             withTimeout(5_000) {
                 while (nodes(scene, unmerged = true).none { node ->
                         node.config.getOrElse(SemanticsProperties.TestTag) { "" } == newCard &&
@@ -414,6 +508,7 @@ class AuthorsProductionWiringTest {
             )
             assertTrue(tagged(newCard).config.getOrElse(SemanticsProperties.Focused) { false })
         } finally {
+            separationRelease.complete(Unit)
             try {
                 scene.close()
             } finally {
@@ -450,6 +545,8 @@ class AuthorsProductionWiringTest {
         val preferences = LibraryPreferences(DesktopPreferenceStore(preferenceNode))
         val archive = CreatorArchive(repository, repository)
         val dependencies = mockk<DesktopUiDependencies> {
+            every { this@mockk.customCoverStore } returns
+                mihon.desktop.domain.DesktopCustomCoverStore(directory.resolve("covers").toFile())
             every { getCreators } returns GetCreators(repository)
             every { getCreatorDetails } returns GetCreatorDetails(repository)
             every { setCreatorFollow } returns SetCreatorFollow(repository)
@@ -527,7 +624,16 @@ class AuthorsProductionWiringTest {
             ),
         ).single()
         val key = tachiyomi.domain.creator.model.SourceWorkNaturalKey(manga.source, manga.url)
-        repository.upsertSourceWork(manga.source, manga.url, manga.id, manga.title, creator.displayName, null, null, null)
+        repository.upsertSourceWork(
+            manga.source,
+            manga.url,
+            manga.id,
+            manga.title,
+            creator.displayName,
+            null,
+            null,
+            null,
+        )
         repository.upsertSourceWorkCreator(
             key,
             creator.id,
@@ -556,6 +662,8 @@ class AuthorsProductionWiringTest {
             }
         }
         val dependencies = mockk<DesktopUiDependencies> {
+            every { this@mockk.customCoverStore } returns
+                mihon.desktop.domain.DesktopCustomCoverStore(directory.resolve("covers").toFile())
             every { getCreators } returns GetCreators(repository)
             every { getCreatorDetails } returns GetCreatorDetails(repository)
             every { setCreatorFollow } returns SetCreatorFollow(repository)
@@ -604,6 +712,16 @@ class AuthorsProductionWiringTest {
         var scene = mount()
         try {
             awaitWork(scene)
+            val initialCover = tagged(scene, "creator-cover-${work.id}")
+            assertEquals(
+                138f,
+                initialCover.boundsInRoot.width,
+                1f,
+                "Comfortable grid uses the same 136dp minimum as Android",
+            )
+            assertEquals(2f / 3f, initialCover.boundsInRoot.width / initialCover.boundsInRoot.height, 0.01f)
+            val favorite = tagged(scene, "creator-favorite-${work.id}")
+            assertEquals(16f, favorite.boundsInRoot.width, 1f)
             assertTrue(!preferences.creatorWorkDisplayModeOverride().isSet())
             assertTrue(
                 nodes(scene, unmerged = true).none {
@@ -638,6 +756,12 @@ class AuthorsProductionWiringTest {
                     kotlinx.coroutines.delay(10)
                 }
             }
+            val narrowDate = tagged(scene, "creator-work-first-seen-${work.id}")
+                .config[SemanticsProperties.Text].single().text
+            assertTrue(
+                Regex("\\d{4}-\\d{2}-\\d{2}$").containsMatchIn(narrowDate),
+                "A narrow grid keeps the complete date without an ellipsis",
+            )
             assertTrue(
                 nodes(scene, unmerged = true).none {
                     it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-sources-${work.id}"
@@ -696,7 +820,9 @@ class AuthorsProductionWiringTest {
     }
 
     private fun verifyNarrowArchive(decision: tachiyomi.domain.creator.model.WorkDecisionState?) = runBlocking {
-        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY)
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
+            app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY,
+        )
         Database.Schema.create(driver)
         val handler = JvmDatabaseHandler(
             Database(
@@ -725,6 +851,15 @@ class AuthorsProductionWiringTest {
             )
         }
         coverServer.start()
+        val originalImageLoader = coil3.SingletonImageLoader.get(coil3.PlatformContext.INSTANCE)
+        val imageClient = okhttp3.OkHttpClient()
+        val imageLoader = mihon.desktop.image.createDesktopImageLoader(
+            coil3.PlatformContext.INSTANCE,
+            imageClient,
+            { imageClient },
+            { null },
+        )
+        coil3.SingletonImageLoader.setUnsafe(imageLoader)
         val preferenceNode = Preferences.userRoot().node("/mihon-tests/ax03-narrow-${UUID.randomUUID()}")
         val preferences = LibraryPreferences(DesktopPreferenceStore(preferenceNode))
         preferences.displayMode().set(LibraryDisplayMode.List)
@@ -740,7 +875,16 @@ class AuthorsProductionWiringTest {
             },
         )
         mangas.forEach { manga ->
-            repository.upsertSourceWork(manga.source, manga.url, manga.id, manga.title, "冈本伦", null, coverServer.url("/cover.png").toString(), null)
+            repository.upsertSourceWork(
+                manga.source,
+                manga.url,
+                manga.id,
+                manga.title,
+                "冈本伦",
+                null,
+                coverServer.url("/cover.png").toString(),
+                null,
+            )
             val key = tachiyomi.domain.creator.model.SourceWorkNaturalKey(manga.source, manga.url)
             repository.upsertSourceWorkCreator(
                 key, target.id, CreatorRole.AUTHOR, 0,
@@ -783,6 +927,8 @@ class AuthorsProductionWiringTest {
             }
         }
         val dependencies = mockk<DesktopUiDependencies> {
+            every { this@mockk.customCoverStore } returns
+                mihon.desktop.domain.DesktopCustomCoverStore(directory.resolve("covers").toFile())
             every { getCreators } returns GetCreators(repository)
             every { getCreatorDetails } returns GetCreatorDetails(repository)
             every { setCreatorFollow } returns SetCreatorFollow(repository)
@@ -840,7 +986,12 @@ class AuthorsProductionWiringTest {
                         it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-$rowKey"
                     }
                     assertTrue(kotlin.math.abs(cover.boundsInRoot.top - title.boundsInRoot.top) < 1f)
-                    val buttons = nodes(scene).filter { it.config.getOrElse(SemanticsProperties.TestTag) { "" }.startsWith("creator-version-") }
+                    assertEquals(2f / 3f, cover.boundsInRoot.width / cover.boundsInRoot.height, 0.01f)
+                    assertTrue(MR.strings.desktop_ui_canonical_works.localized() !in texts(scene))
+                    assertTrue(MR.strings.desktop_ui_pending_work_suggestions.localized() !in texts(scene))
+                    val buttons = nodes(scene).filter {
+                        it.config.getOrElse(SemanticsProperties.TestTag) { "" }.startsWith("creator-version-")
+                    }
                     assertTrue(buttons.size == if (decision == WorkDecisionState.REJECTED) 3 else 0)
                     val menus = nodes(scene).filter {
                         it.config.contains(SemanticsActions.OnClick) &&
@@ -859,13 +1010,23 @@ class AuthorsProductionWiringTest {
                         assertTrue(sourceText.boundsInRoot.left >= 0 && sourceText.boundsInRoot.right <= 320)
                         assertTrue(sourceText.boundsInRoot.top >= title.boundsInRoot.bottom)
                     }
-                    val output = java.nio.file.Paths.get("build/ga02/author-${decision?.name?.lowercase() ?: "pending"}-320-${if (dark) "dark" else "light"}.png")
+                    val output = java.nio.file.Paths.get(
+                        "build/ga02/author-${decision?.name?.lowercase() ?: "pending"}-320-${if (dark) "dark" else "light"}.png",
+                    )
                     java.nio.file.Files.createDirectories(output.parent)
                     var rendered = byteArrayOf()
                     try {
                         withTimeout(5000) {
-                            rendered = checkNotNull(scene.render().encodeToData()).bytes
-                            assertTrue(cover.boundsInRoot.width > 0 && cover.boundsInRoot.height > 0)
+                            while (true) {
+                                rendered = checkNotNull(scene.render().encodeToData()).bytes
+                                val image = javax.imageio.ImageIO.read(java.io.ByteArrayInputStream(rendered))
+                                val pixel = image.getRGB(
+                                    (cover.boundsInRoot.left + cover.boundsInRoot.width / 2).toInt(),
+                                    (cover.boundsInRoot.top + cover.boundsInRoot.height / 2).toInt(),
+                                )
+                                if (pixel == 0xFF245A85.toInt()) break
+                                kotlinx.coroutines.delay(20)
+                            }
                         }
                     } finally {
                         java.nio.file.Files.write(output, rendered)
@@ -880,20 +1041,38 @@ class AuthorsProductionWiringTest {
                             "Pending work cards must not offer work comparison",
                         )
                     }
-                    val search = nodes(scene).single { it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-search" }
+                    val search = nodes(scene).single {
+                        it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
+                            "creator-work-search"
+                    }
                     search.config[SemanticsActions.SetText].action?.invoke(AnnotatedString("ZZZ-no-match"))
                     scene.render()
-                    assertTrue(MR.strings.creator_work_version_count.localized(Locale.getDefault(), totalWorks, 3) in texts(scene))
+                    assertTrue(
+                        MR.strings.creator_work_version_count.localized(Locale.getDefault(), totalWorks, 3) !in
+                            texts(scene),
+                    )
                     search.config[SemanticsActions.SetText].action?.invoke(AnnotatedString(""))
                     scene.render()
                     if (grouped) {
-                        clickableTextNode(scene, MR.strings.creator_work_sources_all.localized()).config[SemanticsActions.OnClick].action?.invoke()
+                        clickableTextNode(
+                            scene,
+                            MR.strings.creator_work_sources_all.localized(),
+                        ).config[SemanticsActions.OnClick].action?.invoke()
                         scene.render()
-                        clickableTextNode(scene, "Source 2 long edition").config[SemanticsActions.OnClick].action?.invoke()
+                        clickableTextNode(
+                            scene,
+                            "Source 2 long edition",
+                        ).config[SemanticsActions.OnClick].action?.invoke()
                         scene.render()
-                        assertTrue(allSourceNames in texts(scene), "Source filtering must keep the complete group on the list card")
+                        assertTrue(
+                            allSourceNames in texts(scene),
+                            "Source filtering must keep the complete group on the list card",
+                        )
                     }
-                    assertTrue(MR.strings.creator_work_version_count.localized(Locale.getDefault(), totalWorks, 3) in texts(scene))
+                    assertTrue(
+                        MR.strings.creator_work_version_count.localized(Locale.getDefault(), totalWorks, 3) !in
+                            texts(scene),
+                    )
                     if (decision == WorkDecisionState.REJECTED) {
                         clickableTextNode(scene, sourceLabel(2)).config[SemanticsActions.OnClick].action?.invoke()
                     } else {
@@ -937,7 +1116,7 @@ class AuthorsProductionWiringTest {
                         )
                         nodes(scene, unmerged = true).single {
                             it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
-                                "creator-source-open-${selected.sourceWorkId}"
+                                "creator-source-version-${selected.sourceWorkId}"
                         }.config[SemanticsActions.OnClick].action?.invoke()
                     }
                     withTimeout(5000) {
@@ -958,13 +1137,17 @@ class AuthorsProductionWiringTest {
             modelOwner.closeAndJoin()
             handler.close()
             coverServer.close()
+            coil3.SingletonImageLoader.setUnsafe(originalImageLoader)
+            imageLoader.shutdown()
             preferenceNode.removeNode()
         }
     }
 
     @Test
     fun `actual desktop detail editor obeys shared identity contract`() = runBlocking {
-        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY)
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
+            app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY,
+        )
         Database.Schema.create(driver)
         val database = Database(
             driver,
@@ -979,6 +1162,8 @@ class AuthorsProductionWiringTest {
         try {
             tachiyomi.data.creator.verifyCreatorIdentityEditor(handler) { repository, manager, id ->
                 val dependencies = mockk<DesktopUiDependencies> {
+                    every { this@mockk.customCoverStore } returns
+                        mihon.desktop.domain.DesktopCustomCoverStore(directory.resolve("covers").toFile())
                     every { getCreators } returns GetCreators(repository)
                     every { getCreatorDetails } returns GetCreatorDetails(repository)
                     every { setCreatorFollow } returns SetCreatorFollow(repository)
@@ -1025,6 +1210,8 @@ class AuthorsProductionWiringTest {
         attempts = 0
         failNext = true
         val dependencies = mockk<DesktopUiDependencies> {
+            every { this@mockk.customCoverStore } returns
+                mihon.desktop.domain.DesktopCustomCoverStore(directory.resolve("covers").toFile())
             every { getCreators } returns GetCreators(repository)
             every { getCreatorDetails } returns GetCreatorDetails(repository)
             every { setCreatorFollow } returns SetCreatorFollow(repository)
@@ -1059,7 +1246,10 @@ class AuthorsProductionWiringTest {
                 }
             }
             clickableTextNode(scene, "Other").config[SemanticsActions.OnClick].action?.invoke()
-            clickableTextNode(scene, MR.strings.action_add.localized()).config[SemanticsActions.OnClick].action?.invoke()
+            clickableTextNode(
+                scene,
+                MR.strings.action_add.localized(),
+            ).config[SemanticsActions.OnClick].action?.invoke()
             withTimeout(5000) {
                 while ("write failed" !in texts(scene)) {
                     scene.render()
@@ -1068,7 +1258,10 @@ class AuthorsProductionWiringTest {
             }
             assertTrue(repository.getIdentitySnapshot(target.id).aliases.isEmpty())
             assertTrue("Other" in texts(scene))
-            val submit = clickableTextNode(scene, MR.strings.action_add.localized()).config[SemanticsActions.OnClick].action
+            val submit = clickableTextNode(
+                scene,
+                MR.strings.action_add.localized(),
+            ).config[SemanticsActions.OnClick].action
             submit?.invoke()
             submit?.invoke()
             withTimeout(5000) {
@@ -1093,7 +1286,10 @@ class AuthorsProductionWiringTest {
                     kotlinx.coroutines.delay(10)
                 }
             }
-            clickableTextNode(scene, MR.strings.action_cancel.localized()).config[SemanticsActions.OnClick].action?.invoke()
+            clickableTextNode(
+                scene,
+                MR.strings.action_cancel.localized(),
+            ).config[SemanticsActions.OnClick].action?.invoke()
             withTimeout(5000) {
                 while (!clickableTextNode(scene, "Other").config.getOrElse(SemanticsProperties.Focused) { false }) {
                     scene.render()
@@ -1172,6 +1368,8 @@ class AuthorsProductionWiringTest {
         }
         val saved = Manga.create().copy(id = 12L, source = 10L, url = "/candidate", title = "Shared work")
         val dependencies = mockk<DesktopUiDependencies> {
+            every { this@mockk.customCoverStore } returns
+                mihon.desktop.domain.DesktopCustomCoverStore(directory.resolve("covers").toFile())
             every { getCreatorDetails } returns GetCreatorDetails(creatorRepository)
             every { this@mockk.creatorRepository } returns creatorRepository
             every { creatorArchiveRepository } returns archiveRepository
@@ -1283,6 +1481,8 @@ class AuthorsProductionWiringTest {
         }
         val saved = Manga.create().copy(id = 12L, source = 10L, url = "/traditional", title = "詭譎屋")
         val dependencies = mockk<DesktopUiDependencies> {
+            every { this@mockk.customCoverStore } returns
+                mihon.desktop.domain.DesktopCustomCoverStore(directory.resolve("covers").toFile())
             every { creatorArchiveRepository } returns archiveRepository
             every { this@mockk.creatorRepository } returns creatorRepository
             every { creatorArchive } returns CreatorArchive(creatorRepository, archiveRepository)
@@ -1335,6 +1535,8 @@ class AuthorsProductionWiringTest {
         }
         val saved = Manga.create().copy(id = 12L, source = 10L, url = "/traditional", title = "詭譎屋")
         val dependencies = mockk<DesktopUiDependencies> {
+            every { this@mockk.customCoverStore } returns
+                mihon.desktop.domain.DesktopCustomCoverStore(directory.resolve("covers").toFile())
             every { creatorArchiveRepository } returns archiveRepository
             every { this@mockk.creatorRepository } returns creatorRepository
             every { creatorArchive } returns CreatorArchive(creatorRepository, archiveRepository)
@@ -1384,6 +1586,8 @@ class AuthorsProductionWiringTest {
         }
         val saved = Manga.create().copy(id = 12L, source = 10L, url = "/traditional", title = "詭譎屋")
         val dependencies = mockk<DesktopUiDependencies> {
+            every { this@mockk.customCoverStore } returns
+                mihon.desktop.domain.DesktopCustomCoverStore(directory.resolve("covers").toFile())
             every { creatorArchiveRepository } returns archiveRepository
             every { this@mockk.creatorRepository } returns creatorRepository
             every { creatorArchive } returns CreatorArchive(creatorRepository, archiveRepository)
@@ -1436,7 +1640,7 @@ class AuthorsProductionWiringTest {
     }
 
     @Test
-    fun `mounted author explains unsupported split without changing identity`() = runBlocking {
+    fun `mounted author aligns actions with Android without unsupported split`() = runBlocking {
         val creator = Creator(
             id = 7L,
             displayName = "Jane Doe",
@@ -1465,6 +1669,8 @@ class AuthorsProductionWiringTest {
             every { observeCreatorWorkArchive(7L) } returns flowOf(pendingArchive("Pending grouped work"))
         }
         val dependencies = mockk<DesktopUiDependencies> {
+            every { this@mockk.customCoverStore } returns
+                mihon.desktop.domain.DesktopCustomCoverStore(directory.resolve("covers").toFile())
             every { getCreators } returns GetCreators(creatorRepository)
             every { getCreatorDetails } returns GetCreatorDetails(creatorRepository)
             every { setCreatorFollow } returns SetCreatorFollow(creatorRepository)
@@ -1485,15 +1691,15 @@ class AuthorsProductionWiringTest {
                 }
             }
             withTimeout(5000) {
-                while (MR.strings.desktop_ui_split_author_identity.localized() !in texts(scene)) {
+                while (MR.strings.desktop_ui_add_author_alias.localized() !in texts(scene)) {
                     scene.render()
                     kotlinx.coroutines.delay(10)
                 }
             }
-            clickableTextNode(scene, MR.strings.desktop_ui_split_author_identity.localized())
-                .config[SemanticsActions.OnClick].action?.invoke()
-            scene.render()
-            assertTrue(MR.strings.creator_split_unavailable.localized() in texts(scene))
+            assertTrue(MR.strings.desktop_ui_split_author_identity.localized() !in texts(scene))
+            val follow = clickableTextNode(scene, MR.strings.desktop_ui_follow.localized())
+            val check = clickableTextNode(scene, MR.strings.desktop_ui_check_new_works.localized())
+            assertEquals(follow.boundsInRoot.top, check.boundsInRoot.top, 1f)
             coVerify(exactly = 0) { archiveRepository.removeManualCreatorAlias(any(), any()) }
         } finally {
             scene.close()
@@ -1520,7 +1726,10 @@ class AuthorsProductionWiringTest {
             val indexer = CreatorLibraryIndexer(
                 mangaSource = object : CreatorLibraryMangaSource {
                     override suspend fun countLibraryMangaForCreatorIndex(): Long = 0L
-                    override suspend fun getLibraryMangaForCreatorIndex(afterId: Long, limit: Long): List<Manga> = emptyList()
+                    override suspend fun getLibraryMangaForCreatorIndex(
+                        afterId: Long,
+                        limit: Long,
+                    ): List<Manga> = emptyList()
                 },
                 indexWriter = NoopCreatorLibraryIndexWriter,
                 extractCreators = ExtractCreatorsFromManga(),
@@ -1583,6 +1792,8 @@ class AuthorsProductionWiringTest {
             } returns tachiyomi.domain.creator.model.CreatorCardProjectionPage(0, 50, false, emptyList())
         }
         val dependencies = mockk<DesktopUiDependencies> {
+            every { this@mockk.customCoverStore } returns
+                mihon.desktop.domain.DesktopCustomCoverStore(directory.resolve("covers").toFile())
             every { getCreators } returns GetCreators(repository)
             every { creatorLibraryIndexer } returns indexer
             every { creatorDiscoveryPreferences } returns null
@@ -1660,7 +1871,10 @@ class AuthorsProductionWiringTest {
         val indexer = CreatorLibraryIndexer(
             mangaSource = object : CreatorLibraryMangaSource {
                 override suspend fun countLibraryMangaForCreatorIndex(): Long = 0L
-                override suspend fun getLibraryMangaForCreatorIndex(afterId: Long, limit: Long): List<Manga> = emptyList()
+                override suspend fun getLibraryMangaForCreatorIndex(
+                    afterId: Long,
+                    limit: Long,
+                ): List<Manga> = emptyList()
             },
             indexWriter = NoopCreatorLibraryIndexWriter,
             extractCreators = ExtractCreatorsFromManga(),
@@ -1668,6 +1882,8 @@ class AuthorsProductionWiringTest {
         val preferenceNode = java.util.prefs.Preferences.userRoot()
             .node("/mihon-tests/ax01-author-projection-retry-${java.util.UUID.randomUUID()}")
         val dependencies = mockk<DesktopUiDependencies> {
+            every { this@mockk.customCoverStore } returns
+                mihon.desktop.domain.DesktopCustomCoverStore(directory.resolve("covers").toFile())
             every { getCreators } returns GetCreators(creatorRepository)
             every { creatorLibraryIndexer } returns indexer
             every { creatorDiscoveryPreferences } returns null
@@ -1676,7 +1892,7 @@ class AuthorsProductionWiringTest {
             every { appPreferences } returns mihon.desktop.settings.DesktopAppPreferences(
                 tachiyomi.core.common.preference.DesktopPreferenceStore(preferenceNode),
             )
-            every { customCoverStore } returns mihon.desktop.domain.DesktopCustomCoverStore(
+            every { this@mockk.customCoverStore } returns mihon.desktop.domain.DesktopCustomCoverStore(
                 directory.resolve("projection-retry-covers").toFile(),
             )
             every { creatorDiscoveryScheduler } returns null
@@ -1706,6 +1922,21 @@ class AuthorsProductionWiringTest {
             }
 
             assertTrue(creator.displayName in texts(scene), "A failed refresh should keep the previous author card")
+            val errorText = nodes(scene, unmerged = true).single { node ->
+                node.config.getOrElse(SemanticsProperties.Text) { emptyList() }
+                    .any { it.text == "projection temporarily unavailable" }
+            }
+            assertEquals(16f, errorText.boundsInRoot.left, 1f, "Root errors use the same content padding as Android")
+            val retry = retryNode(scene).boundsInRoot
+            val errorImage = javax.imageio.ImageIO.read(
+                java.io.ByteArrayInputStream(checkNotNull(scene.render().encodeToData()).bytes),
+            )
+            val retryY = (retry.top + retry.height / 2).toInt()
+            assertEquals(
+                errorImage.getRGB(4, retryY),
+                errorImage.getRGB((retry.left + 4).toInt(), retryY),
+                "Retry is a text button",
+            )
             assertTrue(
                 MR.strings.creator_following_empty.localized() !in texts(scene),
                 "A projection failure should not be shown as an empty followed list",
@@ -1750,7 +1981,8 @@ class AuthorsProductionWiringTest {
             coEvery { getPresentationExclusions(any()) } returns emptySet()
             coEvery { getManualCreatorAliases(7L) } returns emptyList()
             every { observeSourceCheckpoints(7L) } returns flowOf(emptyList())
-            every { observeCreatorWorkArchive(7L) } returns flowOf(CreatorWorkArchive(emptyList(), emptyList(), emptyList()))
+            every { observeCreatorWorkArchive(7L) } returns
+                flowOf(CreatorWorkArchive(emptyList(), emptyList(), emptyList()))
         }
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
@@ -1764,6 +1996,8 @@ class AuthorsProductionWiringTest {
             },
         )
         val dependencies = mockk<DesktopUiDependencies> {
+            every { this@mockk.customCoverStore } returns
+                mihon.desktop.domain.DesktopCustomCoverStore(directory.resolve("covers").toFile())
             every { getCreators } returns GetCreators(creatorRepository)
             every { getCreatorDetails } returns GetCreatorDetails(creatorRepository)
             every { setCreatorFollow } returns SetCreatorFollow(creatorRepository)
@@ -1784,12 +2018,13 @@ class AuthorsProductionWiringTest {
                 }
             }
             withTimeout(5_000) {
-                while (MR.strings.desktop_ui_check_new_works.localized() !in contentDescriptions(scene)) {
+                while (MR.strings.desktop_ui_check_new_works.localized() !in texts(scene)) {
                     scene.render()
+                    kotlinx.coroutines.delay(10)
                 }
             }
 
-            clickableNodeByDescription(scene, MR.strings.desktop_ui_check_new_works.localized())
+            clickableTextNode(scene, MR.strings.desktop_ui_check_new_works.localized())
                 .config[SemanticsActions.OnClick].action?.invoke()
             entered.await()
 
@@ -1815,8 +2050,11 @@ class AuthorsProductionWiringTest {
     @Test
     fun `mounted author list settings keeps draft until save and restores gear focus`() = runBlocking {
         val node = java.util.prefs.Preferences.userRoot().node("/mihon-tests/ga03-ui-${java.util.UUID.randomUUID()}")
-        val preferences = tachiyomi.domain.creator.service.CreatorDiscoveryPreferences(tachiyomi.core.common.preference.DesktopPreferenceStore(node))
-        val indexer = CreatorLibraryIndexer(FailsOnceLibrarySource(), NoopCreatorLibraryIndexWriter, ExtractCreatorsFromManga())
+        val preferences = tachiyomi.domain.creator.service.CreatorDiscoveryPreferences(
+            tachiyomi.core.common.preference.DesktopPreferenceStore(node),
+        )
+        val indexer =
+            CreatorLibraryIndexer(FailsOnceLibrarySource(), NoopCreatorLibraryIndexWriter, ExtractCreatorsFromManga())
         val repository = mockk<CreatorRepository> {
             every { getCreatorsAsFlow() } returns flowOf(emptyList())
             every { getFollowedCreatorsAsFlow() } returns flowOf(emptyList())
@@ -1833,13 +2071,16 @@ class AuthorsProductionWiringTest {
             tachiyomi.core.common.preference.DesktopPreferenceStore(node),
         )
         val dependencies = mockk<DesktopUiDependencies> {
+            every { this@mockk.customCoverStore } returns
+                mihon.desktop.domain.DesktopCustomCoverStore(directory.resolve("covers").toFile())
             every { getCreators } returns GetCreators(repository)
             every { creatorLibraryIndexer } returns indexer
             every { creatorDiscoveryPreferences } returns preferences
             every { creatorArchiveRepository } returns archive
             every { creatorArchive } returns CreatorArchive(repository, archive)
             every { appPreferences } returns desktopPreferences
-            every { customCoverStore } returns mihon.desktop.domain.DesktopCustomCoverStore(directory.resolve("covers").toFile())
+            every { this@mockk.customCoverStore } returns
+                mihon.desktop.domain.DesktopCustomCoverStore(directory.resolve("covers").toFile())
             every { creatorDiscoveryScheduler } returns null
             every { libraryPreferences } returns null
         }
@@ -1851,9 +2092,16 @@ class AuthorsProductionWiringTest {
         }
         try {
             scene.setContent {
-                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) { Navigator(AuthorsRootScreen()) }
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    Navigator(AuthorsRootScreen())
+                }
             }
             scene.render()
+            val search = nodes(scene).single { it.config.contains(SemanticsActions.SetText) }
+            val following = nodes(scene).single {
+                it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-tab-following"
+            }
+            assertTrue(search.boundsInRoot.bottom <= following.boundsInRoot.top)
             click("creator-settings-open")
             click("creator-frequency-monthly")
             check(preferences.current() == tachiyomi.domain.creator.service.CreatorCheckFrequency.DAILY)

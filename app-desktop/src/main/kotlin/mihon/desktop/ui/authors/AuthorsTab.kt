@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -76,6 +77,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.model.rememberScreenModel
@@ -104,11 +107,13 @@ import tachiyomi.domain.creator.model.MangaCreator
 import tachiyomi.domain.creator.model.SourceDateQualityStatus
 import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
+import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.creator.model.WorkPresentationGroup
 import tachiyomi.domain.creator.service.CreatorLibraryIndexState
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
+import tachiyomi.presentation.creator.CreatorUiLayout
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -305,10 +310,17 @@ class AuthorsRootScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding),
+                    .padding(padding).padding(horizontal = 16.dp),
             ) {
+                OutlinedTextField(
+                    value = state.query,
+                    onValueChange = model::search,
+                    label = { Text(MR.strings.desktop_ui_search_authors.localized()) },
+                    modifier = Modifier.fillMaxWidth().testTag("creator-author-search"),
+                )
+
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     FilterChip(
@@ -331,25 +343,19 @@ class AuthorsRootScreen(
                     )
                 }
 
-                OutlinedTextField(
-                    value = state.query,
-                    onValueChange = model::search,
-                    placeholder = { Text(MR.strings.desktop_ui_search_authors.localized()) },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                )
-
-                if (state.loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                if (state.loading && state.cards.isEmpty()) CircularProgressIndicator()
+                if (state.loading &&
+                    state.cards.isNotEmpty()
+                ) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
                 state.error?.let { message ->
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(message, color = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f))
-                        Button(onClick = model::retry) { Text(MR.strings.action_retry.localized()) }
+                        Text(message, modifier = Modifier.weight(1f))
+                        TextButton(onClick = model::retry) { Text(MR.strings.action_retry.localized()) }
                     }
                 }
 
@@ -409,7 +415,7 @@ class AuthorsRootScreen(
                         LazyColumn(
                             state = listState,
                             modifier = Modifier.weight(1f).fillMaxWidth().testTag("creator-author-list"),
-                            contentPadding = PaddingValues(vertical = 4.dp),
+                            contentPadding = PaddingValues(vertical = 8.dp),
                         ) {
                             items(state.cards, key = { it.creator.id }) { card ->
                                 CreatorCardRow(card, dependencies.customCoverStore) {
@@ -419,13 +425,13 @@ class AuthorsRootScreen(
                             }
                             if (state.loadingMore) {
                                 item(key = "creator-loading-more") {
-                                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(16.dp))
+                                    CircularProgressIndicator()
                                 }
                             }
                         }
                     }
                 } else if (!state.loading && state.error == null) {
-                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
                         when {
                             state.query.isNotBlank() -> Text(MR.strings.no_results_found.localized())
                             indexPresentation == AuthorIndexPresentation.EmptyLibrary ->
@@ -433,7 +439,6 @@ class AuthorsRootScreen(
                             indexPresentation is AuthorIndexPresentation.Failed -> Unit
                             state.followedOnly -> {
                                 Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
                                     Text(MR.strings.creator_following_empty.localized())
@@ -468,19 +473,11 @@ data class AuthorDetailScreen(
         }
         val state by model.state.collectAsState()
         val creator = state.details.creator
-        val candidates = state.details.candidates
-        val mangaLinks = state.details.mangaLinks
-        val mangaTitles = state.details.mangaTitles
         val workArchive = state.visibleWorkArchive
         val presentationCards = state.visiblePresentationCards
         val pendingPresentationVersions = state.visiblePendingVersions
         val discoveryState = state.discovery
         val sourceCheckpoints = state.checkpoints
-        val allCreators = state.allCreators
-        val manualAliases = state.manualAliases
-        val identityActionError = state.error
-        val identityActionRunning = state.actionRunning
-        var showSplitDialog by remember { mutableStateOf(false) }
         var confirmUnfollow by remember { mutableStateOf(false) }
         var showDisplayModeMenu by remember { mutableStateOf(false) }
         var showSourceChooserFor by remember { mutableStateOf<String?>(null) }
@@ -523,24 +520,9 @@ data class AuthorDetailScreen(
         val isCurrentCreatorDiscovery = discoveryState?.scope == CreatorDiscoveryRunScope.Creator &&
             discoveryState?.creatorId == (creator?.id ?: creatorId)
         val isDiscoveryBusy = discoveryState?.status in setOf(TaskStatus.Pending, TaskStatus.Running)
-        val isManualDiscoveryRunning = discoveryState?.status == TaskStatus.Running && isCurrentCreatorDiscovery
 
         val isFollowed = state.followed
 
-        if (showSplitDialog) {
-            AlertDialog(
-                onDismissRequest = { showSplitDialog = false },
-                text = { Text(MR.strings.creator_split_unavailable.localized()) },
-                confirmButton = {
-                    TextButton(onClick = { showSplitDialog = false }) {
-                        Text(
-                            MR.strings
-                                .action_ok.localized(),
-                        )
-                    }
-                },
-            )
-        }
         if (confirmUnfollow) {
             AlertDialog(
                 onDismissRequest = { confirmUnfollow = false },
@@ -568,7 +550,7 @@ data class AuthorDetailScreen(
                     group = group,
                     sourceManager = desktopDependencies.sourceManager,
                     error = state.workOpenError,
-                    opening = state.actionRunning,
+                    opening = state.workOpening || state.presentationUpdating,
                     onOpen = model::openVersion,
                     onSeparate = { version ->
                         snackbarScope.launch {
@@ -592,19 +574,6 @@ data class AuthorDetailScreen(
                     },
                 )
             }
-        }
-
-        identityActionError?.let { error ->
-            AlertDialog(
-                onDismissRequest = model::clearError,
-                title = { Text(MR.strings.desktop_ui_identity_action_failed.localized()) },
-                text = { Text(error) },
-                confirmButton = {
-                    TextButton(onClick = model::clearError) {
-                        Text(MR.strings.action_ok.localized())
-                    }
-                },
-            )
         }
 
         Scaffold(
@@ -659,76 +628,42 @@ data class AuthorDetailScreen(
                                 }
                             }
                         }
-                        IconButton(
-                            enabled = !isDiscoveryBusy,
-                            onClick = model::refreshDiscovery,
-                        ) {
-                            if (isManualDiscoveryRunning) {
-                                CircularProgressIndicator()
-                            } else {
-                                Icon(
-                                    Icons.Default.Refresh,
-                                    contentDescription = MR.strings
-                                        .desktop_ui_check_new_works.localized(),
-                                )
-                            }
-                        }
                     },
                 )
             },
         ) { padding ->
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
+                modifier = Modifier.fillMaxSize().padding(padding).padding(CreatorUiLayout.contentPadding),
+                verticalArrangement = Arrangement.spacedBy(CreatorUiLayout.contentSpacing),
             ) {
-                if (state.loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                if (state.loading) CircularProgressIndicator()
                 state.workOpenError?.let { error ->
                     Text(
                         MR.strings.desktop_ui_error_reason.localized(Locale.getDefault(), error),
                         color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(horizontal = 16.dp).testTag("creator-work-open-error"),
+                        modifier = Modifier.testTag("creator-work-open-error"),
                     )
                 }
                 state.workDisplayModeError?.let { error ->
                     Text(
                         error,
                         color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(horizontal = 16.dp).testTag("creator-display-mode-error"),
+                        modifier = Modifier.testTag("creator-display-mode-error"),
                     )
                 }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        CreatorIdentityHeader(model.identityEditor, creator?.displayName.orEmpty())
+                CreatorIdentityHeader(model.identityEditor, creator?.displayName.orEmpty())
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { if (isFollowed) confirmUnfollow = true else model.toggleFollow() }) {
                         Text(
-                            MR.strings.creator_work_version_count.localized(
-                                Locale.getDefault(),
-                                state.presentationGroups.size + state.workArchive.rejected.size,
-                                state.presentationGroups.sumOf { it.sourceCount } + state.workArchive.rejected.size,
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            (if (isFollowed) MR.strings.desktop_ui_unfollow else MR.strings.desktop_ui_follow)
+                                .localized(),
                         )
                     }
-                    Button(
-                        onClick = { if (isFollowed) confirmUnfollow = true else model.toggleFollow() },
-                    ) {
-                        Text(
-                            if (isFollowed) {
-                                MR.strings.desktop_ui_unfollow.localized()
-                            } else {
-                                MR.strings
-                                    .desktop_ui_follow.localized()
-                            },
-                        )
+                    Button(enabled = !isDiscoveryBusy, onClick = model::refreshDiscovery) {
+                        Text(MR.strings.desktop_ui_check_new_works.localized())
                     }
                 }
+                state.error?.let { Text(it) }
                 state.followFeedback?.let { followed ->
                     Text(
                         if (followed) {
@@ -840,12 +775,6 @@ data class AuthorDetailScreen(
                     }
                 }
 
-                TextButton(onClick = { showSplitDialog = true }) {
-                    Text(MR.strings.desktop_ui_split_author_identity.localized())
-                }
-
-                HorizontalDivider()
-
                 CreatorWorkFilters(
                     state.workFilter.query,
                     state.workFilter.sourceId,
@@ -853,8 +782,9 @@ data class AuthorDetailScreen(
                         state.workArchive.works.flatMap { it.versions } + state.workArchive.pending + state
                             .workArchive.rejected
                         )
-                        .map { it.naturalKey.sourceId }.distinct().sorted().associateWith {
-                            desktopDependencies.sourceManager.getOrStub(it).name
+                        .associate { version ->
+                            version.naturalKey.sourceId to
+                                desktopDependencies.sourceManager.getOrStub(version.naturalKey.sourceId).name
                         },
                     model::searchWorks,
                     model::filterSource,
@@ -863,36 +793,18 @@ data class AuthorDetailScreen(
                     MR.strings.creator_unique_work_count.localized(Locale.getDefault(), presentationCards.size),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp).testTag("creator-visible-work-count"),
+                    modifier = Modifier.testTag("creator-visible-work-count"),
                 )
 
                 if (presentationCards.isEmpty() && pendingPresentationVersions.isEmpty() && workArchive
                         .rejected.isEmpty()
                 ) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(
-                            if (state.workArchive.works.isEmpty() &&
-                                state.workArchive.pending.isEmpty() &&
-                                state.workArchive.rejected.isEmpty()
-                            ) {
-                                MR.strings.desktop_ui_no_discovered_works_yet.localized()
-                            } else {
-                                MR.strings.creator_work_filter_empty.localized()
-                            },
-                        )
-                    }
+                    Text(MR.strings.creator_work_filter_empty.localized())
                 } else {
                     val mode = state.effectiveWorkDisplayMode
                     if (mode == LibraryDisplayMode.List) {
-                        LazyColumn(Modifier.fillMaxSize()) {
+                        LazyColumn(Modifier.fillMaxWidth().weight(1f).testTag("creator-work-list")) {
                             if (presentationCards.isNotEmpty()) {
-                                item {
-                                    Text(
-                                        text = MR.strings.desktop_ui_canonical_works.localized(),
-                                        style = MaterialTheme.typography.titleSmall,
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                    )
-                                }
                                 items(presentationCards, key = { "presentation-${it.groupKey}" }) { group ->
                                     val presentationCardKey = group.canonicalWorkId?.toString() ?: group.groupKey
                                     val focusRequester = remember(group.groupKey) { FocusRequester() }
@@ -906,8 +818,7 @@ data class AuthorDetailScreen(
                                     }
                                     CreatorArchiveWorkCard(
                                         title = group.title,
-                                        thumbnailUrl = group.representative.thumbnailUrl,
-                                        sourceId = group.representative.naturalKey.sourceId,
+                                        version = group.representative,
                                         dateLabel = groupDateLabel(group),
                                         favorite = group.inLibrary,
                                         unread = group.unread,
@@ -919,17 +830,9 @@ data class AuthorDetailScreen(
                                             showSourceChooserFor = group.groupKey
                                         },
                                     )
-                                    HorizontalDivider()
                                 }
                             }
                             if (pendingPresentationVersions.isNotEmpty()) {
-                                item {
-                                    Text(
-                                        text = MR.strings.desktop_ui_pending_work_suggestions.localized(),
-                                        style = MaterialTheme.typography.titleSmall,
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                    )
-                                }
                                 items(pendingPresentationVersions, key = { "pending-${it.sourceWorkId}" }) { version ->
                                     ArchiveVersionListItem(
                                         version,
@@ -939,13 +842,6 @@ data class AuthorDetailScreen(
                                 }
                             }
                             if (workArchive.rejected.isNotEmpty()) {
-                                item {
-                                    Text(
-                                        text = MR.strings.desktop_ui_separated_work_versions.localized(),
-                                        style = MaterialTheme.typography.titleSmall,
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                    )
-                                }
                                 items(workArchive.rejected, key = { "rejected-${it.sourceWorkId}" }) { version ->
                                     ArchiveVersionListItem(
                                         version,
@@ -959,25 +855,17 @@ data class AuthorDetailScreen(
                         LazyVerticalGrid(
                             columns = GridCells.Adaptive(
                                 if (mode == LibraryDisplayMode.ComfortableGrid) {
-                                    164
-                                        .dp
+                                    CreatorUiLayout.comfortableGridMinimum
                                 } else {
-                                    112.dp
+                                    CreatorUiLayout.compactGridMinimum
                                 },
                             ),
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(12.dp),
+                            modifier = Modifier.fillMaxWidth().weight(1f),
+                            contentPadding = PaddingValues(vertical = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             if (presentationCards.isNotEmpty()) {
-                                item(span = { GridItemSpan(maxLineSpan) }) {
-                                    Text(
-                                        text = MR.strings.desktop_ui_canonical_works.localized(),
-                                        style = MaterialTheme.typography.titleSmall,
-                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
-                                    )
-                                }
                                 items(presentationCards, key = { "presentation-${it.groupKey}" }) { group ->
                                     val presentationCardKey = group.canonicalWorkId?.toString() ?: group.groupKey
                                     val focusRequester = remember(group.groupKey) { FocusRequester() }
@@ -991,8 +879,7 @@ data class AuthorDetailScreen(
                                     }
                                     CreatorArchiveWorkCard(
                                         title = group.title,
-                                        thumbnailUrl = group.representative.thumbnailUrl,
-                                        sourceId = group.representative.naturalKey.sourceId,
+                                        version = group.representative,
                                         dateLabel = groupDateLabel(group),
                                         favorite = group.inLibrary,
                                         unread = group.unread,
@@ -1007,12 +894,6 @@ data class AuthorDetailScreen(
                                 }
                             }
                             if (pendingPresentationVersions.isNotEmpty()) {
-                                item(span = { GridItemSpan(maxLineSpan) }) {
-                                    Text(
-                                        text = MR.strings.desktop_ui_pending_work_suggestions.localized(),
-                                        style = MaterialTheme.typography.titleSmall,
-                                    )
-                                }
                                 items(
                                     pendingPresentationVersions,
                                     span = { GridItemSpan(maxLineSpan) },
@@ -1027,12 +908,6 @@ data class AuthorDetailScreen(
                                 }
                             }
                             if (workArchive.rejected.isNotEmpty()) {
-                                item(span = { GridItemSpan(maxLineSpan) }) {
-                                    Text(
-                                        text = MR.strings.desktop_ui_separated_work_versions.localized(),
-                                        style = MaterialTheme.typography.titleSmall,
-                                    )
-                                }
                                 items(
                                     workArchive.rejected,
                                     span = { GridItemSpan(maxLineSpan) },
@@ -1070,22 +945,36 @@ private fun earliestFirstSeenDate(
     versions: List<tachiyomi.domain.creator.model.SourceWorkArchiveVersion>,
 ): String? = versions.mapNotNull { it.firstSeenDate?.takeIf(String::isNotBlank) }.minOrNull()
 
-private fun groupDateLabel(group: tachiyomi.domain.creator.model.WorkPresentationGroup): String? {
-    val publishedDateAt = group.publishedDateAt
-    return when {
-        group.publishedDateQuality == SourceDateQualityStatus.TRUSTED && publishedDateAt != null ->
-            MR.strings.creator_work_published_date.localized(
-                Locale.getDefault(),
-                sourceDateDisplayDate(publishedDateAt),
-            )
-        publishedDateAt != null -> MR.strings.creator_work_published_date_retained.localized(
-            Locale.getDefault(),
-            sourceDateDisplayDate(publishedDateAt),
+internal data class CreatorWorkDateLabel(val full: String, val date: String)
+
+@Composable
+internal fun CreatorWorkDate(
+    label: CreatorWorkDateLabel,
+    key: String,
+    style: TextStyle,
+    modifier: Modifier = Modifier,
+) {
+    val measurer = rememberTextMeasurer()
+    BoxWithConstraints(modifier) {
+        val fullWidth = measurer.measure(label.full, style, softWrap = false).size.width
+        Text(
+            if (fullWidth <= constraints.maxWidth) label.full else label.date,
+            style = style,
+            modifier = Modifier.testTag("creator-work-first-seen-$key"),
         )
-        else -> group.firstSeenDate?.let { date ->
-            MR.strings.desktop_ui_first_seen.localized(Locale.getDefault(), date)
-        }
     }
+}
+
+private fun groupDateLabel(group: WorkPresentationGroup): CreatorWorkDateLabel? {
+    val publishedDateAt = group.publishedDateAt
+    val date = publishedDateAt?.let(::sourceDateDisplayDate) ?: group.firstSeenDate ?: return null
+    val full = when {
+        group.publishedDateQuality == SourceDateQualityStatus.TRUSTED && publishedDateAt != null ->
+            MR.strings.creator_work_published_date.localized(Locale.getDefault(), date)
+        publishedDateAt != null -> MR.strings.creator_work_published_date_retained.localized(Locale.getDefault(), date)
+        else -> MR.strings.desktop_ui_first_seen.localized(Locale.getDefault(), date)
+    }
+    return CreatorWorkDateLabel(full, date)
 }
 
 private fun chapterCountLabel(version: SourceWorkArchiveVersion): String = when (version.chapterCompleteness) {
@@ -1150,10 +1039,7 @@ private fun CreatorWorkSourceChooserDialog(
         title = { Text(group.title) },
         text = {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 560.dp)
-                    .verticalScroll(rememberScrollState()),
+                modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
@@ -1162,36 +1048,28 @@ private fun CreatorWorkSourceChooserDialog(
                 )
                 group.members.forEach { version ->
                     val sourceName = sourceManager.getOrStub(version.naturalKey.sourceId).name
-                    val sourceMissing = sourceManager.get(version.naturalKey.sourceId) == null
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("creator-source-version-${version.sourceWorkId}"),
-                    ) {
-                        Column {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = !opening) { onOpen(version) }
+                                .testTag("creator-source-version-${version.sourceWorkId}"),
+                        ) {
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable(enabled = !opening) { onOpen(version) }
-                                    .testTag("creator-source-open-${version.sourceWorkId}")
-                                    .padding(8.dp),
+                                modifier = Modifier.padding(8.dp),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalAlignment = Alignment.Top,
                             ) {
                                 Box(Modifier.width(48.dp).height(68.dp)) {
-                                    coil3.compose.AsyncImage(
-                                        model = mihon.desktop.image.desktopSourceImageModel(
-                                            version.thumbnailUrl,
-                                            version.naturalKey.sourceId,
-                                        ),
+                                    CreatorCoverImage(
+                                        model = rememberCreatorWorkCoverRequest(version),
                                         contentDescription = version.title,
-                                        fallback = rememberVectorPainter(Icons.AutoMirrored.Filled.MenuBook),
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.fillMaxSize(),
                                     )
                                     if (version.inLibrary) {
                                         Icon(
-                                            creatorFavoriteBadgeIcon(),
+                                            Icons.Outlined.CollectionsBookmark,
                                             contentDescription = MR.strings.desktop_ui_in_library.localized(),
                                             modifier = Modifier.align(Alignment.TopStart).padding(2.dp).size(16.dp),
                                         )
@@ -1199,7 +1077,7 @@ private fun CreatorWorkSourceChooserDialog(
                                 }
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     Text(sourceName, style = MaterialTheme.typography.labelLarge)
-                                    if (sourceMissing) {
+                                    if (sourceManager.get(version.naturalKey.sourceId) == null) {
                                         Text(
                                             MR.strings.desktop_ui_source_missing.localized(),
                                             color = MaterialTheme.colorScheme.error,
@@ -1212,13 +1090,15 @@ private fun CreatorWorkSourceChooserDialog(
                                     Text(latestChapterDateLabel(version), style = MaterialTheme.typography.bodySmall)
                                 }
                             }
-                            if (onSeparate != null && group.canonicalWorkId == null && group.members.size > 1) {
-                                TextButton(
-                                    onClick = { onSeparate(version) },
-                                    modifier = Modifier.align(Alignment.End),
-                                ) {
-                                    Text(MR.strings.creator_work_separate_display.localized())
-                                }
+                        }
+                        if (onSeparate != null && group.canonicalWorkId == null && group.members.size > 1) {
+                            TextButton(
+                                enabled = !opening,
+                                onClick = { onSeparate(version) },
+                                modifier = Modifier.align(Alignment.End)
+                                    .testTag("creator-source-separate-${version.sourceWorkId}"),
+                            ) {
+                                Text(MR.strings.creator_work_separate_display.localized())
                             }
                         }
                     }
@@ -1249,11 +1129,10 @@ private fun sourceNamesForGroup(group: WorkPresentationGroup, sourceManager: Sou
 }
 
 @Composable
-private fun CreatorArchiveWorkCard(
+internal fun CreatorArchiveWorkCard(
     title: String,
-    thumbnailUrl: String?,
-    sourceId: Long,
-    dateLabel: String?,
+    version: SourceWorkArchiveVersion?,
+    dateLabel: CreatorWorkDateLabel?,
     favorite: Boolean,
     unread: Boolean,
     key: String,
@@ -1271,11 +1150,17 @@ private fun CreatorArchiveWorkCard(
     when (mode) {
         LibraryDisplayMode.List -> {
             Row(
-                modifier = cardModifier.padding(16.dp),
+                modifier = cardModifier.padding(vertical = 8.dp),
                 verticalAlignment = Alignment.Top,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                CreatorWorkCover(title, thumbnailUrl, sourceId, key, Modifier.width(64.dp).height(88.dp), favorite)
+                CreatorArchiveWorkCover(
+                    version = version,
+                    title = title,
+                    favorite = favorite,
+                    key = key,
+                    modifier = Modifier.width(64.dp).aspectRatio(CreatorUiLayout.COVER_RATIO),
+                )
                 Column(Modifier.weight(1f)) {
                     Text(
                         title,
@@ -1290,10 +1175,10 @@ private fun CreatorArchiveWorkCard(
                         modifier = Modifier.testTag("creator-work-sources-$key"),
                     )
                     dateLabel?.let { date ->
-                        Text(
+                        CreatorWorkDate(
                             date,
+                            key = key,
                             style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.testTag("creator-work-first-seen-$key"),
                         )
                     }
                 }
@@ -1302,28 +1187,28 @@ private fun CreatorArchiveWorkCard(
         LibraryDisplayMode.ComfortableGrid -> {
             Card(modifier = cardModifier, colors = CardDefaults.cardColors()) {
                 Column {
-                    CreatorWorkCover(
-                        title,
-                        thumbnailUrl,
-                        sourceId,
-                        key,
-                        Modifier.fillMaxWidth().aspectRatio(0.7f),
-                        favorite,
+                    CreatorArchiveWorkCover(
+                        version = version,
+                        title = title,
+                        favorite = favorite,
+                        key = key,
+                        modifier = Modifier.fillMaxWidth().aspectRatio(CreatorUiLayout.COVER_RATIO),
                     )
                     Text(
                         title,
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp).testTag("creator-work-$key"),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                            .testTag("creator-work-$key"),
                     )
                     unreadWorkLabel(unread, key)
                     dateLabel?.let { date ->
-                        Text(
+                        CreatorWorkDate(
                             date,
+                            key = key,
                             style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(horizontal = 8.dp)
-                                .testTag("creator-work-first-seen-$key"),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                         )
                     }
                 }
@@ -1332,23 +1217,20 @@ private fun CreatorArchiveWorkCard(
         LibraryDisplayMode.CompactGrid, LibraryDisplayMode.CoverOnlyGrid -> {
             Card(modifier = cardModifier, colors = CardDefaults.cardColors()) {
                 Column {
-                    CreatorWorkCover(
-                        title,
-                        thumbnailUrl,
-                        sourceId,
-                        key,
-                        Modifier.fillMaxWidth().aspectRatio(0.7f),
-                        favorite,
+                    CreatorArchiveWorkCover(
+                        version = version,
+                        title = title,
+                        favorite = favorite,
+                        key = key,
+                        modifier = Modifier.fillMaxWidth().aspectRatio(CreatorUiLayout.COVER_RATIO),
                         compactTitle = true,
                     )
                     dateLabel?.let { date ->
-                        Text(
+                        CreatorWorkDate(
                             date,
+                            key = key,
                             style = MaterialTheme.typography.labelSmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
-                                .testTag("creator-work-first-seen-$key"),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
                         )
                     }
                     unreadWorkLabel(unread, key)
@@ -1370,29 +1252,34 @@ private fun unreadWorkLabel(unread: Boolean, key: String) {
     }
 }
 
-internal fun creatorFavoriteBadgeIcon() = Icons.Outlined.CollectionsBookmark
-
 @Composable
-private fun CreatorWorkCover(
+private fun CreatorArchiveWorkCover(
+    version: SourceWorkArchiveVersion?,
     title: String,
-    thumbnailUrl: String?,
-    sourceId: Long,
+    favorite: Boolean,
     key: String,
     modifier: Modifier,
-    favorite: Boolean,
     compactTitle: Boolean = false,
 ) {
     Box(modifier = modifier.testTag("creator-cover-$key")) {
-        coil3.compose.AsyncImage(
-            model = mihon.desktop.image.desktopSourceImageModel(thumbnailUrl, sourceId),
-            contentDescription = title,
-            fallback = rememberVectorPainter(Icons.AutoMirrored.Filled.MenuBook),
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize().alpha(if (favorite) 0.34f else 1f),
+        version?.let {
+            CreatorCoverImage(
+                model = rememberCreatorWorkCoverRequest(it),
+                contentDescription = title,
+                contentScale = ContentScale.Crop,
+                rounded = false,
+                modifier = Modifier.matchParentSize().alpha(if (favorite) 0.34f else 1f)
+                    .testTag("creator-cover-image-$key"),
+            )
+        } ?: Text(
+            title,
+            modifier = Modifier.align(Alignment.Center).padding(8.dp),
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
         )
         if (compactTitle) {
             Box(
-                modifier = Modifier.fillMaxSize().background(
+                modifier = Modifier.matchParentSize().testTag("creator-cover-scrim-$key").background(
                     Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.82f))),
                 ),
             )
@@ -1402,38 +1289,52 @@ private fun CreatorWorkCover(
                 style = MaterialTheme.typography.labelSmall,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.align(Alignment.BottomStart).padding(6.dp).testTag("creator-work-$key"),
+                modifier = Modifier.align(Alignment.BottomStart).padding(6.dp)
+                    .testTag("creator-work-$key"),
             )
         }
         if (favorite) {
             Icon(
                 creatorFavoriteBadgeIcon(),
                 contentDescription = MR.strings.desktop_ui_in_library.localized(),
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.align(Alignment.TopStart).padding(5.dp).size(20.dp)
+                modifier = Modifier.align(Alignment.TopStart).padding(4.dp).size(CreatorUiLayout.favoriteBadgeSize)
                     .testTag("creator-favorite-$key"),
             )
         }
     }
 }
 
+internal fun creatorFavoriteBadgeIcon() = Icons.Outlined.CollectionsBookmark
+
+@Composable
+internal fun rememberCreatorWorkCoverRequest(version: SourceWorkArchiveVersion): coil3.request.ImageRequest {
+    val covers = LocalDesktopUiDependencies.current.customCoverStore
+    val coverId = version.mangaId ?: -version.sourceWorkId
+    val model = version.mangaId?.let { covers.resolveModel(it, version.thumbnailUrl) } ?: version.thumbnailUrl
+    return mihon.desktop.ui.library.rememberMangaCoverRequestState(
+        mangaId = coverId,
+        sourceId = version.naturalKey.sourceId,
+        coverModel = model,
+        coverVersion = version.detailsFetchedAt ?: 0L,
+    ).request
+}
+
 @Composable
 private fun CreatorArchiveWorkRow(
     title: String,
-    thumbnailUrl: String?,
+    version: SourceWorkArchiveVersion,
     key: String,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().padding(16.dp),
+        Modifier.fillMaxWidth().padding(vertical = 8.dp),
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        coil3.compose.AsyncImage(
-            thumbnailUrl,
+        CreatorCoverImage(
+            rememberCreatorWorkCoverRequest(version),
             null,
-            fallback = rememberVectorPainter(Icons.AutoMirrored.Filled.MenuBook),
-            modifier = Modifier.width(64.dp).height(88.dp).testTag("creator-cover-$key"),
+            modifier = Modifier.width(64.dp).aspectRatio(CreatorUiLayout.COVER_RATIO).testTag("creator-cover-$key"),
             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
         )
         Column(Modifier.weight(1f)) {
@@ -1449,35 +1350,13 @@ private fun ArchiveVersionListItem(
     sourceManager: SourceManager,
     onOpen: () -> Unit,
 ) {
-    val sourceName = sourceManager.getOrStub(version.naturalKey.sourceId).name
-    val availability = if (sourceManager.get(version.naturalKey.sourceId) != null) {
-        MR.strings.desktop_ui_source_available.localized()
-    } else {
-        MR.strings.desktop_ui_source_missing.localized()
-    }
-    val checkResult = version.lastCheckResult?.name?.lowercase()
-        ?: MR.strings.desktop_ui_source_not_checked.localized()
-    CreatorArchiveWorkRow(version.title, version.thumbnailUrl, "version-${version.sourceWorkId}") {
+    CreatorArchiveWorkRow(version.title, version, "version-${version.sourceWorkId}") {
         TextButton(onClick = onOpen, modifier = Modifier.testTag("creator-version-${version.sourceWorkId}")) {
             Text(authorVersionLabel(version, sourceManager))
         }
-        Text(
-            MR.strings.desktop_ui_archive_version_evidence.localized(
-                Locale.getDefault(),
-                sourceName,
-                availability,
-                version.readingLanguage.tag.uppercase(),
-                version.readingLanguage.certainty.name.lowercase(),
-                chapterCountLabel(version),
-                if (version.inLibrary) {
-                    MR.strings.desktop_ui_in_library.localized()
-                } else {
-                    MR.strings.desktop_ui_not_in_library.localized()
-                },
-                checkResult,
-                version.lastSuccessAt?.toString() ?: MR.strings.unknown.localized(),
-            ),
-        )
+        if (version.decision?.decision?.state == WorkDecisionState.REJECTED) {
+            Text(MR.strings.desktop_ui_separated_work_versions.localized())
+        }
     }
 }
 
@@ -1571,7 +1450,7 @@ data class WorkCompareScreen(val workId: Long, val creatorId: Long = -1L) : Scre
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (state.loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                if (state.loading) CircularProgressIndicator()
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 val item = state.version
                 if (item == null) {
@@ -1776,19 +1655,17 @@ private fun CreatorCardRow(
             .fillMaxWidth()
             .testTag("creator-card-${card.creator.id}")
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Column(Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().testTag("creator-card-${card.creator.id}-heading")) {
             Text(card.creator.displayName)
             Text(
                 MR.strings.creator_unique_work_count.localized(Locale.getDefault(), card.uniqueWorkCount),
-                style = MaterialTheme.typography.bodySmall,
             )
             if (card.unreadWorkCount > 0) {
                 Text(
                     MR.strings.creator_new_work_count.localized(Locale.getDefault(), card.unreadWorkCount),
-                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.testTag("creator-card-${card.creator.id}-new-work-count"),
                 )
@@ -1800,19 +1677,13 @@ private fun CreatorCardRow(
                 )
             }
             if (card.creator.aliases.isNotEmpty()) {
-                Text(card.creator.aliases.joinToString(), style = MaterialTheme.typography.bodySmall)
+                Text(card.creator.aliases.joinToString())
             }
         }
-        if (card.representativeWorks.isEmpty()) {
-            Text(
-                MR.strings.creator_no_representative_work.localized(),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else {
+        if (card.representativeWorks.isNotEmpty()) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(CreatorUiLayout.contentSpacing),
                 verticalAlignment = Alignment.Top,
             ) {
                 card.representativeWorks.take(3).forEach { work ->
@@ -1821,7 +1692,6 @@ private fun CreatorCardRow(
             }
         }
     }
-    HorizontalDivider()
 }
 
 @Composable
@@ -1838,20 +1708,16 @@ private fun CreatorRepresentativeWorkItem(
         coverModel = coverModel,
         coverVersion = request.lastModifiedAt,
     ).request
-    val fallbackPainter = rememberVectorPainter(Icons.AutoMirrored.Filled.MenuBook)
     Column(
-        modifier = Modifier.width(72.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.width(CreatorUiLayout.representativeItemWidth),
     ) {
-        coil3.compose.AsyncImage(
+        CreatorCoverImage(
             model = imageRequest,
             contentDescription = work.title,
-            placeholder = fallbackPainter,
-            error = fallbackPainter,
-            fallback = fallbackPainter,
-            modifier = Modifier.width(64.dp).height(88.dp).testTag("creator-cover-${work.workKey}"),
+            modifier = Modifier.width(CreatorUiLayout.representativeCoverWidth)
+                .aspectRatio(CreatorUiLayout.COVER_RATIO).testTag("creator-cover-${work.workKey}"),
             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
         )
-        Text(work.title, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+        Text(work.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }

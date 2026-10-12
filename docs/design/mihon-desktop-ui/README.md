@@ -4,6 +4,8 @@
 
 2026-09-30 本次交互迭代的业务定稿见[最终设计](2026-09-30-interaction-final-design.md)与[实机 roadmap](../../roadmap/2026-09-30-desktop-interaction-iteration-roadmap.md)。两者承接书架、详情、分类、导航、主题和外观的最终要求；本文的复用、焦点、测试和原生验证约束继续适用。
 
+2026-10-12 作者列表和详情以当前 Android 作者页为界面与操作基准，固定验收及证据见[作者页对齐计划](../../roadmap/2026-10-12-windows-author-android-parity.md)。作者页共用尺寸由 `presentation-theme/src/commonMain/kotlin/tachiyomi/presentation/creator/CreatorUiLayout.kt` 提供，两端共同消费；包括作者封面 2:3、舒适/紧凑网格宽度和代表作尺寸。后续作者页改动须同步核对两端挂载 UI 与共享作者行为契约，平台图片 adapter 保持漫画身份、自定义封面、来源请求及版本缓存链路。
+
 ## 先读哪些内容
 
 1. 读取本页和[Desktop 事实与组件表](desktop-reference.md)。按页面任务读取原规范适用章节，不必每次阅读全部128条。

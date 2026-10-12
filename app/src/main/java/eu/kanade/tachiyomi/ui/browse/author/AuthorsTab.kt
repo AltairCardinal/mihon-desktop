@@ -138,6 +138,7 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
+import tachiyomi.presentation.creator.CreatorUiLayout
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.time.Instant
@@ -579,10 +580,14 @@ private fun CreatorCardRow(card: CreatorCardProjection, onClick: () -> Unit) {
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 representativeWorks.forEachIndexed { index, work ->
-                    Column(Modifier.width(52.dp).testTag("creator-card-${card.creator.id}-work-$index")) {
+                    Column(
+                        Modifier.width(
+                            CreatorUiLayout.representativeItemWidth,
+                        ).testTag("creator-card-${card.creator.id}-work-$index"),
+                    ) {
                         MangaCover.Book(
                             data = work.toMangaCover(),
-                            modifier = Modifier.width(48.dp),
+                            modifier = Modifier.width(CreatorUiLayout.representativeCoverWidth),
                         )
                         Text(work.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
@@ -751,8 +756,8 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
             },
         ) { padding ->
             Column(
-                Modifier.fillMaxSize().padding(padding).padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                Modifier.fillMaxSize().padding(padding).padding(CreatorUiLayout.contentPadding),
+                verticalArrangement = Arrangement.spacedBy(CreatorUiLayout.contentSpacing),
             ) {
                 if (state.loading) CircularProgressIndicator()
                 state.workOpenError?.let { error ->
@@ -846,12 +851,18 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                 } else {
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(
-                            if (mode == LibraryDisplayMode.ComfortableGrid) 136.dp else 112.dp,
+                            if (mode ==
+                                LibraryDisplayMode.ComfortableGrid
+                            ) {
+                                CreatorUiLayout.comfortableGridMinimum
+                            } else {
+                                CreatorUiLayout.compactGridMinimum
+                            },
                         ),
                         modifier = Modifier.fillMaxWidth().weight(1f),
                         contentPadding = PaddingValues(vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(CreatorUiLayout.contentSpacing),
                     ) {
                         items(state.visiblePresentationCards, key = { "presentation-${it.groupKey}" }) { group ->
                             val presentationCardKey = group.canonicalWorkId?.toString() ?: group.groupKey
@@ -1042,7 +1053,7 @@ internal fun CreatorArchiveWorkCard(
                     title = title,
                     favorite = favorite,
                     key = key,
-                    modifier = Modifier.width(64.dp).aspectRatio(MangaCover.Book.ratio),
+                    modifier = Modifier.width(64.dp).aspectRatio(CreatorUiLayout.COVER_RATIO),
                 )
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -1075,7 +1086,7 @@ internal fun CreatorArchiveWorkCard(
                         title = title,
                         favorite = favorite,
                         key = key,
-                        modifier = Modifier.fillMaxWidth().aspectRatio(MangaCover.Book.ratio),
+                        modifier = Modifier.fillMaxWidth().aspectRatio(CreatorUiLayout.COVER_RATIO),
                     )
                     Text(
                         title,
@@ -1105,7 +1116,7 @@ internal fun CreatorArchiveWorkCard(
                         title = title,
                         favorite = favorite,
                         key = key,
-                        modifier = Modifier.fillMaxWidth().aspectRatio(MangaCover.Book.ratio),
+                        modifier = Modifier.fillMaxWidth().aspectRatio(CreatorUiLayout.COVER_RATIO),
                         compactTitle = true,
                     )
                     dateLabel?.let { date ->
@@ -1178,7 +1189,7 @@ private fun CreatorArchiveWorkCover(
             Icon(
                 Icons.Outlined.CollectionsBookmark,
                 contentDescription = stringResource(MR.strings.desktop_ui_in_library),
-                modifier = Modifier.align(Alignment.TopStart).padding(4.dp).size(16.dp)
+                modifier = Modifier.align(Alignment.TopStart).padding(4.dp).size(CreatorUiLayout.favoriteBadgeSize)
                     .testTag("creator-favorite-$key"),
             )
         }
@@ -1274,7 +1285,7 @@ private fun CreatorArchiveWorkRow(
         coil3.compose.AsyncImage(
             thumbnailUrl,
             null,
-            modifier = Modifier.width(64.dp).aspectRatio(MangaCover.Book.ratio),
+            modifier = Modifier.width(64.dp).aspectRatio(CreatorUiLayout.COVER_RATIO),
             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
         )
         Column(Modifier.weight(1f)) {
