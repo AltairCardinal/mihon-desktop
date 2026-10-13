@@ -144,6 +144,31 @@ class DualPageViewportZoomTest {
     }
 
     @Test
+    fun edgeHandoffDoesNotReplayDistanceAlreadyConsumedByTheZoomedImage() = runTest {
+        for (direction in listOf(-1f, 1f)) {
+            val subject = subject(ReaderPortraitSingleSlot.LEFT)
+            mountInPager(subject.holder)
+            val pager = viewer().pager
+            setCamera(subject.holder, 2f, 0f, 0f)
+            val time = SystemClock.uptimeMillis() + 1000
+            val startX = if (direction < 0f) 1300f else 100f
+            send(pager, time, time, MotionEvent.ACTION_DOWN, startX, 1500f)
+            var previousScroll = pager.scrollX
+            for (step in 1..12) {
+                send(pager, time, time + step * 30, MotionEvent.ACTION_MOVE, startX + direction * step * 100f, 1500f)
+                val movement = kotlin.math.abs(pager.scrollX - previousScroll)
+                assertTrue(
+                    "The pager must not replay the image pan at handoff: direction=$direction step=$step movement=$movement",
+                    movement <= 100,
+                )
+                previousScroll = pager.scrollX
+            }
+            assertTrue("The same gesture must still move the pager", pager.scrollX != pager.width)
+            send(pager, time, time + 390, MotionEvent.ACTION_UP, startX + direction * 1200f, 1500f)
+        }
+    }
+
+    @Test
     fun panReachingTheEdgeHandsOffWithinTheSameDrag() = runTest {
         val subject = subject(ReaderPortraitSingleSlot.LEFT)
         mountInPager(subject.holder)

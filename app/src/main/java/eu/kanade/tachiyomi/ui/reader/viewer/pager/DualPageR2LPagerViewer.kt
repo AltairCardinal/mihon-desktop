@@ -80,6 +80,7 @@ class DualPageR2LPagerViewer(
 
     private var awaitingIdleViewerChapters: ViewerChapters? = null
 
+    private val pendingZoomResets = mutableSetOf<DualPagerPageHolder>()
     private var isIdle = true
         set(value) {
             field = value
@@ -141,6 +142,8 @@ class DualPageR2LPagerViewer(
                 // Reconcile the final native slot before deferred chapter/fact publication can move it.
                 onPageChange(pager.currentItem)
                 isIdle = true
+                pendingZoomResets.forEach(DualPagerPageHolder::resetViewportZoom)
+                pendingZoomResets.clear()
                 adapter.publishPendingPairing()
                 logNavigationState("idle")
             } else {
@@ -209,6 +212,7 @@ class DualPageR2LPagerViewer(
     }
 
     override fun destroy() {
+        pendingZoomResets.clear()
         destroyed = true
         presentedViewports.toMap().forEach { (owner, tickets) -> tickets.forEach(owner::releaseViewport) }
         presentedViewports.clear()
@@ -372,13 +376,20 @@ class DualPageR2LPagerViewer(
         // A window rebuild can keep the same selected pair while an adjacent chapter loads.
         // Preserve that selection so its pending rendered viewport can still settle.
         if (item != null && currentPage != item) {
+            pendingZoomResets.removeAll { holder ->
+                item is DisplayPage && holder.displayPage.visiblePages.any(item::containsPage)
+            }
             val previous = currentPage as? DisplayPage
             if (!layoutOnly && previous != null &&
                 (item !is DisplayPage || previous.visiblePages.none(item::containsPage))
             ) {
                 pager.children.filterIsInstance<DualPagerPageHolder>()
                     .filter { it.displayPage == previous }
-                    .forEach(DualPagerPageHolder::resetViewportZoom)
+                    .forEach { holder ->
+                        // onPageSelected precedes the last animation frame. Keep the outgoing
+                        // camera intact until settlement; an interrupted return cancels this reset.
+                        if (isIdle) holder.resetViewportZoom() else pendingZoomResets += holder
+                    }
             }
             currentPage = item
             when (item) {

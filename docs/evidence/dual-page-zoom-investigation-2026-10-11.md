@@ -320,3 +320,18 @@ python scripts/gradle-coordinator.py run --key pairing-contract-focused --timeou
 ```
 
 结果 **32/32 通过**：Desktop 产品回归 9、Desktop 共享呈现接线 6、共享手动配对契约 17；19 秒。XML 归档在 `.gradle-coordinator/pairing-contract-focused-results/`，原失败 XML 为 `pairing-boundary-trace-red.xml`。这是旧基线失败加相关定向补验的关闭证据，不是最终代码重新通过全量测试。格式核验仅针对修改的 Kotlin 文件，协调器 key 为 `pairing-contract-format`；提交前另执行 `git diff --check`。
+
+## 2026-10-13 Android 放大后边缘翻页跳变
+
+用户在 aex.68/code86 的横屏双页模式报告跳变。定位与修复仅覆盖 Android 双槽／半槽的整组相机与原 Pager 交接；普通单页、Desktop、配对算法及持久化未改。复用原手势所有者、原生 Pager 和原图片视口，没有另建翻页状态机。
+
+- 红测 `android-zoom-transition-red`：真实 `Pager.dispatchTouchEvent` 输入每步 100 px，交接帧实际滚动 804 px。父 Pager 沿用原始 DOWN，把已被图片平移消耗的距离重复算入翻页。
+- 红测 `android-zoom-camera-red`：真实 viewer 选中相邻组后，仍可见旧 holder 的倍率已从 2 变为 1。原 `onPageSelected` 早于退场动画结束。
+- 修复：在交接点仅重置原生 Pager 的手势起点，不向子树或点按检测器重发事件；旧 holder 延迟到 IDLE 才复位，动画中返回原组撤销复位，销毁时清除待复位引用。
+- 绿与重构复验：`android-zoom-transition-green2`、`android-zoom-refactor` 均为 **19/19**（`DualPageViewportZoomTest` 18 项，加 `DualPagerPageHolderLayoutTest` 的 `leaving a zoomed group*` 1 项）。覆盖双向交接、同次拖动到边缘、双指及剩余单指、取消、向内／纵向拖动、相机／资源保留、退场及中途返回。实际 Gradle 范围为 `:app:testDebugUnitTest --tests '*DualPageViewportZoomTest' --tests '*DualPagerPageHolderLayoutTest.leaving a zoomed group*' --no-parallel --max-workers=2`，由协调器串行执行。
+- 原生补验：隔离 API36、2560×1600、Debug 身份，`PagerHandoffNativeTest` **1/1 通过，3.143 秒**，日志 `.gradle-coordinator/android-zoom-native-pass.log`。执行原生产 Pager 的真实窗口触摸分发、交接、逐步位移与最终相邻页选择；该测试的受控子 View 不替代上述双页 holder／viewer 接线回归，也不等同实体平板完整阅读验收。
+- 原生夹具首次失败及后续诊断保留在 `android-zoom-native*.log`：原断言误认为中间页的绝对 scrollX 必为一屏宽，实际库可以将首次选中的中间页作为 offset=0。修正为等待首帧，并比较真实起点后的位移，保留每步位移上限、真实滚动与最终页码断言；没有为此改变 production。目标 6 个 Kotlin 文件经 Spotless hook 处理，最后的 instrumentation 文件另在 `android-zoom-native-offset` 格式核验。
+
+本批文件共同覆盖一次输入交接修复、其回归／原生补验、维护契约及候选版本；文件数超过 8 是验收层级所需，不包含独立功能。未运行完整模块测试或发布矩阵。构建／安装证据以本次候选 `artifact.json` 和安装后的签名、版本、哈希核对为准；实体平板横屏阅读画面由用户复验。
+
+交付构建保留失败编号：87 在外部依赖元数据直连等待期间经协调器取消；88 因临时 JVM 代理参数的 Windows 批处理转义错误未启动 Gradle；89 的 Release 编译成功，但其他任务并发修改工作区触发源码一致性拒绝，未签发交付。对应日志在 `.gradle-coordinator/android-zoom-candidate87-network.log`、`android-zoom-candidate88-shell.log` 和本轮 `android-candidate.log`。为固定提交的隔离构建分配 aex.72/code90，保留原证书。版本、构建环境修正不改变上述已经通过的 production 行为；不得把被拒绝的 89 号中间产物当作交付，也不得将隔离构建称为重新通过全量测试。

@@ -1287,8 +1287,35 @@ class DualPagerPageHolderLayoutTest {
         assertEquals("Positioning inside the same group must retain zoom", 2f, image.viewportScale, 0.001f)
 
         viewer.moveToPage(pages[3])
+        assertEquals(
+            "Selecting the next group must not reset the still-visible outgoing camera",
+            2f,
+            ReflectionHelpers.getField<Float>(original, "currentScale"),
+            0.001f,
+        )
+        assertEquals(
+            "The outgoing group must retain zoom while it is still visible in the page transition",
+            2f,
+            image.viewportScale,
+            0.001f,
+        )
+        viewer.moveToPage(pages[1])
+        repeat(40) {
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+            viewer.pager.computeScroll()
+        }
+        assertEquals(
+            "Returning before the outgoing animation completes must cancel its pending reset",
+            2f,
+            ReflectionHelpers.getField<Float>(original, "currentScale"),
+            0.001f,
+        )
+        viewer.moveToPage(pages[3])
         measure(viewer.pager, 1440, 3120)
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
+        repeat(40) {
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+            viewer.pager.computeScroll()
+        }
         assertEquals(
             "The non-current retained group must forget zoom",
             1f,
