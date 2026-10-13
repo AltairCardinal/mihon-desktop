@@ -350,3 +350,52 @@ R3-03 最终补验：跨 owner 的 release 合并窗口已实际复现。第一�
 R3-03 同轮最终独立审查结论 `PASS_R3_03 / R3_04_GO`，最后实际控件反馈及此前内容身份、锁内纯原子提交、失败原因、取消预算、原始 alpha/ICC/坐标、native slots/像素保护和跨 owner 可达性均无未关闭实质阻塞。研究提交 `0c56d359d392227c1d477d41954ed702f07d4885`，29 文件、3975 新增／647 删除，父为 `23a5582e32`；测试与双端生产接线属于同一证据到原生绘制协议批次，规模和高风险边界按专项证据审查，没有复制算法或机械拆分。研究树提交后干净，主干未合入产品。最后 29 个文件 SHA 冻结在 `r3-android-feedback-final/source-fingerprints.json`。
 
 进入 R3-04：原独立审查者结束 R3-03 职责后，复用为真实下载 instrumentation 实施者；主代理对其新增探针独立核验并仍是唯一重型 Gradle／设备计时协调者。原实施代理因长上下文无法稳定恢复保持停止，没有新增代理；此角色调整不增加已有代理／审查轮预算。先做真实 DownloadProvider→ChapterLoader→DownloadPageLoader 的目录及 CBZ 冒烟和 GPU 提交观察，再运行已冻结的冷／热、顺读／回翻／快翻及最坏前缀对照；仍只有基线与最终候选两次宿主 Debug 构建额度，不操作用户设备。
+
+
+### R3-04 运行前冻结与探针核验（尚未 ART 验收）
+
+精确基线 Debug 已由统一入口完成：`4d65d3d67b`，APK SHA-256 `976a2ad91c271c231245591277eac6dfebc2bcc68749da2701fc403c14569e05`；研究候选为 `0c56d359d3`，APK SHA-256 `40c59a2f81a59c3f41497098b1cdc4eb617eeca5d8067eccc1f3925ed65cf9f1`。包名、证书、versionCode、SDK、ABI、JDK、Gradle 和构建配置指纹核对相同，production diff 均为空；Debug 不递增正式版本、不安装用户设备。基线／候选构建命令、日志和 artifact.json 冻结在 `.gradle-coordinator/r3-art-comparison/`，完整原始对照表 `comparison-matrix.json` 在 ART 前冻结。至此原图两份＋基线＋最终研究候选四份宿主 Debug 额度已使用，测试 APK 编译不增加宿主额度。
+
+真实下载探针只新增 instrumentation，目录／CBZ 通过独占 storage、真实 DownloadProvider 命名与虚构 DB 记录，ReaderActivity 真实开章后必须断言实际 DownloadPageLoader；未注入 ReaderPage 列表。原图标量 reference 由子代理在主机离线读取生成，528 页及各 archive SHA 全核，reference SHA-256 `2f179fd97d5597061daaccdbd75999ee06c73db50bbb0fa4fbefb0d565daeef3`，主代理未读图。目标进程不会在意图开始前解码漫画作参考；只读 seed marker 和标量，冷定义仍为进程／派生分析冷，不是 OS storage 冷。
+
+主代理独立核验发现比例匹配可能把相邻合成页误认，修为 8 个页码 badge 位全必验且不可被裁掉；两个真实 reference 负例 8→9、93→94 拒绝。GPU frame commit 后 PixelCopy 逐页核真实绑定、实时内容身份、slots、locked／drawn 回执与固定原图点；双正确必须来自同一 buffer 和能力，不拼接两个 frame 的左右页。首图／双正确记录校验完成时刻的上界，GPU 提交另列；encoded/nativeReady/analysis 的轮询观察也是上界，未伪装成 decoder 内部精确事件。实际 stream 开关及 native 总峰值暂不可得，明确标 NOT_AVAILABLE，不能据此宣称资源矩阵全通过。
+
+探针最终源码 SHA-256 `8956ecf511f7b8bd46da885ad657a8d1c1dfe3f3ac6832db43a184602bae331f`；候选测试 APK SHA-256 `15600fdcf6f71d111d267b7a55a3221103bc11c4f75aecf6ede9b50f9775ccfd`。候选 test compile、唯一文件项目原规则严格 Apply／Check 和 assemble 通过；两次格式失败仅阻止包装，未当行为红／绿。中间 layout 排版不作为最终门禁，最终没有规则豁免。driver 用明确 JUnit 一项成功回执、本轮 JSON 和独占结果文件判断；valid／0-tests／missing-output 三个 fakeADB 协议用例通过，后两项均失败退出，不能读取旧结果冒充运行。基线正在编译完全相同的 observer 源码，尚未启动模拟器／运行 ART，目录与 CBZ 仍 NOT_RUN。
+
+
+第一轮 ART 真实运行：基线同 observer 测试 APK 包装通过（3m14s），APK SHA-256 `e05939a1e456e7aaaaddd1442bff9f5e62849c160f4c8784fe569f24129cd1a6`。专用 AVD 身份／serial 核对，API36 x86_64，1280×800、160dpi、显示 mode 60.000004Hz；启动日志明确 `Increasing RAM size to 2560MB`，实际 `/proc/meminfo` MemTotal=2,532,300kB，因此过去请求参数 1536MiB 不能写成实际 runtime RAM。两 APK 使用同一实例；没有用户真机连接／操作。
+
+候选目录与 CBZ 的 control-no-reset-176 第 8/9 页均实际 DownloadPageLoader、双正确通过；目录首图／双正确 GPU+PixelCopy 校验上界同为 1891.557ms（仅一条冒烟，不是p95）；两页各72/72点、8/8强制badge和实时物理能力通过。记录为 `r304-candidate-control-smoke-directory.json`、`r304-candidate-control-smoke-cbz.json` 及各 runner/run 元数据。尚未批量对照，不能据冒烟报性能通过。
+
+同一候选无重置前缀冷打开第126页，预期126/127，实际达到16个attempted、active空、位置sequence=0，20s观察结束仍无first／both正确像素，结果 `NOT_CORRECT`，驱动退出1。`r304-candidate-control-worst-prefix.json` 保留完整失败，没有伪导航续预算，也没有删慢／失败样本。它说明当前候选不能满足所有冷入口；不把此合成最坏场景冒充三起用户漫画现场已复现。
+
+目录冒烟另观察到11 attempted但newlyReadBytes=0。沿真实源码只读证实：DownloadPageLoader为Ready页仍通过ContentResolver新开InputStream；sampleOriginal读取原factory，未接readpermit，JNI exact java_wrapper调用read_all_java_stream；Ready分支跳过loadFactPage，而finally将完成写成cacheHit=true、0bytes。CBZ的archive mmap也不能证明页级重新读取／解压免计。故这是实际可达的预算漏计量，不能把Ready／本地／OS cache当已有标量缓存；探针本身stream计数不可得，尚未宣称已测到11流真实总bytes。已交同实施者补Ready真实文件17MiB+17MiB的受控正确红、现有permit接线及header/full-header边界，主代理仍是唯一重型Gradle并独立验收。
+
+基线 cold8 的native Ready/draw已观察到，但GPU回执没有完成最终像素校验；同进程重开8随后两页全部正确。`r304-baseline-control-smoke-directory.json` 整体失败保留，冷段未计性能；当前不能分辨真实旧帧/配对故障与观测在ticket变化后未重试。将以当前实际drawn/locked/bound能力在下一次preDraw重新注册GPU观测，仍禁止伪绘制／markDrawn，并补actual frames诊断。没有根据该未定位失败声称基线无限Loading／作为候选性能收益。模拟器已仅对核对过的owned serial正常关闭，再补focused；四份宿主额度用完，新增修复宿主将在具体代码与验证可审阅后单独处理。
+
+
+Ready 文件计量专项取得正确红：真实17MiB+17MiB源分别在两条测试读到35,651,944B，fresh+complete header读到34,078,720B，即32MiB+512KiB；三项均因实际超限失败，非编译／夹具失败，冻结 `r3-ready-file-budget-red/`。把已有permit贯通默认optional loader、fresh／完整header及新开原图Source，reserve／returnUnread在真实读前执行，known header提前返回无开流；借用buffer与外层physical use保证唯一关闭，JNI吞Java异常返回空decoder时以exhausted优先RESOURCE，用户取消仍上抛。相同3项绿通过，随后原项目严格7文件格式以及受影响viewport完整类28、sampler11、producer4、普通widget2、真实HTTP2、共享预算3，实际合计50/50，失败／错误／跳过全0（不是此前预估32）；未重跑模块完整或全量。`r3-ready-file-final-focused/` 保存真实XML、argv／log、核验计数与sourceSHA。主代理独立核对期限时钟单位、同cap身份、借用／close、取消和错误边界后，研究提交 `fcad996867d330b8cc90d05bbbc43d426ec6fe1a`，6文件296新增／44删除（含严格排版），父为 `0c56d359d3`。这是代码及focused修复证据，尚非修复APK ART通过。
+
+基线观测修正只改测试，不改基线production：共同observer V2 SHA-256 `853bae1f2ba3eef2348357f28f1d0f51e9a3d35de6a9e2c426fe0f507cc97448`，基线测试APK `0ac93450fd9f3befc5c91100eca7a146858943117c4f62a4aa52368e3094f532`。仍需真实current frame drawn／locked／bind才从preDraw重新注册GPU观察，没有markDrawn或伪准备。baseline cold8、同进程重开8及CBZ8均一buffer双正确通过，两页72/72点与8/8强制badge、实时物理身份和位置合格；cold／hot各记录一次 GPU_CALLBACK_CAPABILITY_CHANGED_OR_COPY_FAILED 后重观察成功，支持旧probe遗漏重试窗口。旧无copies超时不当产品红或性能样本。冷一次1665.722ms／热一次841.002ms仅冒烟，与旧candidate不同observer版本不做配对统计；真实20组矩阵未运行。旧证据与新 `r304-baseline-control-observer-retry-directory.json`／`...-cbz.json` 分开保留，未覆盖。
+
+四份宿主 Debug 上限已实际使用，追加一份 `fcad996867` 修复宿主的请求在代码／50项验证可审阅后提出：仅专用模拟器、保留已有产物、不发布或安装真机。截至此记录尚待用户回复，不以credit充足或等待时间当批准；独立基线观测、必要focused和长前缀原理／优化预研继续，未停止整个任务。最坏前缀仍否决当前完整GO，不要求用户牺牲配对一致／已绘不移／实际无新增可感知等待三个目标。
+
+
+### R3-04 追加授权、前缀分析成本与已知侧别优化
+
+用户已明确批准超过原四份上限追加一份修复 Debug 宿主；仅专用模拟器，保留旧产物，不安装真机或发布。该第五份宿主尚未构建，先完成必要优化和有效 focused 验证。原文中的“待用户回复”是当时状态，现已解除。
+
+真实 production NeedFacts 闭包实验保留了灰色无边界前缀风险：单目标 126 在冷态仍需 127 张原图分析；当前已观测 115～130 后还需 113 张、合计 129 张。不能从旧采样组件耗时直接推算真实开章延迟，更不能把预算重置或缓存预热当作解决冷态。原图 113 存在确定侧别时，旧扫描仍为无关的 112 请求原图分析，导致冷态 17 张超过 16 张预算。
+
+优化沿用同一 canonical scan：在 forced/wide/manual 优先级之后，仅已有 Computed 原图侧别能提前排除候选配对；缺失、失败、header hint 不代替该证据，读取到的依赖纳入证书失效检查。正确红证实旧代码请求 112；绿测试覆盖双方向、双方排除和手工重叠优先级共 12 组合。生产闭包实验现显示该 reset 冷态由 17 降至 16 张；已有邻页观测场景由另需 3 降至 2 张。灰色无边界场景仍未改善，不把局部优化当完整 GO。
+
+证据：研究 worktree 的 r3-known-side-veto-red/green 保留红绿日志；r3-known-side-shared-regression 保存严格格式、59 项共享测试及优化后闭包结果；r3-known-side-platform-wiring 保存 Android 47 与 Desktop 15 项实际 XML（零失败）。这些是共享规则与真实两端消费回归，不是全量或 ART 耗时验收。root 独立核对 manual/geometry 优先级、仅 Computed 依赖、完整 oracle 与局部认证同扫描及失效路径。
+
+正常解码位图的只读观察已在未修改 production 的基线宿主取得：控制页 8/9、卷 8 页 125/126 均为软件 ARGB8888、sRGB、完整原图尺寸 980×1403、NORMAL、无裁边/源区域，每张分配 5,499,760 字节。尺寸相等不足以授权复用。新增探针按真实 production Sampling.plan 导出的左右各 194 个原始坐标，与子代理生成的 25 页全不透明无 ICC 原图 reference 做零容差逐点对照；尚未取得该精确比较的 ART 结果，复用未启用。参考图像仅子代理处理，root 只接收标量/JSON，测量期间不在设备重新解码参考图像。
+
+
+R3-04 本批研究提交 `a07fbf16afedff89782145bde658aa257e732472`（已知侧别避免无关前缀分析，4 个 domain 文件，327 新增/1 删除；含正确红绿、闭包成本实验、失效与优先级回归），其父为 `50b7524af7`。未合入主干产品。
+
+正常位图精确对照完成：基线 production 未变，instrumentation 源 SHA-256 `49789785d0f1291eb4f85ab119352393e24de5239ca5c129d1c09dd98449699b`；同源测试 APK 分别编译，基线 `3450cd842149c48f0874d86d0b79d6e29e6c45e79eaa8a1f8be8c1ebb1f8c601`、研究 `8d3a3b01240111e65e45063462afe46fbc10d3f8913faadf63b22bc21f5120dd`，测试 APK 不占第五份宿主额度。卷 8 全 18 张 111～128、卷 9 全 5 张 91～95 以及控制 8/9 共 25 张，每张 388 原始坐标均 exact/opaque=388、tolerance=0、maxChannelDifference=0。只读 app-owned WeakReference，无 SSIV 私有 bitmap、无参考图设备解码、无复用启用。探针提交 `f5c5ab50f5`，严格格式/两树 instrumentation 编译及实际 ART 逐点运行完成。
+
+证据在 `r3-art-comparison/r304-baseline-exact-bitmap-control.json`、`r304-baseline-exact-bitmap-vol08-126.json`、`r304-baseline-exact-bitmap-vol08-sweep-quoted.json`、`r304-baseline-exact-bitmap-vol09-sweep.json`。前两个单次显示验证 CORRECT，两个翻页遍历保存 NOT_CORRECT（runner 确实执行一项且完整结束），只采用其中原图逐点观测，不把失败遍历作为配对/性能 PASS。首次卷 8 多 action 未执行，是 adb shell 将分号重新解析，独立 runner 失败日志保留；ignored driver 改用 shlex.join 保护 device shell argv，真实 printf literal 往返验证后再执行，未覆盖旧失败。AVD PID 68764 仅本轮专用实例，运行完成已 emu kill；实际请求 1536MiB 会被 emulator 提升为 2560MiB，不能报告成实测 1536MiB。完整冻结 A/B 耗时矩阵仍 NOT_RUN，第五份宿主仍未构建。
