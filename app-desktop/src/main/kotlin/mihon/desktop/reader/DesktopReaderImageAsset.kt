@@ -2,6 +2,9 @@ package mihon.desktop.reader
 
 import androidx.compose.ui.graphics.ImageBitmap
 import mihon.domain.reader.PageDecodePurpose
+import mihon.domain.reader.PageRotation
+import mihon.domain.reader.ReaderImageOrientation
+import mihon.domain.reader.ReaderOriginalPageSamples
 import mihon.domain.reader.ReaderPageDecodeKey
 
 /** One independently closeable ownership reference to a decoded Desktop reader image. */
@@ -29,6 +32,8 @@ internal class DesktopReaderImageAsset(
     val estimatedBytes: Long,
     val sampled: Boolean,
     val animationMetadata: DesktopReaderAnimationMetadata? = null,
+    val originalSamples: Map<PageRotation, ReaderOriginalPageSamples> = emptyMap(),
+    val sourceOrientation: ReaderImageOrientation = ReaderImageOrientation.NORMAL,
     private val disposer: () -> Unit = {},
 ) : DesktopReaderImageAssetLease {
     private val lock = Any()
@@ -50,7 +55,9 @@ internal class DesktopReaderImageAsset(
         require(estimatedBytes >= 0) { "estimatedBytes must be non-negative" }
     }
 
-    override fun retain(retention: DesktopReaderImageMemoryRetention): DesktopReaderImageAssetLease = synchronized(lock) {
+    override fun retain(retention: DesktopReaderImageMemoryRetention): DesktopReaderImageAssetLease = synchronized(
+        lock,
+    ) {
         check(!initialLeaseClosed) { "Desktop reader image asset lease is closed" }
         retainLocked(retention)
     }

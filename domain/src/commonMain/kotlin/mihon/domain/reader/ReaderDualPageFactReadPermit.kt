@@ -17,7 +17,11 @@ class ReaderDualPageFactReadPermit(
     fun remainingWaitMillis(): Long = budget.remainingWaitMillis(clockMillis())
     val exhausted: Boolean get() = !budget.canRead(pageId, clockMillis())
 
-    /** Native sources share a bounded read implementation; cached encoded streams never use it. */
+    /**
+     * Reserve every fresh encoded-source read, including Ready files and archive entries.
+     * OS caching does not make these bytes an application-owned cached result. Reusing a
+     * confirmed scalar or header performs no stream read and needs no new byte reservation.
+     */
     fun bound(source: Source, nanoTime: () -> Long): Source = object : ForwardingSource(source) {
         override fun read(sink: Buffer, byteCount: Long): Long {
             if (byteCount == 0L) return 0

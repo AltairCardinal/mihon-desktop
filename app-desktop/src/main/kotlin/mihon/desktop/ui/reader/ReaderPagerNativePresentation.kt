@@ -256,8 +256,10 @@ internal class ReaderPagerNativePresentation(
         if (prepared()) return true
         if (ticket?.let(model::isCurrentDualViewport) == true) return false
         if (ticket != null && !selected && ticket?.locationSequence != binding?.logicalLocation?.sequence) return false
-        ticket?.let(model::releaseDualViewport)
+        val previous = ticket
+        // Claim the successor's frame before retiring the old mount's release-only handle.
         ticket = model.beginPagerViewport(visible, userNavigation, navigationLocation, selected)
+        if (previous != ticket) previous?.let(model::releaseDualViewport)
         return prepared()
     }
 

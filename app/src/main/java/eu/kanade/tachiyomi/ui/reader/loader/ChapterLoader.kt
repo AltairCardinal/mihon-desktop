@@ -75,6 +75,12 @@ class ChapterLoader(
         }
         if (generation == null) {
             if (pageListEffect != null) awaitExistingWindowLoad(chapter)
+            if (pageListEffect?.purpose != ReaderChapterLoadPurpose.PREFETCH) {
+                withIOContext {
+                    chapter.pages.orEmpty().filter { it.status == eu.kanade.tachiyomi.source.model.Page.State.Ready }
+                        .forEach { it.publishHeaderFact() }
+                }
+            }
             return
         }
         withIOContext {

@@ -58,6 +58,43 @@ enum class ReaderImageOrientation(val exifValue: Int, val rotation: PageRotation
     }
 }
 
+/** A truncated metadata prefix cannot prove that a later EXIF orientation is absent. */
+fun hasCompleteImageOrientationMetadata(header: ByteArray): Boolean {
+    fun byte(at: Int) = header[at].toInt() and 255
+    fun label(at: Int, value: String) = at >= 0 && at + value.length <= header.size &&
+        value.indices.all { byte(at + it) == value[it].code }
+    if (header.size >= 2 && byte(0) == 255 && byte(1) == 216) {
+        var at = 2
+        while (at < header.size && byte(at) == 255) {
+            while (at < header.size && byte(at) == 255) at++
+            if (at >= header.size) return false
+            val marker = byte(at++)
+            if (marker == 0xda || marker == 0xd9) return true
+            if (marker in 0xd0..0xd7 || marker == 1) continue
+            if (at + 2 > header.size) return false
+            val length = (byte(at) shl 8) or byte(at + 1)
+            if (length < 2 || at.toLong() + length > header.size) return false
+            at += length
+        }
+        return false
+    }
+    if (header.size >= 8 && byte(0) == 137 && label(1, "PNG\r\n\u001a\n")) {
+        var at = 8
+        while (at + 12 <= header.size) {
+            val length = (0 until 4).fold(0L) { value, index -> (value shl 8) or byte(at + index).toLong() }
+            if (length > header.size - at - 12L) return false
+            if (label(at + 4, "IEND")) return true
+            at += length.toInt() + 12
+        }
+        return false
+    }
+    if (header.size >= 12 && label(0, "RIFF") && label(8, "WEBP")) {
+        val length = (3 downTo 0).fold(0L) { value, index -> (value shl 8) or byte(4 + index).toLong() }
+        return length + 8 <= header.size
+    }
+    return true
+}
+
 /** Caller supplies at most its existing header bound; no image pixels are decoded. */
 fun readImageOrientation(encodedHeader: ByteArray): ReaderImageOrientation {
     fun byte(at: Int): Int = encodedHeader[at].toInt() and 255

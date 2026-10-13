@@ -43,7 +43,7 @@ abstract class PageLoader {
         page: ReaderPage,
         permit: ReaderDualPageFactReadPermit,
     ) = withContext(Dispatchers.IO) {
-        if (!isRecycled && page.stream != null) page.publishHeaderFact()
+        if (!isRecycled && page.stream != null) page.publishHeaderFact(readPermit = permit)
     }
 
     /**
