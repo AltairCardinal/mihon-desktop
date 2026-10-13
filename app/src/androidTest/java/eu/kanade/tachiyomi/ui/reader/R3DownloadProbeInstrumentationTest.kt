@@ -33,6 +33,8 @@ import eu.kanade.tachiyomi.ui.reader.viewer.pager.DisplayPage
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPagerPageHolder
 import kotlinx.coroutines.Job
+import mihon.domain.reader.ReaderAnalysisFailure
+import mihon.domain.reader.ReaderDualPageFactBudget
 import mihon.domain.reader.ReaderPageAnalysisEvidence
 import mihon.domain.reader.ReaderSpreadSampleRequest
 import mihon.domain.reader.SharedDualPageSession
@@ -375,9 +377,12 @@ class R3DownloadProbeInstrumentationTest {
                 }
                 var oldRequest: ReaderSpreadSampleRequest? = null
                 var oldJob: Job? = null
+                var oldBudget: ReaderDualPageFactBudget? = null
                 instrumentation.runOnMainSync {
                     oldRequest = gate.currentOriginalRequest(viewer)
                     oldJob = fieldOrNull(viewer.adapter, "matchingJob") as? Job
+                    oldBudget = owner.factBudget
+                    check(owner.location?.sequence == 0L)
                     check(requireNotNull(oldJob).isActive && !requireNotNull(oldJob).isCancelled)
                     check(owner.ownsOriginalAnalysisRequest(requireNotNull(oldRequest)))
                     replacement.put("oldRequestContent", requireNotNull(oldRequest).content.contentVersion)
@@ -438,6 +443,51 @@ class R3DownloadProbeInstrumentationTest {
                 while (!requireNotNull(oldJob).isCompleted) {
                     check(System.nanoTime() < completionDeadline) { "Old native batch did not exit after release" }
                     Thread.sleep(10)
+                }
+                // Require the actual old-budget failure before navigation; otherwise a completion race
+                // could skip the recovery behavior under test. Share the existing 10s exit deadline.
+                while (true) {
+                    var resourceObserved = false
+                    instrumentation.runOnMainSync {
+                        val currentOwner = requireNotNull(viewer.adapter.currentChapter?.let(viewer.adapter::session))
+                        val budget = requireNotNull(oldBudget)
+                        val id = currentOwner.identity.pageIds[1]
+                        check(currentOwner.location?.sequence == 0L)
+                        check(currentOwner.factBudget === budget)
+                        check(gate.replacementNativeCreates.get() == 0)
+                        check(gate.snapshot().getLong("replacementNativeBytes") == 0L)
+                        val budgetSnapshot = synchronized(requireNotNull(fieldOrNull(budget, "lock"))) {
+                            val attempted = requireNotNull(fieldOrNull(budget, "attempted") as? Set<*>)
+                            check(id in attempted)
+                            JSONObject().put("budgetIdentity", System.identityHashCode(budget))
+                                .put("locationSequence", currentOwner.location?.sequence)
+                                .put("sameBudgetAsBeforeReplacement", true).put("attemptedIncludesReaderPage2", true)
+                                .put("attempted", JSONArray(attempted.map { it.toString() }))
+                                .put(
+                                    "active",
+                                    JSONArray((fieldOrNull(budget, "active") as Set<*>).map { it.toString() }),
+                                )
+                                .put("newlyReadBytes", fieldOrNull(budget, "newlyReadBytes"))
+                                .put("startedAt", fieldOrNull(budget, "startedAt"))
+                                .put("closed", fieldOrNull(budget, "closed"))
+                        }
+                        val evidence = currentOwner.originalAnalysis(id)
+                        replacement.put("lastBeforeRecoveryEvidence", evidence.toString())
+                        resourceObserved = evidence is ReaderPageAnalysisEvidence.RetryableFailure &&
+                            evidence.content.contentVersion == newContent &&
+                            evidence.reason == ReaderAnalysisFailure.RESOURCE
+                        if (resourceObserved) {
+                            replacement.put("beforeRecoveryResourceEvidence", evidence.toString())
+                                .put("beforeRecoveryResourceObservedNs", System.nanoTime())
+                                .put("beforeRecoveryCurrentOwnerIdentity", System.identityHashCode(currentOwner))
+                                .put("beforeRecoveryOldBudget", budgetSnapshot)
+                                .put("beforeRecoveryReplacementNativeCreates", gate.replacementNativeCreates.get())
+                                .put("beforeRecoveryReplacementNativeBytes", 0L)
+                        }
+                    }
+                    if (resourceObserved) break
+                    check(System.nanoTime() < completionDeadline) { "Old location did not produce its actual RESOURCE" }
+                    Thread.sleep(5)
                 }
                 instrumentation.runOnMainSync {
                     val evidence = owner.originalAnalysis(requireNotNull(oldRequest).content.pageId)
