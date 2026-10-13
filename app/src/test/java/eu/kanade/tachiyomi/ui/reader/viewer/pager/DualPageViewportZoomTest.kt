@@ -49,6 +49,9 @@ import tachiyomi.domain.chapter.model.Chapter
 import uy.kohesive.injekt.api.get
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileInputStream
+import java.io.FilterInputStream
+import java.io.RandomAccessFile
 import java.time.Duration
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
@@ -63,6 +66,208 @@ class DualPageViewportZoomTest {
     private val fixture = DualPagerPageHolderLayoutTest()
     private val mounted = mutableListOf<DualPagerPageHolder>()
     private lateinit var mainScheduler: kotlinx.coroutines.test.TestCoroutineScheduler
+
+    @Test
+    fun readyFileOriginalReadsShareTheLocationByteBudget() = runTest {
+        readyFileByteBudgetContract(swallowCancellation = false)
+    }
+
+    @Test
+    fun readyFileNativeNullAfterQuotaKeepsItsResourceFailure() = runTest {
+        readyFileByteBudgetContract(swallowCancellation = true)
+    }
+
+    private fun kotlinx.coroutines.test.TestScope.readyFileByteBudgetContract(swallowCancellation: Boolean) {
+        val viewer = ReflectionHelpers.getField<DualPageR2LPagerViewer>(fixture, "viewer")
+        uy.kohesive.injekt.Injekt.get<eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences>()
+            .automaticSpreadMatching().set(true)
+        runCurrent()
+        val directory = java.nio.file.Files.createTempDirectory("ready-file-budget").toFile()
+        val bitmap = Bitmap.createBitmap(80, 120, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.GRAY) }
+        val encoded = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+        bitmap.recycle()
+        val small = directory.resolve("small.png").apply { writeBytes(encoded) }
+        val large = List(2) { index ->
+            directory.resolve("large-$index.png").also { file ->
+                file.writeBytes(encoded)
+                RandomAccessFile(file, "rw").use { it.setLength(17L * 1024 * 1024) }
+            }
+        }
+        val bytes = java.util.concurrent.atomic.AtomicLong()
+        val opens = java.util.concurrent.atomic.AtomicInteger()
+        val closes = java.util.concurrent.atomic.AtomicInteger()
+        var measured = false
+        val chapter = ReaderChapter(
+            Chapter.create().copy(id = if (swallowCancellation) 73081 else 73080, mangaId = 1),
+        ).apply { requestedPage = 2 }
+        val pages = List(5) { index ->
+            val file = when (index) {
+                1 -> large[0]
+                2 -> large[1]
+                else -> small
+            }
+            ReaderPage(index, stream = {
+                val countThisStream = measured
+                if (countThisStream) opens.incrementAndGet()
+                object : FilterInputStream(FileInputStream(file)) {
+                    override fun read(): Int = super.read().also {
+                        if (countThisStream && it >= 0) bytes.incrementAndGet()
+                    }
+                    override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+                        super.read(buffer, offset, length).also {
+                            if (countThisStream && it > 0) bytes.addAndGet(it.toLong())
+                        }
+                    override fun close() {
+                        super.close()
+                        if (countThisStream) closes.incrementAndGet()
+                    }
+                }
+            }).apply {
+                this.chapter = chapter
+                status = Page.State.Ready
+                publishHeaderFact()
+            }
+        }
+        chapter.publishLoadedPageListForTest(pages)
+        val entered = java.util.concurrent.CountDownLatch(2)
+        viewer.adapter.spreadDecoderFactory = { input ->
+            entered.countDown()
+            check(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            try {
+                val buffer = ByteArray(8192)
+                while (input.read(buffer) != -1) Unit
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                // The exact JNI stream boundary can return null after a Java read exception.
+                if (swallowCancellation) throw IllegalStateException("Native decoder returned null", error)
+                throw error
+            }
+            object : eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageRegionDecoder {
+                override fun decode(region: Rect) =
+                    Bitmap.createBitmap(region.width(), region.height(), Bitmap.Config.ARGB_8888)
+                        .apply { eraseColor(Color.GRAY) }
+                override fun recycle() = Unit
+            }
+        }
+        measured = true
+        try {
+            viewer.setChapters(ViewerChapters(chapter, null, null))
+            val owner = requireNotNull(viewer.adapter.session(chapter))
+            val location = owner.location
+            val budget = owner.factBudget
+            awaitProduction {
+                val result = owner.certifyPairing()
+                (
+                    result is mihon.domain.reader.ReaderPairingCertification.Certified ||
+                        result is mihon.domain.reader.ReaderPairingCertification.RetryableBlocked
+                    ) &&
+                    eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.optionalWork.value == 0
+            }
+            assertTrue(
+                "Ready file bytes must be reserved before their actual read: " + bytes.get(),
+                bytes.get() <= mihon.domain.reader.ReaderDualPageFactLimits.MAX_NEW_BYTES,
+            )
+            assertEquals(bytes.get(), ReflectionHelpers.getField<Long>(budget, "newlyReadBytes"))
+            val blocked = owner.certifyPairing() as mihon.domain.reader.ReaderPairingCertification.RetryableBlocked
+            assertTrue(blocked.failures.values.all { it == mihon.domain.reader.ReaderAnalysisFailure.RESOURCE })
+            blocked.failures.keys.forEach { id ->
+                assertTrue(owner.originalAnalysis(id) !is mihon.domain.reader.ReaderPageAnalysisEvidence.Computed)
+            }
+            assertEquals(location, owner.location)
+            assertSame(budget, owner.factBudget)
+            assertEquals(opens.get(), closes.get())
+            val completedReads = bytes.get()
+            repeat(5) {
+                viewer.adapter.refreshPairing()
+                runCurrent()
+            }
+            assertEquals("Quota failure cannot start new file reads", completedReads, bytes.get())
+        } finally {
+            viewer.destroy()
+            runCurrent()
+            directory.listFiles().orEmpty().forEach(File::delete)
+            directory.delete()
+        }
+    }
+
+    @Test
+    fun readyFileFreshAndCompleteHeadersShareTheLocationByteBudget() = runTest {
+        val viewer = ReflectionHelpers.getField<DualPageR2LPagerViewer>(fixture, "viewer")
+        uy.kohesive.injekt.Injekt.get<eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences>()
+            .automaticSpreadMatching().set(true)
+        runCurrent()
+        val file = File.createTempFile("ready-header-budget", ".png")
+        val bitmap = Bitmap.createBitmap(80, 120, Bitmap.Config.ARGB_8888)
+        val encoded = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+        bitmap.recycle()
+        RandomAccessFile(file, "rw").use { output ->
+            output.write(encoded, 0, encoded.size - 12)
+            val payload = mihon.domain.reader.ReaderDualPageFactLimits.MAX_NEW_BYTES.toInt()
+            val type = "raNd".toByteArray(Charsets.US_ASCII)
+            output.writeInt(payload)
+            output.write(type)
+            val crc = java.util.zip.CRC32().apply { update(type) }
+            val zeros = ByteArray(8192)
+            repeat(payload / zeros.size) {
+                crc.update(zeros)
+                output.write(zeros)
+            }
+            output.writeInt(crc.value.toInt())
+            output.write(encoded, encoded.size - 12, 12)
+        }
+        val bytes = java.util.concurrent.atomic.AtomicLong()
+        val opens = java.util.concurrent.atomic.AtomicInteger()
+        val chapter = ReaderChapter(Chapter.create().copy(id = 73082, mangaId = 1))
+        val page = ReaderPage(0, stream = {
+            opens.incrementAndGet()
+            object : FilterInputStream(FileInputStream(file)) {
+                override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+                    super.read(buffer, offset, length).also { if (it > 0) bytes.addAndGet(it.toLong()) }
+            }
+        }).apply {
+            this.chapter = chapter
+            status = Page.State.Ready
+        }
+        chapter.publishLoadedPageListForTest(listOf(page))
+        try {
+            viewer.setChapters(ViewerChapters(chapter, null, null))
+            val owner = requireNotNull(viewer.adapter.session(chapter))
+            val location = owner.location
+            val budget = owner.factBudget
+            awaitProduction {
+                owner.certifyPairing() is mihon.domain.reader.ReaderPairingCertification.RetryableBlocked &&
+                    eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.optionalWork.value == 0
+            }
+            assertTrue(
+                "Fresh bounded and complete header reads must share 32 MiB: " + bytes.get(),
+                bytes.get() <= mihon.domain.reader.ReaderDualPageFactLimits.MAX_NEW_BYTES,
+            )
+            assertEquals(bytes.get(), ReflectionHelpers.getField<Long>(budget, "newlyReadBytes"))
+            val blocked = owner.certifyPairing() as mihon.domain.reader.ReaderPairingCertification.RetryableBlocked
+            assertEquals(
+                mihon.domain.reader.ReaderAnalysisFailure.RESOURCE,
+                blocked.failures[owner.identity.pageIds[0]],
+            )
+            assertTrue(
+                owner.originalAnalysis(
+                    owner.identity.pageIds[0],
+                ) !is mihon.domain.reader.ReaderPageAnalysisEvidence.Computed,
+            )
+            assertEquals(location, owner.location)
+            assertSame(budget, owner.factBudget)
+            val completedReads = bytes.get()
+            val completedOpens = opens.get()
+            repeat(5) {
+                viewer.adapter.refreshPairing()
+                runCurrent()
+            }
+            assertEquals(completedReads, bytes.get())
+            assertEquals(completedOpens, opens.get())
+        } finally {
+            viewer.destroy()
+            runCurrent()
+            file.delete()
+        }
+    }
 
     @Test
     fun uncertifiedOriginalNeverPreparesNativeSlot() = runTest {

@@ -6,12 +6,16 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.update
 import mihon.domain.reader.PageRotation
+import mihon.domain.reader.ReaderDualPageFactReadPermit
 import mihon.domain.reader.ReaderOriginalPageSamples
 import mihon.domain.reader.ReaderOriginalPageSampling
 import mihon.domain.reader.ReaderSpreadEdgeSamples
 import mihon.domain.reader.ReaderSpreadSampleRequest
 import mihon.domain.reader.SharedSpreadMatching
 import mihon.domain.reader.boundedReaderSamplingRegions
+import okio.ForwardingSource
+import okio.buffer
+import okio.source
 import tachiyomi.decoder.ImageDecoder
 import java.io.FilterInputStream
 import java.io.InputStream
@@ -73,6 +77,7 @@ internal object AndroidReaderSpreadSampler {
         decoderFactory: (InputStream) -> ReaderPageRegionDecoder = nativeDecoder,
         canContinue: () -> Boolean = { true },
         rotation: PageRotation = request.content.rotation,
+        readPermit: ReaderDualPageFactReadPermit? = null,
     ): ReaderOriginalPageSamples? {
         currentCoroutineContext().ensureActive()
         val plan = ReaderOriginalPageSampling.plan(
@@ -90,6 +95,7 @@ internal object AndroidReaderSpreadSampler {
             rawHeight,
             decoderFactory,
             canContinue,
+            readPermit,
         )
             ?: return null
         return plan.samples(left, right)
@@ -104,6 +110,7 @@ internal object AndroidReaderSpreadSampler {
         rawHeight: Int,
         decoderFactory: (InputStream) -> ReaderPageRegionDecoder,
         canContinue: () -> Boolean,
+        readPermit: ReaderDualPageFactReadPermit? = null,
     ): Pair<List<Int>, List<Int>>? {
         fun requireResources() {
             if (!canContinue()) throw AndroidReaderOptionalWorkPaused()
@@ -115,47 +122,65 @@ internal object AndroidReaderSpreadSampler {
         val stream = page.captureEncodedStream(request.content.contentVersion) ?: return null
         currentCoroutineContext().ensureActive()
         requireResources()
-        return stream().use { encoded ->
-            requireResources()
-            // ImageDecoder.newInstance closes its argument. The sampler owns the original stream;
-            // a decoder factory only borrows it, including when construction throws or is cancelled.
-            val decoder = decoderFactory(object : FilterInputStream(encoded) {
-                override fun close() = Unit
-            })
+        return stream().use { physical ->
+            val permitted = readPermit?.bound(
+                object : ForwardingSource(physical.source()) {
+                    // The outer use owns the physical input; the permitted buffer only borrows it.
+                    override fun close() = Unit
+                },
+                System::nanoTime,
+            )?.buffer()
             try {
-                suspend fun edge(points: List<Pair<Int, Int>>): List<Int>? {
-                    val values = IntArray(points.size)
-                    for (region in boundedReaderSamplingRegions(points, rawWidth, rawHeight, MAX_REGION_BYTES / 4, 2)) {
-                        currentCoroutineContext().ensureActive()
-                        requireResources()
-                        val bounds = region.bounds.let { Rect(it.x, it.y, it.x + it.width, it.y + it.height) }
-                        val bitmap = decoder.decode(bounds)
-                        try {
-                            if (bitmap.width != bounds.width() || bitmap.height != bounds.height() ||
-                                bitmap.allocationByteCount.toLong() > MAX_REGION_BYTES
-                            ) {
-                                return null
-                            }
-                            for (index in region.pointIndices) {
-                                currentCoroutineContext().ensureActive()
-                                requireResources()
-                                val (x, y) = points[index]
-                                values[index] = bitmap.getPixel(x - bounds.left, y - bounds.top)
-                            }
-                        } finally {
-                            bitmap.recycle()
-                        }
-                    }
-                    return values.toList()
-                }
-                val left = edge(leftPoints) ?: return@use null
-                val right = edge(rightPoints) ?: return@use null
-                currentCoroutineContext().ensureActive()
+                val encoded = permitted?.inputStream() ?: physical
                 requireResources()
-                if (page.captureEncodedStream(request.content.contentVersion) == null) return@use null
-                left to right
+                // ImageDecoder.newInstance closes its argument. The sampler owns the original stream;
+                // a decoder factory only borrows it, including when construction throws or is cancelled.
+                val decoder = decoderFactory(object : FilterInputStream(encoded) {
+                    override fun close() = Unit
+                })
+                try {
+                    suspend fun edge(points: List<Pair<Int, Int>>): List<Int>? {
+                        val values = IntArray(points.size)
+                        for (region in boundedReaderSamplingRegions(
+                            points,
+                            rawWidth,
+                            rawHeight,
+                            MAX_REGION_BYTES / 4,
+                            2,
+                        )) {
+                            currentCoroutineContext().ensureActive()
+                            requireResources()
+                            val bounds = region.bounds.let { Rect(it.x, it.y, it.x + it.width, it.y + it.height) }
+                            val bitmap = decoder.decode(bounds)
+                            try {
+                                if (bitmap.width != bounds.width() || bitmap.height != bounds.height() ||
+                                    bitmap.allocationByteCount.toLong() > MAX_REGION_BYTES
+                                ) {
+                                    return null
+                                }
+                                for (index in region.pointIndices) {
+                                    currentCoroutineContext().ensureActive()
+                                    requireResources()
+                                    val (x, y) = points[index]
+                                    values[index] = bitmap.getPixel(x - bounds.left, y - bounds.top)
+                                }
+                            } finally {
+                                bitmap.recycle()
+                            }
+                        }
+                        return values.toList()
+                    }
+                    val left = edge(leftPoints) ?: return@use null
+                    val right = edge(rightPoints) ?: return@use null
+                    currentCoroutineContext().ensureActive()
+                    requireResources()
+                    if (page.captureEncodedStream(request.content.contentVersion) == null) return@use null
+                    left to right
+                } finally {
+                    decoder.recycle()
+                }
             } finally {
-                decoder.recycle()
+                permitted?.close()
             }
         }
     }

@@ -583,11 +583,11 @@ class DualPageViewerAdapter(
                                     chapter.pageLoader?.loadFactPage(page, permit)
                                 }
                                 withContext(Dispatchers.IO) {
-                                    page.publishHeaderFact()
+                                    page.publishHeaderFact(readPermit = permit)
                                     if (page.pageFact.value.state ==
                                         ReaderPageFactState.FAILED
                                     ) {
-                                        page.publishCompleteHeaderFact()
+                                        page.publishCompleteHeaderFact(permit)
                                     }
                                 }
                                 if (chapterPairings[chapter]?.session !== owner ||
@@ -626,10 +626,18 @@ class DualPageViewerAdapter(
                                             !viewer.activity.optionalWorkUnderMemoryPressure.value &&
                                                 budget.remainingWaitMillis(android.os.SystemClock.uptimeMillis()) > 0
                                         },
+                                        readPermit = permit,
                                     )
                                 }
                                 if (samples == null) {
-                                    owner.failOriginalAnalysis(request, ReaderAnalysisFailure.UNSUPPORTED)
+                                    owner.failOriginalAnalysis(
+                                        request,
+                                        if (permit.exhausted) {
+                                            ReaderAnalysisFailure.RESOURCE
+                                        } else {
+                                            ReaderAnalysisFailure.UNSUPPORTED
+                                        },
+                                    )
                                     null
                                 } else if (owner.ownsOriginalAnalysisRequest(request) &&
                                     page.consumeContentFact(captured) {}
@@ -665,7 +673,10 @@ class DualPageViewerAdapter(
                                 throw error
                             }
                         } catch (_: Exception) {
-                            owner.failOriginalAnalysis(request, ReaderAnalysisFailure.READ)
+                            owner.failOriginalAnalysis(
+                                request,
+                                if (permit.exhausted) ReaderAnalysisFailure.RESOURCE else ReaderAnalysisFailure.READ,
+                            )
                             null
                         } finally {
                             budget.complete(id, 0, cacheHit = true)

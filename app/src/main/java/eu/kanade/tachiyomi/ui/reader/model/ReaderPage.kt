@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import mihon.domain.error.AppError
 import mihon.domain.reader.ReaderDualPageFactLimits
+import mihon.domain.reader.ReaderDualPageFactReadPermit
 import mihon.domain.reader.ReaderPageFact
 import mihon.domain.reader.ReaderPageFactState
 import mihon.domain.reader.ReaderPageModel
@@ -112,9 +113,13 @@ open class ReaderPage(
     }
 
     /** Called by the existing materialization worker, while its encoded stream remains owned by the loader. */
-    internal fun publishCompleteHeaderFact() = publishHeaderFact(ReaderDualPageFactLimits.MAX_NEW_BYTES)
+    internal fun publishCompleteHeaderFact(readPermit: ReaderDualPageFactReadPermit? = null) =
+        publishHeaderFact(ReaderDualPageFactLimits.MAX_NEW_BYTES, readPermit)
 
-    internal fun publishHeaderFact(headerByteLimit: Long = ReaderDualPageFactLimits.MAX_HEADER_BYTES) {
+    internal fun publishHeaderFact(
+        headerByteLimit: Long = ReaderDualPageFactLimits.MAX_HEADER_BYTES,
+        readPermit: ReaderDualPageFactReadPermit? = null,
+    ) {
         val captured = synchronized(contentLock) {
             // Activation and a holder consume the same loader-owned original metadata.
             // A content replacement clears this fact; a failed read remains retryable.
@@ -133,7 +138,9 @@ open class ReaderPage(
         }
         val openStream = captured.openStream
         val fact = try {
-            val bounded = object : ForwardingSource(openStream().source()) {
+            val physical = openStream().source()
+            val permitted = readPermit?.bound(physical, System::nanoTime) ?: physical
+            val bounded = object : ForwardingSource(permitted) {
                 private var remaining = headerByteLimit
                 override fun read(sink: Buffer, byteCount: Long): Long {
                     if (remaining == 0L) return -1
