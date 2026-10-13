@@ -517,3 +517,15 @@ R3-04仍需要定向优化：画面和字节预算已有实际链证据；冷／
 主代理只读核对当前平板包列表，已有 `app.mihon` 与 `app.mihon.desktop.fork`，无 `.fork.dev`；只读取得正式APK并验签，实际证书为 `bd8e3af75921fc4356deacabd44a3d491fda8439ffbc7d073c363974a648cae3`。新APK实际manifest四个provider authority均为 `.fork.dev` 前缀，无sharedUserId。独立核查代理复核既有签名／包名规则和外部存储边界；本轮没有ADB写入或读取私人业务数据。
 
 两版Android可并存且私有配置／数据库隔离，但launcher名称均为“Mihon”。体验版可按版本号 `0.19.4-aex.59-9485` 辨认。默认外部目录由app_name取“Mihon”，不按包名再隔离；为保持下载文件独立，首次设置应选择例如 `Mihon-R3-Preview` 的单独目录。不能把不同包名等同于用户手工选择相同目录时文件也独立。体验包包含已有研究修复，仍保留前述耗时退化及部分冷跳缺口，不作为完整预研通过或正式发布。
+
+### 更正 Debug 双入口，并按用户要求交付完整功能测试签名包
+
+用户安装前述Debug包后发现“Mihon UI 审阅”图标，卸载它时正常“Mihon”图标也消失。只读核对实际APK及 `app/src/debug/AndroidManifest.xml`，确认Debug将同步审阅Activity额外注册为LAUNCHER，与正常MainActivity属于同一 `.dev` 安装包；卸载任一入口即卸载整个包。当前平板正式fork和上游Mihon仍在，`.dev`已不存在。此前仅检查主label和authority、未枚举所有launcher，属于交付检查遗漏，不是正式包被覆盖。
+
+用户明确要求功能完整、名称不变、只使用测试签名隔离后，沿用现有 `preview` 变体（`initWith(release)`），源码及产品输入仍与上节一致。该变体使用全部main产品代码和Release依赖、R8及资源压缩，保留测试证书，applicationId为 `app.mihon.desktop.fork.debug`；只引入debug资源目录，不引入debug manifest和审阅Activity代码。未改产品源码、压缩规则、功能开关或正式签名。统一Python入口不支持此既有变体，故使用现有Gradle `:app:assemblePreview --offline --console=plain --no-parallel --max-workers=2`，由协调器 `pairing-r3-full-test-signed-preview` 串行执行，并复用统一脚本的 `source_snapshot`、`inspect_apk`、`installed_apk` 做实际验证；不把该特殊测试签名包标为正式Release候选，也不修改正式签名校验以使其通过。
+
+构建4m35s成功，实际执行 `minifyPreviewWithR8`、`convertShrunkResourcesToBinaryPreview` 和 `optimizePreviewResources`。保留日志中的window/re2j缺失类warning；Release既有规则含 `-ignorewarnings`，本次未新增或修改抑制规则，也不把构建成功当完整业务运行通过。首次产物检查错误地寻找另一名称的资源压缩task，断言失败；依据本次真实任务名更正检查后通过，没有重建或降低R8／资源压缩要求。
+
+交付 [完整功能测试签名 APK](D:/Codex/worktrees/reader-pairing-research-20261012/app/artifacts/android/0.19.4-aex.59-vc77-a1e5abeb4b-preview-fd28e5c17eec/Mihon-0.19.4-aex.59-vc77-test-signed-universal.apk)，SHA-256=`b8e884e0beb01b98eb799420997b36c364226f372fd30c214e3af75847a6f881`，名称“Mihon”，versionName=`0.19.4-aex.59-9485`，versionCode=77，四ABI，不可调试。证书为已有测试证书 `fb141e4e749dc634a3d5d79e179a1057ab81fa1fd7cb5077b6dfeccfe11f3079`，不同于正式版。实际APK枚举LAUNCHER恰为1，不含SyncUiReviewActivity／UI审阅、无sharedUserId，所有provider authority均使用新独立包名前缀。交付目录保留APK、R8 mapping及带来源／哈希／验证边界的artifact.json；没有直接交付build/outputs中间产物。
+
+延续用户此前明确安装授权，重新核对当前PCE-W30平板及新包尚未安装后，仅对 `.fork.debug` 安装；从设备读回实际APK，包名、版本、证书和完整SHA均与交付一致。原 `.fork` 安装路径前后相同且仍在包列表中。`install-verification.json`记录已安装和校验通过，未自动打开普通界面或操作用户数据。外部目录仍需用户选择，两个包选择相同目录时不会自动隔离文件。完整功能构建不代表此前阅读器研究问题全部解决；新R8二进制的阅读业务与体验留用户验收，没有宣称其重新通过完整回归或真机阅读验收。
