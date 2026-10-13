@@ -81,6 +81,50 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class SharedDualPageNativeStablePresentationTest {
     @Test
+    fun `zoomed dual reader clicks turn whole groups in both directions without dragging`() = runTest {
+        for (mode in listOf(ReadingMode.RTL, ReadingMode.LTR)) {
+            for (initialPage in listOf(0, 1)) {
+                Fixture(this, mode = mode, initialPage = initialPage).use { fixture ->
+                    fixture.partner.complete(Unit)
+                    fixture.pump()
+                    fixture.setZoom(ZoomState(scale = 2f, offsetX = -100f))
+                    fixture.settle()
+                    if (mode == ReadingMode.RTL) fixture.tapForward() else fixture.tapBackward()
+                    fixture.settle(60)
+                    assertEquals(
+                        if (initialPage == 0) 1 else 3,
+                        fixture.page,
+                        "Zoomed next click: $mode $initialPage",
+                    )
+                    fixture.setZoom(ZoomState(scale = 2f, offsetX = 100f))
+                    fixture.settle()
+                    if (mode == ReadingMode.RTL) fixture.tapBackward() else fixture.tapForward()
+                    fixture.settle(60)
+                    assertEquals(
+                        if (initialPage == 0) 0 else 2,
+                        fixture.page,
+                        "Zoomed previous click: $mode $initialPage",
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `ordinary zoomed reader keeps click navigation blocked`() = runTest {
+        Fixture(this, dual = false).use { fixture ->
+            fixture.partner.complete(Unit)
+            fixture.pump()
+            fixture.setZoom(ZoomState(scale = 2f))
+            fixture.settle()
+            fixture.tapForward()
+            fixture.settle(60)
+            assertEquals(1, fixture.page)
+            assertEquals(ZoomState(scale = 2f), fixture.zoomState)
+        }
+    }
+
+    @Test
     fun `hardening repeated zoom pan reset and rapid turns reuse bounded images and release on exit`() = runTest {
         Fixture(this, measureFrames = true).use { fixture ->
             fixture.partner.complete(Unit)

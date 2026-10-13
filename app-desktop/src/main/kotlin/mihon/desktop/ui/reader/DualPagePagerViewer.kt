@@ -388,7 +388,7 @@ internal fun DualPagePagerViewer(
         beyondViewportPageCount = if (allowAdjacentViewport) 1 else 0,
         modifier = Modifier.fillMaxSize().readerMountedGeometry(
             pagerPresentationBinding,
-        ).readerPrimaryTapInput(zoomState.scale, navigationMode, isRtl) {
+        ).readerPrimaryTapInput(zoomState.scale, navigationMode, isRtl, allowZoomedNavigation = true) {
             when (it) {
                 TapNavRegion.PREV -> executeTapCommand(ReaderNavigationCommand.Previous)
                 TapNavRegion.NEXT -> executeTapCommand(ReaderNavigationCommand.Next)
@@ -568,8 +568,9 @@ internal fun Modifier.readerPrimaryTapInput(
     zoomScale: Float,
     navigationMode: NavigationMode,
     isRtl: Boolean,
+    allowZoomedNavigation: Boolean = false,
     onTap: (TapNavRegion) -> Unit,
-): Modifier = pointerInput(zoomScale, navigationMode, isRtl) {
+): Modifier = pointerInput(zoomScale, navigationMode, isRtl, allowZoomedNavigation) {
     awaitPointerEventScope {
         while (true) {
             val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -609,7 +610,8 @@ internal fun Modifier.readerPrimaryTapInput(
                 }
             }
 
-            if (isTap && !moved && zoomScale <= 1f) {
+            // Dual readers opt into short clicks while zoomed; movement belongs to image panning.
+            if (isTap && !moved && (zoomScale <= 1f || allowZoomedNavigation)) {
                 tapNavRegionForPointerButton(
                     button = PointerButton.Primary,
                     x = releasePos.x,
