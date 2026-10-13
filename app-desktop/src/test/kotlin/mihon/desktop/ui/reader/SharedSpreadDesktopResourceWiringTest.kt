@@ -52,11 +52,26 @@ import mihon.desktop.reader.SkiaDesktopReaderPageImageDecoder
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.domain.reader.PageDecodePurpose
+import mihon.domain.reader.PageRotation
+import mihon.domain.reader.ReaderDirection
+import mihon.domain.reader.ReaderDualPageFactLimits
+import mihon.domain.reader.ReaderDualPageIdentity
+import mihon.domain.reader.ReaderImageOrientation
+import mihon.domain.reader.ReaderOriginalPageSamples
+import mihon.domain.reader.ReaderOriginalPageSampling
+import mihon.domain.reader.ReaderPageAnalysisEvidence
 import mihon.domain.reader.ReaderPageDecodeKey
+import mihon.domain.reader.ReaderPageFact
 import mihon.domain.reader.ReaderPageFactState
+import mihon.domain.reader.ReaderPageSideHint
+import mihon.domain.reader.ReaderPairingCertification
+import mihon.domain.reader.ReaderPairingCertifier
+import mihon.domain.reader.ReaderPairingSettings
+import mihon.domain.reader.ReaderSpreadSamplesOwner
 import mihon.domain.reader.SharedDualPageSession
 import mihon.domain.reader.content.ReaderPageContentLease
 import mihon.domain.reader.content.ReaderPageContentOpenRequest
+import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageLoadState
 import okhttp3.OkHttpClient
 import okio.Buffer
@@ -88,6 +103,103 @@ import javax.imageio.ImageIO
 @OptIn(ExperimentalComposeUiApi::class, kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class SharedSpreadDesktopResourceWiringTest {
     @TempDir lateinit var temp: File
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "MIHON_READER_REPLAY_DIRECTORY", matches = ".+")
+    fun `downloaded original directory records every slider jump through isolated production reader`() =
+        runBlocking {
+            val directory = File(requireNotNull(System.getenv("MIHON_READER_REPLAY_DIRECTORY")))
+            assertTrue(directory.isDirectory, "An explicit existing original directory is required")
+            val observations = mutableListOf<String>()
+            val undrawn = mutableListOf<Int>()
+            Fixture(pageCount = 196, originalDirectory = directory, matching = true).use { fixture ->
+                fixture.observeReplayDraws()
+                fixture.mountReader()
+                fixture.pump { fixture.model.state.value.session.activeChapter.pages.size == 196 }
+                assertEquals(196, fixture.model.state.value.session.activeChapter.pages.size)
+                for (target in listOf(0, 34, 44, 34)) {
+                    if (target == 34) fixture.captureReplayCostBaseline()
+                    val started = System.nanoTime()
+                    fixture.model.goToPage(target)
+                    val sequence = requireNotNull(fixture.owner()?.location).sequence
+                    fixture.pump(timeoutMillis = 20_000) {
+                        (sequence to target) in fixture.replayDraws ||
+                            (
+                                fixture.model.state.value.dualPairingFailures.keys.any {
+                                    it.sourcePageIndex == target
+                                } && fixture.runtime.pageImagePipeline.foregroundWork.value == 0 &&
+                                    fixture.runtime.pageImagePipeline.optionalWork.value == 0
+                                )
+                    }
+                    val drawn = (sequence to target) in fixture.replayDraws
+                    if (!drawn) undrawn += target
+                    val observation = "targetIndex=$target drawn=$drawn " +
+                        "elapsedMs=${(System.nanoTime() - started) / 1_000_000} " +
+                        fixture.replayDiagnostic(target)
+                    observations += observation
+                    println("READER_LOCAL_REPLAY $observation")
+                }
+                fixture.printReplayCosts(34)
+            }
+            assertTrue(undrawn.isEmpty(), "Undrawn target indices=$undrawn\n" + observations.joinToString("\n"))
+        }
+
+    @Test
+    fun `old original decode can finish across slider navigation without blocking the new location`() =
+        runBlocking {
+            Fixture(pageCount = 8).use { fixture ->
+                fixture.pump {
+                    val pages = fixture.model.state.value.session.activeChapter.pages
+                    pages.size == 8 && pages.all { it.loadState is ReaderPageLoadState.Ready } &&
+                        fixture.owner()?.pageFact(pages.first().id) != null
+                }
+                val pages = fixture.model.state.value.session.activeChapter.pages
+                assertEquals(8, pages.size)
+                assertTrue(pages.all { it.loadState is ReaderPageLoadState.Ready })
+                val release = CompletableDeferred<Unit>()
+                fixture.fullGate.set(release)
+                fixture.model.setAutoSpreadMatching(true, fixture.prefs)
+                fixture.model.goToPage(0)
+                fixture.pump { fixture.fullEntered.isCompleted }
+                assertTrue(
+                    fixture.fullEntered.isCompleted,
+                    "The old original batch must enter the real decoder: " +
+                        fixture.owner()?.certifyPairing(pages[0].id),
+                )
+                val oldBudget = requireNotNull(fixture.owner()).factBudget
+
+                // The real slider callback moves while an old decode is suspended. This does
+                // not establish whether that batch has another admitted page still to start.
+                fixture.model.goToPage(6)
+                assertTrue(requireNotNull(fixture.owner()).factBudget !== oldBudget)
+                release.complete(Unit)
+                fixture.pump {
+                    fixture.model.state.value.dualPairingFailures.containsKey(pages[6].id) ||
+                        fixture.owner()?.certifyPairing(pages[6].id) is ReaderPairingCertification.Certified
+                }
+
+                assertTrue(
+                    fixture.model.state.value.session.activeChapter.pages.all {
+                        it.loadState is ReaderPageLoadState.Ready
+                    },
+                    "Local image materialization succeeds independently of pairing preparation",
+                )
+                assertFalse(
+                    fixture.model.state.value.dualPairingFailures.containsKey(pages[6].id),
+                    "An obsolete batch cannot make the current downloaded page show Retry: " +
+                        fixture.model.state.value.dualPairingFailures + "; evidence=" +
+                        pages.associate { it.id.sourcePageIndex to fixture.owner()?.originalAnalysis(it.id) },
+                )
+                fixture.mountReader()
+                fixture.pump {
+                    fixture.owner()?.displayedHistory?.any { pages[6].id in it.drawnPageIds } == true
+                }
+                assertTrue(
+                    fixture.owner()?.displayedHistory?.any { pages[6].id in it.drawnPageIds } == true,
+                    "The selected local original must reach the actual Compose draw path",
+                )
+            }
+        }
 
     @Test
     fun `replacement runtime waits for cancelled original normal materialization until its actual exit`() =
@@ -733,6 +845,8 @@ class SharedSpreadDesktopResourceWiringTest {
         holdRegionNonCooperative: Boolean = false,
         private val encodedPages: List<ByteArray>? = null,
         private val heldNetworkPage: Int? = null,
+        originalDirectory: File? = null,
+        matching: Boolean = false,
     ) : AutoCloseable {
         val dispatcher = StandardTestDispatcher()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -741,6 +855,7 @@ class SharedSpreadDesktopResourceWiringTest {
         val prefs = ReaderPreferences(InMemoryPreferenceStore(), legacy).apply {
             readingMode = ReadingMode.RTL
             isDualPage = true
+            isAutoSpreadMatching = matching
             nextChapterPrefetchMode = NextChapterPrefetchMode.OFF
         }
         val acceptedReady = ConcurrentHashMap<Int, Long>()
@@ -765,6 +880,10 @@ class SharedSpreadDesktopResourceWiringTest {
         var observedPinned = 0L
         var observedHeap = 0L
         private var performanceObserved = false
+        private var replayObserved = false
+        val replayDraws = CopyOnWriteArrayList<Pair<Long, Int>>()
+        private val replayOriginals = ConcurrentHashMap<ReaderPageDecodeKey, ReplayOriginal>()
+        private var replayCostBaseline: ReplayCostBaseline? = null
         private val diagnostic = System.getenv("MIHON_READER_PERFORMANCE_DIAGNOSTIC") == "true"
         private val performanceEvents = CopyOnWriteArrayList<String>()
 
@@ -811,13 +930,24 @@ class SharedSpreadDesktopResourceWiringTest {
                 }
             }
             native.decode(bytes, key).also {
+                if (originalDirectory != null && key.purpose == PageDecodePurpose.FULL_PAGE && it != null) {
+                    val asset = it.asset
+                    replayOriginals[key] = ReplayOriginal(
+                        asset.sourceWidth,
+                        asset.sourceHeight,
+                        asset.sourceOrientation,
+                        asset.originalSamples.toMap(),
+                        ReaderOriginalPageSampling.ALGORITHM_VERSION,
+                    )
+                }
                 decoderReady[key.pageIndex] = System.nanoTime()
                 diagnose("decoderReturn:${key.pageIndex}:${key.purpose}")
             }
         }
-        val original = temp.resolve("pages-${System.nanoTime()}").apply { mkdirs() }.also { directory ->
-            if (!online) repeat(pageCount) { index -> directory.resolve("$index.png").writeBytes(payload(index)) }
-        }
+        val original =
+            originalDirectory ?: temp.resolve("pages-${System.nanoTime()}").apply { mkdirs() }.also { directory ->
+                if (!online) repeat(pageCount) { index -> directory.resolve("$index.png").writeBytes(payload(index)) }
+            }
         val paths = CopyOnWriteArrayList<Int>()
         val server = if (online) {
             mockwebserver3.MockWebServer().apply {
@@ -873,6 +1003,134 @@ class SharedSpreadDesktopResourceWiringTest {
         var model = factory.createModel(runtime, false, 0, null)
         private var collector = scope.launch { runtime.session.state.collect { model.acceptSessionState(it) } }
         val scene = ImageComposeScene(700, 1200, coroutineContext = uiScope.coroutineContext) {}
+
+        @Suppress("UNCHECKED_CAST")
+        fun captureReplayCostBaseline() {
+            if (replayCostBaseline != null) return
+            val lock = ReaderScreenModel::class.java.getDeclaredField("productionRuntimeLifecycleLock")
+                .apply { isAccessible = true }.get(model)
+            synchronized(lock) {
+                val owner = requireNotNull(owner())
+                val current = model.state.value
+                val samples = SharedDualPageSession::class.java.getDeclaredField("spreadSamples")
+                    .apply { isAccessible = true }.get(owner) as ReaderSpreadSamplesOwner
+                // Copy only existing scalar/sample authority. Calling rebind here would close
+                // the real owner; acquiring an asset would touch LRU and alter the experiment.
+                val maps = listOf("samples", "scores", "analyses", "sampleFailures").associateWith { name ->
+                    (
+                        ReaderSpreadSamplesOwner::class.java.getDeclaredField(name)
+                            .apply { isAccessible = true }.get(samples) as Map<Any?, Any?>
+                        ).toMap()
+                }
+                val originals = (
+                    ReaderSpreadSamplesOwner::class.java.getDeclaredField("originalSamples")
+                        .apply { isAccessible = true }.get(samples) as Set<ReaderPageId>
+                    ).toSet()
+                val headers = (
+                    SharedDualPageSession::class.java.getDeclaredField("originalHeaders")
+                        .apply { isAccessible = true }.get(owner) as Map<ReaderPageId, ReaderPageFact>
+                    ).toMap()
+                val requests = current.session.activeChapter.pages.mapNotNull { page ->
+                    page.encodedPageRef?.let {
+                        page.id to ReaderPageContentOpenRequest(
+                            page.id,
+                            current.session.generation,
+                            it,
+                            page.attemptGeneration,
+                            page.encodedPageProvenance,
+                        )
+                    }
+                }.toMap()
+                val keys = runtime.pageImagePipeline.snapshot().cache.keys
+                val cached = keys.mapNotNull { key ->
+                    replayOriginals[key]?.takeIf { key.contentKey == requests[key.contentKey.pageId] }
+                        ?.let { key.contentKey.pageId to it }
+                }.toMap()
+                replayCostBaseline = ReplayCostBaseline(
+                    owner.identity,
+                    ReaderPairingSettings(
+                        if (current.readingMode == ReadingMode.RTL) ReaderDirection.RTL else ReaderDirection.LTR,
+                        current.autoSpreadMatching,
+                        owner.pairingState.committedForcedSinglePages.mapTo(mutableSetOf()) {
+                            owner.identity.pageIds[it]
+                        },
+                        owner.pairingState.manualPairStarts,
+                        owner.pairingState.openingMode,
+                        owner.pairingState.revision ?: -1,
+                    ),
+                    headers,
+                    maps,
+                    originals,
+                    requests,
+                    cached,
+                )
+                println(
+                    "READER_LOCAL_CACHE beforeTargetIndex=34 keys=${keys.map { it.pageIndex }} " +
+                        "sampleRotations=${cached.mapKeys {
+                            it.key.sourcePageIndex
+                        }.mapValues { it.value.samples.keys }}",
+                )
+            }
+        }
+
+        fun printReplayCosts(target: Int) {
+            val baseline = requireNotNull(replayCostBaseline)
+            val observed = replayOriginals.entries.filter {
+                it.key.contentKey == baseline.requests[it.key.contentKey.pageId]
+            }.associate { it.key.contentKey.pageId to it.value }
+            for (includeCache in listOf(false, true)) {
+                println("READER_LOCAL_COST " + baseline.cost(target, includeCache, observed))
+            }
+        }
+
+        fun observeReplayDraws() {
+            replayObserved = true
+            mockkObject(model)
+            every { model.drawDualViewportPage(any(), any()) } answers {
+                val accepted = callOriginal()
+                if (accepted) {
+                    val ticket = firstArg<mihon.domain.reader.ReaderDualPageViewportTicket>()
+                    val page = secondArg<ReaderPageId>()
+                    replayDraws += ticket.locationSequence to page.sourcePageIndex
+                }
+                accepted
+            }
+        }
+
+        fun replayDiagnostic(target: Int): String {
+            val lifecycleLock = ReaderScreenModel::class.java.getDeclaredField("productionRuntimeLifecycleLock")
+                .apply { isAccessible = true }.get(model)
+            return synchronized(lifecycleLock) {
+                val owner = requireNotNull(owner())
+                val current = model.state.value
+                val page = current.session.activeChapter.pages[target]
+                val certification = when (val result = owner.certifyPairing(page.id)) {
+                    is ReaderPairingCertification.Certified ->
+                        "Certified(unit=${result.segment.unit.pageIds.map { it.sourcePageIndex }}," +
+                            "first=${result.segment.firstIndex},steps=${result.segment.scanSteps})"
+                    is ReaderPairingCertification.NeedFacts ->
+                        "NeedFacts(first=${result.continuationFirstIndex},steps=${result.scanSteps}," +
+                            "needs=${result.facts.map { "${it.pageId.sourcePageIndex}:${it.kind}" }})"
+                    is ReaderPairingCertification.RetryableBlocked ->
+                        "Blocked(first=${result.continuationFirstIndex},steps=${result.scanSteps}," +
+                            "failures=${result.failures.mapKeys { it.key.sourcePageIndex }}," +
+                            "needs=${result.facts.map { "${it.pageId.sourcePageIndex}:${it.kind}" }})"
+                }
+                val budget = owner.factBudget
+                fun field(name: String): Any? = budget.javaClass.getDeclaredField(name)
+                    .apply { isAccessible = true }.get(budget)
+                val budgetState = synchronized(requireNotNull(field("lock"))) {
+                    fun indices(name: String) = (field(name) as Set<*>).map { (it as ReaderPageId).sourcePageIndex }
+                    "budgetToken=${System.identityHashCode(budget)} attempted=${indices("attempted")} " +
+                        "active=${indices("active")} bytes=${field("newlyReadBytes")} closed=${field("closed")}" +
+                        " remainingMs=${budget.remainingWaitMillis(System.nanoTime() / 1_000_000)}"
+                }
+                "sequence=${owner.location?.sequence} loadState=${page.loadState} " +
+                    "attempt=${page.attemptGeneration} decoded=${decoderReady.containsKey(target)} " +
+                    "pairingFailures=${current.dualPairingFailures.mapKeys { it.key.sourcePageIndex }} " +
+                    "certification=$certification $budgetState"
+            }
+        }
 
         fun observePerformance(target: Int) {
             performanceObserved = true
@@ -1076,8 +1334,8 @@ class SharedSpreadDesktopResourceWiringTest {
             }
         }
 
-        suspend fun pump(condition: () -> Boolean) {
-            val deadline = System.nanoTime() + 3_000_000_000L
+        suspend fun pump(timeoutMillis: Long = 3_000, condition: () -> Boolean) {
+            val deadline = System.nanoTime() + timeoutMillis * 1_000_000L
             do {
                 dispatcher.scheduler.runCurrent()
                 scene.render(dispatcher.scheduler.currentTime * 1_000_000L).close()
@@ -1088,8 +1346,10 @@ class SharedSpreadDesktopResourceWiringTest {
 
         override fun close() {
             networkRelease.set(true)
-            if (performanceObserved) {
+            if (performanceObserved || replayObserved) {
                 unmockkObject(model)
+            }
+            if (performanceObserved) {
                 unmockkObject(runtime.presentationImageOwner)
             }
             fullGate.get()?.complete(Unit)
@@ -1103,6 +1363,131 @@ class SharedSpreadDesktopResourceWiringTest {
             uiScope.cancel()
             server?.close()
             legacy.removeNode()
+        }
+    }
+
+    private data class ReplayOriginal(
+        val rawWidth: Int,
+        val rawHeight: Int,
+        val orientation: ReaderImageOrientation,
+        val samples: Map<PageRotation, ReaderOriginalPageSamples>,
+        val algorithmVersion: Int,
+    )
+
+    /** A scalar-only copy of the real state immediately before the first source-35 jump. */
+    private data class ReplayCostBaseline(
+        val identity: ReaderDualPageIdentity,
+        val settings: ReaderPairingSettings,
+        val headers: Map<ReaderPageId, ReaderPageFact>,
+        val authorityMaps: Map<String, Map<Any?, Any?>>,
+        val originalSamples: Set<ReaderPageId>,
+        val requests: Map<ReaderPageId, ReaderPageContentOpenRequest>,
+        val cached: Map<ReaderPageId, ReplayOriginal>,
+    ) {
+        @Suppress("UNCHECKED_CAST")
+        fun cost(target: Int, includeCache: Boolean, observed: Map<ReaderPageId, ReplayOriginal>): String {
+            val owner = ReaderSpreadSamplesOwner(identity)
+            val knownHeaders = headers.toMutableMap()
+            val initial = authorityMaps.getValue("analyses").filterValues {
+                it is ReaderPageAnalysisEvidence.Computed
+            }.keys.map { it as ReaderPageId }.toSet()
+            val supplied = initial.toMutableSet()
+            val cachedInputs = linkedSetOf<ReaderPageId>()
+            val additional = linkedSetOf<ReaderPageId>()
+            fun indices(pages: Collection<ReaderPageId>) = pages.map { it.sourcePageIndex }
+            fun report(status: String) =
+                "mode=${if (includeCache) "initial-cache" else "existing-authority"} targetIndex=$target " +
+                    "initial=${indices(initial)} cachedInputs=${indices(cachedInputs)} " +
+                    "additional=${indices(additional)} additionalCount=${additional.size} " +
+                    "exceeds16=${additional.size > ReaderDualPageFactLimits.MAX_ADDITIONAL_PAGES} $status"
+            fun publish(page: ReaderPageId, original: ReplayOriginal): Boolean {
+                val content = identity.content.first { it.pageId == page }
+                if (original.algorithmVersion != ReaderOriginalPageSampling.ALGORITHM_VERSION ||
+                    original.orientation != content.sourceOrientation
+                ) {
+                    return false
+                }
+                val samples = original.samples[content.rotation] ?: return false
+                val size = original.orientation.orientedSize(original.rawWidth, original.rawHeight)
+                val fact = ReaderPageFact.dimensions(
+                    size.width,
+                    size.height,
+                    content.rotation,
+                    original.orientation,
+                ).copy(sideHint = samples.sideHint)
+                if (!owner.acceptOriginal(owner.request(page), fact, samples.edges)) return false
+                knownHeaders[page] = fact.copy(sideHint = ReaderPageSideHint.UNKNOWN)
+                return true
+            }
+            try {
+                // Restore scalar authority exactly, rather than inventing initial edges or
+                // copying the certification algorithm. The real owner is never mutated.
+                authorityMaps.forEach { (name, values) ->
+                    (
+                        ReaderSpreadSamplesOwner::class.java.getDeclaredField(name)
+                            .apply { isAccessible = true }.get(owner) as MutableMap<Any?, Any?>
+                        ).putAll(values)
+                }
+                (
+                    ReaderSpreadSamplesOwner::class.java.getDeclaredField("originalSamples")
+                        .apply { isAccessible = true }.get(owner) as MutableSet<ReaderPageId>
+                    ).addAll(originalSamples)
+                if (includeCache) {
+                    cached.forEach { (page, original) ->
+                        if (publish(page, original)) {
+                            cachedInputs += page
+                            supplied += page
+                        }
+                    }
+                }
+                // Measurement only: consume already observed immutable decoder results beyond
+                // sixteen when needed. No real budget, read, decode or navigation is performed.
+                repeat(identity.pageIds.size * 4) {
+                    when (
+                        val result = ReaderPairingCertifier.certify(
+                            identity,
+                            knownHeaders,
+                            owner,
+                            settings,
+                            identity.pageIds[target],
+                        )
+                    ) {
+                        is ReaderPairingCertification.Certified -> return report(
+                            "status=Certified unit=${indices(result.segment.unit.pageIds)} " +
+                                "first=${result.segment.firstIndex} dependencies=${indices(
+                                    result.segment.dependentPageIds,
+                                )}",
+                        )
+                        is ReaderPairingCertification.RetryableBlocked -> return report(
+                            "status=Blocked failures=${result.failures.mapKeys { it.key.sourcePageIndex }}",
+                        )
+                        is ReaderPairingCertification.NeedFacts -> {
+                            val missing = result.facts.flatMap { listOfNotNull(it.pageId, it.secondPageId) }
+                                .distinct().filter { it !in supplied }
+                                .take(ReaderDualPageFactLimits.MAX_CONCURRENT_REQUESTS)
+                            if (missing.isEmpty()) {
+                                return report(
+                                    "status=InsufficientEvidence reason=no-new-observed-input",
+                                )
+                            }
+                            for (page in missing) {
+                                val original = observed[page]
+                                    ?: return report("status=InsufficientEvidence missingIndex=${page.sourcePageIndex}")
+                                if (!publish(page, original)) {
+                                    return report(
+                                        "status=InsufficientEvidence invalidIdentityIndex=${page.sourcePageIndex}",
+                                    )
+                                }
+                                supplied += page
+                                additional += page
+                            }
+                        }
+                    }
+                }
+                return report("status=InsufficientEvidence reason=query-bound")
+            } finally {
+                owner.close()
+            }
         }
     }
 
