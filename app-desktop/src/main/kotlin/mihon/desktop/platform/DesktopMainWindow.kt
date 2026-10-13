@@ -1,0 +1,44 @@
+package mihon.desktop.platform
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.ApplicationScope
+import androidx.compose.ui.window.FrameWindowScope
+import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.rememberWindowState
+import com.sun.jna.Platform
+import mihon.desktop.settings.DesktopAppPreferences
+
+@Composable
+internal fun ApplicationScope.DesktopMainWindow(
+    preferences: DesktopAppPreferences,
+    onCloseRequest: () -> Unit,
+    title: String,
+    icon: Painter? = null,
+    content: @Composable FrameWindowScope.() -> Unit,
+) {
+    val geometry = remember(preferences) {
+        if (Platform.isWindows()) DesktopWindowGeometryController(preferences) else null
+    }
+    val defaultState = rememberWindowState(width = 1024.dp, height = 768.dp)
+    Window(
+        onCloseRequest = {
+            geometry?.save()
+            onCloseRequest()
+        },
+        title = title,
+        icon = icon,
+        state = geometry?.windowState ?: defaultState,
+    ) {
+        if (geometry != null) {
+            DisposableEffect(window, geometry) {
+                val binding = geometry.bind(window)
+                onDispose(binding::close)
+            }
+        }
+        content()
+    }
+}

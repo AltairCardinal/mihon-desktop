@@ -285,9 +285,19 @@ jvmTestTask {
         systemProperty("mihon.test.productionRuntimeClasspathFile", runtimeClasspath.absolutePath)
     }
     useJUnitPlatform {
-        excludeTags("final-parity-audit", "parity-governance")
+        excludeTags("final-parity-audit", "parity-governance", "native-window")
     }
 }
+tasks.register<Test>("nativeWindowTest") {
+    group = "verification"
+    description = "Runs explicitly selected native window integration tests on a graphical desktop."
+    dependsOn(tasks.named("jvmTestClasses"))
+    testClassesDirs = jvmTestTask.get().testClassesDirs
+    classpath = jvmTestTask.get().classpath
+    systemProperty("java.awt.headless", "false")
+    useJUnitPlatform { includeTags("native-window") }
+}
+
 tasks.register<Test>("parityGovernanceCheck") {
     group = "verification"
     description = "Runs explicit roadmap, manifest handoff, and historical parity governance contracts."

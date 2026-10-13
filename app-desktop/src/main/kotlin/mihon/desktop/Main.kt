@@ -11,9 +11,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
-import androidx.compose.ui.window.rememberWindowState
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.transitions.SlideTransition
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
@@ -37,6 +35,7 @@ import mihon.desktop.di.initDesktopDI
 import mihon.desktop.image.installDesktopImageLoader
 import mihon.desktop.platform.AwtDesktopOpenUriEventPort
 import mihon.desktop.platform.DesktopExternalActionBroker
+import mihon.desktop.platform.DesktopMainWindow
 import mihon.desktop.platform.DesktopOpenUriEventPort
 import mihon.desktop.platform.DesktopOpenUriInstallResult
 import mihon.desktop.platform.DesktopPlatformPaths
@@ -299,7 +298,8 @@ private suspend fun runDesktopComposeWindowEventLoop(
                 }
             }
         }
-        Window(
+        DesktopMainWindow(
+            preferences = owner.ingress.uiDependencies.appPreferences,
             onCloseRequest = {
                 applicationScope.launch {
                     requestClose { exitApplication() }
@@ -309,7 +309,6 @@ private suspend fun runDesktopComposeWindowEventLoop(
             icon = androidx.compose.runtime.remember {
                 androidx.compose.ui.graphics.painter.BitmapPainter(loadDesktopAppIcon())
             },
-            state = rememberWindowState(width = 1024.dp, height = 768.dp),
         ) {
             BindDesktopWindowLifecycle(window, owner.appLock, owner.windowPrivacyController)
             mihon.desktop.test.ProvideDesktopSyncUiObservation(window) {

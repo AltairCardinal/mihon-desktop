@@ -87,6 +87,11 @@ class DesktopAppPreferences(
     private fun boolean(key: String, default: Boolean) = store.getBoolean(key, default)
         .migrate(key) { it.toBooleanStrictOrNull() }
 
+    // Window geometry belongs to this machine, never to backups or device sync.
+    val windowGeometry: Preference<String> by lazy {
+        store.getString(Preference.appStateKey("desktop_window_geometry"), "")
+    }
+
     // Lazy vals so repeated accesses return the same mutable Preference instance.
 
     val themeMode: Preference<ThemeMode> by lazy {
