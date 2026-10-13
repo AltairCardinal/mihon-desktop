@@ -56,6 +56,7 @@ import mihon.domain.reader.PageRotation
 import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderDualPageFactLimits
 import mihon.domain.reader.ReaderDualPageIdentity
+import mihon.domain.reader.ReaderEdgeAnalysisEvidence
 import mihon.domain.reader.ReaderImageOrientation
 import mihon.domain.reader.ReaderOriginalPageSamples
 import mihon.domain.reader.ReaderOriginalPageSampling
@@ -68,6 +69,7 @@ import mihon.domain.reader.ReaderPairingCertification
 import mihon.domain.reader.ReaderPairingCertifier
 import mihon.domain.reader.ReaderPairingSettings
 import mihon.domain.reader.ReaderSpreadSamplesOwner
+import mihon.domain.reader.SharedDualPageRules
 import mihon.domain.reader.SharedDualPageSession
 import mihon.domain.reader.content.ReaderPageContentLease
 import mihon.domain.reader.content.ReaderPageContentOpenRequest
@@ -1081,6 +1083,7 @@ class SharedSpreadDesktopResourceWiringTest {
             for (includeCache in listOf(false, true)) {
                 println("READER_LOCAL_COST " + baseline.cost(target, includeCache, observed))
             }
+            println("READER_LOCAL_COST " + baseline.cost(target, false, observed, nearFirst = true))
         }
 
         fun observeReplayDraws() {
@@ -1385,7 +1388,12 @@ class SharedSpreadDesktopResourceWiringTest {
         val cached: Map<ReaderPageId, ReplayOriginal>,
     ) {
         @Suppress("UNCHECKED_CAST")
-        fun cost(target: Int, includeCache: Boolean, observed: Map<ReaderPageId, ReplayOriginal>): String {
+        fun cost(
+            target: Int,
+            includeCache: Boolean,
+            observed: Map<ReaderPageId, ReplayOriginal>,
+            nearFirst: Boolean = false,
+        ): String {
             val owner = ReaderSpreadSamplesOwner(identity)
             val knownHeaders = headers.toMutableMap()
             val initial = authorityMaps.getValue("analyses").filterValues {
@@ -1394,9 +1402,16 @@ class SharedSpreadDesktopResourceWiringTest {
             val supplied = initial.toMutableSet()
             val cachedInputs = linkedSetOf<ReaderPageId>()
             val additional = linkedSetOf<ReaderPageId>()
+            val trace = !includeCache && !nearFirst
             fun indices(pages: Collection<ReaderPageId>) = pages.map { it.sourcePageIndex }
             fun report(status: String) =
-                "mode=${if (includeCache) "initial-cache" else "existing-authority"} targetIndex=$target " +
+                "mode=${if (nearFirst) {
+                    "nearest-demand-first"
+                } else if (includeCache) {
+                    "initial-cache"
+                } else {
+                    "existing-authority"
+                }} targetIndex=$target " +
                     "initial=${indices(initial)} cachedInputs=${indices(cachedInputs)} " +
                     "additional=${indices(additional)} additionalCount=${additional.size} " +
                     "exceeds16=${additional.size > ReaderDualPageFactLimits.MAX_ADDITIONAL_PAGES} $status"
@@ -1442,7 +1457,7 @@ class SharedSpreadDesktopResourceWiringTest {
                 }
                 // Measurement only: consume already observed immutable decoder results beyond
                 // sixteen when needed. No real budget, read, decode or navigation is performed.
-                repeat(identity.pageIds.size * 4) {
+                repeat(identity.pageIds.size * 4) { query ->
                     when (
                         val result = ReaderPairingCertifier.certify(
                             identity,
@@ -1452,19 +1467,97 @@ class SharedSpreadDesktopResourceWiringTest {
                             identity.pageIds[target],
                         )
                     ) {
-                        is ReaderPairingCertification.Certified -> return report(
-                            "status=Certified unit=${indices(result.segment.unit.pageIds)} " +
-                                "first=${result.segment.firstIndex} dependencies=${indices(
-                                    result.segment.dependentPageIds,
-                                )}",
-                        )
+                        is ReaderPairingCertification.Certified -> {
+                            val facts = knownHeaders.mapValues { (page, header) ->
+                                (owner.pageAnalysis(page) as? ReaderPageAnalysisEvidence.Computed)?.fact ?: header
+                            }
+                            val oracle = SharedDualPageRules.canonicalPlan(
+                                identity.pageIds,
+                                facts,
+                                settings.direction,
+                                settings.forcedSinglePages,
+                                settings.manualPairStarts,
+                                settings.openingMode,
+                                settings.automatic,
+                            ) { first, second ->
+                                (
+                                    owner.edgeAnalysis(
+                                        first,
+                                        second,
+                                        settings.direction,
+                                    ) as? ReaderEdgeAnalysisEvidence.Computed
+                                    )?.score
+                            }.single { identity.pageIds[target] in it.pageIds }
+                            assertEquals(
+                                oracle,
+                                result.segment.unit,
+                                "Demand ordering must retain the canonical target unit",
+                            )
+                            assertTrue(result.segment.isCurrent(identity, settings, owner, knownHeaders))
+                            val changed = identity.copy(
+                                content = identity.content.map { content ->
+                                    if (content.pageId.sourcePageIndex == target) {
+                                        content.copy(contentVersion = content.contentVersion + "-changed")
+                                    } else {
+                                        content
+                                    }
+                                },
+                            )
+                            assertFalse(result.segment.isCurrent(changed, settings, owner, knownHeaders))
+                            if (trace) {
+                                val ordered = additional.sortedBy { it.sourcePageIndex }
+                                println(
+                                    "READER_LOCAL_FACTS readerPagesAndHints=" +
+                                        ordered.map { "${it.sourcePageIndex + 1}:${facts.getValue(it).sideHint}" } +
+                                        " adjacentEdges=" + ordered.zipWithNext().map { (first, second) ->
+                                            "${first.sourcePageIndex + 1}-${second.sourcePageIndex + 1}:" +
+                                                (
+                                                    owner.edgeAnalysis(
+                                                        first,
+                                                        second,
+                                                        settings.direction,
+                                                    ) as? ReaderEdgeAnalysisEvidence.Computed
+                                                    )?.score
+                                        } +
+                                        " firstIndex=${result.segment.firstIndex} oracleIndices=${indices(
+                                            oracle.pageIds,
+                                        )} " +
+                                        "certificateCurrent=true changedContentRejected=true",
+                                )
+                            }
+                            return report(
+                                "status=Certified unit=${indices(result.segment.unit.pageIds)} " +
+                                    "first=${result.segment.firstIndex} dependencies=${indices(
+                                        result.segment.dependentPageIds,
+                                    )} " +
+                                    "canonicalOracle=PASS certificateIdentity=PASS",
+                            )
+                        }
                         is ReaderPairingCertification.RetryableBlocked -> return report(
                             "status=Blocked failures=${result.failures.mapKeys { it.key.sourcePageIndex }}",
                         )
                         is ReaderPairingCertification.NeedFacts -> {
-                            val missing = result.facts.flatMap { listOfNotNull(it.pageId, it.secondPageId) }
+                            val demanded = result.facts.flatMap { listOfNotNull(it.pageId, it.secondPageId) }
                                 .distinct().filter { it !in supplied }
+                            val missing = if (nearFirst) {
+                                // Uses only already requested page indices, never unseen hints or edge scores.
+                                demanded.sortedWith(
+                                    compareBy<ReaderPageId> { kotlin.math.abs(it.sourcePageIndex - target) }
+                                        .thenByDescending { it.sourcePageIndex },
+                                )
+                            } else {
+                                demanded
+                            }
                                 .take(ReaderDualPageFactLimits.MAX_CONCURRENT_REQUESTS)
+                            if (trace) {
+                                println(
+                                    "READER_LOCAL_NEED query=$query firstIndex=${result.continuationFirstIndex} " +
+                                        "steps=${result.scanSteps} takeIndices=${indices(missing)} " +
+                                        "needs=${result.facts.map {
+                                            "${it.pageId.sourcePageIndex}:${it.kind}:${it.secondPageId?.sourcePageIndex}"
+                                        }}",
+                                )
+                            }
                             if (missing.isEmpty()) {
                                 return report(
                                     "status=InsufficientEvidence reason=no-new-observed-input",
