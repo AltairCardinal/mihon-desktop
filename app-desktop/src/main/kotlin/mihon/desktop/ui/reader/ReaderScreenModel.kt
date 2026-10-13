@@ -453,7 +453,9 @@ class ReaderScreenModel(
                         }.toSet() + owner.targetUnit?.pageIds
                             .orEmpty()
                         val work = current.session.activeChapter.pages.filter {
-                            it.id in nearby && it.loadState is ReaderPageLoadState.Ready &&
+                            current.autoSpreadMatching &&
+                                it.id in nearby && it.loadState is ReaderPageLoadState.Ready &&
+                                needsOriginalHeader(owner, it.id) &&
                                 (it.id == owner.location?.pageId || optionalWorkCanRun(runtime))
                         }
                             .mapNotNull { page ->
@@ -574,6 +576,14 @@ class ReaderScreenModel(
                 is ReaderPairingCertification.Certified -> emptySet()
             }
         }.toSet()
+    }
+
+    private fun needsOriginalHeader(owner: SharedDualPageSession, pageId: ReaderPageId): Boolean {
+        val content = owner.identity.content.firstOrNull { it.pageId == pageId } ?: return false
+        val fact = owner.pageFact(pageId) ?: return true
+        return fact.state !in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD) ||
+            fact.width <= 0 || fact.height <= 0 || fact.rotation != content.rotation ||
+            fact.sourceOrientation != content.sourceOrientation
     }
 
     /** Required preparation joins the same ordinary decode key used by mounted/native images. */

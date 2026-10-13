@@ -366,7 +366,7 @@ class DesktopReaderRuntimeFactoryTest {
     }
 
     @Test
-    fun `interleaved actual EXIF headers preserve original HTTP consumers in Compose`() = runBlocking {
+    fun `interleaved actual EXIF headers preserve original HTTP consumers and wide pages fill Compose`() = runBlocking {
         val dispatcher = StandardTestDispatcher()
         val scope = CoroutineScope(SupervisorJob() + dispatcher)
         val raw = requireNotNull(javaClass.classLoader?.getResourceAsStream("reader/exif-corners-raw.jpg")).use {
@@ -489,18 +489,18 @@ class DesktopReaderRuntimeFactoryTest {
             pumpUntil {
                 sceneNodes(scene).any {
                     it.config.contains(DualPageSlotIdKey) &&
-                        it.config[DualPageSlotIdKey].pageId?.sourcePageIndex == 1 && it.boundsInRoot.width == 350f
+                        it.config[DualPageSlotIdKey].pageId?.sourcePageIndex == 1 && it.boundsInRoot.width == 700f
                 }
             }
             assertEquals(
-                mihon.domain.reader.ReaderPortraitSingleSlot.RIGHT,
+                mihon.domain.reader.ReaderPortraitSingleSlot.FULL,
                 model.state.value.dualPageUnits.last().slots.single().position,
             )
             assertTrue(
                 sceneNodes(scene).any {
                     it.config.contains(DualPageSlotIdKey) &&
-                        it.config[DualPageSlotIdKey].pageId?.sourcePageIndex == 1 && it.boundsInRoot.width == 350f &&
-                        it.boundsInRoot.left == 350f
+                        it.config[DualPageSlotIdKey].pageId?.sourcePageIndex == 1 && it.boundsInRoot.width == 700f &&
+                        it.boundsInRoot.left == 0f
                 },
                 "Actual EXIF viewport: page=${model.state.value.currentPage}, " +
                     "unit=${model.state.value.currentDisplayUnitId}, " +
@@ -520,7 +520,7 @@ class DesktopReaderRuntimeFactoryTest {
     }
 
     @Test
-    fun `cold tail runtime reads ordinary images without fetching an unknown prefix`() = runBlocking {
+    fun `cold tail keeps its canonical location while required prefix metadata resolves`() = runBlocking {
         val dispatcher = StandardTestDispatcher()
         val scope = CoroutineScope(SupervisorJob() + dispatcher)
         val dimensions =
@@ -598,26 +598,30 @@ class DesktopReaderRuntimeFactoryTest {
         try {
             pumpUntil { model.state.value.session.activeChapter.pages.size == 17 }
             val tail = model.state.value.session.activeChapter.pages.last().id
-            // A cold tail consumes ordinary loading; optional facts must not fetch a backward prefix.
+            // The selected tail needs earlier canonical facts; hold them and retain the logical target.
+            pumpUntil { enteredPrefix.count == 0L }
+            val location = model.state.value.dualPageLocation
+            assertEquals(16, location?.pageId?.sourcePageIndex)
+            assertEquals(1, paths.count { it == "/image/14" }, "Canonical pairing needs source fifteen's fact")
+            releasePrefix.countDown()
             pumpUntil {
                 sceneNodes(scene).any { node ->
                     node.config.contains(ReaderPagerNativePresentationKey) &&
                         node.config[ReaderPagerNativePresentationKey].describe().contains("reported=true")
                 }
             }
-            assertEquals(1L, enteredPrefix.count, "Optional metadata must not materialize source fifteen")
             assertTrue(
                 sceneNodes(scene).any {
                     it.config.contains(ReaderPagerNativePresentationKey) &&
                         it.config[ReaderPagerNativePresentationKey].describe().contains("reported=true")
                 },
-                "The original tail pixels must actually have been drawn and settled",
+                "The tail is presented after its required canonical facts arrive",
             )
-            val location = model.state.value.dualPageLocation
-            releasePrefix.countDown()
+            val fetchedIndices = paths.map { it.substringAfterLast('/').toInt() }.toSet()
+            assertTrue(9 in fetchedIndices, "The first spread boundary is part of the canonical proof; paths=$paths")
             assertTrue(
-                !paths.contains("/image/9") && !paths.contains("/image/14"),
-                "Optional metadata cannot add distant or backward HTTP work; paths=$paths",
+                fetchedIndices.all { it in 9..16 },
+                "Canonical pairing stops at the first preceding spread; paths=$paths",
             )
             pumpUntil {
                 model.state.value.dualPageUnits.singleOrNull {
@@ -632,9 +636,9 @@ class DesktopReaderRuntimeFactoryTest {
             assertEquals(16, model.state.value.dualPageLocation?.pageId?.sourcePageIndex)
             assertEquals(location, model.state.value.dualPageLocation)
             assertEquals(
-                0,
+                1,
                 paths.count { it == "/image/14" },
-                "The backward unknown page is not an optional network request",
+                "The required predecessor header is read once",
             )
             assertEquals(1, paths.count { it == "/image/16" }, "Metadata must not restart normal visible image work")
             pumpUntil {

@@ -695,3 +695,14 @@ Android收口：原8项失败按真实原图取证、认证及canonical配对契
 `ci-string-set-red` JVM 1项准确以NotImplementedError失败；最小实现后 `ci-string-set-green` JVM和Android各1/1、无skip，局部Spotless通过。随后精确复验原CI堆栈含该TODO的14项，`ci-string-set-desktop` 10/14通过、4失败、0跳过。所有失败均已越过getStringSet，后续reader断言失败仍保留，不能称14项全部修复或双端CI全绿；原80项中只有本次实际通过的10项可关闭。XML、原始命令和新失败堆栈保存整合树 `.gradle-coordinator/research-evidence/ci-string-set-desktop/`，共享红绿分别在同级同名目录。未重跑全量。
 
 14:00 UTC（北京时间22:00）的实际七天窗口已用97%，达到用户3%下限，停止新增修复，只收取已启动验证并提交当前结果。作者发现测试漏配hasTitleAttribution仅只读定位，未修改；Desktop其他失败及性能优化仍待处理。恢复直接读取新失败堆栈，不再次将这4项归因为已消除的TODO。
+
+
+### 2026-10-13 Desktop reader 4 项后续失败
+
+`DesktopReaderRuntimeFactoryTest` 有双重header消费者：关闭 automatic matching 时，通用事实发布器与 spread 样本发布器都会通过同一内容所有者读bounded header。将通用分支限制到 automatic matching；关闭时由既有 spread 发布器的非自动分支负责尺寸读取。避免同一物理输入在确定性配对中重复打开。
+
+EXIF HTTP fixture 源 JPEG 原始尺寸为 40×60；orientation 6/8 后的视觉尺寸为 60×40，是横向整页，预期槽位 FULL、宽度700dp、起点0。原测试按竖页RIGHT半屏断言，和真实输入方向相反。Late EXIF 测试的普通图像全内容解码在有界header gate前已读到EXIF，因此首帧content orientation应为CLOCKWISE；其首像素早于header确认、后续画面身份和像素不移动的断言保持。
+
+冷尾页 B1 fixture 的 page16确定配对时需要从page15向前回溯至page9的横页边界；HTTP记录证明只需请求image/9..16。page15事实gate阻塞时，没有绘出tail；解除前序事实后最终RIGHT槽位和逻辑位置16稳定。这项复验揭示了 cold-prefix 引发的首屏等待，作为体验性能问题保留，不把必要的配对事实误标为可删除的可选IO，也不据最终稳定断言宣布“首次显示即时”。实际用户时间门槛仍须在R3性能计划用耗时对照通过。
+
+`ci-desktop-reader-four-green` 精确跑上述两类四方法，4/4通过、无skip，app-desktop局部格式通过（30秒）；JUnit XML、命令及日志归档 `.gradle-coordinator/research-evidence/ci-desktop-reader-four/`。连同此前14项中的10个通过用例，本批14项TODO相关回归均有通过证据；没有重跑整类14或Desktop模块完整测试。原Desktop CI其余66项失败仍待逐组归因，不能称CI全绿。
