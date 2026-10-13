@@ -562,10 +562,6 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                             }
                                         },
                                     ) {
-                                        Text(
-                                            model.manualDownloadScope(),
-                                            Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                        )
                                         mangaDetailDownloadActions().forEachIndexed { index, action ->
                                             DropdownMenuItem(
                                                 text = { Text(action.label) },
