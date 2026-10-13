@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: ❌ Help with Extensions
+  - name: ❌ Upstream Android extension help
     url: https://mihon.app/docs/faq/browse/extensions
-    about: For extension-related questions/issues
-  - name: 🖥️ Mihon website
-    url: https://mihon.app/
-    about: Guides, troubleshooting, and answers to common questions
+    about: Upstream Android reference for extension-related questions and issues
+  - name: 🖥️ Mihon Desktop project help
+    url: https://altaircardinal.github.io/mihon-desktop/
+    about: This fork's guides, supported platforms, and troubleshooting

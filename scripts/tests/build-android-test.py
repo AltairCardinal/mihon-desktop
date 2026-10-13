@@ -46,7 +46,8 @@ class AndroidEntryTest(unittest.TestCase):
                 self.assertIn(f"-Pmihon.syncAcceptanceRepository={name}", args)
                 self.assertIn(f"-Pandroid.candidateConfigurationInputs={config['buildConfigurationInputsSha256']}", args)
                 receipt = {"requestId": "fresh", "sourceInputs": "f" * 64, "variant": "debug",
-                           "configurationInputs": config["buildConfigurationInputsSha256"], "syncAcceptanceRepository": name}
+                           "configurationInputs": config["buildConfigurationInputsSha256"], "syncAcceptanceRepository": name,
+                           "forkUpdater": True}
                 (reports / "android-candidate.json").write_text(json.dumps(receipt), encoding="utf-8")
                 return subprocess.CompletedProcess(command, 0)
 
@@ -58,6 +59,23 @@ class AndroidEntryTest(unittest.TestCase):
             with patch.object(ANDROID.uuid, "uuid4", return_value=SimpleNamespace(hex="fresh")), patch.object(ANDROID.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)):
                 with self.assertRaisesRegex(ValueError, "configuration"):
                     ANDROID.gradle_build("debug", "f" * 64, root=root, repository=name)
+
+    def test_candidate_requires_actual_fork_updater_build_evidence(self):
+        config = ANDROID.build_configuration("release", None)
+        with tempfile.TemporaryDirectory(prefix="updater-build-receipt-") as directory:
+            root = Path(directory)
+            reports = root / "app/build/reports"
+            reports.mkdir(parents=True)
+            receipt = dict(requestId="fresh", sourceInputs="f" * 64, variant="release",
+                           configurationInputs=config["buildConfigurationInputsSha256"], syncAcceptanceRepository=None)
+            with patch.object(ANDROID.uuid, "uuid4", return_value=SimpleNamespace(hex="fresh")), \
+                    patch.object(ANDROID.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)):
+                for enabled in (False, None, "true"):
+                    (reports / "android-candidate.json").write_text(json.dumps(receipt | {"forkUpdater": enabled}), encoding="utf-8")
+                    with self.subTest(enabled=enabled), self.assertRaisesRegex(ValueError, "updater"):
+                        ANDROID.gradle_build("release", "f" * 64, root=root)
+                (reports / "android-candidate.json").write_text(json.dumps(receipt | {"forkUpdater": True}), encoding="utf-8")
+                self.assertTrue(ANDROID.gradle_build("release", "f" * 64, root=root)["forkUpdater"])
 
     def test_formal_cli_never_accepts_debug_repository_parameter(self):
         for action in ("candidate", "check"):

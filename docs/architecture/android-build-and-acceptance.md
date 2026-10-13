@@ -44,7 +44,11 @@
 | 专项隔离验收 | 既有明确隔离 ID | 按测试契约配置；允许调试签名；记录额外 keep/测试接线 | 只证明该配置下的测试项，不作为用户升级产物 |
 | preview / benchmark / foss | fork 基础 ID 加现有对应后缀 | 保留各自变体语义 | 兼容既有开发/性能用途；不新增正式发布渠道 |
 
-Release 基线保持遥测与自动更新器关闭。默认 Gradle 的 Release/FOSS 等正式配置必须对违背基线的开关失败退出，不能只在外部 wrapper 检查。未来启用须有对应服务、配置与授权的独立设计，不能机械采用上游 CI 参数。
+Release 基线保持遥测和上游更新器关闭，仍禁止 `-Pinclude-telemetry`、`-Penable-updater` 和关闭压缩的参数。
+本项目更新使用独立 `FORK_UPDATER_ENABLED` 配置及[自有更新协议](application-updates-and-feedback.md)，
+不复用上游发布端点。候选证明从实际 Gradle 配置记录 `forkUpdater`；历史清单中的 `updater: false`
+仍表示上游开关关闭，不能将其解释为本项目更新入口关闭。旧清单继续按既有规则验证。
+Debug 只打开本项目发布页，正式 APK 下载仍必须验证既有包名、版本和签名。
 
 Debug 迁移到新 ID 后，既有 `app.mihon.dev` 数据不会自动进入新应用。保留旧安装，可按用户意图使用生产备份/恢复；不卸载、不复制私有数据库冒充自动迁移。原正式 `app.mihon.desktop.fork` 的 ID 和证书保持连续，官方 `app.mihon` 安装不受本项目升级操作影响。
 

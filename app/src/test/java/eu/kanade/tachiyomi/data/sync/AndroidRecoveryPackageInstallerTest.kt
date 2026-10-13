@@ -45,6 +45,7 @@ class AndroidRecoveryPackageInstallerTest {
         every { manager.getPackageArchiveInfo(archive.absolutePath, PackageManager.GET_SIGNATURES) } returns info
         val installer = AndroidRecoveryPackageInstaller(context, "app.mihon.desktop.fork", fingerprint, 65)
         assertTrue(installer.verify(archive) is AndroidRecoveryPackageVerification.Ready)
+        assertEquals(AndroidRecoveryPackageVerification.Rejected, installer.verify(archive, expectedVersionCode = 67))
         info.versionCode = 65
         assertEquals(AndroidRecoveryPackageVerification.Rejected, installer.verify(archive))
         info.versionCode = 66

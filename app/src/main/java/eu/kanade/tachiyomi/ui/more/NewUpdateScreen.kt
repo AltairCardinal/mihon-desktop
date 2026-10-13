@@ -8,6 +8,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.more.NewUpdateScreen
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.data.updater.AppUpdateDownloadJob
+import eu.kanade.tachiyomi.data.updater.canInstallForkUpdate
 import eu.kanade.tachiyomi.util.system.openInBrowser
 
 class NewUpdateScreen(
@@ -15,12 +16,17 @@ class NewUpdateScreen(
     private val changelogInfo: String,
     private val releaseLink: String,
     private val downloadLink: String,
+    private val expectedSha256: String? = null,
+    private val expectedSizeBytes: Long? = null,
+    private val expectedVersionCode: Long? = null,
+    private val infoTruncated: Boolean = false,
 ) : Screen() {
 
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val context = LocalContext.current
+        val manualOnly = !canInstallForkUpdate()
         val changelogInfoNoChecksum = remember {
             changelogInfo.replace("""---(\R|.)*Checksums(\R|.)*""".toRegex(), "")
         }
@@ -28,14 +34,23 @@ class NewUpdateScreen(
         NewUpdateScreen(
             versionName = versionName,
             changelogInfo = changelogInfoNoChecksum,
+            manualOnly = manualOnly,
+            infoTruncated = infoTruncated,
             onOpenInBrowser = { context.openInBrowser(releaseLink) },
             onRejectUpdate = navigator::pop,
             onAcceptUpdate = {
-                AppUpdateDownloadJob.start(
-                    context = context,
-                    url = downloadLink,
-                    title = versionName,
-                )
+                if (manualOnly) {
+                    context.openInBrowser(releaseLink)
+                } else {
+                    AppUpdateDownloadJob.start(
+                        context = context,
+                        url = downloadLink,
+                        title = versionName,
+                        expectedSha256 = expectedSha256,
+                        expectedSizeBytes = expectedSizeBytes,
+                        expectedVersionCode = expectedVersionCode,
+                    )
+                }
                 navigator.pop()
             },
         )

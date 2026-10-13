@@ -27,6 +27,7 @@ gradle.beforeProject { project ->
                     }
                     assert android.defaultConfig.buildConfigFields.TELEMETRY_INCLUDED.value == 'false'
                     assert android.defaultConfig.buildConfigFields.UPDATER_ENABLED.value == 'false'
+                    assert android.defaultConfig.buildConfigFields.FORK_UPDATER_ENABLED?.value == 'true'
                     android.applicationVariants.each { variant ->
                         assert variant.applicationId == expected + (variant.buildType.applicationIdSuffix ?: '')
                         assert variant.versionCode == metadata.versionCode.toInteger()

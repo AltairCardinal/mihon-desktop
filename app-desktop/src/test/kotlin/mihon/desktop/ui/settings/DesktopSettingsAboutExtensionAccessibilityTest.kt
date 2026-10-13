@@ -48,6 +48,8 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
 import tachiyomi.i18n.MR
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.domain.release.service.ApplicationUpdatePreferences
 import java.nio.file.Path
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -62,6 +64,8 @@ class DesktopSettingsAboutExtensionAccessibilityTest {
         val update = mockk<DesktopUpdateScreenModel> {
             every { state } returns MutableStateFlow(DesktopUpdateState.Idle)
             every { feedback } returns MutableStateFlow(null)
+            every { preferences } returns ApplicationUpdatePreferences(InMemoryPreferenceStore())
+            every { presentation() } returns DesktopUpdateState.Idle.presentation()
             every { intent(any()) } returns true
         }
         val extensionManager = DesktopExtensionManager()

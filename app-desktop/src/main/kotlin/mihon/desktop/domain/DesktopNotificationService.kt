@@ -3,6 +3,8 @@ package mihon.desktop.domain
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * A lightweight application-level notification bus.
@@ -25,6 +27,13 @@ class DesktopNotificationService {
     fun post(notification: DesktopNotification) {
         _notifications.tryEmit(notification)
     }
+
+    /** Wait for the home UI before acknowledging a startup update notice. */
+    suspend fun postWhenObserved(notification: DesktopNotification): Boolean = withTimeoutOrNull(30_000) {
+        _notifications.subscriptionCount.first { it > 0 }
+        _notifications.emit(notification)
+        true
+    } ?: false
 }
 
 data class DesktopNotification(

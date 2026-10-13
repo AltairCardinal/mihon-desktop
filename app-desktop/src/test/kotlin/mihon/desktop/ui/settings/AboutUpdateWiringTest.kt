@@ -1,5 +1,6 @@
 package mihon.desktop.ui.settings
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -28,7 +29,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withTimeout
 import mihon.desktop.APP_VERSION
-import mihon.desktop.AppVersion
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.di.initDesktopDIForTest
@@ -67,6 +67,7 @@ import tachiyomi.domain.release.model.ReleaseOs
 import tachiyomi.domain.release.model.ReleasePackageType
 import tachiyomi.domain.release.model.ReleaseTarget
 import tachiyomi.domain.release.model.ReleaseVariant
+import tachiyomi.domain.release.service.ApplicationUpdatePreferences
 import tachiyomi.i18n.MR
 import java.nio.file.Files
 import java.nio.file.Path
@@ -78,6 +79,69 @@ import java.util.concurrent.Executors
 @OptIn(ExperimentalComposeUiApi::class)
 @Isolated
 class AboutUpdateWiringTest {
+    @Test
+    fun `manual fork update shows release notes and truncation while keeping release page action reachable`() = runBlocking {
+        val previousLocale = Locale.getDefault()
+        Locale.setDefault(Locale.US)
+        try {
+            for (truncated in listOf(false, true)) {
+                val notes = if (truncated) "Cached update details.\n".repeat(60) else "Fix update checks and improve feedback."
+                val release = Release(
+                    "0.12.0",
+                    notes,
+                    "https://github.com/AltairCardinal/mihon-desktop/releases/tag/0.12.0",
+                    "",
+                    infoTruncated = truncated,
+                )
+                val opened = mutableListOf<String>()
+                val controller = DesktopUpdateController(
+                    { tachiyomi.domain.release.interactor.GetApplicationRelease.Result.NewUpdate(release) },
+                    { _, _ -> error("Manual Desktop updates must not download") },
+                    { _, _ -> error("Manual Desktop updates must not prepare installation") },
+                    { _, _ -> error("Manual Desktop updates must not install") },
+                )
+                val model = DesktopUpdateScreenModel(controller, this, openUrl = { opened += it; true })
+                val scene = ImageComposeScene(800, 760, coroutineContext = coroutineContext) {}
+                try {
+                    assertTrue(model.intent(DesktopUpdateIntent.CHECK))
+                    withTimeout(2_000) { model.state.first { it is DesktopUpdateState.UpdateAvailable } }
+                    scene.setContent {
+                        MaterialTheme {
+                            Column {
+                                AboutUpdateSection(APP_VERSION, model.presentation(), null, model::intent)
+                            }
+                        }
+                    }
+                    render(scene)
+                    assertTrue(texts(scene).any { release.version in it })
+                    assertTrue(notes in texts(scene), "The available release must show its notes")
+                    assertEquals(truncated, MR.strings.fork_update_full_notes_on_release.localized() in texts(scene))
+                    assertTrue(opened.isEmpty())
+                    if (truncated) {
+                        val scroll = nodes(scene, true).single { it.config.contains(SemanticsActions.ScrollBy) }
+                        val range = scroll.config[SemanticsProperties.VerticalScrollAxisRange]
+                        assertTrue(range.maxValue() > 0f)
+                        assertTrue(scroll.boundsInRoot.height <= 240f)
+                        requireNotNull(scroll.config[SemanticsActions.ScrollBy].action).invoke(0f, 10_000f)
+                        repeat(24) { scene.render(System.nanoTime()).close(); kotlinx.coroutines.delay(16) }
+                        assertTrue(range.value() > 0f)
+                    }
+                    val action = nodes(scene).first {
+                        it.config.contains(SemanticsActions.OnClick) && MR.strings.update_check_open.localized() in texts(it)
+                    }
+                    assertTrue(action.boundsInRoot.height > 0f && action.boundsInRoot.bottom <= 760f)
+                    click(scene, MR.strings.update_check_open.localized())
+                    assertEquals(listOf(release.releaseLink), opened)
+                } finally {
+                    scene.close()
+                    model.closeAndJoin()
+                }
+            }
+        } finally {
+            Locale.setDefault(previousLocale)
+        }
+    }
+
     @Test
     fun `about routes real injected dependency notices to their first license content`(
         @TempDir tempDir: Path,
@@ -188,6 +252,8 @@ class AboutUpdateWiringTest {
         val updateModel = mockk<DesktopUpdateScreenModel> {
             every { state } returns MutableStateFlow(DesktopUpdateState.Idle)
             every { feedback } returns MutableStateFlow(null)
+            every { preferences } returns ApplicationUpdatePreferences(InMemoryPreferenceStore())
+            every { presentation() } returns DesktopUpdateState.Idle.presentation()
         }
         val extensionManager = DesktopExtensionManager()
         val appPreferences = DesktopAppPreferences(InMemoryPreferenceStore())
@@ -348,7 +414,7 @@ class AboutUpdateWiringTest {
                     { _, _ -> InstallManualOnly },
                     { _, _ -> InstallCancelled },
                 )
-                val model = DesktopUpdateScreenModel(controller, this, openUrl = {
+                val model = DesktopUpdateScreenModel(controller, this, manualOnlyUpdates = false, openUrl = {
                     opened = it
                     if (openMode == 2) error("browser") else openMode == 1
                 })
@@ -361,8 +427,8 @@ class AboutUpdateWiringTest {
                 model.state.first { it is DesktopUpdateState.Cancelled }
                 assertTrue(model.intent(DesktopUpdateIntent.CHECK))
                 model.state.first { it is DesktopUpdateState.UpdateAvailable }
-                assertEquals("0.${AppVersion.STAGE}.${AppVersion.FEATURE}", arguments?.versionName)
-                assertEquals("mihonapp/mihon", arguments?.repository)
+                assertEquals(APP_VERSION, arguments?.versionName)
+                assertEquals("AltairCardinal/mihon-desktop", arguments?.repository)
                 model.intent(DesktopUpdateIntent.MANUAL)
                 assertEquals(release.releaseLink, opened)
                 assertTrue(model.feedback.value!!.contains(release.releaseLink))
@@ -408,7 +474,7 @@ class AboutUpdateWiringTest {
                 tachiyomi.domain.release.interactor.GetApplicationRelease.Result.NewUpdate(release)
             }, { _, _ -> download }, installer::prepare, installer::handoff)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val model = DesktopUpdateScreenModel(controller, scope)
+        val model = DesktopUpdateScreenModel(controller, scope, manualOnlyUpdates = false)
         try {
             assertTrue(model.intent(DesktopUpdateIntent.CHECK))
             withTimeout(2_000) { model.state.first { it is DesktopUpdateState.UpdateAvailable } }

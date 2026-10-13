@@ -38,6 +38,7 @@ gradle.beforeProject { project ->
                         configurationInputs: project.property('android.candidateConfigurationInputs'),
                         syncAcceptanceRepository: (project.android.buildTypes.getByName(variant).buildConfigFields.get('SYNC_ACCEPTANCE_REPOSITORY') ?: project.android.defaultConfig.buildConfigFields.get('SYNC_ACCEPTANCE_REPOSITORY')).value.replace('"', '').with { it ? it : null },
                         variant: variant,
+                        forkUpdater: (project.android.buildTypes.getByName(variant).buildConfigFields.get('FORK_UPDATER_ENABLED') ?: project.android.defaultConfig.buildConfigFields.get('FORK_UPDATER_ENABLED'))?.value == 'true',
                         apkSha256: hash(apk),
                         mappingSha256: variant == 'release' ? hash(mapping) : null,
                     ]), 'UTF-8')

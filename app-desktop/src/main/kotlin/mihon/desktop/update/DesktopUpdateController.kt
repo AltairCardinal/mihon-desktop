@@ -31,9 +31,14 @@ class DesktopUpdateController(
     private val downloadGeneration = AtomicLong()
     private val activeDownload = AtomicLong()
     private var retryAction: RetryAction? = null
-    suspend fun check(arguments: GetApplicationRelease.Arguments) = operate {
-        if (retryAction != null || mutableState.value is DesktopUpdateState.UpdateAvailable || mutableState.value is DesktopUpdateState.ReadyToInstall) return@operate false
+    suspend fun check(arguments: GetApplicationRelease.Arguments, refresh: Boolean = false) = operate {
+        if (!refresh && (retryAction != null || mutableState.value is DesktopUpdateState.UpdateAvailable || mutableState.value is DesktopUpdateState.ReadyToInstall)) return@operate false
         checkNow(arguments)
+        true
+    }
+    suspend fun resetCheck() = operate {
+        retryAction = null
+        mutableState.value = DesktopUpdateState.Idle
         true
     }
     suspend fun download() = operate {

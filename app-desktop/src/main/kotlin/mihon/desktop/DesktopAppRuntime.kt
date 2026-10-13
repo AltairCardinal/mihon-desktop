@@ -76,6 +76,7 @@ class DesktopAppRuntime(
             service.start()
             runningServices[index] = true
         }
+        updateScreenModel?.startAutomaticChecks()
     }
 
     @Synchronized
@@ -84,6 +85,7 @@ class DesktopAppRuntime(
         val failures = CleanupFailures()
         failures.attempt(appLock::onApplicationStopped)
         failures.attempt { startupJob?.cancel() }
+        failures.attempt { updateScreenModel?.stopAutomaticChecks() }
         startupJob = null
         services.indices.reversed().forEach { index ->
             if (runningServices[index]) {

@@ -30,12 +30,14 @@ fun NewUpdateScreen(
     onOpenInBrowser: () -> Unit,
     onRejectUpdate: () -> Unit,
     onAcceptUpdate: () -> Unit,
+    manualOnly: Boolean = false,
+    infoTruncated: Boolean = false,
 ) {
     InfoScreen(
         icon = Icons.Outlined.NewReleases,
         headingText = stringResource(MR.strings.update_check_notification_update_available),
         subtitleText = versionName,
-        acceptText = stringResource(MR.strings.update_check_confirm),
+        acceptText = stringResource(if (manualOnly) MR.strings.update_check_open else MR.strings.update_check_confirm),
         onAcceptClick = onAcceptUpdate,
         rejectText = stringResource(MR.strings.action_not_now),
         onRejectClick = onRejectUpdate,
@@ -45,10 +47,16 @@ fun NewUpdateScreen(
                 .fillMaxWidth()
                 .padding(vertical = MaterialTheme.padding.large),
         ) {
+            if (manualOnly) {
+                Text(text = stringResource(MR.strings.fork_update_debug_manual_only))
+            }
             MarkdownRender(
                 content = changelogInfo,
                 flavour = GFMFlavourDescriptor(),
             )
+            if (infoTruncated) {
+                Text(text = stringResource(MR.strings.fork_update_full_notes_on_release))
+            }
 
             TextButton(
                 onClick = onOpenInBrowser,

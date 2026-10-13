@@ -5,11 +5,15 @@ on:
     paths:
       - 'website/**'
       - '.github/workflows/pages.yml'
+      - 'scripts/update-feed.py'
+      - 'scripts/tests/update-feed-test.py'
   push:
     branches: [main]
     paths:
       - 'website/**'
       - '.github/workflows/pages.yml'
+      - 'scripts/update-feed.py'
+      - 'scripts/tests/update-feed-test.py'
   workflow_dispatch:
 
 permissions:
@@ -40,6 +44,10 @@ jobs:
           cache-dependency-path: website/package-lock.json
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
+      - name: Validate update feed and publisher contracts
+        run: |
+          python3 ../scripts/tests/update-feed-test.py
+          python3 ../scripts/update-feed.py validate
       - name: Build and check documentation links
         run: npm run docs:build
       - name: Upload Pages artifact

@@ -28,7 +28,7 @@ internal class AndroidRecoveryPackageInstaller(
     private val currentVersionCode: Long = BuildConfig.FORK_RELEASE_VERSION_CODE.toLong(),
     private val packageUri: (File) -> Uri = { it.getUriCompat(context) },
 ) {
-    fun verify(file: File): AndroidRecoveryPackageVerification = try {
+    fun verify(file: File, expectedVersionCode: Long? = null): AndroidRecoveryPackageVerification = try {
         require(file.isFile && file.length() in 1..MAX_PACKAGE_BYTES)
         val modern = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
         val info = requireNotNull(
@@ -39,6 +39,7 @@ internal class AndroidRecoveryPackageInstaller(
         )
         val version = if (modern) info.longVersionCode else info.versionCode.toLong()
         require(info.packageName == packageName && version > currentVersionCode)
+        require(expectedVersionCode == null || version == expectedVersionCode)
         val signers = if (modern) {
             requireNotNull(
                 info.signingInfo,

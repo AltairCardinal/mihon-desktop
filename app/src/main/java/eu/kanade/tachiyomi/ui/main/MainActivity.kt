@@ -305,7 +305,7 @@ class MainActivity : BaseActivity() {
     }
 
     @Composable
-    private fun CheckForUpdates() {
+    internal fun CheckForUpdates() {
         val context = LocalContext.current
         val navigator = LocalNavigator.currentOrThrow
 
@@ -313,15 +313,21 @@ class MainActivity : BaseActivity() {
         LaunchedEffect(Unit) {
             if (updaterEnabled) {
                 try {
-                    val result = AppUpdateChecker().checkForUpdate(context)
+                    val checker = AppUpdateChecker()
+                    val result = checker.checkForUpdate(context)
                     if (result is GetApplicationRelease.Result.NewUpdate) {
                         val updateScreen = NewUpdateScreen(
                             versionName = result.release.version,
                             changelogInfo = result.release.info,
                             releaseLink = result.release.releaseLink,
                             downloadLink = result.release.downloadLink,
+                            expectedSha256 = result.release.asset.checksum?.value,
+                            expectedSizeBytes = result.release.sizeBytes,
+                            expectedVersionCode = result.release.versionCode,
+                            infoTruncated = result.release.infoTruncated,
                         )
                         navigator.push(updateScreen)
+                        checker.markPresented(result.release)
                     }
                 } catch (e: Exception) {
                     logcat(LogPriority.ERROR, e)

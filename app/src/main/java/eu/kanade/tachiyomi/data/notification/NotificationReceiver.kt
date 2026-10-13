@@ -190,7 +190,14 @@ class NotificationReceiver : BroadcastReceiver() {
 
     private fun startDownloadAppUpdate(context: Context, intent: Intent) {
         val url = intent.getStringExtra(AppUpdateDownloadJob.EXTRA_DOWNLOAD_URL) ?: return
-        AppUpdateDownloadJob.start(context, url)
+        AppUpdateDownloadJob.start(
+            context,
+            url,
+            intent.getStringExtra(AppUpdateDownloadJob.EXTRA_DOWNLOAD_TITLE),
+            intent.getStringExtra(AppUpdateDownloadJob.EXTRA_EXPECTED_SHA256),
+            intent.getLongExtra(AppUpdateDownloadJob.EXTRA_EXPECTED_SIZE, -1),
+            intent.getLongExtra(AppUpdateDownloadJob.EXTRA_EXPECTED_VERSION_CODE, -1),
+        )
     }
 
     private fun cancelDownloadAppUpdate(context: Context) {
@@ -544,11 +551,17 @@ class NotificationReceiver : BroadcastReceiver() {
             context: Context,
             url: String,
             title: String? = null,
+            expectedSha256: String? = null,
+            expectedSizeBytes: Long? = null,
+            expectedVersionCode: Long? = null,
         ): PendingIntent {
             return Intent(context, NotificationReceiver::class.java).run {
                 action = ACTION_START_APP_UPDATE
                 putExtra(AppUpdateDownloadJob.EXTRA_DOWNLOAD_URL, url)
                 title?.let { putExtra(AppUpdateDownloadJob.EXTRA_DOWNLOAD_TITLE, it) }
+                putExtra(AppUpdateDownloadJob.EXTRA_EXPECTED_SHA256, expectedSha256)
+                expectedSizeBytes?.let { putExtra(AppUpdateDownloadJob.EXTRA_EXPECTED_SIZE, it) }
+                expectedVersionCode?.let { putExtra(AppUpdateDownloadJob.EXTRA_EXPECTED_VERSION_CODE, it) }
                 PendingIntent.getBroadcast(
                     context,
                     0,
