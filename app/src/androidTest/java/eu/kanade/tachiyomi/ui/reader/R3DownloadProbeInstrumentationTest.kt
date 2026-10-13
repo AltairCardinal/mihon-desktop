@@ -26,10 +26,14 @@ import eu.kanade.tachiyomi.data.download.DownloadProvider
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.loader.DownloadPageLoader
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
+import eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
+import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageRegionDecoder
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DisplayPage
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPagerPageHolder
+import kotlinx.coroutines.Job
+import mihon.domain.reader.ReaderPageAnalysisEvidence
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertTrue
@@ -41,10 +45,16 @@ import tachiyomi.source.local.LocalSource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
+import java.io.FilterInputStream
+import java.io.IOException
+import java.io.InputStream
 import java.security.MessageDigest
 import java.util.IdentityHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Same observer source is compiled against the baseline and candidate. No new pairing API is called.
@@ -61,7 +71,10 @@ class R3DownloadProbeInstrumentationTest {
     @Test
     fun cbzDownloadUsesTheActualLoaderAndCommitsCorrectPixels() = probe("cbz")
 
-    private fun probe(defaultStorage: String, seedOnly: Boolean = false) {
+    @Test
+    fun directoryDownloadCancelsInFlightOriginalJniAndRecovers() = probe("directory", cancelNative = true)
+
+    private fun probe(defaultStorage: String, seedOnly: Boolean = false, cancelNative: Boolean = false) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val args = InstrumentationRegistry.getArguments()
         val context = instrumentation.targetContext
@@ -73,6 +86,11 @@ class R3DownloadProbeInstrumentationTest {
         check(fixture in listOf("vol08-176", "vol09-surrogate-176", "control-no-reset-176"))
         check(storage in listOf("directory", "cbz") && target in 1..176)
         check(expected.size in 1..2 && expected.all { it in 1..176 })
+        if (cancelNative) {
+            check(fixture == "control-no-reset-176" && storage == "directory" && target == 8)
+            check(expected == listOf(8, 9) && args.getString("actions").isNullOrBlank())
+            check((args.getString("reopens") ?: "0").toInt() == 0)
+        }
         val inputRoot = File(args.getString("fixtureRoot") ?: File(context.filesDir, "pairing-r3-input").path)
         val manifest = JSONObject(File(inputRoot, "manifest.json").readText(Charsets.UTF_8))
         val chapters = manifest.getJSONArray("chapters")
@@ -142,6 +160,7 @@ class R3DownloadProbeInstrumentationTest {
         val previousStorage = storagePreference.get()
         var activity: ReaderActivity? = null
         var observer: Observer? = null
+        val cancellationGate = if (cancelNative) NativeCancellationGate() else null
         val output = JSONObject().put("schema", 1).put("fixture", fixture).put("storage", storage)
             .put("targetReaderPage", target).put("expectedReaderPages", JSONArray(expected))
             .put("iteration", args.getString("iteration") ?: "0")
@@ -197,6 +216,9 @@ class R3DownloadProbeInstrumentationTest {
                                 originalReferences,
                                 traceNative = args.getString("traceNative") == "true",
                                 traceKeys = args.getString("actionInput") == "page-key",
+                                onChapterObserved = cancellationGate?.let { gate ->
+                                    { viewer -> gate.install(viewer) }
+                                },
                             )
                             observer!!.start()
                             installed = true
@@ -223,8 +245,74 @@ class R3DownloadProbeInstrumentationTest {
                 }
             }
             val timeout = (args.getString("timeoutMs") ?: "20000").toLong()
-            val initial = open().await(timeout)
+            val firstObserver = open()
+            if (cancellationGate != null) {
+                output.put("cancellationRecovery", cancellationGate.result)
+                check(cancellationGate.entered.await(10, TimeUnit.SECONDS)) {
+                    "Original JNI did not reach the page2 physical EOF gate: " + cancellationGate.snapshot()
+                }
+                var matching: Job? = null
+                val exiting = requireNotNull(activity)
+                try {
+                    instrumentation.runOnMainSync {
+                        val viewer = actualViewer(exiting)
+                        val owner = requireNotNull(viewer.adapter.currentChapter?.let(viewer.adapter::session))
+                        matching = fieldOrNull(viewer.adapter, "matchingJob") as? Job
+                        val job = requireNotNull(matching)
+                        val remaining = owner.factBudget.remainingWaitMillis(SystemClock.uptimeMillis())
+                        cancellationGate.result.put("beforeFinish", cancellationGate.jobSnapshot(job))
+                            .put("remainingBudgetBeforeFinishMs", remaining)
+                        check(job.isActive && !job.isCancelled && !job.isCompleted)
+                        check(remaining >= 5000) { "Deadline cancellation cannot establish the exit contract" }
+                        check(cancellationGate.nativeCloses.get() == 0)
+                        firstObserver.close()
+                        cancellationGate.result.put("finishIntentNs", System.nanoTime())
+                        exiting.finish()
+                    }
+                    val job = requireNotNull(matching)
+                    val exitDeadline = cancellationGate.enteredNs.get() + TimeUnit.MILLISECONDS.toNanos(2800)
+                    while (true) {
+                        var cancelledAfterDestroy = false
+                        instrumentation.runOnMainSync {
+                            cancelledAfterDestroy = exiting.isDestroyed && job.isCancelled
+                        }
+                        if (cancelledAfterDestroy) break
+                        check(System.nanoTime() < exitDeadline) { "Finish did not cancel the in-flight job in time" }
+                        Thread.sleep(5)
+                    }
+                    val pauseMs = (System.nanoTime() - cancellationGate.enteredNs.get()) / 1e6
+                    cancellationGate.result.put("afterFinishBeforeRelease", cancellationGate.jobSnapshot(job))
+                        .put("activityDestroyed", exiting.isDestroyed)
+                        .put("pauseBeforeReleaseMs", pauseMs)
+                    check(pauseMs < 3000) { "Exit cancellation exceeded the bounded test pause" }
+                    check(!job.isCompleted && cancellationGate.nativeCloses.get() == 0)
+                } finally {
+                    cancellationGate.release.countDown()
+                }
+                val job = requireNotNull(matching)
+                val drainDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+                while (
+                    !job.isCompleted || AndroidReaderSpreadSampler.optionalWork.value != 0 ||
+                    ReaderPageImageView.foregroundWork.value != 0
+                ) {
+                    check(System.nanoTime() < drainDeadline) { "Cancelled native resources did not exit" }
+                    Thread.sleep(10)
+                }
+                cancellationGate.result.put("afterRelease", cancellationGate.jobSnapshot(job))
+                    .put("optionalWorkAfterExit", AndroidReaderSpreadSampler.optionalWork.value)
+                    .put("foregroundWorkAfterExit", ReaderPageImageView.foregroundWork.value)
+                check(job.isCancelled && cancellationGate.nativeCloses.get() == 1)
+                check(cancellationGate.nativeCreates.get() == 1 && cancellationGate.nativeRecycles.get() == 1)
+                cancellationGate.requireReleasedResources()
+                instrumentation.runOnMainSync { cancellationGate.restore() }
+                cancellationGate.result.put("matchedResources", cancellationGate.snapshot())
+            }
+            val initial = if (cancellationGate == null) firstObserver.await(timeout) else open().await(timeout)
             output.put("initial", initial)
+            if (cancellationGate != null) {
+                assertTrue("Fresh actual reader did not recover correct pixels", initial.optBoolean("bothCorrect"))
+                cancellationGate.result.put("recoveryOutcome", "CORRECT")
+            }
             // Explicit source navigation uses the actual Viewer entry; it never reseeds a budget.
             val actions = args.getString("actions").orEmpty().split(";").filter(String::isNotBlank)
             val actionResults = JSONArray()
@@ -359,10 +447,13 @@ class R3DownloadProbeInstrumentationTest {
             observer?.let { output.put("lastObservation", it.await(0)) }
             throw error
         } finally {
+            cancellationGate?.release?.countDown()
             instrumentation.runOnMainSync {
+                cancellationGate?.restore()
                 observer?.close()
                 activity?.finish()
             }
+            cancellationGate?.let { output.put("cancellationMatchedResourcesAtFinally", it.snapshot()) }
             output.put("finishedNs", System.nanoTime())
             val name = args.getString("output") ?: "r3-download-probe.json"
             check(name.matches(Regex("[a-zA-Z0-9._-]+")))
@@ -406,6 +497,146 @@ class R3DownloadProbeInstrumentationTest {
         )
     }
 
+    /** Pause only the actual original factory's physical page2 EOF, never a header read. */
+    private class NativeCancellationGate {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val enteredNs = AtomicLong()
+        val nativeCloses = AtomicInteger()
+        val nativeCreates = AtomicInteger()
+        val nativeRecycles = AtomicInteger()
+        val result = JSONObject().put("readerPage", 2).put("physicalBytesReplaced", false)
+            .put("injection", "forwarded-download-stream-physical-eof-inside-original-native-factory")
+        private val nativeCloseReturns = AtomicInteger()
+        private val nativeBytes = AtomicLong()
+        private val nativeRegionCalls = AtomicInteger()
+        private val gateTimedOut = AtomicBoolean()
+        private val enteredOnce = AtomicBoolean()
+        private val nativeScope = ThreadLocal<Boolean>()
+        private val nativeMatch = ThreadLocal<NativeStream>()
+        private var installed = false
+        private var disabled = false
+        private var restoreOriginal: (() -> Unit)? = null
+
+        // Main-thread callback, before any model observation or original request is injected.
+        fun install(viewer: DualPageR2LPagerViewer) {
+            if (installed || disabled) return
+            val chapter = viewer.adapter.currentChapter ?: return
+            val page = chapter.pages?.getOrNull(1) ?: return
+            val originalStream = page.stream ?: return
+            val owner = viewer.adapter.session(chapter) ?: return
+            val id = owner.identity.pageIds.getOrNull(1) ?: return
+            val sampleOwner = requireNotNull(fieldOrNull(owner, "spreadSamples"))
+            val requests = requireNotNull(fieldOrNull(sampleOwner, "requests") as? Map<*, *>)
+            val analysis = owner.originalAnalysis(id)
+            val requestAlreadyIssued = requests.containsKey(id)
+            result.put("installObservedNs", System.nanoTime()).put("originalAnalysisAtInstall", analysis.toString())
+                .put("originalRequestAlreadyIssued", requestAlreadyIssued)
+            if (analysis != ReaderPageAnalysisEvidence.NotAnalyzed || requestAlreadyIssued) {
+                disabled = true
+                result.put("installationFailure", "Page2 was already requested or analyzed")
+                return
+            }
+            val originalFactory = viewer.adapter.spreadDecoderFactory
+            if (originalFactory !== AndroidReaderSpreadSampler.nativeDecoder) {
+                disabled = true
+                result.put("installationFailure", "The production factory was not the actual native factory")
+                return
+            }
+            installed = true
+            result.put("installedBeforeOriginalRequest", true).put("nativeFactoryClass", originalFactory.javaClass.name)
+                .put("pageClass", page.javaClass.name).put("loaderClass", chapter.pageLoader?.javaClass?.name)
+                .put("contentBeforeWrapper", page.encodedContentIdentity())
+            // Changing this factory invalidates the capability, while forwarding unchanged bytes.
+            page.stream = { NativeStream(originalStream()) }
+            result.put("contentAfterWrapper", page.encodedContentIdentity())
+            viewer.adapter.spreadDecoderFactory = { input ->
+                val priorScope = nativeScope.get()
+                val priorMatch = nativeMatch.get()
+                nativeScope.set(true)
+                nativeMatch.remove()
+                try {
+                    val decoder = originalFactory(input)
+                    if (nativeMatch.get() == null) {
+                        decoder
+                    } else {
+                        nativeCreates.incrementAndGet()
+                        object : ReaderPageRegionDecoder {
+                            override fun decode(region: Rect): Bitmap {
+                                nativeRegionCalls.incrementAndGet()
+                                return decoder.decode(region)
+                            }
+                            override fun recycle() {
+                                decoder.recycle()
+                                nativeRecycles.incrementAndGet()
+                            }
+                        }
+                    }
+                } finally {
+                    if (priorScope == null) nativeScope.remove() else nativeScope.set(priorScope)
+                    if (priorMatch == null) nativeMatch.remove() else nativeMatch.set(priorMatch)
+                }
+            }
+            restoreOriginal = {
+                viewer.adapter.spreadDecoderFactory = originalFactory
+                page.stream = originalStream
+            }
+        }
+
+        private inner class NativeStream(private val physical: InputStream) : FilterInputStream(physical) {
+            private var readByNative = false
+            override fun read(): Int = observed(physical.read(), singleByte = true)
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+                observed(physical.read(buffer, offset, length), singleByte = false)
+
+            private fun observed(count: Int, singleByte: Boolean): Int {
+                if (nativeScope.get() != true) return count
+                readByNative = true
+                nativeMatch.set(this)
+                if (count >= 0) {
+                    nativeBytes.addAndGet(if (singleByte) 1L else count.toLong())
+                } else if (enteredOnce.compareAndSet(false, true)) {
+                    enteredNs.set(System.nanoTime())
+                    entered.countDown()
+                    if (!release.await(5, TimeUnit.SECONDS)) {
+                        gateTimedOut.set(true)
+                        throw IOException("Test-only physical EOF gate timed out")
+                    }
+                }
+                return count
+            }
+
+            override fun close() {
+                if (readByNative) nativeCloses.incrementAndGet()
+                physical.close()
+                if (readByNative) nativeCloseReturns.incrementAndGet()
+            }
+        }
+
+        fun jobSnapshot(job: Job): JSONObject = JSONObject().put("observedNs", System.nanoTime())
+            .put("jobIdentity", System.identityHashCode(job)).put("active", job.isActive)
+            .put("cancelled", job.isCancelled).put("completed", job.isCompleted)
+            .put("matchedPhysicalCloseCalls", nativeCloses.get())
+
+        fun snapshot(): JSONObject = JSONObject().put("installed", installed).put("disabled", disabled)
+            .put("enteredPhysicalEofNs", enteredNs.get()).put("gateTimedOut", gateTimedOut.get())
+            .put("matchedPhysicalBytes", nativeBytes.get()).put("matchedPhysicalCloseCalls", nativeCloses.get())
+            .put("matchedPhysicalCloseReturns", nativeCloseReturns.get())
+            .put("matchedNativeCreates", nativeCreates.get())
+            .put("matchedNativeRecycles", nativeRecycles.get()).put("matchedNativeRegionCalls", nativeRegionCalls.get())
+
+        fun requireReleasedResources() {
+            check(!gateTimedOut.get() && nativeCloseReturns.get() == 1)
+            check(nativeRegionCalls.get() == 0) { "Cancelled sampler still entered native region decoding" }
+        }
+
+        fun restore() {
+            disabled = true
+            restoreOriginal?.invoke()
+            restoreOriginal = null
+        }
+    }
+
     private class Observer(
         private val activity: ReaderActivity,
         expected: List<Int>,
@@ -414,6 +645,7 @@ class R3DownloadProbeInstrumentationTest {
         private val originalReferences: JSONObject? = null,
         private val traceNative: Boolean = false,
         private val traceKeys: Boolean = false,
+        private val onChapterObserved: ((DualPageR2LPagerViewer) -> Unit)? = null,
     ) : AutoCloseable, ViewTreeObserver.OnPreDrawListener {
         private val root = activity.window.decorView
         private var expected = expected
@@ -514,6 +746,7 @@ class R3DownloadProbeInstrumentationTest {
             check(chapter.pageLoader is DownloadPageLoader) {
                 "Actual ChapterLoader selected a different route: " + lastRoute
             }
+            onChapterObserved?.invoke(viewer)
             chapter.pages.orEmpty().filter { it.index + 1 in expected }.forEach { page ->
                 val event = events.getOrPut(page.index + 1) { JSONObject().put("readerPage", page.index + 1) }
                 if (page.status == Page.State.Ready && !event.has("encodedReadyObservedNs")) {
