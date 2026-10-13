@@ -49,7 +49,9 @@ class InMemoryPreferenceStore(
     }
 
     override fun getStringSet(key: String, defaultValue: Set<String>): Preference<Set<String>> {
-        TODO("Not yet implemented")
+        val stored = preferences[key]?.get() as? Set<*>
+        val data = stored?.takeIf { values -> values.all { it is String } }?.map { it as String }?.toSet()
+        return InMemoryPreference(key, data, defaultValue)
     }
 
     @Suppress("UNCHECKED_CAST")

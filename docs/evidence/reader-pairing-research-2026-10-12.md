@@ -686,3 +686,12 @@ Android收口：原8项失败按真实原图取证、认证及canonical配对契
 本轮仅4份测试文件与既有交接文档变化，关闭共享4项及Android8项已知失败；不宣称重新通过完整模块或双端CI。Desktop80项（27个类）仍未修复，其中14项明确落在测试InMemoryPreferenceStore.getStringSet未实现；其他失败须按保存的堆栈分别复现归因，不能批量改期望或跳过测试。恢复先处理共同fixture阻塞，再按reader认证、持久化/进度、其他模块分组定向验证，复用已通过完整基线，无新证据不得重跑全量。
 
 用户要求周额度剩3%前完成；2026-10-13 13:46 UTC本机会话rate_limits七天窗口已用96%，剩约4%。因此收口当前有证据的修复，未开始Desktop80项或后续性能优化；余额credit不能替代周额度。当前无法在该余量内保证全部CI故障完成，剩余工作明确保留。
+
+
+### 2026-10-13 周额度下限前的 Desktop 共同阻塞修复
+
+用户授权继续到周额度剩3%。本轮仅补齐共享 `InMemoryPreferenceStore.getStringSet` 的未实现方法，沿用已有本地副本语义（不是持久化store，也不承诺不同get返回对象共享修改）。合法初始字符串集合形成副本，缺失或类型错误回退默认值，复用既有Preference的set/delete/changes机制；不修改其他类型、真实持久化偏好或reader行为。新增同一共享契约由JVM和Android JVM执行，覆盖默认值、初值、修改通知、空集合、删除回退、本地副本和非法类型。
+
+`ci-string-set-red` JVM 1项准确以NotImplementedError失败；最小实现后 `ci-string-set-green` JVM和Android各1/1、无skip，局部Spotless通过。随后精确复验原CI堆栈含该TODO的14项，`ci-string-set-desktop` 10/14通过、4失败、0跳过。所有失败均已越过getStringSet，后续reader断言失败仍保留，不能称14项全部修复或双端CI全绿；原80项中只有本次实际通过的10项可关闭。XML、原始命令和新失败堆栈保存整合树 `.gradle-coordinator/research-evidence/ci-string-set-desktop/`，共享红绿分别在同级同名目录。未重跑全量。
+
+14:00 UTC（北京时间22:00）的实际七天窗口已用97%，达到用户3%下限，停止新增修复，只收取已启动验证并提交当前结果。作者发现测试漏配hasTitleAttribution仅只读定位，未修改；Desktop其他失败及性能优化仍待处理。恢复直接读取新失败堆栈，不再次将这4项归因为已消除的TODO。
