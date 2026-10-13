@@ -529,3 +529,32 @@ R3-04仍需要定向优化：画面和字节预算已有实际链证据；冷／
 交付 [完整功能测试签名 APK](D:/Codex/worktrees/reader-pairing-research-20261012/app/artifacts/android/0.19.4-aex.59-vc77-a1e5abeb4b-preview-fd28e5c17eec/Mihon-0.19.4-aex.59-vc77-test-signed-universal.apk)，SHA-256=`b8e884e0beb01b98eb799420997b36c364226f372fd30c214e3af75847a6f881`，名称“Mihon”，versionName=`0.19.4-aex.59-9485`，versionCode=77，四ABI，不可调试。证书为已有测试证书 `fb141e4e749dc634a3d5d79e179a1057ab81fa1fd7cb5077b6dfeccfe11f3079`，不同于正式版。实际APK枚举LAUNCHER恰为1，不含SyncUiReviewActivity／UI审阅、无sharedUserId，所有provider authority均使用新独立包名前缀。交付目录保留APK、R8 mapping及带来源／哈希／验证边界的artifact.json；没有直接交付build/outputs中间产物。
 
 延续用户此前明确安装授权，重新核对当前PCE-W30平板及新包尚未安装后，仅对 `.fork.debug` 安装；从设备读回实际APK，包名、版本、证书和完整SHA均与交付一致。原 `.fork` 安装路径前后相同且仍在包列表中。`install-verification.json`记录已安装和校验通过，未自动打开普通界面或操作用户数据。外部目录仍需用户选择，两个包选择相同目录时不会自动隔离文件。完整功能构建不代表此前阅读器研究问题全部解决；新R8二进制的阅读业务与体验留用户验收，没有宣称其重新通过完整回归或真机阅读验收。
+
+### R3-04 Windows 已下载章节跳页失败：真实原图复现
+
+2026-10-13，用户在上述 Windows preview 多次用进度条跳页后，读到第35/196页时出现“无法加载页面”；补充说明重试等待后恢复、跳到可显示页再返回也恢复。只读核对进程确认运行产物为 `0.11.19.91.a1e5abe`。普通运行只持久记录未捕获异常，没有本次普通加载／配对失败的详细事件，因此不能还原用户当时每次点击及其耗时。截图仅由子代理检查，主代理没有打开图片；现有下载原图、数据库、进度、设置及用户窗口均未被修改。
+
+以该章节实际196张JPEG（78,177,532B）作只读输入，复用真实 `DesktopReaderRuntimeFactory`、本地下载链、Skia decoder、`ReaderScreenModel.goToPage` 及离屏 Compose 绘制路径；进度、缓存和偏好使用临时隔离夹具，没有连接用户数据库或操作用户窗口。自动跨页匹配开启，RTL双页。新增 opt-in 方法 `SharedSpreadDesktopResourceWiringTest.downloaded original directory records every slider jump through isolated production reader`，仅显式设置 `MIHON_READER_REPLAY_DIRECTORY` 才运行，不把用户图片／路径收入仓库。它是实际 reader 接线复现，不是Windows原生鼠标自动化、双页像素oracle或用户现场精确计时。
+
+两次重放都得到同一关键链路（以下为阅读器1-based页码）：
+
+| 操作 | 观察 | 配对／预算证据 |
+|---|---|---|
+| 打开第1页 | 实际绘制回执成功 | Certified；额外attempted为空 |
+| 跳第35页 | 图片Ready、Skia已解码，但无该页绘制回执，并显示RESOURCE配对失败 | attempted恰16、active为空；认证继续需要第23页等事实；期限还剩约14.5秒 |
+| 跳第45页 | 目标页绘制成功 | Certified `[44,45]`（0-based）；新location继续取得部分前缀事实 |
+| 返回第35页 | 同一原图恢复绘制 | Certified `[34,35]`；继续补充5／6份attempted事实后完成 |
+
+已证实的同现象原因是**配对认证所需事实尚未齐全，16页额外分析额度先耗尽**，并非这些图片无法读取／解码，也不是15秒超时。`DualPagePagerViewer` 将 `dualPairingFailures` 显示成与图片失败相同的“无法加载页面”，掩盖了图片已Ready的区别。新location会重置RESOURCE并获得新额度，已取得事实保留，所以跳开／返回可以恢复；用户重试恢复与此一致，但没有当时日志，不能断言每次历史故障均由同一分支触发。
+
+进一步确认两个效率问题：Desktop `certificationTargets` 会保留同章先前跳点需求，本次第35页额度还被页索引2、3等旧需求占用；`startSpreadSamplesLocked` 又在检查图片缓存之前 reserve，缓存命中也会计入页尝试。这两点值得优化，但不足以解释成“只修调度就能解决”。普通Ready文件经正常图片流水线取得原图时不一定经过可选读取permit，因此日志 `bytes=0` **只表示该计数器为零，不表示没有磁盘I/O或32MiB预算已被真实字节验证**；尚未用物理计量证明此路径的预算覆盖。
+
+追加一次不改变真实四跳的成本观察：跳第35页前只复制现有标量事实、边证据及缓存key，不acquire／retain图片、不触碰LRU；旁路记录本次真实解码已产生的尺寸／方向／原始样本。四跳后调用生产 `ReaderPairingCertifier`，只给当前目标，按其NeedFacts提供已观察样本，缺输入立即停止，不补文件读取、不复制算法。结果：原先已认证分析只有索引0、1；首次缓存也只有0、1。仅现有authority和预先接纳全部首次缓存两组均需要**26份新页面事实（索引11～36）**，最终配对同为 `[34,35]`。这证明清旧需求＋复用跳前已有缓存仍不能让当前认证器在16页额度内完成；26是此生产认证器和该输入的观测成本，不是所有可能算法的信息论下界，也不等于26次额外磁盘读取。纯计算中提供超过16份已观察事实仅用于计量，没有放宽实际reader预算或制造新location。
+
+原复现XML `original-replay.xml`、追加观察 `original-replay-cache-cost.xml`、196文件前后SHA核验及验证结果均保存在研究树 `.gradle-coordinator/research-evidence/r3-desktop-user-replay/`。两次复现用例均在“首次第35页未绘制”断言处失败，不能称测试通过；第二次两组成本都成功到达Certified。最初格式init遗漏Desktop lint插件，配置阶段失败、未执行测试；修正init后上述观察才有效。回放前后196文件名、大小和SHA全部一致。
+
+本轮仅增加测试与观察，没有产品修复、重建应用、安装、合入主干或运行完整模块／全量测试。先前怀疑的“旧批次跨导航污染新位置”在受控解码门闩场景未复现，不作为原因；测试如实命名为 `old original decode can finish across slider navigation without blocking the new location`。R3-04继续未完成：这次把长前缀冷跳缺口从合成用例推进到真实漫画，不能沿用“其他问题已修，仅极端样本受限”的判断。
+
+研究提交 `aafca2a0eca242fb8f22ecb65180f98af6a72644` 只含上述测试文件。门闩测试初次在进入真实解码的前置条件失败；通过正常goToPage建立location后通过，不能把前置失败算产品红。最终定向验证 `pairing-r3-desktop-local-replay-validation`：新增导航方法PASS，未显式提供原图目录的opt-in方法按预期SKIP，单文件Spotless检查PASS；额外选取的既有 `normal ready neighbor headers contribute before first displayed pixel` 失败，要求未mount且关闭匹配时5页均有PORTRAIT事实。当前生产链只准备认证实际需要的header，未保证所有Ready页都分析。为排除本轮夹具影响，用同一生产代码及原始HEAD `a1e5abeb4b` 测试文件执行同一个方法（`pairing-r3-desktop-neighbor-baseline`），仍在相同断言失败；随后逐字节恢复本轮测试，未修改旧断言。保留 `focused-validation-initial.xml`、`neighbor-head-baseline.xml` 和主代理核验 `verification-summary.json`，不称定向测试全部通过。该旧断言与按需准备契约的差异未在本轮修正，也没有为它扩大全量验证。
+
+后续优化应保留当前跳点及实际所需邻帧的需求，按原内容身份门禁复用已存在的原始分析；不能把新读取／新解码伪装成免费缓存命中。还需研究减少认证依赖及沿已有下载／正常解码形成可校验标量索引，尤其验证**旧下载首次无索引**的完整成本，不能预热后隐藏等待。缓存路线继续遵循前述内容指纹、算法版本、原子写、损坏失效边界；本次测量没有证明它已解决首次冷跳。单纯扩大16页上限、自动重试续额度、猜配对或只改错误文案均不作为修复完成证据。
