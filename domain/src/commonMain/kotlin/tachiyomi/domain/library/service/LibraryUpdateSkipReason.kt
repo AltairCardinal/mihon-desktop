@@ -32,3 +32,41 @@ fun libraryUpdateSkipReason(
         LibraryUpdateSkipReason.OUTSIDE_RELEASE_PERIOD
     else -> null
 }
+
+/** Only the four user-editable smart rules may be bypassed; source eligibility stays unconditional. */
+fun effectiveLibraryUpdateRestrictions(
+    restrictions: Set<String>,
+    manualOverrides: Set<String>,
+    isManual: Boolean,
+): Set<String> = if (isManual) {
+    restrictions - manualOverrides.intersect(
+        setOf(
+            LibraryPreferences.MANGA_NON_COMPLETED,
+            LibraryPreferences.MANGA_HAS_UNREAD,
+            LibraryPreferences.MANGA_NON_READ,
+            LibraryPreferences.MANGA_OUTSIDE_RELEASE_PERIOD,
+        ),
+    )
+} else {
+    restrictions
+}
+
+/** Save the two drafts with best-effort restoration; the preference store has no cross-key transaction. */
+fun LibraryPreferences.saveSmartUpdateSettings(restrictions: Set<String>, manualOverrides: Set<String>): Boolean {
+    val rules = autoUpdateMangaRestrictions()
+    val overrides = manualUpdateMangaRestrictionOverrides()
+    val previous = try {
+        (rules.get() to rules.isSet()) to (overrides.get() to overrides.isSet())
+    } catch (_: Exception) {
+        return false
+    }
+    return try {
+        if (previous.first.first != restrictions) rules.set(restrictions)
+        if (previous.second.first != manualOverrides) overrides.set(manualOverrides)
+        true
+    } catch (_: Exception) {
+        runCatching { if (previous.first.second) rules.set(previous.first.first) else rules.delete() }
+        runCatching { if (previous.second.second) overrides.set(previous.second.first) else overrides.delete() }
+        false
+    }
+}

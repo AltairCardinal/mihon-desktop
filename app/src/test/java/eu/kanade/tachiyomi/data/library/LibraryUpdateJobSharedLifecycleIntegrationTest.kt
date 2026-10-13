@@ -102,10 +102,28 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
         verifyMemoWorker(metadata = true)
     }
 
+    @Test
+    fun `manual worker ignores selected smart rules but still protects fetch once`() = runBlocking {
+        verifyMemoWorker(metadata = false, smartRules = true, manualOverrides = true)
+    }
+
+    @Test
+    fun `automatic worker retains smart rules despite manual overrides`() = runBlocking {
+        verifyMemoWorker(metadata = false, smartRules = true, manualOverrides = true, automatic = true)
+    }
+
+    @Test
+    fun `manual worker ignores only selected release period and preserves other smart restrictions`() = runBlocking {
+        verifyMemoWorker(metadata = false, smartRules = true, manualOverrides = true, oneOverride = true)
+    }
+
     private suspend fun verifyMemoWorker(
         metadata: Boolean,
         recoveryGate: Boolean = false,
         smartRules: Boolean = false,
+        manualOverrides: Boolean = false,
+        automatic: Boolean = false,
+        oneOverride: Boolean = false,
     ) {
         Injekt = InjektScope(DefaultRegistrar())
         Injekt.addSingleton(mockk<SecurityPreferences>(relaxed = true))
@@ -273,6 +291,18 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
                             LibraryPreferences(actualStore).categoryDeletionPending()
                     }
                 }
+                if (manualOverrides) {
+                    actualStore.getStringSet("library_update_manual_restriction_overrides", emptySet())
+                        .set(
+                            if (oneOverride) {
+                                setOf(
+                                    LibraryPreferences.MANGA_OUTSIDE_RELEASE_PERIOD,
+                                )
+                            } else {
+                                preferences.autoUpdateMangaRestrictions().get()
+                            },
+                        )
+                }
                 Injekt.addSingleton(preferences)
                 Injekt.addSingleton(
                     tachiyomi.domain.category.interactor.DeleteCategory(
@@ -313,7 +343,8 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
                 val worker = if (metadata) {
                     TestListenableWorkerBuilder<MetadataUpdateJob>(context).build()
                 } else {
-                    TestListenableWorkerBuilder<LibraryUpdateJob>(context).setTags(listOf(WORK_NAME_MANUAL)).build()
+                    TestListenableWorkerBuilder<LibraryUpdateJob>(context)
+                        .setTags(listOf(if (automatic) WORK_NAME_AUTO else WORK_NAME_MANUAL)).build()
                 }
                 if (recoveryGate) {
                     assertEquals(ListenableWorker.Result.retry(), worker.doWork())
@@ -328,8 +359,33 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
                 } else {
                     worker.doWork()
                 }
-                assertEquals("worker must call only the eligible combined source API", if (smartRules) 2 else 1, calls)
-                if (smartRules) assertEquals(setOf("/manga", "/zero"), calledUrls.toSet())
+                assertEquals(
+                    "worker must call only the eligible combined source API",
+                    if (smartRules && manualOverrides &&
+                        !automatic
+                    ) {
+                        (if (oneOverride) 3 else 6)
+                    } else if (smartRules) {
+                        2
+                    } else {
+                        1
+                    },
+                    calls,
+                )
+                if (smartRules) {
+                    assertEquals(
+                        if (manualOverrides && !automatic && oneOverride) {
+                            setOf("/manga", "/zero", "/future")
+                        } else if (manualOverrides &&
+                            !automatic
+                        ) {
+                            setOf("/manga", "/zero", "/completed", "/unread", "/unstarted", "/future")
+                        } else {
+                            setOf("/manga", "/zero")
+                        },
+                        calledUrls.toSet(),
+                    )
+                }
                 assertEquals(memo, storage.mangas.getMangaById(manga.id).memo)
                 val chapter = storage.chapters.getChapterByMangaId(manga.id).single()
                 assertEquals(memo, chapter.memo)
@@ -686,6 +742,7 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
             every { updateCategories() } returns stringSetPreference { updateIncludes }
             every { updateCategoriesExclude() } returns stringSetPreference { updateExcludes }
             every { autoUpdateMangaRestrictions() } returns stringSetPreference()
+            every { manualUpdateMangaRestrictionOverrides() } returns stringSetPreference()
         }
     }
 

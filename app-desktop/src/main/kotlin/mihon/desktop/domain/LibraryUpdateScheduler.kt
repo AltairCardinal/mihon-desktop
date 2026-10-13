@@ -349,7 +349,11 @@ class LibraryUpdateScheduler(
                             }
                         }
                         ).map { LibraryUpdateUnit(it.id, it.source, it.url, title = it.title) },
-                    restrictions = libraryPreferences?.autoUpdateMangaRestrictions()?.get().orEmpty(),
+                    restrictions = tachiyomi.domain.library.service.effectiveLibraryUpdateRestrictions(
+                        libraryPreferences?.autoUpdateMangaRestrictions()?.get().orEmpty(),
+                        libraryPreferences?.manualUpdateMangaRestrictionOverrides()?.get().orEmpty(),
+                        isManual = initial.trigger != LibraryUpdateTrigger.SCHEDULED,
+                    ),
                     deviceRestrictions = libraryPreferences?.autoUpdateDeviceRestrictions()?.get().orEmpty(),
                     fetchWindowUpperBound = window.second,
                     checkStartedAt = clock.millis(),

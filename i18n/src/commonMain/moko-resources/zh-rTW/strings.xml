@@ -1602,4 +1602,5 @@
     <string name="catalog_result_unknown">待確認</string>
     <string name="catalog_result_no_groups">已檢查範圍內未識別到翻譯組</string>
     <string name="catalog_result_filter_help">僅篩選已載入結果。語言與翻譯署名由標題或中繼資料推斷，未經正文核驗。語言內和組內任選符合，兩類條件需同時滿足。</string>
+    <string name="pref_library_update_manual_ignore">手動觸發更新時忽略</string>
 </resources>

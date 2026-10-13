@@ -570,7 +570,14 @@ class LibraryUpdateOccurrenceIntegrationTest {
     }
 
     @Test
-    fun `real repository candidates preserve all smart skips even for an explicit category`() = runBlocking<Unit> {
+    fun `real repository candidates preserve all smart skips even for an explicit category`() = smartCandidatePolicy(
+        false,
+    )
+
+    @Test
+    fun `manual category overrides one smart rule and keeps all other protections`() = smartCandidatePolicy(true)
+
+    private fun smartCandidatePolicy(manualOverride: Boolean) = runBlocking<Unit> {
         MockWebServer().use { server ->
             server.dispatcher = object : mockwebserver3.Dispatcher() {
                 override fun dispatch(request: mockwebserver3.RecordedRequest): MockResponse {
@@ -640,6 +647,10 @@ class LibraryUpdateOccurrenceIntegrationTest {
                 )
                 val preferenceStore = tachiyomi.core.common.preference.DesktopPreferenceStore(node)
                 val preferences = tachiyomi.domain.library.service.LibraryPreferences(preferenceStore)
+                if (manualOverride) {
+                    preferenceStore.getStringSet("library_update_manual_restriction_overrides", emptySet())
+                        .set(setOf(tachiyomi.domain.library.service.LibraryPreferences.MANGA_OUTSIDE_RELEASE_PERIOD))
+                }
                 val tasks = DesktopTaskScheduler(FileTaskCheckpointStore(directory.resolve("smart.json").toPath()))
                 val sources = mockk<SourceManager>()
                 var restoredSource = false
@@ -670,19 +681,25 @@ class LibraryUpdateOccurrenceIntegrationTest {
                 try {
                     scheduler.runNow(0).join()
                     assertEquals(
-                        1,
+                        if (manualOverride) 2 else 1,
                         server.requestCount,
-                        "Manual categories bypass only scope, not smart rules or source eligibility",
+                        "Manual categories ignore only the explicitly overridden smart rule",
                     )
                     val context = scheduler.taskSnapshot()!!.libraryUpdate!!
                     assertEquals(
-                        listOf("eligible"),
+                        if (manualOverride) listOf("eligible", "future") else listOf("eligible"),
                         context.units.filter {
                             it.status ==
                                 mihon.desktop.task.LibraryUnitStatus.SUCCESS
                         }.map { it.title },
                     )
-                    assertEquals(6, context.units.count { it.status == mihon.desktop.task.LibraryUnitStatus.SKIPPED })
+                    assertEquals(
+                        if (manualOverride) 5 else 6,
+                        context.units.count {
+                            it.status ==
+                                mihon.desktop.task.LibraryUnitStatus.SKIPPED
+                        },
+                    )
                     assertEquals(
                         listOf("missing"),
                         context.units.filter {
@@ -695,8 +712,19 @@ class LibraryUpdateOccurrenceIntegrationTest {
                         storage.chapters.getChapterByMangaId(all.first().id).size,
                         "Zero chapter favorites remain eligible",
                     )
+                    val originalRestrictions = context.restrictions
+                    preferences.autoUpdateMangaRestrictions().set(emptySet())
+                    preferenceStore.getStringSet(
+                        "library_update_manual_restriction_overrides",
+                        emptySet(),
+                    ).set(emptySet())
                     restoredSource = true
                     scheduler.retryFailed().join()
+                    assertEquals(
+                        originalRestrictions,
+                        scheduler.taskSnapshot()!!.libraryUpdate!!.restrictions,
+                        "Retry must retain original effective restrictions despite later preference changes",
+                    )
                     val recovered = scheduler.taskSnapshot()!!.libraryUpdate!!.units.single()
                     assertEquals(mihon.desktop.task.LibraryUnitStatus.SUCCESS, recovered.status)
                     assertEquals(
@@ -704,7 +732,7 @@ class LibraryUpdateOccurrenceIntegrationTest {
                         recovered.sourceUnavailable,
                         "Recovered sources cannot retain their old failure label",
                     )
-                    assertEquals(2, server.requestCount)
+                    assertEquals(if (manualOverride) 3 else 2, server.requestCount)
                 } finally {
                     scheduler.stopAndJoin()
                     node.removeNode()

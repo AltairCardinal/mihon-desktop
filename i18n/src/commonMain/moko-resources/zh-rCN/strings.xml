@@ -2313,4 +2313,5 @@
     <string name="catalog_result_unknown">待确认</string>
     <string name="catalog_result_no_groups">已检查范围内未识别到翻译组</string>
     <string name="catalog_result_filter_help">仅筛选已加载结果。语言与翻译署名由标题或元数据推断，未经正文核验。语言内和组内任选匹配，两类条件需同时满足。</string>
+    <string name="pref_library_update_manual_ignore">手动触发更新时忽略</string>
 </resources>

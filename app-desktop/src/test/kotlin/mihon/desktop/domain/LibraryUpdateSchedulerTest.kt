@@ -59,6 +59,50 @@ class LibraryUpdateSchedulerTest {
         override fun getStubSources(): List<StubSource> = emptyList()
     }
 
+    @Test
+    fun `scheduled occurrence retains smart restrictions while manual overrides exist`() = runTest {
+        val node = java.util.prefs.Preferences.userRoot().node("mihon-smart-scheduled-${java.util.UUID.randomUUID()}")
+        val store = tachiyomi.core.common.preference.DesktopPreferenceStore(node)
+        val prefs = DesktopAppPreferences(store)
+        val preferences = tachiyomi.domain.library.service.LibraryPreferences(store)
+        val key = tachiyomi.domain.library.service.LibraryPreferences.MANGA_OUTSIDE_RELEASE_PERIOD
+        preferences.autoUpdateMangaRestrictions().set(setOf(key))
+        store.getStringSet("library_update_manual_restriction_overrides", emptySet()).set(setOf(key))
+        preferences.autoUpdateInterval().set(12)
+        val manga = Manga.create().copy(
+            id = 1,
+            source = 42,
+            url = "/future",
+            favorite = true,
+            nextUpdate = Long.MAX_VALUE,
+        )
+        var updates = 0
+        val scheduler = LibraryUpdateScheduler(
+            prefs,
+            null,
+            null,
+            null,
+            scope = this,
+            libraryPreferences = preferences,
+            libraryProvider = { listOf(LibraryManga(manga, emptyList(), 0, 0, 0, 0, 0, 0)) },
+            updateManga = {
+                updates++
+                LibraryUpdateChecker.UpdateResult(0)
+            },
+        )
+        try {
+            scheduler.start().join()
+            advanceTimeBy(LibraryUpdateScheduler.CHECK_INTERVAL_MS + 1)
+            runCurrent()
+            assertEquals(0, updates)
+            scheduler.runNow().join()
+            assertEquals(1, updates)
+        } finally {
+            scheduler.stopAndJoin()
+            node.removeNode()
+        }
+    }
+
     // ─────────────────────────────────────────────
     // Lifecycle tests
     // ─────────────────────────────────────────────

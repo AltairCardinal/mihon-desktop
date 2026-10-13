@@ -25,8 +25,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.toggleableState
@@ -39,6 +41,7 @@ import kotlinx.coroutines.launch
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.ui.library.categoryDialogEscape
 import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.library.service.saveSmartUpdateSettings
 import tachiyomi.i18n.MR
 
 class LibrarySettingsScreen : Screen {
@@ -414,19 +417,88 @@ private fun LibrarySmartUpdateSettings(preferences: tachiyomi.domain.library.ser
             MR.strings.pref_update_only_in_release_period,
     )
     val smartTitle = MR.strings.pref_library_update_smart_update.localized()
-    Text(
-        smartTitle,
-        style = MaterialTheme.typography.labelLarge,
-        modifier = Modifier.desktopSettingsAnchor(smartTitle).padding(horizontal = 16.dp, vertical = 8.dp),
-    )
-    rules.forEach { (key, resource) ->
-        CheckboxSettingsRow(resource.localized(), key in restrictions, onCheckedChange = { checked ->
-            val current = restrictionPreference.get()
-            failed = !mihon.desktop.settings.saveDesktopPreference(
-                restrictionPreference,
-                if (checked) current + key else current - key,
+    var visible by remember { mutableStateOf(false) }
+    var returnFocus by remember { mutableStateOf(0) }
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    val dialogFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    fun close() {
+        visible = false
+        returnFocus++
+    }
+    LaunchedEffect(returnFocus) {
+        if (returnFocus > 0) {
+            androidx.compose.runtime.withFrameNanos { }
+            focus.requestFocus()
+        }
+    }
+    LaunchedEffect(visible) {
+        if (visible) {
+            androidx.compose.runtime.withFrameNanos { }
+            dialogFocus.requestFocus()
+        }
+    }
+    androidx.compose.material3.ListItem(
+        headlineContent = { Text(smartTitle) },
+        supportingContent = {
+            Text(
+                rules.filter { it.first in restrictions }.joinToString { it.second.localized() }
+                    .ifEmpty { MR.strings.none.localized() },
             )
-        })
+        },
+        modifier = Modifier.desktopSettingsAnchor(smartTitle).focusRequester(focus)
+            .desktopSettingsAction(Role.Button) {
+                failed = false
+                visible = true
+            },
+    )
+    if (visible) {
+        var selected by remember { mutableStateOf(restrictionPreference.get()) }
+        var manualOverrides by remember { mutableStateOf(preferences.manualUpdateMangaRestrictionOverrides().get()) }
+        val ignore = MR.strings.pref_library_update_manual_ignore.localized()
+        androidx.compose.material3.AlertDialog(
+            modifier = Modifier.categoryDialogEscape(true, ::close).focusRequester(dialogFocus).focusable(),
+            onDismissRequest = ::close,
+            title = { Text(smartTitle) },
+            text = {
+                androidx.compose.foundation.layout.Column {
+                    if (failed) Text(MR.strings.internal_error.localized(), color = MaterialTheme.colorScheme.error)
+                    androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 400.dp)) {
+                        rules.forEach { (key, resource) ->
+                            item(key = key) {
+                                CheckboxSettingsRow(resource.localized(), key in selected, onCheckedChange = {
+                                    selected = if (it) selected + key else selected - key
+                                })
+                            }
+                            if (key in selected) {
+                                item(key = "manual-$key") {
+                                    CheckboxSettingsRow(
+                                        ignore,
+                                        key in manualOverrides,
+                                        modifier = Modifier.padding(
+                                            start = 24.dp,
+                                        ).testTag("smart-manual-$key").semantics {
+                                            contentDescription = "${resource.localized()}: $ignore"
+                                        },
+                                        onCheckedChange = {
+                                            manualOverrides = if (it) manualOverrides + key else manualOverrides - key
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    failed = !preferences.saveSmartUpdateSettings(selected, manualOverrides)
+                    if (!failed) close()
+                }) { Text(MR.strings.action_ok.localized()) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = ::close) { Text(MR.strings.action_cancel.localized()) }
+            },
+        )
     }
     val metadataTitle = MR.strings.pref_library_update_refresh_metadata.localized()
     CheckboxSettingsRow(

@@ -3,10 +3,67 @@ package tachiyomi.domain.library.service
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.core.common.preference.Preference
+import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.manga.model.Manga
 
 class LibraryUpdateEligibilityTest {
+    @Test
+    fun `manual override filters only selected known rules while automatic and source limits stay intact`() {
+        val key = LibraryPreferences.MANGA_OUTSIDE_RELEASE_PERIOD
+        val restrictions = setOf(key, LibraryPreferences.MANGA_HAS_UNREAD, "source_protection")
+        assertEquals(
+            restrictions - key,
+            effectiveLibraryUpdateRestrictions(restrictions, setOf(key, "source_protection"), true),
+        )
+        assertEquals(restrictions, effectiveLibraryUpdateRestrictions(restrictions, setOf(key), false))
+    }
+
+    @Test
+    fun `smart draft write failures restore both values and original unset state`() {
+        for (failure in 1..2) {
+            for (initiallySet in listOf(false, true)) {
+                val sets = mutableMapOf<String, Preference<Set<String>>>()
+                val actual = object : PreferenceStore by InMemoryPreferenceStore() {
+                    override fun getStringSet(key: String, defaultValue: Set<String>) = sets.getOrPut(key) {
+                        InMemoryPreferenceStore.InMemoryPreference(key, null, defaultValue)
+                    }
+                }
+                var writes = 0
+                val store = object : PreferenceStore by actual {
+                    override fun getStringSet(key: String, defaultValue: Set<String>): Preference<Set<String>> {
+                        val preference = actual.getStringSet(key, defaultValue)
+                        return object : Preference<Set<String>> by preference {
+                            override fun set(value: Set<String>) {
+                                preference.set(value)
+                                writes++
+                                if (writes == failure) error("write failed after storing")
+                            }
+                        }
+                    }
+                }
+                val original = LibraryPreferences(actual)
+                if (initiallySet) {
+                    original.autoUpdateMangaRestrictions().set(setOf(LibraryPreferences.MANGA_HAS_UNREAD))
+                    original.manualUpdateMangaRestrictionOverrides().set(emptySet())
+                }
+                val before = original.autoUpdateMangaRestrictions().get()
+                assertEquals(
+                    false,
+                    LibraryPreferences(
+                        store,
+                    ).saveSmartUpdateSettings(emptySet(), setOf(LibraryPreferences.MANGA_HAS_UNREAD)),
+                )
+                assertEquals(before, original.autoUpdateMangaRestrictions().get())
+                assertEquals(emptySet<String>(), original.manualUpdateMangaRestrictionOverrides().get())
+                assertEquals(initiallySet, original.autoUpdateMangaRestrictions().isSet())
+                assertEquals(initiallySet, original.manualUpdateMangaRestrictionOverrides().isSet())
+            }
+        }
+    }
+
     @Test
     fun `each smart restriction and zero chapter exception retain source priority`() {
         val base = LibraryManga(Manga.create().copy(source = 42, status = 1), emptyList(), 2, 1, 0, 0, 0, 0)

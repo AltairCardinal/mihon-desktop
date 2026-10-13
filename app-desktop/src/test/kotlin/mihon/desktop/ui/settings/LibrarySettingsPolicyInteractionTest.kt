@@ -906,17 +906,32 @@ class LibrarySettingsPolicyInteractionTest {
                     ),
                 )
                 for ((key, label, pref) in checks) {
+                    val smart = key == "library_update_manga_restriction"
                     scene.mountLibrary()
                     scene.renderUntil { label in scene.text() }
+                    if (smart) {
+                        scene.click(MR.strings.pref_library_update_smart_update.localized())
+                        scene.renderUntil { scene.ownerCount() == 2 }
+                    }
                     val before = pref.get()
                     reject = key
                     scene.click(label)
+                    if (smart) scene.click(MR.strings.action_ok.localized())
                     scene.renderUntil { MR.strings.internal_error.localized() in scene.text() }
                     assertEquals(before, pref.get(), "Failed saves restore the original authority for $key")
+                    if (smart) {
+                        scene.key(Key.Escape)
+                        scene.renderUntil { scene.ownerCount() == 1 }
+                    }
                     scene.mountLibrary()
                     scene.renderUntil { label in scene.text() }
                     assertEquals(before, pref.get())
+                    if (smart) {
+                        scene.click(MR.strings.pref_library_update_smart_update.localized())
+                        scene.renderUntil { scene.ownerCount() == 2 }
+                    }
                     scene.click(label)
+                    if (smart) scene.click(MR.strings.action_ok.localized())
                     scene.renderUntil { pref.get() != before }
                 }
             }
@@ -1035,6 +1050,74 @@ class LibrarySettingsPolicyInteractionTest {
     }
 
     @Test
+    fun `smart update dialog saves nested manual choice only on confirm and preserves hidden choice`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withSettings(root) { scene ->
+            val preferences = Injekt.get<LibraryPreferences>()
+            val key = LibraryPreferences.MANGA_HAS_UNREAD
+            preferences.autoUpdateMangaRestrictions().set(
+                setOf(
+                    LibraryPreferences.MANGA_NON_COMPLETED,
+                    LibraryPreferences.MANGA_HAS_UNREAD,
+                    LibraryPreferences.MANGA_NON_READ,
+                    LibraryPreferences.MANGA_OUTSIDE_RELEASE_PERIOD,
+                ),
+            )
+            val store = Injekt.get<tachiyomi.core.common.preference.PreferenceStore>()
+            val overrides = store.getStringSet("library_update_manual_restriction_overrides", emptySet())
+            val smart = MR.strings.pref_library_update_smart_update.localized()
+            val rule = MR.strings.pref_update_only_completely_read.localized()
+            scene.mountLibrary()
+            scene.renderUntil("smart entry mounts") { smart in scene.text() }
+            scene.click(smart)
+            scene.renderUntil("smart modal mounts") { scene.ownerCount() == 2 }
+            scene.savePng(File(".gradle-coordinator/smart-manual-dialog.png"))
+            scene.clickTag("smart-manual-$key")
+            assertEquals(emptySet<String>(), overrides.get())
+            scene.renderUntil("smart modal receives focus") { scene.activeFocused() != null }
+            scene.key(Key.Escape)
+            scene.renderUntil("Escape dismisses smart modal") { scene.ownerCount() == 1 }
+            scene.renderUntil("smart trigger receives focus after Escape") {
+                scene.nodes().any {
+                    smart in scene.labels(it) && it.config.getOrElse(SemanticsProperties.Focused) { false }
+                }
+            }
+            assertEquals(emptySet<String>(), overrides.get())
+            scene.click(smart)
+            scene.renderUntil("smart modal mounts") { scene.ownerCount() == 2 }
+            scene.clickTag("smart-manual-$key")
+            scene.click(rule)
+            scene.renderUntil("parent disables nested choice") {
+                scene.nodes().none {
+                    it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
+                        "smart-manual-$key"
+                }
+            }
+            scene.click(rule)
+            scene.renderUntil("parent re-enables nested choice") {
+                scene.nodes().any {
+                    it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
+                        "smart-manual-$key"
+                }
+            }
+            assertEquals(
+                androidx.compose.ui.state.ToggleableState.On,
+                scene.nodes().last {
+                    it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "smart-manual-$key" &&
+                        it.config.contains(SemanticsProperties.ToggleableState)
+                }.config[SemanticsProperties.ToggleableState],
+            )
+            scene.click(MR.strings.action_ok.localized())
+            scene.renderUntil("confirm persists nested choice and dismisses") {
+                overrides.get() == setOf(key) &&
+                    scene.ownerCount() == 1
+            }
+            assertTrue(key in preferences.autoUpdateMangaRestrictions().get())
+        }
+    }
+
+    @Test
     fun `library settings expose all real periodic smart and metadata preferences`(@TempDir root: File) = runBlocking {
         withSettings(root) { scene ->
             val preferences = Injekt.get<LibraryPreferences>()
@@ -1068,6 +1151,8 @@ class LibrarySettingsPolicyInteractionTest {
                 LibraryPreferences.MANGA_OUTSIDE_RELEASE_PERIOD to
                     MR.strings.pref_update_only_in_release_period.localized(),
             )
+            scene.click(MR.strings.pref_library_update_smart_update.localized())
+            scene.renderUntil { scene.ownerCount() == 2 }
             for ((key, label) in rules) {
                 assertTrue(
                     scene.nodes().any {
@@ -1075,8 +1160,14 @@ class LibrarySettingsPolicyInteractionTest {
                     },
                 )
                 scene.click(label)
-                scene.renderUntil("save smart rule $key") { key !in preferences.autoUpdateMangaRestrictions().get() }
+                scene.renderUntil { scene.categoryState(label) == androidx.compose.ui.state.ToggleableState.Off }
+                assertTrue(
+                    key in preferences.autoUpdateMangaRestrictions().get(),
+                    "Draft must not save before confirmation",
+                )
             }
+            scene.click(MR.strings.action_ok.localized())
+            scene.renderUntil { preferences.autoUpdateMangaRestrictions().get().isEmpty() }
             val metadata = MR.strings.pref_library_update_refresh_metadata.localized()
             assertTrue(
                 scene.nodes().any {
@@ -2582,6 +2673,13 @@ class LibrarySettingsPolicyInteractionTest {
         fun categoryState(label: String) = nodes().last {
             label in labels(it) && it.config.contains(SemanticsProperties.ToggleableState)
         }.config[SemanticsProperties.ToggleableState]
+        fun clickTag(tag: String) {
+            val target = nodes().last {
+                it.config.getOrElse(SemanticsProperties.TestTag) { "" } == tag &&
+                    it.config.contains(SemanticsActions.OnClick)
+            }
+            assertTrue(requireNotNull(target.config[SemanticsActions.OnClick].action).invoke())
+        }
         fun click(label: String) {
             val target = nodes().last { label in labels(it) && it.config.contains(SemanticsActions.OnClick) }
             assertTrue(requireNotNull(target.config[SemanticsActions.OnClick].action).invoke())

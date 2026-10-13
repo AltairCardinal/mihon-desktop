@@ -81,6 +81,12 @@ class LibraryPreferences(
         ),
     )
 
+    /** Smart restrictions explicitly bypassed by manual library/category refreshes. */
+    fun manualUpdateMangaRestrictionOverrides() = preferenceStore.getStringSet(
+        "library_update_manual_restriction_overrides",
+        emptySet(),
+    )
+
     fun autoUpdateMetadata() = preferenceStore.getBoolean("auto_update_metadata", false)
 
     fun showContinueReadingButton() = preferenceStore.getBoolean(

@@ -2522,4 +2522,5 @@
     <string name="catalog_result_unknown">Unconfirmed</string>
     <string name="catalog_result_no_groups">No translation groups identified in the checked results</string>
     <string name="catalog_result_filter_help">Filters loaded results only. Language and credits are inferred from titles or metadata; page text is not verified. Any selected language and any selected group must both match.</string>
+    <string name="pref_library_update_manual_ignore">Ignore for manually triggered updates</string>
 </resources>

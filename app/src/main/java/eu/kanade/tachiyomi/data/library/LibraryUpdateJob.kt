@@ -195,7 +195,11 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
             )
         }
 
-        val restrictions = libraryPreferences.autoUpdateMangaRestrictions().get()
+        val restrictions = tachiyomi.domain.library.service.effectiveLibraryUpdateRestrictions(
+            libraryPreferences.autoUpdateMangaRestrictions().get(),
+            libraryPreferences.manualUpdateMangaRestrictionOverrides().get(),
+            isManual = WORK_NAME_AUTO !in tags,
+        )
         val skippedUpdates = mutableListOf<Pair<Manga, String?>>()
         val (_, fetchWindowUpperBound) = fetchInterval.getWindow(ZonedDateTime.now())
 

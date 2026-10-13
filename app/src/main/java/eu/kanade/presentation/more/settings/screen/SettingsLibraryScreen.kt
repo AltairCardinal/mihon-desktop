@@ -126,6 +126,19 @@ object SettingsLibraryScreen : SearchableSettings {
 
         val included by autoUpdateCategoriesPref.collectAsState()
         val excluded by autoUpdateCategoriesExcludePref.collectAsState()
+        val smartRestrictions by libraryPreferences.autoUpdateMangaRestrictions().collectAsState()
+        val smartEntries = linkedMapOf(
+            MANGA_HAS_UNREAD to stringResource(MR.strings.pref_update_only_completely_read),
+            MANGA_NON_READ to stringResource(MR.strings.pref_update_only_started),
+            MANGA_NON_COMPLETED to stringResource(MR.strings.pref_update_only_non_completed),
+            MANGA_OUTSIDE_RELEASE_PERIOD to stringResource(MR.strings.pref_update_only_in_release_period),
+        )
+        var showSmartDialog by rememberSaveable { mutableStateOf(false) }
+        if (showSmartDialog) {
+            eu.kanade.presentation.more.settings.widget.SmartUpdateDialog(libraryPreferences, smartEntries) {
+                showSmartDialog = false
+            }
+        }
         var showCategoriesDialog by rememberSaveable { mutableStateOf(false) }
         if (showCategoriesDialog) {
             TriStateListDialog(
@@ -193,15 +206,11 @@ object SettingsLibraryScreen : SearchableSettings {
                     title = stringResource(MR.strings.pref_library_update_refresh_metadata),
                     subtitle = stringResource(MR.strings.pref_library_update_refresh_metadata_summary),
                 ),
-                Preference.PreferenceItem.MultiSelectListPreference(
-                    preference = libraryPreferences.autoUpdateMangaRestrictions(),
-                    entries = persistentMapOf(
-                        MANGA_HAS_UNREAD to stringResource(MR.strings.pref_update_only_completely_read),
-                        MANGA_NON_READ to stringResource(MR.strings.pref_update_only_started),
-                        MANGA_NON_COMPLETED to stringResource(MR.strings.pref_update_only_non_completed),
-                        MANGA_OUTSIDE_RELEASE_PERIOD to stringResource(MR.strings.pref_update_only_in_release_period),
-                    ),
+                Preference.PreferenceItem.TextPreference(
                     title = stringResource(MR.strings.pref_library_update_smart_update),
+                    subtitle = smartEntries.filterKeys { it in smartRestrictions }.values.joinToString()
+                        .ifEmpty { stringResource(MR.strings.none) },
+                    onClick = { showSmartDialog = true },
                 ),
                 Preference.PreferenceItem.SwitchPreference(
                     preference = libraryPreferences.newShowUpdatesCount(),
