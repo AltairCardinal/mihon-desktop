@@ -18,6 +18,104 @@ class ReaderPairingCertificationResearchTest {
     private val white = ReaderSpreadEdgeSamples(List(50) { -1 }, List(50) { -1 })
 
     @Test
+    fun `sixteen observed control pages cannot certify an unseen prefix reset`() {
+        // Actual ART target126 exhausted its shared location budget after reader pages115..130.
+        // All original margin points there are gray: computed UNKNOWN and computed null edges.
+        // The policy layer then refuses the next read; this checks the missing input just before that refusal.
+        val pages = List(176) { ReaderPageId(ReaderChapterId(73090), it) }
+        val observed = (114..129).map(pages::get)
+        assertEquals(ReaderDualPageFactLimits.MAX_ADDITIONAL_PAGES, observed.size)
+        val plan = requireNotNull(ReaderOriginalPageSampling.plan(portrait.width, portrait.height))
+        fun input(rightPage: Boolean): ReaderOriginalPageSamples {
+            fun color(point: Pair<Int, Int>) =
+                if (rightPage && point.first < portrait.width / 20) -1 else 0xff8c8c8c.toInt()
+            return plan.samples(plan.left.map(::color), plan.right.map(::color))
+        }
+        val gray = input(false)
+        val right = input(true)
+        assertEquals(ReaderPageSideHint.UNKNOWN, gray.sideHint)
+        assertEquals(ReaderPageSideHint.RIGHT, right.sideHint)
+        val settings = ReaderPairingSettings(ReaderDirection.RTL, true)
+        val headers = pages.associateWith { portrait }
+        val owners = mutableListOf<ReaderSpreadSamplesOwner>()
+        try {
+            val worlds = listOf(false, true).map { reset ->
+                // Only the unobserved reader113 changes physical content; all observed identities stay equal.
+                val identity = ReaderDualPageIdentity(
+                    1,
+                    1,
+                    pages.map { page ->
+                        ReaderDualPageContentIdentity(
+                            page,
+                            if (reset && page.sourcePageIndex == 112) {
+                                "unseen-right-margin"
+                            } else {
+                                "gray-" + page.sourcePageIndex
+                            },
+                        )
+                    },
+                )
+                val full = ReaderSpreadSamplesOwner(identity).also(owners::add)
+                val partial = ReaderSpreadSamplesOwner(identity).also(owners::add)
+                val facts = pages.associateWith { page ->
+                    val samples = if (reset && page.sourcePageIndex == 112) right else gray
+                    portrait.copy(sideHint = samples.sideHint).also { fact ->
+                        assertTrue(full.acceptOriginal(full.request(page), fact, samples.edges))
+                        if (page in observed) {
+                            assertTrue(partial.acceptOriginal(partial.request(page), fact, samples.edges))
+                        }
+                    }
+                }
+                val unit = SharedDualPageRules.canonicalPlan(
+                    pages,
+                    facts,
+                    settings.direction,
+                    automatic = settings.automatic,
+                    distance = { a, b ->
+                        (full.edgeAnalysis(a, b, settings.direction) as ReaderEdgeAnalysisEvidence.Computed).score
+                    },
+                ).single { pages[125] in it.pageIds }
+                val certificate =
+                    ReaderPairingCertifier.certify(identity, headers, full, settings, pages[125]) as Certified
+                assertEquals(unit, certificate.segment.unit)
+                val pending = ReaderPairingCertifier.certify(identity, headers, partial, settings, pages[125])
+                assertTrue(pending is ReaderPairingCertification.NeedFacts)
+                Triple(full, unit, pending as ReaderPairingCertification.NeedFacts)
+            }
+            observed.forEach { page ->
+                assertEquals(worlds[0].first.pageAnalysis(page), worlds[1].first.pageAnalysis(page))
+            }
+            observed.zipWithNext().forEach { (a, b) ->
+                val before = worlds[0].first.edgeAnalysis(a, b, settings.direction)
+                assertEquals(before, worlds[1].first.edgeAnalysis(a, b, settings.direction))
+                assertNull((before as ReaderEdgeAnalysisEvidence.Computed).score)
+            }
+            assertEquals(listOf(126, 127), worlds[0].second.pageIds.map { it.sourcePageIndex + 1 })
+            assertEquals(listOf(125, 126), worlds[1].second.pageIds.map { it.sourcePageIndex + 1 })
+            assertEquals(worlds[0].third.facts, worlds[1].third.facts)
+            val missing = worlds[0].third.facts
+            assertEquals(
+                setOf(114),
+                missing.filter {
+                    it.kind == ReaderPairingFactKind.ORIGINAL_ANALYSIS
+                }.map { it.pageId.sourcePageIndex + 1 }.toSet(),
+            )
+            assertTrue(
+                missing.any {
+                    it.kind == ReaderPairingFactKind.EDGE_SAMPLES &&
+                        it.pageId == pages[113] && it.secondPageId == pages[114]
+                },
+            )
+            println(
+                "R3_PREFIX_WITNESS observed=115..130 missingOriginal=114 changedUnobserved=113 " +
+                    "oracleGray=126,127 oracleReset=125,126 scanSteps=" + worlds[0].third.scanSteps,
+            )
+        } finally {
+            owners.forEach(ReaderSpreadSamplesOwner::close)
+        }
+    }
+
+    @Test
     fun `failure before original dimensions is blocked with its actual recoverable cause`() {
         for (reason in listOf(ReaderAnalysisFailure.READ, ReaderAnalysisFailure.RESOURCE)) {
             for (failedHeader in listOf(false, true)) {
