@@ -271,6 +271,14 @@ class ReaderSpreadSamplesOwner(
     /** Cancels physical work without discarding confirmed same-content samples or scores. */
     fun cancelRequests() = requests.clear()
 
+    /** Resource failures belong to the preceding location budget; confirmed facts and read failures remain. */
+    fun clearResourceFailures() {
+        analyses.entries.removeAll {
+            (it.value as? ReaderPageAnalysisEvidence.RetryableFailure)?.reason == ReaderAnalysisFailure.RESOURCE
+        }
+        sampleFailures.entries.removeAll { it.value == ReaderAnalysisFailure.RESOURCE }
+    }
+
     fun retryFailures() {
         cancelRequests()
         analyses.entries.removeAll { it.value is ReaderPageAnalysisEvidence.RetryableFailure }

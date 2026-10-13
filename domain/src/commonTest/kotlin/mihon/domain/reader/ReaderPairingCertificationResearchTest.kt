@@ -18,6 +18,115 @@ class ReaderPairingCertificationResearchTest {
     private val white = ReaderSpreadEdgeSamples(List(50) { -1 }, List(50) { -1 })
 
     @Test
+    fun `new locations renew only resource failures and retain original scalar authority`() {
+        for (stepNavigation in listOf(false, true)) {
+            for (missingVector in listOf(false, true)) {
+                for (reason in listOf(
+                    ReaderAnalysisFailure.RESOURCE,
+                    ReaderAnalysisFailure.READ,
+                    ReaderAnalysisFailure.UNSUPPORTED,
+                )) {
+                    val pages = List(if (missingVector) 40 else 12) { ReaderPageId(ReaderChapterId(73095), it) }
+                    val chapter = ReaderDualPageIdentity(
+                        1,
+                        1,
+                        pages.map { ReaderDualPageContentIdentity(it, "actual-content-$it") },
+                    )
+                    val session = SharedDualPageSession(chapter, ReaderDirection.RTL, pages[0])
+                    try {
+                        session.configure(ReaderDirection.RTL, true)
+                        pages.forEach { session.acceptFact(session.requestFact(it), portrait) }
+                        // Actual capacity16 eviction prevents the page2/page3 edge from ever being scored.
+                        // No capacity override, owner substitution or cache clearing is used.
+                        val order = if (missingVector) {
+                            listOf(1) + (10..27).toList() + listOf(2, 0) + (3..9).toList() + (28..39).toList()
+                        } else {
+                            pages.indices.filter { it != 1 }
+                        }
+                        order.forEach { index ->
+                            assertTrue(
+                                session.acceptOriginalAnalysis(
+                                    session.requestOriginalAnalysis(pages[index])!!,
+                                    portrait,
+                                    ReaderOriginalPageSamples(ReaderPageSideHint.UNKNOWN, white),
+                                ),
+                            )
+                        }
+                        // Read the real owner solely to observe scalar preservation; all mutations use Session APIs.
+                        val samples = SharedDualPageSession::class.java.getDeclaredField("spreadSamples")
+                            .apply { isAccessible = true }.get(session) as ReaderSpreadSamplesOwner
+                        val preservedEdge = samples.edgeAnalysis(
+                            pages[pages.lastIndex - 1],
+                            pages.last(),
+                            ReaderDirection.RTL,
+                        )
+                        assertTrue(preservedEdge is ReaderEdgeAnalysisEvidence.Computed)
+                        val preservedPages = pages.associateWith(session::originalAnalysis)
+                            .filterValues { it is ComputedPageAnalysis }
+                        val budget = session.factBudget
+                        assertEquals(listOf(pages[1]), budget.reserve(listOf(pages[1]), 0))
+                        budget.complete(pages[1], 0, true)
+                        assertTrue(budget.reserve(listOf(pages[1]), 1).isEmpty())
+                        val old = session.requestOriginalAnalysis(pages[1])!!
+                        assertTrue(session.failOriginalAnalysis(old, reason))
+                        val blocked = session.certifyPairing(pages[1]) as ReaderPairingCertification.RetryableBlocked
+                        assertEquals(reason, blocked.failures[pages[1]])
+                        assertTrue(session.factBudget === budget, "A proof query cannot renew the same-location budget")
+                        assertTrue(session.ownsOriginalAnalysisRequest(old))
+                        val before = session.location!!
+                        assertTrue(if (stepNavigation) session.navigate(true) else session.goToPage(pages[1]))
+                        assertEquals(pages[1], session.location!!.pageId)
+                        assertEquals(before.sequence + 1, session.location!!.sequence)
+                        assertFalse(session.factBudget === budget)
+                        assertFalse(session.ownsOriginalAnalysisRequest(old))
+                        assertFalse(
+                            session.acceptOriginalAnalysis(
+                                old,
+                                portrait,
+                                ReaderOriginalPageSamples(ReaderPageSideHint.UNKNOWN, white),
+                            ),
+                        )
+                        preservedPages.forEach { (page, evidence) ->
+                            assertEquals(evidence, session.originalAnalysis(page))
+                        }
+                        assertEquals(
+                            preservedEdge,
+                            samples.edgeAnalysis(
+                                pages[pages.lastIndex - 1],
+                                pages.last(),
+                                ReaderDirection.RTL,
+                            ),
+                        )
+                        val result = session.certifyPairing(pages[1])
+                        val label = "step=$stepNavigation missingVector=$missingVector reason=$reason result=$result"
+                        if (reason == ReaderAnalysisFailure.RESOURCE) {
+                            assertTrue(result is ReaderPairingCertification.NeedFacts, label)
+                            assertTrue(
+                                (result as ReaderPairingCertification.NeedFacts).facts.any {
+                                    it.pageId == pages[1] && it.kind == if (missingVector) {
+                                        ReaderPairingFactKind.EDGE_SAMPLES
+                                    } else {
+                                        ReaderPairingFactKind.ORIGINAL_ANALYSIS
+                                    }
+                                },
+                                label,
+                            )
+                        } else {
+                            assertTrue(result is ReaderPairingCertification.RetryableBlocked, label)
+                            assertEquals(
+                                reason,
+                                (result as ReaderPairingCertification.RetryableBlocked).failures[pages[1]],
+                            )
+                        }
+                    } finally {
+                        session.close()
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
     fun `sixteen observed control pages cannot certify an unseen prefix reset`() {
         // Actual ART target126 exhausted its shared location budget after reader pages115..130.
         // All original margin points there are gray: computed UNKNOWN and computed null edges.

@@ -34,6 +34,8 @@ import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPagerPageHolder
 import kotlinx.coroutines.Job
 import mihon.domain.reader.ReaderPageAnalysisEvidence
+import mihon.domain.reader.ReaderSpreadSampleRequest
+import mihon.domain.reader.SharedDualPageSession
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertTrue
@@ -74,7 +76,15 @@ class R3DownloadProbeInstrumentationTest {
     @Test
     fun directoryDownloadCancelsInFlightOriginalJniAndRecovers() = probe("directory", cancelNative = true)
 
-    private fun probe(defaultStorage: String, seedOnly: Boolean = false, cancelNative: Boolean = false) {
+    @Test
+    fun directoryDownloadRejectsReplacedInFlightOriginalAndRecovers() = probe("directory", replaceNative = true)
+
+    private fun probe(
+        defaultStorage: String,
+        seedOnly: Boolean = false,
+        cancelNative: Boolean = false,
+        replaceNative: Boolean = false,
+    ) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val args = InstrumentationRegistry.getArguments()
         val context = instrumentation.targetContext
@@ -86,7 +96,7 @@ class R3DownloadProbeInstrumentationTest {
         check(fixture in listOf("vol08-176", "vol09-surrogate-176", "control-no-reset-176"))
         check(storage in listOf("directory", "cbz") && target in 1..176)
         check(expected.size in 1..2 && expected.all { it in 1..176 })
-        if (cancelNative) {
+        if (cancelNative || replaceNative) {
             check(fixture == "control-no-reset-176" && storage == "directory" && target == 8)
             check(expected == listOf(8, 9) && args.getString("actions").isNullOrBlank())
             check((args.getString("reopens") ?: "0").toInt() == 0)
@@ -160,7 +170,9 @@ class R3DownloadProbeInstrumentationTest {
         val previousStorage = storagePreference.get()
         var activity: ReaderActivity? = null
         var observer: Observer? = null
-        val cancellationGate = if (cancelNative) NativeCancellationGate() else null
+        val cancellationGate = if (cancelNative || replaceNative) NativeCancellationGate() else null
+        var restoreReplacedFile: (() -> Unit)? = null
+        var restorePixelReference: (() -> Unit)? = null
         val output = JSONObject().put("schema", 1).put("fixture", fixture).put("storage", storage)
             .put("targetReaderPage", target).put("expectedReaderPages", JSONArray(expected))
             .put("iteration", args.getString("iteration") ?: "0")
@@ -246,7 +258,7 @@ class R3DownloadProbeInstrumentationTest {
             }
             val timeout = (args.getString("timeoutMs") ?: "20000").toLong()
             val firstObserver = open()
-            if (cancellationGate != null) {
+            if (cancelNative && cancellationGate != null) {
                 output.put("cancellationRecovery", cancellationGate.result)
                 check(cancellationGate.entered.await(10, TimeUnit.SECONDS)) {
                     "Original JNI did not reach the page2 physical EOF gate: " + cancellationGate.snapshot()
@@ -307,9 +319,189 @@ class R3DownloadProbeInstrumentationTest {
                 instrumentation.runOnMainSync { cancellationGate.restore() }
                 cancellationGate.result.put("matchedResources", cancellationGate.snapshot())
             }
-            val initial = if (cancellationGate == null) firstObserver.await(timeout) else open().await(timeout)
+            val initial = if (replaceNative) {
+                val gate = requireNotNull(cancellationGate)
+                val replacement = JSONObject().put("stage", "waiting-for-old-native-eof")
+                    .put("oldGateSetup", gate.result)
+                output.put("contentReplacement", replacement)
+                check(gate.entered.await(10, TimeUnit.SECONDS)) {
+                    "Old original JNI did not enter the physical EOF gate"
+                }
+                val oldRecord = records.getJSONObject(1)
+                val newRecord = records.getJSONObject(11)
+                val destination = File(chapterDirectory, oldRecord.getString("file"))
+                val replacementInput = File(File(inputRoot, fixture), newRecord.getString("file"))
+                val backup = destination.readBytes()
+                val newBytes = replacementInput.readBytes()
+                val oldSha = sha256(destination)
+                val newSha = sha256(replacementInput)
+                check(oldSha == oldRecord.getString("sha256") && newSha == newRecord.getString("sha256"))
+                check(oldSha != newSha)
+                check(gate.snapshot().getLong("matchedPhysicalBytes") == backup.size.toLong())
+                val oldReference = JSONObject(references.getJSONObject("2").toString())
+                val newReference = JSONObject(references.getJSONObject("12").toString())
+                check(oldReference.getString("sha256") == oldSha && newReference.getString("sha256") == newSha)
+                val oldPoints = oldReference.getJSONArray("points")
+                val newPoints = newReference.getJSONArray("points")
+                fun mandatoryPoints(points: JSONArray): Map<Pair<Int, Int>, Int> {
+                    val mandatory = (0 until points.length()).map(points::getJSONArray).filter { it.optBoolean(4) }
+                    check(mandatory.size == 8) {
+                        "Frozen replacement oracle must contain exactly eight mandatory points"
+                    }
+                    return mandatory.associate { (it.getInt(0) to it.getInt(1)) to it.getInt(2) }.also {
+                        check(it.size == 8) { "Mandatory oracle coordinates must be unique" }
+                    }
+                }
+                val oldMandatory = mandatoryPoints(oldPoints)
+                val newMandatory = mandatoryPoints(newPoints)
+                check(oldMandatory.keys == newMandatory.keys) { "Old and new mandatory coordinate sets must match" }
+                val distinguishingBadgePoints = oldMandatory.count { (coordinate, color) ->
+                    color != newMandatory.getValue(coordinate)
+                }
+                check(distinguishingBadgePoints > 0) { "Frozen mandatory pixels must distinguish the real replacement" }
+                replacement.put("oldFileSha256", oldSha).put("newFileSha256", newSha)
+                    .put("oldFrozenPixelOracle", oldReference).put("newFrozenPixelOracle", newReference)
+                    .put("distinguishingMandatoryPoints", distinguishingBadgePoints)
+                    .put("oracleMapping", "readerPage2 now contains frozen fixture readerPage12; readerPage3 unchanged")
+                val currentActivity = requireNotNull(activity)
+                lateinit var viewer: DualPageR2LPagerViewer
+                lateinit var page: ReaderPage
+                lateinit var owner: SharedDualPageSession
+                instrumentation.runOnMainSync {
+                    viewer = actualViewer(currentActivity)
+                    val chapter = requireNotNull(viewer.adapter.currentChapter)
+                    page = requireNotNull(chapter.pages?.getOrNull(1))
+                    owner = requireNotNull(viewer.adapter.session(chapter))
+                }
+                var oldRequest: ReaderSpreadSampleRequest? = null
+                var oldJob: Job? = null
+                instrumentation.runOnMainSync {
+                    oldRequest = gate.currentOriginalRequest(viewer)
+                    oldJob = fieldOrNull(viewer.adapter, "matchingJob") as? Job
+                    check(requireNotNull(oldJob).isActive && !requireNotNull(oldJob).isCancelled)
+                    check(owner.ownsOriginalAnalysisRequest(requireNotNull(oldRequest)))
+                    replacement.put("oldRequestContent", requireNotNull(oldRequest).content.contentVersion)
+                        .put("beforeReplacementJob", gate.jobSnapshot(requireNotNull(oldJob)))
+                        .put(
+                            "remainingBudgetBeforeReplacementMs",
+                            owner.factBudget.remainingWaitMillis(
+                                SystemClock.uptimeMillis(),
+                            ),
+                        )
+                    check(owner.factBudget.remainingWaitMillis(SystemClock.uptimeMillis()) >= 5000)
+                }
+                restoreReplacedFile = {
+                    destination.writeBytes(backup)
+                    check(sha256(destination) == oldSha)
+                    replacement.put("ownedFileRestored", true)
+                }
+                restorePixelReference = { references.put("2", oldReference) }
+                var newContent = ""
+                try {
+                    destination.writeBytes(newBytes)
+                    check(sha256(destination) == newSha)
+                    replacement.put("physicalFileReplacedNs", System.nanoTime()).put("physicalFileReplaced", true)
+                        .put("stage", "waiting-for-store")
+                    instrumentation.runOnMainSync {
+                        gate.replaceStreamFactory()
+                        newContent = page.encodedContentIdentity()
+                        check(newContent != requireNotNull(oldRequest).content.contentVersion)
+                        replacement.put("newContent", newContent)
+                    }
+                    val propagationDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+                    while (true) {
+                        var oldOwned = true
+                        var currentStoreHasNewContent = false
+                        instrumentation.runOnMainSync {
+                            oldOwned = owner.ownsOriginalAnalysisRequest(requireNotNull(oldRequest))
+                            check(
+                                owner.originalAnalysis(requireNotNull(oldRequest).content.pageId) !is
+                                    ReaderPageAnalysisEvidence.Computed,
+                            )
+                            val currentOwner = requireNotNull(
+                                viewer.adapter.currentChapter?.let(viewer.adapter::session),
+                            )
+                            currentStoreHasNewContent = currentOwner.identity.content[1].contentVersion == newContent
+                        }
+                        if (!oldOwned && currentStoreHasNewContent) break
+                        check(System.nanoTime() < propagationDeadline) {
+                            "Actual store still owned the old content ticket"
+                        }
+                        Thread.sleep(5)
+                    }
+                    replacement.put("oldRequestOwnedAfterPropagation", false)
+                        .put("duringReplacement8and9", firstObserver.await(0))
+                } finally {
+                    gate.release.countDown()
+                }
+                val completionDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+                while (!requireNotNull(oldJob).isCompleted) {
+                    check(System.nanoTime() < completionDeadline) { "Old native batch did not exit after release" }
+                    Thread.sleep(10)
+                }
+                instrumentation.runOnMainSync {
+                    val evidence = owner.originalAnalysis(requireNotNull(oldRequest).content.pageId)
+                    check(!owner.ownsOriginalAnalysisRequest(requireNotNull(oldRequest)))
+                    check(
+                        evidence !is ReaderPageAnalysisEvidence.Computed || evidence.content.contentVersion !=
+                            requireNotNull(oldRequest).content.contentVersion,
+                    )
+                    replacement.put("afterOldBatchEvidence", evidence.toString())
+                        .put("afterOldBatchJob", gate.jobSnapshot(requireNotNull(oldJob)))
+                        .put("oldMatchedResources", gate.snapshot())
+                    check(
+                        gate.nativeCloses.get() == 1 && gate.nativeCreates.get() == 1 &&
+                            gate.nativeRecycles.get() == 1,
+                    )
+                    check(gate.snapshot().getInt("matchedPhysicalCloseReturns") == 1)
+                    check(!gate.snapshot().getBoolean("gateTimedOut"))
+                    references.put("2", newReference)
+                    val navigationAt = System.nanoTime()
+                    firstObserver.reset(listOf(2, 3), navigationAt)
+                    replacement.put("beforeRecoveryNavigation", navigationSelection(viewer))
+                        .put("recoveryNavigationIntentNs", navigationAt)
+                        .put("recoveryNavigation", "actual viewer.moveToPage to readerPage2; genuine new location")
+                    viewer.moveToPage(page)
+                }
+                val recovered = firstObserver.await(timeout)
+                check(recovered.getBoolean("bothCorrect")) {
+                    "Actual new content pixels did not match the frozen oracle"
+                }
+                val recoveredExitDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+                while (AndroidReaderSpreadSampler.optionalWork.value != 0 ||
+                    ReaderPageImageView.foregroundWork.value != 0
+                ) {
+                    check(System.nanoTime() < recoveredExitDeadline) { "Recovered content tasks did not settle" }
+                    Thread.sleep(10)
+                }
+                instrumentation.runOnMainSync {
+                    val currentOwner = requireNotNull(viewer.adapter.currentChapter?.let(viewer.adapter::session))
+                    val evidence = currentOwner.originalAnalysis(currentOwner.identity.pageIds[1]) as?
+                        ReaderPageAnalysisEvidence.Computed
+                    check(requireNotNull(evidence).content.contentVersion == newContent)
+                    check(gate.replacementNativeCreates.get() > 0 && gate.replacementNativeRecycles.get() > 0)
+                    val resources = gate.snapshot()
+                    check(gate.replacementNativeCreates.get() == gate.replacementNativeRecycles.get())
+                    check(
+                        resources.getInt("replacementPhysicalCloseCalls") ==
+                            resources.getInt("replacementPhysicalCloseReturns"),
+                    )
+                    check(resources.getLong("replacementNativeBytes") >= newBytes.size.toLong())
+                    replacement.put("newComputedEvidence", evidence.toString())
+                        .put("afterRecoveryNavigation", navigationSelection(viewer))
+                        .put("newMatchedResources", resources)
+                        .put("optionalWorkAfterRecovery", AndroidReaderSpreadSampler.optionalWork.value)
+                        .put("foregroundWorkAfterRecovery", ReaderPageImageView.foregroundWork.value)
+                        .put("recoveredExpectedReaderPages", JSONArray(listOf(2, 3))).put("stage", "recovered-correct")
+                }
+                recovered
+            } else if (cancellationGate == null) {
+                firstObserver.await(timeout)
+            } else {
+                open().await(timeout)
+            }
             output.put("initial", initial)
-            if (cancellationGate != null) {
+            if (cancelNative && cancellationGate != null) {
                 assertTrue("Fresh actual reader did not recover correct pixels", initial.optBoolean("bothCorrect"))
                 cancellationGate.result.put("recoveryOutcome", "CORRECT")
             }
@@ -453,6 +645,8 @@ class R3DownloadProbeInstrumentationTest {
                 observer?.close()
                 activity?.finish()
             }
+            restoreReplacedFile?.invoke()
+            restorePixelReference?.invoke()
             cancellationGate?.let { output.put("cancellationMatchedResourcesAtFinally", it.snapshot()) }
             output.put("finishedNs", System.nanoTime())
             val name = args.getString("output") ?: "r3-download-probe.json"
@@ -505,11 +699,17 @@ class R3DownloadProbeInstrumentationTest {
         val nativeCloses = AtomicInteger()
         val nativeCreates = AtomicInteger()
         val nativeRecycles = AtomicInteger()
+        val replacementNativeCreates = AtomicInteger()
+        val replacementNativeRecycles = AtomicInteger()
         val result = JSONObject().put("readerPage", 2).put("physicalBytesReplaced", false)
             .put("injection", "forwarded-download-stream-physical-eof-inside-original-native-factory")
         private val nativeCloseReturns = AtomicInteger()
         private val nativeBytes = AtomicLong()
         private val nativeRegionCalls = AtomicInteger()
+        private val replacementNativeBytes = AtomicLong()
+        private val replacementNativeCloses = AtomicInteger()
+        private val replacementNativeCloseReturns = AtomicInteger()
+        private val replacementNativeRegionCalls = AtomicInteger()
         private val gateTimedOut = AtomicBoolean()
         private val enteredOnce = AtomicBoolean()
         private val nativeScope = ThreadLocal<Boolean>()
@@ -517,6 +717,7 @@ class R3DownloadProbeInstrumentationTest {
         private var installed = false
         private var disabled = false
         private var restoreOriginal: (() -> Unit)? = null
+        private var replaceOriginal: (() -> Unit)? = null
 
         // Main-thread callback, before any model observation or original request is injected.
         fun install(viewer: DualPageR2LPagerViewer) {
@@ -557,18 +758,22 @@ class R3DownloadProbeInstrumentationTest {
                 nativeMatch.remove()
                 try {
                     val decoder = originalFactory(input)
-                    if (nativeMatch.get() == null) {
+                    val matched = nativeMatch.get()
+                    if (matched == null) {
                         decoder
                     } else {
-                        nativeCreates.incrementAndGet()
+                        val creates = if (matched.replacement) replacementNativeCreates else nativeCreates
+                        val recycles = if (matched.replacement) replacementNativeRecycles else nativeRecycles
+                        val regions = if (matched.replacement) replacementNativeRegionCalls else nativeRegionCalls
+                        creates.incrementAndGet()
                         object : ReaderPageRegionDecoder {
                             override fun decode(region: Rect): Bitmap {
-                                nativeRegionCalls.incrementAndGet()
+                                regions.incrementAndGet()
                                 return decoder.decode(region)
                             }
                             override fun recycle() {
                                 decoder.recycle()
-                                nativeRecycles.incrementAndGet()
+                                recycles.incrementAndGet()
                             }
                         }
                     }
@@ -581,9 +786,23 @@ class R3DownloadProbeInstrumentationTest {
                 viewer.adapter.spreadDecoderFactory = originalFactory
                 page.stream = originalStream
             }
+            replaceOriginal = { page.stream = { NativeStream(originalStream(), replacement = true) } }
         }
 
-        private inner class NativeStream(private val physical: InputStream) : FilterInputStream(physical) {
+        fun currentOriginalRequest(viewer: DualPageR2LPagerViewer): ReaderSpreadSampleRequest {
+            val chapter = requireNotNull(viewer.adapter.currentChapter)
+            val owner = requireNotNull(viewer.adapter.session(chapter))
+            val sampleOwner = requireNotNull(fieldOrNull(owner, "spreadSamples"))
+            val requests = requireNotNull(fieldOrNull(sampleOwner, "requests") as? Map<*, *>)
+            return requireNotNull(requests[owner.identity.pageIds[1]] as? ReaderSpreadSampleRequest)
+        }
+
+        fun replaceStreamFactory() = requireNotNull(replaceOriginal).invoke()
+
+        private inner class NativeStream(
+            private val physical: InputStream,
+            val replacement: Boolean = false,
+        ) : FilterInputStream(physical) {
             private var readByNative = false
             override fun read(): Int = observed(physical.read(), singleByte = true)
             override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
@@ -594,8 +813,9 @@ class R3DownloadProbeInstrumentationTest {
                 readByNative = true
                 nativeMatch.set(this)
                 if (count >= 0) {
-                    nativeBytes.addAndGet(if (singleByte) 1L else count.toLong())
-                } else if (enteredOnce.compareAndSet(false, true)) {
+                    val bytes = if (replacement) replacementNativeBytes else nativeBytes
+                    bytes.addAndGet(if (singleByte) 1L else count.toLong())
+                } else if (!replacement && enteredOnce.compareAndSet(false, true)) {
                     enteredNs.set(System.nanoTime())
                     entered.countDown()
                     if (!release.await(5, TimeUnit.SECONDS)) {
@@ -607,9 +827,11 @@ class R3DownloadProbeInstrumentationTest {
             }
 
             override fun close() {
-                if (readByNative) nativeCloses.incrementAndGet()
+                val closes = if (replacement) replacementNativeCloses else nativeCloses
+                val returns = if (replacement) replacementNativeCloseReturns else nativeCloseReturns
+                if (readByNative) closes.incrementAndGet()
                 physical.close()
-                if (readByNative) nativeCloseReturns.incrementAndGet()
+                if (readByNative) returns.incrementAndGet()
             }
         }
 
@@ -624,6 +846,12 @@ class R3DownloadProbeInstrumentationTest {
             .put("matchedPhysicalCloseReturns", nativeCloseReturns.get())
             .put("matchedNativeCreates", nativeCreates.get())
             .put("matchedNativeRecycles", nativeRecycles.get()).put("matchedNativeRegionCalls", nativeRegionCalls.get())
+            .put("replacementNativeBytes", replacementNativeBytes.get())
+            .put("replacementPhysicalCloseCalls", replacementNativeCloses.get())
+            .put("replacementPhysicalCloseReturns", replacementNativeCloseReturns.get())
+            .put("replacementNativeCreates", replacementNativeCreates.get())
+            .put("replacementNativeRecycles", replacementNativeRecycles.get())
+            .put("replacementNativeRegionCalls", replacementNativeRegionCalls.get())
 
         fun requireReleasedResources() {
             check(!gateTimedOut.get() && nativeCloseReturns.get() == 1)
@@ -634,6 +862,7 @@ class R3DownloadProbeInstrumentationTest {
             disabled = true
             restoreOriginal?.invoke()
             restoreOriginal = null
+            replaceOriginal = null
         }
     }
 

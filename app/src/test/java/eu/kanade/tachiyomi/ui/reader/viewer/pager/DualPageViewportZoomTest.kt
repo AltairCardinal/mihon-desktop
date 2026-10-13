@@ -433,6 +433,134 @@ class DualPageViewportZoomTest {
     }
 
     @Test
+    fun replacedOriginalResourceFailureRecoversThroughRealSourceNavigation() = runTest {
+        val viewer = ReflectionHelpers.getField<DualPageR2LPagerViewer>(fixture, "viewer")
+        uy.kohesive.injekt.Injekt.get<eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences>()
+            .automaticSpreadMatching().set(true)
+        runCurrent()
+        fun png(color: Int): ByteArray {
+            val bitmap = Bitmap.createBitmap(80, 120, Bitmap.Config.ARGB_8888).apply { eraseColor(color) }
+            return ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                .toByteArray().also { bitmap.recycle() }
+        }
+        val red = png(Color.RED)
+        val blue = png(Color.BLUE)
+        val gray = png(Color.GRAY)
+        val replacement = png(Color.GREEN)
+        val firstComplete = java.util.concurrent.CountDownLatch(1)
+        val partnerStarted = java.util.concurrent.CountDownLatch(1)
+        val releasePartner = java.util.concurrent.CountDownLatch(1)
+        val newOriginalReads = java.util.concurrent.atomic.AtomicInteger()
+        val decodedColors = java.util.concurrent.ConcurrentLinkedQueue<Int>()
+        // Only Windows JNI is substituted; the actual incoming PNG, sampler and producer are exercised.
+        viewer.adapter.spreadDecoderFactory = { input ->
+            val original = requireNotNull(BitmapFactory.decodeStream(input))
+            val color = original.getPixel(0, 0)
+            decodedColors.add(color)
+            if (color == Color.BLUE) {
+                partnerStarted.countDown()
+                check(releasePartner.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            }
+            if (color == Color.GREEN) newOriginalReads.incrementAndGet()
+            object : eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageRegionDecoder {
+                override fun decode(region: Rect) =
+                    Bitmap.createBitmap(original, region.left, region.top, region.width(), region.height())
+                override fun recycle() {
+                    original.recycle()
+                    if (color == Color.RED) firstComplete.countDown()
+                }
+            }
+        }
+        val chapter = ReaderChapter(Chapter.create().copy(id = 73096, mangaId = 1)).apply { requestedPage = 2 }
+        val pages = List(5) { index ->
+            val encoded = when (index) {
+                1 -> red
+                2 -> blue
+                else -> gray
+            }
+            ReaderPage(index, stream = { encoded.inputStream() }).apply {
+                this.chapter = chapter
+                status = Page.State.Ready
+                publishHeaderFact()
+            }
+        }
+        chapter.publishLoadedPageListForTest(pages)
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        var owner = requireNotNull(viewer.adapter.session(chapter))
+        try {
+            awaitProduction({
+                "Before replacement: decodedColors=$decodedColors location=${owner.location} " +
+                    "partnerStarted=${partnerStarted.count} firstComplete=${firstComplete.count}"
+            }) { partnerStarted.count == 0L && firstComplete.count == 0L }
+            val oldContent = pages[1].encodedContentIdentity()
+            pages[1].stream = { replacement.inputStream() }
+            runCurrent()
+            owner = requireNotNull(viewer.adapter.session(chapter))
+            val newContent = pages[1].encodedContentIdentity()
+            assertTrue(oldContent != newContent)
+            val oldJob = ReflectionHelpers.getField<kotlinx.coroutines.Job>(viewer.adapter, "matchingJob")
+            releasePartner.countDown()
+            awaitProduction { oldJob.isCompleted }
+            awaitProduction({
+                "Replacement did not reach its actual old-location quota failure: ${owner.certifyPairing()}"
+            }) {
+                val evidence = owner.originalAnalysis(owner.identity.pageIds[1])
+                evidence is mihon.domain.reader.ReaderPageAnalysisEvidence.RetryableFailure &&
+                    evidence.reason == mihon.domain.reader.ReaderAnalysisFailure.RESOURCE
+            }
+            assertEquals(0, newOriginalReads.get())
+            val budget = owner.factBudget
+            val before = requireNotNull(owner.location)
+            assertTrue(owner.certifyPairing() is mihon.domain.reader.ReaderPairingCertification.RetryableBlocked)
+            assertTrue("Same-location failure must retain its real budget", owner.factBudget === budget)
+            // A different logical source page goes through the existing Viewer navigation; no Retry is invoked.
+            viewer.moveToPage(pages[1])
+            runCurrent()
+            owner = requireNotNull(viewer.adapter.session(chapter))
+            assertEquals(before.sequence + 1, owner.location!!.sequence)
+            assertEquals(owner.identity.pageIds[1], owner.location!!.pageId)
+            val certificate = awaitCertified(viewer, chapter, 1)
+            assertTrue("New location must actually decode the replacement PNG", newOriginalReads.get() > 0)
+            val computed = owner.originalAnalysis(owner.identity.pageIds[1]) as
+                mihon.domain.reader.ReaderPageAnalysisEvidence.Computed
+            assertEquals(newContent, computed.content.contentVersion)
+            val display = viewer.adapter.items.filterIsInstance<DisplayPage>().single { it.containsPage(pages[1]) }
+            val holder = DualPagerPageHolder(viewer.activity, viewer, display)
+            mounted += holder
+            assertCertifiedNativeFrame(holder, certificate)
+            load(holder, pages[1], "RIGHT")
+            load(holder, pages[2], "LEFT")
+            invokeFixture("measure", holder, 1400, 1000)
+            val images = descendants(holder).filterIsInstance<ReaderPageImageView>()
+                .filter { it.childCount > 0 }.toList()
+            assertEquals(2, images.size)
+            val bound = ReflectionHelpers.getField<Map<ReaderPage, String>>(holder, "boundEncodedContents")
+            images.forEach { image ->
+                val page = ReflectionHelpers.getField<ReaderPage>(image, "page")
+                paintReaderImage(image, if (page === pages[1]) replacement else blue)
+            }
+            assertEquals(newContent, bound[pages[1]])
+            settle(holder)
+            val rendered = Bitmap.createBitmap(holder.width, holder.height, Bitmap.Config.ARGB_8888)
+            try {
+                holder.draw(Canvas(rendered))
+                assertTrue(
+                    "Actual native image must paint the replacement green pixels",
+                    (0 until rendered.height step 40).any { y ->
+                        (0 until rendered.width step 40).any { x -> rendered.getPixel(x, y) == Color.GREEN }
+                    },
+                )
+            } finally {
+                rendered.recycle()
+            }
+            val ticket = requireNotNull(holder.presentationScope).second
+            assertTrue(owner.frame(ticket)!!.drawnPageIds.containsAll(certificate.segment.unit.pageIds))
+        } finally {
+            releasePartner.countDown()
+        }
+    }
+
+    @Test
     fun replacingCompletedOriginalWhilePartnerIsPendingRejectsTheWholeBatch() = runTest {
         val viewer = ReflectionHelpers.getField<DualPageR2LPagerViewer>(fixture, "viewer")
         uy.kohesive.injekt.Injekt.get<eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences>()

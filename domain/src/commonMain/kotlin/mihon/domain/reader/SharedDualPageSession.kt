@@ -335,6 +335,7 @@ class SharedDualPageSession(
         requests.clear()
         accepted.clear()
         spreadSamples.cancelRequests()
+        spreadSamples.clearResourceFailures()
         sampleWorkRevision++
         factBudget.close()
         factBudget = ReaderDualPageFactBudget()
@@ -368,6 +369,7 @@ class SharedDualPageSession(
         requests.clear()
         accepted.clear()
         spreadSamples.cancelRequests()
+        spreadSamples.clearResourceFailures()
         factBudget.close()
         factBudget = ReaderDualPageFactBudget()
         factWorkRevision++
