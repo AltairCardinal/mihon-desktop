@@ -30,6 +30,8 @@ Mihon Desktop 是独立维护的下游产品，保留 Mihon 的 Git 历史并遵
 
 自 2026-10-14 起，产品验证以本地测试为日常入口。`Build & Test`（`.github/workflows/build.yml`）与 `Desktop CI`（`.github/workflows/desktop-ci.yml`）仅保留 `workflow_dispatch`，不再由 `push` 或 `pull_request` 自动执行旧的完整产品测试流程。
 
+`main` 分支保护已取消 `Build & Test App` 与 `Desktop JVM Tests` 两个旧自动测试的必过状态要求，避免 PR 等待不会再自动产生的检查；PR 要求及其他保护规则保持原状。
+
 测试源码、本地测试命令及原失败证据继续保留。维护者按 [AGENTS.md](../../AGENTS.md) 选择覆盖本次行为与 production 接线的 focused 范围，完成必要的格式、单元、集成和实际运行验证；GitHub 没有自动运行不代表产品已通过验收。重型 Gradle 继续通过仓库协调器串行执行，完整模块或发布矩阵仍按原有明确批准与里程碑要求执行。
 
 确需对照 GitHub Runner 时，可在 Actions 中手动运行这两个工作流。手动入口仍使用各自原有构建与测试步骤，不隐式替代本地定向验证，也不把历史失败改成通过。后续恢复自动触发须有用户明确要求。
