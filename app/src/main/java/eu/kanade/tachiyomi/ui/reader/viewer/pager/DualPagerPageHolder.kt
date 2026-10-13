@@ -222,6 +222,14 @@ class DualPagerPageHolder(
     private var hadMultiplePointers = false
     private var handedToPager = false
 
+    internal fun resetViewportZoom() {
+        zoomAnimator?.cancel()
+        currentScale = 1f
+        translateX = 0f
+        translateY = 0f
+        applyTransform()
+    }
+
     private val scaleGestureDetector = ScaleGestureDetector(
         readerThemedContext,
         object : ScaleGestureDetector.SimpleOnScaleGestureListener() {

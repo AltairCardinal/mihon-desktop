@@ -372,6 +372,14 @@ class DualPageR2LPagerViewer(
         // A window rebuild can keep the same selected pair while an adjacent chapter loads.
         // Preserve that selection so its pending rendered viewport can still settle.
         if (item != null && currentPage != item) {
+            val previous = currentPage as? DisplayPage
+            if (!layoutOnly && previous != null &&
+                (item !is DisplayPage || previous.visiblePages.none(item::containsPage))
+            ) {
+                pager.children.filterIsInstance<DualPagerPageHolder>()
+                    .filter { it.displayPage == previous }
+                    .forEach(DualPagerPageHolder::resetViewportZoom)
+            }
             currentPage = item
             when (item) {
                 is DisplayPage -> onDisplayPageSelected(item, layoutOnly)

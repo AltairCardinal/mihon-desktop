@@ -454,6 +454,10 @@ UP/CANCEL 清除交接状态，下一次单指手势恢复正常。此规则不�
 普通原生 Single 的既有输入路径。回归必须从真实 Pager.dispatchTouchEvent 分发 MotionEvent 并断言页组索引变化，
 不能仅检查 requestDisallowInterceptTouchEvent(false)。
 
+Android 双槽与半槽的整组缩放仅属于当前页组：真正切换到不包含原页的页组或章节过渡时，
+取消离开页组的缩放动画，并将缓存 holder 的倍率、水平及垂直位移恢复为 `1/0/0`，同步到原图片视口。
+返回缓存页组不恢复旧变换。同组内定位、伙伴到达、重配对和 layout-only 更新保留当前变换。
+
 Android 双页 holder 离开窗口时，在使呈现代次失效并取消绑定任务后，必须回收左右原生图片，释放 decoder、输入与
 瓦片；不能仅清空呈现记录而把像素保留到 GC。重新挂载复用 View，重新绑定有效内容，不复用已回收的 Bitmap。
 正常缩放、伙伴到达和窗口变化不触发这项回收。

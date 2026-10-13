@@ -1260,6 +1260,54 @@ class DualPagerPageHolderLayoutTest {
         return chapter
     }
 
+    @Test
+    fun `leaving a zoomed group resets its camera before returning through the real pager`() = runTest {
+        val chapter = loadedChapter(61014, 8)
+        val pages = requireNotNull(chapter.pages)
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        pages.forEach { viewer.adapter.updatePageDimensions(it, 100, 200) }
+        viewer.moveToPage(pages[1])
+        measure(viewer.pager, 1440, 3120)
+        val original = viewer.pager.children.filterIsInstance<DualPagerPageHolder>()
+            .first { it.displayPage.containsPage(pages[1]) }
+        assertTrue(original.displayPage is DisplayPage.Double)
+        val display = original.displayPage as DisplayPage.Double
+        load(original, display.rightPage, "RIGHT")
+        load(original, display.leftPage, "LEFT")
+        measure(viewer.pager, 1440, 3120)
+        val image = descendants(original).filterIsInstance<ReaderPageImageView>().first()
+        doubleTap(viewer.pager, SystemClock.uptimeMillis(), x = 400f)
+        advanceGestureAnimation()
+        assertEquals(2f, ReflectionHelpers.getField<Float>(original, "currentScale"), 0.001f)
+        assertEquals(2f, image.viewportScale, 0.001f)
+        assertTrue(ReflectionHelpers.getField<Float>(original, "translateX") != 0f)
+
+        viewer.moveToPage(pages[2])
+        measure(viewer.pager, 1440, 3120)
+        assertEquals("Positioning inside the same group must retain zoom", 2f, image.viewportScale, 0.001f)
+
+        viewer.moveToPage(pages[3])
+        measure(viewer.pager, 1440, 3120)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
+        assertEquals(
+            "The non-current retained group must forget zoom",
+            1f,
+            ReflectionHelpers.getField<Float>(original, "currentScale"),
+            0.001f,
+        )
+        viewer.moveToPage(pages[1])
+        measure(viewer.pager, 1440, 3120)
+        val restored = viewer.pager.children.filterIsInstance<DualPagerPageHolder>()
+            .first { it.displayPage.containsPage(pages[1]) }
+        assertTrue("The regression must cover a cached holder, not a newly created one", restored === original)
+        assertEquals(1f, ReflectionHelpers.getField<Float>(restored, "currentScale"), 0.001f)
+        assertEquals(0f, ReflectionHelpers.getField<Float>(restored, "translateX"), 0.001f)
+        assertEquals(0f, ReflectionHelpers.getField<Float>(restored, "translateY"), 0.001f)
+        assertEquals("Reset must reach the real image viewport", 1f, image.viewportScale, 0.001f)
+        assertEquals(0f, image.viewportOffsetX, 0.001f)
+        assertEquals(0f, image.viewportOffsetY, 0.001f)
+    }
+
     private suspend fun decodeForAdapter(page: ReaderPage) {
         val holder = DualPagerPageHolder(viewer.activity, viewer, DisplayPage.Single(page))
         load(holder, page, "CENTER")
