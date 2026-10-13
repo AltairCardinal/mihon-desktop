@@ -51,7 +51,19 @@ git diff --check
 - 构建 job 只有 `contents: read`；仅部署 job 获得 `pages: write` 与 `id-token: write`，使用 `github-pages` environment，不引入 PAT 或产品签名凭据。
 - 网站内容验收由上述人工事实与 Agent 流程负责；路径触发器和成功的构建**不能判定用户是否验收了功能**。若将来需要服务端强制第二道人工审批，可以由维护者为 environment 配置 required reviewers，但不能把尚未配置的保护宣称已生效。
 
-2026-10-13 首次核查：远端尚未启用 Pages，`main` 要求 `Build & Test App` 与 `Desktop JVM Tests` 两个检查。现有产品 CI 的 push 触发器覆盖所有主线提交，Android PR 触发器也会覆盖网站配置。这是已有 CI 与纯文档发布之间的待决边界；新增 Pages 工作流本身不改变它。不得为了文档上线绕过保护、伪造检查、自动批准扩大测试或悄悄修改现有测试门禁。需要调整时，应先明确最小的文档专属 CI 路径方案及其对 required checks 的影响，再在授权范围内实施；未解决时交付已验证的本地站点和提交，准确报告远端未上线。
+2026-10-13，远端 Pages 已配置为 GitHub Actions 部署；配置成功不代表网站已经上线，部署结果仍须单独核实。`main` 保留 `Build & Test App` 与 `Desktop JVM Tests` 两个 required checks，不通过直接写 commit status 或跳过分支保护发布。
+
+### 文档与产品 CI 分流
+
+两个既有 required job 均在 checkout 完整 Git 历史后运行 `scripts/ci-scope.py`；不使用 workflow 级路径过滤，以免纯文档 PR 缺少 required check 而无法合入。它们是真实工作流结果，不是人工伪造的成功状态。
+
+- 纯文档范围：`website/**`、`docs/**`、根目录 Markdown、`.github/pull_request_template.md` 和 `.github/workflows/pages.yml`。
+- CI 控制面范围仅额外包含这两个既有工作流，以及 `scripts/ci-scope.py` 和 `scripts/tests/ci-scope-test.py`。不宽泛排除整个 `.github/` 或 `scripts/`。控制面规则修改必须先通过真实 Git fixture 的定向回归和独立审查。
+- 上述范围的提交在两个 required job 中实际运行路由回归；产品工具链、SDK 安装、Gradle、产品测试和应用候选构建不会启动。Summary 明确说明产品测试未运行；网站构建由独立 Documentation site 工作流承担。Android 的 PR Dependency Review 继续执行，也覆盖网站依赖变化。
+- 任意其它文件、产品与文档混合修改均进入原有产品流程；手动 `workflow_dispatch` 强制执行原有产品流程，不受路径豁免。
+- push 比较 `before..after`，PR 比较 `base...head`，禁止 rename detection 隐藏移入文档目录的产品删除；使用 NUL 分隔读取变更路径。零 SHA、未知事件保守进入产品流程；缺少/错误 SHA、无法读取提交或无法计算 diff 时 job 失败，不生成“无需产品验证”的结果。
+
+修改分流规则时运行 `python scripts/tests/ci-scope-test.py`，检查真实 push/PR 历史、删除/重命名、混合变化、未知路径、手动触发和失败边界。合入后仍应核对两项 required job 的实际步骤与 Pages 部署结果；本地测试不能代替远端上线证据。
 
 ## 失败、回滚与维护
 
