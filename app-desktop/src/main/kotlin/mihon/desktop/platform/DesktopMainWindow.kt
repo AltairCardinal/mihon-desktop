@@ -18,10 +18,15 @@ internal fun ApplicationScope.DesktopMainWindow(
     onCloseRequest: () -> Unit,
     title: String,
     icon: Painter? = null,
+    windowTransitions: DesktopWindowTransitions = WindowsWindowTransitions,
     content: @Composable FrameWindowScope.() -> Unit,
 ) {
-    val geometry = remember(preferences) {
-        if (Platform.isWindows()) DesktopWindowGeometryController(preferences) else null
+    val geometry = remember(preferences, windowTransitions) {
+        if (Platform.isWindows()) {
+            DesktopWindowGeometryController(preferences, transitions = windowTransitions)
+        } else {
+            null
+        }
     }
     val defaultState = rememberWindowState(width = 1024.dp, height = 768.dp)
     Window(

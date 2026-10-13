@@ -17,6 +17,8 @@ import java.awt.Rectangle
 import java.awt.Toolkit
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
+import java.awt.event.WindowAdapter
+import java.awt.event.WindowEvent
 import java.awt.event.WindowStateListener
 import javax.swing.SwingUtilities
 
@@ -81,6 +83,7 @@ internal fun desktopWindowWorkAreas(): List<Rectangle> {
 internal class DesktopWindowGeometryController(
     private val preferences: DesktopAppPreferences,
     workAreas: List<Rectangle> = desktopWindowWorkAreas(),
+    private val transitions: DesktopWindowTransitions = WindowsWindowTransitions,
 ) {
     private var geometry = restoreDesktopWindowGeometry(
         runCatching { preferences.windowGeometry.get() }.getOrDefault(""),
@@ -98,6 +101,25 @@ internal class DesktopWindowGeometryController(
         check(boundWindow == null) { "Window geometry already has an owner" }
         boundWindow = window
         var closed = false
+        var transitionsDisabled = false
+        if (geometry?.maximized == true && !window.isShowing) {
+            transitionsDisabled = transitions.setDisabled(window, true)
+            if (!transitionsDisabled) System.err.println("Desktop startup window transition could not be disabled")
+        }
+        fun restoreTransitions() {
+            if (transitionsDisabled) {
+                transitionsDisabled = !transitions.setDisabled(window, false)
+                if (transitionsDisabled) {
+                    System.err.println("Desktop window transitions could not be restored")
+                }
+            }
+        }
+        val opening = object : WindowAdapter() {
+            override fun windowOpened(event: WindowEvent) {
+                SwingUtilities.invokeLater { if (!closed) restoreTransitions() }
+            }
+        }
+        window.addWindowListener(opening)
         val components = object : ComponentAdapter() {
             private fun captureAfterEvent() {
                 SwingUtilities.invokeLater { if (!closed) capture() }
@@ -113,7 +135,9 @@ internal class DesktopWindowGeometryController(
         return AutoCloseable {
             if (!closed) {
                 save()
+                restoreTransitions()
                 closed = true
+                window.removeWindowListener(opening)
                 window.removeComponentListener(components)
                 window.removeWindowStateListener(placement)
                 boundWindow = null

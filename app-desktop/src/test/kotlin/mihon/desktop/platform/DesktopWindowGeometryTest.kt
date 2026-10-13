@@ -21,8 +21,12 @@ import org.junit.jupiter.api.condition.EnabledOnOs
 import org.junit.jupiter.api.condition.OS
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.core.common.preference.Preference
+import java.awt.AWTEvent
 import java.awt.Frame
 import java.awt.Rectangle
+import java.awt.Toolkit
+import java.awt.event.AWTEventListener
+import java.awt.event.HierarchyEvent
 import java.awt.event.WindowEvent
 import java.util.UUID
 import java.util.concurrent.Callable
@@ -40,6 +44,72 @@ class DesktopWindowGeometryTest {
     fun cleanup() = root.removeNode()
 
     private fun preferences() = DesktopAppPreferences(DesktopPreferenceStore(root.node("store")), root.node("legacy"))
+
+    @Test
+    fun `restored normal bounds are applied before first native visibility`() = runBlocking {
+        assertFirstVisibleGeometry(maximized = false)
+    }
+
+    @Test
+    fun `restored maximized bounds are applied before first native visibility`() = runBlocking {
+        assertFirstVisibleGeometry(maximized = true)
+    }
+
+    private suspend fun assertFirstVisibleGeometry(maximized: Boolean) {
+        preferences().windowGeometry.set(
+            """{"x":140,"y":110,"width":860,"height":610,"maximized":$maximized}""",
+        )
+        val firstVisible = CompletableDeferred<Pair<Rectangle, Boolean>>()
+        var disabled = false
+        val transitions = DesktopWindowTransitions { frame, value ->
+            assertTrue(WindowsWindowTransitions.setDisabled(frame, value), "Native DWM call must succeed")
+            if (value) assertFalse(frame.isShowing, "Disable transitions before showing")
+            disabled = value
+            true
+        }
+        val listener = AWTEventListener { event ->
+            val frame = event.source as? ComposeWindow
+            if (event is HierarchyEvent && event.changeFlags and HierarchyEvent.SHOWING_CHANGED.toLong() != 0L &&
+                frame?.title == "Mihon isolated geometry test" && frame.isShowing
+            ) {
+                firstVisible.complete(Rectangle(frame.bounds) to disabled)
+            }
+        }
+        Toolkit.getDefaultToolkit().addAWTEventListener(listener, AWTEvent.HIERARCHY_EVENT_MASK)
+        try {
+            window(preferences(), transitions) { frame ->
+                assertTrue(firstVisible.isCompleted, "Must observe the first native visibility")
+                val (firstBounds, firstTransitionsDisabled) = withTimeout(5_000) { firstVisible.await() }
+                val expected = if (maximized) {
+                    // Windows maximized frames include their invisible resize borders.
+                    waitFor { frame.extendedState and Frame.MAXIMIZED_BOTH != 0 }
+                    onEdt { Rectangle(frame.bounds) }
+                } else {
+                    Rectangle(140, 110, 860, 610)
+                }
+                assertEquals(expected, firstBounds, "First visible bounds must already be restored")
+                assertEquals(
+                    maximized,
+                    firstTransitionsDisabled,
+                    "Only restored maximization must suppress the initial DWM transition",
+                )
+                waitFor { !disabled }
+                if (maximized) assertTrue(expected.width > 860, "Expected a genuinely maximized window")
+            }
+        } finally {
+            Toolkit.getDefaultToolkit().removeAWTEventListener(listener)
+        }
+    }
+
+    @Test
+    fun `unavailable native transitions do not prevent maximized startup`() = runBlocking {
+        preferences().windowGeometry.set(
+            """{"x":140,"y":110,"width":860,"height":610,"maximized":true}""",
+        )
+        window(preferences(), DesktopWindowTransitions { _, _ -> false }) { frame ->
+            assertTrue(onEdt { frame.isShowing && frame.extendedState and Frame.MAXIMIZED_BOTH != 0 })
+        }
+    }
 
     @Test
     fun `native close and restart restores resized moved production window`() = runBlocking {
@@ -92,11 +162,20 @@ class DesktopWindowGeometryTest {
         }
     }
 
-    private suspend fun window(preferences: DesktopAppPreferences, assertions: (ComposeWindow) -> Unit) {
+    private suspend fun window(
+        preferences: DesktopAppPreferences,
+        transitions: DesktopWindowTransitions = WindowsWindowTransitions,
+        assertions: suspend (ComposeWindow) -> Unit,
+    ) {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val ready = CompletableDeferred<ComposeWindow>()
         val job = scope.launchApplication {
-            DesktopMainWindow(preferences, onCloseRequest = ::exitApplication, title = "Mihon isolated geometry test") {
+            DesktopMainWindow(
+                preferences,
+                onCloseRequest = ::exitApplication,
+                title = "Mihon isolated geometry test",
+                windowTransitions = transitions,
+            ) {
                 LaunchedEffect(window) { ready.complete(window) }
             }
         }
