@@ -92,6 +92,10 @@ class DesktopAppPreferences(
         store.getString(Preference.appStateKey("desktop_window_geometry"), "")
     }
 
+    val acknowledgedTutorials: Preference<Set<String>> by lazy {
+        store.getStringSet(Preference.appStateKey("desktop_acknowledged_tutorials"), emptySet())
+    }
+
     // Lazy vals so repeated accesses return the same mutable Preference instance.
 
     val themeMode: Preference<ThemeMode> by lazy {

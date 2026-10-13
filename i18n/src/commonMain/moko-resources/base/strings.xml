@@ -2523,4 +2523,8 @@
     <string name="catalog_result_no_groups">No translation groups identified in the checked results</string>
     <string name="catalog_result_filter_help">Filters loaded results only. Language and credits are inferred from titles or metadata; page text is not verified. Any selected language and any selected group must both match.</string>
     <string name="pref_library_update_manual_ignore">Ignore for manually triggered updates</string>
+    <string name="desktop_tutorial_pairing_title">Adjust page pairing</string>
+    <string name="desktop_tutorial_pairing_message">Pages paired incorrectly? Press C to adjust the current pairing. You can also use Adjust Spread in the reader controls.</string>
+    <string name="desktop_tutorial_pairing_action">Adjust pairing · C</string>
+    <string name="desktop_tutorial_got_it">Got it</string>
 </resources>

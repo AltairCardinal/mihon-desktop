@@ -38,7 +38,10 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
@@ -78,6 +81,9 @@ import mihon.desktop.ui.reader.presentation.desktopReaderPresentationRequest
 import mihon.desktop.ui.reader.presentation.dualDisplayUnitIndexForSourcePage
 import mihon.desktop.ui.reader.presentation.firstDualPageIndex
 import mihon.desktop.ui.source.desktopSourceErrorMessage
+import mihon.desktop.ui.tutorial.DesktopTutorial
+import mihon.desktop.ui.tutorial.DesktopTutorialBubble
+import mihon.desktop.ui.tutorial.DesktopTutorialState
 import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.session.ReaderChapterLoadState
@@ -516,6 +522,15 @@ internal fun ReaderViewport(
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
 ) {
+    val appPreferences = LocalDesktopUiDependencies.current.appPreferences
+    val tutorials = remember(appPreferences) { DesktopTutorialState(appPreferences.acknowledgedTutorials) }
+    val pairingTutorial = DesktopTutorial.READER_ADJUST_SPREAD
+    val adjustSpread: () -> Unit = {
+        val previous = model.state.value.dualPairingState
+        model.adjustSpread()
+        if (model.state.value.dualPairingState != previous) tutorials.acknowledge(pairingTutorial)
+        focusRequester.requestFocus()
+    }
     val testReader = mihon.desktop.test.state.readerState
     val windowInfo = LocalWindowInfo.current
     DisposableEffect(model) {
@@ -542,7 +557,16 @@ internal fun ReaderViewport(
                 .fillMaxSize()
                 .onFocusChanged { testReader.updateFocus(model, owner = it.hasFocus) }
                 .readerKeyboardFocus(focusRequester) { event ->
-                    handleReaderKeyEvent(event, state, model, navigator, readerNav, onPrevChapter, onNextChapter)
+                    handleReaderKeyEvent(
+                        event,
+                        state,
+                        model,
+                        navigator,
+                        readerNav,
+                        onPrevChapter,
+                        onNextChapter,
+                        adjustSpread,
+                    )
                 }
                 .onPointerEvent(PointerEventType.Scroll) { event ->
                     val native = event.nativeEvent as? java.awt.event.MouseWheelEvent ?: return@onPointerEvent
@@ -601,7 +625,7 @@ internal fun ReaderViewport(
                             isDualPage = state.dualPageMode, hasPrevChapter = readerNav?.previousRead != null,
                             hasNextChapter = readerNav?.nextToRead != null, onPrevChapter = onPrevChapter,
                             onNextChapter = onNextChapter,
-                            onAdjustSpread = model::adjustSpread,
+                            onAdjustSpread = adjustSpread,
                             adjustSaving = state.pairingSaving,
                             adjustEnabled = state.pairingLoad == PairingLoad.READY,
                             modifier = Modifier.align(Alignment.BottomCenter),
@@ -649,8 +673,27 @@ internal fun ReaderViewport(
                 }
             }
         }
+        if (tutorials.shouldShow(pairingTutorial, readerManualPairingAvailable(state))) {
+            DesktopTutorialBubble(
+                tutorial = pairingTutorial,
+                actionLabel = MR.strings.desktop_tutorial_pairing_action.localized(),
+                onAction = adjustSpread,
+                onConfirm = {
+                    tutorials.acknowledge(pairingTutorial)
+                    focusRequester.requestFocus()
+                },
+                modifier = Modifier.align(Alignment.BottomEnd)
+                    .padding(start = 16.dp, end = 16.dp, bottom = if (state.showUI) 88.dp else 24.dp),
+            )
+        }
     }
 }
+
+internal fun readerManualPairingAvailable(state: ReaderState): Boolean =
+    state.dualPageMode && state.readingMode != ReadingMode.WEBTOON &&
+        state.session.activeChapter.pages.size > 1 && readerViewportBody(state) == ReaderViewportBody.CONTENT &&
+        state.pairingLoad == PairingLoad.READY && !state.pairingSaving && !state.showSettings &&
+        !state.resumePageUnavailable && state.chapterTransition == null
 
 @OptIn(ExperimentalComposeUiApi::class)
 internal fun Modifier.readerKeyboardFocus(
@@ -787,8 +830,18 @@ internal fun handleReaderKeyEvent(
     readerNav: ReaderNavigator?,
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
+    onAdjustSpread: () -> Unit = model::adjustSpread,
 ): Boolean {
     if (event.type != KeyEventType.KeyDown) return false
+    if (event.key == Key.C) {
+        if (event.isCtrlPressed || event.isAltPressed || event.isMetaPressed || event.isShiftPressed ||
+            !readerManualPairingAvailable(state)
+        ) {
+            return false
+        }
+        onAdjustSpread()
+        return true
+    }
     val navPosition = readerKeyboardNavigationPosition(
         state = state,
         hasPreviousChapter = readerNav?.previousRead != null,

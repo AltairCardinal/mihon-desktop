@@ -448,6 +448,8 @@ class DualPageCurrentPageWiringTest {
             owner.beginGeneration(1L)
             model.toggleUI()
             val appPrefs = DesktopAppPreferences(DesktopPreferenceStore(root.node("app")), root.node("legacy-app"))
+            // These established-reader regressions exercise page input, independently of first-use teaching.
+            appPrefs.acknowledgedTutorials.set(setOf(mihon.desktop.ui.tutorial.DesktopTutorial.READER_ADJUST_SPREAD.id))
             appPrefs.pageTurnAnimation.set(animated)
             val dependencies = mockk<DesktopUiDependencies> { every { appPreferences } returns appPrefs }
             scene.setContent {
