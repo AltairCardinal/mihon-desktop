@@ -438,3 +438,25 @@ R3-04仍需要定向优化：画面和字节预算已有实际链证据；冷／
 只读时间线没有支持目标页反复解码假设：基线8/9和修复8/9在观测窗口各只有一个 image/native/bitmap 身份。修复目标原始分析与 native Ready 之后，认证仍补前缀索引4、3、2、1。`r304-fix-cold-certification-trace.json` 最后索引1缺失观察在1822.898／1836.636ms，1860.321ms首次观察 Certified，attempted=11、active空、新读122,377B；纯认证查询约0.12～2.4ms。查询调用已核实的纯 `certifyPairing`，不签新request、不续预算、不伪绘制；这些都是轮询观察上界，不是JNI内部精确时间，单次trace不构成配对性能因果证明。后续优化应针对真实闭包取证和安全复用，不重复已排除的完整解码方向。
 
 第五宿主的无边界冷126仍 NOT_CORRECT：16个attempted、active空、新读181,906B，`firstCorrectVerifiedNs=0` 是没有正确首图的哨兵，不是0ms延迟。真实任意冷跳的固定16页上限与所需完整前缀之间缺口仍在。R3-04保持未完成；专用AVD本轮已正常关闭，研究树干净，主干仍未合入产品修复。
+
+### R3-04 未闭合项的最小优化设计（只读，尚未实施）
+
+沿用原审查代理只读核对 `e393ff9238`，没有新增代理、构建或产品改动。既有161组Native3记录的成本分解保存为 `native-existing-component-breakdown.json`：文件缓存热态的JNI创建 p50/p95/max=0.618/1.428/3.409ms，两条区域解码29.943/38.977/46.706ms，原始点提取0.135/0.304/2.765ms，plan.samples纯计算0.036/0.122/1.091ms。不是CBZ成本或用户首图测量，不能把减少开流直接承诺为消除约250ms迟滞。
+
+优先研究合格正常位图的标量复用：在现有gate之前按同一production plan取点，不等待drawn、不持有bitmap；要求完整未裁切、原始header尺寸匹配、软件位图、采样点alpha255、解码时固定默认sRGB目标的有效证明。还须绑定encoded identity、captured metadata与decode generation；未知资格直接走现有原图取证。global profile可延续旧值，故偏好空和Bitmap sRGB标签不能作为证明。资格、内容替换、取消、淘汰及fallback均须实际生产接线的红绿测试；当前25图exact证据只证明默认环境的样本，不是普遍资格。
+
+次级候选是借用DualPagerPageHolder已经完整读取并保留的encoded Buffer clone，避免fresh文件／CBZ读取。借用必须受当前能力和生命周期约束，detach／替换拒收；不得新增整份readByteArray副本，clone共享segments延长的存活内存也要登记。它仍需JNI区域解码，不视为主要耗时问题已经解决。已准备的缓存候选可先作为一批原子接纳、重算需求，再启动缺失页；已经发出的双页批继续执行最终整批物理内容校验，不因awaitAll有等待就拆掉既有原子边界。
+
+调度候选仅允许在已知可靠边界、完整保守依赖跨度（包含真实会露出的邻帧）及可靠encoded长度上界都证明落在16页／32MiB时填充第二槽。缺少上界不推测左邻；卷8冷闭包恰16，额外取112可能造成预算回归，需专门红绿覆盖。不得退款已读字节、制造location或自动重试续预算。无索引灰章冷126需要127份事实，此局部调度不适用。
+
+持久标量索引只保留设计支路，未实施：复用ChapterCache既有DiskLruCache editor和淘汰，派生记录使用独立命名空间，包含真实encoded SHA-256、算法／记录版本、几何／方向／旋转与Computed侧别；有序两页指纹绑定边分数，明确区分Computed null和缺失。完整写后commit，失败abort；损坏、版本和身份不符按miss重取，不新增DB迁移或后台服务。SHA沿已有完整Buffer、下载写入或实际sampler输入计算；外部SAF／CBZ无可信内容凭证时须读实际字节验证并计入I/O／预算。路径、mtime和会话编号不替代内容身份；首次旧下载无索引的分析成本不能预热后隐去。该设计需要先验证收益与身份边界，再决定是否进入原方案约定的缓存支路，不能据设计宣称三个原目标已达成。
+
+先收口原矩阵缺口：仅在已有第五宿主上补实际内容替换、取消恢复与样本淘汰的定向instrumentation，不新增宿主或重跑性能矩阵。产品优化若进入实施，其现有JVM红绿可先独立完成；新的production ART最终需要另一个宿主，现第五份额度已经使用，第六份尚未授权。
+
+### R3-04 自然样本淘汰与回翻补验
+
+研究提交 `9b2b62fa9c` 仅增加只读 instrumentation 观察：真实容量16的向量缓存、原始向量集合、页面分析、有序边分析和当前可选任务数；不清缓存、不改容量、不注入事实。定向 Spotless 与 `assembleDebugAndroidTest` 通过（协调器 `pairing-r3-natural-vector-eviction-direction-test-assemble`）；测试 APK SHA-256 为 `447af95903ca3a530a23482fe5ceaef62897d1668e3ef3d2ba1fd21026a9881b`。宿主仍为第五份 `f5c5ab50f5`，没有新增宿主或产品变更。
+
+专用 API36 AVD 的真实 DownloadPageLoader 读取虚构176页控制章：8/9起读，PAGE_DOWN前进20屏至48/49，再PAGE_UP回退20屏至8/9。`r304-fix-natural-vector-eviction-return-direction-retry.json` 及 runner 回执证明初始加40次翻页共41个正确GPU画面、40次实际选择变化、JUnit 1/1通过。缓存中仅剩37～52页向量，8/9的向量和原始向量均已自然淘汰，但两页Computed分析及8/9的Computed(score=null)仍保留。回到8/9时正确显示，当前location的attempted与active均空、新增可选读取0B、当前可选任务0。汇总为 `r304-natural-vector-eviction-summary.json`。
+
+首轮只读探针未取得私有direction，故没有具体边证据；补正反射后首次调用又在JUnit开始前遇到ADB连接重置，原失败回执保留，不计产品失败或通过。随后上述独立文件名的完整补验通过。该结果只关闭运行期样本淘汰项：未统计普通图片I/O，不宣称零I/O；不存在持久分析缓存，不宣称其损坏恢复通过；每屏等待正确GPU结果，不充当300ms或成对耗时测试。取消恢复、内容替换仍待实际ART覆盖，原耗时与16页预算缺口仍未关闭。
