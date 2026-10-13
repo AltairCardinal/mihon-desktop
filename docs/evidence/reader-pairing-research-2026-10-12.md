@@ -424,3 +424,17 @@ R3-04 本批研究提交 `a07fbf16afedff89782145bde658aa257e732472`（已知侧�
 现场编号的实际跳转／回翻／重开证据：以 production Sampling.plan.samples、SharedSpreadMatching.score 与 canonicalPlan 从冻结原图标量和控制页原始灰边完整计算176页 oracle；完整源序覆盖已核验。卷8局部111/112、113/114、115/116…125/126、127/128；卷9替代176页局部90/91、92单页、93/94、95/96。后者不是原书前缀，不声称真实第9卷92理应单页。修复宿主卷8冷开113→115→113→126及重开、卷9冷开93→95→93及重开全部CORRECT（`r304-fix-vol08-jump-back-reopen.json`、`r304-fix-vol09-jump-back-reopen.json`）；这些动作明确是 viewer.moveToPage 跳转链，不冒称真实连续输入。
 
 R3-04仍需要定向优化：画面和字节预算已有实际链证据；冷／热／热邻页耗时失败、无边界冷前缀127页对16页上限缺口、快速原生输入与剩余失效恢复门禁未闭合。不能宣称完整预研GO、产品已合入或用户真机bug已修复。
+
+### R3-04 有效快速输入、连续阅读与认证时间线补证
+
+测试提交 `e393ff923811d77c61ceabd59ff7328c6740e3e9` 仅改变真实下载 instrumentation（314新增／12删除）。修正 pointer 的 DOWN／UP，并采用实际 PAGE_DOWN／PAGE_UP → ReaderActivity.dispatchKeyEvent → 当前阅读器 handleKeyEvent → 源序导航。Window.Callback 逐次转发原事件和原返回值，只读记录焦点、事件及选中页；不能从 sendKeySync 返回推断导航发生。两树测试 APK 编译和 scoped strict 格式通过，宿主生产输入未变，未构建第六份宿主。
+
+初次按键没有到达应用。延迟按键期间实际 dumpsys 证实 focused window 为 `ImmersiveModeConfirmation`，top resumed app 仍为 ReaderActivity。仅专用 AVD 将原为空的 `immersive_mode_confirmations` 设置为 confirmed 后，真实单键 DOWN／UP 到达、handled=true，8/9推进10/11。此前无焦点失败不是产品导航红；保留原记录。V4 冷／热矩阵没有焦点观测，测的是应用 Window 的 GPU／PixelCopy 上界，不能补称整体屏幕可见或用户感知通过；不覆盖旧矩阵，也不据新环境信息自动重跑全部样本。
+
+`fast-native-page-key-summary.json`：基线和修复包各连续20屏，实际选中页均推进20次，全部快照焦点为true、最终各20/20 CORRECT。绝对计划间隔300ms，中间不等待像素。两页正确上界 p50/p95/max：基线112.353/233.347/237.514ms，修复129.490/157.696/189.108ms；实际请求间隔基线298.298～301.994ms，修复298.170～364.338ms，最大计划迟到分别4.685/69.364ms。这是各一条20屏链，不是20组配对独立试验，不隐瞒修复包一次节奏超期，也不据此关闭冷开／重开和普通翻页耗时失败。
+
+真实连续输入现场页段：`r304-fix-vol08-continuous-native-keys.json` 从111/112顺读至127/128再回125/126，9次导航均实际推进且CORRECT；`r304-fix-vol09-early-continuous-native-keys.json` 从替代夹具2/3连续读到92单页、93/94、95/96再回93/94，48次导航全部正确。卷9前段是合成替代，不是完整原书前缀，不能据此断言用户所说92、93的正确分组。另保留 `r304-fix-vol09-continuous-native-keys.json` 冷开92失败；未用顺读成功覆盖冷跳的认证缺口。
+
+只读时间线没有支持目标页反复解码假设：基线8/9和修复8/9在观测窗口各只有一个 image/native/bitmap 身份。修复目标原始分析与 native Ready 之后，认证仍补前缀索引4、3、2、1。`r304-fix-cold-certification-trace.json` 最后索引1缺失观察在1822.898／1836.636ms，1860.321ms首次观察 Certified，attempted=11、active空、新读122,377B；纯认证查询约0.12～2.4ms。查询调用已核实的纯 `certifyPairing`，不签新request、不续预算、不伪绘制；这些都是轮询观察上界，不是JNI内部精确时间，单次trace不构成配对性能因果证明。后续优化应针对真实闭包取证和安全复用，不重复已排除的完整解码方向。
+
+第五宿主的无边界冷126仍 NOT_CORRECT：16个attempted、active空、新读181,906B，`firstCorrectVerifiedNs=0` 是没有正确首图的哨兵，不是0ms延迟。真实任意冷跳的固定16页上限与所需完整前缀之间缺口仍在。R3-04保持未完成；专用AVD本轮已正常关闭，研究树干净，主干仍未合入产品修复。
