@@ -399,3 +399,28 @@ R3-04 本批研究提交 `a07fbf16afedff89782145bde658aa257e732472`（已知侧�
 正常位图精确对照完成：基线 production 未变，instrumentation 源 SHA-256 `49789785d0f1291eb4f85ab119352393e24de5239ca5c129d1c09dd98449699b`；同源测试 APK 分别编译，基线 `3450cd842149c48f0874d86d0b79d6e29e6c45e79eaa8a1f8be8c1ebb1f8c601`、研究 `8d3a3b01240111e65e45063462afe46fbc10d3f8913faadf63b22bc21f5120dd`，测试 APK 不占第五份宿主额度。卷 8 全 18 张 111～128、卷 9 全 5 张 91～95 以及控制 8/9 共 25 张，每张 388 原始坐标均 exact/opaque=388、tolerance=0、maxChannelDifference=0。只读 app-owned WeakReference，无 SSIV 私有 bitmap、无参考图设备解码、无复用启用。探针提交 `f5c5ab50f5`，严格格式/两树 instrumentation 编译及实际 ART 逐点运行完成。
 
 证据在 `r3-art-comparison/r304-baseline-exact-bitmap-control.json`、`r304-baseline-exact-bitmap-vol08-126.json`、`r304-baseline-exact-bitmap-vol08-sweep-quoted.json`、`r304-baseline-exact-bitmap-vol09-sweep.json`。前两个单次显示验证 CORRECT，两个翻页遍历保存 NOT_CORRECT（runner 确实执行一项且完整结束），只采用其中原图逐点观测，不把失败遍历作为配对/性能 PASS。首次卷 8 多 action 未执行，是 adb shell 将分号重新解析，独立 runner 失败日志保留；ignored driver 改用 shlex.join 保护 device shell argv，真实 printf literal 往返验证后再执行，未覆盖旧失败。AVD PID 68764 仅本轮专用实例，运行完成已 emu kill；实际请求 1536MiB 会被 emulator 提升为 2560MiB，不能报告成实测 1536MiB。完整冻结 A/B 耗时矩阵仍 NOT_RUN，第五份宿主仍未构建。
+
+
+### R3-04 修复宿主与实际画面／耗时证据
+
+已按用户追加一次授权构建第五份 Debug 宿主（统一入口 debug --offline），源码 `f5c5ab50f5a7aa67ec1bb7976e50620cf3fca72d`，生产输入指纹 `a9a11129b106c796e170dd5b05f855b55bb3586afba3f5e16bd6e927165e1908`，源码差异为空。APK 位于研究树 `app/artifacts/android/0.19.4-aex.59-vc77-f5c5ab50f5-debug-003203b8dd08/Mihon-Fork-0.19.4-aex.59-vc77-debug-universal.apk`；SHA-256 `f1ced8435f602ccdf852842f1f5c9a12acad2ee84752c055cb18a5a00a5b3865`，.dev 身份、versionCode 77、原 Debug 证书均核验。旧宿主保留，仅专用 emulator-5584 安装，不安装真机、不发布、不构建第六份。
+
+真实目录和 CBZ 控制 8/9 均 CORRECT，各 11 个 attempted、实际新读 122,377B，旧同路径记录为 0；卷 8 125/126 单次冷打开 CORRECT，10 个 attempted、观察时 1 个 active、已读 1,660,907B，不能将观察快照说成所有后台工作已结束。证据 `r304-fix-control-directory.json`、`r304-fix-control-cbz.json`、`r304-fix-vol08-126.json`。
+
+同源 V4 观察器、同设备／输入／阅读配置，按 AB/BA 交替，2 轮预热后完成 20 组冷打开＋同进程重开；40 次基线与40次修复包读数都验证实际正确双页。冷态指进程／派生分析缓存，不声称 OS 存储缓存冷。原冻结 matrix 保留，修复版绑定另存 `paired-cold-hot-fix-binding.json`，实际 RAM 2560MiB。统计 `paired-cold-hot-fix-stats.json` 用 nearest-rank p95（ceil(.95*n)），没有用坏基线合成 0 延迟。冷首次正确 p50/p95：基线 2804.09/3119.80ms，修复 3235.06/3373.52ms，p95 差 253.72ms 超预设 155.99ms；同进程重开 1623.46/1833.20ms 对 1999.05/2082.54ms，差249.34ms超91.66ms。首次正确和双页均正确分别保存。当前未通过原工程耗时筛选，不把工程阈值当用户实际感知验收。
+
+普通连续翻页采用真实 pointer tap，间隔1000ms、各20屏，两端所有屏均 CORRECT。两页正确上界 p50/p95/max：基线463.44/525.48/530.82ms，修复508.27/549.71/553.31ms，p95增24.226859ms。实测 Choreographer 120 个相邻 frameTimeNanos 周期均16.666666ms，Display mode 60.000004Hz仅作对照；这是vsync回调周期，不是用户jank指标。热邻页增量也未通过原16.67ms筛选。
+
+测试提交 `426f63576029e8452fc47836bb30a7b0d3a21b13`（2文件464新增/4删；三个 JNI／vsync 证据用例、复用流计数及真实输入工具，内聚 test-only 批，不改变产品行为）。strict scoped 格式与两树测试 APK 编译通过；三个精确方法 ART 均执行一项并通过。Android36外部目录 run-as/push 准备失败尚未执行用例，不当产品红；仅新三个方法转 private filesDir 输入／输出，旧三个方法保留。
+
+真实 JNI 字节边界 `pairing-r3-ready-file-jni-budget.json`：两份80×120有效PNG补齐各17MiB，第一实际EOF读17MiB，第二只读15MiB且未到physical EOF，真实总读／metered均33,554,432B，两个source均open=close=1，第二抛真实IllegalStateException（JNI清异常后null），permit在仍active时exhausted=true、caller coroutine仍active，新第三page被同budget拒绝。adapter typed RESOURCE本ART未执行，复用既有真实adapter JVM映射作为组合证据，不在test复制分类后冒称通过。
+
+解码成本 `pairing-r3-native-strip-full-cost.json`：2轮warmup＋7轮×23原图=161 retained，同一fresh production JNI decoder内交替 FULL_THEN_STRIPS 与 STRIPS_THEN_FULL；每轮388原始点零容差一致、plan.samples及既有hint一致、流唯一关闭、输出全部recycle。两条strip decode p50/p95/max=29.943/38.977/46.706ms；full一次42.485/50.068/58.615ms，paired full-minus-strip p50/p95/max=12.868/21.570/27.453ms，两个顺序分层结论一致。full分配5,460,560或5,499,760B，实际同时活full＋第二strip峰值5,708,912B，超过现生产4,194,304B上限；native总峰值NOT_AVAILABLE。仅同decoder组件对照，不是两个独立加载路径或intent-to-pixel。该方向更慢且更耗临时位图，排除，不放宽生产cap。
+
+正常位图复用另有必须补证的色彩边界：ReaderDecodedPageCanvas能在prepareNativeImageDraw之前读取app-owned完整位图，即使gate拒绝也不产生drawn，故无固有“先画才可分析”循环。但SSIV decoder使用全局displayProfile，自定义ICC转换后的Bitmap仍可能标记sRGB；偏好为空不保证旧global profile已清除。后续必须取得decode开始的实际目标profile／代际以及严格encoded、metadata、holder generation绑定，未知资格直接fallback，不从旧可见内容callbackIsCurrent推出可发布原图事实。当前25图默认环境exact不足以开放一般输入；尚未实施复用。
+
+快速输入证据保留但未据此判产品失败：旧300ms连续tap无实际连续翻页，后新增swipe驱动又被独立查出重复/倒序UP且tap缺UP，`r304-{baseline,fix}-fast-20-native-swipes.json`存在动画尚未完成、实际selection落后固定预期编号；这些尚不能形成有效快速成对延迟。冷／热与normal数据使用旧正确V4，不受新增V5手势缺陷影响。正在修正输入协议、采用真实PAGE_DOWN/PAGE_UP链连续验证并加入只读实例／bitmap时间线，旧失败不覆盖、阈值不放宽、不重跑无关矩阵。
+
+现场编号的实际跳转／回翻／重开证据：以 production Sampling.plan.samples、SharedSpreadMatching.score 与 canonicalPlan 从冻结原图标量和控制页原始灰边完整计算176页 oracle；完整源序覆盖已核验。卷8局部111/112、113/114、115/116…125/126、127/128；卷9替代176页局部90/91、92单页、93/94、95/96。后者不是原书前缀，不声称真实第9卷92理应单页。修复宿主卷8冷开113→115→113→126及重开、卷9冷开93→95→93及重开全部CORRECT（`r304-fix-vol08-jump-back-reopen.json`、`r304-fix-vol09-jump-back-reopen.json`）；这些动作明确是 viewer.moveToPage 跳转链，不冒称真实连续输入。
+
+R3-04仍需要定向优化：画面和字节预算已有实际链证据；冷／热／热邻页耗时失败、无边界冷前缀127页对16页上限缺口、快速原生输入与剩余失效恢复门禁未闭合。不能宣称完整预研GO、产品已合入或用户真机bug已修复。
