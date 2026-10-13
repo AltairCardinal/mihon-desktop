@@ -1,5 +1,7 @@
 # Windows CI 打包测试故障交接
 
+> 2026-10-14 策略更新：产品测试改为本地优先，`Build & Test` 与 `Desktop CI` 已移除 push/PR 自动触发，仅保留手动入口。下文关于自动 CI、等待 Runner 和分支检查的要求记录当时的故障收口范围；当前日常验证遵循[仓库治理说明](repository-governance.md#本地测试优先)，不因这份历史交接自动运行完整产品测试。
+
 ## 交接目标
 
 本文记录独立仓库迁移后 `Desktop CI` 中 Windows 分发包测试失败的背景、已确认根因、现有证据、已完成工作和后续修复步骤。接手者应以恢复 GitHub Actions 的 `Desktop JVM Tests` 为目标，同时保持 ZIP 内容、校验文件格式和本地发布脚本行为不变。
