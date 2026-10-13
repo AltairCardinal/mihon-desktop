@@ -2,13 +2,6 @@ name: Build & Test
 on:
   workflow_dispatch:
   pull_request:
-    paths:
-      - '**'
-      - '!**.md'
-      - '!i18n/src/commonMain/moko-resources/**/strings.xml'
-      - '!i18n/src/commonMain/moko-resources/**/plurals.xml'
-      - 'i18n/src/commonMain/moko-resources/base/strings.xml'
-      - 'i18n/src/commonMain/moko-resources/base/plurals.xml'
   push:
     branches:
       - main
@@ -32,36 +25,52 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Determine CI scope
+        id: scope
+        run: python3 scripts/ci-scope.py
+
+      - name: Validate documentation and CI routing
+        if: steps.scope.outputs.needs_product == 'false'
+        run: python3 scripts/tests/ci-scope-test.py
 
       - name: Dependency Review
         if: github.event_name == 'pull_request'
         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
 
       - name: Set up JDK
+        if: steps.scope.outputs.needs_product == 'true'
         uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
         with:
           java-version-file: .github/.java-version
           distribution: temurin
 
       - name: Set up Gradle
+        if: steps.scope.outputs.needs_product == 'true'
         uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
 
       - name: Check Python and install Android SDK baseline
+        if: steps.scope.outputs.needs_product == 'true'
         run: |
           python3 -c 'import sys; assert sys.version_info >= (3, 11), "Python 3.11 or newer is required"'
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
           python3 scripts/build-android.py check
 
       - name: Check code format
+        if: steps.scope.outputs.needs_product == 'true'
         run: ./gradlew spotlessCheck
 
       - name: Check Android delivery contracts
+        if: steps.scope.outputs.needs_product == 'true'
         run: |
           python3 scripts/tests/build-android-test.py
           python3 scripts/tests/gradle-coordinator-test.py
 
       - name: Build unsigned Android candidate
         id: candidate
+        if: steps.scope.outputs.needs_product == 'true'
         run: |
           if python3 scripts/build-android.py candidate --unsigned; then
             exit 0
@@ -73,6 +82,7 @@ jobs:
 
       - name: Run unit tests
         id: unit_tests
+        if: steps.scope.outputs.needs_product == 'true'
         run: ./gradlew testReleaseUnitTest
 
       - name: Upload test report

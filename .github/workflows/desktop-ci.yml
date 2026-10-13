@@ -3,16 +3,6 @@ name: Desktop CI
 on:
   workflow_dispatch:
   pull_request:
-    paths:
-      - 'app-desktop/**'
-      - 'core/**'
-      - 'domain/**'
-      - 'data/**'
-      - 'source-api/**'
-      - 'gradle/**'
-      - 'build.gradle.kts'
-      - 'settings.gradle.kts'
-      - '!**.md'
   push:
     branches:
       - main
@@ -29,6 +19,10 @@ jobs:
     name: Desktop JVM Tests
     # The Desktop product is currently validated and released for Windows.
     runs-on: windows-2022
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+      PYTHONDONTWRITEBYTECODE: '1'
 
     steps:
       - name: Checkout
@@ -37,25 +31,38 @@ jobs:
           # Parity and reader-authority tests resolve fixed historical Git objects.
           fetch-depth: 0
 
+      - name: Determine CI scope
+        id: scope
+        run: python scripts/ci-scope.py
+
+      - name: Validate documentation and CI routing
+        if: steps.scope.outputs.needs_product == 'false'
+        run: python scripts/tests/ci-scope-test.py
+
       - name: Fetch provenance authority references
+        if: steps.scope.outputs.needs_product == 'true'
         # The independent downstream repository retains these immutable references
         # solely so authority-contract tests can resolve their fixed Git objects.
         run: git fetch --no-tags origin +refs/heads/upstream/main:refs/remotes/origin/upstream/main +refs/heads/provenance/fixed-main:refs/remotes/origin/provenance/fixed-main
 
       - name: Set up JDK
+        if: steps.scope.outputs.needs_product == 'true'
         uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
         with:
           java-version-file: .github/.java-version
           distribution: temurin
 
       - name: Set up Gradle
+        if: steps.scope.outputs.needs_product == 'true'
         uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
 
       - name: Check code format
+        if: steps.scope.outputs.needs_product == 'true'
         run: ./gradlew spotlessCheck
 
       - name: Run Desktop JVM tests
         id: desktop_tests
+        if: steps.scope.outputs.needs_product == 'true'
         run: ./gradlew :app-desktop:jvmTest
 
       - name: Upload test report
