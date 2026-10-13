@@ -11,11 +11,13 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.PixelCopy
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
+import android.view.Window
 import androidx.test.platform.app.InstrumentationRegistry
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
@@ -25,6 +27,7 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.loader.DownloadPageLoader
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
+import eu.kanade.tachiyomi.ui.reader.viewer.pager.DisplayPage
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPagerPageHolder
 import org.json.JSONArray
@@ -186,7 +189,15 @@ class R3DownloadProbeInstrumentationTest {
                     override fun onActivityCreated(created: Activity, state: Bundle?) {
                         if (created is ReaderActivity) {
                             activity = created
-                            observer = Observer(created, expected, references, started, originalReferences)
+                            observer = Observer(
+                                created,
+                                expected,
+                                references,
+                                started,
+                                originalReferences,
+                                traceNative = args.getString("traceNative") == "true",
+                                traceKeys = args.getString("actionInput") == "page-key",
+                            )
                             observer!!.start()
                             installed = true
                         }
@@ -217,6 +228,7 @@ class R3DownloadProbeInstrumentationTest {
             // Explicit source navigation uses the actual Viewer entry; it never reseeds a budget.
             val actions = args.getString("actions").orEmpty().split(";").filter(String::isNotBlank)
             val actionResults = JSONArray()
+            var fastPlannedAt = System.nanoTime()
             for (action in actions) {
                 val parts = action.split(":")
                 check(parts.size == 3) { "actions are target:expectedCSV:delayMs separated by semicolons" }
@@ -224,21 +236,35 @@ class R3DownloadProbeInstrumentationTest {
                 val pair = parts[1].split(",").map(String::toInt)
                 val interval = parts[2].toLong()
                 val fast = args.getString("condition") == "fast"
-                if (!fast) Thread.sleep(interval)
+                if (fast) {
+                    val waitNs = fastPlannedAt - System.nanoTime()
+                    if (waitNs > 0) TimeUnit.NANOSECONDS.sleep(waitNs)
+                } else {
+                    Thread.sleep(interval)
+                }
                 var navigationAt = 0L
                 val tap = args.getString("actionInput") == "tap"
                 val swipe = args.getString("actionInput") == "swipe"
+                val pageKey = args.getString("actionInput") == "page-key"
                 val tapPoint = FloatArray(4)
+                val inputObservation = JSONObject().put("intendedTargetReaderPage", next)
+                    .put("plannedIntervalMs", interval).put("timestampsAreObserved", true)
+                var keyCode = KeyEvent.KEYCODE_PAGE_DOWN
                 instrumentation.runOnMainSync {
                     val viewer = actualViewer(requireNotNull(activity))
                     val page = requireNotNull(viewer.adapter.currentChapter?.pages?.getOrNull(next - 1))
                     navigationAt = System.nanoTime()
                     observer!!.reset(pair, navigationAt)
-                    if (tap || swipe) {
-                        val current = viewer.adapter.session(requireNotNull(viewer.adapter.currentChapter))
+                    inputObservation.put("beforeSelection", navigationSelection(viewer))
+                    if (tap || swipe || pageKey) {
+                        val selected = viewer.adapter.items.getOrNull(viewer.pager.currentItem) as? DisplayPage
+                        val current = selected?.firstPage?.index ?: viewer.adapter
+                            .session(requireNotNull(viewer.adapter.currentChapter))
                             ?.location?.pageId?.sourcePageIndex ?: target - 1
                         val position = IntArray(2).also(viewer.pager::getLocationOnScreen)
                         val forward = next - 1 > current
+                        keyCode = if (forward) KeyEvent.KEYCODE_PAGE_DOWN else KeyEvent.KEYCODE_PAGE_UP
+                        inputObservation.put("forwardFromActualSelection", forward)
                         val start = if (swipe) {
                             if (forward) 0.25f else 0.75f
                         } else {
@@ -254,6 +280,10 @@ class R3DownloadProbeInstrumentationTest {
                 if (tap) {
                     val downAt = SystemClock.uptimeMillis()
                     MotionEvent.obtain(downAt, downAt, MotionEvent.ACTION_DOWN, tapPoint[0], tapPoint[1], 0).also {
+                        instrumentation.sendPointerSync(it)
+                        it.recycle()
+                    }
+                    MotionEvent.obtain(downAt, downAt + 20, MotionEvent.ACTION_UP, tapPoint[0], tapPoint[1], 0).also {
                         instrumentation.sendPointerSync(it)
                         it.recycle()
                     }
@@ -274,17 +304,34 @@ class R3DownloadProbeInstrumentationTest {
                     } finally {
                         send(MotionEvent.ACTION_UP, tapPoint[2])
                     }
-                    MotionEvent.obtain(downAt, downAt + 20, MotionEvent.ACTION_UP, tapPoint[0], tapPoint[1], 0).also {
-                        instrumentation.sendPointerSync(it)
-                        it.recycle()
-                    }
+                } else if (pageKey) {
+                    inputObservation.put("keyCode", keyCode).put("downSendObservedNs", System.nanoTime())
+                    instrumentation.sendKeySync(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+                    inputObservation.put("upSendObservedNs", System.nanoTime())
+                    instrumentation.sendKeySync(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+                    inputObservation.put("sendKeySyncReturnedObservedNs", System.nanoTime())
+                        .put("handlerAcceptance", "NOT_DIRECTLY_OBSERVED; selection change recorded separately")
                 }
+                instrumentation.runOnMainSync {
+                    val after = navigationSelection(actualViewer(requireNotNull(activity)))
+                    val before = inputObservation.getJSONObject("beforeSelection")
+                    inputObservation.put("afterInputSelection", after).put(
+                        "selectionAdvancedObserved",
+                        before.optInt("logicalReaderPage") != after.optInt("logicalReaderPage") ||
+                            before.getJSONArray("selectedReaderPages").toString() !=
+                            after.getJSONArray("selectedReaderPages").toString(),
+                    )
+                }
+                inputObservation.put("intentObservedNs", navigationAt)
                 if (fast) {
-                    val remaining = interval - (System.nanoTime() - navigationAt) / 1_000_000
-                    if (remaining > 0) Thread.sleep(remaining)
-                    actionResults.put(observer!!.await(0))
+                    inputObservation.put("plannedIntentNs", fastPlannedAt)
+                        .put("intentLatenessNs", (navigationAt - fastPlannedAt).coerceAtLeast(0))
+                    fastPlannedAt += TimeUnit.MILLISECONDS.toNanos(interval)
+                    val remaining = fastPlannedAt - System.nanoTime()
+                    if (remaining > 0) TimeUnit.NANOSECONDS.sleep(remaining)
+                    actionResults.put(observer!!.await(0).put("inputObservation", inputObservation))
                 } else {
-                    actionResults.put(observer!!.await(timeout))
+                    actionResults.put(observer!!.await(timeout).put("inputObservation", inputObservation))
                 }
             }
             val reopens = JSONArray()
@@ -300,6 +347,7 @@ class R3DownloadProbeInstrumentationTest {
                     when (args.getString("actionInput")) {
                         "tap" -> "native-pointer-tap"
                         "swipe" -> "native-pointer-swipe"
+                        "page-key" -> "native-hardware-page-key"
                         else -> "viewer.moveToPage"
                     },
                 )
@@ -364,6 +412,8 @@ class R3DownloadProbeInstrumentationTest {
         private val references: JSONObject,
         started: Long,
         private val originalReferences: JSONObject? = null,
+        private val traceNative: Boolean = false,
+        private val traceKeys: Boolean = false,
     ) : AutoCloseable, ViewTreeObserver.OnPreDrawListener {
         private val root = activity.window.decorView
         private var expected = expected
@@ -387,8 +437,52 @@ class R3DownloadProbeInstrumentationTest {
         private var pixelChecks = JSONObject()
         private val attachedAt = System.nanoTime()
         private val rejects = linkedMapOf<String, Int>()
+        private val nativeHistory = JSONArray()
+        private val nativeStates = linkedMapOf<String, String>()
+        private val nativeSnapshots = linkedMapOf<String, JSONObject>()
+        private val nativeFirstTimes = linkedMapOf<String, JSONObject>()
+        private var attachedNativeKeys = emptySet<String>()
+        private val firstActualDraws = linkedSetOf<String>()
+        private val firstGpuCallbacks = linkedSetOf<String>()
+        private var omittedNativeTraceEvents = 0
+        private val receivedKeys = JSONArray()
+        private var originalKeyCallback: Window.Callback? = null
+        private var keyCallback: Window.Callback? = null
+        private var lastFactPhaseState = ""
 
         fun start() {
+            if (traceKeys) {
+                val original = requireNotNull(activity.window.callback)
+                originalKeyCallback = original
+                val wrapper = object : Window.Callback by original {
+                    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+                        val observation = JSONObject().put("receivedObservedNs", System.nanoTime())
+                            .put("action", event.action).put("keyCode", event.keyCode)
+                            .put("keyName", KeyEvent.keyCodeToString(event.keyCode)).put("source", event.source)
+                            .put("deviceId", event.deviceId).put("flags", event.flags)
+                            .put("repeatCount", event.repeatCount)
+                            .put("downTimeMs", event.downTime).put("eventTimeMs", event.eventTime)
+                            .put("windowHasFocus", activity.hasWindowFocus()).put("decorHasFocus", root.hasFocus())
+                            .put("focusedView", activity.currentFocus?.javaClass?.name ?: "NONE")
+                        (activity.viewModel.state.value.viewer as? DualPageR2LPagerViewer)?.let {
+                            observation.put("beforeDispatchSelection", navigationSelection(it))
+                        }
+                        try {
+                            return original.dispatchKeyEvent(event).also {
+                                observation.put("originalWindowCallbackHandled", it)
+                            }
+                        } finally {
+                            (activity.viewModel.state.value.viewer as? DualPageR2LPagerViewer)?.let {
+                                observation.put("afterDispatchSelection", navigationSelection(it))
+                            }
+                            observation.put("forwardedReturnObservedNs", System.nanoTime())
+                            if (receivedKeys.length() < 128) receivedKeys.put(observation)
+                        }
+                    }
+                }
+                keyCallback = wrapper
+                activity.window.callback = wrapper
+            }
             root.viewTreeObserver.addOnPreDrawListener(this)
             root.invalidate()
         }
@@ -440,6 +534,41 @@ class R3DownloadProbeInstrumentationTest {
                         )
                     }
                 }
+                if (traceNative) {
+                    val target = owner.location?.pageId?.takeIf { it.sourcePageIndex + 1 in expected }
+                        ?: owner.identity.pageIds.getOrNull(expected.first() - 1)
+                    val marker = lastBudget.toString() + ":" + owner.layoutRevision + ":" +
+                        fieldOrNull(owner, "sampleWorkRevision") + ":" + fieldOrNull(owner, "factWorkRevision")
+                    if (marker != lastFactPhaseState) {
+                        lastFactPhaseState = marker
+                        val phase = JSONObject().put("kind", "BUDGET_AND_PURE_CERTIFICATION_OBSERVED")
+                            .put("sequence", sequence).put("readerPage", target?.sourcePageIndex?.plus(1))
+                            .put("budget", JSONObject(lastBudget.toString()))
+                            .put("ownerLayoutRevision", owner.layoutRevision)
+                        // SharedDualPageSession.certifyPairing builds a local proof only. Do not call
+                        // adapter.requirePairing or captureCertifiedViewport, which start/own work.
+                        val certificateQuery = owner.javaClass.methods.firstOrNull {
+                            it.name.startsWith("certifyPairing") && it.parameterCount == 1
+                        }
+                        val queryAt = System.nanoTime()
+                        try {
+                            val certificate = if (target != null) certificateQuery?.invoke(owner, target) else null
+                            phase.put(
+                                "certification",
+                                certificate?.javaClass?.simpleName ?: "NOT_AVAILABLE_IN_BASELINE",
+                            )
+                            val needs = certificate?.javaClass?.methods?.firstOrNull {
+                                it.name == "getFacts" && it.parameterCount == 0
+                            }?.invoke(certificate) as? Collection<*>
+                            phase.put("neededFacts", JSONArray(needs?.map { it.toString() }.orEmpty()))
+                        } catch (error: Exception) {
+                            phase.put("certification", "UNAVAILABLE: " + error.javaClass.simpleName)
+                        }
+                        phase.put("pureProofQueryNs", System.nanoTime() - queryAt)
+                            .put("observedNs", System.nanoTime()).put("jniCompletionMeasured", false)
+                        appendNativeTrace(phase)
+                    }
+                }
                 val analysis = owner.javaClass.methods.firstOrNull {
                     it.name.startsWith("originalAnalysis") && it.parameterCount == 1
                 }
@@ -457,9 +586,11 @@ class R3DownloadProbeInstrumentationTest {
             val counter = sampler.declaredFields.firstOrNull { it.name == "optionalJobs" }
                 ?.apply { isAccessible = true }?.get(null) as? kotlinx.coroutines.flow.StateFlow<*>
             observedOptionalJobs = maxOf(observedOptionalJobs, counter?.value as? Int ?: 0)
+            val attached = linkedSetOf<String>()
             for (image in views(root).filterIsInstance<ReaderPageImageView>()) {
                 val page = fieldOrNull(image, "page") as? ReaderPage ?: continue
                 val native = views(image).filterIsInstance<SubsamplingScaleImageView>().singleOrNull() ?: continue
+                if (traceNative) attached += observeNativeInstance(viewer, image, page, native)
                 if (native.isReady && page.index + 1 in expected) {
                     val event = events.getOrPut(page.index + 1) { JSONObject() }
                     if (!event.has("nativeReadyObservedNs")) event.put("nativeReadyObservedNs", System.nanoTime())
@@ -469,6 +600,21 @@ class R3DownloadProbeInstrumentationTest {
                     val original = image.onImageDrawn
                     val hook = {
                         original?.invoke()
+                        if (!closed && traceNative) {
+                            val bitmap = (fieldOrNull(image, "sampledPageBitmap") as? java.lang.ref.WeakReference<*>)
+                                ?.get() as? Bitmap
+                            val key = nativeKey(image, page, native) + ":" + page.encodedContentIdentity() + ":" +
+                                bitmap?.let(System::identityHashCode)
+                            if (firstActualDraws.add(key)) {
+                                nativeTrace(
+                                    "FIRST_ACTUAL_ON_IMAGE_DRAWN_CALLBACK",
+                                    image,
+                                    page,
+                                    native,
+                                    JSONObject().put("originalCallbackForwardedFirst", true),
+                                )
+                            }
+                        }
                         if (!closed && page.index + 1 in expected) {
                             events.getOrPut(page.index + 1) { JSONObject() }.put("lastActualDrawNs", System.nanoTime())
                             commit(image, page, native)
@@ -482,6 +628,16 @@ class R3DownloadProbeInstrumentationTest {
                 // A real earlier draw can outlive the ticket captured by its first GPU callback.
                 // Retry only from current production drawn/locked/bound evidence; never make a draw receipt.
                 if (native.isReady && page.index + 1 in expected) commit(image, page, native)
+            }
+            if (traceNative) {
+                for (key in attachedNativeKeys - attached) {
+                    val previous = nativeSnapshots[key] ?: continue
+                    appendNativeTrace(
+                        JSONObject(previous.toString()).put("kind", "INSTANCE_NO_LONGER_IN_TREE_OBSERVED")
+                            .put("observedNs", System.nanoTime()).put("sequence", sequence),
+                    )
+                }
+                attachedNativeKeys = attached
             }
             return true
         }
@@ -523,6 +679,22 @@ class R3DownloadProbeInstrumentationTest {
                 val committed = System.nanoTime()
                 lastCommit = committed
                 root.post {
+                    if (!closed && traceNative) {
+                        val key = nativeKey(image, page, native) + ":" + content + ":" + frame.id
+                        if (firstGpuCallbacks.add(key)) {
+                            nativeTrace(
+                                "FIRST_GPU_COMMIT_CALLBACK_FOR_CAPTURED_FRAME",
+                                image,
+                                page,
+                                native,
+                                JSONObject().put("capturedSequence", operation)
+                                    .put("capturedFrame", frame.id.toString()).put("capturedEncodedContent", content)
+                                    .put("gpuCallbackObservedNs", committed)
+                                    .put("capturedScopeMatchesMainSnapshot", holder.presentationScope == captured)
+                                    .put("pixelCorrectnessNotYetVerified", true),
+                            )
+                        }
+                    }
                     if (closed || operation != sequence) {
                         copyPending = false
                         return@post
@@ -682,6 +854,115 @@ class R3DownloadProbeInstrumentationTest {
             .put("verifiedFrameCapability", frameKey).put("pixelChecks", pixelChecks)
             .put("observerRejectCounts", JSONObject(rejects as Map<*, *>))
             .put("actualHolderFrames", holderFrames())
+            .put(
+                "keyDeliveryTrace",
+                JSONObject().put("enabled", traceKeys).put("events", JSONArray(receivedKeys.toString()))
+                    .put("windowHasFocusAtSnapshot", activity.hasWindowFocus())
+                    .put("windowCallbackClass", activity.window.callback?.javaClass?.name)
+                    .put("forwardingHookStillInstalled", traceKeys && activity.window.callback === keyCallback),
+            )
+            .put(
+                "nativeLifecycleTrace",
+                JSONObject().put("enabled", traceNative).put("clock", "System.nanoTime")
+                    .put("stateTimesAreObservedUpperBounds", true).put("jniDecodeCompletionMeasured", false)
+                    .put("firstCallbacksOnly", true).put("omittedEvents", omittedNativeTraceEvents)
+                    .put("events", JSONArray(nativeHistory.toString())),
+            )
+
+        private fun nativeKey(image: ReaderPageImageView, page: ReaderPage, native: SubsamplingScaleImageView): String =
+            page.chapter.chapter.id.toString() + ":" + (page.index + 1) + ":" +
+                System.identityHashCode(image) + ":" + System.identityHashCode(native)
+
+        private fun nativeTrace(
+            kind: String,
+            image: ReaderPageImageView,
+            page: ReaderPage,
+            native: SubsamplingScaleImageView,
+            extra: JSONObject = JSONObject(),
+        ): JSONObject {
+            val holder = generateSequence(image.parent) { it.parent }
+                .filterIsInstance<DualPagerPageHolder>().firstOrNull()
+            val scope = holder?.presentationScope
+            val frame = scope?.first?.frame(scope.second)
+            val key = nativeKey(image, page, native)
+            val generation = (holder?.let { fieldOrNull(it, "decodeGenerations") } as? Map<*, *>)?.get(page)
+            val boundEncoded = (holder?.let { fieldOrNull(it, "boundEncodedContents") } as? Map<*, *>)?.get(page)
+            val currentBinding = boundEncoded == page.encodedContentIdentity()
+            val phaseKey = key + ":" + page.encodedContentIdentity() + ":" + generation
+            val firstTimes = nativeFirstTimes.getOrPut(phaseKey) { JSONObject() }
+            val value = extra.put("kind", kind).put("sequence", sequence)
+                .put("instanceKey", key).put("chapterId", page.chapter.chapter.id).put("readerPage", page.index + 1)
+                .put("encodedContent", page.encodedContentIdentity()).put("displayContent", page.contentIdentity())
+                .put("imageId", System.identityHashCode(image)).put("nativeId", System.identityHashCode(native))
+                .put("holderId", holder?.let(System::identityHashCode))
+                .put("nativeReady", native.isReady).put("nativeImageLoaded", native.isImageLoaded)
+                .put("decodeGeneration", generation).put("phaseKey", phaseKey)
+                .put("boundEncodedContent", boundEncoded).put("currentEncodedBinding", currentBinding)
+                .put("scope", scope?.second?.toString() ?: "NONE").put("frameId", frame?.id?.toString() ?: "NONE")
+                .put("drawnReaderPages", JSONArray(frame?.drawnPageIds?.map { it.sourcePageIndex + 1 }.orEmpty()))
+                .put("lockedReaderPages", JSONArray(frame?.lockedPageIds?.map { it.sourcePageIndex + 1 }.orEmpty()))
+            val observedAt = System.nanoTime()
+            fun first(name: String) {
+                if (!firstTimes.has(name)) firstTimes.put(name, observedAt)
+            }
+            if (value.getBoolean("nativeReady") && currentBinding) first("nativeReadyFirstObservedNs")
+            if (extra.optBoolean("computedObserved") && extra.optBoolean("ownerContentMatchesCurrentPage")) {
+                first("computedFirstObservedNs")
+            }
+            if (kind == "FIRST_ACTUAL_ON_IMAGE_DRAWN_CALLBACK" && currentBinding) {
+                first("actualDrawCallbackFirstObservedNs")
+            }
+            // Binding belongs to this later Main snapshot, not to the earlier GPU callback.
+            value.put("observedNs", observedAt).put("firstTimesObservedUpper", JSONObject(firstTimes.toString()))
+            nativeSnapshots[key] = value
+            appendNativeTrace(value)
+            return value
+        }
+
+        private fun appendNativeTrace(value: JSONObject) {
+            if (nativeHistory.length() < 512) nativeHistory.put(value) else omittedNativeTraceEvents++
+        }
+
+        private fun observeNativeInstance(
+            viewer: DualPageR2LPagerViewer,
+            image: ReaderPageImageView,
+            page: ReaderPage,
+            native: SubsamplingScaleImageView,
+        ): String {
+            val key = nativeKey(image, page, native)
+            val owner = viewer.adapter.session(page.chapter)
+            val id = owner?.identity?.pageIds?.getOrNull(page.index)
+            val analysis = owner?.javaClass?.methods?.firstOrNull {
+                it.name.startsWith("originalAnalysis") && it.parameterCount == 1
+            }
+            val evidence = if (owner != null && id != null) analysis?.invoke(owner, id)?.toString() else null
+            val ownerContent = owner?.identity?.content?.getOrNull(page.index)?.contentVersion
+            val bitmap = (fieldOrNull(image, "sampledPageBitmap") as? java.lang.ref.WeakReference<*>)?.get() as? Bitmap
+            val bitmapId = bitmap?.let(System::identityHashCode) ?: 0
+            val recycled = bitmap?.isRecycled == true
+            val state = listOf(
+                sequence,
+                page.encodedContentIdentity(),
+                native.isReady,
+                native.isImageLoaded,
+                bitmapId,
+                recycled,
+                evidence,
+            ).joinToString("|")
+            if (nativeStates[key] != state) {
+                nativeStates[key] = state
+                val observation = JSONObject().put("analysis", evidence ?: "NOT_AVAILABLE_IN_BASELINE")
+                    .put("computedObserved", evidence?.startsWith("Computed") == true)
+                    .put("ownerEncodedContent", ownerContent)
+                    .put("ownerContentMatchesCurrentPage", ownerContent == page.encodedContentIdentity())
+                    .put("bitmapId", bitmapId).put("bitmapRecycled", recycled)
+                    .put("bitmapWidth", if (bitmap != null && !recycled) bitmap.width else 0)
+                    .put("bitmapHeight", if (bitmap != null && !recycled) bitmap.height else 0)
+                    .put("bitmapConfig", if (bitmap != null && !recycled) bitmap.config?.name else "UNAVAILABLE")
+                nativeTrace("NATIVE_OR_BITMAP_OR_ANALYSIS_STATE_OBSERVED", image, page, native, observation)
+            }
+            return key
+        }
 
         private fun reject(reason: String) {
             rejects[reason] = (rejects[reason] ?: 0) + 1
@@ -790,12 +1071,33 @@ class R3DownloadProbeInstrumentationTest {
 
         override fun close() {
             closed = true
+            if (keyCallback != null && activity.window.callback === keyCallback) {
+                originalKeyCallback?.let { activity.window.callback = it }
+            }
             root.viewTreeObserver.removeOnPreDrawListener(this)
             hooks.forEach { (image, hook) -> if (image.onImageDrawn === hook) image.onImageDrawn = originals[image] }
         }
     }
 
     private companion object {
+        fun navigationSelection(viewer: DualPageR2LPagerViewer): JSONObject {
+            val selected = viewer.adapter.items.getOrNull(viewer.pager.currentItem) as? DisplayPage
+            val current = fieldOrNull(viewer, "currentPage")
+            val owner = viewer.adapter.currentChapter?.let(viewer.adapter::session)
+            return JSONObject().put("observedNs", System.nanoTime()).put("pagerItem", viewer.pager.currentItem)
+                .put("selectedReaderPages", JSONArray(selected?.visiblePages?.map { it.index + 1 }.orEmpty()))
+                .put("logicalReaderPage", owner?.location?.pageId?.sourcePageIndex?.plus(1))
+                .put("locationSequence", owner?.location?.sequence)
+                .put("viewerClass", viewer.javaClass.name).put("currentPageType", current?.javaClass?.name ?: "NONE")
+                .put(
+                    "currentPageReaderPages",
+                    JSONArray((current as? DisplayPage)?.visiblePages?.map { it.index + 1 }.orEmpty()),
+                )
+                .put("replacingPairing", fieldOrNull(viewer, "replacingPairing"))
+                .put("gestureInProgress", fieldOrNull(viewer, "gestureInProgress"))
+                .put("idle", fieldOrNull(viewer, "isIdle"))
+        }
+
         fun actualViewer(activity: ReaderActivity) = requireNotNull(
             activity.viewModel.state.value.viewer as? DualPageR2LPagerViewer,
         )
