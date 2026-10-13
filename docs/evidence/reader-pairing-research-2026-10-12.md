@@ -506,3 +506,14 @@ R3-04仍需要定向优化：画面和字节预算已有实际链证据；冷／
 第六宿主取消恢复 `r304-sixth-native-cancellation-recovery.json` 亦JUnit 1/1通过：退出前剩余预算14,289ms，真实JNI阻塞约1,165ms时Activity销毁使job取消，随后释放并唯一回收／关闭，没有取消后继续区域解码，工作归零，重开8/9实际像素正确。上述50行修改仅在替换分支，不影响该已通过的取消分支，故复用其有效证据，不重复无关运行。
 
 **本批结论：跨导航滞留RESOURCE导致原图Ready却不再分析的缺陷，已在隔离研究代码及实际Android Debug链路中修复。** 组合证据为既有16项定向回归、格式／测试构建、第五红→第六绿及第六取消恢复；不是最终代码重新全量通过，也不证明用户历史真机黑页都由此造成。专用AVD已关闭，未操作实体设备、合入主干或发布。R3-04继续保持“需要定向优化”：约250ms冷／热退化、普通翻页增量及无边界长前缀16页上限尚未关闭。下一改进仍是本报告既有的合格正常位图／已持有编码数据复用与内容指纹派生索引预研，必须先证明输入等价、身份失效和收益，不能放宽三个用户目标或当前资源上限。
+
+### 用户自行体验的 Windows／Android 构建
+
+2026-10-13，用户明确要求分别构建Windows与Android体验包，并要求Android使用不同签名、不覆盖平板现有安装。两端均从干净研究提交 `a1e5abeb4b3f153502c6dad0c0979d0dad429961` 构建，production输入指纹仍为 `38d27fe48d8aa7dfd4c10b0f262b577dc78744e521b435bbe6a97e01ec22d853`，与已验收的第六宿主相同；没有产品代码变更、正式版本分配、全量测试或主干合并。
+
+- Windows使用统一入口的Windows实现 `scripts/build-windows.ps1 -Preview`，经协调器 `pairing-r3-user-windows-preview` 串行执行。构建及production打包运行时的漫画柜扩展安装／加载检查通过；原生交互仍为NOT_RUN，留用户体验。版本 `0.11.19.91.a1e5abe`，日志 `Final unpacked EXE:` 对应的实际交付为 [Mihon Desktop.exe](D:/Codex/worktrees/reader-pairing-research-20261012/app-desktop/artifacts/preview/windows/20261013T074044Z-132b769c/Mihon-Desktop-0.11.19.91.a1e5abe-unpacked/Mihon%20Desktop.exe)，同级上层 `preview-manifest.json` 记录源码、完整性和分层状态。未启动普通窗口或停止既有桌面实例；正常打开仍使用现有Desktop配置，用户体验前需退出旧实例。
+- Android通过 `python scripts/build-android.py debug --offline` 生成新增第七份宿主，并以统一 `verify --artifact` 复核。交付 [Android独立Debug体验包](D:/Codex/worktrees/reader-pairing-research-20261012/app/artifacts/android/0.19.4-aex.59-vc77-a1e5abeb4b-debug-414f39fc86ff/Mihon-Fork-0.19.4-aex.59-vc77-debug-universal.apk)，SHA-256=`315906349bcd4de635abd06d7304ec86e187250a66ed5dc7bcbdf39334653f6e`，versionName=`0.19.4-aex.59-9485`、versionCode=77、四ABI。包名 `.fork.dev`，Debug证书 `fb141e4e749dc634a3d5d79e179a1057ab81fa1fd7cb5077b6dfeccfe11f3079`；使用已有调试证书，没有替换或生成正式密钥。只构建与验签，未安装本轮新APK，未把上一宿主运行结果描述为新二进制运行验收。
+
+主代理只读核对当前平板包列表，已有 `app.mihon` 与 `app.mihon.desktop.fork`，无 `.fork.dev`；只读取得正式APK并验签，实际证书为 `bd8e3af75921fc4356deacabd44a3d491fda8439ffbc7d073c363974a648cae3`。新APK实际manifest四个provider authority均为 `.fork.dev` 前缀，无sharedUserId。独立核查代理复核既有签名／包名规则和外部存储边界；本轮没有ADB写入或读取私人业务数据。
+
+两版Android可并存且私有配置／数据库隔离，但launcher名称均为“Mihon”。体验版可按版本号 `0.19.4-aex.59-9485` 辨认。默认外部目录由app_name取“Mihon”，不按包名再隔离；为保持下载文件独立，首次设置应选择例如 `Mihon-R3-Preview` 的单独目录。不能把不同包名等同于用户手工选择相同目录时文件也独立。体验包包含已有研究修复，仍保留前述耗时退化及部分冷跳缺口，不作为完整预研通过或正式发布。
