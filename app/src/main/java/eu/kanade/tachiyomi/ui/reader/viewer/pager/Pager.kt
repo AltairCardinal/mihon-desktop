@@ -4,6 +4,7 @@ import android.content.Context
 import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.View
 import androidx.viewpager.widget.DirectionalViewPager
 import eu.kanade.tachiyomi.ui.reader.viewer.GestureDetectorWithLongTap
 
@@ -74,6 +75,21 @@ open class Pager(
             super.onInterceptTouchEvent(ev)
         } catch (e: IllegalArgumentException) {
             false
+        }
+    }
+
+    /** Start the pager's distance/velocity history where a zoomed direct child yields its drag. */
+    internal fun rebaseDragFromChild(child: View, event: MotionEvent) {
+        require(child.parent === this)
+        val down = MotionEvent.obtain(event)
+        try {
+            down.action = MotionEvent.ACTION_DOWN
+            down.offsetLocation((child.left - scrollX).toFloat(), (child.top - scrollY).toFloat())
+            // Only reset the native pager recognizer. Dispatching another DOWN through the view
+            // tree or tap detector would cancel the child or manufacture a second user gesture.
+            super.onInterceptTouchEvent(down)
+        } finally {
+            down.recycle()
         }
     }
 

@@ -294,8 +294,9 @@ class DualPagerPageHolder(
                 val outward = (distanceX > 0f && translateX <= -maxX) ||
                     (distanceX < 0f && translateX >= maxX)
                 if (!hadMultiplePointers && horizontalDrag && outward) {
-                    // The parent saw DOWN before we claimed the zoomed viewport. Let it intercept
-                    // the next MOVE from this same drag; only the whole frame can turn pages.
+                    // The original DOWN belongs to image panning. The pager must measure only
+                    // movement after this boundary, otherwise its first MOVE replays that pan.
+                    (parent as? Pager)?.rebaseDragFromChild(this@DualPagerPageHolder, e2)
                     handedToPager = true
                     parent?.requestDisallowInterceptTouchEvent(false)
                 }
