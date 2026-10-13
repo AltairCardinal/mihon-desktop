@@ -460,3 +460,33 @@ R3-04仍需要定向优化：画面和字节预算已有实际链证据；冷／
 专用 API36 AVD 的真实 DownloadPageLoader 读取虚构176页控制章：8/9起读，PAGE_DOWN前进20屏至48/49，再PAGE_UP回退20屏至8/9。`r304-fix-natural-vector-eviction-return-direction-retry.json` 及 runner 回执证明初始加40次翻页共41个正确GPU画面、40次实际选择变化、JUnit 1/1通过。缓存中仅剩37～52页向量，8/9的向量和原始向量均已自然淘汰，但两页Computed分析及8/9的Computed(score=null)仍保留。回到8/9时正确显示，当前location的attempted与active均空、新增可选读取0B、当前可选任务0。汇总为 `r304-natural-vector-eviction-summary.json`。
 
 首轮只读探针未取得私有direction，故没有具体边证据；补正反射后首次调用又在JUnit开始前遇到ADB连接重置，原失败回执保留，不计产品失败或通过。随后上述独立文件名的完整补验通过。该结果只关闭运行期样本淘汰项：未统计普通图片I/O，不宣称零I/O；不存在持久分析缓存，不宣称其损坏恢复通过；每屏等待正确GPU结果，不充当300ms或成对耗时测试。取消恢复、内容替换仍待实际ART覆盖，原耗时与16页预算缺口仍未关闭。
+
+### R3-04 JNI 读取中取消与重开恢复
+
+研究提交 `00cb84bd62` 只增加单方法 instrumentation `directoryDownloadCancelsInFlightOriginalJniAndRecovers`，复用第五宿主。定向格式与测试APK编译通过（协调器 `pairing-r3-native-cancellation-test-assemble`）；测试 APK SHA-256=`eda6e72b85a19ba5a9c4d1c46e2f802bffc212fa01849bfaa3f9b27650cc8fa5`。真实 DownloadPageLoader 的页2流原样转发，仅在真实 native factory 内物理EOF处设有界测试阻塞，header读取不阻塞、不替换字节、不注入事实；安装时原分析为NotAnalyzed且请求尚未发出。
+
+`r304-fix-native-cancellation-recovery.json` 和完整runner证明 JUnit 1/1通过。finish前真实matchingJob active、未取消、未结束，剩余预算14,193ms；真实Activity销毁后该同一Job已取消但未结束，物理流尚未关闭，测试暂停1,190.173ms，排除15秒预算自然到期。释放EOF阻塞后该Job完成，命中的JNI实例创建1次、回收1次、物理流close调用及返回各1次，没有在取消后继续区域解码；optionalWork和foregroundWork均为0。重新打开真实ReaderActivity，DownloadPageLoader的8/9两页PixelCopy正确。
+
+这补齐受控JNI读取中的取消恢复场景，不能据此认定用户现场黑页均由取消造成或已修复；真实内容替换仍待验证，耗时退化及无边界长前缀超过16页预算的问题保持未关闭。未重跑性能矩阵、未增加宿主或操作真机。
+
+### R3-04 内容替换发现 RESOURCE 跨导航滞留
+
+新增替换instrumentation复用实际JNI EOF控制点，真实备份并覆盖下载目录的002.png为冻结012.png，原新SHA分别为`95baed5bd48045a2302800000fd049f1f570dcff01b3257abf2bd4115f064ca7`、`d126ae41b84517235e2cfbdc83d0e7f0ce025e882f997fcba4f189a10bca4cb9`。最终像素参考明确映射2→12、3→3；两份参考的8个mandatory坐标相同、3点颜色不同。首次测试代码错误地按普通参考点数组下标比较（72点对55点），替换前越界；原失败`r304-fix-native-content-replacement.json`保留。改为仅按mandatory坐标严格匹配，未截短或放宽PixelCopy判据。
+
+定向格式与修正后测试APK编译通过，协调器`pairing-r3-native-replacement-oracle-test-assemble`，测试包SHA-256=`bcfe27db0c33eb866dbfa45bd68aecb1636f0b7b08e1b3d09d0d2fb7358f8bea`；仍为第五宿主。扩展gate后的取消回归`r304-fix-native-cancellation-after-replacement-probe.json`实际JUnit 1/1通过，后续仅oracle比较修正，不影响该证据。
+
+`r304-fix-native-content-replacement-oracle-fixed.json`实际JUnit 1/1失败，原始记录保留：旧页2请求`2:1`在JNI读取中，文件实际替换后内容为`2:2`；生产store已传播新身份、旧票据owns=false，放行旧JNI后旧分析未被接纳，旧实例create/recycle/physical close各1。随后真实Viewer导航到2/3，location由0变1，却等待20秒无正确画面。末态页2的encoded和native均Ready，但分析明确为新`2:2`的`RetryableFailure(RESOURCE)`，holder scope为NONE；新预算attempted/active为空、新增读取0，optional任务0，新内容采样JNI创建0。finally确认原下载文件已恢复。
+
+已证实阻塞路径：`SharedDualPageSession.goToPage`建立新预算却保留`sampleFailures`及RetryableFailure；Android `preparationNeeds`对RetryableBlocked只自动排入DIMENSIONS且NotAnalyzed的需求，RESOURCE导致新位置不再取证。旧批结束后原预算拒绝再次准入页2、进而记录RESOURCE，是由代码分支和原attempted证据支持的推断，未取得该reserve调用的逐次日志。该试验确认一种“原图Ready但分析不恢复”的机制，不能直接认定此前真机故障同因。
+
+下一步窄TDD：新的有效导航仅解除RESOURCE瞬态分析失败，保留Computed/scalar、READ/UNSUPPORTED以及旧票据拒收；同一location不清失败、不更新预算。需共享规则、Android真实接线及Desktop受影响契约验证。原图身份边界已通过此试验，但自动恢复尚未通过；耗时及长前缀预算缺口仍未关闭。新的production ART验证必须在修复可审阅且focused通过后再申请第六宿主，第五宿主额度不能冒充可验证新代码。
+
+### R3-04 跨导航瞬态资源失败的定向修复
+
+研究提交 `ed09b77874`：仅在既有成功`goToPage`/`navigate`建立新位置时，清理RESOURCE页面失败与对应sampleFailures；保留Computed、标量边、READ/UNSUPPORTED等非RESOURCE失败、旧票据拒收及同一location预算。production两个共享文件新增10行，没有Android独立规则、自动续预算或后台重试。批次5文件491增15删，主要为真实内容替换的instrumentation和回归；这些测试分别提供故障证据与共享/原生接线验证，属于同一个可审阅恢复修复，未因行数拆出独立框架。
+
+红绿证据：共享新增方法先因新location仍RetryableBlocked正确失败；Android新增方法初次存在JUnit断言参数顺序编译错误，修正后曾在夹具前置超时（起始页4不能保证目标两页同批），均保留、不计正确红。仅将夹具起始页改回既有批处理用例的2并加实际解码诊断后，真实PNG替换→旧位置RESOURCE→真实moveToPage路径在新位置认证阶段正确失败，进而在上述最小修复后转绿。共享新增方法包含两导航入口×两类缺失证据×三种失败原因共12组场景，仍计为1个JUnit方法。共享只读反射用于核查标量保留，绑定当前Android/JVM测试目标，不是可跨未来JS/Native运行的反射接口。
+
+最终定向回归与格式通过：协调器 `pairing-r3-resource-navigation-regression`，共享7、Android7、Desktop2，共16个JUnit方法，零失败/跳过。Android包含替换后新PNG实际再次解码、认证及native holder新像素绘制，旧整批拒收、资源上限、既有Retry、邻帧未画伙伴可达及已画宽图稳定；Desktop复用实际model重试和内容替换接线。红/绿/回归XML分别冻结在研究树 `.gradle-coordinator/research-evidence/r3-resource-navigation-{red,green,regression}/`，组合证据不称全量通过。
+
+当前第五宿主仍不含该修复，实际ART自动恢复验收仍未完成。下一最小动作是获准追加一份第六Debug宿主，通过统一构建入口、核验后仅安装专用AVD，重跑实际内容替换和受影响取消恢复；不重跑原性能矩阵、不操作真机、不发布或合入主干。R3-04仍未完成，原约250ms冷/热耗时退化及无边界冷跳16页上限缺口不因这项恢复修复而消失。
