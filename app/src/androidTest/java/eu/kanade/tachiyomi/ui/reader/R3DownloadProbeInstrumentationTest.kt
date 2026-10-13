@@ -76,6 +76,12 @@ class R3DownloadProbeInstrumentationTest {
         val record = (0 until chapters.length()).map(chapters::getJSONObject).single { it.getString("id") == fixture }
         val references = JSONObject(File(inputRoot, "pixel-reference.json").readText(Charsets.UTF_8))
             .getJSONObject("chapters").getJSONObject(fixture)
+        val originalReferenceFile = File(inputRoot, "original-point-reference.json")
+        val originalReferences = if (originalReferenceFile.isFile) {
+            JSONObject(originalReferenceFile.readText(Charsets.UTF_8)).getJSONObject("chapters").optJSONObject(fixture)
+        } else {
+            null
+        }
         val provider = Injekt.get<DownloadProvider>()
         val source = requireNotNull(Injekt.get<SourceManager>().get(LocalSource.ID))
         val fixtureNumber = listOf("vol08-176", "vol09-surrogate-176", "control-no-reset-176").indexOf(fixture)
@@ -180,7 +186,7 @@ class R3DownloadProbeInstrumentationTest {
                     override fun onActivityCreated(created: Activity, state: Bundle?) {
                         if (created is ReaderActivity) {
                             activity = created
-                            observer = Observer(created, expected, references, started)
+                            observer = Observer(created, expected, references, started, originalReferences)
                             observer!!.start()
                             installed = true
                         }
@@ -328,6 +334,7 @@ class R3DownloadProbeInstrumentationTest {
         expected: List<Int>,
         private val references: JSONObject,
         started: Long,
+        private val originalReferences: JSONObject? = null,
     ) : AutoCloseable, ViewTreeObserver.OnPreDrawListener {
         private val root = activity.window.decorView
         private var expected = expected
@@ -427,6 +434,7 @@ class R3DownloadProbeInstrumentationTest {
                 if (native.isReady && page.index + 1 in expected) {
                     val event = events.getOrPut(page.index + 1) { JSONObject() }
                     if (!event.has("nativeReadyObservedNs")) event.put("nativeReadyObservedNs", System.nanoTime())
+                    observeNormalBitmap(image, native, event)
                 }
                 if (image.onImageDrawn != null && image.onImageDrawn !== hooks[image]) {
                     val original = image.onImageDrawn
@@ -648,6 +656,84 @@ class R3DownloadProbeInstrumentationTest {
 
         private fun reject(reason: String) {
             rejects[reason] = (rejects[reason] ?: 0) + 1
+        }
+
+        private fun observeNormalBitmap(
+            image: ReaderPageImageView,
+            native: SubsamplingScaleImageView,
+            event: JSONObject,
+        ) {
+            // This is the app's already observed whole-image weak reference, never SSIV private data.
+            val reference = fieldOrNull(image, "sampledPageBitmap") as? java.lang.ref.WeakReference<*> ?: return
+            val bitmap = reference.get() as? Bitmap ?: return
+            if (bitmap.isRecycled) return
+            val config = image.decodedSideConfig ?: return
+            val old = event.optJSONObject("normalBitmap")
+            val bitmapId = System.identityHashCode(bitmap)
+            if (old?.optInt("bitmapId") == bitmapId && old.has("fixedPointComparison")) return
+            val dimensionsEqual = bitmap.width == native.sWidth && bitmap.height == native.sHeight
+            val observation = JSONObject().put("observedNs", System.nanoTime()).put("bitmapId", bitmapId)
+                .put("width", bitmap.width).put("height", bitmap.height)
+                .put("originalWidth", native.sWidth).put("originalHeight", native.sHeight)
+                .put("config", bitmap.config?.name).put("hardware", bitmap.config == Bitmap.Config.HARDWARE)
+                .put("colorSpace", bitmap.colorSpace?.name).put("isSrgb", bitmap.colorSpace?.isSrgb)
+                .put("hasAlpha", bitmap.hasAlpha()).put("premultiplied", bitmap.isPremultiplied)
+                .put("allocationBytes", bitmap.allocationByteCount)
+                .put("sourceOrientation", config.sourceOrientation.toString())
+                .put("cropBorders", config.cropBorders).put("hasSourceBounds", config.sourceBounds != null)
+                .put("rawDimensionsEqual", dimensionsEqual)
+                .put("fixedPointEquivalence", "NOT_TESTED; dimensions alone cannot authorize reuse")
+            val original = originalReferences?.optJSONObject(event.optInt("readerPage").toString())
+            if (original != null && dimensionsEqual && !config.cropBorders && config.sourceBounds == null &&
+                config.sourceOrientation.toString() == "NORMAL" && bitmap.config != Bitmap.Config.HARDWARE &&
+                bitmap.colorSpace?.isSrgb == true && original.getBoolean("entireImageOpaque") &&
+                !original.getJSONObject("color").getBoolean("embeddedICC")
+            ) {
+                var count = 0
+                var exact = 0
+                var opaque = 0
+                var maxChannelDifference = 0
+                try {
+                    for (side in listOf("left", "right")) {
+                        val points = original.getJSONArray(side)
+                        for (index in 0 until points.length()) {
+                            val point = points.getJSONArray(index)
+                            val actual = bitmap.getPixel(point.getInt(0), point.getInt(1))
+                            val expectedColor = point.getInt(2)
+                            count++
+                            if (actual == expectedColor) exact++
+                            if (actual ushr 24 == 255) opaque++
+                            for (channel in 0..3) {
+                                maxChannelDifference = maxOf(
+                                    maxChannelDifference,
+                                    kotlin.math.abs(
+                                        ((actual ushr (channel * 8)) and 255) -
+                                            ((expectedColor ushr (channel * 8)) and 255),
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                    observation.put(
+                        "fixedPointComparison",
+                        JSONObject().put("count", count)
+                            .put("exact", exact).put("opaque", opaque).put("tolerance", 0)
+                            .put("maxChannelDifference", maxChannelDifference)
+                            .put("referenceSha256", original.getString("sha256")),
+                    )
+                    observation.put(
+                        "fixedPointEquivalence",
+                        if (count == 388 && exact == count && opaque == count) {
+                            "OPAQUE_UNPROFILED_REFERENCE_EXACT; reuse not enabled"
+                        } else {
+                            "NOT_EQUIVALENT; reuse not enabled"
+                        },
+                    )
+                } catch (error: RuntimeException) {
+                    observation.put("fixedPointComparison", "UNAVAILABLE: " + error.javaClass.simpleName)
+                }
+            }
+            event.put("normalBitmap", observation)
         }
 
         private fun holderFrames(): JSONArray = JSONArray(
