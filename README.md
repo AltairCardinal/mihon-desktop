@@ -1,72 +1,75 @@
 <p align="center">
-  <img src="./app-desktop/src/main/resources/icons/mihon-desktop.png" alt="Mihon Desktop 图标" width="112" height="112">
+  <img src="./app-desktop/src/main/resources/icons/mihon-desktop.png" alt="Mihon Desktop icon" width="112" height="112">
 </p>
 
 <h1 align="center">Mihon Desktop</h1>
 
 <p align="center">
-  <strong>在电脑上阅读，在 Android 上继续，发现关注作者的更多作品。</strong>
+  <strong>Read on your desktop. Continue on Android. Discover more from the authors you follow.</strong>
 </p>
 
 <p align="center">
-  <a href="#get-started"><img src="https://img.shields.io/badge/status-early%20development-F6BF1A?labelColor=941454" alt="状态：早期开发"></a>
+  <a href="#get-started"><img src="https://img.shields.io/badge/status-early%20development-F6BF1A?labelColor=941454" alt="Status: early development"></a>
   <a href="https://github.com/AltairCardinal/mihon-desktop/actions/workflows/desktop-ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/AltairCardinal/mihon-desktop/desktop-ci.yml?branch=main&amp;label=Desktop%20CI" alt="Desktop CI"></a>
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-3072B3" alt="许可证：Apache 2.0"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-3072B3" alt="License: Apache 2.0"></a>
 </p>
 
 <p align="center">
-  <a href="#get-started">开始体验</a> ·
-  <a href="#features">功能</a> ·
-  <a href="#roadmap">开发方向</a> ·
-  <a href="#contribute">参与开发</a> ·
-  <a href="https://github.com/AltairCardinal/mihon-desktop/issues">问题反馈</a>
+  <a href="https://altaircardinal.github.io/mihon-desktop/">Project website</a> ·
+  <a href="#get-started">Get started</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#roadmap">Roadmap</a> ·
+  <a href="#contribute">Contribute</a> ·
+  <a href="https://github.com/AltairCardinal/mihon-desktop/issues">Issues</a>
 </p>
 
 <p align="center">
-  <a href="./README.md">English</a> · <strong>简体中文</strong>
+  <strong>English</strong> · <a href="./README.zh-CN.md">简体中文</a>
 </p>
 
 ---
 
-Mihon Desktop 是基于 [Mihon](https://github.com/mihonapp/mihon) 独立维护的开源项目。我们希望为 Mihon 增加更多富有野心的功能：桌面阅读、更智能的双页排版、多端阅读进度同步，以及围绕作者展开的作品管理和发现。
+Mihon Desktop is an independently maintained, open-source project based on [Mihon](https://github.com/mihonapp/mihon). We are extending the reading experience with desktop support, smarter double-page layouts, cross-device reading progress, and tools for following authors and discovering their work.
 
-Windows 是主要桌面目标平台。仓库同时维护 macOS 构建和本项目的 Android 应用，并通过 Kotlin 共享部分业务逻辑。
+Windows is the primary desktop target. This repository also includes macOS builds and its own Android app, with shared Kotlin code across platforms.
 
-> **早期开发阶段：** 下述功能描述对应当前源码版本。仓库尚未发布公开发行包，目前可以从源码构建体验版。欢迎参与试用、反馈问题和贡献代码。
+> **Early development:** This is a development project, not a stable release. Public release packages have not been published yet. You can build a preview from source, and early feedback and contributions are welcome.
 
 <a id="features"></a>
 
-## 功能
+## Features
 
-| 功能 | 当前开发版可体验的内容 |
+| Feature | What you can try in the development version |
 | --- | --- |
-| **桌面阅读** | 在桌面界面管理书库与下载，自定义阅读模式和阅读方向。 |
-| **双页阅读与跨页匹配** | 将相邻两页并排阅读，展示横版页面，并手动调整配对。桌面端通过相邻页面的图像边缘辅助识别跨页。Android 已支持双页阅读和手动配对，自动匹配属于后续开发方向。 |
-| **多端同步** | 通过专用 GitHub 私有仓库，在本项目兼容的桌面与 Android 构建间同步漫画收藏、作者关注、已读状态和阅读位置。 |
-| **作者关注与作品发现** | 关注作者，浏览作品及其不同来源版本，并定期检查已配置来源中新发现的作品。结果取决于来源的搜索能力和作者信息。 |
-| **作品语言信息** | 根据来源元数据、标签、标题或简介中的文本识别语言信息，并在桌面作者归档中手动校正。更完整的语言筛选属于后续开发方向。 |
+| **Desktop reading** | Manage your library and downloads in a desktop interface, with configurable reading modes and reading directions. |
+| **Double-page reading and spread matching** | Read two pages together, display wide pages, and adjust page pairing manually. Desktop spread matching uses adjacent image edges to help identify pages that belong together. Android supports double-page reading and manual pairing; automatic matching is a further development goal. |
+| **Multi-device sync** | Sync manga favorites, followed authors, read status, and reading position through a dedicated private GitHub repository, using compatible desktop and Android builds from this project. |
+| **Author following and discovery** | Follow authors, browse their works and source versions, and periodically check configured sources for newly discovered works. Results depend on the sources and author information available. |
+| **Language information** | Identify language information from source metadata, tags, and title or description text. The desktop author archive supports manual language corrections. Broader language filtering is part of the roadmap. |
 
-同步功能用于**本项目的构建版本之间**；上游 Mihon Android 应用没有实现这套同步协议。当前同步范围不包含已下载的章节图片。
+The sync feature connects **this project’s builds**; the upstream Mihon Android app does not implement this sync protocol. Downloaded chapter images are outside the current sync scope.
+
+The [feature guide](https://altaircardinal.github.io/mihon-desktop/features.html) is the maintained description of the fork’s features, workflows, and platform limits. The [change history](https://altaircardinal.github.io/mihon-desktop/changelog.html) records documentation updates. Future feature changes enter the public guide after explicit owner acceptance.
 
 <a id="get-started"></a>
 
-## 开始体验
+## Get started
 
-### 发布状态
+### Release status
 
-目前**尚无公开发行包**。发布后的构建可在 [Releases 页面](https://github.com/AltairCardinal/mihon-desktop/releases)查找；现阶段请按下述步骤从源码构建。
+There are currently **no public release packages**. The [Releases page](https://github.com/AltairCardinal/mihon-desktop/releases) is the place to check for published builds. For now, use the source-build instructions below.
 
-| 平台 | 当前范围 |
+| Platform | Current scope |
 | --- | --- |
-| **Windows** | 主要桌面开发与验证平台，可通过项目脚本构建本地体验版。 |
-| **macOS** | 已有桌面构建入口；体验版构建要求源码和产物目录位于 APFS 卷上。 |
-| **Android 8.0+** | 仓库维护独立 Android 应用，使用独立的应用 ID 和构建流程。 |
+| **Windows** | Primary desktop development and validation target; a local preview build is available through the project scripts. |
+| **macOS** | Desktop build path available; source and build output must be on APFS for the preview workflow. |
+| **Android 8.0+** | This repository maintains a separate Android app with its own build and application identity. |
 
-目前未配置 Linux 桌面打包和验收流程。
+Linux desktop packaging and validation are not currently configured.
 
-### 构建桌面体验版
+### Build a desktop preview
 
-安装 **Git、JDK 21、Python 3.11+**，将 `JAVA_HOME` 指向自己的 JDK 21 安装目录，并确保命令行可以调用 Git 和 Python。为共享构建中的 Android 模块配置 **Android SDK Platform 36** 和 **Build Tools 36.0.0**，通过 `ANDROID_HOME` 或 `local.properties` 指定自己的 SDK 路径。仓库已包含 Gradle wrapper。
+Install **Git**, **JDK 21**, and **Python 3.11+**. Set `JAVA_HOME` to your JDK 21 installation and make Git and Python available on your command line. Configure **Android SDK Platform 36** and **Build Tools 36.0.0** for the Android modules in the shared build, using your own SDK path through `ANDROID_HOME` or `local.properties`. The repository includes the Gradle wrapper.
 
 **Windows — PowerShell**
 
@@ -76,12 +79,12 @@ cd mihon-desktop
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1 -Preview
 ```
 
-脚本会在 `app-desktop/artifacts/preview/windows/` 下生成独立应用目录。运行构建日志中 **`Final unpacked EXE:`** 对应的执行文件，并保留完整应用目录。
+The build writes an isolated application directory under `app-desktop/artifacts/preview/windows/`. Open the executable at the **`Final unpacked EXE:`** path printed in the build log. Keep the complete application directory together.
 
 <details>
-<summary><strong>macOS — 终端</strong></summary>
+<summary><strong>macOS — Terminal</strong></summary>
 
-将仓库克隆到 APFS 卷后运行：
+Clone the repository onto an APFS volume, then run:
 
 ```bash
 git clone https://github.com/AltairCardinal/mihon-desktop.git
@@ -90,86 +93,88 @@ export JAVA_HOME=$(/usr/libexec/java_home -v 21)
 ./scripts/build-desktop.sh preview
 ```
 
-应用产物位于 `app-desktop/artifacts/preview/macos/` 下。
+The application is written under `app-desktop/artifacts/preview/macos/`.
 
 </details>
 
-体验版构建不会分配正式发行版本，也不会运行全量产品测试，适合开发和日常试用反馈。
+Preview builds do not allocate a release version or run the full product test suite. They are intended for development and hands-on feedback.
 
-Android 开发可在配置工具链后运行 `python scripts/build-android.py debug`。签名及其他构建模式见 [Android 构建指南](./docs/architecture/android-build-and-acceptance.md)。
+For Android development, use `python scripts/build-android.py debug` after setting up the toolchain. See the [Android build guide](./docs/architecture/android-build-and-acceptance.md) for signing and other build modes.
 
-### 体验一条阅读流程
+### Try a reading workflow
 
-1. 通过已配置的来源或本地书库添加阅读内容。
-2. 打开章节，尝试双页阅读；封面、横版页面或跨页配对不合适时，手动调整配对。
-3. 如需跨设备继续阅读，在本项目兼容版本的同步面板中连接 GitHub，创建或加入同一同步空间。
-4. 关注一位作者，浏览已配置来源中发现的作品。
+1. Add reading content through your configured sources or local library.
+2. Open a chapter and try double-page reading. Adjust the pairing if a cover, wide page, or split spread is placed incorrectly.
+3. To continue across devices, open the sync panel in compatible builds from this project, connect GitHub, and create or join the same sync space.
+4. Follow an author and explore the works found through your configured sources.
 
-桌面存储设置、下载迁移和恢复方法见[下载目录指南](./docs/desktop-download-directory.md)。
+Use the [download-directory guide](./docs/desktop-download-directory.md) for desktop storage settings, moving downloads, and recovery.
 
 <a id="roadmap"></a>
 
-## 开发方向
+## Roadmap
 
-长期目标是扩展 Mihon 的阅读体验、个人书库管理，以及围绕作者展开的作品发现能力。
+The long-term goal is to expand what Mihon can do for reading, keeping a personal library, and discovering more work from its authors.
 
-- **Windows 体验：** 改进日常阅读、打包和首次使用流程，为公开发行做好准备。
-- **更智能的双页阅读：** 改进跨页识别，在 Android 与桌面端逐步统一配对规则和自动匹配能力。
-- **可靠的多端接续：** 完善同步连接、冲突处理、阅读位置恢复和异常恢复。
-- **作者与作品发现：** 改进作者身份匹配、作品归组，以及在已配置来源中的发现能力。
-- **语言识别与筛选：** 改进作品语言信息，完善按阅读语言筛选作品的范围和交互。
+- **Windows experience:** Improve everyday reading, packaging, onboarding, and readiness for public releases.
+- **Smarter double-page reading:** Improve spread detection and bring shared pairing rules and automatic matching to Android and desktop.
+- **Reliable multi-device continuity:** Refine sync setup, conflict handling, progress restoration, and recovery.
+- **Author discovery:** Improve author identity matching, work grouping, and discovery across configured sources.
+- **Language recognition and filtering:** Improve language information and make filtering works by reading language more complete and accessible.
 
-以上是开发方向，具体范围与顺序会随实现进展和用户反馈调整。
+These are development directions. Scope and order will evolve with implementation work and user feedback.
 
 <a id="contribute"></a>
 
-## 参与开发
+## Contribute
 
-欢迎开发者、测试者、设计者，以及愿意改进文档和翻译的贡献者。
+We welcome developers, testers, designers, and people who can improve documentation or translations.
 
-| 方向 | 可以提供的帮助 |
+| Area | Useful contributions |
 | --- | --- |
-| **阅读器与图像处理** | 提供可复现的跨页配对案例，改进匹配算法和阅读交互。 |
-| **同步与共享 Kotlin 代码** | 改进多端行为、中断恢复，并补充相关回归测试。 |
-| **作者与语言信息** | 改进作者身份匹配、来源元数据处理，以及语言校正和筛选。 |
-| **桌面体验** | 修复 Windows 与 macOS 问题，改进键盘操作、无障碍体验和打包。 |
-| **文档与测试** | 完善安装说明和翻译，提交实际阅读过程中可复现的问题。 |
+| **Reader and image processing** | Reproducible spread-pairing cases, matching improvements, and reader interaction fixes. |
+| **Sync and shared Kotlin code** | Cross-device behavior, interrupted-sync recovery, and focused regression coverage. |
+| **Authors and language information** | Author identity matching, source metadata handling, and language correction and filtering. |
+| **Desktop experience** | Windows and macOS issues, keyboard navigation, accessibility, and packaging. |
+| **Documentation and testing** | Clear setup instructions, translations, and reproducible reports from real reading sessions. |
 
-可以从[本仓库 Issues](https://github.com/AltairCardinal/mihon-desktop/issues)开始。较大的改动请先说明要解决的问题和预期行为。Pull Request 应保持范围集中；影响产品行为的改动需遵循仓库的测试先行流程。
+Start with the [project Issues](https://github.com/AltairCardinal/mihon-desktop/issues). For a substantial change, describe the problem and proposed behavior before implementation. Keep pull requests focused, and follow the repository’s test-first workflow for changes that affect behavior.
 
-### 代码入口
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the contribution workflow and [the website’s contribution guide](https://altaircardinal.github.io/mihon-desktop/contributing.html) for ways to help. Public feature documentation is updated after the project owner explicitly accepts the corresponding iteration.
 
-| 路径 | 职责 |
+### Find your way around the code
+
+| Path | Responsibility |
 | --- | --- |
-| [`app-desktop/`](./app-desktop/) | 桌面界面、平台适配和桌面运行时。 |
-| [`app/`](./app/) | 本项目的 Android 应用。 |
-| [`domain/`](./domain/) 与 [`data/`](./data/) | 共享业务逻辑、数据模型和持久化。 |
-| [`source-api/`](./source-api/) 与 [`source-local/`](./source-local/) | 来源接口与本地内容支持。 |
-| [`docs/`](./docs/) | 设计方案、实施记录和技术指南。 |
+| [`app-desktop/`](./app-desktop/) | Desktop UI, platform integration, and desktop runtime. |
+| [`app/`](./app/) | This project’s Android app. |
+| [`domain/`](./domain/) and [`data/`](./data/) | Shared business logic, data models, and persistence. |
+| [`source-api/`](./source-api/) and [`source-local/`](./source-local/) | Source interfaces and local content support. |
+| [`docs/`](./docs/) | Design proposals, implementation records, and technical guides. |
 
-实现和验证约定见[仓库开发规则](./AGENTS.md)。纯文档修改不需要运行产品测试。
+Read the [repository development rules](./AGENTS.md) for implementation and validation conventions. Documentation-only changes do not require product tests.
 
-### 反馈问题
+### Report a problem
 
-请在[本仓库](https://github.com/AltairCardinal/mihon-desktop/issues)反馈本项目的问题，并提供：
+Please report this project’s issues in [this repository](https://github.com/AltairCardinal/mihon-desktop/issues). Include:
 
-- 操作系统，以及应用版本或提交号。
-- 复现步骤、预期结果与实际结果。
-- 截图或相关日志；移除凭据和个人信息。
-- 配对问题：页码、阅读方向和期望的页面排列。
-- 同步问题：涉及的平台，以及各设备最后执行的操作。
+- Your operating system and app version or commit.
+- Reproduction steps, expected behavior, and what actually happened.
+- Screenshots or relevant logs, with credentials and personal information removed.
+- For pairing problems: page numbers, reading direction, and the expected page arrangement.
+- For sync problems: the platforms involved and the last action taken on each device.
 
 <a id="credits"></a>
 
-## 致谢与许可证
+## Credits and license
 
-Mihon Desktop 建立在 [Mihon](https://github.com/mihonapp/mihon)、[Tachiyomi](https://github.com/tachiyomiorg/tachiyomi) 及其贡献者的工作之上。本项目独立维护开发与发布流程。
+Mihon Desktop builds on the work of [Mihon](https://github.com/mihonapp/mihon), [Tachiyomi](https://github.com/tachiyomiorg/tachiyomi), and their contributors. This is an independently maintained downstream project with its own development and release process.
 
-项目采用 [Apache License, Version 2.0](./LICENSE)，保留已有版权声明和归属：
+Licensed under the [Apache License, Version 2.0](./LICENSE). Existing copyright notices and attribution are preserved:
 
 ```text
 Copyright © 2015 Javier Tomás
 Copyright © 2024 Mihon Open Source Project
 ```
 
-本应用不托管漫画内容。开发者与应用所使用的内容提供者没有隶属关系。
+The application does not host manga content. Its developers are not affiliated with the content providers used through the application.

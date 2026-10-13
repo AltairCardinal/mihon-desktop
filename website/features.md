@@ -1,0 +1,94 @@
+---
+title: Current features
+description: What this independent fork adds to Mihon, and where the current boundaries are.
+---
+
+# Current features
+
+This is the single current feature guide for this fork. It focuses on what Mihon Desktop adds to the upstream Mihon experience; it is not a complete manual for every inherited feature.
+
+::: info Public documentation baseline · October 13, 2026
+The initial guide carries forward the repository’s already-public README and guides. It describes the early development source baseline, **not a public release or a new acceptance decision**. Future feature changes enter this guide only after the project owner explicitly accepts them. [See the documentation history](./changelog.md).
+:::
+
+| Addition | Desktop | This fork’s Android app |
+| --- | --- | --- |
+| Desktop reading | Windows is the primary target; macOS has a build entrypoint | Android remains a companion platform |
+| Two-page reading | Manual pairing and image-edge-assisted spread matching | Two-page reading and manual pairing |
+| Multi-device sync | Compatible builds share a GitHub-backed sync space | Compatible builds join the same space |
+| Author following and discovery | Follow authors and explore works from configured sources | Shared author behavior; interface and results depend on platform and sources |
+| Work language information | Metadata-based identification and manual correction in the author archive | Broader language filtering remains a development direction |
+
+## Desktop reading {#desktop-reading}
+
+Mihon’s reading and library experience gains a desktop home. Use the desktop interface to manage your library and downloads, open chapters, and choose a reading mode and direction.
+
+**Try it:** [build a desktop preview](./getting-started.md), add a work through a configured source or local library, then open a chapter.
+
+**Platform boundaries:** Windows is the primary desktop development and validation target. The repository also maintains a macOS build entrypoint; macOS preview builds require the source and output directories to be on an APFS volume. Linux desktop packaging and acceptance are not configured. A successful preview build does not establish release readiness.
+
+## Two-page reading and spread matching {#two-page-reading}
+
+Read adjacent pages side by side, display landscape pages, and adjust pairing manually when a cover or page sequence shifts the layout.
+
+**Try it:** open a chapter, select two-page reading, and inspect the page order. If a pair is wrong, adjust it manually in the reader. Use a chapter you know well to compare the result with the intended spread.
+
+**Desktop assistance:** image-edge information from adjacent pages helps identify spreads. This is an aid to pairing, not a guarantee that every scan or layout can be recognized. Manual adjustment remains part of the reading workflow.
+
+**Android boundary:** this fork’s Android reader supports two-page reading and manual pairing. Automatic spread matching on Android remains a development direction.
+
+## Multi-device favorites and reading progress {#multi-device-sync}
+
+A dedicated **private GitHub repository** backs a sync space shared by compatible desktop and Android builds of this fork.
+
+The documented sync scope is:
+
+- Manga favorites.
+- Followed authors.
+- Chapter read status.
+- Reading position.
+
+**Try it:** connect GitHub from the sync panel on one device, create or join a sync space, then connect a compatible build on the other device to the same space. Use the panel’s status and feedback to follow the operation.
+
+**Compatibility boundary:** upstream Mihon for Android does not implement this fork’s sync protocol. Use compatible builds from this repository on both devices.
+
+**Content boundary:** downloaded chapter images are not synchronized. Each device still needs access to its reading content. Sync is for the documented library and reading state, not a transfer of every application file.
+
+## Author following and new-work discovery {#authors-and-discovery}
+
+Follow authors and explore their works, including versions found in different sources. Discovery checks configured sources periodically for newly found works associated with followed authors.
+
+**Try it:** open the author archive, follow an author, and browse the works and source versions found for that author. Keep the relevant sources configured so that discovery can search them.
+
+**Discovery boundary:** results depend on each source’s search capability and author metadata. This is not a universal catalog or a promise to find every work. Different names, incomplete credits, and inconsistent source data can affect matching.
+
+## Work language information {#work-language}
+
+The project identifies language information from source metadata, tags, and text in titles or descriptions. The desktop author archive also lets you correct language information manually.
+
+**Try it:** inspect a work’s language information in the desktop author archive and correct it when the available metadata is misleading.
+
+**Recognition boundary:** this is metadata-based identification. It does **not** inspect text inside page images with OCR, and a source’s language does not always establish the language of a particular edition.
+
+**Filtering boundary:** more complete language filtering is a development direction. This baseline does not claim uniform, finished filtering across every library, search, author, and platform surface.
+
+## Other adaptations and additions {#other-additions}
+
+These smaller additions are documented in the repository’s existing guides.
+
+| Capability | Entry point and boundary | Details |
+| --- | --- | --- |
+| Desktop download location | Settings → Downloads → Download directory. Changes take effect after restarting; existing downloads are not moved automatically. | [Storage and manual migration](https://github.com/AltairCardinal/mihon-desktop/blob/main/docs/desktop-download-directory.md) |
+| Desktop network routing | Settings → Network, with per-extension overrides for requests using Mihon-managed clients. Routes to direct access, system policy, or a configured proxy; it does not manage proxy subscriptions or nodes. | [Network routing design and limits](https://github.com/AltairCardinal/mihon-desktop/blob/main/docs/architecture/desktop-network-routing.md) |
+| External-browser source verification | Open the browser from source verification, complete the site challenge, and explicitly import the current domain’s clearance cookie. The optional helper reads only that domain’s clearance value on request. | [Cookie Helper usage and permissions](https://github.com/AltairCardinal/mihon-desktop/blob/main/browser-extension/mihon-cookie-helper/README.md) |
+| Missing-extension suggestions | The extensions screen can suggest missing extensions associated with library favorites, with individual or batch installation flows. Availability depends on configured repositories and platform installation rules. | [Delivery record and platform boundaries](https://github.com/AltairCardinal/mihon-desktop/blob/main/docs/2026-09-17-extension-install-suggestions-handoff.md) |
+| Upcoming chapter estimates | Open Upcoming from the desktop Updates screen. Expected dates are predictions, not guaranteed publication schedules. | [Documented desktop differences](https://github.com/AltairCardinal/mihon-desktop/blob/main/docs/MIHON_ANDROID_DESKTOP_FEATURE_IMPLEMENTATION_COMPARISON.md#desktop-产品差异) |
+| Desktop Webtoon auto-scroll | Enable auto-scroll and choose its speed in reader settings for Webtoon reading. This guide does not claim matching Android support. | [Documented desktop differences](https://github.com/AltairCardinal/mihon-desktop/blob/main/docs/MIHON_ANDROID_DESKTOP_FEATURE_IMPLEMENTATION_COMPARISON.md#desktop-产品差异) |
+| Desktop extension compatibility | The APK-to-JAR compatibility layer adapts supported Android extension behavior for desktop. It does not guarantee that every Android extension can run. | [Documented desktop differences](https://github.com/AltairCardinal/mihon-desktop/blob/main/docs/MIHON_ANDROID_DESKTOP_FEATURE_IMPLEMENTATION_COMPARISON.md#desktop-产品差异) |
+| Desktop input and system integration | Keyboard and mouse interaction, wide layouts, and desktop file/directory and clipboard integration adapt the app to desktop workflows. Platform support varies by operation. | [Platform comparison](https://github.com/AltairCardinal/mihon-desktop/blob/main/docs/MIHON_ANDROID_DESKTOP_FEATURE_IMPLEMENTATION_COMPARISON.md) |
+
+## Where the project is heading {#direction}
+
+The project’s five directions remain Windows reading, smarter two-page matching, reliable multi-device continuity, author-centered discovery, and better language identification and filtering.
+
+Work in progress may exist in code, design documents, or prototypes before it appears here. Those artifacts are not evidence of owner acceptance or a public release. See [how accepted changes update these docs](./contributing.md#accepted-documentation) and the [changelog](./changelog.md).

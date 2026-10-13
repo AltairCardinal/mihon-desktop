@@ -1,0 +1,16 @@
+{
+  "name": "mihon-desktop-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "docs:dev": "vitepress dev .",
+    "docs:build": "vitepress build .",
+    "docs:preview": "vite preview --outDir .vitepress/dist --base /mihon-desktop/ --host 127.0.0.1"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "vitepress": "1.6.4"
+  }
+}
