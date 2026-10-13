@@ -84,8 +84,9 @@ class CreatorDiscoveryScheduler(
     val isRunning: Boolean get() = schedulerJob?.isActive == true
 
     /**
-     * Starts the periodic due loop and recovers an interrupted pending/running/failed occurrence
-     * (checkpoint/host restart). Returns the initial recovery job.
+     * Starts the periodic due loop and recovers an interrupted pending/running occurrence.
+     * Failed scans wait for shared due/backoff eligibility or an explicit manual retry.
+     * Returns the initial recovery job.
      */
     fun start(): Job = synchronized(updateLock) {
         if (schedulerJob?.isActive == true) return@synchronized requireNotNull(initialRecoveryJob)
@@ -93,11 +94,13 @@ class CreatorDiscoveryScheduler(
         val needsRecovery = existing != null && existing.status in recoverableStatuses
         initialRecoveryJob = if (needsRecovery) {
             scope.launch { resume(requireNotNull(existing)).join() }
+        } else if (existing?.status == TaskStatus.Failed) {
+            scope.launch { runIfDue()?.join() }
         } else {
             Job().apply { complete() }
         }
         schedulerJob = scope.launch {
-            if (needsRecovery) initialRecoveryJob?.join()
+            initialRecoveryJob?.join()
             while (true) {
                 delay(CHECK_INTERVAL_MS)
                 if (!connectivity.isConnected()) continue
@@ -342,7 +345,7 @@ class CreatorDiscoveryScheduler(
             TaskStatus.Cancelled,
         )
 
-        private val recoverableStatuses = setOf(TaskStatus.Pending, TaskStatus.Running, TaskStatus.Failed)
+        private val recoverableStatuses = setOf(TaskStatus.Pending, TaskStatus.Running)
         private const val MANUAL_CURSOR_PREFIX = "creator:"
         private const val DUE_CURSOR = "due"
 

@@ -81,6 +81,50 @@ class CreatorDiscoveryExecutorStateMachineTest {
     private var nextKey = 0L
 
     @Test
+    fun `manual archive scan reports source totals without a watch or after unfollowing`(): Unit = runBlocking {
+        val now = MutableClock(1_000L)
+        val creator = repository.upsertCreator("ONE")
+        val port = ScriptedDiscoveryPort().apply { put(10L, work("/a", "Work A", "ONE")) }
+        val service = service(port, now)
+        val withoutWatch = service.discoverCreator(creator.id)
+        withoutWatch.totalSources shouldBe 1
+        withoutWatch.completedSources shouldBe 1
+        withoutWatch.runState shouldBe DiscoveryRunState.SUCCEEDED
+        repository.followCreator(creator.id)
+        repository.unfollowCreator(creator.id)
+        val disabledWatch = service.discoverCreator(creator.id)
+        disabledWatch.totalSources shouldBe 1
+        disabledWatch.completedSources shouldBe 1
+        disabledWatch.runState shouldBe DiscoveryRunState.SUCCEEDED
+        queryLong("SELECT COUNT(*) FROM author_archive_runs") shouldBe 0L
+        queryLong("SELECT COUNT(*) FROM author_archive_source_checkpoints") shouldBe 0L
+    }
+
+    @Test
+    fun `unwatched manual scan reports partial and failed source counts`(): Unit = runBlocking {
+        val now = MutableClock(1_000L)
+        val creator = repository.upsertCreator("ONE")
+        val port = ScriptedDiscoveryPort().apply {
+            put(10L, work("/a", "Work A", "ONE"))
+            fail(20L, CreatorSourceFailure.Timeout)
+        }
+        val service = service(port, now)
+        val partial = service.discoverCreator(creator.id)
+        partial.totalSources shouldBe 2
+        partial.completedSources shouldBe 2
+        partial.errorCount shouldBe 1
+        partial.runState shouldBe DiscoveryRunState.PARTIAL
+        port.fail(10L, CreatorSourceFailure.AuthenticationRequired(null))
+        val failed = service.discoverCreator(creator.id)
+        failed.totalSources shouldBe 2
+        failed.completedSources shouldBe 2
+        failed.errorCount shouldBe 2
+        failed.runState shouldBe DiscoveryRunState.FAILED
+        queryLong("SELECT COUNT(*) FROM author_archive_runs") shouldBe 0L
+        queryLong("SELECT COUNT(*) FROM author_archive_source_checkpoints") shouldBe 0L
+    }
+
+    @Test
     fun `title creator and circle details gate uploader search and aliases through real archive`() = runBlocking {
         verifyCreatorTitleAttributionDiscovery(handler)
     }

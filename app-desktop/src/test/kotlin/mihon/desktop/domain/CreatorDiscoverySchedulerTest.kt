@@ -279,6 +279,68 @@ class CreatorDiscoverySchedulerTest {
     }
 
     @Test
+    fun `failed manual discovery is not replayed every polling interval or after restart`() = runTest {
+        val file = directory.resolve("tasks.json")
+        val notifications = mutableListOf<DesktopNotification>()
+        var calls = 0
+        val discover: suspend (Long) -> CreatorDiscoveryResult = {
+            calls++
+            result(
+                sourceResults = listOf(sourceResult(1L, CreatorSourceFailure.Timeout)),
+                totalSources = 1,
+            )
+        }
+        val scheduler = scheduler(
+            file = file,
+            discoverCreator = discover,
+            scope = backgroundScope,
+            taskNotifier = DesktopSystemNotifier({ notifications += it; true }, DesktopNotificationService()),
+        )
+        scheduler.start().join()
+        scheduler.runForCreator(42L).join()
+        advanceTimeBy(CreatorDiscoveryScheduler.CHECK_INTERVAL_MS * 3 + 1)
+        runCurrent()
+        assertEquals(1, calls)
+        assertEquals(1, notifications.size)
+        assertEquals(TaskStatus.Failed, scheduler.taskSnapshot()?.status)
+        scheduler.stopAndJoin()
+
+        val restarted = scheduler(file = file, discoverCreator = discover, scope = backgroundScope)
+        restarted.start().join()
+        advanceTimeBy(CreatorDiscoveryScheduler.CHECK_INTERVAL_MS + 1)
+        runCurrent()
+        assertEquals(1, calls)
+        restarted.runForCreator(42L).join()
+        assertEquals(2, calls)
+        restarted.stopAndJoin()
+    }
+
+    @Test
+    fun `failed due discovery waits for shared backoff eligibility before polling again`() = runTest {
+        var due = true
+        var calls = 0
+        val scheduler = scheduler(
+            hasDueWork = { due },
+            discoverDue = {
+                calls++
+                due = false
+                result(sourceResults = listOf(sourceResult(1L, CreatorSourceFailure.Timeout)), totalSources = 1)
+            },
+            scope = backgroundScope,
+        )
+        scheduler.start().join()
+        scheduler.runNow().join()
+        advanceTimeBy(CreatorDiscoveryScheduler.CHECK_INTERVAL_MS * 3 + 1)
+        runCurrent()
+        assertEquals(1, calls)
+        due = true
+        advanceTimeBy(CreatorDiscoveryScheduler.CHECK_INTERVAL_MS + 1)
+        runCurrent()
+        assertEquals(2, calls)
+        scheduler.stopAndJoin()
+    }
+
+    @Test
     fun `host restart recovers a failed task and re-drives discovery on start`() = runTest {
         val file = directory.resolve("tasks.json")
         DesktopTaskScheduler(FileTaskCheckpointStore(file)).apply {
@@ -289,6 +351,7 @@ class CreatorDiscoverySchedulerTest {
         val calls = mutableListOf<Int>()
         val scheduler = scheduler(
             file = file,
+            hasDueWork = { true },
             discoverDue = {
                 calls += 1
                 result(completedSources = 1, totalSources = 1)
@@ -426,9 +489,11 @@ class CreatorDiscoverySchedulerTest {
         hasDueWork: suspend () -> Boolean = { false },
         connectivity: DesktopNetworkConnectivity = DesktopNetworkConnectivity { true },
         scope: CoroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob()),
+        taskNotifier: DesktopSystemNotifier? = null,
     ): CreatorDiscoveryScheduler {
         return CreatorDiscoveryScheduler(
             taskScheduler = DesktopTaskScheduler(FileTaskCheckpointStore(file)),
+            taskNotifier = taskNotifier,
             discoverDue = discoverDue,
             discoverCreator = discoverCreator,
             hasDueWork = hasDueWork,

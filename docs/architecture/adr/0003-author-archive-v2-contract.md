@@ -95,6 +95,10 @@ data/src/commonMain/sqldelight/**
 
 ## 5. Source port
 
+### Desktop 失败检查与手动扫描摘要（2026-10-13）
+
+Desktop 每分钟轮询只恢复 `Pending/Running` 的中断任务；`Failed` 是本次检查的终态，不能每分钟无条件重放其 checkpoint。启动时及后续轮询通过共享 `getDueWatchSources` 判断自动检查资格，服从源级退避；失败的手动检查保留失败状态，用户可从设置或作者详情主动重试。未关注或已取消关注作者的手动检查不建立 run/checkpoint，但必须返回实际处理数、总源数、截断状态及成功/部分失败/全部失败摘要，避免显示“7 of 0”。网络、登录、扩展详情解析等源级失败仍如实保留，本规则不修复或隐藏扩展自身故障。
+
 唯一窄接口是 `CreatorDiscoverySourcePort`：
 
 - `enabledSourcesSnapshot()`：取得 enabled source 与 capability 的稳定快照；

@@ -400,11 +400,20 @@ class CreatorDiscoveryService(
                 }
             }.awaitAll()
         }
+        val failed = sourceResults.count { it.failure != null }
         return CreatorDiscoveryResult(
             newCandidateCount = sourceResults.sumOf(CreatorDiscoverySourceResult::eventCount),
-            errorCount = sourceResults.count { it.failure != null },
+            errorCount = failed,
             candidates = creatorRepository.getDiscoveryCandidatesForCreator(creator.id),
             sourceResults = sourceResults,
+            runState = when {
+                failed == 0 -> DiscoveryRunState.SUCCEEDED
+                failed == sourceResults.size -> DiscoveryRunState.FAILED
+                else -> DiscoveryRunState.PARTIAL
+            },
+            completedSources = sourceResults.size,
+            totalSources = plannedSources.size,
+            truncated = sourceResults.any(CreatorDiscoverySourceResult::truncated),
         )
     }
 
