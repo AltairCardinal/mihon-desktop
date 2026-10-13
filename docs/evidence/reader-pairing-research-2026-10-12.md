@@ -490,3 +490,19 @@ R3-04仍需要定向优化：画面和字节预算已有实际链证据；冷／
 最终定向回归与格式通过：协调器 `pairing-r3-resource-navigation-regression`，共享7、Android7、Desktop2，共16个JUnit方法，零失败/跳过。Android包含替换后新PNG实际再次解码、认证及native holder新像素绘制，旧整批拒收、资源上限、既有Retry、邻帧未画伙伴可达及已画宽图稳定；Desktop复用实际model重试和内容替换接线。红/绿/回归XML分别冻结在研究树 `.gradle-coordinator/research-evidence/r3-resource-navigation-{red,green,regression}/`，组合证据不称全量通过。
 
 当前第五宿主仍不含该修复，实际ART自动恢复验收仍未完成。下一最小动作是获准追加一份第六Debug宿主，通过统一构建入口、核验后仅安装专用AVD，重跑实际内容替换和受影响取消恢复；不重跑原性能矩阵、不操作真机、不发布或合入主干。R3-04仍未完成，原约250ms冷/热耗时退化及无边界冷跳16页上限缺口不因这项恢复修复而消失。
+
+### R3-04 第六宿主实际 RESOURCE 恢复红绿对照
+
+用户明确批准第六份 Debug 宿主后，统一入口 `python scripts/build-android.py debug --offline` 构建、verify及仅专用AVD安装均通过。源码为干净的 `ed09b77874f5392c61fd630a70329925e6c9da53`，生产输入指纹 `38d27fe48d8aa7dfd4c10b0f262b577dc78744e521b435bbe6a97e01ec22d853`。过程产物为 [第六份研究 Debug APK](D:/Codex/worktrees/reader-pairing-research-20261012/app/artifacts/android/0.19.4-aex.59-vc77-ed09b77874-debug-69cd40546305/Mihon-Fork-0.19.4-aex.59-vc77-debug-universal.apk)，SHA-256=`1df86e3acc835065c70007d9414663a55267c989fedc865e81ae217635653117`；包名 `app.mihon.desktop.fork.dev`、versionCode 77、versionName `0.19.4-aex.59-9484`，连续 Debug 证书 `fb141e4e749dc634a3d5d79e179a1057ab81fa1fd7cb5077b6dfeccfe11f3079`。旧产物保留，第七宿主未授权。
+
+第六宿主初次内容替换 `r304-sixth-native-content-replacement.json` 虽通过，但主代理独立核验发现：测试未等待实际RESOURCE产生就导航，存在跳过故障状态的时序可能。因此保留原成功记录，仅作为内容身份及实际像素证据，不用它关闭RESOURCE恢复门禁。测试修正提交 `a1e5abeb4b` 只增加50行instrumentation：在原有10秒截止内，必须从当前真实session观察新内容 `2:2` 的RESOURCE，确认仍为location 0、同一旧budget、页2已attempted、新内容JNI尚未创建且读取0B，然后才允许真实导航；不注入失败、续预算或增加等待上限。
+
+定向格式和测试APK编译通过，协调器 `pairing-r3-native-resource-precondition-test-assemble`，测试包SHA-256=`ca0a341b4d0c611a41de25b217605102fd141a3058e6d4e67b1658073d70c216`。同一测试包、虚构下载目录和API36专用AVD，依次复用既有第五／第六宿主，没有新建第七宿主。启动期间一次ADB daemon连接超时，随后身份核对及统一安装验证成功，测试完整执行；不将该环境错误计为产品红。
+
+- **有效红** `r304-fifth-resource-precondition-red.json`：真实RESOURCE前置全部成立；导航到location 1后仍等待20秒，断言“Actual new content pixels did not match the frozen oracle”失败。完整runner明确1项、1失败，结束码完整。最终新budget attempted/active为空、0B、无可选工作，画面不正确；不是编译或前置失败。
+- **有效绿** `r304-sixth-resource-precondition-green.json`：相同RESOURCE前置成立；真实viewer.moveToPage建立location 1，新 `2:2` 分析转Computed，2/3两页通过冻结新内容PixelCopy参考。新原图真实读取11,247B，JNI创建／回收／物理关闭各1次，区域解码2次；optional和foreground工作归零。旧请求被拒收、旧JNI创建／回收／关闭各1次，两轮最终均恢复原下载文件。JUnit 1/1通过。
+- 主代理独立断言上述前置发生在导航之前、相同旧预算及新身份、红失败位置、绿新内容及资源释放，汇总 `r304-resource-precondition-red-green-summary.json` 保存输入文件SHA。证据均在研究树 `.gradle-coordinator/r3-art-comparison/`，未加载图片进入主代理上下文。
+
+第六宿主取消恢复 `r304-sixth-native-cancellation-recovery.json` 亦JUnit 1/1通过：退出前剩余预算14,289ms，真实JNI阻塞约1,165ms时Activity销毁使job取消，随后释放并唯一回收／关闭，没有取消后继续区域解码，工作归零，重开8/9实际像素正确。上述50行修改仅在替换分支，不影响该已通过的取消分支，故复用其有效证据，不重复无关运行。
+
+**本批结论：跨导航滞留RESOURCE导致原图Ready却不再分析的缺陷，已在隔离研究代码及实际Android Debug链路中修复。** 组合证据为既有16项定向回归、格式／测试构建、第五红→第六绿及第六取消恢复；不是最终代码重新全量通过，也不证明用户历史真机黑页都由此造成。专用AVD已关闭，未操作实体设备、合入主干或发布。R3-04继续保持“需要定向优化”：约250ms冷／热退化、普通翻页增量及无边界长前缀16页上限尚未关闭。下一改进仍是本报告既有的合格正常位图／已持有编码数据复用与内容指纹派生索引预研，必须先证明输入等价、身份失效和收益，不能放宽三个用户目标或当前资源上限。
