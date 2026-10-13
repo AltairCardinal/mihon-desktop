@@ -432,6 +432,8 @@ class R3DownloadProbeInstrumentationTest {
         private var lastCommit = 0L
         private var lastBudget = JSONObject()
         private var observedOptionalJobs = 0
+        private var currentOptionalJobsObserved = 0
+        private val sampleCacheProbePages = expected.toList()
         private var sequence = 0L
         private var frameKey = ""
         private var pixelChecks = JSONObject()
@@ -585,7 +587,8 @@ class R3DownloadProbeInstrumentationTest {
             val sampler = Class.forName("eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler")
             val counter = sampler.declaredFields.firstOrNull { it.name == "optionalJobs" }
                 ?.apply { isAccessible = true }?.get(null) as? kotlinx.coroutines.flow.StateFlow<*>
-            observedOptionalJobs = maxOf(observedOptionalJobs, counter?.value as? Int ?: 0)
+            currentOptionalJobsObserved = counter?.value as? Int ?: 0
+            observedOptionalJobs = maxOf(observedOptionalJobs, currentOptionalJobsObserved)
             val attached = linkedSetOf<String>()
             for (image in views(root).filterIsInstance<ReaderPageImageView>()) {
                 val page = fieldOrNull(image, "page") as? ReaderPage ?: continue
@@ -850,10 +853,12 @@ class R3DownloadProbeInstrumentationTest {
             .put("pages", JSONArray(events.values.toList())).put("errors", JSONArray(errors.toList()))
             .put("expectedReaderPages", JSONArray(expected)).put("correctReaderPages", JSONArray(correct.keys.toList()))
             .put("factBudget", lastBudget).put("observedPeakOptionalJobs", observedOptionalJobs)
+            .put("currentOptionalJobsObserved", currentOptionalJobsObserved)
             .put("nativePeakAllocationBytes", "NOT_AVAILABLE").put("streamOpenCloseCounts", "NOT_AVAILABLE")
             .put("verifiedFrameCapability", frameKey).put("pixelChecks", pixelChecks)
             .put("observerRejectCounts", JSONObject(rejects as Map<*, *>))
             .put("actualHolderFrames", holderFrames())
+            .put("runtimeOriginalSampleCache", if (traceNative) sampleCacheSnapshot() else "OBSERVATION_DISABLED")
             .put(
                 "keyDeliveryTrace",
                 JSONObject().put("enabled", traceKeys).put("events", JSONArray(receivedKeys.toString()))
@@ -966,6 +971,60 @@ class R3DownloadProbeInstrumentationTest {
 
         private fun reject(reason: String) {
             rejects[reason] = (rejects[reason] ?: 0) + 1
+        }
+
+        private fun sampleCacheSnapshot(): JSONObject {
+            val viewer = activity.viewModel.state.value.viewer as? DualPageR2LPagerViewer
+                ?: return JSONObject().put("status", "NO_VIEWER")
+            val owner = viewer.adapter.currentChapter?.let(viewer.adapter::session)
+                ?: return JSONObject().put("status", "NO_OWNER")
+            val sampler = fieldOrNull(owner, "spreadSamples")
+                ?: return JSONObject().put("status", "NOT_AVAILABLE_IN_THIS_HOST")
+            val samples = fieldOrNull(sampler, "samples") as? Map<*, *>
+                ?: return JSONObject().put("status", "NO_RUNTIME_SAMPLE_MAP")
+            val analyses = fieldOrNull(sampler, "analyses") as? Map<*, *>
+            val scores = fieldOrNull(sampler, "scores") as? Map<*, *>
+            val originals = fieldOrNull(sampler, "originalSamples") as? Set<*>
+            fun readerNumbers(keys: Collection<*>): List<Int> = keys.mapNotNull {
+                owner.identity.pageIds.indexOfFirst { id -> id == it }.takeIf { index -> index >= 0 }?.plus(1)
+            }.sorted()
+            val pages = JSONArray(
+                sampleCacheProbePages.map { readerPage ->
+                    val id = owner.identity.pageIds.getOrNull(readerPage - 1)
+                    val analysis = id?.let { analyses?.get(it) }
+                    JSONObject().put("readerPage", readerPage).put("vectorPresent", id in samples)
+                        .put("originalVectorPresent", originals?.contains(id) ?: false)
+                        .put("analysisKind", analysis?.javaClass?.simpleName ?: "NOT_AVAILABLE")
+                        .put("analysis", analysis?.toString() ?: "NOT_AVAILABLE")
+                },
+            )
+            val edgeQuery = sampler.javaClass.methods.firstOrNull {
+                it.name.startsWith("edgeAnalysis") && it.parameterCount == 3
+            }
+            val direction = fieldOrNull(owner, "direction")
+            val edges = JSONArray(
+                sampleCacheProbePages.zipWithNext().map { (first, second) ->
+                    val a = owner.identity.pageIds.getOrNull(first - 1)
+                    val b = owner.identity.pageIds.getOrNull(second - 1)
+                    val evidence = if (a != null && b != null && direction != null) {
+                        edgeQuery?.invoke(sampler, a, b, direction)
+                    } else {
+                        null
+                    }
+                    JSONObject().put("firstReaderPage", first).put("secondReaderPage", second)
+                        .put("kind", evidence?.javaClass?.simpleName ?: "NOT_AVAILABLE")
+                        .put("evidence", evidence?.toString() ?: "NOT_AVAILABLE")
+                },
+            )
+            return JSONObject().put("status", "OBSERVED_READ_ONLY").put("observedNs", System.nanoTime())
+                .put("capacity", fieldOrNull(sampler, "sampleCapacity"))
+                .put("sampleReaderPages", JSONArray(readerNumbers(samples.keys)))
+                .put("originalSampleReaderPages", JSONArray(readerNumbers(originals.orEmpty())))
+                .put("sampleCount", samples.size).put("analysisCount", analyses?.size)
+                .put("computedAnalysisCount", analyses?.values?.count { it?.javaClass?.simpleName == "Computed" })
+                .put("scalarEdgeCount", scores?.size).put("probePages", pages).put("probeEdges", edges)
+                .put("persistentAnalysisCache", "NOT_IMPLEMENTED; this is runtime vector eviction")
+                .put("ordinaryEncodedReadCounts", "NOT_MEASURED; no zero-IO claim")
         }
 
         private fun observeNormalBitmap(
