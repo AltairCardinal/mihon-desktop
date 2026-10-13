@@ -226,6 +226,9 @@ class SharedDualPageSessionContractTest {
         assertEquals(emptyList<ReaderPageId>(), session.spreadSampleDependencies())
         session.configure(ReaderDirection.RTL, automaticMatching = true)
         assertEquals(listOf(pages[2], pages[3]), session.targetUnit!!.pageIds)
+        // A direction change releases the old native viewport; mount its replacement before restore.
+        val restoredViewport = requireNotNull(session.captureViewport())
+        assertTrue(session.reportDrawn(restoredViewport, setOf(pages[2], pages[3])))
         assertTrue(
             session.acceptPairingRestore(
                 session.beginPairingRestore()!!,
@@ -239,10 +242,15 @@ class SharedDualPageSessionContractTest {
         )
         val oldSample = requireNotNull(session.requestSpreadSample(pages[1]))
         val save = requireNotNull(session.adjustPairing())
-        assertEquals(setOf(2, 3), save.adjustment.forcedSinglePages)
+        assertEquals(ReaderPairingAdjustment(setOf(2), 3, manualPairStarts = setOf(3)), save.adjustment)
         assertEquals(listOf(pages[2], pages[3]), session.targetUnit!!.pageIds, "Pending save is not a manual boundary")
-        assertTrue(session.acceptPairingSave(save, ChapterPairingSnapshot(ChapterPairingRecord(1, 5, setOf(2, 3)), 2)))
-        assertEquals(listOf(pages[3]), session.targetUnit!!.pageIds)
+        assertTrue(
+            session.acceptPairingSave(
+                save,
+                ChapterPairingSnapshot(ChapterPairingRecord(2, 5, setOf(2), manualPairStarts = setOf(3)), 2),
+            ),
+        )
+        assertEquals(listOf(pages[3], pages[4]), session.targetUnit!!.pageIds)
         val replacement = session.rebindContent(
             session.identity.copy(
                 content = session.identity.content.map {
@@ -295,16 +303,21 @@ class SharedDualPageSessionContractTest {
         assertTrue(
             session.acceptPairingRestore(
                 session.beginPairingRestore()!!,
-                ChapterPairingSnapshot(ChapterPairingRecord(1, 6, setOf(1)), 7),
+                ChapterPairingSnapshot(ChapterPairingRecord(2, 6, setOf(1), manualPairStarts = setOf(3)), 7),
             ),
         )
         session.goToPage(session.identity.pageIds[3])
         assertEquals(listOf(3, 4), session.targetUnit!!.pageIds.map { it.sourcePageIndex })
         val save = requireNotNull(session.adjustPairing())
-        assertEquals(4, save.adjustment.currentPage)
+        assertEquals(ReaderPairingAdjustment(setOf(1, 3), 4, manualPairStarts = setOf(4)), save.adjustment)
         val originalLocation = session.location
         session.configurePresentationMode(ReaderPresentationMode.SINGLE)
-        assertTrue(session.acceptPairingSave(save, ChapterPairingSnapshot(ChapterPairingRecord(1, 6, setOf(1, 3)), 8)))
+        assertTrue(
+            session.acceptPairingSave(
+                save,
+                ChapterPairingSnapshot(ChapterPairingRecord(2, 6, setOf(1, 3), manualPairStarts = setOf(4)), 8),
+            ),
+        )
         assertEquals(originalLocation, session.location)
         assertEquals(8, session.pairingState.revision)
         assertEquals(save.adjustment.forcedSinglePages, session.pairingState.committedForcedSinglePages)
@@ -491,7 +504,7 @@ class SharedDualPageSessionContractTest {
         for (record in listOf(
             ChapterPairingRecord(1, 4, setOf(1)),
             ChapterPairingRecord(1, 5, setOf(1), corrupt = true),
-            ChapterPairingRecord(2, 5, setOf(1)),
+            ChapterPairingRecord(ChapterPairingRecord.FORMAT_VERSION + 1, 5, setOf(1)),
         )) {
             val owner = ReaderPairingPersistenceOwner(identity(5), 88)
             assertTrue(owner.acceptRestore(owner.beginRestore()!!, ChapterPairingSnapshot(record, 4)))
@@ -516,14 +529,21 @@ class SharedDualPageSessionContractTest {
             }
             session.goToPage(session.identity.pageIds[1])
             val save = session.adjustPairing()
-            if (save != null) {
+            if (mangaId != null) {
+                assertNotNull(save, "A restored persistent session must actually issue the layout save")
+                requireNotNull(save)
+                assertEquals(ReaderPairingAdjustment(setOf(1), 2, manualPairStarts = setOf(2)), save.adjustment)
                 assertTrue(
                     session.acceptPairingSave(
                         save,
-                        ChapterPairingSnapshot(ChapterPairingRecord(1, 5, setOf(1)), 8),
+                        ChapterPairingSnapshot(ChapterPairingRecord(2, 5, setOf(1), manualPairStarts = setOf(2)), 8),
                     ),
                 )
+            } else {
+                assertNull(save, "Temporary pairing must not issue a database write")
             }
+            assertEquals(setOf(1), session.pairingState.committedForcedSinglePages)
+            assertEquals(setOf(2), session.pairingState.manualPairStarts)
             assertNull(session.settle(event(session), false, "test"))
             session.goToPage(session.identity.pageIds.last())
             assertNotNull(session.settle(event(session).copy(settlementSequence = 2), false, "test"))
@@ -546,19 +566,30 @@ class SharedDualPageSessionContractTest {
         assertTrue(session.acceptPairingRestore(restore!!, ChapterPairingSnapshot(null, 7)))
         val original = session.targetUnit!!.pageIds
         val save = session.adjustPairing()!!
-        assertEquals(setOf(1), save.adjustment.forcedSinglePages)
+        assertEquals(ReaderPairingAdjustment(setOf(1), 2, manualPairStarts = setOf(2)), save.adjustment)
         assertEquals(original, session.targetUnit!!.pageIds)
         assertEquals(emptySet<Int>(), session.pairingState.committedForcedSinglePages)
         assertTrue(session.failPairingSave(save))
         assertEquals(original, session.targetUnit!!.pageIds)
         val retry = session.adjustPairing()!!
-        assertTrue(session.acceptPairingSave(retry, ChapterPairingSnapshot(ChapterPairingRecord(1, 5, setOf(1)), 8)))
+        assertTrue(
+            session.acceptPairingSave(
+                retry,
+                ChapterPairingSnapshot(ChapterPairingRecord(2, 5, setOf(1), manualPairStarts = setOf(2)), 8),
+            ),
+        )
         assertEquals(setOf(1), session.pairingState.committedForcedSinglePages)
         assertEquals(session.identity.pageIds[2], session.location!!.pageId)
         assertEquals(listOf(session.identity.pageIds[2], session.identity.pageIds[3]), session.targetUnit!!.pageIds)
         val next = session.adjustPairing()!!
+        assertEquals(ReaderPairingAdjustment(emptySet(), 1, manualPairStarts = setOf(1)), next.adjustment)
         session.goToPage(session.identity.pageIds[4])
-        assertTrue(session.acceptPairingSave(next, ChapterPairingSnapshot(null, 9)))
+        assertTrue(
+            session.acceptPairingSave(
+                next,
+                ChapterPairingSnapshot(ChapterPairingRecord(2, 5, emptySet(), manualPairStarts = setOf(1)), 9),
+            ),
+        )
         assertEquals(session.identity.pageIds[4], session.location!!.pageId)
         assertEquals(emptySet<Int>(), session.pairingState.committedForcedSinglePages)
     }

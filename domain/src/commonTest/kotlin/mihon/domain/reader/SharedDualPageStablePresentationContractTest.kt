@@ -762,6 +762,11 @@ class SharedDualPageStablePresentationContractTest {
                 },
             )
             assertEquals(!partnerPrepared, owner.reservedPairs.isNotEmpty())
+            assertTrue(owner.navigate(true))
+            assertEquals(
+                if (partnerPrepared) listOf(3, 4) else listOf(2, 3),
+                owner.targetUnit!!.pageIds.map { it.sourcePageIndex },
+            )
         }
     }
 
@@ -1036,9 +1041,12 @@ class SharedDualPageStablePresentationContractTest {
         sample(owner, 3, rightShift = 1)
         val first = owner.captureViewport()!!
         owner.reportDrawn(first, setOf(owner.identity.pageIds[1]))
-        owner.navigate(true)
+        assertEquals(setOf(owner.identity.pageIds[2] to owner.identity.pageIds[3]), owner.reservedPairs)
+        assertTrue(owner.navigate(true))
+        assertEquals(listOf(2, 3), owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
         val reserved = owner.captureViewport(preparingPageIds = setOf(owner.identity.pageIds[2]))!!
-        owner.reportDrawn(reserved, setOf(owner.identity.pageIds[2]))
+        assertTrue(owner.reservedPairs.isEmpty(), "Entered reservation becomes a frame commitment on preparation")
+        assertTrue(owner.reportDrawn(reserved, setOf(owner.identity.pageIds[2])))
         sample(owner, 4)
         assertEquals(listOf(2, 3), owner.frame(reserved)!!.unit.pageIds.map { it.sourcePageIndex })
         assertTrue(owner.reservedPairs.isEmpty(), "Prepared reservation is now a frame commitment")
@@ -1123,9 +1131,11 @@ class SharedDualPageStablePresentationContractTest {
                 "viewport",
             ),
         )
-        owner.navigate(true)
-        assertEquals(ids[2], owner.location!!.pageId)
-        assertEquals(ids[2], owner.targetUnit!!.anchor)
+        assertEquals(setOf(ids[1]), owner.frame(next)!!.drawnPageIds)
+        assertTrue(owner.navigate(true))
+        assertEquals(ids[3], owner.location!!.pageId, "Navigation skips the whole entered group, not just drawn pages")
+        assertEquals(ids[3], owner.targetUnit!!.anchor)
+        assertEquals(setOf(ids[1]), owner.frame(next)!!.drawnPageIds, "Skipping the partner does not mark it drawn")
     }
 
     @Test

@@ -434,6 +434,7 @@ internal class ReaderDualPagePresentationOwner(
                 ReaderDualPageFrameId(identity().generation, context, serial++),
                 unit ?: candidate(page).unit,
                 visible = false,
+                reserved = reservations[page] != null,
                 origin = page,
                 forward = !reverse,
             ).also { records[it.id] = it }
@@ -622,8 +623,9 @@ internal class ReaderDualPagePresentationOwner(
                 distance = { a, b -> if (automatic) distance(a, b) else null },
             )
         if (next.reservedPair != null) {
-            publishReservation(next.reservedPair)
+            // Release the unpainted partner's entered membership before reserving its new pair.
             updateUnit(record, record.unit.copy(slots = fixed))
+            publishReservation(next.reservedPair)
         } else if (next.unit.pageIds.size == 2 && next.unit.anchor == first && record.unit.pageIds.size == 2) {
             updateUnit(record, next.unit.copy(slots = fixed + next.unit.slots.filter { it.pageId !in record.locked }))
         } else {
