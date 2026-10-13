@@ -227,18 +227,26 @@ class R3DownloadProbeInstrumentationTest {
                 if (!fast) Thread.sleep(interval)
                 var navigationAt = 0L
                 val tap = args.getString("actionInput") == "tap"
-                val tapPoint = FloatArray(2)
+                val swipe = args.getString("actionInput") == "swipe"
+                val tapPoint = FloatArray(4)
                 instrumentation.runOnMainSync {
                     val viewer = actualViewer(requireNotNull(activity))
                     val page = requireNotNull(viewer.adapter.currentChapter?.pages?.getOrNull(next - 1))
                     navigationAt = System.nanoTime()
                     observer!!.reset(pair, navigationAt)
-                    if (tap) {
+                    if (tap || swipe) {
                         val current = viewer.adapter.session(requireNotNull(viewer.adapter.currentChapter))
                             ?.location?.pageId?.sourcePageIndex ?: target - 1
                         val position = IntArray(2).also(viewer.pager::getLocationOnScreen)
-                        tapPoint[0] = position[0] + viewer.pager.width * if (next - 1 > current) 0.2f else 0.8f
+                        val forward = next - 1 > current
+                        val start = if (swipe) {
+                            if (forward) 0.25f else 0.75f
+                        } else {
+                            if (forward) 0.2f else 0.8f
+                        }
+                        tapPoint[0] = position[0] + viewer.pager.width * start
                         tapPoint[1] = position[1] + viewer.pager.height * 0.5f
+                        tapPoint[2] = position[0] + viewer.pager.width * if (forward) 0.75f else 0.25f
                     } else {
                         viewer.moveToPage(page)
                     }
@@ -248,6 +256,23 @@ class R3DownloadProbeInstrumentationTest {
                     MotionEvent.obtain(downAt, downAt, MotionEvent.ACTION_DOWN, tapPoint[0], tapPoint[1], 0).also {
                         instrumentation.sendPointerSync(it)
                         it.recycle()
+                    }
+                } else if (swipe) {
+                    val downAt = SystemClock.uptimeMillis()
+                    fun send(action: Int, x: Float) {
+                        MotionEvent.obtain(downAt, SystemClock.uptimeMillis(), action, x, tapPoint[1], 0).also {
+                            instrumentation.sendPointerSync(it)
+                            it.recycle()
+                        }
+                    }
+                    send(MotionEvent.ACTION_DOWN, tapPoint[0])
+                    try {
+                        for (step in 1..6) {
+                            Thread.sleep(15)
+                            send(MotionEvent.ACTION_MOVE, tapPoint[0] + (tapPoint[2] - tapPoint[0]) * step / 6f)
+                        }
+                    } finally {
+                        send(MotionEvent.ACTION_UP, tapPoint[2])
                     }
                     MotionEvent.obtain(downAt, downAt + 20, MotionEvent.ACTION_UP, tapPoint[0], tapPoint[1], 0).also {
                         instrumentation.sendPointerSync(it)
@@ -272,7 +297,11 @@ class R3DownloadProbeInstrumentationTest {
                 .put("outcome", if (allCorrect) "CORRECT" else "NOT_CORRECT")
                 .put(
                     "actionInput",
-                    if (args.getString("actionInput") == "tap") "native-pointer-tap" else "viewer.moveToPage",
+                    when (args.getString("actionInput")) {
+                        "tap" -> "native-pointer-tap"
+                        "swipe" -> "native-pointer-swipe"
+                        else -> "viewer.moveToPage"
+                    },
                 )
             if (args.getString("requireCorrect") != "false") {
                 assertTrue("Actual committed pixels did not match frozen input: " + output, allCorrect)
