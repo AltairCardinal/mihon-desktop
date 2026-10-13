@@ -1369,6 +1369,7 @@ internal suspend fun initUILayer(
             creatorDiscoveryOutboxService = Injekt.get<mihon.desktop.domain.CreatorDiscoveryOutboxService>(),
             syncService = syncScheduler,
             chapterPairingService = pairingCoordinator,
+            readerService = Injekt.get<DesktopReaderRuntimeFactory>(),
             appLock = appLock,
             scope = applicationScope,
             updateScreenModel = updateScreenModel,

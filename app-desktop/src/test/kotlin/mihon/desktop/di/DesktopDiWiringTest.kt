@@ -12,6 +12,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -306,6 +307,28 @@ class DesktopDiWiringTest {
 
             assertEquals(DownloadStatus.QUEUED, manager.queue.value.single { it.chapterId == 9_001L }.status)
         } finally {
+            context.closeAndJoin()
+        }
+    }
+
+    @Test
+    fun `desktop DI window shutdown closes the active production reader`(@TempDir tempDir: File) = runBlocking {
+        val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore())
+        val readerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val reader = Injekt.get<DesktopReaderRuntimeFactory>().createRuntime(
+            mihon.desktop.reader.DesktopReaderChapterContext(
+                chapterId = -1, sourceId = 0, chapterUrl = "", mangaTitle = "Fixture",
+                chapterTitle = "Chapter", chapterNumber = 1.0, chapterIndex = 0, initialPage = 0,
+                wasRead = false, localChapterPath = tempDir.resolve("isolated-reader").apply { mkdirs() }.absolutePath,
+            ),
+            readerScope,
+        )
+        try {
+            Injekt.get<DesktopAppRuntime>().closeAndJoin()
+            assertTrue(reader.pageImagePipeline.snapshot().closed, "Production shutdown must own the active reader")
+        } finally {
+            reader.close()
+            readerScope.cancel()
             context.closeAndJoin()
         }
     }

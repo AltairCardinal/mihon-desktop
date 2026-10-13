@@ -6,6 +6,7 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
@@ -23,6 +24,8 @@ import mihon.domain.reader.partial.PartialPageTableEntry
 import mihon.domain.sync.SyncMutationContext
 import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -160,10 +163,39 @@ class DesktopReaderSyncWiringTest {
         }
     }
 
+    @Test
+    fun `application shutdown also waits for progress from an already disposed reader`() = runTest {
+        val repository = CapturingRepository(blockFirstRecord = true)
+        lateinit var factory: DesktopReaderRuntimeFactory
+        val runtime = runtime(repository, onFactory = { factory = it })
+        try {
+            advanceUntilIdle()
+            settle(runtime, 0)
+            runCurrent()
+            settle(runtime, 1)
+            runtime.close()
+            factory.stop()
+            val draining = async { factory.awaitStopped() }
+            runCurrent()
+            assertFalse(draining.isCompleted)
+            repository.recordGate.complete(Unit)
+            advanceUntilIdle()
+            draining.await()
+            assertEquals(listOf(0, 1), repository.records.map { it.first.lastPageRead })
+            assertThrows(IllegalStateException::class.java) { factory.createRuntime(context(), this) }
+            factory.stop()
+            factory.awaitStopped()
+        } finally {
+            repository.recordGate.complete(Unit)
+            runtime.close()
+        }
+    }
+
     private fun TestScope.runtime(
         repository: CapturingRepository,
         preferences: DesktopAppPreferences? = null,
         snapshot: ReadingSyncSnapshot? = null,
+        onFactory: (DesktopReaderRuntimeFactory) -> Unit = {},
     ): DesktopReaderRuntime {
         val pages = List(3) { index ->
             directory.resolve("$index.png").apply { writeBytes(byteArrayOf(1, 2, 3)) }
@@ -203,7 +235,7 @@ class DesktopReaderSyncWiringTest {
             mangaRepository = null,
             encodedCacheDirectory = directory.resolve("encoded"),
             partialDownloadSnapshotLookup = lookup,
-        ).createRuntime(context().copy(resumeSnapshot = snapshot), this)
+        ).also(onFactory).createRuntime(context().copy(resumeSnapshot = snapshot), this)
     }
 
     private fun settle(runtime: DesktopReaderRuntime, index: Int) {

@@ -34,6 +34,7 @@ class DesktopAppRuntime(
     private val creatorDiscoveryOutboxService: DesktopRuntimeService = NoopRuntimeService,
     private val syncService: DesktopRuntimeService = NoopRuntimeService,
     private val chapterPairingService: DesktopRuntimeService = NoopRuntimeService,
+    private val readerService: DesktopRuntimeService = NoopRuntimeService,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     internal val appLock: DesktopAppLockLifecycle = NoopAppLockLifecycle,
     private val updateScreenModel: DesktopUpdateScreenModel? = null,
@@ -54,6 +55,7 @@ class DesktopAppRuntime(
         batchMigrationController,
         syncService,
         chapterPairingService,
+        readerService,
     )
     private val runningServices = BooleanArray(services.size)
     private var closeStarted = false
@@ -98,6 +100,8 @@ class DesktopAppRuntime(
     fun close() {
         closeStarted = true
         val failures = CleanupFailures()
+        // An initialized reader can exist before application startup completes.
+        if (!isRunning) failures.attempt(readerService::stop)
         failures.attempt(::stop)
         failures.attempt {
             val broker = instanceBroker
@@ -169,6 +173,7 @@ class DesktopAppRuntime(
             creatorDiscoveryOutboxService: DesktopRuntimeService = NoopRuntimeService,
             syncService: DesktopRuntimeService = NoopRuntimeService,
             chapterPairingService: DesktopRuntimeService = NoopRuntimeService,
+            readerService: DesktopRuntimeService = NoopRuntimeService,
             appLock: DesktopAppLockLifecycle = NoopAppLockLifecycle,
             scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
             updateScreenModel: DesktopUpdateScreenModel? = null,
@@ -185,6 +190,7 @@ class DesktopAppRuntime(
                 creatorDiscoveryOutboxService = creatorDiscoveryOutboxService,
                 syncService = syncService,
                 chapterPairingService = chapterPairingService,
+                readerService = readerService,
                 scope = scope,
                 appLock = appLock,
                 updateScreenModel = updateScreenModel,

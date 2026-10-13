@@ -8,6 +8,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import mihon.desktop.DesktopRuntimeService
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.download.DirectPartialPageReadLeaseSource
@@ -137,7 +138,35 @@ class DesktopReaderRuntimeFactory internal constructor(
     private val chapterRepository: tachiyomi.domain.chapter.repository.ChapterRepository? = null,
     private val pairingCoordinator: DesktopChapterPairingCoordinator? = null,
     private val catalogPreparation: tachiyomi.domain.reader.interactor.ReaderCatalogPreparation? = null,
-) {
+) : DesktopRuntimeService {
+    private val lifecycleLock = Any()
+    private val activeRuntimes = mutableSetOf<DesktopReaderRuntime>()
+    private var shutdownRuntimes: List<DesktopReaderRuntime>? = null
+
+    override fun start() = Unit
+
+    override fun stop() {
+        val runtimes = synchronized(lifecycleLock) {
+            shutdownRuntimes ?: activeRuntimes.toList().also { shutdownRuntimes = it }
+        }
+        var failure: Throwable? = null
+        runtimes.forEach { runtime ->
+            try {
+                runtime.close()
+            } catch (error: Throwable) {
+                val primary = failure
+                if (primary == null) failure = error else if (primary !== error) primary.addSuppressed(error)
+            }
+        }
+        failure?.let { throw it }
+    }
+
+    override suspend fun awaitStopped() {
+        val runtimes = synchronized(lifecycleLock) { shutdownRuntimes.orEmpty() }
+        runtimes.forEach { it.session.awaitProgressDrained() }
+        synchronized(lifecycleLock) { shutdownRuntimes = emptyList() }
+    }
+
     internal val configuredReaderIoGate: ReaderIoGate get() = readerIoGate
     internal val configuredReaderIoProbe: ReaderIoProbe get() = readerIoProbe
     internal val configuredPartialDownloadSnapshotLookup: PartialDownloadSnapshotLookup
@@ -254,7 +283,24 @@ class DesktopReaderRuntimeFactory internal constructor(
             contentAdapter = contentAdapter,
             prefetchPreferenceJob = prefetchPreferenceJob,
             presentationScope = parentScope,
-        ).also { session.start() }
+        ).also { runtime ->
+            val accepted = synchronized(lifecycleLock) {
+                if (shutdownRuntimes != null) {
+                    false
+                } else {
+                    activeRuntimes += runtime
+                    session.invokeOnProgressDrained {
+                        synchronized(lifecycleLock) { activeRuntimes -= runtime }
+                    }
+                    session.start()
+                    true
+                }
+            }
+            if (!accepted) {
+                runtime.close()
+                error("Desktop reader runtime is closing")
+            }
+        }
     }
 
     fun createModel(

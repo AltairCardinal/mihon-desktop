@@ -8,13 +8,18 @@ import androidx.compose.ui.semantics.SemanticsNode
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import mihon.desktop.DesktopApplicationCloseCoordinator
+import mihon.desktop.DesktopRuntimeService
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.ui.reader.ReaderPagerNativePresentationKey
 import mihon.desktop.ui.reader.ReaderPagerPresentationBinding
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -24,6 +29,11 @@ import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
 import tachiyomi.data.reader.SqlDelightReadingProgressRepository
 import tachiyomi.domain.reader.interactor.RecordReadingProgress
+import tachiyomi.domain.reader.model.ReadingProgressEvent
+import tachiyomi.domain.reader.model.ReadingSyncSnapshot
+import tachiyomi.domain.reader.repository.ReadingProgressRepository
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.io.File
 
 /** Native paint -> factory model -> real reader session -> real tracker -> SQL transaction. */
@@ -176,6 +186,62 @@ class SharedDualPageRuntimeProgressProductionTest {
             assertEquals(false, database.chaptersQueries.getChapterById(7).executeAsOne().read)
         } finally {
             current.complete(Unit)
+            fixture.close()
+            driver.close()
+        }
+    }
+
+    @Test
+    fun `window close drains native reader progress to SQL before application exit`() = runTest {
+        val (driver, database) = database()
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val sql = SqlDelightReadingProgressRepository(database)
+        val repository = object : ReadingProgressRepository by sql {
+            override suspend fun record(event: ReadingProgressEvent, snapshot: ReadingSyncSnapshot): ReadingSyncSnapshot {
+                entered.complete(Unit)
+                release.await()
+                return sql.record(event, snapshot)
+            }
+        }
+        val fixture = MountedReaderPresentationFixture(
+            tempDir,
+            currentCoroutineContext(),
+            MountedReaderPresentationCase(MountedReaderPresentationMode.SINGLE, MountedReaderContentRoute.ONLINE),
+            initialPage = 1,
+            mangaId = 10,
+            progressTracker = ReaderProgressTracker(RecordReadingProgress(repository)),
+        )
+        try {
+            fixture.releaseBackgroundGates()
+            val deadline = System.nanoTime() + 5_000_000_000L
+            while (!entered.isCompleted && System.nanoTime() < deadline) {
+                fixture.scene.render().close()
+                runCurrent()
+                Thread.sleep(5)
+            }
+            assertTrue(entered.isCompleted, "Real native paint must accept a progress write")
+            val readers = assertInstanceOf(DesktopRuntimeService::class.java, Injekt.get<DesktopReaderRuntimeFactory>())
+            var exited = false
+            val close = DesktopApplicationCloseCoordinator(
+                closeAndJoin = {
+                    readers.stop()
+                    readers.awaitStopped()
+                },
+                awaitTestModeTermination = null,
+            )
+            val closing = async { close { exited = true } }
+            runCurrent()
+            assertFalse(exited, "Window must stay alive while accepted SQL progress is pending")
+            assertFalse(closing.isCompleted)
+            release.complete(Unit)
+            runCurrent()
+            closing.await()
+            assertTrue(exited)
+            assertEquals(1L, database.chaptersQueries.getChapterById(7).executeAsOne().last_page_read)
+            assertEquals(1L, database.reading_eventsQueries.countByChapter(7).executeAsOne())
+        } finally {
+            release.complete(Unit)
             fixture.close()
             driver.close()
         }

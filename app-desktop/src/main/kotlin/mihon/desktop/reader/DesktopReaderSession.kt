@@ -547,6 +547,12 @@ class DesktopReaderSession(
         activate(retryContext)
     }
 
+    internal suspend fun awaitProgressDrained() = progressSupervisor.join()
+
+    internal fun invokeOnProgressDrained(action: () -> Unit) {
+        progressSupervisor.invokeOnCompletion { action() }
+    }
+
     override fun close() {
         val leaseOwnersToRelease: Set<DesktopReaderChapterLeaseOwner>
         synchronized(lock) {
