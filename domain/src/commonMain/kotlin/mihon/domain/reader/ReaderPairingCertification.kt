@@ -178,6 +178,12 @@ object ReaderPairingCertifier {
                 }
             }
         }
+        fun resolvedSide(index: Int): ReaderPageSideHint? {
+            val page = pages[index]
+            val evidence = owner.pageAnalysis(page) as? ReaderPageAnalysisEvidence.Computed ?: return null
+            analyses[page] = evidence
+            return evidence.fact.sideHint
+        }
         val scan = ReaderCanonicalPairingScan(
             pages,
             ::dimension,
@@ -187,6 +193,7 @@ object ReaderPairingCertifier {
             settings.manualPairStarts,
             settings.openingMode,
             settings.automatic,
+            ::resolvedSide,
         ) { a, b ->
             when (val evidence = owner.edgeAnalysis(a, b, settings.direction)) {
                 is ReaderEdgeAnalysisEvidence.Computed -> {

@@ -15,6 +15,7 @@ internal class ReaderCanonicalPairingScan(
     manualPairStarts: Set<Int>,
     private val openingMode: ReaderChapterOpeningMode,
     private val automatic: Boolean,
+    private val resolvedSideHint: (Int) -> ReaderPageSideHint?,
     private val distance: (ReaderPageId, ReaderPageId) -> Double?,
 ) {
     private val leading = if (direction == ReaderDirection.RTL) ReaderPageSideHint.RIGHT else ReaderPageSideHint.LEFT
@@ -63,6 +64,9 @@ internal class ReaderCanonicalPairingScan(
         }
         if (manual(i)) return true
         if (manual(i - 1) || manual(i + 1)) return false
+        // A resolved veto needs no analysis of the other side. Manual and geometry rules above
+        // still take priority; null here is missing evidence, never a computed UNKNOWN hint.
+        if (automatic && (resolvedSideHint(i) == trailing || resolvedSideHint(i + 1) == leading)) return false
         if (i == 0 &&
             (
                 openingMode != ReaderChapterOpeningMode.AUTO || !known(0) || !known(1) || side(1) != trailing ||

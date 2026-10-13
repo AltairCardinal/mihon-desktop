@@ -116,6 +116,319 @@ class ReaderPairingCertificationResearchTest {
     }
 
     @Test
+    fun `production needs quantify original prefix closure from observed and cold samples`() {
+        // This measures necessary fact inputs, without a decoder, byte reads, or wall-clock latency.
+        // It deliberately continues past the policy's 16-page refusal to quantify the missing closure;
+        // it does not create another location budget or authorize those reads in the actual reader.
+        val pages = List(176) { ReaderPageId(ReaderChapterId(73091), it) }
+        val observed = (114..129).map(pages::get)
+        val target = pages[125]
+        val settings = ReaderPairingSettings(ReaderDirection.RTL, true)
+        val headers = pages.associateWith { portrait }
+        val plan = requireNotNull(ReaderOriginalPageSampling.plan(portrait.width, portrait.height))
+        fun input(rightPage: Boolean): ReaderOriginalPageSamples {
+            fun color(point: Pair<Int, Int>) =
+                if (rightPage && point.first < portrait.width / 20) -1 else 0xff8c8c8c.toInt()
+            return plan.samples(plan.left.map(::color), plan.right.map(::color))
+        }
+        val gray = input(false)
+        val right = input(true)
+        assertEquals(ReaderPageSideHint.UNKNOWN, gray.sideHint)
+        assertEquals(ReaderPageSideHint.RIGHT, right.sideHint)
+        data class Closure(
+            val initial: List<ReaderPageId>,
+            val additional: List<ReaderPageId>,
+            val queries: Int,
+            val scanSteps: Int,
+            val maxScanSteps: Int,
+            val batches: Int,
+            val unit: ReaderDualPageUnit,
+        ) {
+            val total get() = (initial + additional).toSet()
+        }
+        fun readerNumbers(values: Collection<ReaderPageId>) =
+            values.map { it.sourcePageIndex + 1 }.sorted().joinToString(",", "[", "]")
+        val cases = mutableListOf<String>()
+        val comparisons = mutableListOf<String>()
+        for (reset in listOf(false, true)) {
+            val world = if (reset) "reader113_RIGHT" else "gray"
+            val identity = ReaderDualPageIdentity(
+                1,
+                1,
+                pages.map { page ->
+                    ReaderDualPageContentIdentity(
+                        page,
+                        if (reset && page.sourcePageIndex == 112) "unseen-right-margin" else "gray-$page",
+                    )
+                },
+            )
+            val samples = pages.associateWith { page ->
+                if (reset && page.sourcePageIndex == 112) right else gray
+            }
+            val facts = pages.associateWith { page -> portrait.copy(sideHint = samples.getValue(page).sideHint) }
+            val full = ReaderSpreadSamplesOwner(identity)
+            try {
+                pages.forEach { page ->
+                    assertTrue(
+                        full.acceptOriginal(full.request(page), facts.getValue(page), samples.getValue(page).edges),
+                    )
+                }
+                val oracle = SharedDualPageRules.canonicalPlan(
+                    pages,
+                    facts,
+                    settings.direction,
+                    automatic = settings.automatic,
+                    distance = { a, b ->
+                        (full.edgeAnalysis(a, b, settings.direction) as ReaderEdgeAnalysisEvidence.Computed).score
+                    },
+                ).single { target in it.pageIds }
+                fun closure(initial: List<ReaderPageId>): Closure {
+                    val partial = ReaderSpreadSamplesOwner(identity)
+                    try {
+                        val read = initial.toMutableSet()
+                        val additional = mutableListOf<ReaderPageId>()
+                        initial.forEach { page ->
+                            assertTrue(
+                                partial.acceptOriginal(
+                                    partial.request(page),
+                                    facts.getValue(page),
+                                    samples.getValue(page).edges,
+                                ),
+                            )
+                        }
+                        var queries = 0
+                        var scanSteps = 0
+                        var maxScanSteps = 0
+                        var batches = 0
+                        // Every NeedFacts query must add at least one previously unread original page.
+                        // Thus N+1 queries suffice here; 4N also catches an accidental non-progress loop.
+                        repeat(4 * pages.size) {
+                            queries++
+                            val result = ReaderPairingCertifier.certify(identity, headers, partial, settings, target)
+                            when (result) {
+                                is Certified -> {
+                                    scanSteps += result.segment.scanSteps
+                                    maxScanSteps = maxOf(maxScanSteps, result.segment.scanSteps)
+                                    assertEquals(oracle, result.segment.unit)
+                                    assertTrue(result.segment.isCurrent(identity, settings, partial, headers))
+                                    return Closure(
+                                        initial,
+                                        additional,
+                                        queries,
+                                        scanSteps,
+                                        maxScanSteps,
+                                        batches,
+                                        result.segment.unit,
+                                    )
+                                }
+                                is ReaderPairingCertification.NeedFacts -> {
+                                    scanSteps += result.scanSteps
+                                    maxScanSteps = maxOf(maxScanSteps, result.scanSteps)
+                                    assertTrue(
+                                        result.facts.all { need ->
+                                            need.kind == ReaderPairingFactKind.ORIGINAL_ANALYSIS ||
+                                                need.kind == ReaderPairingFactKind.EDGE_SAMPLES
+                                        },
+                                    )
+                                    // Both edge endpoints come from the production request. Existing original
+                                    // samples/scalars remain in the real 16-sample owner and are not fabricated.
+                                    val batch = result.facts.flatMap { need ->
+                                        listOfNotNull(need.pageId, need.secondPageId)
+                                    }.distinct().filter { it !in read }
+                                        .take(ReaderDualPageFactLimits.MAX_CONCURRENT_REQUESTS)
+                                    assertTrue(batch.isNotEmpty(), "NeedFacts made no new-input progress: $result")
+                                    assertTrue(batch.size <= 2)
+                                    batches++
+                                    batch.forEach { page ->
+                                        assertTrue(
+                                            partial.acceptOriginal(
+                                                partial.request(page),
+                                                facts.getValue(page),
+                                                samples.getValue(page).edges,
+                                            ),
+                                        )
+                                        assertTrue(read.add(page))
+                                        additional += page
+                                    }
+                                }
+                                is ReaderPairingCertification.RetryableBlocked ->
+                                    throw AssertionError("Valid fixture input must not be blocked: $result")
+                            }
+                        }
+                        throw AssertionError("Original closure did not terminate within 4N production queries")
+                    } finally {
+                        partial.close()
+                    }
+                }
+                val warm = closure(observed)
+                val cold = closure(emptyList())
+                for ((start, result) in listOf("observed115..130" to warm, "coldOriginal" to cold)) {
+                    if (start == "observed115..130") {
+                        assertTrue(result.total.size > ReaderDualPageFactLimits.MAX_ADDITIONAL_PAGES)
+                    }
+                    assertEquals(result.batches + 1, result.queries)
+                    val exceedsLimit = result.total.size > ReaderDualPageFactLimits.MAX_ADDITIONAL_PAGES
+                    cases += "{\"world\":\"$world\",\"start\":\"$start\",\"initialCount\":${result.initial.size}," +
+                        "\"newOriginalCount\":${result.additional.size},\"totalOriginalCount\":${result.total.size}," +
+                        "\"newOriginalPages\":${readerNumbers(result.additional)}," +
+                        "\"totalOriginalPages\":${readerNumbers(result.total)},\"queryCount\":${result.queries}," +
+                        "\"scanStepsTotal\":${result.scanSteps},\"scanStepsMaxPerQuery\":${result.maxScanSteps}," +
+                        "\"batchCount\":${result.batches},\"certifiedUnit\":${readerNumbers(result.unit.pageIds)}," +
+                        "\"exceeds16OriginalInputs\":$exceedsLimit}"
+                }
+                comparisons += "{\"world\":\"$world\",\"observedInputsAbsentFromColdClosure\":" +
+                    readerNumbers(observed.filter { it !in cold.total }) +
+                    ",\"totalInputDifference\":${warm.total.size - cold.total.size}}"
+            } finally {
+                full.close()
+            }
+        }
+        println(
+            "R3_PREFIX_CLOSURE {\"targetReaderPage\":126,\"scope\":\"singleTarget\"," +
+                "\"nativeNeighborTargets\":\"NOT_OBSERVED_FROM_CURRENT_ART_EVIDENCE\"," +
+                "\"units\":{\"pages\":\"reader_1based\",\"originalCount\":\"distinct_fact_inputs\"," +
+                "\"scanSteps\":\"production_reducer_steps\",\"queryCount\":\"certifier_calls\"," +
+                "\"latency\":\"NOT_MEASURED\",\"bytes\":\"NOT_MEASURED\"}," +
+                "\"maxBatchSize\":2,\"maxQueryCount\":${4 * pages.size},\"cases\":[" +
+                cases.joinToString(",") + "],\"comparison\":[" + comparisons.joinToString(",") + "]}",
+        )
+    }
+
+    @Test
+    fun `known original side veto avoids unrelated lookbehind after manual priority`() {
+        val pages = List(176) { ReaderPageId(ReaderChapterId(73092), it) }
+        val observed = (112..127).map(pages::get)
+        assertEquals(ReaderDualPageFactLimits.MAX_ADDITIONAL_PAGES, observed.size)
+        val target = pages[125]
+        val plan = requireNotNull(ReaderOriginalPageSampling.plan(portrait.width, portrait.height))
+        fun input(hint: ReaderPageSideHint): ReaderOriginalPageSamples {
+            fun color(point: Pair<Int, Int>) = when {
+                hint == ReaderPageSideHint.RIGHT && point.first < portrait.width / 20 -> -1
+                hint == ReaderPageSideHint.LEFT && point.first >= portrait.width * 19 / 20 -> -1
+                else -> 0xff8c8c8c.toInt()
+            }
+            return plan.samples(plan.left.map(::color), plan.right.map(::color)).also {
+                assertEquals(hint, it.sideHint)
+            }
+        }
+        val gray = input(ReaderPageSideHint.UNKNOWN)
+        for (direction in listOf(ReaderDirection.RTL, ReaderDirection.LTR)) {
+            val leading = if (direction == ReaderDirection.RTL) ReaderPageSideHint.RIGHT else ReaderPageSideHint.LEFT
+            val trailing = if (direction == ReaderDirection.RTL) ReaderPageSideHint.LEFT else ReaderPageSideHint.RIGHT
+            for (hint in listOf(leading, trailing)) {
+                for (starts in listOf(emptySet(), setOf(111), setOf(110, 111))) {
+                    val settings = ReaderPairingSettings(direction, true, manualPairStarts = starts)
+                    val identity = ReaderDualPageIdentity(
+                        1,
+                        1,
+                        pages.map { ReaderDualPageContentIdentity(it, "original-${it.sourcePageIndex}") },
+                    )
+                    val reset = input(hint)
+                    val samples = pages.associateWith { if (it.sourcePageIndex == 112) reset else gray }
+                    val facts = pages.associateWith { portrait.copy(sideHint = samples.getValue(it).sideHint) }
+                    val headers = pages.associateWith { portrait }
+                    val full = ReaderSpreadSamplesOwner(identity)
+                    val partial = ReaderSpreadSamplesOwner(identity)
+                    try {
+                        pages.forEach { page ->
+                            assertTrue(
+                                full.acceptOriginal(
+                                    full.request(page),
+                                    facts.getValue(page),
+                                    samples.getValue(page).edges,
+                                ),
+                            )
+                            if (page in observed) {
+                                assertTrue(
+                                    partial.acceptOriginal(
+                                        partial.request(page),
+                                        facts.getValue(page),
+                                        samples.getValue(page).edges,
+                                    ),
+                                )
+                            }
+                        }
+                        val oracle = SharedDualPageRules.canonicalPlan(
+                            pages,
+                            facts,
+                            direction,
+                            automatic = true,
+                            manualPairStarts = starts,
+                            distance = { a, b ->
+                                (full.edgeAnalysis(a, b, direction) as ReaderEdgeAnalysisEvidence.Computed).score
+                            },
+                        ).single { target in it.pageIds }
+                        if (hint == leading && starts.isEmpty()) {
+                            assertEquals(listOf(125, 126), oracle.pageIds.map { it.sourcePageIndex + 1 })
+                        }
+                        val result = ReaderPairingCertifier.certify(identity, headers, partial, settings, target)
+                        assertTrue(
+                            result is Certified,
+                            "A computed $direction $hint reset after manual $starts needs no reader112 original: " +
+                                result,
+                        )
+                        val segment = (result as Certified).segment
+                        assertEquals(oracle, segment.unit)
+                        assertEquals(ReaderPageAnalysisEvidence.NotAnalyzed, partial.pageAnalysis(pages[111]))
+                        assertEquals(
+                            ReaderEdgeAnalysisEvidence.NotAnalyzed,
+                            partial.edgeAnalysis(pages[111], pages[112], direction),
+                        )
+                        assertTrue(segment.isCurrent(identity, settings, partial, headers))
+                        assertFalse(segment.isCurrent(identity, settings.copy(manualRevision = 1), partial, headers))
+                        if (hint == leading && starts.isEmpty()) {
+                            assertTrue(pages[112] in segment.dependentPageIds)
+                            val next = identity.copy(
+                                content = identity.content.map {
+                                    if (it.pageId == pages[112]) it.copy(contentVersion = "changed-reset") else it
+                                },
+                            )
+                            val replacement = partial.rebind(next)
+                            try {
+                                assertFalse(segment.isCurrent(next, settings, replacement, headers))
+                            } finally {
+                                replacement.close()
+                            }
+                        }
+                    } finally {
+                        full.close()
+                        partial.close()
+                    }
+                }
+            }
+            // An unanalyzed hint in a header is not the owner's Computed original evidence.
+            val identity = ReaderDualPageIdentity(
+                1,
+                1,
+                pages.map { ReaderDualPageContentIdentity(it, "unknown-${it.sourcePageIndex}") },
+            )
+            val uncomputed = ReaderSpreadSamplesOwner(identity)
+            try {
+                observed.drop(1).forEach {
+                    assertTrue(uncomputed.acceptOriginal(uncomputed.request(it), portrait, gray.edges))
+                }
+                val headers = pages.associateWith { portrait }.toMutableMap()
+                headers[pages[112]] = portrait.copy(sideHint = leading)
+                val result = ReaderPairingCertifier.certify(
+                    identity,
+                    headers,
+                    uncomputed,
+                    ReaderPairingSettings(direction, true),
+                    target,
+                )
+                assertTrue(result is ReaderPairingCertification.NeedFacts)
+                assertTrue(
+                    (result as ReaderPairingCertification.NeedFacts).facts.any {
+                        it.pageId == pages[112] && it.kind == ReaderPairingFactKind.ORIGINAL_ANALYSIS
+                    },
+                )
+            } finally {
+                uncomputed.close()
+            }
+        }
+    }
+
+    @Test
     fun `failure before original dimensions is blocked with its actual recoverable cause`() {
         for (reason in listOf(ReaderAnalysisFailure.READ, ReaderAnalysisFailure.RESOURCE)) {
             for (failedHeader in listOf(false, true)) {

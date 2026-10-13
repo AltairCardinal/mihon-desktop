@@ -132,7 +132,9 @@ object SharedDualPageRules {
             pages,
             { index -> pages.getOrNull(index)?.let(facts::get) },
             { index -> facts[pages[index]]?.sideHint ?: ReaderPageSideHint.UNKNOWN },
-            direction, forcedSinglePages, manualPairStarts, openingMode, automatic, distance,
+            direction, forcedSinglePages, manualPairStarts, openingMode, automatic,
+            { index -> facts[pages[index]]?.sideHint },
+            distance,
         )
         return buildList {
             var cursor = ReaderPairingScanCursor(0, true)
