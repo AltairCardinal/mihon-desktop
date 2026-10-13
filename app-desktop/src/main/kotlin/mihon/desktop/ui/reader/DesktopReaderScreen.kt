@@ -35,6 +35,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -47,6 +49,9 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.model.rememberScreenModel
@@ -525,6 +530,12 @@ internal fun ReaderViewport(
     val appPreferences = LocalDesktopUiDependencies.current.appPreferences
     val tutorials = remember(appPreferences) { DesktopTutorialState(appPreferences.acknowledgedTutorials) }
     val pairingTutorial = DesktopTutorial.READER_ADJUST_SPREAD
+    val tutorialEligible = tutorials.shouldShow(pairingTutorial, readerManualPairingAvailable(state))
+    var viewportOrigin by remember { mutableStateOf(Offset.Zero) }
+    var pairingAnchor by remember { mutableStateOf<Rect?>(null) }
+    LaunchedEffect(tutorialEligible) {
+        if (tutorialEligible && !model.state.value.showUI) model.toggleUI()
+    }
     val adjustSpread: () -> Unit = {
         val previous = model.state.value.dualPairingState
         model.adjustSpread()
@@ -551,7 +562,10 @@ internal fun ReaderViewport(
         ReaderBackgroundTheme.WHITE -> Color.White
         ReaderBackgroundTheme.AUTOMATIC -> Color.Black
     }
-    Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
+    Box(
+        modifier = Modifier.fillMaxSize().background(bgColor)
+            .onGloballyPositioned { viewportOrigin = it.positionInRoot() },
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -628,6 +642,7 @@ internal fun ReaderViewport(
                             onAdjustSpread = adjustSpread,
                             adjustSaving = state.pairingSaving,
                             adjustEnabled = state.pairingLoad == PairingLoad.READY,
+                            adjustSpreadModifier = Modifier.onGloballyPositioned { pairingAnchor = it.boundsInRoot() },
                             modifier = Modifier.align(Alignment.BottomCenter),
                         )
                     }
@@ -673,17 +688,15 @@ internal fun ReaderViewport(
                 }
             }
         }
-        if (tutorials.shouldShow(pairingTutorial, readerManualPairingAvailable(state))) {
+        val anchor = pairingAnchor
+        if (tutorialEligible && state.showUI && anchor != null) {
             DesktopTutorialBubble(
                 tutorial = pairingTutorial,
-                actionLabel = MR.strings.desktop_tutorial_pairing_action.localized(),
-                onAction = adjustSpread,
+                anchorBounds = anchor.translate(-viewportOrigin),
                 onConfirm = {
                     tutorials.acknowledge(pairingTutorial)
                     focusRequester.requestFocus()
                 },
-                modifier = Modifier.align(Alignment.BottomEnd)
-                    .padding(start = 16.dp, end = 16.dp, bottom = if (state.showUI) 88.dp else 24.dp),
             )
         }
     }

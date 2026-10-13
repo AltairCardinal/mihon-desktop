@@ -1,7 +1,5 @@
 package mihon.desktop.ui.reader
 
-import tachiyomi.i18n.MR
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -13,7 +11,6 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.FilledIconButton
-
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -26,8 +23,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import tachiyomi.i18n.MR
 
 /**
  * Describes which button goes on which side of the bottom bar, based on reading direction.
@@ -89,6 +88,7 @@ internal fun ReaderBottomBar(
     onAdjustSpread: (() -> Unit)? = null,
     adjustSaving: Boolean = false,
     adjustEnabled: Boolean = true,
+    adjustSpreadModifier: Modifier = Modifier,
     modifier: Modifier = Modifier,
 ) {
     val nav = chapterNavLayout(isRtl, hasPrevChapter, hasNextChapter)
@@ -138,11 +138,15 @@ internal fun ReaderBottomBar(
                 IconButton(
                     onClick = onAdjustSpread,
                     enabled = adjustEnabled && !adjustSaving,
-                    modifier = Modifier.size(36.dp),
+                    modifier = Modifier.size(36.dp).then(adjustSpreadModifier).testTag("reader-adjust-spread"),
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                        contentDescription = if (adjustSaving) MR.strings.desktop_reader_pairing_saving.localized() else MR.strings.desktop_ui_adjust_spread.localized(),
+                        contentDescription = if (adjustSaving) {
+                            MR.strings.desktop_reader_pairing_saving.localized()
+                        } else {
+                            MR.strings.desktop_ui_adjust_spread.localized()
+                        },
                         tint = Color.White,
                     )
                 }

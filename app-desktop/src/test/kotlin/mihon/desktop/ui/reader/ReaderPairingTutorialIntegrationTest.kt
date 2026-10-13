@@ -87,7 +87,7 @@ class ReaderPairingTutorialIntegrationTest {
             Fixture(this, root).use { fixture ->
                 fixture.mount()
                 assertTrue(fixture.hasBubble())
-                assertFalse(fixture.model.state.value.showUI, "Tutorial must be visible with controls hidden")
+                assertTrue(fixture.model.state.value.showUI, "Tutorial must first reveal the actual reader controls")
                 fixture.key()
                 assertEquals(setOf(1), fixture.model.state.value.forcedSinglePages)
                 fixture.key(down = false)
@@ -145,6 +145,16 @@ class ReaderPairingTutorialIntegrationTest {
                 withFixture(width, dark) { fixture ->
                     fixture.mount()
                     assertTrue(fixture.hasBubble())
+                    val anchor = fixture.node("reader-adjust-spread").boundsInRoot
+                    val tip = fixture.node("desktop-tutorial-tip").boundsInRoot
+                    assertEquals(anchor.center.x, tip.center.x, 1f, "Arrow must track the actual toolbar button")
+                    assertTrue(tip.bottom <= anchor.top, "Tutorial must not cover its target")
+                    assertFalse(
+                        fixture.nodes().any {
+                            it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "desktop-tutorial-action"
+                        },
+                        "Do not duplicate the toolbar action",
+                    )
                     fixture.capture("tutorial-$width-${if (dark) "dark" else "light"}.png")
                     val confirm = fixture.node("desktop-tutorial-confirm")
                     val bounds = confirm.boundsInRoot
@@ -192,14 +202,29 @@ class ReaderPairingTutorialIntegrationTest {
     }
 
     @Test
-    fun `bubble action performs actual pairing and returns keyboard focus`() = runTest {
+    fun `tutorial target performs actual pairing and returns keyboard focus`() = runTest {
         withFixture { fixture ->
             fixture.mount()
-            fixture.click(fixture.node("desktop-tutorial-action").boundsInRoot.center)
+            fixture.click(fixture.node("reader-adjust-spread").boundsInRoot.center)
             assertEquals(setOf(1), fixture.model.state.value.forcedSinglePages)
             assertFalse(fixture.hasBubble())
             fixture.key()
             assertEquals(emptySet<Int>(), fixture.model.state.value.forcedSinglePages)
+        }
+    }
+
+    @Test
+    fun `hiding reader controls also hides tutorial without consuming or forcing controls back`() = runTest {
+        withFixture { fixture ->
+            fixture.mount()
+            assertTrue(fixture.model.state.value.showUI)
+            fixture.model.toggleUI()
+            fixture.frames()
+            assertFalse(fixture.model.state.value.showUI)
+            assertFalse(fixture.hasBubble())
+            fixture.model.toggleUI()
+            fixture.frames()
+            assertTrue(fixture.hasBubble())
         }
     }
 
