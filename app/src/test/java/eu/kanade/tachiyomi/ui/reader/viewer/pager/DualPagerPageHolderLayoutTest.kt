@@ -113,7 +113,7 @@ class DualPagerPageHolderLayoutTest {
 
     @Test
     @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
-    fun `actual decoded Android bitmap provides shared gutter side before locking the current slot`() = runTest {
+    fun `original encoded gutter evidence selects the slot before the normal bitmap locks it`() = runTest {
         val bitmap = Bitmap.createBitmap(128, 256, Bitmap.Config.ARGB_8888)
         bitmap.eraseColor(android.graphics.Color.rgb(40, 40, 40))
         for (x in 122 until 128) for (y in 0 until 256) bitmap.setPixel(x, y, android.graphics.Color.WHITE)
@@ -128,73 +128,68 @@ class DualPagerPageHolderLayoutTest {
         }
         chapter.publishLoadedPageListForTest(pages)
         Injekt.get<ReaderPreferences>().automaticSpreadMatching().set(true)
+        useOriginalPngDecoder()
         runCurrent()
         viewer.setChapters(ViewerChapters(chapter, null, null))
         viewer.moveToPage(pages[3])
+        val certificate = awaitOriginalPairing(chapter, 3)
+        val owner = requireNotNull(viewer.adapter.session(chapter))
+        val id = owner.identity.pageIds[3]
+        assertEquals(ReaderPortraitSingleSlot.LEFT, certificate.segment.unit.slots.single { it.pageId == id }.position)
+        assertTrue(owner.originalAnalysis(id) is mihon.domain.reader.ReaderPageAnalysisEvidence.Computed)
+        assertTrue(owner.displayedHistory.none { id in it.drawnPageIds })
+
+        // Original evidence has already proved LEFT. A stale native RIGHT proposal cannot acquire a lock.
+        val wrong = DualPagerPageHolder(
+            viewer.activity,
+            viewer,
+            DisplayPage.Single(pages[3], ReaderPortraitSingleSlot.RIGHT),
+        )
+        try {
+            load(wrong, pages[3], "CENTER")
+            measure(wrong, 1440, 3120)
+            val image = descendants(wrong).filterIsInstance<ReaderPageImageView>().first()
+            assertTrue(!requireNotNull(image.beforeImageDraw).invoke(128, 256))
+            assertTrue(
+                owner.displayedHistory.none { frame ->
+                    id in frame.lockedPageIds && frame.unit.slots.any {
+                        it.pageId == id && it.position == ReaderPortraitSingleSlot.RIGHT
+                    }
+                },
+            )
+        } finally {
+            detach(wrong)
+        }
         val holder = DualPagerPageHolder(
             viewer.activity,
             viewer,
             viewer.adapter.items.filterIsInstance<DisplayPage>().single { it.containsPage(pages[3]) },
         )
         try {
-            load(holder, pages[3], "RIGHT")
+            load(holder, pages[3], "CENTER")
             measure(holder, 1440, 3120)
             val image = descendants(holder).filterIsInstance<ReaderPageImageView>().first()
-            val currentConfig = ReflectionHelpers.getField<ReaderPageImageView.Config>(image, "config")
-            val decoded = requireNotNull(android.graphics.BitmapFactory.decodeByteArray(encoded, 0, encoded.size))
-            image.setImage(android.graphics.drawable.BitmapDrawable(image.resources, decoded), currentConfig)
-            val output = Bitmap.createBitmap(image.width, image.height, Bitmap.Config.ARGB_8888)
-            try {
-                image.draw(android.graphics.Canvas(output))
-            } finally {
-                output.recycle()
-            }
-            val owner = requireNotNull(viewer.adapter.session(chapter))
-            val id = owner.identity.pageIds[3]
+            paintReaderImage(image, encoded)
             assertEquals(mihon.domain.reader.ReaderPageSideHint.LEFT, owner.pageFact(id)!!.sideHint)
+            assertEquals(
+                ReaderPortraitSingleSlot.LEFT,
+                owner.frame(requireNotNull(holder.presentationScope).second)!!.unit.slots.single().position,
+            )
+            assertTrue(owner.frame(requireNotNull(holder.presentationScope).second)!!.drawnPageIds.contains(id))
             assertTrue(
                 diagnosticMessages.toString(),
                 diagnosticMessages.any {
                     "event=decoded_fact" in it && "source=3" in it && "observedHint=LEFT" in it &&
-                        "sample=ORIGINAL_DECODED" in it && "accepted=true" in it && "actual=RIGHT" in it
+                        "sample=ORIGINAL_DECODED" in it && "accepted=true" in it && "actual=LEFT" in it
                 },
             )
             assertTrue(
                 diagnosticMessages.toString(),
                 diagnosticMessages.any {
                     "event=prepare" in it && "source=3" in it && "prepared=false" in it &&
-                        "outcome=FRAME_EXPIRED" in it && "reason=UNAVAILABLE" in it &&
-                        "proposedBefore=3:RIGHT" in it && "submittedHint=LEFT" in it
+                        "outcome=NATIVE_CAPABILITY_REJECTED" in it && "actual=RIGHT" in it
                 },
             )
-            assertTrue(
-                owner.displayedHistory.none { frame ->
-                    id in frame.lockedPageIds && frame.unit.slots.any { slot ->
-                        slot.pageId == id && slot.position == ReaderPortraitSingleSlot.RIGHT
-                    }
-                },
-            )
-            val corrected = DualPagerPageHolder(
-                viewer.activity,
-                viewer,
-                viewer.adapter.items.filterIsInstance<DisplayPage>().single { it.containsPage(pages[3]) },
-            )
-            try {
-                load(corrected, pages[3], "LEFT")
-                paint(corrected, pages[3])
-                val ticket = requireNotNull(corrected.presentationScope).second
-                val frame = requireNotNull(owner.frame(ticket))
-                assertTrue(id in frame.drawnPageIds)
-                assertEquals(ReaderPortraitSingleSlot.LEFT, frame.unit.slots.single { it.pageId == id }.position)
-                assertTrue(
-                    diagnosticMessages.any {
-                        "event=prepare" in it && "source=3" in it && "prepared=true" in it &&
-                            "actual=LEFT" in it && "locked=3:LEFT" in it
-                    },
-                )
-            } finally {
-                detach(corrected)
-            }
         } finally {
             detach(holder)
         }
@@ -215,7 +210,16 @@ class DualPagerPageHolderLayoutTest {
                 }
             }
             chapter.publishLoadedPageListForTest(pages)
+            useOriginalPngDecoder()
             viewer.setChapters(ViewerChapters(chapter, null, null))
+            awaitOriginalPairing(chapter, 0)
+            val owner = requireNotNull(viewer.adapter.session(chapter))
+            assertEquals(
+                mihon.domain.reader.ReaderPageSideHint.UNKNOWN,
+                owner.pageFact(owner.identity.pageIds[0])!!.sideHint,
+            )
+            val original = owner.originalAnalysis(owner.identity.pageIds[0])
+            assertTrue(original is mihon.domain.reader.ReaderPageAnalysisEvidence.Computed)
             val holder = DualPagerPageHolder(
                 viewer.activity,
                 viewer,
@@ -251,24 +255,29 @@ class DualPagerPageHolderLayoutTest {
 
     @Test
     @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
-    fun `release presentation diagnostics expose a late known hint skipped by an already locked slot`() = runTest {
+    fun `release presentation diagnostics keep a late normal hint separate from the locked original slot`() = runTest {
         Injekt.get<ReaderPreferences>().automaticSpreadMatching().set(true)
         runCurrent()
         val bitmap = Bitmap.createBitmap(128, 256, Bitmap.Config.ARGB_8888)
         bitmap.eraseColor(android.graphics.Color.rgb(40, 40, 40))
+        val original = ByteArrayOutputStream().also {
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+        }.toByteArray()
         for (x in 122 until 128) for (y in 0 until 256) bitmap.setPixel(x, y, android.graphics.Color.WHITE)
         val encoded = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
         bitmap.recycle()
         val chapter = ReaderChapter(Chapter.create().copy(id = 9002, mangaId = 1))
         val pages = List(6) { index ->
-            ReaderPage(index, stream = { encoded.inputStream() }).apply {
+            ReaderPage(index, stream = { original.inputStream() }).apply {
                 this.chapter = chapter
                 status = Page.State.Ready
             }
         }
         chapter.publishLoadedPageListForTest(pages)
+        useOriginalPngDecoder()
         viewer.setChapters(ViewerChapters(chapter, null, null))
         viewer.moveToPage(pages[3])
+        awaitOriginalPairing(chapter, 3)
         val holder = DualPagerPageHolder(
             viewer.activity,
             viewer,
@@ -278,7 +287,8 @@ class DualPagerPageHolderLayoutTest {
             load(holder, pages[3], "RIGHT")
             measure(holder, 1440, 3120)
             val image = descendants(holder).filterIsInstance<ReaderPageImageView>().first()
-            // The real native preparation callback arrives before an eligible whole bitmap sample.
+            // The real original is solid (UNKNOWN) and certifies the ordinary RIGHT slot.
+            // The normal whole bitmap has not been observed yet.
             assertTrue(requireNotNull(image.beforeImageDraw).invoke(128, 256))
             assertTrue(
                 diagnosticMessages.any {
@@ -286,7 +296,17 @@ class DualPagerPageHolderLayoutTest {
                         "submittedHint=UNKNOWN" in it && "prepared=true" in it && "lockedBefore=false" in it
                 },
             )
+            val (owner, ticket) = requireNotNull(holder.presentationScope)
+            val prepared = owner.frame(ticket)!!
+            val content = pages[3].encodedContentIdentity()
+            assertEquals(ReaderPortraitSingleSlot.RIGHT, prepared.unit.slots.first().position)
+            assertTrue(!original.contentEquals(encoded))
+            // Explicit display fault / lossy-observation negative control: inject a LEFT normal bitmap.
+            // The encoded source and its production original analysis remain the unchanged solid PNG.
             paintReaderImage(image, encoded)
+            assertEquals(content, pages[3].encodedContentIdentity())
+            assertEquals(prepared.id, owner.frame(ticket)!!.id)
+            assertEquals(prepared.unit.slots, owner.frame(ticket)!!.unit.slots)
             assertTrue(
                 diagnosticMessages.any {
                     "event=retained_lock" in it && "source=3" in it && "observedHint=LEFT" in it &&
@@ -295,7 +315,6 @@ class DualPagerPageHolderLayoutTest {
                         "actual=RIGHT" in it && "context=" in it && "serial=" in it && "ownerSequence=" in it
                 },
             )
-            val owner = requireNotNull(viewer.adapter.session(chapter))
             assertEquals(
                 mihon.domain.reader.ReaderPageSideHint.UNKNOWN,
                 owner.pageFact(owner.identity.pageIds[3])!!.sideHint,
@@ -749,7 +768,8 @@ class DualPagerPageHolderLayoutTest {
         val oldViewer = state.value.viewer as DualPageR2LPagerViewer
         assertEquals("The original logical second page must survive the first paired viewport", 2, current?.index)
         val priorUnit = requireNotNull(oldViewer.adapter.session(chapter)?.targetUnit)
-        assertEquals(listOf(2, 3), priorUnit.pageIds.map { it.sourcePageIndex })
+        assertEquals(listOf(1, 2), priorUnit.pageIds.map { it.sourcePageIndex })
+        assertEquals(2, oldViewer.adapter.session(chapter)!!.location!!.pageId.sourcePageIndex)
         oldViewer.adjustPagePairing()
         val adjustedTarget = priorUnit.pageIds.maxOf { it.sourcePageIndex }
         assertEquals(adjustedTarget, current?.index)
@@ -835,7 +855,8 @@ class DualPagerPageHolderLayoutTest {
         val chapter = loadedChapter(11, 4)
         viewer.adapter.setChapters(ViewerChapters(chapter, null, null), false)
         for (page in requireNotNull(chapter.pages)) decodeForAdapter(page)
-        viewer.adapter.adjustPairing()
+        // Default AUTO opening has cover 0, pair 1/2, and the natural trailing single 3.
+        // Invoking adjust here explicitly selects FIRST_PAIR and changes the topology being tested.
         val units = viewer.adapter.items.filterIsInstance<DisplayPage>().sortedBy { it.firstPage.index }
         assertEquals(listOf(0, 1, 3), units.map { it.firstPage.index })
         assertTrue(units[1] is DisplayPage.Double)
@@ -1335,6 +1356,33 @@ class DualPagerPageHolderLayoutTest {
         assertEquals(0f, image.viewportOffsetY, 0.001f)
     }
 
+    private fun useOriginalPngDecoder() {
+        // Windows JVM substitutes only the unavailable JNI region boundary; sampling and publication stay real.
+        viewer.adapter.spreadDecoderFactory = { input ->
+            eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(input)
+        }
+    }
+
+    private fun kotlinx.coroutines.test.TestScope.awaitOriginalPairing(
+        chapter: ReaderChapter,
+        index: Int,
+    ): mihon.domain.reader.ReaderPairingCertification.Certified {
+        val display = viewer.adapter.items.filterIsInstance<DisplayPage>().single {
+            it.containsPage(requireNotNull(chapter.pages)[index])
+        }
+        viewer.adapter.requirePairing(display)
+        val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5)
+        var result: mihon.domain.reader.ReaderPairingCertification? = null
+        do {
+            runCurrent()
+            val owner = requireNotNull(viewer.adapter.session(chapter))
+            result = owner.certifyPairing(owner.identity.pageIds[index])
+            if (result is mihon.domain.reader.ReaderPairingCertification.Certified) return result
+            Thread.sleep(5)
+        } while (System.nanoTime() < deadline)
+        throw AssertionError("Expected actual original certificate, got $result")
+    }
+
     private suspend fun decodeForAdapter(page: ReaderPage) {
         val holder = DualPagerPageHolder(viewer.activity, viewer, DisplayPage.Single(page))
         load(holder, page, "CENTER")
@@ -1744,6 +1792,8 @@ class DualPagerPageHolderLayoutTest {
             val chapter = loadedChapter(if (wideCover) 12 else 11, if (wideCover) 3 else 1)
             val page = requireNotNull(chapter.pages).first()
             if (wideCover) page.stream = pair(rightWidth = 1440, rightHeight = 720).second.stream
+            withContext(Dispatchers.IO) { requireNotNull(chapter.pages).forEach { it.publishHeaderFact() } }
+            assertEquals(Page.State.Queue, page.status)
             viewer.setChapters(ViewerChapters(chapter, null, null))
             val host = Robolectric.buildActivity(ComponentActivity::class.java).setup().visible()
             try {
@@ -1816,6 +1866,9 @@ class DualPagerPageHolderLayoutTest {
         val chapter = loadedChapter(14, 1)
         val adjacent = loadedChapter(15, 1)
         val page = requireNotNull(chapter.pages).single()
+        withContext(Dispatchers.IO) {
+            (chapter.pages.orEmpty() + adjacent.pages.orEmpty()).forEach { it.publishHeaderFact() }
+        }
         viewer.setChapters(ViewerChapters(chapter, null, adjacent))
         val host = Robolectric.buildActivity(ComponentActivity::class.java).setup().visible()
         try {
@@ -1876,9 +1929,10 @@ class DualPagerPageHolderLayoutTest {
     }
 
     @Test
-    fun `cold real B1 dimensions flow from HTTP encoded headers to late tail native slot`() = runBlocking {
+    fun `cold real B1 HTTP headers certify the tail slot before native exposure`() = runBlocking {
         val main = StandardTestDispatcher()
         Dispatchers.setMain(main)
+        useOriginalPngDecoder()
         val directory = File.createTempFile("reader-http-b1-", ".tmp").apply {
             delete()
             mkdir()
@@ -1980,28 +2034,39 @@ class DualPagerPageHolderLayoutTest {
             host.get().setContentView(viewer.pager)
             val tail = port.materializedPages[16]
             loader.onPageSelected(tail)
-            pumpUntil("The original normal current request must finish without remote prefix reads") {
+            pumpUntil("The normal current request must become Ready before the held wide prefix") {
                 tail.status == Page.State.Ready
             }
-            assertEquals("No optional wide-prefix I/O is admitted", 1L, wideEntered.count)
+            fun currentOwner() = requireNotNull(viewer.adapter.session(chapter))
+            val target = currentOwner().identity.pageIds[16]
+            val location = currentOwner().location
+            assertEquals(16, location?.pageId?.sourcePageIndex)
             assertTrue(
-                "The remote wide source is not requested merely to classify the tail",
-                "/image/10" !in requestedPaths,
+                currentOwner().certifyPairing(target) is mihon.domain.reader.ReaderPairingCertification.NeedFacts,
             )
+            org.junit.Assert.assertNull(currentOwner().captureCertifiedViewport(target))
+            assertTrue(currentOwner().displayedHistory.none { target in it.drawnPageIds })
+            pumpUntil("The real required prefix must reach the controlled wide HTTP input") {
+                wideEntered.count == 0L
+            }
+            assertTrue("The required geometry must use the real HTTP route", "/image/10" in requestedPaths)
             assertEquals(
                 mihon.domain.reader.ReaderPageFactState.UNKNOWN,
                 port.materializedPages[9].pageFact.value.state,
             )
-            val owner = requireNotNull(viewer.adapter.session(chapter))
-            assertEquals(16, owner.location?.pageId?.sourcePageIndex)
+            releaseWide.countDown()
+            pumpUntil("Original header evidence must certify the tail before any native exposure") {
+                currentOwner().certifyPairing(target) is mihon.domain.reader.ReaderPairingCertification.Certified
+            }
+            assertEquals("Taking evidence must not manufacture navigation", location, currentOwner().location)
+            assertEquals(listOf(target), currentOwner().targetUnit!!.pageIds)
             assertEquals(
                 mihon.domain.reader.ReaderPortraitSingleSlot.RIGHT,
-                requireNotNull(owner.targetUnit).slots.single { it.pageId.sourcePageIndex == 16 }.position,
+                currentOwner().targetUnit!!.slots.single().position,
             )
-            val holder =
-                viewer.pager.children.filterIsInstance<DualPagerPageHolder>().first {
-                    it.displayPage.containsPage(tail)
-                }
+            val holder = viewer.pager.children.filterIsInstance<DualPagerPageHolder>().first {
+                it.displayPage.containsPage(tail)
+            }
             val decoding = async { load(holder, tail, "CENTER") }
             pumpUntil("The actual encoded tail must reach its native image view") { decoding.isCompleted }
             decoding.await()

@@ -658,3 +658,31 @@ Desktop最终补验首次 `pairing-main-desktop-handoff-green` 18项中14通过�
 以上由原实施代理只读核XML和调用链，未发现本次release-only route的因果入口；并不代表所有额外测试已通过或原产品行为普遍正确。恢复后独立按这8个方法处理，预计2～4小时，不重跑整个类来代替诊断。含此项，剩余安排取约20～40小时；持久索引条件分支另计6～12小时。
 
 整合保持为同一可独立交付的功能批次：研究分支的原图认证／两端接线连同必要测试与资源需一起合并，无法按文件拆开编译验收；超出8文件／400行是该跨平台研究整合的内聚范围，非无关重构。本次未执行完整模块或全量验证，未构建新APK/EXE。提交和非强制推送的最终hash／远端核验在本次任务完成回执给出；本节的“尚未提交”描述均为当时核验状态，不代表暂停后应重复合并。
+
+### 2026-10-13 合并后的 CI 契约修复
+
+用户收到 `b714db1718` 的失败通知后要求检查并修复。[Build & Test 38396881760](https://github.com/AltairCardinal/mihon-desktop/actions/runs/38396881760) 的格式、Android交付契约、未签名候选构建均通过；首次完整执行 `:domain:testReleaseUnitTest` 737项中4项失败，未推进到app测试执行。这4项不是此前8项Holder失败，先前定向范围遗漏了三个相关契约类，不能据87项通过声称覆盖整个共享reader回归。
+
+本次恢复仅修复CI契约及已知后续会阻挡app测试的8项Holder失败，性能／需求调度等优化继续暂停；复用原实施者与独立审查者，主代理只串行执行精确类／方法的定向测试，不本地重跑完整模块或全量。保留CI原始完整结果，后续相关补验与未影响的通过证据组合使用；原8项基线来源为同一产品版本的 `main-android-selector-error/`。
+
+`pairing-ci-contract-red` 在本地Android JVM目标仅选3类，27项中4项准确重现CI：
+
+- FactDemand反向导航仍期望旧局部分组窗口11/12/13，实际canonical15/16回到逻辑14所在13/14，需求为10/11/12。独立按封面规则和源页顺序推导目标及五页可选窗口，不用actual生成expected。
+- ManualIntent迟到恢复要求空locked／未绘提案永久保留；原ticket在FIRST_PAIR恢复后失效。须保留逻辑位置和位置序号，再取得新提案；相邻已锁定／已画保护用例仍不能放宽。
+- ManualIntent自然末尾单页用五张竖图page4作fixture，但该输入已组成3/4；显式调整得到单4是拆分行为。须改成真正自然尾单并先断言单页原因，再验证显式恢复相邻对。
+- StrongRequirements冷／热用例是早期有意保留的失败预研门槛，直接调用低层captureViewport绕过新认证入口，缺原始前缀时要求立即固定最终槽位。须走captureCertifiedViewport，验证缺证据无票据、同原始事实认证后槽位一致、实际draw后不移位；不能删除该一致性要求，也不能把等待证据描述为无感耗时已经达标。
+
+原始27项XML归档整合树 `.gradle-coordinator/research-evidence/ci-contract-red/`。截至本段写入仍在实施，最终结果追加下文；没有修改原图、设备或签名。
+
+共享层修复结果：第一次绿测26/27，新增的“临时会话调整必须返回Save请求”断言不符既有API，已改为无持久化请求但精确核内存配对与metadata。独立审查另要求Strong用例的迟到事实必须确实未被认证提前取过；fixture改为6页，绘制前assert页5仍未知，随后首次接纳其原始宽图事实再验整帧不变及进度只一次。`pairing-ci-contract-final` 在JVM和Android JVM各27/27、无skip，scoped格式通过；独立审查PASS。产品代码没有改动，不将这组正确性测试称性能验收通过。初次绿测与最终XML分别保存 `ci-contract-first/`、`ci-contract-final/`，未重跑完整737项。
+
+并行触发的[Desktop CI 38396881897](https://github.com/AltairCardinal/mihon-desktop/actions/runs/38396881897)随后完成，3924项中80失败、18跳过。主代理只读下载803530B的测试报告，逐文件提取80项失败堆栈到ignored证据 `ci-desktop-b714/failures.json`；没有重跑或改Desktop代码。初步观察包括InMemoryPreferenceStore.getStringSet未实现、原始认证前置缺失／旧局部配对期望、部分持久化恢复与首像素契约、parity evidence指向失效，以及作者／书库等其他模块失败。不能把80项全称测试过时、全归因于本次合并，或把修改断言作为统一修法；有的未捕获协程异常可能是前序失败连带，需按堆栈及原始基线另行核验。
+
+这批Desktop失败明显超出当前4项共享＋8项Android的定向修复范围。本轮先完成已在实施的12项，Desktop报告保留为新增待诊断基线，不宣称双端CI全绿；若继续扩大须先明确新增范围、预算及对应局部验证，不能再启动一个无筛选Desktop全量来代替归因。
+
+
+Android收口：原8项失败按真实原图取证、认证及canonical配对契约迁移，保留阅读原因、跨章隔离、物理槽位和真实draw断言。额外覆盖3项相关呈现用例，`pairing-ci-android-final` 精确11/11通过、无skip，局部Spotless通过（2分28秒）；XML、命令和日志归档 `ci-android-final/`。此前一次编译失败为JUnit断言message参数位置错误，机械修正后通过，未改产品。原轮独立审查PASS，迟到normal LEFT与原始UNKNOWN负对照确认实际RIGHT槽位、原始内容身份及frame不变。共享层最终27×2证据继续适用。
+
+本轮仅4份测试文件与既有交接文档变化，关闭共享4项及Android8项已知失败；不宣称重新通过完整模块或双端CI。Desktop80项（27个类）仍未修复，其中14项明确落在测试InMemoryPreferenceStore.getStringSet未实现；其他失败须按保存的堆栈分别复现归因，不能批量改期望或跳过测试。恢复先处理共同fixture阻塞，再按reader认证、持久化/进度、其他模块分组定向验证，复用已通过完整基线，无新证据不得重跑全量。
+
+用户要求周额度剩3%前完成；2026-10-13 13:46 UTC本机会话rate_limits七天窗口已用96%，剩约4%。因此收口当前有证据的修复，未开始Desktop80项或后续性能优化；余额credit不能替代周额度。当前无法在该余量内保证全部CI故障完成，剩余工作明确保留。
