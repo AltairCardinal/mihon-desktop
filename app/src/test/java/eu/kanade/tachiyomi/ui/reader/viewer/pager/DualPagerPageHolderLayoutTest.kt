@@ -1412,7 +1412,7 @@ class DualPagerPageHolderLayoutTest {
         viewer.pager.tapListener = { pagerTaps++ }
         val container = holder.getChildAt(0)
         val image = descendants(holder).filterIsInstance<ReaderPageImageView>().first()
-        doubleTap(viewer.pager, SystemClock.uptimeMillis())
+        doubleTap(viewer.pager, SystemClock.uptimeMillis(), x = 720f)
         advanceGestureAnimation()
         assertEquals(2f, image.viewportScale, 0.001f)
         assertEquals(1f, container.scaleX, 0.001f)

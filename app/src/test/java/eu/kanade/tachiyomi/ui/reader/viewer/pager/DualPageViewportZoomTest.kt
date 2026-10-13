@@ -116,6 +116,152 @@ class DualPageViewportZoomTest {
     }
 
     @Test
+    fun zoomedFramesHandOutwardDragsToTheRealPagerAtEitherEdge() = runTest {
+        for (slot in listOf(ReaderPortraitSingleSlot.LEFT, ReaderPortraitSingleSlot.RIGHT)) {
+            for (direction in listOf(-1f, 1f)) {
+                val subject = subject(slot, provisionalPair = slot == ReaderPortraitSingleSlot.RIGHT)
+                if (slot == ReaderPortraitSingleSlot.RIGHT) {
+                    val partner = subject.pages[2]
+                    assertTrue(subject.holder.updateDisplayPage(DisplayPage.Double(subject.pages[1], partner)))
+                }
+                mountInPager(subject.holder)
+                val pager = viewer().pager
+                setCamera(subject.holder, 2f, direction * 720f, 0f)
+                swipe(pager, 720f, 720f + direction * 620f)
+                assertEquals(
+                    "$slot outward direction=$direction must turn the whole frame",
+                    if (direction >
+                        0
+                    ) {
+                        0
+                    } else {
+                        2
+                    },
+                    pager.currentItem,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun panReachingTheEdgeHandsOffWithinTheSameDrag() = runTest {
+        val subject = subject(ReaderPortraitSingleSlot.LEFT)
+        mountInPager(subject.holder)
+        setCamera(subject.holder, 2f, -600f, 0f)
+        swipe(viewer().pager, 1250f, 100f)
+        assertEquals(
+            "Pan must reach its boundary then let the parent finish this same drag",
+            2,
+            viewer().pager.currentItem,
+        )
+    }
+
+    @Test
+    fun inwardAndVerticalDragsStayInTheZoomedViewportAndCancellationResetsTheGesture() = runTest {
+        val subject = subject(ReaderPortraitSingleSlot.LEFT)
+        mountInPager(subject.holder)
+        val pager = viewer().pager
+        setCamera(subject.holder, 2f, -720f, 0f)
+        swipe(pager, 500f, 950f)
+        assertEquals(1, pager.currentItem)
+        assertTrue("Inward motion must pan", ReflectionHelpers.getField<Float>(subject.holder, "translateX") > -720f)
+        setCamera(subject.holder, 2f, -720f, 0f)
+        swipe(pager, 720f, 680f, 1500f, 2200f)
+        assertEquals("Predominantly vertical motion must never flip", 1, pager.currentItem)
+        assertTrue(ReflectionHelpers.getField<Float>(subject.holder, "translateY") > 0f)
+        val time = SystemClock.uptimeMillis() + 1000
+        send(pager, time, time, MotionEvent.ACTION_DOWN, 720f, 1500f)
+        send(pager, time, time + 20, MotionEvent.ACTION_CANCEL, 720f, 1500f)
+        swipe(pager, 720f, 100f)
+        assertEquals("A cancelled gesture must not block a subsequent edge turn", 2, pager.currentItem)
+    }
+
+    @Test
+    fun pinchAndTheRemainingFingerCannotTurnPagesUntilTheNextGesture() = runTest {
+        pinchRemainingFinger(handoffBeforePinch = false)
+    }
+
+    @Test
+    fun secondFingerBeforeThePagerTakesOverCancelsThePendingHandoff() = runTest {
+        pinchRemainingFinger(handoffBeforePinch = true)
+    }
+
+    private suspend fun pinchRemainingFinger(handoffBeforePinch: Boolean) {
+        val subject = subject(ReaderPortraitSingleSlot.LEFT)
+        mountInPager(subject.holder)
+        val pager = viewer().pager
+        setCamera(subject.holder, 2f, -720f, 0f)
+        val time = SystemClock.uptimeMillis() + 1000
+        send(pager, time, time, MotionEvent.ACTION_DOWN, 700f, 1500f)
+        if (handoffBeforePinch) {
+            send(pager, time, time + 10, MotionEvent.ACTION_MOVE, 650f, 1500f)
+        }
+        val properties = Array(2) { index ->
+            MotionEvent.PointerProperties().apply {
+                id = index
+                toolType = MotionEvent.TOOL_TYPE_FINGER
+            }
+        }
+        fun fingers(action: Int, offset: Long, x1: Float, x2: Float) {
+            val coordinates = arrayOf(x1, x2).map { position ->
+                MotionEvent.PointerCoords().apply {
+                    x = position
+                    y = 1500f
+                    pressure = 1f
+                    size = 1f
+                }
+            }.toTypedArray()
+            MotionEvent.obtain(
+                time, time + offset, action, 2, properties, coordinates,
+                0, 0, 1f, 1f, 0, 0, android.view.InputDevice.SOURCE_TOUCHSCREEN, 0,
+            ).also {
+                pager.dispatchTouchEvent(it)
+                it.recycle()
+            }
+        }
+        fingers(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), 20, 700f, 1000f)
+        fingers(MotionEvent.ACTION_MOVE, 40, 550f, 1050f)
+        fingers(MotionEvent.ACTION_MOVE, 60, 400f, 1100f)
+        fingers(MotionEvent.ACTION_MOVE, 70, 300f, 1200f)
+        fingers(MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), 80, 400f, 1100f)
+        // Place the same zoomed camera at its left edge while the first finger remains down.
+        val scale = ReflectionHelpers.getField<Float>(subject.holder, "currentScale")
+        setCamera(subject.holder, scale, -720f * (scale - 1f), 0f)
+        for (step in 1..6) send(pager, time, time + 80 + step * 30, MotionEvent.ACTION_MOVE, 400f - step * 50f, 1500f)
+        send(pager, time, time + 290, MotionEvent.ACTION_UP, 100f, 1500f)
+        assertEquals("A multi-pointer gesture stays with the holder after one finger lifts", 1, pager.currentItem)
+        assertTrue("The real pinch must change the camera", scale > 2f)
+        swipe(pager, 720f, 100f)
+        assertEquals("The next single-pointer gesture can turn from that same edge", 2, pager.currentItem)
+    }
+
+    private fun mountInPager(holder: DualPagerPageHolder) {
+        (holder.parent as? ViewGroup)?.removeView(holder)
+        val pager = viewer().pager
+        (pager.parent as? ViewGroup)?.removeView(pager)
+        invokeFixture("mountInPager", holder)
+    }
+
+    private fun viewer(): DualPageR2LPagerViewer = ReflectionHelpers.getField(fixture, "viewer")
+
+    private fun swipe(target: View, fromX: Float, toX: Float, fromY: Float = 1500f, toY: Float = fromY) {
+        val time = SystemClock.uptimeMillis() + 1000
+        send(target, time, time, MotionEvent.ACTION_DOWN, fromX, fromY)
+        for (step in 1..12) {
+            send(
+                target,
+                time,
+                time + step * 30,
+                MotionEvent.ACTION_MOVE,
+                fromX + (toX - fromX) * step / 12,
+                fromY + (toY - fromY) * step / 12,
+            )
+        }
+        send(target, time, time + 390, MotionEvent.ACTION_UP, toX, toY)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
+    }
+
+    @Test
     fun halfSlotGesturesCrossTheSpineAndResetWithoutReopeningTheImage() = runTest {
         for (slot in listOf(ReaderPortraitSingleSlot.LEFT, ReaderPortraitSingleSlot.RIGHT)) {
             val subject = subject(slot)

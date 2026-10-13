@@ -417,7 +417,7 @@ Android `DualPagerPageHolder` 与 Desktop `DualPagePagerViewer` 的普通双页�
 槽位必须在图片就绪前建立。Android 由 View 测量生命周期计算槽内 Fit 尺寸，首次测量前缓存命中、左右到达顺序、
 重试及窗口 resize 都重新使用当前约束，不依赖某一张图的加载回调补做布局。图像尺寸通知仍交给既有配对 adapter；
 像素坐标与窗口尺寸不进入 `ReaderSessionCore`。双页缩放、拖动与双击重置由整组容器接收，子图不能独立放大；
-内容加载不能重置整组变换。放大拖动需阻止外层 pager 抢占，回到默认倍率后恢复普通翻页。
+内容加载不能重置整组变换。放大拖动的父 pager 接管规则由平台输入适配器处理，回到默认倍率后恢复普通翻页。
 
 共享验收向量位于 `domain/src/commonTest/resources/reader/dual-page-fit.csv`，仅是测试输入与预期矩形，不是 domain
 运行时几何模型。Android 测试执行真实 holder 字节绑定、Ready 状态收集与 View 测量，Desktop 测试挂载真实
@@ -446,6 +446,13 @@ CUSTOM 最小倍率、PAN_LIMIT_OUTSIDE 和 scale/center。因此高清采样可
 镜像目标按完整视口反解；裁边/有效源区域继续在固定 Fit 内居中。
 动画图片使用同一 drawable 的外部绘制矩阵，保留原动画时钟。背景只画实际图像矩形，避免全屏子 View 互相遮盖。
 普通单页没有这项视口适配，沿用原生控件的既有手势。窗口变化可重算 Fit，伙伴迟到不是重算当前页的理由。
+
+Android 双槽与半槽 Single 放大后，单指拖动先平移整组相机；达到完整视口相机的左右边界后继续向外水平拖动，
+允许原父 Pager 在同次手势的后续 MOVE 接管并翻整组。向内拖动、纵向拖动仍由 holder 平移，边界保持
+`width * (scale - 1) / 2`，不按已加载图片数或半槽空白重算。双指手势及抬起一指后的剩余手势均不交给 Pager；
+UP/CANCEL 清除交接状态，下一次单指手势恢复正常。此规则不改变 Desktop 放大拖动仅平移的行为，也不改变
+普通原生 Single 的既有输入路径。回归必须从真实 Pager.dispatchTouchEvent 分发 MotionEvent 并断言页组索引变化，
+不能仅检查 requestDisallowInterceptTouchEvent(false)。
 
 Android 双页 holder 离开窗口时，在使呈现代次失效并取消绑定任务后，必须回收左右原生图片，释放 decoder、输入与
 瓦片；不能仅清空呈现记录而把像素保留到 GC。重新挂载复用 View，重新绑定有效内容，不复用已回收的 Bitmap。

@@ -42,6 +42,7 @@ import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.ImageUtil
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.i18n.MR
+import kotlin.math.abs
 import kotlin.math.min
 
 /**
@@ -218,6 +219,8 @@ class DualPagerPageHolder(
     private var zoomAnimator: ValueAnimator? = null
     private var previousFocusX = 0f
     private var previousFocusY = 0f
+    private var hadMultiplePointers = false
+    private var handedToPager = false
 
     private val scaleGestureDetector = ScaleGestureDetector(
         readerThemedContext,
@@ -273,11 +276,21 @@ class DualPagerPageHolder(
             }
 
             override fun onScroll(e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
-                if (currentScale <= 1f || scaleGestureDetector.isInProgress) return false
+                if (currentScale <= 1f || scaleGestureDetector.isInProgress || handedToPager) return false
                 translateX -= distanceX
                 translateY -= distanceY
                 constrainTranslation()
                 applyTransform()
+                val maxX = width * (currentScale - 1f) / 2f
+                val horizontalDrag = e1 != null && abs(e2.x - e1.x) > abs(e2.y - e1.y)
+                val outward = (distanceX > 0f && translateX <= -maxX) ||
+                    (distanceX < 0f && translateX >= maxX)
+                if (!hadMultiplePointers && horizontalDrag && outward) {
+                    // The parent saw DOWN before we claimed the zoomed viewport. Let it intercept
+                    // the next MOVE from this same drag; only the whole frame can turn pages.
+                    handedToPager = true
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                }
                 return true
             }
         },
@@ -339,12 +352,26 @@ class DualPagerPageHolder(
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (!containerGestures) return super.onTouchEvent(event)
-        if (event.actionMasked == MotionEvent.ACTION_DOWN) zoomAnimator?.cancel()
-        if (event.pointerCount > 1 || currentScale > 1f) parent?.requestDisallowInterceptTouchEvent(true)
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            zoomAnimator?.cancel()
+            hadMultiplePointers = false
+            handedToPager = false
+        }
+        if (event.pointerCount > 1) {
+            hadMultiplePointers = true
+            // A second finger can arrive before the parent's next MOVE interception. If this
+            // holder still receives it, cancel the pending handoff and keep the pinch here.
+            handedToPager = false
+        }
+        if (!handedToPager && (hadMultiplePointers || currentScale > 1f)) {
+            parent?.requestDisallowInterceptTouchEvent(true)
+        }
         scaleGestureDetector.onTouchEvent(event)
         gestureDetector.onTouchEvent(event)
         if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
             parent?.requestDisallowInterceptTouchEvent(false)
+            hadMultiplePointers = false
+            handedToPager = false
         }
         return true
     }
