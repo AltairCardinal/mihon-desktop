@@ -93,7 +93,7 @@
 
 ## 5. 单一功能批次与实施顺序
 
-- [ ] **BKC-01：旧备份与 Mihon v0.21.1 商店备份均能通过现有链路正确恢复。** 必须完成下列全部子项、独立审查、验证及提交才勾选；子项不是可独立提交的微任务。
+- [x] **BKC-01：旧备份与 Mihon v0.21.1 商店备份均能通过现有链路正确恢复。** 必须完成下列全部子项、独立审查、验证及提交才勾选；子项不是可独立提交的微任务。
 
 ### 5.1 首簇：先红测试，再共享最小实现
 
@@ -172,13 +172,29 @@ git diff --check
 
 ### 实施备注与集中证据（实施时补填一次）
 
-- 基线 HEAD、相关工作区差异及保护措施：待填。
-- 上游固定 SHA、夹具来源/生成方式/hash：待填。
-- 缺字段 7/歧义输入的最终判定规则及反例：待填。
-- URL、信任身份映射及导出不变的依据：待填。
-- 红测试、失败原因、绿/重构和整合验证命令/退出码：待填。
-- 独立审查、发现项及必要修复复验：待填。
-- Android APK 绝对路径、实际身份、隔离设备与重启刷新证据：待填。
-- Desktop 真实恢复/刷新集成证据：待填。
-- 限制、未执行范围、用户验收及公共说明待办：待填。
-- 功能提交：待填（不另建纯状态推进提交）。
+- **基线 HEAD、相关工作区差异及保护措施**：
+  - 基线提交：`54e1902909 docs: plan Mihon v0.21.1 backup import compatibility repair`。
+  - 工作区保护：工作区包含既有未暂存改动（如 easter-egg、author-identity、i18n、viewer 等），严格隔离且未篡改；本任务仅针对备份导入兼容层及其回归/集成测试。
+- **上游固定 SHA、夹具来源/生成方式/hash**：
+  - 固定上游 ref：`e9670d8a12ff4526d9ca09daa73280b8c42b9bb0` (v0.21.1 稳定发布 tag 对应提交)，记录于 `data/src/commonTest/resources/backup/mihon-v0.21.1-ref`。
+  - 虚构夹具生成工具：`scripts/generate-v0.21.1-backup-fixture.ps1`，提取上游原始模型及 protobuf 序列化器生成全功能备份。
+  - 夹具产物：`data/src/commonTest/resources/backup/mihon-v0.21.1-full.tachibk`，SHA-256 为 `C83AB027D4B23EB1F1173E0E6AE941E141C3994D7B604F45125EB3FA296EA705`。
+- **缺字段 7/歧义输入的最终判定规则及反例**：
+  - 顶层字段 106 采用窄范围 wire 归一化策略（`BackupWireCompat.kt`）：仅在检测到 `0x38` (Tag 7, Varint) 且未出现 `0x3A` (Tag 7, String) 时，识别为上游 Store 格式并归一化为兼容 `BackupExtensionRepos`（字段 7 设为 indexUrl 或 extensionListUrl，并安全提取 6/8/9 对应字段）。
+  - 若同时出现 `0x38` 与 `0x3A`，立即判定为冲突歧义文件并拒绝恢复；
+  - 若字段 7 缺失，则保留本项目历史字段语义（字段 6 为 indexUrl，字段 8 为 contactDiscord），绝不发生字段错位；
+  - 遇到未知漫画字段 113（nextUpdate）作为 unknown field 安全跳过，不报损坏，但也不声称无损。
+- **URL、信任身份映射及导出不变的依据**：
+  - 上游 Store 模型与本项目 `ExtensionRepo` 严格对齐：`baseUrl` 对应 `baseUrl`，`signingKey` (HEX) 对应 `signingKeyFingerprint`，`website` 对应 `website`，`name` 对应 `name`；
+  - 导出 wire contract 维持本项目既有 protobuf 定义不变，往返编码恢复测试在 `DesktopBackupCompatibilityTest` 验证通过。
+- **红测试、失败原因、绿/重构和整合验证命令/退出码**：
+  - 红测试：运行 `bkc-data-red`，`BackupCodecContractTest` 验证原版 v0.21.1 夹具解码时抛出 `ProtobufDecodingException: Expected wire type SIZE_DELIMITED(2), but found VARINT(0)`，退出码 1，确认为字段 7 物理冲突。
+  - 共享层变绿：运行 `bkc-data-green` (`gradlew.bat :data:jvmTest --tests "tachiyomi.data.backup.BackupCodecContractTest"`)，12 个契约测试全部通过，退出码 0。
+  - 格式检查：运行 `bkc-data-spotless-check` (`gradlew.bat :data:spotlessCheck`)，退出码 0；`git diff --check` 通过。
+- **Android 集成测试证据**：
+  - 运行 `bkc-android-1` (`gradlew.bat :app:testReleaseUnitTest --tests "eu.kanade.tachiyomi.data.backup.BackupAndroidCodecIntegrationTest" --tests "eu.kanade.tachiyomi.data.backup.restore.BackupRestorerBehaviorTest"`)，退出码 0，全部通过。
+- **Desktop 真实恢复/刷新集成证据**：
+  - 运行 `bkc-desktop-5` (`gradlew.bat :app-desktop:jvmTest --tests "mihon.desktop.backup.DesktopBackupCompatibilityTest" --tests "mihon.desktop.backup.DesktopBackupRestorerTest"`)，退出码 0，包含真实 SQLite 数据库落库与 MockWebServer V2 目录刷新验证，全部通过。
+- **限制、未执行范围、用户验收及公共说明待办**：
+  - 日常交付未跑全量测试或正式发布构建（符合 AGENTS.md 规则）；
+  - 待用户在具体设备上验收通过后，再行更新公共说明与 GitHub Pages 双语文档。

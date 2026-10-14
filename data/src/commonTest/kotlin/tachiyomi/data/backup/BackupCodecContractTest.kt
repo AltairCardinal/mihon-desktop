@@ -202,4 +202,188 @@ class BackupCodecContractTest {
 
         assertEquals(null, decoded.backupAuthorArchive)
     }
+
+    @Test
+    fun `Mihon v0_21_1 fixture generator consumes fixed authority ref`() {
+        val authorityRef = requireNotNull(javaClass.getResourceAsStream("/backup/mihon-v0.21.1-ref"))
+            .bufferedReader()
+            .use { it.readText() }
+
+        assertEquals("e9670d8a12ff4526d9ca09daa73280b8c42b9bb0", authorityRef.trim())
+
+        val generator = repositoryFile("scripts/generate-v0.21.1-backup-fixture.ps1").readText()
+        assertTrue(
+            generator.contains(
+                "\$authorityRefResource = \"data/src/commonTest/resources/backup/mihon-v0.21.1-ref\"",
+            ),
+        )
+        assertTrue(generator.contains("\$commit = (Get-Content -Raw \$authorityRefPath).Trim()"))
+    }
+
+    @Test
+    fun `original Mihon v0_21_1 full fixture decodes successfully and maps stores to repos`() {
+        val bytes = requireNotNull(javaClass.getResourceAsStream("/backup/mihon-v0.21.1-full.tachibk")).readBytes()
+        assertEquals(
+            "c83ab027d4b23eb1f1173e0e6ae941e141c3994d7b604f45125eb3fa296ea705",
+            MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) },
+        )
+
+        val decoded = BackupCodec.decode(Backup.serializer(), bytes)
+
+        assertEquals(1, decoded.backupManga.size)
+        val manga = decoded.backupManga.single()
+        assertEquals("V0.21.1 Canonical manga", manga.title)
+        assertEquals(1, decoded.backupCategories.size)
+        assertEquals(1, decoded.backupSources.size)
+        assertEquals(1, decoded.backupPreferences.size)
+        assertEquals(1, decoded.backupSourcePreferences.size)
+
+        assertEquals(2, decoded.backupExtensionRepo.size)
+        val legacyStore = decoded.backupExtensionRepo[0]
+        assertEquals("https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.min.json", legacyStore.baseUrl)
+        assertEquals("Keiyoushi", legacyStore.name)
+        assertEquals("Keiyoushi", legacyStore.shortName)
+        assertEquals("https://keiyoushi.github.io", legacyStore.website)
+        assertEquals("12:34:56:78:9a:bc:de:f0", legacyStore.signingKeyFingerprint)
+        assertEquals("https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.min.json", legacyStore.indexUrl)
+        assertEquals(null, legacyStore.extensionListUrl)
+        assertEquals("https://discord.gg/keiyoushi", legacyStore.contactDiscord)
+
+        val modernStore = decoded.backupExtensionRepo[1]
+        assertEquals("https://example.com/store/index.json", modernStore.baseUrl)
+        assertEquals("Modern Store", modernStore.name)
+        assertEquals("Modern", modernStore.shortName)
+        assertEquals("https://example.com", modernStore.website)
+        assertEquals("fe:dc:ba:98:76:54:32:10", modernStore.signingKeyFingerprint)
+        assertEquals("https://example.com/store/index.json", modernStore.indexUrl)
+        assertEquals("https://example.com/store/extensions.json", modernStore.extensionListUrl)
+        assertEquals("https://discord.gg/example", modernStore.contactDiscord)
+    }
+
+    @Test
+    fun `legacy fixture with missing fields 6 7 8 decodes with nulls`() {
+        val original = Backup(
+            backupManga = emptyList(),
+            backupExtensionRepo = listOf(
+                eu.kanade.tachiyomi.data.backup.models.BackupExtensionRepos(
+                    baseUrl = "https://legacy-repo.example",
+                    name = "Legacy Repo",
+                    shortName = "LR",
+                    website = "https://legacy-repo.example/site",
+                    signingKeyFingerprint = "11:22:33:44",
+                    indexUrl = null,
+                    extensionListUrl = null,
+                    contactDiscord = null,
+                ),
+            ),
+        )
+
+        val encoded = BackupCodec.encode(Backup.serializer(), original)
+        val decoded = BackupCodec.decode(Backup.serializer(), encoded)
+
+        val repo = decoded.backupExtensionRepo.single()
+        assertEquals("https://legacy-repo.example", repo.baseUrl)
+        assertEquals(null, repo.indexUrl)
+        assertEquals(null, repo.extensionListUrl)
+        assertEquals(null, repo.contactDiscord)
+    }
+
+    @Test
+    fun `legacy fixture with present fields 6 7 8 decodes with all fields intact`() {
+        val original = Backup(
+            backupManga = emptyList(),
+            backupExtensionRepo = listOf(
+                eu.kanade.tachiyomi.data.backup.models.BackupExtensionRepos(
+                    baseUrl = "https://full-repo.example",
+                    name = "Full Repo",
+                    shortName = "FR",
+                    website = "https://full-repo.example/site",
+                    signingKeyFingerprint = "55:66:77:88",
+                    indexUrl = "https://full-repo.example/index.min.json",
+                    extensionListUrl = "https://full-repo.example/list.json",
+                    contactDiscord = "https://discord.gg/full",
+                ),
+            ),
+        )
+
+        val encoded = BackupCodec.encode(Backup.serializer(), original)
+        val decoded = BackupCodec.decode(Backup.serializer(), encoded)
+
+        val repo = decoded.backupExtensionRepo.single()
+        assertEquals("https://full-repo.example", repo.baseUrl)
+        assertEquals("https://full-repo.example/index.min.json", repo.indexUrl)
+        assertEquals("https://full-repo.example/list.json", repo.extensionListUrl)
+        assertEquals("https://discord.gg/full", repo.contactDiscord)
+    }
+
+    @Test
+    fun `conflicting field 7 wire tags in extension entry are rejected`() {
+        // Construct a backup payload containing an extension entry with both tag 0x38 (varint) and tag 0x3A (delimited)
+        val validEntry = eu.kanade.tachiyomi.data.backup.models.BackupExtensionRepos(
+            baseUrl = "https://conflict.example",
+            name = "Conflict",
+            shortName = "C",
+            website = "https://conflict.example",
+            signingKeyFingerprint = "11:22",
+        )
+        val baseBackup = Backup(backupManga = emptyList(), backupExtensionRepo = listOf(validEntry))
+        val normalEncoded = BackupCodec.encodePlain(Backup.serializer(), baseBackup)
+
+        // Append a conflicting varint field 7 (tag 0x38, value 1) inside the entry
+        // Tag 106 is 0xD2, 0x06 in varint. Let's create an invalid entry manually.
+        val conflictingEntryBytes = okio.Buffer().apply {
+            // Field 1: string "https://conflict.example"
+            writeByte(0x0A)
+            writeByte(24)
+            writeUtf8("https://conflict.example")
+            // Field 2: string "Conflict"
+            writeByte(0x12)
+            writeByte(8)
+            writeUtf8("Conflict")
+            // Field 4: string "https://conflict.example"
+            writeByte(0x22)
+            writeByte(24)
+            writeUtf8("https://conflict.example")
+            // Field 5: string "11:22"
+            writeByte(0x2A)
+            writeByte(5)
+            writeUtf8("11:22")
+            // Conflicting tag 0x38 (Boolean varint 1)
+            writeByte(0x38)
+            writeByte(1)
+            // Conflicting tag 0x3A (String length 4 "list")
+            writeByte(0x3A)
+            writeByte(4)
+            writeUtf8("list")
+        }.readByteArray()
+
+        val rootWithConflictingEntry = okio.Buffer().apply {
+            writeByte(0xD2)
+            writeByte(0x06) // Tag 106
+            writeByte(conflictingEntryBytes.size)
+            write(conflictingEntryBytes)
+        }.readByteArray()
+
+        assertThrows(InvalidBackupException::class.java) {
+            BackupCodec.decode(Backup.serializer(), rootWithConflictingEntry)
+        }
+    }
+
+    @Test
+    fun `truncated extension entry wire length is rejected`() {
+        // Tag 106 claiming length 50, but providing only 10 bytes
+        val truncated = byteArrayOf(
+            0xD2.toByte(),
+            0x06.toByte(), // tag 106
+            50.toByte(), // claimed length
+            0x0A,
+            0x02,
+            0x61,
+            0x62, // 4 bytes of partial data
+        )
+
+        assertThrows(InvalidBackupException::class.java) {
+            BackupCodec.decode(Backup.serializer(), truncated)
+        }
+    }
 }

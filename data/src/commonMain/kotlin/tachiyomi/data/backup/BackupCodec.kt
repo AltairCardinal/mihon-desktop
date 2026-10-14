@@ -30,7 +30,12 @@ object BackupCodec {
             } else {
                 bytes
             }
-            protobuf.decodeFromByteArray(serializer, payload).also(::validateSemantics)
+            val normalized = if (serializer == Backup.serializer()) {
+                BackupWireCompat.normalizeWire(payload)
+            } else {
+                payload
+            }
+            protobuf.decodeFromByteArray(serializer, normalized).also(::validateSemantics)
         } catch (error: Exception) {
             if (error is InvalidBackupException) throw error
             throw InvalidBackupException("Invalid protobuf backup", error)

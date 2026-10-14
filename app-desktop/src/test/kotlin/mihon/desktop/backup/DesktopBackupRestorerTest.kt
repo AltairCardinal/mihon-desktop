@@ -43,6 +43,11 @@ import tachiyomi.data.manga.MangaRepositoryImpl
 import tachiyomi.data.backup.AuthorArchiveBackupContributor
 import eu.kanade.tachiyomi.data.backup.models.BackupAuthorArchiveSection
 import eu.kanade.tachiyomi.data.backup.models.BackupCreatorIdentity
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
+import mihon.domain.extensionrepo.service.ExtensionStoreCatalogDecoder
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.assertNull
 
 /**
  * RED tests for DesktopBackupRestorer.
@@ -821,5 +826,144 @@ class DesktopBackupRestorerTest {
 
         assertEquals(1, result.successCount)
         assertEquals(listOf(1L to listOf("Group A", "Group B")), restoredExcluded)
+    }
+
+    @Test
+    fun `restoring v0_21_1 backup populates database and validates production catalog refresh`() = runTest {
+        val bytes = repositoryFile("data/src/commonTest/resources/backup/mihon-v0.21.1-full.tachibk").readBytes()
+        val backup = DesktopBackupCreator.decodeFromBytes(bytes)
+
+        val dbFile = File(tempDir, "v0211-integration.db")
+        val appNode = Preferences.userRoot().node("/mihon-test/v0211-app-${System.nanoTime()}")
+        val sourceNode = Preferences.userRoot().node("/mihon-test/v0211-source-${System.nanoTime()}")
+        val appStore = DesktopPreferenceStore(appNode)
+        val sourceStore = DesktopPreferenceStore(sourceNode)
+        val tracks = mutableListOf<Track>()
+        val excludedScanlators = mutableListOf<Pair<Long, List<String>>>()
+
+        try {
+            openDatabase(dbFile).use { fixture ->
+                val mangaRepository = MangaRepositoryImpl(
+                    fixture.handler,
+                    tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter,
+                )
+                val chapterRepository = ChapterRepositoryImpl(fixture.handler)
+                val categoryRepository = CategoryRepositoryImpl(fixture.handler)
+                val historyRepository = HistoryRepositoryImpl(fixture.handler)
+                val repoRepository = ExtensionRepoRepositoryImpl(fixture.handler)
+
+                val restorer = DesktopBackupRestorer(
+                    mangaRepository = mangaRepository,
+                    chapterRepository = chapterRepository,
+                    categoryRepository = categoryRepository,
+                    historyRepository = historyRepository,
+                    setExcludedScanlatorsForManga = { mangaId, excluded ->
+                        excludedScanlators += mangaId to excluded
+                    },
+                    trackRepository = recordingTrackRepository(tracks),
+                    preferenceStore = appStore,
+                    sourcePreferenceStore = { sourceStore },
+                    extensionRepoRepository = repoRepository,
+                )
+
+                val result = restorer.restore(backup)
+                assertTrue(result.errors.isEmpty(), "Restore should succeed without errors: ${result.errors}")
+                assertTrue(result.successCount > 0, "Manga should be successfully restored")
+
+            val allRepos = repoRepository.getAll()
+            assertEquals(2, allRepos.size)
+
+            val legacy = allRepos.first { it.name == "Keiyoushi" }
+            assertEquals("https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.min.json", legacy.baseUrl)
+            assertEquals("12:34:56:78:9a:bc:de:f0", legacy.signingKeyFingerprint)
+            assertEquals("https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.min.json", legacy.indexUrl)
+            assertNull(legacy.extensionListUrl)
+            assertEquals("https://discord.gg/keiyoushi", legacy.contactDiscord)
+
+            val modern = allRepos.first { it.name == "Modern Store" }
+            assertEquals("https://example.com/store/index.json", modern.baseUrl)
+            assertEquals("fe:dc:ba:98:76:54:32:10", modern.signingKeyFingerprint)
+            assertEquals("https://example.com/store/index.json", modern.indexUrl)
+            assertEquals("https://example.com/store/extensions.json", modern.extensionListUrl)
+            assertEquals("https://discord.gg/example", modern.contactDiscord)
+
+            // Test signing-key conflict protection: attempting to restore with same URL but conflicting key fails
+            val conflictBackup = Backup(
+                backupManga = emptyList(),
+                backupExtensionRepo = listOf(
+                    BackupExtensionRepos(
+                        baseUrl = legacy.baseUrl,
+                        name = legacy.name,
+                        shortName = legacy.shortName,
+                        website = legacy.website,
+                        signingKeyFingerprint = "99:99:99:99",
+                    ),
+                ),
+            )
+            val conflictResult = restorer.restore(conflictBackup)
+            assertTrue(conflictResult.hasErrors, "Conflicting signing key must produce an error")
+            assertEquals("12:34:56:78:9a:bc:de:f0", repoRepository.getRepo(legacy.baseUrl)?.signingKeyFingerprint)
+
+            // Verify production catalog decode against a real MockWebServer
+            MockWebServer().also { it.start() }.use { server ->
+                val sampleCatalogJson = """
+                    {
+                      "name": "Modern Store",
+                      "badgeLabel": "Modern",
+                      "signingKey": "fe:dc:ba:98:76:54:32:10",
+                      "contact": {"website": "https://example.com", "discord": "https://discord.gg/example"},
+                      "extensionList": {
+                        "extensions": [{
+                          "name": "Sample Extension",
+                          "packageName": "eu.kanade.tachiyomi.extension.sample",
+                          "resources": {
+                            "apkUrl": "https://example.com/sample.apk",
+                            "iconUrl": "https://example.com/sample.png",
+                            "jarUrl": "https://example.com/sample.jar"
+                          },
+                          "extensionLib": "1.4",
+                          "versionCode": 1,
+                          "versionName": "1.0",
+                          "contentWarning": "CONTENT_WARNING_SAFE",
+                          "sources": []
+                        }]
+                      }
+                    }
+                """.trimIndent()
+                server.enqueue(MockResponse(body = sampleCatalogJson))
+
+                val catalogUrl = server.url("/store/index.json").toString()
+                val targetRepo = modern.copy(baseUrl = catalogUrl, indexUrl = catalogUrl)
+                val responseBytes = okhttp3.OkHttpClient().newCall(okhttp3.Request.Builder().url(catalogUrl).build()).execute().use { response ->
+                    response.body.bytes()
+                }
+
+                val catalog = ExtensionStoreCatalogDecoder.decode(
+                    bytes = responseBytes,
+                    indexUrl = catalogUrl,
+                    repository = targetRepo,
+                )
+                assertEquals("Modern Store", catalog.store.name)
+                assertEquals(1, catalog.entries.size)
+                assertEquals("Sample Extension", catalog.entries.single().artifact.name)
+
+                // Assert that contactDiscord was never requested as a catalog URL
+                val requestedPaths = (0 until server.requestCount).map { server.takeRequest().url.encodedPath }
+                assertTrue(requestedPaths.none { it.contains("discord") }, "Discord contact URL must not be queried")
+            }
+        }
+
+            // Re-open database to verify persistence across restarts
+            openDatabase(dbFile).use { reopened ->
+                val repoRepository = ExtensionRepoRepositoryImpl(reopened.handler)
+                val repos = repoRepository.getAll()
+                assertEquals(2, repos.size)
+                assertTrue(repos.any { it.name == "Keiyoushi" })
+                assertTrue(repos.any { it.name == "Modern Store" })
+            }
+        } finally {
+            runCatching { appNode.removeNode() }
+            runCatching { sourceNode.removeNode() }
+        }
     }
 }
