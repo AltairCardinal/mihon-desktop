@@ -1326,6 +1326,9 @@ internal suspend fun initUILayer(
             productionClient = networkHelper.client,
             persistentObjectCacheDirectory = paths.networkCacheDir.resolve("mihon-sync-objects").toOkioPath(),
             failureLogDirectory = paths.logsDir.resolve("sync-failures").toOkioPath(),
+            exceptionDiagnostics = mihon.data.sync.runtime.SyncExceptionDiagnostics(
+                paths.logsDir.resolve("sync-failures").toOkioPath(),
+            ),
             repositoryScope = syncRepositoryScope,
             diagnosticDirectory = paths.networkCacheDir.resolve("sync-diagnostics").toOkioPath(),
             diagnosticEnvironment = mihon.data.sync.runtime.SyncDiagnosticEnvironment(

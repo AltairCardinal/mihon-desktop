@@ -55,6 +55,7 @@ class SyncDatabaseExchange(
     private val metrics: SyncMetrics = NoopSyncMetrics,
     private val snapshotOwner: SyncSnapshotWriteOwner? = null,
     private val liveProgress: SyncLiveProgressSession? = null,
+    private val exceptionDiagnostics: SyncExceptionDiagnostics? = null,
 ) {
     private val inboxStore = SyncInboxStore(handler)
     internal val snapshotEvidenceEvaluations: Long get() = inboxStore.remoteGuard.evidenceEvaluations
@@ -493,6 +494,7 @@ class SyncDatabaseExchange(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
+            exceptionDiagnostics?.report(failure)
             problem = failure.syncProblem()
             retryAfterMillis = (failure as? SyncHttpException)?.retryAfterMillis
             networkPhase = (failure as? SyncHttpException)?.networkPhase

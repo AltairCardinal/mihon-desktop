@@ -84,6 +84,7 @@ class SyncRuntime(
     val repositoryScope: mihon.data.sync.auth.SyncRepositoryScope = mihon.data.sync.auth.SyncRepositoryScope.Default,
     val diagnosticDirectory: Path? = null,
     diagnosticEnvironment: SyncDiagnosticEnvironment = SyncDiagnosticEnvironment(),
+    private val exceptionDiagnostics: SyncExceptionDiagnostics? = null,
     extractCreators: tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga =
         tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga(),
 ) : SyncRunPort {
@@ -1197,6 +1198,7 @@ class SyncRuntime(
                 metrics = syncMetrics,
                 snapshotOwner = SyncSnapshotWriteOwner(run.runId, ownerSession, attemptId),
                 liveProgress = progressSession,
+                exceptionDiagnostics = exceptionDiagnostics,
             )
                 .exchange(connection.spaceId, connection.generation, connection.repository)
         } catch (cancelled: CancellationException) {
@@ -1208,6 +1210,7 @@ class SyncRuntime(
             }
             throw cancelled
         } catch (failure: Exception) {
+            exceptionDiagnostics?.report(failure)
             SyncRunResult(
                 SyncRunStatus.FAILED,
                 problem = failure.syncProblem(),
