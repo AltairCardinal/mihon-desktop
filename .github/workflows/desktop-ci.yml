@@ -1,11 +1,8 @@
 name: Desktop CI
 
 on:
+  # Local product tests are the normal gate; run this legacy workflow explicitly when needed.
   workflow_dispatch:
-  pull_request:
-  push:
-    branches:
-      - main
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
