@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ApplicationScope
 import androidx.compose.ui.window.FrameWindowScope
@@ -18,6 +19,7 @@ internal fun ApplicationScope.DesktopMainWindow(
     onCloseRequest: () -> Unit,
     title: String,
     icon: Painter? = null,
+    onPreviewKeyEvent: (KeyEvent) -> Boolean = { false },
     windowTransitions: DesktopWindowTransitions = WindowsWindowTransitions,
     content: @Composable FrameWindowScope.() -> Unit,
 ) {
@@ -37,6 +39,7 @@ internal fun ApplicationScope.DesktopMainWindow(
         title = title,
         icon = icon,
         state = geometry?.windowState ?: defaultState,
+        onPreviewKeyEvent = onPreviewKeyEvent,
     ) {
         if (geometry != null) {
             DisposableEffect(window, geometry) {
