@@ -145,6 +145,7 @@ class GitHubSyncSpaceClient(
     private val apiBaseUrl: String = "https://api.github.com",
     private val requestGate: SyncHttpRequestGate? = null,
     private val repositoryScope: SyncRepositoryScope = SyncRepositoryScope.Default,
+    private val diagnosticContext: mihon.data.sync.runtime.SyncJournalContext? = null,
 ) {
     suspend fun discover(expectedAccountId: Long? = null, repositoryName: String? = null): SyncSpaceDiscovery = try {
         repositoryName?.let { SyncRepository("validated-owner", it, BRANCH) }
@@ -232,7 +233,8 @@ class GitHubSyncSpaceClient(
     }
 
     private inner class Session(token: String) {
-        val api = GitHubPrivateRepositorySelector(productionClient, { token }, apiBaseUrl, requestGate)
+        val api =
+            GitHubPrivateRepositorySelector(productionClient, { token }, apiBaseUrl, requestGate, diagnosticContext)
 
         suspend fun inspectInstallation(expectedAccountId: Long?): Pair<SyncGitHubAccount, SyncAppInstallation> {
             val user = get("/user").checked().objectBody()

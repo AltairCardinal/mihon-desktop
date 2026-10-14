@@ -208,6 +208,15 @@ class AndroidSyncRuntimeWiringTest {
             assertEquals(1L, runtime.coordinator.activity.value.completion)
             assertEquals(SyncRunStatus.SKIPPED, runtime.coordinator.activity.value.result?.status)
             assertEquals(0, networkCalls.get())
+            val captured = runtime.diagnostics.capture(mihon.data.sync.runtime.SyncPanelState())
+            val exported = requireNotNull(runtime.diagnostics.export(captured))
+            val json = kotlinx.serialization.json.Json.parseToJsonElement(java.io.File(exported).readText())
+                as kotlinx.serialization.json.JsonObject
+            val journal = json["journal"] as? kotlinx.serialization.json.JsonObject
+            assertTrue("production Android worker and export must share a durable journal", journal != null)
+            val events = journal?.get("events") as? kotlinx.serialization.json.JsonArray
+            assertTrue("a real unconfigured worker must retain its skip reason", events?.isNotEmpty() == true)
+            assertTrue(context.filesDir.resolve("sync-diagnostics-journal").isDirectory)
         }
     }
 

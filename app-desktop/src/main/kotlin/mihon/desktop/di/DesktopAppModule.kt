@@ -1314,6 +1314,11 @@ internal suspend fun initUILayer(
             credentialBackendFactory(CredentialNamespace.SYNC_V1),
         )
         Injekt.addSingleton<mihon.domain.sync.security.SyncSecureStore>(syncSecureStore)
+        val syncDiagnosticEnvironment = mihon.data.sync.runtime.SyncDiagnosticEnvironment(
+            platform = "DESKTOP", appVersion = mihon.desktop.APP_VERSION,
+            sourceRevision = BuildInfo.GIT_HASH, releaseIdentity = "mihon.desktop",
+            build = mihon.desktop.AppVersion.BUILD.toString(), releaseBuild = !BuildInfo.IS_NON_RELEASE_BUILD,
+        )
         val syncRuntime = mihon.data.sync.runtime.SyncRuntime(
             handler = handler,
             bootstrap = Injekt.get(),
@@ -1326,15 +1331,11 @@ internal suspend fun initUILayer(
             productionClient = networkHelper.client,
             persistentObjectCacheDirectory = paths.networkCacheDir.resolve("mihon-sync-objects").toOkioPath(),
             failureLogDirectory = paths.logsDir.resolve("sync-failures").toOkioPath(),
-            exceptionDiagnostics = mihon.data.sync.runtime.SyncExceptionDiagnostics(
-                paths.logsDir.resolve("sync-failures").toOkioPath(),
-            ),
             repositoryScope = syncRepositoryScope,
             diagnosticDirectory = paths.networkCacheDir.resolve("sync-diagnostics").toOkioPath(),
-            diagnosticEnvironment = mihon.data.sync.runtime.SyncDiagnosticEnvironment(
-                platform = "DESKTOP", appVersion = mihon.desktop.APP_VERSION,
-                sourceRevision = BuildInfo.GIT_HASH, releaseIdentity = "mihon.desktop",
-                build = mihon.desktop.AppVersion.BUILD.toString(), releaseBuild = !BuildInfo.IS_NON_RELEASE_BUILD,
+            diagnosticEnvironment = syncDiagnosticEnvironment,
+            diagnosticJournal = mihon.data.sync.runtime.SyncDiagnosticJournal(
+                paths.logsDir.resolve("sync-diagnostics-journal").toOkioPath(), syncDiagnosticEnvironment,
             ),
         )
         paths.recoveryProfileRoot?.let(mihon.desktop.platform.DesktopRecoveryProfile::originalLabel)?.let {

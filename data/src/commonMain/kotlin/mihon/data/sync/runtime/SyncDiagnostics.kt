@@ -50,6 +50,7 @@ data class SyncDiagnosticRun(
     val lastProgressAt: Long,
     val nextRetryAt: Long,
     val elapsedMillis: Long,
+    val journalRunAlias: String? = null,
 )
 
 @Serializable
@@ -118,6 +119,7 @@ data class SyncDiagnosticSnapshot(
     val lastRefreshError: SyncDiagnosticStatus? = null,
     val events: List<SyncDiagnosticEvent> = emptyList(),
     val truncated: Boolean = false,
+    val journal: SyncDiagnosticJournalSnapshot? = null,
 ) {
     fun json(): String = Json { encodeDefaults = true }.encodeToString(this)
 }
@@ -286,6 +288,7 @@ class SyncDiagnostics internal constructor(
         val now = clock()
         val progress = afterPanel.progress
         val matches = progress?.let { selected != null && it.scope.startsWith(selected.runId + ":") }
+        val journal = runtime.diagnosticJournal?.snapshot()
         val snapshot = synchronized(this) {
             expireSession()
             SyncDiagnosticSnapshot(
@@ -345,6 +348,7 @@ class SyncDiagnostics internal constructor(
                 lastRefreshFailed = refreshFailed,
                 lastRefreshError = SyncDiagnosticStatus.READ_FAILED.takeIf { refreshFailed == true },
                 events = events.toList(),
+                journal = journal,
             )
         }
         synchronized(this) {
@@ -393,6 +397,7 @@ class SyncDiagnostics internal constructor(
         stopReason?.uppercase(java.util.Locale.ROOT)?.let { if (it in STOP_REASONS) it else "OTHER" },
         attemptId, ownerSession != null, confirmedItems, uploaded, downloaded,
         createdAt, updatedAt, lastProgressAt, nextRetryAt, (updatedAt - createdAt).coerceAtLeast(0),
+        journalRunAlias = runtime.diagnosticJournal?.runAlias(runId),
     )
 
     private fun SyncDiagnosticEnvironment.safe(): SyncDiagnosticEnvironment {

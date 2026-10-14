@@ -2299,7 +2299,7 @@
     <string name="sync_view_processing">View processing progress</string>
     <string name="sync_diagnostic_information">Diagnostic information</string>
     <string name="sync_diagnostics">Diagnostics</string>
-    <string name="sync_diagnostic_description">Collect local sync facts without account, repository, credentials or book details. Only the latest 128 observed transitions in this process are kept. JSON exports are limited to 256 KiB with explicit truncation. Collect again to compare changes.</string>
+    <string name="sync_diagnostic_description">Collect local sync facts and a durable history of runs, failures, retries and recovery steps. The private history survives app restarts and excludes accounts, repositories, credentials, request addresses, response bodies and exception messages. It retains up to 256 events within 128 KiB, prioritizing failures when older events are removed. Recent panel observations remain limited to 128 events in this process. JSON exports are limited to 256 KiB and identify truncation and storage errors.</string>
     <string name="sync_diagnostic_capture">Collect snapshot</string>
     <string name="sync_diagnostic_busy">Collecting or saving…</string>
     <string name="sync_diagnostic_captured">Snapshot collected</string>
@@ -2307,11 +2307,11 @@
     <string name="sync_diagnostic_inconsistent">Sync changed during collection. Collect again.</string>
     <string name="sync_diagnostic_exported">Local diagnostic file saved</string>
     <string name="sync_diagnostic_save_failed">Could not save diagnostics. Try again.</string>
-    <string name="sync_diagnostic_session_description">Optional: compare aliases across app restarts for up to 24 hours. Only a random salt and the previous snapshot association are cached privately. Without this, aliases are comparable only within this process.</string>
+    <string name="sync_diagnostic_session_description">Optional: compare panel observation aliases across app restarts for up to 24 hours. This session stores only a random salt and the previous snapshot association privately. The durable sync history keeps its own private aliases across restarts and does not require this session.</string>
     <string name="sync_diagnostic_session_start">Start 24-hour diagnostic session</string>
     <string name="sync_diagnostic_session_end">End diagnostic session</string>
     <string name="sync_diagnostic_session_started">Diagnostic session started</string>
-    <string name="sync_diagnostic_session_ended">Diagnostic session ended; private cache removed</string>
+    <string name="sync_diagnostic_session_ended">Diagnostic session ended; session association cache cleared. Durable sync history is retained.</string>
     <string name="sync_diagnostic_export">Save diagnostic JSON</string>
     <string name="sync_diagnostic_open">Open or share local file</string>
     <string name="sync_diagnostic_open_failed">Could not open diagnostic file</string>

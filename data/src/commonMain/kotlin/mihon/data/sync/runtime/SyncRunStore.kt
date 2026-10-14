@@ -1,5 +1,6 @@
 package mihon.data.sync.runtime
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
@@ -372,6 +373,7 @@ class SyncRunStore(
     private val handler: DatabaseHandler,
     private val clock: () -> Long = System::currentTimeMillis,
     private val maxLogEntries: Int = 500,
+    private val diagnosticJournal: SyncDiagnosticJournal? = null,
 ) {
     suspend fun plan(runId: String): SyncRunPlan? = handler.await {
         if (sync_runtimeQueries.getRuntimePlanMarker(runId).executeAsOneOrNull() == null) return@await null
@@ -494,6 +496,14 @@ class SyncRunStore(
                 now,
             )
         }
+        diagnosticJournal?.record(
+            SyncJournalEventKind.RUN_START,
+            SyncJournalStage.CHECKING,
+            runId,
+            SyncJournalCode.QUEUED,
+            trigger = trigger,
+            attemptId = 0,
+        )
         return requireNotNull(get(runId))
     }
 
@@ -609,6 +619,7 @@ class SyncRunStore(
                 )
             }
         }
+        observe(runId, SyncJournalEventKind.PHASE)
     }
 
     suspend fun totals(runId: String, uploaded: Long, downloaded: Long, ownerSession: String? = null) {
@@ -733,15 +744,30 @@ class SyncRunStore(
             } == true
         }
 
-    suspend fun pause(runId: String) = state(runId, SyncRunState.PAUSED_USER, "user")
+    suspend fun pause(runId: String) {
+        state(runId, SyncRunState.PAUSED_USER, "user")
+        observe(runId, SyncJournalEventKind.PHASE)
+    }
 
-    suspend fun cancel(runId: String) = state(runId, SyncRunState.CANCELLED, "user")
+    suspend fun cancel(runId: String) {
+        state(runId, SyncRunState.CANCELLED, "user")
+        observe(runId, SyncJournalEventKind.TERMINAL)
+    }
 
     suspend fun resumeIfAllowed(runId: String): Boolean {
         val before = get(runId)
         if (before?.state != SyncRunState.PAUSED_USER) return false
         handler.await { sync_runtimeQueries.resumeRuntimeRun(clock(), runId) }
-        return get(runId)?.state == SyncRunState.RUNNING
+        val resumed = get(runId)?.takeIf { it.state == SyncRunState.RUNNING } ?: return false
+        diagnosticJournal?.record(
+            SyncJournalEventKind.PHASE,
+            SyncJournalStage.valueOf(resumed.phase.name),
+            runId,
+            SyncJournalCode.RESUMED,
+            trigger = resumed.trigger,
+            attemptId = resumed.attemptId,
+        )
+        return true
     }
 
     suspend fun finish(
@@ -759,6 +785,41 @@ class SyncRunStore(
             if (unfinished) "planned_work_pending" else reason,
             ownerSession,
         )
+        observe(runId, SyncJournalEventKind.TERMINAL)
+    }
+
+    private val observed = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    private suspend fun observe(runId: String, kind: SyncJournalEventKind) {
+        val journal = diagnosticJournal ?: return
+        try {
+            val actual = get(runId) ?: return
+            val signature = "$kind:${actual.phase}:${actual.state}:${actual.attemptId}:" +
+                "${actual.stopReason}:${actual.nextRetryAt}"
+            if (observed.put(runId, signature) == signature) return
+            if (observed.size > 256) observed.keys.firstOrNull { it != runId }?.let(observed::remove)
+            journal.record(
+                if (kind != SyncJournalEventKind.TERMINAL && actual.nextRetryAt > 0 &&
+                    actual.state == SyncRunState.WAITING_RETRY
+                ) {
+                    SyncJournalEventKind.RETRY_SCHEDULED
+                } else {
+                    kind
+                },
+                SyncJournalStage.valueOf(actual.phase.name),
+                runId,
+                SyncJournalCode.entries.firstOrNull { it.name == actual.state.name } ?: SyncJournalCode.UNKNOWN,
+                nextRetryAt = actual.nextRetryAt.takeIf {
+                    it > 0
+                },
+                trigger = actual.trigger,
+                attemptId = actual.attemptId,
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Optional diagnostic reads must not turn a successful durable write into a failure.
+        }
     }
 
     fun reporter(runId: String, ownerSession: String): SyncProgressReporter =

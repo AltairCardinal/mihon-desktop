@@ -84,7 +84,7 @@ class SyncRuntime(
     val repositoryScope: mihon.data.sync.auth.SyncRepositoryScope = mihon.data.sync.auth.SyncRepositoryScope.Default,
     val diagnosticDirectory: Path? = null,
     diagnosticEnvironment: SyncDiagnosticEnvironment = SyncDiagnosticEnvironment(),
-    private val exceptionDiagnostics: SyncExceptionDiagnostics? = null,
+    val diagnosticJournal: SyncDiagnosticJournal? = null,
     extractCreators: tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga =
         tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga(),
 ) : SyncRunPort {
@@ -101,12 +101,18 @@ class SyncRuntime(
         }
     }
     val authorization =
-        GitHubAuthClient(productionClient, endpoints, nowMillis = clock, requestGate = authorizationGate)
+        GitHubAuthClient(
+            productionClient,
+            endpoints,
+            nowMillis = clock,
+            requestGate = authorizationGate,
+            diagnosticContext = diagnosticJournal?.let { SyncJournalContext(it, SyncJournalStage.AUTHORIZATION) },
+        )
     internal fun authorizationNotBeforeMillis(): Long = authorizationGate.notBeforeMillis()
     internal val instanceId: String = UUID.randomUUID().toString()
     private val externalRecoveryOrigin = preferenceStore.getString("sync.recovery.external-origin-unverified", "")
     val coordinator = SyncCoordinator(this)
-    val runStore = SyncRunStore(handler, clock)
+    val runStore = SyncRunStore(handler, clock, diagnosticJournal = diagnosticJournal)
     val diagnostics = SyncDiagnostics(this, diagnosticDirectory, diagnosticEnvironment, clock)
     private val failureReportStore = failureLogDirectory?.let { SyncFailureReportStore(handler, it) }
     private val failureReportMutex = Mutex()
@@ -123,6 +129,11 @@ class SyncRuntime(
     fun markExternalUnverifiedRecoveryOrigin(label: String) {
         require(label.isNotBlank() && label.length <= 4096)
         if (externalRecoveryOrigin.get().isEmpty()) externalRecoveryOrigin.set(label)
+        diagnosticJournal?.record(
+            SyncJournalEventKind.UNVERIFIED_SCOPE,
+            SyncJournalStage.RECOVERY,
+            code = SyncJournalCode.UNVERIFIED_OLD_SCOPE,
+        )
     }
     internal fun externalRecoveryOrigin(): String? = externalRecoveryOrigin.get().takeIf(String::isNotEmpty)
     val baseline = SyncBaselineStore(handler, bootstrap)
@@ -1035,11 +1046,18 @@ class SyncRuntime(
     }
 
     override suspend fun exchange(trigger: SyncTrigger): SyncRunResult = connectionMutex.withLock {
+        diagnosticJournal?.record(
+            SyncJournalEventKind.RUN_START,
+            SyncJournalStage.RUNTIME,
+            code = SyncJournalCode.BEGIN,
+            trigger = trigger,
+        )
         try {
             recoverSwitchActivation()
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
+            diagnosticJournal?.record(SyncJournalEventKind.EXCEPTION, SyncJournalStage.RECOVERY, failure = failure)
             // Preserve an unavailable binding's storage feedback while unknown intents remain a closed gate.
             val problem = if (rawConnectionFacts().decode == SyncBindingDecode.READ_FAILED) {
                 SyncRunProblem.STORAGE
@@ -1052,41 +1070,46 @@ class SyncRuntime(
             )
         }
         val connection = rawConnection()?.takeIf { it.enabled || it.unsupportedFormat }
-            ?: return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
-        if (recoveryBlocked(connection)) return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
+            ?: return@withLock diagnosticSkip(SyncJournalCode.NO_CONNECTION, trigger = trigger)
+        if (recoveryBlocked(
+                connection,
+            )
+        ) {
+            return@withLock diagnosticSkip(SyncJournalCode.RECOVERY_BLOCKED, trigger = trigger)
+        }
         val active = runStore.active(connection.spaceId, connection.generation)
         if (trigger == SyncTrigger.STARTUP && active != null) {
             // Startup is a recovery probe. It must never create a second run over a
             // paused, blocked, or still owned run; the scheduler will resume an
             // eligible run separately.
-            return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
+            return@withLock diagnosticSkip(SyncJournalCode.STARTUP_ACTIVE, active?.runId, trigger)
         }
         if (trigger == SyncTrigger.STARTUP && active == null &&
             runStore.latest(connection.spaceId, connection.generation)?.let {
                 it.state == SyncRunState.FAILED && it.stopReason == "retry_exhausted"
             } == true
         ) {
-            return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
+            return@withLock diagnosticSkip(SyncJournalCode.RETRY_EXHAUSTED, active?.runId, trigger)
         }
         if (trigger == SyncTrigger.RECOVERY && (active == null || !isResumable(active))) {
-            return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
+            return@withLock diagnosticSkip(SyncJournalCode.NOT_RESUMABLE, active?.runId, trigger)
         }
         if (trigger in setOf(SyncTrigger.RECOVERY, SyncTrigger.PERIODIC) &&
             active?.state in setOf(SyncRunState.PAUSED_USER, SyncRunState.BLOCKED)
         ) {
-            return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
+            return@withLock diagnosticSkip(SyncJournalCode.PAUSED_OR_BLOCKED, active?.runId, trigger)
         }
         if (trigger in setOf(SyncTrigger.RECOVERY, SyncTrigger.PERIODIC) &&
             active?.nextRetryAt?.takeIf { it > 0 }?.let { it > clock() } == true
         ) {
-            return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
+            return@withLock diagnosticSkip(SyncJournalCode.RETRY_NOT_DUE, active?.runId, trigger)
         }
         if (trigger in setOf(SyncTrigger.RECOVERY, SyncTrigger.PERIODIC) && active == null &&
             runStore.latest(connection.spaceId, connection.generation)?.let {
                 it.state == SyncRunState.FAILED && it.stopReason == "retry_exhausted"
             } == true
         ) {
-            return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
+            return@withLock diagnosticSkip(SyncJournalCode.RETRY_EXHAUSTED, active?.runId, trigger)
         }
         if (trigger == SyncTrigger.MANUAL && active?.state == SyncRunState.BLOCKED) {
             runStore.finish(active.runId, SyncRunState.CANCELLED, "superseded_by_manual_retry")
@@ -1122,7 +1145,7 @@ class SyncRuntime(
         val exhausted = automatic && run.networkFailureCount >= MAX_NETWORK_FAILURES
         val attemptId = if (exhausted) run.attemptId else run.attemptId + 1
         if (!runStore.claim(run.runId, ownerSession, attemptId)) {
-            return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
+            return@withLock diagnosticSkip(SyncJournalCode.CLAIM_REJECTED, run.runId, trigger)
         }
         if (exhausted) {
             runStore.finish(run.runId, SyncRunState.FAILED, "retry_exhausted", ownerSession)
@@ -1161,13 +1184,53 @@ class SyncRuntime(
             attemptId = attemptId,
             ownerSession = ownerSession,
         )
+        var diagnosticStage = SyncJournalStage.AUTHORIZATION
         var result = try {
             preferences.lastAttempt.set(clock())
             val stored = onboarding.storage.connection(connection.spaceId, connection.generation)
                 ?: throw SyncSecureStoreException()
             require(stored.repository() == connection.repository) { "sync repository binding changed" }
-            val session = onboarding.session(stored.accountId)
+            diagnosticJournal?.record(
+                SyncJournalEventKind.AUTHORIZATION,
+                diagnosticStage,
+                run.runId,
+                SyncJournalCode.BEGIN,
+                attemptId = attemptId,
+                trigger = trigger,
+            )
+            val session = onboarding.session(
+                stored.accountId,
+                diagnosticRunId = run.runId,
+                diagnosticAttemptId = attemptId,
+                diagnosticTrigger = trigger,
+            )
+            diagnosticJournal?.record(
+                SyncJournalEventKind.AUTHORIZATION,
+                diagnosticStage,
+                run.runId,
+                SyncJournalCode.SUCCESS,
+                attemptId = attemptId,
+                trigger = trigger,
+            )
+            diagnosticStage = SyncJournalStage.SPACE_CHECK
+            diagnosticJournal?.record(
+                SyncJournalEventKind.SPACE_CHECK,
+                diagnosticStage,
+                run.runId,
+                SyncJournalCode.BEGIN,
+                attemptId = attemptId,
+                trigger = trigger,
+            )
             onboarding.verifyRepository(session, connection.repository, stored.repositoryId)
+            diagnosticJournal?.record(
+                SyncJournalEventKind.SPACE_CHECK,
+                diagnosticStage,
+                run.runId,
+                SyncJournalCode.SUCCESS,
+                attemptId = attemptId,
+                trigger = trigger,
+            )
+            diagnosticStage = SyncJournalStage.EXCHANGE
             val actor = handler.await {
                 sync_journalQueries.getCurrentActor(connection.spaceId, connection.generation).executeAsOne()
             }
@@ -1186,6 +1249,9 @@ class SyncRuntime(
                     persistentObjectCacheDirectory = persistentObjectCacheDirectory,
                     requestGate = accountHttpRequestGate(stored.accountId),
                     bodyObserver = progressSession,
+                    diagnosticContext = diagnosticJournal?.let {
+                        SyncJournalContext(it, SyncJournalStage.EXCHANGE, run.runId, attemptId, trigger)
+                    },
                 ),
                 spaceMaterial = material,
                 allowImport = { !preferences.importPaused.get() },
@@ -1198,10 +1264,20 @@ class SyncRuntime(
                 metrics = syncMetrics,
                 snapshotOwner = SyncSnapshotWriteOwner(run.runId, ownerSession, attemptId),
                 liveProgress = progressSession,
-                exceptionDiagnostics = exceptionDiagnostics,
+                diagnosticContext = diagnosticJournal?.let {
+                    SyncJournalContext(it, SyncJournalStage.EXCHANGE, run.runId, attemptId, trigger)
+                },
             )
                 .exchange(connection.spaceId, connection.generation, connection.repository)
         } catch (cancelled: CancellationException) {
+            diagnosticJournal?.record(
+                SyncJournalEventKind.TERMINAL,
+                diagnosticStage,
+                run.runId,
+                SyncJournalCode.CANCELLED,
+                attemptId = attemptId,
+                trigger = trigger,
+            )
             withContext(NonCancellable) {
                 val current = runStore.get(run.runId)
                 if (current?.state !in setOf(SyncRunState.PAUSED_USER, SyncRunState.CANCELLED)) {
@@ -1210,7 +1286,16 @@ class SyncRuntime(
             }
             throw cancelled
         } catch (failure: Exception) {
-            exceptionDiagnostics?.report(failure)
+            diagnosticJournal?.record(
+                SyncJournalEventKind.EXCEPTION,
+                diagnosticStage,
+                run.runId,
+                failure = failure,
+                attemptId = attemptId,
+                trigger = trigger,
+                networkPhase = (failure as? mihon.data.sync.http.SyncHttpException)?.networkPhase,
+                httpStatus = (failure as? mihon.data.sync.http.SyncHttpException)?.code,
+            )
             SyncRunResult(
                 SyncRunStatus.FAILED,
                 problem = failure.syncProblem(),
@@ -1322,6 +1407,21 @@ class SyncRuntime(
         if (result.status == SyncRunStatus.SUCCESS) preferences.lastSuccess.set(clock())
         preferences.history.set(Json.encodeToString((records() + SyncRunRecord(clock(), trigger, result)).takeLast(20)))
         result
+    }
+
+    private fun diagnosticSkip(
+        code: SyncJournalCode,
+        runId: String? = null,
+        trigger: SyncTrigger? = null,
+    ): SyncRunResult {
+        diagnosticJournal?.record(
+            SyncJournalEventKind.AUTO_SKIP,
+            SyncJournalStage.RUNTIME,
+            runId,
+            code,
+            trigger = trigger,
+        )
+        return SyncRunResult(SyncRunStatus.SKIPPED)
     }
 
     fun records(): List<SyncRunRecord> = runCatching {

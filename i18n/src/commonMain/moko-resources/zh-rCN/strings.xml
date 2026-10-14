@@ -2090,7 +2090,7 @@
     <string name="sync_view_processing">查看处理进度</string>
     <string name="sync_diagnostic_information">诊断信息</string>
     <string name="sync_diagnostics">诊断</string>
-    <string name="sync_diagnostic_description">采集本机同步事实，不包含账号、仓库、凭据或作品信息。仅保留本进程最近128次观察到的状态变化；JSON导出上限256KiB，超限会标明截断。可再次采集比较变化。</string>
+    <string name="sync_diagnostic_description">采集本机同步事实及运行、失败、重试和恢复步骤的持久记录。私有记录跨应用重启保留，不包含账号、仓库、凭据、请求地址、响应正文或异常消息。最多保留256条、128KiB，淘汰旧记录时优先保留失败信息。面板观察仍限本进程最近128条。JSON导出上限256KiB，会标明截断及存储错误。</string>
     <string name="sync_diagnostic_capture">采集快照</string>
     <string name="sync_diagnostic_busy">正在采集或保存…</string>
     <string name="sync_diagnostic_captured">快照已采集</string>
@@ -2098,11 +2098,11 @@
     <string name="sync_diagnostic_inconsistent">采集期间同步状态发生变化，请重新采集。</string>
     <string name="sync_diagnostic_exported">本机诊断文件已保存</string>
     <string name="sync_diagnostic_save_failed">诊断保存失败，请重试。</string>
-    <string name="sync_diagnostic_session_description">自愿开启后，最多24小时内可跨应用重启比较别名。私有缓存仅保留随机盐与上一快照关联摘要；不开启时只保证本进程内别名可比较。</string>
+    <string name="sync_diagnostic_session_description">自愿开启后，最多24小时内可跨应用重启比较面板观察的别名。此会话仅私有缓存随机盐与上一快照关联摘要。持久同步记录使用独立的私有别名跨重启关联，无需开启此会话。</string>
     <string name="sync_diagnostic_session_start">开启24小时诊断会话</string>
     <string name="sync_diagnostic_session_end">结束诊断会话</string>
     <string name="sync_diagnostic_session_started">诊断会话已开启</string>
-    <string name="sync_diagnostic_session_ended">诊断会话已结束，私有缓存已清除</string>
+    <string name="sync_diagnostic_session_ended">诊断会话已结束，会话关联缓存已清除；持久同步记录保留</string>
     <string name="sync_diagnostic_export">保存诊断JSON</string>
     <string name="sync_diagnostic_open">打开或分享本机文件</string>
     <string name="sync_diagnostic_open_failed">无法打开诊断文件</string>
