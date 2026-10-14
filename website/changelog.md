@@ -9,6 +9,16 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## October 14, 2026 — Windows startup feedback
+
+**Accepted candidate documentation · no public product release**
+
+- Windows packaged EXEs now show a native Mihon startup card before application initialization, with a static starting message and accent strip. The splash closes automatically when the first application window opens.
+- Accepted preview: `0.11.19.91.67c6609`; implementation: `67c6609b5b`.
+- Scope: Windows startup feedback, including normal and maximized startup. Timing depends on the machine; this is not a progress percentage or a guarantee of an uninterrupted transition to the main window. Other platforms are not covered.
+
+Acceptance basis: the project owner explicitly accepted this Windows startup prompt in private chat on October 14, 2026 and requested a push. No public product release was allocated.
+
 ## October 14, 2026 — Reader mode and direction controls
 
 **Accepted candidate documentation · no public product release**

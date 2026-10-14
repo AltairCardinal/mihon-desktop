@@ -25,6 +25,8 @@ Mihon’s reading and library experience gains a desktop home. Use the desktop i
 
 **Try it:** [build a desktop preview](./getting-started.md), add a work through a configured source or local library, then open a chapter.
 
+**Windows startup feedback:** launch the packaged EXE to see a dark Mihon card with a starting message and an accent strip while the application initializes. The native splash appears before application initialization and closes automatically when the first application window opens. It is a static waiting indicator, not a progress percentage. Startup timing depends on the machine; restoring a maximized window can still leave a brief gap before its content is presented. This feature is accepted for Windows packaged builds only.
+
 **Windows paging controls:** in Reader settings → Reading mode, select **Paged** (翻页式 in Chinese). Under **Pager**, choose **Left to right** or **Right to left**; only one direction can be selected. Single-page and two-page layouts use this direction. Automatic mode keeps its adaptive right-to-left behavior and disables manual direction selection; Webtoon does not show paging direction controls.
 
 **Platform boundaries:** Windows is the primary desktop development and validation target. The repository also maintains a macOS build entrypoint; macOS preview builds require the source and output directories to be on an APFS volume. Linux desktop packaging and acceptance are not configured. A successful preview build does not establish release readiness.
