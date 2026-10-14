@@ -8,8 +8,8 @@ import mihon.domain.reader.ReaderPortraitSingleSlot
  *
  * [Single] — one page, in the chosen physical slot or across the full viewport.
  * [Double] — two portrait pages shown side-by-side:
- *   [rightPage] (read first) is on the right side of the screen,
- *   [leftPage]  (read second) is on the left side of the screen.
+ *   [rightPage] is on the right side and [leftPage] on the left.
+ *   Logical navigation remains in source order independently of physical direction.
  */
 sealed class DisplayPage {
 
@@ -27,14 +27,14 @@ sealed class DisplayPage {
     val firstPage: ReaderPage
         get() = when (this) {
             is Single -> page
-            is Double -> rightPage
+            is Double -> if (rightPage.index < leftPage.index) rightPage else leftPage
         }
 
     /** Logical source pages actually visible in this display unit. */
     val visiblePages: List<ReaderPage>
         get() = when (this) {
             is Single -> listOf(page)
-            is Double -> listOf(rightPage, leftPage)
+            is Double -> listOf(rightPage, leftPage).sortedBy { it.index }
         }
 }
 

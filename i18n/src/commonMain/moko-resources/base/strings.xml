@@ -587,6 +587,10 @@
     <string name="webtoon_viewer">Long strip</string>
     <string name="vertical_plus_viewer">Long strip with gaps</string>
     <string name="dual_page_r2l_viewer">Double page (right to left)</string>
+    <string name="dual_page_l2r_viewer">Double page (left to right)</string>
+    <string name="desktop_reader_paged_mode">Paged</string>
+    <string name="desktop_reader_direction_ltr">Left to right</string>
+    <string name="desktop_reader_direction_rtl">Right to left</string>
     <string name="action_adjust_page_pairing">Adjust page pairing</string>
     <string name="pager_viewer">Paged</string>
     <string name="pref_viewer_nav">Tap zones</string>

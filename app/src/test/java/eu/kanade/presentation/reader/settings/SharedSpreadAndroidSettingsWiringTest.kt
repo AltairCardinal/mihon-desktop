@@ -18,6 +18,7 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
 import io.mockk.mockk
 import kotlinx.coroutines.flow.MutableStateFlow
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -32,6 +33,33 @@ import tachiyomi.core.common.preference.AndroidPreferenceStore
 @Config(sdk = [35], application = android.app.Application::class)
 class SharedSpreadAndroidSettingsWiringTest {
     @get:Rule val compose = createEmptyComposeRule()
+
+    @Test
+    @Config(qualifiers = "zh-rCN")
+    fun `reading mode chips expose localized dual directions and dispatch the selected mode`() {
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        val shared = activity.get().getSharedPreferences("dual-direction-${System.nanoTime()}", 0)
+        val preferences = ReaderPreferences(AndroidPreferenceStore(activity.get(), shared))
+        val state = MutableStateFlow(ReaderViewModel.State())
+        var selected: Int? = null
+        val model = ReaderSettingsScreenModel(state, { selected = it.flagValue }, {}, preferences)
+        try {
+            activity.get().setContent {
+                MaterialTheme {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        ReadingModePage(model)
+                    }
+                }
+            }
+            compose.onNodeWithText("双页式（从右到左）").performScrollTo().assertIsDisplayed().performClick()
+            assertEquals(6, selected)
+            compose.onNodeWithText("双页式（从左到右）").performScrollTo().assertIsDisplayed().performClick()
+            assertEquals(8, selected)
+        } finally {
+            activity.pause().stop().destroy()
+            shared.edit().clear().commit()
+        }
+    }
 
     @Test
     fun `existing reading mode page setting event persists automatic matching only for dual viewer`() {

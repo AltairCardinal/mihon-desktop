@@ -10,6 +10,7 @@ import eu.kanade.tachiyomi.ui.reader.viewer.pager.L2RPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.R2LPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.VerticalPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonViewer
+import mihon.domain.reader.ReaderDirection
 import tachiyomi.i18n.MR
 
 enum class ReadingMode(
@@ -63,6 +64,13 @@ enum class ReadingMode(
         ViewerType.Pager,
     ),
     AUTO(MR.strings.automatic_background, R.drawable.ic_reader_default_24dp, 7, Direction.Horizontal, ViewerType.Pager),
+    DUAL_PAGE_L2R(
+        MR.strings.dual_page_l2r_viewer,
+        R.drawable.ic_reader_dual_page_24dp,
+        8,
+        Direction.Horizontal,
+        ViewerType.Pager,
+    ),
     ;
 
     companion object {
@@ -83,6 +91,11 @@ enum class ReadingMode(
                 WEBTOON -> WebtoonViewer(activity)
                 CONTINUOUS_VERTICAL -> WebtoonViewer(activity, isContinuous = false)
                 DUAL_PAGE_R2L -> DualPageR2LPagerViewer(activity, activity.viewModel.dualPagePairings)
+                DUAL_PAGE_L2R -> DualPageR2LPagerViewer(
+                    activity,
+                    activity.viewModel.dualPagePairings,
+                    ReaderDirection.LTR,
+                )
                 DEFAULT, AUTO -> R2LPagerViewer(activity)
             }
         }

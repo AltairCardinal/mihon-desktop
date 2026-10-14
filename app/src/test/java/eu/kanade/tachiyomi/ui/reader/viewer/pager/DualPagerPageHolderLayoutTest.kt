@@ -96,6 +96,34 @@ import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView.OnImageEven
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], manifest = Config.NONE, qualifiers = "w480dp-h1040dp-xxhdpi")
 class DualPagerPageHolderLayoutTest {
+    @Test
+    fun `LTR double page factory uses story order and right arrow advances source`() = runTest {
+        val activity = viewer.activity
+        val model = mockk<ReaderViewModel>(relaxed = true)
+        every { model.dualPagePairings } returns DualPagePairingStore()
+        ReflectionHelpers.setField(activity, "viewModel\$delegate", lazyOf(model))
+        val ltr = ReadingMode.toViewer(8, activity)
+        assertTrue("LTR must use the real dual page viewer", ltr is DualPageR2LPagerViewer)
+        try {
+            val dual = ltr as DualPageR2LPagerViewer
+            val chapter = loadedChapter(11, 4)
+            dual.adapter.setChapters(ViewerChapters(chapter, null, null), false)
+            assertEquals(listOf(0, 1, 3), dual.adapter.items.filterIsInstance<DisplayPage>().map { it.firstPage.index })
+            val pair = dual.adapter.items.filterIsInstance<DisplayPage.Double>().single()
+            assertEquals(1, pair.leftPage.index)
+            assertEquals(2, pair.rightPage.index)
+            assertEquals(listOf(1, 2), pair.visiblePages.map { it.index })
+            val owner = requireNotNull(dual.adapter.session(chapter))
+            dual.moveToPage(requireNotNull(chapter.pages)[0])
+            dual.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_RIGHT))
+            assertEquals(1, owner.location?.pageId?.sourcePageIndex)
+            dual.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_LEFT))
+            assertEquals(0, owner.location?.pageId?.sourcePageIndex)
+        } finally {
+            ltr.destroy()
+        }
+    }
+
     private lateinit var previousInjekt: InjektScope
     private lateinit var viewer: DualPageR2LPagerViewer
     private val hosts = mutableListOf<ComponentActivity>()

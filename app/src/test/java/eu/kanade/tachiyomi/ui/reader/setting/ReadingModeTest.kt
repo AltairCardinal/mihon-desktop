@@ -6,6 +6,13 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class ReadingModeTest {
+    @Test
+    fun `LTR double page is a selectable horizontal pager mode`() {
+        val mode = ReadingMode.fromPreference(8)
+        assertEquals("DUAL_PAGE_L2R", mode.name)
+        assertEquals(ReadingMode.Direction.Horizontal, mode.direction)
+        assertTrue(ReadingMode.isPagerType(8))
+    }
 
     @Test
     fun `DUAL_PAGE_R2L can be resolved from preference value 6`() {
@@ -29,8 +36,9 @@ class ReadingModeTest {
     }
 
     @Test
-    fun `MASK still covers all existing mode values`() {
-        ReadingMode.entries.forEach { mode ->
+    fun `legacy MASK still covers the original mode values without orientation bits`() {
+        assertEquals(7, ReadingMode.MASK)
+        ReadingMode.entries.filter { it.flagValue <= 7 }.forEach { mode ->
             if (mode != ReadingMode.DEFAULT) {
                 assertTrue(
                     (mode.flagValue and ReadingMode.MASK) == mode.flagValue,

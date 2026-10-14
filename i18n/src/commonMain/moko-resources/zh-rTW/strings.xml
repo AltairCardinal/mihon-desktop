@@ -172,6 +172,11 @@
     <string name="vertical_viewer">單頁(上至下)</string>
     <string name="webtoon_viewer">捲動(連續)</string>
     <string name="pager_viewer">單頁</string>
+    <string name="dual_page_r2l_viewer">雙頁式（從右到左）</string>
+    <string name="dual_page_l2r_viewer">雙頁式（從左到右）</string>
+    <string name="desktop_reader_paged_mode">翻頁式</string>
+    <string name="desktop_reader_direction_ltr">從左到右</string>
+    <string name="desktop_reader_direction_rtl">從右到左</string>
     <string name="pref_image_scale_type">縮放模式</string>
     <string name="scale_type_fit_screen">符合螢幕</string>
     <string name="scale_type_stretch">延展</string>

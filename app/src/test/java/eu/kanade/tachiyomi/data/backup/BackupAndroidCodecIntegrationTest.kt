@@ -12,6 +12,15 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
 class BackupAndroidCodecIntegrationTest {
+    @Test
+    fun `LTR dual page survives production backup codec and manga restoration`() {
+        val flags = mihon.domain.reader.ReaderModeFlags.write(0x38L, 8L)
+        val original = Backup(listOf(BackupManga(source = 7, url = "/dual", viewer_flags = flags.toInt())))
+        val restored = BackupDecoder(mockk(relaxed = true))
+            .decode(BackupCreator.encodeForBackup(original).inputStream()).backupManga.single().getMangaImpl()
+        assertEquals(flags, restored.viewerFlags)
+        assertEquals(8L, mihon.domain.reader.ReaderModeFlags.read(restored.viewerFlags))
+    }
     private val expected = Backup(listOf(BackupManga(source = 7, url = "/android", title = "Android")))
 
     @Test

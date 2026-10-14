@@ -837,6 +837,7 @@ class ReaderViewModel @JvmOverloads constructor(
     private fun usesDualPageViewer(): Boolean {
         val mode = getMangaReadingMode()
         return mode == ReadingMode.DUAL_PAGE_R2L.flagValue ||
+            mode == ReadingMode.DUAL_PAGE_L2R.flagValue ||
             (mode == ReadingMode.AUTO.flagValue && state.value.viewer is DualPageR2LPagerViewer)
     }
 

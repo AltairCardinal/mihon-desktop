@@ -126,7 +126,7 @@ class DualPageViewerAdapter(
         failedSamples.clear()
         chapterPairings.values.forEach {
             it.session.configure(
-                mihon.domain.reader.ReaderDirection.RTL,
+                viewer.direction,
                 automaticMatching = viewer.config.automaticSpreadMatching,
             )
         }
@@ -244,7 +244,7 @@ class DualPageViewerAdapter(
                 pages,
             ).session.apply {
                 configure(
-                    mihon.domain.reader.ReaderDirection.RTL,
+                    viewer.direction,
                     automaticMatching = viewer.config.automaticSpreadMatching,
                 )
                 configurePresentationMode(mihon.domain.reader.ReaderPresentationMode.DUAL)
@@ -255,7 +255,7 @@ class DualPageViewerAdapter(
                         if (chapter.pages !== pages || chapterPairings[chapter]?.pages !== pages) return@collect
                         val entry = store.ensure(chapter, pages)
                         entry.session.configure(
-                            mihon.domain.reader.ReaderDirection.RTL,
+                            viewer.direction,
                             automaticMatching = viewer.config.automaticSpreadMatching,
                         )
                         entry.session.configurePresentationMode(mihon.domain.reader.ReaderPresentationMode.DUAL)
@@ -432,7 +432,7 @@ class DualPageViewerAdapter(
         return POSITION_NONE
     }
 
-    /** Assemble in story order and reverse the entire window once, including its boundaries. */
+    /** Assemble in story order; RTL reverses the entire window, including its boundaries. */
     private fun rebuildItems(targetPage: ReaderPage? = null) {
         if (targetPage == null && viewer.hasActiveGesture) {
             // Facts update the owner immediately, while native slots retain their held positions.
@@ -487,7 +487,7 @@ class DualPageViewerAdapter(
                 }
             }
         }
-        val replacement = logical.asReversed().toMutableList()
+        val replacement = (if (viewer.isRtl) logical.asReversed() else logical).toMutableList()
         if (items == replacement) {
             // Metadata can change certainty and the presentation capability without changing physical slots.
             viewer.refreshPresentation()
@@ -723,8 +723,16 @@ class DualPageViewerAdapter(
                 DisplayPage.Single(pages[unit.pageIds.single().sourcePageIndex], unit.slots.single().position)
             } else {
                 DisplayPage.Double(
-                    rightPage = pages[unit.pageIds[0].sourcePageIndex],
-                    leftPage = pages[unit.pageIds[1].sourcePageIndex],
+                    rightPage = pages[
+                        unit.slots.single {
+                            it.position == mihon.domain.reader.ReaderPortraitSingleSlot.RIGHT
+                        }.pageId.sourcePageIndex,
+                    ],
+                    leftPage = pages[
+                        unit.slots.single {
+                            it.position == mihon.domain.reader.ReaderPortraitSingleSlot.LEFT
+                        }.pageId.sourcePageIndex,
+                    ],
                 )
             }
         }
