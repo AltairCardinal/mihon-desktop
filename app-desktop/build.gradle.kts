@@ -478,6 +478,10 @@ compose.desktop {
     application {
         mainClass = "mihon.desktop.MainKt"
         jvmArgs += listOf("-Djava.net.useSystemProxies=true")
+        if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
+            // The JVM's native splash appears before Main/DI/Compose initialization.
+            jvmArgs += "-splash:\$APPDIR/resources/startup-splash.png"
+        }
 
         nativeDistributions {
             // macOS codesign requires APFS; the build entrypoint validates isolated output paths.
@@ -490,6 +494,7 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi)
             packageName = "Mihon Desktop"
             packageVersion = desktopNativePackageVersion
+            appResourcesRootDir.set(project.layout.projectDirectory.dir("src/main/appResources"))
 
             modules(
                 "java.sql",
