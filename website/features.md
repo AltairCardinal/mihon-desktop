@@ -25,6 +25,8 @@ Mihon’s reading and library experience gains a desktop home. Use the desktop i
 
 **Try it:** [build a desktop preview](./getting-started.md), add a work through a configured source or local library, then open a chapter.
 
+**Windows paging controls:** in Reader settings → Reading mode, select **Paged** (翻页式 in Chinese). Under **Pager**, choose **Left to right** or **Right to left**; only one direction can be selected. Single-page and two-page layouts use this direction. Automatic mode keeps its adaptive right-to-left behavior and disables manual direction selection; Webtoon does not show paging direction controls.
+
 **Platform boundaries:** Windows is the primary desktop development and validation target. The repository also maintains a macOS build entrypoint; macOS preview builds require the source and output directories to be on an APFS volume. Linux desktop packaging and acceptance are not configured. A successful preview build does not establish release readiness.
 
 ## Two-page reading and spread matching {#two-page-reading}
@@ -32,6 +34,8 @@ Mihon’s reading and library experience gains a desktop home. Use the desktop i
 Read adjacent pages side by side, display landscape pages, and adjust pairing manually when a cover or page sequence shifts the layout.
 
 **Try it:** open a chapter, select two-page reading, and inspect the page order. If a pair is wrong, adjust it manually in the reader. Use a chapter you know well to compare the result with the intended spread.
+
+**Android reading direction:** Reader settings → Reading mode offers **Double page (right to left)** and **Double page (left to right)**. In Simplified Chinese these appear as **双页式（从右到左）** and **双页式（从左到右）**. Page placement and navigation follow the selected direction. Older clients that do not recognize the new left-to-right two-page setting fall back to single-page left-to-right when reading its saved work setting.
 
 **Desktop assistance:** image-edge information from adjacent pages helps identify spreads. This is an aid to pairing, not a guarantee that every scan or layout can be recognized. Manual adjustment remains part of the reading workflow.
 

@@ -9,6 +9,17 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## October 14, 2026 — Reader mode and direction controls
+
+**Accepted candidate documentation · no public product release**
+
+- Windows combines the two paging mode entries into **Paged**, with mutually exclusive direction choices under **Pager**. Automatic mode remains adaptive right-to-left; Webtoon has no paging direction controls.
+- Android localizes the right-to-left double-page option in Chinese and adds a working left-to-right double-page option. Older clients fall back to single-page left-to-right for the new saved setting.
+- Accepted candidates: Windows preview `0.11.19.91.e659859`; Android `0.19.4-aex.73`, versionCode `91`, installed on the owner's Huawei PCE-W30 tablet.
+- Implementation: `b551b7dd70`; candidate source/version allocation: `e659859e42`.
+
+Acceptance basis: the project owner explicitly accepted these Windows and Android reader changes in private chat on October 14, 2026. This acceptance covers the listed controls and reading directions, not other platforms or a full release matrix.
+
 ## October 13, 2026 — Documentation baseline
 
 **Documentation update · no product release**
