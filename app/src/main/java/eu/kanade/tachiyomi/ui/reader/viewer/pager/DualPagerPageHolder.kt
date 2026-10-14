@@ -1030,11 +1030,13 @@ class DualPagerPageHolder(
         fun applyTransform() {
             if (imageWidth <= 0 || imageHeight <= 0 || width <= 0 || height <= 0) return
             val fitScale = min(width.toFloat() / imageWidth, height.toFloat() / imageHeight)
-            val fitWidth = (imageWidth * fitScale).toInt()
-            val fitHeight = (imageHeight * fitScale).toInt()
-            val x = left + if (alignRight) width - fitWidth else 0
-            val y = (height - fitHeight) / 2
-            val fit = RectF(x.toFloat(), y.toFloat(), (x + fitWidth).toFloat(), (y + fitHeight).toFloat())
+            // Keep the aspect ratio exact until drawing: independently truncating both axes
+            // makes CENTER_INSIDE shrink the decoded image away from the spine.
+            val fitWidth = imageWidth * fitScale
+            val fitHeight = imageHeight * fitScale
+            val x = left + if (alignRight) width - fitWidth else 0f
+            val y = (height - fitHeight) / 2f
+            val fit = RectF(x, y, x + fitWidth, y + fitHeight)
             for (index in 0 until childCount) {
                 (getChildAt(index) as? ReaderPageImageView)?.setViewportTransform(
                     fit,

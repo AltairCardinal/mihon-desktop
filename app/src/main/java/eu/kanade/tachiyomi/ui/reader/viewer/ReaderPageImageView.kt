@@ -147,8 +147,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
     internal val viewportOffsetY: Float get() = viewportTransform?.offsetY ?: 0f
 
     internal fun viewportImageBounds(): RectF? = viewportTransform?.let { pose ->
-        // Preserve the previous CENTER_INSIDE behavior when border cropping or an integer Fit
-        // rectangle leaves a small margin around the actual decoded image.
+        // Border cropping and source regions retain CENTER_INSIDE within the original Fit.
         val dimensions = when (val native = pageView) {
             is SubsamplingScaleImageView -> if (native.sWidth > 0 && native.sHeight > 0) {
                 config?.sourceOrientation?.orientedSize(native.sWidth, native.sHeight)
@@ -199,7 +198,9 @@ open class ReaderPageImageView @JvmOverloads constructor(
         // Native mirroring is around its full viewport. Reflect the destination before supplying
         // the source center, otherwise a mirrored left page would move into the right slot.
         val left = if (config?.sourceOrientation?.mirrorHorizontally == true) width - bounds.right else bounds.left
-        val next = NativeViewportPose(scale, baseScale, (width / 2f - left) / scale, (height / 2f - bounds.top) / scale)
+        // SSIV preDraw uses integer viewport halves when converting its source center to
+        // translation. Match that inverse here; the group camera above keeps its float pivot.
+        val next = NativeViewportPose(scale, baseScale, (width / 2 - left) / scale, (height / 2 - bounds.top) / scale)
         if (nativeViewportPose == next) return
         nativeViewportPose = next
         native.minScale = baseScale

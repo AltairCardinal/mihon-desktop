@@ -1517,10 +1517,18 @@ class DualPagerPageHolderLayoutTest {
                     val fit = requireNotNull(image.viewportFitBounds)
                     assertEquals(v[0], image.width)
                     assertEquals(v[1], image.height)
-                    assertEquals(v[offset], fit.left.toInt())
-                    assertEquals(v[offset + 1], fit.top.toInt())
-                    assertEquals(v[offset + 2], fit.width().toInt())
-                    assertEquals(v[offset + 3], fit.height().toInt())
+                    // Shared vectors retain their integer layout baseline; Android keeps the
+                    // fractional remainder so CENTER_INSIDE cannot retreat from the spine.
+                    assertEquals(v[offset].toFloat(), fit.left, 0.999f)
+                    assertEquals(v[offset + 1].toFloat(), fit.top, 0.999f)
+                    assertEquals(v[offset + 2].toFloat(), fit.width(), 0.999f)
+                    assertEquals(v[offset + 3].toFloat(), fit.height(), 0.999f)
+                    val sourceOffset = 2 + index * 2
+                    assertEquals(
+                        v[sourceOffset].toFloat() / v[sourceOffset + 1],
+                        fit.width() / fit.height(),
+                        0.00001f,
+                    )
                 }
             } finally {
                 descendants(holder).filterIsInstance<ReaderPageImageView>().forEach { it.recycle() }

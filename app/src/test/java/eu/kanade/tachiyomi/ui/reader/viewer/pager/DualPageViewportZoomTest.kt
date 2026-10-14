@@ -1709,6 +1709,74 @@ class DualPageViewportZoomTest {
     }
 
     @Test
+    fun fractionalFitKeepsBothNativePagesPinnedToTheSpineDuringResize() = runTest {
+        for ((rightWidth, rightHeight, leftWidth, leftHeight) in listOf(
+            listOf(1125, 1600, 1125, 1600),
+            listOf(1125, 1600, 2250, 3200),
+            listOf(750, 1000, 670, 1000),
+        )) {
+            val subject = subject(
+                ReaderPortraitSingleSlot.RIGHT,
+                rightWidth,
+                rightHeight,
+                provisionalPair = true,
+                partnerWidth = leftWidth,
+                partnerHeight = leftHeight,
+            )
+            val partner = subject.pages[2]
+            assertTrue(subject.holder.updateDisplayPage(DisplayPage.Double(subject.pages[1], partner)))
+            load(subject.holder, partner, "LEFT")
+            val left = descendants(subject.holder).filterIsInstance<ReaderPageImageView>().first {
+                it !== subject.image
+            }
+            invokeFixture("measure", subject.holder, 1400, 1000)
+            paintReaderImage(left, subject.partnerEncoded)
+            for (width in listOf(1400, 1401, 1250, 1461, 1400)) {
+                invokeFixture("measure", subject.holder, width, 1000)
+                settle(subject.holder)
+                val spine = (left.parent as View).right.toFloat()
+                val leftNative = left.getChildAt(0) as SubsamplingScaleImageView
+                val leftEdge = requireNotNull(leftNative.sourceToViewCoord(leftWidth.toFloat(), leftHeight / 2f))
+                val rightEdge = requireNotNull(subject.native.sourceToViewCoord(0f, rightHeight / 2f))
+                assertEquals("Left native edge at width=$width", spine, leftEdge.x, 0.001f)
+                assertEquals("Right native edge at width=$width", spine, rightEdge.x, 0.001f)
+                val output = Bitmap.createBitmap(width, 1000, Bitmap.Config.ARGB_8888)
+                try {
+                    output.eraseColor(Color.WHITE)
+                    subject.holder.draw(Canvas(output))
+                    for (x in spine.toInt() - 1..spine.toInt()) {
+                        assertEquals("No background at spine width=$width x=$x", Color.RED, output.getPixel(x, 500))
+                    }
+                } finally {
+                    output.recycle()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun oddViewportNativeGeometryMatchesTheGroupCameraIncludingMirroring() = runTest {
+        for (orientation in listOf(ReaderImageOrientation.NORMAL, ReaderImageOrientation.MIRROR_HORIZONTAL)) {
+            val subject = subject(ReaderPortraitSingleSlot.LEFT, 1125, 1600, 1401, 1001)
+            val bitmap = Bitmap.createBitmap(1125, 1600, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+            subject.image.setImage(
+                BitmapDrawable(subject.image.resources, bitmap),
+                requireNotNull(subject.image.decodedSideConfig).copy(sourceOrientation = orientation),
+            )
+            for (zoom in listOf(1f, 2f, 1f)) {
+                setCamera(subject.holder, zoom, if (zoom == 1f) 0f else 50f, 0f)
+                settle(subject.holder)
+                val bounds = requireNotNull(subject.image.viewportImageBounds())
+                val first = requireNotNull(subject.native.sourceToViewCoord(0f, 0f))
+                val last = requireNotNull(subject.native.sourceToViewCoord(1125f, 1600f))
+                val nativeLeft = if (orientation.mirrorHorizontally) 1401f - last.x else first.x
+                assertEquals("$orientation zoom=$zoom horizontal mapping", bounds.left, nativeLeft, 0.001f)
+                assertEquals("$orientation zoom=$zoom vertical mapping", bounds.top, first.y, 0.001f)
+            }
+        }
+    }
+
+    @Test
     fun nativeViewportKeepsLockedFitAndIncreasesSamplingDetail() = runTest {
         val subject = subject(ReaderPortraitSingleSlot.LEFT, 1600, 3200)
         assertEquals(
@@ -2089,6 +2157,8 @@ class DualPageViewportZoomTest {
         viewportWidth: Int = 1400,
         viewportHeight: Int = 1000,
         provisionalPair: Boolean = false,
+        partnerWidth: Int = sourceWidth,
+        partnerHeight: Int = sourceHeight,
     ): Subject {
         val viewer = ReflectionHelpers.getField<DualPageR2LPagerViewer>(fixture, "viewer")
         val source = Bitmap.createBitmap(sourceWidth, sourceHeight, Bitmap.Config.ARGB_8888).apply {
@@ -2096,12 +2166,19 @@ class DualPageViewportZoomTest {
         }
         val encoded = ByteArrayOutputStream().also { source.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
         source.recycle()
+        val partnerBitmap = Bitmap.createBitmap(partnerWidth, partnerHeight, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.RED)
+        }
+        val partnerEncoded = ByteArrayOutputStream().also {
+            partnerBitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+        }.toByteArray()
+        partnerBitmap.recycle()
         val opens = IntArray(4)
         val chapter = ReaderChapter(Chapter.create().copy(id = 61011 + mounted.size.toLong(), mangaId = 1))
         val pages = List(4) { index ->
             ReaderPage(index, stream = {
                 opens[index]++
-                encoded.inputStream()
+                (if (index == 2) partnerEncoded else encoded).inputStream()
             }).apply {
                 this.chapter = chapter
                 status = Page.State.Ready
@@ -2138,7 +2215,7 @@ class DualPageViewportZoomTest {
         val imageParent = image.parent
         val attachment = ReflectionHelpers.getField<Long>(holder, "attachmentGeneration")
         val opensBefore = opens[page.index]
-        return Subject(holder, image, native, pages, encoded) {
+        return Subject(holder, image, native, pages, encoded, partnerEncoded) {
             assertTrue(descendants(holder).any { it === image })
             assertSame(native, image.getChildAt(0))
             assertSame(imageParent, image.parent)
@@ -2158,6 +2235,7 @@ class DualPageViewportZoomTest {
         val native: SubsamplingScaleImageView,
         val pages: List<ReaderPage>,
         val encoded: ByteArray,
+        val partnerEncoded: ByteArray,
         val assertRetained: () -> Unit,
     )
 
