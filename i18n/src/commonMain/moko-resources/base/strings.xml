@@ -522,6 +522,9 @@
     <string name="pref_page_transitions">Animate page transitions</string>
     <string name="pref_flash_page">Flash on page change</string>
     <string name="pref_flash_page_summ">Reduces ghosting on e-ink displays</string>
+    <string name="pref_page_turn_ripple">Ripple effect on page turn</string>
+    <string name="pref_page_turn_ripple_summary">Use ripple wipe transition when turning pages</string>
+    <string name="pref_eink_device_detected">E-Ink device detected</string>
     <string name="pref_flash_duration">Flash duration</string>
     <string name="pref_flash_duration_summary">%1$s ms</string>
     <string name="pref_flash_page_interval">Flash every</string>

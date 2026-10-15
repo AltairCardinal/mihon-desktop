@@ -64,6 +64,7 @@ jobs:
         run: |
           python3 scripts/tests/build-android-test.py
           python3 scripts/tests/gradle-coordinator-test.py
+          python3 scripts/tests/build-performance-test.py
 
       - name: Build unsigned Android candidate
         id: candidate

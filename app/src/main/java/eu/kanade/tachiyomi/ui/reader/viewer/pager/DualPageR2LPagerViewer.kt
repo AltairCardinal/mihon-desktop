@@ -209,6 +209,19 @@ class DualPageR2LPagerViewer(
             false
         }
 
+        pager.pageTurnRippleEnabled = config.pageTurnRipple
+        config.pageTurnRippleChangedListener = { enabled ->
+            pager.pageTurnRippleEnabled = enabled
+        }
+        pager.swipeListener = { direction ->
+            when (direction) {
+                Pager.SwipeDirection.LEFT -> moveRight()
+                Pager.SwipeDirection.RIGHT -> moveLeft()
+                Pager.SwipeDirection.UP -> moveDown()
+                Pager.SwipeDirection.DOWN -> moveUp()
+            }
+        }
+
         config.imagePropertyChangedListener = { refreshAdapter() }
         config.automaticSpreadMatchingChangedListener = adapter::matchingSettingChanged
 
@@ -339,14 +352,22 @@ class DualPageR2LPagerViewer(
     private fun moveLeft() {
         if (navigateSource(forward = isRtl)) return
         if (pager.currentItem != 0) {
-            pager.setCurrentItem(pager.currentItem - 1, config.usePageTransitions)
+            if (config.pageTurnRipple) {
+                pager.setCurrentItemWithRipple(pager.currentItem - 1, Pager.RippleDirection.LEFT_TO_RIGHT)
+            } else {
+                pager.setCurrentItem(pager.currentItem - 1, config.usePageTransitions)
+            }
         }
     }
 
     private fun moveRight() {
         if (navigateSource(forward = !isRtl)) return
         if (pager.currentItem != adapter.count - 1) {
-            pager.setCurrentItem(pager.currentItem + 1, config.usePageTransitions)
+            if (config.pageTurnRipple) {
+                pager.setCurrentItemWithRipple(pager.currentItem + 1, Pager.RippleDirection.RIGHT_TO_LEFT)
+            } else {
+                pager.setCurrentItem(pager.currentItem + 1, config.usePageTransitions)
+            }
         }
     }
 
@@ -367,7 +388,16 @@ class DualPageR2LPagerViewer(
             val target = adapter.navigate(chapter, forward) ?: return false
             val position = adapter.items.indexOfFirst { it is DisplayPage && it.containsPage(target) }
             if (position < 0) return false
-            pager.setCurrentItem(position, animate)
+            if (config.pageTurnRipple) {
+                val rippleDirection = if (position > pager.currentItem) {
+                    Pager.RippleDirection.RIGHT_TO_LEFT
+                } else {
+                    Pager.RippleDirection.LEFT_TO_RIGHT
+                }
+                pager.setCurrentItemWithRipple(position, rippleDirection)
+            } else {
+                pager.setCurrentItem(position, animate)
+            }
         } finally {
             replacingPairing = wasReplacing
         }

@@ -567,7 +567,10 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
                     ) {
                         OutlinedTextField(
                             value = query,
-                            onValueChange = { query = it },
+                            onValueChange = {
+                                mihon.domain.easteregg.PigEasterEggTrigger.check(it)
+                                query = it
+                            },
                             placeholder = { Text(MR.strings.desktop_ui_search_all_sources.localized()) },
                             singleLine = true,
                             modifier = Modifier

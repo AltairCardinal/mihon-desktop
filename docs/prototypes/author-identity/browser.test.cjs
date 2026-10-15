@@ -427,3 +427,33 @@ test('简繁与符号差异自动聚合、按普通图源筛选并支持分开�
     assert.match(await f.getByRole('status').innerText(), /已撤销分开显示/);
   }
 }));
+
+test('作者页与详情页具备现代卡片结构、统计信息层级与快捷搜索清空交互', () => setup(async (page, pc, phone) => {
+  await page.locator('#narrow').check();
+  for (const [target, f] of [['windows', pc], ['android', phone]]) {
+    await page.locator('#target').selectOption(target);
+    if (target === 'windows') await f.getByTestId('nav-authors').click();
+    else { await f.getByTestId('nav-browse').click(); await action(f, 'authors').click(); }
+
+    const authorCard = f.locator('[data-author="a"]');
+    assert.equal(await authorCard.locator('.follow-badge').count(), 1);
+    assert.equal(await authorCard.locator('.follow-badge').innerText(), '已关注');
+
+    await authorCard.click();
+    assert.equal(await f.locator('.author-stats').count(), 1);
+    assert.match(await f.locator('.author-stats').innerText(), /3.*作品.*4.*来源版本/s);
+
+    const searchInput = f.getByLabel('查找作品');
+    await searchInput.fill('平行');
+    assert.equal(await f.locator('.work-item').count(), 1);
+    const clearBtn = f.locator('[data-action="clear-search"]');
+    assert.equal(await clearBtn.count(), 1);
+    await clearBtn.click();
+    assert.equal(await f.locator('.work-item').count(), 3);
+
+    await action(f, 'merge-select').click();
+    await f.locator('[data-select="tw"]').check();
+    await f.getByRole('button', { name: '添加', exact: true }).click();
+    assert.equal(await f.locator('[data-alias="岡本倫"]').count(), 1);
+  }
+}));

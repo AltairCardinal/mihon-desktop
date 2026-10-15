@@ -32,8 +32,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import mihon.desktop.di.initDesktopDI
-import mihon.desktop.easteregg.AboutPigEasterEggInput
-import mihon.desktop.easteregg.DesktopPigEasterEggController
+import mihon.domain.easteregg.PigEasterEggController
 import mihon.desktop.image.installDesktopImageLoader
 import mihon.desktop.platform.AwtDesktopOpenUriEventPort
 import mihon.desktop.platform.DesktopExternalActionBroker
@@ -308,7 +307,6 @@ private suspend fun runDesktopComposeWindowEventLoop(
                     requestClose { exitApplication() }
                 }
             },
-            onPreviewKeyEvent = AboutPigEasterEggInput.Default::onKeyEvent,
             title = "Mihon Desktop $APP_VERSION",
             icon = androidx.compose.runtime.remember {
                 androidx.compose.ui.graphics.painter.BitmapPainter(loadDesktopAppIcon())
@@ -337,7 +335,7 @@ private suspend fun runDesktopComposeWindowEventLoop(
                         }
                     }
                 }
-                DesktopPigEasterEggOverlay(DesktopPigEasterEggController.Default)
+                DesktopPigEasterEggOverlay(PigEasterEggController.Default)
             }
         }
     }

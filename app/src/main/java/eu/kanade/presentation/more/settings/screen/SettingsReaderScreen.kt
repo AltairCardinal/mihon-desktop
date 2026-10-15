@@ -136,6 +136,15 @@ object SettingsReaderScreen : SearchableSettings {
 
         val flashColorPref = readerPreferences.flashColor()
 
+        val isEInk = eu.kanade.tachiyomi.util.system.DeviceUtil.isEInk
+        val rippleSummary = if (isEInk) {
+            "${stringResource(
+                MR.strings.pref_page_turn_ripple_summary,
+            )} (${stringResource(MR.strings.pref_eink_device_detected)})"
+        } else {
+            stringResource(MR.strings.pref_page_turn_ripple_summary)
+        }
+
         return Preference.PreferenceGroup(
             title = "E-Ink",
             preferenceItems = persistentListOf(
@@ -143,6 +152,11 @@ object SettingsReaderScreen : SearchableSettings {
                     preference = readerPreferences.flashOnPageChange(),
                     title = stringResource(MR.strings.pref_flash_page),
                     subtitle = stringResource(MR.strings.pref_flash_page_summ),
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = readerPreferences.pageTurnRipple(),
+                    title = stringResource(MR.strings.pref_page_turn_ripple),
+                    subtitle = rippleSummary,
                 ),
                 Preference.PreferenceItem.SliderPreference(
                     value = flashMillis / ReaderPreferences.MILLI_CONVERSION,

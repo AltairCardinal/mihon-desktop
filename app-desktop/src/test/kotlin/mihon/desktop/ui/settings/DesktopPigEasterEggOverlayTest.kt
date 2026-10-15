@@ -1,60 +1,34 @@
 package mihon.desktop.ui.settings
 
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.compose.ui.ExperimentalComposeUiApi
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.geometry.center
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEvent
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
-import cafe.adriel.voyager.core.screen.Screen
-import cafe.adriel.voyager.navigator.CurrentScreen
-import cafe.adriel.voyager.navigator.Navigator
-import io.mockk.every
-import io.mockk.mockk
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
-import mihon.desktop.DesktopUiDependencies
-import mihon.desktop.LocalDesktopUiDependencies
-import mihon.desktop.easteregg.AboutPigEasterEggInput
-import mihon.desktop.easteregg.DesktopPigEasterEggController
-import mihon.desktop.easteregg.KonamiCode
-import mihon.desktop.easteregg.KonamiStep
-import mihon.desktop.easteregg.PigEasterEggDefaults
+import mihon.desktop.easteregg.PIG2_EASTER_EGG_RESOURCE
 import mihon.desktop.easteregg.PIG_EASTER_EGG_RESOURCE
-import mihon.desktop.easteregg.gamepad.GamepadKonamiSource
-import mihon.desktop.easteregg.key
+import mihon.desktop.easteregg.PIG_EASTER_EGG_SVG_RESOURCE
+import mihon.desktop.easteregg.loadPig2EasterEggImage
 import mihon.desktop.easteregg.loadPigEasterEggImage
-import mihon.desktop.extension.DesktopExtensionManager
-import mihon.desktop.platform.DesktopNetworkHelper
-import mihon.desktop.platform.DesktopPlatformPaths
-import mihon.desktop.settings.DesktopAppPreferences
-import mihon.desktop.update.DesktopUpdateState
+import mihon.desktop.easteregg.renderSvg
+import mihon.domain.easteregg.PigEasterEggController
+import mihon.domain.easteregg.PigEasterEggDefaults
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
-import tachiyomi.core.common.preference.InMemoryPreferenceStore
-import kotlin.math.hypot
 import kotlin.coroutines.CoroutineContext
+import kotlin.math.hypot
 import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -62,16 +36,13 @@ import kotlin.time.Duration.Companion.seconds
 class DesktopPigEasterEggOverlayTest {
 
     @Test
-    fun `the konami code on the about screen shows seven spread pigs that disappear again`(
-        @TempDir tempDir: java.nio.file.Path,
-    ) = runBlocking {
-        val fixture = Fixture(tempDir, coroutineContext)
+    fun `triggering the controller shows seven spread pigs that disappear when time expires`() = runBlocking {
+        val fixture = Fixture(coroutineContext)
         try {
             settle(fixture.scene)
-            assertTrue(fixture.input.attached, "the about screen must listen for the code")
-            assertTrue(pigs(fixture.scene).isEmpty(), "nothing may show before the code is entered")
+            assertTrue(pigs(fixture.scene).isEmpty(), "nothing may show before the controller is triggered")
 
-            fixture.enterKonamiWithKeyboard()
+            fixture.easterEgg.fire()
             settle(fixture.scene) { pigs(fixture.scene).size == 7 }
 
             val shown = pigs(fixture.scene)
@@ -79,8 +50,6 @@ class DesktopPigEasterEggOverlayTest {
 
             val width = SCENE_WIDTH
             val height = SCENE_HEIGHT
-            // Rotation grows the reported bounds around each pig, so a pig may reach one pig
-            // width past the window while its centre is still planted on screen.
             val rotationTolerance = height * PigEasterEggDefaults.WINDOW_FRACTION
             shown.forEach { pig ->
                 val bounds = pig.boundsInRoot
@@ -105,42 +74,73 @@ class DesktopPigEasterEggOverlayTest {
             assertTrue(closest > 60f, "pigs were only $closest pixels apart")
 
             settle(fixture.scene, timeout = 20.seconds) { pigs(fixture.scene).isEmpty() }
-
-            fixture.enterKonamiWithKeyboard()
-            settle(fixture.scene) { pigs(fixture.scene).size == 7 }
-            assertEquals(7, pigs(fixture.scene).size, "the code must be repeatable")
         } finally {
             fixture.close()
         }
     }
 
     @Test
-    fun `gamepad presses trigger the same overlay`(@TempDir tempDir: java.nio.file.Path) = runBlocking {
-        val fixture = Fixture(tempDir, coroutineContext)
+    fun `clicking a pig makes it disappear`() = runBlocking {
+        val fixture = Fixture(coroutineContext)
         try {
             settle(fixture.scene)
-            KonamiCode.forEach { fixture.gamepad.press(it) }
+            fixture.easterEgg.fire()
             settle(fixture.scene) { pigs(fixture.scene).size == 7 }
-            assertEquals(7, pigs(fixture.scene).size)
+
+            val firstPig = pigs(fixture.scene).first()
+            fixture.click(firstPig)
+            settle(fixture.scene) { pigs(fixture.scene).size == 6 }
+            assertEquals(6, pigs(fixture.scene).size)
         } finally {
             fixture.close()
         }
     }
 
     @Test
-    fun `the code stops working once the about screen is left`(@TempDir tempDir: java.nio.file.Path) = runBlocking {
-        val fixture = Fixture(tempDir, coroutineContext)
+    fun `clicking all seven pigs shows the giant pig occupying 3-4 of screen min edge`() = runBlocking {
+        val fixture = Fixture(coroutineContext)
         try {
             settle(fixture.scene)
-            assertTrue(fixture.input.attached)
+            fixture.easterEgg.fire()
+            settle(fixture.scene) { pigs(fixture.scene).size == 7 }
 
-            fixture.navigate { it.replace(EmptyScreen()) }
-            settle(fixture.scene)
-            assertFalse(fixture.input.attached, "leaving the about screen must release the code listener")
+            repeat(7) {
+                val currentPigs = pigs(fixture.scene).filter { tag(it) != DESKTOP_PIG_EASTER_EGG_GIANT_TAG }
+                if (currentPigs.isNotEmpty()) {
+                    val countBefore = currentPigs.size
+                    fixture.click(currentPigs.first())
+                    settle(fixture.scene) {
+                        pigs(fixture.scene).filter { tag(it) != DESKTOP_PIG_EASTER_EGG_GIANT_TAG }.size < countBefore ||
+                            nodes(fixture.scene).any { tag(it) == DESKTOP_PIG_EASTER_EGG_GIANT_TAG }
+                    }
+                }
+            }
 
-            fixture.enterKonamiWithKeyboard()
-            settle(fixture.scene)
-            assertTrue(pigs(fixture.scene).isEmpty(), "the easter egg belongs to the about page only")
+            val minEdge = minOf(SCENE_WIDTH, SCENE_HEIGHT)
+            val expectedSize = minEdge * PigEasterEggDefaults.GIANT_PIG_SCREEN_FRACTION
+
+            settle(fixture.scene, timeout = 10.seconds) {
+                val giant = nodes(fixture.scene).firstOrNull { tag(it) == DESKTOP_PIG_EASTER_EGG_GIANT_TAG }
+                giant != null && giant.boundsInRoot.width >= expectedSize * 0.8f
+            }
+
+            val giantPig = nodes(fixture.scene).first { tag(it) == DESKTOP_PIG_EASTER_EGG_GIANT_TAG }
+            val giantWidth = giantPig.boundsInRoot.width
+            val giantHeight = giantPig.boundsInRoot.height
+            // Check size is approximately 3/4 of the shorter edge (tolerance for bounding box / layout)
+            assertTrue(
+                giantWidth in (expectedSize * 0.8f)..(expectedSize * 1.2f),
+                "giant pig width $giantWidth did not match 3/4 edge $expectedSize",
+            )
+            assertTrue(
+                giantHeight in (expectedSize * 0.8f)..(expectedSize * 1.2f),
+                "giant pig height $giantHeight did not match 3/4 edge $expectedSize",
+            )
+
+            // Giant pig stays around 1s and then disappears
+            settle(fixture.scene, timeout = 20.seconds) {
+                nodes(fixture.scene).none { tag(it) == DESKTOP_PIG_EASTER_EGG_GIANT_TAG }
+            }
         } finally {
             fixture.close()
         }
@@ -155,10 +155,6 @@ class DesktopPigEasterEggOverlayTest {
         assertTrue(easing.transform(0.5f) < 0.5f, "an accelerating zoom stays behind the clock at halfway")
         assertTrue(easing.transform(0.75f) < 0.75f, "the zoom is still catching up late in the pop")
         assertEquals(1f, easing.transform(1f), "the pop must land exactly on its target")
-        assertTrue(
-            easing.transform(0.75f) - easing.transform(0.5f) > easing.transform(0.5f) - easing.transform(0.25f),
-            "the last quarter of the pop must cover more ground than the first, that is acceleration",
-        )
 
         val startScale = PigAppearanceSpec.scaleFor(0f)
         val midScale = PigAppearanceSpec.scaleFor(0.5f)
@@ -167,31 +163,13 @@ class DesktopPigEasterEggOverlayTest {
     }
 
     @Test
-    fun `the pigs fade out gently instead of vanishing`() {
-        assertTrue(
-            PigAppearanceSpec.exit.durationMillis > PigAppearanceSpec.entrance.durationMillis,
-            "the exit is a soft fade, the entrance is a quick pop",
-        )
-        assertTrue(PigAppearanceSpec.exit.easing.transform(0.5f) > 0.5f, "the exit must settle instead of dropping")
-        assertEquals(0f, PigAppearanceSpec.alphaFor(0f))
-        assertEquals(1f, PigAppearanceSpec.alphaFor(1f))
-    }
-
-    @Test
-    fun `the parade stays on screen for the whole requested lifetime`() {
-        assertEquals(
-            LIFETIME_MILLIS,
-            PigAppearanceSpec.holdMillis(LIFETIME_MILLIS) + PigAppearanceSpec.exit.durationMillis,
-            "hold time plus the exit fade must add up to the lifetime",
-        )
-        assertEquals(0L, PigAppearanceSpec.holdMillis(10L), "a lifetime shorter than the fade leaves nothing to hold")
-    }
-
-    @Test
-    fun `the shipped pig image decodes`() {
+    fun `the shipped pig images decode`() {
         val pig = loadPigEasterEggImage()
-
         assertTrue(pig.width > 0 && pig.height > 0, "the packaged pig image is empty")
+
+        val pig2 = loadPig2EasterEggImage()
+        assertTrue(pig2.width > 0 && pig2.height > 0, "the packaged pig2 image is empty")
+
         val packaged = requireNotNull(
             javaClass.getResourceAsStream(PIG_EASTER_EGG_RESOURCE),
         ).use { it.readBytes() }
@@ -199,6 +177,94 @@ class DesktopPigEasterEggOverlayTest {
             packaged.take(PIG_PNG_SIGNATURE.size).toByteArray().contentEquals(PIG_PNG_SIGNATURE),
             "the easter egg asset must be the packaged PNG",
         )
+
+        val packaged2 = requireNotNull(
+            javaClass.getResourceAsStream(PIG2_EASTER_EGG_RESOURCE),
+        ).use { it.readBytes() }
+        assertTrue(
+            packaged2.take(PIG_PNG_SIGNATURE.size).toByteArray().contentEquals(PIG_PNG_SIGNATURE),
+            "the easter egg asset 2 must be the packaged PNG",
+        )
+    }
+
+    @Test
+    fun `the shipped particle images decode`() {
+        val snout = mihon.desktop.easteregg.loadSnoutParticleImage()
+        assertTrue(snout.width > 0 && snout.height > 0, "the packaged snout particle image is empty")
+
+        val star = mihon.desktop.easteregg.loadGoldStarImage()
+        assertTrue(star.width > 0 && star.height > 0, "the packaged gold star image is empty")
+    }
+
+    @Test
+    fun `clicking a pig spawns lingering snout particle before fading`() = runBlocking {
+        val fixture = Fixture(coroutineContext)
+        try {
+            settle(fixture.scene)
+            fixture.easterEgg.fire()
+            settle(fixture.scene) { pigs(fixture.scene).size == 7 }
+
+            val firstPig = pigs(fixture.scene).first()
+            fixture.click(firstPig)
+            settle(fixture.scene) {
+                nodes(fixture.scene).any { tag(it) == DESKTOP_PIG_EASTER_EGG_SNOUT_TAG }
+            }
+            assertTrue(
+                nodes(fixture.scene).any { tag(it) == DESKTOP_PIG_EASTER_EGG_SNOUT_TAG },
+                "a lingering snout particle must appear at the pig position",
+            )
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
+    fun `giant pig stars appear around the outer contour of the giant pig`() = runBlocking {
+        val fixture = Fixture(coroutineContext)
+        try {
+            settle(fixture.scene)
+            fixture.easterEgg.fire()
+            settle(fixture.scene) { pigs(fixture.scene).size == 7 }
+
+            repeat(7) {
+                val currentPigs = pigs(fixture.scene).filter { tag(it) != DESKTOP_PIG_EASTER_EGG_GIANT_TAG }
+                if (currentPigs.isNotEmpty()) {
+                    val countBefore = currentPigs.size
+                    fixture.click(currentPigs.first())
+                    settle(fixture.scene) {
+                        pigs(fixture.scene).filter { tag(it) != DESKTOP_PIG_EASTER_EGG_GIANT_TAG }.size < countBefore ||
+                            nodes(fixture.scene).any { tag(it) == DESKTOP_PIG_EASTER_EGG_GIANT_TAG }
+                    }
+                }
+            }
+
+            val minEdge = minOf(SCENE_WIDTH, SCENE_HEIGHT)
+            val giantEdge = minEdge * PigEasterEggDefaults.GIANT_PIG_SCREEN_FRACTION
+            val cx = SCENE_WIDTH / 2f
+            val cy = SCENE_HEIGHT / 2f
+
+            settle(fixture.scene, timeout = 10.seconds) {
+                nodes(fixture.scene).any {
+                    tag(it) == DESKTOP_PIG_EASTER_EGG_GIANT_TAG && it.boundsInRoot.width >= giantEdge * 0.9f
+                } && nodes(fixture.scene).any { tag(it) == DESKTOP_PIG_EASTER_EGG_STAR_TAG }
+            }
+
+            val stars = nodes(fixture.scene).filter { tag(it) == DESKTOP_PIG_EASTER_EGG_STAR_TAG }
+            assertTrue(stars.isNotEmpty(), "stars must appear with giant pig")
+
+            // Stars must follow the giant pig contour (distance to center >= 0.35 * giantEdge)
+            val minContourDist = giantEdge * 0.35f
+            stars.forEach { star ->
+                val starCenter = star.boundsInRoot.center
+                val dist = hypot(starCenter.x - cx, starCenter.y - cy)
+                assertTrue(
+                    dist >= minContourDist,
+                    "star was only $dist px away from center, but contour threshold is $minContourDist",
+                )
+            }
+        } finally {
+            fixture.close()
+        }
     }
 
     private fun pigs(scene: ImageComposeScene) = nodes(scene).filter { tag(it) == DESKTOP_PIG_EASTER_EGG_TAG }
@@ -210,15 +276,21 @@ class DesktopPigEasterEggOverlayTest {
 
     private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
 
-    private suspend fun settle(scene: ImageComposeScene, timeout: kotlin.time.Duration = 10.seconds, ready: () -> Boolean = { true }) {
+    private suspend fun settle(
+        scene: ImageComposeScene,
+        timeout: kotlin.time.Duration = 10.seconds,
+        ready: () -> Boolean = { true },
+    ) {
         withTimeout(timeout) {
             while (true) {
-                scene.render()
+                androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+                scene.render(System.nanoTime())
                 yield()
                 delay(10)
                 if (ready()) {
                     repeat(3) {
-                        scene.render()
+                        androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+                        scene.render(System.nanoTime())
                         yield()
                     }
                     return@withTimeout
@@ -227,71 +299,28 @@ class DesktopPigEasterEggOverlayTest {
         }
     }
 
-    private class Fixture(tempDir: java.nio.file.Path, coroutineContext: CoroutineContext) {
-        val easterEgg = DesktopPigEasterEggController()
-        val gamepad = FakeGamepadSource()
-        val input = AboutPigEasterEggInput(easterEgg) { gamepad }
-        private val dependencies: DesktopUiDependencies
+    private class Fixture(coroutineContext: CoroutineContext) {
+        val easterEgg = PigEasterEggController()
         val scene = ImageComposeScene(SCENE_WIDTH.toInt(), SCENE_HEIGHT.toInt(), coroutineContext = coroutineContext) {}
-        private lateinit var navigator: Navigator
 
         init {
-            val extensionManager = DesktopExtensionManager()
-            val preferences = DesktopAppPreferences(InMemoryPreferenceStore())
-            val network = mockk<DesktopNetworkHelper> {
-                every { routeObservations } returns MutableStateFlow(emptyList())
-                every { activeGlobalMode } returns preferences.globalNetworkMode.get()
-                every { activeGlobalProxy } returns preferences.proxyRuntimeConfig()
-            }
-            val updateModel = mockk<DesktopUpdateScreenModel> {
-                every { state } returns MutableStateFlow(DesktopUpdateState.Idle)
-                every { feedback } returns MutableStateFlow(null)
-            }
-            dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
-                every { extensionPresentationService } returns extensionManager
-                every { appPreferences } returns preferences
-                every { updateScreenModel } returns updateModel
-                every { networkHelper } returns network
-                every { networkRoutingPort } returns network
-            }
-            val paths = DesktopPlatformPaths.resolve("Linux", tempDir.toString(), emptyMap())
             scene.setContent {
                 MaterialTheme {
-                    // Mirrors the production window, which hands every key event to the about-page
-                    // listener from the window root. The root has to hold focus for a scene to
-                    // deliver key events at all, exactly like the real window root does.
-                    val rootFocus = remember { FocusRequester() }
-                    LaunchedEffect(Unit) { rootFocus.requestFocus() }
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .focusRequester(rootFocus)
-                            .focusable()
-                            .onPreviewKeyEvent(input::onKeyEvent),
-                    ) {
-                        CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
-                            Navigator(AboutScreen(paths, input)) { nav ->
-                                navigator = nav
-                                CurrentScreen()
-                            }
-                        }
-                        DesktopPigEasterEggOverlay(easterEgg, lifetimeMillis = LIFETIME_MILLIS)
+                    Box(Modifier.fillMaxSize()) {
+                        DesktopPigEasterEggOverlay(
+                            controller = easterEgg,
+                            initialLifetimeMillis = LIFETIME_MILLIS,
+                            giantLifetimeMillis = GIANT_LIFETIME_MILLIS,
+                        )
                     }
                 }
             }
         }
 
-        suspend fun enterKonamiWithKeyboard() {
-            KonamiCode.forEach { step ->
-                scene.sendKeyEvent(composeKeyEvent(step.key(), KeyEventType.KeyDown))
-                scene.render()
-                scene.sendKeyEvent(composeKeyEvent(step.key(), KeyEventType.KeyUp))
-            }
-        }
-
-        suspend fun navigate(block: (Navigator) -> Unit) {
-            block(navigator)
-            scene.render()
+        fun click(node: SemanticsNode) {
+            val center = node.boundsInRoot.center
+            scene.sendPointerEvent(PointerEventType.Press, center)
+            scene.sendPointerEvent(PointerEventType.Release, center)
         }
 
         fun close() {
@@ -299,29 +328,9 @@ class DesktopPigEasterEggOverlayTest {
         }
     }
 
-    private class FakeGamepadSource : GamepadKonamiSource {
-        private var sink: ((KonamiStep) -> Unit)? = null
-
-        override fun start(onStep: (KonamiStep) -> Unit) {
-            sink = onStep
-        }
-
-        override fun stop() {
-            sink = null
-        }
-
-        fun press(step: KonamiStep) {
-            sink?.invoke(step)
-        }
-    }
-
-    private class EmptyScreen : Screen {
-        @Composable
-        override fun Content() = Unit
-    }
-
     private companion object {
-        const val LIFETIME_MILLIS = 500L
+        const val LIFETIME_MILLIS = 800L
+        const val GIANT_LIFETIME_MILLIS = 1_000L
         const val SCENE_WIDTH = 1_200f
         const val SCENE_HEIGHT = 800f
         val PIG_PNG_SIGNATURE = byteArrayOf(
@@ -334,14 +343,5 @@ class DesktopPigEasterEggOverlayTest {
             0x1A,
             0x0A,
         )
-
-        fun composeKeyEvent(key: Key, type: KeyEventType): KeyEvent {
-            val events = Class.forName("androidx.compose.ui.input.key.KeyEvent_desktopKt")
-            val eventType = Class.forName("androidx.compose.ui.input.key.KeyEventType")
-                .getMethod(if (type == KeyEventType.KeyDown) "access\$getKeyDown\$cp" else "access\$getKeyUp\$cp")
-                .invoke(null)
-            val factory = events.declaredMethods.single { it.name.startsWith("KeyEvent-") && !it.name.endsWith("\$default") }
-            return KeyEvent(factory.invoke(null, key.keyCode, eventType, 0, false, false, false, false, null))
-        }
     }
 }

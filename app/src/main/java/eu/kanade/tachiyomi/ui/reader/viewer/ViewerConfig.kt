@@ -19,6 +19,8 @@ abstract class ViewerConfig(readerPreferences: ReaderPreferences, private val sc
     var tappingInverted = ReaderPreferences.TappingInvertMode.NONE
     var longTapEnabled = true
     var usePageTransitions = false
+    var pageTurnRipple = false
+    var pageTurnRippleChangedListener: ((Boolean) -> Unit)? = null
     var doubleTapAnimDuration = 500
     var volumeKeysEnabled = false
     var volumeKeysInverted = false
@@ -51,6 +53,12 @@ abstract class ViewerConfig(readerPreferences: ReaderPreferences, private val sc
 
         readerPreferences.pageTransitions()
             .register({ usePageTransitions = it })
+
+        readerPreferences.pageTurnRipple()
+            .register(
+                { pageTurnRipple = it },
+                { pageTurnRippleChangedListener?.invoke(it) },
+            )
 
         readerPreferences.doubleTapAnimSpeed()
             .register({ doubleTapAnimDuration = it })

@@ -30,7 +30,6 @@ import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import mihon.desktop.easteregg.AboutPigEasterEggInput
 import mihon.desktop.platform.DesktopPlatformPaths
 import mihon.desktop.APP_VERSION
 import tachiyomi.i18n.MR
@@ -38,7 +37,6 @@ import java.util.Locale
 
 internal class AboutScreen(
     internal val platformPaths: DesktopPlatformPaths = DesktopPlatformPaths.current(),
-    private val easterEggInput: AboutPigEasterEggInput = AboutPigEasterEggInput.Default,
 ) : Screen {
 
     internal fun onLicenses(navigator: cafe.adriel.voyager.navigator.Navigator) {
@@ -64,11 +62,6 @@ internal class AboutScreen(
         }
         var cacheCleared by remember { mutableStateOf(false) }
 
-        // The pig easter egg listens for 上上下下左左右右ABAB while this page is on screen.
-        DisposableEffect(easterEggInput) {
-            easterEggInput.attach()
-            onDispose { easterEggInput.detach() }
-        }
 
         // Gather debug info once
         val dbSize = remember { formatBytes(dbFile.length()) }

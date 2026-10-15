@@ -858,6 +858,9 @@
     <string name="pref_flash_page_summ">减轻墨水屏上的残影</string>
     <string name="last_auto_backup_info">上次自动备份时间：%s</string>
     <string name="pref_flash_page">翻页时闪烁</string>
+    <string name="pref_page_turn_ripple">翻页时用水波纹</string>
+    <string name="pref_page_turn_ripple_summary">翻页时使用擦除揭示的水波纹过渡效果</string>
+    <string name="pref_eink_device_detected">已识别为墨水屏设备</string>
     <string name="label_data_storage">数据与存储</string>
     <string name="pref_storage_usage">存储占用</string>
     <string name="action_create">创建</string>

@@ -143,7 +143,10 @@ data object LibraryTab : Tab {
                         }
                     },
                     searchQuery = state.searchQuery,
-                    onSearchQueryChange = screenModel::search,
+                    onSearchQueryChange = {
+                        mihon.domain.easteregg.PigEasterEggTrigger.check(it)
+                        screenModel.search(it)
+                    },
                     // For scroll overlay when no tab
                     scrollBehavior = scrollBehavior.takeIf { !state.showCategoryTabs },
                 )

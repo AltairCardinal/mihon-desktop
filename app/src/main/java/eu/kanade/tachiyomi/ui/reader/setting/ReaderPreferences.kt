@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.ui.reader.setting
 import android.os.Build
 import androidx.compose.ui.graphics.BlendMode
 import dev.icerock.moko.resources.StringResource
+import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.preference.getEnum
 import tachiyomi.i18n.MR
@@ -10,6 +11,23 @@ import tachiyomi.i18n.MR
 class ReaderPreferences(
     private val preferenceStore: PreferenceStore,
 ) {
+
+    init {
+        initEInkPreferences(eu.kanade.tachiyomi.util.system.DeviceUtil.isEInk)
+    }
+
+    internal fun initEInkPreferences(isEInk: Boolean) {
+        if (isEInk) {
+            val autoInitPref = preferenceStore.getBoolean(
+                Preference.appStateKey("reader_page_turn_ripple_eink_auto_initialized"),
+                false,
+            )
+            if (!autoInitPref.get()) {
+                pageTurnRipple().set(true)
+                autoInitPref.set(true)
+            }
+        }
+    }
 
     // region General
 
@@ -24,6 +42,11 @@ class ReaderPreferences(
     fun flashPageInterval() = preferenceStore.getInt("pref_reader_flash_interval", 1)
 
     fun flashColor() = preferenceStore.getEnum("pref_reader_flash_mode", FlashColor.BLACK)
+
+    fun pageTurnRipple() = preferenceStore.getBoolean(
+        "pref_reader_page_turn_ripple",
+        eu.kanade.tachiyomi.util.system.DeviceUtil.isEInk,
+    )
 
     fun doubleTapAnimSpeed() = preferenceStore.getInt("pref_double_tap_anim_speed", 500)
 

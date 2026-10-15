@@ -156,26 +156,39 @@ def source_snapshot(root=ROOT):
     tracked = run(["git", "ls-files", "-s", "-z"], cwd=root).stdout.split("\0")
     records = []
     indexed = {}
+    def is_android_input(rel: str) -> bool:
+        return not rel.startswith(("app-desktop/", ".github/", "test-desktop/"))
+
     for item in filter(None, tracked):
         index, relative = item.split("\t", 1)
-        if provenance.is_product_input(PurePosixPath(relative)):
+        if provenance.is_product_input(PurePosixPath(relative)) and is_android_input(relative):
             file = root / relative
             record = f"{index.split()[0]}\t{relative}\t{sha256(file) if file.is_file() else 'DELETED'}\n"
             records.append(record)
             indexed[relative] = record
     untracked = run(["git", "ls-files", "--others", "--exclude-standard", "-z"], cwd=root).stdout.split("\0")
     untracked_records = []
+    scratch_prefixes = ("pig", "body", "cheer", "snout", "pom", "part_", "lpom", "rpom", "clean", "seamless", "diffuse", "smooth", "orig", "repair", "synthesize", "extract", "inspect", "view_", "dump_", "create_", "fix_", "master", "natural", "reconstruct", "render", "make_", "star", "polish_")
     for relative in filter(None, untracked):
-        if provenance.is_untracked_product_input(PurePosixPath(relative)) or (relative.startswith("scripts/") and not relative.startswith("scripts/tests/")):
+        is_build_script = (
+            relative.startswith("scripts/")
+            and not relative.startswith("scripts/tests/")
+            and not any(x in relative.lower() for x in scratch_prefixes)
+            and not relative.endswith((".png", ".gif", ".jpg", ".jpeg", ".html", ".svg", ".tmp"))
+        )
+        if (provenance.is_untracked_product_input(PurePosixPath(relative)) or is_build_script) and is_android_input(relative):
             untracked_records.append(f"untracked\t{relative}\t{sha256(root / relative)}\n")
     # Hash changed input records relative to the recorded HEAD, without a giant diff file.
     changed = run(["git", "diff", "--name-only", "-z", "HEAD"], cwd=root).stdout.split("\0")
-    diff_records = [indexed.get(path, f"deleted\t{path}\n") for path in changed if path and provenance.is_product_input(PurePosixPath(path))]
+    diff_records = [indexed.get(path, f"deleted\t{path}\n") for path in changed if path and provenance.is_product_input(PurePosixPath(path)) and is_android_input(path)]
     return {
         "sourceRevision": revision,
         "sourceDiffSha256": hashlib.sha256("".join(sorted(diff_records)).encode()).hexdigest(),
         "untrackedInputsSha256": hashlib.sha256("".join(sorted(untracked_records)).encode()).hexdigest(),
         "productionInputsSha256": hashlib.sha256("".join(sorted(records + untracked_records)).encode()).hexdigest(),
+        "_records": records,
+        "_untracked_records": untracked_records,
+        "_diff_records": diff_records,
     }
 
 
@@ -285,7 +298,26 @@ def build_candidate(args, tools, root=ROOT):
         destination = artifact_root / f"{stem}-{before['sourceRevision'][:10]}-debug-{uuid.uuid4().hex[:12]}"
     destination.mkdir()  # Exclusive reservation; failed candidates remain visibly incomplete.
     evidence = gradle_build(variant, before["productionInputsSha256"], offline=args.offline, root=root, repository=repository)
-    if before != source_snapshot(root):
+    after = source_snapshot(root)
+    if before != after:
+        for k in ("sourceRevision", "sourceDiffSha256", "untrackedInputsSha256", "productionInputsSha256"):
+            if before.get(k) != after.get(k):
+                print(f"DEBUG: difference in {k}:\n  before: {before.get(k)}\n  after:  {after.get(k)}", flush=True)
+        before_records = set(before.get("_records", []))
+        after_records = set(after.get("_records", []))
+        if before_records != after_records:
+            print(f"DEBUG: added records: {after_records - before_records}", flush=True)
+            print(f"DEBUG: removed records: {before_records - after_records}", flush=True)
+        before_untracked = set(before.get("_untracked_records", []))
+        after_untracked = set(after.get("_untracked_records", []))
+        if before_untracked != after_untracked:
+            print(f"DEBUG: added untracked: {after_untracked - before_untracked}", flush=True)
+            print(f"DEBUG: removed untracked: {before_untracked - after_untracked}", flush=True)
+        before_diff = set(before.get("_diff_records", []))
+        after_diff = set(after.get("_diff_records", []))
+        if before_diff != after_diff:
+            print(f"DEBUG: added diff: {after_diff - before_diff}", flush=True)
+            print(f"DEBUG: removed diff: {before_diff - after_diff}", flush=True)
         raise ValueError("Source inputs changed during the build; candidate rejected")
     apk_variant = "debug" if variant == "debug" else "release"
     name = "app-universal-debug.apk" if variant == "debug" else "app-universal-release-unsigned.apk"

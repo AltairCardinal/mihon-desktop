@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mihon 彩蛋升级效果交互预览（小猪原地留鼻放大淡出 + 重绘版大猪星圈）</title>
+  <style>
+    :root {
+      --bg: #121212;
+      --surface: #1e1e1e;
+      --surface-variant: #282828;
+      --text: #ffffff;
+      --text-sec: #aaaaaa;
+      --primary: #ff8a65;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.6;
+      padding-bottom: 60px;
+    }
+    header {
+      background: linear-gradient(135deg, #1e1e1e, #291f1c);
+      border-bottom: 1px solid #3d302c;
+      padding: 24px 32px;
+      text-align: center;
+    }
+    h1 { font-size: 26px; margin-bottom: 8px; color: #ff8a65; }
+    p.subtitle { color: var(--text-sec); font-size: 15px; }
+
+    .container {
+      max-width: 1100px;
+      margin: 32px auto;
+      padding: 0 20px;
+    }
+
+    .section-title {
+      font-size: 20px;
+      margin: 32px 0 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-left: 4px solid #ff8a65;
+      padding-left: 12px;
+    }
+
+    /* 交互模拟沙盒 */
+    .sandbox {
+      background: #000000;
+      border: 2px solid #443530;
+      border-radius: 16px;
+      height: 580px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 12px 36px rgba(0,0,0,0.6);
+      user-select: none;
+    }
+    .sandbox-bar {
+      height: 56px;
+      background: #252525;
+      border-bottom: 1px solid #333;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 12px;
+      z-index: 10;
+      position: relative;
+      flex-wrap: wrap;
+    }
+    .search-mock {
+      flex: 1;
+      max-width: 360px;
+      background: #383838;
+      border-radius: 24px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 8px;
+    }
+    .search-input {
+      background: transparent;
+      border: none;
+      color: #fff;
+      font-size: 15px;
+      outline: none;
+      width: 100%;
+    }
+    .trigger-btn {
+      background: #e65100;
+      color: #fff;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .trigger-btn:hover { background: #f57c00; transform: scale(1.04); }
+    .status-badge {
+      font-size: 13px;
+      color: #bbb;
+      background: #181818;
+      padding: 4px 12px;
+      border-radius: 12px;
+    }
+    .mode-select {
+      background: #333;
+      color: #fff;
+      border: 1px solid #555;
+      border-radius: 16px;
+      padding: 4px 10px;
+      font-size: 12px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    /* 舞台区域 */
+    .stage {
+      position: absolute;
+      top: 56px;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      overflow: hidden;
+    }
+
+    /* 小猪元素 */
+    .pig-target {
+      position: absolute;
+      width: 110px;
+      height: 96px;
+      cursor: pointer;
+      transform-origin: center center;
+      transition: transform 0.08s ease-out;
+      will-change: transform, opacity;
+      filter: drop-shadow(0 6px 12px rgba(0,0,0,0.5));
+    }
+    .pig-target img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      pointer-events: none;
+    }
+    .pig-target.shake-warning {
+      animation: pigPulse 0.2s infinite alternate ease-in-out;
+    }
+    @keyframes pigPulse {
+      0% { transform: scale(0.9) rotate(var(--rot, 0deg)); }
+      100% { transform: scale(1.1) rotate(var(--rot, 0deg)); }
+    }
+    .pig-target.pop-dismiss {
+      animation: popDismiss 0.12s forwards ease-in;
+      pointer-events: none;
+    }
+    @keyframes popDismiss {
+      0% { transform: scale(1) rotate(var(--rot, 0deg)); opacity: 1; }
+      100% { transform: scale(0.01) rotate(var(--rot, 0deg)); opacity: 0; }
+    }
+
+    /* 小猪消失瞬间原地留下的唯一猪鼻子：变大淡出动效 */
+    .single-snout-linger {
+      position: absolute;
+      pointer-events: none;
+      z-index: 60;
+      width: 34px;
+      height: 23px;
+      transform-origin: center center;
+      filter: drop-shadow(0 3px 8px rgba(0,0,0,0.5));
+      animation: singleSnoutPuff 0.38s cubic-bezier(0.15, 0.85, 0.3, 1) forwards;
+    }
+    .single-snout-linger img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    @keyframes singleSnoutPuff {
+      0% {
+        transform: translate(-50%, -50%) scale(1) rotate(var(--rot, 0deg));
+        opacity: 1;
+      }
+      35% {
+        transform: translate(-50%, -50%) scale(1.35) rotate(var(--rot, 0deg));
+        opacity: 0.95;
+      }
+      100% {
+        transform: translate(-50%, -50%) scale(2.0) rotate(var(--rot, 0deg));
+        opacity: 0;
+      }
+    }
+
+    /* 终极大猪出场与动态缩放 */
+    .giant-pig-wrapper {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.01);
+      transform-origin: center center;
+      z-index: 100;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+    .giant-pig-wrapper.pop-entrance {
+      display: flex;
+      animation: giantEntrance 0.32s cubic-bezier(0.175, 0.885, 0.32, 1.25) forwards;
+    }
+    .giant-pig-wrapper.fade-exit {
+      animation: giantExit 0.22s forwards ease-in;
+    }
+    @keyframes giantEntrance {
+      0% { transform: translate(-50%, -50%) scale(0.01); opacity: 0; }
+      75% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
+      100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    }
+    @keyframes giantExit {
+      0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+      100% { transform: translate(-50%, -50%) scale(0.01); opacity: 0; }
+    }
+
+    /* 重绘版大猪：按小猪方式循环缩放微弹 */
+    .giant-pig-card {
+      width: 330px;
+      height: 290px;
+      position: relative;
+    }
+    .giant-pig-card.active-motion {
+      animation: giantPulseMotion 0.22s infinite alternate ease-in-out;
+    }
+    @keyframes giantPulseMotion {
+      0% {
+        transform: scale(0.92) rotate(-1.5deg);
+      }
+      100% {
+        transform: scale(1.08) rotate(1.5deg);
+      }
+    }
+    .giant-pig-card img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      filter: drop-shadow(0 12px 28px rgba(0,0,0,0.7));
+    }
+
+    /* 大猪出场时身边散开的一圈黄色五角星粒子 */
+    .giant-star-particle {
+      position: absolute;
+      pointer-events: none;
+      z-index: 95;
+      width: 36px;
+      height: 36px;
+      will-change: transform, opacity;
+      filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.8));
+      animation: starBurstFade 0.65s cubic-bezier(0.1, 0.85, 0.25, 1) forwards;
+    }
+    .giant-star-particle img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    @keyframes starBurstFade {
+      0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translate(0, 0) scale(0.3) rotate(0deg);
+      }
+      15% {
+        opacity: 1;
+        transform: translate(-50%, -50%) translate(calc(var(--dx) * 0.3), calc(var(--dy) * 0.3)) scale(1.2) rotate(calc(var(--rot) * 0.3));
+      }
+      65% {
+        opacity: 1;
+        transform: translate(-50%, -50%) translate(calc(var(--dx) * 0.85), calc(var(--dy) * 0.85)) scale(1.0) rotate(calc(var(--rot) * 0.85));
+      }
+      100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) scale(0.5) rotate(var(--rot));
+      }
+    }
+
+    /* 细节展示卡片 */
+    .showcase-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+      margin-top: 24px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid #333;
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+    }
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: #ffab91;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .preview-box {
+      background: #181818;
+      border: 1px solid #282828;
+      border-radius: 8px;
+      min-height: 240px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 14px;
+      padding: 12px;
+    }
+    .desc {
+      font-size: 13px;
+      color: #bbb;
+      margin-top: auto;
+      line-height: 1.7;
+    }
+    .control-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+    .btn-sm {
+      background: var(--surface-variant);
+      border: 1px solid #444;
+      color: #eee;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .btn-sm:hover { background: #444; border-color: #666; }
+    .badge-exact {
+      background: #2e7d32;
+      color: #fff;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🐖 Mihon 彩蛋升级效果交互预览</h1>
+    <p class="subtitle">小猪消失原地留鼻变大淡出 + 重绘版大猪身边散开五角星圈与欢快动态</p>
+  </header>
+
+  <div class="container">
+
+    <div class="section-title">
+      <span>🎮 完整彩蛋沙盒模拟体验</span>
+      <span style="font-size:13px;color:#888;font-weight:normal">（点击小猪：身体瞬间消失，原地只留下它的鼻子变大淡出！）</span>
+    </div>
+
+    <!-- 交互模拟器 -->
+    <div class="sandbox" id="sandbox">
+      <div class="sandbox-bar">
+        <div class="search-mock">
+          <span>🔍</span>
+          <input type="text" id="searchInput" class="search-input" value="书架搜索 🐷" placeholder="输入含 🐖 或 🐷 触发" />
+        </div>
+        <select id="modeSelect" class="mode-select" onchange="changeMode()">
+          <option value="free">自由试玩模式（不限时间，随时点击小猪测试原地留鼻消散）</option>
+          <option value="timed">实机倒计时模式（3秒倒计时，全清触发大猪）</option>
+        </select>
+        <button class="trigger-btn" id="triggerBtn" onclick="triggerEasterEgg()">立即触发彩蛋 🚀</button>
+        <button class="btn-sm" onclick="showGiantPigDemo()">单独查看大猪登场与星圈 ⭐</button>
+        <button class="btn-sm" onclick="resetSandbox()">重置</button>
+        <div class="status-badge" id="statusBadge">就绪</div>
+      </div>
+
+      <div class="stage" id="stage">
+        <!-- 小猪元素动态生成 -->
+      </div>
+
+      <!-- 终极大猪与身边爆散的一圈黄色五角星 -->
+      <div class="giant-pig-wrapper" id="giantPigWrapper">
+        <div class="giant-pig-card" id="giantPigCard">
+          <img src="pig_faithful_2048.png" alt="重绘版大猪" />
+        </div>
+        <div style="margin-top:14px;font-size:16px;color:#ffd54f;font-weight:bold;text-shadow:0 2px 10px rgba(0,0,0,0.8)">
+          ⭐ 全部消除！重绘版大猪闪耀登场 ⭐
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title">
+      <span>✨ 细节与特性专门验证区</span>
+    </div>
+
+    <div class="showcase-grid">
+
+      <!-- 卡片 1：小猪消失原地留鼻变大淡出 -->
+      <div class="card">
+        <div class="card-title">
+          <span>1. 原地留鼻变大淡出（卡通趣味反馈）</span>
+          <span class="badge-exact">按新指示实现</span>
+        </div>
+        <div class="preview-box" id="feedbackDemoBox" style="cursor:pointer" onclick="testFeedback(event)">
+          <div style="position:absolute;top:10px;left:10px;font-size:12px;color:#888">💡 点击下方小猪，观察原地留鼻放大消散</div>
+          <div style="width:110px;height:96px;transition:all 0.1s ease-in" id="demoTargetPig">
+            <img src="pig2_faithful_512.png" style="width:100%;height:100%;object-fit:contain" />
+          </div>
+        </div>
+        <div class="desc">
+          <strong>原地留鼻放大淡出</strong>：彻底舍弃奇怪的多鼻散开。小猪被点击后身体极速缩小消失，<strong>原地仅留下小猪原本的鼻子</strong>，鼻子在原地迅速膨胀放大（1.0x → 2.0x）并优雅淡出，卡通喜剧效果拉满！
+        </div>
+        <div class="control-row">
+          <button class="btn-sm" onclick="testFeedbackManual()">点我测试原地留鼻变大淡出 🐽</button>
+        </div>
+      </div>
+
+      <!-- 卡片 2：重绘版大猪出场与星圈爆散效果 -->
+      <div class="card">
+        <div class="card-title">
+          <span>2. 重绘版大猪出场 + 身边散开黄色五角星圈</span>
+          <span class="badge-exact">整体动态</span>
+        </div>
+        <div class="preview-box" id="giantDemoBox" style="cursor:pointer" onclick="testGiantInCard()">
+          <div style="position:absolute;top:10px;left:10px;font-size:12px;color:#888">💡 点击方框内任意位置触发大猪星圈效果</div>
+          <div style="width:160px;height:140px;position:relative" id="cardGiantTarget">
+            <img src="pig_faithful_2048.png" style="width:100%;height:100%;object-fit:contain" />
+          </div>
+        </div>
+        <div class="desc">
+          <strong>原图浑然一体</strong>：不再单独挥球，直接采用 2048px 超清重绘版大猪。出场时从小尺寸放大弹出，<strong>身边向外爆散一圈 18 颗金黄色五角星</strong>，并在场中播放 <strong>0.22s 周期欢快循环缩放微弹</strong>。
+        </div>
+        <div class="control-row">
+          <button class="btn-sm" onclick="testGiantInCard()">点我播放大猪星圈出场 ⭐</button>
+        </div>
+      </div>
+
+      <!-- 卡片 3：前置趴地年糕猪高清展示 -->
+      <div class="card">
+        <div class="card-title">
+          <span>3. 前置趴地年糕小猪 (pig2) 超清重构</span>
+          <span class="badge-exact">100% 还原</span>
+        </div>
+        <div class="preview-box" style="gap:24px">
+          <div style="text-align:center">
+            <div style="font-size:12px;color:#aaa;margin-bottom:6px">原版 (180×159 像素颗粒)</div>
+            <img src="orig_pig2.png" style="width:110px;image-rendering:pixelated;border:1px dashed #555" />
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:12px;color:#66bb6a;margin-bottom:6px">超清重构版 (512×452 细腻平滑)</div>
+            <img src="pig2_faithful_512.png" style="width:110px;filter:drop-shadow(0 4px 8px rgba(0,0,0,0.4))" />
+          </div>
+        </div>
+        <div class="desc">
+          <strong>纯正趴姿</strong>：完全保留原版趴地年糕猪造型（底部平坦、千层肉褶、黑米粒小眼与椭圆猪鼻），单图仅 30KB，渲染零负担。
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    const stage = document.getElementById('stage');
+    const statusBadge = document.getElementById('statusBadge');
+    const giantPigWrapper = document.getElementById('giantPigWrapper');
+    const giantPigCard = document.getElementById('giantPigCard');
+    const modeSelect = document.getElementById('modeSelect');
+    let activePigs = [];
+    let sessionTimer = null;
+    let remainingTime = 3000;
+    let isRunning = false;
+
+    window.addEventListener('DOMContentLoaded', () => {
+      triggerEasterEgg();
+    });
+
+    function changeMode() {
+      triggerEasterEgg();
+    }
+
+    // 触发彩蛋
+    function triggerEasterEgg() {
+      resetSandbox();
+      isRunning = true;
+      const mode = modeSelect.value;
+      
+      if (mode === 'free') {
+        statusBadge.textContent = '自由模式：点击小猪测试原地留鼻消散';
+        statusBadge.style.color = '#69f0ae';
+      } else {
+        statusBadge.textContent = '实机模式：3秒倒计时，全清触发大猪';
+        statusBadge.style.color = '#ffb74d';
+        remainingTime = 3000;
+      }
+
+      const count = 7;
+      activePigs = [];
+      const stageW = stage.clientWidth || 1060;
+      const stageH = stage.clientHeight || 524;
+
+      for (let i = 0; i < count; i++) {
+        spawnSinglePig(i, stageW, stageH);
+      }
+
+      if (mode === 'timed') {
+        const interval = 50;
+        sessionTimer = setInterval(() => {
+          remainingTime -= interval;
+          if (remainingTime <= 500 && remainingTime > 0) {
+            activePigs.forEach(p => p.classList.add('shake-warning'));
+          }
+          if (remainingTime <= 0) {
+            clearInterval(sessionTimer);
+            if (isRunning && activePigs.length > 0) {
+              endEgg(false);
+            }
+          }
+        }, interval);
+      }
+    }
+
+    function spawnSinglePig(i, stageW, stageH) {
+      const pig = document.createElement('div');
+      pig.className = 'pig-target';
+      pig.dataset.index = i;
+      
+      const px = 40 + Math.random() * (stageW - 180);
+      const py = 30 + Math.random() * (stageH - 160);
+      const rot = -16 + Math.random() * 32;
+      pig.style.left = px + 'px';
+      pig.style.top = py + 'px';
+      pig.style.setProperty('--rot', rot + 'deg');
+      pig.style.transform = `scale(1) rotate(${rot}deg)`;
+      pig.dataset.rot = rot;
+
+      pig.innerHTML = `<img src="pig2_faithful_512.png" alt="pig2" />`;
+      pig.addEventListener('click', (e) => onPigClicked(e, pig));
+
+      stage.appendChild(pig);
+      activePigs.push(pig);
+    }
+
+    // 点击小猪反馈：小猪消失瞬间只留下它的鼻子，然后鼻子变大淡出
+    function onPigClicked(e, pig) {
+      if (!isRunning) return;
+      e.stopPropagation();
+
+      const rect = pig.getBoundingClientRect();
+      const stageRect = stage.getBoundingClientRect();
+      // 小猪鼻子在小猪盒子内部中心偏上 (x=50%, y=46%)
+      const cx = (rect.left + rect.right) / 2 - stageRect.left;
+      const cy = (rect.top + rect.bottom) / 2 - stageRect.top - 2;
+      const rot = pig.dataset.rot || 0;
+
+      // 1. 小猪自身快速缩小消失
+      pig.classList.add('pop-dismiss');
+      activePigs = activePigs.filter(p => p !== pig);
+
+      // 2. 原地仅留下一个猪鼻子，变大淡出！
+      spawnSingleSnoutPuff(cx, cy, rot, stage);
+
+      const mode = modeSelect.value;
+      if (mode === 'free') {
+        setTimeout(() => {
+          if (isRunning) {
+            const stageW = stage.clientWidth || 1060;
+            const stageH = stage.clientHeight || 524;
+            spawnSinglePig(Date.now(), stageW, stageH);
+          }
+        }, 400);
+      } else {
+        remainingTime += 250;
+        if (activePigs.length === 0) {
+          clearInterval(sessionTimer);
+          setTimeout(() => {
+            showGiantPig();
+          }, 180);
+        }
+      }
+
+      setTimeout(() => pig.remove(), 120);
+    }
+
+    // 在小猪原本鼻子的绝对原位留下唯一鼻子，变大淡出
+    function spawnSingleSnoutPuff(x, y, rot, container) {
+      const snout = document.createElement('div');
+      snout.className = 'single-snout-linger';
+      snout.innerHTML = `<img src="snout_particle.png" alt="snout" />`;
+      snout.style.left = x + 'px';
+      snout.style.top = y + 'px';
+      snout.style.setProperty('--rot', rot + 'deg');
+
+      container.appendChild(snout);
+      setTimeout(() => snout.remove(), 400);
+    }
+
+    // 终极大猪登场：放大弹出 + 循环缩放微弹 + 身边散开一圈黄色五角星
+    function showGiantPig() {
+      statusBadge.textContent = '⭐ 全部消除！重绘版大猪闪耀登场 ⭐';
+      statusBadge.style.color = '#ffd54f';
+
+      giantPigWrapper.classList.remove('fade-exit');
+      giantPigWrapper.classList.add('pop-entrance');
+      giantPigCard.classList.add('active-motion');
+
+      const stageW = stage.clientWidth || 1060;
+      const stageH = stage.clientHeight || 524;
+      const cx = stageW / 2;
+      const cy = stageH / 2;
+
+      // 延迟 0.14s 在大猪弹出最大的一瞬绽放五角星圈
+      setTimeout(() => {
+        spawnGiantStarRing(cx, cy, stage);
+      }, 140);
+
+      // 持续 1.2 秒后缩小消失
+      setTimeout(() => {
+        giantPigWrapper.classList.remove('pop-entrance');
+        giantPigWrapper.classList.add('fade-exit');
+        giantPigCard.classList.remove('active-motion');
+        setTimeout(() => {
+          giantPigWrapper.style.display = 'none';
+          giantPigWrapper.classList.remove('fade-exit');
+          statusBadge.textContent = '彩蛋已结束';
+          statusBadge.style.color = '#bbb';
+          isRunning = false;
+        }, 220);
+      }, 1200);
+    }
+
+    // 在大猪身边爆散一整圈金黄色五角星粒子 (18 颗)
+    function spawnGiantStarRing(cx, cy, container) {
+      const starCount = 18;
+      for (let i = 0; i < starCount; i++) {
+        const star = document.createElement('div');
+        star.className = 'giant-star-particle';
+        star.innerHTML = `<img src="gold_star.png" alt="star" />`;
+        star.style.left = cx + 'px';
+        star.style.top = cy + 'px';
+
+        const angle = (i / starCount) * 2 * Math.PI + (Math.random() - 0.5) * 0.18;
+        const dist = 140 + Math.random() * 60;
+        const dx = Math.cos(angle) * dist;
+        const dy = Math.sin(angle) * dist * 0.85;
+        const rot = (Math.random() - 0.5) * 360;
+
+        star.style.setProperty('--dx', dx + 'px');
+        star.style.setProperty('--dy', dy + 'px');
+        star.style.setProperty('--rot', rot + 'deg');
+
+        container.appendChild(star);
+        setTimeout(() => star.remove(), 660);
+      }
+    }
+
+    function showGiantPigDemo() {
+      resetSandbox();
+      showGiantPig();
+    }
+
+    function endEgg(cleared) {
+      isRunning = false;
+      statusBadge.textContent = '时间到，小猪已消失';
+      statusBadge.style.color = '#bbb';
+      activePigs.forEach(p => {
+        p.classList.add('pop-dismiss');
+      });
+      setTimeout(() => {
+        stage.innerHTML = '';
+      }, 200);
+    }
+
+    function resetSandbox() {
+      clearInterval(sessionTimer);
+      isRunning = false;
+      stage.innerHTML = '';
+      giantPigWrapper.style.display = 'none';
+      giantPigWrapper.classList.remove('pop-entrance', 'fade-exit');
+      giantPigCard.classList.remove('active-motion');
+      statusBadge.textContent = '未触发';
+      statusBadge.style.color = '#bbb';
+    }
+
+    // 单独测试卡片中的猪鼻子原地留存变大淡出
+    function testFeedback(e) {
+      const box = document.getElementById('feedbackDemoBox');
+      const target = document.getElementById('demoTargetPig');
+      const rect = target.getBoundingClientRect();
+      const boxRect = box.getBoundingClientRect();
+      const cx = (rect.left + rect.right) / 2 - boxRect.left;
+      const cy = (rect.top + rect.bottom) / 2 - boxRect.top - 2;
+
+      target.style.transform = 'scale(0.01)';
+      target.style.opacity = '0';
+
+      spawnSingleSnoutPuff(cx, cy, 0, box);
+
+      setTimeout(() => {
+        target.style.transform = 'scale(1)';
+        target.style.opacity = '1';
+      }, 850);
+    }
+
+    function testFeedbackManual() {
+      const box = document.getElementById('feedbackDemoBox');
+      const rect = box.getBoundingClientRect();
+      testFeedback({ clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 });
+    }
+
+    function testGiantInCard() {
+      const box = document.getElementById('giantDemoBox');
+      const target = document.getElementById('cardGiantTarget');
+      const rect = target.getBoundingClientRect();
+      const boxRect = box.getBoundingClientRect();
+      const cx = (rect.left + rect.right) / 2 - boxRect.left;
+      const cy = (rect.top + rect.bottom) / 2 - boxRect.top;
+
+      target.style.transform = 'scale(0.01)';
+      target.style.transition = 'none';
+      
+      requestAnimationFrame(() => {
+        target.style.transition = 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.25)';
+        target.style.transform = 'scale(1.1)';
+        setTimeout(() => {
+          target.style.transform = 'scale(1)';
+          spawnGiantStarRing(cx, cy, box);
+        }, 140);
+      });
+    }
+  </script>
+</body>
+</html>
