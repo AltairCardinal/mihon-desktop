@@ -7,7 +7,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -21,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -33,6 +37,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import mihon.desktop.platform.DesktopPlatformPaths
 import mihon.desktop.APP_VERSION
 import tachiyomi.i18n.MR
+import tachiyomi.domain.release.service.ApplicationUpdatePreferences
 import java.util.Locale
 
 internal class AboutScreen(
@@ -56,6 +61,7 @@ internal class AboutScreen(
         val updateModel = requireNotNull(LocalDesktopUiDependencies.current.updateScreenModel)
         val updateState by updateModel.state.collectAsState()
         val updateFeedback by updateModel.feedback.collectAsState()
+        val updatePresentation = remember(updateModel, updateState, Locale.getDefault()) { updateModel.presentation() }
 
         var cacheSizeText by remember {
             mutableStateOf(formatBytes(cacheDir.walkBottomUp().filter { it.isFile }.sumOf { it.length() }))
@@ -92,7 +98,9 @@ internal class AboutScreen(
                     text = "Mihon Desktop",
                     style = MaterialTheme.typography.headlineMedium,
                 )
-                AboutUpdateSection(APP_VERSION, updateState.presentation(), updateFeedback, updateModel::intent)
+                AboutUpdateSection(APP_VERSION, updatePresentation, updateFeedback, updateModel::intent)
+                AboutUpdatePreferences(updateModel.preferences)
+                AboutFeedbackSection()
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = MR.strings.desktop_about_description.localized(),
@@ -169,6 +177,26 @@ internal class AboutScreen(
 }
 
 @Composable
+internal fun AboutUpdatePreferences(preferences: ApplicationUpdatePreferences) {
+    val automaticPreference = remember(preferences) { preferences.enabled() }
+    val testingPreference = remember(preferences) { preferences.testingChannel() }
+    val automatic by automaticPreference.changes().collectAsState(initial = automaticPreference.get())
+    val testing by testingPreference.changes().collectAsState(initial = testingPreference.get())
+    SwitchSettingsItem(
+        title = MR.strings.pref_app_update_automatic.localized(),
+        subtitle = MR.strings.pref_app_update_automatic_summary.localized(),
+        checked = automatic,
+        onCheckedChange = automaticPreference::set,
+    )
+    SwitchSettingsItem(
+        title = MR.strings.pref_app_update_testing.localized(),
+        subtitle = MR.strings.pref_app_update_testing_summary.localized(),
+        checked = testing,
+        onCheckedChange = testingPreference::set,
+    )
+}
+
+@Composable
 internal fun AboutUpdateSection(
     version: String,
     presentation: DesktopUpdatePresentation,
@@ -179,6 +207,16 @@ internal fun AboutUpdateSection(
     Text(MR.strings.desktop_about_version_value.localized(Locale.getDefault(), MR.strings.version.localized(), version), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Spacer(modifier = Modifier.height(8.dp))
     Text(presentation.message, style = MaterialTheme.typography.bodyMedium)
+    presentation.releaseInfo?.takeIf(String::isNotBlank)?.let { notes ->
+        key(notes) {
+            Column(Modifier.heightIn(max = 240.dp).verticalScroll(rememberScrollState())) {
+                Text(notes, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+    if (presentation.infoTruncated) {
+        Text(MR.strings.fork_update_full_notes_on_release.localized(), style = MaterialTheme.typography.bodySmall)
+    }
     feedback?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     presentation.progress?.let { LinearProgressIndicator(progress = { it / 100f }) }
     if (presentation.status == "ready") {

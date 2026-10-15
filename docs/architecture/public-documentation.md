@@ -45,8 +45,8 @@ git diff --check
 
 管理员首次在仓库 **Settings → Pages → Build and deployment → Source** 选择 **GitHub Actions**。工作流位于 `.github/workflows/pages.yml`：
 
-- 文档 PR 只执行网站构建；PR、分支和 fork 均不能进入部署 job。
-- `main` 中网站或本工作流变化后自动部署；产品代码单独变化不会更新站点。
+- 文档 PR 执行网站构建以及[更新索引校验](application-updates-and-feedback.md)；PR、分支和 fork 均不能进入部署 job。
+- `main` 中网站、本工作流或更新索引校验工具变化后自动部署；其他产品代码单独变化不会更新站点。
 - `workflow_dispatch` 可重部署已有内容，但同样只允许本仓库 `main` 部署，不能把未合入分支作为正式站点。
 - 构建 job 只有 `contents: read`；仅部署 job 获得 `pages: write` 与 `id-token: write`，使用 `github-pages` environment，不引入 PAT 或产品签名凭据。
 - 网站内容验收由上述人工事实与 Agent 流程负责；路径触发器和成功的构建**不能判定用户是否验收了功能**。若将来需要服务端强制第二道人工审批，可以由维护者为 environment 配置 required reviewers，但不能把尚未配置的保护宣称已生效。

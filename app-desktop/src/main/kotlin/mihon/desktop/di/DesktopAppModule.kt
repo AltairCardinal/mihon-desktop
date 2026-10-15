@@ -19,6 +19,7 @@ import mihon.desktop.compat.AndroidCompat
 import mihon.desktop.domain.DesktopCustomCoverStore
 import mihon.desktop.domain.DesktopMigrateMangaUseCase
 import mihon.desktop.domain.DesktopNotificationService
+import mihon.desktop.domain.DesktopNotification
 import mihon.desktop.domain.DesktopSystemNotifier
 import mihon.desktop.domain.DesktopTrackerSessionProvider
 import mihon.desktop.domain.GetAvailableScanlators
@@ -178,6 +179,8 @@ import tachiyomi.domain.manga.interactor.UpdateMangaNotes
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import tachiyomi.domain.release.interactor.GetApplicationRelease
+import tachiyomi.domain.release.service.ApplicationUpdatePreferences
+import tachiyomi.i18n.MR
 import tachiyomi.domain.release.service.ReleaseService
 import tachiyomi.domain.source.repository.SourceRepository
 import tachiyomi.domain.source.service.AuthenticatedCookie
@@ -1038,7 +1041,21 @@ internal suspend fun initUILayer(
         Injekt.addSingleton(updateInstaller)
         val updateController = DesktopUpdateController(releaseChecker, updateDownloader, updateInstaller)
         Injekt.addSingleton(updateController)
-        val updateScreenModel = DesktopUpdateScreenModel(updateController, applicationScope)
+        val updatePreferences = ApplicationUpdatePreferences(preferenceStore)
+        Injekt.addSingleton(updatePreferences)
+        val updateScreenModel = DesktopUpdateScreenModel(
+            updateController,
+            applicationScope,
+            preferences = updatePreferences,
+            notifyUpdate = { release ->
+                Injekt.get<DesktopNotificationService>().postWhenObserved(
+                    DesktopNotification(
+                        title = MR.strings.fork_update_available_title.localized(),
+                        message = MR.strings.fork_update_available_message.localized(java.util.Locale.getDefault(), release.version),
+                    ),
+                )
+            },
+        )
         Injekt.addSingleton(updateScreenModel)
         val mangaRepository = Injekt.get<MangaRepository>()
         val chapterRepository = Injekt.get<ChapterRepository>()

@@ -1,11 +1,16 @@
 package eu.kanade.tachiyomi.data.updater
 
+import android.Manifest
 import android.annotation.SuppressLint
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.PermissionChecker
 import androidx.core.net.toUri
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.notification.NotificationHandler
@@ -35,12 +40,25 @@ internal class AppUpdateNotifier(private val context: Context) {
     }
 
     @SuppressLint("LaunchActivityFromNotification")
-    fun promptUpdate(release: Release) {
-        val updateIntent = NotificationReceiver.downloadAppUpdatePendingBroadcast(
-            context,
-            release.downloadLink,
-            release.version,
-        )
+    fun promptUpdate(release: Release): Boolean {
+        val manager = NotificationManagerCompat.from(context)
+        if (!manager.areNotificationsEnabled() ||
+            (
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    PermissionChecker.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+                    PermissionChecker.PERMISSION_GRANTED
+                ) ||
+            (
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                    (
+                        manager.getNotificationChannel(Notifications.CHANNEL_APP_UPDATE)?.importance
+                            ?: NotificationManager.IMPORTANCE_NONE
+                        ) ==
+                    NotificationManager.IMPORTANCE_NONE
+                )
+        ) {
+            return false
+        }
 
         val releaseIntent = Intent(Intent.ACTION_VIEW, release.releaseLink.toUri()).run {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -50,6 +68,19 @@ internal class AppUpdateNotifier(private val context: Context) {
                 this,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
+        }
+        val canInstall = canInstallForkUpdate()
+        val updateIntent = if (canInstall) {
+            NotificationReceiver.downloadAppUpdatePendingBroadcast(
+                context,
+                release.downloadLink,
+                release.version,
+                release.asset.checksum?.value,
+                release.sizeBytes,
+                release.versionCode,
+            )
+        } else {
+            releaseIntent
         }
 
         with(notificationBuilder) {
@@ -61,16 +92,19 @@ internal class AppUpdateNotifier(private val context: Context) {
             clearActions()
             addAction(
                 android.R.drawable.stat_sys_download_done,
-                context.stringResource(MR.strings.action_download),
+                context.stringResource(if (canInstall) MR.strings.action_download else MR.strings.update_check_open),
                 updateIntent,
             )
-            addAction(
-                R.drawable.ic_info_24dp,
-                context.stringResource(MR.strings.whats_new),
-                releaseIntent,
-            )
+            if (canInstall) {
+                addAction(
+                    R.drawable.ic_info_24dp,
+                    context.stringResource(MR.strings.whats_new),
+                    releaseIntent,
+                )
+            }
         }
         notificationBuilder.show()
+        return true
     }
 
     /**
@@ -144,7 +178,13 @@ internal class AppUpdateNotifier(private val context: Context) {
      *
      * @param url web location of apk to download.
      */
-    fun onDownloadError(url: String) {
+    fun onDownloadError(
+        url: String,
+        title: String? = null,
+        expectedSha256: String? = null,
+        expectedSizeBytes: Long? = null,
+        expectedVersionCode: Long? = null,
+    ) {
         with(notificationBuilder) {
             setContentText(context.stringResource(MR.strings.update_check_notification_download_error))
             setSmallIcon(R.drawable.ic_warning_white_24dp)
@@ -155,7 +195,14 @@ internal class AppUpdateNotifier(private val context: Context) {
             addAction(
                 R.drawable.ic_refresh_24dp,
                 context.stringResource(MR.strings.action_retry),
-                NotificationReceiver.downloadAppUpdatePendingBroadcast(context, url),
+                NotificationReceiver.downloadAppUpdatePendingBroadcast(
+                    context,
+                    url,
+                    title,
+                    expectedSha256,
+                    expectedSizeBytes,
+                    expectedVersionCode,
+                ),
             )
             addAction(
                 R.drawable.ic_close_24dp,

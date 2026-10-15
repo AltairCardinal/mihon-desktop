@@ -2534,4 +2534,24 @@
     <string name="desktop_tutorial_pairing_message">Pages paired incorrectly? Press C to adjust the current pairing. You can also use Adjust Spread in the reader controls.</string>
     <string name="desktop_tutorial_pairing_action">Adjust pairing · C</string>
     <string name="desktop_tutorial_got_it">Got it</string>
+    <!-- Fork updates and user-reviewed issue reports -->
+    <string name="pref_app_update_automatic">Check for app updates automatically</string>
+    <string name="pref_app_update_automatic_summary">Automatically check GitHub for updates to this fork. Manual checks remain available.</string>
+    <string name="pref_app_update_testing">Include testing releases</string>
+    <string name="pref_app_update_testing_summary">Check stable and testing releases. Turn off to receive stable releases only.</string>
+    <string name="update_no_compatible_package">No compatible update package is available for this device.</string>
+    <string name="fork_update_available_title">Update available</string>
+    <string name="fork_update_available_message">Version %1$s is available. Open About to review the update.</string>
+    <string name="fork_update_full_notes_on_release">Full release notes are available on the release page.</string>
+    <string name="fork_update_debug_manual_only">This development build can open the release page; it cannot update the installed release app.</string>
+    <string name="feedback_report_problem">Report a problem</string>
+    <string name="feedback_privacy_notice">Review the safe summary before copying it. The GitHub issue form requires an account and your submitted issue will be public. Opening the form does not submit an issue. Logs and the summary are not sent automatically.</string>
+    <string name="feedback_copy_summary">Copy safe summary</string>
+    <string name="feedback_summary_copied">Safe summary copied</string>
+    <string name="feedback_copy_failed">Could not copy the summary. Try again.</string>
+    <string name="feedback_open_issue">Open GitHub issue form</string>
+    <string name="feedback_open_failed">Could not open GitHub. Try again or open the project Issues page in your browser.</string>
+    <string name="feedback_opened">GitHub form opened. Review and submit it in your browser.</string>
+    <string name="feedback_logs_android">Optional logs: More → Settings → Advanced → Dump crash logs. Review and remove private information before attaching any file. Logs are never attached automatically.</string>
+    <string name="feedback_logs_desktop">Optional logs: Settings → Advanced → Open crash log folder. Review and remove private information before attaching any file. Logs are never attached automatically.</string>
 </resources>

@@ -1,7 +1,47 @@
-name: 🐞 Issue report
-description: Report an issue in Mihon
+name: 🐞 Android / Desktop issue report
+description: Report a problem in this Mihon fork (Android, Windows, macOS or Linux)
 labels: [bug]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue will be **public** and requires a GitHub account. Please review everything before submitting.
+        In the app, open **More → About → Report a problem**, preview the safe summary, and copy it below.
+        The app does not create an issue, upload files, or attach logs automatically.
+        此问题将公开显示，需要 GitHub 账号。请先在应用「更多 → 关于 → 报告问题」预览并复制安全摘要，提交前检查内容。
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform / 平台
+      options:
+        - Android
+        - Windows Desktop
+        - macOS Desktop
+        - Linux Desktop
+    validations:
+      required: true
+
+  - type: textarea
+    id: safe-summary
+    attributes:
+      label: Safe diagnostic summary / 安全诊断摘要
+      description: Paste the summary from About. It contains only the app version, OS, architecture and runtime. Do not add an installation ID, account, token, library data or a profile path.
+      render: text
+    validations:
+      required: true
+
+  - type: dropdown
+    id: update-channel
+    attributes:
+      label: Update channel / 更新渠道
+      options:
+        - Stable and testing / 稳定版和测试版
+        - Stable only / 仅稳定版
+        - Unknown / 不确定
+    validations:
+      required: true
+
   - type: textarea
     id: reproduce-steps
     attributes:
@@ -40,41 +80,13 @@ body:
   - type: textarea
     id: crash-logs
     attributes:
-      label: Crash logs
+      label: Optional reviewed logs / 可选：已检查的日志
       description: |
-        If you're experiencing crashes, if possible, go to the app's **More → Settings → Advanced** page, press **Dump crash logs** and share the crash logs here.
+        Logs are optional and may contain private information. Android: **More → Settings → Advanced → Dump crash logs**. Desktop: **Settings → Advanced → Open crash log folder**.
+        Review the content locally and remove tokens, cookies, authorization headers, account details, installation IDs, private URLs, local paths and library/reading information before attaching it. Do not upload the original file without reviewing it.
+        日志不会自动附加。使用现有日志工具后，请先在本机检查并删除凭据、账号、安装标识、私人网址、路径和书库/阅读信息。
       placeholder: |
-        You can upload the crash log file as an attachment, or paste the crash logs in plain text if needed.
-
-  - type: input
-    id: mihon-version
-    attributes:
-      label: Mihon version
-      description: You can find your Mihon version in **More → About**.
-      placeholder: |
-        Example: "0.19.4"
-    validations:
-      required: true
-
-  - type: input
-    id: android-version
-    attributes:
-      label: Android version
-      description: You can find this somewhere in your Android settings.
-      placeholder: |
-        Example: "Android 11"
-    validations:
-      required: true
-
-  - type: input
-    id: device
-    attributes:
-      label: Device
-      description: List your device and model.
-      placeholder: |
-        Example: "Google Pixel 5"
-    validations:
-      required: true
+        Paste only the reviewed and redacted part relevant to this problem.
 
   - type: textarea
     id: other-details
@@ -93,11 +105,9 @@ body:
           required: true
         - label: I have written a short but informative title.
           required: true
-        - label: I have gone through the [FAQ](https://mihon.app/docs/faq/general) and [troubleshooting guide](https://mihon.app/docs/guides/troubleshooting/).
-          required: true
-        - label: I have checked the latest [Mihon Desktop release](https://github.com/AltairCardinal/mihon-desktop/releases/latest).
+        - label: I have checked the available [releases for this project](https://github.com/AltairCardinal/mihon-desktop/releases), including testing releases if that channel is enabled.
           required: true
         - label: I have filled out all of the requested information in this form, including specific version numbers.
           required: true
-        - label: I understand that **Mihon does not have or fix any extensions**, and I **will not receive help** for any issues related to sources or extensions.
+        - label: I have checked that this public report and any optional attachments contain no private information or credentials.
           required: true

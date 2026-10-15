@@ -4,8 +4,11 @@ import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.awaitSuccess
 import eu.kanade.tachiyomi.network.parseAs
 import kotlinx.serialization.json.Json
+import okhttp3.CacheControl
 import okhttp3.OkHttpClient
 import tachiyomi.domain.release.interactor.GetApplicationRelease
+import tachiyomi.domain.release.model.ForkUpdateRequest
+import tachiyomi.domain.release.model.ForkUpdateRules
 import tachiyomi.domain.release.model.Release
 import tachiyomi.domain.release.model.ReleaseVariant
 import tachiyomi.domain.release.service.ReleaseService
@@ -15,9 +18,21 @@ class ReleaseServiceImpl(
     private val json: Json,
     private val platformInfo: PlatformInfo,
     private val apiBaseUrl: String = "https://api.github.com",
+    private val forkIndexUrl: String = ForkUpdateRequest.INDEX_URL,
 ) : ReleaseService {
 
+    private val forkClient = client.newBuilder().followRedirects(false).followSslRedirects(false).build()
+
     override suspend fun latest(arguments: GetApplicationRelease.Arguments): Release? {
+        arguments.forkUpdate?.let { request ->
+            return forkClient.newCall(
+                GET(forkIndexUrl, cache = CacheControl.FORCE_NETWORK),
+            ).awaitSuccess().use { response ->
+                val source = response.body.source()
+                require(!source.request(ForkUpdateRules.MAX_INDEX_BYTES + 1)) { "Update index is too large" }
+                selectForkRelease(json.parseToJsonElement(source.readUtf8()), request, platformInfo)
+            }
+        }
         val release = with(json) {
             client
                 .newCall(GET("${apiBaseUrl.trimEnd('/')}/repos/${arguments.repository}/releases/latest"))

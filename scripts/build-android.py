@@ -275,6 +275,8 @@ def gradle_build(variant, source_inputs, *, offline=False, root=ROOT, repository
         raise ValueError("Gradle produced no matching evidence for this invocation")
     if evidence.get("configurationInputs") != config["buildConfigurationInputsSha256"] or evidence.get("syncAcceptanceRepository") != repository:
         raise ValueError("Gradle build configuration does not match this invocation")
+    if evidence.get("forkUpdater") is not True:
+        raise ValueError("Gradle did not verify the fork updater configuration")
     return evidence
 
 
@@ -366,7 +368,7 @@ def build_candidate(args, tools, root=ROOT):
               "gradle": gradle_version[1] if gradle_version else "unknown",
               "compileSdk": tools.config["COMPILE_SDK"], "buildTools": tools.build_tools_version,
               "r8": variant != "debug", "resourceShrinking": variant != "debug",
-              "telemetry": False, "updater": False, "mapping": mapping_record,
+              "telemetry": False, "updater": False, "forkUpdater": evidence["forkUpdater"], "mapping": mapping_record,
               "acceptance": "candidate-only; runtime and upgrade acceptance are not implied"}
     with (destination / "artifact.json").open("x", encoding="utf-8") as stream:
         json.dump(record, stream, ensure_ascii=False, indent=2)

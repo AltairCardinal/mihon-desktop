@@ -25,6 +25,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.more.LogoHeader
+import eu.kanade.presentation.more.settings.widget.SwitchPreferenceWidget
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
 import eu.kanade.presentation.util.LocalBackPress
 import eu.kanade.presentation.util.Screen
@@ -44,6 +45,7 @@ import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.release.interactor.GetApplicationRelease
+import tachiyomi.domain.release.service.ApplicationUpdatePreferences
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.LinkIcon
 import tachiyomi.presentation.core.components.ScrollbarLazyColumn
@@ -55,6 +57,7 @@ import tachiyomi.presentation.core.icons.Facebook
 import tachiyomi.presentation.core.icons.Github
 import tachiyomi.presentation.core.icons.Reddit
 import tachiyomi.presentation.core.icons.X
+import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.time.Instant
@@ -71,6 +74,9 @@ object AboutScreen : Screen() {
         val handleBack = LocalBackPress.current
         val navigator = LocalNavigator.currentOrThrow
         var isCheckingUpdates by remember { mutableStateOf(false) }
+        val updatePreferences = remember { Injekt.get<ApplicationUpdatePreferences>() }
+        val automaticUpdates by updatePreferences.enabled().collectAsState()
+        val testingUpdates by updatePreferences.testingChannel().collectAsState()
 
         Scaffold(
             topBar = { scrollBehavior ->
@@ -101,6 +107,22 @@ object AboutScreen : Screen() {
 
                 if (updaterEnabled) {
                     item {
+                        SwitchPreferenceWidget(
+                            title = stringResource(MR.strings.pref_app_update_automatic),
+                            subtitle = stringResource(MR.strings.pref_app_update_automatic_summary),
+                            checked = automaticUpdates,
+                            onCheckedChanged = updatePreferences.enabled()::set,
+                        )
+                    }
+                    item {
+                        SwitchPreferenceWidget(
+                            title = stringResource(MR.strings.pref_app_update_testing),
+                            subtitle = stringResource(MR.strings.pref_app_update_testing_summary),
+                            checked = testingUpdates,
+                            onCheckedChanged = updatePreferences.testingChannel()::set,
+                        )
+                    }
+                    item {
                         TextPreferenceWidget(
                             title = stringResource(MR.strings.check_for_updates),
                             widget = {
@@ -124,6 +146,10 @@ object AboutScreen : Screen() {
                                                     changelogInfo = result.release.info,
                                                     releaseLink = result.release.releaseLink,
                                                     downloadLink = result.release.downloadLink,
+                                                    expectedSha256 = result.release.asset.checksum?.value,
+                                                    expectedSizeBytes = result.release.sizeBytes,
+                                                    expectedVersionCode = result.release.versionCode,
+                                                    infoTruncated = result.release.infoTruncated,
                                                 )
                                                 navigator.push(updateScreen)
                                             },
@@ -145,6 +171,10 @@ object AboutScreen : Screen() {
                             onPreferenceClick = { uriHandler.openUri(RELEASE_URL) },
                         )
                     }
+                }
+
+                item {
+                    AboutFeedbackPreference()
                 }
 
                 item {
@@ -223,7 +253,7 @@ object AboutScreen : Screen() {
                         context.toast(MR.strings.update_check_no_new_updates)
                     }
                     is GetApplicationRelease.Result.NoCompatiblePackage -> {
-                        context.toast(MR.strings.update_check_no_new_updates)
+                        context.toast(MR.strings.update_no_compatible_package)
                     }
                     is GetApplicationRelease.Result.OsTooOld -> {
                         context.toast(MR.strings.update_check_eol)
