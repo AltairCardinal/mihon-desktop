@@ -226,4 +226,83 @@ class PagerRippleTest {
 
         testPager.cancelRipple()
     }
+
+    @Test
+    fun rippleModePreferenceDefaultsToCleanAndCanBeChangedToShadowLine() {
+        val modePref = preferences.pageTurnRippleMode()
+        assertEquals(ReaderPreferences.PageTurnRippleMode.CLEAN, modePref.get())
+        modePref.set(ReaderPreferences.PageTurnRippleMode.SHADOW_LINE)
+        assertEquals(ReaderPreferences.PageTurnRippleMode.SHADOW_LINE, modePref.get())
+    }
+
+    @Test
+    fun prepareRippleCapturesSnapshotBeforeNavigation() {
+        pager.pageTurnRippleEnabled = true
+        pager.measure(
+            android.view.View.MeasureSpec.makeMeasureSpec(800, android.view.View.MeasureSpec.EXACTLY),
+            android.view.View.MeasureSpec.makeMeasureSpec(1200, android.view.View.MeasureSpec.EXACTLY),
+        )
+        pager.layout(0, 0, 800, 1200)
+
+        val prepared = pager.prepareRipple(Pager.RippleDirection.RIGHT_TO_LEFT)
+        assertTrue("prepareRipple should succeed when pager has dimensions", prepared)
+        assertNotNull("currentRippleBitmap should be populated immediately", pager.currentRippleBitmap)
+        assertEquals(0f, pager.rippleProgress, 0.001f)
+    }
+
+    @Test
+    fun cleanModeDoesNotDrawLineWhereasShadowLineModeDoes() {
+        val activity = Robolectric.buildActivity(androidx.activity.ComponentActivity::class.java).setup().visible().get()
+        val testPager = Pager(activity, isHorizontal = true)
+        activity.setContentView(testPager)
+        ShadowLooper.shadowMainLooper().idleFor(Duration.ofMillis(16))
+
+        val v0 = android.view.View(activity).apply {
+            setWillNotDraw(false)
+            setBackgroundColor(android.graphics.Color.WHITE)
+        }
+        val v1 = android.view.View(activity).apply {
+            setWillNotDraw(false)
+            setBackgroundColor(android.graphics.Color.WHITE)
+        }
+        testPager.adapter = object : androidx.viewpager.widget.PagerAdapter() {
+            override fun getCount(): Int = 2
+            override fun isViewFromObject(v: android.view.View, o: Any): Boolean = v === o
+            override fun instantiateItem(c: android.view.ViewGroup, p: Int): Any {
+                val v = if (p == 0) v0 else v1
+                c.addView(v)
+                return v
+            }
+            override fun destroyItem(c: android.view.ViewGroup, p: Int, o: Any) { c.removeView(o as android.view.View) }
+        }
+        testPager.measure(
+            android.view.View.MeasureSpec.makeMeasureSpec(800, android.view.View.MeasureSpec.EXACTLY),
+            android.view.View.MeasureSpec.makeMeasureSpec(1200, android.view.View.MeasureSpec.EXACTLY),
+        )
+        testPager.layout(0, 0, 800, 1200)
+
+        // Test CLEAN mode: boundary pixel should remain WHITE (no black line)
+        testPager.rippleMode = ReaderPreferences.PageTurnRippleMode.CLEAN
+        testPager.setCurrentItemWithRipple(1, Pager.RippleDirection.RIGHT_TO_LEFT)
+        testPager.rippleProgress = 0.5f // splitX = 400
+        val cleanBitmap = Bitmap.createBitmap(800, 1200, Bitmap.Config.ARGB_8888)
+        val cleanCanvas = Canvas(cleanBitmap)
+        cleanCanvas.translate(-testPager.scrollX.toFloat(), -testPager.scrollY.toFloat())
+        testPager.draw(cleanCanvas)
+        assertEquals("CLEAN mode should not draw black boundary line at splitX", android.graphics.Color.WHITE, cleanBitmap.getPixel(400, 600))
+
+        testPager.cancelRipple()
+
+        // Test SHADOW_LINE mode: boundary line should draw line
+        testPager.rippleMode = ReaderPreferences.PageTurnRippleMode.SHADOW_LINE
+        testPager.setCurrentItemWithRipple(0, Pager.RippleDirection.LEFT_TO_RIGHT)
+        testPager.rippleProgress = 0.5f // splitX = 400
+        val shadowBitmap = Bitmap.createBitmap(800, 1200, Bitmap.Config.ARGB_8888)
+        val shadowCanvas = Canvas(shadowBitmap)
+        shadowCanvas.translate(-testPager.scrollX.toFloat(), -testPager.scrollY.toFloat())
+        testPager.draw(shadowCanvas)
+        val boundaryPixel = shadowBitmap.getPixel(400, 600)
+        assertTrue("SHADOW_LINE mode should draw boundary line", boundaryPixel != android.graphics.Color.WHITE)
+        testPager.cancelRipple()
+    }
 }
