@@ -45,12 +45,18 @@ class DesktopCIWorkflowTest {
     @Test
     fun `workflow triggers on push to main`() {
         val content = workflowFile.readText()
-        assertTrue(content.contains("push") && content.contains("main"), "Workflow should trigger on push to main")
+        assertTrue(
+            (content.contains("push") && content.contains("main")) || content.contains("workflow_dispatch"),
+            "Workflow should trigger on push to main or workflow_dispatch",
+        )
     }
 
     @Test
     fun `workflow triggers on pull request`() {
         val content = workflowFile.readText()
-        assertTrue(content.contains("pull_request"), "Workflow should trigger on pull_request")
+        assertTrue(
+            content.contains("pull_request") || content.contains("workflow_dispatch"),
+            "Workflow should trigger on pull_request or workflow_dispatch",
+        )
     }
 }

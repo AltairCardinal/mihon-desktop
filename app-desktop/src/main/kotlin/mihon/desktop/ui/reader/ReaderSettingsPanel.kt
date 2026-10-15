@@ -215,11 +215,18 @@ internal fun GeneralTab(
     // Reading mode
     SettingsSection(MR.strings.desktop_ui_reading_mode.localized()) {
         RadioRow(MR.strings.label_default.localized(), followsGlobal, onFollowGlobal)
-        ReadingMode.entries.filter { it != ReadingMode.DEFAULT }.forEach { mode ->
+        listOf(ReadingMode.AUTO, ReadingMode.LTR, ReadingMode.WEBTOON).forEach { mode ->
+            val pagerMode = mode == ReadingMode.LTR
             RadioRow(
-                label = readingModeLabel(mode),
-                selected = !followsGlobal && currentMode == mode,
-                onClick = { onModeChange(mode) },
+                label = if (pagerMode) MR.strings.desktop_reader_paged_mode.localized() else readingModeLabel(mode),
+                selected = !followsGlobal && if (pagerMode) {
+                    currentMode == ReadingMode.LTR || currentMode == ReadingMode.RTL
+                } else {
+                    currentMode == mode
+                },
+                onClick = {
+                    onModeChange(if (pagerMode && currentMode == ReadingMode.RTL) ReadingMode.RTL else mode)
+                },
             )
         }
         if (currentMode == ReadingMode.AUTO) {
@@ -248,6 +255,18 @@ internal fun GeneralTab(
     } else {
         // Pager settings
         SettingsSection(MR.strings.desktop_ui_pager.localized()) {
+            RadioRow(
+                label = MR.strings.desktop_reader_direction_ltr.localized(),
+                selected = currentMode == ReadingMode.LTR,
+                onClick = { onModeChange(ReadingMode.LTR) },
+                enabled = currentMode != ReadingMode.AUTO,
+            )
+            RadioRow(
+                label = MR.strings.desktop_reader_direction_rtl.localized(),
+                selected = currentMode == ReadingMode.RTL || currentMode == ReadingMode.AUTO,
+                onClick = { onModeChange(ReadingMode.RTL) },
+                enabled = currentMode != ReadingMode.AUTO,
+            )
             CheckboxRow(
                 label = MR.strings.desktop_ui_split_wide_pages.localized(),
                 checked = autoSplitPages,
@@ -515,12 +534,12 @@ private fun SettingsSection(title: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun RadioRow(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun RadioRow(label: String, selected: Boolean, onClick: () -> Unit, enabled: Boolean = true) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick),
     ) {
-        RadioButton(selected = selected, onClick = onClick)
+        RadioButton(selected = selected, onClick = onClick, enabled = enabled)
         Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 4.dp))
     }
 }

@@ -31,7 +31,7 @@ class ReaderManualPairingIntentContractTest {
     }
 
     @Test
-    fun `late restore preserves a user entered loading group and its next navigation target`() {
+    fun `late restore replaces an unlocked loading proposal without changing the logical target`() {
         val owner = owner(mangaId = 1, initialIndex = 0)
         val ids = owner.identity.pageIds
         val restore = owner.beginPairingRestore()!!
@@ -39,11 +39,32 @@ class ReaderManualPairingIntentContractTest {
         val current = owner.captureViewport(preparingPageIds = emptySet())!!
         val before = owner.frame(current)!!
         assertEquals(listOf(ids[1], ids[2]), before.unit.pageIds)
+        assertTrue(before.lockedPageIds.isEmpty())
+        assertTrue(before.drawnPageIds.isEmpty())
+        val location = owner.location
         assertTrue(owner.acceptPairingRestore(restore, firstPairSnapshot()))
-        assertEquals(before, owner.frame(current))
+        assertNull(owner.frame(current), "An empty proposal has no physical slot promise")
+        assertEquals(location, owner.location)
         assertEquals(ids[1], owner.location!!.pageId)
+        assertTrue(!owner.preparePage(current, ids[1]))
+        assertTrue(!owner.reportDrawn(current, setOf(ids[1])))
+        assertNull(
+            owner.settle(
+                ReaderDualPageSettlement(
+                    current.identity, current.layoutRevision, current.locationSequence, current.unitId,
+                    setOf(ids[1]), true, ReaderDualPageSettlementReason.USER_NAVIGATION, 1, current,
+                ),
+                false,
+                "expired-proposal",
+            ),
+        )
+        val restored = owner.captureViewport(preparingPageIds = emptySet())!!
+        assertEquals(listOf(ids[0], ids[1]), owner.frame(restored)!!.unit.pageIds)
+        assertTrue(owner.frame(restored)!!.lockedPageIds.isEmpty())
+        assertTrue(owner.frame(restored)!!.drawnPageIds.isEmpty())
         assertTrue(owner.navigate(true))
-        assertEquals(ids[3], owner.location!!.pageId)
+        assertEquals(ids[2], owner.location!!.pageId)
+        assertEquals(listOf(ids[2], ids[3]), owner.targetUnit!!.pageIds)
     }
 
     @Test
@@ -427,11 +448,17 @@ class ReaderManualPairingIntentContractTest {
 
     @Test
     fun `natural remainder single can explicitly restore an adjacent pair`() {
-        val owner = owner()
-        owner.goToPage(owner.identity.pageIds[4])
+        // Six portraits have a cover, two ordinary pairs, then a genuine natural remainder.
+        val owner = owner(count = 6)
+        val ids = owner.identity.pageIds
+        assertTrue(owner.goToPage(ids[5]))
+        assertEquals(listOf(ids[5]), owner.targetUnit!!.pageIds)
+        assertEquals(ReaderDualPageSingleReason.CHAPTER_TAIL, owner.targetUnit!!.singleReason)
         draw(owner)
-        owner.adjustPairing()
-        assertEquals(listOf(3, 4), owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
+        assertNull(owner.adjustPairing(), "A session-only adjustment does not create a persistence request")
+        assertEquals(listOf(ids[4], ids[5]), owner.targetUnit!!.pageIds)
+        assertEquals(ids[4], owner.location!!.pageId)
+        assertEquals(setOf(4), owner.pairingState.manualPairStarts)
     }
 
     private fun draw(owner: SharedDualPageSession) {
@@ -440,8 +467,12 @@ class ReaderManualPairingIntentContractTest {
         owner.releaseViewport(ticket)
     }
 
-    private fun owner(mangaId: Long? = null, initialIndex: Int = 1): SharedDualPageSession {
-        val ids = List(5) { ReaderPageId(ReaderChapterId(7), it) }
+    private fun owner(
+        mangaId: Long? = null,
+        initialIndex: Int = 1,
+        count: Int = 5,
+    ): SharedDualPageSession {
+        val ids = List(count) { ReaderPageId(ReaderChapterId(7), it) }
         return SharedDualPageSession(
             ReaderDualPageIdentity(
                 1,

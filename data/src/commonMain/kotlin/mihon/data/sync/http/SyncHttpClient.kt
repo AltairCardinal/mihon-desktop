@@ -3,6 +3,8 @@ package mihon.data.sync.http
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
+import mihon.data.sync.runtime.SyncJournalEventKind
+import mihon.data.sync.runtime.SyncJournalOperation
 import mihon.domain.sync.runtime.SyncNetworkFailurePhase
 import okhttp3.Call
 import okhttp3.Callback
@@ -156,8 +158,10 @@ class SyncHttpClient(
     private val metrics: SyncMetrics = NoopSyncMetrics,
     private val requestGate: SyncHttpRequestGate? = null,
     private val bodyObserver: SyncHttpBodyObserver? = null,
+    private val diagnosticContext: mihon.data.sync.runtime.SyncJournalContext? = null,
 ) {
     private val nextRequestId = AtomicLong()
+    private val diagnosticRequestScope = java.util.UUID.randomUUID().toString()
     private val client = productionClient.newBuilder().apply {
         // Sync credentials must never pass through source/application logging interceptors.
         // Proxy, DNS, TLS, dispatcher and connection-pool settings remain inherited.
@@ -177,6 +181,28 @@ class SyncHttpClient(
         require(host in allowedHosts.map(String::lowercase).toSet()) { "sync endpoint host is not allowed" }
         requestGate?.beforeRequest()
         val requestId = nextRequestId.incrementAndGet()
+        val diagnosticOperation = when {
+            url.encodedPath == "/user" -> SyncJournalOperation.ACCOUNT
+            url.encodedPath.contains(
+                "/device/",
+            ) || url.encodedPath.contains("/oauth/") -> SyncJournalOperation.AUTHORIZATION
+            url.encodedPath.contains("/git/refs") && request.method != "GET" -> SyncJournalOperation.PUBLISH
+            url.encodedPath.contains("/git/ref") -> SyncJournalOperation.GIT_REF
+            url.encodedPath.contains("/git/trees") -> SyncJournalOperation.GIT_TREE
+            url.encodedPath.contains("/git/blobs") -> SyncJournalOperation.GIT_BLOB
+            url.encodedPath.contains("/git/commits") -> SyncJournalOperation.GIT_COMMIT
+            url.encodedPath.contains("/contents/") -> SyncJournalOperation.SPACE_DESCRIPTOR
+            url.encodedPath.contains(
+                "/repos",
+            ) || url.encodedPath.contains("/installations") -> SyncJournalOperation.REPOSITORY
+            else -> SyncJournalOperation.OTHER
+        }
+        val diagnosticRequestId = "$diagnosticRequestScope:$requestId"
+        diagnosticContext?.record(
+            SyncJournalEventKind.HTTP_REQUEST,
+            requestId = diagnosticRequestId,
+            operation = diagnosticOperation,
+        )
         val workKey = request.tag(SyncHttpBodyWork::class.java)?.key
         val observedBody = request.body?.takeIf { bodyObserver != null }?.let { body ->
             object : RequestBody() {
@@ -227,6 +253,15 @@ class SyncHttpClient(
             call.enqueue(object : Callback {
                 override fun onFailure(call: Call, error: IOException) {
                     if (!call.isCanceled()) SyncFailureDiagnostics.record(SyncFailurePhase.HTTP_CALL, error)
+                    if (!call.isCanceled()) {
+                        diagnosticContext?.record(
+                            SyncJournalEventKind.HTTP_FAILURE,
+                            failure = error,
+                            networkPhase = networkFailurePhase(error),
+                            requestId = diagnosticRequestId,
+                            operation = diagnosticOperation,
+                        )
+                    }
                     metrics.recordHttp(0L, failed = true)
                     if (!continuation.isCancelled) {
                         continuation.resumeWithException(
@@ -235,12 +270,25 @@ class SyncHttpClient(
                                 retryable = true,
                                 failureClass = SyncHttpFailureClass.NETWORK,
                                 networkPhase = networkFailurePhase(error),
-                            ),
+                            ).apply { initCause(error) },
                         )
                     }
                 }
 
                 override fun onResponse(call: Call, response: Response) {
+                    diagnosticContext?.record(
+                        if (response.code in
+                            200..299
+                        ) {
+                            SyncJournalEventKind.HTTP_RESPONSE
+                        } else {
+                            SyncJournalEventKind.HTTP_FAILURE
+                        },
+                        networkPhase = SyncNetworkFailurePhase.HTTP_RESPONSE,
+                        httpStatus = response.code,
+                        requestId = diagnosticRequestId,
+                        operation = diagnosticOperation,
+                    )
                     if (response.code !in 200..299) {
                         SyncFailureDiagnostics.record(
                             SyncFailurePhase.HTTP_RESPONSE,
@@ -266,6 +314,14 @@ class SyncHttpClient(
                         if (!continuation.isCancelled) continuation.resumeWithException(error)
                     } catch (error: Exception) {
                         SyncFailureDiagnostics.record(SyncFailurePhase.HTTP_BODY, error, response.code)
+                        diagnosticContext?.record(
+                            SyncJournalEventKind.HTTP_FAILURE,
+                            failure = error,
+                            networkPhase = SyncNetworkFailurePhase.HTTP_BODY,
+                            httpStatus = response.code,
+                            requestId = diagnosticRequestId,
+                            operation = diagnosticOperation,
+                        )
                         metrics.recordHttp(0L, failed = true)
                         if (!continuation.isCancelled) {
                             continuation.resumeWithException(
@@ -282,7 +338,7 @@ class SyncHttpClient(
                                             SyncHttpFailureClass.UNKNOWN
                                         },
                                         networkPhase = SyncNetworkFailurePhase.HTTP_BODY,
-                                    )
+                                    ).apply { initCause(error) }
                                 },
                             )
                         }

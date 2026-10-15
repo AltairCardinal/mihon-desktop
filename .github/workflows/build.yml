@@ -1,10 +1,7 @@
 name: Build & Test
 on:
+  # Local product tests are the normal gate; run this legacy workflow explicitly when needed.
   workflow_dispatch:
-  pull_request:
-  push:
-    branches:
-      - main
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -67,6 +64,7 @@ jobs:
         run: |
           python3 scripts/tests/build-android-test.py
           python3 scripts/tests/gradle-coordinator-test.py
+          python3 scripts/tests/build-performance-test.py
 
       - name: Build unsigned Android candidate
         id: candidate

@@ -2,7 +2,7 @@
 
 日期：2026-10-12。对应[完整设计](../2026-10-12-reader-pairing-determinism-design.md)。
 
-**当前结论：继续优化中的隔离方案；局部修正有通过证据，尚未完成产品耗时验收，不能宣称完整修复。** 用户保留“读序无关”和“立即显示、后台不搬图”，并明确“立即显示”按实际体验和耗时对照验收。首轮将它写成绝对零分析等待过严；以下首轮反例保留，但不再用它断言所有方案不可行。继续研究见文末。
+**当前结论：用户体验后认可阶段改善，已授权合入主干并推送，再继续优化；尚未完成产品耗时及任意冷跳验收，不能宣称完整修复。** 用户保留“读序无关”和“立即显示、后台不搬图”，并明确“立即显示”按实际体验和耗时对照验收。首轮将它写成绝对零分析等待过严；以下首轮反例及早期隔离限制保留为历史，不用它们否认后续授权或声称所有目标已达成。整合及继续研究见文末。
 
 ## 范围及基线
 
@@ -558,3 +558,151 @@ R3-04仍需要定向优化：画面和字节预算已有实际链证据；冷／
 研究提交 `aafca2a0eca242fb8f22ecb65180f98af6a72644` 只含上述测试文件。门闩测试初次在进入真实解码的前置条件失败；通过正常goToPage建立location后通过，不能把前置失败算产品红。最终定向验证 `pairing-r3-desktop-local-replay-validation`：新增导航方法PASS，未显式提供原图目录的opt-in方法按预期SKIP，单文件Spotless检查PASS；额外选取的既有 `normal ready neighbor headers contribute before first displayed pixel` 失败，要求未mount且关闭匹配时5页均有PORTRAIT事实。当前生产链只准备认证实际需要的header，未保证所有Ready页都分析。为排除本轮夹具影响，用同一生产代码及原始HEAD `a1e5abeb4b` 测试文件执行同一个方法（`pairing-r3-desktop-neighbor-baseline`），仍在相同断言失败；随后逐字节恢复本轮测试，未修改旧断言。保留 `focused-validation-initial.xml`、`neighbor-head-baseline.xml` 和主代理核验 `verification-summary.json`，不称定向测试全部通过。该旧断言与按需准备契约的差异未在本轮修正，也没有为它扩大全量验证。
 
 后续优化应保留当前跳点及实际所需邻帧的需求，按原内容身份门禁复用已存在的原始分析；不能把新读取／新解码伪装成免费缓存命中。还需研究减少认证依赖及沿已有下载／正常解码形成可校验标量索引，尤其验证**旧下载首次无索引**的完整成本，不能预热后隐藏等待。缓存路线继续遵循前述内容指纹、算法版本、原子写、损坏失效边界；本次测量没有证明它已解决首次冷跳。单纯扩大16页上限、自动重试续额度、猜配对或只改错误文案均不作为修复完成证据。
+
+### R3-04 三问补研：26页来源、失败呈现与可实施方案
+
+用户进一步要求解释26份事实的来源、为何认证失败变成加载失败，以及明确问题是否有解决方案。研究提交 `b9383589b67dcfcbbdb26dd0c4f15341191ccdc7` 仅修改原图复现测试并新增 `DesktopReaderReadyFactReadBudgetResearchTest`，没有产品改动。复用原代理负责依赖实验，第二代理负责平台读取组件与方案，主代理核对代码、统一串行验证。没有新宿主、安装、原生窗口操作、全量测试或图片进入主代理上下文。
+
+**26的真实来源（本段页码均为阅读器1-based）：** 新的NeedFacts轨迹先请求35，再33/34，再36/37，随后32一路回溯至12。生产原图分析给第12页的侧别为LEFT，第13～37页均为已分析的UNKNOWN。RTL配对中较早页占右槽、较晚页占左槽；没有手动覆盖时，第12页的LEFT明确禁止12+13，故第13页不能被第12页取作伙伴，从第13页开始的配对不再取决于更早前缀。本次从13+14、15+16延伸，目标结果为35+36；证书firstIndex=12指从第13页开始，额外读取index11是为了证明12/13边界。
+
+26项具体是：第12页的边界事实1项，第13～36页24项，再加第37页前瞻1项。当前规则会比较35+36与36+37是否后者更适合，所以“只想显示35/36”并不表示可跳过37的分析。目标附近没有更近的已确认重置边界，才继续逐页向前；26不是固定窗口，更不是第35页重复加载26次。
+
+既有authority、预接纳首次缓存、只按已请求页号作近页优先三组，均追加同一组26页，最终35+36相同。三组均与**同一事实快照**的production `canonicalPlan` 目标单元一致，且证书当前身份有效、目标内容版本改变后拒收；不是全196页逐一解码的完整原书oracle，不证明启发式识别与纸面左右语义绝对相符。它排除了这项简单调度优化对本例的收益，没有证明所有更紧的认证／缓存优化不可能。
+
+日志将 `as? Computed` 后的score打印为null，会混合“未分析”和“Computed(null)”；不能据整列null声称每条邻边都已分析。不过认证器只有必要证据全部齐全才返回Certified，缺证据或失败必产生NeedFacts／Blocked；因此成功证书中实际使用的必要边缘比较都有Computed证据，其null代表已分析但无可用匹配分数。没有另测各阈值命中原因，不猜测是哪条色差、亮暗或方差条件导致。
+
+**显示失败的直接链路：** 两端生产呈现入口通过 `SharedDualPageSession.captureCertifiedViewport` 在Certified之后取得viewport ticket；底层 `captureViewport`／`preparePage` 本身不是认证入口，后者负责锁定已准备槽位。Desktop `startSpreadSamplesLocked` 却把optional额度准入失败写成RESOURCE。`DualPagePagerViewer` 将已有独立的 `dualPairingFailures` 统一交给普通图片错误组件，显示“无法加载页面”。因此根本冲突是“当前画面的必要认证”仍受“可选工作到额即终止”控制，提示又混淆两类失败。图片Ready／解码成功不足以取得确定槽位；直接放行尚未认证图片会重新引入顺序不一致或后台移动，不能作为修复。这是工程设计缺口，不是无法修复的证明；16页也不是用户不可更改的核心要求。
+
+**读取计量组件实验：** 真实RuntimeFactory将虚构本地PNG送到Ready，decoded cache仍为空，`loadFactPage(permit)`直接成功、计数0。另一项经现有content-owner注入点、真实File Source、production pipeline和默认Skia解码读取同一108B PNG：未bound时Source计数108B／budget计数0；用现有 `permit.bound` 的组件对照为108B／108B。两组首次均空缓存，第二次decoded cache命中无新读，物理Source关闭恰1次、内容lease归零。该结果证明现有计量原语能覆盖这种文件流；对照是组件注入，**没有修复最终RuntimeFactory→model→共享读取接线，没有证明真实章节已遵守32MiB，也没有测出超过32MiB**。File Source字节不是绕过OS缓存的物理介质I/O量。
+
+| 问题 | 具体修复／优化设计 | 当前证据与尚缺验收 |
+|---|---|---|
+| 必要分析超过16页就无法显示 | 分离当前画面必需认证和可选预取。必需任务保留同一location、原始期限、真实累计bytes、至多2并发、内存和取消约束；累计页数不单独触发终态失败，可作调度公平性指标 | 明确可讨论的预算政策修订，未实现。须先补计量，再测本例26页和更长前缀的实际首像素／资源成本；取消页限不保证慢在线源、大图及首次旧下载都达标 |
+| 配对未完成误报图片无法加载，Retry多做普通图片工作 | 保留图片状态与认证状态分离，区分配对准备、页数／字节／期限／内存原因和真正读图失败。Ready图的认证恢复不再无条件reloadContent；用真实控件验证恢复与普通损坏图重试 | 原因映射和改动入口明确；本轮未改UI，改提示本身不能修复缺图 |
+| 旧跳点占额度 | 按location／内容身份记录当前目标和实际可能曝光邻帧；导航撤销旧需求，拒绝迟到注册，邻帧释放时移除；保留已确认事实 | 局部方案明确，仍需连续／跳读／动画邻帧接线测试；不能只保留当前页而破坏邻屏准备 |
+| 缓存命中也先占额度 | 用当前内容身份、方向／旋转及原始样本资格检查已有asset，按原物理内容门禁批量接纳，再计算缺失需求；只为真正新工作准入 | 可复用现有acquireCached及accept门禁。本次首次缓存只有1/2页，预接纳后仍需26，不能单独关闭本例 |
+| Desktop真实读取未完整计量 | 在encoded/header/region实际Source.read前计量；在现有共享entry管理读取用途／消费者，不能把permit加入content/decode key | 108B组件对照2项通过；最终接线、超限、前台合流、取消与替换尚须红绿及独立审查 |
+| Android冷／热约250ms退化及普通翻页耗时未达标 | 优先从合格正常位图在gate前取得等价原始样本，保留颜色、alpha、几何、encoded身份和代际资格；未知资格回退。其次借用已有encoded Buffer并计存活内存；减少依赖串行取证 | 复用既有25图exact及161组成本分解，非新性能结论。区域解码约30～39ms明显大于开流／JNI创建约1ms，不能只减开流就承诺消除250ms；仍需真实Android前后对照 |
+| 重开／缓存淘汰后重新分析 | 沿已有下载／正常完整读取形成内容指纹绑定的标量索引，复用现有cache、原子写、算法版本、损坏按miss和内容变化失效 | 架构候选明确，未实现；首次旧下载无索引仍有真实成本，不可提前预热后隐藏 |
+
+共享读取修复必须覆盖三类：纯缓存命中不新读；加入已有foreground读取复用同一作业；真正新开的optional读取先准入再逐次计量。optional被foreground接管时，已读字节不退款，后续转归foreground；移除仅optional设置的期限但保留底层原有deadline，取消optional订阅不取消仍有foreground消费者的作业。预算停止与升级竞态时，不发布截断字节或缓存失败，必要时foreground以同一稳定内容身份重新打开。至少验证两种加入顺序、升级时耗尽、单方取消和内容替换，不能因补预算制造新的前台加载失败。
+
+实施顺序建议：先统一真实计量和共享读取用途边界，同时关闭旧需求／缓存重复准入；再实施明确审阅后的必需认证预算政策和对应失败反馈；随后做正常解码标量复用及必要的持久索引，复测首次旧下载、冷跳、重开、快翻和实际首像素。旧16页基线保留作对照，不能后台循环Retry或伪造location续预算。本轮结论是**每项都有具体可实施路线，但长前缀首次显示与耗时目标尚没有已经验证通过的完整方案**，不称不可修复，也不称研究已通过。
+
+验证：协调器 `pairing-r3-desktop-solutions-research`，因本机并行任务的内存压力限制Gradle2GiB、in-process、单worker，测试512MiB。两文件scoped Spotless Apply／Check成功（Check在Apply后UP-TO-DATE）；3项JUnit中2项组件诊断PASS，原图四跳用例仍在首次35未绘制处按实际缺陷FAIL，三组纯认证／身份断言此前已通过。XML与主代理汇总保存在研究树 `.gradle-coordinator/research-evidence/r3-desktop-solutions-research/`；没有把这轮总退出码失败说成全绿，也没有用受限内存环境的时长做性能结论。196张用户原图名、大小及SHA再次全部未变。本次只提交研究测试和设计／证据，不更新体验包。
+
+### R3-04 用户反馈：局部确定即停止取证，优先保证及时显示
+
+2026-10-13 用户提出：当前两页及临近页面的配对证据明确时，不应检查很多页；在可接受时间内显示漫画比错误后提示更重要；核对指定会话 `01a12c50-6e1b-7110-acf1-73c689dc72e2` 是否研究同一问题，不相关时再交接。此次仅核对研究代码、既有测试和该指定会话的文本记录，没有运行新产品测试、修改产品代码、构建或读取图片。
+
+**局部提前结束确实可行，且已存在基础实现。** 研究提交 `b9383589b6` 的 `ReaderPairingCertifier.certify` 从目标附近开始，用同一生产扫描步骤枚举进入该窗口的保守状态；所需证据齐全且所有入口给出同一目标单元时立即认证，不再检查更早边界。入口不一致时，才尝试证明左边界禁止跨越；仍不能确定才逐页向前扩大。可信宽图可仅凭原始尺寸确定独立显示。`ReaderCanonicalPairingScan.allowed` 已让明确侧别的否决避免无关另一侧分析，但必须尊重手动配对和几何规则的优先级。
+
+代码中已有 `converged entries do not demand an unrelated lookbehind analysis`，用仅索引2～6的事实认证目标4与5，并断言证书只依赖该窗口；还有已知宽图、手动边界和可靠侧别的专门用例。相反，`strong preceding competition invalidates five page closure and expands left` 说明强前邻竞争能改变局部目标，不能把“相似度较好”当作与前缀无关的证明。本轮只读取这些既有测试，不新增或重跑，不将其描述为本轮新通过结果。
+
+可继续预研的改进是：优先利用已具备的可靠禁止边和有效证书；检查保守入口中能否依据现有事实排除实际不可达状态，以及是否请求了不会影响最终目标的分支证据。必须保持与完整生产扫描一致，覆盖左右阅读方向、手动重叠、首组／预留状态、失败／取消和内容变化，不能使用固定两页或固定五页窗口替代证明。这是待验证的优化方向，尚未证明能减少真实第35页的26项需求；该输入目标附近的已分析侧别均为UNKNOWN，不满足“已有明确左右证据”的简单情形。
+
+**验收重心明确为首次成功显示及耗时。** 补计量是为了可控地优化必要工作，改善失败反馈是兜底，均不能单独关闭用户故障。下一实施应联合考察局部依赖缩减、当前目标优先／撤销旧需求、合格缓存与正常解码结果复用，以及必需认证不再被16页可选额度提前终止。实际动作到首图和目标双页完整显示都要计时，冷旧下载不得预热，不得靠用户重试／跳开返回积累额度；顺读、跳读、重开一致和已绘不移要求继续保留。尚无新的性能达标证据。
+
+**指定会话直接相关。** 只读核对其截至2026-10-13 09:33 UTC的记录：用户要求先合入并推送研究代码，再继续剩余问题；该会话已明确记录本报告同一第35页／26项事实／16页上限、Desktop读取未计量和耗时未达标，并正在隔离工作区整合及执行24项Desktop定向检查。它还单独修复退出后的后台回调竞态，且明确未将该竞态认定为此前阅读中黑页的原因。因此无需按“不相关”的条件另开一次问题交接或重复实现；本次新增反馈归入它已在使用的同一方案与证据报告。更新共享文档不等于已向运行中的会话投递消息或获得其确认，本轮未声称消息送达。
+
+### R3-04 主干整合与既有契约兼容核验
+
+用户体验后授权先合入并推送，再继续优化。整合在独立工作区 `D:/Codex/worktrees/reader-pairing-main-20261013` 进行，基线为主干 `9ef2c6f83f` 与研究 `b9383589b6`；保留主干新增的手动布局 format2／CAS 契约、相关修复和及时显示优先的说明，未暂存或改动主工作区的 `docs/human/`。本节核验期间尚未完成合并提交或远端推送，不作为完整预研通过声明。
+
+整合中发现退出与可选分析发布的竞态：生产 publisher 在实际 budget.reserve 处阻塞，退出关闭 owner 后，迟到发布仍会继续认证已关闭 owner。新增 `ReaderScreenModelDisposedPublisherTest` 使用真实 RuntimeFactory／内容链、实际 producer 和锁阻塞建立确定时序，先确认正确失败，再在 lifecycle lock 下拒绝已退出或已替换 owner。没有吞异常、延长超时或另建读取器。这是退出时的独立缺陷，没有证据把此前阅读中的黑页归因于它。
+
+已取得的整合证据采用基线加相关补验，不冒称最终代码全量重跑：
+
+- `pairing-main-final-focused`：Desktop 实际进度链10项、退出竞态1项、受影响原生呈现5项、教程接线9项，共25/25及局部格式通过；此前摘要中的24项是预估计数，以实际XML的25项为准。夹具改用可复用HTTP响应和真实原图header，保留实际bitmap延迟门闩；未放宽绘制／进度／槽位断言。有限响应队列可能耗尽只作为夹具故障假设，未声称其为产品根因。
+- `pairing-main-android-final`：Android 双页缩放14项与holder布局4项，共18/18及局部格式通过。没有新APK、新二进制运行验收或实体设备操作。
+- 合入主干新增契约后的 `pairing-main-contract-integration`：共享Session31项、Stable46项在JVM与Android JVM目标各执行77项，各有33项失败，原始XML完整保留。逐项区分缺少真实 `prepare → reportDrawn` 的测试前置、旧局部起点／永久历史／预约规则，以及真正需要修复的产品契约；不能统一称为测试过时，更不能按actual机械改expected。
+- `pairing-main-drawn-fixture`：先独立修正3项绘制前置，JVM 3/3通过；事件对象声称已绘制不能替代实际回执，未画及旧票据的负向断言保留。随后 `pairing-main-session-contract` 为29/31通过，剩余阅读方向／模式切换后的配对与进度资格继续核验。
+
+独立审查识别两个应保留原红测的整合问题：远处事实更新时，完全未变的不可变分组对象未复用；无关内容替换时，当前完整未变的活动实体帧身份被重建。修复边界为完整canonical计算后仅复用相等结果，以及仅继承仍可见且整个unit内容未变的实体帧；不继承旧票据，不复活已释放历史，显式reload不沿用旧像素资格。
+
+Session后续红测还暴露第三项原因资格缺口：单页4真实绘制并settle后，切双页3/4，新伙伴3使 `readingEligible` 按未上报集合再次变true。两端实际回调均可提交 `USER_NAVIGATION`，不能依赖平台再挡住纯布局事件。修复须撤销已消费位置在方向／模式／显式几何变化后的再次记读资格，同时保留尚未消费位置的首次真画以及同一物理帧迟到伙伴的累积进度；不能首settle即永久封死追加。另一个方向断言已独立核对输入色值：该fixture RTL 2/3接缝距离0，LTR相应距离81超出阈值30，LTR应按canonical变为1/2，但逻辑目标仍为2；这是方向相关原图接缝不同，不是允许相同方向下因顺读／跳读不同而改变配对。
+
+独立审查已核实退出publisher门卫及其正确红绿证据，无新增锁顺序阻塞；更早一次 `getStringSet` 夹具TODO失败不作为该竞态的有效红测。共享三项窄修复与最终补验尚在进行。归档使用本工作区 `.gradle-coordinator/research-evidence/` 中上述同名目录；不新增第二份报告或逐任务状态系统。
+
+活动实体帧继承的中间方案又被审查拦下：仅复制 `visible`、拒绝旧票据且不交接释放联系，会让新owner尚未capture的邻帧失去关闭入口。Desktop原生close把旧票据交当前model；Android holder仍向已关闭旧owner释放，两者均可能留下无票据的可见占用，继续阻止内容替换。主代理接管该边界的新测试 `SharedDualPageReleaseHandoffTest`，其余实现仍由原实施者承担。`pairing-main-release-handoff-red` 使用真实共享会话，3项中2项在实际release返回false处失败（未接管邻帧关闭、连续两次无关替换后关闭），新票据接管后迟到旧关闭不影响新帧的1项通过，证据保留于 `main-release-handoff-red/`。这属于尚未合并的修复方案缺口，没有证据将它当作用户历史故障原因。后续修复只交接释放原实体的能力，不恢复旧prepare／draw／settle；还须验证幂等与两端实际关闭后处理延后内容的接线。
+
+后续定向红绿补充：`pairing-main-release-session-green` 的Session32/32通过；释放交接3项中2项此前失败已通过，另一项把“旧释放不能伤害新帧”误写成“旧释放必须返回false”。独立审查指出两个仍挂载的句柄各自有关闭责任，旧句柄首次释放应成功且不能关闭新句柄；测试据此保留实体帧／新prepare／draw断言，并新增新句柄先关、旧实体仍挂载的反向顺序。并非忽略释放失败。自动匹配开关另补同一活票据的实际新伙伴绘制：`pairing-main-auto-cause-red` 1项在预期null却产生ReaderProgressEffect处正确失败；设置改变必须撤销已消费原因，自然图片迟到不撤销。
+
+两端实际接线补验已取得独立红测：Desktop `pairing-main-native-release-red-v2` 两项中，未变实体帧在无关替换后从serial0变3的1项失败，原生close解除延期内容占用的1项通过；首轮因缺原图header未到达目标行为的两项前置失败另存，不算产品红。Android `pairing-main-android-release-red` 通过真实holder加载、测量和绘制后，在同一身份断言serial0变2处失败。Desktop需先取得后继票据再关闭旧句柄；Android还须保留当前继承链的旧实体直到真实detach，并让旧实体的关闭触发当前owner延期内容刷新。后继释放路由须为有界共享目标，不累积递归会话链。上述证据尚非最终绿色或新宿主验收。
+
+`pairing-main-handoff-contract-green`：共享Session32、Stable47、ReleaseHandoff4和LeaseResearch4，在JVM／Android JVM各87/87通过（无skip），局部格式通过。已同时覆盖主干format2／CAS、真实绘制前置、同事实canonical、完整unit复用、未接管邻帧与两种关闭顺序、连续rebind和显式reload。独立审查对有界路由、原因门卫及Desktop新旧票据次序通过；另指出Android释放队列仅rebuildItems而未store.ensure，原头齐全且auto-off时仍可能不接纳延期内容，需继续由原生测试后半段和窄修收口。
+
+`pairing-main-android-deferred-red` 在帧身份、槽位和像素保持断言均已通过后，准确失败于旧native detach未消费延期内容（L1135）；归档 `main-android-deferred-red/`。随后仅在已有释放队列执行时筛选仍属当前继承链且page-list对象一致的章节，通过原store.ensure重新接纳事实，再统一rebuild；store自身可见内容门禁继续阻止其他活动页面被替换。不依赖偶发后续fact、不刷新无关章节，也不恢复旧绘制权。
+
+Desktop最终补验首次 `pairing-main-desktop-handoff-green` 18项中14通过、4失败：实际进度10项和退出竞态1项均通过，新旧释放交接与帧身份等3项原生通过；另外4项旧原生用例在初次图尚不能认证／呈现的前置失败（fixture提供伪encoded字节且伙伴bitmap被刻意挂起）。将这4项沿已有开关提供真实PNG原始header，继续保留原bitmap延迟门闩、原像素／mount／进度／retry／resize断言，不改变产品或按actual修改expected；须补跑同一受影响原生范围及格式后才能收口。首次XML保留 `main-desktop-handoff-first/`。
+
+最终相关补验：`pairing-main-desktop-native-final` 7/7原生呈现通过，Android/Desktop局部格式通过；合并同一产品版本的前次RuntimeProgress10/10和Disposed1/1，形成Desktop18项相关有效证据，并非18项在同一次最终命令重跑。仅上述4项测试原始输入修正，后续无Desktop产品变更。共享87×2继续有效。独立审查已确认有界route、消费原因门卫、Desktop交接次序和Android延期刷新，原识别阻塞关闭。
+
+**Android测试选择器误用，保留完整失败结果：** `pairing-main-android-handoff-green` 原定Zoom14+新增1、Holder4、Progress4，共23项；主代理错误使用前两类整类selector，实际运行Zoom36、Holder51、Progress4，共91项，8项Holder失败。发现后发出coordinator stop时已经FAILED终态，没有终止其他Java。全部XML、日志及精确原定方法核验保存 `main-android-selector-error/`，`authorized-scope.json` 按原18项命令＋新增1＋4个Progress方法逐项匹配，23/23实际通过、无skip，未重跑或以此掩盖91项总失败。额外Zoom和Holder通过项不用于夸大本批验收。
+
+用户随后明确要求完成手头工作后暂停。已补设计7.7的三批实施交接、红测试入口、禁止简化项、精确测试选择和约20～40小时剩余估算；没有开始下一批优化、构建新产物或操作实体设备。长前缀首次第35页和性能目标继续未通过，8项额外Holder失败也不冒称已修。暂停恢复后的第一步应读取本节及7.7，而非重复研究或重新合并旧分支。
+
+额外8项的只读分类（未执行前后基线对照，不能断言“早已存在”，也未修改断言关闭）：
+
+| Holder失败项 | 实际失败位置和关联判断 | 恢复后最小处理 |
+|---|---|---|
+| `known one page and wide cover retain reading cause when stable full slot refreshes` | L1756首次取票据时仍Queue、无原头；此前无rebind | 加真实加载／原图认证前置，保留阅读原因断言 |
+| `offscreen neighboring chapter cannot revoke the visible pending presentation` | L1836邻章未load即取票据；此前无rebind | 真实邻章取证后保留跨章隔离断言 |
+| `new activity retains current and pairing while global changes update the real viewer` | L752旧跳点2/3期望与同事实canonical1/2不同 | 独立核恢复逻辑目标与canonical，不能按actual改expected |
+| `four portrait pages mount first on left and trailing single on right` | L840明确开章FIRST_PAIR仍期待旧single0/pair1/2/single3 | 按真实手动状态核对契约，保留槽位覆盖和导航断言 |
+| `cold real B1 dimensions flow from HTTP encoded headers to late tail native slot` | L1997未知前缀却期望tail RIGHT，与暂定canonical LEFT不同 | 等原始必要证据再核已认证目标，不把未认证提案当最终像素 |
+| `actual decoded Android bitmap provides shared gutter side before locking the current slot` | L154正常显示位图被要求直接充当原始side，实际UNKNOWN | 正常位图等价复用属于后续资格方案，当前用production原始producer检验来源 |
+| `diagnostics distinguish sampled unknown first page from retained lock without frame spam` | L228原始认证未完成却要求首bitmap当次prepare | 补真实原始输入，保留UNKNOWN与锁的诊断区别 |
+| `release presentation diagnostics expose a late known hint skipped by an already locked slot` | L282要求认证前provisional锁，NO_TICKET拒绝 | 在有效认证／真实prepare后复测诊断，不能手补markDrawn |
+
+以上由原实施代理只读核XML和调用链，未发现本次release-only route的因果入口；并不代表所有额外测试已通过或原产品行为普遍正确。恢复后独立按这8个方法处理，预计2～4小时，不重跑整个类来代替诊断。含此项，剩余安排取约20～40小时；持久索引条件分支另计6～12小时。
+
+整合保持为同一可独立交付的功能批次：研究分支的原图认证／两端接线连同必要测试与资源需一起合并，无法按文件拆开编译验收；超出8文件／400行是该跨平台研究整合的内聚范围，非无关重构。本次未执行完整模块或全量验证，未构建新APK/EXE。提交和非强制推送的最终hash／远端核验在本次任务完成回执给出；本节的“尚未提交”描述均为当时核验状态，不代表暂停后应重复合并。
+
+### 2026-10-13 合并后的 CI 契约修复
+
+用户收到 `b714db1718` 的失败通知后要求检查并修复。[Build & Test 38396881760](https://github.com/AltairCardinal/mihon-desktop/actions/runs/38396881760) 的格式、Android交付契约、未签名候选构建均通过；首次完整执行 `:domain:testReleaseUnitTest` 737项中4项失败，未推进到app测试执行。这4项不是此前8项Holder失败，先前定向范围遗漏了三个相关契约类，不能据87项通过声称覆盖整个共享reader回归。
+
+本次恢复仅修复CI契约及已知后续会阻挡app测试的8项Holder失败，性能／需求调度等优化继续暂停；复用原实施者与独立审查者，主代理只串行执行精确类／方法的定向测试，不本地重跑完整模块或全量。保留CI原始完整结果，后续相关补验与未影响的通过证据组合使用；原8项基线来源为同一产品版本的 `main-android-selector-error/`。
+
+`pairing-ci-contract-red` 在本地Android JVM目标仅选3类，27项中4项准确重现CI：
+
+- FactDemand反向导航仍期望旧局部分组窗口11/12/13，实际canonical15/16回到逻辑14所在13/14，需求为10/11/12。独立按封面规则和源页顺序推导目标及五页可选窗口，不用actual生成expected。
+- ManualIntent迟到恢复要求空locked／未绘提案永久保留；原ticket在FIRST_PAIR恢复后失效。须保留逻辑位置和位置序号，再取得新提案；相邻已锁定／已画保护用例仍不能放宽。
+- ManualIntent自然末尾单页用五张竖图page4作fixture，但该输入已组成3/4；显式调整得到单4是拆分行为。须改成真正自然尾单并先断言单页原因，再验证显式恢复相邻对。
+- StrongRequirements冷／热用例是早期有意保留的失败预研门槛，直接调用低层captureViewport绕过新认证入口，缺原始前缀时要求立即固定最终槽位。须走captureCertifiedViewport，验证缺证据无票据、同原始事实认证后槽位一致、实际draw后不移位；不能删除该一致性要求，也不能把等待证据描述为无感耗时已经达标。
+
+原始27项XML归档整合树 `.gradle-coordinator/research-evidence/ci-contract-red/`。截至本段写入仍在实施，最终结果追加下文；没有修改原图、设备或签名。
+
+共享层修复结果：第一次绿测26/27，新增的“临时会话调整必须返回Save请求”断言不符既有API，已改为无持久化请求但精确核内存配对与metadata。独立审查另要求Strong用例的迟到事实必须确实未被认证提前取过；fixture改为6页，绘制前assert页5仍未知，随后首次接纳其原始宽图事实再验整帧不变及进度只一次。`pairing-ci-contract-final` 在JVM和Android JVM各27/27、无skip，scoped格式通过；独立审查PASS。产品代码没有改动，不将这组正确性测试称性能验收通过。初次绿测与最终XML分别保存 `ci-contract-first/`、`ci-contract-final/`，未重跑完整737项。
+
+并行触发的[Desktop CI 38396881897](https://github.com/AltairCardinal/mihon-desktop/actions/runs/38396881897)随后完成，3924项中80失败、18跳过。主代理只读下载803530B的测试报告，逐文件提取80项失败堆栈到ignored证据 `ci-desktop-b714/failures.json`；没有重跑或改Desktop代码。初步观察包括InMemoryPreferenceStore.getStringSet未实现、原始认证前置缺失／旧局部配对期望、部分持久化恢复与首像素契约、parity evidence指向失效，以及作者／书库等其他模块失败。不能把80项全称测试过时、全归因于本次合并，或把修改断言作为统一修法；有的未捕获协程异常可能是前序失败连带，需按堆栈及原始基线另行核验。
+
+这批Desktop失败明显超出当前4项共享＋8项Android的定向修复范围。本轮先完成已在实施的12项，Desktop报告保留为新增待诊断基线，不宣称双端CI全绿；若继续扩大须先明确新增范围、预算及对应局部验证，不能再启动一个无筛选Desktop全量来代替归因。
+
+
+Android收口：原8项失败按真实原图取证、认证及canonical配对契约迁移，保留阅读原因、跨章隔离、物理槽位和真实draw断言。额外覆盖3项相关呈现用例，`pairing-ci-android-final` 精确11/11通过、无skip，局部Spotless通过（2分28秒）；XML、命令和日志归档 `ci-android-final/`。此前一次编译失败为JUnit断言message参数位置错误，机械修正后通过，未改产品。原轮独立审查PASS，迟到normal LEFT与原始UNKNOWN负对照确认实际RIGHT槽位、原始内容身份及frame不变。共享层最终27×2证据继续适用。
+
+本轮仅4份测试文件与既有交接文档变化，关闭共享4项及Android8项已知失败；不宣称重新通过完整模块或双端CI。Desktop80项（27个类）仍未修复，其中14项明确落在测试InMemoryPreferenceStore.getStringSet未实现；其他失败须按保存的堆栈分别复现归因，不能批量改期望或跳过测试。恢复先处理共同fixture阻塞，再按reader认证、持久化/进度、其他模块分组定向验证，复用已通过完整基线，无新证据不得重跑全量。
+
+用户要求周额度剩3%前完成；2026-10-13 13:46 UTC本机会话rate_limits七天窗口已用96%，剩约4%。因此收口当前有证据的修复，未开始Desktop80项或后续性能优化；余额credit不能替代周额度。当前无法在该余量内保证全部CI故障完成，剩余工作明确保留。
+
+
+### 2026-10-13 周额度下限前的 Desktop 共同阻塞修复
+
+用户授权继续到周额度剩3%。本轮仅补齐共享 `InMemoryPreferenceStore.getStringSet` 的未实现方法，沿用已有本地副本语义（不是持久化store，也不承诺不同get返回对象共享修改）。合法初始字符串集合形成副本，缺失或类型错误回退默认值，复用既有Preference的set/delete/changes机制；不修改其他类型、真实持久化偏好或reader行为。新增同一共享契约由JVM和Android JVM执行，覆盖默认值、初值、修改通知、空集合、删除回退、本地副本和非法类型。
+
+`ci-string-set-red` JVM 1项准确以NotImplementedError失败；最小实现后 `ci-string-set-green` JVM和Android各1/1、无skip，局部Spotless通过。随后精确复验原CI堆栈含该TODO的14项，`ci-string-set-desktop` 10/14通过、4失败、0跳过。所有失败均已越过getStringSet，后续reader断言失败仍保留，不能称14项全部修复或双端CI全绿；原80项中只有本次实际通过的10项可关闭。XML、原始命令和新失败堆栈保存整合树 `.gradle-coordinator/research-evidence/ci-string-set-desktop/`，共享红绿分别在同级同名目录。未重跑全量。
+
+14:00 UTC（北京时间22:00）的实际七天窗口已用97%，达到用户3%下限，停止新增修复，只收取已启动验证并提交当前结果。作者发现测试漏配hasTitleAttribution仅只读定位，未修改；Desktop其他失败及性能优化仍待处理。恢复直接读取新失败堆栈，不再次将这4项归因为已消除的TODO。
+
+
+### 2026-10-13 Desktop reader 4 项后续失败
+
+`DesktopReaderRuntimeFactoryTest` 有双重header消费者：关闭 automatic matching 时，通用事实发布器与 spread 样本发布器都会通过同一内容所有者读bounded header。将通用分支限制到 automatic matching；关闭时由既有 spread 发布器的非自动分支负责尺寸读取。避免同一物理输入在确定性配对中重复打开。
+
+EXIF HTTP fixture 源 JPEG 原始尺寸为 40×60；orientation 6/8 后的视觉尺寸为 60×40，是横向整页，预期槽位 FULL、宽度700dp、起点0。原测试按竖页RIGHT半屏断言，和真实输入方向相反。Late EXIF 测试的普通图像全内容解码在有界header gate前已读到EXIF，因此首帧content orientation应为CLOCKWISE；其首像素早于header确认、后续画面身份和像素不移动的断言保持。
+
+冷尾页 B1 fixture 的 page16确定配对时需要从page15向前回溯至page9的横页边界；HTTP记录证明只需请求image/9..16。page15事实gate阻塞时，没有绘出tail；解除前序事实后最终RIGHT槽位和逻辑位置16稳定。这项复验揭示了 cold-prefix 引发的首屏等待，作为体验性能问题保留，不把必要的配对事实误标为可删除的可选IO，也不据最终稳定断言宣布“首次显示即时”。实际用户时间门槛仍须在R3性能计划用耗时对照通过。
+
+`ci-desktop-reader-four-green` 精确跑上述两类四方法，4/4通过、无skip，app-desktop局部格式通过（30秒）；JUnit XML、命令及日志归档 `.gradle-coordinator/research-evidence/ci-desktop-reader-four/`。连同此前14项中的10个通过用例，本批14项TODO相关回归均有通过证据；没有重跑整类14或Desktop模块完整测试。原Desktop CI其余66项失败仍待逐组归因，不能称CI全绿。

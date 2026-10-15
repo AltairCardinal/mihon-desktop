@@ -44,6 +44,7 @@ class GitHubAuthClient(
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
     private val deviceCodeRequestTimeoutMillis: Long = 30_000,
     requestGate: SyncHttpRequestGate? = null,
+    diagnosticContext: mihon.data.sync.runtime.SyncJournalContext? = null,
 ) : GitHubAuthPort {
     private val http = SyncHttpClient(
         productionClient,
@@ -53,6 +54,7 @@ class GitHubAuthClient(
             endpoints.apiBaseUrl.hostOrNull(),
         ),
         requestGate = requestGate,
+        diagnosticContext = diagnosticContext,
     )
 
     override suspend fun authorize(

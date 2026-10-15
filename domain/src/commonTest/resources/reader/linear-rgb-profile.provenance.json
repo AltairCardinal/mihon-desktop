@@ -1,0 +1,14 @@
+{
+  "description": "Synthetic 400x600 RGB JPEG with a thin white left margin and a varying right edge. No user artwork.",
+  "profile": "JDK 21 ICC_Profile.getInstance(ColorSpace.CS_LINEAR_RGB), inserted as an actual ICC_PROFILE APP2 JPEG segment",
+  "controlSha256": "b57c0680f75ad720fcf8fb123151de85029330c54ef21e40bd0830f8683bddc0",
+  "profileSha256": "541dd4553454c573c389c2d08480fe2b87120156b08df9a0a95ed70add57ba91",
+  "iccSha256": "790da58ccc79d03658283652716ec9896ed31e0392d818e60f6832815ee79f4c",
+  "goldenMethod": "Decode the untagged JPEG, interpret its raw RGB channels through CS_LINEAR_RGB.toRGB, round to sRGB 8-bit channels. Golden does not call the production decoder.",
+  "samples": [
+    {"x":397,"y":0,"edgeIndex":0,"untaggedArgb":-11517825,"expectedSrgbArgb":-6780485},
+    {"x":397,"y":120,"edgeIndex":10,"untaggedArgb":-9944961,"expectedSrgbArgb":-5535301},
+    {"x":397,"y":300,"edgeIndex":25,"untaggedArgb":-7585664,"expectedSrgbArgb":-3896900},
+    {"x":397,"y":588,"edgeIndex":49,"untaggedArgb":-3850111,"expectedSrgbArgb":-1799748}
+  ]
+}

@@ -6,8 +6,8 @@ import androidx.compose.foundation.ContextMenuState
 import androidx.compose.foundation.LocalContextMenuRepresentation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,10 +21,10 @@ import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.PointerId
-import androidx.compose.ui.scene.ComposeScenePointer
+import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.scene.ComposeScene
+import androidx.compose.ui.scene.ComposeScenePointer
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.unit.dp
@@ -44,18 +44,21 @@ import mihon.desktop.reader.DesktopReaderImageAsset
 import mihon.desktop.reader.DesktopReaderPageContentOwner
 import mihon.desktop.reader.DesktopReaderPageImageDecoder
 import mihon.desktop.reader.DesktopReaderPageImagePipeline
-import mihon.desktop.reader.DesktopReaderPresentationImageOwner
 import mihon.desktop.reader.DesktopReaderPresentationImageHolder
+import mihon.desktop.reader.DesktopReaderPresentationImageOwner
 import mihon.desktop.reader.DesktopReaderPresentationImageState
 import mihon.desktop.reader.DesktopReaderSessionState
 import mihon.desktop.reader.ReaderPageIoObserver
 import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.reader.ReadingMode
+import mihon.desktop.reader.SkiaImageDecoder
 import mihon.desktop.reader.ZoomState
 import mihon.desktop.reader.desktopReaderSessionState
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.domain.error.AppError
 import mihon.domain.reader.ReaderPageFact
+import mihon.domain.reader.ReaderPairingCertification
+import mihon.domain.reader.SharedDualPageSession
 import mihon.domain.reader.observability.ReaderIoProbe
 import mihon.domain.reader.observability.ReaderIoReporter
 import mihon.domain.reader.observability.ReaderMonotonicClock
@@ -68,13 +71,15 @@ import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.DesktopPreferenceStore
-import java.util.prefs.Preferences
-import java.io.File
 import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
+import java.io.File
 import java.util.IdentityHashMap
 import java.util.Locale
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.prefs.Preferences
+import javax.imageio.ImageIO
 import kotlin.math.roundToInt
 
 /** Pixels and reading callbacks come from the production Compose image/pager pipeline. */
@@ -304,15 +309,22 @@ class SharedDualPageNativeStablePresentationTest {
     }
 
     @Test
-    fun `dual zoom does not report an offscreen portrait when only its slot whitespace intersects the viewport`() = runTest {
-        Fixture(this, canvasWidth = 1_400, canvasHeight = 1_000, imageWidth = 1_600, imageHeight = 3_200).use { fixture ->
-            fixture.setZoom(ZoomState(scale = 2f, offsetX = -2_000f))
-            fixture.settle(60)
-            fixture.imageOwners(1)
-            assertTrue(!fixture.hasRedPixels())
-            assertTrue(1 !in fixture.presented, "Intersecting empty slot space cannot acknowledge image pixels")
+    fun `dual zoom does not report an offscreen portrait when only its slot whitespace intersects the viewport`() =
+        runTest {
+            Fixture(
+                this,
+                canvasWidth = 1_400,
+                canvasHeight = 1_000,
+                imageWidth = 1_600,
+                imageHeight = 3_200,
+            ).use { fixture ->
+                fixture.setZoom(ZoomState(scale = 2f, offsetX = -2_000f))
+                fixture.settle(60)
+                fixture.imageOwners(1)
+                assertTrue(!fixture.hasRedPixels())
+                assertTrue(1 !in fixture.presented, "Intersecting empty slot space cannot acknowledge image pixels")
+            }
         }
-    }
 
     @Test
     fun `dual zoom shared Android Desktop vectors render through the production reader`() = runTest {
@@ -397,8 +409,9 @@ class SharedDualPageNativeStablePresentationTest {
 
     @Test
     fun `dual zoom late partner preserves focused pixels leases and does not report hidden content`() = runTest {
-        Fixture(this).use { fixture ->
+        Fixture(this, originalHeadersBeforeImages = true).use { fixture ->
             fixture.pump()
+            fixture.assertCertifiedWithPendingPartner()
             fixture.setZoom(ZoomState(scale = 2f, offsetX = -200f))
             fixture.settle()
             assertEquals(0 to 399, fixture.redBounds())
@@ -420,7 +433,7 @@ class SharedDualPageNativeStablePresentationTest {
 
     @Test
     fun `later real image paints left then cumulative reading appends the earlier page`() = runTest {
-        Fixture(this, slowCurrent = true).use { fixture ->
+        Fixture(this, slowCurrent = true, originalHeadersBeforeImages = true).use { fixture ->
             fixture.partner.complete(Unit)
             fixture.pump(GREEN)
             val rectangle = fixture.colorRectangle(GREEN)
@@ -450,18 +463,30 @@ class SharedDualPageNativeStablePresentationTest {
 
     @Test
     fun `later image cannot guess the unknown earlier type and actual wide earlier image paints full`() = runTest {
-        Fixture(this, facts = false, wideCurrent = true, slowCurrent = true).use { fixture ->
+        Fixture(
+            this,
+            facts = false,
+            wideCurrent = true,
+            slowCurrent = true,
+            originalHeadersBeforeImages = true,
+            deferredOriginalHeaderPage = 1,
+        ).use { fixture ->
             fixture.partner.complete(Unit)
             repeat(40) {
                 fixture.frame()
                 runCurrent()
             }
+            fixture.assertOriginalHeaderPending(1)
+            assertTrue(!fixture.hasRedPixels())
             assertEquals(null, fixture.greenBounds())
             assertTrue(fixture.reports.isEmpty())
             fixture.current.complete(Unit)
             fixture.pump()
             assertTrue(fixture.redBounds().first < 100)
+            assertEquals(0 to 399, fixture.redBounds(), "The certified wide original must occupy the full viewport")
             assertEquals(setOf(1), fixture.visibleSources())
+            assertEquals(setOf(1), fixture.presented, "The hidden partner must not be reported as displayed")
+            assertEquals(setOf(1), fixture.reports.flatten().mapTo(mutableSetOf(), ReaderPageId::sourcePageIndex))
         }
     }
 
@@ -576,7 +601,7 @@ class SharedDualPageNativeStablePresentationTest {
 
     @Test
     fun `explicit existing retry permits current content reload without manufacturing navigation`() = runTest {
-        Fixture(this).use { fixture ->
+        Fixture(this, originalHeadersBeforeImages = true).use { fixture ->
             fixture.pump()
             fixture.retry()
             fixture.replacePage(1)
@@ -678,7 +703,7 @@ class SharedDualPageNativeStablePresentationTest {
 
     @Test
     fun `background replacement retains the displayed original content until its real frame leaves`() = runTest {
-        Fixture(this).use { fixture ->
+        Fixture(this, originalHeadersBeforeImages = true).use { fixture ->
             fixture.pump()
             val rectangle = fixture.redRectangle()
             val mount = fixture.mount()
@@ -701,10 +726,11 @@ class SharedDualPageNativeStablePresentationTest {
 
     @Test
     fun `unrelated content replacement inherits the already drawn current frame and geometry`() = runTest {
-        Fixture(this).use { fixture ->
+        Fixture(this, originalHeadersBeforeImages = true).use { fixture ->
             fixture.pump()
             val rectangle = fixture.redRectangle()
             val mount = fixture.mount()
+            val frame = fixture.sharedFrame()
             fixture.replacePage(5)
             assertEquals(1L, fixture.attempt(5))
             repeat(30) {
@@ -712,7 +738,27 @@ class SharedDualPageNativeStablePresentationTest {
                 runCurrent()
                 assertEquals(rectangle, fixture.redRectangle())
                 assertSame(mount, fixture.mount())
+                assertEquals(frame, fixture.sharedFrame())
             }
+        }
+    }
+
+    @Test
+    fun `original native close after unrelated rebind releases deferred visible content before recapture`() = runTest {
+        Fixture(this, originalHeadersBeforeImages = true).use { fixture ->
+            fixture.pump()
+            val closeOriginal = fixture.currentNativeCloseAction()
+            val frame = fixture.sharedFrame()
+            fixture.replacePage(5)
+            assertEquals(1L, fixture.attempt(5), "An unrelated content change must rebind immediately")
+            assertEquals(frame, fixture.sharedFrame(), "The original native mount still owns its old ticket")
+            fixture.replacePage(1)
+            assertEquals(0L, fixture.attempt(1), "The displayed old content remains protected until native close")
+            // No Compose frame or capture is allowed between rebind and this actual presenter close.
+            closeOriginal()
+            assertEquals(1L, fixture.attempt(1), "Native close must reach the successor and accept deferred content")
+            closeOriginal()
+            assertEquals(1L, fixture.attempt(1), "Duplicate native cleanup must not restart or revoke content")
         }
     }
 
@@ -776,7 +822,7 @@ class SharedDualPageNativeStablePresentationTest {
 
     @Test
     fun `actual viewport resize renews geometry without creating navigation or losing pending partner`() = runTest {
-        Fixture(this).use { fixture ->
+        Fixture(this, originalHeadersBeforeImages = true).use { fixture ->
             fixture.pump()
             val before = fixture.sharedFrame()
             fixture.resize()
@@ -811,6 +857,8 @@ class SharedDualPageNativeStablePresentationTest {
         imageHeight: Int = 48,
         mode: ReadingMode = ReadingMode.RTL,
         private val measureFrames: Boolean = false,
+        originalHeadersBeforeImages: Boolean = false,
+        deferredOriginalHeaderPage: Int? = null,
     ) : AutoCloseable {
         private val root = Preferences.userRoot().node("/mihon/native-stable/${System.nanoTime()}")
         private val store = DesktopPreferenceStore(root.node("store"))
@@ -844,11 +892,33 @@ class SharedDualPageNativeStablePresentationTest {
             onPageRetry = { retries += it.sourcePageIndex },
         )
         private val reporter = ReaderIoReporter(ReaderIoProbe.None, ReaderMonotonicClock { 0L })
+
+        // Opt-in scenarios supply real independent metadata, optionally withholding one header
+        // until its image gate opens. The default fixture retains its existing header timing.
+        private val originalImages = if (originalHeadersBeforeImages) {
+            model.state.value.session.activeChapter.pages.associate { page ->
+                val index = page.id.sourcePageIndex
+                val width = if ((index == 2 && widePartner) || (index == 1 && wideCurrent)) 72 else imageWidth
+                val image = BufferedImage(width, imageHeight, BufferedImage.TYPE_INT_ARGB)
+                val color = when (index) {
+                    initialPage -> RED
+                    2 -> GREEN
+                    else -> BLUE
+                }
+                for (y in 0 until imageHeight) for (x in 0 until width) image.setRGB(x, y, color)
+                val encoded = ByteArrayOutputStream().also {
+                    assertTrue(ImageIO.write(image, "png", it))
+                }.toByteArray()
+                requireNotNull(page.encodedPageRef) to encoded
+            }
+        } else {
+            emptyMap()
+        }
         private val content = DesktopReaderPageContentOwner(
             scope,
-            {
+            { ref ->
                 sourceOpens.incrementAndGet()
-                byteArrayOf(1)
+                originalImages[ref] ?: byteArrayOf(1)
             },
             reporter,
         )
@@ -856,10 +926,16 @@ class SharedDualPageNativeStablePresentationTest {
             scope,
             content,
             reporter,
-            decoder = DesktopReaderPageImageDecoder { _, key ->
+            decoder = DesktopReaderPageImageDecoder { encoded, key ->
                 if (key.pageIndex == 2) partner.await()
                 if (key.pageIndex == 1 && slowCurrent) current.await()
-                val width = if ((key.pageIndex == 2 && widePartner) || (key.pageIndex == 1 && wideCurrent)) 72 else imageWidth
+                val width = if ((key.pageIndex == 2 && widePartner) ||
+                    (key.pageIndex == 1 && wideCurrent)
+                ) {
+                    72
+                } else {
+                    imageWidth
+                }
                 val bitmapWidth = if (width > 512) 32 else width
                 val bitmapHeight = (imageHeight.toDouble() * bitmapWidth / width).roundToInt()
                 val bitmap = Bitmap().apply { allocN32Pixels(bitmapWidth, bitmapHeight) }
@@ -874,9 +950,21 @@ class SharedDualPageNativeStablePresentationTest {
                     )
                 }
                 val page = model.state.value.session.activeChapter.pages[key.pageIndex].id
-                if (facts) {
+                if (key.pageIndex == deferredOriginalHeaderPage) {
+                    check(originalHeadersBeforeImages)
+                    val (originalWidth, originalHeight) = requireNotNull(SkiaImageDecoder.peekSize(encoded))
                     assertTrue(
-                        model.acceptDualFact(model.captureDualFact(page)!!, ReaderPageFact.dimensions(width, imageHeight)),
+                        model.acceptDualFact(
+                            model.captureDualFact(page)!!,
+                            ReaderPageFact.dimensions(originalWidth, originalHeight),
+                        ),
+                    )
+                } else if (facts) {
+                    assertTrue(
+                        model.acceptDualFact(
+                            model.captureDualFact(page)!!,
+                            ReaderPageFact.dimensions(width, imageHeight),
+                        ),
                     )
                 }
                 DesktopReaderImageAsset(
@@ -965,10 +1053,17 @@ class SharedDualPageNativeStablePresentationTest {
                 event,
                 Offset(x, 200f),
                 type = type,
-                button = if (type == PointerType.Mouse && event != PointerEventType.Move) PointerButton.Primary else null,
+                button = if (type == PointerType.Mouse &&
+                    event != PointerEventType.Move
+                ) {
+                    PointerButton.Primary
+                } else {
+                    null
+                },
             )
             settle(2)
         }
+
         @OptIn(androidx.compose.ui.InternalComposeUiApi::class)
         fun cancelPointerInput() {
             // ImageComposeScene does not expose the native scene's cancellation entrypoint.
@@ -1087,11 +1182,26 @@ class SharedDualPageNativeStablePresentationTest {
         }
         init {
             owner.beginGeneration(1)
-            // A real remote header may know C before D's delayed content opens. No D guess is supplied.
             val page = model.state.value.session.activeChapter.pages[initialPage].id
-            if (remoteFact) {
+            if (originalHeadersBeforeImages) {
+                model.state.value.session.activeChapter.pages.forEach { original ->
+                    if (original.id.sourcePageIndex == deferredOriginalHeaderPage) return@forEach
+                    val encoded = originalImages.getValue(requireNotNull(original.encodedPageRef))
+                    val (width, height) = requireNotNull(SkiaImageDecoder.peekSize(encoded))
+                    assertTrue(
+                        model.acceptDualFact(
+                            model.captureDualFact(original.id)!!,
+                            ReaderPageFact.dimensions(width, height),
+                        ),
+                    )
+                }
+            } else if (remoteFact) {
+                // A remote header may know C before D's delayed content opens. No D guess is supplied.
                 assertTrue(
-                    model.acceptDualFact(model.captureDualFact(page)!!, ReaderPageFact.dimensions(imageWidth, imageHeight)),
+                    model.acceptDualFact(
+                        model.captureDualFact(page)!!,
+                        ReaderPageFact.dimensions(imageWidth, imageHeight),
+                    ),
                 )
             }
             val dependencies = mockk<DesktopUiDependencies> {
@@ -1255,6 +1365,27 @@ class SharedDualPageNativeStablePresentationTest {
             }.config[ReaderPagerNativePresentationKey]
         }
         fun sharedFrame() = requireNotNull(selectedNative().frameId)
+        fun currentNativeCloseAction(): () -> Unit = selectedNative()::close
+        private fun sharedSession() = model.javaClass.getDeclaredField("dualSession").run {
+            isAccessible = true
+            get(model) as SharedDualPageSession
+        }
+        fun assertOriginalHeaderPending(pageIndex: Int) {
+            val session = sharedSession()
+            val page = session.identity.pageIds[pageIndex]
+            assertEquals(null, session.pageFact(page), "The withheld original header must remain unknown")
+            assertTrue(session.certifyPairing(page) is ReaderPairingCertification.NeedFacts)
+            assertTrue(!current.isCompleted, "The current image and its original header remain gated together")
+        }
+        fun assertCertifiedWithPendingPartner() {
+            val session = sharedSession()
+            assertTrue(
+                session.certifyPairing() is ReaderPairingCertification.Certified,
+                "Original PNG headers must certify the spread before its partner's display decode finishes",
+            )
+            assertTrue(!partner.isCompleted, "The partner bitmap must remain behind the original decode gate")
+            assertEquals(setOf(initialPage), presented, "Only the first page has actually exposed pixels")
+        }
         fun visibleSources(): Set<Int> {
             fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
             val frame = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.single {

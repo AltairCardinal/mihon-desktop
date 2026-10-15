@@ -43,6 +43,7 @@ class GitHubSyncRepositoryManager(
     private val accessToken: suspend () -> String,
     private val apiBaseUrl: String = "https://api.github.com",
     private val requestGate: SyncHttpRequestGate? = null,
+    private val diagnosticContext: mihon.data.sync.runtime.SyncJournalContext? = null,
 ) {
     suspend fun createOrResume(
         intent: SyncRepositoryCreationIntent,
@@ -313,7 +314,8 @@ class GitHubSyncRepositoryManager(
     private suspend fun session(expected: SyncGitHubAccount): GitHubPrivateRepositorySelector {
         val token =
             accessToken().takeIf(String::isNotBlank) ?: failManagement(SyncDiscoveryProblem.AUTHORIZATION_REQUIRED)
-        val api = GitHubPrivateRepositorySelector(productionClient, { token }, apiBaseUrl, requestGate)
+        val api =
+            GitHubPrivateRepositorySelector(productionClient, { token }, apiBaseUrl, requestGate, diagnosticContext)
         val account = api.requestPath("/user").requireSyncSuccess().managementObject()
         if (account.number("id") != expected.id || !account.string("login").equals(expected.login, true) ||
             account.string("type") != "User"

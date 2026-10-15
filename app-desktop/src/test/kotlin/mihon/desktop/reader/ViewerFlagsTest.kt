@@ -7,6 +7,14 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class ViewerFlagsTest {
+    @Test
+    fun `shared LTR dual mode is displayed as a LTR pair on desktop`() {
+        val flags = mihon.domain.reader.ReaderModeFlags.write(0x38L, 8L)
+        assertEquals(ReadingMode.LTR, readingModeFromViewerFlags(flags))
+        assertEquals(true, dualPageFromViewerFlags(flags))
+        assertNull(readingModeFromViewerFlags(viewerFlagsFollowingGlobal(flags)))
+        assertNull(dualPageFromViewerFlags(viewerFlagsFollowingGlobal(flags)))
+    }
 
     @Test
     fun `flags 0 returns null (use default)`() {

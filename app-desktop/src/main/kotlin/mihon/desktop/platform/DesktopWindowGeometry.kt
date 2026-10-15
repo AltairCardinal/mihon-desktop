@@ -1,5 +1,6 @@
 package mihon.desktop.platform
 
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -97,14 +98,24 @@ internal class DesktopWindowGeometryController(
         size = geometry?.let { DpSize(it.width.dp, it.height.dp) } ?: DpSize(1024.dp, 768.dp),
     )
 
+    @OptIn(ExperimentalComposeUiApi::class)
     fun bind(window: ComposeWindow): AutoCloseable {
         check(boundWindow == null) { "Window geometry already has an owner" }
         boundWindow = window
         var closed = false
         var transitionsDisabled = false
+        var cloaked = false
         if (geometry?.maximized == true && !window.isShowing) {
+            cloaked = setWindowsWindowCloaked(window, true)
+            if (!cloaked) System.err.println("Desktop startup window could not be cloaked")
             transitionsDisabled = transitions.setDisabled(window, true)
             if (!transitionsDisabled) System.err.println("Desktop startup window transition could not be disabled")
+        }
+        fun reveal() {
+            if (cloaked) {
+                cloaked = !setWindowsWindowCloaked(window, false)
+                if (cloaked) System.err.println("Desktop startup window could not be revealed")
+            }
         }
         fun restoreTransitions() {
             if (transitionsDisabled) {
@@ -116,7 +127,21 @@ internal class DesktopWindowGeometryController(
         }
         val opening = object : WindowAdapter() {
             override fun windowOpened(event: WindowEvent) {
-                SwingUtilities.invokeLater { if (!closed) restoreTransitions() }
+                SwingUtilities.invokeLater {
+                    if (!closed) {
+                        try {
+                            // Maximization resizes the native peer only when it is shown. Lay out and
+                            // draw that final client area before exposing it through the compositor.
+                            if (cloaked) {
+                                window.validate()
+                                window.renderImmediately()
+                            }
+                        } finally {
+                            reveal()
+                            restoreTransitions()
+                        }
+                    }
+                }
             }
         }
         window.addWindowListener(opening)
@@ -135,6 +160,7 @@ internal class DesktopWindowGeometryController(
         return AutoCloseable {
             if (!closed) {
                 save()
+                reveal()
                 restoreTransitions()
                 closed = true
                 window.removeWindowListener(opening)

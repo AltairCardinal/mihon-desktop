@@ -55,11 +55,13 @@ class SyncDatabaseExchange(
     private val metrics: SyncMetrics = NoopSyncMetrics,
     private val snapshotOwner: SyncSnapshotWriteOwner? = null,
     private val liveProgress: SyncLiveProgressSession? = null,
+    private val diagnosticContext: SyncJournalContext? = null,
 ) {
     private val inboxStore = SyncInboxStore(handler)
     internal val snapshotEvidenceEvaluations: Long get() = inboxStore.remoteGuard.evidenceEvaluations
 
     suspend fun exchange(spaceId: String, generation: Long, repository: SyncRepository): SyncRunResult {
+        var diagnosticStage = SyncJournalStage.CHECKING
         var runPlan = progress?.plan()
         val persistentPlan = progress?.supportsFrozenPlan == true
         var uploaded = 0
@@ -92,11 +94,27 @@ class SyncDatabaseExchange(
             }
             if (!enabled) return SyncRunResult(SyncRunStatus.SKIPPED)
             if (runPlan == null && allowImport()) baseline.ensureMetadataBaseline(spaceId, generation)
+            diagnosticStage = SyncJournalStage.CHECKING
+            diagnosticContext?.journal?.record(
+                SyncJournalEventKind.PHASE,
+                diagnosticStage,
+                diagnosticContext.runId,
+                attemptId = diagnosticContext.attemptId,
+                trigger = diagnosticContext.trigger,
+            )
             progress?.phase(SyncRunPhase.CHECKING, processed = 0, total = 0)
             while (runPlan == null && allowImport()) {
                 val importId = handler.await {
                     sync_importQueries.getNextPendingImport(spaceId, generation).executeAsOneOrNull()
                 } ?: break
+                diagnosticStage = SyncJournalStage.IMPORTING
+                diagnosticContext?.journal?.record(
+                    SyncJournalEventKind.PHASE,
+                    diagnosticStage,
+                    diagnosticContext.runId,
+                    attemptId = diagnosticContext.attemptId,
+                    trigger = diagnosticContext.trigger,
+                )
                 progress?.phase(SyncRunPhase.IMPORTING, processed = 0, total = 0)
                 progress?.log(importId, "首次合并", "正在写入已保存的数据", SyncRunLogStatus.ACTIVE)
                 liveProgress?.begin(
@@ -235,6 +253,14 @@ class SyncDatabaseExchange(
             var downloadRound = 0
             var downloadHead: String? = null
             while (true) {
+                diagnosticStage = SyncJournalStage.DOWNLOADING
+                diagnosticContext?.journal?.record(
+                    SyncJournalEventKind.PHASE,
+                    diagnosticStage,
+                    diagnosticContext.runId,
+                    attemptId = diagnosticContext.attemptId,
+                    trigger = diagnosticContext.trigger,
+                )
                 progress?.phase(SyncRunPhase.DOWNLOADING, downloadedTotal, 0, completed = downloadedTotal)
                 observeSnapshot(snapshot)
                 if (downloadRound == 0) liveProgress?.hold(SyncProgressHold.ACTIVE)
@@ -283,6 +309,14 @@ class SyncDatabaseExchange(
                             downloadedTotal += (entry.lastSeq - entry.firstSeq + 1).coerceAtLeast(0)
                             progress?.totals(uploadedTotal, downloadedTotal)
                         }
+                        diagnosticStage = SyncJournalStage.MERGING
+                        diagnosticContext?.journal?.record(
+                            SyncJournalEventKind.PHASE,
+                            diagnosticStage,
+                            diagnosticContext.runId,
+                            attemptId = diagnosticContext.attemptId,
+                            trigger = diagnosticContext.trigger,
+                        )
                         progress?.phase(
                             SyncRunPhase.MERGING,
                             downloadedTotal,
@@ -343,6 +377,14 @@ class SyncDatabaseExchange(
                     yield()
                     continue
                 }
+                diagnosticStage = SyncJournalStage.UPLOADING
+                diagnosticContext?.journal?.record(
+                    SyncJournalEventKind.PHASE,
+                    diagnosticStage,
+                    diagnosticContext.runId,
+                    attemptId = diagnosticContext.attemptId,
+                    trigger = diagnosticContext.trigger,
+                )
                 progress?.phase(SyncRunPhase.UPLOADING, uploadedTotal, 0, completed = uploadedTotal)
                 if (!persistentPlan && liveProgress != null && (uploadScope == null || uploadRemainingExpected == 0L)) {
                     val frozen = outboxStore.freezeRound(spaceId, generation)
@@ -420,6 +462,14 @@ class SyncDatabaseExchange(
                     if (catchUpSegments > MAX_CATCH_UP_SEGMENTS) {
                         if (discovery.pending(spaceId, generation, limit = 1).isNotEmpty()) {
                             problem = SyncRunProblem.REMOTE_CHANGED
+                            diagnosticStage = SyncJournalStage.DOWNLOADING
+                            diagnosticContext?.journal?.record(
+                                SyncJournalEventKind.PHASE,
+                                diagnosticStage,
+                                diagnosticContext.runId,
+                                attemptId = diagnosticContext.attemptId,
+                                trigger = diagnosticContext.trigger,
+                            )
                             progress?.phase(
                                 SyncRunPhase.DOWNLOADING,
                                 downloadedTotal,
@@ -448,6 +498,14 @@ class SyncDatabaseExchange(
                     retryAfterMillis = result.publish.retryAfterMillis
                     networkPhase = result.publish.networkPhase
                     httpStatus = result.publish.httpStatus
+                    diagnosticStage = SyncJournalStage.UPLOADING
+                    diagnosticContext?.journal?.record(
+                        SyncJournalEventKind.PHASE,
+                        diagnosticStage,
+                        diagnosticContext.runId,
+                        attemptId = diagnosticContext.attemptId,
+                        trigger = diagnosticContext.trigger,
+                    )
                     progress?.phase(
                         SyncRunPhase.UPLOADING,
                         uploadedTotal + downloadedTotal,
@@ -477,6 +535,14 @@ class SyncDatabaseExchange(
                 uploaded += publishedCount
                 uploadedTotal += publishedCount
                 progress?.totals(uploadedTotal, downloadedTotal)
+                diagnosticStage = SyncJournalStage.CONFIRMING
+                diagnosticContext?.journal?.record(
+                    SyncJournalEventKind.PHASE,
+                    diagnosticStage,
+                    diagnosticContext.runId,
+                    attemptId = diagnosticContext.attemptId,
+                    trigger = diagnosticContext.trigger,
+                )
                 progress?.phase(SyncRunPhase.CONFIRMING, uploadedTotal + downloadedTotal, 0)
                 progress.logBatch(result.batch, result.publish.batchId, "已确认上传")
                 yield()
@@ -491,8 +557,15 @@ class SyncDatabaseExchange(
                 progress.hasUnconfirmedDownloads() || progress.hasUnfinishedPlan()
             }
         } catch (cancelled: CancellationException) {
+            diagnosticContext?.record(SyncJournalEventKind.TERMINAL, SyncJournalCode.CANCELLED)
             throw cancelled
         } catch (failure: Exception) {
+            diagnosticContext?.copy(stage = diagnosticStage)?.record(
+                SyncJournalEventKind.EXCEPTION,
+                failure = failure,
+                networkPhase = (failure as? SyncHttpException)?.networkPhase,
+                httpStatus = (failure as? SyncHttpException)?.code,
+            )
             problem = failure.syncProblem()
             retryAfterMillis = (failure as? SyncHttpException)?.retryAfterMillis
             networkPhase = (failure as? SyncHttpException)?.networkPhase

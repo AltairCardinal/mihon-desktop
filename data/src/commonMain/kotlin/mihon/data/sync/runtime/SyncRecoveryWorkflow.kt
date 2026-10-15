@@ -29,6 +29,7 @@ internal class SyncRecoveryWorkflow(
     private val handler: DatabaseHandler,
     private val clock: () -> Long,
 ) {
+    private var unverifiedScopeObserved = false
     private val inbox = SyncInboxStore(handler)
     private val repair = SyncDataRepairService(handler, inbox, runtime.projector)
 
@@ -107,7 +108,16 @@ internal class SyncRecoveryWorkflow(
         return SyncRecoveryFacts(
             flow,
             report,
-            oldScopes(context),
+            oldScopes(context).also { old ->
+                if (old.isNotEmpty() && !unverifiedScopeObserved) {
+                    runtime.diagnosticJournal?.record(
+                        SyncJournalEventKind.UNVERIFIED_SCOPE,
+                        SyncJournalStage.RECOVERY,
+                        code = SyncJournalCode.UNVERIFIED_OLD_SCOPE,
+                    )
+                    unverifiedScopeObserved = true
+                }
+            },
             flow?.externalScopes.orEmpty() + runtime.onboarding.storage.unboundRecoveryFlow()?.externalScopes.orEmpty(),
         )
     }
@@ -504,8 +514,20 @@ internal class SyncRecoveryWorkflow(
                 external,
             )
         } catch (cancelled: CancellationException) {
+            runtime.diagnosticJournal?.record(
+                SyncJournalEventKind.RECOVERY,
+                SyncJournalStage.RECOVERY_VERIFY,
+                code = SyncJournalCode.CANCELLED,
+            )
             throw cancelled
         } catch (error: Exception) {
+            runtime.diagnosticJournal?.record(
+                SyncJournalEventKind.EXCEPTION,
+                SyncJournalStage.RECOVERY_VERIFY,
+                failure = error,
+                networkPhase = (error as? SyncHttpException)?.networkPhase,
+                httpStatus = (error as? SyncHttpException)?.code,
+            )
             // A result for an old target is never written onto a newer binding.
             if (context.matches(runtime.recoveryBinding())) {
                 update(context) {
@@ -545,6 +567,18 @@ internal class SyncRecoveryWorkflow(
             updatedAtMillis = clock(),
         )
         storage.saveRecoveryFlow(context.stored, next, before)
+        runtime.diagnosticJournal?.record(
+            SyncJournalEventKind.RECOVERY,
+            when (next.step) {
+                SyncRecoveryFlowStep.CHECK_CONDITIONS -> SyncJournalStage.RECOVERY_CONDITIONS
+                SyncRecoveryFlowStep.REPAIR_DATA -> SyncJournalStage.RECOVERY_REPAIR
+                SyncRecoveryFlowStep.EXTERNAL_ACTION -> SyncJournalStage.RECOVERY_EXTERNAL
+                SyncRecoveryFlowStep.VERIFY_SYNCHRONIZATION -> SyncJournalStage.RECOVERY_VERIFY
+                SyncRecoveryFlowStep.COMPLETE -> SyncJournalStage.COMPLETE
+            },
+            code = next.outcome?.let { outcome -> SyncJournalCode.entries.firstOrNull { it.name == outcome.name } }
+                ?: if (next.conditionsVerified) SyncJournalCode.SUCCESS else SyncJournalCode.CONDITIONS_UNVERIFIED,
+        )
     }
 
     private suspend fun oldScopes(context: SyncRecoveryBinding): List<SyncRecoveryScopeSummary> {

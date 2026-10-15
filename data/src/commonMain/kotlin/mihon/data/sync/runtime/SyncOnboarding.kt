@@ -482,13 +482,28 @@ internal class SyncOnboarding(
         }
     }
 
-    suspend fun session(expectedAccountId: Long? = null, accessToken: String? = null): Session {
+    suspend fun session(
+        expectedAccountId: Long? = null,
+        accessToken: String? = null,
+        diagnosticRunId: String? = null,
+        diagnosticAttemptId: Long? = null,
+        diagnosticTrigger: mihon.domain.sync.runtime.SyncTrigger? = null,
+    ): Session {
         val token = accessToken ?: runtime.accessToken()
         val http = GitHubPrivateRepositorySelector(
             client,
             { token },
             apiBaseUrl,
             expectedAccountId?.let(runtime::accountHttpRequestGate),
+            runtime.diagnosticJournal?.let {
+                SyncJournalContext(
+                    it,
+                    SyncJournalStage.AUTHORIZATION,
+                    diagnosticRunId,
+                    diagnosticAttemptId,
+                    diagnosticTrigger,
+                )
+            },
         )
         val response = http.requestPath("/user")
         response.requireSyncSuccess()
@@ -559,6 +574,9 @@ internal class SyncOnboarding(
         persistentObjectCacheDirectory: Path? = null,
         requestGate: SyncHttpRequestGate? = null,
         bodyObserver: SyncHttpBodyObserver? = null,
+        diagnosticContext: SyncJournalContext? = runtime.diagnosticJournal?.let {
+            SyncJournalContext(it, SyncJournalStage.SPACE_CHECK)
+        },
     ): GitHubSyncTransport = GitHubSyncTransport(
         client,
         { token },
@@ -568,6 +586,7 @@ internal class SyncOnboarding(
         persistentObjectCacheDirectory = persistentObjectCacheDirectory,
         requestGate = requestGate,
         bodyObserver = bodyObserver,
+        diagnosticContext = diagnosticContext,
     ).also { transport ->
         if (manifestStore != null && manifestBinding != null) {
             transport.installSnapshotManifestStore(manifestStore, manifestBinding)
@@ -575,10 +594,23 @@ internal class SyncOnboarding(
     }
 
     private fun spaces(token: String, requestGate: SyncHttpRequestGate? = null) =
-        GitHubSyncSpaceClient(client, { token }, apiBaseUrl, requestGate, runtime.repositoryScope)
+        GitHubSyncSpaceClient(
+            client,
+            { token },
+            apiBaseUrl,
+            requestGate,
+            runtime.repositoryScope,
+            runtime.diagnosticJournal?.let { SyncJournalContext(it, SyncJournalStage.SPACE_CHECK) },
+        )
 
     fun repositoryManager(token: String, accountId: Long) =
-        GitHubSyncRepositoryManager(client, { token }, apiBaseUrl, runtime.accountHttpRequestGate(accountId))
+        GitHubSyncRepositoryManager(
+            client,
+            { token },
+            apiBaseUrl,
+            runtime.accountHttpRequestGate(accountId),
+            runtime.diagnosticJournal?.let { SyncJournalContext(it, SyncJournalStage.SPACE_CHECK) },
+        )
 
     class Session(val account: SyncGitHubAccount, val token: String, val http: GitHubPrivateRepositorySelector) {
         override fun toString(): String = "SyncSession(<redacted>)"

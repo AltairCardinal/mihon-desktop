@@ -79,7 +79,10 @@ data object BrowseTab : Tab {
             tabs = tabs,
             state = state,
             searchQuery = extensionsState.searchQuery,
-            onChangeSearchQuery = extensionsScreenModel::search,
+            onChangeSearchQuery = {
+                mihon.domain.easteregg.PigEasterEggTrigger.check(it)
+                extensionsScreenModel.search(it)
+            },
         )
         LaunchedEffect(Unit) {
             switchToExtensionTabChannel.receiveAsFlow()

@@ -73,7 +73,7 @@ fun ReaderAppBars(
     onRetryPairing: () -> Unit = {},
     onClickAdjustPairing: () -> Unit = {},
 ) {
-    val isRtl = viewer is R2LPagerViewer || viewer is DualPageR2LPagerViewer
+    val isRtl = viewer is R2LPagerViewer || (viewer is DualPageR2LPagerViewer && viewer.isRtl)
     val backgroundColor = MaterialTheme.colorScheme
         .surfaceColorAtElevation(3.dp)
         .copy(alpha = if (isSystemInDarkTheme()) 0.9f else 0.95f)

@@ -12,7 +12,9 @@
 
 Main 使用 DesktopMainWindow 作为唯一主窗口外壳，内部继续消费 Compose WindowState，并绑定 DesktopWindowGeometryController。Windows adapter 观察真实 AWT 移动、缩放、显示和 placement 事件；普通矩形与最大化标志分开维护，最小化和全屏矩形不覆盖普通状态。变更事件只更新内存，关闭请求在应用协调器之前保存，composition 释放也保存，以覆盖 Test Mode 等正常退出路径。监听器按窗口生命周期释放，迟到事件不再写入。
 
-Compose 的初始 WindowState 已在首次显示前包含恢复值，但 Windows 仍可能播放首次最大化过渡。恢复最大化时，在隐藏窗口完成首次 composition、绑定原生窗口时，通过窗口级 [DWMWA_TRANSITIONS_FORCEDISABLED](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute) 暂停过渡；收到 WINDOW_OPENED 后等待一次 DwmFlush，再恢复过渡。释放窗口时也清理此状态。不修改系统动画偏好，不用固定延时，也不以最大化矩形覆盖普通窗口记录。原生调用失败会记录 stderr 并继续正常显示，此时可能仍有系统过渡。
+Compose 的初始 WindowState 在首次显示前已包含恢复值，但 Windows 原生 peer 在显示时才落实最大化尺寸。Compose 提前绘制的第一帧仍可能是普通窗口尺寸：实测外框已最大化，内容先局限于左上角，随后重新布局并出现黑白空白区。因此只禁止最大化动画不能保证无跳变。
+
+恢复最大化时，在隐藏窗口完成首次 composition、绑定原生窗口时，设置窗口级 [DWMWA_CLOAK](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute)：窗口仍由 DWM 合成，但暂不呈现给用户。收到 WINDOW_OPENED 后，在 AWT 事件队列中对最终尺寸执行 validate 和 ComposeWindow.renderImmediately，完成一次 DwmFlush 后解除 cloak。此阶段仍临时禁止窗口过渡，揭示后恢复系统动画。普通启动不经过此流程；不修改全局动画、不等待固定时长、不改写普通窗口记录。释放时清理 cloak 与过渡状态；绘制失败也通过 finally 解除隐藏，原生调用失败记录 stderr 并沿用正常显示。
 
 记录为一个 JSON 字符串，使用 DesktopAppPreferences.windowGeometry 和 Preference.appStateKey("desktop_window_geometry")。沿用现有 DesktopPreferenceStore 的同步 flush 和失败回滚边界，不新增数据库、DI 服务或导航。机器局部 app state 被现有备份及同步规则排除；隔离测试配置和正式用户配置各自保存。坐标单位为 AWT/Compose 的桌面逻辑坐标，不把物理像素或 Android dp 常量作为主窗口默认值来源。
 
@@ -27,6 +29,6 @@ python scripts/gradle-coordinator.py run --key window-policy -- .\gradlew.bat :a
 
 nativeWindowTest 使用图形桌面和 native-window 标签，普通 jvmTest 排除此标签。DesktopWindowGeometryTest 打开隔离的 production 主窗口外壳，发送真实 AWT 事件后关闭并用相同本机存储重开，覆盖普通、最大化、最小化及正常矩形还原。策略测试覆盖多屏负坐标、离屏回退、任务栏工作区域、极端输入、损坏配置和保存失败。原生测试仅在 Windows 执行，不将跳过作为其他平台验收。
 
-首次显示回归还记录 AWT SHOWING_CHANGED 时的真实矩形，以及委托真实 DwmSetWindowAttribute 的调用顺序：仅恢复最大化时在显示前关闭过渡，打开后恢复；同时覆盖原生接口失败时继续显示。该 DWM 属性只支持设置，不能用 DwmGetWindowAttribute 回读作为断言。测试保护 production 窗口接线和实际原生调用，主观动画观感仍需在体验包中观察。
+首次显示回归同时记录 Canvas 的实际绘制尺寸与原生客户区（含 DPI 换算），在 AWT SHOWING_CHANGED 时若仍是小尺寸首帧则必须处于 DWM cloak 状态，解除后必须已完成最终尺寸绘制。通过 DwmGetWindowAttribute 读取真实 CLOAKED 状态。另记录原生矩形，以及委托真实 DwmSetWindowAttribute 的调用顺序：仅恢复最大化时在显示前关闭过渡，打开后恢复；同时覆盖原生接口失败时继续显示。过渡属性只支持设置，不能用 DwmGetWindowAttribute 回读作为断言。测试保护 production 窗口接线和实际原生调用，主观动画观感仍需在体验包中观察。
 
 体验包验收应进一步使用本轮真实发布目录中的 EXE、明确的 --test-mode/--test-profile 隔离配置及独立端口，执行系统窗口移动、大小、最大化和关闭重开；不得操作普通用户实例。

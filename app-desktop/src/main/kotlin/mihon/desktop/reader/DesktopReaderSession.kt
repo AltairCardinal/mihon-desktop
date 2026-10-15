@@ -460,6 +460,27 @@ class DesktopReaderSession(
         pumpPageRequests()
     }
 
+    /** Runs only the synchronous scalar commit while every captured physical content is current. */
+    internal fun acceptCurrentPageContents(
+        requests: List<ReaderPageContentOpenRequest>,
+        accept: () -> Boolean,
+    ): Boolean = synchronized(lock) {
+        if (closed || requests.isEmpty()) return@synchronized false
+        val snapshot = core.snapshot
+        if (requests.any { request ->
+                val page = snapshot.activeChapter.pages.firstOrNull { it.id == request.pageId }
+                request.generation != snapshot.generation || page == null ||
+                    page.loadState !is ReaderPageLoadState.Ready ||
+                    page.attemptGeneration != request.attemptGeneration ||
+                    page.encodedPageRef != request.encodedPageRef ||
+                    page.encodedPageProvenance != request.encodedPageProvenance
+            }
+        ) {
+            return@synchronized false
+        }
+        accept()
+    }
+
     /** Withdraw only this optional consumer's original request; an existing normal owner survives. */
     internal suspend fun loadFactPage(pageId: ReaderPageId, permit: ReaderDualPageFactReadPermit): Boolean {
         val generation: Long

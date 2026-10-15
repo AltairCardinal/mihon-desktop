@@ -344,6 +344,16 @@ class SyncPanelContentTest {
             diagnosticFeedback = mihon.data.sync.runtime.SyncDiagnosticFeedback.SAVE_FAILED,
             diagnosticSnapshot = mihon.data.sync.runtime.SyncDiagnosticSnapshot(
                 status = mihon.data.sync.runtime.SyncDiagnosticStatus.READ_FAILED,
+                journal = mihon.data.sync.runtime.SyncDiagnosticJournalSnapshot(
+                    events = listOf(
+                        mihon.data.sync.runtime.SyncJournalEvent(
+                            1L,
+                            mihon.data.sync.runtime.SyncJournalEventKind.EXCEPTION,
+                            mihon.data.sync.runtime.SyncJournalStage.UPLOADING,
+                            code = mihon.data.sync.runtime.SyncJournalCode.UNKNOWN,
+                        ),
+                    ),
+                ),
             ),
         ),
     ) {
@@ -354,6 +364,10 @@ class SyncPanelContentTest {
         awaitTag("sync-diagnostic-copy-summary")
         click("sync-diagnostic-copy-summary")
         assertEquals(listOf(panel.state.value.diagnosticSnapshot!!.json()), copied)
+        val summary = kotlinx.serialization.json.Json.decodeFromString<mihon.data.sync.runtime.SyncDiagnosticSnapshot>(
+            copied.single(),
+        )
+        assertEquals(mihon.data.sync.runtime.SyncJournalEventKind.EXCEPTION, summary.journal!!.events.single().kind)
         assertEquals(SyncRunProblem.NETWORK, panel.state.value.problem)
         assertTrue(actions.none { it == SyncPanelAction.VerifyRecovery || it == SyncPanelAction.CreateNewSpace })
     }

@@ -100,7 +100,7 @@ object DeviceUtil {
     }
 
     @SuppressLint("PrivateApi")
-    private fun getSystemProperty(key: String?): String? {
+    fun getSystemProperty(key: String?): String? {
         return try {
             Class.forName("android.os.SystemProperties")
                 .getDeclaredMethod("get", String::class.java)
@@ -109,5 +109,110 @@ object DeviceUtil {
             logcat(LogPriority.WARN, e) { "Unable to use SystemProperties.get()" }
             null
         }
+    }
+
+    val isEInk: Boolean by lazy {
+        isEInkDevice(
+            brand = Build.BRAND,
+            manufacturer = Build.MANUFACTURER,
+            model = Build.MODEL,
+            product = Build.PRODUCT,
+            device = Build.DEVICE,
+            sysPropGetter = ::getSystemProperty,
+        )
+    }
+
+    private val DEDICATED_EINK_BRANDS = setOf(
+        "onyx",
+        "boox",
+        "ireader",
+        "hanvon",
+        "moaan",
+        "iflytek",
+        "boyue",
+        "likebook",
+        "bigme",
+        "meebook",
+        "haoqing",
+        "supernote",
+        "ratta",
+        "pocketbook",
+        "tolino",
+        "kobo",
+        "rakutenkobo",
+        "dasung",
+    )
+
+    private val HISENSE_EINK_MODELS = setOf(
+        "a5",
+        "a5pro",
+        "a5c",
+        "a6",
+        "a6l",
+        "a7",
+        "a7cc",
+        "a9",
+        "hireader",
+        "touch",
+    )
+
+    fun isEInkDevice(
+        brand: String?,
+        manufacturer: String?,
+        model: String?,
+        product: String?,
+        device: String?,
+        sysPropGetter: (String) -> String? = ::getSystemProperty,
+    ): Boolean {
+        val b = brand?.lowercase().orEmpty()
+        val m = manufacturer?.lowercase().orEmpty()
+        val mod = model?.lowercase().orEmpty()
+        val p = product?.lowercase().orEmpty()
+        val d = device?.lowercase().orEmpty()
+
+        // 1. Dedicated E-Ink brands
+        if (DEDICATED_EINK_BRANDS.contains(b) || DEDICATED_EINK_BRANDS.contains(m)) {
+            return true
+        }
+
+        // 2. Huawei MatePad Paper (e.g., HMW-W09, HMW-AL10, HWHMW)
+        if (b.contains("huawei") || m.contains("huawei") || b.contains("honor") || m.contains("honor")) {
+            if (mod.contains("hmw") || p.contains("hmw") || d.contains("hmw") ||
+                mod.contains("matepad paper") || p.contains("matepad paper")
+            ) {
+                return true
+            }
+        }
+
+        // 3. Hisense E-Ink devices
+        if (b.contains("hisense") || m.contains("hisense")) {
+            val isNormalPhone = mod.contains("infinity") || mod.contains("u50") || mod.contains("e50")
+            if (!isNormalPhone && HISENSE_EINK_MODELS.any { mod.contains(it) }) {
+                return true
+            }
+        }
+
+        // 4. Xiaomi / Moaan E-Ink (e.g. inkPalm, duokan)
+        if (b.contains("xiaomi") || m.contains("xiaomi")) {
+            if (mod.contains("inkpalm") || p.contains("inkpalm") || d.contains("inkpalm") ||
+                mod.contains("duokan") || p.contains("duokan")
+            ) {
+                return true
+            }
+        }
+
+        // 5. TCL NXTPAPER
+        if (mod.contains("nxtpaper") || p.contains("nxtpaper") || d.contains("nxtpaper")) {
+            return true
+        }
+
+        // 6. EPD system property fallback
+        val epdProp =
+            sysPropGetter("ro.epd.display") ?: sysPropGetter("ro.vendor.eink") ?: sysPropGetter("sys.eink.display")
+        if (epdProp != null && (epdProp == "1" || epdProp.equals("true", ignoreCase = true))) {
+            return true
+        }
+
+        return false
     }
 }

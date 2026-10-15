@@ -129,3 +129,46 @@ AboutAccessibility 5 共 22 项通过，补齐 U1 且保留既有行为。之后
 创建 PR 前合入当前 `origin/main` 的 `5a5c54b167`，其相对实施基线的变化仅涉及 reader/tutorial，
 与本批写入范围无冲突。完整 CI 用于确认该集成版本及远端强制门禁，原 preview 仍是合入前产物。
 失败时保留首次结果，先分析关联并局部补验，不自动重复完整矩阵。
+
+## 2026-10-15 集成与上线收口
+
+用户明确收窄为完成更新推送与问题上报，不处理其他模块 BUG。原 PR #3 的首次完整 CI 保留：
+Android run `38390170348` 的候选构建、格式与交付契约通过，domain 的 8 项 reader 契约失败；
+Desktop run `38390170339` 完整测试失败，涉及 DI、reader、parity 等既有范围，不能宣称全绿。
+文档 run `38390170367` 通过。没有因这些结果扩展实现任务。
+
+恢复时远端主分支已到 `53e23eb0b7`，包含既有 reader 修复及另外维护工作。
+其提交 `c104535272` 已将产品 CI 改为仅手动触发，`7dd535af0e` 记录移除过时自动合入门禁；
+实际 GitHub main protection 的 required_status_checks 为 null。此政策不是本批为通过门禁而改动。
+将当前 main 无冲突合入，仅复验受影响的更新/反馈真实接线，不手动补跑产品完整矩阵。
+本次任务相对当前 main 的 diff 不包含其他模块修复。
+
+发布工具 13 项、AndroidEntryTest 9 项在集成后重新通过。产品验证使用协调器
+`update-feedback-main-integration`，限定 Android AboutFeedback / ForkAppUpdateWiring /
+ForkAppUpdateDownload / ForkAppUpdateDelivery / ForkAppUpdateUiWiring，以及 Desktop AboutFeedback /
+AboutUpdate / DesktopForkUpdate / DesktopSettingsAboutExtensionAccessibility；结果以最终记录为准。
+共享更新协议和摘要代码未被主分支修改，复用原有双端契约证据。
+
+`update-feedback-main-integration` 在 Android 单元测试编译阶段被主分支的 `PagerRippleTest.kt`
+未解析引用阻塞，未运行任何当轮产品测试。遵照范围要求未修该阅读器文件。
+第一次外部 init 配置遇到 buildSrc 无 :app 工程而启动失败；修正工程判断后的
+`update-feedback-focused-integration2` 继续执行 Desktop，Android sourceSet 排除未生效，
+仍为同一编译错误。以上均不作为 Android 通过证据，也不读取旧 XML 冒充新结果。
+
+Desktop 在该轮实际完成并通过 26 项：AboutFeedback 3、AboutUpdate 7、DesktopForkUpdate 10、
+AboutAccessibility 5、既有资源身份 About 用例 1。资源身份测试两处夹具显式指定
+`manualOnlyUpdates = false`，保留既有下载/安装流程的双语断言；本 fork 的默认发布页模式
+由独立 production 接线测试覆盖，没有改动旧安装能力或放宽断言。
+
+Android 最后使用未提交的 `.gradle-coordinator/update-feedback-focused.init.gradle`，
+对真实 `:app:compileReleaseUnitTestKotlin` 配置 `exclude('**/PagerRippleTest.kt')`，
+仅从本次测试编译输入移除该无关测试文件，生产源码、依赖和被选更新/反馈测试不变。
+此局部验证配置不用于正式候选、CI 或全量通过声明；未修改阅读器文件或提交排除规则。
+
+`update-feedback-android-integration` 于 2026-10-15 22:45 CST 实际完成，21 项全部通过：
+AboutFeedback 3、Delivery 7、Download 5、UI Wiring 3、Preference/Checker Wiring 3。
+生产任务编译通过，真实 Activity/Voyager、WorkManager、HTTP 下载与包身份检查均由对应测试执行。
+与当日 Desktop 26 项、发布工具 13 项、构建入口 9 项及网站构建结果一起支持本批集成收口。
+`git diff origin/main --check` 通过；本批不声称整个项目全量通过。
+新的 Windows preview 及线上部署结果以 PR #3 的后续工作流/交付记录为准，
+索引仍有意保持为空，不为完成部署伪造应用发布或升级候选。

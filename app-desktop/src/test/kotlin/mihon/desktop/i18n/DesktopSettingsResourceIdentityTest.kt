@@ -806,7 +806,7 @@ class DesktopSettingsResourceIdentityTest {
             { _, _ -> ready },
             { _, _ -> InstallCancelled },
         )
-        val model = DesktopUpdateScreenModel(controller, this)
+        val model = DesktopUpdateScreenModel(controller, this, manualOnlyUpdates = false)
         val extensionManager = DesktopExtensionManager()
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { this@mockk.extensionManager } returns extensionManager
@@ -955,6 +955,7 @@ class DesktopSettingsResourceIdentityTest {
                 val manualModel = DesktopUpdateScreenModel(
                     manualController,
                     this,
+                    manualOnlyUpdates = false,
                     openUrl = {
                         when (openMode) {
                             0 -> false

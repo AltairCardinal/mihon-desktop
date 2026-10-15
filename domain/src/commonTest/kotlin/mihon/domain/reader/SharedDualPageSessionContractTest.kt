@@ -148,6 +148,15 @@ class SharedDualPageSessionContractTest {
         )
     }
 
+    /** Simulates the existing native prepare -> paint receipt, separately from the settlement request. */
+    private fun drawnEvent(
+        session: SharedDualPageSession,
+        rendered: ReaderDualPageSettlement = event(session),
+    ): ReaderDualPageSettlement = rendered.also {
+        rendered.renderedPageIds.forEach { page -> assertTrue(session.preparePage(rendered.ticket, page)) }
+        assertTrue(session.reportDrawn(rendered.ticket, rendered.renderedPageIds))
+    }
+
     @Test
     fun `disabling matching or switching single rejects cancelled samples even after reopening`() {
         for (single in listOf(false, true)) {
@@ -217,15 +226,24 @@ class SharedDualPageSessionContractTest {
         assertTrue(session.ownsFactRequest(header), "Sample I/O cannot replace an original header capability")
         assertEquals(listOf(pages[2], pages[3]), session.targetUnit!!.pageIds)
         assertEquals(location, session.location)
-        val viewport = event(session)
+        val viewport = drawnEvent(session)
         assertNotNull(session.settle(viewport, false, "sample-layout"))
         session.configure(ReaderDirection.LTR, automaticMatching = true)
-        assertEquals(listOf(pages[2], pages[3]), session.targetUnit!!.pageIds)
+        assertEquals(0.0, SharedSpreadMatching.score(samples[1], samples[2], ReaderDirection.RTL))
+        assertNull(SharedSpreadMatching.score(samples[1], samples[2], ReaderDirection.LTR))
+        assertEquals(listOf(pages[1], pages[2]), session.targetUnit!!.pageIds)
+        assertEquals(location, session.location, "Direction changes grouping, never the explicit source target")
+        assertFalse(session.preparePage(viewport.ticket, pages[2]))
+        assertFalse(session.reportDrawn(viewport.ticket, setOf(pages[2])))
+        assertNull(session.settle(viewport, false, "sample-layout"))
         assertFalse(session.captureViewport()!!.readingEligible)
         session.configure(ReaderDirection.RTL, automaticMatching = false)
         assertEquals(emptyList<ReaderPageId>(), session.spreadSampleDependencies())
         session.configure(ReaderDirection.RTL, automaticMatching = true)
         assertEquals(listOf(pages[2], pages[3]), session.targetUnit!!.pageIds)
+        // A direction change releases the old native viewport; mount its replacement before restore.
+        val restoredViewport = requireNotNull(session.captureViewport())
+        assertTrue(session.reportDrawn(restoredViewport, setOf(pages[2], pages[3])))
         assertTrue(
             session.acceptPairingRestore(
                 session.beginPairingRestore()!!,
@@ -239,10 +257,15 @@ class SharedDualPageSessionContractTest {
         )
         val oldSample = requireNotNull(session.requestSpreadSample(pages[1]))
         val save = requireNotNull(session.adjustPairing())
-        assertEquals(setOf(2, 3), save.adjustment.forcedSinglePages)
+        assertEquals(ReaderPairingAdjustment(setOf(2), 3, manualPairStarts = setOf(3)), save.adjustment)
         assertEquals(listOf(pages[2], pages[3]), session.targetUnit!!.pageIds, "Pending save is not a manual boundary")
-        assertTrue(session.acceptPairingSave(save, ChapterPairingSnapshot(ChapterPairingRecord(1, 5, setOf(2, 3)), 2)))
-        assertEquals(listOf(pages[3]), session.targetUnit!!.pageIds)
+        assertTrue(
+            session.acceptPairingSave(
+                save,
+                ChapterPairingSnapshot(ChapterPairingRecord(2, 5, setOf(2), manualPairStarts = setOf(3)), 2),
+            ),
+        )
+        assertEquals(listOf(pages[3], pages[4]), session.targetUnit!!.pageIds)
         val replacement = session.rebindContent(
             session.identity.copy(
                 content = session.identity.content.map {
@@ -267,7 +290,7 @@ class SharedDualPageSessionContractTest {
         val pages = session.identity.pageIds
         val first = requireNotNull(session.requestSpreadSample(pages[1]))
         val second = requireNotNull(session.requestSpreadSample(pages[2]))
-        val viewport = event(session)
+        val viewport = drawnEvent(session)
         val samples = ReaderSpreadEdgeSamples(
             List(50) { if (it % 2 == 0) 0xffa0a0a0.toInt() else 0xff404080.toInt() },
             List(50) { if (it % 2 == 0) 0xffa0a0a0.toInt() else 0xff404080.toInt() },
@@ -295,16 +318,21 @@ class SharedDualPageSessionContractTest {
         assertTrue(
             session.acceptPairingRestore(
                 session.beginPairingRestore()!!,
-                ChapterPairingSnapshot(ChapterPairingRecord(1, 6, setOf(1)), 7),
+                ChapterPairingSnapshot(ChapterPairingRecord(2, 6, setOf(1), manualPairStarts = setOf(3)), 7),
             ),
         )
         session.goToPage(session.identity.pageIds[3])
         assertEquals(listOf(3, 4), session.targetUnit!!.pageIds.map { it.sourcePageIndex })
         val save = requireNotNull(session.adjustPairing())
-        assertEquals(4, save.adjustment.currentPage)
+        assertEquals(ReaderPairingAdjustment(setOf(1, 3), 4, manualPairStarts = setOf(4)), save.adjustment)
         val originalLocation = session.location
         session.configurePresentationMode(ReaderPresentationMode.SINGLE)
-        assertTrue(session.acceptPairingSave(save, ChapterPairingSnapshot(ChapterPairingRecord(1, 6, setOf(1, 3)), 8)))
+        assertTrue(
+            session.acceptPairingSave(
+                save,
+                ChapterPairingSnapshot(ChapterPairingRecord(2, 6, setOf(1, 3), manualPairStarts = setOf(4)), 8),
+            ),
+        )
         assertEquals(originalLocation, session.location)
         assertEquals(8, session.pairingState.revision)
         assertEquals(save.adjustment.forcedSinglePages, session.pairingState.committedForcedSinglePages)
@@ -324,6 +352,8 @@ class SharedDualPageSessionContractTest {
         known(session, setOf(0))
         assertEquals(revision, session.layoutRevision)
         assertSame(original.ticket, session.captureViewport())
+        assertNull(session.settle(original, false, "test"), "Header readiness cannot claim native pixels")
+        drawnEvent(session, original)
         assertNotNull(session.settle(original, false, "test"))
     }
 
@@ -333,7 +363,13 @@ class SharedDualPageSessionContractTest {
         known(session)
         session.goToPage(session.identity.pageIds[4])
         val original = event(session)
-        assertEquals(listOf(4), session.targetUnit!!.pageIds.map { it.sourcePageIndex })
+        val canonicalDual = SharedDualPageRules.canonicalPlan(
+            session.identity.pageIds,
+            session.identity.pageIds.associateWith { requireNotNull(session.pageFact(it)) },
+            ReaderDirection.RTL,
+            automatic = false,
+        ).single { session.identity.pageIds[4] in it.pageIds }
+        assertEquals(canonicalDual, session.targetUnit)
         val location = session.location
         session.configurePresentationMode(ReaderPresentationMode.SINGLE)
         assertEquals(location, session.location)
@@ -342,12 +378,67 @@ class SharedDualPageSessionContractTest {
         assertNull(session.settle(original, false, "test"))
         assertNull(session.adjustPairing())
         assertTrue(session.factDependencies().isEmpty())
-        assertNotNull(session.settle(event(session).copy(settlementSequence = 2), false, "test"))
+        assertNull(session.settle(event(session), false, "test"), "The new single viewport has not painted")
+        assertNotNull(session.settle(drawnEvent(session).copy(settlementSequence = 2), false, "test"))
         session.configurePresentationMode(ReaderPresentationMode.DUAL)
         assertEquals(location, session.location)
-        assertEquals(listOf(4), session.targetUnit!!.pageIds.map { it.sourcePageIndex })
+        assertEquals(canonicalDual, session.targetUnit)
         assertFalse(session.captureViewport()!!.readingEligible)
-        assertNull(session.settle(event(session).copy(settlementSequence = 3), false, "test"))
+        assertNull(session.settle(drawnEvent(session).copy(settlementSequence = 3), false, "test"))
+    }
+
+    @Test
+    fun `pure layout cannot revive consumed reading while same frame may append its partner`() {
+        for (layout in listOf("mode", "direction", "viewport", "automatic")) {
+            fun change(session: SharedDualPageSession) {
+                when (layout) {
+                    "mode" -> session.configurePresentationMode(ReaderPresentationMode.SINGLE)
+                    "direction" -> session.configure(ReaderDirection.LTR)
+                    "automatic" -> session.configure(ReaderDirection.RTL, automaticMatching = true)
+                    else -> session.invalidateViewport()
+                }
+            }
+            val session = SharedDualPageSession(identity(5), ReaderDirection.RTL, identity(5).pageIds[1])
+            known(session)
+            val later = event(session).copy(renderedPageIds = setOf(session.identity.pageIds[2]))
+            val effect = session.settle(drawnEvent(session, later), false, "layout")
+            assertNotNull(effect)
+            assertEquals(2, effect!!.lastPageRead)
+            val location = session.location
+            change(session)
+            assertEquals(location, session.location)
+            if (layout == "automatic") {
+                // The unchanged physical frame retains this old ticket. A settings event must
+                // revoke its reading cause without depending on a newly captured false ticket.
+                val earlierId = session.identity.pageIds[1]
+                assertTrue(session.preparePage(later.ticket, earlierId))
+                assertTrue(session.reportDrawn(later.ticket, setOf(earlierId)))
+                assertNull(
+                    session.settle(
+                        later.copy(renderedPageIds = setOf(earlierId), settlementSequence = 2),
+                        false,
+                        "auto",
+                    ),
+                    "An old live ticket cannot count a new partner after a consumed location changes settings",
+                )
+            }
+            val earlier = drawnEvent(session, event(session).copy(renderedPageIds = setOf(session.identity.pageIds[1])))
+            assertFalse(earlier.ticket.readingEligible, "Consumed location cannot be revived by $layout")
+            assertNull(session.settle(earlier.copy(settlementSequence = 2), false, "layout"))
+
+            val unconsumed = SharedDualPageSession(identity(5), ReaderDirection.RTL, identity(5).pageIds[1])
+            known(unconsumed)
+            change(unconsumed)
+            assertNotNull(unconsumed.settle(drawnEvent(unconsumed), false, "first-real-draw"), layout)
+        }
+        val sameFrame = SharedDualPageSession(identity(5), ReaderDirection.RTL, identity(5).pageIds[1])
+        known(sameFrame)
+        val prepared = event(sameFrame)
+        val later = drawnEvent(sameFrame, prepared.copy(renderedPageIds = setOf(sameFrame.identity.pageIds[2])))
+        assertEquals(2, sameFrame.settle(later, false, "append")!!.lastPageRead)
+        val earlier = drawnEvent(sameFrame, prepared.copy(renderedPageIds = setOf(sameFrame.identity.pageIds[1])))
+        assertEquals(2, sameFrame.settle(earlier.copy(settlementSequence = 2), false, "append")!!.lastPageRead)
+        assertNull(sameFrame.settle(earlier.copy(settlementSequence = 3), false, "append"))
     }
 
     @Test
@@ -363,14 +454,16 @@ class SharedDualPageSessionContractTest {
         known(next)
         assertEquals(listOf(4), next.targetUnit!!.pageIds.map { it.sourcePageIndex })
         assertNull(next.settle(single, false, "test"))
-        assertNotNull(next.settle(event(next).copy(settlementSequence = 2), false, "test"))
+        assertNull(next.settle(event(next), false, "test"), "Reloaded content cannot inherit an old draw receipt")
+        assertNotNull(next.settle(drawnEvent(next).copy(settlementSequence = 2), false, "test"))
     }
 
     @Test
     fun `explicit retry renews fact work without creating navigation or reading`() {
         val session = SharedDualPageSession(identity(1), ReaderDirection.RTL)
         known(session)
-        assertNotNull(session.settle(event(session), false, "test"))
+        assertNull(session.settle(event(session), false, "test"), "A settlement request is not a paint receipt")
+        assertNotNull(session.settle(drawnEvent(session), false, "test"))
         val location = session.location
         val oldBudget = session.factBudget
         val oldRequest = session.requestFact(session.identity.pageIds.single())
@@ -401,12 +494,12 @@ class SharedDualPageSessionContractTest {
         val session = SharedDualPageSession(identity(5), ReaderDirection.RTL)
         known(session)
         session.goToPage(session.identity.pageIds.last())
-        assertNotNull(session.settle(event(session), false, "test"))
+        assertNotNull(session.settle(drawnEvent(session), false, "test"))
         val next = session.rebindContent(replacedPage(session.identity, 2))
         known(next)
-        assertNull(next.settle(event(next).copy(settlementSequence = 2), false, "test"))
+        assertNull(next.settle(drawnEvent(next).copy(settlementSequence = 2), false, "test"))
         next.goToPage(next.identity.pageIds.first())
-        assertNotNull(next.settle(event(next).copy(settlementSequence = 3), false, "test"))
+        assertNotNull(next.settle(drawnEvent(next).copy(settlementSequence = 3), false, "test"))
     }
 
     @Test
@@ -422,7 +515,8 @@ class SharedDualPageSessionContractTest {
         assertNull(next.settle(oldViewport, false, "test"))
         known(next, setOf(9))
         assertEquals(16, next.location!!.pageId.sourcePageIndex)
-        assertNotNull(next.settle(event(next).copy(settlementSequence = 2), false, "test"))
+        assertNull(next.settle(event(next), false, "test"), "Rebound source needs its own physical draw receipt")
+        assertNotNull(next.settle(drawnEvent(next).copy(settlementSequence = 2), false, "test"))
     }
 
     private fun replacedPage(identity: ReaderDualPageIdentity, ordinal: Int): ReaderDualPageIdentity = identity.copy(
@@ -448,7 +542,10 @@ class SharedDualPageSessionContractTest {
         assertFalse(old.ticket === attached.ticket)
         assertFalse(session.releaseViewport(old.ticket))
         assertNull(session.settle(old, false, "test"))
-        assertNotNull(session.settle(attached.copy(settlementSequence = 2), false, "test"))
+        assertNull(session.settle(attached, false, "test"), "A replacement viewport must paint before it can read")
+        val painted = drawnEvent(session)
+        assertSame(attached.ticket, painted.ticket)
+        assertNotNull(session.settle(painted.copy(settlementSequence = 2), false, "test"))
         assertTrue(session.releaseViewport(attached.ticket))
         val consumed = event(session)
         assertFalse(consumed.ticket.readingEligible)
@@ -469,7 +566,8 @@ class SharedDualPageSessionContractTest {
         assertEquals(old.locationSequence, restored.location!!.sequence)
         assertEquals(old.unitId, restored.targetUnit!!.id)
         assertNull(restored.settle(old, false, "test"))
-        assertNotNull(restored.settle(event(restored), false, "test"))
+        assertNull(restored.settle(event(restored), false, "test"), "New owner cannot inherit an old draw receipt")
+        assertNotNull(restored.settle(drawnEvent(restored), false, "test"))
     }
 
     @Test
@@ -491,7 +589,7 @@ class SharedDualPageSessionContractTest {
         for (record in listOf(
             ChapterPairingRecord(1, 4, setOf(1)),
             ChapterPairingRecord(1, 5, setOf(1), corrupt = true),
-            ChapterPairingRecord(2, 5, setOf(1)),
+            ChapterPairingRecord(ChapterPairingRecord.FORMAT_VERSION + 1, 5, setOf(1)),
         )) {
             val owner = ReaderPairingPersistenceOwner(identity(5), 88)
             assertTrue(owner.acceptRestore(owner.beginRestore()!!, ChapterPairingSnapshot(record, 4)))
@@ -516,22 +614,29 @@ class SharedDualPageSessionContractTest {
             }
             session.goToPage(session.identity.pageIds[1])
             val save = session.adjustPairing()
-            if (save != null) {
+            if (mangaId != null) {
+                assertNotNull(save, "A restored persistent session must actually issue the layout save")
+                requireNotNull(save)
+                assertEquals(ReaderPairingAdjustment(setOf(1), 2, manualPairStarts = setOf(2)), save.adjustment)
                 assertTrue(
                     session.acceptPairingSave(
                         save,
-                        ChapterPairingSnapshot(ChapterPairingRecord(1, 5, setOf(1)), 8),
+                        ChapterPairingSnapshot(ChapterPairingRecord(2, 5, setOf(1), manualPairStarts = setOf(2)), 8),
                     ),
                 )
+            } else {
+                assertNull(save, "Temporary pairing must not issue a database write")
             }
+            assertEquals(setOf(1), session.pairingState.committedForcedSinglePages)
+            assertEquals(setOf(2), session.pairingState.manualPairStarts)
             assertNull(session.settle(event(session), false, "test"))
             session.goToPage(session.identity.pageIds.last())
-            assertNotNull(session.settle(event(session).copy(settlementSequence = 2), false, "test"))
+            assertNotNull(session.settle(drawnEvent(session).copy(settlementSequence = 2), false, "test"))
         }
         val naturalSingle = SharedDualPageSession(identity(1), ReaderDirection.RTL)
         known(naturalSingle)
         assertNull(naturalSingle.adjustPairing())
-        assertNotNull(naturalSingle.settle(event(naturalSingle), false, "test"))
+        assertNotNull(naturalSingle.settle(drawnEvent(naturalSingle), false, "test"))
     }
 
     @Test
@@ -546,19 +651,30 @@ class SharedDualPageSessionContractTest {
         assertTrue(session.acceptPairingRestore(restore!!, ChapterPairingSnapshot(null, 7)))
         val original = session.targetUnit!!.pageIds
         val save = session.adjustPairing()!!
-        assertEquals(setOf(1), save.adjustment.forcedSinglePages)
+        assertEquals(ReaderPairingAdjustment(setOf(1), 2, manualPairStarts = setOf(2)), save.adjustment)
         assertEquals(original, session.targetUnit!!.pageIds)
         assertEquals(emptySet<Int>(), session.pairingState.committedForcedSinglePages)
         assertTrue(session.failPairingSave(save))
         assertEquals(original, session.targetUnit!!.pageIds)
         val retry = session.adjustPairing()!!
-        assertTrue(session.acceptPairingSave(retry, ChapterPairingSnapshot(ChapterPairingRecord(1, 5, setOf(1)), 8)))
+        assertTrue(
+            session.acceptPairingSave(
+                retry,
+                ChapterPairingSnapshot(ChapterPairingRecord(2, 5, setOf(1), manualPairStarts = setOf(2)), 8),
+            ),
+        )
         assertEquals(setOf(1), session.pairingState.committedForcedSinglePages)
         assertEquals(session.identity.pageIds[2], session.location!!.pageId)
         assertEquals(listOf(session.identity.pageIds[2], session.identity.pageIds[3]), session.targetUnit!!.pageIds)
         val next = session.adjustPairing()!!
+        assertEquals(ReaderPairingAdjustment(emptySet(), 1, manualPairStarts = setOf(1)), next.adjustment)
         session.goToPage(session.identity.pageIds[4])
-        assertTrue(session.acceptPairingSave(next, ChapterPairingSnapshot(null, 9)))
+        assertTrue(
+            session.acceptPairingSave(
+                next,
+                ChapterPairingSnapshot(ChapterPairingRecord(2, 5, emptySet(), manualPairStarts = setOf(1)), 9),
+            ),
+        )
         assertEquals(session.identity.pageIds[4], session.location!!.pageId)
         assertEquals(emptySet<Int>(), session.pairingState.committedForcedSinglePages)
     }
@@ -667,8 +783,15 @@ class SharedDualPageSessionContractTest {
         val identity = identity(17)
         val session = SharedDualPageSession(identity, ReaderDirection.RTL)
         assertTrue(session.goToPage(identity.pageIds[16]))
-        assertEquals(listOf(identity.pageIds[16]), session.targetUnit!!.pageIds)
-        assertEquals(ReaderPortraitSingleSlot.RIGHT, session.targetUnit!!.slots.single().position)
+        val provisional = SharedDualPageRules.canonicalPlan(
+            identity.pageIds,
+            emptyMap(),
+            ReaderDirection.RTL,
+            automatic = false,
+        ).single { identity.pageIds[16] in it.pageIds }
+        assertEquals(provisional, session.targetUnit)
+        assertEquals(identity.pageIds[16], session.location!!.pageId)
+        assertNull(session.captureCertifiedViewport(identity.pageIds[16]), "A provisional pair is not certified pixels")
         known(session, setOf(13))
         session.configure(
             ReaderDirection.RTL,
@@ -748,7 +871,14 @@ class SharedDualPageSessionContractTest {
         val target = identity.pageIds[2]
         val session = SharedDualPageSession(identity, ReaderDirection.RTL, target)
         known(session)
-        assertEquals(target, session.targetUnit!!.anchor)
+        val canonical = SharedDualPageRules.canonicalPlan(
+            identity.pageIds,
+            identity.pageIds.associateWith { requireNotNull(session.pageFact(it)) },
+            ReaderDirection.RTL,
+            automatic = false,
+        ).single { target in it.pageIds }
+        assertEquals(canonical, session.targetUnit)
+        assertEquals(target, session.location!!.pageId, "A group anchor cannot replace the explicit logical target")
         session.configure(ReaderDirection.LTR)
         assertEquals(target, session.location!!.pageId)
         val restored = SharedDualPageSession(identity, ReaderDirection.RTL, session.location!!.pageId)
@@ -763,6 +893,8 @@ class SharedDualPageSessionContractTest {
         known(session)
         session.goToPage(session.identity.pageIds.last())
         val good = event(session)
+        assertNull(session.settle(good, false, "test"), "Preparing pixels alone is not a real draw")
+        assertTrue(session.reportDrawn(good.ticket, good.renderedPageIds))
         assertNull(session.settle(good.copy(settled = false), false, "test"))
         assertNull(session.settle(good.copy(renderedPageIds = emptySet()), false, "test"))
         assertNull(session.settle(good.copy(layoutRevision = good.layoutRevision - 1), false, "test"))
@@ -772,7 +904,8 @@ class SharedDualPageSessionContractTest {
         val effect = session.settle(good, false, "test")
         assertNotNull(effect)
         assertTrue(effect!!.reachedLastPage)
-        assertEquals(session.identity.pageIds[4], session.targetUnit!!.anchor)
+        assertEquals(session.identity.pageIds[4], session.location!!.pageId)
+        assertEquals(session.identity.pageIds.slice(3..4), session.canonicalTargetUnit!!.pageIds)
         assertEquals(4, effect.lastPageRead)
         assertNull(session.settle(good, false, "test"))
     }
@@ -782,7 +915,10 @@ class SharedDualPageSessionContractTest {
         val session = SharedDualPageSession(identity(17), ReaderDirection.RTL)
         session.goToPage(session.identity.pageIds[16])
         session.acceptFact(session.requestFact(session.identity.pageIds[16]), ReaderPageFact.dimensions(900, 1300))
-        val effect = session.settle(event(session), false, "test")
+        val actual = event(session).copy(renderedPageIds = setOf(session.identity.pageIds[16]))
+        assertFalse(session.reportDrawn(actual.ticket, setOf(session.identity.pageIds[15])), "Unknown is not drawn")
+        assertTrue(session.reportDrawn(actual.ticket, actual.renderedPageIds))
+        val effect = session.settle(actual, false, "test")
         assertNotNull(effect)
         assertTrue(effect!!.reachedLastPage)
         known(session, setOf(13))

@@ -315,7 +315,10 @@ internal fun ExtensionListContent(
                     }
                     OutlinedTextField(
                         value = state.searchQuery,
-                        onValueChange = model::search,
+                        onValueChange = {
+                            mihon.domain.easteregg.PigEasterEggTrigger.check(it)
+                            model.search(it)
+                        },
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                         singleLine = true,
                         leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },

@@ -32,11 +32,13 @@ import mihon.domain.reader.observability.ReaderMonotonicClock
 import mockwebserver3.MockResponse
 import okhttp3.OkHttpClient
 import okio.Buffer
-import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.core.common.preference.DesktopPreferenceStore
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
 import java.awt.Color
 import java.io.File
+import java.util.UUID
+import java.util.prefs.Preferences
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlin.coroutines.CoroutineContext
@@ -94,25 +96,23 @@ internal class MountedReaderPresentationFixture(
     progressTracker: ReaderProgressTracker = mockk(relaxed = true),
     automaticSpreadMatching: Boolean = false,
     heldResponsePage: Int? = null,
+    encodedPageBytes: ByteArray? = null,
 ) : AutoCloseable {
     private val productionFixture = ReaderProductionTestFixture(root, coroutineContext)
+    private val pageBytes = encodedPageBytes ?: productionFixture.pageBytes
     private val previousInjekt = Injekt
     private val controller = ReaderTestModeController()
     private val responseGate = java.util.concurrent.CountDownLatch(1)
     private val source = if (case.route == MountedReaderContentRoute.ONLINE) {
-        if (heldResponsePage == null) {
-            repeat(pageCount) {
-                productionFixture.server.enqueue(
-                    MockResponse.Builder().body(Buffer().write(productionFixture.pageBytes)).build(),
-                )
-            }
-        } else {
-            productionFixture.server.dispatcher = object : mockwebserver3.Dispatcher() {
-                override fun dispatch(request: mockwebserver3.RecordedRequest): MockResponse {
-                    val page = request.url.encodedPath.substringAfterLast('/').substringBefore('.').toInt()
-                    if (page == heldResponsePage) responseGate.await(30, java.util.concurrent.TimeUnit.SECONDS)
-                    return MockResponse.Builder().body(Buffer().write(productionFixture.pageBytes)).build()
+        productionFixture.server.dispatcher = object : mockwebserver3.Dispatcher() {
+            override fun dispatch(request: mockwebserver3.RecordedRequest): MockResponse {
+                val page = Regex("/page/([0-9]+)\\.png").matchEntire(request.url.encodedPath)
+                    ?.groupValues?.get(1)?.toIntOrNull()
+                if (page == null || page !in 0 until pageCount) {
+                    return MockResponse.Builder().code(404).build()
                 }
+                if (page == heldResponsePage) responseGate.await(30, java.util.concurrent.TimeUnit.SECONDS)
+                return MockResponse.Builder().body(Buffer().write(pageBytes)).build()
             }
         }
         MountedOnlineReaderSource(
@@ -140,7 +140,11 @@ internal class MountedReaderPresentationFixture(
         isDualPage = case.mode.isDualPage,
         localChapterPath = localChapterPath,
     )
-    private val testAppPreferences = DesktopAppPreferences(InMemoryPreferenceStore())
+    private val testPreferencesRoot = Preferences.userRoot().node("/mihon/test/mounted-reader/${UUID.randomUUID()}")
+    private val testAppPreferences = DesktopAppPreferences(
+        DesktopPreferenceStore(testPreferencesRoot.node("store")),
+        testPreferencesRoot.node("legacy"),
+    )
 
     val scene = productionFixture.scene
     val allPageIndices: Set<Int> = (0 until pageCount).toSet()
@@ -216,17 +220,24 @@ internal class MountedReaderPresentationFixture(
     override fun close() {
         responseGate.countDown()
         releaseBackgroundGates()
-        productionFixture.close()
-        ReaderIoTestModeBridge.clear(controller)
-        controller.close()
-        Injekt = previousInjekt
+        try {
+            productionFixture.close()
+        } finally {
+            try {
+                ReaderIoTestModeBridge.clear(controller)
+                controller.close()
+            } finally {
+                Injekt = previousInjekt
+                testPreferencesRoot.removeNode()
+            }
+        }
     }
 
     private fun createDirectory(directory: File): String = directory.also {
         it.mkdirs()
         repeat(pageCount) { index ->
             it.resolve("${(index + 1).toString().padStart(3, '0')}.png")
-                .writeBytes(productionFixture.pageBytes)
+                .writeBytes(pageBytes)
         }
     }.absolutePath
 
@@ -235,7 +246,7 @@ internal class MountedReaderPresentationFixture(
         ZipOutputStream(it.outputStream().buffered()).use { output ->
             repeat(pageCount) { index ->
                 output.putNextEntry(ZipEntry("${(index + 1).toString().padStart(3, '0')}.png"))
-                output.write(productionFixture.pageBytes)
+                output.write(pageBytes)
                 output.closeEntry()
             }
         }
@@ -253,6 +264,9 @@ internal class MountedReaderPresentationFixture(
 
         @Suppress("unused")
         fun getClient(): OkHttpClient = httpClient
+
+        @Suppress("unused")
+        suspend fun getImageUrl(page: Page): String = imageUrl(page.index)
 
         override suspend fun getPageList(chapter: SChapter): List<Page> =
             List(pageCount) { index ->

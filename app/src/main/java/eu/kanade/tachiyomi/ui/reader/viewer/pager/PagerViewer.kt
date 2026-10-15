@@ -153,6 +153,19 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
             false
         }
 
+        pager.pageTurnRippleEnabled = config.pageTurnRipple
+        config.pageTurnRippleChangedListener = { enabled ->
+            pager.pageTurnRippleEnabled = enabled
+        }
+        pager.swipeListener = { direction ->
+            when (direction) {
+                Pager.SwipeDirection.LEFT -> moveRight()
+                Pager.SwipeDirection.RIGHT -> moveLeft()
+                Pager.SwipeDirection.UP -> moveDown()
+                Pager.SwipeDirection.DOWN -> moveUp()
+            }
+        }
+
         config.dualPageSplitChangedListener = { enabled ->
             if (!enabled) {
                 cleanupPageSplit()
@@ -491,7 +504,16 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
             if (holder != null && config.navigateToPan && holder.canPanRight()) {
                 holder.panRight()
             } else {
-                pager.setCurrentItem(pager.currentItem + 1, config.usePageTransitions)
+                if (config.pageTurnRipple) {
+                    val direction = if (this is VerticalPagerViewer) {
+                        Pager.RippleDirection.BOTTOM_TO_TOP
+                    } else {
+                        Pager.RippleDirection.RIGHT_TO_LEFT
+                    }
+                    pager.setCurrentItemWithRipple(pager.currentItem + 1, direction)
+                } else {
+                    pager.setCurrentItem(pager.currentItem + 1, config.usePageTransitions)
+                }
             }
         }
     }
@@ -505,7 +527,16 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
             if (holder != null && config.navigateToPan && holder.canPanLeft()) {
                 holder.panLeft()
             } else {
-                pager.setCurrentItem(pager.currentItem - 1, config.usePageTransitions)
+                if (config.pageTurnRipple) {
+                    val direction = if (this is VerticalPagerViewer) {
+                        Pager.RippleDirection.TOP_TO_BOTTOM
+                    } else {
+                        Pager.RippleDirection.LEFT_TO_RIGHT
+                    }
+                    pager.setCurrentItemWithRipple(pager.currentItem - 1, direction)
+                } else {
+                    pager.setCurrentItem(pager.currentItem - 1, config.usePageTransitions)
+                }
             }
         }
     }

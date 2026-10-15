@@ -224,6 +224,10 @@ class MainActivity : BaseActivity() {
                                     .background(MaterialTheme.colorScheme.surfaceContainer),
                             )
                         }
+
+                        eu.kanade.presentation.easteregg.AndroidPigEasterEggOverlay(
+                            mihon.domain.easteregg.PigEasterEggController.Default,
+                        )
                     }
                 }
 

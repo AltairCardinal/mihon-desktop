@@ -6,26 +6,38 @@ import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
 import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
+import eu.kanade.tachiyomi.ui.reader.model.ReaderPageContentFact
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.model.loadedEntryPage
 import eu.kanade.tachiyomi.util.system.createReaderThemeContext
 import eu.kanade.tachiyomi.widget.ViewPagerAdapter
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import mihon.domain.reader.ChapterPairingSnapshot
+import mihon.domain.reader.ReaderAnalysisFailure
 import mihon.domain.reader.ReaderChapterBoundary
+import mihon.domain.reader.ReaderDualPageFactReadPermit
 import mihon.domain.reader.ReaderDualPageFactRequest
+import mihon.domain.reader.ReaderOriginalAnalysisPublication
 import mihon.domain.reader.ReaderPageFact
 import mihon.domain.reader.ReaderPageFactState
 import mihon.domain.reader.ReaderPairingAdjustment
+import mihon.domain.reader.ReaderPairingCertification
+import mihon.domain.reader.ReaderPairingFactKind
 import mihon.domain.reader.ReaderPortraitSingleSlot
 import mihon.domain.reader.SharedDualPageSession
 import mihon.domain.reader.readerChapterBoundary
+import mihon.domain.reader.session.ReaderPageId
 import tachiyomi.core.common.util.system.logcat
 
 /**
@@ -67,6 +79,24 @@ class DualPageViewerAdapter(
     private var matchingJob: Job? = null
     private var matchingSession: SharedDualPageSession? = null
     private val failedSamples = mutableSetOf<mihon.domain.reader.ReaderDualPageContentIdentity>()
+    private val preparationTargets = mutableMapOf<ReaderChapter, MutableSet<ReaderPageId>>()
+    private data class OriginalCandidate(
+        val page: ReaderPage,
+        val captured: Pair<String, ReaderPageContentFact>,
+        val publication: ReaderOriginalAnalysisPublication,
+    )
+
+    private fun publishOriginalBatch(owner: SharedDualPageSession, candidates: List<OriginalCandidate>): Boolean {
+        val ordered = candidates.sortedBy { it.page.index }
+        fun publish(index: Int): Boolean {
+            if (index == ordered.size) return owner.acceptOriginalAnalyses(ordered.map { it.publication })
+            val candidate = ordered[index]
+            var accepted = false
+            // Two admitted pages at most; lock in story order until the complete batch is published.
+            return candidate.page.consumeContentFact(candidate.captured) { accepted = publish(index + 1) } && accepted
+        }
+        return candidates.isNotEmpty() && publish(0)
+    }
     internal var spreadDecoderFactory = eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.nativeDecoder
 
     init {
@@ -96,7 +126,7 @@ class DualPageViewerAdapter(
         failedSamples.clear()
         chapterPairings.values.forEach {
             it.session.configure(
-                mihon.domain.reader.ReaderDirection.RTL,
+                viewer.direction,
                 automaticMatching = viewer.config.automaticSpreadMatching,
             )
         }
@@ -109,10 +139,16 @@ class DualPageViewerAdapter(
         owner: SharedDualPageSession,
     ): Boolean = chapterPairings.values.any { it.session === owner }
 
+    internal fun ownsPresentationLineage(owner: SharedDualPageSession): Boolean =
+        chapterPairings.values.any { it.session.inheritsPresentationFrom(owner) }
+
     internal fun selectPage(page: ReaderPage, publishLayout: Boolean = false) {
         val entry = chapterPairings[page.chapter] ?: return
         if (entry.pages.getOrNull(page.index) !== page) return
-        entry.session.goToPage(entry.session.identity.pageIds[page.index])
+        if (entry.session.goToPage(entry.session.identity.pageIds[page.index])) {
+            preparationTargets.remove(page.chapter)
+            if (matchingSession === entry.session) matchingJob?.cancel()
+        }
         if (publishLayout) {
             // An explicit jump can choose a different group from the old offscreen projection.
             rebuildItems(page)
@@ -124,6 +160,8 @@ class DualPageViewerAdapter(
     internal fun navigate(chapter: ReaderChapter, forward: Boolean): ReaderPage? {
         val entry = chapterPairings[chapter] ?: return null
         if (!entry.session.navigate(forward)) return null
+        preparationTargets.remove(chapter)
+        if (matchingSession === entry.session) matchingJob?.cancel()
         val target = entry.session.location?.pageId?.sourcePageIndex?.let(entry.pages::getOrNull) ?: return null
         rebuildItems(target)
         return target
@@ -139,6 +177,8 @@ class DualPageViewerAdapter(
         if (owner.location?.pageId?.sourcePageIndex !in indices) {
             val anchor = if (forward) indices.min() else indices.max()
             if (!owner.goToPage(owner.identity.pageIds[anchor], forward)) return
+            preparationTargets.remove(displayPage.firstPage.chapter)
+            if (matchingSession === owner) matchingJob?.cancel()
         }
         pendingPairing = true
         startMatching()
@@ -146,6 +186,7 @@ class DualPageViewerAdapter(
 
     internal fun close() {
         scope.cancel()
+        presentationRefreshOwners.clear()
         chapterPairings.values.forEach {
             it.session.configurePresentationMode(mihon.domain.reader.ReaderPresentationMode.SINGLE)
         }
@@ -155,6 +196,7 @@ class DualPageViewerAdapter(
         factCollectors.clear()
         foregroundCollectors.clear()
         foregroundLoaders = emptySet()
+        preparationTargets.clear()
     }
 
     /** Keep decode facts and manual pairing while the same chapter page identities remain loaded. */
@@ -164,6 +206,7 @@ class DualPageViewerAdapter(
         val window = listOfNotNull(chapters.prevChapter, chapters.currChapter, chapters.nextChapter)
         chapterPairings.keys.toList().filter { it !in window }.forEach { chapter ->
             chapterPairings.remove(chapter)?.session?.close()
+            preparationTargets.remove(chapter)
         }
         val activeLoaders = window.mapNotNull { it.pageLoader }.toSet()
         // A removed chapter loses presentation ownership immediately, but cancelled physical work
@@ -201,7 +244,7 @@ class DualPageViewerAdapter(
                 pages,
             ).session.apply {
                 configure(
-                    mihon.domain.reader.ReaderDirection.RTL,
+                    viewer.direction,
                     automaticMatching = viewer.config.automaticSpreadMatching,
                 )
                 configurePresentationMode(mihon.domain.reader.ReaderPresentationMode.DUAL)
@@ -212,7 +255,7 @@ class DualPageViewerAdapter(
                         if (chapter.pages !== pages || chapterPairings[chapter]?.pages !== pages) return@collect
                         val entry = store.ensure(chapter, pages)
                         entry.session.configure(
-                            mihon.domain.reader.ReaderDirection.RTL,
+                            viewer.direction,
                             automaticMatching = viewer.config.automaticSpreadMatching,
                         )
                         entry.session.configurePresentationMode(mihon.domain.reader.ReaderPresentationMode.DUAL)
@@ -315,6 +358,32 @@ class DualPageViewerAdapter(
 
     fun refreshPairing() = rebuildItems()
 
+    private var presentationRefreshScheduled = false
+    private val presentationRefreshOwners = mutableSetOf<SharedDualPageSession>()
+
+    internal fun presentationReleased(owner: SharedDualPageSession) {
+        if (!ownsPresentationLineage(owner)) return
+        presentationRefreshOwners += owner
+        if (presentationRefreshScheduled) return
+        presentationRefreshScheduled = true
+        scope.launch {
+            kotlinx.coroutines.yield()
+            presentationRefreshScheduled = false
+            val released = presentationRefreshOwners.toSet()
+            presentationRefreshOwners.clear()
+            val refresh = chapterPairings.entries.mapNotNull { (chapter, entry) ->
+                if (released.none(entry.session::inheritsPresentationFrom)) return@mapNotNull null
+                chapter.pages?.takeIf { it === entry.pages }?.let { chapter to it }
+            }
+            if (refresh.isNotEmpty()) {
+                // A fact snapshot deferred by the old native lease may have no later fact event.
+                // Reuse the same store gate; other still-visible content remains protected.
+                refresh.forEach { (chapter, pages) -> store.ensure(chapter, pages) }
+                rebuildItems()
+            }
+        }
+    }
+
     internal fun releaseContent(chapter: ReaderChapter) {
         val pages = chapter.pages ?: return
         val previous = chapterPairings[chapter]?.session ?: return
@@ -363,7 +432,7 @@ class DualPageViewerAdapter(
         return POSITION_NONE
     }
 
-    /** Assemble in story order and reverse the entire window once, including its boundaries. */
+    /** Assemble in story order; RTL reverses the entire window, including its boundaries. */
     private fun rebuildItems(targetPage: ReaderPage? = null) {
         if (targetPage == null && viewer.hasActiveGesture) {
             // Facts update the owner immediately, while native slots retain their held positions.
@@ -418,7 +487,7 @@ class DualPageViewerAdapter(
                 }
             }
         }
-        val replacement = logical.asReversed().toMutableList()
+        val replacement = (if (viewer.isRtl) logical.asReversed() else logical).toMutableList()
         if (items == replacement) {
             // Metadata can change certainty and the presentation capability without changing physical slots.
             viewer.refreshPresentation()
@@ -436,95 +505,202 @@ class DualPageViewerAdapter(
         if (pendingPairing) rebuildItems()
     }
 
-    /** No materialization here: required adjacent edges consume only already-ready original streams. */
+    internal fun requirePairing(displayPage: DisplayPage): ReaderPairingCertification? {
+        val owner = chapterPairings[displayPage.firstPage.chapter]?.session ?: return null
+        val ids = displayPage.visiblePages.map { owner.identity.pageIds[it.index] }
+        val target = owner.location?.pageId?.takeIf { it in ids } ?: ids.firstOrNull() ?: return null
+        preparationTargets.getOrPut(displayPage.firstPage.chapter) { linkedSetOf() } += target
+        val result = owner.certifyPairing(target)
+        if (result !is ReaderPairingCertification.Certified) startMatching()
+        return result
+    }
+
+    internal fun retryPairing(page: ReaderPage) {
+        chapterPairings[page.chapter]?.session?.retryFacts()
+        matchingJob?.cancel()
+        failedSamples.clear()
+        startMatching()
+        rebuildItems()
+    }
+
+    private fun preparationNeeds(
+        chapter: ReaderChapter,
+        owner: SharedDualPageSession,
+    ): Set<mihon.domain.reader.ReaderPairingFactNeed> {
+        val targets = preparationTargets.getOrPut(chapter) { linkedSetOf() }
+        owner.location?.pageId?.let { targets += it }
+        return targets.flatMap { target ->
+            when (val result = owner.certifyPairing(target)) {
+                is ReaderPairingCertification.NeedFacts -> result.facts
+                is ReaderPairingCertification.RetryableBlocked -> result.facts.filter { need ->
+                    need.kind == ReaderPairingFactKind.DIMENSIONS &&
+                        owner.originalAnalysis(
+                            need.pageId,
+                        ) is mihon.domain.reader.ReaderPageAnalysisEvidence.NotAnalyzed &&
+                        owner.identity.content.first { it.pageId == need.pageId } !in failedSamples
+                }
+                is ReaderPairingCertification.Certified -> emptySet()
+            }
+        }.toSet()
+    }
+
+    /** Required evidence consumes the normal producer and the same explicit-location budget. */
     private fun startMatching() {
-        val chapter = currentChapter ?: return
-        val owner = chapterPairings[chapter]?.session ?: return
-        if (matchingSession !== owner || !viewer.config.automaticSpreadMatching) {
-            matchingJob?.cancel()
-            failedSamples.clear()
-            matchingSession = owner
-        }
-        if (!viewer.config.automaticSpreadMatching ||
-            viewer.activity.optionalWorkUnderMemoryPressure.value || foregroundLoaders.any { it.hasForegroundWork } ||
-            eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView.foregroundWork.value > 0 ||
-            matchingJob?.isCompleted == false ||
+        if (matchingJob?.isCompleted == false ||
             eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.optionalWork.value > 0
         ) {
             return
         }
-        val first = owner.spreadSampleDependencies().firstOrNull() ?: return
-        val firstContent = owner.identity.content.single { it.pageId == first }
-        if (firstContent in failedSamples ||
-            chapter.pages?.getOrNull(first.sourcePageIndex)?.status != eu.kanade.tachiyomi.source.model.Page.State.Ready
-        ) {
-            return
-        }
+        val ordered = listOfNotNull(currentChapter) + preparationTargets.keys.filter { it !== currentChapter }
+        val selected = ordered.firstNotNullOfOrNull { chapter ->
+            val owner = chapterPairings[chapter]?.session ?: return@firstNotNullOfOrNull null
+            preparationNeeds(chapter, owner).takeIf { needs ->
+                needs.any {
+                    it.kind !=
+                        ReaderPairingFactKind.PAIRING_RULES
+                }
+            }
+                ?.let { Triple(chapter, owner, it) }
+        } ?: return
+        val (chapter, owner, _) = selected
+        matchingSession = owner
+        val sequence = owner.location?.sequence
+        val budget = owner.factBudget
         val job = scope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
-            while (chapterPairings[chapter]?.session === owner) {
-                val pageId = owner.spreadSampleDependencies().firstOrNull() ?: break
-                val content = owner.identity.content.single { it.pageId == pageId }
-                if (content in failedSamples) break
-                val page = chapter.pages?.getOrNull(pageId.sourcePageIndex)
-                    ?.takeIf { it.status is eu.kanade.tachiyomi.source.model.Page.State.Ready } ?: break
-                val captured = page.captureContentFact()
-                if (captured.first != content.contentVersion ||
-                    captured.second.fact.sourceOrientation != content.sourceOrientation
-                ) {
-                    store.ensure(chapter, requireNotNull(chapter.pages))
-                    if (chapterPairings[chapter]?.session !== owner ||
-                        owner.identity.content.single { it.pageId == pageId } == content
-                    ) {
-                        break
+            while (chapterPairings[chapter]?.session === owner && owner.location?.sequence == sequence) {
+                val needs = preparationNeeds(chapter, owner)
+                val neededPages = needs.filter { it.kind != ReaderPairingFactKind.PAIRING_RULES }
+                    .flatMap { listOfNotNull(it.pageId, it.secondPageId) }.distinct()
+                if (neededPages.isEmpty()) break
+                val admitted = budget.reserve(neededPages, android.os.SystemClock.uptimeMillis())
+                if (admitted.isEmpty()) {
+                    for (id in neededPages) {
+                        owner.requestOriginalAnalysis(id)?.let {
+                            owner.failOriginalAnalysis(it, ReaderAnalysisFailure.RESOURCE)
+                        }
                     }
-                    continue
-                }
-                val request = owner.requestSpreadSample(pageId) ?: break
-                val fact = captured.second.fact
-                val rawSize = request.content.sourceOrientation.orientedSize(fact.width, fact.height)
-                val samples = try {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.sample(
-                            page,
-                            request,
-                            rawSize.width,
-                            rawSize.height,
-                            spreadDecoderFactory,
-                            canContinue = {
-                                !viewer.activity.optionalWorkUnderMemoryPressure.value &&
-                                    foregroundLoaders.none { it.hasForegroundWork } &&
-                                    eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView.foregroundWork.value == 0
-                            },
-                        )
-                    }
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (_: Exception) {
-                    null
-                }
-                if (chapterPairings[chapter]?.session !== owner || !owner.ownsSpreadSampleRequest(request) ||
-                    page.encodedContentIdentity() != request.content.contentVersion
-                ) {
+                    viewer.refreshPresentation()
                     break
                 }
-                if (samples == null) {
-                    failedSamples += request.content
-                    break
-                }
-                var accepted = false
-                if (!page.consumeContentFact(captured) {
-                        accepted = owner.acceptSpreadSample(request, samples)
+                val results = admitted.map { id ->
+                    async {
+                        val page = chapter.pages?.getOrNull(id.sourcePageIndex) ?: return@async null
+                        val permit = ReaderDualPageFactReadPermit(budget, id, android.os.SystemClock::uptimeMillis)
+                        var request = owner.requestOriginalAnalysis(id) ?: return@async null
+                        try {
+                            kotlinx.coroutines.withTimeout(
+                                budget.remainingWaitMillis(android.os.SystemClock.uptimeMillis()),
+                            ) {
+                                if (page.status != eu.kanade.tachiyomi.source.model.Page.State.Ready) {
+                                    chapter.pageLoader?.loadFactPage(page, permit)
+                                }
+                                withContext(Dispatchers.IO) {
+                                    page.publishHeaderFact(readPermit = permit)
+                                    if (page.pageFact.value.state ==
+                                        ReaderPageFactState.FAILED
+                                    ) {
+                                        page.publishCompleteHeaderFact(permit)
+                                    }
+                                }
+                                if (chapterPairings[chapter]?.session !== owner ||
+                                    owner.location?.sequence != sequence
+                                ) {
+                                    return@withTimeout null
+                                }
+                                store.ensure(chapter, requireNotNull(chapter.pages))
+                                if (chapterPairings[chapter]?.session !== owner) return@withTimeout null
+                                val captured = page.captureContentFact()
+                                request = owner.requestOriginalAnalysis(id) ?: return@withTimeout null
+                                val current = request.content
+                                val header = captured.second.fact
+                                if (captured.first != current.contentVersion || header.width <= 0 ||
+                                    header.height <= 0
+                                ) {
+                                    owner.failOriginalAnalysis(request, ReaderAnalysisFailure.READ)
+                                    failedSamples += current
+                                    return@withTimeout null
+                                }
+                                val fact = ReaderPageFact.dimensions(
+                                    header.width,
+                                    header.height,
+                                    rotation = current.rotation,
+                                    sourceOrientation = current.sourceOrientation,
+                                )
+                                val raw = current.sourceOrientation.orientedSize(fact.width, fact.height)
+                                val samples = withContext(Dispatchers.IO) {
+                                    eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.sampleOriginal(
+                                        page,
+                                        request,
+                                        raw.width,
+                                        raw.height,
+                                        spreadDecoderFactory,
+                                        canContinue = {
+                                            !viewer.activity.optionalWorkUnderMemoryPressure.value &&
+                                                budget.remainingWaitMillis(android.os.SystemClock.uptimeMillis()) > 0
+                                        },
+                                        readPermit = permit,
+                                    )
+                                }
+                                if (samples == null) {
+                                    owner.failOriginalAnalysis(
+                                        request,
+                                        if (permit.exhausted) {
+                                            ReaderAnalysisFailure.RESOURCE
+                                        } else {
+                                            ReaderAnalysisFailure.UNSUPPORTED
+                                        },
+                                    )
+                                    null
+                                } else if (owner.ownsOriginalAnalysisRequest(request) &&
+                                    page.consumeContentFact(captured) {}
+                                ) {
+                                    OriginalCandidate(
+                                        page,
+                                        captured,
+                                        ReaderOriginalAnalysisPublication(request, fact, samples),
+                                    )
+                                } else {
+                                    null
+                                }
+                            }
+                        } catch (error: kotlinx.coroutines.TimeoutCancellationException) {
+                            if (kotlinx.coroutines.currentCoroutineContext().isActive &&
+                                owner.location?.sequence == sequence
+                            ) {
+                                owner.failOriginalAnalysis(request, ReaderAnalysisFailure.RESOURCE)
+                                null
+                            } else {
+                                throw error
+                            }
+                        } catch (error: eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderOptionalWorkPaused) {
+                            owner.failOriginalAnalysis(request, ReaderAnalysisFailure.RESOURCE)
+                            null
+                        } catch (error: CancellationException) {
+                            if (kotlinx.coroutines.currentCoroutineContext().isActive && permit.exhausted &&
+                                owner.location?.sequence == sequence
+                            ) {
+                                owner.failOriginalAnalysis(request, ReaderAnalysisFailure.RESOURCE)
+                                null
+                            } else {
+                                throw error
+                            }
+                        } catch (_: Exception) {
+                            owner.failOriginalAnalysis(
+                                request,
+                                if (permit.exhausted) ReaderAnalysisFailure.RESOURCE else ReaderAnalysisFailure.READ,
+                            )
+                            null
+                        } finally {
+                            budget.complete(id, 0, cacheHit = true)
+                        }
                     }
-                ) {
-                    store.ensure(chapter, requireNotNull(chapter.pages))
-                    continue
-                }
-                if (!accepted) break
+                }.awaitAll().filterNotNull()
+                if (chapterPairings[chapter]?.session !== owner || owner.location?.sequence != sequence) break
+                if (results.isNotEmpty()) publishOriginalBatch(owner, results)
                 rebuildItems()
+                if (results.isEmpty()) break
             }
         }
-        // Main serializes admission, registering this LAZY job, and start across viewer replacements.
-        // Cancellation revokes publication, not a native/IO task still executing in the old job.
         matchingJob = job
         eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.observe(job)
         job.invokeOnCompletion {
@@ -542,13 +718,21 @@ class DualPageViewerAdapter(
         chapter?.state is ReaderChapter.State.Loaded
 
     private fun buildDisplayPages(pages: List<ReaderPage>, session: SharedDualPageSession): List<DisplayPage> {
-        return session.units.map { unit ->
+        return session.presentationFrameProjection.map { unit ->
             if (unit.pageIds.size == 1) {
                 DisplayPage.Single(pages[unit.pageIds.single().sourcePageIndex], unit.slots.single().position)
             } else {
                 DisplayPage.Double(
-                    rightPage = pages[unit.pageIds[0].sourcePageIndex],
-                    leftPage = pages[unit.pageIds[1].sourcePageIndex],
+                    rightPage = pages[
+                        unit.slots.single {
+                            it.position == mihon.domain.reader.ReaderPortraitSingleSlot.RIGHT
+                        }.pageId.sourcePageIndex,
+                    ],
+                    leftPage = pages[
+                        unit.slots.single {
+                            it.position == mihon.domain.reader.ReaderPortraitSingleSlot.LEFT
+                        }.pageId.sourcePageIndex,
+                    ],
                 )
             }
         }

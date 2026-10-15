@@ -18,6 +18,35 @@ import java.util.prefs.Preferences
 class SharedDualPageDesktopWiringTest {
     private val roots = mutableListOf<Preferences>()
 
+    @Test
+    fun `header Ready cannot prepare a dual native viewport without original evidence`() {
+        val reader = desktopReaderSessionState(chapterId = 7, pageCount = 3, initialPage = 1)
+        val model = ReaderScreenModel(
+            initialSessionState = reader,
+            prefs = preferences().apply {
+                isAutoSpreadMatching =
+                    true
+            },
+        )
+        try {
+            reader.snapshot.activeChapter.pages.forEach {
+                model.acceptDualFact(requireNotNull(model.captureDualFact(it.id)), ReaderPageFact.dimensions(80, 120))
+            }
+            val presentation = model.state.value.dualPresentationSnapshot(false, false)
+            val visible = presentation.resolveDualVisiblePages(
+                presentation.displayUnits.first { unit ->
+                    unit.slots.any {
+                        it.page?.id?.sourcePageIndex ==
+                            1
+                    }
+                }.id,
+            )
+            org.junit.jupiter.api.Assertions.assertNull(model.beginPagerViewport(visible, userNavigation = false))
+        } finally {
+            model.onDispose()
+        }
+    }
+
     private fun preferences(): ReaderPreferences {
         val root = Preferences.userRoot().node("/mihon/shared-dual-page-wiring/${System.nanoTime()}")
         roots += root

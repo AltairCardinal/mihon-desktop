@@ -32,12 +32,14 @@ class GitHubPrivateRepositorySelector(
     private val accessToken: suspend () -> String,
     apiBaseUrl: String = "https://api.github.com",
     requestGate: SyncHttpRequestGate? = null,
+    private val diagnosticContext: mihon.data.sync.runtime.SyncJournalContext? = null,
 ) {
     private val baseUrl = apiBaseUrl.trimEnd('/')
     private val http = SyncHttpClient(
         productionClient,
         setOf(baseUrl.hostOrNull() ?: "api.github.com"),
         requestGate = requestGate,
+        diagnosticContext = diagnosticContext,
     )
 
     internal suspend fun objects(path: String, field: String): List<JsonObject> =

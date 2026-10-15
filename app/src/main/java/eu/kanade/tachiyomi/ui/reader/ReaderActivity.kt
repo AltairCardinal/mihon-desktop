@@ -371,11 +371,23 @@ open class ReaderActivity : BaseActivity() {
             }
             is ReaderViewModel.Dialog.ChapterError -> {
                 val errorState = dialog.state
+                val closeError = {
+                    if (state.currentChapter == null) {
+                        finish()
+                    } else {
+                        viewModel.closeDialog()
+                    }
+                }
                 AlertDialog(
-                    onDismissRequest = {},
+                    onDismissRequest = closeError,
                     confirmButton = {
                         TextButton(onClick = { chapterErrorRetryHandler.retry(dialog) }) {
                             Text(stringResource(MR.strings.action_retry))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = closeError) {
+                            Text(stringResource(MR.strings.action_close))
                         }
                     },
                     text = {
@@ -828,8 +840,8 @@ open class ReaderActivity : BaseActivity() {
     }
 
     /**
-     * Called from the presenter if the initial load couldn't load the pages of the chapter. In
-     * this case the activity is closed and a toast is shown to the user.
+     * Shows a retryable error when the initial chapter cannot load. Closing the error exits the
+     * reader when no chapter has been loaded.
      */
     private fun setInitialChapterError(error: Throwable) {
         logcat(LogPriority.ERROR, error)

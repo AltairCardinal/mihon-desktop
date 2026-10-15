@@ -32,6 +32,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import mihon.desktop.di.initDesktopDI
+import mihon.domain.easteregg.PigEasterEggController
 import mihon.desktop.image.installDesktopImageLoader
 import mihon.desktop.platform.AwtDesktopOpenUriEventPort
 import mihon.desktop.platform.DesktopExternalActionBroker
@@ -58,6 +59,7 @@ import mihon.desktop.ui.ExternalActionNavigator
 import mihon.desktop.ui.home.HomeScreen
 import mihon.desktop.ui.security.DesktopProtectedRoot
 import mihon.desktop.ui.settings.DesktopLocaleFeedbackHost
+import mihon.desktop.ui.settings.DesktopPigEasterEggOverlay
 import mihon.desktop.ui.theme.DesktopTheme
 import mihon.domain.platform.ExternalActionInput
 import mihon.domain.security.SecureScreenPolicy
@@ -311,26 +313,29 @@ private suspend fun runDesktopComposeWindowEventLoop(
             },
         ) {
             BindDesktopWindowLifecycle(window, owner.appLock, owner.windowPrivacyController)
-            mihon.desktop.test.ProvideDesktopSyncUiObservation(window) {
-                OwnerUiDependencies(owner.ingress) {
-                    CompositionLocalProvider(
-                        mihon.desktop.ui.reader.LocalReaderNativeWindow provides window,
-                        mihon.desktop.sync.LocalDesktopRecoveryRestart provides { root ->
-                            requestClose.stopForRecovery()
-                            val launched = mihon.desktop.platform.DesktopRecoveryLauncher.launch(root)
-                            if (launched) requestClose { exitApplication() }
-                            launched
-                        },
-                    ) {
-                        DesktopTheme {
-                            DesktopProtectedRoot(owner.appLock) {
-                                Navigator(HomeScreen()) { navigator ->
-                                    DesktopLocalizedNavigatorContent(owner.ingress.uiDependencies.localeAdapter, navigator)
+            Box(modifier = Modifier.fillMaxSize()) {
+                mihon.desktop.test.ProvideDesktopSyncUiObservation(window) {
+                    OwnerUiDependencies(owner.ingress) {
+                        CompositionLocalProvider(
+                            mihon.desktop.ui.reader.LocalReaderNativeWindow provides window,
+                            mihon.desktop.sync.LocalDesktopRecoveryRestart provides { root ->
+                                requestClose.stopForRecovery()
+                                val launched = mihon.desktop.platform.DesktopRecoveryLauncher.launch(root)
+                                if (launched) requestClose { exitApplication() }
+                                launched
+                            },
+                        ) {
+                            DesktopTheme {
+                                DesktopProtectedRoot(owner.appLock) {
+                                    Navigator(HomeScreen()) { navigator ->
+                                        DesktopLocalizedNavigatorContent(owner.ingress.uiDependencies.localeAdapter, navigator)
+                                    }
                                 }
                             }
                         }
                     }
                 }
+                DesktopPigEasterEggOverlay(PigEasterEggController.Default)
             }
         }
     }

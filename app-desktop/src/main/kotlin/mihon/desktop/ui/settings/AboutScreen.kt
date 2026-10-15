@@ -21,6 +21,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -39,7 +40,9 @@ import tachiyomi.i18n.MR
 import tachiyomi.domain.release.service.ApplicationUpdatePreferences
 import java.util.Locale
 
-class AboutScreen(internal val platformPaths: DesktopPlatformPaths = DesktopPlatformPaths.current()) : Screen {
+internal class AboutScreen(
+    internal val platformPaths: DesktopPlatformPaths = DesktopPlatformPaths.current(),
+) : Screen {
 
     internal fun onLicenses(navigator: cafe.adriel.voyager.navigator.Navigator) {
         navigator.push(licenseListDestination())
@@ -64,6 +67,7 @@ class AboutScreen(internal val platformPaths: DesktopPlatformPaths = DesktopPlat
             mutableStateOf(formatBytes(cacheDir.walkBottomUp().filter { it.isFile }.sumOf { it.length() }))
         }
         var cacheCleared by remember { mutableStateOf(false) }
+
 
         // Gather debug info once
         val dbSize = remember { formatBytes(dbFile.length()) }

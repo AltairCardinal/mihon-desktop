@@ -267,6 +267,7 @@ class GitHubSyncTransport(
     persistentObjectCacheDirectory: Path? = null,
     requestGate: SyncHttpRequestGate? = null,
     bodyObserver: mihon.data.sync.http.SyncHttpBodyObserver? = null,
+    diagnosticContext: mihon.data.sync.runtime.SyncJournalContext? = null,
     repositoryId: Long? = null,
 ) : SyncTransportPort {
     private var connectionRevision = connectionRevision
@@ -276,6 +277,7 @@ class GitHubSyncTransport(
         setOf(apiBaseUrl.hostOrNull() ?: "api.github.com"),
         requestGate = requestGate,
         bodyObserver = bodyObserver,
+        diagnosticContext = diagnosticContext,
     )
     private val persistentObjectCache = SyncPersistentGitObjectCache(persistentObjectCacheDirectory)
     private val blobCache = SyncBlobCache()

@@ -73,4 +73,39 @@ class SyncDiagnosticStoreTest {
         assertTrue(json.contains("\"truncated\":true"))
         assertTrue(Files.list(path.parent).use { entries -> entries.noneMatch { it.toString().endsWith(".tmp") } })
     }
+
+    @Test
+    fun `export preserves persisted failure evidence while trimming oversized panel observations`() {
+        val directory = Files.createTempDirectory("sync-journal-export")
+        val journalPath = directory.resolve("private-history").toString().toPath()
+        val journal = mihon.data.sync.runtime.SyncDiagnosticJournal(journalPath)
+        val failure = IllegalStateException("credential-and-private-title-must-not-appear")
+        journal.record(
+            mihon.data.sync.runtime.SyncJournalEventKind.EXCEPTION,
+            mihon.data.sync.runtime.SyncJournalStage.UPLOADING,
+            runId = "private-run-id",
+            failure = failure,
+        )
+        val restored = mihon.data.sync.runtime.SyncDiagnosticJournal(journalPath)
+        val snapshot = SyncDiagnosticSnapshot(
+            journal = restored.snapshot(),
+            events = List(128) {
+                SyncDiagnosticEvent(
+                    it.toLong(),
+                    SyncDiagnosticEventKind.COORDINATOR,
+                    coordinatorTrigger = "x".repeat(4_096),
+                )
+            },
+        )
+        val store = SyncDiagnosticStore(directory.resolve("exports").toString().toPath())
+        val file = java.nio.file.Path.of(store.export(snapshot))
+        val content = Files.readString(file)
+        val exported = kotlinx.serialization.json.Json.decodeFromString<SyncDiagnosticSnapshot>(content)
+        assertTrue(exported.truncated)
+        assertTrue(Files.size(file) <= 256 * 1024)
+        assertEquals(snapshot.journal, exported.journal)
+        assertTrue(exported.journal!!.events.single().exceptions.isNotEmpty())
+        assertFalse(content.contains("credential-and-private-title"))
+        assertFalse(content.contains("private-run-id"))
+    }
 }

@@ -172,6 +172,11 @@
     <string name="vertical_viewer">單頁(上至下)</string>
     <string name="webtoon_viewer">捲動(連續)</string>
     <string name="pager_viewer">單頁</string>
+    <string name="dual_page_r2l_viewer">雙頁式（從右到左）</string>
+    <string name="dual_page_l2r_viewer">雙頁式（從左到右）</string>
+    <string name="desktop_reader_paged_mode">翻頁式</string>
+    <string name="desktop_reader_direction_ltr">從左到右</string>
+    <string name="desktop_reader_direction_rtl">從右到左</string>
     <string name="pref_image_scale_type">縮放模式</string>
     <string name="scale_type_fit_screen">符合螢幕</string>
     <string name="scale_type_stretch">延展</string>
@@ -721,6 +726,9 @@
     <string name="pref_flash_page_summ">減少電子紙顯示器上的殘影</string>
     <string name="last_auto_backup_info">上次自動備份於：%s</string>
     <string name="pref_flash_page">翻頁時閃爍畫面</string>
+    <string name="pref_page_turn_ripple">翻頁時用水波紋</string>
+    <string name="pref_page_turn_ripple_summary">翻頁時使用擦除揭示的水波紋過渡效果</string>
+    <string name="pref_eink_device_detected">已識別為墨水屏設備</string>
     <string name="label_data_storage">資料與儲存空間</string>
     <string name="pref_storage_usage">儲存空間使用情形</string>
     <string name="action_sort_tracker_score">歷程平臺評分</string>

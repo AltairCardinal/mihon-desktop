@@ -24,6 +24,7 @@ import kotlinx.coroutines.cancel
 import logcat.LogPriority
 import mihon.domain.reader.ChapterPairingSnapshot
 import mihon.domain.reader.ReaderAdjacentChapterPolicy
+import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderDualPageSettlement
 import mihon.domain.reader.ReaderDualPageSettlementReason
 import mihon.domain.reader.ReaderDualPageViewportTicket
@@ -34,10 +35,10 @@ import uy.kohesive.injekt.injectLazy
 import kotlin.math.min
 
 /**
- * Dual-page right-to-left viewer.
+ * Dual-page horizontal viewer; the legacy class name is retained for existing integrations.
  *
- * Displays pages in pairs side-by-side (right page first, left page second) where both pages
- * are portrait orientation.  Spread pages (landscape) are shown alone like in normal R2L mode.
+ * Displays portrait pairs in the selected direction using the shared physical slot projection.
+ * Spread pages (landscape) are shown alone.
  *
  * Architecture mirrors [PagerViewer] but uses its own [DualPageViewerAdapter] instead of
  * [PagerViewerAdapter] to manage page pairings.
@@ -46,7 +47,9 @@ import kotlin.math.min
 class DualPageR2LPagerViewer(
     override val activity: ReaderActivity,
     private val pairingStore: DualPagePairingStore = DualPagePairingStore(),
+    val direction: ReaderDirection = ReaderDirection.RTL,
 ) : Viewer, ViewerWithPager {
+    val isRtl: Boolean get() = direction == ReaderDirection.RTL
 
     override val downloadManager: DownloadManager by injectLazy()
 
@@ -118,7 +121,10 @@ class DualPageR2LPagerViewer(
                 val previousPosition = adapter.positionOf(currentPage)
                 val selected = adapter.items.getOrNull(position) as? DisplayPage
                 if (selected != null && previousPosition >= 0 && previousPosition != position) {
-                    adapter.selectGesturePage(selected, forward = position < previousPosition)
+                    adapter.selectGesturePage(
+                        selected,
+                        forward = if (isRtl) position < previousPosition else position > previousPosition,
+                    )
                 }
             }
             if (!activity.isScrollingThroughPages) {
@@ -159,6 +165,7 @@ class DualPageR2LPagerViewer(
     }
 
     init {
+        require(direction != ReaderDirection.VERTICAL)
         pager.isVisible = false
         pager.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         pager.isFocusable = false
@@ -200,6 +207,19 @@ class DualPageR2LPagerViewer(
                 }
             }
             false
+        }
+
+        pager.pageTurnRippleEnabled = config.pageTurnRipple
+        config.pageTurnRippleChangedListener = { enabled ->
+            pager.pageTurnRippleEnabled = enabled
+        }
+        pager.swipeListener = { direction ->
+            when (direction) {
+                Pager.SwipeDirection.LEFT -> moveRight()
+                Pager.SwipeDirection.RIGHT -> moveLeft()
+                Pager.SwipeDirection.UP -> moveDown()
+                Pager.SwipeDirection.DOWN -> moveUp()
+            }
         }
 
         config.imagePropertyChangedListener = { refreshAdapter() }
@@ -273,9 +293,9 @@ class DualPageR2LPagerViewer(
         }
     }
 
-    // ── R2L navigation ───────────────────────────────────────────────────────
+    // ── Horizontal navigation ───────────────────────────────────────────────
 
-    /** The complete R2L window is reversed, so next is the lower ViewPager index. */
+    /** Native left/right input follows physical movement; next/previous follows story order. */
     override fun handleKeyEvent(event: KeyEvent): Boolean {
         val isUp = event.action == KeyEvent.ACTION_UP
         val ctrlPressed = event.metaState.and(KeyEvent.META_CTRL_ON) > 0
@@ -326,20 +346,28 @@ class DualPageR2LPagerViewer(
         return false
     }
 
-    private fun moveToNext() = moveLeft()
-    private fun moveToPrevious() = moveRight()
+    private fun moveToNext() = if (isRtl) moveLeft() else moveRight()
+    private fun moveToPrevious() = if (isRtl) moveRight() else moveLeft()
 
     private fun moveLeft() {
-        if (navigateSource(forward = true)) return
+        if (navigateSource(forward = isRtl)) return
         if (pager.currentItem != 0) {
-            pager.setCurrentItem(pager.currentItem - 1, config.usePageTransitions)
+            if (config.pageTurnRipple) {
+                pager.setCurrentItemWithRipple(pager.currentItem - 1, Pager.RippleDirection.LEFT_TO_RIGHT)
+            } else {
+                pager.setCurrentItem(pager.currentItem - 1, config.usePageTransitions)
+            }
         }
     }
 
     private fun moveRight() {
-        if (navigateSource(forward = false)) return
+        if (navigateSource(forward = !isRtl)) return
         if (pager.currentItem != adapter.count - 1) {
-            pager.setCurrentItem(pager.currentItem + 1, config.usePageTransitions)
+            if (config.pageTurnRipple) {
+                pager.setCurrentItemWithRipple(pager.currentItem + 1, Pager.RippleDirection.RIGHT_TO_LEFT)
+            } else {
+                pager.setCurrentItem(pager.currentItem + 1, config.usePageTransitions)
+            }
         }
     }
 
@@ -360,7 +388,16 @@ class DualPageR2LPagerViewer(
             val target = adapter.navigate(chapter, forward) ?: return false
             val position = adapter.items.indexOfFirst { it is DisplayPage && it.containsPage(target) }
             if (position < 0) return false
-            pager.setCurrentItem(position, animate)
+            if (config.pageTurnRipple) {
+                val rippleDirection = if (position > pager.currentItem) {
+                    Pager.RippleDirection.RIGHT_TO_LEFT
+                } else {
+                    Pager.RippleDirection.LEFT_TO_RIGHT
+                }
+                pager.setCurrentItemWithRipple(position, rippleDirection)
+            } else {
+                pager.setCurrentItem(position, animate)
+            }
         } finally {
             replacingPairing = wasReplacing
         }
@@ -489,9 +526,15 @@ class DualPageR2LPagerViewer(
         if (destroyed) return null
         discardObsoletePresentations()
         val owner = adapter.session(displayPage.firstPage.chapter) ?: return null
+        if (adapter.requirePairing(
+                displayPage,
+            ) !is mihon.domain.reader.ReaderPairingCertification.Certified
+        ) {
+            return null
+        }
         val visible = displayPage.visiblePages.map { owner.identity.pageIds[it.index] }
         val pageId = owner.location?.pageId?.takeIf { it in visible } ?: visible.firstOrNull() ?: return null
-        return owner.captureViewport(pageId, preparingPageIds = emptySet())?.let { ticket ->
+        return owner.captureCertifiedViewport(pageId)?.let { ticket ->
             // Native neighbours may expose pixels during a drag; only the logical scope can read.
             presentedViewports.getOrPut(owner) { mutableSetOf() } += ticket
             owner to ticket
@@ -500,7 +543,7 @@ class DualPageR2LPagerViewer(
 
     internal fun releasePresentation(scope: Pair<SharedDualPageSession, ReaderDualPageViewportTicket>) {
         val (owner, ticket) = scope
-        owner.releaseViewport(ticket)
+        if (owner.releaseViewport(ticket)) adapter.presentationReleased(owner)
         presentedViewports[owner]?.let { tickets ->
             tickets.remove(ticket)
             if (tickets.isEmpty()) presentedViewports.remove(owner)
@@ -508,7 +551,7 @@ class DualPageR2LPagerViewer(
     }
 
     private fun discardObsoletePresentations() {
-        presentedViewports.keys.toList().filterNot(adapter::ownsSession).forEach { owner ->
+        presentedViewports.keys.toList().filterNot(adapter::ownsPresentationLineage).forEach { owner ->
             presentedViewports.remove(owner)?.forEach(owner::releaseViewport)
         }
     }
@@ -585,7 +628,7 @@ class DualPageR2LPagerViewer(
         logcat(LogPriority.INFO) {
             "DualPageManual request ui=${selected.visiblePages.map { it.index }}" +
                 " target=${owner.location?.pageId?.sourcePageIndex}" +
-                " direction=RTL" +
+                " direction=$direction" +
                 " opening=${owner.pairingState.openingMode}" +
                 " boundaries=${owner.pairingState.committedForcedSinglePages.sorted().take(16)}" +
                 " pairs=${owner.pairingState.manualPairStarts.sorted().take(16)}"

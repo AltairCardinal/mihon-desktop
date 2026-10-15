@@ -150,6 +150,14 @@ class DomainModule : InjektModule {
         addSingletonFactory<SyncSecureStore> { AndroidSyncSecureStore(get<Application>()) }
         addSingletonFactory {
             val sources = get<SourceManager>()
+            val diagnosticEnvironment = mihon.data.sync.runtime.SyncDiagnosticEnvironment(
+                platform = "ANDROID",
+                appVersion = AndroidBuildConfig.VERSION_NAME,
+                sourceRevision = AndroidBuildConfig.COMMIT_SHA,
+                releaseIdentity = AndroidBuildConfig.APPLICATION_ID,
+                build = AndroidBuildConfig.VERSION_CODE.toString(),
+                releaseBuild = !AndroidBuildConfig.DEBUG,
+            )
             SyncRuntime(
                 handler = get(),
                 bootstrap = get(),
@@ -167,13 +175,10 @@ class DomainModule : InjektModule {
                     ?.let(mihon.data.sync.auth.SyncRepositoryScope::acceptance)
                     ?: mihon.data.sync.auth.SyncRepositoryScope.Default,
                 diagnosticDirectory = get<Application>().cacheDir.resolve("sync-diagnostics").toOkioPath(),
-                diagnosticEnvironment = mihon.data.sync.runtime.SyncDiagnosticEnvironment(
-                    platform = "ANDROID",
-                    appVersion = AndroidBuildConfig.VERSION_NAME,
-                    sourceRevision = AndroidBuildConfig.COMMIT_SHA,
-                    releaseIdentity = AndroidBuildConfig.APPLICATION_ID,
-                    build = AndroidBuildConfig.VERSION_CODE.toString(),
-                    releaseBuild = !AndroidBuildConfig.DEBUG,
+                diagnosticEnvironment = diagnosticEnvironment,
+                diagnosticJournal = mihon.data.sync.runtime.SyncDiagnosticJournal(
+                    get<Application>().filesDir.resolve("sync-diagnostics-journal").toOkioPath(),
+                    diagnosticEnvironment,
                 ),
             ).also { runtime ->
                 eu.kanade.tachiyomi.data.sync.AndroidRecoveryProfile.origin(get<Application>())

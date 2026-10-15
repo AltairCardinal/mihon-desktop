@@ -1,8 +1,15 @@
 package mihon.desktop.platform
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.window.launchApplication
+import com.sun.jna.Function
+import com.sun.jna.Native
+import com.sun.jna.NativeLibrary
+import com.sun.jna.ptr.IntByReference
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +29,7 @@ import org.junit.jupiter.api.condition.OS
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.core.common.preference.Preference
 import java.awt.AWTEvent
+import java.awt.Dimension
 import java.awt.Frame
 import java.awt.Rectangle
 import java.awt.Toolkit
@@ -34,7 +42,7 @@ import java.util.concurrent.FutureTask
 import java.util.prefs.Preferences
 import javax.swing.SwingUtilities
 
-/** Opens only isolated, temporary production window shells with an empty body. */
+/** Opens isolated production window shells with a measured drawing surface. */
 @Tag("native-window")
 @EnabledOnOs(OS.WINDOWS)
 class DesktopWindowGeometryTest {
@@ -44,6 +52,65 @@ class DesktopWindowGeometryTest {
     fun cleanup() = root.removeNode()
 
     private fun preferences() = DesktopAppPreferences(DesktopPreferenceStore(root.node("store")), root.node("legacy"))
+
+    @Test
+    fun `maximized content is drawn at final size before window becomes visible`() = runBlocking {
+        preferences().windowGeometry.set(
+            """{"x":140,"y":110,"width":860,"height":610,"maximized":true}""",
+        )
+        var drawnSize: Dimension? = null
+        val firstVisible = CompletableDeferred<Triple<Dimension?, Dimension, Boolean>>()
+        val listener = AWTEventListener { event ->
+            val frame = event.source as? ComposeWindow
+            if (event is HierarchyEvent && event.changeFlags and HierarchyEvent.SHOWING_CHANGED.toLong() != 0L &&
+                frame?.title == "Mihon isolated geometry test" && frame.isShowing
+            ) {
+                val insets = frame.insets
+                val scale = frame.graphicsConfiguration.defaultTransform
+                firstVisible.complete(
+                    Triple(
+                        drawnSize,
+                        Dimension(
+                            ((frame.width - insets.left - insets.right) * scale.scaleX).toInt(),
+                            ((frame.height - insets.top - insets.bottom) * scale.scaleY).toInt(),
+                        ),
+                        isCloaked(frame),
+                    ),
+                )
+            }
+        }
+        Toolkit.getDefaultToolkit().addAWTEventListener(listener, AWTEvent.HIERARCHY_EVENT_MASK)
+        try {
+            window(preferences(), onDraw = { drawnSize = it }) { frame ->
+                val (drawn, expected, cloaked) = withTimeout(5_000) { firstVisible.await() }
+                assertTrue(
+                    cloaked || matchesPixels(expected, drawn),
+                    "Undersized first frame must not be exposed: expected=$expected drawn=$drawn",
+                )
+                waitFor { !isCloaked(frame) }
+                assertTrue(
+                    onEdt { matchesPixels(expected, drawnSize) },
+                    "Revealed content must already fill the maximized client area: expected=$expected drawn=$drawnSize",
+                )
+            }
+        } finally {
+            Toolkit.getDefaultToolkit().removeAWTEventListener(listener)
+        }
+    }
+
+    private fun matchesPixels(expected: Dimension, actual: Dimension?): Boolean = actual != null &&
+        // AWT logical bounds and Compose physical pixels can round differently at fractional DPI.
+        kotlin.math.abs(expected.width - actual.width) <= 2 &&
+        kotlin.math.abs(expected.height - actual.height) <= 2
+
+    private fun isCloaked(frame: ComposeWindow): Boolean {
+        val value = IntByReference()
+        val result = NativeLibrary.getInstance("dwmapi")
+            .getFunction("DwmGetWindowAttribute", Function.ALT_CONVENTION)
+            .invokeInt(arrayOf(Native.getComponentPointer(frame), 14, value, Int.SIZE_BYTES))
+        check(result >= 0) { "Could not read native cloak state: $result" }
+        return value.value != 0
+    }
 
     @Test
     fun `restored normal bounds are applied before first native visibility`() = runBlocking {
@@ -165,6 +232,7 @@ class DesktopWindowGeometryTest {
     private suspend fun window(
         preferences: DesktopAppPreferences,
         transitions: DesktopWindowTransitions = WindowsWindowTransitions,
+        onDraw: (Dimension) -> Unit = {},
         assertions: suspend (ComposeWindow) -> Unit,
     ) {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -176,6 +244,7 @@ class DesktopWindowGeometryTest {
                 title = "Mihon isolated geometry test",
                 windowTransitions = transitions,
             ) {
+                Canvas(Modifier.fillMaxSize()) { onDraw(Dimension(size.width.toInt(), size.height.toInt())) }
                 LaunchedEffect(window) { ready.complete(window) }
             }
         }

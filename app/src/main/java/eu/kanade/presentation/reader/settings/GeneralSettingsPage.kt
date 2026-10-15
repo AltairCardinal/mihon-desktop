@@ -98,6 +98,10 @@ internal fun ColumnScope.GeneralPage(screenModel: ReaderSettingsScreenModel) {
         label = stringResource(MR.strings.pref_flash_page),
         pref = screenModel.preferences.flashOnPageChange(),
     )
+    CheckboxItem(
+        label = stringResource(MR.strings.pref_page_turn_ripple),
+        pref = screenModel.preferences.pageTurnRipple(),
+    )
     if (flashPageState) {
         SliderItem(
             value = flashMillis / ReaderPreferences.MILLI_CONVERSION,

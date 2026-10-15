@@ -44,6 +44,7 @@ internal fun interface DesktopReaderPageImageDecoder {
 internal class SkiaDesktopReaderPageImageDecoder(
     private val decoder: PageDecoder<ByteArray, ImageBitmap> = SkiaPageDecoder(),
     private val regionDecoder: mihon.domain.reader.RegionDecoder<ByteArray, ImageBitmap> = SkiaRegionPageDecoder(),
+    private val memoryAuthority: DesktopReaderImageMemoryAuthority? = null,
 ) : DesktopReaderPageImageDecoder {
     override suspend fun decode(
         encoded: ByteArray,
@@ -53,6 +54,48 @@ internal class SkiaDesktopReaderPageImageDecoder(
         if (key.purpose == PageDecodePurpose.ANIMATION_FRAME) return decodeAnimationFrame(encoded, key)
         val sourceSize = SkiaImageDecoder.peekSize(encoded) ?: return null
         val animationMetadata = inspectAnimationMetadata(encoded)
+        if (decoder is SkiaPageDecoder && animationMetadata == null &&
+            SkiaImageDecoder.originalDecodePeakBytes(
+                sourceSize.first,
+                sourceSize.second,
+                key.maxWidth,
+                key.maxHeight,
+            ) <=
+            (memoryAuthority?.maxBytes ?: DesktopReaderImageMemoryAuthority().maxBytes)
+        ) {
+            val (bitmap, samples) = decoder.decodeWithOriginal(
+                encoded,
+                PageDecodeRequest(key.pageIndex, key.generation, key.maxWidth, key.maxHeight),
+                { bytes ->
+                    val authority = memoryAuthority
+                    if (authority == null) {
+                        AutoCloseable {}
+                    } else {
+                        val lease = authority.register(
+                            DesktopReaderImageMemoryKind.DERIVED,
+                            bytes,
+                            DesktopReaderImageMemoryRetention.IN_FLIGHT,
+                        ) {
+                        }
+                        if (authority.snapshot().overBudgetBytes > 0) {
+                            lease.close()
+                            throw DesktopReaderOptionalWorkPaused()
+                        }
+                        lease
+                    }
+                },
+            )
+            return DesktopReaderImageAsset(
+                bitmap = bitmap,
+                sourceWidth = sourceSize.first,
+                sourceHeight = sourceSize.second,
+                estimatedBytes = bitmap.width.toLong() * bitmap.height * BYTES_PER_PIXEL,
+                sampled = bitmap.width != sourceSize.first || bitmap.height != sourceSize.second,
+                originalSamples = samples,
+                sourceOrientation = mihon.domain.reader.readImageOrientation(encoded),
+                disposer = bitmap.asSkiaBitmap()::close,
+            )
+        }
         return when (
             val result = decoder.decode(
                 encoded,
@@ -72,6 +115,7 @@ internal class SkiaDesktopReaderPageImageDecoder(
                 estimatedBytes = result.estimatedBytes,
                 sampled = result.isSampled,
                 animationMetadata = animationMetadata,
+                sourceOrientation = mihon.domain.reader.readImageOrientation(encoded),
                 disposer = result.value.asSkiaBitmap()::close,
             )
         }
@@ -231,7 +275,7 @@ class DesktopReaderPageImagePipeline internal constructor(
     private val scope: CoroutineScope,
     private val pageContentOwner: DesktopReaderPageContentOwner,
     private val ioReporter: ReaderIoReporter,
-    private val decoder: DesktopReaderPageImageDecoder = SkiaDesktopReaderPageImageDecoder(),
+    decoder: DesktopReaderPageImageDecoder? = null,
     maxEntries: Int = DEFAULT_CACHE_ENTRIES,
     maxBytes: Long = DEFAULT_CACHE_BYTES,
     internal val memoryAuthority: DesktopReaderImageMemoryAuthority = DesktopReaderImageMemoryAuthority(
@@ -240,6 +284,8 @@ class DesktopReaderPageImagePipeline internal constructor(
     maxConcurrentDecodes: Int = DEFAULT_CONCURRENT_DECODES,
     private val partialDecodeFailureHandler: suspend (ReaderPageContentOpenRequest) -> Boolean = { false },
 ) : AutoCloseable {
+    private val decoder: DesktopReaderPageImageDecoder =
+        decoder ?: SkiaDesktopReaderPageImageDecoder(memoryAuthority = memoryAuthority)
     private data class PageGenerationIdentity(
         val pageId: ReaderPageId,
         val generation: Long,

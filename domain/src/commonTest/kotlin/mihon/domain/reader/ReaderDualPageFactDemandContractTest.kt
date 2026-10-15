@@ -14,11 +14,20 @@ class ReaderDualPageFactDemandContractTest {
     fun `reverse navigation shifts existing fact and sample demand to its source window`() {
         val identity = ReaderDualPageIdentity(1, 1, pages.map { ReaderDualPageContentIdentity(it, "original") })
         val owner = SharedDualPageSession(identity, ReaderDirection.RTL, pages[16])
-        (14..16).forEach { owner.acceptFact(owner.requestFact(pages[it]), ReaderPageFact.dimensions(100, 200)) }
+        (13..16).forEach {
+            assertTrue(owner.acceptFact(owner.requestFact(pages[it]), ReaderPageFact.dimensions(100, 200)))
+        }
         owner.configure(ReaderDirection.RTL, automaticMatching = true)
+        // Cover 0 is single; the canonical neighboring groups are 13/14 and 15/16.
+        // The requested source remains 16, rather than becoming a new local pair start.
+        assertEquals(pages[16], owner.location!!.pageId)
+        assertEquals(listOf(pages[15], pages[16]), owner.targetUnit!!.pageIds)
         assertTrue(owner.navigate(false))
-        assertEquals(listOf(pages[11], pages[12], pages[13]), owner.factDependencies())
-        assertEquals(listOf(pages[14], pages[15]), owner.spreadSampleDependencies())
+        assertEquals(pages[14], owner.location!!.pageId)
+        assertEquals(listOf(pages[13], pages[14]), owner.targetUnit!!.pageIds)
+        assertEquals(listOf(pages[10], pages[11], pages[12]), owner.factDependencies())
+        assertEquals(listOf(pages[13], pages[14]), owner.spreadSampleDependencies())
+        assertTrue(owner.displayedHistory.isEmpty(), "Demand and navigation do not manufacture a physical draw")
     }
 
     @Test

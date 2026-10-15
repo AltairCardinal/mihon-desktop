@@ -197,7 +197,7 @@ class SharedDualPageLateExifProductionTest {
             )
             assertTrue(!returned.isCompleted, "First pixels must precede the original encoded header read")
             assertEquals(
-                ReaderImageOrientation.NORMAL,
+                ReaderImageOrientation.CLOCKWISE,
                 model.state.value.dualPageIdentity?.content?.get(1)?.sourceOrientation,
             )
             val first = nativeIdentity(scene)

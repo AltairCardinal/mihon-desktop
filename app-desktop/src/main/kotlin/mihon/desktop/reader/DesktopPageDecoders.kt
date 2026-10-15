@@ -1,19 +1,26 @@
 package mihon.desktop.reader
 
 import androidx.compose.ui.graphics.ImageBitmap
-import java.awt.Rectangle
-import java.awt.image.BufferedImage
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
-import javax.imageio.ImageIO
 import mihon.domain.error.AppError
 import mihon.domain.reader.PageDecodeRequest
 import mihon.domain.reader.PageDecodeResult
 import mihon.domain.reader.PageDecoder
 import mihon.domain.reader.PixelBounds
 import mihon.domain.reader.RegionDecoder
+import java.awt.Rectangle
+import java.awt.image.BufferedImage
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import javax.imageio.ImageIO
 
 class SkiaPageDecoder : PageDecoder<ByteArray, ImageBitmap> {
+    internal fun decodeWithOriginal(
+        encoded: ByteArray,
+        request: PageDecodeRequest,
+        reserveMemory: (Long) -> AutoCloseable,
+    ) =
+        SkiaImageDecoder.decodeDownsampledWithOriginal(encoded, request.maxWidth, request.maxHeight, reserveMemory)
+
     override suspend fun decode(
         encoded: ByteArray,
         request: PageDecodeRequest,
@@ -100,7 +107,7 @@ private fun BufferedImage.toImageBitmap(): ImageBitmap {
         check(ImageIO.write(this, "png", output)) { "Unable to encode bounded region" }
         output.toByteArray()
     }
-    return SkiaImageDecoder.decode(encoded)
+    return SkiaImageDecoder.decodeStraightSrgb(encoded)
 }
 
 private fun PixelBounds.clampTo(imageWidth: Int, imageHeight: Int): PixelBounds {

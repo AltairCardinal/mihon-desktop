@@ -122,7 +122,12 @@ class PagerConfig(
             // Auto
             1 -> when (viewer) {
                 is L2RPagerViewer -> ReaderPageImageView.ZoomStartPosition.LEFT
-                is R2LPagerViewer, is DualPageR2LPagerViewer -> ReaderPageImageView.ZoomStartPosition.RIGHT
+                is R2LPagerViewer -> ReaderPageImageView.ZoomStartPosition.RIGHT
+                is DualPageR2LPagerViewer -> if (viewer.isRtl) {
+                    ReaderPageImageView.ZoomStartPosition.RIGHT
+                } else {
+                    ReaderPageImageView.ZoomStartPosition.LEFT
+                }
                 else -> ReaderPageImageView.ZoomStartPosition.CENTER
             }
             // Left

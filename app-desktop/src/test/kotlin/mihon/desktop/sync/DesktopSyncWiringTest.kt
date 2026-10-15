@@ -33,6 +33,16 @@ class DesktopSyncWiringTest {
             assertSame(scope, runtime.repositoryScope)
             assertEquals(scope.repositoryName, runtime.repositoryScope.repositoryName)
             assertSame(runtime.panel, mihon.desktop.DesktopUiDependencies.fromInjekt().syncPanel)
+            assertEquals(SyncRunStatus.SKIPPED, runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+            val snapshot = runtime.diagnostics.capture(mihon.data.sync.runtime.SyncPanelState())
+            val exported = requireNotNull(runtime.diagnostics.export(snapshot))
+            val json = kotlinx.serialization.json.Json.parseToJsonElement(File(exported).readText())
+                as kotlinx.serialization.json.JsonObject
+            val journal = json["journal"] as? kotlinx.serialization.json.JsonObject
+            assertTrue(journal != null, "production Desktop DI must export its durable sync journal")
+            val events = journal?.get("events") as? kotlinx.serialization.json.JsonArray
+            assertTrue(events?.isNotEmpty() == true, "a real coordinator skip must leave a durable reason")
+            assertTrue(folder.resolve("logs/sync-diagnostics-journal").isDirectory)
         } finally {
             context.closeAndJoin()
             node.removeNode()

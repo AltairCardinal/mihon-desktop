@@ -299,7 +299,10 @@ fun SearchToolbar(
 
             BasicTextField(
                 value = searchQuery,
-                onValueChange = onChangeSearchQuery,
+                onValueChange = {
+                    mihon.domain.easteregg.PigEasterEggTrigger.check(it)
+                    onChangeSearchQuery(it)
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focusRequester)

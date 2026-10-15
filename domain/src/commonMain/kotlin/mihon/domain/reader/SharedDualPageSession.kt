@@ -35,6 +35,12 @@ data class ReaderDualPageFactRequest(
     val requestId: Long,
 )
 
+data class ReaderOriginalAnalysisPublication(
+    val request: ReaderSpreadSampleRequest,
+    val fact: ReaderPageFact,
+    val samples: ReaderOriginalPageSamples,
+)
+
 enum class ReaderDualPageSettlementReason { USER_NAVIGATION, LAYOUT_ONLY }
 
 enum class ReaderPresentationMode { SINGLE, DUAL }
@@ -81,11 +87,15 @@ class SharedDualPageSession(
     private var automaticMatching = false
     private var navigationForward = true
     private val facts = mutableMapOf<ReaderPageId, ReaderPageFact>()
+    private val originalHeaders = mutableMapOf<ReaderPageId, ReaderPageFact>()
     private val requests = mutableMapOf<ReaderPageId, ReaderDualPageFactRequest>()
     private val accepted = mutableMapOf<Long, ReaderPageFact>()
     private var nextRequestId = 0L
     private var closed = false
+    private class PresentationReleaseRoute(var target: SharedDualPageSession?)
+    private var releaseRoute = PresentationReleaseRoute(this)
     private var lastReadLocationSequence: Long? = null
+    private var lastSettledLocationSequence: Long? = null
     private var lastSettlementSequence = -1L
     private var pairingPersistence = ReaderPairingPersistenceOwner(identity, mangaId)
     private var spreadSamples = ReaderSpreadSamplesOwner(identity)
@@ -113,12 +123,108 @@ class SharedDualPageSession(
         private set
     var layoutRevision: Long = 0
         private set
-    val units: List<ReaderDualPageUnit> get() = presentation.units(location?.pageId)
-    val presentationUnits: List<ReaderDualPageUnit> get() = units
-    val targetUnit: ReaderDualPageUnit? get() = location?.pageId?.let(presentation::unit)
+    val canonicalUnits: List<ReaderDualPageUnit> get() = presentation.canonicalUnits()
+    val canonicalTargetUnit: ReaderDualPageUnit? get() = location?.pageId?.let(presentation::unit)
+    val presentationFrameProjection: List<ReaderDualPageUnit> get() = presentation.presentationFrameProjection()
+    val units: List<ReaderDualPageUnit> get() = presentationFrameProjection
+    val presentationUnits: List<ReaderDualPageUnit> get() = presentationFrameProjection
+    val targetUnit: ReaderDualPageUnit? get() = location?.pageId?.let(presentation::presentationUnit)
     val displayedHistory: List<ReaderDualPageFrame> get() = presentation.history
     val reservedPairs: Set<Pair<ReaderPageId, ReaderPageId>> get() = presentation.reservedPairs
     fun pageFact(pageId: ReaderPageId): ReaderPageFact? = facts[pageId]
+
+    fun requestOriginalAnalysis(pageId: ReaderPageId): ReaderSpreadSampleRequest? =
+        if (closed || pageId !in identity.pageIds) null else spreadSamples.request(pageId)
+
+    fun ownsOriginalAnalysisRequest(request: ReaderSpreadSampleRequest): Boolean =
+        !closed && spreadSamples.owns(request)
+
+    fun originalAnalysis(pageId: ReaderPageId): ReaderPageAnalysisEvidence = spreadSamples.pageAnalysis(pageId)
+
+    fun failOriginalAnalysis(request: ReaderSpreadSampleRequest, reason: ReaderAnalysisFailure): Boolean {
+        if (closed || !spreadSamples.failOriginal(request, reason)) return false
+        sampleWorkRevision++
+        return true
+    }
+
+    /** A platform requests a physical slot only after the same canonical reducer has proved it. */
+    fun captureCertifiedViewport(pageId: ReaderPageId): ReaderDualPageViewportTicket? {
+        if (closed) return null
+        if (presentationMode == ReaderPresentationMode.DUAL &&
+            certifyPairing(pageId) !is ReaderPairingCertification.Certified
+        ) {
+            return null
+        }
+        return captureViewport(pageId, preparingPageIds = emptySet())
+    }
+
+    fun acceptOriginalAnalysis(
+        request: ReaderSpreadSampleRequest,
+        fact: ReaderPageFact,
+        samples: ReaderOriginalPageSamples,
+    ): Boolean {
+        return acceptOriginalAnalyses(listOf(ReaderOriginalAnalysisPublication(request, fact, samples)))
+    }
+
+    fun certifyPairing(pageId: ReaderPageId = checkNotNull(location).pageId): ReaderPairingCertification {
+        check(!closed)
+        require(pageId in identity.pageIds)
+        val pairingNeed = setOf(ReaderPairingFactNeed(pageId, ReaderPairingFactKind.PAIRING_RULES))
+        when (pairingState.status) {
+            ReaderPairingPersistenceStatus.WAITING_FOR_RESTORE, ReaderPairingPersistenceStatus.RESTORING ->
+                return ReaderPairingCertification.NeedFacts(pairingNeed, 0, 0)
+            ReaderPairingPersistenceStatus.RESTORE_FAILED, ReaderPairingPersistenceStatus.CONFLICT ->
+                return ReaderPairingCertification.RetryableBlocked(
+                    mapOf(pageId to ReaderAnalysisFailure.PAIRING_RESTORE),
+                    pairingNeed,
+                    0,
+                    0,
+                )
+            else -> Unit
+        }
+        return ReaderPairingCertifier.certify(
+            identity,
+            originalHeaders,
+            spreadSamples,
+            ReaderPairingSettings(
+                direction,
+                automaticMatching,
+                forcedSinglePages,
+                pairingState.manualPairStarts,
+                pairingState.openingMode,
+                pairingState.revision ?: -1,
+            ),
+            pageId,
+        )
+    }
+
+    fun acceptOriginalAnalyses(publications: List<ReaderOriginalAnalysisPublication>): Boolean {
+        if (closed || publications.isEmpty() ||
+            publications.map { it.request.content.pageId }.distinct().size != publications.size
+        ) {
+            return false
+        }
+        val originals = publications.map { it.fact.copy(sideHint = it.samples.sideHint) }
+        if (!publications.indices.all { index ->
+                spreadSamples.canAcceptOriginal(
+                    publications[index].request,
+                    originals[index],
+                    publications[index].samples.edges,
+                )
+            }
+        ) {
+            return false
+        }
+        publications.forEachIndexed { index, publication ->
+            check(spreadSamples.acceptOriginal(publication.request, originals[index], publication.samples.edges))
+            facts[publication.request.content.pageId] = originals[index]
+            originalHeaders[publication.request.content.pageId] =
+                originals[index].copy(sideHint = ReaderPageSideHint.UNKNOWN)
+        }
+        sampleWorkRevision++
+        rebuild()
+        return true
+    }
 
     /** Existing encoded sample reads share the platform's bounded decode/lease resources. */
     fun spreadSampleDependencies(): List<ReaderPageId> =
@@ -149,6 +255,7 @@ class SharedDualPageSession(
 
     fun configurePresentationMode(mode: ReaderPresentationMode) {
         if (closed || mode == presentationMode) return
+        revokeConsumedLayoutCause()
         presentationMode = mode
         presentation.configure(direction, automaticMatching, mode == ReaderPresentationMode.SINGLE)
         spreadSamples.cancelRequests()
@@ -201,6 +308,7 @@ class SharedDualPageSession(
         next.pairingPersistence = pairingPersistence.rebindContent(nextIdentity)
         next.location = location?.copy(generation = nextIdentity.generation)
         next.lastReadLocationSequence = lastReadLocationSequence
+        next.lastSettledLocationSequence = lastSettledLocationSequence
         next.lastSettlementSequence = lastSettlementSequence
         next.automaticMatching = automaticMatching
         next.navigationForward = navigationForward
@@ -212,11 +320,19 @@ class SharedDualPageSession(
         ownsFactBudget = false
         val unchanged = nextIdentity.content.filter { content -> content in identity.content }.map { it.pageId }.toSet()
         next.facts.putAll(facts.filterKeys { it in unchanged })
+        next.originalHeaders.putAll(originalHeaders.filterKeys { it in unchanged })
         next.layoutRevision = layoutRevision + 1
         next.presentation.configure(direction, automaticMatching, presentationMode == ReaderPresentationMode.SINGLE)
         next.presentation.inheritProgress(presentation)
         if (!explicitReload) next.presentation.inheritHistory(presentation, unchanged)
         next.applyPairingState()
+        if (explicitReload) {
+            releaseRoute.target = null
+        } else {
+            // Old native leases address one current owner, never a chain of closed sessions.
+            next.releaseRoute = releaseRoute
+            releaseRoute.target = next
+        }
         close()
         return next
     }
@@ -231,6 +347,7 @@ class SharedDualPageSession(
         requests.clear()
         accepted.clear()
         spreadSamples.cancelRequests()
+        spreadSamples.clearResourceFailures()
         sampleWorkRevision++
         factBudget.close()
         factBudget = ReaderDualPageFactBudget()
@@ -244,6 +361,8 @@ class SharedDualPageSession(
         requests.clear()
         accepted.clear()
         facts.entries.removeAll { it.value.state == ReaderPageFactState.FAILED }
+        originalHeaders.entries.removeAll { it.value.state == ReaderPageFactState.FAILED }
+        spreadSamples.retryFailures()
         factBudget.close()
         factBudget = ReaderDualPageFactBudget()
         factWorkRevision++
@@ -262,6 +381,7 @@ class SharedDualPageSession(
         requests.clear()
         accepted.clear()
         spreadSamples.cancelRequests()
+        spreadSamples.clearResourceFailures()
         factBudget.close()
         factBudget = ReaderDualPageFactBudget()
         factWorkRevision++
@@ -294,6 +414,11 @@ class SharedDualPageSession(
     }
 
     private fun acceptOriginalFact(request: ReaderDualPageFactRequest, fact: ReaderPageFact): Boolean {
+        if (fact.state in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD) &&
+            !fact.hasOriginalGeometry()
+        ) {
+            return false
+        }
         if (!isCurrentFactRequest(request) || request.locationSequence != (location?.sequence ?: 0) ||
             requests[request.content.pageId] !== request || fact.rotation != request.content.rotation
         ) {
@@ -301,7 +426,23 @@ class SharedDualPageSession(
         }
         accepted[request.requestId]?.let { return it == fact }
         accepted[request.requestId] = fact
-        val retained = if (fact.state == ReaderPageFactState.PORTRAIT && fact.sideHint == ReaderPageSideHint.UNKNOWN) {
+        val previousHeader = originalHeaders[request.content.pageId]
+        if (fact.state in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD) ||
+            previousHeader?.state !in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD)
+        ) {
+            originalHeaders[request.content.pageId] = fact.copy(sideHint = ReaderPageSideHint.UNKNOWN)
+        }
+        val original = spreadSamples.pageAnalysis(request.content.pageId) as? ReaderPageAnalysisEvidence.Computed
+        val retained = if (original != null && original.content.sourceOrientation == fact.sourceOrientation) {
+            original.fact
+        } else if (fact.state !in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD) &&
+            previousHeader?.state in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD)
+        ) {
+            checkNotNull(previousHeader).copy(
+                sideHint =
+                facts[request.content.pageId]?.sideHint ?: ReaderPageSideHint.UNKNOWN,
+            )
+        } else if (fact.state == ReaderPageFactState.PORTRAIT && fact.sideHint == ReaderPageSideHint.UNKNOWN) {
             fact.copy(sideHint = facts[request.content.pageId]?.sideHint ?: ReaderPageSideHint.UNKNOWN)
         } else {
             fact
@@ -347,6 +488,7 @@ class SharedDualPageSession(
         if (closed) return
         require(direction != ReaderDirection.VERTICAL)
         if (this.direction == direction && this.automaticMatching == automaticMatching) return
+        revokeConsumedLayoutCause()
         if (this.direction != direction || this.automaticMatching != automaticMatching) sampleWorkRevision++
         if (this.direction != direction || this.automaticMatching != automaticMatching) spreadSamples.cancelRequests()
         this.direction = direction
@@ -453,13 +595,9 @@ class SharedDualPageSession(
         if (closed) return null
         val current = location ?: return null
         val page = pageId?.takeIf { it in identity.pageIds } ?: return null
-        val unit = presentation.unit(page)
+        val unit = presentation.presentationUnit(page)
         val ready = preparingPageIds ?: unit.pageIds.filterTo(mutableSetOf()) {
-            facts[it]?.state in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD) &&
-                (
-                    it == unit.anchor || presentation.isManualUnit(unit) ||
-                        facts[unit.anchor]?.state in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD)
-                    )
+            facts[it]?.state in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD)
         }
         return presentation.prepare(
             page,
@@ -487,8 +625,13 @@ class SharedDualPageSession(
         val content = identity.content.firstOrNull { it.pageId == pageId } ?: return false
         val captured = ticket.identity.content.firstOrNull { it.pageId == pageId } ?: return false
         if (captured.copy(sourceOrientation = content.sourceOrientation) != content) return false
+        if (spreadSamples.pageAnalysis(pageId) is ReaderPageAnalysisEvidence.Computed) return true
         // Width/height already describe the native oriented drawable; keep encoded metadata separate.
-        val actual = ReaderPageFact.dimensions(width, height).copy(
+        val actual = (
+            originalHeaders[pageId]?.takeIf {
+                it.state in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD)
+            } ?: ReaderPageFact.dimensions(width, height)
+            ).copy(
             rotation = content.rotation,
             sourceOrientation = content.sourceOrientation,
             sideHint = if (width < height) {
@@ -514,15 +657,25 @@ class SharedDualPageSession(
     fun reportDrawn(ticket: ReaderDualPageViewportTicket, pageIds: Set<ReaderPageId>): Boolean =
         !closed && presentation.drawn(ticket, pageIds)
 
-    fun releaseViewport(ticket: ReaderDualPageViewportTicket): Boolean = !closed && presentation.release(ticket)
+    fun releaseViewport(ticket: ReaderDualPageViewportTicket): Boolean =
+        if (closed) {
+            releaseRoute.target?.takeIf { !it.closed }?.presentation?.release(ticket) ?: false
+        } else {
+            presentation.release(ticket)
+        }
+
+    /** Only release ownership survives an ordinary content rebind; drawing tickets remain local. */
+    fun inheritsPresentationFrom(previous: SharedDualPageSession): Boolean =
+        !closed && releaseRoute.target === this && releaseRoute === previous.releaseRoute
 
     /** A user viewport can append real newly drawn pages; placeholders and stale tickets cannot. */
     fun settle(event: ReaderDualPageSettlement, wasRead: Boolean, sessionId: String): ReaderProgressEffect? {
         val location = location ?: return null
         if (closed || event.identity != event.ticket.identity || event.layoutRevision != event.ticket.layoutRevision ||
             event.locationSequence != event.ticket.locationSequence || event.unitId != event.ticket.unitId ||
-            !presentation.drawn(event.ticket, event.renderedPageIds) || !event.settled ||
+            !presentation.hasDrawn(event.ticket, event.renderedPageIds) || !event.settled ||
             event.locationSequence != location.sequence || !event.ticket.readingEligible ||
+            lastReadLocationSequence == location.sequence ||
             event.reason != ReaderDualPageSettlementReason.USER_NAVIGATION ||
             event.settlementSequence < lastSettlementSequence
         ) {
@@ -543,12 +696,20 @@ class SharedDualPageSession(
             ),
         ) ?: return null
         lastSettlementSequence = event.settlementSequence
+        lastSettledLocationSequence = location.sequence
         return effect
+    }
+
+    /** A new layout may repaint, but cannot revive a location whose real reading already settled. */
+    private fun revokeConsumedLayoutCause() {
+        val sequence = location?.sequence ?: return
+        if (lastSettledLocationSequence == sequence) lastReadLocationSequence = sequence
     }
 
     /** An explicit viewport/geometry event revokes old pixel and progress capabilities. */
     fun invalidateViewport() {
         if (closed) return
+        revokeConsumedLayoutCause()
         presentation.invalidateViewport()
         layoutRevision++
     }
@@ -563,6 +724,7 @@ class SharedDualPageSession(
 
     fun close() {
         closed = true
+        if (releaseRoute.target === this) releaseRoute.target = null
         presentation.invalidateViewport()
         if (ownsFactBudget) factBudget.close()
         pairingPersistence.close()

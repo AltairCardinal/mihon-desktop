@@ -256,7 +256,10 @@ internal fun LibraryToolbar(
             } else {
                 OutlinedTextField(
                     value = searchQuery,
-                    onValueChange = onSearchChange,
+                    onValueChange = {
+                        mihon.domain.easteregg.PigEasterEggTrigger.check(it)
+                        onSearchChange(it)
+                    },
                     singleLine = true,
                     placeholder = { Text(MR.strings.desktop_ui_search_library.localized()) },
                     modifier = Modifier.weight(1f).focusRequester(searchFocusRequester)

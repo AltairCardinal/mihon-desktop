@@ -116,6 +116,43 @@ class DesktopBackupCompatibilityTest {
     }
 
     @Test
+    fun `original Mihon v0_21_1 fixture crosses Desktop creator boundary and reencodes equivalently`() {
+        val bytes = Files.readAllBytes(
+            repositoryRoot().resolve("data/src/commonTest/resources/backup/mihon-v0.21.1-full.tachibk"),
+        )
+        assertEquals(
+            "c83ab027d4b23eb1f1173e0e6ae941e141c3994d7b604f45125eb3fa296ea705",
+            MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) },
+        )
+
+        val decoded = DesktopBackupCreator.decodeFromBytes(bytes)
+        assertEquals(1, decoded.backupManga.size)
+        assertEquals("V0.21.1 Canonical manga", decoded.backupManga.single().title)
+        assertEquals(2, decoded.backupExtensionRepo.size)
+
+        val legacy = decoded.backupExtensionRepo[0]
+        assertEquals("https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.min.json", legacy.baseUrl)
+        assertEquals("Keiyoushi", legacy.name)
+        assertEquals("12:34:56:78:9a:bc:de:f0", legacy.signingKeyFingerprint)
+        assertEquals("https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.min.json", legacy.indexUrl)
+        assertNull(legacy.extensionListUrl)
+        assertEquals("https://discord.gg/keiyoushi", legacy.contactDiscord)
+
+        val modern = decoded.backupExtensionRepo[1]
+        assertEquals("https://example.com/store/index.json", modern.baseUrl)
+        assertEquals("Modern Store", modern.name)
+        assertEquals("fe:dc:ba:98:76:54:32:10", modern.signingKeyFingerprint)
+        assertEquals("https://example.com/store/index.json", modern.indexUrl)
+        assertEquals("https://example.com/store/extensions.json", modern.extensionListUrl)
+        assertEquals("https://discord.gg/example", modern.contactDiscord)
+
+        // Re-encoding should preserve standard wire contract
+        val reencoded = DesktopBackupCreator.encodeToBytes(decoded)
+        val roundTripped = DesktopBackupCreator.decodeFromBytes(reencoded)
+        assertEquals(decoded, roundTripped)
+    }
+
+    @Test
     fun `unproven Desktop JSON payload is rejected`() {
         val file = kotlin.io.path.createTempFile(suffix = ".tachibk").toFile()
         file.writeText("""{"backupManga":[{"source":1,"url":"/json"}]}""")
