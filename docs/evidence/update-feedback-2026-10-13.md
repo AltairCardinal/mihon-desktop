@@ -172,3 +172,37 @@ AboutFeedback 3、Delivery 7、Download 5、UI Wiring 3、Preference/Checker Wir
 `git diff origin/main --check` 通过；本批不声称整个项目全量通过。
 新的 Windows preview 及线上部署结果以 PR #3 的后续工作流/交付记录为准，
 索引仍有意保持为空，不为完成部署伪造应用发布或升级候选。
+
+## 实际分发与运行验收
+
+用户在明确得知尚缺真实发布和端到端验收后要求继续，进入仅限更新与反馈的分发收口。
+不处理其他模块 BUG，不重复产品完整矩阵；复用已执行的完整基线及本批相关 focused 补验证据，
+无关失败仍保留，不称全量通过。Windows 经 `scripts/build-desktop.sh build-only` 生成正式目录和完整 ZIP，
+通过生产扩展运行时与版本检查，不把旧 preview 改名冒充正式产物。
+
+- Android 独立旧基线：`0.19.4-aex.104` / vc122，正式签名、R8/资源压缩，
+  SHA-256 `9b7b449a166b3de096bb36749b40cf38bb6f6ce6790eba0c9f87aee210ee8a07`。
+- Android 更新候选：`0.19.4-aex.105` / vc123，同一正式包名及既有证书，
+  SHA-256 `e9e4c865a3810e8ce31aefed05227cc660ff774c1931e387782705c460b53484`。
+- Windows 更新候选：`0.11.20.7.70ef0b5`，完整 ZIP 196108975 bytes，
+  SHA-256 `970bbddd86f12a52f8cc5951163a5aa9b801baf31b36d0a5d26be1cdf7b1fa56`。
+  `Final unpacked EXE:` 为 `app-desktop/artifacts/windows/Mihon-Desktop-0.11.20.7.70ef0b5-unpacked/Mihon Desktop.exe`。
+- 版本先核对既有候选已到 vc121，再依次分配 122、123；候选来源为 `70ef0b5bea` 加对应版本字段差异，
+  实际 sourceDiff/productionInputs 与映射、签名、哈希均保存在各自 `artifact.json`，不冒充 clean source 构建。
+
+专用 API36 模拟器 `mihon-update-feedback-20261015` / `emulator-5580`，无用户数据，使用独立存储目录。
+vc122 实际启动、设置通知与安装权限、关于页、反馈预览、复制成功均已执行。
+从真实系统剪贴板粘贴到未提交的浏览器输入框，文本与五项预览摘要一致。
+浏览器原生打开 GitHub 登录页，return_to 精确指向本项目 `2_report_issue.yml` 表单，未携带摘要。
+该模拟器无 GitHub 登录；未声称完成登录浏览器内的提交。
+接收端另用维护者 CLI 显式提交同一摘要，自测 Issue #5 读回完全一致后关闭；未附日志或书库数据。
+
+安装入口首次在安装后的 adb 抽取核验返回失败；随后独立 `adb pull` 同一已安装 APK 成功且哈希完全一致。
+没有因此重装或修改入口脚本，不把首次入口失败报告为通过。
+过程日志位于忽略目录 `.gradle-coordinator/update-feedback-{baseline,release}-candidate.log`、
+`update-feedback-windows-delivery.log`，原生 UI XML/PNG 与独立窗口截图同目录保存。
+
+GitHub `update-feedback-20261015` 草稿的两项真实资产已上传，服务端 digest/大小与上述本地文件一致。
+本次 feed 仅登记这两项 testing 条目，稳定通道仍无此测试候选；先发布并通过 publisher 的服务端校验，
+再合入部署 feed。上线后旧客户端发现、下载与原位升级结果在本次交付 PR 的后续运行记录中回填。
+公共功能文档仍等待用户对具体候选验收，不将发布动作当作产品验收。
