@@ -337,3 +337,65 @@ D1 状态 SENT、URL 一致。通过实际 GitHub API 读回断言：公开说�
 线上 HTTP 脚本抓取 app.mjs 遇到 403，未据此虚构线上哈希校验通过；实际部署资产成功及
 浏览器真实文件/生产验证码/数据库/正常Cron/实际OAuth导出是本轮运行链路证据。
 具体候选的用户验收仍未获得，不提前更新公共能力宣传。
+
+
+### 2026-10-16–17 应用内表单与短期验证协议
+
+基线 `412a6be9cb`、分支 `codex/native-feedback-submit-20261016`。用户要求程序内填写并主动附带私密日志，
+双端共享原生表单/核心与HTTP；Windows无production内嵌浏览器，仅安全验证打开系统浏览器。
+原实施者负责native主要实现、主代理负责服务/文档/整合，原审查者同一轮先审稳定协议再补native。
+范围不含其他模块故障、正式版本分配或全量测试。
+
+服务TDD：新增6项native Worker真实SQLite测试先因404正确失败，最小实现后通过；新增4项验证码DOM
+因无production行为失败后实现通过。补充固定Unicode哈希向量、primitive类型、配额持久性、D1事务回滚、
+surrogate及全局配额，分别保留相关红测。最终服务59/59 PASS、独立服务59/59 PASS及dry-run通过。
+没有用源代码字符串检查替代真实SQL/DOM事件。抽出原Worker fixture共享真实SQLite adapter，D1 batch
+在同一实际SQLite事务中执行，失败回滚；旧42项全部保留。
+
+服务0003迁移及部署 `38b72e4e-6097-41e9-83b6-9c3774397ae2` 已完成。会话10分钟，只存哈希/状态；
+独立限流事件仅UUID/HMAC IP/时间，24小时清理，避免删除过期会话绕过小时配额。旧报告数据保持原状。
+既有专用凭据保留，未读取/输出密钥，没有新增付费资源。
+
+生产协议验收由忽略目录的短期脚本执行：脚本只用虚构payload/244字节日志，native bearer只留进程内存，
+创建哈希会话→真实浏览器仅验证码→用户亲自完成挑战并点击完成→脚本轮询后最终提交。
+这证明生产服务的新协议；它不是原生客户端窗口或production客户端的完整点击验收。
+会话 `4bc63c82-ad5f-4c2c-9f51-b1ca6843107f`，提交 `544d86b9-6409-4ef2-821e-45d3a78cb49d`，
+回执 `dOeIaWN3EazbIexXeZv9wl_M0tiSGQm76Cdstbe7qzo`。维护者实际OAuth导出与原虚构文件逐字节一致，
+SHA256 `9593a75844e2632df23abe94711f4a2ac5451f16b34fc0e0125e60041ffc85fe`。
+正常Cron创建[验收Issue #14](https://github.com/AltairCardinal/mihon-desktop/issues/14)，读回公开描述/UUID
+标记正确；日志哨兵、栈帧、路径、上传/导出文件名均不在公开内容，随后关闭该Issue。
+迁移后旧Issue8/12对应记录仍SENT，分别0/244日志字节，未被新迁移损坏。
+浏览器将/verify.html规范跳转为同origin的/verify；页面只处理随机会话编号和Turnstile，不接收正文/日志/secret。
+截图在忽略目录 `.gradle-coordinator/native-verify-{human,done}.png`，不是客户端原生截图。
+
+原生实现严格红绿：共享状态/日志授权、真实MockWebServer、日志adapter及真实Compose事件先红后绿；
+默认About未注入测试controllerFactory，实际解析production network provider，再完整create201/poll200/submit202。
+独立审查发现201状态与旧测试200不一致、ECMAScript trim和Kotlin空白集合不一致；分别补真实回归红测，
+修复后 `native-feedback-final-focused` 的共享JVM10/Android10、HTTP JVM4/Android4全部0失败。
+同次Desktop旧About的真实Tab事件发现多行输入拦Tab；对话框内显式Next/Previous后，
+`native-feedback-platform-final`（2026-10-17北京时间完成）Desktop9、Android7全部0失败，
+并通过本批限定Desktop/domain/data/presentation-theme/app/i18n格式检查。以上组合共44项平台用例，
+未冒充最终代码重新通过全量测试；没有执行完整模块或全量。
+
+Android focused仍用忽略的init脚本仅排除基线既有、无关且不能编译的PagerRippleTest，未修改其源码；
+其余test源码正常编译。首次下载依赖DNS失败后一次当前会话代理重试成功。
+收口中另有测试错误import导致编译失败、格式工具target设置失败，均保留原始失败记录；
+修正测试import及忽略的限定formatter配置后通过，不把这些工具失败当作产品行为红测。
+Desktop本身没有Spotless插件，忽略的init按文件清单临时启用既有lint插件；
+AboutScreen仅一行传递platformPaths，不对其整份旧文件格式化。范围外纯格式副作用已移除，
+未永久修改构建lint配置，不处理阅读器故障。
+
+共享对话框真实Compose渲染覆盖浅/深主题、320dp宽、200%字号、滚动上下与双向Tab焦点范围，
+Escape/关闭恢复入口焦点；主代理查看四张中的浅色底部与深色顶部，按钮/文字可访问。
+图片在忽略的 `.gradle-coordinator/native-feedback-visual/`，这是production组件测试场景，
+不冒充已发布应用原生窗口截图或真人从EXE提交的完整验收。
+
+本批超过8文件/400行来自同一共享表单/状态、双端adapter、跨端HTTP/服务验证协议及对应测试，
+必须保持接口内聚，不拆成不可独立交付的微任务。复用一位实施者及一位独立审查者，
+实施者额度中断后主代理接手最后格式和限定平台补验；没有增加代理或审查轮次。
+同一轮独立审查最终PASS，无未关闭阻塞；审查者独立执行服务59项并核对全部44项平台XML与格式结果。
+提交、Windows preview实际路径与构建状态记录在本批PR交付中。
+源码冻结后通过统一preview构建入口交付，不分配正式版本、不进入更新feed；
+其production runtime检查与原生交互状态以preview-manifest为准。
+Android本批没有生成或发布新APK；旧客户端网页反馈继续兼容。
+未获用户具体候选验收，公共功能宣传保持不变。

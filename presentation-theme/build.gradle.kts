@@ -16,9 +16,11 @@ kotlin {
         commonMain {
             dependencies {
                 implementation(compose.material3)
+                implementation(compose.foundation)
                 implementation(compose.runtime)
                 implementation(compose.ui)
                 api(projects.i18n)
+                implementation(projects.domain)
             }
         }
         commonTest {

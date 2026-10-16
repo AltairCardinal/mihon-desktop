@@ -100,7 +100,7 @@ internal class AboutScreen(
                 )
                 AboutUpdateSection(APP_VERSION, updatePresentation, updateFeedback, updateModel::intent)
                 AboutUpdatePreferences(updateModel.preferences)
-                AboutFeedbackSection()
+                AboutFeedbackSection(platformPaths = paths)
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = MR.strings.desktop_about_description.localized(),

@@ -144,3 +144,44 @@ PROJECT_POLICY：日志可选且私密，选择文件只在本地读取；独立
 - [x] CL-02：双端文案和维护说明同步、相关复验、云端迁移部署、真实私密上传/提取/不公开验收与提交。
 
 新附件能力未获用户具体候选验收，不提前更新公共功能宣传或分配发布版本。
+
+
+## 2026-10-16：应用内填写并附加日志提交
+
+用户要求在程序内填写内容、由程序附上经授权日志完成提交。基线 `412a6be9cb`，
+分支 `codex/native-feedback-submit-20261016`；不修改其他模块故障，不自动构建正式版本或运行全量。
+复用原实施者负责共享 native 核心与双端 UI/platform adapter，主代理负责服务验证会话、文档及整合；
+复用原审查者独立检查隐私/验证边界一次、必要修复复审一次。预计2–4小时，相关红绿/真实HTTP/SQL/UI事件
+及双端focused接线验证，服务线上一次虚构内容验收；仅一份既有计划及evidence。
+
+SOURCE：既有 AboutFeedbackSection/Preference、SafeFeedbackSummary、CrashHandler、CrashLogUtil、
+现有Worker/Turnstile/D1、production HTTP客户端。Desktop WebViewCompat 明确无可用引擎。
+PROJECT_POLICY：双端原生表单，日志默认不读取/不附加；用户主动读取后预览/删改，单独同意后才提交。
+Desktop 不为验证码增加重量级浏览器依赖；双端只在系统浏览器进行安全验证，正文/日志不进入浏览器。
+公开问题与私密日志授权、字节限制、原子限额/幂等、维护者提取及清理规则沿用CL批次。
+
+本次页面契约：关于→报告问题打开原生滚动表单；标题/描述、可选应用信息、读取最近可用日志、
+可编辑预览/移除、公开同意与日志独立同意、提交/取消；请求期间冻结快照，发送前取消中止等待和后续发送，发送开始后取消仅停止本地等待（服务端可能已接收），
+失败保留本页草稿并可重试。关闭不发送，Escape/Back关闭并恢复入口焦点，长内容可滚动、浅深主题。
+成功回执留在应用内，区分已接收与GitHub已创建；不自动后台上传，不持久化敏感草稿。
+
+服务接口固定：POST /api/native-session 接收contentHash（见下文）、返回sessionId UUIDv4、
+secret 256bit、expiresAt Unix秒及verificationUrl（固定origin /verify.html#<id>）。D1只存secret哈希、
+内容哈希、过期/验证/使用状态，无正文/日志；10分钟有效。限流事件另存UUID/HMAC IP/时间，24小时清理。创建限额每IP10次/小时、
+全站200次/小时与1000次/日，单SQL原子写；创建与Cron清理过期会话。
+GET /api/native-session/<id> 以Authorization: Bearer secret仅返回verified/expiresAt，不提供载荷/密钥。
+浏览器POST /api/native-verify提交id+生产Turnstile，严格Origin、hostname/action反馈验证；
+不接收正文/日志、不将native secret放URL。会话无CORS，不增加公开日志读取。
+POST /api/feedback复用原payload，可用nativeSessionId/nativeSessionSecret替代turnstileToken，
+两方式互斥。绑定哈希为SHA256串联UTF8(title)、UTF8(description)、UTF8(summary)、UTF8(crashLog)：
+每段为ASCII十进制UTF8字节长度+冒号+UTF8正文。字段规范化沿用web：title/description trim、summary CRLF→LF+trim、log仅CRLF→LF。
+仅已验证、未过期、secret正确、hash匹配会话能写入；D1 batch原子入库/消费，每会话只许一个submissionId，
+同ID同内容可幂等重试，不允许另一个UUID复用；旧web验证码与旧hash不改变。
+
+- [x] NF-01：原实施者共享表单/状态/HTTP协议及双端日志adapter和入口严格红绿，真实wiring回归。
+- [x] NF-02：主代理服务验证会话与最小验证码页真实SQL/HTTP/DOM红绿、兼容旧web，独立审查隐私与原子消费。
+- [x] NF-03：整合双端focused、格式及一次真实生产验证/原生路径，部署、维护文档和提交；不提前宣传用户未验收能力。
+
+本批完成依据为服务59项、双端相关44项组合证据及同轮独立审查，见既有evidence与交付PR。
+Windows交付日常preview；真人从新EXE完成整条提交仍待用户候选验收，Android本批未发布新APK。
+不提前更新公共宣传，不修改正式更新feed或无关模块。
