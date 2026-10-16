@@ -2545,13 +2545,13 @@
     <string name="fork_update_full_notes_on_release">Full release notes are available on the release page.</string>
     <string name="fork_update_debug_manual_only">This development build can open the release page; it cannot update the installed release app.</string>
     <string name="feedback_report_problem">Report a problem</string>
-    <string name="feedback_privacy_notice">Review the safe summary before copying it. The feedback form does not require an account. You choose whether to paste the summary and explicitly consent before submitting content for a public GitHub issue. Opening the form does not submit anything. Logs and the summary are not sent automatically.</string>
-    <string name="feedback_copy_summary">Copy safe summary</string>
-    <string name="feedback_summary_copied">Safe summary copied</string>
+    <string name="feedback_privacy_notice">No account needed. Describe the problem in the form. Your submission will be published on GitHub.\n\nThe app and system details below are optional: copy them into the form if useful. Opening the form does not send these details.</string>
+    <string name="feedback_copy_summary">Copy app details</string>
+    <string name="feedback_summary_copied">App details copied</string>
     <string name="feedback_copy_failed">Could not copy the summary. Try again.</string>
     <string name="feedback_open_issue">Open feedback form</string>
     <string name="feedback_open_failed">Could not open the feedback form. Try again or open the project feedback page in your browser.</string>
     <string name="feedback_opened">Feedback form opened. Review and submit it in your browser. No account is required.</string>
-    <string name="feedback_logs_android">Optional logs: More → Settings → Advanced → Dump crash logs. Review and remove private information before attaching any file. Logs are never attached automatically.</string>
-    <string name="feedback_logs_desktop">Optional logs: Settings → Advanced → Open crash log folder. Review and remove private information before attaching any file. Logs are never attached automatically.</string>
+    <string name="feedback_logs_android">The form does not accept attachments or upload logs automatically. Do not include passwords, tokens or other private information.</string>
+    <string name="feedback_logs_desktop">The form does not accept attachments or upload logs automatically. Do not include passwords, tokens or other private information.</string>
 </resources>

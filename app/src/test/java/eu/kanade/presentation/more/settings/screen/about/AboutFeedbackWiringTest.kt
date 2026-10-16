@@ -118,20 +118,20 @@ class AboutFeedbackWiringTest {
                 assertTrue(opened.isEmpty())
                 assertTrue(copied.isEmpty())
             }
-            compose.onNodeWithText("Copy safe summary").performScrollTo().performClick()
+            compose.onNodeWithText("Copy app details").performScrollTo().performClick()
             compose.onNodeWithText("Could not copy the summary. Try again.").performScrollTo().assertIsDisplayed()
             compose.runOnIdle {
                 assertTrue(copied.isEmpty())
                 copyAllowed = true
             }
-            compose.onNodeWithText("Copy safe summary").performScrollTo().performClick()
+            compose.onNodeWithText("Copy app details").performScrollTo().performClick()
             compose.runOnIdle {
                 assertTrue(BuildConfig.VERSION_NAME in copied.single())
                 assertFalse("Installation ID" in copied.single())
                 assertFalse(activity.get().filesDir.absolutePath in copied.single())
             }
             compose.onNodeWithText(copied.single()).performScrollTo().assertIsDisplayed()
-            compose.onNodeWithText("Safe summary copied").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("App details copied").performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("Open feedback form").performClick()
             compose.onNodeWithText(
                 "Could not open the feedback form. Try again or open the project feedback page in your browser.",
@@ -149,7 +149,7 @@ class AboutFeedbackWiringTest {
                 )
             }
             compose.onNodeWithText("Close").performClick()
-            compose.onNodeWithText("Copy safe summary").assertDoesNotExist()
+            compose.onNodeWithText("Copy app details").assertDoesNotExist()
         } finally {
             activity.pause().stop().destroy()
             Injekt = previous
@@ -186,16 +186,16 @@ class AboutFeedbackWiringTest {
                 compose.onNodeWithText("Report a problem").performClick()
                 compose.onNodeWithText("Application: Mihon", substring = true)
                     .performScrollTo().assertIsDisplayed()
-                compose.onNodeWithText("Copy safe summary").performScrollTo().assertIsDisplayed()
+                compose.onNodeWithText("Copy app details").performScrollTo().assertIsDisplayed()
                 compose.onNodeWithText("Open feedback form").assertIsDisplayed()
                 compose.onNodeWithText("Close").assertIsDisplayed()
                 compose.runOnUiThread {
                     (ShadowDialog.getLatestDialog() as ComponentDialog).onBackPressedDispatcher.onBackPressed()
                 }
-                compose.onNodeWithText("Copy safe summary").assertDoesNotExist()
+                compose.onNodeWithText("Copy app details").assertDoesNotExist()
                 compose.onNodeWithText("Report a problem").performClick()
                 compose.onNodeWithText("Close").performClick()
-                compose.onNodeWithText("Copy safe summary").assertDoesNotExist()
+                compose.onNodeWithText("Copy app details").assertDoesNotExist()
                 compose.runOnIdle {
                     assertTrue(copied.isEmpty())
                     assertTrue(opened.isEmpty())
