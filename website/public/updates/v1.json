@@ -1,4 +1,32 @@
 {
   "schemaVersion": 1,
-  "releases": []
+  "releases": [
+    {
+      "channel": "testing",
+      "platform": "android",
+      "arch": "universal",
+      "packageType": "apk",
+      "version": "0.19.4-aex.105",
+      "releaseUrl": "https://github.com/AltairCardinal/mihon-desktop/releases/tag/update-feedback-20261015",
+      "downloadUrl": "https://github.com/AltairCardinal/mihon-desktop/releases/download/update-feedback-20261015/Mihon-Fork-0.19.4-aex.105-vc123-release-universal.apk",
+      "sha256": "e9e4c865a3810e8ce31aefed05227cc660ff774c1931e387782705c460b53484",
+      "sizeBytes": 69982394,
+      "notes": "Update and feedback testing release / 更新与问题反馈测试版\n\nAndroid 0.19.4-aex.105 (versionCode 123): own-project update checks, persistent stable/testing channel preferences, verified APK download and explicit system installation. About > Report a problem previews and copies an allowlisted software summary, then opens this repository's public GitHub Issue form. GitHub sign-in is required to submit; logs are not uploaded automatically.\n\nWindows 0.11.20.7: own-project update checks and release notes, with explicit manual download/replacement. Report a problem uses the same safe-summary workflow. Exit the app before replacing the entire unpacked application directory; the ZIP includes its runtime.\n\nThis is a small-distribution testing release. Existing installations without the new updater must install this release manually once. Automatic checks are low-frequency; this is not an instant-push service. Current validation is limited to the update/feedback scope, not a claim that all project modules pass. Android physical-device/vendor-specific behavior and the authenticated browser form submission are not claimed as completed device acceptance.",
+      "versionCode": 123,
+      "applicationId": "app.mihon.desktop.fork",
+      "certificateSha256": "bd8e3af75921fc4356deacabd44a3d491fda8439ffbc7d073c363974a648cae3"
+    },
+    {
+      "channel": "testing",
+      "platform": "windows",
+      "arch": "x86_64",
+      "packageType": "zip",
+      "version": "0.11.20.7.70ef0b5",
+      "releaseUrl": "https://github.com/AltairCardinal/mihon-desktop/releases/tag/update-feedback-20261015",
+      "downloadUrl": "https://github.com/AltairCardinal/mihon-desktop/releases/download/update-feedback-20261015/Mihon-Desktop-0.11.20.7.70ef0b5-windows.zip",
+      "sha256": "970bbddd86f12a52f8cc5951163a5aa9b801baf31b36d0a5d26be1cdf7b1fa56",
+      "sizeBytes": 196108975,
+      "notes": "Update and feedback testing release / 更新与问题反馈测试版\n\nAndroid 0.19.4-aex.105 (versionCode 123): own-project update checks, persistent stable/testing channel preferences, verified APK download and explicit system installation. About > Report a problem previews and copies an allowlisted software summary, then opens this repository's public GitHub Issue form. GitHub sign-in is required to submit; logs are not uploaded automatically.\n\nWindows 0.11.20.7: own-project update checks and release notes, with explicit manual download/replacement. Report a problem uses the same safe-summary workflow. Exit the app before replacing the entire unpacked application directory; the ZIP includes its runtime.\n\nThis is a small-distribution testing release. Existing installations without the new updater must install this release manually once. Automatic checks are low-frequency; this is not an instant-push service. Current validation is limited to the update/feedback scope, not a claim that all project modules pass. Android physical-device/vendor-specific behavior and the authenticated browser form submission are not claimed as completed device acceptance."
+    }
+  ]
 }
