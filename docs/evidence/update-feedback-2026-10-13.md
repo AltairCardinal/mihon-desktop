@@ -254,3 +254,29 @@ Windows 隔离 preview 0.11.20.6 的真实 About 显示 0.11.20.7 与发布说�
 
 本批超过 8 个文件/400 行的主体是同一匿名接收协议、原子持久化、表单及行为回归，
 不按文件拆开不可独立验收的上下文；风险由一次独立审查及一次限定修复复验覆盖。
+
+### 维护者配置后真实接收验收与候选
+
+维护者自行保存专用 GITHUB_TOKEN 后，公开 config 返回 accepting=true；没有读取或输出该令牌。
+应用内浏览器以无 GitHub 登录的路径填写虚构内容，维护者亲自完成生产 Turnstile 后由网页显式提交。
+真实回执与 D1 中提交 `a9903328-19f6-43bf-bdf6-2e109012cb38` 一致；正常 Cron 将记录从 PENDING
+变为 SENT，并创建 [自测 Issue #8](https://github.com/AltairCardinal/mihon-desktop/issues/8)。
+标题、描述、五行摘要和隐藏 UUID 标记读回一致后关闭自测 Issue；未以 CLI 创建或直接插库替代匿名提交。
+成功回执截图保存于 `.gradle-coordinator/anonymous-feedback-receipt.png`。
+
+PR #7 已合并为 `5c1cbe5b3290934a9e6edbaa4bbf40aeb0eda5cb`；合并后服务 CI `38856724263`、
+Pages `38856724354` 成功。真实浏览器发现固定入口 `meta name=refresh` 未触发跳转，
+停留在中转页（可点击后备链接）；据此最小修为 `http-equiv=refresh`，网站构建通过，待本交付合入后复验实际跳转。
+这是反馈入口自身的修复，不涉及其他模块。
+
+- Windows 日常体验包：`app-desktop/artifacts/preview/windows/20261016T053132Z-9c923eca/Mihon-Desktop-0.11.20.7.37f7e50-unpacked/Mihon Desktop.exe`。
+  来自 clean `37f7e50d61`，统一 `preview` 入口构建成功，production runtime PASS；native interaction NOT_RUN，
+  不分配正式 Desktop 版本，不把体验包登记为正式更新资产。
+- Android 正式签名候选：`app/artifacts/android/0.19.4-aex.106-vc124-37f7e50d61-release/Mihon-Fork-0.19.4-aex.106-vc124-release-universal.apk`。
+  核对两个工作目录现有正式候选最高 vc123 后分配 vc124；来源为 `37f7e50d61` 加机械版本字段差异。
+  原包名与签名连续，R8/资源压缩、脚本候选验证通过；SHA-256
+  `b911bf1efdd7fd42086e5b296fcf8328802000ccf008bc37731a33bc0e4059f3`。
+  正式候选没有使用测试编译排除 init。专用 API36 模拟器已由统一 install 命令安装并核验 vc124；
+  Android 原生新入口、固定入口修复部署及测试通道登记结果以下文/交付 PR 的实际结果为准。
+
+当前完成证据限反馈与更新范围，未宣称其他模块修复或全量通过；具体候选仍待用户自行验收。
