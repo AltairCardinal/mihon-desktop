@@ -27,6 +27,21 @@
       "sha256": "970bbddd86f12a52f8cc5951163a5aa9b801baf31b36d0a5d26be1cdf7b1fa56",
       "sizeBytes": 196108975,
       "notes": "Update and feedback testing release / 更新与问题反馈测试版\n\nAndroid 0.19.4-aex.105 (versionCode 123): own-project update checks, persistent stable/testing channel preferences, verified APK download and explicit system installation. About > Report a problem previews and copies an allowlisted software summary, then opens this repository's public GitHub Issue form. GitHub sign-in is required to submit; logs are not uploaded automatically.\n\nWindows 0.11.20.7: own-project update checks and release notes, with explicit manual download/replacement. Report a problem uses the same safe-summary workflow. Exit the app before replacing the entire unpacked application directory; the ZIP includes its runtime.\n\nThis is a small-distribution testing release. Existing installations without the new updater must install this release manually once. Automatic checks are low-frequency; this is not an instant-push service. Current validation is limited to the update/feedback scope, not a claim that all project modules pass. Android physical-device/vendor-specific behavior and the authenticated browser form submission are not claimed as completed device acceptance."
+    },
+    {
+      "channel": "testing",
+      "platform": "android",
+      "arch": "universal",
+      "packageType": "apk",
+      "version": "0.19.4-aex.106",
+      "releaseUrl": "https://github.com/AltairCardinal/mihon-desktop/releases/tag/anonymous-feedback-20261016",
+      "downloadUrl": "https://github.com/AltairCardinal/mihon-desktop/releases/download/anonymous-feedback-20261016/Mihon-Fork-0.19.4-aex.106-vc124-release-universal.apk",
+      "sha256": "b911bf1efdd7fd42086e5b296fcf8328802000ccf008bc37731a33bc0e4059f3",
+      "sizeBytes": 69982394,
+      "notes": "免登录反馈 Android 测试候选 / Account-free feedback Android testing candidate\n\nAndroid 0.19.4-aex.106（versionCode 124）保留原正式包名与证书。“关于 → 报告问题”预览并可选复制安全摘要，然后打开免登录反馈表单。用户填写标题和描述、明确同意公开后提交；网页先返回持久化回执，后台再转交本仓库 GitHub Issues。无需用户注册任何账号，不自动上传日志，不支持附件或私密反馈。反馈内容将公开。\n\n真实未登录浏览器 → 生产 Turnstile → D1 回执 → GitHub 自测 Issue #8 已验证；该自测已关闭。共享/双端反馈 focused 14 项及服务/网页 24 项通过，独立审查与限定修复复验通过。本说明不代表其他模块全量通过或实体设备/厂商系统验收。\n\n已有自有更新机制的 Android 安装可在 testing 通道收到本候选；索引部署完成前可手动下载。更新为低频检查，不是即时推送。Windows 原正式发布未在此版本中更新；新的免登录 Windows 体验包不冒充正式更新资产。所有用户也可直接访问 https://altaircardinal.github.io/mihon-desktop/feedback/ 使用同一免登录表单。\n",
+      "versionCode": 124,
+      "applicationId": "app.mihon.desktop.fork",
+      "certificateSha256": "bd8e3af75921fc4356deacabd44a3d491fda8439ffbc7d073c363974a648cae3"
     }
   ]
 }
