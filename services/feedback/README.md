@@ -74,3 +74,57 @@ Store exports in an OS-protected maintainer directory, not a shared/public folde
 ## Focused verification
 
 `npm test` runs the production Worker against the actual SQLite schema using Node 24's `node:sqlite` D1 adapter; only outbound network edges are mocked. It covers persistence, old populated-schema migration, malformed/oversized input, private log authorization and byte/text boundaries, safe summaries, CAPTCHA rejection, missing credentials/test keys, concurrent quotas and dispatch claims, idempotency including changed logs, 429 deferral, uncertain 500/timeout delivery, retention and absence of private-log reads/content in public dispatch. The jsdom tests execute the production form module with real File/FileReader/change/input/submit/click events for local strict decoding, limits, editing/removal, separate consent, immutable submission snapshots, receipts, retry/expiry, draft preservation, language switching and duplicate-click prevention. Exporter tests execute the real filesystem write against temporary directories, including existing targets and real directory links, while injecting only the remote query edge. They do not replace live Turnstile, Cloudflare migration/deployment, D1 OAuth retrieval or visual/mobile browser acceptance.
+
+
+## Native application submission
+
+The applications own the report form, optional application summary and editable local crash-log preview.
+Logs are only read after a user action. Public publication and private-log access require separate unchecked
+consents. Submit freezes that snapshot; cancellation stops waiting/submission, failure retains the in-memory
+draft, and successful receipt means persisted/pending, not an already-created GitHub Issue. Cancellation
+before sending prevents the payload from being sent; once the HTTP request started, the server may have
+already accepted it. Cancellation is not withdrawal; same-UUID retries remain idempotent.
+
+The system browser is used only for Turnstile. Desktop has no production embedded browser engine; a small
+verification-only page avoids a new heavyweight runtime, JavaScript/native bridge or localhost callback server.
+Neither report contents, crash logs nor native bearer secrets enter the browser or verification URL.
+
+1. `POST /api/native-session` (JSON, max 8 KiB) accepts only `contentHash` (64 lower-case hex).
+   It returns HTTP 201 with `sessionId` (UUIDv4), `secret` (256-bit base64url), `expiresAt` (Unix seconds)
+   and `verificationUrl` (the configured origin's `/verify.html#<sessionId>`).
+2. The native content hash is SHA-256 of four concatenated length-prefixed UTF-8 strings: canonical title,
+   description, summary and private log. Each segment is ASCII decimal byte length, `:`, then UTF-8 content.
+   Title/description are trimmed, summary is CRLF-to-LF then trimmed, log is only CRLF-to-LF. Shared tests
+   lock the Unicode/whitespace vector, including supplementary code points. Native malformed surrogates
+   are refused instead of relying on platform replacement behavior.
+3. The browser's `POST /api/native-verify` sends only session UUID and Turnstile token. Exact Origin,
+   hostname/action `feedback`, current configuration and unexpired session are checked. There is no CORS.
+4. The app polls `GET /api/native-session/<UUID>` with `Authorization: Bearer <secret>`; only
+   `verified` and `expiresAt` are returned. Wrong/absent secrets or expired sessions return 403. The app
+   must accept only the fixed verification origin/path and retain secrets only in memory, with no HTTP
+   body/header logging, cache, redirect or URL forwarding of secrets. Android uses the existing
+   non-Cloudflare production client; Desktop removes only source challenge/credential interceptors,
+   preserving production proxy/DNS/TLS/routing. WAF challenges on this API fail safely rather than sending
+   native bearer headers into WebView or a source-login flow.
+5. `POST /api/feedback` retains its original payload and limits, substituting `nativeSessionId` and
+   `nativeSessionSecret` for `turnstileToken`; mixed authentication methods are invalid. Native requests
+   may omit Origin; any supplied Origin must match. Existing browser requests still require exact Origin.
+   Verified/unexpired state, secret hash and exact content hash are checked. Report insert and session
+   consumption are one D1 batch transaction; each verification permits one UUID, same-UUID/same-content
+   retries return the existing receipt, a changed draft or another UUID returns 409. Report quotas remain
+   three/IP/hour and fifty/day; a quota/storage failure does not consume the verification. No native-only
+   route bypasses log authorization, public consent, payload limits or private forwarding boundaries.
+
+Migration `0003_native_verification.sql` must precede deployment. It only creates new tables/indexes and
+preserves existing reports. Sessions store hashed secrets, content hash, state and timestamps, expire in ten
+minutes and are deleted on creation/cron cleanup. Separate creation-rate events contain only session UUID,
+IP HMAC and timestamp, retained up to 24 hours during normal cleanup. This preserves per-hour/day limits
+when expired sessions are deleted: ten creations per IP/hour, 200 globally/hour and 1000 globally/day,
+checked atomically with session creation. Normal cron clears these even when forwarding secrets are missing;
+cron outages can extend retention. Old Worker rollback leaves inert metadata until the new cleanup resumes.
+No extra resource, credential, app account, R2 storage or billing upgrade is required.
+
+Run the same service focused suite/dry-run, plus native shared contract, MockWebServer and real UI wiring
+checks. The native-session and verification-page tests execute real SQLite transactions and DOM events.
+A deployment acceptance must use a human-completed production challenge and fictional app draft/log,
+verify the native receipt/private export and confirm the normal GitHub dispatch omits private data.

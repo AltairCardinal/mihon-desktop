@@ -84,16 +84,21 @@ class AboutFeedbackWiringTest {
     }
 
     @Test
-    fun `real About previews safe summary and only opens project issue after explicit action`() {
+    fun `real About previews and copies safe summary without sending on close`() {
         val previous = Injekt
         Injekt = InjektScope(DefaultRegistrar())
         Injekt.addSingleton(UiPreferences(InMemoryPreferenceStore()))
         Injekt.addSingleton(ApplicationUpdatePreferences(InMemoryPreferenceStore()))
+        Injekt.addSingleton(
+            mockk<eu.kanade.tachiyomi.network.NetworkHelper> {
+                every { nonCloudflareClient } returns
+                    okhttp3.OkHttpClient()
+            },
+        )
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         val copied = mutableListOf<String>()
         val opened = mutableListOf<String>()
         var copyAllowed = false
-        var openAllowed = false
         val clipboard = mockk<ClipboardManager> {
             every { setText(any()) } answers {
                 check(copyAllowed) { "Private clipboard implementation detail" }
@@ -102,7 +107,6 @@ class AboutFeedbackWiringTest {
         }
         val uri = object : UriHandler {
             override fun openUri(uri: String) {
-                check(openAllowed) { "Private browser implementation detail" }
                 opened += uri
             }
         }
@@ -132,22 +136,6 @@ class AboutFeedbackWiringTest {
             }
             compose.onNodeWithText(copied.single()).performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("App details copied").performScrollTo().assertIsDisplayed()
-            compose.onNodeWithText("Open feedback form").performClick()
-            compose.onNodeWithText(
-                "Could not open the feedback form. Try again or open the project feedback page in your browser.",
-            )
-                .performScrollTo().assertIsDisplayed()
-            compose.runOnIdle {
-                assertTrue(opened.isEmpty())
-                openAllowed = true
-            }
-            compose.onNodeWithText("Open feedback form").performClick()
-            compose.runOnIdle {
-                assertEquals(
-                    listOf("https://altaircardinal.github.io/mihon-desktop/feedback/"),
-                    opened,
-                )
-            }
             compose.onNodeWithText("Close").performClick()
             compose.onNodeWithText("Copy app details").assertDoesNotExist()
         } finally {
@@ -179,7 +167,17 @@ class AboutFeedbackWiringTest {
                         LocalDensity provides Density(LocalDensity.current.density, 2f),
                     ) {
                         MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
-                            AboutFeedbackPreference()
+                            AboutFeedbackPreference(controllerFactory = { scope, summary, open ->
+                                tachiyomi.domain.feedback.NativeFeedbackController(
+                                    mockk(relaxed = true),
+                                    tachiyomi.domain.feedback.FeedbackLogReader {
+                                        error("No automatic read")
+                                    },
+                                    summary,
+                                    scope,
+                                    open,
+                                )
+                            })
                         }
                     }
                 }
@@ -187,7 +185,7 @@ class AboutFeedbackWiringTest {
                 compose.onNodeWithText("Application: Mihon", substring = true)
                     .performScrollTo().assertIsDisplayed()
                 compose.onNodeWithText("Copy app details").performScrollTo().assertIsDisplayed()
-                compose.onNodeWithText("Open feedback form").assertIsDisplayed()
+                compose.onNodeWithText("Submit feedback").assertIsDisplayed()
                 compose.onNodeWithText("Close").assertIsDisplayed()
                 compose.runOnUiThread {
                     (ShadowDialog.getLatestDialog() as ComponentDialog).onBackPressedDispatcher.onBackPressed()

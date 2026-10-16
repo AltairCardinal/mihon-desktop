@@ -10,18 +10,70 @@ import eu.kanade.tachiyomi.util.system.WebViewUtil
 import eu.kanade.tachiyomi.util.system.createFileInCacheDir
 import eu.kanade.tachiyomi.util.system.toShareIntent
 import eu.kanade.tachiyomi.util.system.toast
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
 import tachiyomi.core.common.util.lang.withNonCancellableContext
 import tachiyomi.core.common.util.lang.withUIContext
+import tachiyomi.domain.feedback.FeedbackLogText
+import tachiyomi.domain.feedback.NativeFeedbackException
+import tachiyomi.domain.feedback.NativeFeedbackFailure
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.time.OffsetDateTime
 import java.time.ZoneId
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 class CrashLogUtil(
     private val context: Context,
     private val extensionManager: ExtensionManager = Injekt.get(),
     private val preferences: BasePreferences = Injekt.get(),
 ) {
+
+    companion object {
+        suspend fun readFeedbackLogs(
+            processFactory: (List<String>) -> Process = { ProcessBuilder(it).redirectErrorStream(true).start() },
+        ): String = runInterruptible(Dispatchers.IO) {
+            val process = try {
+                processFactory(
+                    listOf("logcat", "--uid=${android.os.Process.myUid()}", "*:E", "-d", "-v", "year", "-v", "zone"),
+                )
+            } catch (error: Exception) {
+                throw NativeFeedbackException(NativeFeedbackFailure.LOG_UNAVAILABLE)
+            }
+            val timedOut = AtomicBoolean(false)
+            val timer = Executors.newSingleThreadScheduledExecutor { task ->
+                Thread(task, "feedback-log-timeout").apply {
+                    isDaemon =
+                        true
+                }
+            }
+            val deadline = timer.schedule({
+                timedOut.set(true)
+                process.destroyForcibly()
+            }, 10, TimeUnit.SECONDS)
+            try {
+                val text = process.inputStream.use { FeedbackLogText.read(it) }
+                if (!process.waitFor(1, TimeUnit.SECONDS) || process.exitValue() != 0 || timedOut.get()) {
+                    throw NativeFeedbackException(NativeFeedbackFailure.LOG_UNAVAILABLE)
+                }
+                text
+            } catch (
+                error: NativeFeedbackException,
+            ) {
+                throw error
+            } catch (
+                error: Exception,
+            ) {
+                throw NativeFeedbackException(NativeFeedbackFailure.LOG_UNAVAILABLE)
+            } finally {
+                deadline.cancel(true)
+                timer.shutdownNow()
+                process.destroy()
+            }
+        }
+    }
 
     suspend fun dumpLogs(exception: Throwable? = null) = withNonCancellableContext {
         try {

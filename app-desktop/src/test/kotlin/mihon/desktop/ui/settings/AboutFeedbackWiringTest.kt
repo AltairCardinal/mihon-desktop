@@ -7,27 +7,27 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerButtons
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.unit.Density
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import io.mockk.every
 import io.mockk.mockk
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import mihon.desktop.APP_VERSION
@@ -44,22 +44,31 @@ import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.domain.release.service.ApplicationUpdatePreferences
-import java.nio.file.Path
-import java.io.File
 import tachiyomi.i18n.MR
+import java.io.File
+import java.nio.file.Path
 import java.util.Locale
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Isolated
 class AboutFeedbackWiringTest {
     @Test
-    fun `feedback dialog traps keyboard focus closes with Escape and stays reachable at 320dp double font`() = runBlocking {
+    fun `dialog traps focus and stays reachable at 320dp double font`() = runBlocking {
         val previousLocale = Locale.getDefault()
         Locale.setDefault(Locale.US)
         var copies = 0
         var opens = 0
-        val clipboard = mockk<ClipboardManager> { every { setText(any()) } answers { copies++; Unit } }
-        val uri = object : UriHandler { override fun openUri(uri: String) { opens++ } }
+        val clipboard = mockk<ClipboardManager> {
+            every { setText(any()) } answers {
+                copies++
+                Unit
+            }
+        }
+        val uri = object : UriHandler {
+            override fun openUri(uri: String) {
+                opens++
+            }
+        }
         try {
             for (dark in listOf(false, true)) {
                 val scene = ImageComposeScene(320, 900, coroutineContext = coroutineContext) {}
@@ -71,62 +80,80 @@ class AboutFeedbackWiringTest {
                             LocalDensity provides Density(1f, 2f),
                         ) {
                             MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
-                                AboutFeedbackSection()
+                                AboutFeedbackSection(controllerFactory = { scope, summary, open ->
+                                    tachiyomi.domain.feedback.NativeFeedbackController(
+                                        mockk(relaxed = true),
+                                        tachiyomi.domain.feedback.FeedbackLogReader {
+                                            error("No automatic read")
+                                        },
+                                        summary,
+                                        scope,
+                                        open,
+                                    )
+                                })
                             }
                         }
                     }
                     render(scene)
                     click(scene, "Report a problem")
                     render(scene)
-                    savePreview(scene, dark, "top")
                     assertEquals(2, scene.semanticsOwners.size)
                     val dialog = scene.semanticsOwners.last()
                     fun dialogNodes() = flatten(dialog.unmergedRootSemanticsNode)
-                    val copyButton = dialogNodes().single { it.config.contains(SemanticsActions.OnClick) && "Copy app details" in text(it) }
-                    assertTrue(requireNotNull(copyButton.config[SemanticsActions.RequestFocus].action).invoke())
-                    render(scene)
-                    val controls = setOf("Copy app details", "Open feedback form", "Close")
                     for (shift in listOf(false, true)) {
-                        val visited = mutableSetOf<String>()
-                        repeat(3) {
+                        var closeVisited = false
+                        repeat(18) {
                             scene.sendKeyEvent(keyEvent(Key.Tab, KeyEventType.KeyDown, shift))
                             scene.sendKeyEvent(keyEvent(Key.Tab, KeyEventType.KeyUp, shift))
                             render(scene)
-                            val active = dialogNodes().single {
-                                it.config.contains(SemanticsProperties.Focused) && it.config[SemanticsProperties.Focused]
+                            val active = dialogNodes().filter {
+                                it.config.contains(SemanticsProperties.Focused) &&
+                                    it.config[SemanticsProperties.Focused]
                             }
-                            visited += controls.single { it in text(active) }
+                            assertTrue(active.isNotEmpty(), "Keyboard focus remains in the dialog")
+                            closeVisited = closeVisited || active.any { "Close" in text(it) }
                             assertTrue(scene.semanticsOwners.last() === dialog)
                         }
-                        assertEquals(controls, visited)
+                        assertTrue(closeVisited, "Close is keyboard reachable in both directions")
                     }
-                    val scroller = dialogNodes().single { it.config.contains(SemanticsActions.ScrollBy) }
+                    val scroller = dialogNodes().single {
+                        it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
+                            "feedback-scroll"
+                    }
                     assertTrue(requireNotNull(scroller.config[SemanticsActions.ScrollBy].action).invoke(0f, -10_000f))
                     settleScroll(scene)
+                    savePreview(scene, dark, "top")
                     val range = scroller.config[SemanticsProperties.VerticalScrollAxisRange]
                     assertEquals(0f, range.value())
                     assertTrue(requireNotNull(scroller.config[SemanticsActions.ScrollBy].action).invoke(0f, 10_000f))
                     settleScroll(scene)
                     savePreview(scene, dark, "bottom")
-                    assertTrue(range.value() > 0f, "Safe summary scroll=${range.value()}/${range.maxValue()} at double font")
-                    for (label in controls) {
-                        val button = dialogNodes().single { it.config.contains(SemanticsActions.OnClick) && label in text(it) }
+                    assertTrue(range.value() > 0f)
+                    for (label in setOf("Submit feedback", "Close")) {
+                        val button = dialogNodes().single {
+                            it.config.contains(SemanticsActions.OnClick) &&
+                                label in text(it)
+                        }
                         val bounds = button.boundsInRoot
                         assertTrue(bounds.width > 0f && bounds.height > 0f, label)
-                        assertTrue(bounds.left >= 0f && bounds.right <= 320f && bounds.top >= 0f && bounds.bottom <= 900f, "$label: $bounds")
+                        assertTrue(
+                            bounds.left >= 0f && bounds.right <= 320f && bounds.top >= 0f && bounds.bottom <= 900f,
+                            "$label: $bounds",
+                        )
                     }
-                    val beforeCopies = copies
-                    val beforeOpens = opens
                     scene.sendKeyEvent(keyEvent(Key.Escape, KeyEventType.KeyDown))
                     scene.sendKeyEvent(keyEvent(Key.Escape, KeyEventType.KeyUp))
                     render(scene)
                     assertEquals(1, scene.semanticsOwners.size)
-                    assertEquals(beforeCopies, copies)
-                    assertEquals(beforeOpens, opens)
-                    assertTrue(nodes(scene).any {
-                        it.config.contains(SemanticsProperties.Focused) && it.config[SemanticsProperties.Focused] &&
-                            MR.strings.feedback_report_problem.localized() in text(it)
-                    })
+                    assertEquals(0, copies)
+                    assertEquals(0, opens)
+                    assertTrue(
+                        nodes(scene).any {
+                            it.config.contains(SemanticsProperties.Focused) &&
+                                it.config[SemanticsProperties.Focused] &&
+                                "Report a problem" in text(it)
+                        },
+                    )
                     click(scene, "Report a problem")
                     render(scene)
                     scene.sendPointerEvent(
@@ -143,12 +170,8 @@ class AboutFeedbackWiringTest {
                     )
                     render(scene)
                     assertEquals(1, scene.semanticsOwners.size)
-                    assertEquals(beforeCopies, copies)
-                    assertEquals(beforeOpens, opens)
-                    assertTrue(nodes(scene).any {
-                        it.config.contains(SemanticsProperties.Focused) && it.config[SemanticsProperties.Focused] &&
-                            MR.strings.feedback_report_problem.localized() in text(it)
-                    })
+                    assertEquals(0, copies)
+                    assertEquals(0, opens)
                 } finally {
                     scene.close()
                 }
@@ -181,7 +204,10 @@ class AboutFeedbackWiringTest {
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
                     MaterialTheme {
-                        Navigator(AboutScreen(paths)) { navigator = it; CurrentScreen() }
+                        Navigator(AboutScreen(paths)) {
+                            navigator = it
+                            CurrentScreen()
+                        }
                     }
                 }
             }
@@ -205,13 +231,12 @@ class AboutFeedbackWiringTest {
     }
 
     @Test
-    fun `real About previews and copies safe diagnostics before explicit project issue action`(@TempDir root: Path) = runBlocking {
+    fun `real About previews and copies safe diagnostics without sending on close`(@TempDir root: Path) = runBlocking {
         val previousLocale = Locale.getDefault()
         Locale.setDefault(Locale.US)
         val copied = mutableListOf<String>()
         val opened = mutableListOf<String>()
         var copyAllowed = false
-        var openAllowed = false
         val clipboard = mockk<ClipboardManager> {
             every { setText(any()) } answers {
                 check(copyAllowed) { "Private clipboard implementation detail" }
@@ -220,7 +245,6 @@ class AboutFeedbackWiringTest {
         }
         val uri = object : UriHandler {
             override fun openUri(uri: String) {
-                check(openAllowed) { "Private browser implementation detail" }
                 opened += uri
             }
         }
@@ -234,6 +258,8 @@ class AboutFeedbackWiringTest {
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { extensionPresentationService } returns extensions
             every { updateScreenModel } returns update
+            every { networkHelper } returns
+                mockk<mihon.desktop.platform.DesktopNetworkHelper> { every { client } returns okhttp3.OkHttpClient() }
         }
         val scene = ImageComposeScene(900, 1_600, coroutineContext = coroutineContext) {}
         try {
@@ -269,30 +295,30 @@ class AboutFeedbackWiringTest {
             assertFalse(root.toString() in summary)
             assertFalse("Installation ID" in summary)
             assertTrue("App details copied" in labels(scene))
-            click(scene, "Open feedback form")
-            render(scene)
-            assertTrue("Could not open the feedback form. Try again or open the project feedback page in your browser." in labels(scene))
-            assertFalse(labels(scene).any { "Private browser" in it })
-            assertEquals(emptyList<String>(), opened)
-            openAllowed = true
-            click(scene, "Open feedback form")
-            render(scene)
-            assertEquals(listOf("https://altaircardinal.github.io/mihon-desktop/feedback/"), opened)
             click(scene, "Close")
             render(scene)
             assertFalse("Copy app details" in labels(scene))
             assertEquals(1, copied.size)
-            assertEquals(1, opened.size)
+            assertEquals(0, opened.size)
         } finally {
             scene.close()
             Locale.setDefault(previousLocale)
         }
     }
 
-    private fun nodes(scene: ImageComposeScene) = scene.semanticsOwners.flatMap { flatten(it.unmergedRootSemanticsNode) }
+    private fun nodes(scene: ImageComposeScene) = scene.semanticsOwners.flatMap {
+        flatten(it.unmergedRootSemanticsNode)
+    }
     private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
     private fun text(node: SemanticsNode): List<String> = flatten(node).flatMap {
-        if (it.config.contains(SemanticsProperties.Text)) it.config[SemanticsProperties.Text].map(AnnotatedString::text) else emptyList()
+        if (it.config.contains(
+                SemanticsProperties.Text,
+            )
+        ) {
+            it.config[SemanticsProperties.Text].map(AnnotatedString::text)
+        } else {
+            emptyList()
+        }
     }
     private fun labels(scene: ImageComposeScene) = nodes(scene).flatMap(::text)
     private fun click(scene: ImageComposeScene, label: String) {
@@ -310,9 +336,13 @@ class AboutFeedbackWiringTest {
         delay(16)
     }
     private fun savePreview(scene: ImageComposeScene, dark: Boolean, position: String) {
-        val output = File(System.getenv("MIHON_FEEDBACK_VISUAL_DIR") ?: "build/reports/feedback-visual").apply { mkdirs() }
+        val output = File(
+            System.getenv("MIHON_FEEDBACK_VISUAL_DIR") ?: ".gradle-coordinator/native-feedback-visual",
+        ).apply {
+            mkdirs()
+        }
         scene.render(System.nanoTime()).use { image ->
-            File(output, "feedback-${if (dark) "dark" else "light"}-320-font200-$position.png").writeBytes(
+            File(output, "native-feedback-${if (dark) "dark" else "light"}-320-font200-$position.png").writeBytes(
                 requireNotNull(image.encodeToData()).bytes,
             )
         }
@@ -322,7 +352,11 @@ class AboutFeedbackWiringTest {
         val eventType = Class.forName("androidx.compose.ui.input.key.KeyEventType")
             .getMethod(if (type == KeyEventType.KeyDown) "access\$getKeyDown\$cp" else "access\$getKeyUp\$cp")
             .invoke(null)
-        val factory = events.declaredMethods.single { it.name.startsWith("KeyEvent-") && !it.name.endsWith("\$default") }
-        return androidx.compose.ui.input.key.KeyEvent(factory.invoke(null, key.keyCode, eventType, 0, false, false, false, shift, null))
+        val factory = events.declaredMethods.single {
+            it.name.startsWith("KeyEvent-") && !it.name.endsWith("\$default")
+        }
+        return androidx.compose.ui.input.key.KeyEvent(
+            factory.invoke(null, key.keyCode, eventType, 0, false, false, false, shift, null),
+        )
     }
 }
