@@ -59,8 +59,8 @@ class SafeFeedbackSummary(
 
     companion object {
         // A fixed destination deliberately keeps diagnostics out of browser history and request URLs.
-        const val ISSUE_FORM_URL =
-            "https://github.com/AltairCardinal/mihon-desktop/issues/new?template=2_report_issue.yml"
+        const val FEEDBACK_FORM_URL =
+            "https://altaircardinal.github.io/mihon-desktop/feedback/"
         private val VERSION = Regex("[0-9][A-Za-z0-9._+()-]{0,79}")
         private val SENSITIVE =
             Regex(

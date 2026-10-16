@@ -1,0 +1,42 @@
+:root {
+  color-scheme: light dark;
+  --background: #f7f8fc;
+  --surface: #fff;
+  --text: #202533;
+  --muted: #505b70;
+  --border: #c2c9d8;
+  --accent: #2855a6;
+  --notice: #edf2ff;
+  font: 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--background);
+  color: var(--text);
+}
+@media (prefers-color-scheme: dark) {
+  :root { --background: #14171f; --surface: #1e2330; --text: #e6eaf3; --muted: #b0bbcf; --border: #626d83; --accent: #b6ceff; --notice: #252f45; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { width: min(100% - 32px, 760px); margin: 32px auto; padding: 32px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.brand { font-weight: 750; font-size: 1.3rem; color: var(--accent); }
+h1 { line-height: 1.3; margin-bottom: 12px; }
+p { margin: 12px 0; }
+.notice { background: var(--notice); border-radius: 12px; padding: 16px; }
+form { display: grid; gap: 8px; margin-top: 24px; }
+label { font-weight: 650; margin-top: 16px; }
+input[type="text"], textarea { width: 100%; min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; line-height: 1.5; }
+textarea { resize: vertical; }
+small, footer { color: var(--muted); font-size: .88rem; }
+.consent { display: flex; align-items: flex-start; gap: 10px; font-weight: 400; padding-block: 8px; }
+.consent input { flex-shrink: 0; width: 20px; height: 20px; margin-top: 4px; accent-color: var(--accent); }
+button { cursor: pointer; font: inherit; font-weight: 650; border: 1px solid var(--border); border-radius: 8px; padding: 10px 20px; background: var(--notice); color: var(--accent); min-height: 44px; }
+button:disabled { opacity: .55; cursor: default; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+#submit { margin-top: 8px; }
+#challenge { overflow: auto; min-height: 66px; margin-top: 12px; }
+#status { min-height: 2em; overflow-wrap: anywhere; }
+footer { border-top: 1px solid var(--border); padding-top: 20px; margin-top: 12px; }
+@media (max-width: 520px) {
+  main { width: 100%; margin: 0; padding: 20px 16px; border: 0; border-radius: 0; }
+  h1 { font-size: 1.8rem; }
+}

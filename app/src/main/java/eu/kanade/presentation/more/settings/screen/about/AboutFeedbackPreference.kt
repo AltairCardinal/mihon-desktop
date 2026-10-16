@@ -73,7 +73,7 @@ internal fun AboutFeedbackPreference() {
         },
         confirmButton = {
             TextButton(onClick = {
-                failed = runCatching { uriHandler.openUri(SafeFeedbackSummary.ISSUE_FORM_URL) }.isFailure
+                failed = runCatching { uriHandler.openUri(SafeFeedbackSummary.FEEDBACK_FORM_URL) }.isFailure
                 feedback = if (failed) openFailed else opened
             }) { Text(stringResource(MR.strings.feedback_open_issue)) }
         },

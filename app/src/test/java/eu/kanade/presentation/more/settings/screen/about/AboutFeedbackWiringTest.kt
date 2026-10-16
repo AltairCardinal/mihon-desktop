@@ -132,17 +132,19 @@ class AboutFeedbackWiringTest {
             }
             compose.onNodeWithText(copied.single()).performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("Safe summary copied").performScrollTo().assertIsDisplayed()
-            compose.onNodeWithText("Open GitHub issue form").performClick()
-            compose.onNodeWithText("Could not open GitHub. Try again or open the project Issues page in your browser.")
+            compose.onNodeWithText("Open feedback form").performClick()
+            compose.onNodeWithText(
+                "Could not open the feedback form. Try again or open the project feedback page in your browser.",
+            )
                 .performScrollTo().assertIsDisplayed()
             compose.runOnIdle {
                 assertTrue(opened.isEmpty())
                 openAllowed = true
             }
-            compose.onNodeWithText("Open GitHub issue form").performClick()
+            compose.onNodeWithText("Open feedback form").performClick()
             compose.runOnIdle {
                 assertEquals(
-                    listOf("https://github.com/AltairCardinal/mihon-desktop/issues/new?template=2_report_issue.yml"),
+                    listOf("https://altaircardinal.github.io/mihon-desktop/feedback/"),
                     opened,
                 )
             }
@@ -185,7 +187,7 @@ class AboutFeedbackWiringTest {
                 compose.onNodeWithText("Application: Mihon", substring = true)
                     .performScrollTo().assertIsDisplayed()
                 compose.onNodeWithText("Copy safe summary").performScrollTo().assertIsDisplayed()
-                compose.onNodeWithText("Open GitHub issue form").assertIsDisplayed()
+                compose.onNodeWithText("Open feedback form").assertIsDisplayed()
                 compose.onNodeWithText("Close").assertIsDisplayed()
                 compose.runOnUiThread {
                     (ShadowDialog.getLatestDialog() as ComponentDialog).onBackPressedDispatcher.onBackPressed()

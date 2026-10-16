@@ -64,10 +64,10 @@ abstract class SafeFeedbackSummaryContract {
     }
 
     @Test
-    fun `issue address is a fixed repository template and never carries diagnostics`() {
+    fun `feedback address is a fixed anonymous entry and never carries diagnostics`() {
         assertEquals(
-            "https://github.com/AltairCardinal/mihon-desktop/issues/new?template=2_report_issue.yml",
-            SafeFeedbackSummary.ISSUE_FORM_URL,
+            "https://altaircardinal.github.io/mihon-desktop/feedback/",
+            SafeFeedbackSummary.FEEDBACK_FORM_URL,
         )
     }
 }

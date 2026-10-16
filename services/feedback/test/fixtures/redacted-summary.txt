@@ -1,0 +1,5 @@
+Application: Mihon Desktop
+Version: [redacted]
+OS: Windows [redacted]
+Architecture: unknown
+Runtime: Java [redacted]
