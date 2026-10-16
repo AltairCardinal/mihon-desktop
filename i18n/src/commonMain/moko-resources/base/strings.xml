@@ -2545,13 +2545,13 @@
     <string name="fork_update_full_notes_on_release">Full release notes are available on the release page.</string>
     <string name="fork_update_debug_manual_only">This development build can open the release page; it cannot update the installed release app.</string>
     <string name="feedback_report_problem">Report a problem</string>
-    <string name="feedback_privacy_notice">No account needed. Describe the problem in the form. Your submission will be published on GitHub.\n\nThe app and system details below are optional: copy them into the form if useful. Opening the form does not send these details.</string>
+    <string name="feedback_privacy_notice">No account needed. Problem details are published on GitHub; attached crash logs are visible only to project maintainers.\n\nThe app and system details below are optional: copy them into the form if useful. Opening the form does not send these details.</string>
     <string name="feedback_copy_summary">Copy app details</string>
     <string name="feedback_summary_copied">App details copied</string>
     <string name="feedback_copy_failed">Could not copy the summary. Try again.</string>
     <string name="feedback_open_issue">Open feedback form</string>
     <string name="feedback_open_failed">Could not open the feedback form. Try again or open the project feedback page in your browser.</string>
     <string name="feedback_opened">Feedback form opened. Review and submit it in your browser. No account is required.</string>
-    <string name="feedback_logs_android">The form does not accept attachments or upload logs automatically. Do not include passwords, tokens or other private information.</string>
-    <string name="feedback_logs_desktop">The form does not accept attachments or upload logs automatically. Do not include passwords, tokens or other private information.</string>
+    <string name="feedback_logs_android">To include a log, export it from More → Settings → Advanced → Dump crash logs, then upload it in the form. Review it and remove private information first.</string>
+    <string name="feedback_logs_desktop">To include a log, find it in Settings → Advanced → Open crash log folder, then upload it in the form. Review it and remove private information first.</string>
 </resources>

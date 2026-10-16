@@ -1,14 +1,36 @@
+import { MAX_LOG_BYTES, MAX_PREVIEW_BYTES, crashLogBytes, normalizeCrashLog, validCrashLogText } from "./crash-log.mjs";
+
 const strings = {
   zh: {
     heading: "问题反馈",
     intro: "无需注册或登录。请勿填写密码、账号、书库内容或其他个人信息。",
-    privacy: "本服务接收匿名反馈，并在你同意后公开转交 GitHub。服务数据库中的报告及用于限流的 IP 不可逆摘要通常保留最多 30 天；已公开的 Issue 不受此期限限制。不收集邮箱，不支持附件。Cloudflare 处理网络请求及安全验证。",
+    privacy: "标题、描述和可选安全摘要在你同意后公开转交 GitHub。崩溃日志仅在独立授权后交给项目维护者，不发送 GitHub。服务数据库中的报告、私密日志及用于限流的 IP 不可逆摘要通常保留最多 30 天；已公开的 Issue 不受此期限限制。不收集邮箱。Cloudflare 处理网络请求及安全验证。",
     title: "问题标题（5–120 字符）",
     titleHelp: "简要说明遇到的问题。",
     description: "问题描述（20–6000 字符）",
     descriptionHelp: "你做了什么？原本预期什么？实际发生什么？请使用虚构示例。",
     summary: "应用安全摘要（可选，最多 1000 字符）",
     summaryHelp: "可手动粘贴应用“问题上报”中复制的五行摘要。仅接受 Application、Version、OS、Architecture、Runtime；不会自动读取剪贴板。",
+    logHeading: "私密崩溃日志（可选）",
+    logHelp: "选择 UTF-8 文本 .txt、.log 或 .log.1/.2/.3，在本地预览并删除敏感信息。最多预览 4 MiB；提交内容最多 256 KiB。日志仅供项目维护者查看，不发送 GitHub。",
+    logFile: "选择日志文件",
+    logPreview: "可编辑的本地预览",
+    logRemove: "移除日志",
+    logConsent: "我已检查日志，仅授权项目维护者查看；日志通常保留最多 30 天，不发送 GitHub。修改、换文件或移除后需重新授权。",
+    logEmpty: "未附加日志；你可以不上传日志直接反馈。",
+    logReading: "正在本地读取，尚未上传…",
+    logLoaded: "仅在本地预览，尚未上传。请检查内容后单独授权。",
+    logReceived: "日志已接收，仅项目维护者可见；不会发送 GitHub。",
+    logEdited: "预览已修改，请重新检查并授权。尚未上传。",
+    logRemoved: "日志已移除，不会随反馈提交。",
+    logUnsupported: "只支持 .txt、.log、.log.1/.2/.3 文本文件，不接受 ZIP。原预览已保留。",
+    logFileLarge: "文件超过 4 MiB，未读取。请先在本地精简；原预览已保留。",
+    logUtf8: "文件不是有效 UTF-8 文本，未附加。原预览已保留。",
+    logBinary: "日志包含二进制控制字符或无效文本，未附加。原预览已保留。",
+    logLimit: "日志超过 256 KiB，请编辑精简或移除；不会静默截断，输入内容已保留。",
+    logInvalid: "日志包含无效文本或二进制控制字符，请编辑精简或移除。输入内容已保留。",
+    logNeedConsent: "请先检查日志，并单独勾选仅授权项目维护者查看。输入内容已保留。",
+    logBytes: "UTF-8 字节数",
     consent: "我已检查内容，并同意标题、描述和可选摘要公开发布为 GitHub Issue。提交后无法通过此页面撤回。",
     submit: "提交反馈",
     footer: "无需 GitHub 账号。草稿只保留在当前页面内存中，关闭或刷新页面会丢失。公开的 GitHub Issue 由维护者按仓库规则管理。",
@@ -27,13 +49,33 @@ const strings = {
   en: {
     heading: "Report a problem",
     intro: "No registration or sign-in required. Do not include passwords, account details, library contents or other personal information.",
-    privacy: "This service receives anonymous reports and forwards them to public GitHub Issues with your consent. Database reports and keyed IP hashes are normally retained for up to 30 days; public Issues are outside this retention period. No email collection or attachments. Cloudflare processes network requests and security checks.",
+    privacy: "The title, description and optional safe summary are forwarded to public GitHub Issues with your consent. Crash logs require separate permission and are accessible only to project maintainers, never sent to GitHub. Database reports, private logs and keyed IP hashes are normally retained for up to 30 days; public Issues are outside this period. No email collection. Cloudflare processes network requests and security checks.",
     title: "Problem title (5–120 characters)",
     titleHelp: "Briefly describe the problem.",
     description: "Description (20–6000 characters)",
     descriptionHelp: "What did you do, what did you expect, and what happened? Use fictional examples.",
     summary: "Safe application summary (optional, up to 1000 characters)",
     summaryHelp: "Manually paste the five-line summary copied from the app's problem report dialog. Only Application, Version, OS, Architecture and Runtime are accepted. The clipboard is never read automatically.",
+    logHeading: "Private crash log (optional)",
+    logHelp: "Select a UTF-8 .txt, .log or .log.1/.2/.3 file, preview it locally and remove sensitive details. Preview limit: 4 MiB; submission limit: 256 KiB. Logs are only for project maintainers and never sent to GitHub.",
+    logFile: "Choose log file",
+    logPreview: "Editable local preview",
+    logRemove: "Remove log",
+    logConsent: "I have checked this log and authorize only project maintainers to view it. It is normally retained for up to 30 days and never sent to GitHub. Editing, replacing or removing it resets this permission.",
+    logEmpty: "No log attached. You can send feedback without a log.",
+    logReading: "Reading locally; nothing has been uploaded…",
+    logLoaded: "Local preview only; not uploaded. Review the contents and grant separate permission.",
+    logReceived: "Received. This log is accessible to project maintainers only and will not be sent to GitHub.",
+    logEdited: "Preview changed. Review it and grant permission again; not uploaded.",
+    logRemoved: "Log removed. It will not be submitted with the report.",
+    logUnsupported: "Only .txt, .log and .log.1/.2/.3 text files are supported; ZIP is not accepted. Previous preview preserved.",
+    logFileLarge: "File exceeds 4 MiB and was not read. Shorten it locally first; previous preview preserved.",
+    logUtf8: "Not valid UTF-8 text; file not attached. Previous preview preserved.",
+    logBinary: "The file contains binary controls or invalid text and was not attached. Previous preview preserved.",
+    logLimit: "Log exceeds 256 KiB. Edit it shorter or remove it; it will not be silently truncated. Your input is preserved.",
+    logInvalid: "Log contains invalid text or binary controls. Edit or remove it. Your input is preserved.",
+    logNeedConsent: "Review the log and separately grant permission for project maintainers only. Your input is preserved.",
+    logBytes: "UTF-8 bytes",
     consent: "I have reviewed the contents and consent to publishing the title, description and optional summary as a public GitHub Issue. This page cannot withdraw a submitted report.",
     submit: "Send feedback",
     footer: "No GitHub account required. Your draft stays only in this page's memory and is lost when you close or reload the page. Public GitHub Issues are managed by the maintainer under repository rules.",
@@ -74,6 +116,11 @@ export async function initializeFeedback(window = globalThis.window, document = 
   const status = document.getElementById("status");
   const languageButton = document.getElementById("language");
   const fields = Object.fromEntries(["title", "description", "summary", "consent"].map((key) => [key, document.getElementById(key)]));
+  const logFile = document.getElementById("crash-log-file");
+  const logPreview = document.getElementById("crash-log");
+  const logConsent = document.getElementById("crash-log-consent");
+  const logRemove = document.getElementById("crash-log-remove");
+  const logStatus = document.getElementById("crash-log-status");
   let language = "zh";
   let message = "loading";
   let accepting = false;
@@ -82,6 +129,9 @@ export async function initializeFeedback(window = globalThis.window, document = 
   let receipt = "";
   let token = "";
   let widget;
+  let logState = "logEmpty";
+  let logReading = false;
+  let logGeneration = 0;
   const submissionId = window.crypto.randomUUID();
 
   function render() {
@@ -90,19 +140,94 @@ export async function initializeFeedback(window = globalThis.window, document = 
     languageButton.textContent = language === "zh" ? "English" : "中文";
     languageButton.lang = language === "zh" ? "en" : "zh-CN";
     status.textContent = strings[language][message] + (message === "received" ? receipt : "");
-    button.disabled = !accepting || busy || received;
+    button.disabled = !accepting || busy || received || logReading;
+    for (const field of Object.values(fields)) field.disabled = busy || received;
+    logFile.disabled = busy || received;
+    logPreview.disabled = busy || received;
+    logConsent.disabled = busy || received || logPreview.value === "" || logReading;
+    logRemove.disabled = busy || received || (logPreview.value === "" && !logReading);
+    const bytes = crashLogBytes(logPreview.value);
+    document.getElementById("crash-log-bytes").textContent = `${strings[language].logBytes}: ${bytes} / ${MAX_LOG_BYTES}`;
+    logStatus.textContent = strings[language][received && logPreview.value !== "" ? "logReceived" : logState] + (bytes > MAX_LOG_BYTES ? ` ${strings[language].logLimit}` : "");
+    logStatus.dataset.state = logReading ? "reading" : logState;
     form.setAttribute("aria-busy", String(busy));
   }
 
   languageButton.addEventListener("click", () => { language = language === "zh" ? "en" : "zh"; render(); });
+  logPreview.addEventListener("input", () => {
+    if (busy || received) return;
+    logGeneration++;
+    logReading = false;
+    logConsent.checked = false;
+    logState = logPreview.value === "" ? "logEmpty" : "logEdited";
+    render();
+  });
+  logRemove.addEventListener("click", () => {
+    if (busy || received) return;
+    logGeneration++;
+    logReading = false;
+    logFile.value = "";
+    logPreview.value = "";
+    logConsent.checked = false;
+    logState = "logRemoved";
+    render();
+    logPreview.focus();
+  });
+  logFile.addEventListener("change", () => {
+    if (busy || received) return;
+    const generation = ++logGeneration;
+    logConsent.checked = false;
+    logReading = false;
+    const file = logFile.files?.[0];
+    if (!file) { render(); return; }
+    if (!/(?:\.txt|\.log(?:\.[123])?)$/i.test(file.name)) {
+      logState = "logUnsupported";
+      logFile.value = "";
+      render();
+      return;
+    }
+    if (file.size > MAX_PREVIEW_BYTES) {
+      logState = "logFileLarge";
+      logFile.value = "";
+      render();
+      return;
+    }
+    logReading = true;
+    logState = "logReading";
+    render();
+    const reader = new window.FileReader();
+    reader.addEventListener("load", () => {
+      if (generation !== logGeneration) return;
+      try {
+        const text = normalizeCrashLog(new TextDecoder("utf-8", { fatal: true }).decode(reader.result));
+        if (!validCrashLogText(text)) logState = "logBinary";
+        else { logPreview.value = text; logState = "logLoaded"; }
+      } catch { logState = "logUtf8"; }
+      logReading = false;
+      logFile.value = "";
+      render();
+    }, { once: true });
+    reader.addEventListener("error", () => {
+      if (generation !== logGeneration) return;
+      logReading = false;
+      logState = "logUtf8";
+      logFile.value = "";
+      render();
+    }, { once: true });
+    reader.readAsArrayBuffer(file);
+  });
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!accepting || busy || received) return;
+    if (!accepting || busy || received || logReading) return;
     if (!fields.consent.checked) { message = "needConsent"; render(); return; }
     const title = fields.title.value.trim();
     const description = fields.description.value.trim();
     const summary = fields.summary.value.replace(/\r\n/g, "\n").trim();
+    const crashLog = normalizeCrashLog(logPreview.value);
     if (!validInput(title, description, summary)) { message = "invalid"; render(); return; }
+    if (!validCrashLogText(crashLog)) { message = "logInvalid"; render(); return; }
+    if (crashLogBytes(crashLog) > MAX_LOG_BYTES) { message = "logLimit"; render(); return; }
+    if (crashLog !== "" && !logConsent.checked) { message = "logNeedConsent"; render(); return; }
     if (!token) { message = "challenge"; render(); return; }
     busy = true;
     message = "sending";
@@ -112,7 +237,9 @@ export async function initializeFeedback(window = globalThis.window, document = 
         method: "POST",
         credentials: "omit",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ submissionId, title, description, summary, consent: true, turnstileToken: token }),
+        body: JSON.stringify({ submissionId, title, description, summary, consent: true, turnstileToken: token,
+          ...(crashLog !== "" ? { crashLog, crashLogConsent: true } : {}),
+        }),
         signal: window.AbortSignal.timeout(20000),
       });
       const result = await response.json();

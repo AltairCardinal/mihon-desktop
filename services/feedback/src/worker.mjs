@@ -1,6 +1,8 @@
+import { MAX_LOG_BYTES, crashLogBytes, normalizeCrashLog, validCrashLogText } from "../public/crash-log.mjs";
+
 const encoder = new TextEncoder();
 const ISSUE_ENDPOINT = "https://api.github.com/repos/AltairCardinal/mihon-desktop/issues";
-const MAX_BODY = 32 * 1024;
+const MAX_BODY = 640 * 1024;
 const RETENTION_SECONDS = 30 * 86400;
 const HEADERS = {
   "Cache-Control": "no-store",
@@ -53,15 +55,20 @@ async function readBody(request) {
 
 function validate(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const allowed = ["submissionId", "title", "description", "summary", "consent", "turnstileToken"];
+  const allowed = ["submissionId", "title", "description", "summary", "consent", "turnstileToken", "crashLog", "crashLogConsent"];
   if (Object.keys(value).some((key) => !allowed.includes(key))) return null;
   if (typeof value.submissionId !== "string" ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.submissionId)) return null;
   if (value.consent !== true || typeof value.title !== "string" || typeof value.description !== "string" ||
-      (value.summary !== undefined && typeof value.summary !== "string") || typeof value.turnstileToken !== "string") return null;
+      (value.summary !== undefined && typeof value.summary !== "string") || typeof value.turnstileToken !== "string" ||
+      (value.crashLog !== undefined && typeof value.crashLog !== "string") ||
+      (value.crashLogConsent !== undefined && typeof value.crashLogConsent !== "boolean")) return null;
   const title = value.title.trim();
   const description = value.description.trim();
   const summary = (value.summary ?? "").replace(/\r\n/g, "\n").trim();
+  const crashLog = normalizeCrashLog(value.crashLog ?? "");
+  if (!validCrashLogText(crashLog) || crashLogBytes(crashLog) > MAX_LOG_BYTES ||
+      (crashLog !== "" && value.crashLogConsent !== true)) return null;
   if ([...title].length < 5 || [...title].length > 120 || /[\p{Cc}\p{Cf}]/u.test(title) ||
       [...description].length < 20 || [...description].length > 6000 ||
       /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(description) ||
@@ -78,7 +85,7 @@ function validate(value) {
       fields.add(match[1]);
     }
   }
-  return { submissionId: value.submissionId.toLowerCase(), title, description, summary, turnstileToken: value.turnstileToken };
+  return { submissionId: value.submissionId.toLowerCase(), title, description, summary, crashLog, turnstileToken: value.turnstileToken };
 }
 
 async function hexDigest(value, secret) {
@@ -120,7 +127,11 @@ async function submit(request, env) {
   if (captcha.success !== true || captcha.hostname !== new URL(env.PUBLIC_ORIGIN).hostname || captcha.action !== "feedback") {
     return json({ error: "verification_failed" }, 400);
   }
-  const contentHash = await hexDigest(JSON.stringify([value.title, value.description, value.summary]));
+  // Preserve pre-migration retries for reports without a log. A private log,
+  // when present, is part of the immutable submission contents.
+  const contents = [value.title, value.description, value.summary];
+  if (value.crashLog !== "") contents.push(value.crashLog);
+  const contentHash = await hexDigest(JSON.stringify(contents));
   const receipt = newReceipt();
   const now = Math.floor(Date.now() / 1000);
   const hour = Math.floor(now / 3600) * 3600;
@@ -130,11 +141,11 @@ async function submit(request, env) {
   // so concurrent requests cannot pass a separate check then overfill a quota.
   await env.DB.prepare(`
     INSERT OR IGNORE INTO reports
-      (submission_id, content_hash, receipt, title, description, summary, ip_key, created_at)
-    SELECT ?, ?, ?, ?, ?, ?, ?, ?
+      (submission_id, content_hash, receipt, title, description, summary, ip_key, created_at, crash_log, crash_log_consent)
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     WHERE (SELECT count(*) FROM reports WHERE ip_key = ? AND created_at >= ?) < 3
       AND (SELECT count(*) FROM reports WHERE created_at >= ?) < 50
-  `).bind(value.submissionId, contentHash, receipt, value.title, value.description, value.summary, ipKey, now, ipKey, hour, day).run();
+  `).bind(value.submissionId, contentHash, receipt, value.title, value.description, value.summary, ipKey, now, value.crashLog, value.crashLog !== "" ? 1 : 0, ipKey, hour, day).run();
   const row = await env.DB.prepare("SELECT content_hash, receipt FROM reports WHERE submission_id = ?").bind(value.submissionId).first();
   if (!row) return json({ error: "rate_limited" }, 429, { "Retry-After": "3600" });
   if (row.content_hash !== contentHash) return json({ error: "submission_conflict" }, 409);
@@ -151,7 +162,7 @@ async function dispatch(env) {
   await env.DB.prepare("UPDATE reports SET status = 'REVIEW' WHERE status = 'CLAIMED' AND claimed_at < ?").bind(now - 900).run();
   const pending = await env.DB.prepare("SELECT submission_id FROM reports WHERE status = 'PENDING' AND next_attempt <= ? ORDER BY created_at LIMIT 5").bind(now).all();
   for (const candidate of pending.results) {
-    const row = await env.DB.prepare("UPDATE reports SET status = 'CLAIMED', claimed_at = ? WHERE submission_id = ? AND status = 'PENDING' RETURNING *")
+    const row = await env.DB.prepare("UPDATE reports SET status = 'CLAIMED', claimed_at = ? WHERE submission_id = ? AND status = 'PENDING' RETURNING submission_id, title, description, summary, crash_log_consent")
       .bind(now, candidate.submission_id).first();
     if (!row) continue;
     let status = "REVIEW";
@@ -169,7 +180,7 @@ async function dispatch(env) {
         },
         body: JSON.stringify({
           title: `[Feedback] ${row.title.replaceAll("@", "＠")}`,
-          body: `Anonymous feedback. The submitter explicitly consented to public GitHub publication.\n\n${row.description.replace(/\r\n?/g, "\n").split("\n").map((line) => `    ${line}`).join("\n")}\n\n${row.summary ? `Safe application summary:\n\n\`\`\`text\n${row.summary}\n\`\`\`\n\n` : ""}<!-- feedback-submission:${row.submission_id} -->`,
+          body: `Anonymous feedback. The submitter explicitly consented to public GitHub publication.\n\n${row.description.replace(/\r\n?/g, "\n").split("\n").map((line) => `    ${line}`).join("\n")}\n\n${row.summary ? `Safe application summary:\n\n\`\`\`text\n${row.summary}\n\`\`\`\n\n` : ""}${row.crash_log_consent === 1 ? "A maintainer-only crash log is attached. It is not published to GitHub.\n\n" : ""}<!-- feedback-submission:${row.submission_id} -->`,
         }),
         signal: AbortSignal.timeout(15000),
       });

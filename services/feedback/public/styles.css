@@ -26,6 +26,12 @@ form { display: grid; gap: 8px; margin-top: 24px; }
 label { font-weight: 650; margin-top: 16px; }
 input[type="text"], textarea { width: 100%; min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; line-height: 1.5; }
 textarea { resize: vertical; }
+.private-log { display: grid; gap: 8px; min-width: 0; margin-top: 20px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; }
+.private-log h2 { font-size: 1.2rem; margin: 0; }
+.private-log p { margin: 4px 0; }
+.private-log input[type="file"] { width: 100%; min-height: 44px; font: inherit; overflow: hidden; }
+#crash-log { font: .88rem/1.6 ui-monospace, "Cascadia Code", monospace; }
+#crash-log-status, #crash-log-bytes { overflow-wrap: anywhere; }
 small, footer { color: var(--muted); font-size: .88rem; }
 .consent { display: flex; align-items: flex-start; gap: 10px; font-weight: 400; padding-block: 8px; }
 .consent input { flex-shrink: 0; width: 20px; height: 20px; margin-top: 4px; accent-color: var(--accent); }
