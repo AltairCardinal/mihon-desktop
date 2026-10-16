@@ -280,3 +280,19 @@ Pages `38856724354` 成功。真实浏览器发现固定入口 `meta name=refres
   Android 原生新入口、固定入口修复部署及测试通道登记结果以下文/交付 PR 的实际结果为准。
 
 当前完成证据限反馈与更新范围，未宣称其他模块修复或全量通过；具体候选仍待用户自行验收。
+
+### 固定入口和 Android 原生路径收口
+
+跳转修复随 PR #9 合并为 `7983b4bccbb599c4e8d6bec83e699c2c95fb2f08`，Pages `38857544903` 成功。
+同一真实浏览器重新加载固定入口后自动进入 `mihon-feedback.mihon-altaircardinal.workers.dev/`，
+显示真实免账号表单；此前停留中转页的红验收已关闭，没有以字符串扫描代替导航。
+专用 API36 模拟器正式 vc124：原生 About → Report a problem 预览 0.19.4-aex.106 五行摘要、
+无需账号说明 → Open feedback form → 实际 Chrome 自动进入同一自有表单，标题/描述等输入可见，
+没有 GitHub 登录页；原生 UI XML 与截图保存在 `.gradle-coordinator/anonymous-android-{feedback,browser}.*`。
+此次安装由统一 install 入口执行，不冒充应用内升级；原更新链路的 vc122→123 真升级证据继续适用。
+
+Android vc124 已发布为 testing prerelease `anonymous-feedback-20261016`，Release target 为版本配置提交
+`5036ab2d233f6fd86fa4dd3a13512569e5146b6f`。publisher prepare/add 通过真实 GitHub 资产
+digest/大小/原证书/包身份与渠道校验，索引新增 vc124 并保留此前 Android vc123、Windows正式7两条。
+publisher 13 项测试、三条 feed 校验通过。Windows新功能仅交付本批preview，未替换旧正式资产，
+未将preview冒充正式更新或重新触发完整发布矩阵。最终 feed 部署及线上读取结果在本交付 PR 中记录。
