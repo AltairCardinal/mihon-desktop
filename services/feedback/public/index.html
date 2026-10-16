@@ -13,7 +13,7 @@
       <header><span class="brand">Mihon</span><button id="language" type="button" lang="en">English</button></header>
       <h1 data-text="heading">问题反馈</h1>
       <p data-text="intro">无需注册或登录。请勿填写密码、账号、书库内容或其他个人信息。</p>
-      <p class="notice" data-text="privacy">本服务接收匿名反馈，并在你同意后公开转交 GitHub。服务数据库中的报告及用于限流的 IP 不可逆摘要通常保留最多 30 天；已公开的 Issue 不受此期限限制。不收集邮箱，不支持附件。Cloudflare 处理网络请求及安全验证。</p>
+      <p class="notice" data-text="privacy">标题、描述和可选安全摘要在你同意后公开转交 GitHub。崩溃日志仅在独立授权后交给项目维护者，不发送 GitHub。服务数据库中的报告、私密日志及用于限流的 IP 不可逆摘要通常保留最多 30 天；已公开的 Issue 不受此期限限制。不收集邮箱。Cloudflare 处理网络请求及安全验证。</p>
       <form id="feedback" novalidate autocomplete="off">
         <label for="title" data-text="title">问题标题（5–120 字符）</label>
         <input id="title" name="title" type="text" required autocomplete="off" aria-describedby="title-help">
@@ -24,6 +24,18 @@
         <label for="summary" data-text="summary">应用安全摘要（可选，最多 1000 字符）</label>
         <textarea id="summary" name="summary" rows="5" spellcheck="false" aria-describedby="summary-help"></textarea>
         <small id="summary-help" data-text="summaryHelp">可手动粘贴应用“问题上报”中复制的五行摘要。仅接受 Application、Version、OS、Architecture、Runtime；不会自动读取剪贴板。</small>
+        <section class="private-log" aria-labelledby="crash-log-heading">
+          <h2 id="crash-log-heading" data-text="logHeading">私密崩溃日志（可选）</h2>
+          <p data-text="logHelp">选择 UTF-8 文本 .txt、.log 或 .log.1/.2/.3，在本地预览并删除敏感信息。最多预览 4 MiB；提交内容最多 256 KiB。日志仅供项目维护者查看，不发送 GitHub。</p>
+          <label for="crash-log-file" data-text="logFile">选择日志文件</label>
+          <input id="crash-log-file" type="file" accept=".txt,.log,.log.1,.log.2,.log.3" aria-describedby="crash-log-status">
+          <label for="crash-log" data-text="logPreview">可编辑的本地预览</label>
+          <textarea id="crash-log" rows="8" spellcheck="false" aria-describedby="crash-log-bytes crash-log-status"></textarea>
+          <small id="crash-log-bytes"></small>
+          <p id="crash-log-status" role="status" aria-live="polite" data-state="empty"></p>
+          <button id="crash-log-remove" type="button" disabled data-text="logRemove">移除日志</button>
+          <label class="consent"><input id="crash-log-consent" type="checkbox" disabled><span data-text="logConsent">我已检查日志，仅授权项目维护者查看；日志通常保留最多 30 天，不发送 GitHub。修改、换文件或移除后需重新授权。</span></label>
+        </section>
         <label class="consent"><input id="consent" name="consent" type="checkbox" required><span data-text="consent">我已检查内容，并同意标题、描述和可选摘要公开发布为 GitHub Issue。提交后无法通过此页面撤回。</span></label>
         <div id="challenge" aria-label="Security verification"></div>
         <button id="submit" type="submit" disabled data-text="submit">提交反馈</button>
