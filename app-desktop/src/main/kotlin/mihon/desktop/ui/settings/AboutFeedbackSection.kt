@@ -93,7 +93,7 @@ internal fun AboutFeedbackSection() {
             DesktopSettingsTextButton(
                 modifier = Modifier.focusRequester(openFocus).focusProperties { next = closeFocus; previous = copyFocus },
                 onClick = {
-                    failed = runCatching { uriHandler.openUri(SafeFeedbackSummary.ISSUE_FORM_URL) }.isFailure
+                    failed = runCatching { uriHandler.openUri(SafeFeedbackSummary.FEEDBACK_FORM_URL) }.isFailure
                     feedback = if (failed) MR.strings.feedback_open_failed.localized() else MR.strings.feedback_opened.localized()
                 },
             ) { Text(MR.strings.feedback_open_issue.localized()) }

@@ -1,0 +1,16 @@
+{
+  "name": "mihon-anonymous-feedback",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.0.0" },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test/*.test.mjs",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "check": "wrangler deploy --dry-run"
+  },
+  "devDependencies": {
+    "jsdom": "30.1.3",
+    "wrangler": "4.151.0"
+  }
+}

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Mihon · 问题反馈 / Feedback</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script type="module" src="/boot.mjs"></script>
+  </head>
+  <body>
+    <main>
+      <header><span class="brand">Mihon</span><button id="language" type="button" lang="en">English</button></header>
+      <h1 data-text="heading">问题反馈</h1>
+      <p data-text="intro">无需注册或登录。请勿填写密码、账号、书库内容或其他个人信息。</p>
+      <p class="notice" data-text="privacy">本服务接收匿名反馈，并在你同意后公开转交 GitHub。服务数据库中的报告及用于限流的 IP 不可逆摘要通常保留最多 30 天；已公开的 Issue 不受此期限限制。不收集邮箱，不支持附件。Cloudflare 处理网络请求及安全验证。</p>
+      <form id="feedback" novalidate autocomplete="off">
+        <label for="title" data-text="title">问题标题（5–120 字符）</label>
+        <input id="title" name="title" type="text" required autocomplete="off" aria-describedby="title-help">
+        <small id="title-help" data-text="titleHelp">简要说明遇到的问题。</small>
+        <label for="description" data-text="description">问题描述（20–6000 字符）</label>
+        <textarea id="description" name="description" rows="7" required aria-describedby="description-help"></textarea>
+        <small id="description-help" data-text="descriptionHelp">你做了什么？原本预期什么？实际发生什么？请使用虚构示例。</small>
+        <label for="summary" data-text="summary">应用安全摘要（可选，最多 1000 字符）</label>
+        <textarea id="summary" name="summary" rows="5" spellcheck="false" aria-describedby="summary-help"></textarea>
+        <small id="summary-help" data-text="summaryHelp">可手动粘贴应用“问题上报”中复制的五行摘要。仅接受 Application、Version、OS、Architecture、Runtime；不会自动读取剪贴板。</small>
+        <label class="consent"><input id="consent" name="consent" type="checkbox" required><span data-text="consent">我已检查内容，并同意标题、描述和可选摘要公开发布为 GitHub Issue。提交后无法通过此页面撤回。</span></label>
+        <div id="challenge" aria-label="Security verification"></div>
+        <button id="submit" type="submit" disabled data-text="submit">提交反馈</button>
+        <p id="status" role="status" aria-live="polite" tabindex="-1"></p>
+      </form>
+      <footer data-text="footer">无需 GitHub 账号。草稿只保留在当前页面内存中，关闭或刷新页面会丢失。公开的 GitHub Issue 由维护者按仓库规则管理。</footer>
+    </main>
+  </body>
+</html>

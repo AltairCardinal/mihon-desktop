@@ -2337,13 +2337,13 @@
     <string name="fork_update_full_notes_on_release">完整说明见发布页</string>
     <string name="fork_update_debug_manual_only">开发版只能打开发布页，无法直接升级正式应用。</string>
     <string name="feedback_report_problem">报告问题</string>
-    <string name="feedback_privacy_notice">请先预览安全摘要，再决定是否复制。GitHub 问题表单需要账号，提交的问题将公开显示。打开表单不会提交问题，日志和摘要均不会自动发送。</string>
+    <string name="feedback_privacy_notice">请先预览安全摘要，再决定是否复制。反馈表单无需账号，你可以选择粘贴摘要，并在提交前明确同意将内容转交为公开的 GitHub 问题。打开表单不会提交任何内容，日志和摘要均不会自动发送。</string>
     <string name="feedback_copy_summary">复制安全摘要</string>
     <string name="feedback_summary_copied">已复制安全摘要</string>
     <string name="feedback_copy_failed">无法复制摘要，请重试。</string>
-    <string name="feedback_open_issue">打开 GitHub 问题表单</string>
-    <string name="feedback_open_failed">无法打开 GitHub。请重试，或在浏览器中打开本项目的问题页面。</string>
-    <string name="feedback_opened">已打开 GitHub 表单，请在浏览器中检查并提交。</string>
+    <string name="feedback_open_issue">打开反馈表单</string>
+    <string name="feedback_open_failed">无法打开反馈表单。请重试，或在浏览器中打开本项目的反馈页面。</string>
+    <string name="feedback_opened">已打开反馈表单，请在浏览器中检查并提交，无需注册或登录。</string>
     <string name="feedback_logs_android">可选日志：更多 → 设置 → 高级 → 导出崩溃日志。附加文件前请先检查并删除私人信息，日志不会自动附加。</string>
     <string name="feedback_logs_desktop">可选日志：设置 → 高级 → 打开崩溃日志文件夹。附加文件前请先检查并删除私人信息，日志不会自动附加。</string>
 </resources>

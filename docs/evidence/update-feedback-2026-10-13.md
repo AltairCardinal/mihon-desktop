@@ -206,3 +206,51 @@ GitHub `update-feedback-20261015` 草稿的两项真实资产已上传，服务�
 本次 feed 仅登记这两项 testing 条目，稳定通道仍无此测试候选；先发布并通过 publisher 的服务端校验，
 再合入部署 feed。上线后旧客户端发现、下载与原位升级结果在本次交付 PR 的后续运行记录中回填。
 公共功能文档仍等待用户对具体候选验收，不将发布动作当作产品验收。
+
+## 2026-10-16：线上更新验收及免账号反馈补充
+
+PR #6 已合并为 `cf71cc47519a1ab248e54f411163d34c6ae8b195`，Pages 运行 `38851486813` 成功；
+真实线上索引返回已发布的 Android/Windows 两条 testing 条目。
+专用 API36 模拟器里的 vc122 经真实 About 检查发现 0.19.4-aex.105，应用下载后显示安装通知，
+经系统“Update”确认升级至 vc123。“App installed”、升级后 About 版本及已安装 APK 抽取哈希
+`e9e4c865a3810e8ce31aefed05227cc660ff774c1931e387782705c460b53484` 均确认；未使用 adb install 替代升级。
+Windows 隔离 preview 0.11.20.6 的真实 About 显示 0.11.20.7 与发布说明/手动 GitHub 下载入口；
+原生反馈弹窗、安全摘要及真实系统剪贴板内容一致性通过。实体机厂商行为与已登录浏览器提交未宣称验收。
+
+随后用户明确要求最终用户无需 GitHub 账号，选择免费托管并完成维护者 Cloudflare OAuth。
+本批以 `cf71cc4751` 为基线，保持更新协议及此前正式包不变；免账号反馈另需新客户端候选。
+已发布的 2026-10-15 包仍是旧 GitHub 表单入口，不将新源码或服务部署当作旧包已具备免账号能力。
+
+### 红绿及独立审查
+
+- 服务生产 Worker + 真实 SQLite：首轮 13 项全红（初始 503 无持久化/配额/转交），后全绿；
+  网页生产事件首轮 6 项红后绿，补公开文本隔离、流式请求上限和缺凭据保留期清理。
+- 一轮独立审查复现合法 `[redacted]` 五行原生摘要被拒的 P2；服务与网页新增回归均先红，
+  仅精确放行既有 sentinel 后通过。实施者及未实施的审查者分别复验 **24/24 PASS**。
+  覆盖真实 SQL 并发每 IP/全局配额、幂等/冲突、验证码/Origin、缺配置、持久化、转交 claim、
+  429 延期、500/超时不重投、30 天清理及真实表单同意/草稿/错误/双击/语言事件。
+- 客户端共享 JVM 摘要契约新目的地断言先红 1/4；Desktop 实际挂载 About 的新按钮/焦点用例
+  先红 2/3；Android 恢复旧行为后实际 Activity/About 红 2/3（新入口文案找不到），未用源码扫描。
+- `anonymous-feedback-clients-green` 中共享 JVM 4、Android 共享 4、Android About 3、Desktop About 3
+  全部通过。第一次根格式检查同时报告本批 CRLF/长行与无关 `PagerRippleTest.kt` 格式问题。
+  仅修正本批文件；限定绝对路径的 `anonymous-feedback-clients-refactor` 最终 **BUILD SUCCESSFUL**，
+  同一 focused 范围及相关格式检查通过。无关阅读器文件未修改，未称整个仓库格式/测试全绿。
+- Android 测试编译沿用既有外部 init，仅排除未解决的无关 PagerRippleTest 编译输入；
+  不提交该排除，不用于候选、不改变 production，不把组合证据称全量重跑通过。
+- `npm --prefix website run docs:build` 成功，产物包含固定反馈入口；部署前真实线上入口为 404。
+  Worker dry-run 成功（11.21 KiB/gzip 4.01 KiB）。没有运行完整模块/全量测试。
+
+### 真实部署状态与未关闭项
+
+已创建独立免费 D1、限定正式 hostname 的 Turnstile，以及 `mihon-feedback` Worker；
+远端迁移 `0001_feedback.sql` 成功。Worker 部署版本 `004c7ec9-8041-4c3d-9ed6-ff0063b3b3c3`，
+绑定真实 D1/静态资产并注册每五分钟 Cron。Turnstile/IP 哈希 secret 从内存直传 Cloudflare，
+没有写入聊天、仓库或普通日志，没有复用广权限 gh token。
+
+真实无 GitHub 登录的应用内浏览器已打开 Worker 网页，中文/英文切换保留虚构标题/描述，
+公开同意初始未勾选。缺少 `GITHUB_TOKEN` 时提交禁用且显示暂不可用，符合 fail-closed；
+不将这一步当作真实匿名提交成功。维护者专用 token、真实生产验证码/提交回执/D1与 GitHub 接收、
+稳定入口 Pages 部署及新客户端候选交付仍待完成。具体候选用户验收和公共宣传仍未获批准。
+
+本批超过 8 个文件/400 行的主体是同一匿名接收协议、原子持久化、表单及行为回归，
+不按文件拆开不可独立验收的上下文；风险由一次独立审查及一次限定修复复验覆盖。

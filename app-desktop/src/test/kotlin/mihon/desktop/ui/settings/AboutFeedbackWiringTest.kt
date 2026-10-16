@@ -85,7 +85,7 @@ class AboutFeedbackWiringTest {
                     val copyButton = dialogNodes().single { it.config.contains(SemanticsActions.OnClick) && "Copy safe summary" in text(it) }
                     assertTrue(requireNotNull(copyButton.config[SemanticsActions.RequestFocus].action).invoke())
                     render(scene)
-                    val controls = setOf("Copy safe summary", "Open GitHub issue form", "Close")
+                    val controls = setOf("Copy safe summary", "Open feedback form", "Close")
                     for (shift in listOf(false, true)) {
                         val visited = mutableSetOf<String>()
                         repeat(3) {
@@ -269,15 +269,15 @@ class AboutFeedbackWiringTest {
             assertFalse(root.toString() in summary)
             assertFalse("Installation ID" in summary)
             assertTrue("Safe summary copied" in labels(scene))
-            click(scene, "Open GitHub issue form")
+            click(scene, "Open feedback form")
             render(scene)
-            assertTrue("Could not open GitHub. Try again or open the project Issues page in your browser." in labels(scene))
+            assertTrue("Could not open the feedback form. Try again or open the project feedback page in your browser." in labels(scene))
             assertFalse(labels(scene).any { "Private browser" in it })
             assertEquals(emptyList<String>(), opened)
             openAllowed = true
-            click(scene, "Open GitHub issue form")
+            click(scene, "Open feedback form")
             render(scene)
-            assertEquals(listOf("https://github.com/AltairCardinal/mihon-desktop/issues/new?template=2_report_issue.yml"), opened)
+            assertEquals(listOf("https://altaircardinal.github.io/mihon-desktop/feedback/"), opened)
             click(scene, "Close")
             render(scene)
             assertFalse("Copy safe summary" in labels(scene))
