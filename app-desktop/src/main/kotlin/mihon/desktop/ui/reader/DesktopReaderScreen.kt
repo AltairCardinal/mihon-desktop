@@ -6,8 +6,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -28,7 +31,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -44,16 +50,21 @@ import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.WindowPlacement
+import mihon.desktop.ui.tutorial.DesktopTutorialToastBubble
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -531,8 +542,47 @@ internal fun ReaderViewport(
     val tutorials = remember(appPreferences) { DesktopTutorialState(appPreferences.acknowledgedTutorials) }
     val pairingTutorial = DesktopTutorial.READER_ADJUST_SPREAD
     val tutorialEligible = tutorials.shouldShow(pairingTutorial, readerManualPairingAvailable(state))
+    val fullscreenTutorial = DesktopTutorial.READER_FULLSCREEN
+    val fullscreenTutorialEligible = tutorials.shouldShow(fullscreenTutorial, state.isFullscreen)
+    LaunchedEffect(fullscreenTutorialEligible) {
+        if (fullscreenTutorialEligible) {
+            withContext(Dispatchers.Default) {
+                kotlinx.coroutines.delay(3000)
+            }
+            tutorials.acknowledge(fullscreenTutorial)
+        }
+    }
     var viewportOrigin by remember { mutableStateOf(Offset.Zero) }
+    var viewportHeightPx by remember { mutableStateOf(0f) }
     var pairingAnchor by remember { mutableStateOf<Rect?>(null) }
+    var fullscreenTopBarRevealed by remember { mutableStateOf(false) }
+    var fullscreenBottomBarRevealed by remember { mutableStateOf(false) }
+    val density = LocalDensity.current
+    val triggerThresholdPx = remember(density) { with(density) { 24.dp.toPx() } }
+    val dismissThresholdPx = remember(density) { with(density) { 110.dp.toPx() } }
+
+    val composeWindow = LocalReaderNativeWindow.current as? ComposeWindow
+    val fullscreenController = remember(composeWindow) {
+        DesktopReaderFullscreenController(getWindow = { composeWindow })
+    }
+    LaunchedEffect(state.isFullscreen, fullscreenController) {
+        fullscreenController.syncPlacement(state.isFullscreen)
+    }
+    val currentIsFullscreen = rememberUpdatedState(state.isFullscreen)
+    DisposableEffect(fullscreenController) {
+        onDispose {
+            fullscreenController.onDispose(wasFullscreen = currentIsFullscreen.value)
+        }
+    }
+
+    LaunchedEffect(state.isFullscreen) {
+        fullscreenTopBarRevealed = false
+        fullscreenBottomBarRevealed = false
+    }
+
+    val showTopBar = if (state.isFullscreen) (state.showUI || fullscreenTopBarRevealed) else state.showUI
+    val showBottomBar = if (state.isFullscreen) (state.showUI || fullscreenBottomBarRevealed) else state.showUI
+
     LaunchedEffect(tutorialEligible) {
         if (tutorialEligible && !model.state.value.showUI) model.toggleUI()
     }
@@ -564,7 +614,10 @@ internal fun ReaderViewport(
     }
     Box(
         modifier = Modifier.fillMaxSize().background(bgColor)
-            .onGloballyPositioned { viewportOrigin = it.positionInRoot() },
+            .onGloballyPositioned {
+                viewportOrigin = it.positionInRoot()
+                viewportHeightPx = it.size.height.toFloat()
+            },
     ) {
         Box(
             modifier = Modifier
@@ -581,6 +634,23 @@ internal fun ReaderViewport(
                         onNextChapter,
                         adjustSpread,
                     )
+                }
+                .onPointerEvent(PointerEventType.Move, PointerEventPass.Initial) { event ->
+                    if (!state.isFullscreen || viewportHeightPx <= 0f) return@onPointerEvent
+                    val pos = event.changes.firstOrNull()?.position ?: return@onPointerEvent
+                    val y = pos.y
+                    if (y <= triggerThresholdPx) {
+                        if (!fullscreenTopBarRevealed) fullscreenTopBarRevealed = true
+                    } else if (y > dismissThresholdPx) {
+                        if (fullscreenTopBarRevealed) fullscreenTopBarRevealed = false
+                    }
+
+                    val distFromBottom = viewportHeightPx - y
+                    if (distFromBottom <= triggerThresholdPx) {
+                        if (!fullscreenBottomBarRevealed) fullscreenBottomBarRevealed = true
+                    } else if (distFromBottom > dismissThresholdPx) {
+                        if (fullscreenBottomBarRevealed) fullscreenBottomBarRevealed = false
+                    }
                 }
                 .onPointerEvent(PointerEventType.Scroll) { event ->
                     val native = event.nativeEvent as? java.awt.event.MouseWheelEvent ?: return@onPointerEvent
@@ -632,7 +702,7 @@ internal fun ReaderViewport(
                                 .background(Color.Black.copy(alpha = 0.7f)).padding(16.dp),
                         )
                     }
-                    if (state.showUI) {
+                    if (showBottomBar) {
                         ReaderBottomBar(
                             currentPage = state.currentPage, totalPages = state.session.activeChapter.pages.size,
                             onPageChange = { model.goToPage(it) }, isRtl = state.readingMode == ReadingMode.RTL,
@@ -648,7 +718,7 @@ internal fun ReaderViewport(
                     }
                 }
             }
-            if (state.showUI) {
+            if (showTopBar) {
                 TopAppBar(
                     title = {
                         Text(
@@ -668,6 +738,27 @@ internal fun ReaderViewport(
                         }
                     },
                     actions = {
+                        IconButton(
+                            onClick = { model.toggleFullscreen() },
+                            modifier = if (state.isFullscreen) {
+                                Modifier.background(
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.24f),
+                                    shape = CircleShape,
+                                )
+                            } else {
+                                Modifier
+                            },
+                        ) {
+                            Icon(
+                                imageVector = if (state.isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                                contentDescription = if (state.isFullscreen) {
+                                    MR.strings.desktop_action_exit_fullscreen.localized()
+                                } else {
+                                    MR.strings.pref_fullscreen.localized()
+                                },
+                                tint = if (state.isFullscreen) MaterialTheme.colorScheme.primary else Color.White,
+                            )
+                        }
                         IconButton(onClick = { model.toggleSettings() }) {
                             Icon(
                                 Icons.Default.Settings,
@@ -680,7 +771,7 @@ internal fun ReaderViewport(
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black.copy(alpha = 0.7f)),
                 )
             }
-            if (state.resumePageUnavailable && state.showUI) {
+            if (state.resumePageUnavailable && showTopBar) {
                 Box(Modifier.align(Alignment.TopCenter).padding(top = 64.dp)) {
                     mihon.presentation.sync.SyncReadingPositionConfirmation {
                         model.confirmSyncResumePosition(model.state.value.currentPage)
@@ -689,7 +780,7 @@ internal fun ReaderViewport(
             }
         }
         val anchor = pairingAnchor
-        if (tutorialEligible && state.showUI && anchor != null) {
+        if (tutorialEligible && showBottomBar && anchor != null) {
             DesktopTutorialBubble(
                 tutorial = pairingTutorial,
                 anchorBounds = anchor.translate(-viewportOrigin),
@@ -697,6 +788,18 @@ internal fun ReaderViewport(
                     tutorials.acknowledge(pairingTutorial)
                     focusRequester.requestFocus()
                 },
+            )
+        }
+        if (fullscreenTutorialEligible) {
+            DesktopTutorialToastBubble(
+                tutorial = fullscreenTutorial,
+                onConfirm = {
+                    tutorials.acknowledge(fullscreenTutorial)
+                    focusRequester.requestFocus()
+                },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 16.dp, end = 16.dp),
             )
         }
     }
@@ -846,6 +949,10 @@ internal fun handleReaderKeyEvent(
     onAdjustSpread: () -> Unit = model::adjustSpread,
 ): Boolean {
     if (event.type != KeyEventType.KeyDown) return false
+    if (event.key == Key.F11) {
+        model.toggleFullscreen()
+        return true
+    }
     if (event.key == Key.C) {
         if (event.isCtrlPressed || event.isAltPressed || event.isMetaPressed || event.isShiftPressed ||
             !readerManualPairingAvailable(state)
@@ -906,7 +1013,11 @@ internal fun handleReaderKeyEvent(
         Key.Eight -> ReaderKeyboardAction.forDigit(8, totalPages)
         Key.Nine -> ReaderKeyboardAction.forDigit(9, totalPages)
         Key.Escape -> {
-            navigator.pop()
+            if (state.isFullscreen) {
+                model.setFullscreen(false)
+            } else {
+                navigator.pop()
+            }
             return true
         }
         else -> null

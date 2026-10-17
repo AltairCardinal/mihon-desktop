@@ -1,10 +1,15 @@
 package mihon.desktop.ui.tutorial
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -86,6 +91,48 @@ fun DesktopTutorialBubble(
         layout(constraints.maxWidth, constraints.maxHeight) {
             body.place(left, tipTop - body.height)
             tip.place(center - tip.width / 2, tipTop)
+        }
+    }
+}
+
+/** Non-modal toast-style tutorial bubble for screen corners (e.g. fullscreen hint). */
+@Composable
+fun DesktopTutorialToastBubble(
+    tutorial: DesktopTutorial,
+    onConfirm: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.testTag("desktop-tutorial-${tutorial.id}"),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        shadowElevation = 6.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Info,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                Text(tutorial.title.localized(), style = MaterialTheme.typography.titleSmall)
+                Text(
+                    tutorial.message.localized(),
+                    modifier = Modifier.padding(top = 2.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            TextButton(
+                onClick = onConfirm,
+                modifier = Modifier.testTag("desktop-tutorial-confirm"),
+            ) {
+                Text(MR.strings.desktop_tutorial_got_it.localized())
+            }
         }
     }
 }

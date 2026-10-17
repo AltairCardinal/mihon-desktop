@@ -2326,6 +2326,9 @@
     <string name="desktop_tutorial_pairing_message">双页没有配对齐？按 C 键即可调整当前匹配，也可以使用阅读器底栏的“调整跨页”按钮。</string>
     <string name="desktop_tutorial_pairing_action">调整匹配 · C</string>
     <string name="desktop_tutorial_got_it">知道了</string>
+    <string name="desktop_tutorial_fullscreen_title">全屏模式</string>
+    <string name="desktop_tutorial_fullscreen_message">按F11以进入/退出全屏</string>
+    <string name="desktop_action_exit_fullscreen">退出全屏</string>
     <!-- Fork updates and user-reviewed issue reports -->
     <string name="pref_app_update_automatic">自动检查应用更新</string>
     <string name="pref_app_update_automatic_summary">自动从 GitHub 检查本项目更新。关闭后仍可手动检查。</string>

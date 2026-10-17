@@ -31,6 +31,8 @@ Mihon’s reading and library experience gains a desktop home. Use the desktop i
 
 **Manga details and chapter list:** The chapter list provides native dynamic scrollbars in both dual-pane and single-pane layouts, highlighting on scroll or hover. When the floating "Continue" action button is visible in the bottom-right corner, the list automatically maintains an 88dp bottom clearance so the final chapter row remains completely clear of the button when scrolled to the end.
 
+**Desktop fullscreen reader mode:** Press **F11** or click the fullscreen button to the left of the Settings button in the top reader bar to enter or exit fullscreen mode. Upon entering fullscreen, a corner tutorial bubble reminds the user of the F11 shortcut and automatically dismisses after 3 seconds (and is permanently suppressed once acknowledged). In fullscreen, the top and bottom navigation bars are hidden by default and reveal when the cursor hovers near the top edge (≤ 48dp) or bottom edge (within 80dp), hiding again when the pointer leaves. Pressing **Esc** exits fullscreen mode.
+
 **Platform boundaries:** Windows is the primary desktop development and validation target. The repository also maintains a macOS build entrypoint; macOS preview builds require the source and output directories to be on an APFS volume. Linux desktop packaging and acceptance are not configured. A successful preview build does not establish release readiness.
 
 ## Two-page reading and spread matching {#two-page-reading}

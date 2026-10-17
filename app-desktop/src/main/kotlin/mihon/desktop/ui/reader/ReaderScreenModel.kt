@@ -258,6 +258,7 @@ class ReaderScreenModel(
             dualSession = null
             dualContentStamps.clear()
             dualContentVersions.clear()
+            certificationTargets.clear()
             return null
         }
         val ids = pages.map { it.id }
@@ -268,6 +269,7 @@ class ReaderScreenModel(
         if (!sameOrder) {
             dualContentStamps.clear()
             dualContentVersions.clear()
+            certificationTargets.clear()
         }
         pages.forEach { page ->
             val stamp = DualContentStamp(
@@ -346,6 +348,9 @@ class ReaderScreenModel(
         if (disposeRequested || dualSession !== owner) return@synchronized
         val pairing = owner.pairingState
         val status = pairing.status
+        certificationTargets.retainAll(owner.identity.pageIds.toSet())
+        val validCertificationTargets = (certificationTargets + listOfNotNull(owner.location?.pageId))
+            .filter { it in owner.identity.pageIds }
         _state.update { current ->
             val notice = when {
                 status == ReaderPairingPersistenceStatus.SAVE_FAILED ||
@@ -361,7 +366,7 @@ class ReaderScreenModel(
                 dualPageLayoutRevision = owner.layoutRevision,
                 dualFactWorkRevision = owner
                     .factWorkRevision,
-                dualPairingFailures = (certificationTargets + listOfNotNull(owner.location?.pageId))
+                dualPairingFailures = validCertificationTargets
                     .mapNotNull { page ->
                         (owner.certifyPairing(page) as? ReaderPairingCertification.RetryableBlocked)
                             ?.failures?.values?.firstOrNull()?.takeIf {
@@ -1634,6 +1639,29 @@ class ReaderScreenModel(
         _state.update { it.copy(showUI = !it.showUI) }
     }
 
+    fun toggleFullscreen() {
+        _state.update { current ->
+            val nextFullscreen = !current.isFullscreen
+            current.copy(
+                isFullscreen = nextFullscreen,
+                showUI = if (nextFullscreen) false else true,
+            )
+        }
+    }
+
+    fun setFullscreen(fullscreen: Boolean) {
+        _state.update { current ->
+            if (current.isFullscreen == fullscreen) {
+                current
+            } else {
+                current.copy(
+                    isFullscreen = fullscreen,
+                    showUI = if (fullscreen) false else true,
+                )
+            }
+        }
+    }
+
     // ── Reading mode ──────────────────────────────────────────────────────────
 
     fun updateViewportSize(width: Int, height: Int, scope: CoroutineScope) {
@@ -2005,6 +2033,7 @@ class ReaderScreenModel(
             dualSession?.close()
             factPublisherJob?.cancel()
             spreadPublisherJob?.cancel()
+            certificationTargets.clear()
             failedSpreadReads.clear()
             pendingHeaderTickets.clear()
             headerJobs.values.forEach(Job::cancel)
