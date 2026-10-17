@@ -1,8 +1,14 @@
 package mihon.desktop.ui.library
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ScrollbarStyle
+import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollbarAdapter
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -77,6 +83,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -108,6 +115,7 @@ import coil3.compose.AsyncImage
 import coil3.toBitmap
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.SManga
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.SourceMangaRefreshKey
@@ -394,6 +402,8 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         val nextUnread = remember(chapters, manga?.chapterFlags) {
             manga?.let { nextUnreadChapter(chapters, it) }
         }
+        val isFabVisible = nextUnread != null && manga != null && !selectionState.isActive
+        val chapterBottomPadding = if (isFabVisible) 88.dp else 16.dp
 
         if (showFilterMenu) {
             MangaChapterOptionsPanel(model, downloadedOnly) {
@@ -762,8 +772,9 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 },
                 floatingActionButton = {
                     val ch = nextUnread
-                    if (ch != null && manga != null && !selectionState.isActive) {
+                    if (isFabVisible && ch != null) {
                         ExtendedFloatingActionButton(
+                            modifier = Modifier.testTag("manga-continue-reading-fab"),
                             text = {
                                 Text(
                                     if (continueActionResumes(chapters, ch, state.syncedResumeChapterId)) {
@@ -1472,11 +1483,11 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 LazyColumn(
                                     modifier = Modifier.fillMaxSize().padding(end = 12.dp),
                                     state = chapterState,
-                                    contentPadding = PaddingValues(bottom = 16.dp),
+                                    contentPadding = PaddingValues(bottom = chapterBottomPadding),
                                     content = chapterItems,
                                 )
-                                androidx.compose.foundation.VerticalScrollbar(
-                                    adapter = androidx.compose.foundation.rememberScrollbarAdapter(chapterState),
+                                DesktopScrollbar(
+                                    state = chapterState,
                                     modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
                                 )
                             }
@@ -1492,13 +1503,17 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                             chapterState.firstVisibleItemIndex to chapterState.firstVisibleItemScrollOffset,
                         ) {
                             LazyColumn(
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier.fillMaxSize().padding(end = 12.dp),
                                 state = chapterState,
-                                contentPadding = PaddingValues(bottom = 16.dp),
+                                contentPadding = PaddingValues(bottom = chapterBottomPadding),
                             ) {
                                 informationItems()
                                 chapterItems()
                             }
+                            DesktopScrollbar(
+                                state = chapterState,
+                                modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                            )
                         }
                     }
                 }
@@ -1544,4 +1559,53 @@ private fun coil3.Image.toDesktopBufferedImage(): java.awt.image.BufferedImage {
             for (x in 0 until bitmap.width) image.setRGB(x, y, bitmap.getColor(x, y))
         }
     }
+}
+
+@Composable
+private fun DesktopScrollbar(
+    state: androidx.compose.foundation.lazy.LazyListState,
+    modifier: Modifier = Modifier,
+) {
+    var activeUntil by remember { mutableStateOf(0L) }
+    LaunchedEffect(state.isScrollInProgress) {
+        if (state.isScrollInProgress) {
+            activeUntil = System.currentTimeMillis() + 1200L
+        }
+    }
+    LaunchedEffect(activeUntil) {
+        if (activeUntil > 0L) {
+            val remaining = activeUntil - System.currentTimeMillis()
+            if (remaining > 0L) {
+                delay(remaining)
+            }
+            activeUntil = 0L
+        }
+    }
+    val isScrolling = state.isScrollInProgress || activeUntil > 0L
+    val colorScheme = MaterialTheme.colorScheme
+    val targetUnhoverColor = if (isScrolling) {
+        colorScheme.primary.copy(alpha = 0.85f)
+    } else {
+        colorScheme.onSurface.copy(alpha = 0.2f)
+    }
+    val targetHoverColor = if (isScrolling) {
+        colorScheme.primary
+    } else {
+        colorScheme.onSurface.copy(alpha = 0.5f)
+    }
+    val unhoverColor by animateColorAsState(targetUnhoverColor, animationSpec = tween(durationMillis = 300))
+    val hoverColor by animateColorAsState(targetHoverColor, animationSpec = tween(durationMillis = 300))
+
+    VerticalScrollbar(
+        adapter = rememberScrollbarAdapter(state),
+        modifier = modifier.testTag("manga-detail-scrollbar"),
+        style = ScrollbarStyle(
+            minimalHeight = 32.dp,
+            thickness = 8.dp,
+            shape = RoundedCornerShape(4.dp),
+            hoverDurationMillis = 300,
+            unhoverColor = unhoverColor,
+            hoverColor = hoverColor,
+        ),
+    )
 }

@@ -9,6 +9,17 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## October 17, 2026 — Manga detail chapter scrollbar and continue FAB clearance
+
+**Accepted candidate documentation · no public product release**
+
+- The chapter list in manga details now provides a native dynamic scrollbar in both dual-pane and single-pane layouts. It stays subtly visible at rest, highlights during scrolling and hovering, smoothly fades out after scrolling stops, and adds 12dp end padding to prevent text overlap.
+- Resolved floating "Continue" button obstruction: when the bottom-right FAB is visible, the chapter list automatically applies an 88dp bottom content padding so the final chapter row is never covered when scrolled to the end. It returns to compact padding when the FAB is hidden.
+- Accepted candidate: Windows preview `0.11.20.6.53e23eb` (preview ID `20261017T140626Z-b7e01dc2`).
+- Scope: Windows desktop manga details chapter list interaction and FAB clearance; does not claim other platforms or a formal release.
+
+Acceptance basis: the project owner explicitly accepted this Windows preview build in private chat on October 17, 2026 and requested a push. No public product release was allocated.
+
 ## October 14, 2026 — Windows startup feedback
 
 **Accepted candidate documentation · no public product release**
