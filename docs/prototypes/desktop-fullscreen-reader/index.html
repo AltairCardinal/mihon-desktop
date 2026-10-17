@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mihon Desktop · 全屏阅读模式交互原型</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <!-- 评审控制栏与审查项导航 -->
+  <header class="review-header">
+    <div class="review-branding">
+      <div class="review-logo">M</div>
+      <div class="review-title">
+        <h1>Mihon Desktop · 全屏阅读模式交互审阅</h1>
+        <p>基于用户要求 1、2、3 项实现之独立可交互 HTML 原型</p>
+      </div>
+    </div>
+    <div class="review-actions">
+      <button class="btn-chip" id="tool-toggle-fullscreen" title="切换模拟窗口与全屏模式 (F11)">
+        <svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+        进入全屏
+      </button>
+      <button class="btn-chip" id="tool-browser-fullscreen" title="进入真实物理显示器全屏 (测试屏幕物理顶底边缘感应)">
+        <svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16.01H3V4.99h18v14.02z"/></svg>
+        真实显示器全屏
+      </button>
+      <button class="btn-chip" id="tool-hover-top" title="模拟鼠标移动到屏幕最顶端 (y <= 8px)">
+        <svg viewBox="0 0 24 24"><path d="M7 14l5-5 5 5z"/></svg>
+        模拟移至最上方
+      </button>
+      <button class="btn-chip" id="tool-hover-bottom" title="模拟鼠标移动到屏幕最底端">
+        <svg viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+        模拟移至最下方
+      </button>
+      <button class="btn-chip" id="tool-theme-dark">深色</button>
+      <button class="btn-chip" id="tool-theme-light">浅色</button>
+      <button class="btn-chip" id="tool-theme-amoled">AMOLED</button>
+      <button class="btn-chip" id="tool-reset" style="color: #ffb4ab;">重置演示</button>
+    </div>
+  </header>
+
+  <!-- 审阅对照卡片（对应用户三项要求） -->
+  <section class="review-guide">
+    <div class="guide-summary">
+      <div class="guide-item">
+        <span class="guide-badge">要求 1</span>
+        <span>阅读菜单右上角设置左侧添加全屏按钮；全屏时显示为按下的激活态（背景胶囊高亮+图标切换）</span>
+      </div>
+      <div class="guide-item">
+        <span class="guide-badge">要求 2</span>
+        <span>每次进入全屏时，均在屏幕右上方弹出气泡提示【按F11以进入/退出全屏】</span>
+      </div>
+      <div class="guide-item">
+        <span class="guide-badge">要求 3</span>
+        <span>全屏下鼠标移至屏幕最上方显示顶部菜单，下移超菜单高度（>110px）消失；移至最下方显示底部菜单</span>
+      </div>
+      <div class="guide-tip">快捷键支持：F11（全屏切换与气泡提示）、Esc（退出全屏）、←/→（翻页）</div>
+    </div>
+  </section>
+
+  <!-- 实时状态与感应诊断面板 -->
+  <aside class="live-diagnostics" id="live-diagnostics" aria-label="实时感应状态诊断">
+    <div class="diag-item">
+      <span class="diag-label">阅读模式：</span>
+      <span class="diag-badge" id="diag-mode">窗口模式</span>
+    </div>
+    <div class="diag-item">
+      <span class="diag-label">实时鼠标坐标：</span>
+      <span class="diag-val highlight" id="diag-pos">移入视口体验</span>
+    </div>
+    <div class="diag-item">
+      <span class="diag-label">顶部菜单：</span>
+      <span class="diag-badge is-revealed" id="diag-top">显示中</span>
+    </div>
+    <div class="diag-item">
+      <span class="diag-label">底部控制栏：</span>
+      <span class="diag-badge is-revealed" id="diag-bottom">显示中</span>
+    </div>
+    <div class="diag-item diag-note">
+      <span id="diag-note">💡 提示：点击右上角全屏按钮或按 F11 进入全屏后，顶底栏自动收起，鼠标移至顶底边缘即可自动滑出</span>
+    </div>
+  </aside>
+
+  <!-- 工作区：承载模拟桌面窗口与全屏画布 -->
+  <main class="workspace" id="workspace">
+    <div class="app-window" id="app-window">
+      <!-- 窗口标题栏（窗口模式显示，全屏模式隐藏） -->
+      <div class="window-titlebar" id="window-titlebar">
+        <div class="window-title-left">
+          <div class="window-icon">M</div>
+          <span>Mihon Desktop - 葬送的芙莉莲 - 第 45 话</span>
+        </div>
+        <div class="window-controls">
+          <span class="win-btn">—</span>
+          <span class="win-btn">口</span>
+          <span class="win-btn">✕</span>
+        </div>
+      </div>
+
+      <!-- 阅读器视口主体 -->
+      <div class="reader-viewport" id="reader-viewport">
+        <!-- 边缘感应热区（顶部 8px） -->
+        <div class="edge-hotzone-top" id="edge-hotzone-top"></div>
+
+        <!-- 顶部阅读器菜单（TopAppBar） -->
+        <nav class="reader-topbar" id="reader-topbar">
+          <div class="topbar-left">
+            <button class="m-icon-button" id="btn-back" title="返回 (Esc)">
+              <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+            </button>
+            <div class="topbar-titles">
+              <span class="topbar-title">第 45 话 · 决战前夕 (双页模式)</span>
+              <span class="topbar-subtitle">葬送的芙莉莲 · Local Source</span>
+            </div>
+          </div>
+          <div class="topbar-actions">
+            <!-- 【要求1】：全屏按钮，位于右上角设置按钮左边 -->
+            <button class="m-icon-button" id="btn-fullscreen" aria-pressed="false" title="进入全屏 (F11)">
+              <!-- 展开全屏图标 -->
+              <svg id="icon-fullscreen" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+              <!-- 退出全屏图标（全屏激活态时展示） -->
+              <svg id="icon-fullscreen-exit" viewBox="0 0 24 24" style="display: none;"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-14v3h3v2h-5V5h2z"/></svg>
+            </button>
+
+            <!-- 设置按钮（全屏按钮右边） -->
+            <button class="m-icon-button" id="btn-settings" title="阅读设置">
+              <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+            </button>
+          </div>
+        </nav>
+
+        <!-- 【要求2】：屏幕右上方提示气泡（每次进入全屏时弹出） -->
+        <aside class="fullscreen-bubble" id="fullscreen-bubble" role="status" aria-live="polite">
+          <div class="bubble-icon">
+            <svg viewBox="0 0 24 24"><path d="M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"/></svg>
+          </div>
+          <div class="bubble-content">
+            <span id="bubble-text">按 <kbd>F11</kbd> 以进入/退出全屏</span>
+          </div>
+          <button class="bubble-close" id="bubble-close-btn" title="关闭提示">
+            <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          </button>
+        </aside>
+
+        <!-- 漫画阅读区（模拟双页跨页阅读） -->
+        <div class="manga-canvas" id="manga-canvas" title="点击正文区域可切换显示/隐藏菜单">
+          <!-- 左翻页区域 -->
+          <div class="tap-zone left" id="tap-zone-left" title="上一页 (←)">
+            <svg viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+          </div>
+
+          <!-- 双页跨页模拟内容 -->
+          <div class="manga-spread-container">
+            <!-- 左侧页面 (偶数页) -->
+            <div class="manga-page" id="manga-page-left">
+              <div class="comic-panel-grid">
+                <div class="comic-row">
+                  <div class="comic-cell">
+                    <div class="comic-art-scene">
+                      <div class="comic-speech">准备好了吗？马上要进入迷宫深处了…</div>
+                      <div class="comic-sfx">SHHH...</div>
+                    </div>
+                  </div>
+                  <div class="comic-cell">
+                    <div class="comic-art-scene" style="background: linear-gradient(135deg, #e3e8ef, #c8d1dc);">
+                      <div class="comic-speech" style="top:auto; bottom:8px;">别担心，魔法已经展开。</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="comic-row">
+                  <div class="comic-cell hero">
+                    <div class="comic-art-scene" style="background: radial-gradient(circle, #f0f4f8, #d0d7e2);">
+                      <div class="comic-sketch-frieren">
+                        <svg width="120" height="120" viewBox="0 0 100 100" fill="none" stroke="#2c3038" stroke-width="2.5">
+                          <!-- 示意插画线条：芙莉莲轮廓 -->
+                          <circle cx="50" cy="40" r="22" fill="#fff"/>
+                          <path d="M30 42 Q50 30 70 42"/>
+                          <path d="M28 42 C16 52 14 68 18 78"/>
+                          <path d="M72 42 C84 52 86 68 82 78"/>
+                          <circle cx="42" cy="40" r="3" fill="#2c3038"/>
+                          <circle cx="58" cy="40" r="3" fill="#2c3038"/>
+                          <path d="M48 48 Q50 51 52 48" stroke-linecap="round"/>
+                          <path d="M36 62 Q50 68 64 62"/>
+                          <path d="M30 64 L16 95 M70 64 L84 95"/>
+                        </svg>
+                      </div>
+                      <div class="comic-speech" style="left:8px; right:auto;">这是…全屏阅读模式？！</div>
+                      <div class="comic-sfx" style="right:8px; left:auto; color:#0058ca;">ドドド</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="comic-row">
+                  <div class="comic-cell">
+                    <div class="comic-art-scene">
+                      <div class="comic-speech">按 F11 键可以随时随地进入或退出全屏。</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="page-footer-num" id="left-page-num">P. 12</div>
+            </div>
+
+            <!-- 右侧页面 (奇数页) -->
+            <div class="manga-page" id="manga-page-right">
+              <div class="comic-panel-grid">
+                <div class="comic-row">
+                  <div class="comic-cell hero">
+                    <div class="comic-art-scene" style="background: radial-gradient(circle, #fdfefe, #dde3ec);">
+                      <div class="comic-speech">鼠标移到屏幕最顶端，顶栏就会顺滑滑出哦！</div>
+                      <div class="comic-sfx" style="color: #BA1A1A;">ゴゴゴ...</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="comic-row">
+                  <div class="comic-cell">
+                    <div class="comic-art-scene">
+                      <div class="comic-speech">下移鼠标超过菜单高度，顶栏就会隐去。</div>
+                    </div>
+                  </div>
+                  <div class="comic-cell">
+                    <div class="comic-art-scene">
+                      <div class="comic-speech">底部也是一样，移到最下方查看进度。</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="comic-row">
+                  <div class="comic-cell">
+                    <div class="comic-art-scene" style="background: linear-gradient(135deg, #f0f2f5, #e0e5eb);">
+                      <div class="comic-speech" style="top: auto; bottom: 8px;">完美契合沉浸式阅读需求。</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="page-footer-num" id="right-page-num">P. 13</div>
+            </div>
+          </div>
+
+          <!-- 右翻页区域 -->
+          <div class="tap-zone right" id="tap-zone-right" title="下一页 (→)">
+            <svg viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+          </div>
+        </div>
+
+        <!-- 边缘感应热区（底部 8px） -->
+        <div class="edge-hotzone-bottom" id="edge-hotzone-bottom"></div>
+
+        <!-- 底部阅读器控制栏（ReaderBottomBar） -->
+        <footer class="reader-bottombar" id="reader-bottombar">
+          <!-- 上一话按钮 -->
+          <button class="bottombar-btn" id="btn-prev-chapter" title="上一话">
+            <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+          </button>
+
+          <!-- 页码指示 -->
+          <div class="page-counter" id="page-counter">12 / 36</div>
+
+          <!-- 调整跨页按钮（双页模式下显示） -->
+          <button class="bottombar-btn" id="btn-adjust-spread" title="调整跨页配对 (C)">
+            <svg viewBox="0 0 24 24"><path d="M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm-1 14c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v12z"/></svg>
+          </button>
+
+          <!-- 翻页进度条 -->
+          <div class="slider-track-wrap">
+            <input type="range" class="reader-slider" id="reader-slider" min="1" max="36" value="12" step="1">
+          </div>
+
+          <!-- 下一话按钮 -->
+          <button class="bottombar-btn" id="btn-next-chapter" title="下一话">
+            <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+          </button>
+        </footer>
+
+        <!-- 设置抽屉面板 -->
+        <div class="settings-overlay" id="settings-overlay">
+          <div class="settings-sheet">
+            <h2>
+              <span>阅读器设置</span>
+              <button class="m-icon-button" id="settings-close-btn" style="width:32px;height:32px;">✕</button>
+            </h2>
+            <div class="settings-group">
+              <label>阅读模式</label>
+              <div class="settings-options">
+                <button class="settings-btn is-selected">从右向左 (RTL)</button>
+                <button class="settings-btn">从左向右 (LTR)</button>
+                <button class="settings-btn">条漫模式</button>
+              </div>
+            </div>
+            <div class="settings-group">
+              <label>分页与布局</label>
+              <div class="settings-options">
+                <button class="settings-btn is-selected">双页模式</button>
+                <button class="settings-btn">单页模式</button>
+                <button class="settings-btn">自动裁切黑边</button>
+              </div>
+            </div>
+            <div class="settings-group">
+              <label>背景颜色</label>
+              <div class="settings-options">
+                <button class="settings-btn is-selected">纯黑</button>
+                <button class="settings-btn">深灰</button>
+                <button class="settings-btn">纯白</button>
+              </div>
+            </div>
+            <div class="settings-group" style="margin-top:auto; font-size:11px; color:#888;">
+              <p>提示：全屏快捷键统一为 <kbd style="color:#b0c6ff;">F11</kbd>，无论设置面板打开与否均可全局响应。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 底部说明与技术契约 -->
+  <footer class="footer-notes">
+    <strong>交互实现说明与验收契约：</strong>
+    <ul>
+      <li><strong>全屏按钮位置与激活态</strong>：放置在 <code>TopAppBar</code> 右侧，位于 <code>Settings</code>（齿轮图标）按钮的左侧；非全屏时显示 <code>fullscreen</code> 图标（普通悬浮态），全屏时呈现为 Material 3 按下的激活态（<code>is-active</code>，带背景半透明高亮填充与 <code>fullscreen_exit</code> 收缩图标）。</li>
+      <li><strong>进入全屏气泡提示</strong>：每次调用 <code>toggleFullscreen(true)</code>（通过点击全屏按钮、按键盘 <code>F11</code> 或快捷操作触发）时，屏幕右上角均触发 <code>.fullscreen-bubble.is-visible</code> 提示【按F11以进入/退出全屏】，并在 3.2 秒后平滑淡出，支持点击右侧 ✕ 即时关闭。</li>
+      <li><strong>全屏下边缘自动感知显隐</strong>：全屏沉浸状态下顶底栏默认收起。鼠标移到屏幕最顶端（<code>y <= 8px</code>）时触发顶部菜单滑出；当鼠标向下滑动超过菜单高度与安全缓冲区（<code>y > 110px</code>）时顶栏平滑收起；鼠标移到屏幕最底端（<code>distFromBottom <= 8px</code>）时底部控制栏滑出，向上移开后消失。</li>
+    </ul>
+  </footer>
+
+  <!-- 脚本加载 -->
+  <script src="./fullscreen-reader-logic.js"></script>
+  <script src="./preview.js"></script>
+</body>
+</html>

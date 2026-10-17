@@ -15,6 +15,11 @@ enum class DesktopTutorial(val id: String, val title: StringResource, val messag
         MR.strings.desktop_tutorial_pairing_title,
         MR.strings.desktop_tutorial_pairing_message,
     ),
+    READER_FULLSCREEN(
+        "reader-fullscreen",
+        MR.strings.desktop_tutorial_fullscreen_title,
+        MR.strings.desktop_tutorial_fullscreen_message,
+    ),
 }
 
 /** Confirmation is local application state; mounting or hiding a hint never acknowledges it. */

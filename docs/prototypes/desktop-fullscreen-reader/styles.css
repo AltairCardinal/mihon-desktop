@@ -1,0 +1,973 @@
+/* Mihon Desktop Fullscreen Reader Prototype Styles */
+
+:root {
+  --primary: #B0C6FF;
+  --on-primary: #002D6E;
+  --primary-container: #004396;
+  --on-primary-container: #D9E2FF;
+  --surface: #1B1B1F;
+  --on-surface: #E3E2E6;
+  --surface-variant: #44464F;
+  --on-surface-variant: #C5C6D0;
+  --surface-container-high: #2B2930;
+  --secondary-container: #00429B;
+  --on-secondary-container: #D9E2FF;
+  --outline: #8F9099;
+  --outline-variant: #44464F;
+  --reader-bg: #000000;
+  --bar-bg: rgba(0, 0, 0, 0.78);
+  --bar-blur: blur(16px);
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+  --transition-fast: 0.18s cubic-bezier(0.2, 0, 0, 1);
+  --transition-normal: 0.28s cubic-bezier(0.2, 0, 0, 1);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+[data-theme="light"] {
+  --primary: #0058CA;
+  --on-primary: #FFFFFF;
+  --primary-container: #D9E2FF;
+  --on-primary-container: #001945;
+  --surface: #FEFBFF;
+  --on-surface: #1B1B1F;
+  --surface-variant: #E1E2EC;
+  --on-surface-variant: #44474F;
+  --surface-container-high: #E8E8EE;
+  --secondary-container: #D9E2FF;
+  --on-secondary-container: #001945;
+  --outline: #757780;
+  --outline-variant: #C5C6D0;
+}
+
+[data-theme="amoled"] {
+  --reader-bg: #000000;
+  --surface: #000000;
+  --surface-container-high: #121212;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: #0f1013;
+  color: #e3e2e6;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  user-select: none;
+}
+
+/* 顶部评审导航栏 */
+.review-header {
+  background: #17181c;
+  border-bottom: 1px solid #2d2f36;
+  padding: 12px 24px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  z-index: 100;
+}
+
+.review-branding {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.review-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, #0058CA, #B0C6FF);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-weight: 800;
+  font-size: 17px;
+  box-shadow: 0 2px 8px rgba(0, 88, 202, 0.4);
+}
+
+.review-title h1 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #f1f0f4;
+  letter-spacing: -0.01em;
+}
+
+.review-title p {
+  font-size: 12px;
+  color: #92909a;
+}
+
+.review-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-chip {
+  background: #23252b;
+  border: 1px solid #3b3d46;
+  color: #cfd0d8;
+  border-radius: var(--radius-pill);
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.btn-chip:hover {
+  background: #2e3038;
+  border-color: #555864;
+  color: #fff;
+}
+
+.btn-chip.is-active,
+.btn-chip:active {
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+  border-color: var(--primary);
+}
+
+.btn-chip svg {
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+}
+
+/* 审阅对照卡片 */
+.review-guide {
+  background: #141519;
+  border-bottom: 1px solid #282a32;
+  padding: 12px 24px;
+  font-size: 12px;
+}
+
+.guide-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 20px;
+}
+
+.guide-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #b0b1bc;
+}
+
+.guide-badge {
+  background: #00325b;
+  color: #9cd5ff;
+  font-weight: 700;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.guide-tip {
+  color: #7b7d8a;
+  margin-left: auto;
+  font-style: italic;
+}
+
+/* 实时状态与感应诊断面板 */
+.live-diagnostics {
+  background: #111216;
+  border-bottom: 1px solid #282a32;
+  padding: 8px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 12px;
+  color: #a0a2ad;
+  flex-wrap: wrap;
+}
+
+.diag-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.diag-label {
+  color: #7b7d8a;
+}
+
+.diag-val {
+  color: #ffffff;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.diag-val.highlight {
+  color: #b0c6ff;
+  font-family: monospace;
+}
+
+.diag-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #23252b;
+  color: #cfd0d8;
+}
+
+.diag-badge.is-fullscreen {
+  background: #00429b;
+  color: #d9e2ff;
+}
+
+.diag-badge.is-revealed {
+  background: rgba(122, 220, 119, 0.2);
+  color: #7adc77;
+}
+
+.diag-badge.is-hidden {
+  background: rgba(255, 180, 171, 0.15);
+  color: #ffb4ab;
+}
+
+.diag-note {
+  margin-left: auto;
+  color: #b0c6ff;
+  font-size: 11px;
+}
+
+/* 主画布工作区 */
+.workspace {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 24px;
+  position: relative;
+  background: radial-gradient(circle at 50% 30%, #17181f 0%, #0d0d10 100%);
+  min-height: 680px;
+}
+
+/* 桌面应用窗口容器 */
+.app-window {
+  width: 1080px;
+  height: 720px;
+  background: var(--reader-bg);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7), 0 0 0 1px #2a2c34;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  transition: width 0.35s cubic-bezier(0.2, 0, 0, 1),
+              height 0.35s cubic-bezier(0.2, 0, 0, 1),
+              border-radius 0.25s ease;
+}
+
+/* 全屏状态下的应用窗口容器 */
+.app-window.is-fullscreen {
+  position: fixed;
+  inset: 0;
+  width: 100vw !important;
+  height: 100vh !important;
+  border-radius: 0;
+  box-shadow: none;
+  z-index: 999;
+}
+
+/* 窗口标题栏（窗口化时显示，全屏时完全收起） */
+.window-titlebar {
+  height: 32px;
+  background: #18191e;
+  border-bottom: 1px solid #2c2d36;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  color: #a0a2ad;
+  font-size: 11px;
+  flex-shrink: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.app-window.is-fullscreen .window-titlebar {
+  display: none;
+}
+
+.window-title-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.window-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  background: #0058CA;
+  display: grid;
+  place-items: center;
+  color: white;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.window-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.win-btn {
+  width: 12px;
+  height: 12px;
+  display: inline-block;
+  opacity: 0.7;
+}
+
+/* 阅读器视口主体 */
+.reader-viewport {
+  flex: 1;
+  position: relative;
+  background: var(--reader-bg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+/* 顶部感应探测热区（在全屏下用于捕获移到屏幕最上方的鼠标） */
+.edge-hotzone-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+  z-index: 60;
+  pointer-events: auto;
+  cursor: default;
+}
+
+.edge-hotzone-top::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 96px;
+  height: 4px;
+  background: rgba(176, 198, 255, 0.45);
+  border-radius: 0 0 4px 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.edge-hotzone-top:hover::after {
+  opacity: 1;
+}
+
+/* 底部感应探测热区 */
+.edge-hotzone-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+  z-index: 60;
+  pointer-events: auto;
+  cursor: default;
+}
+
+.edge-hotzone-bottom::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 96px;
+  height: 4px;
+  background: rgba(176, 198, 255, 0.45);
+  border-radius: 4px 4px 0 0;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.edge-hotzone-bottom:hover::after {
+  opacity: 1;
+}
+
+/* 顶部阅读器菜单（TopAppBar） */
+.reader-topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  background: var(--bar-bg);
+  backdrop-filter: var(--bar-blur);
+  -webkit-backdrop-filter: var(--bar-blur);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  color: #ffffff;
+  z-index: 50;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  transition: transform var(--transition-normal), opacity var(--transition-normal);
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 显隐状态统一由 .is-hidden 控制，避免 inline style 覆盖问题 */
+.reader-topbar.is-hidden {
+  transform: translateY(-100%) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar-titles {
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f5f5f7;
+  max-width: 480px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar-subtitle {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Material 3 图标按钮基础样式 */
+.m-icon-button {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  position: relative;
+  transition: var(--transition-fast);
+}
+
+.m-icon-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.m-icon-button:active {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.m-icon-button svg {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+}
+
+/* 全屏状态下全屏按钮呈现为【按下的激活态】 */
+.m-icon-button.is-active,
+.m-icon-button[aria-pressed="true"] {
+  background: rgba(176, 198, 255, 0.24) !important;
+  color: #b0c6ff !important;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(176, 198, 255, 0.35);
+}
+
+.m-icon-button.is-active:hover {
+  background: rgba(176, 198, 255, 0.35) !important;
+  color: #d9e2ff !important;
+}
+
+/* 顶部右侧提示气泡（每次进入全屏时弹出） */
+.fullscreen-bubble {
+  position: absolute;
+  top: 16px;
+  right: 18px;
+  z-index: 1000;
+  background: rgba(30, 32, 38, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #e3e2e6;
+  border: 1px solid rgba(176, 198, 255, 0.28);
+  border-radius: var(--radius-lg);
+  padding: 10px 18px 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+  font-weight: 500;
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(-12px) scale(0.96);
+  transition: opacity 0.28s cubic-bezier(0.18, 0.89, 0.32, 1.28),
+              transform 0.28s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+  pointer-events: none;
+}
+
+.fullscreen-bubble.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.bubble-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(176, 198, 255, 0.16);
+  color: #b0c6ff;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.bubble-icon svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.bubble-content {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.bubble-content kbd {
+  display: inline-block;
+  padding: 2px 7px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+  color: #ffffff;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+
+.bubble-close {
+  background: transparent;
+  border: 0;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  margin-left: 4px;
+}
+
+.bubble-close:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.bubble-close svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+
+/* 底部控制栏（ReaderBottomBar） */
+.reader-bottombar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  background: var(--bar-bg);
+  backdrop-filter: var(--bar-blur);
+  -webkit-backdrop-filter: var(--bar-blur);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  color: #ffffff;
+  z-index: 50;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  transition: transform var(--transition-normal), opacity var(--transition-normal);
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 显隐状态统一由 .is-hidden 控制，避免 inline style 覆盖问题 */
+.reader-bottombar.is-hidden {
+  transform: translateY(100%) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.bottombar-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.bottombar-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.bottombar-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.bottombar-btn svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+
+.page-counter {
+  font-size: 13px;
+  color: #e3e2e6;
+  min-width: 58px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.slider-track-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+}
+
+.reader-slider {
+  width: 100%;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.24);
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.reader-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.reader-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+/* 漫画页面阅读画布展示 */
+.manga-canvas {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.manga-spread-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 94%;
+  max-width: 95%;
+  transition: transform 0.2s ease;
+}
+
+.manga-page {
+  height: 100%;
+  aspect-ratio: 7 / 10;
+  background: #fbfbfa;
+  border-radius: 4px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.65);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  user-select: none;
+}
+
+/* 漫画页艺术内容模拟 */
+.comic-panel-grid {
+  flex: 1;
+  padding: 12px;
+  display: grid;
+  grid-template-rows: repeat(3, 1fr);
+  gap: 8px;
+  background: #fdfdfd;
+}
+
+.comic-row {
+  display: flex;
+  gap: 8px;
+  height: 100%;
+}
+
+.comic-cell {
+  background: #ffffff;
+  border: 2px solid #222;
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.comic-cell.hero {
+  flex: 1.6;
+}
+
+.comic-art-scene {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #eef1f5, #dfe3e8);
+  position: relative;
+}
+
+.comic-sketch-frieren {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  opacity: 0.9;
+}
+
+.comic-speech {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: #ffffff;
+  border: 1.5px solid #222;
+  border-radius: 12px;
+  padding: 4px 8px;
+  font-size: 10px;
+  color: #111;
+  font-weight: 700;
+  box-shadow: 2px 2px 0 rgba(0,0,0,0.15);
+  max-width: 90px;
+  line-height: 1.3;
+}
+
+.comic-sfx {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  font-size: 18px;
+  font-weight: 900;
+  color: #222;
+  font-family: Impact, sans-serif;
+  letter-spacing: 1px;
+  transform: rotate(-10deg);
+}
+
+.page-footer-num {
+  position: absolute;
+  bottom: 4px;
+  width: 100%;
+  text-align: center;
+  font-size: 10px;
+  color: #777;
+  font-family: monospace;
+}
+
+/* 左右边缘翻页提示区 */
+.tap-zone {
+  position: absolute;
+  top: 56px;
+  bottom: 56px;
+  width: 18%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 10;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.tap-zone:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.tap-zone.left {
+  left: 0;
+}
+
+.tap-zone.right {
+  right: 0;
+}
+
+.tap-zone svg {
+  width: 36px;
+  height: 36px;
+  fill: currentColor;
+}
+
+/* 阅读设置弹窗面板 */
+.settings-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 90;
+  display: flex;
+  justify-content: flex-end;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.settings-overlay.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.settings-sheet {
+  width: 320px;
+  height: 100%;
+  background: #211f26;
+  border-left: 1px solid #36343b;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  transform: translateX(100%);
+  transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.settings-overlay.is-open .settings-sheet {
+  transform: translateX(0);
+}
+
+.settings-sheet h2 {
+  font-size: 16px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-group label {
+  font-size: 12px;
+  color: #aaa;
+  font-weight: 600;
+}
+
+.settings-options {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.settings-btn {
+  background: #2b2930;
+  border: 1px solid #444;
+  color: #ccc;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.settings-btn.is-selected {
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+  border-color: var(--primary);
+}
+
+/* 底部状态诊断与说明 */
+.footer-notes {
+  background: #121317;
+  border-top: 1px solid #282a32;
+  padding: 18px 24px;
+  font-size: 12px;
+  color: #8c8e9b;
+  line-height: 1.6;
+}
+
+.footer-notes ul {
+  padding-left: 20px;
+  margin-top: 6px;
+}
+
+.footer-notes code {
+  background: #1e2027;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #b0c6ff;
+  font-family: monospace;
+}
