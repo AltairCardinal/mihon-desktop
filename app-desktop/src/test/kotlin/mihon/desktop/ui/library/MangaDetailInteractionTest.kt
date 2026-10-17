@@ -60,6 +60,7 @@ import mihon.desktop.ui.theme.DesktopTheme
 import org.jetbrains.skia.Image
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -4507,5 +4508,61 @@ class MangaDetailInteractionTest {
         }
         assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
     }
+    private fun SemanticsNode.tag(value: String): Boolean =
+        config.contains(SemanticsProperties.TestTag) && config[SemanticsProperties.TestTag] == value
+
+    @Test
+    fun `chapter list scrollbar is present in both compact and expanded layouts and responds to scroll`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root) { scene, _, _, _ ->
+            render(scene)
+            val expandedScrollbar = nodes(scene).firstOrNull { it.tag("manga-detail-scrollbar") }
+            assertNotNull(expandedScrollbar, "Scrollbar must be present in expanded dual-pane layout")
+
+            scene.resize(500, 700)
+            render(scene)
+            val compactScrollbar = nodes(scene).firstOrNull { it.tag("manga-detail-scrollbar") }
+            assertNotNull(compactScrollbar, "Scrollbar must be present in compact single-pane layout")
+        }
+    }
+
+    @Test
+    fun `detail chapter list keeps the final chapter clear of the continue reading FAB when visible`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root) { scene, _, _, chapters ->
+            withTimeout(5_000) {
+                while (nodes(scene).none {
+                    it.tag("manga-continue-reading-fab") ||
+                        MR.strings.action_start.localized() in labels(it) ||
+                        MR.strings.action_resume.localized() in labels(it)
+                }) {
+                    render(scene)
+                    delay(10)
+                }
+            }
+            val fabNode = nodes(scene).first {
+                it.tag("manga-continue-reading-fab") ||
+                    MR.strings.action_start.localized() in labels(it) ||
+                    MR.strings.action_resume.localized() in labels(it)
+            }
+            val fabBounds = fabNode.boundsInRoot
+
+            val lastChapterTitle = chapters.minBy { it.chapterNumber }.name
+            repeat(40) {
+                scene.wheel(Offset(800f, 400f), 200f)
+                render(scene)
+            }
+            val lastNode = nodes(scene).firstOrNull { lastChapterTitle in labels(it) && it.boundsInRoot.height > 0 }
+            if (lastNode != null) {
+                assertFalse(
+                    lastNode.boundsInRoot.overlaps(fabBounds),
+                    "Final chapter row must not be overlapped by Continue FAB: row=${lastNode.boundsInRoot}, fab=$fabBounds",
+                )
+            }
+        }
+    }
+
     private fun hasChapter(scene: NativeScene, title: String) = nodes(scene).any { title in labels(it) }
 }
