@@ -68,3 +68,26 @@ jobs:
         with:
           name: desktop-test-report-${{ github.sha }}
           path: app-desktop/build/reports/tests/jvmTest
+
+      - name: Build desktop distributable
+        if: steps.scope.outputs.needs_product == 'true'
+        run: ./gradlew :app-desktop:createDistributable
+
+      - name: Measure desktop startup
+        if: steps.scope.outputs.needs_product == 'true'
+        shell: pwsh
+        # Reported without failing the build: the shared runner is far noisier than the
+        # reference machine, so the budget is enforced locally instead.
+        run: |
+          $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/check-desktop-startup.ps1 -Runs 3
+          $output | Out-String | Write-Host
+          $report = Get-Content app-desktop/tmp/startup-performance-report.json -Raw
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Desktop startup performance`n```json`n$report`n```"
+
+      - name: Upload startup performance report
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: desktop-startup-performance-${{ github.sha }}
+          path: app-desktop/tmp/startup-performance-report.json
+          if-no-files-found: ignore

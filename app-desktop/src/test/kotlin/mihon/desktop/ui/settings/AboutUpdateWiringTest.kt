@@ -153,7 +153,9 @@ class AboutUpdateWiringTest {
         val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
         lateinit var navigator: Navigator
         try {
-            assertEquals(204, notices.size)
+            // The full Kotlin reflection implementation is no longer shipped, so the
+            // packaged metadata lists one dependency less than before.
+            assertEquals(203, notices.size)
             assertTrue(coroutinesIndex >= 0)
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {

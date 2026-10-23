@@ -1,0 +1,76 @@
+﻿{
+    "description":  "Android cold start of the shipped application, measured with the platform\u0027s \u0007m start -W on an emulator. TotalTime is the start request until the first frame is drawn, the same signal the macrobenchmark calls timeToInitialDisplay.",
+    "device":  "sdk_gphone64_x86_64",
+    "api":  "36",
+    "abi":  "x86_64",
+    "renderer":  "emulation",
+    "buildVariant":  "benchmark (release-like: minified, profileable, not debuggable)",
+    "runs":  10,
+    "coldStartTotalTimeMs":  {
+                                 "min":  5250,
+                                 "median":  5277,
+                                 "max":  5488
+                             },
+    "results":  [
+                    {
+                        "Run":  1,
+                        "LaunchState":  "COLD",
+                        "TotalTimeMs":  5488,
+                        "WaitTimeMs":  5491
+                    },
+                    {
+                        "Run":  2,
+                        "LaunchState":  "COLD",
+                        "TotalTimeMs":  5252,
+                        "WaitTimeMs":  5254
+                    },
+                    {
+                        "Run":  3,
+                        "LaunchState":  "COLD",
+                        "TotalTimeMs":  5299,
+                        "WaitTimeMs":  5302
+                    },
+                    {
+                        "Run":  4,
+                        "LaunchState":  "COLD",
+                        "TotalTimeMs":  5250,
+                        "WaitTimeMs":  5252
+                    },
+                    {
+                        "Run":  5,
+                        "LaunchState":  "COLD",
+                        "TotalTimeMs":  5261,
+                        "WaitTimeMs":  5263
+                    },
+                    {
+                        "Run":  6,
+                        "LaunchState":  "COLD",
+                        "TotalTimeMs":  5268,
+                        "WaitTimeMs":  5271
+                    },
+                    {
+                        "Run":  7,
+                        "LaunchState":  "COLD",
+                        "TotalTimeMs":  5278,
+                        "WaitTimeMs":  5279
+                    },
+                    {
+                        "Run":  8,
+                        "LaunchState":  "COLD",
+                        "TotalTimeMs":  5277,
+                        "WaitTimeMs":  5283
+                    },
+                    {
+                        "Run":  9,
+                        "LaunchState":  "COLD",
+                        "TotalTimeMs":  5278,
+                        "WaitTimeMs":  5280
+                    },
+                    {
+                        "Run":  10,
+                        "LaunchState":  "COLD",
+                        "TotalTimeMs":  5255,
+                        "WaitTimeMs":  5256
+                    }
+                ]
+}

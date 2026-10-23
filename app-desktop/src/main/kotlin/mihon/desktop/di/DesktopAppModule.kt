@@ -11,6 +11,8 @@ import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.Json
 import mihon.data.repository.ExtensionRepoRepositoryImpl
 import mihon.desktop.BuildInfo
@@ -104,6 +106,7 @@ import mihon.domain.upcoming.interactor.GetUpcomingManga
 import okhttp3.OkHttpClient
 import okio.Path.Companion.toOkioPath
 import tachiyomi.core.common.preference.DesktopPreferenceStore
+import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.storage.DesktopStorageFolderProvider
 import tachiyomi.core.common.storage.FolderProvider
@@ -200,9 +203,48 @@ import tachiyomi.domain.updates.repository.UpdatesRepository
 import tachiyomi.domain.updates.service.UpdatesPreferences
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
+import uy.kohesive.injekt.api.addSingletonFactory
 import uy.kohesive.injekt.api.get
 import java.io.File
 import java.util.Properties
+
+/**
+ * The paths and preference store that belong to the current startup.
+ */
+internal data class DesktopStartupContext(
+    val paths: DesktopPlatformPaths,
+    val preferenceStore: DesktopPreferenceStore,
+    val syncRepositoryScope: mihon.data.sync.auth.SyncRepositoryScope,
+)
+
+/**
+ * Resolves the startup context without registering anything in the container.
+ *
+ * The window is created before the dependency graph is ready, so the startup needs the
+ * persisted window geometry without a fully initialized container.
+ */
+internal fun resolveDesktopStartupContext(
+    profile: mihon.desktop.test.DesktopTestProfile?,
+    syncRepositoryScope: mihon.data.sync.auth.SyncRepositoryScope = mihon.data.sync.auth.SyncRepositoryScope.Default,
+): DesktopStartupContext {
+    val paths = profile?.paths ?: DesktopPlatformPaths.current(createDirectories = false)
+    val preferenceStore = profile?.preferences()
+        ?: paths.recoveryProfileRoot?.let(mihon.desktop.platform.DesktopRecoveryProfile::preferences)
+        ?: DesktopPreferenceStore()
+    return DesktopStartupContext(paths, preferenceStore, syncRepositoryScope)
+}
+
+/**
+ * Window geometry store that reads and writes the persisted geometry directly.
+ */
+internal fun desktopWindowGeometryStore(preferenceStore: PreferenceStore): mihon.desktop.platform.DesktopWindowGeometryStore {
+    val preference = preferenceStore.getString(Preference.appStateKey("desktop_window_geometry"), "")
+    return object : mihon.desktop.platform.DesktopWindowGeometryStore {
+        override fun read(): String = preference.get()
+
+        override fun write(value: String): Boolean = mihon.desktop.settings.saveDesktopPreference(preference, value)
+    }
+}
 
 /**
  * Initializes all desktop DI bindings.
@@ -221,18 +263,38 @@ internal suspend fun initDesktopDI(
         ?.let(mihon.desktop.platform.DesktopRecoveryProfile::preferences) ?: DesktopPreferenceStore(),
     syncRepositoryScope: mihon.data.sync.auth.SyncRepositoryScope = mihon.data.sync.auth.SyncRepositoryScope.Default,
 ) {
+    mihon.desktop.startup.DesktopStartupTrace.mark("di-begin")
     initAndroidCompatApplication()
     prepareDesktopProfile(paths, preferenceStore)
     initConfigLayer(paths.configDir, preferenceStore)
+    mihon.desktop.startup.DesktopStartupTrace.mark("di-config")
     paths.recoveryProfileRoot?.let { root ->
         Injekt.addSingleton<FolderProvider>(DesktopStorageFolderProvider(File(root, "storage")))
     }
-    val networkHelper = initNetworkLayer(paths, preferenceStore)
-    val handler = initDataLayer(paths)
+    // Opening the database loads the JDBC driver, extracts the native library and
+    // runs the pending migration. None of that touches the container, so it runs
+    // while the network layer is being built.
+    val (networkHelper, handler) = coroutineScope {
+        val driverJob = async(Dispatchers.IO) { createDriver(paths.databaseFile) }
+        val networkHelper = initNetworkLayer(paths, preferenceStore)
+        mihon.desktop.startup.DesktopStartupTrace.mark("di-network")
+        val handler = initDataLayer(paths, driver = driverJob.await())
+        mihon.desktop.startup.DesktopStartupTrace.mark("di-data")
+        networkHelper to handler
+    }
     initExtensionLayer(paths, networkHelper, handler)
+    mihon.desktop.startup.DesktopStartupTrace.mark("di-extension")
     initDomainLayer(handler)
+    mihon.desktop.startup.DesktopStartupTrace.mark("di-domain")
     try {
-        initUILayer(paths, preferenceStore, networkHelper, handler, syncRepositoryScope = syncRepositoryScope)
+        initUILayer(
+            paths,
+            preferenceStore,
+            networkHelper,
+            handler,
+            startDownloadWorker = false,
+            syncRepositoryScope = syncRepositoryScope,
+        )
     } catch (failure: Throwable) {
         try {
             (handler as JvmDatabaseHandler).close()
@@ -246,6 +308,7 @@ internal suspend fun initDesktopDI(
         }
         throw failure
     }
+    mihon.desktop.startup.DesktopStartupTrace.mark("di-ui")
 }
 
 internal fun initDesktopConfigurationForTest(appDir: File, preferenceStore: PreferenceStore) {
@@ -297,6 +360,8 @@ internal suspend fun initDesktopDIForTest(
     val networkHelper = initNetworkLayer(paths, preferenceStore, browserOpener)
     val handler = initDataLayer(paths, chapterRepositoryOverride, categoryRepositoryOverride, mangaRepositoryOverride)
     initExtensionLayer(paths, networkHelper, handler, artifactAuthenticator, trackerServiceRegistry, builtInSources)
+    // Tests need a deterministic set of sources, so the background load is awaited.
+    Injekt.get<DesktopExtensionManager>().awaitInitialized()
     initDomainLayer(handler)
     try {
         initUILayer(
@@ -539,8 +604,9 @@ internal fun initDataLayer(
     chapterRepositoryOverride: ((ChapterRepository) -> ChapterRepository)? = null,
     categoryRepositoryOverride: ((CategoryRepository) -> CategoryRepository)? = null,
     mangaRepositoryOverride: ((MangaRepository) -> MangaRepository)? = null,
+    driver: SqlDriver? = null,
 ): DatabaseHandler {
-    val handler = initDatabase(paths.databaseFile)
+    val handler = initDatabase(paths.databaseFile, driver)
     val categoryRepository: CategoryRepository = CategoryRepositoryImpl(handler).let { repository ->
         categoryRepositoryOverride?.invoke(repository) ?: repository
     }
@@ -658,7 +724,7 @@ private fun registerDesktopExtension(
         artifactProvider = extensionApi::downloadArtifact,
         artifactAuthenticator = artifactAuthenticator,
     )
-    extensionManager.loadAll()
+    extensionManager.loadAllAsync()
     networkHelper.bindSourceOwner(extensionManager::getExtensionPackage)
     Injekt.addSingleton(extensionManager)
     Injekt.addSingleton(extensionApi)
@@ -1097,7 +1163,12 @@ internal suspend fun initUILayer(
             },
             legacyColumns = { Injekt.get<DesktopAppPreferences>().libraryGridColumns },
         )
-        libraryPreferenceMigration.migrate(categoryRepository.getAll().map { it.id }.toSet() + 0L)
+        // The valid category identifiers are only needed when a migration is actually
+        // pending, so the database query stays off the startup path.
+        if (!libraryPreferenceMigration.isComplete()) {
+            libraryPreferenceMigration.migrate(categoryRepository.getAll().map { it.id }.toSet() + 0L)
+        }
+        mihon.desktop.startup.DesktopStartupTrace.mark("di-ui:migration")
         Injekt.addSingleton(libraryPreferenceMigration)
         val downloadPreferences = DesktopDownloadPreferences(preferenceStore)
         val downloadDirectoryPreference = downloadPreferences.downloadDirectory(paths.downloadsDir)
@@ -1116,6 +1187,7 @@ internal suspend fun initUILayer(
             fileOperations = downloadFileOperations,
         )
         initializedDownloadManager = downloadManager
+        mihon.desktop.startup.DesktopStartupTrace.mark("di-ui:download")
         val readingProgress = RecordReadingProgress(SqlDelightReadingProgressRepository(database))
         Injekt.addSingleton<mihon.domain.download.DownloadRepository>(downloadManager)
         Injekt.addSingleton(mihon.domain.download.EnqueueDownload(downloadManager))
@@ -1163,11 +1235,20 @@ internal suspend fun initUILayer(
                 Injekt.get<GetChaptersByMangaId>(),
             ),
         )
-        // Restore the original finite prepared file list before any producer is started.
-        kotlinx.coroutines.withContext(Dispatchers.IO) {
-            Injekt.get<DesktopMigrateMangaUseCase>().recoverPendingFiles()
+        mihon.desktop.startup.DesktopStartupTrace.mark("di-ui:library")
+        // The prepared file list is restored before any producer starts. The scan
+        // touches the file system, so it runs together with the download worker
+        // after the window exists instead of blocking the dependency graph.
+        val recoverPreparedFiles = DesktopPreparedFilesRecovery {
+            kotlinx.coroutines.withContext(Dispatchers.IO) {
+                Injekt.get<DesktopMigrateMangaUseCase>().recoverPendingFiles()
+            }
         }
-        if (startDownloadWorker) downloadManager.start()
+        Injekt.addSingleton(recoverPreparedFiles)
+        if (startDownloadWorker) {
+            recoverPreparedFiles.recover()
+            downloadManager.start()
+        }
         lateinit var trackSync: ReadingProgressTrackSync
         val trackerSyncScheduler =
             DesktopTrackerSyncScheduler(Injekt.get<DesktopTaskScheduler>(), connectivity = trackerConnectivity) {
@@ -1182,6 +1263,7 @@ internal suspend fun initUILayer(
         Injekt.addSingleton(trackerSyncScheduler)
 
         val libraryScreenModel = mihon.desktop.library.LibraryScreenModelFactory.create()
+        mihon.desktop.startup.DesktopStartupTrace.mark("di-ui:screen-model")
         val libraryTestController = mihon.desktop.test.http.LibraryMangaTestModeController(
             libraryScreenModel,
             deviceConditions = Injekt.get(),
@@ -1279,7 +1361,10 @@ internal suspend fun initUILayer(
         Injekt.addSingleton(batchMigrationController)
         MigrationBatchTestBridge.controller = batchMigrationController
 
-        Injekt.addSingleton(DesktopJsEngine())
+        // The JavaScript sandbox initialises a Rhino interpreter, its standard library
+        // and a polyfill script. Nothing on the start-up path uses it, so it is
+        // registered lazily and the cost is only paid when a script is evaluated.
+        Injekt.addSingletonFactory { DesktopJsEngine() }
         Injekt.addSingleton(
             LocalSourceScanService(
                 prefs = appPreferences,
@@ -1574,23 +1659,50 @@ private fun registerDesktopBackup(
 }
 
 /**
+ * Restores the finite prepared file list of the migration feature.
+ *
+ * The scan reads the download directory, so it is started together with the download
+ * worker once the window exists instead of blocking the dependency graph.
+ */
+internal class DesktopPreparedFilesRecovery(
+    private val action: suspend () -> Unit,
+) {
+    suspend fun recover() = action()
+}
+
+/**
  * Initializes the SQLDelight database backed by a JDBC SQLite file.
  *
  * For a fresh install, creates the schema from scratch (does NOT run Android
  * legacy migrations). For an existing database, migrates incrementally.
  * Migration failures are fatal and preserve the original database for diagnosis/recovery.
  */
-internal fun createDriver(dbFile: File): SqlDriver {
+internal fun createDriver(
+    dbFile: File,
+    schemaCreator: (SqlDriver) -> Unit = { tachiyomi.data.Database.Schema.create(it) },
+): SqlDriver {
     val schema = tachiyomi.data.Database.Schema
     val isNew = !dbFile.exists() || dbFile.length() == 0L
     val sqliteProperties = Properties().apply { setProperty("foreign_keys", "true") }
     val driver = JdbcSqliteDriver("jdbc:sqlite:${dbFile.absolutePath}", sqliteProperties)
+    mihon.desktop.startup.DesktopStartupTrace.mark("di-data:driver")
     try {
         driver.execute(null, "PRAGMA foreign_keys = ON", 0, null)
         check(driver.foreignKeysEnabled()) { "SQLite foreign key enforcement could not be enabled" }
+        // NOTE: `PRAGMA journal_mode = WAL` and `PRAGMA synchronous = NORMAL` were tried
+        // here to keep the startup reads of the library grid off the rollback journal.
+        // They change when the library state publishes a new revision, which in turn
+        // invalidates the captured "clear the selection after an accepted enqueue"
+        // callback, so the selection was no longer cleared after a successful download.
+        // The rollback journal stays until a faster write path is available.
         if (isNew) {
-            schema.create(driver)
-            driver.execute(null, "PRAGMA user_version = ${schema.version}", 0, null)
+            // The schema of a fresh database is created with a single commit. Every
+            // statement of the generated schema is a transaction of its own otherwise,
+            // and each of them flushes the rollback journal to the disk. That made the
+            // very first start of a new installation seconds slower than every later
+            // one, because only the first start creates the schema.
+            createSchemaAtomically(driver, schemaCreator)
+            mihon.desktop.startup.DesktopStartupTrace.mark("di-data:schema")
         } else {
             val currentVersion = driver.executeQuery(
                 identifier = null,
@@ -1614,6 +1726,16 @@ internal fun createDriver(dbFile: File): SqlDriver {
         }
     } catch (e: Exception) {
         driver.close()
+        if (isNew) {
+            // A database whose creation failed must not be taken for an existing one:
+            // the next start would migrate it instead of creating it, and the
+            // migration would work on a schema that is only half there.
+            dbFile.delete()
+            throw IllegalStateException(
+                "Unable to create the Mihon database at ${dbFile.absolutePath}; the incomplete database was removed",
+                e,
+            )
+        }
         throw IllegalStateException(
             "Unable to open or migrate Mihon database at ${dbFile.absolutePath}; the original database was preserved",
             e,
@@ -1622,8 +1744,22 @@ internal fun createDriver(dbFile: File): SqlDriver {
     return driver
 }
 
-private fun SqlDriver.foreignKeysEnabled(): Boolean = executeQuery(
-    identifier = null,
+/**
+ * Creates the schema of a fresh database with a single commit.
+ *
+ * The generated schema runs every statement on its own, and every statement of its
+ * own is a transaction that flushes the rollback journal to the disk. One commit for
+ * the whole schema keeps the first start of a new installation as fast as the later
+ * ones.
+ */
+internal fun createSchemaAtomically(driver: SqlDriver, schemaCreator: (SqlDriver) -> Unit) {
+    object : app.cash.sqldelight.TransacterImpl(driver) {}.transaction {
+        schemaCreator(driver)
+        driver.execute(null, "PRAGMA user_version = ${tachiyomi.data.Database.Schema.version}", 0, null)
+    }
+}
+
+private fun SqlDriver.foreignKeysEnabled(): Boolean = executeQuery(    identifier = null,
     sql = "PRAGMA foreign_keys",
     parameters = 0,
     mapper = { cursor ->
@@ -1664,8 +1800,8 @@ private fun SqlDriver.hasColumn(table: String, column: String): Boolean {
     ).value
 }
 
-private fun initDatabase(dbFile: File): DatabaseHandler {
-    val driver = createDriver(dbFile)
+private fun initDatabase(dbFile: File, existingDriver: SqlDriver? = null): DatabaseHandler {
+    val driver = existingDriver ?: createDriver(dbFile)
     val database = tachiyomi.data.Database(
         driver = driver,
         historyAdapter = tachiyomi.data.History.Adapter(

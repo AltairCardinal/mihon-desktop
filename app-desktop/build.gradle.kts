@@ -204,11 +204,25 @@ kotlin {
                 implementation("com.android.tools.build:apksig:8.13.2")
 
                 // Test HTTP Server (Ktor)
-                implementation("io.ktor:ktor-server-core:2.3.12")
-                implementation("io.ktor:ktor-server-netty:2.3.12")
-                implementation("io.ktor:ktor-server-cio:2.3.12")
-                implementation("io.ktor:ktor-client-core:2.3.12")
-                implementation("io.ktor:ktor-client-okhttp:2.3.12")
+                //
+                // The Ktor server stack drags the full Kotlin reflection implementation onto
+                // the runtime class path. The navigation library asks the screen model for its
+                // qualified name while the first user interface is composed, and with that
+                // implementation on the class path the answer deserialises the class metadata
+                // and loads several hundred reflection classes. The stack is only used by the
+                // test mode server, which does not need the full reflection implementation, so
+                // it is kept off the class path.
+                listOf(
+                    "io.ktor:ktor-server-core:2.3.12",
+                    "io.ktor:ktor-server-netty:2.3.12",
+                    "io.ktor:ktor-server-cio:2.3.12",
+                    "io.ktor:ktor-client-core:2.3.12",
+                    "io.ktor:ktor-client-okhttp:2.3.12",
+                ).forEach { dependency ->
+                    implementation(dependency) {
+                        exclude(group = "org.jetbrains.kotlin", module = "kotlin-reflect")
+                    }
+                }
             }
         }
         val jvmTest by getting {

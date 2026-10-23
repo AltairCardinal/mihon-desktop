@@ -6,7 +6,6 @@ import android.graphics.Canvas
 import android.view.MotionEvent
 import androidx.test.core.app.ApplicationProvider
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
-import java.time.Duration
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -21,6 +20,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowLooper
 import tachiyomi.core.common.preference.AndroidPreferenceStore
+import java.time.Duration
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], manifest = Config.NONE)
@@ -157,7 +157,9 @@ class PagerRippleTest {
 
     @Test
     fun rippleCapturesCurrentPageContentAndRendersTransition() {
-        val activity = Robolectric.buildActivity(androidx.activity.ComponentActivity::class.java).setup().visible().get()
+        val activity = Robolectric.buildActivity(
+            androidx.activity.ComponentActivity::class.java,
+        ).setup().visible().get()
         val testPager = Pager(activity, isHorizontal = true)
         activity.setContentView(testPager)
         ShadowLooper.shadowMainLooper().idleFor(Duration.ofMillis(16))
@@ -165,7 +167,9 @@ class PagerRippleTest {
         var v0Runs = 0
         var v1Runs = 0
         val v0 = object : android.view.View(activity) {
-            init { setWillNotDraw(false) }
+            init {
+                setWillNotDraw(false)
+            }
             override fun onDraw(canvas: Canvas) {
                 v0Runs++
                 val p = android.graphics.Paint().apply { color = android.graphics.Color.RED }
@@ -173,7 +177,9 @@ class PagerRippleTest {
             }
         }
         val v1 = object : android.view.View(activity) {
-            init { setWillNotDraw(false) }
+            init {
+                setWillNotDraw(false)
+            }
             override fun onDraw(canvas: Canvas) {
                 v1Runs++
                 val p = android.graphics.Paint().apply { color = android.graphics.Color.BLUE }
@@ -188,7 +194,9 @@ class PagerRippleTest {
                 c.addView(v)
                 return v
             }
-            override fun destroyItem(c: android.view.ViewGroup, p: Int, o: Any) { c.removeView(o as android.view.View) }
+            override fun destroyItem(c: android.view.ViewGroup, p: Int, o: Any) {
+                c.removeView(o as android.view.View)
+            }
         }
         testPager.measure(
             android.view.View.MeasureSpec.makeMeasureSpec(800, android.view.View.MeasureSpec.EXACTLY),
@@ -252,7 +260,9 @@ class PagerRippleTest {
 
     @Test
     fun cleanModeDoesNotDrawLineWhereasShadowLineModeDoes() {
-        val activity = Robolectric.buildActivity(androidx.activity.ComponentActivity::class.java).setup().visible().get()
+        val activity = Robolectric.buildActivity(
+            androidx.activity.ComponentActivity::class.java,
+        ).setup().visible().get()
         val testPager = Pager(activity, isHorizontal = true)
         activity.setContentView(testPager)
         ShadowLooper.shadowMainLooper().idleFor(Duration.ofMillis(16))
@@ -273,7 +283,9 @@ class PagerRippleTest {
                 c.addView(v)
                 return v
             }
-            override fun destroyItem(c: android.view.ViewGroup, p: Int, o: Any) { c.removeView(o as android.view.View) }
+            override fun destroyItem(c: android.view.ViewGroup, p: Int, o: Any) {
+                c.removeView(o as android.view.View)
+            }
         }
         testPager.measure(
             android.view.View.MeasureSpec.makeMeasureSpec(800, android.view.View.MeasureSpec.EXACTLY),
@@ -289,7 +301,11 @@ class PagerRippleTest {
         val cleanCanvas = Canvas(cleanBitmap)
         cleanCanvas.translate(-testPager.scrollX.toFloat(), -testPager.scrollY.toFloat())
         testPager.draw(cleanCanvas)
-        assertEquals("CLEAN mode should not draw black boundary line at splitX", android.graphics.Color.WHITE, cleanBitmap.getPixel(400, 600))
+        assertEquals(
+            "CLEAN mode should not draw black boundary line at splitX",
+            android.graphics.Color.WHITE,
+            cleanBitmap.getPixel(400, 600),
+        )
 
         testPager.cancelRipple()
 

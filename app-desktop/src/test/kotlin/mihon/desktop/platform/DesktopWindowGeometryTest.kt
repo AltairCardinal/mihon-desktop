@@ -239,7 +239,7 @@ class DesktopWindowGeometryTest {
         val ready = CompletableDeferred<ComposeWindow>()
         val job = scope.launchApplication {
             DesktopMainWindow(
-                preferences,
+                preferences.windowGeometryStore(),
                 onCloseRequest = ::exitApplication,
                 title = "Mihon isolated geometry test",
                 windowTransitions = transitions,

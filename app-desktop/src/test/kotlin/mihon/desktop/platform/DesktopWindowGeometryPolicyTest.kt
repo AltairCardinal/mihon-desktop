@@ -73,7 +73,7 @@ class DesktopWindowGeometryPolicyTest {
             every { set(any()) } throws IllegalStateException("isolated persistence failure")
         }
         val app = mockk<DesktopAppPreferences> { every { windowGeometry } returns preference }
-        val controller = DesktopWindowGeometryController(app, listOf(primary))
+        val controller = DesktopWindowGeometryController(app.windowGeometryStore(), listOf(primary))
         assertFalse(controller.save())
         assertEquals(raw, preference.get())
         verify(exactly = 2) { preference.set(any()) }

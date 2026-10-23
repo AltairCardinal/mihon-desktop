@@ -92,7 +92,10 @@ class DesktopAppRuntimeTest {
                     )
                 },
                 ownerIngressDependencies = { DesktopOwnerIngressDependencies(runtime, uiDependencies) },
-                runWindowEventLoop = { _, requestClose ->
+                runWindowEventLoop = { bootstrap, requestClose ->
+                    // The window is created before the owner is prepared; the user
+                    // interface is only rendered once the owner is ready.
+                    bootstrap.awaitOwner()
                     assertEquals(null, requestClose.awaitTestModeTermination)
                     assertEquals("zh-TW", Locale.getDefault().toLanguageTag())
                     assertEquals(
@@ -432,7 +435,8 @@ class DesktopAppRuntimeTest {
                     transaction.registerRuntime(runtime)
                     DesktopOwnerIngressDependencies(runtime, uiDependencies).also { ownerFactoryCalls++ }
                 },
-                runWindowEventLoop = { startup, requestClose ->
+                runWindowEventLoop = { bootstrap, requestClose ->
+                    val startup = requireNotNull(bootstrap.awaitOwner())
                     assertSame(uiDependencies, startup.ingress.uiDependencies)
                     assertSame(
                         uiDependencies.externalActionNavigator,
@@ -503,6 +507,7 @@ class DesktopAppRuntimeTest {
                     entered.complete(Unit)
                     awaitCancellation()
                 },
+                runWindowEventLoop = { _, requestClose -> requestClose() },
             )
         }
         try {
@@ -537,6 +542,7 @@ class DesktopAppRuntimeTest {
                         transaction.registerRuntime(runtime)
                         throw IllegalStateException("factory failed")
                     },
+                    runWindowEventLoop = { _, requestClose -> requestClose() },
                 )
             }
         }
@@ -566,6 +572,7 @@ class DesktopAppRuntimeTest {
                     assertFalse(runtime.isRunning)
                     recovered = true
                 },
+                runWindowEventLoop = { _, requestClose -> requestClose() },
             )
             assertTrue(recovered)
         } finally {
@@ -590,9 +597,11 @@ class DesktopAppRuntimeTest {
                         throw cancelled
                     },
                     onStartupFailure = { recoveryShown = true },
+                    runWindowEventLoop = { _, requestClose -> requestClose() },
                 )
             }.exceptionOrNull()
-            assertSame(cancelled, failure)
+            assertTrue(failure is kotlinx.coroutines.CancellationException)
+            assertEquals("user cancelled startup", failure?.message)
             assertFalse(runtime.isRunning)
             assertFalse(recoveryShown)
         } finally { broker.close() }
@@ -658,6 +667,7 @@ class DesktopAppRuntimeTest {
                         )
                     },
                     ownerIngressDependencies = { throw primary },
+                    runWindowEventLoop = { _, requestClose -> requestClose() },
                 )
             }.exceptionOrNull()
 

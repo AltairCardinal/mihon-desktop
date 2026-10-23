@@ -7,6 +7,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,6 +21,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -31,6 +34,7 @@ import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import mihon.desktop.di.initDesktopDI
 import mihon.domain.easteregg.PigEasterEggController
 import mihon.desktop.image.installDesktopImageLoader
@@ -78,7 +82,28 @@ import java.awt.Window as AwtWindow
  * - --headless: Run without UI (for automated testing)
  */
 suspend fun main(args: Array<String>) {
+    mihon.desktop.startup.DesktopStartupTrace.mark("main-entry")
+    // The classes the first user interface needs are read while the process starts.
+    // The composition of that interface is the longest phase of the start-up, and it
+    // can only begin once the dependency graph is ready. Reading the classes in
+    // parallel with the platform set-up and the dependency graph therefore removes
+    // them from the critical path of the first frame.
+    mihon.desktop.startup.DesktopStartupClassWarmUp.startAsync()
+    // The instance broker needs a random token before the window can be created, and
+    // the entropy provider is expensive to initialize on Windows.
+    Thread(
+        { runCatching { mihon.desktop.platform.DesktopExternalActionBroker.warmUp() } },
+        "mihon-startup-warmup",
+    ).apply {
+        isDaemon = true
+        start()
+    }
+    mihon.desktop.startup.DesktopStartupTrace.attachLogDirectory(
+        mihon.desktop.platform.DesktopPlatformPaths.current(createDirectories = false).logsDir,
+    )
+    mihon.desktop.startup.DesktopStartupTrace.mark("log-directory")
     DesktopTestProfile.configure(args)
+    mihon.desktop.startup.DesktopStartupTrace.mark("test-profile")
     try {
         mihon.desktop.platform.DesktopRecoveryProfile.configure(args)
     } catch (cancelled: kotlinx.coroutines.CancellationException) {
@@ -88,8 +113,10 @@ suspend fun main(args: Array<String>) {
             args.firstOrNull { it.startsWith("--recovery-profile=") }?.substringAfter('='))
         return
     }
+    mihon.desktop.startup.DesktopStartupTrace.mark("recovery-profile")
     // Profile selection must precede crash paths, preferences, the instance broker, and DI.
     CrashHandler.install()
+    mihon.desktop.startup.DesktopStartupTrace.mark("crash-handler")
 
     desktopExtensionRuntimeAcceptanceRequest(args)?.let { request ->
         val result = executeDesktopExtensionRuntimeAcceptance(request, APP_VERSION)
@@ -117,46 +144,116 @@ internal suspend fun startProductionDesktopApplication(
         val syncRepository = TestArguments.parse(args).syncRepository
         val syncScope = syncRepository?.let(mihon.data.sync.auth.SyncRepositoryScope::acceptance)
             ?: mihon.data.sync.auth.SyncRepositoryScope.Default
-        if (profile == null) {
-            initDesktopDI(syncScope)
-        } else {
-            initDesktopDI(profile.paths, profile.preferences(), syncScope)
-        }
+        val context = mihon.desktop.di.resolveDesktopStartupContext(profile, syncScope)
+        initDesktopDI(context.paths, context.preferenceStore, context.syncRepositoryScope)
         val runtime = Injekt.get<DesktopAppRuntime>()
         transaction.registerRuntime(runtime)
         DesktopOwnerIngressDependencies(runtime, DesktopUiDependencies.fromInjekt())
     },
+    windowGeometryStore: suspend () -> mihon.desktop.platform.DesktopWindowGeometryStore = {
+        val profile = mihon.desktop.test.desktopTestProfile(args)
+        mihon.desktop.di.desktopWindowGeometryStore(
+            mihon.desktop.di.resolveDesktopStartupContext(profile).preferenceStore,
+        )
+    },
     startTestMode: (TestArguments) -> Unit = { testArgs -> if (testArgs.testMode) TestMode.start(testArgs) },
     awaitTestModeTermination: () -> Unit = TestMode::awaitTermination,
     stopTestMode: () -> Unit = TestMode::stop,
-    runWindowEventLoop: suspend (DesktopOwnerStartup, DesktopApplicationCloseCoordinator) -> Unit =
+    runWindowEventLoop: suspend (mihon.desktop.startup.DesktopOwnerBootstrapController, DesktopApplicationCloseCoordinator) -> Unit =
         ::runDesktopComposeWindowEventLoop,
 ): DesktopInstanceStartResult {
     val transaction = DesktopOwnerTransaction()
-    var owner: DesktopOwnerStartup? = null
     var electedOwner: DesktopExternalActionBroker? = null
+    var ownerElected = false
     var lifecycleStarted = false
     val testArgs = TestArguments.parse(args)
+    // The class warm up has to be in flight before the broker election: the election
+    // opens the local socket and costs a noticeable part of the start-up, while the
+    // classes are needed by the composition of the first user interface.
+    mihon.desktop.startup.DesktopStartupClassWarmUp.startAsync()
+    val bootstrap = mihon.desktop.startup.DesktopOwnerBootstrapController(
+        testState = applicationState,
+        geometryStore = windowGeometryStore(),
+    )
+    val bootstrapScope = CoroutineScope(
+        SupervisorJob(kotlin.coroutines.coroutineContext[Job]) + Dispatchers.Default,
+    )
     return try {
         val result = startDesktopInstance(broker, desktopExternalActionRaw(args)) { electedBroker ->
-            if (testArgs.testProfile == null && mihon.desktop.test.desktopTestProfile(args) == null &&
-                DesktopPlatformPaths.current(createDirectories = false).recoveryProfileRoot == null
-            ) {
-                reportDesktopOwnerRegistration(registrar, reportRegistration)
-            }
+            mihon.desktop.startup.DesktopStartupTrace.mark("broker-owner")
             electedOwner = electedBroker
         }
+        mihon.desktop.startup.DesktopStartupTrace.mark("broker-elected")
         electedOwner?.let { electedBroker ->
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
-            owner = prepareDesktopOwner(transaction, electedBroker, args, openUriEventPort, ownerIngressDependencies)
+            ownerElected = true
+            // The dependency graph is prepared in the background so the window can be
+            // created while the graphics pipeline and the application classes warm up.
+            bootstrapScope.launch {
+                try {
+                    // The URI scheme registration writes to the registry and is not
+                    // needed for the window, so it never blocks the first frame.
+                    if (testArgs.testProfile == null && mihon.desktop.test.desktopTestProfile(args) == null &&
+                        DesktopPlatformPaths.current(createDirectories = false).recoveryProfileRoot == null
+                    ) {
+                        reportDesktopOwnerRegistration(registrar, reportRegistration)
+                        mihon.desktop.startup.DesktopStartupTrace.mark("uri-registered")
+                    }
+                    val startup = prepareDesktopOwner(
+                        transaction,
+                        electedBroker,
+                        args,
+                        openUriEventPort,
+                        ownerIngressDependencies,
+                    )
+                    startup.runtime.start()
+                    installDesktopImageLoader(startup.ingress.uiDependencies)
+                    mihon.desktop.startup.DesktopStartupTrace.mark("owner-ready")
+
+                    bootstrap.publishReady(startup)
+                } catch (failure: Throwable) {
+                    bootstrap.publishFailure(failure)
+                    withContext(NonCancellable) {
+                        try {
+                            electedBroker.close()
+                        } catch (cleanup: Throwable) {
+                            if (cleanup !== failure) failure.addSuppressed(cleanup)
+                        }
+                        try {
+                            transaction.closeAndJoin(failure)
+                        } catch (cleanup: Throwable) {
+                            if (cleanup !== failure) failure.addSuppressed(cleanup)
+                        }
+                    }
+                    // A failed dependency graph is a startup failure and keeps the
+                    // recovery affordance that the user is used to. A cancellation is
+                    // not a failure and must not open the recovery screen.
+                    val escalates = if (failure is kotlinx.coroutines.CancellationException) {
+                        true
+                    } else {
+                        try {
+                            onStartupFailure(failure)
+                            false
+                        } catch (handlerFailure: Throwable) {
+                            true
+                        }
+                    }
+                    bootstrap.setFailureEscalates(escalates)
+                    return@launch
+                }
+                // From here on the bootstrap session owns the runtime. Deferred work must
+                // not close it a second time, and it must never fail the startup.
+                runCatching { Injekt.get<mihon.desktop.di.DesktopPreparedFilesRecovery>().recover() }
+                    .onFailure { System.err.println("Desktop prepared file recovery failed: ${it.message}") }
+                runCatching { Injekt.get<mihon.desktop.download.DesktopDownloadManager>().start() }
+                    .onFailure { System.err.println("Desktop download worker start failed: ${it.message}") }
+            }
         }
-        owner?.let { startup ->
+        if (ownerElected) {
             lifecycleStarted = true
             runProductionOwnerLifecycle(
                 testArgs = testArgs,
-                runtime = startup.runtime,
-                appLock = startup.appLock,
-                testState = applicationState,
+                bootstrap = bootstrap,
                 startTestMode = { startTestMode(testArgs) },
                 awaitTestModeTermination = awaitTestModeTermination,
                 stopTestMode = stopTestMode,
@@ -165,7 +262,7 @@ internal suspend fun startProductionDesktopApplication(
                         closeAndJoin = closeAndJoin,
                         awaitTestModeTermination = awaitTestModeTermination.takeIf { testArgs.testMode },
                     ) { requestClose ->
-                        runWindowEventLoop(startup, requestClose)
+                        runWindowEventLoop(bootstrap, requestClose)
                     }
                 },
             )
@@ -186,6 +283,8 @@ internal suspend fun startProductionDesktopApplication(
             return DesktopInstanceStartResult.Failed(DesktopExternalActionBroker.Failure.OwnerStartFailed)
         }
         throw failure
+    } finally {
+        bootstrapScope.cancel()
     }
 }
 
@@ -286,10 +385,10 @@ internal suspend fun observeDesktopGuiTestModeTermination(
 }
 
 private suspend fun runDesktopComposeWindowEventLoop(
-    owner: DesktopOwnerStartup,
+    bootstrap: mihon.desktop.startup.DesktopOwnerBootstrapController,
     requestClose: DesktopApplicationCloseCoordinator,
 ) {
-    installDesktopImageLoader(owner.ingress.uiDependencies)
+    mihon.desktop.startup.DesktopStartupTrace.mark("compose-application")
     application {
         val applicationScope = rememberCoroutineScope()
         val awaitTestModeTermination = requestClose.awaitTestModeTermination
@@ -301,7 +400,7 @@ private suspend fun runDesktopComposeWindowEventLoop(
             }
         }
         DesktopMainWindow(
-            preferences = owner.ingress.uiDependencies.appPreferences,
+            geometryStore = bootstrap.geometryStore,
             onCloseRequest = {
                 applicationScope.launch {
                     requestClose { exitApplication() }
@@ -312,30 +411,54 @@ private suspend fun runDesktopComposeWindowEventLoop(
                 androidx.compose.ui.graphics.painter.BitmapPainter(loadDesktopAppIcon())
             },
         ) {
-            BindDesktopWindowLifecycle(window, owner.appLock, owner.windowPrivacyController)
-            Box(modifier = Modifier.fillMaxSize()) {
-                mihon.desktop.test.ProvideDesktopSyncUiObservation(window) {
-                    OwnerUiDependencies(owner.ingress) {
-                        CompositionLocalProvider(
-                            mihon.desktop.ui.reader.LocalReaderNativeWindow provides window,
-                            mihon.desktop.sync.LocalDesktopRecoveryRestart provides { root ->
-                                requestClose.stopForRecovery()
-                                val launched = mihon.desktop.platform.DesktopRecoveryLauncher.launch(root)
-                                if (launched) requestClose { exitApplication() }
-                                launched
-                            },
-                        ) {
-                            DesktopTheme {
-                                DesktopProtectedRoot(owner.appLock) {
-                                    Navigator(HomeScreen()) { navigator ->
-                                        DesktopLocalizedNavigatorContent(owner.ingress.uiDependencies.localeAdapter, navigator)
+            // The owner state is collected here and not in the application scope: the
+            // window content is composed several hundred milliseconds after the
+            // application block, and the dependency graph is usually ready in between.
+            // Collecting it in the outer scope would keep the placeholder state that
+            // was current at application start and force an extra frame before the
+            // real user interface appears.
+            val bootstrapState by bootstrap.state.collectAsState()
+            // The first composition of the window content and the first frame that is
+            // actually drawn are two different points in time. Both are recorded so the
+            // graphics pipeline start-up can be told apart from the composition.
+            androidx.compose.runtime.remember {
+                mihon.desktop.startup.DesktopStartupTrace.mark("content-composition")
+            }
+            LaunchedEffect(Unit) {
+                androidx.compose.runtime.withFrameNanos { }
+                mihon.desktop.startup.DesktopStartupTrace.mark("first-frame")
+                mihon.desktop.startup.DesktopStartupTrace
+                    .writeTo(mihon.desktop.platform.DesktopPlatformPaths.current().logsDir)
+            }
+            mihon.desktop.startup.DesktopOwnerBootstrapContent(bootstrapState) { owner ->
+                BindDesktopWindowLifecycle(window, owner.appLock, owner.windowPrivacyController)
+                Box(modifier = Modifier.fillMaxSize()) {
+                    mihon.desktop.test.ProvideDesktopSyncUiObservation(window) {
+                        OwnerUiDependencies(owner.ingress) {
+                            CompositionLocalProvider(
+                                mihon.desktop.ui.reader.LocalReaderNativeWindow provides window,
+                                mihon.desktop.sync.LocalDesktopRecoveryRestart provides { root ->
+                                    requestClose.stopForRecovery()
+                                    val launched = mihon.desktop.platform.DesktopRecoveryLauncher.launch(root)
+                                    if (launched) requestClose { exitApplication() }
+                                    launched
+                                },
+                            ) {
+                                DesktopTheme {
+                                    DesktopProtectedRoot(owner.appLock) {
+                                        Navigator(HomeScreen()) { navigator ->
+                                            DesktopLocalizedNavigatorContent(
+                                                owner.ingress.uiDependencies.localeAdapter,
+                                                navigator,
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
+                    DesktopPigEasterEggOverlay(PigEasterEggController.Default)
                 }
-                DesktopPigEasterEggOverlay(PigEasterEggController.Default)
             }
         }
     }
@@ -458,19 +581,23 @@ internal fun bootstrapDesktopRuntime(
 
 internal suspend fun runProductionOwnerLifecycle(
     testArgs: TestArguments,
-    runtime: DesktopAppRuntime,
-    appLock: DesktopAppLock,
-    testState: TestState,
+    bootstrap: mihon.desktop.startup.DesktopOwnerBootstrapController,
     startTestMode: () -> Unit,
     awaitTestModeTermination: () -> Unit,
     stopTestMode: () -> Unit,
     runApplication: suspend (closeAndJoin: suspend () -> Unit) -> Unit,
 ) {
-    val session = DesktopRuntimeBootstrapSession(runtime, DesktopAppLockTestStateBinding(appLock, testState))
     var failure: Throwable? = null
     var testModeStarted = false
     try {
-        runtime.start()
+        if (testArgs.testMode || testArgs.headless) {
+            // Without a window there is nothing to show while the owner is prepared,
+            // so the bootstrap has to finish before the run continues.
+            bootstrap.awaitOwner()
+        }
+        // The owner preparation starts the runtime; a runtime that was prepared
+        // elsewhere still has to be started by the lifecycle.
+        bootstrap.readyRuntime()?.start()
         if (testArgs.testMode) {
             testModeStarted = true
             startTestMode()
@@ -478,7 +605,9 @@ internal suspend fun runProductionOwnerLifecycle(
         if (testArgs.headless) {
             if (testArgs.testMode) awaitTestModeTermination()
         } else {
-            runApplication(session::closeAndJoin)
+            runApplication {
+                bootstrap.closeAndJoin(null)
+            }
         }
     } catch (lifecycleFailure: Throwable) {
         failure = lifecycleFailure
@@ -491,8 +620,21 @@ internal suspend fun runProductionOwnerLifecycle(
                 failure = preserveLifecycleFailure(failure, cleanupFailure)
             }
         }
+        // A dependency graph failure has to reach the caller even when the window was
+        // closed before the graph finished.
+        withTimeoutOrNull(1_000) {
+            runCatching { bootstrap.awaitOwner() }
+        }
+        val bootstrapFailure = bootstrap.failure()
+        if (bootstrapFailure != null) {
+            // The startup failure handler decides whether the failure is raised again.
+            withTimeoutOrNull(2_000) { bootstrap.awaitFailureDecision() }
+            if (bootstrap.failureEscalates()) {
+                failure = preserveLifecycleFailure(failure, bootstrapFailure)
+            }
+        }
         try {
-            session.closeAndJoin()
+            bootstrap.closeAndJoin(failure)
         } catch (cleanupFailure: Throwable) {
             failure = preserveLifecycleFailure(failure, cleanupFailure)
         }
@@ -578,7 +720,15 @@ internal class DesktopAppLockTestStateBinding(
 
     init {
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            appLock.state.collect { state -> testState.setAppLocked(state.requiresUnlock) }
+            try {
+                appLock.state.collect { state -> testState.setAppLocked(state.requiresUnlock) }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // The binding only mirrors the lock state into the test surface. An
+                // unavailable state must never take the application down, and it must
+                // never escape as an uncaught exception of the application scope.
+            }
         }
     }
 

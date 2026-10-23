@@ -88,6 +88,15 @@ import uy.kohesive.injekt.api.get
 class SecuritySettingsWiringTest {
     private val preferenceNodes = mutableListOf<Preferences>()
 
+    /** Builds a bootstrap that already carries the prepared runtime and application lock. */
+    private fun bootstrapFor(
+        runtime: mihon.desktop.DesktopAppRuntime,
+        appLock: mihon.desktop.security.DesktopAppLock,
+    ): mihon.desktop.startup.DesktopOwnerBootstrapController =
+        mihon.desktop.startup.DesktopOwnerBootstrapController(applicationState).also {
+            it.publishRuntime(runtime, appLock)
+        }
+
     @AfterEach
     fun cleanUp() {
         applicationState.reset()
@@ -414,9 +423,7 @@ class SecuritySettingsWiringTest {
             val closing = async(Dispatchers.Default) {
                 runProductionOwnerLifecycle(
                     testArgs = TestArguments(testMode = headless, headless = headless),
-                    runtime = runtime,
-                    appLock = appLock,
-                    testState = applicationState,
+                    bootstrap = bootstrapFor(runtime, appLock),
                     startTestMode = {},
                     awaitTestModeTermination = {
                         terminationReached.complete(Unit)
@@ -484,9 +491,10 @@ class SecuritySettingsWiringTest {
                 runBlocking {
                     runProductionOwnerLifecycle(
                         testArgs = TestArguments(testMode = false, headless = false),
-                        runtime = DesktopAppRuntime(service, service, service, startupCleanup = {}, scope = parentScope, updateScreenModel = model),
-                        appLock = appLock,
-                        testState = applicationState,
+                        bootstrap = bootstrapFor(
+                            DesktopAppRuntime(service, service, service, startupCleanup = {}, scope = parentScope, updateScreenModel = model),
+                            appLock,
+                        ),
                         startTestMode = {},
                         awaitTestModeTermination = {},
                         stopTestMode = {},
@@ -531,9 +539,7 @@ class SecuritySettingsWiringTest {
             val thrown = runCatching {
                 runProductionOwnerLifecycle(
                     TestArguments(testMode = testMode, headless = stage == "test-await"),
-                    runtime,
-                    appLock,
-                    applicationState,
+                    bootstrapFor(runtime, appLock),
                     startTestMode = { if (stage == "test-start") throw primary },
                     awaitTestModeTermination = { if (stage == "test-await") throw primary },
                     stopTestMode = { stopCalls++ },
@@ -563,9 +569,7 @@ class SecuritySettingsWiringTest {
             val thrown = runCatching {
                 runProductionOwnerLifecycle(
                     TestArguments(testMode = stage == "test-stop", headless = stage == "test-stop"),
-                    runtime,
-                    appLock,
-                    applicationState,
+                    bootstrapFor(runtime, appLock),
                     startTestMode = {},
                     awaitTestModeTermination = {},
                     stopTestMode = { if (stage == "test-stop") throw stageFailure },

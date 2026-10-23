@@ -27,8 +27,9 @@ class DesktopSourceManager(
     private val additionalCatalogueSources: () -> List<CatalogueSource> = { emptyList() },
 ) : SourceManager {
 
-    private val _isInitialized = MutableStateFlow(true)
-    override val isInitialized: StateFlow<Boolean> = _isInitialized.asStateFlow()
+    // The extension sources arrive in the background, so the manager reports the same
+    // initialization state as the extension manager that backs it.
+    override val isInitialized: StateFlow<Boolean> = extensionManager.isInitialized
 
     override val catalogueSources: Flow<List<CatalogueSource>> = extensionManager.installedExtensions.map { extensions ->
         canonicalCatalogueSources(extensions)

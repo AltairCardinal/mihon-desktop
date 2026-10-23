@@ -15,7 +15,7 @@ import mihon.desktop.settings.DesktopAppPreferences
 
 @Composable
 internal fun ApplicationScope.DesktopMainWindow(
-    preferences: DesktopAppPreferences,
+    geometryStore: DesktopWindowGeometryStore?,
     onCloseRequest: () -> Unit,
     title: String,
     icon: Painter? = null,
@@ -23,9 +23,11 @@ internal fun ApplicationScope.DesktopMainWindow(
     windowTransitions: DesktopWindowTransitions = WindowsWindowTransitions,
     content: @Composable FrameWindowScope.() -> Unit,
 ) {
-    val geometry = remember(preferences, windowTransitions) {
-        if (Platform.isWindows()) {
-            DesktopWindowGeometryController(preferences, transitions = windowTransitions)
+    // The window is created before the dependency graph is ready, so the persisted
+    // geometry is applied through a store that does not need the container.
+    val geometry = remember(geometryStore, windowTransitions) {
+        if (geometryStore != null && Platform.isWindows()) {
+            DesktopWindowGeometryController(geometryStore, transitions = windowTransitions)
         } else {
             null
         }

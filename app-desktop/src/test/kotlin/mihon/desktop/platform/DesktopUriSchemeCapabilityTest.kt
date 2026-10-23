@@ -106,12 +106,14 @@ class DesktopUriSchemeCapabilityTest {
                         ownerFactories++
                         DesktopOwnerIngressDependencies(runtime, DesktopUiDependencies.fromInjekt())
                     },
-                    runWindowEventLoop = { _, requestClose ->
+                    runWindowEventLoop = { bootstrap, requestClose ->
                         windows++
+                        // The window is created before the dependency graph is ready;
+                        // the user interface is rendered once the owner is prepared.
+                        bootstrap.awaitOwner()
                         runtimeWasRunning = runtime.isRunning
                         requestClose()
-                    },
-                ),
+                    },                ),
             )
             assertEquals(1, ownerRegistrar.calls)
             assertEquals(1, ownerFactories)
@@ -177,8 +179,10 @@ class DesktopUriSchemeCapabilityTest {
                 ownerIngressDependencies = {
                     DesktopOwnerIngressDependencies(runtime, DesktopUiDependencies.fromInjekt())
                 },
-                runWindowEventLoop = { _, requestClose ->
+                runWindowEventLoop = { bootstrap, requestClose ->
                     windows++
+                    // The URI scheme registration runs next to the window creation.
+                    bootstrap.awaitOwner()
                     requestClose()
                 },
             )

@@ -1,6 +1,21 @@
+import java.util.Properties
+
 plugins {
     id("mihon.benchmark")
 }
+
+/**
+ * The benchmark build of this fork.
+ *
+ * The upstream benchmark measured `eu.kanade.tachiyomi.benchmark`, which is not an
+ * application id of this fork, so the measurement never targeted the shipped app.
+ * The identity is derived from the same release properties the app uses so the two
+ * cannot drift apart.
+ */
+val releaseProperties = Properties().apply {
+    rootProject.file("gradle/android-release.properties").inputStream().use(::load)
+}
+val benchmarkTargetPackage = "${releaseProperties.getProperty("applicationId")}.benchmark"
 
 android {
     namespace = "tachiyomi.macrobenchmark"
@@ -8,6 +23,7 @@ android {
     defaultConfig {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         testInstrumentationRunnerArguments["androidx.benchmark.enabledRules"] = "BaselineProfile"
+        testInstrumentationRunnerArguments["mihon.benchmark.targetPackage"] = benchmarkTargetPackage
     }
 
     buildTypes {

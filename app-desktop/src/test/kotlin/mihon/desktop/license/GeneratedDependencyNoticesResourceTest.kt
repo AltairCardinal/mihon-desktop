@@ -2,6 +2,7 @@ package mihon.desktop.license
 
 import mihon.domain.license.model.LicenseNoticeResult
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -14,7 +15,16 @@ class GeneratedDependencyNoticesResourceTest {
         val notices = assertInstanceOf(LicenseNoticeResult.Success::class.java, result).notices
         val names = notices.map { it.name }
 
-        assertEquals(204, notices.size)
+        // The packaged metadata lists the dependencies that are really shipped. The full
+        // Kotlin reflection implementation is not one of them any more: it reached the
+        // runtime class path only through the Ktor server stack and is kept out, because
+        // the navigation library would then load several hundred reflection classes while
+        // the first user interface is composed.
+        assertEquals(203, notices.size)
+        assertFalse(
+            names.any { "kotlin-reflect" in it },
+            "the full reflection implementation must not be shipped: $names",
+        )
         assertEquals(
             names.sortedWith(compareBy<String> { it.lowercase() }.thenBy { it }),
             names,

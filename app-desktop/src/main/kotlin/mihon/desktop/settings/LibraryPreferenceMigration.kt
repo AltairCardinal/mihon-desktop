@@ -26,11 +26,24 @@ class LibraryPreferenceMigration(
 ) {
 
     @Synchronized
-    fun migrate(categoryIds: Set<Long>? = validCategoryIds?.invoke()): Boolean {
+    fun migrate(categoryIds: Set<Long>? = validCategoryIds?.invoke()): Boolean = migrateInternal { categoryIds }
+
+    /**
+     * Runs the migration and only resolves the valid category identifiers when a
+     * migration is actually required.
+     *
+     * A profile that was migrated before answers from the marker alone, so the
+     * category query would be paid on every start without ever being used.
+     */
+    @Synchronized
+    fun migrate(resolveCategoryIds: () -> Set<Long>?): Boolean = migrateInternal(resolveCategoryIds)
+
+    private fun migrateInternal(resolveCategoryIds: () -> Set<Long>?): Boolean {
         val marker = store.getInt(MARKER_KEY, 0)
         val journal = store.getString(RECOVERY_KEY, "")
         if (journal.get().isNotEmpty()) {
             try {
+                val categoryIds = resolveCategoryIds()
                 journal.set(journal.get())
                 restore(Json.decodeFromString<Map<String, String?>>(journal.get()), categoryIds)
                 journal.delete()
@@ -40,6 +53,7 @@ class LibraryPreferenceMigration(
         }
         if (marker.get() >= VERSION) return false
 
+        val categoryIds = resolveCategoryIds()
         // Resolve the lazy desktop/app bridge before freezing the original authority.
         val legacy = legacyUpdatePreferences?.invoke()
         legacyColumns()

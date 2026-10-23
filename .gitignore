@@ -22,6 +22,7 @@ local.properties
 
 # Temporary scratch and experiment files
 pig-vector/
+.worktrees/
 scripts/*.png
 scripts/*.gif
 scripts/*.webp

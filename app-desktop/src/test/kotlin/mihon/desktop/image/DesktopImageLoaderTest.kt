@@ -6,15 +6,20 @@ import coil3.request.CachePolicy
 import coil3.request.ErrorResult
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
+import okhttp3.Cache
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okio.Buffer
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
+import java.nio.file.Files
 import java.util.Base64
 import java.util.concurrent.TimeUnit
 
@@ -115,6 +120,124 @@ class DesktopImageLoaderTest {
                 imageLoader.shutdown()
             }
         }
+    }
+
+    @Test
+    fun `a cover is served from the image cache without a second network request`() = runBlocking {
+        val directory = Files.createTempDirectory("mihon-image-cache").toFile()
+        MockWebServer().also { it.start() }.use { server ->
+            server.enqueue(
+                MockResponse.Builder()
+                    .setHeader("Content-Type", "image/png")
+                    .body(Buffer().write(PNG))
+                    .build(),
+            )
+            val imageLoader = createDesktopImageLoader(
+                context = PlatformContext.INSTANCE,
+                defaultCallFactory = OkHttpClient(),
+                sourceCallFactory = { OkHttpClient() },
+                sourceHeaders = { null },
+                imageCache = DesktopImageCache(directory),
+            )
+
+            try {
+                val request = ImageRequest.Builder(PlatformContext.INSTANCE)
+                    .memoryCachePolicy(CachePolicy.DISABLED)
+                    .data(DesktopSourceImage(server.url("/cover.png").toString(), sourceId = 42L))
+                    .diskCacheKey("manga-cover:42:0:cover")
+                    .build()
+
+                val first = imageLoader.execute(request)
+                assertEquals(DataSource.NETWORK, assertInstanceOf(SuccessResult::class.java, first).dataSource)
+
+                // The cover is read from the image cache, which stores every cover under
+                // its own key. That keeps the reads of the grid parallel instead of
+                // queueing them behind the single lock of the network cache.
+                // The write into the cache happens in the background, so the read is
+                // retried until the cache holds the cover.
+                val second = withTimeout(10_000) {
+                    var result = imageLoader.execute(request)
+                    while (assertInstanceOf(SuccessResult::class.java, result).dataSource != DataSource.DISK) {
+                        delay(50)
+                        result = imageLoader.execute(request)
+                    }
+                    result
+                }
+                assertEquals(DataSource.DISK, assertInstanceOf(SuccessResult::class.java, second).dataSource)
+                assertEquals(
+                    1,
+                    server.requestCount,
+                    "the cover must not be requested from the network twice",
+                )
+            } finally {
+                imageLoader.shutdown()
+                directory.deleteRecursively()
+            }
+        }
+    }
+
+    @Test
+    fun `a cover served from the http cache is still kept in the image cache`() = runBlocking {
+        val directory = Files.createTempDirectory("mihon-image-cache").toFile()
+        val httpCacheDirectory = Files.createTempDirectory("mihon-http-cache").toFile()
+        MockWebServer().also { it.start() }.use { server ->
+            server.enqueue(
+                MockResponse.Builder()
+                    .setHeader("Content-Type", "image/png")
+                    .setHeader("Cache-Control", "max-age=3600")
+                    .body(Buffer().write(PNG))
+                    .build(),
+            )
+            val client = OkHttpClient.Builder()
+                .cache(Cache(httpCacheDirectory, 16L * 1024 * 1024))
+                .build()
+            val imageLoader = createDesktopImageLoader(
+                context = PlatformContext.INSTANCE,
+                defaultCallFactory = client,
+                sourceCallFactory = { client },
+                sourceHeaders = { null },
+                imageCache = DesktopImageCache(directory),
+            )
+
+            try {
+                val request = ImageRequest.Builder(PlatformContext.INSTANCE)
+                    .memoryCachePolicy(CachePolicy.DISABLED)
+                    .data(DesktopSourceImage(server.url("/cover.png").toString(), sourceId = 42L))
+                    .diskCacheKey("manga-cover:42:0:cover")
+                    .build()
+
+                imageLoader.execute(request)
+                // The second read is served by the image cache. The covers never reach
+                // the HTTP cache, whose index is guarded by a single lock: that is what
+                // made the grid fill in one cover at a time.
+                val second = imageLoader.execute(request)
+                assertEquals(DataSource.DISK, assertInstanceOf(SuccessResult::class.java, second).dataSource)
+                assertEquals(1, server.requestCount, "the cover must not be requested from the network twice")
+
+                val third = withTimeout(10_000) {
+                    var result = imageLoader.execute(request)
+                    while (assertInstanceOf(SuccessResult::class.java, result).dataSource != DataSource.DISK) {
+                        delay(50)
+                        result = imageLoader.execute(request)
+                    }
+                    result
+                }
+                assertEquals(DataSource.DISK, assertInstanceOf(SuccessResult::class.java, third).dataSource)
+            } finally {
+                imageLoader.shutdown()
+                directory.deleteRecursively()
+                httpCacheDirectory.deleteRecursively()
+            }
+        }
+    }
+
+    @Test
+    fun `the image cache lives next to the network cache in the application directory`() {
+        val cache = requireNotNull(desktopImageCache())
+
+        assertEquals("image_cache", cache.directory().name)
+        val networkCache = mihon.desktop.platform.DesktopPlatformPaths.current(createDirectories = false).networkCacheDir
+        assertEquals(networkCache.parentFile, cache.directory().parentFile)
     }
 
     private fun routedClient(route: String): OkHttpClient = OkHttpClient.Builder()

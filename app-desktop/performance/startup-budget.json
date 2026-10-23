@@ -1,0 +1,70 @@
+{
+  "description": "Windows desktop cold start budget. The reference values are the medians measured on the reference machine with the interleaved A/B harness (scripts/compare-desktop-startup.ps1). The tolerance absorbs the difference between the reference machine and noisy CI runners.",
+  "referenceMachine": "windows-2022-equivalent / 32 logical processors / warm profile",
+  "runs": 5,
+  "tolerance": 1.5,
+  "firstFrameMs": 4600,
+  "usableInterfaceMs": 3700,
+  "history": [
+    {
+      "version": "0.11.20.43.04688a4",
+      "firstFrameMs": 4600,
+      "usableInterfaceMs": 3700,
+      "note": "The first start on a new installation creates the database, and the generated schema runs every statement as a transaction of its own, so each of them flushed the rollback journal to the disk. The schema is now created with a single commit, the same way the migrations already were, and a database whose creation failed is removed instead of being taken for an existing one. Interleaved A/B of the first start with an empty profile, 0.11.20.42 against 0.11.20.43: the real user interface is ready at 1397 ms instead of 4675 ms (-3278 ms, -70.1%), and the schema creation takes 69 to 75 ms instead of 2417 ms. A start with an existing database is not affected."
+    },
+    {
+      "version": "0.11.20.42.04688a4",
+      "firstFrameMs": 4600,
+      "usableInterfaceMs": 3700,
+      "note": "Class-data-sharing archive of the start up classes: the runtime image carries an archive with the classes the first user interface loads, produced by the build from the class list of the start up warm up, so the JVM does not parse and verify them on every start. The archive is placed where the virtual machine looks for its default archive, so the launcher needs no extra option. Interleaved A/B against 0.11.20.38, which has the same production code: first frame -336 ms (-13.1%), usable interface -244 ms (-11.9%), and the window the user actually sees -339 ms (-12.9%). A second round on a more loaded machine gives -661 ms (-14.5%) for the window, because class loading is what suffers under load. The archive costs 10.1 MB in the distributable."
+    },
+    {
+      "version": "0.11.20.38.04688a4",
+      "firstFrameMs": 4600,
+      "usableInterfaceMs": 3700,
+      "note": "The full Kotlin reflection implementation is gone from the runtime class path: it only reached the desktop runtime through the Ktor server stack, which in turn is used by the test mode server alone and does not need it. Without it the navigation library answers the qualified name of the screen model from the class reference instead of deserialising the class metadata, so several hundred reflection classes are never loaded. Interleaved A/B against 0.11.20.36: first frame -216 ms (-4.6%), usable interface -50 ms (-1.3%), and the window the user actually sees -238 ms (-5.0%). The packaged archive is 2.8 MB smaller and the packaged dependency notices list one dependency less."
+    },
+    {
+      "version": "0.11.20.36.04688a4",
+      "firstFrameMs": 4600,
+      "usableInterfaceMs": 3700,
+      "note": "Prefetch of the covers below the fold: the grid now loads the covers of the next screens ahead of time, following the current category and the current order, with the very same request the grid uses so the prefetched covers are reused. Interleaved A/B against 0.11.20.33: first frame +22 ms and usable interface +39 ms, both inside the noise of the run. With a cold cover cache the grid fill rate is point by point identical at every offset after the first frame, while the cover cache holds 69 covers instead of 42, so the covers of the lower screens are already local when the user scrolls to them."
+    },
+    {
+      "version": "0.11.20.33.04688a4",
+      "firstFrameMs": 4600,
+      "usableInterfaceMs": 3700,
+      "note": "Library covers in the application cache: the covers were downloaded again on every start and the reads were serialised behind the single lock of the HTTP cache, so the grid filled in one cover at a time. The covers now live in an application cache that stores every cover in a file of its own, so the reads run in parallel and a cover is only ever downloaded once. Interleaved A/B against 0.11.20.18: the usable interface is unchanged (-23 ms, noise) and the first frame already carries the covers that were seen before (grid fill 0.53 instead of 0.19 at +100 ms)."
+    },
+    {
+      "version": "0.11.20.16.04688a4",
+      "firstFrameMs": 4600,
+      "usableInterfaceMs": 3700,
+      "note": "Reflection bootstrap and earlier class warm up: the navigation library asks a class for its qualified name while the first user interface is composed, which with the full Kotlin reflection implementation on the class path deserialises the class metadata and loads 841 reflection classes on the composing thread. The warm up now resolves that name on its own background thread and starts at the process entry instead of after the broker election. Interleaved A/B against 0.11.20.15: usable interface -324 ms (-12.2%), and the bimodal result of the previous version disappears because the composition no longer races the blocking first paint. The classes loaded while the real user interface is composed drop from 3360 to 502."
+    },
+    {
+      "version": "0.11.20.15.04688a4",
+      "firstFrameMs": 4600,
+      "usableInterfaceMs": 3700,
+      "note": "Lazy JavaScript sandbox: the Rhino engine had no consumer on the start-up path but was built on every launch. Registered lazily now, which shortens the dependency graph by about 75 ms and loads 62 fewer classes. Interleaved A/B against the pre-optimisation baseline 0.11.20.7 on a heavily loaded machine: first frame -23.9%, usable interface -39.1%, 6 runs per side. The reference values are the medians of that loaded run; a quiet machine measures faster."
+    },
+    {
+      "version": "0.11.20.14.04688a4",
+      "firstFrameMs": 2700,
+      "usableInterfaceMs": 2650,
+      "note": "Startup class warm up: the classes the first real user interface needs are loaded on a lowest priority daemon thread while the dependency graph is built, so the first frame no longer reads them from the packaged jars. Interleaved A/B against 0.11.20.13: usable interface -248 ms (-8.5%)."
+    },
+    {
+      "version": "0.11.20.13.04688a4",
+      "firstFrameMs": 2350,
+      "usableInterfaceMs": 2915,
+      "note": "Shell-first first screen: the owner state is collected inside the window content, so a dependency graph that is ready before the first composition renders the real interface as the first frame instead of a placeholder that is replaced by a second frame."
+    },
+    {
+      "version": "0.11.20.7.04688a4",
+      "firstFrameMs": 4376,
+      "usableInterfaceMs": 4376,
+      "note": "Pre-optimization baseline: the dependency graph was built completely before the window was created, so the first frame already carried the real interface."
+    }
+  ]
+}

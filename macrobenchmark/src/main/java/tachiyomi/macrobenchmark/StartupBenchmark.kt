@@ -75,7 +75,7 @@ abstract class AbstractStartupBenchmark(private val startupMode: StartupMode) {
     fun startupFullCompilation() = startup(CompilationMode.Full())
 
     private fun startup(compilationMode: CompilationMode) = benchmarkRule.measureRepeated(
-        packageName = "eu.kanade.tachiyomi.benchmark",
+        packageName = BenchmarkTarget.packageName,
         metrics = listOf(StartupTimingMetric()),
         compilationMode = compilationMode,
         iterations = 10,
@@ -86,4 +86,17 @@ abstract class AbstractStartupBenchmark(private val startupMode: StartupMode) {
     ) {
         startActivityAndWait()
     }
+}
+
+/**
+ * The application id of the benchmark build that is measured.
+ *
+ * The value is provided by the build (`mihon.benchmark.targetPackage`) so the
+ * measurement always targets the identity this fork actually ships.
+ */
+object BenchmarkTarget {
+    val packageName: String =
+        androidx.test.platform.app.InstrumentationRegistry.getArguments()
+            .getString("mihon.benchmark.targetPackage")
+            ?: "app.mihon.desktop.fork.benchmark"
 }

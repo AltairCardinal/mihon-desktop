@@ -81,13 +81,32 @@ internal fun desktopWindowWorkAreas(): List<Rectangle> {
     }
 }
 
+/**
+ * Reads and writes the persisted window geometry.
+ *
+ * The window is created before the dependency graph is ready, so the geometry has to
+ * be readable without the application preferences being registered in the container.
+ */
+internal interface DesktopWindowGeometryStore {
+    fun read(): String
+    fun write(value: String): Boolean
+}
+
+/** Geometry store backed by the registered application preferences. */
+internal fun DesktopAppPreferences.windowGeometryStore(): DesktopWindowGeometryStore =
+    object : DesktopWindowGeometryStore {
+        override fun read(): String = windowGeometry.get()
+
+        override fun write(value: String): Boolean = saveDesktopPreference(windowGeometry, value)
+    }
+
 internal class DesktopWindowGeometryController(
-    private val preferences: DesktopAppPreferences,
+    private val store: DesktopWindowGeometryStore,
     workAreas: List<Rectangle> = desktopWindowWorkAreas(),
     private val transitions: DesktopWindowTransitions = WindowsWindowTransitions,
 ) {
     private var geometry = restoreDesktopWindowGeometry(
-        runCatching { preferences.windowGeometry.get() }.getOrDefault(""),
+        runCatching { store.read() }.getOrDefault(""),
         workAreas,
     )
     private var boundWindow: ComposeWindow? = null
@@ -186,7 +205,7 @@ internal class DesktopWindowGeometryController(
     fun save(): Boolean {
         capture()
         val snapshot = geometry ?: return true
-        val saved = saveDesktopPreference(preferences.windowGeometry, windowGeometryJson.encodeToString(snapshot))
+        val saved = store.write(windowGeometryJson.encodeToString(snapshot))
         if (!saved) System.err.println("Desktop window geometry could not be saved")
         return saved
     }

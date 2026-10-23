@@ -134,7 +134,9 @@ import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabOptions
+import coil3.SingletonImageLoader
 import coil3.compose.AsyncImage
+import coil3.compose.LocalPlatformContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.LibrarySearchFilter
@@ -658,6 +660,23 @@ internal fun LibraryGrid(
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val columns = if (maxWidth < maxHeight) portraitColumns else landscapeColumns
+        // The covers of the items below the visible ones are loaded ahead of time, so
+        // scrolling does not fill the grid in one cover at a time. The prefetch follows
+        // the items of the screen: the current category and the current order.
+        val platformContext = LocalPlatformContext.current
+        val imageLoader = remember(platformContext) { SingletonImageLoader.get(platformContext) }
+        // The index of the last visible item moves with every scroll, so the window of the
+        // prefetch follows the grid. The number of the visible items would not move.
+        val lastVisibleIndex = scrollState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+        LaunchedEffect(items.size, lastVisibleIndex) {
+            if (lastVisibleIndex < 0) return@LaunchedEffect
+            MangaCoverPrefetcher.prefetch(
+                items = items.drop(lastVisibleIndex + 1),
+                resolveCoverModel = resolveCoverModel,
+                imageLoader = imageLoader,
+                platformContext = platformContext,
+            )
+        }
         LazyVerticalGrid(
             state = scrollState,
             columns = columns.takeIf { it > 0 }?.let(GridCells::Fixed)

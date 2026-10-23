@@ -4,6 +4,7 @@ import mihon.domain.extension.suggestion.ExtensionInventory
 import eu.kanade.tachiyomi.source.Source
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.last
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.launch
 import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionArtifact
 import mihon.domain.extension.service.ExtensionInstallCoordinator
@@ -36,6 +38,7 @@ class DesktopExtensionManager(
     private val runtimeLock = Any()
     private val lifecycleGate = DesktopExtensionLifecycleGate()
     private val installScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val loadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val installPort = DesktopExtensionInstallPort(
         extensionsDirectory = loader.extensionsDirectory,
         artifactProvider = artifactProvider,
@@ -67,6 +70,37 @@ class DesktopExtensionManager(
             closeLoaders(previous)
             publishInstalledExtensions()
         }
+    }
+
+    private val mutableInitialized = MutableStateFlow(false)
+
+    /** Whether the extensions have been loaded at least once. */
+    val isInitialized: StateFlow<Boolean> = mutableInitialized.asStateFlow()
+
+    @Volatile
+    private var loadJob: Job? = null
+
+    /**
+     * Loads every installed extension in the background.
+     *
+     * Reading the extension jars and instantiating their sources costs a noticeable
+     * part of the startup, so the application starts with the window and lets the
+     * extensions arrive while the user interface is already usable.
+     */
+    fun loadAllAsync() {
+        synchronized(runtimeLock) {
+            if (loadJob?.isActive == true) return
+            loadJob = loadScope.launch {
+                runCatching { loadAll() }
+                mutableInitialized.value = true
+            }
+        }
+    }
+
+    /** Suspends until the background extension load has finished. */
+    suspend fun awaitInitialized() {
+        loadJob?.join()
+        mutableInitialized.value = true
     }
 
     private var runtimeRevision = 0L
@@ -236,7 +270,10 @@ class DesktopExtensionManager(
     }
 
     override fun close() {
-        lifecycleGate.closeAndAwait { installScope.cancel() }
+        lifecycleGate.closeAndAwait {
+            installScope.cancel()
+            loadScope.cancel()
+        }
         lifecycleGate.withShutdownOperation {
             val previous = synchronized(runtimeLock) {
                 loadedExtensions.toList().also {

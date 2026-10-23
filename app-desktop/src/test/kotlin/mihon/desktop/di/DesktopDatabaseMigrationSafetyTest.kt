@@ -36,6 +36,47 @@ class DesktopDatabaseMigrationSafetyTest {
     }
 
     @Test
+    fun `a failed schema creation rolls back the tables it already created`() {
+        val database = File(directory, "mihon.db")
+        val driver = JdbcSqliteDriver("jdbc:sqlite:${database.absolutePath}")
+
+        shouldThrow<IllegalStateException> {
+            createSchemaAtomically(driver) { created ->
+                created.execute(null, "CREATE TABLE probe(id INTEGER)", 0)
+                error("the schema creation failed")
+            }
+        }
+
+        // The creation runs as one transaction, so the table is gone with it.
+        driver.executeQuery(
+            identifier = null,
+            sql = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'probe')",
+            parameters = 0,
+            mapper = { cursor ->
+                app.cash.sqldelight.db.QueryResult.Value(cursor.next().value && cursor.getLong(0) == 1L)
+            },
+            binders = null,
+        ).value shouldBe false
+        driver.close()
+    }
+
+    @Test
+    fun `a failed schema creation leaves no database behind`() {
+        val database = File(directory, "mihon.db")
+
+        shouldThrow<IllegalStateException> {
+            createDriver(database) { driver ->
+                driver.execute(null, "CREATE TABLE probe(id INTEGER)", 0)
+                error("the schema creation failed")
+            }
+        }
+
+        // A database with only half of its schema must not survive: the next start
+        // would take it for an existing database and migrate it.
+        database.exists() shouldBe false
+    }
+
+    @Test
     fun `existing current database re-enables foreign keys on every connection`() {
         val database = File(directory, "mihon.db")
         createDriver(database).close()

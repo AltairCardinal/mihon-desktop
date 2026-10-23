@@ -151,6 +151,27 @@ try {
         exit $LASTEXITCODE
     }
 
+    # The class-data-sharing archive removes the parsing and the verification of the
+    # start up classes from the start up. It is created from the class list of the
+    # start up warm up, so the build does not have to start the application for it.
+    # A missing archive only costs the start up time, it never breaks the application.
+    Write-Host ""
+    Write-Host "Creating the class-data-sharing archive of the application..."
+    $CdsArchiveInstaller = Join-Path $RepoRoot "scripts\install-desktop-cds-archive.ps1"
+    if (Test-Path $CdsArchiveInstaller) {
+        # The installer runs in its own process: it must never be able to stop the
+        # build, and the archive itself is the proof that it worked.
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $CdsArchiveInstaller `
+            -DistPath $BuildOutputApp -Verify
+        $CdsArchive = Join-Path $BuildOutputApp "runtime\bin\server\classes.jsa"
+        if (-not (Test-Path $CdsArchive)) {
+            Write-Host "The class-data-sharing archive was skipped; the application starts without it."
+        }
+        # The archive is optional, so its result must not become the exit code that the
+        # following steps read.
+        $LASTEXITCODE = 0
+    }
+
     if (-not (Test-Path $BuildOutputExe)) {
         throw "Canonical unpackaged executable was not created: $BuildOutputExe"
     }

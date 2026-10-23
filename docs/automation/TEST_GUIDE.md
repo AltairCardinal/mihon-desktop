@@ -346,6 +346,199 @@ Windows APPDATA/注册表，后者不保证在 macOS 发布运行时可用。
 - Reader API 必须验证 UI 状态与 `/test/reader/state` 一致。
 - Test Mode 自身不提供桌面截图 API，也不得通过其接口读取桌面像素。视觉问题可由 Compose 离屏测试覆盖；外部 Computer Use 与 Test Mode 的边界及工具预检遵循 [AGENTS.md](../../AGENTS.md)。
 
+## 启动性能预算
+
+桌面端冷启动已经是一个**可测量、可归因、可回归**的指标，而不是一次性的手工观察。
+
+### 埋点
+
+应用在启动路径上逐阶段打点，并落盘到 `%LOCALAPPDATA%\Mihon\logs\startup-trace.json`：
+进程起始时间、JVM 起始时间、已加载类数量，以及 `main-entry` → `di-*` → `owner-ready` →
+`first-frame` → `ui-ready` 的每个阶段边界。进程被强制结束也不会丢失已记录的阶段。
+
+两个对外口径：
+
+| 口径 | 含义 |
+|---|---|
+| `first-frame` | 进程启动 → 第一帧绘制完成（窗口出现，用户看到应用） |
+| `ui-ready` | 进程启动 → 真实界面渲染完成（用户可以开始操作） |
+
+> 两者必须分开看：改造后窗口先于依赖图出现，第一帧是中性占位。只报 `first-frame`
+> 会高估收益。
+>
+> `0.11.20.13` 起，「外壳先行」让依赖图就绪时**第一帧直接是真实界面**，占位页不再绘制，
+> 因此 `first-frame` 与 `ui-ready` 几乎同时出现；依赖图未就绪时仍回落到占位页。
+
+### 安卓侧对照测量
+
+桌面端的启动数字需要有一个同口径的安卓侧参照，否则「比安卓快慢」只是断言。
+
+```powershell
+# 在已启动的模拟器上测量同一应用的冷启动（每次测量前 am force-stop）
+powershell -File scripts/measure-android-startup.ps1 -Runs 10
+```
+
+- 用平台自带的 `am start -W`（启动请求 → 首帧绘制完成），与 macrobenchmark 的
+  `timeToInitialDisplay` 同源；
+- 结果写入 `app-desktop/performance/android-startup.json`；
+- **模拟器数字不能与真机/桌面端直接比较**：软件渲染的 x86_64 模拟器没有硬件 GPU，
+  也没有真机的 ART/JIT 预热与 baseline profile，它提供的是可复现的**口径**而不是绝对值；
+- 有 Play 商店镜像时，用仓库自带的 macrobenchmark 取真正的 `timeToInitialDisplay`：
+
+```bash
+./gradlew :macrobenchmark:connectedBenchmarkAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=tachiyomi.macrobenchmark.ColdStartupBenchmark#startupNoCompilation
+```
+
+> `macrobenchmark` 的目标包名由 `gradle/android-release.properties` 推导，必须指向
+> 本 fork 的 `app.mihon.desktop.fork.benchmark`；改动发布 identity 时要一并核对。
+
+### 剖析启动过程
+
+需要看清「时间花在等待还是计算」时，用 JFR 采样：
+
+```powershell
+# 用系统 JDK + 打包 classpath 启动应用并采集 JFR
+powershell -File scripts/profile-desktop-startup.ps1
+```
+
+> 打包用的 jlink 运行时**不含 `jdk.jfr` 模块**，JVM 会直接拒绝带
+> `-XX:StartFlightRecording` 启动（`Module jdk.jfr not found`），因此剖析必须用
+> 完整 JDK 跑同一份 classpath，只替换运行时镜像。
+
+JFR 的采样器**采不到阻塞在原生方法里的线程**。当怀疑「时间花在等待 GPU / DWM」
+时，改用线程栈采样：
+
+```powershell
+# 启动过程中定点抓 EDT 的栈
+powershell -File scripts/capture-desktop-thread-dump.ps1 -AtMs 600,900,1200,1500,1800,2100,2400
+```
+
+每个 dump 里 `AWT-EventQueue-0` 那一段就是 UI 线程当时在做什么。
+
+### 测量书库封面的出现过程
+
+启动后书库封面是一张张补齐还是一次出现，用「网格填充率」判定：
+
+```powershell
+# 首帧之后定点连拍，并计算网格区域的填充率
+powershell -File scripts/verify-desktop-cover-appearances.ps1 `
+  -DistPath "app-desktop/artifacts/windows/Mihon-Desktop-<版本>-unpacked" `
+  -OffsetsMs 100,300,600,1000,1600,2500
+```
+
+- 网格区域是纯色 → 填充率约 0.19（只有分类标签，没有封面）；
+- 网格被封面填满 → 填充率约 0.89。
+- 数字之间的一次跳变说明封面是**成批**到达的；逐级上升说明它们还在一张张补齐。
+
+封面本身由应用自己的缓存提供（`%LOCALAPPDATA%\Mihon\cache\image_cache`，
+每张封面一个独立文件），所以同一张封面只会被下载一次。
+
+### 测量封面的预取（折叠线以下的那一批）
+
+网格会提前把**当前分类、当前排序**下折叠线以后的封面加载好，滚动时不再一张张补齐。
+要同时看「首屏有没有被拖慢」和「下一屏有没有被提前装好」：
+
+```powershell
+powershell -Command "& 'scripts/verify-desktop-cover-prefetch.ps1' `
+  -DistPath 'app-desktop/artifacts/windows/Mihon-Desktop-<版本>-unpacked' `
+  -Label 'v36' -ClearImageCache -OffsetsMs 100,300,600,1000,1600,2500,4000"
+```
+
+- `-ClearImageCache`：把 `%LOCALAPPDATA%\Mihon\cache\image_cache` 移到一边，
+  从「本地没有封面」的状态开始测（目录会被留成 `image_cache.stashed-<时间戳>`）。
+- 每个时间点输出两行：**网格填充率**（首屏有没有被拖慢）与
+  **已缓存封面数**（折叠线以下的封面有没有被提前装好）。
+- 判读：填充率在两个版本之间逐点一致，而缓存数明显更高 ⇒ 预取生效且没有抢首屏的资源。
+
+> 数组参数要用 `-Command` 传，`-File` 方式在 PowerShell 5.1 下不能把逗号列表
+> 绑定到 `int[]`。
+
+### 测量与对比
+
+```powershell
+# 单次测量（读应用自报的阶段数据）
+powershell -File scripts/measure-desktop-startup.ps1 -DistPath "app-desktop/tmp/mihon-dist/main/app/Mihon Desktop" -Runs 5
+
+# 交替 A/B：基线与候选版本逐次交错运行，抵消磁盘与后台负载漂移
+powershell -File scripts/compare-desktop-startup.ps1 `
+  -PathA "基线目录" -PathB "候选目录" -Runs 6
+
+# 同一个打包产物的 classpath / JVM 参数变体对比（例如换渲染后端、去掉某个 jar）
+powershell -File scripts/compare-desktop-classpath.ps1 `
+  -DistPath "打包目录" -RemoveJar none -OptionB "-Dskiko.renderApi=SOFTWARE" -Runs 5
+
+# 阶段分解
+powershell -File scripts/show-startup-trace.ps1 -TracePaths "<trace.json>"
+```
+
+> 测量脚本会等 `first-frame` 与 `ui-ready` **两个标记都落盘**再读一次已稳定的
+> trace 文件。应用在每次打点时重写整个文件，边写边读会读到写了一半的快照，
+> 让同一个版本时而报 2300 ms、时而报 3100 ms。
+
+> **看「窗口可见」这一列**。A/B 报告里的 `window seen` 是操作系统层面
+> 「带标题的窗口真的可见」的时刻——这才是用户眼睛看到画面的时刻；
+> 应用自报的首帧只是它自己认为画完了。两者在今天的构建里相差几十毫秒，
+> 但在加载重的机器上能差出几百毫秒。
+
+> **传 JVM 参数要用环境变量**。`-XX:...` 开头参数经 `powershell.exe -File` 传时会被
+> 当成参数名（`Missing an argument for parameter`）。测量脚本支持
+> `MIHON_STARTUP_EXTRA_JAVA_OPTION`，A/B 脚本的 `-ExtraJavaOptionA/-ExtraJavaOptionB`
+> 也是走这条路。
+
+### 类数据共享（CDS）归档
+
+打包产物带一份归档，里面是首屏要加载的类，JVM 启动时不必再解析和校验它们。
+归档由构建按**启动预热清单**产出，放在运行时 `bin\server\classes.jsa`
+（JVM 默认归档的位置），因此启动器不需要任何额外参数。
+
+```powershell
+# 为一个打包产物产出归档（构建流程会自动做这一步）
+powershell -File scripts/install-desktop-cds-archive.ps1 `
+  -DistPath "app-desktop/artifacts/windows/Mihon-Desktop-<版本>-unpacked" -Verify
+
+# 同一产物、有无归档的交替对比（把归档移进移出）
+powershell -File scripts/compare-cds-base-archive.ps1 `
+  -DistPath "app-desktop/artifacts/windows/Mihon-Desktop-<版本>-unpacked" -Runs 8
+```
+
+> **归档必须由运行时自己的 JVM 产出**：它绑定在模块镜像与虚拟机上。
+> 把 JDK 的 `java.exe` 放进运行时镜像再 dump 才是对的；
+> 用完整 JDK 指向运行时（`-Djava.home`）产出的归档模块集不匹配，**运行时会静默拒绝**——
+> 而且用同一个 JVM 校验会显示 `Opened archive`，极易误判为成功。
+
+> **归档与安装路径无关**：实测把整份产物复制到别的目录再跑，归档依然有效
+> （窗口可见 4304 ms → 3582 ms）。所以把 zip 解压到任何位置都能吃到这个加速。
+
+> **MSI 不带归档**：`build-desktop.sh msi` 走另一套时序（`packageMsi` 从 jlink 镜像取运行时，
+> 而归档装在分发目录树的运行时里）。装出来的应用启动不会变快。
+
+> **残留实例会污染测量**：应用有单实例 broker，上一个实例还活着时，
+> 新启动只会把请求转发给它然后自己退出——看起来就是「没有启动标记」。
+> 测量脚本因此在每次启动前清理残留进程；自己手动测时也要先确认
+> `Get-Process -Name "Mihon Desktop"` 是空的。
+
+### 预算门禁
+
+`app-desktop/performance/startup-budget.json` 记录参考机器上的中位数与容差；
+`scripts/check-desktop-startup.ps1` 把测量结果与预算比对并产出报告：
+
+```powershell
+# 本地执行（超预算只报告，不失败）
+powershell -File scripts/check-desktop-startup.ps1 -Runs 5
+
+# 本地强制（超预算即失败，用于发布前）
+powershell -File scripts/check-desktop-startup.ps1 -Runs 5 -Enforce
+```
+
+CI（`.github/workflows/desktop-ci.yml`）会在每次桌面构建后采集并上传
+`app-desktop/tmp/startup-performance-report.json`，并把结果写进 job summary。
+CI 只报告不拦截：共享 runner 的噪声远大于参考机器，强制门禁放在本地与发布前。
+
+**更新预算的规矩**：启动路径发生有意改动后，重新用 `compare-desktop-startup.ps1`
+跑出与参考机器可比的中位数，写回预算文件并在 `history` 里追加一条记录
+（含版本号与改动说明）。不得为了让门禁变绿而直接放宽数值。
+
 ## 常用命令
 
 ```bash

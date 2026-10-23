@@ -170,7 +170,7 @@ class DesktopExternalActionBroker(
                 host = LOOPBACK_HOST,
                 port = ownerServer.localPort,
                 token = secureToken(),
-                ownerId = UUID.randomUUID().toString(),
+                ownerId = secureOwnerId(),
             )
             server = ownerServer
             endpoint = ownerEndpoint
@@ -299,6 +299,24 @@ class DesktopExternalActionBroker(
         val random = SecureRandom()
 
         fun secureToken(): String = ByteArray(32).also(random::nextBytes).joinToString("") { "%02x".format(it) }
+
+        /**
+         * Initializes the entropy provider ahead of time.
+         *
+         * The first use of the provider is expensive on Windows, and the instance
+         * broker needs it before the window can be created.
+         */
+        fun warmUp() {
+            random.nextBytes(ByteArray(1))
+        }
+
+        /**
+         * Owner identity for the state file.
+         *
+         * The identifier only has to be unique per owner, so it reuses the shared
+         * random source instead of starting a second entropy provider.
+         */
+        fun secureOwnerId(): String = ByteArray(16).also(random::nextBytes).joinToString("") { "%02x".format(it) }
 
         fun writeFrame(output: DataOutputStream, value: String) {
             val bytes = value.toByteArray(Charsets.UTF_8)
