@@ -11,7 +11,10 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import dev.icerock.moko.resources.StringResource
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import cafe.adriel.voyager.core.screen.Screen
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsNode
@@ -19,7 +22,9 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.AnnotatedString
 import cafe.adriel.voyager.navigator.CurrentScreen
+import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
+import cafe.adriel.voyager.navigator.currentOrThrow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -99,6 +104,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import java.io.File
 import java.util.prefs.Preferences
+
+/** Root screen of the navigator used by the global search lifecycle test. */
+private object SourceSharedStateRootScreen : Screen {
+    @Composable
+    override fun Content() {
+        Text("root")
+    }
+}
 
 class SourceSharedStateWiringTest {
 
@@ -832,6 +845,7 @@ class SourceSharedStateWiringTest {
             every { creatorDiscoverySourcePort } returns null
         }
         var coordinator: DesktopGlobalSearchCoordinator? = null
+        var navigator: Navigator? = null
         val factory: (SourceMangaSearchService) -> DesktopGlobalSearchCoordinator = { service ->
             DesktopGlobalSearchCoordinator(service).also { coordinator = it }
         }
@@ -844,7 +858,13 @@ class SourceSharedStateWiringTest {
             CompositionLocalProvider(
                 LocalDesktopUiDependencies provides dependencies,
                 LocalGlobalSearchCoordinatorFactory provides factory,
-            ) { Navigator(GlobalSearchScreen("visible")) { CurrentScreen() } }
+            ) {
+                Navigator(SourceSharedStateRootScreen) {
+                    navigator = LocalNavigator.currentOrThrow
+                    navigator.push(GlobalSearchScreen("visible"))
+                    CurrentScreen()
+                }
+            }
         }
         scene.render()
         withTimeout(2_000) { firstCompleted.await() }
@@ -868,10 +888,14 @@ class SourceSharedStateWiringTest {
         assertEquals(listOf("second"), second.queries)
         assertTrue(semantics().contains("Second source (1)"))
 
-        scene.close()
+        // The coordinator survives navigation so the results stay cached, and is only released
+        // once the screen itself leaves the navigator.
+        requireNotNull(navigator).pop()
+        scene.render()
+        scene.render()
         assertEquals(null, requireNotNull(coordinator).coordinatorFor(second.id))
+        scene.close()
     }
-
     @Test
     fun `source coordinator publishes shared loading and retries the exact request`() = runBlocking {
         val source = PagingSource()

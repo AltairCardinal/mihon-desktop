@@ -249,6 +249,12 @@ fun DesktopSourceLoginDialog(model: DesktopSourceLoginDialogModel, events: Deskt
 
 data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = null) : Screen {
 
+    /**
+     * Browse state that survives navigation, so returning from a manga detail restores the
+     * previous results instead of querying the source again.
+     */
+    internal val session = DesktopSourceBrowseSession(sourceId, initialQuery)
+
     internal fun projectState(state: SourceQueryState?): SourceBrowseUiState =
         SourceBrowseStateProjector.project(state)
 
@@ -287,12 +293,25 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
             source?.id?.let { lastUsedRecorder?.record(it) }
         }
 
-        val queryCoordinator = remember { SourceBrowseQueryCoordinator(sourceMangaSearchService) }
-        val queryState by queryStates(queryCoordinator).collectAsState(initial = null)
-        val queryUiState = projectState(queryState)
-        val resultMaterializer = remember(saveSourceMangaForDetails, scope) {
-            SourceResultMaterializer(scope, saveSourceMangaForDetails::awaitSearchResults)
+        val session = this.session
+        val queryCoordinator = remember(session, sourceMangaSearchService) {
+            session.coordinator(sourceMangaSearchService)
         }
+        val queryState by queryStates(queryCoordinator).collectAsState(initial = queryCoordinator.state)
+        val queryUiState = projectState(queryState)
+        val resultMaterializer = remember(session, saveSourceMangaForDetails) {
+            session.materializer(saveSourceMangaForDetails::awaitSearchResults)
+        }
+
+        // Search state, retained across navigation like the Android screen model.
+        val listingQueryState = remember(session, source) {
+            session.listingQueryState(source?.getFilterList() ?: FilterList())
+        }
+        var listingQuery by listingQueryState
+        var searchQuery by session.searchQuery
+        var searchActive by session.searchActive
+        var resultFilter by session.resultFilter
+
         LaunchedEffect(queryState) {
             resultMaterializer.sync(
                 queryState?.request?.generation ?: 0,
@@ -319,7 +338,6 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
         val catalogItems = remember(catalogMangas.value) {
             catalogMangas.value.map { it to SourceResultMetadata.from(it) }
         }
-        var resultFilter by remember { mutableStateOf(CatalogResultFilter()) }
         var showResultFilter by remember { mutableStateOf(false) }
         val resultFilterFocus = remember { FocusRequester() }
         val visibleItems = remember(catalogItems, resultFilter) {
@@ -357,19 +375,6 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
                 SourceBrowseTestModeBridge.clear(testModePort)
             }
         }
-        DisposableEffect(resultMaterializer) {
-            onDispose(resultMaterializer::close)
-        }
-
-        // Search state
-        var searchQuery by remember { mutableStateOf(initialQuery.orEmpty()) }
-        var searchActive by remember { mutableStateOf(initialQuery != null) }
-        var listingQuery by remember(source, initialQuery) {
-            mutableStateOf<SourceQuery>(
-                initialQuery?.let { SourceQuery.Search(it, source?.getFilterList() ?: FilterList()) }
-                    ?: SourceQuery.Popular,
-            )
-        }
 
         val modes = remember(source) { availableBrowseModes(source?.supportsLatest == true) }
 
@@ -379,7 +384,7 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
 
         fun loadPage(page: Int, query: SourceQuery = listingQuery) {
             if (source == null || requiresApkReconversion || (page > 1 && queryUiState.loading)) return
-            scope.launch {
+            session.scope.launch {
                 queryCoordinator.load(source, page, query)
             }
         }
@@ -415,9 +420,12 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
             onStateChange = { sourceLoginUiState = it },
         )
 
-        // Initial load
+        // Initial load: restore the cached results of the current listing instead of
+        // querying the source again when the screen is shown again.
         LaunchedEffect(source?.id, requiresApkReconversion) {
-            if (!requiresApkReconversion) loadPage(1)
+            if (requiresApkReconversion) return@LaunchedEffect
+            if (session.holdsResultsOf(queryCoordinator.state)) return@LaunchedEffect
+            loadPage(1)
         }
 
         // Filter dialog
@@ -681,7 +689,9 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
                                     if (openingMangaUrl != null) return@MangaCard
                                     openingMangaUrl = manga.url
                                     navigator.push(MangaDetailScreen(manga.id))
-                                    scope.launch {
+                                    // The session scope outlives this screen, so the detail entry is
+                                    // still prepared after the navigation cancelled this composition.
+                                    session.scope.launch {
                                         try {
                                             val details = saveSourceMangaForDetails.awaitListedForDetails(
                                                 listed,

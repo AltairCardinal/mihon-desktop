@@ -294,7 +294,16 @@ internal val LocalSourceResultMaterializerFactory = staticCompositionLocalOf<Sou
 }
 
 /** Searches all installed sources simultaneously, grouped by source. */
-class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
+class GlobalSearchScreen(
+    internal val initialQuery: String = "",
+    internal val initialSearchMode: GlobalSearchMode = GlobalSearchMode.MANGA,
+) : Screen {
+
+    /**
+     * Search state that survives navigation, so returning from a manga detail restores the
+     * previous results instead of searching every source again.
+     */
+    internal val session = DesktopGlobalSearchSession(initialQuery, initialSearchMode)
 
     companion object {
         internal fun fromExternalActionTarget(target: DesktopExternalActionTarget.GlobalSearch) =
@@ -355,24 +364,29 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
         val sourceLoginSessionFactory = dependencies.sourceLoginSessionFactory
         val scope = rememberCoroutineScope()
 
-        var query by remember { mutableStateOf(initialQuery) }
-        var searchMode by remember { mutableStateOf(GlobalSearchMode.MANGA) }
-        var mangaLanguageFilter by remember { mutableStateOf(LanguageArchiveFilter.ALL) }
-        var authorIdentityFilter by remember { mutableStateOf(AuthorIdentityFilter.ALL) }
         var pendingIdentityChoice by remember { mutableStateOf<PendingAuthorIdentityChoice?>(null) }
         var authorActionError by remember { mutableStateOf<String?>(null) }
-        var sourceFilter by remember { mutableStateOf(GlobalSearchSourceFilter.PinnedOnly) }
         var openingMangaUrl by remember { mutableStateOf<String?>(null) }
         val coordinatorFactory = LocalGlobalSearchCoordinatorFactory.current
         val materializerFactory = LocalSourceResultMaterializerFactory.current
-        val queryCoordinator = remember(sourceMangaSearchService, coordinatorFactory) { coordinatorFactory(sourceMangaSearchService) }
-        val authorCoordinator = remember(dependencies.creatorDiscoverySourcePort) {
-            dependencies.creatorDiscoverySourcePort?.let(::AuthorGlobalSearchCoordinator)
+        val session = this.session
+        // Search state, retained across navigation like the Android screen model.
+        var query by session.query
+        var searchMode by session.searchMode
+        var mangaLanguageFilter by session.mangaLanguageFilter
+        var authorIdentityFilter by session.authorIdentityFilter
+        var sourceFilter by session.sourceFilter
+        var sourcesByGeneration by session.sourcesByGeneration
+        val queryCoordinator = remember(session, sourceMangaSearchService, coordinatorFactory) {
+            session.coordinator(coordinatorFactory, sourceMangaSearchService)
+        }
+        val authorCoordinator = remember(session, dependencies.creatorDiscoverySourcePort) {
+            session.authorCoordinator(dependencies.creatorDiscoverySourcePort)
         }
         val authorSearchState by authorCoordinator?.state?.collectAsState()
             ?: remember { mutableStateOf(AuthorGlobalSearchState()) }
-        val resultMaterializer = remember(saveSourceMangaForDetails, scope, materializerFactory) {
-            materializerFactory(scope, saveSourceMangaForDetails::awaitSearchResults)
+        val resultMaterializer = remember(session, saveSourceMangaForDetails, materializerFactory) {
+            session.materializer(materializerFactory, saveSourceMangaForDetails::awaitSearchResults)
         }
         val searchState by queryCoordinator.states.collectAsState()
         LaunchedEffect(searchState.generation, searchState.publicationOrdinal) {
@@ -386,7 +400,6 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
             initial = recentSearchesPreference.get(),
         )
         var historyExpanded by remember { mutableStateOf(false) }
-        var sourcesByGeneration by remember { mutableStateOf(emptyMap<Long, List<Source>>()) }
         val searchUiState = GlobalSearchStateProjector.project(
             sourcesByGeneration[searchState.generation].orEmpty(),
             searchState,
@@ -455,8 +468,12 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
 
         DisposableEffect(queryCoordinator, resultMaterializer) {
             onDispose {
-                queryCoordinator.close()
-                resultMaterializer.close()
+                // The session outlives the composition so the results survive navigation.
+                // The coordinator is only released once the screen leaves the navigator.
+                if (navigator.items.none { it === this@GlobalSearchScreen }) {
+                    queryCoordinator.close()
+                    resultMaterializer.close()
+                }
             }
         }
 
@@ -464,13 +481,16 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
             val normalizedQuery = q.trim()
             if (normalizedQuery.isEmpty()) return
             query = normalizedQuery
+            session.markSearched()
             historyExpanded = false
             synchronized(recentSearchesPreference) {
                 val current = recentSearchesPreference.get()
                 val updated = recordRecentSearch(current, normalizedQuery)
                 if (updated != current) recentSearchesPreference.set(updated)
             }
-            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            // The session scope outlives this screen, so a search that is still running finishes
+            // even after the user opened a manga from an earlier result.
+            session.scope.launch(start = CoroutineStart.UNDISPATCHED) {
                 if (searchMode == GlobalSearchMode.AUTHOR) {
                     authorCoordinator?.search(normalizedQuery)
                     return@launch
@@ -530,9 +550,10 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
             onStateChange = { sourceLoginUiState = it },
         )
 
-        // Auto-search if an initial query is provided
+        // Auto-search if an initial query is provided. A session that already searched keeps its
+        // results, so returning from a manga detail never searches again.
         LaunchedEffect(initialQuery) {
-            if (initialQuery.isNotBlank()) launchSearch(initialQuery)
+            if (initialQuery.isNotBlank() && !session.searched) launchSearch(initialQuery)
         }
 
         Scaffold(
@@ -812,9 +833,14 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
                                         val listed = sourceResult.listedByUrl[manga.url] ?: return@GlobalSearchMangaCard
                                         openingMangaUrl = "${sourceResult.source.id}:${manga.url}"
                                         navigator.push(MangaDetailScreen(manga.id))
-                                        scope.launch {
+                                        // The session scope outlives this screen, so the detail entry
+                                        // is still prepared after the navigation cancelled this composition.
+                                        session.scope.launch {
                                             try {
-                                                val details = saveSourceMangaForDetails.awaitListedForDetails(listed, sourceResult.source.id)
+                                                val details = saveSourceMangaForDetails.awaitListedForDetails(
+                                                    listed,
+                                                    sourceResult.source.id,
+                                                )
                                                 if (details.needsRefresh) {
                                                     saveSourceMangaForDetails.refreshFromSource(sourceResult.source, listed)
                                                 }
