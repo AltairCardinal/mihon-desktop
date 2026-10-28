@@ -15,10 +15,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.awt.ComposeWindow
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asComposeImageBitmap
 import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerId
@@ -28,8 +31,11 @@ import androidx.compose.ui.scene.ComposeScenePointer
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.WindowPlacement
+import cafe.adriel.voyager.navigator.Navigator
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
@@ -80,6 +86,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.prefs.Preferences
 import javax.imageio.ImageIO
+import javax.swing.SwingUtilities
 import kotlin.math.roundToInt
 
 /** Pixels and reading callbacks come from the production Compose image/pager pipeline. */
@@ -821,6 +828,62 @@ class SharedDualPageNativeStablePresentationTest {
     }
 
     @Test
+    fun `mounted reader F11 and Escape draw the resized window while retaining current images`() = runTest {
+        var placement = WindowPlacement.Floating
+        val window = mockk<ComposeWindow>(relaxed = true) {
+            every { isDisplayable } returns true
+            every { this@mockk.placement } answers { placement }
+            every { this@mockk.placement = any() } answers { placement = firstArg() }
+        }
+        Fixture(this, nativeWindow = window, originalHeadersBeforeImages = true).use { fixture ->
+            fixture.partner.complete(Unit)
+            fixture.pump()
+            val page = fixture.page
+            val decoded = fixture.decodedImages.get()
+
+            fixture.windowKey(Key.F11)
+            assertEquals(WindowPlacement.Fullscreen, placement)
+            verify(exactly = 1) { window.renderImmediately() }
+            assertTrue(fixture.hasRedPixels())
+
+            fixture.resize(360)
+            fixture.settle()
+            fixture.windowKey(Key.Escape)
+            assertEquals(WindowPlacement.Floating, placement)
+            verify(exactly = 2) { window.renderImmediately() }
+            assertTrue(fixture.hasRedPixels())
+            assertEquals(page, fixture.page)
+            assertEquals(decoded, fixture.decodedImages.get())
+        }
+    }
+
+    @Test
+    fun `fullscreen viewport resize keeps the current image drawn without decoding it again`() = runTest {
+        for (dual in listOf(false, true)) {
+            Fixture(this, dual = dual, originalHeadersBeforeImages = true).use { fixture ->
+                fixture.partner.complete(Unit)
+                fixture.pump()
+                val decoded = fixture.decodedImages.get()
+                val page = fixture.page
+
+                for (width in listOf(380, 360, 400, 370, 400)) {
+                    fixture.resize(width)
+                    repeat(4) { frame ->
+                        fixture.frame()
+                        runCurrent()
+                        assertTrue(
+                            fixture.hasRedPixels(),
+                            "Current image disappeared: dual=$dual width=$width frame=$frame",
+                        )
+                        assertEquals(page, fixture.page, "Resizing must not navigate")
+                    }
+                }
+                assertEquals(decoded, fixture.decodedImages.get(), "Resizing must retain the decoded images")
+            }
+        }
+    }
+
+    @Test
     fun `actual viewport resize renews geometry without creating navigation or losing pending partner`() = runTest {
         Fixture(this, originalHeadersBeforeImages = true).use { fixture ->
             fixture.pump()
@@ -859,6 +922,7 @@ class SharedDualPageNativeStablePresentationTest {
         private val measureFrames: Boolean = false,
         originalHeadersBeforeImages: Boolean = false,
         deferredOriginalHeaderPage: Int? = null,
+        private val nativeWindow: ComposeWindow? = null,
     ) : AutoCloseable {
         private val root = Preferences.userRoot().node("/mihon/native-stable/${System.nanoTime()}")
         private val store = DesktopPreferenceStore(root.node("store"))
@@ -990,6 +1054,7 @@ class SharedDualPageNativeStablePresentationTest {
                 },
             )
         private val scene = ImageComposeScene(canvasWidth, canvasHeight, coroutineContext = scope.coroutineContext) {}
+        private val focusRequester = FocusRequester()
         private var viewportWidth by mutableStateOf(canvasWidth.dp)
         private var readerMounted by mutableStateOf(true)
         private var closed = false
@@ -1124,6 +1189,20 @@ class SharedDualPageNativeStablePresentationTest {
         fun resize(width: Int = 360) {
             viewportWidth = width.dp
         }
+        fun windowKey(key: Key) {
+            focusRequester.requestFocus()
+            val events = Class.forName("androidx.compose.ui.input.key.KeyEvent_desktopKt")
+            val type = Class.forName("androidx.compose.ui.input.key.KeyEventType")
+                .getMethod("access\$getKeyDown\$cp").invoke(null)
+            val factory = events.declaredMethods.single {
+                it.name.startsWith("KeyEvent-") &&
+                    !it.name.endsWith("\$default")
+            }
+            val native = factory.invoke(null, key.keyCode, type, 0, false, false, false, false, null)
+            scene.sendKeyEvent(androidx.compose.ui.input.key.KeyEvent(native))
+            settle()
+            SwingUtilities.invokeAndWait {}
+        }
         fun retry() = model.retryPage(model.state.value.session.activeChapter.pages[1].id)
         fun attempt(index: Int) = model.state.value.session.activeChapter.pages[index].attemptGeneration
         fun jump(index: Int) = model.goToPage(index)
@@ -1222,10 +1301,20 @@ class SharedDualPageNativeStablePresentationTest {
                 CompositionLocalProvider(
                     LocalDesktopUiDependencies provides dependencies,
                     LocalContextMenuRepresentation provides menuRepresentation,
+                    LocalReaderNativeWindow provides nativeWindow,
                 ) {
                     val state by model.state.collectAsState()
                     Box(Modifier.requiredSize(viewportWidth, canvasHeight.dp)) {
-                        if (readerMounted) ReaderContent(state, model, scope, "", "", owner, null, {}, {})
+                        if (readerMounted) {
+                            if (nativeWindow == null) {
+                                ReaderContent(state, model, scope, "", "", owner, null, {}, {})
+                            } else {
+                                ReaderViewport(
+                                    state, model, mockk<Navigator>(relaxed = true), focusRequester,
+                                    scope, "", "", owner, null, {}, {},
+                                )
+                            }
+                        }
                     }
                 }
             }

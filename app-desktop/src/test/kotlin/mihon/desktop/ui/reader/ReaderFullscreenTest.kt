@@ -2,6 +2,7 @@ package mihon.desktop.ui.reader
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
@@ -9,21 +10,25 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.window.WindowPlacement
 import cafe.adriel.voyager.navigator.Navigator
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import mihon.desktop.platform.DesktopFullscreenAdapter
+import mihon.desktop.platform.DesktopWindowTransitions
+import mihon.desktop.platform.WindowsBorderlessFullscreenAdapter
 import mihon.desktop.reader.desktopReaderSessionState
 import mihon.desktop.ui.tutorial.DesktopTutorial
 import mihon.desktop.ui.tutorial.DesktopTutorialState
 import mihon.desktop.ui.tutorial.DesktopTutorialToastBubble
-import androidx.compose.ui.awt.ComposeWindow
-import androidx.compose.ui.window.WindowPlacement
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.condition.EnabledOnOs
+import org.junit.jupiter.api.condition.OS
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.i18n.MR
 import java.util.prefs.Preferences
@@ -148,8 +153,14 @@ class ReaderFullscreenTest {
         try {
             scene.render()
             val nodes = scene.semanticsOwners.flatMap { flatten(it.unmergedRootSemanticsNode) }
-            val hasToast = nodes.any { it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "desktop-tutorial-reader-fullscreen" }
-            val confirmButton = nodes.single { it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "desktop-tutorial-confirm" }
+            val hasToast = nodes.any {
+                it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
+                    "desktop-tutorial-reader-fullscreen"
+            }
+            val confirmButton = nodes.single {
+                it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
+                    "desktop-tutorial-confirm"
+            }
             assertTrue(hasToast, "Toast bubble must be rendered with correct test tag")
 
             val action = confirmButton.config.getOrNull(SemanticsActions.OnClick)
@@ -162,25 +173,194 @@ class ReaderFullscreenTest {
     }
 
     @Test
-    fun `syncPlacement toggles fullscreen and restores previous non-fullscreen placement`() {
+    @EnabledOnOs(OS.WINDOWS)
+    fun `WindowsBorderlessFullscreenAdapter enter and exit safely handle undisplayable window`() {
+        val adapter = WindowsBorderlessFullscreenAdapter()
+        val window = mockk<ComposeWindow>(relaxed = true)
+        every { window.isDisplayable } returns false
+
+        assertFalse(adapter.enter(window))
+        assertFalse(adapter.exit(window))
+    }
+
+    @Test
+    fun `syncPlacement uses borderless fullscreen adapter when available without placement mutations`() {
+        val window = mockk<ComposeWindow>(relaxed = true)
+        every { window.isDisplayable } returns true
+        val adapter = mockk<DesktopFullscreenAdapter>(relaxed = true)
+        every { adapter.enter(window) } returns true
+        every { adapter.exit(window) } returns true
+
+        val transitions = mockk<DesktopWindowTransitions>(relaxed = true)
+        val controller = DesktopReaderFullscreenController(
+            getWindow = { window },
+            dispatch = { it.run() },
+            transitions = transitions,
+            fullscreenAdapter = adapter,
+        )
+
+        // Enter fullscreen
+        controller.syncPlacement(isFullscreen = true)
+        verify { adapter.enter(window) }
+        verify { transitions.setDisabled(window, true) }
+        verify(exactly = 0) { window.placement = any() }
+
+        // Exit fullscreen
+        controller.syncPlacement(isFullscreen = false)
+        verify { adapter.exit(window) }
+        verify { transitions.setDisabled(window, false) }
+        verify(exactly = 0) { window.placement = any() }
+    }
+
+    @Test
+    fun `onDispose delegates to fullscreen adapter if adapter was active`() {
+        val window = mockk<ComposeWindow>(relaxed = true)
+        every { window.isDisplayable } returns true
+        val adapter = mockk<DesktopFullscreenAdapter>(relaxed = true)
+        every { adapter.enter(window) } returns true
+        every { adapter.exit(window) } returns true
+
+        val transitions = mockk<DesktopWindowTransitions>(relaxed = true)
+        val controller = DesktopReaderFullscreenController(
+            getWindow = { window },
+            dispatch = { it.run() },
+            transitions = transitions,
+            fullscreenAdapter = adapter,
+        )
+
+        controller.syncPlacement(isFullscreen = true)
+        verify { adapter.enter(window) }
+
+        controller.onDispose(wasFullscreen = true)
+        verify { adapter.exit(window) }
+        verify(exactly = 0) { window.placement = any() }
+    }
+
+    @Test
+    fun `syncPlacement restores previous placement directly when native hook is available`() {
+        val placements = mutableListOf<WindowPlacement>()
         var currentPlacement = WindowPlacement.Maximized
         val window = mockk<ComposeWindow>(relaxed = true)
         every { window.isDisplayable } returns true
         every { window.placement } answers { currentPlacement }
-        every { window.placement = any() } answers { currentPlacement = firstArg() }
+        every { window.placement = any() } answers {
+            val next = firstArg<WindowPlacement>()
+            placements.add(next)
+            currentPlacement = next
+        }
 
+        val transitions = mockk<DesktopWindowTransitions>(relaxed = true)
         val controller = DesktopReaderFullscreenController(
             getWindow = { window },
             dispatch = { it.run() },
+            transitions = transitions,
+            fullscreenAdapter = null,
+            setNativeFullscreen = { _, _ -> true },
         )
 
         // Enter fullscreen
         controller.syncPlacement(isFullscreen = true)
         assertEquals(WindowPlacement.Fullscreen, currentPlacement)
         assertEquals(WindowPlacement.Maximized, controller.previousPlacement)
+        assertEquals(listOf(WindowPlacement.Fullscreen), placements)
+        verify { transitions.setDisabled(window, true) }
 
-        // Exit fullscreen: should restore to Maximized
+        // Exit fullscreen: directly to Maximized without intermediate Floating flash
+        placements.clear()
         controller.syncPlacement(isFullscreen = false)
+        assertEquals(
+            listOf(WindowPlacement.Maximized),
+            placements,
+            "Direct restoration must not emit intermediate Floating placement",
+        )
+        assertEquals(WindowPlacement.Maximized, currentPlacement)
+        verify { transitions.setDisabled(window, false) }
+    }
+
+    @Test
+    fun `syncPlacement safely falls back through floating transition if native fullscreen hook is unavailable`() {
+        val placements = mutableListOf<WindowPlacement>()
+        var currentPlacement = WindowPlacement.Maximized
+        val window = mockk<ComposeWindow>(relaxed = true)
+        every { window.isDisplayable } returns true
+        every { window.placement } answers { currentPlacement }
+        every { window.placement = any() } answers {
+            val next = firstArg<WindowPlacement>()
+            placements.add(next)
+            currentPlacement = next
+        }
+
+        val controller = DesktopReaderFullscreenController(
+            getWindow = { window },
+            dispatch = { it.run() },
+            fullscreenAdapter = null,
+            setNativeFullscreen = { _, _ -> false },
+        )
+
+        controller.syncPlacement(isFullscreen = true)
+        placements.clear()
+
+        controller.syncPlacement(isFullscreen = false)
+        assertEquals(listOf(WindowPlacement.Floating, WindowPlacement.Maximized), placements)
+        assertEquals(WindowPlacement.Maximized, currentPlacement)
+    }
+
+    @Test
+    fun `onDispose restores maximized placement directly without intermediate floating flash`() {
+        val placements = mutableListOf<WindowPlacement>()
+        var currentPlacement = WindowPlacement.Maximized
+        val window = mockk<ComposeWindow>(relaxed = true)
+        every { window.isDisplayable } returns true
+        every { window.placement } answers { currentPlacement }
+        every { window.placement = any() } answers {
+            val next = firstArg<WindowPlacement>()
+            placements.add(next)
+            currentPlacement = next
+        }
+
+        val transitions = mockk<DesktopWindowTransitions>(relaxed = true)
+        val controller = DesktopReaderFullscreenController(
+            getWindow = { window },
+            dispatch = { it.run() },
+            transitions = transitions,
+            fullscreenAdapter = null,
+            setNativeFullscreen = { _, _ -> true },
+        )
+
+        controller.syncPlacement(isFullscreen = true)
+        placements.clear()
+
+        controller.onDispose(wasFullscreen = true)
+        assertEquals(listOf(WindowPlacement.Maximized), placements)
+        assertEquals(WindowPlacement.Maximized, currentPlacement)
+        verify { transitions.setDisabled(window, false) }
+    }
+
+    @Test
+    fun `onDispose safely falls back through floating transition if native hook is unavailable`() {
+        val placements = mutableListOf<WindowPlacement>()
+        var currentPlacement = WindowPlacement.Maximized
+        val window = mockk<ComposeWindow>(relaxed = true)
+        every { window.isDisplayable } returns true
+        every { window.placement } answers { currentPlacement }
+        every { window.placement = any() } answers {
+            val next = firstArg<WindowPlacement>()
+            placements.add(next)
+            currentPlacement = next
+        }
+
+        val controller = DesktopReaderFullscreenController(
+            getWindow = { window },
+            dispatch = { it.run() },
+            fullscreenAdapter = null,
+            setNativeFullscreen = { _, _ -> false },
+        )
+
+        controller.syncPlacement(isFullscreen = true)
+        placements.clear()
+
+        controller.onDispose(wasFullscreen = true)
+        assertEquals(listOf(WindowPlacement.Floating, WindowPlacement.Maximized), placements)
         assertEquals(WindowPlacement.Maximized, currentPlacement)
     }
 
@@ -322,7 +502,11 @@ class ReaderFullscreenTest {
 
         // Execute the delayed runnable after disposal
         runnables.removeAt(0).run()
-        assertEquals(WindowPlacement.Floating, currentPlacement, "Delayed runnable must not enter fullscreen after disposal")
+        assertEquals(
+            WindowPlacement.Floating,
+            currentPlacement,
+            "Delayed runnable must not enter fullscreen after disposal",
+        )
         assertEquals(0, placementSetCount)
 
         // Case 2: Rapid toggle true -> false before any runnable runs
@@ -336,7 +520,11 @@ class ReaderFullscreenTest {
 
         // Run the obsolete first runnable (which intended isFullscreen=true)
         runnables.removeAt(0).run()
-        assertEquals(WindowPlacement.Floating, currentPlacement, "Obsolete first intent must be discarded without mutating window")
+        assertEquals(
+            WindowPlacement.Floating,
+            currentPlacement,
+            "Obsolete first intent must be discarded without mutating window",
+        )
 
         // Run the second runnable (isFullscreen=false)
         runnables.removeAt(0).run()
@@ -350,7 +538,9 @@ class ReaderFullscreenTest {
         val eventType = Class.forName("androidx.compose.ui.input.key.KeyEventType")
             .getMethod(if (type == KeyEventType.KeyDown) "access\$getKeyDown\$cp" else "access\$getKeyUp\$cp")
             .invoke(null)
-        val factory = events.declaredMethods.single { it.name.startsWith("KeyEvent-") && !it.name.endsWith("\$default") }
+        val factory = events.declaredMethods.single {
+            it.name.startsWith("KeyEvent-") && !it.name.endsWith("\$default")
+        }
         val native = factory.invoke(null, key.keyCode, eventType, 0, false, false, false, false, null)
         return KeyEvent(native)
     }
