@@ -6,6 +6,7 @@ import mihon.desktop.platform.DesktopFullscreenAdapter
 import mihon.desktop.platform.DesktopWindowTransitions
 import mihon.desktop.platform.WindowsWindowTransitions
 import mihon.desktop.platform.defaultFullscreenAdapter
+import mihon.desktop.platform.showReaderFullscreenEntryPreview
 import java.awt.Component
 import java.awt.Container
 import javax.swing.SwingUtilities
@@ -23,6 +24,7 @@ internal class DesktopReaderFullscreenController(
     private val transitions: DesktopWindowTransitions = WindowsWindowTransitions,
     private val fullscreenAdapter: DesktopFullscreenAdapter? = defaultFullscreenAdapter(),
     private val setNativeFullscreen: (ComposeWindow, Boolean) -> Boolean = ::defaultSetNativeFullscreen,
+    private val showEntryPreview: (ComposeWindow) -> AutoCloseable? = ::showReaderFullscreenEntryPreview,
 ) {
     var previousPlacement: WindowPlacement = WindowPlacement.Floating
         internal set
@@ -30,6 +32,7 @@ internal class DesktopReaderFullscreenController(
     private var targetFullscreen: Boolean? = null
     private var isAdapterFullscreen = false
     private var transitionRevision = 0L
+    private var entryPreview: AutoCloseable? = null
 
     fun syncPlacement(isFullscreen: Boolean) {
         targetFullscreen = isFullscreen
@@ -70,8 +73,11 @@ internal class DesktopReaderFullscreenController(
     fun onDispose(wasFullscreen: Boolean) {
         disposed = true
         targetFullscreen = false
-        val window = getWindow() ?: return
-        if (!wasFullscreen || !window.isDisplayable) return
+        val window = getWindow()
+        if (window == null || !wasFullscreen || !window.isDisplayable) {
+            releaseEntryPreview()
+            return
+        }
         runCatching {
             changePlacement(window, false) {
                 if (isAdapterFullscreen) {
@@ -89,6 +95,10 @@ internal class DesktopReaderFullscreenController(
         transitions.setDisabled(window, true)
         var posted = false
         try {
+            if (fullscreen) {
+                releaseEntryPreview()
+                entryPreview = runCatching { showEntryPreview(window) }.getOrNull()
+            }
             change()
             // Win32 posts AWT bounds/inset updates during the native call. Reconcile only
             // after those events, while system transitions are still disabled.
@@ -99,15 +109,31 @@ internal class DesktopReaderFullscreenController(
                         try {
                             if (window.isDisplayable && targetFullscreen == fullscreen) presentFinalFrame(window)
                         } finally {
-                            transitions.setDisabled(window, false)
+                            try {
+                                transitions.setDisabled(window, false)
+                            } finally {
+                                releaseEntryPreview()
+                            }
                         }
                     }
                 },
             )
             posted = true
         } finally {
-            if (!posted) transitions.setDisabled(window, false)
+            if (!posted) {
+                try {
+                    transitions.setDisabled(window, false)
+                } finally {
+                    releaseEntryPreview()
+                }
+            }
         }
+    }
+
+    private fun releaseEntryPreview() {
+        val preview = entryPreview
+        entryPreview = null
+        runCatching { preview?.close() }
     }
 
     private fun presentFinalFrame(window: ComposeWindow) {
