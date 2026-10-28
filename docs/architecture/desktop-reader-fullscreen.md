@@ -10,6 +10,16 @@ Windows 优先保留原生窗口与绘制表面的无边框实现；其他平台
 无边框 adapter 必须同时更新 HWND 的物理边界和 AWT 的逻辑边界，退出时恢复两者；
 仅调用 Win32 改变边界会让 Skiko 的 heavyweight Canvas 继续消费旧 AWT 尺寸。
 
+Windows adapter 进入成功后，在同一事件处理周期先将根 `SkiaLayer.canvas` 的公开 heavyweight
+子画布尺寸同步到当前客户区，再递归失效并验证窗口布局。Skiko 0.9.37.4 的 Direct3D
+`SkiaLayer.reshape()` 会在 `doLayout()` 调整子画布之前立即重绘；只提前调用 `validate()`
+仍会生成一帧“新客户区原点、旧画布尺寸”的漫画。先调整子画布可避免这次重绘消费旧尺寸。
+此外，Compose 的 `ComposeContainer.setBounds()` 会先调整 SkiaLayer，再通知场景尺寸。
+仅先同步 Canvas 仍会让首张全屏 PNG 按旧场景居中。因此在这一次同步布局期间临时包装原
+renderDelegate：立即绘制入口先向已有父容器派发当前尺寸的 AWT resize 通知，再原样调用原 delegate。
+通知只派发一次，不换画布、不重录图片；`finally` 恢复原 delegate，避免覆盖已有诊断观察器或留下 hook。
+此处理仅用于成功的无边框 adapter 进入路径；退出、Compose fallback 和其他平台保持既有链路。
+
 进入、退出全屏及离开全屏阅读器时，控制器在事件队列中执行窗口变更，
 等待原生尺寸事件回到 AWT 后，在下一次事件处理周期调用 `invalidate()`、`validate()`
 和 `renderImmediately()`，再恢复系统过渡效果。失效标记不能省略：有效容器的 `validate()`
@@ -45,6 +55,9 @@ Windows 优先保留原生窗口与绘制表面的无边框实现；其他平台
   逐帧检查三次单／双页往返、图片 holder 与像素身份复用，以及退出后的槽位释放。
 - `SharedDualPageDesktopWiringTest` 的尺寸交接用例检查旧几何仅能保留已经显示的当前内容，
   不显示新伙伴、不报告旧视口，且重试后旧内容与已关闭挂载仍被拒绝。
+- `ReaderRenderTraceNativeTest` 挂载真实阅读器并保存 PNG，覆盖进入过程中的每次原生客户区／
+  绘制画布尺寸匹配，以及首张完整全屏 PNG 与稳定 PNG 的漫画像素中心一致；同时覆盖连续三次
+  往返超过 180 帧仍完整记录，以及显式小预算耗尽后的 PARTIAL。它不观测系统最终呈现。
 - 离屏测试的窗口是替身，不能证明 Windows 合成器的逐帧显示；原生体验结果单独记录，
   不将体验包构建通过当作无闪烁的视觉验收。
 
@@ -63,3 +76,6 @@ Windows 优先保留原生窗口与绘制表面的无边框实现；其他平台
 用户随后确认 `ed03aa1061` 候选仍有进入全屏时上跳再恢复的现象，故该问题未关闭。
 简化测试通过不足以支持修复结论。后续按[真实阅读器渲染取证](desktop-reader-render-trace.md)保留帧与事件，
 明确应用绘制帧、几何样本与系统呈现的边界，不使用 Computer Use，也不以未复现作为修复证据。
+
+后续实际记录与对应红绿回归见[进入全屏的旧画布帧取证](../evidence/desktop-reader-fullscreen-entry-2026-10-29.md)。
+应用绘制阶段的回归通过仍不替代用户对上跳现象的确认。

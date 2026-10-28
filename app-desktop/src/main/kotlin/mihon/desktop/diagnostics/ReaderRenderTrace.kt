@@ -42,6 +42,8 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import javax.swing.SwingUtilities
 
+private const val MAX_TRACE_FRAMES = 900
+
 /** Opt-in local diagnostics, independent of Test Mode and with no desktop/input access. */
 internal object ReaderRenderTracing {
     const val PROPERTY = "mihon.reader.renderTraceDir"
@@ -62,8 +64,8 @@ internal object ReaderRenderTracing {
         return runCatching {
             val root = Path.of(requested)
             require(root.isAbsolute) { "Reader render trace output must be absolute" }
-            val maxFrames = System.getProperty("mihon.reader.renderTraceMaxFrames")?.toInt() ?: 180
-            require(maxFrames in 1..180) { "Reader trace max frames must be in 1..180" }
+            val maxFrames = System.getProperty("mihon.reader.renderTraceMaxFrames")?.toInt() ?: MAX_TRACE_FRAMES
+            require(maxFrames in 1..MAX_TRACE_FRAMES) { "Reader trace max frames must be in 1..$MAX_TRACE_FRAMES" }
             ReaderRenderTrace(window, root, maxFrames).also(sessions::add)
         }.onFailure { System.err.println("Reader render trace unavailable: ${it.message}") }.getOrNull()
     }
@@ -83,7 +85,7 @@ internal object ReaderRenderTracing {
 internal class ReaderRenderTrace(
     private val window: ComposeWindow,
     root: Path,
-    private val maxFrames: Int = 180,
+    private val maxFrames: Int = MAX_TRACE_FRAMES,
 ) : AutoCloseable {
     val directory: Path = root.resolve("${Instant.now().toString().replace(':', '-')}-${UUID.randomUUID()}")
     private val lock = Any()
@@ -258,7 +260,7 @@ internal class ReaderRenderTrace(
                 put("captureStage", "completed-layer-picture")
                 put("presentationObserved", false)
                 put("privateAdapter", "SkiaLayer.picture identity; inspected Skiko 0.9.37.4")
-                put("limits", "180 frame records, 256 MiB queued pixels, 512 MiB PNG files per reader session")
+                put("limits", "$maxFrames frame records, 256 MiB queued pixels, 512 MiB PNG files per reader session")
             },
         )
         windowEvent("window-attached")

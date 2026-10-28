@@ -7,8 +7,12 @@ import mihon.desktop.platform.DesktopFullscreenAdapter
 import mihon.desktop.platform.DesktopWindowTransitions
 import mihon.desktop.platform.WindowsWindowTransitions
 import mihon.desktop.platform.defaultFullscreenAdapter
+import org.jetbrains.skia.Canvas
+import org.jetbrains.skiko.SkiaLayer
+import org.jetbrains.skiko.SkikoRenderDelegate
 import java.awt.Component
 import java.awt.Container
+import java.awt.event.ComponentEvent
 import javax.swing.SwingUtilities
 
 /**
@@ -94,9 +98,16 @@ internal class DesktopReaderFullscreenController(
         try {
             trace?.windowEvent("placement-mutation-begin")
             change()
+            if (fullscreen && isAdapterFullscreen) {
+                // Removing the frame moves the client origin immediately. Reconcile the
+                // heavyweight canvas before an already queued render can use its old size
+                // at that new origin; the later pass still consumes native resize events.
+                synchronizeEntryCanvas(window)
+                trace?.windowEvent("entry-canvas-layout-synchronized")
+            }
             trace?.windowEvent("placement-mutation-end")
-            // Win32 posts AWT bounds/inset updates during the native call. Reconcile only
-            // after those events, while system transitions are still disabled.
+            // Win32 also posts AWT bounds/inset updates. Finish reconciling after those
+            // events, while system transitions are still disabled.
             dispatch(
                 Runnable {
                     if (revision != transitionRevision) return@Runnable
@@ -130,6 +141,49 @@ internal class DesktopReaderFullscreenController(
     private fun invalidateLayout(component: Component) {
         if (component is Container) component.components.forEach(::invalidateLayout)
         component.invalidate()
+    }
+
+    private fun synchronizeEntryCanvas(window: ComposeWindow) {
+        fun findLayer(component: Component): SkiaLayer? {
+            if (component is SkiaLayer) return component
+            return (component as? Container)?.components?.firstNotNullOfOrNull(::findLayer)
+        }
+        val layer = findLayer(window)
+        val original = layer?.renderDelegate
+        if (layer == null || original == null) {
+            invalidateLayout(window)
+            window.validate()
+            return
+        }
+        var notified = false
+        val synchronized = object : SkikoRenderDelegate {
+            override fun onRender(canvas: Canvas, width: Int, height: Int, nanoTime: Long) {
+                if (!notified) {
+                    notified = true
+                    // ComposeContainer.setBounds resizes SkiaLayer before notifying its
+                    // scene. Its parent already has the new bounds during this callback.
+                    layer.parent?.let { parent ->
+                        parent.dispatchEvent(ComponentEvent(parent, ComponentEvent.COMPONENT_RESIZED))
+                    }
+                }
+                original.onRender(canvas, width, height, nanoTime)
+            }
+        }
+        layer.renderDelegate = synchronized
+        try {
+            val insets = window.insets
+            // Direct3D reshape renders before doLayout resizes the heavyweight child.
+            layer.canvas.setBounds(
+                0,
+                0,
+                (window.width - insets.left - insets.right).coerceAtLeast(0),
+                (window.height - insets.top - insets.bottom).coerceAtLeast(0),
+            )
+            invalidateLayout(window)
+            window.validate()
+        } finally {
+            if (layer.renderDelegate === synchronized) layer.renderDelegate = original
+        }
     }
 
     private fun restoreNonFullscreenPlacement(window: ComposeWindow, target: WindowPlacement) {
