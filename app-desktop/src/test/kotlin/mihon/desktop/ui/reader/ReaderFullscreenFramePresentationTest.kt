@@ -122,7 +122,7 @@ class ReaderFullscreenFramePresentationTest {
     }
 
     @Test
-    fun `entry preview covers native mutation and is released only after the frame is presented`() {
+    fun `entry resizes and presents one live frame without an intermediate presentation`() {
         val pending = mutableListOf<Runnable>()
         val events = mutableListOf<String>()
         every { adapter.enter(window) } answers {
@@ -139,69 +139,42 @@ class ReaderFullscreenFramePresentationTest {
             dispatch = { pending += it },
             transitions = transitions,
             fullscreenAdapter = adapter,
-            showEntryPreview = {
-                events += "preview"
-                AutoCloseable { events += "release" }
-            },
         )
         queuedController.syncPlacement(true)
         pending.removeAt(0).run()
-        assertEquals(listOf("preview", "resize"), events)
+        assertEquals(listOf("resize"), events)
         pending.removeAt(0).run()
-        assertEquals(listOf("preview", "resize", "draw", "present", "release"), events)
-
-        queuedController.syncPlacement(false)
-        while (pending.isNotEmpty()) pending.removeAt(0).run()
-        assertEquals(1, events.count { it == "preview" }, "Exit must keep its existing presentation path")
+        assertEquals(listOf("resize", "draw", "present"), events)
     }
 
     @Test
-    fun `native entry failure releases the preview`() {
-        val preview = mockk<AutoCloseable>(relaxed = true)
+    fun `native entry failure restores transitions without drawing a detached frame`() {
         every { adapter.enter(window) } throws IllegalStateException("Native frame is detached")
         val failedController = DesktopReaderFullscreenController(
             getWindow = { window },
             dispatch = { it.run() },
             transitions = transitions,
             fullscreenAdapter = adapter,
-            showEntryPreview = { preview },
         )
         failedController.syncPlacement(true)
-        verify(exactly = 1) { preview.close() }
+        verify(exactly = 0) { window.renderImmediately() }
         verify { transitions.setDisabled(window, false) }
     }
 
     @Test
-    fun `unavailable preview does not prevent fullscreen entry`() {
-        val failedController = DesktopReaderFullscreenController(
-            getWindow = { window },
-            dispatch = { it.run() },
-            transitions = transitions,
-            fullscreenAdapter = adapter,
-            showEntryPreview = { error("No retained frame") },
-        )
-        failedController.syncPlacement(true)
-        verify { adapter.enter(window) }
-        verify { window.renderImmediately() }
-        verify { transitions.setDisabled(window, false) }
-    }
-
-    @Test
-    fun `disposing a pending entry releases its preview exactly once`() {
+    fun `disposing a pending entry restores transitions without presenting its obsolete frame`() {
         val pending = mutableListOf<Runnable>()
-        val preview = mockk<AutoCloseable>(relaxed = true)
         val queuedController = DesktopReaderFullscreenController(
             getWindow = { window },
             dispatch = { pending += it },
             transitions = transitions,
             fullscreenAdapter = adapter,
-            showEntryPreview = { preview },
         )
         queuedController.syncPlacement(true)
         pending.removeAt(0).run()
         queuedController.onDispose(wasFullscreen = false)
         pending.removeAt(0).run()
-        verify(exactly = 1) { preview.close() }
+        verify(exactly = 1) { transitions.setDisabled(window, false) }
         verify(exactly = 0) { window.renderImmediately() }
     }
 
