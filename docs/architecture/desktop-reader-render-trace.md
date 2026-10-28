@@ -71,3 +71,48 @@ python scripts/analyze-reader-render-trace.py "D:\absolute\reader-render-traces\
 adapter，检查捕获的像素、renderId 与图片尺寸、所有请求帧写入及超限 PARTIAL。窗口隐藏且不获取焦点。
 它证明取证链路有效，不证明用户漫画的上跳已复现或已修复。启动参数另由 production bootstrap 接线测试覆盖。
 分析器用真实 PNG 文件测试位移回位、无坐标时的像素分析、缺图、错误尺寸与不完整记录。
+
+## 窗口合成帧补充
+
+应用 Picture 正常、用户仍看到跳动时，用 `scripts/capture-reader-compositor.py` 补录单个 Mihon 窗口。
+它复用现有 reader trace 的会话和 PID，核对候选源码、完整应用内容摘要、进程可执行文件和 HWND 所有者，
+仅通过 Windows Graphics Capture `CreateForWindow` 取该窗口，不抓显示器／桌面，不发送输入，不改变窗口位置。
+这是外部诊断设施，不进入产品依赖或全屏控制逻辑。Python 仅复用既有 Pillow；原生后端使用本机 Windows SDK。
+
+```powershell
+./scripts/build-reader-compositor.ps1
+python scripts/tests/reader-compositor-capture-test.py -v
+python scripts/capture-reader-compositor.py --candidate <本轮候选绝对目录> --expected-commit <候选源码完整SHA>
+```
+
+构建物位于 `app-desktop/artifacts/diagnostics/compositor-native/`；`backend.json` 保存源码和 EXE 摘要，
+采集前核对。后台运行使用隐藏进程，先确认候选目录的 `compositor-watch.json` 为 ARMED，再运行同一 EXE，
+打开漫画后稍等一秒再切换全屏。进入真正的窗口帧回调后状态才变为 CAPTURING；完整结束为 FINISHED，不完整为 PARTIAL，启动失败为 FAILED，
+等候默认 20 分钟后 EXPIRED。默认只捕获一个新阅读器会话，最多 60 秒；窗口关闭时结束。
+
+原生后端提前按窗口所在屏幕分配固定 capture frame pool，避免全屏过程中重建仍在使用的捕获缓冲。
+纹理 readback 使用实际 RowPitch 按行复制到自有字节，异步回调持有 shared state，关闭时撤销回调并排空在途绘制。
+数据通过有界帧协议送到 Python 编码，最多 1800 帧、128 MiB 排队像素、512 MiB PNG；这些限制独立于 Picture 取证，
+不是进程总内存上限。单帧或固定捕获缓冲不得超过 64 MiB；移到更大屏幕而超过已有缓冲时明确失败，不保存裁剪帧。
+完全相同的 BGRA 字节可复用 PNG，但每个接收帧保留单独记录。失败、资源超限、原生异常退出和短读均记 PARTIAL。
+
+结果位于同一 reader trace 的 `compositor/`：`events.jsonl`、`window-*.png`、`native-stderr.log` 和 `manifest.json`。
+`captureStage=windows-graphics-capture-window` 与 Picture 阶段独立，不能冒用 renderId。`systemRelative100ns` 是
+Windows 提供的合成帧 QPC 时间，乘 100 得 qpcNanos；Windows HotSpot 21 的 `System.nanoTime()` 同样使用 QPC，
+应与应用的 timeNanos／renderStartedNanos 对齐，不与 Skiko 的 renderClockNanos 或 Compose 帧时钟对齐。
+窗口边界另存为 observedWindowAtReceive，带查询前后 QPC；它是接收时的观察，不能冒充合成帧发生时的窗口边界。
+
+WGC 不保证每个显示刷新都有回调。RECORDED 只表示所有接收到的帧完整落盘，displayScanoutObserved 始终为 false；
+它仍不能证明显示器最终扫描稳定。原有窗口防截屏策略不会被关闭；策略阻止捕获时明确报告失败。
+
+验证使用不激活且位于所有显示器之外的自建分层窗口，提供真实不透明像素，并改变实际窗口位图尺寸。
+覆盖真实 WGC 像素、原生行填充、尺寸变化、QPC 时钟、双重 HWND/PID 和 EXE 校验，以及无损复用、缓冲区所有权和资源失败。
+普通离屏 GDI 窗口只得到空画面，未把它记作像素验证通过。试验中的 windows-capture 2.0.1 与 2.0.0 在尺寸变化时
+发生 0xc0000005，故交付实现不使用该库；异常只发生在隔离采集进程，未据此判断 Mihon 自身崩溃或原跳动原因。
+交付原生后端与落盘链路的 11 项 focused 检查通过，另用真实 AWT Frame 验证 owner/PID 选择接线；
+窗口始终位于显示器外且不可激活。没有为这次外部诊断设施运行产品模块或仓库全量测试。
+
+本批文件共同构成一条窗口取证链（原生获取、跨进程传输、落盘、候选绑定与失败回归），未扩大到修复 GPU 或 DWM 的猜测改动。
+接口依据：[窗口捕获](https://learn.microsoft.com/en-us/windows/win32/api/windows.graphics.capture.interop/nf-windows-graphics-capture-interop-igraphicscaptureiteminterop-createforwindow)、
+[合成帧时间](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.direct3d11captureframe.systemrelativetime)、
+[HotSpot 21 Windows 时钟](https://github.com/openjdk/jdk21u/blob/master/src/hotspot/os/windows/os_windows.cpp)。
