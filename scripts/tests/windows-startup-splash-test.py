@@ -24,6 +24,10 @@ class WindowsStartupSplashTest(unittest.TestCase):
         user = c.WinDLL("user32", use_last_error=True)
         kernel = c.WinDLL("kernel32", use_last_error=True)
         user.SetProcessDPIAware()
+        user.MonitorFromPoint.argtypes = [w.POINT, w.DWORD]
+        user.MonitorFromPoint.restype = w.HANDLE
+        user.MonitorFromWindow.argtypes = [w.HWND, w.DWORD]
+        user.MonitorFromWindow.restype = w.HANDLE
         callback = c.WINFUNCTYPE(w.BOOL, w.HWND, w.LPARAM)
         user.GetWindowThreadProcessId.argtypes = [w.HWND, c.POINTER(w.DWORD)]
         user.IsWindowVisible.argtypes = [w.HWND]
@@ -117,10 +121,14 @@ class WindowsStartupSplashTest(unittest.TestCase):
                     jmx_port = port()
                 trace = []
                 splash_ms = main_ms = None
+                positioned_ms = None
                 main_handle = None
                 captured = False
                 with (root / f"process-{maximized}.log").open("w", encoding="utf-8") as log:
                     started = time.monotonic()
+                    cursor = w.POINT()
+                    self.assertTrue(user.GetCursorPos(c.byref(cursor)))
+                    startup_monitor = user.MonitorFromPoint(cursor, 2)
                     process = subprocess.Popen(
                         [str(exe), "--test-mode", f"--test-profile={profile}",
                          f"--test-http-port={http_port}", f"--test-jmx-port={jmx_port}"],
@@ -133,6 +141,9 @@ class WindowsStartupSplashTest(unittest.TestCase):
                             for hwnd, pid, name, title, visible, cloaked in own:
                                 if visible and name == "JavaSplash" and splash_ms is None:
                                     splash_ms = elapsed
+                                if (visible and name == "JavaSplash" and positioned_ms is None
+                                        and user.MonitorFromWindow(hwnd, 2) == startup_monitor):
+                                    positioned_ms = elapsed
                                 capture = os.environ.get("MIHON_SPLASH_CAPTURE")
                                 if (capture and not maximized and not captured and visible and name == "JavaSplash"
                                         and splash_ms is not None and elapsed >= splash_ms + 150):
@@ -155,6 +166,8 @@ class WindowsStartupSplashTest(unittest.TestCase):
                         self.assertIsNotNone(splash_ms, "No native loading splash appeared before the main window")
                         self.assertIsNotNone(main_ms, "Main window was never revealed")
                         self.assertLess(splash_ms, main_ms)
+                        self.assertIsNotNone(positioned_ms, "Splash never reached the startup cursor monitor")
+                        self.assertLess(positioned_ms, main_ms, "Splash moved only after main window appeared")
                         self.assertLess(splash_ms, 1000, "Loading feedback should appear within one second locally")
                         self.assertEqual(maximized, bool(user.IsZoomed(main_handle)))
                         deadline = time.monotonic() + 15
