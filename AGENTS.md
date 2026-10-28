@@ -6,6 +6,14 @@
 
 所有面向用户的交流使用中文。确认 bug 已修复时，必须用中文明确说明。
 
+## 主干开发与推送完成条件
+
+- 本仓库默认在本地 `main` 开发、验证和提交。用户没有要求分支或 PR 时，不因历史 PR、通用开发习惯或远端的 PR 提示自行改成特性分支流程。工作区存在其他任务改动或落后远端时，先核对并保护这些改动，不能仅以“工作区不干净”为由切分支。
+- 仓库所有者已明确授权本机账号 `AltairCardinal` 使用 GitHub 允许的管理员豁免，直接推送 `origin/main`。实际账号与豁免仍有效时，这是本仓库正常交付路径；“遵守分支保护”包括遵守这项已授权豁免，不要求额外创建 PR 或再次征求直推许可。账号或权限变化时按实际规则处理，不自行改保护规则、提权或强推。
+- 用户说“验收通过，可以推送”“合入主干并推送”时，默认要求本次提交进入本地 `main` 和远端 `origin/main`。仅提交到临时分支、推送特性分支、创建 PR 或等待合并，都不算推送完成；只有用户明确限定为“只创建 PR”等交付时才以该限定收口。
+- 确有无法在主干保护用户改动的隔离需求时，先说明具体冲突和临时方案；隔离不是交付终点，获得推送授权后仍须完成回主干整合、受影响范围验证及远端主干核验。真实阻塞须报告已完成项和待完成项，不能把未合入主干描述为完成。
+- 准备提交、整合或推送前读取[进度、交接与报告](docs/agent-guides/governance-and-reporting.md)中的 Git 交付细则。主干整合不自动触发完整模块/全量测试、版本分配或正式构建。
+
 ## TDD 强制要求
 
 **所有改变产品行为的功能变化（新增、修改、修复）必须严格执行红绿重构流程。**
@@ -28,7 +36,7 @@
 |---|---|
 | 规划、实现或审查 capability、业务/数据/共享逻辑、UI/导航；核对模块、DI、schema 或构建依赖 | [架构与 UI](docs/agent-guides/architecture-and-ui.md)；Desktop 页面/导航/弹层/列表及对应原型先读其链接的现有 UI 规范 |
 | 设计/修改行为测试、确定验证范围、执行 Gradle/产品验证或分析测试失败 | [验证与接线](docs/agent-guides/verification.md)；完整模块/全量不因文档列出命令而获准 |
-| 编写/推进 roadmap、维护 manifest/checkoff、启动/等待代理、准备提交或 change 完成报告 | [进度、交接与报告](docs/agent-guides/governance-and-reporting.md) |
+| 编写/推进 roadmap、维护 manifest/checkoff、启动/等待代理、准备提交/整合/推送或 change 完成报告 | [进度、交接与报告](docs/agent-guides/governance-and-reporting.md) |
 | 准备 Desktop 体验/正式构建、版本分配或 Windows/macOS 产物交付 | [Desktop 构建](docs/agent-guides/desktop-build.md)，并按本表加载验证/验收规则 |
 | 准备 Android 编译/JVM 测试、SDK/签名诊断、候选校验、安装或验收 | [Android 构建与验收](docs/agent-guides/android-build.md)，并按本表加载验证/原生操作规则 |
 | 确认公共说明更新时机、修改 README/website/双语 changelog、部署 Pages，或用户明确验收具体功能后 | [公共说明](docs/agent-guides/public-documentation.md)，沿用其链接的既有维护流程 |

@@ -20,7 +20,7 @@
 3. **收到验收后主动完成文档。** Agent 不再另问是否需要更新文档：读取当前版本，原位替换相关功能小节，同步英文和中文，更新入口、结果、限制及受影响平台；删除被新行为取代的说法。验收只覆盖某个平台时不得宣传另一平台也完成。仅在摘要变化时同步 README；仅在操作步骤变化时同步开始使用页。
 4. **追加一条差异记录。** 在双语 changelog 中记录实际验收日期、可核对的候选版本/源码提交、变化与限制，以及批准依据（公开 issue/PR 链接；若在私有聊天验收，写日期与最小范围摘要，不公开私有聊天链接或全文）。没有产品发布版本时使用日期和源码提交，不自行分配版本。初次公开说明与产品发布必须区分。
 5. **核验与集中提交。** 按下文完成文档构建、链接和必要浏览器核验，检查双语语义相同。公共内容与该次历史记录放在一个实质文档提交/PR 中；不要为 advance/checkoff 再产生空洞状态提交。通常产品实现先交付验收，因此后续文档提交有独立内容，是必要的验收后发布动作。
-6. **按授权发布并核实。** 遵守受保护分支，文档 PR 合入 `main` 后由 `Documentation site` 工作流构建和部署；没有远端写入授权时仍完成本地可审阅产物并记录待合入状态。核对工作流、实际部署 URL 和变更页后才能宣称上线。若正在进行的任务只有实现完成，结束时明确“待用户验收，公共功能说明尚未更新”。
+6. **按授权发布并核实。** 按[主干交付规则](../agent-guides/governance-and-reporting.md#git-交付细则)遵守分支保护及已授权的本机账号豁免；所有者账号默认直接推送 `main`，不强制先建文档 PR。经 PR 的任务也须确认已合入 `main`，创建 PR 不是交付终点。文档进入 `main` 后由 `Documentation site` 工作流构建和部署；没有远端写入授权时仍完成本地可审阅产物并记录待合入状态。核对工作流、实际部署 URL 和变更页后才能宣称上线。若正在进行的任务只有实现完成，结束时明确“待用户验收，公共功能说明尚未更新”。
 
 纯翻译、拼写、失效链接或网站样式修正，可以在现有已公开语义内更新，不需要重新做产品验收；不得借“文档修正”宣传未验收功能。发现错误的可用性承诺，应及时撤回或更正并记录文档勘误，不能因等待验收而继续展示已知错误。
 
@@ -51,11 +51,11 @@ git diff --check
 - 构建 job 只有 `contents: read`；仅部署 job 获得 `pages: write` 与 `id-token: write`，使用 `github-pages` environment，不引入 PAT 或产品签名凭据。
 - 网站内容验收由上述人工事实与 Agent 流程负责；路径触发器和成功的构建**不能判定用户是否验收了功能**。若将来需要服务端强制第二道人工审批，可以由维护者为 environment 配置 required reviewers，但不能把尚未配置的保护宣称已生效。
 
-2026-10-13，远端 Pages 已配置为 GitHub Actions 部署；配置成功不代表网站已经上线，部署结果仍须单独核实。`main` 保留 `Build & Test App` 与 `Desktop JVM Tests` 两个 required checks，不通过直接写 commit status 或跳过分支保护发布。
+2026-10-13，远端 Pages 已配置为 GitHub Actions 部署；配置成功不代表网站已经上线，部署结果仍须单独核实。当时记录的 `Build & Test App` 与 `Desktop JVM Tests` required checks 是历史配置，不代表当前门禁。当前是否有必需检查、是否适用已授权账号豁免，须按实际远端规则核实；不得依据旧记录强制转建 PR，也不得通过伪造 commit status 发布。
 
 ### 文档与产品 CI 分流
 
-两个既有 required job 均在 checkout 完整 Git 历史后运行 `scripts/ci-scope.py`；不使用 workflow 级路径过滤，以免纯文档 PR 缺少 required check 而无法合入。它们是真实工作流结果，不是人工伪造的成功状态。
+两个既有 CI job 均在 checkout 完整 Git 历史后运行 `scripts/ci-scope.py`；不使用 workflow 级路径过滤，以免规则要求检查时纯文档 PR 缺少结果而无法合入。它们是真实工作流结果，不是人工伪造的成功状态；job 存在不代表当前被设置为 required check。
 
 - 纯文档范围：`website/**`、`docs/**`、根目录 Markdown、`.github/pull_request_template.md` 和 `.github/workflows/pages.yml`。
 - CI 控制面范围仅额外包含这两个既有工作流，以及 `scripts/ci-scope.py` 和 `scripts/tests/ci-scope-test.py`。不宽泛排除整个 `.github/` 或 `scripts/`。控制面规则修改必须先通过真实 Git fixture 的定向回归和独立审查。
@@ -63,7 +63,7 @@ git diff --check
 - 任意其它文件、产品与文档混合修改均进入原有产品流程；手动 `workflow_dispatch` 强制执行原有产品流程，不受路径豁免。
 - push 比较 `before..after`，PR 比较 `base...head`，禁止 rename detection 隐藏移入文档目录的产品删除；使用 NUL 分隔读取变更路径。零 SHA、未知事件保守进入产品流程；缺少/错误 SHA、无法读取提交或无法计算 diff 时 job 失败，不生成“无需产品验证”的结果。
 
-修改分流规则时运行 `python scripts/tests/ci-scope-test.py`，检查真实 push/PR 历史、删除/重命名、混合变化、未知路径、手动触发和失败边界。合入后仍应核对两项 required job 的实际步骤与 Pages 部署结果；本地测试不能代替远端上线证据。
+修改分流规则时运行 `python scripts/tests/ci-scope-test.py`，检查真实 push/PR 历史、删除/重命名、混合变化、未知路径、手动触发和失败边界。合入后仍应核对两项 CI job 的实际步骤与 Pages 部署结果；本地测试不能代替远端上线证据。
 
 ## 失败、回滚与维护
 
