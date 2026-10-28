@@ -87,6 +87,7 @@ suspend fun main(args: Array<String>) {
     try {
         runDesktopMain(args)
     } finally {
+        mihon.desktop.diagnostics.ReaderRenderTracing.closeAll()
         splash?.close()
     }
 }
@@ -171,6 +172,7 @@ internal suspend fun startProductionDesktopApplication(
     runWindowEventLoop: suspend (mihon.desktop.startup.DesktopOwnerBootstrapController, DesktopApplicationCloseCoordinator) -> Unit =
         ::runDesktopComposeWindowEventLoop,
 ): DesktopInstanceStartResult {
+    mihon.desktop.diagnostics.ReaderRenderTracing.configure(args)
     val transaction = DesktopOwnerTransaction()
     var electedOwner: DesktopExternalActionBroker? = null
     var ownerElected = false

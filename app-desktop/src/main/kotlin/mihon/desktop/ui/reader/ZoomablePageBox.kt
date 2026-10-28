@@ -257,12 +257,15 @@ internal fun ZoomablePageBox(
     val readyState = presentationState as? DesktopReaderPresentationImageState.Ready
     val asset = readyState?.asset
     val mountedCoordinates = remember { arrayOfNulls<LayoutCoordinates>(1) }
-    // This branch does not exist for ordinary application rendering.
-    val observedCapture = if (onObservedImageDraw != null) {
+    val renderTrace = LocalReaderRenderTrace.current
+    val traceRevision = if (renderTrace != null) renderTrace.captureRevision.collectAsState().value else 0L
+    val observesImage = onObservedImageDraw != null || renderTrace != null
+    val ioCapture = if (onObservedImageDraw != null) {
         mihon.desktop.test.state.readerState.slotDrawCapture.collectAsState().value
     } else {
         0L
     }
+    val observedCapture = ioCapture.takeIf { it != 0L } ?: if (renderTrace != null) 1L else 0L
 
     LaunchedEffect(asset, splitHalf, onSpreadDetected) {
         if (asset != null && onSpreadDetected != null && splitHalf == null && asset.sourceWidth > asset.sourceHeight) {
@@ -338,15 +341,17 @@ internal fun ZoomablePageBox(
             if (renderedImage != null && !fullDecodeFailed && !presentationClosed) {
                 val observedMount = if (onObservedImageDraw != null) {
                     remember { mihon.desktop.test.state.readerState.nextDrawMountId() }
+                } else if (renderTrace != null) {
+                    remember(renderTrace) { renderTrace.nextMountId() }
                 } else {
                     0L
                 }
-                val observedCoordinates = if (onObservedImageDraw != null) {
+                val observedCoordinates = if (observesImage) {
                     remember { arrayOfNulls<LayoutCoordinates>(1) }
                 } else {
                     null
                 }
-                val observedPainter = if (onObservedImageDraw != null) {
+                val observedPainter = if (observesImage) {
                     remember(renderedImage.bitmap, observedCapture, presentationImage.holder, identity) {
                         ReaderObservedBitmapPainter(renderedImage.bitmap)
                     }
@@ -356,6 +361,9 @@ internal fun ZoomablePageBox(
                             coordinates = { observedCoordinates?.get(0) }
                             onDraw = { command ->
                                 onObservedImageDraw?.invoke(command, identity, presentationImage.holder.decodeKey)
+                                renderTrace?.guard("image-command") {
+                                    renderTrace.imageDraw(readerRenderTraceImage(command, identity))
+                                }
                             }
                         }
                 } else {
@@ -364,11 +372,23 @@ internal fun ZoomablePageBox(
                 if (observedCapture != 0L && observedPainter != null) {
                     val latestObservedDraw by rememberUpdatedState(onObservedImageDraw)
                     val latestCanObserve by rememberUpdatedState(canObserveFrameGeometry)
-                    LaunchedEffect(observedCapture, observedPainter, observedMount, identity) {
-                        while (isActive && latestCanObserve?.invoke(observedCapture) == true) {
+                    LaunchedEffect(
+                        observedCapture,
+                        observedPainter,
+                        observedMount,
+                        identity,
+                        renderTrace,
+                        traceRevision,
+                    ) {
+                        while (isActive &&
+                            (renderTrace?.isCapturing == true || latestCanObserve?.invoke(observedCapture) == true)
+                        ) {
                             withFrameNanos { clock ->
                                 observedPainter.sampleAppliedGeometry(clock)?.let { sample ->
                                     latestObservedDraw?.invoke(sample, identity, presentationImage.holder.decodeKey)
+                                    renderTrace?.guard("image-geometry") {
+                                        renderTrace.imageDraw(readerRenderTraceImage(sample, identity))
+                                    }
                                 }
                             }
                         }
