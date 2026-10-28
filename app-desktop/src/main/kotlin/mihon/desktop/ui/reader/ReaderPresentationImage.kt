@@ -79,20 +79,7 @@ internal fun rememberReaderPresentationImage(
         )
     }
     val decodeKey = remember(page.id, page.encodedPageRef, generation, page.attemptGeneration) {
-        ReaderPageDecodeKey(
-            contentKey = ReaderPageContentOpenRequest(
-                pageId = page.id,
-                generation = generation,
-                encodedPageRef = requireNotNull(page.encodedPageRef) {
-                    "Ready reader page has no encoded content: ${page.id}"
-                },
-                attemptGeneration = page.attemptGeneration,
-                encodedPageProvenance = page.encodedPageProvenance,
-            ),
-            purpose = PageDecodePurpose.FULL_PAGE,
-            maxWidth = PRESENTATION_DECODE_BOUND,
-            maxHeight = PRESENTATION_DECODE_BOUND,
-        )
+        readerPresentationDecodeKey(page, generation)
     }
     val holder = remember(owner, identity, decodeKey) {
         owner.createHolder(identity, decodeKey)
@@ -128,5 +115,20 @@ internal fun rememberReaderPresentationImage(
         regionState = regionState,
     )
 }
+
+internal fun readerPresentationDecodeKey(page: ReaderPageSession, generation: Long) = ReaderPageDecodeKey(
+    contentKey = ReaderPageContentOpenRequest(
+        pageId = page.id,
+        generation = generation,
+        encodedPageRef = requireNotNull(page.encodedPageRef) {
+            "Ready reader page has no encoded content: ${page.id}"
+        },
+        attemptGeneration = page.attemptGeneration,
+        encodedPageProvenance = page.encodedPageProvenance,
+    ),
+    purpose = PageDecodePurpose.FULL_PAGE,
+    maxWidth = PRESENTATION_DECODE_BOUND,
+    maxHeight = PRESENTATION_DECODE_BOUND,
+)
 
 internal const val PRESENTATION_DECODE_BOUND = 2_048
