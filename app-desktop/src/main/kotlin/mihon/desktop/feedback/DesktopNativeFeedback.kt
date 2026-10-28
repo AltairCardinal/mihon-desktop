@@ -1,6 +1,7 @@
 package mihon.desktop.feedback
 
 import kotlinx.coroutines.CoroutineScope
+import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.network.DesktopCloudflareCredentialInterceptor
 import mihon.desktop.network.DesktopCloudflareInterceptor
 import mihon.desktop.platform.DesktopNetworkHelper
@@ -32,5 +33,23 @@ internal fun createDesktopNativeFeedbackController(
     DesktopFeedbackLogReader(paths.logsDir),
     summary,
     scope,
+    openVerification,
+)
+
+/**
+ * Keeps the concrete network helper out of the Desktop UI layer. The UI asks the dependency
+ * container for a feedback controller and the feedback boundary owns the HTTP client, so no
+ * `mihon.desktop.ui` class depends on `DesktopNetworkHelper`.
+ */
+internal fun DesktopUiDependencies.createNativeFeedbackController(
+    paths: DesktopPlatformPaths,
+    scope: CoroutineScope,
+    summary: String,
+    openVerification: (String) -> Unit,
+): NativeFeedbackController = createDesktopNativeFeedbackController(
+    networkHelper,
+    paths,
+    scope,
+    summary,
     openVerification,
 )

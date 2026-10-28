@@ -1328,6 +1328,7 @@
     <string name="desktop_ui_chapter_grouping_and_confirmed_cross_source_versions_wil">一旦该候选作品合并到规范作品中，章节分组和确认的跨源版本将显示在此处。</string>
     <string name="desktop_ui_check_new_works">检查新作品</string>
     <string name="desktop_ui_checking_for_updates">正在检查更新...</string>
+    <string name="desktop_ui_manual_search_works">手动搜索作品</string>
     <string name="desktop_ui_choose_target">选择目标</string>
     <string name="desktop_ui_clear_all">全部清除</string>
     <string name="desktop_ui_clear_all_history">清除所有历史记录</string>
@@ -1438,7 +1439,7 @@
     <string name="desktop_ui_webtoon_side_padding">条漫侧边距</string>
     <string name="desktop_ui_work_candidate_was_not_found">未找到工作候选人</string>
     <string name="desktop_ui_write_notes_about_this_manga">写关于这部漫画的笔记...</string>
-    <string name="desktop_ui_zoom">飞涨</string>
+    <string name="desktop_ui_zoom">缩放</string>
     <string name="desktop_ui_zoom_in">放大</string>
     <string name="desktop_ui_zoom_out">缩小</string>
     <string name="desktop_ui_display">── 显示 ──</string>

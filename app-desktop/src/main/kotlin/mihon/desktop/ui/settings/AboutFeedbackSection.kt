@@ -20,7 +20,7 @@ import androidx.compose.ui.text.AnnotatedString
 import kotlinx.coroutines.CoroutineScope
 import mihon.desktop.APP_VERSION
 import mihon.desktop.LocalDesktopUiDependencies
-import mihon.desktop.feedback.createDesktopNativeFeedbackController
+import mihon.desktop.feedback.createNativeFeedbackController
 import mihon.desktop.platform.DesktopPlatformPaths
 import tachiyomi.domain.feedback.FeedbackPlatform
 import tachiyomi.domain.feedback.NativeFeedbackController
@@ -62,11 +62,10 @@ internal fun AboutFeedbackSection(
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
     val uriHandler = LocalUriHandler.current
-    val helper = if (controllerFactory == null) LocalDesktopUiDependencies.current.networkHelper else null
+    val dependencies = if (controllerFactory == null) LocalDesktopUiDependencies.current else null
     val controller = remember(scope) {
         controllerFactory?.invoke(scope, summary, uriHandler::openUri)
-            ?: createDesktopNativeFeedbackController(
-                requireNotNull(helper),
+            ?: requireNotNull(dependencies).createNativeFeedbackController(
                 platformPaths,
                 scope,
                 summary,
