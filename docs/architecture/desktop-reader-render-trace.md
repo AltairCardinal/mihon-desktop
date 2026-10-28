@@ -55,7 +55,9 @@ python scripts/analyze-reader-render-trace.py "D:\absolute\reader-render-traces\
 
 ## 资源和失败处理
 
-每个阅读器会话最多请求 180 帧、排队像素 256 MiB、独立 PNG 512 MiB。排队像素限制不等于进程内存上限：
+每个阅读器会话最多请求 900 帧、排队像素 256 MiB、独立 PNG 512 MiB。原 180 帧上限在一次实际连续
+切换中丢失了后 120 帧，因此提高帧记录上限；单次采集时间窗、内存和落盘限额不变。可用
+`mihon.reader.renderTraceMaxFrames` 在 1–900 内进一步降低帧预算。排队像素限制不等于进程内存上限：
 栅格化、RGBA 副本、相同像素缓存和编码缓冲还会占用内存。PNG 使用无损快速编码；事件通过 4096 项有界
 队列异步写入，主渲染线程不逐条刷盘。截图重放仍同步发生，captureStarted/Finished 记录其耗时。
 
