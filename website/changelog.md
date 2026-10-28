@@ -9,6 +9,16 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## October 29, 2026 — Windows fullscreen comic continuity
+
+**Accepted fix documentation · no public product release**
+
+- Comics no longer briefly disappear during fullscreen switches, including automatic single-page/two-page layout changes.
+- Accepted Windows preview: `0.11.24.6.36ea4d8` (preview ID `main-03d8b0fa240d4eb38f6423bf52c52eba`); implementation: `36ea4d8ee0`.
+- This acceptance covers removal of the image disappearance on Windows. Occasional vertical movement on entry remains a known issue in this candidate; other platforms and complete fullscreen motion were not accepted.
+
+Acceptance basis: the project owner confirmed in private chat on October 29, 2026 that the flicker was gone and separately reported the remaining vertical movement.
+
 ## October 29, 2026 — Quiet successful chapter actions on Windows
 
 **Accepted candidate documentation · no public product release**
