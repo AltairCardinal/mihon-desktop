@@ -9,6 +9,18 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## October 29, 2026 — Source image requests and accurate access errors
+
+**Accepted fixes and audit documentation · no public product release**
+
+- Windows queued downloads now use the source’s complete image request. This fixes ManHuaGui image access failures caused by omitted source headers and also preserves custom request methods and bodies.
+- Source network getter failures no longer silently fall back; bundled extension HTTP exceptions retain their error classification, and network interruptions are distinguished from disk failures.
+- Shared Android/Desktop source errors distinguish HTTP 401 login requirements from HTTP 403 access denial. Existing persisted download errors with an explicit HTTP 403 message are read back as access denial.
+- Accepted Windows preview: `0.11.24.9.d11630b` (preview ID `20261028T163014Z-3c5714dd`); [implementation and audit](https://github.com/AltairCardinal/mihon-desktop/commit/d11630bbd8b950177ca754d0877445e773b0ff78).
+- Evidence: 168 focused tests, including shared JVM/Android contracts and a real ManHuaGui extension through production desktop wiring. The Windows packaged runtime check passed. Android device operation, system-browser fallback and macOS native interaction were not accepted as runtime-tested by these results.
+
+Acceptance basis: the project owner explicitly accepted these fixes and the cross-platform audit in private chat on October 29, 2026 and requested main integration and a push. This is not a public product release or a claim that every third-party source has been verified.
+
 ## October 29, 2026 — Windows startup card on the launch monitor
 
 **Accepted candidate documentation · no public product release**
