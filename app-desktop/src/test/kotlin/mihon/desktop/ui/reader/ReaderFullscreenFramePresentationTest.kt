@@ -7,6 +7,7 @@ import io.mockk.verify
 import io.mockk.verifyOrder
 import mihon.desktop.platform.DesktopFullscreenAdapter
 import mihon.desktop.platform.DesktopWindowTransitions
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
@@ -33,6 +34,7 @@ class ReaderFullscreenFramePresentationTest {
         verifyOrder {
             transitions.setDisabled(window, true)
             adapter.enter(window)
+            window.invalidate()
             window.validate()
             window.renderImmediately()
             transitions.setDisabled(window, false)
@@ -46,6 +48,7 @@ class ReaderFullscreenFramePresentationTest {
 
         verifyOrder {
             adapter.exit(window)
+            window.invalidate()
             window.validate()
             window.renderImmediately()
             transitions.setDisabled(window, false)
@@ -59,10 +62,63 @@ class ReaderFullscreenFramePresentationTest {
 
         verifyOrder {
             adapter.exit(window)
+            window.invalidate()
             window.validate()
             window.renderImmediately()
             transitions.setDisabled(window, false)
         }
+    }
+
+    @Test
+    fun `native resize events are processed before final layout and drawing`() {
+        val pending = mutableListOf<Runnable>()
+        val queuedController = DesktopReaderFullscreenController(
+            getWindow = { window },
+            dispatch = { pending += it },
+            transitions = transitions,
+            fullscreenAdapter = adapter,
+        )
+        queuedController.syncPlacement(true)
+        pending.removeAt(0).run()
+
+        verify { adapter.enter(window) }
+        verify(exactly = 0) { window.renderImmediately() }
+        verify(exactly = 0) { transitions.setDisabled(window, false) }
+        assertEquals(1, pending.size, "A second event turn must complete the native resize")
+
+        pending.removeAt(0).run()
+        verifyOrder {
+            window.invalidate()
+            window.validate()
+            window.renderImmediately()
+            transitions.setDisabled(window, false)
+        }
+    }
+
+    @Test
+    fun `obsolete frame completion cannot redraw or restore transitions over a newer resize`() {
+        val pending = mutableListOf<Runnable>()
+        val queuedController = DesktopReaderFullscreenController(
+            getWindow = { window },
+            dispatch = { pending += it },
+            transitions = transitions,
+            fullscreenAdapter = adapter,
+        )
+        every { adapter.enter(window) } answers {
+            queuedController.syncPlacement(false)
+            true
+        }
+        queuedController.syncPlacement(true)
+        pending.removeAt(0).run()
+        pending.removeAt(0).run()
+
+        pending.removeAt(0).run()
+        verify(exactly = 0) { window.renderImmediately() }
+        verify(exactly = 0) { transitions.setDisabled(window, false) }
+
+        pending.removeAt(0).run()
+        verify(exactly = 1) { window.renderImmediately() }
+        verify(exactly = 1) { transitions.setDisabled(window, false) }
     }
 
     @Test

@@ -6,6 +6,8 @@ import mihon.desktop.platform.DesktopFullscreenAdapter
 import mihon.desktop.platform.DesktopWindowTransitions
 import mihon.desktop.platform.WindowsWindowTransitions
 import mihon.desktop.platform.defaultFullscreenAdapter
+import java.awt.Component
+import java.awt.Container
 import javax.swing.SwingUtilities
 
 /**
@@ -27,6 +29,7 @@ internal class DesktopReaderFullscreenController(
     private var disposed = false
     private var targetFullscreen: Boolean? = null
     private var isAdapterFullscreen = false
+    private var transitionRevision = 0L
 
     fun syncPlacement(isFullscreen: Boolean) {
         targetFullscreen = isFullscreen
@@ -37,8 +40,7 @@ internal class DesktopReaderFullscreenController(
                 runCatching {
                     if (isFullscreen) {
                         if (!isAdapterFullscreen) {
-                            transitions.setDisabled(window, true)
-                            try {
+                            changePlacement(window, true) {
                                 if (fullscreenAdapter != null && fullscreenAdapter.enter(window)) {
                                     isAdapterFullscreen = true
                                 } else {
@@ -48,24 +50,16 @@ internal class DesktopReaderFullscreenController(
                                         window.placement = WindowPlacement.Fullscreen
                                     }
                                 }
-                                presentFinalFrame(window)
-                            } finally {
-                                transitions.setDisabled(window, false)
                             }
                         }
-                    } else {
-                        transitions.setDisabled(window, true)
-                        try {
+                    } else if (isAdapterFullscreen || window.placement == WindowPlacement.Fullscreen) {
+                        changePlacement(window, false) {
                             if (isAdapterFullscreen) {
                                 fullscreenAdapter?.exit(window)
                                 isAdapterFullscreen = false
-                                presentFinalFrame(window)
                             } else if (window.placement == WindowPlacement.Fullscreen) {
                                 restoreNonFullscreenPlacement(window, previousPlacement)
-                                presentFinalFrame(window)
                             }
-                        } finally {
-                            transitions.setDisabled(window, false)
                         }
                     }
                 }
@@ -79,26 +73,54 @@ internal class DesktopReaderFullscreenController(
         val window = getWindow() ?: return
         if (!wasFullscreen || !window.isDisplayable) return
         runCatching {
-            transitions.setDisabled(window, true)
-            try {
+            changePlacement(window, false) {
                 if (isAdapterFullscreen) {
                     fullscreenAdapter?.exit(window)
                     isAdapterFullscreen = false
                 } else {
                     restoreNonFullscreenPlacement(window, previousPlacement)
                 }
-                presentFinalFrame(window)
-            } finally {
-                transitions.setDisabled(window, false)
             }
+        }
+    }
+
+    private fun changePlacement(window: ComposeWindow, fullscreen: Boolean, change: () -> Unit) {
+        val revision = ++transitionRevision
+        transitions.setDisabled(window, true)
+        var posted = false
+        try {
+            change()
+            // Win32 posts AWT bounds/inset updates during the native call. Reconcile only
+            // after those events, while system transitions are still disabled.
+            dispatch(
+                Runnable {
+                    if (revision != transitionRevision) return@Runnable
+                    runCatching {
+                        try {
+                            if (window.isDisplayable && targetFullscreen == fullscreen) presentFinalFrame(window)
+                        } finally {
+                            transitions.setDisabled(window, false)
+                        }
+                    }
+                },
+            )
+            posted = true
+        } finally {
+            if (!posted) transitions.setDisabled(window, false)
         }
     }
 
     private fun presentFinalFrame(window: ComposeWindow) {
         // Native frame changes resize the client area before the queued Compose repaint.
         // Draw that final layout before DwmFlush can expose an empty or stale surface.
+        invalidateLayout(window)
         window.validate()
         window.renderImmediately()
+    }
+
+    private fun invalidateLayout(component: Component) {
+        if (component is Container) component.components.forEach(::invalidateLayout)
+        component.invalidate()
     }
 
     private fun restoreNonFullscreenPlacement(window: ComposeWindow, target: WindowPlacement) {

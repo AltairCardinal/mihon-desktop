@@ -6,6 +6,7 @@ import com.sun.jna.Pointer
 import com.sun.jna.platform.win32.User32
 import com.sun.jna.platform.win32.WinDef
 import com.sun.jna.platform.win32.WinUser
+import java.awt.Rectangle
 import java.awt.Window
 
 internal interface DesktopFullscreenAdapter {
@@ -18,6 +19,7 @@ internal class WindowsBorderlessFullscreenAdapter(
 ) : DesktopFullscreenAdapter {
     private var savedStyle: Int? = null
     private var savedPlacement: WinUser.WINDOWPLACEMENT? = null
+    private var savedBounds: Rectangle? = null
 
     override fun enter(window: Window): Boolean = runCatching {
         if (!window.isDisplayable) return false
@@ -35,6 +37,7 @@ internal class WindowsBorderlessFullscreenAdapter(
 
         savedStyle = currentStyle
         savedPlacement = placement
+        savedBounds = Rectangle(window.bounds)
 
         val fullscreenStyle = currentStyle and WinUser.WS_OVERLAPPEDWINDOW.inv()
         user32.SetWindowLong(hwnd, WinUser.GWL_STYLE, fullscreenStyle)
@@ -53,12 +56,16 @@ internal class WindowsBorderlessFullscreenAdapter(
             height,
             WinUser.SWP_NOOWNERZORDER or WinUser.SWP_FRAMECHANGED,
         )
+        // Keep AWT's logical bounds in sync with the native frame. Changing only the
+        // HWND leaves the heavyweight Skiko canvas laid out against stale dimensions.
+        window.bounds = window.graphicsConfiguration.bounds
         true
     }.getOrDefault(false)
 
     override fun exit(window: Window): Boolean = runCatching {
         val style = savedStyle ?: return false
         val placement = savedPlacement ?: return false
+        val bounds = savedBounds ?: return false
         if (!window.isDisplayable) return false
         val hwnd = WinDef.HWND(Native.getComponentPointer(window))
 
@@ -74,8 +81,10 @@ internal class WindowsBorderlessFullscreenAdapter(
             WinUser.SWP_NOMOVE or WinUser.SWP_NOSIZE or WinUser.SWP_NOZORDER or
                 WinUser.SWP_NOOWNERZORDER or WinUser.SWP_FRAMECHANGED,
         )
+        window.bounds = bounds
         savedStyle = null
         savedPlacement = null
+        savedBounds = null
         true
     }.getOrDefault(false)
 }
