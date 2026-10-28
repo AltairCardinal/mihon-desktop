@@ -1107,7 +1107,7 @@ class MangaDetailInteractionTest {
             render(scene)
             assertTrue(model.downloadQueueFlow().value.isEmpty())
             assertTrue(
-                activeNodes(scene).flatMap(::labels).any { "0 succeeded, 1 skipped, 0 failed" in it },
+                activeNodes(scene).flatMap(::labels).none { "0 succeeded, 1 skipped, 0 failed" in it },
                 "the real manager no-op cannot be reported as accepted by a Unit-adapted factory port",
             )
         }
@@ -1436,7 +1436,7 @@ class MangaDetailInteractionTest {
     }
 
     @Test
-    fun `chapter result bookmark processes only applicable objects and shows success skip failure`(
+    fun `chapter result bookmark processes applicable objects without success snackbar`(
         @TempDir root: File,
     ) = runBlocking {
         val written = mutableListOf<Long>()
@@ -1463,7 +1463,7 @@ class MangaDetailInteractionTest {
                 written,
                 "already bookmarked objects are skipped rather than rewritten",
             )
-            assertTrue(activeNodes(scene).flatMap(::labels).any { "1 succeeded, 1 skipped, 0 failed" in it })
+            assertFalse(activeNodes(scene).flatMap(::labels).any { "1 succeeded, 1 skipped, 0 failed" in it })
             assertTrue(
                 selectedChapterNames(scene).isEmpty(),
                 "successful and explicitly skipped applicable selection completes",
@@ -1556,7 +1556,7 @@ class MangaDetailInteractionTest {
                     it.chapterId
                 }.toSet(),
             )
-            assertTrue(activeNodes(scene).flatMap(::labels).any { "1 succeeded, 2 skipped, 0 failed" in it })
+            assertFalse(activeNodes(scene).flatMap(::labels).any { "1 succeeded, 2 skipped, 0 failed" in it })
             assertTrue(selectedChapterNames(scene).isEmpty())
         }
         withDetail(File(root, "local"), mangaTransform = { it.copy(source = 0L) }) { scene, _, _, _ ->

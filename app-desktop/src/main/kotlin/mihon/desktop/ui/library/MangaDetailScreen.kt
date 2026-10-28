@@ -466,9 +466,9 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 result.failures.size,
             )
             model.consumeChapterBatchFeedback()
+            val offer = offerLibrary && result.succeededIds.isNotEmpty() && model.state.value.manga?.favorite == false
+            if (result.failures.isEmpty() && !offer) return
             scope.launch {
-                val offer =
-                    offerLibrary && result.succeededIds.isNotEmpty() && model.state.value.manga?.favorite == false
                 val response = categorySnackbar.showSnackbar(
                     message = if (offer) message + "\n" + MR.strings.snack_add_to_library.localized() else message,
                     actionLabel = if (offer) MR.strings.action_add.localized() else null,
