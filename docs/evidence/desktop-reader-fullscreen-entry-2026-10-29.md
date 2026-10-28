@@ -1,7 +1,8 @@
 # 进入全屏的旧画布帧取证
 
 范围：Windows 阅读器进入全屏时漫画先向上跳再恢复。使用应用内渲染插桩，未使用 Computer Use。
-这些 PNG 是已完成 Skia Picture 的栅格化结果，未观测 GPU swap、DWM 或显示器呈现；用户现象尚待候选验收。
+这些 PNG 是已完成 Skia Picture 的栅格化结果，未观测 GPU swap、DWM 或显示器呈现。
+用户已确认 `56b451bb87` 候选仍然上跳；以下回归只解释并修正了一项绘制阶段缺陷，未关闭原问题。
 
 ## 实际记录
 
@@ -69,3 +70,14 @@ AWT resize 通知，使实际 Compose 场景消费新尺寸，再原样执行原
 
 显式一帧预算用例仍保存 1 帧、报告后续 211 帧缺失及 PARTIAL，符合预期；没有把它当作完整采集。
 这些证据保存在 `app-desktop/artifacts/diagnostics/reader-entry-acceptance/`，未将用户漫画 PNG 纳入 Git。
+
+## 候选复现仍失败后的记录
+
+`56b451bb87` 的实际用户会话为 `2026-10-28T21-48-07.272590Z-493e7b75-8ffc-4868-bce2-e69c9f51a0f6`，
+位于 `app-desktop/artifacts/preview/windows/main-af75317c4393407187b55692082346fd/reader-render-traces/`。
+513 帧全部写入，缺帧和丢事件均为 0。五次进入全屏的首个 Picture 为 render 129、189、239、325、416，
+均直接使用 1920×1080 画布，漫画绘制范围从 Y=118 到 962，中心 Y=540；此前的旧尺寸进入帧没有再出现。
+用户仍观察到跳动，因此这些应用 Picture 不能解释当前现象，也不能据此判断窗口呈现稳定。
+
+下一层取证使用[窗口合成帧采集](../architecture/desktop-reader-render-trace.md#窗口合成帧补充)，
+与应用 Picture 保持独立帧号，按 QPC 时间对照；没有继续凭同一组应用尺寸回归推断原问题已修复。
