@@ -216,9 +216,11 @@ def preview_source_identity(root: pathlib.Path) -> Dict[str, Any]:
 def preview_manifest(args: argparse.Namespace) -> Dict[str, Any]:
     source = load(args.source)
     changed = args.build_status == "PASS" and source != preview_source_identity(args.repo.resolve())
+    artifact_root = args.artifact.parent if args.platform == "windows" else args.artifact
     value = {
         "kind": "preview", "platform": args.platform, "source": source,
         "version": args.version, "artifactPath": str(args.artifact.resolve()),
+        "artifact": artifact_identity(artifact_root) if args.artifact.exists() else None,
         "build": {"status": args.build_status},
         "sourceIntegrity": {"status": "TOOL_FAIL" if changed else "PASS" if args.build_status == "PASS" else "NOT_RUN"},
         "productionRuntime": {"status": args.runtime_status},
