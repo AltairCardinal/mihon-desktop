@@ -9,6 +9,17 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## October 29, 2026 — Windows startup card on the launch monitor
+
+**Accepted candidate documentation · no public product release**
+
+- The startup card is positioned on the monitor containing the mouse pointer before its first visible frame, removing the primary-monitor flash when launching from a secondary monitor.
+- Replaced the JVM-managed splash with a lightweight AWT window. Feedback now waits for JVM/AWT initialization; the main window retains its existing saved-position behavior.
+- Accepted candidate: Windows preview `0.11.24.9.f9b8b2a` (preview ID `20261028T173231Z-78bf18d1`); implementation: `39d6243ac5`.
+- Scope: Windows packaged startup feedback, including normal and maximized startup on a secondary monitor. Other platforms and a formal product release are not covered.
+
+Acceptance basis: the project owner explicitly accepted this Windows candidate in private chat on October 29, 2026 and requested integration into main and a push. No public product release was allocated.
+
 ## October 17, 2026 — Desktop fullscreen reader mode
 
 **Accepted candidate documentation · no public product release**
