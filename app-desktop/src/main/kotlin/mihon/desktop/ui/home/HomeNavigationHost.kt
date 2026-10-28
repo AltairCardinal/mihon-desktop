@@ -24,8 +24,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -40,22 +42,38 @@ import mihon.desktop.ui.updates.UpdatesTab
 internal val desktopRootTabs = listOf(LibraryTab, UpdatesTab, HistoryTab, BrowseTab, MoreTab)
 
 internal class HomeNavigationState {
-    private val childStacks = mutableStateMapOf<Navigator, Boolean>()
-    val hasChild: Boolean get() = childStacks.values.any { it }
-    fun update(navigator: Navigator) { childStacks[navigator] = navigator.size > 1 }
-    fun remove(navigator: Navigator) { childStacks.remove(navigator) }
+    /**
+     * The navigator that owns the visible tab content.
+     *
+     * The host reads the depth of this stack directly instead of waiting for a reported flag. The
+     * stack is a snapshot state, so a push or a pop invalidates the host in the very same frame
+     * that redraws the page. A reported flag would only arrive one frame later and the root
+     * navigation bar would visibly blink out while returning from a detail page.
+     */
+    var currentNavigator: Navigator? by mutableStateOf<Navigator?>(null)
+        private set
+
+    /** True while the visible tab owns a child page, for example a manga detail page. */
+    val hasChild: Boolean get() = (currentNavigator?.size ?: 0) > 1
+
+    fun attach(navigator: Navigator) {
+        currentNavigator = navigator
+    }
+
+    fun detach(navigator: Navigator) {
+        if (currentNavigator === navigator) currentNavigator = null
+    }
 }
 
 private val LocalHomeNavigationState = staticCompositionLocalOf<HomeNavigationState?> { null }
 
-/** Every actual tab stack reports its depth; ordinary Screens never enter a TabNavigator. */
+/** Every actual tab stack publishes its navigator; ordinary Screens never enter a TabNavigator. */
 @Composable
 internal fun ObserveHomeNavigationStack(navigator: Navigator) {
     val state = LocalHomeNavigationState.current
-    val depth = navigator.size
-    DisposableEffect(state, navigator, depth) {
-        state?.update(navigator)
-        onDispose { state?.remove(navigator) }
+    DisposableEffect(state, navigator) {
+        state?.attach(navigator)
+        onDispose { state?.detach(navigator) }
     }
 }
 
