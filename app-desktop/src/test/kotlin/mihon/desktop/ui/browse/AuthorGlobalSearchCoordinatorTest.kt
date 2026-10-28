@@ -28,7 +28,7 @@ class AuthorGlobalSearchCoordinatorTest {
                 override suspend fun searchPage(request: BoundedAuthorSearchPageRequest) =
                     CreatorSourcePageResult.Content(
                         works = listOf(
-                            work("/verified").copy(
+                            work("/verified", "Jane Doe").copy(
                                 structuredCreatorMatches = listOf(
                                     CreatorStructuredIdentityMatch("Jane Doe", CreatorRole.AUTHOR, "source author id"),
                                 ),
@@ -54,10 +54,10 @@ class AuthorGlobalSearchCoordinatorTest {
         )
     }
 
-    private fun work(url: String) = CreatorSourceWorkSnapshot(
+    private fun work(url: String, authorText: String? = null) = CreatorSourceWorkSnapshot(
         key = SourceWorkNaturalKey(7L, url),
         title = url,
-        authorText = null,
+        authorText = authorText,
         artistText = null,
         thumbnailUrl = null,
     )

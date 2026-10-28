@@ -93,6 +93,7 @@ class AuthorDetailBehaviorTest {
             coEvery { repository.getDiscoveryCandidatesForCreator(7L) } returns emptyList()
             coEvery { repository.getMangaCreatorsForCreator(7L) } returns emptyList()
             coEvery { repository.getMangaTitlesForCreator(7L) } returns emptyMap()
+            coEvery { repository.hasTitleAttribution(7L) } returns false
 
             val interactor = DiscoverCreatorWorks(
                 discoveryService = CreatorDiscoveryService(repository),
