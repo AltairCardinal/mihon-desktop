@@ -9,6 +9,19 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## October 17, 2026 — Desktop fullscreen reader mode
+
+**Accepted candidate documentation · no public product release**
+
+- Desktop reader now provides a dedicated fullscreen mode toggled via the F11 shortcut or the fullscreen icon next to Settings in the top reader bar.
+- Upon entering fullscreen, a transient corner tutorial bubble guides the user with the F11 shortcut, automatically dismisses after 3 seconds, and integrates with the tutorial system to persist acknowledgment.
+- In fullscreen mode, the top and bottom navigation bars are hidden by default and auto-reveal when hovering near the top edge (≤ 48dp) or bottom edge (within 80dp), smoothly hiding again when moving away. Pressing Esc exits fullscreen mode.
+- Hardened against window disposal race conditions during rapid fullscreen toggling and cleared pairing certification targets across chapter switches in fullscreen and dual-page modes.
+- Accepted candidate: Windows preview `0.11.20.6.53e23eb` (preview ID `20261017T151740Z-ec5c850a`).
+- Scope: Windows desktop fullscreen reading mode and edge hover navigation; does not claim other platforms or a formal release.
+
+Acceptance basis: the project owner explicitly accepted this Windows preview build in private chat on October 17, 2026 and requested a push. No public product release was allocated.
+
 ## October 17, 2026 — Manga detail chapter scrollbar and continue FAB clearance
 
 **Accepted candidate documentation · no public product release**

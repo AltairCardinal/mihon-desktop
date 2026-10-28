@@ -89,6 +89,7 @@ data class ReaderState(
     val showSettings: Boolean = false,
     val settingsFeedback: String? = null,
     val showUI: Boolean = false,
+    val isFullscreen: Boolean = false,
 )
 
 enum class PairingLoad { READY, LOADING, ERROR, DEFAULT_UNVERIFIED }

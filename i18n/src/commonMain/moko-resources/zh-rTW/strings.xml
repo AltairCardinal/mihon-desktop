@@ -1611,4 +1611,11 @@
     <string name="catalog_result_no_groups">已檢查範圍內未識別到翻譯組</string>
     <string name="catalog_result_filter_help">僅篩選已載入結果。語言與翻譯署名由標題或中繼資料推斷，未經正文核驗。語言內和組內任選符合，兩類條件需同時滿足。</string>
     <string name="pref_library_update_manual_ignore">手動觸發更新時忽略</string>
+    <string name="desktop_tutorial_pairing_title">手動調整匹配</string>
+    <string name="desktop_tutorial_pairing_message">雙頁沒有配對齊？按 C 鍵即可調整目前匹配，也可以使用閱讀器底欄的「調整跨頁」按鈕。</string>
+    <string name="desktop_tutorial_pairing_action">調整匹配 · C</string>
+    <string name="desktop_tutorial_got_it">知道了</string>
+    <string name="desktop_tutorial_fullscreen_title">全螢幕模式</string>
+    <string name="desktop_tutorial_fullscreen_message">按F11以進入/退出全螢幕</string>
+    <string name="desktop_action_exit_fullscreen">退出全螢幕</string>
 </resources>

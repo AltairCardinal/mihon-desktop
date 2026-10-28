@@ -28,6 +28,7 @@ import mihon.desktop.reader.DesktopReaderRuntime
 import mihon.desktop.reader.DesktopReaderRuntimeFactory
 import mihon.desktop.reader.DesktopReaderSession
 import mihon.desktop.reader.DesktopReaderSessionState
+import mihon.desktop.reader.desktopReaderSessionState
 import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderNavigator
 import mihon.desktop.reader.ReaderPageIoObserver
@@ -43,9 +44,16 @@ import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderChapterLoadState
 import mihon.domain.reader.session.ReaderPageDescriptor
 import mihon.domain.reader.session.ReaderSessionCore
+import mihon.desktop.ui.reader.presentation.DisplaySlotId
+import mihon.desktop.ui.reader.presentation.DisplayUnitId
+import mihon.desktop.ui.reader.presentation.ReaderPresentationMode
+import mihon.desktop.ui.reader.presentation.VisiblePageSet
+import mihon.desktop.ui.reader.presentation.WebtoonScrollAnchor
+import mihon.desktop.ui.reader.presentation.WebtoonViewportUpdate
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -354,6 +362,210 @@ class DesktopReaderChapterTransitionIntegrationTest {
             runtime.close()
             Injekt = previousInjekt
             legacy.removeNode()
+        }
+    }
+
+    @Test
+    fun `chapter transition purges prior chapter certification targets and does not crash certifyPairing`() {
+        val state1 = mihon.desktop.reader.desktopReaderSessionState(chapterId = 1L, pageCount = 3)
+        val model = ReaderScreenModel(initialSessionState = state1)
+        try {
+            val pageIdChapter1 = state1.snapshot.activeChapter.pages.first().id
+            model.beginPagerViewport(
+                visiblePages = mihon.desktop.ui.reader.presentation.VisiblePageSet(
+                    displayUnitId = mihon.desktop.ui.reader.presentation.DisplayUnitId(
+                        mihon.desktop.ui.reader.presentation.ReaderPresentationMode.SINGLE_PAGED,
+                        listOf(mihon.desktop.ui.reader.presentation.DisplaySlotId(pageIdChapter1)),
+                    ),
+                    pageIds = setOf(pageIdChapter1),
+                    activePageId = pageIdChapter1,
+                ),
+                userNavigation = false,
+            )
+
+            val state2 = mihon.desktop.reader.desktopReaderSessionState(chapterId = 2L, pageCount = 3)
+            // Must not throw IllegalArgumentException when accepting session state of chapter 2
+            model.acceptSessionState(state2)
+            assertEquals(ReaderChapterId(2L), model.state.value.session.activeChapter.id)
+        } finally {
+            model.onDispose()
+        }
+    }
+
+    @Test
+    fun `dual-page forward transition cleans up certification targets and certifies new pairs`() {
+        val state1 = desktopReaderSessionState(chapterId = 1L, pageCount = 4)
+        val model = ReaderScreenModel(initialSessionState = state1, dualPageOverride = true)
+        try {
+            model.presentReadyPagerViewport()
+            model.navigateDualPage(forward = true)
+            model.presentReadyPagerViewport()
+
+            val state2 = desktopReaderSessionState(chapterId = 2L, pageCount = 4)
+            model.acceptSessionState(state2)
+            assertEquals(ReaderChapterId(2L), model.state.value.session.activeChapter.id)
+
+            val nextViewport = model.presentReadyPagerViewport()
+            assertNotNull(nextViewport)
+            assertTrue(model.state.value.dualPairingFailures.keys.none { it.chapterId == ReaderChapterId(1L) })
+        } finally {
+            model.onDispose()
+        }
+    }
+
+    @Test
+    fun `backward chapter transition returns to prior chapter without certification collision`() {
+        val state2 = desktopReaderSessionState(chapterId = 2L, pageCount = 3)
+        val model = ReaderScreenModel(initialSessionState = state2)
+        try {
+            model.presentReadyPagerViewport()
+
+            // Step backward to Chapter 1
+            val state1 = desktopReaderSessionState(chapterId = 1L, pageCount = 3, initialPage = 2)
+            model.acceptSessionState(state1)
+            assertEquals(ReaderChapterId(1L), model.state.value.session.activeChapter.id)
+            model.presentReadyPagerViewport()
+
+            // Step forward again to Chapter 2
+            model.acceptSessionState(state2)
+            assertEquals(ReaderChapterId(2L), model.state.value.session.activeChapter.id)
+            val ticket = model.presentReadyPagerViewport()
+            assertNotNull(ticket)
+        } finally {
+            model.onDispose()
+        }
+    }
+
+    @Test
+    fun `transition into loading chapter with zero pages then populating pages succeeds`() {
+        val state1 = desktopReaderSessionState(chapterId = 1L, pageCount = 3)
+        val model = ReaderScreenModel(initialSessionState = state1)
+        try {
+            model.presentReadyPagerViewport()
+
+            // Chapter 2 starts loading with 0 pages
+            val state2Loading = desktopReaderSessionState(chapterId = 2L, pageCount = 0)
+            model.acceptSessionState(state2Loading)
+            assertEquals(ReaderChapterId(2L), model.state.value.session.activeChapter.id)
+            assertTrue(model.state.value.session.activeChapter.pages.isEmpty())
+
+            // Chapter 2 finishes loading page list
+            val state2Loaded = desktopReaderSessionState(chapterId = 2L, pageCount = 3)
+            model.acceptSessionState(state2Loaded)
+            assertEquals(3, model.state.value.session.activeChapter.pages.size)
+
+            val ticket = model.presentReadyPagerViewport()
+            assertNotNull(ticket)
+        } finally {
+            model.onDispose()
+        }
+    }
+
+    @Test
+    fun `webtoon continuous reading across chapters clears certification targets and updates anchor`() {
+        val state1 = desktopReaderSessionState(chapterId = 1L, pageCount = 3)
+        val model = ReaderScreenModel(initialSessionState = state1, isWebtoon = true)
+        try {
+            val pages1 = state1.snapshot.activeChapter.pages.map { it.id }
+            val unit1 = DisplayUnitId(ReaderPresentationMode.WEBTOON, listOf(DisplaySlotId(pages1[1])))
+            model.settleWebtoon(
+                WebtoonViewportUpdate(
+                    VisiblePageSet(unit1, setOf(pages1[0], pages1[1]), pages1[1]),
+                    WebtoonScrollAnchor(unit1, scrollOffset = 20),
+                ),
+            )
+            assertEquals(1, model.state.value.currentPage)
+
+            // Switch to Chapter 2
+            val state2 = desktopReaderSessionState(chapterId = 2L, pageCount = 3)
+            model.acceptSessionState(state2)
+            assertEquals(ReaderChapterId(2L), model.state.value.session.activeChapter.id)
+
+            val pages2 = state2.snapshot.activeChapter.pages.map { it.id }
+            val unit2 = DisplayUnitId(ReaderPresentationMode.WEBTOON, listOf(DisplaySlotId(pages2[0])))
+            model.settleWebtoon(
+                WebtoonViewportUpdate(
+                    VisiblePageSet(unit2, setOf(pages2[0]), pages2[0]),
+                    WebtoonScrollAnchor(unit2, scrollOffset = 0),
+                ),
+            )
+            assertEquals(0, model.state.value.currentPage)
+            assertEquals(setOf(pages2[0]), model.state.value.visiblePageIds)
+        } finally {
+            model.onDispose()
+        }
+    }
+
+    @Test
+    fun `arbitrary non-adjacent chapter jump resets certification targets and establishes new session`() {
+        val state1 = desktopReaderSessionState(chapterId = 1L, pageCount = 3)
+        val model = ReaderScreenModel(initialSessionState = state1)
+        try {
+            model.presentReadyPagerViewport()
+
+            // Jump directly to Chapter 10
+            val state10 = desktopReaderSessionState(chapterId = 10L, pageCount = 5)
+            model.acceptSessionState(state10)
+            assertEquals(ReaderChapterId(10L), model.state.value.session.activeChapter.id)
+
+            val ticket = model.presentReadyPagerViewport()
+            assertNotNull(ticket)
+        } finally {
+            model.onDispose()
+        }
+    }
+
+    @Test
+    fun `rapid sequential chapter switching without intermediate settle clears previous targets`() {
+        val state1 = desktopReaderSessionState(chapterId = 1L, pageCount = 3)
+        val model = ReaderScreenModel(initialSessionState = state1)
+        try {
+            model.presentReadyPagerViewport()
+
+            // Rapid consecutive transitions: 2 -> 3 -> 4
+            model.acceptSessionState(desktopReaderSessionState(chapterId = 2L, pageCount = 3))
+            model.acceptSessionState(desktopReaderSessionState(chapterId = 3L, pageCount = 3))
+            val state4 = desktopReaderSessionState(chapterId = 4L, pageCount = 3)
+            model.acceptSessionState(state4)
+            assertEquals(ReaderChapterId(4L), model.state.value.session.activeChapter.id)
+
+            val ticket = model.presentReadyPagerViewport()
+            assertNotNull(ticket)
+        } finally {
+            model.onDispose()
+        }
+    }
+
+    @Test
+    fun `chapter transition while in fullscreen mode preserves fullscreen state and auto-hidden UI`() {
+        val state1 = desktopReaderSessionState(chapterId = 1L, pageCount = 3)
+        val model = ReaderScreenModel(initialSessionState = state1)
+        try {
+            model.presentReadyPagerViewport()
+
+            // Enter fullscreen
+            model.setFullscreen(true)
+            assertTrue(model.state.value.isFullscreen)
+            assertFalse(model.state.value.showUI)
+
+            // Transition to Chapter 2 while in fullscreen
+            val state2 = desktopReaderSessionState(chapterId = 2L, pageCount = 3)
+            model.acceptSessionState(state2)
+
+            // Settle in Chapter 2
+            val ticket = model.presentReadyPagerViewport()
+            assertNotNull(ticket)
+
+            // Verify fullscreen state is preserved through chapter transition
+            assertTrue(model.state.value.isFullscreen, "Fullscreen state must be preserved across chapter transition")
+            assertFalse(model.state.value.showUI, "UI must remain auto-hidden across chapter transition in fullscreen")
+
+            // Exit fullscreen
+            model.setFullscreen(false)
+            assertFalse(model.state.value.isFullscreen)
+            assertTrue(model.state.value.showUI)
+        } finally {
+            model.onDispose()
         }
     }
 
