@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import argparse
+import contextlib
+import importlib.util
+import io
 import json
 import os
 import shutil
@@ -8,6 +12,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO = Path(__file__).resolve().parents[2]
 BASH = Path(r"C:\Program Files\Git\bin\bash.exe") if sys.platform == "win32" else Path("/bin/bash")
@@ -21,7 +26,9 @@ class WindowsPreviewTest(unittest.TestCase):
         self.root = Path(self.temporary.name).resolve()
         self.scripts = self.root / "scripts"
         self.scripts.mkdir()
-        for name in ("build-desktop.sh", "build-windows.ps1", "publish-windows-unpacked.ps1", "task15-build-provenance.py"):
+        for name in ("build-desktop.sh", "build-windows.ps1", "publish-windows-unpacked.ps1", "task15-build-provenance.py", "build-main-preview.py"):
+            if not (REPO / "scripts" / name).exists():
+                continue
             shutil.copyfile(REPO / "scripts" / name, self.scripts / name)
         self.version = self.root / "app-desktop/src/main/kotlin/mihon/desktop/AppVersion.kt"
         self.version.parent.mkdir(parents=True)
@@ -151,6 +158,120 @@ class WindowsPreviewTest(unittest.TestCase):
         self.assertEqual(64, len(source["diffSha256"]))
         self.assertEqual([extra.relative_to(self.root).as_posix()], [item["path"] for item in source["untrackedInputs"]])
         self.assertTrue(source["dirty"])
+
+    def test_manifest_binds_entire_app_not_only_launcher(self) -> None:
+        result = self.run_preview()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        data = self.manifest()
+        self.assertEqual("mihon-artifact-tree-v1:sha256(kind<TAB>relative-path<TAB>content-sha256<LF>)",
+                         data["artifact"]["algorithm"])
+        self.assertEqual(64, len(data["artifact"]["sha256"]))
+        app = Path(data["artifactPath"]).parent
+        (app / "app/changed.jar").write_bytes(b"different compiled application, same launcher")
+        spec = importlib.util.spec_from_file_location("preview_provenance", REPO / "scripts/task15-build-provenance.py")
+        provenance = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(provenance)
+        self.assertNotEqual(data["artifact"]["sha256"], provenance.artifact_identity(app)["sha256"])
+
+    def run_main_preview(self, expected: str, required: str, **extra: str) -> subprocess.CompletedProcess[str]:
+        environment = dict(os.environ, MIHON_HOST_OS="MINGW64_NT", MIHON_PYTHON=sys.executable,
+                           MIHON_POWERSHELL_BIN="powershell.exe", PYTHONUTF8="1", PYTHONIOENCODING="utf-8",
+                           PYTHONDONTWRITEBYTECODE="1", **extra)
+        return subprocess.run([str(BASH), "scripts/build-desktop.sh", "main-preview", "--expected-head", expected,
+                               "--require-commit", required], cwd=self.root, env=environment,
+                              text=True, encoding="utf-8", capture_output=True, check=False)
+
+    def git(self, *args: str) -> str:
+        return subprocess.check_output(["git", "-C", str(self.root), *args], text=True, encoding="utf-8").strip()
+
+    def test_main_preview_builds_committed_feature_despite_dirty_shared_workspace(self) -> None:
+        self.git("branch", "-M", "main")
+        feature = self.version.parent / "Feature.kt"
+        feature.write_text("committed feature", encoding="utf-8")
+        fixture = self.root / "gradle-fixture.py"
+        fixture.write_text(fixture.read_text(encoding="utf-8") +
+                          "(app/'app/feature.jar').write_bytes((root/'app-desktop/src/main/kotlin/mihon/desktop/Feature.kt').read_bytes())\n"
+                          "original=os.environ.get('FIXTURE_ORIGINAL_REPO')\n"
+                          "if original: (Path(original)/'app-desktop/src/main/kotlin/mihon/desktop/Feature.kt').write_text('concurrent edit',encoding='utf-8')\n",
+                          encoding="utf-8")
+        self.git("add", ".")
+        self.git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "feature")
+        expected = self.git("rev-parse", "HEAD")
+        feature.write_text("dirty shared workspace", encoding="utf-8")
+        result = self.run_main_preview(expected, expected, FIXTURE_ORIGINAL_REPO=str(self.root))
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        data = self.manifest()
+        self.assertEqual("main-preview", data["kind"])
+        self.assertEqual(expected, data["mainDelivery"]["expectedHead"])
+        self.assertEqual([expected], data["mainDelivery"]["requiredCommits"])
+        self.assertEqual("NOT_VERIFIED", data["mainDelivery"]["remoteMain"])
+        self.assertFalse(data["source"]["dirty"])
+        exe = Path(data["artifactPath"])
+        self.assertEqual(b"committed feature", (exe.parent / "app/feature.jar").read_bytes())
+        self.assertEqual("concurrent edit", feature.read_text(encoding="utf-8"))
+        self.assertIn(f"Final unpacked EXE: {exe}", result.stdout)
+        self.assertEqual(1, self.git("worktree", "list", "--porcelain").count("worktree "))
+
+    def test_main_preview_rejects_feature_not_in_selected_main_before_build(self) -> None:
+        self.git("branch", "-M", "main")
+        expected = self.git("rev-parse", "HEAD")
+        self.git("checkout", "-qb", "other-feature")
+        self.version.write_text(self.version.read_text(encoding="utf-8") + "// other feature\n", encoding="utf-8")
+        self.git("add", ".")
+        self.git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "other")
+        required = self.git("rev-parse", "HEAD")
+        result = self.run_main_preview(expected, required)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("required commit is missing", result.stdout + result.stderr)
+        self.assertFalse(self.root.joinpath("gradle-call.json").exists())
+        self.assertFalse(list(self.root.glob("app-desktop/artifacts/preview/*/*/preview-manifest.json")))
+
+    def test_main_preview_rejects_stale_expected_main(self) -> None:
+        self.git("branch", "-M", "main")
+        old = self.git("rev-parse", "HEAD")
+        self.git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--allow-empty", "-qm", "advance main")
+        result = self.run_main_preview(old, old)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("main moved", result.stdout + result.stderr)
+        self.assertFalse(self.root.joinpath("gradle-call.json").exists())
+
+    def test_failed_main_preview_cleans_only_its_own_worktree(self) -> None:
+        self.git("branch", "-M", "main")
+        expected = self.git("rev-parse", "HEAD")
+        sibling = self.root / "other-owned-worktree"
+        self.git("worktree", "add", "--detach", str(sibling), expected)
+        try:
+            result = self.run_main_preview(expected, expected, FIXTURE_GRADLE_FAIL="1")
+            self.assertNotEqual(0, result.returncode)
+            self.assertNotIn("Final unpacked EXE:", result.stdout)
+            self.assertFalse(list(self.root.glob("app-desktop/artifacts/preview/*/*/preview-manifest.json")))
+            self.assertTrue((sibling / "gradlew.bat").is_file())
+            self.assertEqual(2, self.git("worktree", "list", "--porcelain").count("worktree "))
+            self.assertEqual(self.version_before, self.version.read_bytes())
+        finally:
+            self.git("worktree", "remove", "--force", str(sibling))
+
+    def test_main_preview_manifest_failure_does_not_leave_partial_candidate(self) -> None:
+        self.git("branch", "-M", "main")
+        expected = self.git("rev-parse", "HEAD")
+        spec = importlib.util.spec_from_file_location("main_preview", REPO / "scripts/build-main-preview.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        original_write = Path.write_text
+
+        def fail_manifest(path, *args, **kwargs):
+            if path.name == "preview-manifest.json" and path.is_relative_to(self.root):
+                raise OSError("fixture manifest write failed")
+            return original_write(path, *args, **kwargs)
+
+        environment = dict(MIHON_HOST_OS="MINGW64_NT", MIHON_POWERSHELL_BIN="powershell.exe")
+        output = io.StringIO()
+        with mock.patch.dict(os.environ, environment), mock.patch.object(Path, "write_text", new=fail_manifest), contextlib.redirect_stdout(output):
+            with self.assertRaisesRegex(OSError, "fixture manifest write failed"):
+                module.build(argparse.Namespace(repo=self.root, expected_head=expected, require_commit=[expected]))
+        self.assertNotIn("Final unpacked EXE:", output.getvalue())
+        self.assertEqual([], list(self.root.glob("app-desktop/artifacts/preview/windows/*")))
+        self.assertEqual(1, self.git("worktree", "list", "--porcelain").count("worktree "))
 
     def test_reused_launcher_mtime_is_not_a_preview_failure(self) -> None:
         result = self.run_preview(FIXTURE_OLD_LAUNCHER="1")

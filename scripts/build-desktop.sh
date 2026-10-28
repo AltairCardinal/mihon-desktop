@@ -9,6 +9,7 @@
 #   ./scripts/build-desktop.sh evidence    # build a committed version allocation and seal provenance
 #   ./scripts/build-desktop.sh build-only  # bump BUILD and build after equivalent tests already passed
 #   ./scripts/build-desktop.sh preview     # isolated experience build; no tests or version allocation
+#   ./scripts/build-desktop.sh main-preview --expected-head <sha> --require-commit <sha>
 #   ./scripts/build-desktop.sh test-only   # run tests only where supported
 #   ./scripts/build-desktop.sh full-tests  # run full tests only where supported
 #
@@ -22,6 +23,10 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP_VERSION_FILE="$REPO_ROOT/app-desktop/src/main/kotlin/mihon/desktop/AppVersion.kt"
 HOST_OS="${MIHON_HOST_OS:-$(uname -s)}"
 MODE="${1:-hash}"
+
+if [[ "$MODE" == "main-preview" ]]; then
+  exec "${MIHON_PYTHON:-python3}" "$REPO_ROOT/scripts/build-main-preview.py" --repo "$REPO_ROOT" "${@:2}"
+fi
 
 if [[ "$MODE" == "preview" && "$HOST_OS" == "Darwin" ]]; then
   PREVIEW_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$"
@@ -96,7 +101,7 @@ replace_version_constant() {
 
 print_usage_and_exit() {
   echo "Unknown mode: $MODE"
-  echo "Use: hash, feature, stage, msi, evidence, build-only, preview, test-only, or full-tests."
+  echo "Use: hash, feature, stage, msi, evidence, build-only, preview, main-preview, test-only, or full-tests."
   exit 1
 }
 
