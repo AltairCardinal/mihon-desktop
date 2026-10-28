@@ -83,7 +83,15 @@ import java.awt.Window as AwtWindow
  */
 suspend fun main(args: Array<String>) {
     mihon.desktop.startup.DesktopStartupTrace.mark("main-entry")
-    mihon.desktop.startup.positionDesktopStartupSplash()
+    val splash = mihon.desktop.startup.showDesktopStartupSplash(args)
+    try {
+        runDesktopMain(args)
+    } finally {
+        splash?.close()
+    }
+}
+
+private suspend fun runDesktopMain(args: Array<String>) {
     // The classes the first user interface needs are read while the process starts.
     // The composition of that interface is the longest phase of the start-up, and it
     // can only begin once the dependency graph is ready. Reading the classes in

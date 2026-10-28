@@ -19,7 +19,7 @@ import urllib.request
 
 @unittest.skipUnless(os.name == "nt" and os.environ.get("MIHON_SPLASH_EXE"), "Explicit Windows EXE required")
 class WindowsStartupSplashTest(unittest.TestCase):
-    def test_native_splash_precedes_normal_and_maximized_main_window(self):
+    def test_splash_first_frame_stays_on_launch_monitor_for_normal_and_maximized_startup(self):
         exe = Path(os.environ["MIHON_SPLASH_EXE"]).resolve(strict=True)
         user = c.WinDLL("user32", use_last_error=True)
         kernel = c.WinDLL("kernel32", use_last_error=True)
@@ -28,6 +28,46 @@ class WindowsStartupSplashTest(unittest.TestCase):
         user.MonitorFromPoint.restype = w.HANDLE
         user.MonitorFromWindow.argtypes = [w.HWND, w.DWORD]
         user.MonitorFromWindow.restype = w.HANDLE
+        user.GetCursorPos.argtypes = [c.POINTER(w.POINT)]
+        user.SetCursorPos.argtypes = [c.c_int, c.c_int]
+
+        class MonitorInfo(c.Structure):
+            _fields_ = [("size", w.DWORD), ("monitor", w.RECT), ("work", w.RECT), ("flags", w.DWORD)]
+
+        user.GetMonitorInfoW.argtypes = [w.HANDLE, c.POINTER(MonitorInfo)]
+
+        def monitor_info(monitor):
+            info = MonitorInfo()
+            info.size = c.sizeof(info)
+            self.assertTrue(user.GetMonitorInfoW(monitor, c.byref(info)))
+            return info
+
+        # Explicit secondary-screen runs are bounded test input, with cursor restoration.
+        secondary_point = None
+        original_cursor = w.POINT()
+        self.assertTrue(user.GetCursorPos(c.byref(original_cursor)))
+        if os.environ.get("MIHON_SPLASH_SCREEN") == "secondary":
+            monitors = []
+            monitor_callback = c.WINFUNCTYPE(w.BOOL, w.HANDLE, w.HDC, c.POINTER(w.RECT), w.LPARAM)
+
+            @monitor_callback
+            def visit_monitor(monitor, _dc, _rect, _data):
+                info = monitor_info(monitor)
+                if not info.flags & 1:
+                    monitors.append(info.work)
+                return True
+
+            self.assertTrue(user.EnumDisplayMonitors(None, None, visit_monitor, 0))
+            self.assertTrue(monitors, "Explicit secondary-screen test requires a secondary monitor")
+            area = monitors[0]
+            secondary_point = ((area.left + area.right) // 2, (area.top + area.bottom) // 2)
+
+            def restore_cursor():
+                current = w.POINT()
+                if user.GetCursorPos(c.byref(current)) and (current.x, current.y) == secondary_point:
+                    user.SetCursorPos(original_cursor.x, original_cursor.y)
+
+            self.addCleanup(restore_cursor)
         callback = c.WINFUNCTYPE(w.BOOL, w.HWND, w.LPARAM)
         user.GetWindowThreadProcessId.argtypes = [w.HWND, c.POINTER(w.DWORD)]
         user.IsWindowVisible.argtypes = [w.HWND]
@@ -37,6 +77,7 @@ class WindowsStartupSplashTest(unittest.TestCase):
         kernel.OpenProcess.argtypes = [w.DWORD, w.BOOL, w.DWORD]
         kernel.OpenProcess.restype = w.HANDLE
         kernel.CloseHandle.argtypes = [w.HANDLE]
+        kernel.WaitForSingleObject.argtypes = [w.HANDLE, w.DWORD]
         kernel.QueryFullProcessImageNameW.argtypes = [w.HANDLE, w.DWORD, w.LPWSTR, c.POINTER(w.DWORD)]
         kernel.CreateToolhelp32Snapshot.argtypes = [w.DWORD, w.DWORD]
         kernel.CreateToolhelp32Snapshot.restype = w.HANDLE
@@ -73,6 +114,7 @@ class WindowsStartupSplashTest(unittest.TestCase):
                 owned |= descendants
         dwm = c.WinDLL("dwmapi")
         dwm.DwmGetWindowAttribute.argtypes = [w.HWND, w.DWORD, c.c_void_p, w.DWORD]
+        child_handles = {}
 
         def windows(allowed):
             found = []
@@ -89,6 +131,8 @@ class WindowsStartupSplashTest(unittest.TestCase):
                         path = c.create_unicode_buffer(32768)
                         length = w.DWORD(len(path))
                         if kernel.QueryFullProcessImageNameW(handle, 0, path, c.byref(length)) and Path(path.value) == exe:
+                            if pid.value not in child_handles:
+                                child_handles[pid.value] = kernel.OpenProcess(0x100000, False, pid.value)
                             name = c.create_unicode_buffer(256)
                             title = c.create_unicode_buffer(256)
                             user.GetClassNameW(w.HWND(hwnd), name, len(name))
@@ -112,6 +156,9 @@ class WindowsStartupSplashTest(unittest.TestCase):
                 listener.bind(("127.0.0.1", 0))
                 return listener.getsockname()[1]
 
+        def is_splash(name, title):
+            return name == "JavaSplash" or (name == "SunAwtWindow" and not title)
+
         with tempfile.TemporaryDirectory(prefix="mihon-native-splash-") as directory:
             root = Path(directory)
             profile = root / "profile"
@@ -126,6 +173,8 @@ class WindowsStartupSplashTest(unittest.TestCase):
                 captured = False
                 with (root / f"process-{maximized}.log").open("w", encoding="utf-8") as log:
                     started = time.monotonic()
+                    if secondary_point is not None:
+                        self.assertTrue(user.SetCursorPos(*secondary_point))
                     cursor = w.POINT()
                     self.assertTrue(user.GetCursorPos(c.byref(cursor)))
                     startup_monitor = user.MonitorFromPoint(cursor, 2)
@@ -139,13 +188,24 @@ class WindowsStartupSplashTest(unittest.TestCase):
                             own = windows(process_tree(process.pid))
                             elapsed = round((time.monotonic() - started) * 1000)
                             for hwnd, pid, name, title, visible, cloaked in own:
-                                if visible and name == "JavaSplash" and splash_ms is None:
-                                    splash_ms = elapsed
-                                if (visible and name == "JavaSplash" and positioned_ms is None
-                                        and user.MonitorFromWindow(hwnd, 2) == startup_monitor):
-                                    positioned_ms = elapsed
+                                if visible and is_splash(name, title):
+                                    self.assertNotEqual("JavaSplash", name, "JVM splash can flash on primary before Main")
+                                    actual_monitor = user.MonitorFromWindow(hwnd, 2)
+                                    current_cursor = w.POINT()
+                                    user.GetCursorPos(c.byref(current_cursor))
+                                    self.assertEqual(startup_monitor, actual_monitor,
+                                                     f"Wrong monitor at {elapsed}ms; cursor now="
+                                                     f"{current_cursor.x},{current_cursor.y}; "
+                                                     f"launch cursor={cursor.x},{cursor.y}")
+                                    rectangle = w.RECT()
+                                    self.assertTrue(user.GetWindowRect(w.HWND(hwnd), c.byref(rectangle)))
+                                    work = monitor_info(startup_monitor).work
+                                    self.assertLessEqual(abs(rectangle.left + rectangle.right - work.left - work.right), 2)
+                                    self.assertLessEqual(abs(rectangle.top + rectangle.bottom - work.top - work.bottom), 2)
+                                    if splash_ms is None:
+                                        splash_ms = positioned_ms = elapsed
                                 capture = os.environ.get("MIHON_SPLASH_CAPTURE")
-                                if (capture and not maximized and not captured and visible and name == "JavaSplash"
+                                if (capture and not maximized and not captured and visible and is_splash(name, title)
                                         and splash_ms is not None and elapsed >= splash_ms + 150):
                                     from PIL import ImageGrab
                                     rectangle = w.RECT()
@@ -163,7 +223,7 @@ class WindowsStartupSplashTest(unittest.TestCase):
                             if process.poll() is not None:
                                 break
                             time.sleep(0.01)
-                        self.assertIsNotNone(splash_ms, "No native loading splash appeared before the main window")
+                        self.assertIsNotNone(splash_ms, "No loading splash appeared before the main window")
                         self.assertIsNotNone(main_ms, "Main window was never revealed")
                         self.assertLess(splash_ms, main_ms)
                         self.assertIsNotNone(positioned_ms, "Splash never reached the startup cursor monitor")
@@ -182,16 +242,22 @@ class WindowsStartupSplashTest(unittest.TestCase):
                                 time.sleep(0.05)
                         self.assertEqual("mihon-desktop-test-profile-v1\n",
                                          (profile / ".mihon-test-profile").read_text(encoding="utf-8"))
-                        self.assertFalse(any(item[2] == "JavaSplash" and item[4]
-                                             for item in windows(process_tree(process.pid))),
-                                         "Splash lingered after main window opened")
+                        # Main's first visible native frame can precede its EDT opening callbacks.
+                        close_deadline = time.monotonic() + 1
+                        while any(is_splash(item[2], item[3]) and item[4]
+                                  for item in windows(process_tree(process.pid))):
+                            self.assertLess(time.monotonic(), close_deadline,
+                                            "Splash lingered after main window opened")
+                            time.sleep(0.01)
                         if not maximized:
                             user.ShowWindow(main_handle, 3)
                             time.sleep(0.3)
                         user.PostMessageW(main_handle, 0x10, 0, 0)
                         process.wait(timeout=25)
                         self.assertEqual(0, process.returncode)
-                        print(f"PASS maximized={maximized}: splash={splash_ms} ms, main={main_ms} ms", flush=True)
+                        primary = bool(monitor_info(startup_monitor).flags & 1)
+                        print(f"PASS maximized={maximized}, primary={primary}: "
+                              f"first splash frame={splash_ms} ms, main={main_ms} ms", flush=True)
                     finally:
                         if process.poll() is None:
                             if main_handle:
@@ -209,6 +275,15 @@ class WindowsStartupSplashTest(unittest.TestCase):
                             Path(f"{destination}-{maximized}.json").write_text(
                                 json.dumps(trace, indent=2), encoding="utf-8",
                             )
+                        # The GUI child can outlive its jpackage parent briefly during cache shutdown.
+                        for pid, handle in list(child_handles.items()):
+                            if handle:
+                                try:
+                                    self.assertEqual(0, kernel.WaitForSingleObject(handle, 15000),
+                                                     f"Owned GUI process {pid} did not exit")
+                                finally:
+                                    kernel.CloseHandle(handle)
+                        child_handles.clear()
 
 
 if __name__ == "__main__":

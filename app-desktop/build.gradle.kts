@@ -493,8 +493,8 @@ compose.desktop {
         mainClass = "mihon.desktop.MainKt"
         jvmArgs += listOf("-Djava.net.useSystemProxies=true")
         if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
-            // The JVM's native splash appears before Main/DI/Compose initialization.
-            jvmArgs += "-splash:\$APPDIR/resources/startup-splash.png"
+            // The application positions its hidden splash on the launch monitor before showing it.
+            jvmArgs += "-Dmihon.desktop.startupSplash=\$APPDIR/resources/startup-splash.png"
         }
 
         nativeDistributions {
