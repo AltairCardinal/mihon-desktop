@@ -2,6 +2,7 @@ package mihon.desktop.ui.reader
 
 import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.window.WindowPlacement
+import mihon.desktop.diagnostics.ReaderRenderTrace
 import mihon.desktop.platform.DesktopFullscreenAdapter
 import mihon.desktop.platform.DesktopWindowTransitions
 import mihon.desktop.platform.WindowsWindowTransitions
@@ -23,6 +24,7 @@ internal class DesktopReaderFullscreenController(
     private val transitions: DesktopWindowTransitions = WindowsWindowTransitions,
     private val fullscreenAdapter: DesktopFullscreenAdapter? = defaultFullscreenAdapter(),
     private val setNativeFullscreen: (ComposeWindow, Boolean) -> Boolean = ::defaultSetNativeFullscreen,
+    private val trace: ReaderRenderTrace? = null,
 ) {
     var previousPlacement: WindowPlacement = WindowPlacement.Floating
         internal set
@@ -32,6 +34,7 @@ internal class DesktopReaderFullscreenController(
     private var transitionRevision = 0L
 
     fun syncPlacement(isFullscreen: Boolean) {
+        trace?.fullscreenRequest(isFullscreen)
         targetFullscreen = isFullscreen
         val window = getWindow() ?: return
         dispatch(
@@ -89,7 +92,9 @@ internal class DesktopReaderFullscreenController(
         transitions.setDisabled(window, true)
         var posted = false
         try {
+            trace?.windowEvent("placement-mutation-begin")
             change()
+            trace?.windowEvent("placement-mutation-end")
             // Win32 posts AWT bounds/inset updates during the native call. Reconcile only
             // after those events, while system transitions are still disabled.
             dispatch(
@@ -115,9 +120,11 @@ internal class DesktopReaderFullscreenController(
     private fun presentFinalFrame(window: ComposeWindow) {
         // Native frame changes resize the client area before the queued Compose repaint.
         // Draw that final layout before DwmFlush can expose an empty or stale surface.
+        trace?.windowEvent("final-frame-layout-begin")
         invalidateLayout(window)
         window.validate()
         window.renderImmediately()
+        trace?.windowEvent("final-frame-render-returned")
     }
 
     private fun invalidateLayout(component: Component) {

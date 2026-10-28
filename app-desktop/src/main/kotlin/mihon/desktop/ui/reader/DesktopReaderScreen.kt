@@ -562,8 +562,9 @@ internal fun ReaderViewport(
     val dismissThresholdPx = remember(density) { with(density) { 110.dp.toPx() } }
 
     val composeWindow = LocalReaderNativeWindow.current as? ComposeWindow
-    val fullscreenController = remember(composeWindow) {
-        DesktopReaderFullscreenController(getWindow = { composeWindow })
+    val renderTrace = rememberReaderRenderTrace(composeWindow, state)
+    val fullscreenController = remember(composeWindow, renderTrace) {
+        DesktopReaderFullscreenController(getWindow = { composeWindow }, trace = renderTrace)
     }
     LaunchedEffect(state.isFullscreen, fullscreenController) {
         fullscreenController.syncPlacement(state.isFullscreen)
@@ -617,6 +618,15 @@ internal fun ReaderViewport(
             .onGloballyPositioned {
                 viewportOrigin = it.positionInRoot()
                 viewportHeightPx = it.size.height.toFloat()
+                renderTrace?.windowEvent(
+                    "reader-viewport-layout",
+                    kotlinx.serialization.json.buildJsonObject {
+                        put("rootX", kotlinx.serialization.json.JsonPrimitive(viewportOrigin.x))
+                        put("rootY", kotlinx.serialization.json.JsonPrimitive(viewportOrigin.y))
+                        put("width", kotlinx.serialization.json.JsonPrimitive(it.size.width))
+                        put("height", kotlinx.serialization.json.JsonPrimitive(it.size.height))
+                    },
+                )
             },
     ) {
         Box(
@@ -691,6 +701,7 @@ internal fun ReaderViewport(
                             readerNav,
                             onPrevChapter,
                             onNextChapter,
+                            renderTrace,
                         )
                     }
                     ColorFilterOverlay(state.colorFilter)
@@ -1121,10 +1132,12 @@ internal fun ReaderContent(
     readerNav: ReaderNavigator?,
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
+    renderTrace: mihon.desktop.diagnostics.ReaderRenderTrace? = null,
 ) {
     val imageContent = remember(presentationImageOwner, state.session.generation) { ReaderPageImageContentRegistry() }
     Box(Modifier.fillMaxSize().adaptiveReaderViewport(model, contextMenuScope)) {
         CompositionLocalProvider(
+            LocalReaderRenderTrace provides renderTrace,
             LocalReaderPageImageContent provides imageContent,
             LocalReaderChapterTransitionContext provides state.context,
             LocalReaderChapterTransitionContentColor provides readerChapterTransitionContentColor(

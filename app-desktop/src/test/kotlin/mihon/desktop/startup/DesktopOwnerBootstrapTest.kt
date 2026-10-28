@@ -25,6 +25,41 @@ import java.io.File
 class DesktopOwnerBootstrapTest {
 
     @Test
+    fun `diagnostic launch flag is configured before the production window event loop`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
+        val property = "mihon.reader.renderTraceDir"
+        val previous = System.getProperty(property)
+        System.clearProperty(property)
+        val requested = File(tempDir, "render-capture").absolutePath
+        val entered = CompletableDeferred<String?>()
+        val startup = async {
+            startProductionDesktopApplication(
+                args = arrayOf("--reader-render-trace=$requested"),
+                broker = mihon.desktop.platform.DesktopExternalActionBroker(File(tempDir, "trace-owner.json")),
+                registrar = mihon.desktop.platform.DesktopUriSchemeRegistrar {
+                    mihon.desktop.platform.DesktopUriSchemeRegistration.Result.Unavailable(
+                        mihon.desktop.platform.DesktopUriSchemeRegistration.UnavailableReason.NON_PACKAGED_RUNTIME,
+                    )
+                },
+                ownerIngressDependencies = { kotlinx.coroutines.awaitCancellation() },
+                windowGeometryStore = { InMemoryGeometryStore() },
+                runWindowEventLoop = { _, close ->
+                    entered.complete(System.getProperty(property))
+                    close()
+                },
+            )
+        }
+        try {
+            assertEquals(requested, withTimeout(5_000) { entered.await() })
+        } finally {
+            startup.cancel()
+            runCatching { withTimeout(10_000) { startup.await() } }
+            if (previous == null) System.clearProperty(property) else System.setProperty(property, previous)
+        }
+    }
+
+    @Test
     fun `the window event loop starts while the dependency graph is still building`(
         @TempDir tempDir: File,
     ) = runBlocking {

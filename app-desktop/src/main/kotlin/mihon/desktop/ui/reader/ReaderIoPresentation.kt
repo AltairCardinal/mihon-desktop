@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.IntSize
 import mihon.desktop.test.state.ReaderDrawPoint
 import java.awt.geom.AffineTransform
 
+@kotlinx.serialization.Serializable
 internal data class ReaderBaseImageDraw(
     val capture: Long,
     val mountId: Long,
