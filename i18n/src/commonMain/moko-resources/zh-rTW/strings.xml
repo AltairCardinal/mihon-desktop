@@ -1619,4 +1619,6 @@
     <string name="desktop_tutorial_fullscreen_title">全螢幕模式</string>
     <string name="desktop_tutorial_fullscreen_message">按F11以進入/退出全螢幕</string>
     <string name="desktop_action_exit_fullscreen">退出全螢幕</string>
+    <string name="source_error_authentication">需要登入（HTTP 401），請登入後重試。</string>
+    <string name="source_error_forbidden">伺服器拒絕存取（HTTP 403），請檢查圖源設定或存取限制。</string>
 </resources>

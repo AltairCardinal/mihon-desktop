@@ -2,8 +2,15 @@ package mihon.desktop.extension
 
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import mihon.desktop.di.initDesktopDIForTest
+import mihon.desktop.download.DesktopDownloadManager
+import mihon.desktop.download.DesktopDownloadPreferences
+import mihon.desktop.download.DesktopDownloadProvider
+import mihon.desktop.download.DownloadItem
+import mihon.desktop.download.DownloadStatus
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.Dns
@@ -11,6 +18,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import okio.Buffer
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertSame
@@ -18,7 +26,9 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
+import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.lang.reflect.InvocationTargetException
 import java.net.Proxy
 import java.nio.file.Files
@@ -27,6 +37,76 @@ import java.security.MessageDigest
 
 @Isolated
 class RealExtensionPageListCompatTest {
+
+    @Test
+    fun `real ManHuaGui queued download uses registered source headers through production DI`(
+        @TempDir tempDir: Path,
+    ) = runBlocking {
+        val preferences = IsolatedDesktopPreferenceStore.create()
+        val previousInjekt = Injekt
+        try {
+            val apkPath = repositoryRoot().resolve(APK_PATH)
+            assertEquals(APK_SHA256, sha256(apkPath))
+            val extensionDir = tempDir.resolve("extensions").toFile().apply { mkdirs() }
+            val jar = requireNotNull(ApkToJarConverter().convert(apkPath.toFile(), extensionDir))
+            writeManHuaGuiMeta(jar)
+            val context = initDesktopDIForTest(tempDir.toFile(), preferences.store, startDownloadWorker = false)
+            try {
+                val source = Injekt.get<SourceManager>().getCatalogueSources().single { it.id == 7057750772596492765L }
+                assertTrue(source is HttpSource)
+                val referer = (source as HttpSource).headers["Referer"]
+                assertNotNull(referer)
+                Injekt.get<DesktopDownloadPreferences>().downloadAsCbz.set(false)
+                MockWebServer().also { it.start() }.use { server ->
+                    val bytes = java.io.ByteArrayOutputStream().also {
+                        javax.imageio.ImageIO.write(
+                            java.awt.image.BufferedImage(2, 2, java.awt.image.BufferedImage.TYPE_INT_RGB),
+                            "png",
+                            it,
+                        )
+                    }.toByteArray()
+                    server.enqueue(MockResponse.Builder().body(Buffer().write(bytes)).build())
+                    val manager = Injekt.get<DesktopDownloadManager>()
+                    assertTrue(
+                        manager.enqueue(
+                            DownloadItem(
+                                sourceId = source.id,
+                                mangaTitle = "Real source",
+                                chapterName = "One",
+                                chapterId = 18494L,
+                                pageUrls = listOf(server.url("/page.png").toString()),
+                            ),
+                        ),
+                    )
+                    manager.start()
+                    withTimeout(10_000) {
+                        manager.queue.first {
+                            it.isEmpty() ||
+                                it.single().status == DownloadStatus.ERROR
+                        }
+                    }
+                    assertTrue(manager.queue.value.isEmpty(), manager.queue.value.toString())
+                    val request = server.takeRequest()
+                    assertEquals(referer, request.headers["Referer"])
+                    assertEquals(source.headers["User-Agent"], request.headers["User-Agent"])
+                    val provider = Injekt.get<DesktopDownloadProvider>()
+                    val identity = Injekt.get<mihon.desktop.download.DesktopDownloadIdentityResolver>().resolve(
+                        DownloadItem(source.id, "Real source", "One", 18494L),
+                    )
+                    assertTrue(provider.isChapterDownloaded(source.id, identity))
+                    org.junit.jupiter.api.Assertions.assertArrayEquals(
+                        bytes,
+                        provider.canonicalChapterDownloadDir(identity).resolve("001.png").readBytes(),
+                    )
+                }
+            } finally {
+                context.closeAndJoin()
+            }
+        } finally {
+            Injekt = previousInjekt
+            preferences.close()
+        }
+    }
 
     @Test
     fun `real ManHuaGui source client executes its rate limit interceptor`(
@@ -80,7 +160,9 @@ class RealExtensionPageListCompatTest {
                         assertEquals(1, server.requestCount)
                         assertEquals("/codex-rate-limit", server.takeRequest().url.encodedPath)
                     } finally {
-                        loaded.map { it.classLoader }.distinct().filterIsInstance<AutoCloseable>().forEach { it.close() }
+                        loaded.map {
+                            it.classLoader
+                        }.distinct().filterIsInstance<AutoCloseable>().forEach { it.close() }
                     }
                 } finally {
                     diContext.closeAndJoin()

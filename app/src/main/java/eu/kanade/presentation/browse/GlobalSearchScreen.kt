@@ -10,6 +10,7 @@ import eu.kanade.presentation.browse.components.GlobalSearchErrorResultItem
 import eu.kanade.presentation.browse.components.GlobalSearchLoadingResultItem
 import eu.kanade.presentation.browse.components.GlobalSearchResultItem
 import eu.kanade.presentation.browse.components.GlobalSearchToolbar
+import eu.kanade.presentation.util.sourceErrorMessageResource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.SearchItemResult
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.SearchScreenModel
@@ -104,9 +105,11 @@ internal fun GlobalSearchContent(
                             )
                         }
                         is SearchItemResult.Error -> {
-                            val message = when (result.pageError.error) {
+                            val message = when (val error = result.pageError.error) {
                                 is AppError.Network -> stringResource(MR.strings.exception_offline)
-                                is AppError.Authentication -> stringResource(MR.strings.login)
+                                is AppError.Authentication, is AppError.Forbidden -> stringResource(
+                                    checkNotNull(sourceErrorMessageResource(error)),
+                                )
                                 else -> stringResource(MR.strings.unknown_error)
                             }
                             val actionLabel = when (result.pageError.recoveryAction) {

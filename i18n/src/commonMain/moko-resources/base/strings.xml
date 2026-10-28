@@ -2589,4 +2589,6 @@
     <string name="feedback_opened">Feedback form opened. Review and submit it in your browser. No account is required.</string>
     <string name="feedback_logs_android">To include a log, export it from More → Settings → Advanced → Dump crash logs, then upload it in the form. Review it and remove private information first.</string>
     <string name="feedback_logs_desktop">To include a log, find it in Settings → Advanced → Open crash log folder, then upload it in the form. Review it and remove private information first.</string>
+    <string name="source_error_authentication">Login required (HTTP 401). Log in and try again.</string>
+    <string name="source_error_forbidden">Access denied by the server (HTTP 403). Check the source settings or access restrictions.</string>
 </resources>

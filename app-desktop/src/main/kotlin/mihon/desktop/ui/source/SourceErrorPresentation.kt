@@ -24,7 +24,8 @@ internal fun desktopSourceErrorMessage(
         error.cause.hasCause { it.isConnectionReset() } -> MR.strings.desktop_source_network_reset.localized(locale)
         else -> MR.strings.desktop_source_network_error.localized(locale)
     }
-    is AppError.Authentication -> MR.strings.login.localized(locale)
+    is AppError.Authentication -> MR.strings.source_error_authentication.localized(locale)
+    is AppError.Forbidden -> MR.strings.source_error_forbidden.localized(locale)
     is AppError.RateLimited -> error.retryAfterSeconds?.let {
         MR.strings.desktop_ui_download_rate_limited_seconds.localized(locale, it)
     } ?: MR.strings.desktop_ui_download_rate_limited.localized(locale)

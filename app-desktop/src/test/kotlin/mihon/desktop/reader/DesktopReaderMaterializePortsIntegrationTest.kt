@@ -801,10 +801,14 @@ class DesktopReaderMaterializePortsIntegrationTest {
                     MockResponse(code = 200, body = """{"result":"ok","baseUrl":"http://unused.local"}""") to
                         AppError.MalformedData::class.java,
                     MockResponse(
+                        code = 401,
+                        body = """{"result":"error","errors":[{"status":401,"title":"Unauthorized"}]}""",
+                    ) to AppError.Authentication::class.java,
+                    MockResponse(
                         code = 403,
                         body = """{"result":"error","errors":[{"status":403,"title":"Forbidden"}]}""",
                     ) to
-                        AppError.Authentication::class.java,
+                        AppError.Forbidden::class.java,
                     MockResponse(
                         code = 429,
                         body = """{"result":"error","errors":[{"status":429,"title":"Too many requests"}]}""",
@@ -933,7 +937,7 @@ class DesktopReaderMaterializePortsIntegrationTest {
 
         MockWebServer().use { server ->
             server.start()
-            val responses = listOf(403, 429, 500)
+            val responses = listOf(401, 403, 429, 500)
             responses.forEach { server.enqueue(MockResponse(code = it, body = "failure-$it")) }
             val source = PageSource(emptyList(), OkHttpClient())
             val sourceManager = FakeDesktopSourceManager(listOf(source))
@@ -963,8 +967,9 @@ class DesktopReaderMaterializePortsIntegrationTest {
             }.map { it.error }
 
             assertInstanceOf(AppError.Authentication::class.java, errors[0])
-            assertInstanceOf(AppError.RateLimited::class.java, errors[1])
-            assertInstanceOf(AppError.Server::class.java, errors[2])
+            assertInstanceOf(AppError.Forbidden::class.java, errors[1])
+            assertInstanceOf(AppError.RateLimited::class.java, errors[2])
+            assertInstanceOf(AppError.Server::class.java, errors[3])
         }
 
         val missingDescriptor = mihon.domain.reader.session.ReaderPageDescriptor(0, url = "/missing")

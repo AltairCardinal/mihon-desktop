@@ -10,9 +10,22 @@ import tachiyomi.i18n.MR
 
 class ExtensionInstallErrorMessageTest {
     @Test
+    fun `source authentication and access denial use distinct safe reader and search resources`() {
+        assertEquals(
+            MR.strings.source_error_authentication,
+            eu.kanade.presentation.util.sourceErrorMessageResource(AppError.Authentication()),
+        )
+        assertEquals(
+            MR.strings.source_error_forbidden,
+            eu.kanade.presentation.util.sourceErrorMessageResource(AppError.Forbidden()),
+        )
+    }
+
+    @Test
     fun `installation errors select safe localizable reasons without exposing exception details`() {
         val secret = IllegalStateException("/private/path?token=secret https://user:pass@repo.invalid")
         val cases = mapOf(
+            AppError.Forbidden(secret) to MR.strings.source_error_forbidden,
             AppError.Authentication(secret) to MR.strings.extension_install_error_verification,
             AppError.Challenge(secret) to MR.strings.extension_install_error_verification,
             AppError.Network(secret) to MR.strings.extension_install_error_network,

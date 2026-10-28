@@ -13,7 +13,14 @@ data class StoredAppError(
 ) {
     fun toAppError(): AppError = when (type) {
         "Network" -> AppError.Network(message?.let(::IllegalStateException))
-        "Authentication" -> AppError.Authentication(message?.let(::IllegalStateException))
+        "Forbidden" -> AppError.Forbidden(message?.let(::IllegalStateException))
+        // Older source/download adapters stored HTTP access denial as authentication.
+        // Match only their exact exception messages; arbitrary authentication failures stay unchanged.
+        "Authentication" -> if (message == "HTTP 403" || message == "HTTP error 403") {
+            AppError.Forbidden(IllegalStateException(message))
+        } else {
+            AppError.Authentication(message?.let(::IllegalStateException))
+        }
         "Challenge" -> AppError.Challenge(message?.let(::IllegalStateException))
         "RateLimited" -> AppError.RateLimited(retryAfterSeconds, message?.let(::IllegalStateException))
         "Server" -> AppError.Server(requireNotNull(statusCode), message?.let(::IllegalStateException))

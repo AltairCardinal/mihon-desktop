@@ -15,6 +15,8 @@ import coil3.request.Options
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import mihon.desktop.DesktopUiDependencies
+import mihon.desktop.extension.sourceClientOrNull
+import mihon.desktop.extension.sourceHeadersOrNull
 import mihon.desktop.platform.DesktopNetworkHelper
 import okhttp3.Call
 import okhttp3.Headers
@@ -97,18 +99,6 @@ internal fun createDesktopImageLoader(
         add(OkHttpNetworkFetcherFactory(defaultCallFactory))
     }
     .build()
-
-private fun Any.sourceClientOrNull(): Call.Factory? = runCatching {
-    javaClass.methods
-        .firstOrNull { it.name == "getClient" && it.parameterCount == 0 }
-        ?.invoke(this) as? Call.Factory
-}.getOrNull()
-
-private fun Any.sourceHeadersOrNull(): Headers? = runCatching {
-    javaClass.methods
-        .firstOrNull { it.name == "getHeaders" && it.parameterCount == 0 }
-        ?.invoke(this) as? Headers
-}.getOrNull()
 
 private class DesktopSourceImageKeyer : Keyer<DesktopSourceImage> {
     override fun key(data: DesktopSourceImage, options: Options): String =

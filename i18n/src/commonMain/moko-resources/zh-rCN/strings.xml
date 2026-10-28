@@ -2381,4 +2381,6 @@
     <string name="feedback_opened">已打开反馈表单，请在浏览器中检查并提交，无需注册或登录。</string>
     <string name="feedback_logs_android">如需补充日志，可从“更多 → 设置 → 高级 → 导出崩溃日志”导出，再在表单上传。请先检查并删除私人信息。</string>
     <string name="feedback_logs_desktop">如需补充日志，可在“设置 → 高级 → 打开崩溃日志文件夹”找到文件，再在表单上传。请先检查并删除私人信息。</string>
+    <string name="source_error_authentication">需要登录（HTTP 401），请登录后重试。</string>
+    <string name="source_error_forbidden">服务器拒绝访问（HTTP 403），请检查图源设置或访问限制。</string>
 </resources>

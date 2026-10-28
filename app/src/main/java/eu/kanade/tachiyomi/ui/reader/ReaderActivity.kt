@@ -62,6 +62,7 @@ import eu.kanade.presentation.reader.ReaderPageIndicator
 import eu.kanade.presentation.reader.ReadingModeSelectDialog
 import eu.kanade.presentation.reader.appbars.ReaderAppBars
 import eu.kanade.presentation.reader.settings.ReaderSettingsDialog
+import eu.kanade.presentation.util.sourceErrorMessageResource
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.coil.TachiyomiImageDecoder
 import eu.kanade.tachiyomi.data.notification.NotificationReceiver
@@ -394,7 +395,8 @@ open class ReaderActivity : BaseActivity() {
                         Text(
                             stringResource(
                                 MR.strings.transition_pages_error,
-                                errorState.error.cause?.message.orEmpty(),
+                                sourceErrorMessageResource(errorState.error)?.let { stringResource(it) }
+                                    ?: errorState.error.cause?.message.orEmpty(),
                             ),
                         )
                     },

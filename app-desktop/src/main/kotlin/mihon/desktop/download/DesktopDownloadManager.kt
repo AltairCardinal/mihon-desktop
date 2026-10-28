@@ -1,5 +1,6 @@
 package mihon.desktop.download
 
+import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.Page
@@ -24,13 +25,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import mihon.desktop.domain.DesktopSystemNotifier
 import mihon.desktop.extension.SourceCallResult
+import mihon.desktop.extension.resolveSourceImageResponse
 import mihon.desktop.extension.resolveSourceImageUrl
 import mihon.desktop.extension.safeSourceCall
+import mihon.desktop.extension.sourceClientOrNull
+import mihon.desktop.extension.sourceHeadersOrNull
 import mihon.domain.download.DownloadQueueEntry
 import mihon.domain.download.DownloadQueueStateMachine
 import mihon.domain.download.DownloadQueueStatus
 import mihon.domain.download.DownloadRepository
 import mihon.domain.error.AppError
+import mihon.domain.network.AppErrorException
 import mihon.domain.reader.content.DownloadChapterIdentity
 import mihon.domain.reader.partial.PartialCommittedPage
 import mihon.domain.reader.partial.PartialDownloadSnapshot
@@ -47,6 +52,7 @@ import okhttp3.Request
 import okhttp3.Response
 import tachiyomi.data.download.PersistentDownloadStore
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.source.service.toSourceAppError
 import tachiyomi.domain.source.service.toSourceChapter
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -95,7 +101,8 @@ class DesktopDownloadManager(
     private val fileOperations: DownloadFileOperations = DefaultDownloadFileOperations,
     private val taskNotifier: DesktopSystemNotifier? = null,
     private val sourceResolver: (Long) -> CatalogueSource? = { sourceId ->
-        Injekt.get<SourceManager>().getCatalogueSources().find { it.id == sourceId }
+        Injekt.getInstanceOrNull<SourceManager>(SourceManager::class.java)
+            ?.getCatalogueSources()?.find { it.id == sourceId }
     },
     private val sourceCallTimeoutMs: Long = 30_000L,
     private val downloadIdentityResolver: suspend (DownloadItem) -> DownloadChapterIdentity? = { null },
@@ -886,7 +893,7 @@ class DesktopDownloadManager(
                     AppError.MalformedData(IllegalStateException("Source returned no downloadable pages")),
                 )
             }
-            var sourceForMissingImageUrls = resolvedPages.source
+            val source = resolvedPages.source ?: sourceResolver(item.sourceId)
             val compatibilityUrls = pageTable.entries
                 .sortedBy(PartialPageTableEntry::readerOrdinal)
                 .map { entry -> entry.imageUrl?.takeIf(String::isNotBlank) ?: entry.pageUrl }
@@ -920,19 +927,18 @@ class DesktopDownloadManager(
                 if (!alreadyDownloaded) {
                     if (!cleanupRejectedFilesForOrdinal(attempt, pageEntry.readerOrdinal)) return false
                     val imageUrl = pageEntry.imageUrl?.takeIf(String::isNotBlank) ?: run {
-                        val source = sourceForMissingImageUrls
-                            ?: sourceResolver(item.sourceId)?.also { sourceForMissingImageUrls = it }
-                            ?: return fail(
-                                attempt,
-                                AppError.MalformedData(
-                                    IllegalStateException("Source ${item.sourceId} cannot resolve missing image URLs"),
-                                ),
-                            )
-                        resolveImageUrl(attempt, source, pageEntry) ?: return false
+                        val imageSource = source ?: return fail(
+                            attempt,
+                            AppError.MalformedData(
+                                IllegalStateException("Source ${item.sourceId} cannot resolve missing image URLs"),
+                            ),
+                        )
+                        resolveImageUrl(attempt, imageSource, pageEntry) ?: return false
                     }
                     if (!downloadAndPublishPage(
                             attempt,
                             client,
+                            source,
                             tmpDir,
                             pageTable,
                             downloadIdentity,
@@ -1199,6 +1205,7 @@ class DesktopDownloadManager(
     private suspend fun downloadAndPublishPage(
         attempt: DownloadAttempt,
         client: OkHttpClient,
+        source: CatalogueSource?,
         tmpDir: File,
         pageTable: PartialPageTable,
         identity: DownloadChapterIdentity?,
@@ -1220,9 +1227,36 @@ class DesktopDownloadManager(
             var moved = false
             try {
                 emitIo(DownloadIoOperation.NETWORK_REQUEST)
-                val bytes = fileOperations.execute(client, imageUrl).use { response ->
+                val page = Page(entry.sourcePageIndex, entry.pageUrl, imageUrl)
+                val sourceResponse = try {
+                    source?.let { resolveSourceImageResponse(it, page) }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    throw AppErrorException(error.toSourceAppError())
+                }
+                val response = sourceResponse ?: run {
+                    val sourceClient = source?.sourceClientOrNull() ?: client
+                    val headers = source?.sourceHeadersOrNull()
+                    if (headers == null) {
+                        fileOperations.execute(sourceClient, imageUrl)
+                    } else {
+                        fileOperations.execute(sourceClient, Request.Builder().url(imageUrl).headers(headers).build())
+                    }
+                }
+                val bytes = response.use { response ->
+                    if (!response.isSuccessful) {
+                        throw DownloadHttpException(
+                            response.code,
+                            response.header("Retry-After")?.toLongOrNull(),
+                        )
+                    }
                     emitIo(DownloadIoOperation.BODY_READ)
-                    fileOperations.readBody(response)
+                    try {
+                        fileOperations.readBody(response)
+                    } catch (error: java.io.IOException) {
+                        throw NetworkDownloadException(error)
+                    }
                 }
                 if (!isCurrentAttempt(attempt)) {
                     cleanupStaging(stagingFile)
@@ -1886,9 +1920,12 @@ class DesktopDownloadManager(
 
     private fun Throwable?.toAppError(): AppError {
         val error = this ?: return AppError.Unknown()
+        if (error is AppErrorException) return error.error
+        if (error is HttpException) return error.toSourceAppError()
         if (error is DownloadHttpException) {
             return when (error.statusCode) {
-                401, 403 -> AppError.Authentication(error)
+                401 -> AppError.Authentication(error)
+                403 -> AppError.Forbidden(error)
                 429 -> AppError.RateLimited(error.retryAfterSeconds, error)
                 in 500..599 -> AppError.Server(error.statusCode, error)
                 else -> AppError.Network(error)
@@ -1946,7 +1983,8 @@ class DesktopDownloadManager(
 
 private fun AppError.notificationMessage(): String = when (this) {
     is AppError.Network -> "网络连接失败，请检查网络后重试"
-    is AppError.Authentication -> "服务器拒绝访问（HTTP 403），请检查登录或源设置后重试"
+    is AppError.Authentication -> "需要登录（HTTP 401），请登录后重试"
+    is AppError.Forbidden -> "服务器拒绝访问（HTTP 403），请检查图源设置或访问限制后重试"
     is AppError.RateLimited -> retryAfterSeconds?.let { "请求过于频繁，请在 $it 秒后重试" } ?: "请求过于频繁，请稍后重试"
     is AppError.Server -> "服务器错误（HTTP $statusCode），请稍后重试"
     is AppError.Permission -> "没有写入权限，请检查下载路径后重试"
@@ -1961,6 +1999,12 @@ class NetworkDownloadException(cause: Throwable) : java.io.IOException(cause)
 
 interface DownloadFileOperations {
     fun execute(client: OkHttpClient, url: String): Response
+
+    /** Preserve full source requests even for adapters that only implement the legacy URL hook. */
+    fun execute(
+        client: OkHttpClient,
+        request: Request,
+    ): Response = DefaultDownloadFileOperations.execute(client, request)
     suspend fun readBody(response: Response): ByteArray
     fun writePage(tmp: File, bytes: ByteArray)
     fun renamePage(tmp: File, final: File)
@@ -1973,8 +2017,11 @@ class DefaultDownloadFileOperations internal constructor(
 
     companion object : DownloadFileOperations by DefaultDownloadFileOperations()
 
-    override fun execute(client: OkHttpClient, url: String): Response = try {
-        client.newCall(Request.Builder().url(url).build()).execute().also { response ->
+    override fun execute(client: OkHttpClient, url: String): Response =
+        execute(client, Request.Builder().url(url).build())
+
+    override fun execute(client: OkHttpClient, request: Request): Response = try {
+        client.newCall(request).execute().also { response ->
             if (!response.isSuccessful) {
                 val retryAfter = response.header("Retry-After")?.toLongOrNull()
                 val status = response.code

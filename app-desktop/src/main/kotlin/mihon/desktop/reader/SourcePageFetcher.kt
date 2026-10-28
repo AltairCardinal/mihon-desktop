@@ -3,24 +3,22 @@ package mihon.desktop.reader
 import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.Page
-import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import mihon.desktop.extension.resolveSourceImageResponse
 import mihon.desktop.extension.resolveSourceImageUrl
+import mihon.desktop.extension.sourceClientOrNull
+import mihon.desktop.extension.sourceHeadersOrNull
 import mihon.domain.error.AppError
 import mihon.domain.network.AppErrorException
 import mihon.domain.reader.ReaderDualPageFactReadPermit
-import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.Response
 import okio.buffer
 import tachiyomi.domain.source.service.toSourceAppError
 import java.io.File
 import java.lang.reflect.InvocationTargetException
-import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
-import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 
 /**
  * Fetches page images through the source's own OkHttp client and headers.
@@ -38,15 +36,9 @@ class SourcePageFetcher(
     private val fallbackClient: OkHttpClient,
 ) {
 
-    /** Source's OkHttp client, resolved reflectively. Falls back to [fallbackClient]. */
-    val client: OkHttpClient = runCatching {
-        source.javaClass.getMethod("getClient").apply { trySetAccessible() }.invoke(source) as OkHttpClient
-    }.getOrDefault(fallbackClient)
-
-    /** Source's request headers (contains Referer, User-Agent, etc.), or null if unavailable. */
-    private val headers: Headers? = runCatching {
-        source.javaClass.getMethod("getHeaders").apply { trySetAccessible() }.invoke(source) as Headers
-    }.getOrNull()
+    /** Only missing source APIs may fall back; failed source getters stay visible. */
+    val client: OkHttpClient
+        get() = source.sourceClientOrNull() ?: fallbackClient
 
     suspend fun resolveImageUrl(page: Page): String {
         page.imageUrl?.takeIf(String::isNotBlank)?.let { return it }
@@ -84,13 +76,14 @@ class SourcePageFetcher(
         if (destFile.exists()) destFile.delete()
 
         destFile.parentFile?.mkdirs()
-        val fallbackRequest = Request.Builder().url(imageUrl).apply {
-            headers?.forEach { (name, value) -> header(name, value) }
-        }.build()
-
         return try {
             withContext(Dispatchers.IO) {
-                val response = sourceImageResponse(page) ?: client.newCall(fallbackRequest).execute()
+                val response = resolveSourceImageResponse(source, page) ?: run {
+                    val request = Request.Builder().url(imageUrl).apply {
+                        source.sourceHeadersOrNull()?.let { headers(it) }
+                    }.build()
+                    client.newCall(request).execute()
+                }
                 response.use {
                     if (!response.isSuccessful) throw HttpException(response.code)
                     destFile.outputStream().buffered().use { out ->
@@ -119,24 +112,6 @@ class SourcePageFetcher(
             destFile.delete()
             val cause = (error as? InvocationTargetException)?.targetException ?: error
             SourcePageFetchResult.Failure(cause.toSourceAppError())
-        }
-    }
-
-    private suspend fun sourceImageResponse(page: Page): Response? = when (source) {
-        is HttpSource -> source.getImage(page)
-        else -> invokeReflectiveImage(page)
-    }
-
-    /** Child-classloader HttpSource implementations cannot always be cast to this process's HttpSource. */
-    private suspend fun invokeReflectiveImage(page: Page): Response? {
-        val method = source.javaClass.methods.firstOrNull { candidate ->
-            candidate.name == "getImage" &&
-                candidate.parameterCount == 2 &&
-                candidate.parameterTypes.first().isAssignableFrom(page.javaClass)
-        }?.apply { trySetAccessible() } ?: return null
-        return suspendCoroutineUninterceptedOrReturn { continuation ->
-            val result = method.invoke(source, page, continuation)
-            if (result === COROUTINE_SUSPENDED) COROUTINE_SUSPENDED else result as? Response
         }
     }
 

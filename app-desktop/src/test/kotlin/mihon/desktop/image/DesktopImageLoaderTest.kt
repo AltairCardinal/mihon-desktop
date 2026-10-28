@@ -6,9 +6,12 @@ import coil3.request.CachePolicy
 import coil3.request.ErrorResult
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import eu.kanade.tachiyomi.source.Source
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import mihon.desktop.platform.DesktopNetworkHelper
+import mihon.desktop.source.FakeDesktopSourceManager
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.Cache
@@ -24,6 +27,103 @@ import java.util.Base64
 import java.util.concurrent.TimeUnit
 
 class DesktopImageLoaderTest {
+
+    @Test
+    fun `production source manager cover route preserves nonpublic source client and headers`() = runBlocking {
+        withProductionSourceImage(PrivateNetworkSource(routedClient("source"))) { server, result ->
+            assertInstanceOf(SuccessResult::class.java, result)
+            val request = requireNotNull(server.takeRequest(5, TimeUnit.SECONDS))
+            assertEquals("source", request.headers["X-Mihon-Route"])
+            assertEquals("https://source.example/", request.headers["Referer"])
+        }
+    }
+
+    @Test
+    fun `production source client getter failure never falls back to global network`() = runBlocking {
+        val failure = IllegalStateException("Source client unavailable")
+        withProductionSourceImage(NetworkSource(routedClient("source"), clientFailure = failure)) { server, result ->
+            val error = assertInstanceOf(ErrorResult::class.java, result).throwable
+            assertInstanceOf(IllegalStateException::class.java, error)
+            assertEquals(failure.message, error.message)
+            assertEquals(0, server.requestCount)
+        }
+    }
+
+    @Test
+    fun `production source headers getter failure never sends a headerless image request`() = runBlocking {
+        val failure = IllegalStateException("Source headers unavailable")
+        withProductionSourceImage(NetworkSource(routedClient("source"), headersFailure = failure)) { server, result ->
+            val error = assertInstanceOf(ErrorResult::class.java, result).throwable
+            assertInstanceOf(IllegalStateException::class.java, error)
+            assertEquals(failure.message, error.message)
+            assertEquals(0, server.requestCount)
+        }
+    }
+
+    private suspend fun withProductionSourceImage(
+        source: Source,
+        verify: (MockWebServer, coil3.request.ImageResult) -> Unit,
+    ) {
+        val directory = Files.createTempDirectory("mihon-source-image-route").toFile()
+        try {
+            DesktopNetworkHelper(
+                cacheDir = directory.resolve("network"),
+                cookieStorageFile = directory.resolve("cookies.json"),
+            ).use { networkHelper ->
+                MockWebServer().also { it.start() }.use { server ->
+                    server.enqueue(
+                        MockResponse.Builder()
+                            .setHeader("Content-Type", "image/png")
+                            .body(Buffer().write(PNG))
+                            .build(),
+                    )
+                    val loader = createDesktopImageLoader(
+                        PlatformContext.INSTANCE,
+                        networkHelper,
+                        FakeDesktopSourceManager(listOf(source)),
+                    )
+                    try {
+                        val result = loader.execute(
+                            ImageRequest.Builder(PlatformContext.INSTANCE)
+                                .memoryCachePolicy(CachePolicy.DISABLED)
+                                .diskCachePolicy(CachePolicy.DISABLED)
+                                .data(DesktopSourceImage(server.url("/source.png").toString(), source.id))
+                                .build(),
+                        )
+                        verify(server, result)
+                    } finally {
+                        loader.shutdown()
+                    }
+                }
+            }
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    open class NetworkSource(
+        private val sourceClient: OkHttpClient,
+        private val clientFailure: Throwable? = null,
+        private val headersFailure: Throwable? = null,
+    ) : Source {
+        override val id = 42L
+        override val name = "image-source"
+
+        open fun getClient(): OkHttpClient {
+            clientFailure?.let { throw it }
+            return sourceClient
+        }
+
+        open fun getHeaders(): Headers {
+            headersFailure?.let { throw it }
+            return Headers.headersOf("Referer", "https://source.example/")
+        }
+    }
+
+    private class PrivateNetworkSource(client: OkHttpClient) : NetworkSource(client) {
+        override fun getClient(): OkHttpClient = super.getClient()
+        override fun getHeaders(): Headers = super.getHeaders()
+    }
 
     @Test
     fun `plain and source cover requests use the managed global and plugin clients`() = runBlocking {
@@ -236,7 +336,9 @@ class DesktopImageLoaderTest {
         val cache = requireNotNull(desktopImageCache())
 
         assertEquals("image_cache", cache.directory().name)
-        val networkCache = mihon.desktop.platform.DesktopPlatformPaths.current(createDirectories = false).networkCacheDir
+        val networkCache = mihon.desktop.platform.DesktopPlatformPaths.current(
+            createDirectories = false,
+        ).networkCacheDir
         assertEquals(networkCache.parentFile, cache.directory().parentFile)
     }
 

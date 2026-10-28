@@ -26,7 +26,8 @@ private fun Throwable.knownSourceAppError(): AppError? {
             is AppErrorException -> return current.error
             is CancellationException -> return AppError.Cancelled
             is HttpException -> return when (current.code) {
-                401, 403 -> AppError.Authentication(current)
+                401 -> AppError.Authentication(current)
+                403 -> AppError.Forbidden(current)
                 429 -> AppError.RateLimited(cause = current)
                 in 500..599 -> AppError.Server(current.code, current)
                 else -> AppError.Unknown(current)

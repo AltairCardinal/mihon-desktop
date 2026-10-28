@@ -26,6 +26,7 @@ import mockwebserver3.MockWebServer
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
@@ -89,13 +90,13 @@ class HttpReaderMaterializeAdapterIntegrationTest {
     }
 
     @Test
-    fun `HTTP 403 429 and 500 retain authentication rate-limit and server errors`() = runTest {
+    fun `HTTP 401 403 429 and 500 retain distinct source errors`() = runTest {
         withServer { server ->
-            listOf(403, 429, 500).forEach { server.enqueue(MockResponse(code = it, body = "failure")) }
+            listOf(401, 403, 429, 500).forEach { server.enqueue(MockResponse(code = it, body = "failure")) }
             val fixture = Fixture(server)
             val request = ReaderChapterContentRequest(ReaderChapterId(7), 1)
 
-            val errors = List(3) {
+            val errors = List(4) {
                 (
                     CanonicalReaderMaterializeExecutor.materializeChapter(
                         request,
@@ -105,8 +106,9 @@ class HttpReaderMaterializeAdapterIntegrationTest {
             }
 
             assertInstanceOf(AppError.Authentication::class.java, errors[0])
-            assertInstanceOf(AppError.RateLimited::class.java, errors[1])
-            assertEquals(500, (errors[2] as AppError.Server).statusCode)
+            assertEquals("Forbidden", errors[1]::class.simpleName)
+            assertInstanceOf(AppError.RateLimited::class.java, errors[2])
+            assertEquals(500, (errors[3] as AppError.Server).statusCode)
         }
     }
 
@@ -131,8 +133,55 @@ class HttpReaderMaterializeAdapterIntegrationTest {
         }
     }
 
-    private class Fixture(server: MockWebServer) {
-        val source = TestHttpSource(server)
+    @Test
+    fun `Android image adapter preserves source client headers and custom POST body`() = runTest {
+        withServer { server ->
+            server.enqueue(MockResponse(body = "image bytes"))
+            val client = OkHttpClient.Builder().addInterceptor { chain ->
+                chain.proceed(chain.request().newBuilder().header("X-Source-Client", "retained").build())
+            }.build()
+            val source = object : TestHttpSource(server, client) {
+                override fun imageRequest(page: Page): Request = Request.Builder()
+                    .url(page.imageUrl!!)
+                    .headers(Headers.headersOf("Referer", baseUrl + "/chapter"))
+                    .post("signed-image-payload".toRequestBody())
+                    .build()
+            }
+            val fixture = Fixture(server, source)
+            val page = eu.kanade.tachiyomi.ui.reader.model.ReaderPage(0, imageUrl = source.baseUrl + "/image")
+            AndroidReaderPageFetchPort(page, source, fixture.cache).fetchEncodedPage(
+                ReaderPageFetchRequest(ReaderPageId(ReaderChapterId(7), 0), 1, page.url, page.imageUrl),
+            )
+            val recorded = server.takeRequest()
+            assertEquals("POST", recorded.method)
+            assertEquals("signed-image-payload", recorded.body?.utf8())
+            assertEquals(source.baseUrl + "/chapter", recorded.headers["Referer"])
+            assertEquals("retained", recorded.headers["X-Source-Client"])
+        }
+    }
+
+    @Test
+    fun `Android image adapter dispatches legacy getImage override`() = runTest {
+        withServer { server ->
+            server.enqueue(MockResponse(body = "image bytes"))
+            var legacyCalls = 0
+            val source = object : TestHttpSource(server) {
+                override suspend fun getImage(page: Page): Response {
+                    legacyCalls++
+                    return super.getImage(page)
+                }
+            }
+            val fixture = Fixture(server, source)
+            val page = eu.kanade.tachiyomi.ui.reader.model.ReaderPage(0, imageUrl = source.baseUrl + "/image")
+            AndroidReaderPageFetchPort(page, source, fixture.cache).fetchEncodedPage(
+                ReaderPageFetchRequest(ReaderPageId(ReaderChapterId(7), 0), 1, page.url, page.imageUrl),
+            )
+            assertEquals(1, legacyCalls)
+            assertEquals("/image", server.takeRequest().url.encodedPath)
+        }
+    }
+
+    private class Fixture(server: MockWebServer, val source: TestHttpSource = TestHttpSource(server)) {
         val cache = mockk<ChapterCache>()
         val chapter = ReaderChapter(Chapter.create().copy(id = 7, mangaId = 1, url = "/chapter"))
         private val loader: HttpPageLoader
@@ -158,7 +207,7 @@ class HttpReaderMaterializeAdapterIntegrationTest {
         }
     }
 
-    internal class TestHttpSource(
+    internal open class TestHttpSource(
         private val server: MockWebServer,
         override val client: OkHttpClient = OkHttpClient(),
     ) : HttpSource() {

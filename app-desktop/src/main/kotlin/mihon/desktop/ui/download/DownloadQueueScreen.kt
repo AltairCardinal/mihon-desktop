@@ -1,11 +1,5 @@
 package mihon.desktop.ui.download
 
-import tachiyomi.i18n.MR
-import java.util.Locale
-
-import mihon.desktop.LocalDesktopUiDependencies
-import mihon.desktop.ui.source.desktopSourceErrorMessage
-
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,12 +48,16 @@ import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.download.DownloadQueueOrder
 import mihon.desktop.download.DownloadStatus
+import mihon.desktop.ui.source.desktopSourceErrorMessage
 import mihon.domain.error.AppError
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
+import tachiyomi.i18n.MR
+import java.util.Locale
 
 class DownloadQueueScreen : Screen {
 
@@ -104,7 +102,10 @@ class DownloadQueueScreen : Screen {
                     },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = MR.strings.action_bar_up_description.localized(),
+                            )
                         }
                     },
                     actions = {
@@ -112,7 +113,10 @@ class DownloadQueueScreen : Screen {
                             // Sort button — direct action icon (mirrors Android AppBar.Action)
                             Box {
                                 IconButton(onClick = { showSortMenu = true }) {
-                                    Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = MR.strings.action_sort.localized())
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Sort,
+                                        contentDescription = MR.strings.action_sort.localized(),
+                                    )
                                 }
                                 DropdownMenu(
                                     expanded = showSortMenu,
@@ -152,7 +156,10 @@ class DownloadQueueScreen : Screen {
                             // Overflow menu (⋮) — mirrors Android AppBar.OverflowAction
                             Box {
                                 IconButton(onClick = { showOverflowMenu = true }) {
-                                    Icon(Icons.Default.MoreVert, contentDescription = MR.strings.action_menu_overflow_description.localized())
+                                    Icon(
+                                        Icons.Default.MoreVert,
+                                        contentDescription = MR.strings.action_menu_overflow_description.localized(),
+                                    )
                                 }
                                 DropdownMenu(
                                     expanded = showOverflowMenu,
@@ -183,7 +190,10 @@ class DownloadQueueScreen : Screen {
                                     }
                                     DropdownMenuItem(
                                         text = {
-                                            Text(MR.strings.action_cancel_all.localized(), color = MaterialTheme.colorScheme.error)
+                                            Text(
+                                                MR.strings.action_cancel_all.localized(),
+                                                color = MaterialTheme.colorScheme.error,
+                                            )
                                         },
                                         onClick = {
                                             model.cancelAll()
@@ -420,6 +430,7 @@ internal fun downloadFailureMessage(
     is AppError.Unknown -> MR.strings.desktop_ui_download_unknown_error.localized(locale)
     is AppError.Network,
     is AppError.Authentication,
+    is AppError.Forbidden,
     is AppError.RateLimited,
     is AppError.Server,
     -> desktopSourceErrorMessage(error, locale)

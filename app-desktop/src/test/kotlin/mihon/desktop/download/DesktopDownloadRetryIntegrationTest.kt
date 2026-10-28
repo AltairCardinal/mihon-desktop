@@ -176,9 +176,10 @@ class DesktopDownloadRetryIntegrationTest {
     }
 
     @Test
-    fun `HTTP 403 429 and 500 retain structured details on the queue item`(): Unit = runBlocking {
+    fun `HTTP 401 403 429 and 500 retain structured details on the queue item`(): Unit = runBlocking {
         listOf(
-            Triple(403, null, AppError.Authentication::class),
+            Triple(401, null, AppError.Authentication::class),
+            Triple(403, null, AppError.Forbidden::class),
             Triple(429, "23", AppError.RateLimited::class),
             Triple(500, null, AppError.Server::class),
         ).forEach { (code, retryAfter, type) ->
@@ -388,7 +389,7 @@ class DesktopDownloadRetryIntegrationTest {
             val job = manager.start()
             awaitError(manager)
             job.cancel()
-            delivered.single().message shouldBe "服务器拒绝访问（HTTP 403），请检查登录或源设置后重试"
+            delivered.single().message shouldBe "服务器拒绝访问（HTTP 403），请检查图源设置或访问限制后重试"
         } finally {
             server.close()
         }

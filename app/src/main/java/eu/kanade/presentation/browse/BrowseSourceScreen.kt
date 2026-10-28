@@ -31,6 +31,7 @@ import eu.kanade.presentation.browse.components.BrowseSourceList
 import eu.kanade.presentation.browse.components.catalogResultVisibleIndices
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.util.formattedMessage
+import eu.kanade.presentation.util.sourceErrorMessageResource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.ui.browse.source.browse.SourcePageException
 import kotlinx.collections.immutable.persistentListOf
@@ -80,7 +81,9 @@ fun BrowseSourceContent(
     val getErrorMessage: (LoadState.Error) -> String = { state ->
         when (val error = (state.error as? SourcePageException)?.pageError?.error) {
             is AppError.Network -> context.stringResource(MR.strings.exception_offline)
-            is AppError.Authentication -> context.stringResource(MR.strings.login)
+            is AppError.Authentication, is AppError.Forbidden -> context.stringResource(
+                checkNotNull(sourceErrorMessageResource(error)),
+            )
             null -> with(context) { state.error.formattedMessage }
             else -> context.stringResource(MR.strings.unknown_error)
         }

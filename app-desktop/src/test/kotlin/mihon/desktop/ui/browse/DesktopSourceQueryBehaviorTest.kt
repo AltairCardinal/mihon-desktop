@@ -8,19 +8,19 @@ import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.async
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
-import mihon.domain.error.AppError
 import mihon.desktop.ui.source.desktopSourceErrorMessage
+import mihon.domain.error.AppError
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -37,15 +37,15 @@ import tachiyomi.domain.source.service.SourceRecoveryAction
 import tachiyomi.i18n.MR
 import java.io.File
 import java.io.InterruptedIOException
-import java.net.SocketTimeoutException
 import java.net.ConnectException
 import java.net.SocketException
+import java.net.SocketTimeoutException
 import java.net.UnknownHostException
-import javax.net.ssl.SSLHandshakeException
 import java.util.Locale
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLHandshakeException
 
 class DesktopSourceQueryBehaviorTest {
 
@@ -107,7 +107,7 @@ class DesktopSourceQueryBehaviorTest {
             desktopSourceErrorMessage(AppError.Network(), Locale.ENGLISH),
         )
         assertEquals(
-            MR.strings.login.localized(Locale.SIMPLIFIED_CHINESE),
+            MR.strings.source_error_authentication.localized(Locale.SIMPLIFIED_CHINESE),
             desktopSourceErrorMessage(AppError.Authentication(), Locale.SIMPLIFIED_CHINESE),
         )
         assertEquals(
@@ -121,6 +121,15 @@ class DesktopSourceQueryBehaviorTest {
         assertEquals(
             MR.strings.action_retry.localized(Locale.SIMPLIFIED_CHINESE),
             desktopSourceRecoveryActionLabel(SourceRecoveryAction.Retry, Locale.SIMPLIFIED_CHINESE),
+        )
+    }
+
+    @Test
+    fun `source access denial stays explicit after persisted error reload`() {
+        val error = mihon.domain.error.StoredAppError("Forbidden", message = "private token").toAppError()
+        assertEquals(
+            MR.strings.source_error_forbidden.localized(Locale.SIMPLIFIED_CHINESE),
+            desktopSourceErrorMessage(error, Locale.SIMPLIFIED_CHINESE),
         )
     }
 
@@ -378,13 +387,28 @@ class DesktopSourceQueryBehaviorTest {
         assertNotEquals(intent, intent.copy(request = intent.request.copy(generation = intent.request.generation + 1)))
     }
 
-    private class AuthenticationSource : eu.kanade.tachiyomi.source.online.HttpSource() {
+    @Test
+    fun `forbidden source recovery retries the captured request without opening login`() = runBlocking {
+        val source = AuthenticationSource(statusCode = 403)
+        val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
+        coordinator.load(source, page = 1, query = SourceQuery.Popular)
+        val failed = assertInstanceOf(SourceQueryState.Failure::class.java, coordinator.state)
+        assertInstanceOf(AppError.Forbidden::class.java, failed.error)
+        assertEquals(SourceRecoveryAction.Retry, failed.recoveryAction)
+        val intent = assertInstanceOf(
+            DesktopSourceRecoveryIntent.Retry::class.java,
+            coordinator.recoveryIntent(source),
+        )
+        assertEquals(coordinator.state!!.request, intent.request)
+    }
+
+    private class AuthenticationSource(statusCode: Int = 401) : eu.kanade.tachiyomi.source.online.HttpSource() {
         override val id = 7L
         override val name = "Login source"
         override val lang = "en"
         override val supportsLatest = false
         override val baseUrl = "https://example.com"
-        override val client = OkHttpClient.Builder().addInterceptor { throw HttpException(403) }.build()
+        override val client = OkHttpClient.Builder().addInterceptor { throw HttpException(statusCode) }.build()
 
         override fun popularMangaRequest(page: Int) = Request.Builder().url(baseUrl).build()
         override fun popularMangaParse(response: Response) = MangasPage(emptyList(), false)
@@ -437,7 +461,11 @@ class DesktopSourceQueryBehaviorTest {
         }
 
         override suspend fun getLatestUpdates(page: Int) = MangasPage(emptyList(), false)
-        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList) = MangasPage(emptyList(), false)
+        override suspend fun getSearchManga(
+            page: Int,
+            query: String,
+            filters: FilterList,
+        ) = MangasPage(emptyList(), false)
         override fun getFilterList() = FilterList()
         override suspend fun getMangaDetails(manga: SManga) = manga
         override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()
@@ -462,7 +490,11 @@ class DesktopSourceQueryBehaviorTest {
         }
 
         override suspend fun getLatestUpdates(page: Int) = MangasPage(emptyList(), false)
-        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList) = MangasPage(emptyList(), false)
+        override suspend fun getSearchManga(
+            page: Int,
+            query: String,
+            filters: FilterList,
+        ) = MangasPage(emptyList(), false)
         override fun getFilterList() = FilterList()
         override suspend fun getMangaDetails(manga: SManga) = manga
         override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()

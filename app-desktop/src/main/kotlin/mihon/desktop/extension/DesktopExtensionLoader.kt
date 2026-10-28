@@ -61,7 +61,6 @@ open class DesktopExtensionLoader(
      * 2. JAR class scan fallback (APK→JAR converted extensions that have no
      *    META-INF/services because Android uses PackageManager, not ServiceLoader).
      */
-    /** Loads extensions from a single JAR; exposed internally for testing. */
     internal fun loadFromSingleJar(jarFile: File): List<LoadedExtension> = loadFromJar(jarFile)
 
     private fun loadFromJar(jarFile: File): List<LoadedExtension> {
@@ -124,7 +123,9 @@ open class DesktopExtensionLoader(
     private fun loadStrictManifestSources(jarFile: File, classes: String, loader: ClassLoader): List<Source> =
         JarFile(jarFile).use { jar ->
             classes.split(':').flatMap { name ->
-                require(jar.getJarEntry(name.replace('.', '/') + ".class") != null) { "Missing manifest provider: $name" }
+                require(jar.getJarEntry(name.replace('.', '/') + ".class") != null) {
+                    "Missing manifest provider: $name"
+                }
                 val type = loader.loadClass(name)
                 require(type.classLoader === loader) { "Manifest provider must belong to the extension" }
                 val constructor = type.getDeclaredConstructor().apply { isAccessible = true }
@@ -202,8 +203,10 @@ open class DesktopExtensionLoader(
                         try {
                             val cls = classLoader.loadClass(className)
                             if (
-                                (sourceInterface.isAssignableFrom(cls) ||
-                                    sourceFactoryInterface.isAssignableFrom(cls)) &&
+                                (
+                                    sourceInterface.isAssignableFrom(cls) ||
+                                        sourceFactoryInterface.isAssignableFrom(cls)
+                                    ) &&
                                 !cls.isInterface &&
                                 !Modifier.isAbstract(cls.modifiers)
                             ) {
@@ -290,6 +293,9 @@ internal class ExtensionClassLoader(
     }
 
     private fun mustLoadFromParent(name: String): Boolean {
+        // Error mapping must see the host exception identity even when a fat JAR bundles the API.
+        if (name == "eu.kanade.tachiyomi.network.HttpException") return true
+
         // Source interface hierarchy — must match the app's class objects for
         // ServiceLoader and extension manager type checks.
         if (name == "eu.kanade.tachiyomi.source.Source" ||
@@ -297,13 +303,17 @@ internal class ExtensionClassLoader(
             name == "eu.kanade.tachiyomi.source.SourceFactory" ||
             name == "eu.kanade.tachiyomi.source.UnmeteredSource" ||
             name.startsWith("eu.kanade.tachiyomi.source.model.")
-        ) return true
+        ) {
+            return true
+        }
 
         // Android compat stubs — must match the types used by parent-loaded source.model classes.
         // Page.<init> accepts android.net.Uri; if that came from child the constructor lookup fails.
         if (name.startsWith("android.") ||
             name.startsWith("androidx.")
-        ) return true
+        ) {
+            return true
+        }
 
         // Standard JVM / third-party shared libraries
         if (name.startsWith("java.") ||
@@ -318,14 +328,16 @@ internal class ExtensionClassLoader(
             name.startsWith("kotlinx.coroutines.") ||
             name.startsWith("com.squareup.okhttp") ||
             name.startsWith("okhttp3.") ||
-            name.startsWith("rx.") ||             // RxJava 1.x (bundled in fat JARs via desktop-api)
+            name.startsWith("rx.") || // RxJava 1.x (bundled in fat JARs via desktop-api)
             name.startsWith("io.reactivex.") ||
             name.startsWith("org.jsoup.") ||
             name.startsWith("logcat.") ||
             name.startsWith("tachiyomi.") ||
             name.startsWith("mihon.") ||
             name.startsWith("dev.mihon.")
-        ) return true
+        ) {
+            return true
+        }
 
         return false
     }

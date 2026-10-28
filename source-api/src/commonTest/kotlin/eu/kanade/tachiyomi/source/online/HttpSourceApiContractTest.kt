@@ -10,8 +10,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
+import okhttp3.Headers
 import okhttp3.Protocol
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -61,6 +63,38 @@ class HttpSourceApiContractTest {
         }
         assertEquals(1, legacyCalls)
         assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun `getImage preserves source client custom request headers POST and body`() = withServer { server ->
+        server.enqueue(HttpTestResponse(body = "image"))
+        var received: Request? = null
+        val client = server.client.newBuilder().addInterceptor { chain ->
+            received = chain.request()
+            chain.proceed(chain.request())
+        }.build()
+        val source = object : TestHttpSource(server.baseUrl, client = client) {
+            override fun headersBuilder(): Headers.Builder = Headers.Builder().add("Referer", baseUrl + "/chapter")
+            override fun imageRequest(page: Page): Request = Request.Builder()
+                .url(page.imageUrl!!)
+                .headers(headers)
+                .post("signed-body".toRequestBody())
+                .build()
+        }
+
+        runBlocking {
+            source.getImage(RecordingPage(source.baseUrl + "/image")).use {
+                assertEquals("image", it.body.string())
+            }
+        }
+
+        val request = requireNotNull(received)
+        assertEquals("POST", request.method)
+        assertEquals(source.baseUrl + "/chapter", request.header("Referer"))
+        val body = okio.Buffer()
+        requireNotNull(request.body).writeTo(body)
+        assertEquals("signed-body", body.readUtf8())
+        assertEquals(1, server.requestCount)
     }
 
     @Test

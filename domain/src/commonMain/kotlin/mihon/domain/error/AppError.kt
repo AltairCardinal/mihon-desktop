@@ -4,6 +4,7 @@ sealed interface AppError {
     val cause: Throwable?
 
     data class Network(override val cause: Throwable? = null) : AppError
+    data class Forbidden(override val cause: Throwable? = null) : AppError
     data class Authentication(override val cause: Throwable? = null) : AppError
     data class Challenge(override val cause: Throwable? = null) : AppError
     data class RateLimited(val retryAfterSeconds: Long? = null, override val cause: Throwable? = null) : AppError

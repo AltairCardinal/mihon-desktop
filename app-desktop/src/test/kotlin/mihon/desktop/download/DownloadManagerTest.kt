@@ -697,6 +697,17 @@ class DownloadManagerTest {
             coEvery { source.getPageList(any()) } returns sourcePages
             coEvery { source.getImageUrl(match { it.index == 19 }) } returns "https://img.test/middle.png"
             val executedUrls = CopyOnWriteArrayList<String>()
+            coEvery { source.getImage(any()) } answers {
+                val page = firstArg<Page>()
+                executedUrls += requireNotNull(page.imageUrl)
+                Response.Builder()
+                    .request(Request.Builder().url(page.imageUrl!!).build())
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body(jpegBytes().toResponseBody())
+                    .build()
+            }
             val chapterRenameEntered = CountDownLatch(1)
             val releaseChapterRename = CountDownLatch(1)
             val ioEvents = CopyOnWriteArrayList<DownloadIoEvent>()
@@ -802,6 +813,7 @@ class DownloadManagerTest {
                 )
                 coVerify(exactly = 1) { source.getPageList(any()) }
                 coVerify(exactly = 1) { source.getImageUrl(any()) }
+                coVerify(exactly = 3) { source.getImage(any()) }
                 assertTrue(ioEvents.isNotEmpty())
                 assertEquals(1, ioEvents.count { it.operation == DownloadIoOperation.INDEX_DIRECTORY_LIST })
                 assertEquals(3, ioEvents.count { it.operation == DownloadIoOperation.PAGE_HEADER_PROBE })
@@ -840,54 +852,52 @@ class DownloadManagerTest {
             output.closeEntry()
         }
 
-        ExtensionClassLoader(extensionJar.toURI().toURL(), javaClass.classLoader).use { classLoader ->
-            val source = classLoader.loadClass(
-                fixtureClassName,
-            ).getDeclaredConstructor().newInstance() as CatalogueSource
-            assertSame(classLoader, source.javaClass.classLoader)
-            assertFalse(source is HttpSource)
-            val executedUrls = CopyOnWriteArrayList<String>()
-            val workerParent = SupervisorJob()
-            val manager = DesktopDownloadManager(
-                downloadPreferences = fixtureDownloadPreferences,
-                provider = DesktopDownloadProvider(tempDir.resolve("child-loader-downloads")),
-                networkHelper = NetworkHelper(OkHttpClient()),
-                workerScope = CoroutineScope(workerParent + Dispatchers.IO),
-                sourceResolver = { source },
-                fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
-                    override fun execute(client: OkHttpClient, url: String): Response {
-                        executedUrls += url
-                        return Response.Builder()
-                            .request(Request.Builder().url(url).build())
-                            .protocol(Protocol.HTTP_1_1)
-                            .code(200)
-                            .message("OK")
-                            .body(jpegBytes().toResponseBody())
-                            .build()
+        mockwebserver3.MockWebServer().use { server ->
+            server.start()
+            server.enqueue(mockwebserver3.MockResponse.Builder().body(okio.Buffer().write(jpegBytes())).build())
+            ExtensionClassLoader(extensionJar.toURI().toURL(), javaClass.classLoader).use { classLoader ->
+                val source = classLoader.loadClass(
+                    fixtureClassName,
+                ).getDeclaredConstructor().newInstance() as CatalogueSource
+                assertSame(classLoader, source.javaClass.classLoader)
+                assertFalse(source is HttpSource)
+                val imageUrl = server.url("/resolved.jpg").toString()
+                source.javaClass.getMethod("setPageUrl", String::class.java).invoke(source, imageUrl)
+                val manager = DesktopDownloadManager(
+                    downloadPreferences = fixtureDownloadPreferences,
+                    provider = DesktopDownloadProvider(tempDir.resolve("child-loader-downloads")),
+                    networkHelper = NetworkHelper(OkHttpClient()),
+                    sourceResolver = { source },
+                    fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                        override fun execute(
+                            client: OkHttpClient,
+                            url: String,
+                        ): Response = error("Source image API was bypassed")
+                    },
+                )
+                try {
+                    manager.enqueue(
+                        DownloadItem(
+                            sourceId = source.id,
+                            mangaTitle = "Child Loader Manga",
+                            chapterName = "Child Loader Chapter",
+                            chapterId = 9_901L,
+                            chapterUrl = "/child-loader/chapter",
+                        ),
+                    )
+                    manager.start()
+                    withTimeout(5_000) {
+                        manager.queue.first { it.isEmpty() || it.single().status == DownloadStatus.ERROR }
                     }
-                },
-            )
-            manager.enqueue(
-                DownloadItem(
-                    sourceId = source.id,
-                    mangaTitle = "Child Loader Manga",
-                    chapterName = "Child Loader Chapter",
-                    chapterId = 9_901L,
-                    chapterUrl = "/child-loader/chapter",
-                ),
-            )
-            val worker = manager.start()
-            try {
-                withTimeout(5_000) {
-                    while (manager.queue.value.singleOrNull()?.status !in setOf(null, DownloadStatus.ERROR)) delay(10)
+                    assertTrue(manager.queue.value.isEmpty(), manager.queue.value.toString())
+                    val request = server.takeRequest()
+                    assertEquals("POST", request.method)
+                    assertEquals("child-loader", request.headers["X-Reflection-Bridge"])
+                    assertEquals(imageUrl, request.headers["X-Page-Token"])
+                    assertEquals("child-loader-body", request.body?.utf8())
+                } finally {
+                    manager.stopAndJoin()
                 }
-
-                assertTrue(manager.queue.value.isEmpty())
-                assertEquals(listOf("https://child.invalid/resolved.jpg"), executedUrls)
-            } finally {
-                worker.cancelAndJoin()
-                manager.stopAndJoin()
-                workerParent.cancelAndJoin()
             }
         }
     }

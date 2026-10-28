@@ -9,7 +9,8 @@ fun requireSuccessfulHttpResponse(
     body: String,
     retryAfter: String? = null,
 ): String = when (statusCode) {
-    401, 403 -> throw AppErrorException(AppError.Authentication())
+    401 -> throw AppErrorException(AppError.Authentication())
+    403 -> throw AppErrorException(AppError.Forbidden())
     429 -> throw AppErrorException(AppError.RateLimited(retryAfter?.toLongOrNull()))
     in 500..599 -> throw AppErrorException(AppError.Server(statusCode))
     in 200..299 -> if (body.isBlank()) throw AppErrorException(AppError.MalformedData()) else body

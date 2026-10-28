@@ -6,6 +6,7 @@ import tachiyomi.i18n.MR
 
 /** Installation authentication concerns the package/repository, never a request to log in or trust a new signer. */
 internal fun extensionInstallErrorMessage(error: AppError): StringResource? = when (error) {
+    is AppError.Forbidden -> MR.strings.source_error_forbidden
     is AppError.Authentication, is AppError.Challenge -> MR.strings.extension_install_error_verification
     is AppError.Network -> MR.strings.extension_install_error_network
     is AppError.RateLimited -> MR.strings.extension_install_error_rate_limit

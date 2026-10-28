@@ -1,6 +1,5 @@
 package mihon.desktop.extension
 
-import mihon.domain.extension.service.ExtensionInstallBusy
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.network.await
@@ -9,12 +8,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.last
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.onEach
-import mihon.domain.extension.service.ExtensionInstallArbiter
-import mihon.domain.extension.service.ExtensionInstallLease
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import mihon.domain.error.AppError
@@ -26,6 +23,9 @@ import mihon.domain.extension.model.InstalledExtensionTrustRecord
 import mihon.domain.extension.model.RepositoryIdentity
 import mihon.domain.extension.model.toIdentity
 import mihon.domain.extension.service.ExtensionCatalogService
+import mihon.domain.extension.service.ExtensionInstallArbiter
+import mihon.domain.extension.service.ExtensionInstallBusy
+import mihon.domain.extension.service.ExtensionInstallLease
 import mihon.domain.extension.service.ExtensionInstallState
 import mihon.domain.extension.service.ExtensionTrustDecision
 import mihon.domain.extension.service.ExtensionTrustPolicy
@@ -148,7 +148,9 @@ class DesktopExtensionApi(
             return withContext(Dispatchers.IO) {
                 if (extension.compatibility != ExtensionCompatibility.Compatible) {
                     return@withContext DesktopExtensionInstallStart.Rejected(
-                        AppError.MalformedData(IllegalArgumentException("Unsupported extension API: ${extension.libVersion}")),
+                        AppError.MalformedData(
+                            IllegalArgumentException("Unsupported extension API: ${extension.libVersion}"),
+                        ),
                     )
                 }
                 try {
@@ -161,12 +163,20 @@ class DesktopExtensionApi(
                             jarUrl = null,
                         ) != requested
                     ) {
-                        return@withContext DesktopExtensionInstallStart.Rejected(AppError.MalformedData(IllegalArgumentException("Reservation artifact differs from request")))
+                        return@withContext DesktopExtensionInstallStart.Rejected(
+                            AppError.MalformedData(
+                                IllegalArgumentException("Reservation artifact differs from request"),
+                            ),
+                        )
                     }
                     val claimed = reservation ?: installArbiter.reserve(artifact)
-                        ?: return@withContext DesktopExtensionInstallStart.Rejected(AppError.Unknown(ExtensionInstallBusy(extension.pkgName)))
+                        ?: return@withContext DesktopExtensionInstallStart.Rejected(
+                            AppError.Unknown(ExtensionInstallBusy(extension.pkgName)),
+                        )
                     if (!installArbiter.activate(claimed, artifact)) {
-                        return@withContext DesktopExtensionInstallStart.Rejected(AppError.Unknown(IllegalStateException("Installation reservation is no longer available")))
+                        return@withContext DesktopExtensionInstallStart.Rejected(
+                            AppError.Unknown(IllegalStateException("Installation reservation is no longer available")),
+                        )
                     }
                     lease = claimed
                     val installedJar = extensionArtifactFile(manager.extensionsDirectory, extension.pkgName, "jar")
@@ -180,7 +190,11 @@ class DesktopExtensionApi(
                             val id = UUID.randomUUID().toString()
                             synchronized(pendingTrust) { pendingTrust[id] = PendingTrust(request, claimed) }
                             DesktopExtensionInstallStart.TrustRequired(
-                                id, meta?.repoFingerprint.orEmpty(), extension.repoFingerprint, decision.reasons, request,
+                                id,
+                                meta?.repoFingerprint.orEmpty(),
+                                extension.repoFingerprint,
+                                decision.reasons,
+                                request,
                             )
                         }
                         is ExtensionTrustDecision.Rejected -> {
@@ -270,6 +284,7 @@ class DesktopExtensionApi(
         val message = when (this) {
             is AppError.Network -> cause?.message ?: "Network error while downloading extension"
             is AppError.Authentication -> "Extension download was rejected by the server"
+            is AppError.Forbidden -> "Extension server denied access (HTTP 403)"
             is AppError.Challenge -> "Extension download requires an unsupported challenge"
             is AppError.RateLimited -> "Extension download was rate limited"
             is AppError.Server -> "Extension server returned HTTP $statusCode"
@@ -316,19 +331,19 @@ class DesktopExtensionApi(
     }
 
     private fun DesktopAvailableExtension.toArtifact(): ExtensionArtifact = ExtensionArtifact(
-                name = name,
-                packageName = pkgName,
-                versionName = versionName,
-                versionCode = versionCode,
-                language = lang,
-                isNsfw = isNsfw,
-                sources = sources.map { ExtensionSourceDescriptor(it.id, it.lang, it.name, it.baseUrl) },
-                repository = RepositoryIdentity(repoUrl, repoName, repoFingerprint),
-                downloadUrl = jarUrl,
-                iconUrl = iconUrl,
-                declaredSha256 = declaredSha256,
-                declaredLibVersion = libVersion,
-            )
+        name = name,
+        packageName = pkgName,
+        versionName = versionName,
+        versionCode = versionCode,
+        language = lang,
+        isNsfw = isNsfw,
+        sources = sources.map { ExtensionSourceDescriptor(it.id, it.lang, it.name, it.baseUrl) },
+        repository = RepositoryIdentity(repoUrl, repoName, repoFingerprint),
+        downloadUrl = jarUrl,
+        iconUrl = iconUrl,
+        declaredSha256 = declaredSha256,
+        declaredLibVersion = libVersion,
+    )
 
     private fun DesktopAvailableExtension.trustRequest(
         installedJar: File,

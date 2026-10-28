@@ -36,8 +36,10 @@ class ReflectiveImageSource : CatalogueSource {
             .build(),
     ).execute()
 
+    var pageUrl: String = "https://child.invalid/resolved.jpg"
+
     override suspend fun getPageList(chapter: SChapter): List<Page> =
-        listOf(Page(19, "https://child.invalid/resolved.jpg", null))
+        listOf(Page(19, pageUrl, null))
     override suspend fun getMangaDetails(manga: SManga): SManga = manga
     override suspend fun getChapterList(manga: SManga): List<SChapter> = emptyList()
     override suspend fun getPopularManga(page: Int): MangasPage = MangasPage(emptyList(), false)

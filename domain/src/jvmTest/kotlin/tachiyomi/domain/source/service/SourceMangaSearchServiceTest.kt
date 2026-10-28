@@ -56,11 +56,19 @@ class SourceMangaSearchServiceTest {
     }
 
     @Test
-    fun `403 maps to authentication and open login recovery`() = runBlocking {
-        val result = failureFor(HttpException(403))
+    fun `401 maps to authentication and open login recovery`() = runBlocking {
+        val result = failureFor(HttpException(401))
 
         assertInstanceOf(AppError.Authentication::class.java, result.error)
         assertEquals(SourceRecoveryAction.OpenLogin, result.recoveryAction)
+    }
+
+    @Test
+    fun `403 is access denied and does not suggest login`() = runBlocking {
+        val result = failureFor(HttpException(403))
+
+        assertEquals("Forbidden", result.error::class.simpleName)
+        assertEquals(SourceRecoveryAction.Retry, result.recoveryAction)
     }
 
     @Test

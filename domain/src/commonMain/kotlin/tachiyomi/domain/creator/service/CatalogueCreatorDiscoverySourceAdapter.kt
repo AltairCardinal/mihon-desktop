@@ -237,6 +237,7 @@ class CatalogueCreatorDiscoverySourceAdapter(
 private fun Throwable.toCreatorSourceFailure(): CreatorSourceFailure = when (val error = toSourceAppError()) {
     is AppError.Authentication, is AppError.Challenge -> CreatorSourceFailure.AuthenticationRequired(null)
     is AppError.RateLimited -> CreatorSourceFailure.RateLimited(error.retryAfterSeconds?.times(1_000))
+    is AppError.Forbidden -> CreatorSourceFailure.Http(403)
     is AppError.Server -> CreatorSourceFailure.Http(error.statusCode)
     is AppError.Network -> CreatorSourceFailure.Network(error.cause?.message)
     is AppError.MalformedData -> CreatorSourceFailure.MalformedResponse(error.cause?.message)
