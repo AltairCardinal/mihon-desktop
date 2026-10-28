@@ -9,6 +9,16 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## October 29, 2026 — Quiet successful chapter actions on Windows
+
+**Accepted candidate documentation · no public product release**
+
+- Successful or skipped manga-detail chapter actions no longer display the success/skip/failure count snackbar. Failure feedback and the optional Add to library action remain available.
+- Accepted Windows preview: `0.11.24.9.9ab6aa9` (preview ID `20261028T175303Z-ad157712`); implementation: `06da0f0188`.
+- Seven focused interaction tests and the packaged extension runtime check passed. This acceptance covers the Windows chapter feedback change, not other platforms or a public product release.
+
+Acceptance basis: the project owner explicitly accepted this candidate in private chat on October 29, 2026 and requested main integration and a push.
+
 ## October 29, 2026 — Source image requests and accurate access errors
 
 **Accepted fixes and audit documentation · no public product release**
