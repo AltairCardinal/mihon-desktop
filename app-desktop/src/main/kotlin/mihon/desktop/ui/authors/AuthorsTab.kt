@@ -97,6 +97,7 @@ import kotlinx.coroutines.launch
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.CreatorDiscoveryRunScope
 import mihon.desktop.image.desktopSourceImageModel
+import mihon.desktop.ui.browse.GlobalSearchScreen
 import mihon.desktop.ui.library.MangaDetailScreen
 import mihon.domain.task.TaskStatus
 import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
@@ -473,6 +474,7 @@ data class AuthorDetailScreen(
         }
         val state by model.state.collectAsState()
         val creator = state.details.creator
+        val manualSearchName = creator?.displayName?.trim()?.takeIf { it.isNotEmpty() }
         val workArchive = state.visibleWorkArchive
         val presentationCards = state.visiblePresentationCards
         val pendingPresentationVersions = state.visiblePendingVersions
@@ -657,10 +659,30 @@ data class AuthorDetailScreen(
                         Text(
                             (if (isFollowed) MR.strings.desktop_ui_unfollow else MR.strings.desktop_ui_follow)
                                 .localized(),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                     Button(enabled = !isDiscoveryBusy, onClick = model::refreshDiscovery) {
-                        Text(MR.strings.desktop_ui_check_new_works.localized())
+                        Text(
+                            MR.strings.desktop_ui_check_new_works.localized(),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Button(
+                        enabled = manualSearchName != null,
+                        onClick = {
+                            manualSearchName?.let { name ->
+                                navigator.push(GlobalSearchScreen(initialQuery = name))
+                            }
+                        },
+                    ) {
+                        Text(
+                            MR.strings.desktop_ui_manual_search_works.localized(),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 }
                 state.error?.let { Text(it) }

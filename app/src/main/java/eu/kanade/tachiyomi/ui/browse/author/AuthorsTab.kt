@@ -775,18 +775,14 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                     )
                 }
                 CreatorIdentityHeader(model.identityEditor, state.details.creator?.displayName.orEmpty())
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { if (state.followed) confirmUnfollow = true else model.toggleFollow() }) {
-                        Text(
-                            stringResource(
-                                if (state.followed) MR.strings.desktop_ui_unfollow else MR.strings.desktop_ui_follow,
-                            ),
-                        )
-                    }
-                    Button(onClick = model::scan, enabled = !state.running) {
-                        Text(stringResource(MR.strings.desktop_ui_check_new_works))
-                    }
-                }
+                CreatorActionRow(
+                    followed = state.followed,
+                    scanning = state.running,
+                    manualSearchScreen = authorManualSearchScreen(state.details.creator?.displayName),
+                    onToggleFollow = { if (state.followed) confirmUnfollow = true else model.toggleFollow() },
+                    onScan = model::scan,
+                    onManualSearch = { screen -> navigator.push(screen) },
+                )
                 state.error?.let { Text(it) }
                 CreatorWorkFilters(
                     state.workFilter.query,
