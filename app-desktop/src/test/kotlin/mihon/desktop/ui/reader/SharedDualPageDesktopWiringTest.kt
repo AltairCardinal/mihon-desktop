@@ -1,5 +1,6 @@
 package mihon.desktop.ui.reader
 
+import kotlinx.coroutines.test.runTest
 import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.desktopReaderSessionState
@@ -17,6 +18,55 @@ import java.util.prefs.Preferences
 
 class SharedDualPageDesktopWiringTest {
     private val roots = mutableListOf<Preferences>()
+
+    @Test
+    fun `resizing retains only previously drawn current content without reporting stale geometry`() = runTest {
+        val reader = desktopReaderSessionState(chapterId = 7, pageCount = 3, initialPage = 1)
+        val reports = mutableListOf<Set<ReaderPageId>>()
+        val model = ReaderScreenModel(
+            initialSessionState = reader,
+            prefs = preferences(),
+            onViewportSettled = { pages, _ -> reports += pages },
+        )
+        model.updateViewportSize(400, 240, backgroundScope)
+        reader.snapshot.activeChapter.pages.forEach {
+            model.acceptDualFact(requireNotNull(model.captureDualFact(it.id)), ReaderPageFact.dimensions(20, 40))
+        }
+        val presentation = model.state.value.dualPresentationSnapshot(false, false)
+        val unit = presentation.displayUnits.single { it.slots.any { slot -> slot.page?.id?.sourcePageIndex == 1 } }
+        val visible = presentation.resolveDualVisiblePages(unit.id)
+        val native = ReaderPagerNativePresentation(unit, visible, ReaderPagerPresentationBinding(Any(), model), {})
+        val current = unit.slots.single { it.page?.id?.sourcePageIndex == 1 }
+        val partner = unit.slots.single { it.page?.id?.sourcePageIndex == 2 }
+        try {
+            native.begin(userNavigation = false)
+            assertTrue(native.prepare(current.id, current.page, 20, 40))
+            native.drawn(current.id)
+            native.setIdle(true)
+            val before = reports.toList()
+
+            model.updateViewportSize(240, 240, backgroundScope)
+            assertTrue(native.prepare(current.id, current.page, 20, 40), "Keep already displayed pixels during resize")
+            assertFalse(native.prepare(partner.id, partner.page, 20, 40), "Stale geometry cannot introduce new content")
+            native.drawn(current.id)
+            assertEquals(before, reports, "Retained pixels cannot report a new viewport")
+            assertTrue(model.state.value.visiblePageIds.isEmpty())
+
+            model.retryPage(requireNotNull(current.page).id)
+            val retriedChapter = reader.snapshot.activeChapter.copy(
+                pages = reader.snapshot.activeChapter.pages.map {
+                    if (it.id == current.page.id) it.copy(attemptGeneration = it.attemptGeneration + 1) else it
+                },
+            )
+            model.acceptSessionState(reader.copy(snapshot = reader.snapshot.copy(activeChapter = retriedChapter)))
+            assertFalse(native.prepare(current.id, current.page, 20, 40), "Explicit retry revokes old content")
+            native.close()
+            assertFalse(native.prepare(current.id, current.page, 20, 40), "Closed mounts cannot retain pixels")
+        } finally {
+            native.close()
+            model.onDispose()
+        }
+    }
 
     @Test
     fun `header Ready cannot prepare a dual native viewport without original evidence`() {

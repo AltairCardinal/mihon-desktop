@@ -227,52 +227,55 @@ internal fun SinglePagePagerViewer(
                 onRetry = onRetryPage,
             ) { readySlot ->
                 val readyPage = requireNotNull(readySlot.page)
-                val presentationImage = rememberReaderPresentationImage(
+                ReaderPageImageContent(
                     owner = presentationImageOwner,
                     page = readyPage,
                     generation = generation,
                     splitHalf = readySlot.splitHalf,
                     sourceBounds = readySlot.sourceBounds,
-                )
-                ZoomablePageBox(
-                    onPagePrepared = { width, height ->
-                        kotlin.math.abs(pagerState.getOffsetDistanceInPages(pagerIndex)) < 1f &&
-                            (
-                                unit.id != selectedUnit.id ||
-                                    nativePresentation.prepare(readySlot.id, readyPage, width, height)
-                                )
-                    },
-                    onPageDrawn = if (unit.id == selectedUnit.id) {
-                        { nativePresentation.drawn(readySlot.id) }
-                    } else {
-                        null
-                    },
-                    presentationImage = presentationImage,
-                    pageLabel = MR.strings.desktop_ui_page_number.localized(
-                        Locale.getDefault(),
-                        readyPage.id.sourcePageIndex + 1,
-                    ),
-                    zoomState = zoomState,
-                    onZoomChange = onZoomChange,
                     cropBorders = cropBorders,
-                    contextMenuScope = contextMenuScope,
-                    mangaTitle = mangaTitle,
-                    chapterTitle = chapterTitle,
-                    pageIndex = readyPage.id.sourcePageIndex,
-                    onRetry = { onRetryPage(readyPage.id) },
-                    onSpreadDetected = if (readySlot.splitHalf == null && onSpreadDetected != null) {
-                        { onSpreadDetected(readyPage.id.sourcePageIndex) }
-                    } else {
-                        null
-                    },
-                    scaleType = scaleType,
-                    navigationMode = navigationMode,
-                    isRtl = isRtl,
-                    handlesTapNavigation = false,
-                    onTapPrevious = { executeTapCommand(ReaderNavigationCommand.Previous) },
-                    onTapNext = { executeTapCommand(ReaderNavigationCommand.Next) },
-                    onTapCenter = onTapCenter,
-                )
+                ) { presentationImage, renderedImage ->
+                    ZoomablePageBox(
+                        onPagePrepared = { width, height ->
+                            kotlin.math.abs(pagerState.getOffsetDistanceInPages(pagerIndex)) < 1f &&
+                                (
+                                    unit.id != selectedUnit.id ||
+                                        nativePresentation.prepare(readySlot.id, readyPage, width, height)
+                                    )
+                        },
+                        onPageDrawn = if (unit.id == selectedUnit.id) {
+                            { nativePresentation.drawn(readySlot.id) }
+                        } else {
+                            null
+                        },
+                        presentationImage = presentationImage,
+                        renderedImage = renderedImage,
+                        pageLabel = MR.strings.desktop_ui_page_number.localized(
+                            Locale.getDefault(),
+                            readyPage.id.sourcePageIndex + 1,
+                        ),
+                        zoomState = zoomState,
+                        onZoomChange = onZoomChange,
+                        cropBorders = cropBorders,
+                        contextMenuScope = contextMenuScope,
+                        mangaTitle = mangaTitle,
+                        chapterTitle = chapterTitle,
+                        pageIndex = readyPage.id.sourcePageIndex,
+                        onRetry = { onRetryPage(readyPage.id) },
+                        onSpreadDetected = if (readySlot.splitHalf == null && onSpreadDetected != null) {
+                            { onSpreadDetected(readyPage.id.sourcePageIndex) }
+                        } else {
+                            null
+                        },
+                        scaleType = scaleType,
+                        navigationMode = navigationMode,
+                        isRtl = isRtl,
+                        handlesTapNavigation = false,
+                        onTapPrevious = { executeTapCommand(ReaderNavigationCommand.Previous) },
+                        onTapNext = { executeTapCommand(ReaderNavigationCommand.Next) },
+                        onTapCenter = onTapCenter,
+                    )
+                }
             }
         }
     }

@@ -39,6 +39,7 @@ import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.DesktopUiDependencies
@@ -884,6 +885,39 @@ class SharedDualPageNativeStablePresentationTest {
     }
 
     @Test
+    fun `automatic fullscreen layout keeps the current comic drawn through single and dual remounts`() = runTest {
+        Fixture(this, mode = ReadingMode.AUTO, canvasHeight = 240, originalHeadersBeforeImages = true).use { fixture ->
+            fixture.resize(240)
+            fixture.partner.complete(Unit)
+            fixture.pump()
+            assertTrue(!fixture.dualPageMode)
+            val image = fixture.imageOwners(1)
+            for (width in listOf(400, 240, 400, 240, 400, 240)) {
+                fixture.resize(width)
+                repeat(40) { frame ->
+                    advanceTimeBy(16)
+                    assertTrue(
+                        fixture.hasRedPixels(),
+                        "The current comic disappeared during automatic layout: width=$width frame=$frame dual=${fixture.dualPageMode}",
+                    )
+                    runCurrent()
+                    fixture.frame()
+                    assertEquals(1, fixture.page, "A layout change must preserve the reading page")
+                }
+                assertEquals(width == 400, fixture.dualPageMode)
+                assertSame(image.first, fixture.imageOwners(1).first, "Layout changes must retain the mounted image")
+                assertSame(image.second, fixture.imageOwners(1).second, "Layout changes must retain decoded pixels")
+            }
+            fixture.tapForward()
+            fixture.settle()
+            assertEquals(2, fixture.page, "A real page turn must still work after automatic layout changes")
+            assertTrue(fixture.greenBounds() != null, "The next page must actually draw after automatic layout changes")
+            fixture.mountReader(false)
+            assertEquals(0, fixture.imageHolderCount(), "Leaving the reader must release all mounted slots")
+        }
+    }
+
+    @Test
     fun `actual viewport resize renews geometry without creating navigation or losing pending partner`() = runTest {
         Fixture(this, originalHeadersBeforeImages = true).use { fixture ->
             fixture.pump()
@@ -944,7 +978,7 @@ class SharedDualPageNativeStablePresentationTest {
             }
         }
         private val model = ReaderScreenModel(
-            dualPageOverride = dual,
+            dualPageOverride = dual.takeUnless { mode == ReadingMode.AUTO },
             prefs = ReaderPreferences(store, root.node("reader")).apply {
                 readingMode = mode
                 isDualPage = dual
@@ -1069,6 +1103,7 @@ class SharedDualPageNativeStablePresentationTest {
         private var measurementPhase = "cold"
         private var time = 0L
         val page get() = model.state.value.currentPage
+        val dualPageMode get() = model.state.value.dualPageMode
         val zoomState get() = model.state.value.zoomState
         fun zoom() = model.setZoomState(ZoomState(scale = 1.35f, offsetX = 7f, offsetY = -11f))
         fun setZoom(value: ZoomState) = model.setZoomState(value)

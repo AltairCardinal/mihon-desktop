@@ -242,9 +242,13 @@ internal class ReaderPagerNativePresentation(
     ): Boolean {
         if (!active || !exposed || slot !in expected) return false
         val model = binding?.model ?: return true
-        if (binding?.currentGeometry != true) return false
         val page = slot.pageId ?: return false
         if (content != null && !model.isCurrentDualContent(content)) return false
+        if (binding?.currentGeometry != true) {
+            // Resizing revokes progress capabilities immediately, but current pixels need not
+            // disappear while the next composition mounts its replacement geometry.
+            return content != null && slot in rendered
+        }
         if (ticket?.let { model.isDualViewportPageLocked(it, page) } == true) return true
         fun prepared(): Boolean = ticket?.let {
             if (content == null) {

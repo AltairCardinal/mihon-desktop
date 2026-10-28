@@ -33,11 +33,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -50,7 +49,6 @@ import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
-import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
@@ -64,13 +62,14 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowPlacement
-import mihon.desktop.ui.tutorial.DesktopTutorialToastBubble
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.reader.DesktopReaderChapterContext
@@ -100,6 +99,7 @@ import mihon.desktop.ui.source.desktopSourceErrorMessage
 import mihon.desktop.ui.tutorial.DesktopTutorial
 import mihon.desktop.ui.tutorial.DesktopTutorialBubble
 import mihon.desktop.ui.tutorial.DesktopTutorialState
+import mihon.desktop.ui.tutorial.DesktopTutorialToastBubble
 import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.session.ReaderChapterLoadState
@@ -750,7 +750,11 @@ internal fun ReaderViewport(
                             },
                         ) {
                             Icon(
-                                imageVector = if (state.isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                                imageVector = if (state.isFullscreen) {
+                                    Icons.Default.FullscreenExit
+                                } else {
+                                    Icons.Default.Fullscreen
+                                },
                                 contentDescription = if (state.isFullscreen) {
                                     MR.strings.desktop_action_exit_fullscreen.localized()
                                 } else {
@@ -1118,8 +1122,10 @@ internal fun ReaderContent(
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
 ) {
+    val imageContent = remember(presentationImageOwner, state.session.generation) { ReaderPageImageContentRegistry() }
     Box(Modifier.fillMaxSize().adaptiveReaderViewport(model, contextMenuScope)) {
         CompositionLocalProvider(
+            LocalReaderPageImageContent provides imageContent,
             LocalReaderChapterTransitionContext provides state.context,
             LocalReaderChapterTransitionContentColor provides readerChapterTransitionContentColor(
                 state.backgroundTheme,

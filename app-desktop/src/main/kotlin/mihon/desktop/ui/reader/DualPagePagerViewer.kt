@@ -439,107 +439,111 @@ internal fun DualPagePagerViewer(
             ) { slot, modifier ->
                 val page = requireNotNull(slot.page)
                 val physicalSlot = unit.slots.indexOf(slot)
-                val presentationImage = rememberReaderPresentationImage(
+                ReaderPageImageContent(
                     owner = presentationImageOwner,
                     page = page,
                     generation = generation,
                     splitHalf = slot.splitHalf,
                     sourceBounds = slot.sourceBounds,
-                )
-                androidx.compose.runtime.SideEffect {
-                    if (presentationImage.state is DesktopReaderPresentationImageState.Ready) {
-                        pagerPresentationBinding?.model?.acceptDecodedOriginal(page, presentationImage.holder)
-                    }
-                }
-                if (pagerPresentationBinding?.model?.state?.value?.dualPairingFailures?.containsKey(page.id) == true) {
-                    ReaderPageRetryContent(onRetry = { onRetryPage(page.id) }, modifier = modifier.fillMaxSize())
-                    return@DualPageDisplayUnitFrame
-                }
-                val matching = pagerPresentationBinding?.model?.state?.value?.autoSpreadMatching == true
-                val sideHint = remember(presentationImage.state, matching, slot.splitHalf, slot.sourceBounds) {
-                    if (!matching || slot.splitHalf != null || slot.sourceBounds != null ||
-                        presentationImage.state !is DesktopReaderPresentationImageState.Ready
-                    ) {
-                        ReaderPageSideHint.UNKNOWN
-                    } else {
-                        // Inspect only the already decoded, uncropped page while retaining its real lease.
-                        presentationImage.holder.retainReadyAssetForRender(presentationImage.holder.identity)?.use {
-                            if (it.asset.animationMetadata != null) {
-                                ReaderPageSideHint.UNKNOWN
-                            } else {
-                                val bitmap = it.asset.bitmap.asSkiaBitmap()
-                                ReaderPageSideHints.classify(bitmap.width, bitmap.height, bitmap::getColor)
-                            }
-                        } ?: ReaderPageSideHint.UNKNOWN
-                    }
-                }
-                ZoomablePageBox(
-                    onPagePrepared = { width, height ->
-                        nativePresentation.setExposed(
-                            kotlin.math.abs(pagerState.getOffsetDistanceInPages(pagerIndex)) < 1f,
-                        )
-                        nativePresentation.prepare(slot.id, page, width, height, sideHint)
-                    },
-                    onPageDrawn = { nativePresentation.drawn(slot.id) },
-                    canObserveFrameGeometry = if (mihon.desktop.test.state.applicationState.testMode) {
-                        { capture -> nativePresentation.canSampleGeometry(capture) }
-                    } else {
-                        null
-                    },
-                    onObservedImageDraw = if (mihon.desktop.test.state.applicationState.testMode) {
-                        { command, identity, key ->
-                            nativePresentation.observeImageDraw(slot.id, command, identity, key)
-                        }
-                    } else {
-                        null
-                    },
-                    presentationImage = presentationImage,
-                    pageLabel = MR.strings.desktop_ui_page_number.localized(
-                        Locale.getDefault(),
-                        page.id.sourcePageIndex + 1,
-                    ),
-                    zoomState = zoomState,
-                    imageViewport = if (unit.slots.size == 2) {
-                        ReaderImageViewport(
-                            viewportSize,
-                            IntOffset(
-                                if (physicalSlot ==
-                                    0
-                                ) {
-                                    0
-                                } else {
-                                    viewportSize.width - (viewportSize.width * 0.5f).roundToInt()
-                                },
-                                0,
-                            ),
-                        )
-                    } else {
-                        null
-                    },
-                    onZoomChange = onZoomChange,
                     cropBorders = cropBorders,
-                    contextMenuScope = contextMenuScope,
-                    mangaTitle = mangaTitle,
-                    chapterTitle = chapterTitle,
-                    pageIndex = page.id.sourcePageIndex,
-                    onRetry = { onRetryPage(page.id) },
-                    onFeedbackVisibilityChange = { feedbackSlots[slot.id] = it },
-                    modifier = modifier,
-                    imageAlignment = when {
-                        unit.slots.size == 1 -> Alignment.Center
-                        physicalSlot == 0 -> AbsoluteAlignment.CenterRight
-                        else -> AbsoluteAlignment.CenterLeft
-                    },
-                    onSpreadDetected = if (slot.splitHalf == null && onSpreadDetected != null) {
-                        { onSpreadDetected(page.id.sourcePageIndex) }
-                    } else {
-                        null
-                    },
-                    scaleType = scaleType,
-                    navigationMode = navigationMode,
-                    isRtl = isRtl,
-                    handlesTapNavigation = false,
-                )
+                ) { presentationImage, renderedImage ->
+                    androidx.compose.runtime.SideEffect {
+                        if (presentationImage.state is DesktopReaderPresentationImageState.Ready) {
+                            pagerPresentationBinding?.model?.acceptDecodedOriginal(page, presentationImage.holder)
+                        }
+                    }
+                    val pairingFailures = pagerPresentationBinding?.model?.state?.value?.dualPairingFailures.orEmpty()
+                    if (page.id in pairingFailures) {
+                        ReaderPageRetryContent(onRetry = { onRetryPage(page.id) }, modifier = modifier.fillMaxSize())
+                        return@ReaderPageImageContent
+                    }
+                    val matching = pagerPresentationBinding?.model?.state?.value?.autoSpreadMatching == true
+                    val sideHint = remember(presentationImage.state, matching, slot.splitHalf, slot.sourceBounds) {
+                        if (!matching || slot.splitHalf != null || slot.sourceBounds != null ||
+                            presentationImage.state !is DesktopReaderPresentationImageState.Ready
+                        ) {
+                            ReaderPageSideHint.UNKNOWN
+                        } else {
+                            // Inspect only the already decoded, uncropped page while retaining its real lease.
+                            presentationImage.holder.retainReadyAssetForRender(presentationImage.holder.identity)?.use {
+                                if (it.asset.animationMetadata != null) {
+                                    ReaderPageSideHint.UNKNOWN
+                                } else {
+                                    val bitmap = it.asset.bitmap.asSkiaBitmap()
+                                    ReaderPageSideHints.classify(bitmap.width, bitmap.height, bitmap::getColor)
+                                }
+                            } ?: ReaderPageSideHint.UNKNOWN
+                        }
+                    }
+                    ZoomablePageBox(
+                        onPagePrepared = { width, height ->
+                            nativePresentation.setExposed(
+                                kotlin.math.abs(pagerState.getOffsetDistanceInPages(pagerIndex)) < 1f,
+                            )
+                            nativePresentation.prepare(slot.id, page, width, height, sideHint)
+                        },
+                        onPageDrawn = { nativePresentation.drawn(slot.id) },
+                        canObserveFrameGeometry = if (mihon.desktop.test.state.applicationState.testMode) {
+                            { capture -> nativePresentation.canSampleGeometry(capture) }
+                        } else {
+                            null
+                        },
+                        onObservedImageDraw = if (mihon.desktop.test.state.applicationState.testMode) {
+                            { command, identity, key ->
+                                nativePresentation.observeImageDraw(slot.id, command, identity, key)
+                            }
+                        } else {
+                            null
+                        },
+                        presentationImage = presentationImage,
+                        renderedImage = renderedImage,
+                        pageLabel = MR.strings.desktop_ui_page_number.localized(
+                            Locale.getDefault(),
+                            page.id.sourcePageIndex + 1,
+                        ),
+                        zoomState = zoomState,
+                        imageViewport = if (unit.slots.size == 2) {
+                            ReaderImageViewport(
+                                viewportSize,
+                                IntOffset(
+                                    if (physicalSlot ==
+                                        0
+                                    ) {
+                                        0
+                                    } else {
+                                        viewportSize.width - (viewportSize.width * 0.5f).roundToInt()
+                                    },
+                                    0,
+                                ),
+                            )
+                        } else {
+                            null
+                        },
+                        onZoomChange = onZoomChange,
+                        cropBorders = cropBorders,
+                        contextMenuScope = contextMenuScope,
+                        mangaTitle = mangaTitle,
+                        chapterTitle = chapterTitle,
+                        pageIndex = page.id.sourcePageIndex,
+                        onRetry = { onRetryPage(page.id) },
+                        onFeedbackVisibilityChange = { feedbackSlots[slot.id] = it },
+                        modifier = modifier,
+                        imageAlignment = when {
+                            unit.slots.size == 1 -> Alignment.Center
+                            physicalSlot == 0 -> AbsoluteAlignment.CenterRight
+                            else -> AbsoluteAlignment.CenterLeft
+                        },
+                        onSpreadDetected = if (slot.splitHalf == null && onSpreadDetected != null) {
+                            { onSpreadDetected(page.id.sourcePageIndex) }
+                        } else {
+                            null
+                        },
+                        scaleType = scaleType,
+                        navigationMode = navigationMode,
+                        isRtl = isRtl,
+                        handlesTapNavigation = false,
+                    )
+                }
             }
         }
     }

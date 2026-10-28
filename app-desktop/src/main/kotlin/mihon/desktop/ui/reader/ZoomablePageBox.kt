@@ -119,8 +119,10 @@ internal fun Modifier.readerZoomInput(
                     event.changes.forEach { it.consume() }
                     lastPanPosition = pressed.first().position
                 } else if (pressed.isNotEmpty() &&
-                    (event.type == PointerEventType.Move || event.type == PointerEventType.Enter ||
-                        event.type == PointerEventType.Exit)
+                    (
+                        event.type == PointerEventType.Move || event.type == PointerEventType.Enter ||
+                            event.type == PointerEventType.Exit
+                        )
                 ) {
                     // Desktop may deliver the first pressed movement as Enter after hit-test changes.
                     // It carries a real delta and remains part of the captured drag.
@@ -240,6 +242,8 @@ internal fun ZoomablePageBox(
     onTapPrevious: (() -> Unit)? = null,
     onTapNext: (() -> Unit)? = null,
     onTapCenter: (() -> Unit)? = null,
+    renderedImage: ReaderPresentationRenderedImage? =
+        rememberReaderPresentationRenderedImage(presentationImage, cropBorders),
 ) {
     val gestureCapabilities = zoomableGestureCapabilities(
         handlesTapNavigation = handlesTapNavigation,
@@ -252,7 +256,6 @@ internal fun ZoomablePageBox(
     val presentationState = presentationImage.state
     val readyState = presentationState as? DesktopReaderPresentationImageState.Ready
     val asset = readyState?.asset
-    val renderedImage = rememberReaderPresentationRenderedImage(presentationImage, cropBorders)
     val mountedCoordinates = remember { arrayOfNulls<LayoutCoordinates>(1) }
     // This branch does not exist for ordinary application rendering.
     val observedCapture = if (onObservedImageDraw != null) {
@@ -382,21 +385,28 @@ internal fun ZoomablePageBox(
                                 accepted
                             },
                             prepareDraw = {
-                            val coordinates = mountedCoordinates[0]?.takeIf { it.isAttached }
-                            val localGeometry = coordinates?.takeIf {
-                                it.size.width > 0 && it.size.height > 0
-                            }?.let {
-                                resolveReaderRegionDrawGeometry(
-                                    viewportSize = it.size,
-                                    renderedBitmapSize = IntSize(renderedImage.bitmap.width, renderedImage.bitmap.height),
-                                    renderedSourceBounds = renderedImage.renderedSourceBounds,
-                                    contentScale = resolvedScale,
-                                    alignment = imageAlignment,
-                                )
-                            }
-                            val geometry = localGeometry?.let { imageViewport?.mapGeometry(it) ?: it }
-                            coordinates?.boundsInRoot()?.isEmpty == false && geometry != null &&
-                                resolveReaderVisibleSourceBounds(geometry, ReaderRegionViewport.Full, zoomState) != null &&
+                                val coordinates = mountedCoordinates[0]?.takeIf { it.isAttached }
+                                val localGeometry = coordinates?.takeIf {
+                                    it.size.width > 0 && it.size.height > 0
+                                }?.let {
+                                    resolveReaderRegionDrawGeometry(
+                                        viewportSize = it.size,
+                                        renderedBitmapSize = IntSize(
+                                            renderedImage.bitmap.width,
+                                            renderedImage.bitmap.height,
+                                        ),
+                                        renderedSourceBounds = renderedImage.renderedSourceBounds,
+                                        contentScale = resolvedScale,
+                                        alignment = imageAlignment,
+                                    )
+                                }
+                                val geometry = localGeometry?.let { imageViewport?.mapGeometry(it) ?: it }
+                                coordinates?.boundsInRoot()?.isEmpty == false && geometry != null &&
+                                    resolveReaderVisibleSourceBounds(
+                                        geometry,
+                                        ReaderRegionViewport.Full,
+                                        zoomState,
+                                    ) != null &&
                                     (
                                         onPagePrepared == null ||
                                             asset?.let { onPagePrepared(it.bitmap.width, it.bitmap.height) } == true
