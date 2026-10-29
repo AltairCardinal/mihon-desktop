@@ -133,7 +133,11 @@ internal class DesktopReaderFullscreenController(
         try {
             fullscreenAdapter?.completeTransition(window)
         } finally {
-            transitions.setDisabled(window, false)
+            try {
+                transitions.setDisabled(window, false)
+            } finally {
+                fullscreenAdapter?.releaseTransitionFrame(window)
+            }
         }
     }
 

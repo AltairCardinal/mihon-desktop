@@ -16,6 +16,7 @@ internal interface DesktopFullscreenAdapter {
     fun enter(window: Window): Boolean
     fun exit(window: Window): Boolean
     fun completeTransition(window: Window) = Unit
+    fun releaseTransitionFrame(window: Window) = Unit
     fun synchronizeCanvas(window: Window, canvas: Canvas) = Unit
     fun prepareTransition(window: Window, canvas: Canvas) = Unit
 }
@@ -43,6 +44,7 @@ internal class WindowsBorderlessFullscreenAdapter(
     private var redraw: AutoCloseable? = null
     private var canvasToSynchronize: Canvas? = null
     private var canvasRepaintState: Pair<Canvas, Boolean>? = null
+    private var retainedFrame: AutoCloseable? = null
 
     override fun prepareTransition(window: Window, canvas: Canvas) {
         if (canvasRepaintState == null) {
@@ -76,7 +78,7 @@ internal class WindowsBorderlessFullscreenAdapter(
 
         // Save the original visible style before WM_SETREDRAW temporarily removes it.
         // Keeping that bit clear prevents SetWindowLong from exposing the old D3D buffer.
-        if (redraw == null) redraw = suspendWindowsWindowRedraw(window, user32)
+        holdFrame(window, state.physicalBounds.union(target.physical))
         val fullscreenStyle = transitionStyle(state.style and WinUser.WS_OVERLAPPEDWINDOW.inv())
         user32.SetWindowLong(hwnd, WinUser.GWL_STYLE, fullscreenStyle)
 
@@ -98,7 +100,13 @@ internal class WindowsBorderlessFullscreenAdapter(
         // HWND leaves the heavyweight Skiko canvas laid out against stale dimensions.
         window.bounds = target.logical()
         true
-    }.onFailure { completeTransition(window) }.getOrDefault(false)
+    }.onFailure {
+        try {
+            completeTransition(window)
+        } finally {
+            releaseTransitionFrame(window)
+        }
+    }.getOrDefault(false)
 
     override fun exit(window: Window): Boolean = runCatching {
         val state = saved ?: return false
@@ -106,7 +114,8 @@ internal class WindowsBorderlessFullscreenAdapter(
         val hwnd = WinDef.HWND(Native.getComponentPointer(window))
 
         // Restoring the frame moves the client origin before the smaller D3D frame is ready too.
-        if (redraw == null) redraw = suspendWindowsWindowRedraw(window, user32)
+        val currentBounds = WinDef.RECT().also { check(user32.GetWindowRect(hwnd, it)) }.toRectangle()
+        holdFrame(window, currentBounds.union(state.physicalBounds))
         user32.SetWindowLong(hwnd, WinUser.GWL_STYLE, transitionStyle(state.style))
         // SetWindowPlacement shows the window even while WM_SETREDRAW is suspended.
         // Restore its physical extent without showing it, then defer placement until the final frame is drawn.
@@ -124,7 +133,29 @@ internal class WindowsBorderlessFullscreenAdapter(
         restoring = state
         saved = null
         true
-    }.onFailure { completeTransition(window) }.getOrDefault(false)
+    }.onFailure {
+        try {
+            completeTransition(window)
+        } finally {
+            releaseTransitionFrame(window)
+        }
+    }.getOrDefault(false)
+
+    private fun holdFrame(window: Window, cover: Rectangle) {
+        if (redraw != null) return
+        if (retainedFrame == null) {
+            retainedFrame = canvasRepaintState?.first?.let { canvas ->
+                runCatching { retainWindowsReaderFrame(window, canvas, cover) }.getOrNull()
+            }
+        }
+        redraw = suspendWindowsWindowRedraw(window, user32)
+    }
+
+    override fun releaseTransitionFrame(window: Window) {
+        val frame = retainedFrame
+        retainedFrame = null
+        frame?.close()
+    }
 
     override fun completeTransition(window: Window) {
         val current = redraw
