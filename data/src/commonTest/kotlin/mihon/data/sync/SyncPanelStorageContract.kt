@@ -105,14 +105,11 @@ abstract class SyncPanelStorageContract {
                         )) {
                             val item = f.panel.state.value.pending.first()
                             f.panel.act(SyncPanelAction.PrepareDecision(decision, SyncDecisionScope.ITEM, item.id))
-                            assertNotNull(f.panel.state.value.confirmation)
-                            f.panel.act(SyncPanelAction.ConfirmDecision)
-                            f.panel.awaitBulkIdle()
+                            assertNull(f.panel.state.value.confirmation)
                             f.panel.awaitIdle()
                             val remaining = if (decision == SyncCancellationDecision.KEEP_LOCAL) 1L else 0L
                             assertEquals(remaining, f.panel.state.value.pendingTotal)
                             assertEquals(remaining.toInt(), f.panel.state.value.pending.size)
-                            assertEquals(1L, f.panel.state.value.notice?.bulk?.completed)
                         }
                         assertEquals(1, storage.manga.getLibraryManga().size)
                         assertEquals(requests, f.git.server.requestCount)
@@ -123,6 +120,46 @@ abstract class SyncPanelStorageContract {
                 }
             }
         }
+
+    @Test
+    fun `single local choices bypass a blocked full refresh without confirmation`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                pending(storage, 2)
+                f.panel.act(SyncPanelAction.Open)
+                val entered = CompletableDeferred<Unit>()
+                val release = CompletableDeferred<Unit>()
+                f.secure.nextSpaceRead = entered to release
+                try {
+                    f.panel.dispatch(SyncPanelAction.SetDeviceName("Blocked refresh"))
+                    withTimeout(5_000) { entered.await() }
+                    val requests = f.git.server.requestCount
+                    val secureReads = f.secure.readCount.get()
+                    for ((index, decision) in listOf(
+                        SyncCancellationDecision.KEEP_LOCAL,
+                        SyncCancellationDecision.CONFIRM,
+                    ).withIndex()) {
+                        val item = f.panel.state.value.pending.first()
+                        f.panel.dispatch(SyncPanelAction.PrepareDecision(decision, SyncDecisionScope.ITEM, item.id))
+                        withTimeout(5_000) { f.panel.state.first { it.pendingTotal == 1L - index } }
+                        assertNull(f.panel.state.value.confirmation)
+                        assertFalse(release.isCompleted)
+                    }
+                    assertEquals(1, storage.manga.getLibraryManga().size)
+                    assertEquals(requests, f.git.server.requestCount)
+                    assertEquals(secureReads, f.secure.readCount.get())
+                    release.complete(Unit)
+                    f.panel.awaitIdle()
+                    assertEquals(0L, f.panel.state.value.pendingTotal)
+                } finally {
+                    release.complete(Unit)
+                }
+            }
+        }
+    }
 
     @Test
     fun `toolbar opens immediately while production state refresh is waiting on secure storage`() = runBlocking {

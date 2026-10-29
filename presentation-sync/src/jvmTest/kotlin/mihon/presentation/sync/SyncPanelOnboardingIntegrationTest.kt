@@ -49,7 +49,7 @@ import java.util.concurrent.ConcurrentHashMap
 @OptIn(ExperimentalComposeUiApi::class)
 class SyncPanelOnboardingIntegrationTest {
     @Test
-    fun `one pointer click reaches production cancellation confirmation and removes the confirmed row`() = runBlocking {
+    fun `one pointer click directly applies production cancellation without a dialog`() = runBlocking {
         SyncPanelUiFixture().use { f ->
             f.connectExistingPlain()
             f.pendingCancellation(7)
@@ -59,12 +59,10 @@ class SyncPanelOnboardingIntegrationTest {
                 val requests = f.requestCount
                 scroll("sync-pending-list", 2)
                 pointerClick("sync-remove-$id")
-                awaitNode("sync-confirm-decision")
-                assertEquals(1L, f.panel.state.value.confirmation?.manga)
-                assertEquals(1L, f.panel.state.value.pendingTotal)
-                click("sync-confirm-decision")
                 withTimeout(5_000) { f.panel.state.first { it.pendingTotal == 0L } }
                 render()
+                assertNull(f.panel.state.value.confirmation)
+                assertNull(find("sync-confirm-decision"))
                 assertNull(find("sync-remove-$id"))
                 assertEquals(requests, f.requestCount)
             }
