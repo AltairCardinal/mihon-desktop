@@ -44,6 +44,7 @@ import mihon.data.sync.runtime.SyncBulkConfirmation
 import mihon.data.sync.runtime.SyncBulkStatus
 import mihon.data.sync.runtime.SyncConnection
 import mihon.data.sync.runtime.SyncCreateProtection
+import mihon.data.sync.runtime.SyncDecisionScope
 import mihon.data.sync.runtime.SyncFailureLogStatus
 import mihon.data.sync.runtime.SyncPanel
 import mihon.data.sync.runtime.SyncPanelAction
@@ -96,6 +97,52 @@ import java.util.Locale
 
 @OptIn(ExperimentalComposeUiApi::class)
 class SyncPanelContentTest {
+    @Test
+    fun `setup terminal review exposes the actual pending items and existing decision actions`() = renderedEnglish(
+        connected().copy(
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.MERGING,
+            run = visualRun(SyncRunPhase.CHECKING).copy(state = SyncRunState.PARTIAL),
+            pendingTotal = 3,
+            pending = listOf(item(1), item(2), item(3)),
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        revealSetupControl("sync-keep-1")
+        assertTrue(texts().contains("Manga 1"))
+        click("sync-keep-1")
+        assertEquals(
+            SyncPanelAction.PrepareDecision(SyncCancellationDecision.KEEP_LOCAL, SyncDecisionScope.ITEM, 1),
+            actions.last(),
+        )
+        revealSetupControl("sync-remove-3")
+        assertTrue(texts().contains("Manga 3"))
+        click("sync-remove-3")
+        assertEquals(
+            SyncPanelAction.PrepareDecision(SyncCancellationDecision.CONFIRM, SyncDecisionScope.ITEM, 3),
+            actions.last(),
+        )
+        panel.state.value = panel.state.value.copy(hasMore = true)
+        render()
+        revealSetupControl("sync-load-more")
+        click("sync-load-more")
+        assertEquals(SyncPanelAction.LoadMore, actions.last())
+    }
+
+    @Test
+    fun `setup terminal review explains that batch confirmation is a system status summary`() = renderedEnglish(
+        connected().copy(
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.MERGING,
+            run = visualRun(SyncRunPhase.CHECKING).copy(state = SyncRunState.PARTIAL),
+            terminalSummary = SyncTerminalSummary("run-visual", 2, 253, 0),
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        assertTrue(texts().contains("System confirmation pending: 2 download batches, containing 253 changes"))
+        assertTrue(texts().any { it.contains("You do not need to confirm each batch") })
+    }
+
     @Test
     fun `repository first setup prepares space before offering app installation`() = renderedEnglish(
         SyncPanelState(
@@ -1586,7 +1633,7 @@ class SyncPanelContentTest {
             assertEquals(
                 SyncPanelAction.PrepareDecision(
                     SyncCancellationDecision.KEEP_LOCAL,
-                    mihon.data.sync.runtime.SyncDecisionScope.ITEM,
+                    SyncDecisionScope.ITEM,
                     1,
                 ),
                 fixture.actions.last(),
@@ -2060,8 +2107,8 @@ class SyncPanelContentTest {
         awaitTag("sync-progress-card")
         assertTrue(texts().contains("本次同步已结束，部分数据待处理"))
         assertTrue(texts().any { it.contains("已完成26778条") })
-        assertTrue(texts().contains("2 个下载批次待确认，涉及 512 条变动"))
-        assertTrue(texts().contains("批次内变动仍待核对，不代表这些变动都已失败"))
+        assertTrue(texts().contains("系统确认尚未完成：2 个下载批次，共 512 条变动"))
+        assertTrue(texts().contains("无需逐批确认。需要你决定的内容会单独列出；批次尚未确认不代表其中的变动都已失败。"))
         assertTrue(texts().contains("上次有 10 项核对内容因漫画源不可用而未能恢复"))
         assertTrue(texts().contains("请重试同步，重新检查并恢复已保存的数据"))
         assertTrue(texts().any { it.contains("用时00:05") })
