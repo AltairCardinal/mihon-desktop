@@ -10,6 +10,21 @@ Windows 优先保留原生窗口与绘制表面的无边框实现；其他平台
 无边框 adapter 必须同时更新 HWND 的物理边界和 AWT 的逻辑边界，退出时恢复两者；
 仅调用 Win32 改变边界会让 Skiko 的 heavyweight Canvas 继续消费旧 AWT 尺寸。
 
+Windows 进入前，adapter 在保存原窗口样式后对已经可见的 HWND 发送 `WM_SETREDRAW(FALSE)`，
+让既有窗口内容保留到新画布和 D3D 帧准备完成。仅禁用 DWM 过渡动画不能阻止系统在尺寸变化期间
+先显示旧缓冲区的拉伸版本。此消息会临时清除原生 `WS_VISIBLE`，但 AWT 窗口仍保持可见并继续渲染；
+因此过渡中的 `SetWindowLong` 也必须保持该位清除，保存的退出样式则必须来自暂停之前。
+下一事件周期的最终布局和 `renderImmediately()` 返回后，controller 调用 adapter 的
+`completeTransition()`：恢复原生重绘、请求窗口及子窗口重画，再沿用既有 DWM flush 和过渡恢复。
+此处理不创建快照窗口，不重投影漫画，不改启动窗口与普通退出全屏路径。
+
+暂停资源由该 adapter 保存，只由最新过渡回调释放；原生操作、最终绘制或调度失败时同样释放，
+旧回调不能提前释放新过渡。若进入尚未结束便请求退出，保留暂停直到退出画面完成。
+资源关闭幂等；原本隐藏、期间隐藏、已销毁或已更换 HWND 的窗口不会被重新显示。
+无法暂停时保留既有切换流程，不据此承诺该平台不会出现中间画面。
+`WindowsFullscreenBounds` 的默认物理边界仍来自真实 Win32 monitor，逻辑边界在原生变更后读取 AWT；
+可注入目标边界仅用于让真实 adapter 的合成回归窗口始终留在所有显示器之外。
+
 Windows adapter 进入成功后，在同一事件处理周期先将根 `SkiaLayer.canvas` 的公开 heavyweight
 子画布尺寸同步到当前客户区，再递归失效并验证窗口布局。Skiko 0.9.37.4 的 Direct3D
 `SkiaLayer.reshape()` 会在 `doLayout()` 调整子画布之前立即重绘；只提前调用 `validate()`
@@ -43,6 +58,12 @@ renderDelegate：立即绘制入口先向已有父容器派发当前尺寸的 AW
 验证边界：
 
 - `ReaderFullscreenFramePresentationTest` 覆盖进入、退出、关闭阅读器的绘制顺序及绘制失败清理。
+- `ReaderFullscreenCompositorTest` 使用真实 Compose／Skiko、真实无边框 adapter、原生 WGC 后端，
+  在屏幕外且不激活的窗口上进行三次进入／退出。绘制中加入 45ms 延迟以跨越显示刷新，
+  检查收到的全屏合成帧始终使用目标漫画位置，所有尺寸的帧都有漫画像素，完成后原生窗口仍可见。
+  未修复时曾录到 Y=80→118 的回跳，修复后同一场景通过。运行前需先构建
+  `scripts/build-reader-compositor.ps1`；该测试不读取桌面、不派发输入，WGC 不代表显示器扫描输出。
+  `WindowsWindowRedrawNativeTest` 另覆盖可见状态恢复、重复关闭、隐藏和原生销毁后的资源清理。
 - `ReaderFullscreenNativeImagePositionTest` 使用简化色块、阅读器平移变换与默认 controller，
   仅覆盖独立快照的位置差异；没有挂载真实阅读器，也没有覆盖整个过渡过程。
   它使用隐藏且不激活的窗口，不读取桌面屏幕，不能单独证明前台合成器的逐帧显示。

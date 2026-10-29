@@ -81,3 +81,57 @@ AWT resize 通知，使实际 Compose 场景消费新尺寸，再原样执行原
 
 下一层取证使用[窗口合成帧采集](../architecture/desktop-reader-render-trace.md#窗口合成帧补充)，
 与应用 Picture 保持独立帧号，按 QPC 时间对照；没有继续凭同一组应用尺寸回归推断原问题已修复。
+
+## 窗口合成层的实际复现与对应修复
+
+同一 `56b451bb87` 候选的用户会话
+`2026-10-29T04-18-19.167280600Z-0a66429c-c345-4aab-b81c-f35c2b1f0a5e`
+同时记录应用 Picture 和 WGC 窗口帧。应用 414/414，窗口 388/394；窗口整体为 PARTIAL，
+缺失的 374、376、378、379、381、382 均在四次全屏往返之后，四段进入区间未报告采集缺口。
+取证仍未观测显示器扫描输出；采集开销可能影响时长。
+
+| 次数 | 首个中间窗口帧 → 首个稳定窗口帧 | 会话起点后的时间 ms | 已观察的中间区间 ms |
+|---|---|---|---|
+| 1 | 33 → 35 | 830.37 → 872.03 | 41.66 |
+| 2 | 98 → 100 | 1988.69 → 2030.35 | 41.66 |
+| 3 | 180 → 181 | 3422.00 → 3446.99 | 24.99 |
+| 4 | 248 → 250 | 4605.32 → 4646.98 | 41.66 |
+
+中间帧包含旧尺寸内容在新原点的版本（漫画 Y=79..914）及其非等比拉伸版本（Y=86..994），
+随后才显示正确的新布局（Y=118..961）。在 x=40..1879、y=150..899 的漫画区域，窗口帧 33
+与上一张旧 Picture 拉伸后的 RGB 平均绝对误差为 0.551/255，与正确新 Picture 的误差为 22.853/255；
+窗口稳定帧 35 与新 Picture 的误差为 0.565/255。第一轮 829.11ms 已记录正确的新漫画绘制命令，
+但 830.37ms 的窗口帧仍是旧内容。这将本轮修复限定到原生窗口变化与真实画面呈现之间的衔接。
+原始记录及 `entry-evidence.json`、`entry-evidence.md` 保存在该会话目录。
+
+`ReaderFullscreenCompositorTest` 在生产 controller、Compose／Skiko 和真实 Windows adapter 上，
+使用可注入的屏幕外目标边界复现；真实绘制延迟 45ms，确保切换不能只靠在一次刷新内恰好完成。
+首次有效红测录到全屏漫画上缘 `[80, 118, 118, 118, 118]`，失败于真实 WGC 像素位置断言。
+红测 XML 与 PNG 保存于 `app-desktop/artifacts/diagnostics/reader-compositor-red-20261029/`。
+
+修复在 Windows adapter 保存原始样式后暂缓原生窗口重绘，并维持过渡样式中的可见位清除，
+完成最终实际渲染后恢复；仅入口开始暂停，其他主窗口流程不接入。资源完成与失败处理由现有
+controller 的最新过渡回调统一收口。退出原样式保存不带暂停造成的临时隐藏位，避免退出后窗口消失。
+对应测试扩为三次进入／退出，同时断言所有接收帧仍有漫画、每次全屏位置正确、退出后原生可见；
+另检查隐藏、销毁、重复关闭、绘制失败及过期回调的清理。
+
+接口依据：[WM_SETREDRAW](https://learn.microsoft.com/en-us/windows/win32/gdi/wm-setredraw)。
+它明确区分保留屏幕内容与临时移除 `WS_VISIBLE`；本实现不对原先隐藏的窗口发送恢复消息。
+本轮回归可证明上述真实合成场景的改动前后差异，仍须用户确认新候选中原有漫画的体验，
+不把原生回归、内部 Picture 或体验包构建通过当作用户已经验收。
+
+最终定向验证：7 项原生测试与 27 项 JVM 测试全部通过，7 个本次 Kotlin 文件的 ktlint 1.8.0 检查通过，
+`git diff --check` 通过。原生范围为合成帧三次往返、普通／最大化画布边界、暂停资源生命周期，
+以及真实阅读器进入全屏；后者分别保存 74/74 和 189/189 个 Picture，均无缺帧和丢事件，覆盖两种实际 DPI。
+JVM 范围为 `ReaderFullscreenFramePresentationTest`、`ReaderFullscreenTest`，未运行模块全量。
+命令及结果见 `.gradle-coordinator/reader-redraw-verified.{json,log}`；本轮最终合成 PNG 和 XML 归档于
+`app-desktop/artifacts/diagnostics/reader-compositor-green-20261029/`。
+
+补查曾发现 3 个及 1 个 `outer-picture-not-completed` 缺口，均出现在测试的 `session-close` 前。
+原因是测试先销毁窗口，释放 Skiko Picture，排在销毁之后的最后一个完成回调才尝试截图。
+测试现先在 EDT 排空 trace 再销毁窗口；保留原先零缺帧断言，production 诊断对真实关闭期间不完整记录的
+PARTIAL 处理不变。相关记录保存在 `reader-redraw-trace-20261029/`，最终记录位于
+`reader-redraw-trace-final-20261029/`，均在 diagnostics 目录下。
+
+本批 9 个文件共同覆盖一个呈现修复：原生暂停、已有 controller 接线、真实合成与生命周期回归、
+诊断测试收尾及两份既有维护文档；没有新增独立呈现系统或修改 Android、窗口启动流程和公共功能承诺。
