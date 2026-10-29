@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -25,6 +26,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
@@ -59,10 +61,8 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -92,10 +92,13 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerButton
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isCtrlPressed
+import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.style.TextOverflow
@@ -231,7 +234,7 @@ object LibraryTab : Tab {
 
 /** Root screen of the Library tab — shows the manga grid with filters/sort/categories. */
 class LibraryRootScreen : Screen {
-    @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+    @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
     @Composable
     override fun Content() {
         val scope = rememberCoroutineScope()
@@ -760,27 +763,37 @@ class LibraryRootScreen : Screen {
                 if (categoryTabs.any { !it.isSystemCategory } &&
                     (state.showCategoryTabs || !searchQuery.isNullOrEmpty())
                 ) {
-                    ScrollableTabRow(
+                    val categoryScrollState = rememberScrollState()
+                    val wheelStep = with(LocalDensity.current) { 48.dp.toPx() }
+                    SecondaryScrollableTabRow(
                         selectedTabIndex = selectedCategoryIndex,
-                        modifier = Modifier.fillMaxWidth(),
+                        scrollState = categoryScrollState,
+                        modifier = Modifier.fillMaxWidth()
+                            .onPointerEvent(PointerEventType.Scroll, PointerEventPass.Initial) { event ->
+                                val delta = event.changes.firstOrNull()?.scrollDelta ?: return@onPointerEvent
+                                val distance = (if (delta.x != 0f) delta.x else delta.y) * wheelStep
+                                if (distance != 0f) {
+                                    scope.launch { categoryScrollState.scrollBy(distance) }
+                                    event.changes.forEach { it.consume() }
+                                }
+                            },
                         edgePadding = 8.dp,
-                        indicator = { tabPositions ->
-                            // Subcomposition can still expose the previous layout during a category update.
-                            tabPositions.getOrNull(selectedCategoryIndex)?.let { position ->
-                                TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(position))
-                            }
-                        },
                     ) {
                         categoryTabs.forEachIndexed { index, cat ->
+                            val categoryName = if (cat.isSystemCategory) {
+                                MR.strings.desktop_library_default_category.localized()
+                            } else {
+                                cat.name
+                            }
                             Tab(
                                 selected = index == selectedCategoryIndex,
                                 onClick = { model.setSelectedCategoryIndex(index) },
                                 text = {
                                     Text(
                                         if (state.showCategoryItemCounts || !searchQuery.isNullOrEmpty()) {
-                                            "${cat.name} (${model.visibleItems(cat.id).size})"
+                                            "$categoryName (${model.visibleItems(cat.id).size})"
                                         } else {
-                                            cat.name
+                                            categoryName
                                         },
                                     )
                                 },

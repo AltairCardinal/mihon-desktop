@@ -615,6 +615,7 @@
     <string name="theme_tealturquoise">青绿</string>
     <string name="confirm_lock_change">验证后完成修改</string>
     <string name="label_default">默认</string>
+    <string name="desktop_library_default_category">默认</string>
     <string name="pref_category_appearance">外观</string>
     <string name="action_track">记录进度</string>
     <string name="getting_started_guide">入门指南</string>

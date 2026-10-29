@@ -1444,7 +1444,7 @@ class LibraryInteractionTest {
             assertFalse(
                 nodes(scene).any {
                     it.config.contains(SemanticsProperties.Selected) &&
-                        MR.strings.label_default.localized() in copy(it)
+                        MR.strings.desktop_library_default_category.localized() in copy(it)
                 },
             )
             val categories = Injekt.get<CategoryRepository>()
