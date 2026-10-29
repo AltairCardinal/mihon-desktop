@@ -18,13 +18,71 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.unit.dp
+import cafe.adriel.voyager.navigator.Navigator
+import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
+import mihon.desktop.reader.ReaderPreferences
+import mihon.desktop.reader.ReadingMode
+import mihon.desktop.reader.desktopReaderSessionState
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 
 @OptIn(ExperimentalComposeUiApi::class)
 class ReaderKeyboardFocusIntegrationTest {
+
+    @Test
+    fun `space toggles reader bars without turning pages in every reading mode`() = runBlocking {
+        for (mode in ReadingMode.entries) {
+            for (dual in listOf(false, true)) {
+                val model = ReaderScreenModel(
+                    initialSessionState = desktopReaderSessionState(pageCount = 7, initialPage = 2),
+                    dualPageOverride = dual,
+                    prefs = ReaderPreferences(InMemoryPreferenceStore()).apply {
+                        readingMode = mode
+                        isAutoSpreadMatching = false
+                    },
+                )
+                val scene = ImageComposeScene(240, 240, coroutineContext = coroutineContext) {}
+                val navigator = mockk<Navigator>()
+                var chapterTurns = 0
+                try {
+                    scene.setContent {
+                        val focus = remember { FocusRequester() }
+                        LaunchedEffect(Unit) { focus.requestFocus() }
+                        Box(
+                            Modifier.size(240.dp).readerKeyboardFocus(focus) { event ->
+                                handleReaderKeyEvent(
+                                    event, model.state.value, model, navigator, null,
+                                    onPrevChapter = { chapterTurns++ },
+                                    onNextChapter = { chapterTurns++ },
+                                )
+                            },
+                        )
+                    }
+                    render(scene)
+                    val initial = model.state.value
+                    repeat(2) { press ->
+                        assertTrue(scene.sendKeyEvent(composeKeyEvent(Key.Spacebar, KeyEventType.KeyDown)))
+                        render(scene)
+                        val expectedVisible = if (press == 0) !initial.showUI else initial.showUI
+                        assertEquals(expectedVisible, model.state.value.showUI, "$mode dual=$dual press=$press")
+                        scene.sendKeyEvent(composeKeyEvent(Key.Spacebar, KeyEventType.KeyUp))
+                        render(scene)
+                        assertEquals(expectedVisible, model.state.value.showUI, "KeyUp must not toggle bars")
+                        assertEquals(initial.currentPage, model.state.value.currentPage, "$mode dual=$dual")
+                        assertEquals(initial.session, model.state.value.session, "Space must preserve the chapter")
+                        assertEquals(0, chapterTurns)
+                    }
+                } finally {
+                    scene.close()
+                    model.onDispose()
+                }
+            }
+        }
+    }
 
     @Test
     fun `mouse press returns keyboard navigation focus to reader viewport`() = runBlocking {
