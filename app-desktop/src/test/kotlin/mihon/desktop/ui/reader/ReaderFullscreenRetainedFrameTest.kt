@@ -18,6 +18,7 @@ import com.sun.jna.platform.win32.User32
 import com.sun.jna.platform.win32.WinDef
 import mihon.desktop.platform.WindowsBorderlessFullscreenAdapter
 import mihon.desktop.platform.WindowsFullscreenBounds
+import mihon.desktop.platform.retainNativeReaderPixels
 import mihon.desktop.platform.setWindowsWindowCloaked
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -42,6 +43,63 @@ import javax.swing.SwingUtilities
 @EnabledOnOs(OS.WINDOWS)
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 class ReaderFullscreenRetainedFrameTest {
+    @Test
+    fun `an independent retained frame closes on timeout hide or capture protection`() {
+        val window = onEdt {
+            ComposeWindow().apply {
+                setBounds(-20000, -20000, 320, 240)
+                focusableWindowState = false
+                isAutoRequestFocus = false
+                isVisible = true
+            }
+        }
+        val owner = WinDef.HWND(Native.getComponentPointer(window))
+        val affinity = NativeLibrary.getInstance(
+            "user32",
+        ).getFunction("SetWindowDisplayAffinity", Function.ALT_CONVENTION)
+        try {
+            for (stop in listOf("timeout", "hide", "protect")) {
+                val image = BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB_PRE)
+                (image.raster.dataBuffer as java.awt.image.DataBufferInt).data.fill(0xffff0000.toInt())
+                val cover = Rectangle(-30000, -30000, 32, 32)
+                val origin = WinDef.RECT().apply {
+                    left = cover.x
+                    top = cover.y
+                }
+                val frame = requireNotNull(retainNativeReaderPixels(owner, cover, origin, image, false))
+                try {
+                    val hwnd =
+                        requireNotNull(
+                            User32.INSTANCE.FindWindow(
+                                null,
+                                "MihonReaderTransitionFrame:${Pointer.nativeValue(owner.pointer)}",
+                            ),
+                        )
+                    assertTrue(User32.INSTANCE.IsWindowVisible(hwnd))
+                    assertFalse(hwnd == User32.INSTANCE.GetForegroundWindow(), "The frame must never receive focus")
+                    Thread.sleep(100)
+                    assertTrue(User32.INSTANCE.IsWindow(hwnd), "The frame must remain alive before a stop condition")
+                    when (stop) {
+                        "hide" -> onEdt { window.isVisible = false }
+                        "protect" -> assertEquals(1, affinity.invokeInt(arrayOf(owner, 0x11)))
+                    }
+                    val deadline =
+                        System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(if (stop == "timeout") 2500 else 750)
+                    while (User32.INSTANCE.IsWindow(hwnd) && System.nanoTime() < deadline) Thread.sleep(5)
+                    assertFalse(User32.INSTANCE.IsWindow(hwnd), "The independent frame must close after $stop")
+                } finally {
+                    frame.close()
+                    onEdt {
+                        affinity.invokeInt(arrayOf(owner, 0))
+                        window.isVisible = true
+                    }
+                }
+            }
+        } finally {
+            onEdt { window.dispose() }
+        }
+    }
+
     @Test
     fun `both transitions keep the old pixels at their screen position until the new frame is presented`() {
         val target = Rectangle(-20000, -20000, 960, 720)
@@ -87,15 +145,32 @@ class ReaderFullscreenRetainedFrameTest {
                     controller.syncPlacement(fullscreen)
                     pending.removeAt(0).run()
                 }
-                val retained = onEdt {
-                    window.ownedWindows.firstOrNull { it.name == "MihonReaderTransitionFrame" && it.isDisplayable }
-                }
-                assertNotNull(retained, "The actual resize hold must retain a separate visible reader frame")
-                val hwnd = WinDef.HWND(Native.getComponentPointer(requireNotNull(retained)))
+                val hwnd = onEdt { retainedHandle(window) }
+                assertNotNull(hwnd, "The actual resize hold must retain a separate visible reader frame")
+                requireNotNull(hwnd)
                 assertTrue(User32.INSTANCE.IsWindowVisible(hwnd))
+                assertFalse(
+                    hwnd == User32.INSTANCE.GetForegroundWindow(),
+                    "The retained frame must not take keyboard focus",
+                )
                 assertFalse(User32.INSTANCE.IsWindowVisible(WinDef.HWND(Native.getComponentPointer(window))))
+                // The source window can leave composition while held. Its retained frame
+                // must not inherit that absence, even though its source WGC picture is valid.
+                onEdt { assertTrue(setWindowsWindowCloaked(window, true)) }
+                val hidden = com.sun.jna.ptr.IntByReference()
+                assertEquals(
+                    0,
+                    NativeLibrary.getInstance("dwmapi").getFunction("DwmGetWindowAttribute", Function.ALT_CONVENTION)
+                        .invokeInt(arrayOf(hwnd, 14, hidden, Int.SIZE_BYTES)),
+                )
+                assertEquals(
+                    0,
+                    hidden.value,
+                    "The retained frame must remain composed when the source is temporarily absent",
+                )
                 val rect = captureRect(hwnd)
-                val frozen = capture(Pointer.nativeValue(hwnd.pointer))
+                val frozen = capture(Pointer.nativeValue(hwnd.pointer), checkEveryFrame = true)
+                onEdt { assertTrue(setWindowsWindowCloaked(window, false)) }
                 val output = Path.of("build/reports/reader-retained-frame")
                 Files.createDirectories(output)
                 writePixels(source, output.resolve("source-$fullscreen.png"))
@@ -113,10 +188,6 @@ class ReaderFullscreenRetainedFrameTest {
                 assertEquals(sourceRed.size, red.size, "The retained comic must preserve its physical pixel height")
                 assertEquals(0, frozen.whiteSamples(), "The retained black reader background must not be white")
                 onEdt { pending.removeAt(0).run() }
-                assertFalse(
-                    retained.isDisplayable,
-                    "The completed transition must dispose its Java surface immediately",
-                )
                 // WWindowPeer destroys the native peer on the toolkit thread after dispose returns.
                 val disposedDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1)
                 while (User32.INSTANCE.IsWindow(hwnd) && System.nanoTime() < disposedDeadline) Thread.sleep(5)
@@ -150,6 +221,7 @@ class ReaderFullscreenRetainedFrameTest {
                                 },
                                 "Protected or cloaked content must not be copied to an unprotected surface",
                             )
+                            assertEquals(null, retainedHandle(window))
                             pending.removeAt(0).run()
                         }
                     } finally {
@@ -185,6 +257,13 @@ class ReaderFullscreenRetainedFrameTest {
         return rect
     }
 
+    private fun retainedHandle(window: ComposeWindow): WinDef.HWND? {
+        val root = Pointer.nativeValue(Native.getComponentPointer(window))
+        return User32.INSTANCE.FindWindow(null, "MihonReaderTransitionFrame:$root")
+            ?: window.ownedWindows.firstOrNull { it.name == "MihonReaderTransitionFrame" && it.isDisplayable }
+                ?.let { WinDef.HWND(Native.getComponentPointer(it)) }
+    }
+
     private data class Pixels(val width: Int, val height: Int, val bgra: ByteArray) {
         fun redRows(): List<Int> = (0 until height).filter { y ->
             val i = (y * width + width / 2) * 4
@@ -206,7 +285,7 @@ class ReaderFullscreenRetainedFrameTest {
         ImageIO.write(image, "png", path.toFile())
     }
 
-    private fun capture(hwnd: Long): Pixels {
+    private fun capture(hwnd: Long, checkEveryFrame: Boolean = false): Pixels {
         val helper = Path.of("artifacts/diagnostics/compositor-native/reader-compositor.exe").toAbsolutePath()
         val process = ProcessBuilder(
             helper.toString(),
@@ -233,7 +312,12 @@ class ReaderFullscreenRetainedFrameTest {
                 check(width in 1..4096 && height in 1..4096)
                 val pixels = ByteArray(width * height * 4)
                 input.readFully(pixels)
-                if (first == null) first = Pixels(width, height, pixels)
+                val actual = Pixels(width, height, pixels)
+                if (checkEveryFrame) {
+                    assertTrue(actual.redRows().isNotEmpty(), "Every retained frame must contain the comic")
+                    assertEquals(0, actual.whiteSamples(), "No retained frame may have a white block")
+                }
+                if (first == null) first = actual
             }
             assertTrue(process.waitFor(3, TimeUnit.SECONDS))
             assertEquals(0, process.exitValue())

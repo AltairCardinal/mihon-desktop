@@ -6,27 +6,18 @@ import com.sun.jna.NativeLibrary
 import com.sun.jna.Platform
 import com.sun.jna.platform.win32.User32
 import com.sun.jna.platform.win32.WinDef
-import com.sun.jna.platform.win32.WinUser
 import com.sun.jna.ptr.IntByReference
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.ImageInfo
 import org.jetbrains.skiko.SkiaLayer
 import java.awt.Canvas
-import java.awt.Color
-import java.awt.Graphics
-import java.awt.Graphics2D
 import java.awt.Rectangle
-import java.awt.RenderingHints
-import java.awt.Toolkit
 import java.awt.Window
 import java.awt.image.BufferedImage
 import java.awt.image.DataBufferInt
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import javax.swing.JComponent
-import javax.swing.JWindow
-import kotlin.math.roundToInt
 
 /** Retains the old physical pixels; neither the image nor its pan is projected into the target viewport. */
 internal fun retainWindowsReaderFrame(window: Window, canvas: Canvas, cover: Rectangle): AutoCloseable? {
@@ -53,11 +44,9 @@ internal fun retainWindowsReaderFrame(window: Window, canvas: Canvas, cover: Rec
         right = cover.x + cover.width
         bottom = cover.y + cover.height
     }
-    if (!window.isActive && user32.getFunction("MonitorFromRect", Function.ALT_CONVENTION)
-            .invokePointer(arrayOf(nativeCover, 0)) != null
-    ) {
-        return null
-    }
+    val onScreen = user32.getFunction("MonitorFromRect", Function.ALT_CONVENTION)
+        .invokePointer(arrayOf(nativeCover, 0)) != null
+    if (onScreen && !window.isActive) return null
     val layer = generateSequence(canvas.parent) { it.parent }.filterIsInstance<SkiaLayer>().firstOrNull() ?: return null
     val image = layer.screenshot()?.use { bitmap ->
         if (bitmap.width <= 0 || bitmap.height <= 0 ||
@@ -80,95 +69,11 @@ internal fun retainWindowsReaderFrame(window: Window, canvas: Canvas, cover: Rec
         image.flush()
         return null
     }
-    val scale = window.graphicsConfiguration.defaultTransform
-    val panel = RetainedReaderPixels(image, canvasRect.left, canvasRect.top)
-    var retained: JWindow? = null
     return try {
-        val surface = JWindow(window, window.graphicsConfiguration).apply {
-            name = "MihonReaderTransitionFrame"
-            focusableWindowState = false
-            isAutoRequestFocus = false
-            // A layered backing bitmap survives the owner's redraw hold; a normal GDI
-            // window can have no retained pixels when its drawing region is clipped.
-            background = Color(0, 0, 0, 0)
-            contentPane = panel
-            setBounds(
-                window.x + ((cover.x - frameRect.left) / scale.scaleX).roundToInt(),
-                window.y + ((cover.y - frameRect.top) / scale.scaleY).roundToInt(),
-                (cover.width / scale.scaleX).roundToInt(),
-                (cover.height / scale.scaleY).roundToInt(),
-            )
-            addNotify()
-        }
-        retained = surface
-        check(setWindowsWindowCloaked(surface, true))
-        WindowsWindowTransitions.setDisabled(surface, true)
-        surface.isVisible = true
-        surface.validate()
-        val surfaceHwnd = WinDef.HWND(Native.getComponentPointer(surface))
-        val actual = WinDef.RECT().also { check(User32.INSTANCE.GetWindowRect(surfaceHwnd, it)) }
-        if (actual.left != cover.x || actual.top != cover.y ||
-            actual.right - actual.left != cover.width || actual.bottom - actual.top != cover.height
-        ) {
-            check(
-                User32.INSTANCE.SetWindowPos(
-                    surfaceHwnd,
-                    null,
-                    cover.x,
-                    cover.y,
-                    cover.width,
-                    cover.height,
-                    WinUser.SWP_NOACTIVATE or WinUser.SWP_NOZORDER or WinUser.SWP_NOOWNERZORDER,
-                ),
-            )
-        }
-        panel.paintImmediately(0, 0, panel.width, panel.height)
-        Toolkit.getDefaultToolkit().sync()
-        check(setWindowsWindowCloaked(surface, false))
-        // Ensure this independent surface has presented before the owner's GPU resize starts.
-        WindowsWindowTransitions.setDisabled(surface, false)
-        AutoCloseable {
-            surface.dispose()
-            panel.release()
-        }
+        retainNativeReaderPixels(hwnd, cover, canvasRect, image, onScreen)
     } catch (failure: Throwable) {
-        retained?.dispose()
-        panel.release()
+        image.flush()
         System.err.println("Reader transition frame unavailable: ${failure.javaClass.simpleName}")
         null
-    }
-}
-
-private class RetainedReaderPixels(
-    private var image: BufferedImage?,
-    private val screenX: Int,
-    private val screenY: Int,
-) : JComponent() {
-    init {
-        isOpaque = true
-    }
-
-    override fun paintComponent(graphics: Graphics) {
-        val frame = image ?: return
-        val surface = javax.swing.SwingUtilities.getWindowAncestor(this) ?: return
-        val origin = WinDef.RECT()
-        if (!User32.INSTANCE.GetWindowRect(WinDef.HWND(Native.getComponentPointer(surface)), origin)) return
-        val draw = graphics.create() as Graphics2D
-        try {
-            draw.color = Color(frame.getRGB(0, 0))
-            draw.fillRect(0, 0, width, height)
-            val scale = draw.transform
-            draw.translate((screenX - origin.left) / scale.scaleX, (screenY - origin.top) / scale.scaleY)
-            draw.scale(1 / scale.scaleX, 1 / scale.scaleY)
-            draw.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR)
-            draw.drawImage(frame, 0, 0, null)
-        } finally {
-            draw.dispose()
-        }
-    }
-
-    fun release() {
-        image?.flush()
-        image = null
     }
 }
