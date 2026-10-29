@@ -45,7 +45,7 @@ import javax.swing.SwingUtilities
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 class ReaderFullscreenCompositorTest {
     @Test
-    fun `entry never presents the old comic stretched to the new window`() {
+    fun `entry and exit never present stale comic positions at the new window size`() {
         val target = Rectangle(-20000, -20000, 1280, 720)
         val delay = AtomicBoolean(false)
         val window = onEdt {
@@ -166,7 +166,9 @@ class ReaderFullscreenCompositorTest {
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3)
             while (frames.isEmpty() && System.nanoTime() < deadline) Thread.sleep(10)
             assertTrue(frames.isNotEmpty(), "Capture must observe the initial real window before entry")
+            val initial = frames.last()
             val entries = mutableListOf<LongRange>()
+            val exits = mutableListOf<LongRange>()
             repeat(3) {
                 val begin = System.nanoTime()
                 delay.set(true)
@@ -174,9 +176,10 @@ class ReaderFullscreenCompositorTest {
                 Thread.sleep(180)
                 entries += begin..System.nanoTime()
                 assertTrue(onEdt { User32.INSTANCE.IsWindowVisible(WinDef.HWND(Native.getComponentPointer(window))) })
-                delay.set(false)
+                val exitBegin = System.nanoTime()
                 switch(controller, completion, false)
                 Thread.sleep(180)
+                exits += exitBegin..System.nanoTime()
                 assertTrue(onEdt { User32.INSTANCE.IsWindowVisible(WinDef.HWND(Native.getComponentPointer(window))) })
             }
             assertTrue(capture.waitFor(10, TimeUnit.SECONDS))
@@ -196,6 +199,16 @@ class ReaderFullscreenCompositorTest {
                 assertTrue(
                     fullscreen.all { kotlin.math.abs(it.top - expectedTop) <= 2 },
                     "Cycle $index stale comic positions: ${fullscreen.map { it.top }}; expected=$expectedTop",
+                )
+            }
+            exits.forEachIndexed { index, interval ->
+                val restored = frames.filter {
+                    it.timestamp in interval && it.width == initial.width && it.height == initial.height
+                }
+                assertTrue(restored.isNotEmpty(), "Exit $index must actually capture restored window pixels: $frames")
+                assertTrue(
+                    restored.all { kotlin.math.abs(it.top - initial.top) <= 2 },
+                    "Exit $index stale comic positions: ${restored.map { it.top }}; expected=${initial.top}",
                 )
             }
         } finally {

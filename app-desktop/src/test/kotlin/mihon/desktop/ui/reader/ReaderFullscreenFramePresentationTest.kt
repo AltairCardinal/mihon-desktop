@@ -52,6 +52,7 @@ class ReaderFullscreenFramePresentationTest {
             window.invalidate()
             window.validate()
             window.renderImmediately()
+            adapter.completeTransition(window)
             transitions.setDisabled(window, false)
         }
     }
@@ -66,6 +67,7 @@ class ReaderFullscreenFramePresentationTest {
             window.invalidate()
             window.validate()
             window.renderImmediately()
+            adapter.completeTransition(window)
             transitions.setDisabled(window, false)
         }
     }

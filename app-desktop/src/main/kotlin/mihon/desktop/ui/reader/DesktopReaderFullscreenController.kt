@@ -142,6 +142,7 @@ internal class DesktopReaderFullscreenController(
         trace?.windowEvent("final-frame-layout-begin")
         invalidateLayout(window)
         window.validate()
+        findLayer(window)?.let { fullscreenAdapter?.synchronizeCanvas(window, it.canvas) }
         window.renderImmediately()
         trace?.windowEvent("final-frame-render-returned")
     }
@@ -152,10 +153,6 @@ internal class DesktopReaderFullscreenController(
     }
 
     private fun synchronizeEntryCanvas(window: ComposeWindow) {
-        fun findLayer(component: Component): SkiaLayer? {
-            if (component is SkiaLayer) return component
-            return (component as? Container)?.components?.firstNotNullOfOrNull(::findLayer)
-        }
         val layer = findLayer(window)
         val original = layer?.renderDelegate
         if (layer == null || original == null) {
@@ -192,6 +189,11 @@ internal class DesktopReaderFullscreenController(
         } finally {
             if (layer.renderDelegate === synchronized) layer.renderDelegate = original
         }
+    }
+
+    private fun findLayer(component: Component): SkiaLayer? {
+        if (component is SkiaLayer) return component
+        return (component as? Container)?.components?.firstNotNullOfOrNull(::findLayer)
     }
 
     private fun restoreNonFullscreenPlacement(window: ComposeWindow, target: WindowPlacement) {
