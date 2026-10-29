@@ -9,6 +9,16 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## October 30, 2026 — Space toggles the reader toolbars
+
+**Accepted fix documentation · no public product release**
+
+- Space now shows or hides both reader toolbars in every desktop reading mode instead of turning a page, including the reported previous-page behavior in right-to-left reading. The reader viewport must have keyboard focus.
+- Original implementation: `597ffe15e2`; [main integration](https://github.com/AltairCardinal/mihon-desktop/commit/a22ee07e2f). The integration preserves the accepted patch unchanged.
+- The existing 37 focused keyboard, focus, navigation and fullscreen tests passed. This acceptance covers Windows desktop reading; other platforms were not accepted as natively tested. No new product version or package was allocated.
+
+Acceptance basis: the project owner explicitly accepted the reader shortcut in private chat on October 30, 2026 and requested main integration and a push.
+
 ## October 29, 2026 — Stable Windows fullscreen transitions
 
 **Accepted fix documentation · no public product release**
