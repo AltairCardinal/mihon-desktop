@@ -9,12 +9,22 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## October 29, 2026 — Stable Windows fullscreen transitions
+
+**Accepted fix documentation · no public product release**
+
+- Entering and exiting fullscreen in the tested Windows reader case keeps the comic visible without the reported vertical jumps, black/white flashes, or top-left white block.
+- Accepted Windows preview: `0.11.24.6.693c6a2` (preview ID `main-0de74b9dc18544099ea272686b32d26a`); accepted source: `693c6a2618`; [integrated implementation](https://github.com/AltairCardinal/mihon-desktop/commit/ee54c0cfa8c83b8f6cb5140b3ade00f288a3e3c0). The application code is unchanged by the integration.
+- Forty focused checks passed, including native transition pixels, window geometry, interrupted switches and resource cleanup. The packaged extension runtime check passed. This acceptance covers the tested Windows reading path; other platforms and fallback paths without a retained frame were not accepted by these results.
+
+Acceptance basis: the project owner explicitly accepted this candidate in private chat on October 29, 2026 and requested main integration and a push.
+
 ## October 29, 2026 — Windows fullscreen comic continuity
 
 **Accepted fix documentation · no public product release**
 
 - Comics no longer briefly disappear during fullscreen switches, including automatic single-page/two-page layout changes.
-- Accepted Windows preview: `0.11.24.6.36ea4d8` (preview ID `main-03d8b0fa240d4eb38f6423bf52c52eba`); implementation: `36ea4d8ee0`.
+- Accepted Windows preview: `0.11.24.6.36ea4d8` (preview ID `main-03d8b0fa240d4eb38f6423bf52c52eba`); accepted source: `36ea4d8ee0`; [integrated implementation](https://github.com/AltairCardinal/mihon-desktop/commit/b416ff8250119bd7d331bda1589fbb6f2c408423).
 - This acceptance covers removal of the image disappearance on Windows. Occasional vertical movement on entry remains a known issue in this candidate; other platforms and complete fullscreen motion were not accepted.
 
 Acceptance basis: the project owner confirmed in private chat on October 29, 2026 that the flicker was gone and separately reported the remaining vertical movement.
