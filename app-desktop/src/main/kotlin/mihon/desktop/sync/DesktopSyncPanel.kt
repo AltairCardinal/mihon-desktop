@@ -122,7 +122,7 @@ internal fun DesktopSyncPanelSheet(
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         sheetMaxWidth = 560.dp,
         dragHandle = { BottomSheetDefaults.DragHandle(Modifier.syncUiTag("sync-drag-handle")) },
-        modifier = Modifier.heightIn(max = 720.dp).onPreviewKeyEvent {
+        modifier = Modifier.onPreviewKeyEvent {
             if (it.type == KeyEventType.KeyDown && it.key == Key.Escape) {
                 panel.dispatch(SyncPanelAction.Back)
                 true
@@ -131,9 +131,11 @@ internal fun DesktopSyncPanelSheet(
             }
         },
     ) {
+        // The sheet modifier also constrains its positioning viewport on Desktop.
+        // Limit the contents instead, allowing 48.dp for the default Material drag handle.
         SyncPanelContent(
             panel,
-            modifier = Modifier.fillMaxWidth().heightIn(max = 680.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(max = 720.dp - 48.dp),
             onOpenBrowser = onOpenBrowser,
             onCopyCode = onCopyCode,
             onOpenFailureLog = onOpenFailureLog,
