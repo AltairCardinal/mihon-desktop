@@ -83,6 +83,84 @@ class LibraryPageCompositionTest {
 
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
+    fun `root category bar localizes blank system category and keeps custom names`() = runTest {
+        val originalLocale = Locale.getDefault()
+        try {
+            for ((locale, expected) in listOf(Locale.ENGLISH to "default", Locale.SIMPLIFIED_CHINESE to "默认")) {
+                Locale.setDefault(locale)
+                val categories = FakeCategoryRepository().apply {
+                    insert(Category(1L, "Custom", 1L, 0L))
+                }
+                val item = sampleLibraryManga(sampleManga(1L, "Uncategorized work", 1L))
+                    .copy(categories = listOf(0L))
+                val model = rootModel(listOf(item), categories)
+                val scene = rootScene(model)
+                try {
+                    render(scene)
+                    model.setCategories(listOf(Category(0L, "", 0L, 0L)) + categories.getAll())
+                    render(scene)
+                    assertTrue(semanticLabels(scene).contains(expected), "Missing $expected for $locale")
+                    assertTrue(semanticLabels(scene).contains("Custom"))
+                    click(scene, "Custom")
+                    render(scene)
+                    click(scene, expected)
+                    render(scene)
+                    assertTrue(semanticLabels(scene).contains("Uncategorized work"))
+                    model.setSearchQuery("Uncategorized")
+                    render(scene)
+                    assertTrue(semanticLabels(scene).contains("$expected (1)"))
+                } finally {
+                    scene.close()
+                }
+            }
+        } finally {
+            Locale.setDefault(originalLocale)
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `wheel over root category bar scrolls horizontally without changing category`() = runTest {
+        val categories = FakeCategoryRepository().apply {
+            repeat(25) { insert(Category(it + 1L, "Category $it", it.toLong(), 0L)) }
+        }
+        val model = rootModel(emptyList(), categories)
+        val scene = rootScene(model)
+        try {
+            render(scene)
+            val rangeKey = androidx.compose.ui.semantics.SemanticsProperties.HorizontalScrollAxisRange
+            fun bar() = nodes(scene).first { it.config.contains(rangeKey) }
+            val position = bar().boundsInRoot.center
+            val initialSelection = model.state.value.selectedCategoryIndex
+            val initialScroll = bar().config[rangeKey].value()
+            scene.sendPointerEvent(PointerEventType.Scroll, position, scrollDelta = Offset(0f, 3f))
+            render(scene)
+            val afterDown = bar().config[rangeKey].value()
+            assertTrue(afterDown > initialScroll, "Vertical wheel must scroll the category bar right")
+            scene.sendPointerEvent(PointerEventType.Scroll, position, scrollDelta = Offset(0f, -3f))
+            render(scene)
+            assertTrue(bar().config[rangeKey].value() < afterDown)
+            scene.sendPointerEvent(PointerEventType.Scroll, position, scrollDelta = Offset(3f, 0f))
+            render(scene)
+            assertTrue(bar().config[rangeKey].value() > initialScroll)
+            val beforeOutside = bar().config[rangeKey].value()
+            scene.sendPointerEvent(PointerEventType.Scroll, Offset(600f, 800f), scrollDelta = Offset(0f, 3f))
+            render(scene)
+            assertEquals(beforeOutside, bar().config[rangeKey].value())
+            assertEquals(initialSelection, model.state.value.selectedCategoryIndex)
+            scene.sendPointerEvent(PointerEventType.Scroll, position, scrollDelta = Offset(0f, 1_000f))
+            render(scene)
+            assertEquals(bar().config[rangeKey].maxValue(), bar().config[rangeKey].value())
+            scene.sendPointerEvent(PointerEventType.Scroll, position, scrollDelta = Offset(0f, -1_000f))
+            render(scene)
+            assertEquals(0f, bar().config[rangeKey].value())
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
     fun `category indicator survives uncategorized tab appearing and disappearing`() = runTest {
         val categories = FakeCategoryRepository().apply {
             insert(Category(1L, "H", 1L, 0L))
@@ -101,7 +179,7 @@ class LibraryPageCompositionTest {
                 assertEquals(1, model.state.value.selectedCategoryIndex)
                 render(scene)
                 assertTrue(semanticLabels(scene).contains("Categorized"))
-                click(scene, "Default")
+                click(scene, MR.strings.desktop_library_default_category.localized())
                 render(scene)
                 assertTrue(semanticLabels(scene).contains("Uncategorized work"))
                 click(scene, "H")
