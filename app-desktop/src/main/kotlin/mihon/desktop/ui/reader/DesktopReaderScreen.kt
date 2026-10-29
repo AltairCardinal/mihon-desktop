@@ -1001,10 +1001,14 @@ internal fun handleReaderKeyEvent(
             else -> false
         }
     }
+    if (event.key == Key.Spacebar) {
+        model.toggleUI()
+        return true
+    }
     val isRtl = state.readingMode == ReadingMode.RTL
     val adjacentForward = when (event.key) {
         Key.DirectionLeft, Key.A -> isRtl
-        Key.DirectionRight, Key.D, Key.Spacebar -> !isRtl
+        Key.DirectionRight, Key.D -> !isRtl
         Key.PageUp -> false
         Key.PageDown -> true
         else -> null
@@ -1012,7 +1016,7 @@ internal fun handleReaderKeyEvent(
     if (adjacentForward != null && model.navigateDualPage(adjacentForward)) return true
     val action = when (event.key) {
         Key.DirectionLeft, Key.A -> ReaderKeyboardAction.forLeft(isRtl, navCurrent, totalPages)
-        Key.DirectionRight, Key.D, Key.Spacebar -> ReaderKeyboardAction.forRight(isRtl, navCurrent, totalPages)
+        Key.DirectionRight, Key.D -> ReaderKeyboardAction.forRight(isRtl, navCurrent, totalPages)
         Key.MoveHome -> ReaderKeyboardAction.forHome()
         Key.MoveEnd -> ReaderKeyboardAction.forEnd(totalPages)
         Key.PageUp -> ReaderKeyboardAction.forPageUp(navCurrent, totalPages)
