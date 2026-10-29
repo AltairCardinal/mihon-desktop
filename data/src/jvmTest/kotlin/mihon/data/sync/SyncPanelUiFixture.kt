@@ -39,6 +39,62 @@ class SyncPanelUiFixture : AutoCloseable {
     suspend fun favorite() {
         storage.favorite("/ui-fixture-book")
     }
+
+    suspend fun connectExistingPlain() {
+        fixture.existing("")
+        fixture.authorize()
+        fixture.begin()
+        fixture.panel.awaitIdle()
+    }
+
+    suspend fun pendingCancellation(index: Int) {
+        val key = mihon.domain.sync.SyncObjectKey(
+            mihon.domain.sync.SyncObjectType.MANGA,
+            sourceId = "1",
+            originalUrl = "/pending-$index",
+        )
+        val add = mihon.domain.sync.SyncEventEnvelope(
+            1, "space", 1, "remote-$index", 1, 1, mihon.domain.sync.SyncCategory.FAVORITE,
+            listOf(
+                mihon.domain.sync.SyncEffect(
+                    "membership",
+                    key,
+                    mihon.domain.sync.SyncField.FAVORITE,
+                    mihon.domain.sync.SyncEffectKind.ADD,
+                ),
+            ),
+            mihon.domain.sync.SyncOrigin.USER,
+            batchId = "add-$index",
+        )
+        val remove = add.copy(
+            seq = 2,
+            batchId = "remove-$index",
+            effects = listOf(
+                add.effects.single().copy(
+                    kind = mihon.domain.sync.SyncEffectKind.REMOVE,
+                    parents = listOf(add.ref("membership")),
+                ),
+            ),
+        )
+        val inbox = mihon.data.sync.inbox.SyncInboxStore(storage.handler)
+        for (event in listOf(add, remove)) {
+            check(
+                inbox.ingest(
+                    mihon.domain.sync.SyncBatch(
+                        1,
+                        "space",
+                        1,
+                        requireNotNull(event.batchId),
+                        listOf(event),
+                        listOf(mihon.domain.sync.SyncObjectDescriptor(key, "Pending title")),
+                    ),
+                ).accepted,
+            )
+            while (runtime.projector.project("space", 1) == 50) Unit
+        }
+        fixture.panel.dispatch(mihon.data.sync.runtime.SyncPanelAction.Open)
+        fixture.panel.awaitIdle()
+    }
     fun descriptor(): SyncSpaceDescriptor = SyncSpaceDescriptorCodec.decode(
         requireNotNull(fixture.git.file(fixture.repository.branch, SyncSpaceDescriptorCodec.PATH)),
     ).getOrThrow()
