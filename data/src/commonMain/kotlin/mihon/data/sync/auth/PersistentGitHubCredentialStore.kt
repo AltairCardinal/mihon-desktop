@@ -15,9 +15,13 @@ import mihon.domain.sync.security.SyncSecureStoreException
 
 class PersistentGitHubCredentialStore(private val store: SyncSecureStore) : GitHubCredentialStore {
     private val mutableAuthorizationEpoch = MutableStateFlow(0L)
+    private val mutableTokenRefreshEpoch = MutableStateFlow(0L)
 
     /** Process-local authorization identity, independent of token-refresh revisions. */
     val authorizationEpoch: StateFlow<Long> = mutableAuthorizationEpoch
+
+    /** Invalidates process-local request caches only after refreshed credentials are durable. */
+    internal val tokenRefreshEpoch: StateFlow<Long> = mutableTokenRefreshEpoch
     override suspend fun read(): GitHubStoredCredential? = safe {
         store.read(KEY)?.let(::decode)?.let { record ->
             record.token?.let { GitHubStoredCredential(it.value(), record.revision) }
@@ -51,7 +55,11 @@ class PersistentGitHubCredentialStore(private val store: SyncSecureStore) : GitH
         val replacement = Record(revision = revision, token = Token(value))
         validate(replacement)
         check(store.compareAndSet(KEY, encoded, json.encodeToString(replacement)))
-        if (explicitAuthorization) mutableAuthorizationEpoch.update { it + 1 }
+        if (explicitAuthorization) {
+            mutableAuthorizationEpoch.update { it + 1 }
+        } else {
+            mutableTokenRefreshEpoch.update { it + 1 }
+        }
         GitHubStoredCredential(value, revision)
     }
 

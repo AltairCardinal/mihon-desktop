@@ -85,3 +85,9 @@ Mihon 是由 Android 应用、Mihon Desktop 和共享 Kotlin 模块组成的多�
 - `mihon.code.lint`：Spotless + ktlint
 
 依赖版本由 `gradle/*.versions.toml` 管理。
+
+### 同步授权与令牌续期
+
+同步的账户查询、仓库管理、恢复和 Git 数据交换通过 `SyncOnboarding` 的请求级 token provider 获取凭据，不能把会话开始时的访问令牌固定到整轮同步。provider 缓存绑定当前 `authorizationEpoch`；显式重新授权或清除凭据后，旧会话必须停止，不能自动跟随新账号。浏览器返回的候选令牌在身份验证期间固定使用，不得替换成当前已保存账号的令牌。
+
+有效令牌只在内存中复用，临近到期或 `PersistentGitHubCredentialStore.tokenRefreshEpoch` 改变时才重新读取并续期，避免每个请求都启动 Windows DPAPI 解密子进程。刷新 epoch 仅在新凭据成功持久化后更新；续期失败仍保留原凭据，并沿用网络重试或确认失效后的授权恢复路径。身份确认使用授权 epoch，不能把正常令牌轮换当作账号变更。相关行为由 `SyncRuntimeWiringTest` 的会话续期、缓存和身份隔离用例覆盖。

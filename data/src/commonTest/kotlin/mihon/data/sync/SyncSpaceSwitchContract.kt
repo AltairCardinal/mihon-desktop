@@ -766,7 +766,7 @@ abstract class SyncSpaceSwitchContract {
                 val batch = requireNotNull(outbox.nextBatch("space", 1, frozen.batchIds.single()))
                 fixture.oldUnavailable = false
                 val oldTransport = runtime.onboarding.transport(
-                    runtime.accessToken(),
+                    { runtime.accessToken() },
                     oldBinding.material.material(),
                     repositoryId = oldBinding.repositoryId,
                 )
@@ -815,7 +815,7 @@ abstract class SyncSpaceSwitchContract {
                 )
                 val newBinding = requireNotNull(runtime.onboarding.storage.connection("another-space", 1))
                 val transport = runtime.onboarding.transport(
-                    runtime.accessToken(),
+                    { runtime.accessToken() },
                     requireNotNull(target.material),
                     repositoryId = target.id,
                 )

@@ -2216,7 +2216,7 @@ class SyncPanelController(
                     storage.saveRepositoryCreation(next, current)
                     current = next
                 }
-                val manager = runtime.onboarding.repositoryManager(session.token, session.account.id)
+                val manager = runtime.onboarding.repositoryManager(session)
                 val result = if (manual) {
                     manager.confirmManualSelection(requireNotNull(current), persist)
                 } else {
@@ -2368,7 +2368,7 @@ class SyncPanelController(
                         SyncDiscoveryProblem.ACCOUNT_CHANGED,
                     )
                 }
-                val manager = runtime.onboarding.repositoryManager(session.token, session.account.id)
+                val manager = runtime.onboarding.repositoryManager(session)
                 val creation = runtime.onboarding.storage.repositoryCreation(target.account.id)
                 val failure = if (authorize) {
                     manager.authorizeRepository(target, creation)
@@ -2579,7 +2579,7 @@ class SyncPanelController(
         storage.saveRepositoryCreation(proposal, recorded)
         recorded = proposal
         val session = runtime.onboarding.session(candidate.account.id)
-        val result = runtime.onboarding.repositoryManager(session.token, session.account.id)
+        val result = runtime.onboarding.repositoryManager(session)
             .verifyManualSelection(proposal) { next ->
                 storage.saveRepositoryCreation(next, recorded)
                 recorded = next

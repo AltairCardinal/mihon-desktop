@@ -1644,7 +1644,7 @@ abstract class SyncPanelStorageContract {
                         attemptNonce = "winner-attempt-nonce-0001",
                         stage = SyncInitializationStage.VERIFIED_EMPTY,
                     )
-                    val winnerResult = f.runtime.onboarding.transport("synthetic-token", winnerMaterial).initialize(
+                    val winnerResult = f.runtime.onboarding.transport({ "synthetic-token" }, winnerMaterial).initialize(
                         f.repository,
                         winnerMaterial.descriptor.spaceId,
                         winnerMaterial.descriptor.generation,

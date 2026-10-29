@@ -72,6 +72,143 @@ import java.util.prefs.Preferences
 
 class SyncRuntimeWiringTest {
     @Test
+    fun `session authorization check accepts rotation while account verification is in flight`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val runtime = setup.runtime
+                runtime.credentials.replace(
+                    runtime.credentials.read()!!.revision,
+                    GitHubAccessToken("access-secret", "refresh-secret", "bearer", emptySet(), 121_000, 10_000_000),
+                )
+                val delegate = setup.git.server.dispatcher
+                setup.git.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        if (request.url.encodedPath == "/user") {
+                            setup.now = 121_001
+                            runBlocking { runtime.accessToken() }
+                        }
+                        return delegate.dispatch(request)
+                    }
+                }
+                val checked = runtime.checkRecoveryAuthorization()
+                assertTrue(checked.confirmed)
+                assertFalse(checked.required)
+                assertEquals("synthetic-refreshed-token", runtime.credentials.read()!!.credential.accessToken)
+            }
+        }
+    }
+
+    @Test
+    fun `valid session reuses its token without decrypting credentials for every request`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.authorize()
+                val session = setup.runtime.onboarding.session(setup.accountId)
+                setup.secure.readFailure = true
+                try {
+                    setup.runtime.onboarding.verifyRepository(session, setup.repository, 99)
+                } finally {
+                    setup.secure.readFailure = false
+                }
+                assertEquals("Bearer synthetic-token", setup.repositoryTokens.last())
+            }
+        }
+    }
+
+    @Test
+    fun `existing session observes token rotation by another session before its own expiry`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                val runtime = setup.runtime
+                val saved = runtime.credentials.replace(
+                    null,
+                    GitHubAccessToken("access-secret", "refresh-secret", "bearer", emptySet(), 121_000, 10_000_000),
+                )
+                val session = runtime.onboarding.session(setup.accountId)
+                val refreshed = runtime.authorization.refresh(SyncRuntime.CLIENT_ID, saved).getOrThrow()
+                runtime.credentials.replaceRefreshed(saved.revision, refreshed.credential)
+                runtime.onboarding.verifyRepository(session, setup.repository, 99)
+                assertEquals("Bearer synthetic-refreshed-token", setup.repositoryTokens.last())
+            }
+        }
+    }
+
+    @Test
+    fun `existing session cannot follow explicit reauthorization into another identity`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.authorize()
+                val session = setup.runtime.onboarding.session(setup.accountId)
+                setup.authorize("another-account-token")
+                val calls = f.networkCalls
+                val result = runCatching {
+                    setup.runtime.onboarding.verifyRepository(session, setup.repository, 99)
+                }
+                assertTrue(result.isFailure)
+                assertEquals(calls, f.networkCalls)
+            }
+        }
+    }
+
+    @Test
+    fun `production sync renews an expiring session before repository requests`() = assertSyncRenewsToken(false)
+
+    @Test
+    fun `production sync renews an expiring session during git exchange`() = assertSyncRenewsToken(true)
+
+    private fun assertSyncRenewsToken(duringExchange: Boolean) = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                if (duringExchange) f.storage.favorite("/expiry-during-git")
+                val runtime = setup.runtime
+                runtime.credentials.replace(
+                    runtime.credentials.read()!!.revision,
+                    GitHubAccessToken("access-secret", "refresh-secret", "bearer", emptySet(), 121_000, 10_000_000),
+                )
+                setup.repositoryTokens.clear()
+                val rejectedTokens = AtomicInteger()
+                val refreshes = AtomicInteger()
+                val delegate = setup.git.server.dispatcher
+                setup.git.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        if (request.url.encodedPath == "/token") refreshes.incrementAndGet()
+                        if (request.url.encodedPath.startsWith("/repos/") &&
+                            setup.now >= 121_001 &&
+                            request.headers["Authorization"] == "Bearer access-secret"
+                        ) {
+                            rejectedTokens.incrementAndGet()
+                            return MockResponse(code = 401, body = "{\"message\":\"Bad credentials\"}")
+                        }
+                        val expiryBoundary = if (duringExchange) {
+                            request.url.encodedPath.contains("/git/")
+                        } else {
+                            request.url.encodedPath == "/user"
+                        }
+                        if (expiryBoundary) setup.now = 121_001
+                        return delegate.dispatch(request)
+                    }
+                }
+                val result = runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                assertEquals(SyncRunStatus.SUCCESS, result.status)
+                assertTrue(setup.repositoryTokens.isNotEmpty())
+                assertEquals("Bearer synthetic-refreshed-token", setup.repositoryTokens.last())
+                if (!duringExchange) {
+                    assertTrue(setup.repositoryTokens.all { it == "Bearer synthetic-refreshed-token" })
+                }
+                assertEquals(0, rejectedTokens.get())
+                assertEquals(1, refreshes.get())
+                assertEquals("synthetic-refreshed-token", runtime.credentials.read()!!.credential.accessToken)
+            }
+        }
+    }
+
+    @Test
     fun `production upload needs no installed source and confirms after acknowledgement`() = runBlocking {
         Fixture().use { fixture ->
             SyncOnboardingFixture(fixture.storage, fixture.preferences, fixture.client).use { setup ->
