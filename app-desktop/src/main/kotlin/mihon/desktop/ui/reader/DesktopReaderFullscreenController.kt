@@ -115,7 +115,7 @@ internal class DesktopReaderFullscreenController(
                         try {
                             if (window.isDisplayable && targetFullscreen == fullscreen) presentFinalFrame(window)
                         } finally {
-                            transitions.setDisabled(window, false)
+                            completeTransition(window)
                         }
                     }
                 },
@@ -123,8 +123,16 @@ internal class DesktopReaderFullscreenController(
             posted = true
         } finally {
             if (!posted) {
-                transitions.setDisabled(window, false)
+                completeTransition(window)
             }
+        }
+    }
+
+    private fun completeTransition(window: ComposeWindow) {
+        try {
+            fullscreenAdapter?.completeTransition(window)
+        } finally {
+            transitions.setDisabled(window, false)
         }
     }
 

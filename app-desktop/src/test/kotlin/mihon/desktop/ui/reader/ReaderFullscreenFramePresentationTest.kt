@@ -37,6 +37,7 @@ class ReaderFullscreenFramePresentationTest {
             window.invalidate()
             window.validate()
             window.renderImmediately()
+            adapter.completeTransition(window)
             transitions.setDisabled(window, false)
         }
     }
@@ -114,10 +115,12 @@ class ReaderFullscreenFramePresentationTest {
 
         pending.removeAt(0).run()
         verify(exactly = 0) { window.renderImmediately() }
+        verify(exactly = 0) { adapter.completeTransition(window) }
         verify(exactly = 0) { transitions.setDisabled(window, false) }
 
         pending.removeAt(0).run()
         verify(exactly = 1) { window.renderImmediately() }
+        verify(exactly = 1) { adapter.completeTransition(window) }
         verify(exactly = 1) { transitions.setDisabled(window, false) }
     }
 
@@ -158,6 +161,7 @@ class ReaderFullscreenFramePresentationTest {
         )
         failedController.syncPlacement(true)
         verify(exactly = 0) { window.renderImmediately() }
+        verify { adapter.completeTransition(window) }
         verify { transitions.setDisabled(window, false) }
     }
 
@@ -175,6 +179,7 @@ class ReaderFullscreenFramePresentationTest {
         queuedController.onDispose(wasFullscreen = false)
         pending.removeAt(0).run()
         verify(exactly = 1) { transitions.setDisabled(window, false) }
+        verify(exactly = 1) { adapter.completeTransition(window) }
         verify(exactly = 0) { window.renderImmediately() }
     }
 
@@ -187,6 +192,20 @@ class ReaderFullscreenFramePresentationTest {
         verify { window.renderImmediately() }
         verifyOrder {
             transitions.setDisabled(window, true)
+            adapter.completeTransition(window)
+            transitions.setDisabled(window, false)
+        }
+    }
+
+    @Test
+    fun `adapter completion failure still restores system transitions`() {
+        every { adapter.completeTransition(window) } throws IllegalStateException("Native peer closed")
+
+        controller.syncPlacement(true)
+
+        verifyOrder {
+            window.renderImmediately()
+            adapter.completeTransition(window)
             transitions.setDisabled(window, false)
         }
     }

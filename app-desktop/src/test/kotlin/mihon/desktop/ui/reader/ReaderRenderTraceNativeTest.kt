@@ -203,8 +203,12 @@ class ReaderRenderTraceNativeTest {
                 }
             }
             assertFalse(window.isActive)
-            onEdt { window.dispose() }
-            ReaderRenderTracing.closeAll()
+            onEdt {
+                // The last render's completion callback can be queued behind this teardown.
+                // Drain it while Skiko still owns the completed Picture; disposal releases that Picture.
+                ReaderRenderTracing.closeAll()
+                window.dispose()
+            }
             val files = if (Files.exists(directory)) Files.walk(directory, 3).use { it.toList() } else emptyList()
             val frames = files.filter { it.fileName.toString().endsWith(".png") }
             assertTrue(
