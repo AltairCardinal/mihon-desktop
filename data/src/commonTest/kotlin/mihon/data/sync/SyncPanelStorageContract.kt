@@ -85,6 +85,46 @@ import java.nio.file.Path as NioPath
 @Timeout(30)
 abstract class SyncPanelStorageContract {
     @Test
+    fun `local pending decisions commit and refresh without rereading secure credentials or contacting GitHub`() =
+        runBlocking {
+            open().use { storage ->
+                SyncOnboardingFixture(storage).use { f ->
+                    f.existing("")
+                    f.authorize()
+                    f.begin()
+                    pending(storage, 2)
+                    f.panel.act(SyncPanelAction.Open)
+                    assertEquals(2L, f.panel.state.value.pendingTotal)
+                    val requests = f.git.server.requestCount
+                    val secureReads = f.secure.readCount.get()
+                    f.secure.readFailure = true
+                    try {
+                        for (decision in listOf(
+                            SyncCancellationDecision.KEEP_LOCAL,
+                            SyncCancellationDecision.CONFIRM,
+                        )) {
+                            val item = f.panel.state.value.pending.first()
+                            f.panel.act(SyncPanelAction.PrepareDecision(decision, SyncDecisionScope.ITEM, item.id))
+                            assertNotNull(f.panel.state.value.confirmation)
+                            f.panel.act(SyncPanelAction.ConfirmDecision)
+                            f.panel.awaitBulkIdle()
+                            f.panel.awaitIdle()
+                            val remaining = if (decision == SyncCancellationDecision.KEEP_LOCAL) 1L else 0L
+                            assertEquals(remaining, f.panel.state.value.pendingTotal)
+                            assertEquals(remaining.toInt(), f.panel.state.value.pending.size)
+                            assertEquals(1L, f.panel.state.value.notice?.bulk?.completed)
+                        }
+                        assertEquals(1, storage.manga.getLibraryManga().size)
+                        assertEquals(requests, f.git.server.requestCount)
+                        assertEquals(secureReads, f.secure.readCount.get())
+                    } finally {
+                        f.secure.readFailure = false
+                    }
+                }
+            }
+        }
+
+    @Test
     fun `toolbar opens immediately while production state refresh is waiting on secure storage`() = runBlocking {
         open().use { storage ->
             SyncOnboardingFixture(storage).use { f ->

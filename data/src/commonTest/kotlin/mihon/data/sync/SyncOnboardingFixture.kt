@@ -226,6 +226,7 @@ internal suspend fun SyncPanelController.act(action: SyncPanelAction) {
 }
 
 internal class MemorySyncSecureStore : SyncSecureStore {
+    val readCount = java.util.concurrent.atomic.AtomicInteger()
     var readFailure = false
     var nextSpaceRead: Pair<CompletableDeferred<Unit>, CompletableDeferred<Unit>>? = null
     var nextSpaceReadCoroutineName: String? = null
@@ -236,6 +237,7 @@ internal class MemorySyncSecureStore : SyncSecureStore {
     var afterWrite: ((String, String?) -> Unit)? = null
     var beforeWrite: ((String, String?) -> Unit)? = null
     override suspend fun read(key: String): String? {
+        readCount.incrementAndGet()
         if (fail || readFailure) throw mihon.domain.sync.security.SyncSecureStoreException()
         nextSpaceRead?.takeIf {
             key.startsWith("space-") &&

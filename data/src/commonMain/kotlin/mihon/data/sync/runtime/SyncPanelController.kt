@@ -60,6 +60,7 @@ class SyncPanelController(
     override val diagnosticDirectory: String? get() = runtime.diagnosticDirectory?.toString()
     private val commands = Channel<suspend () -> Unit>(Channel.UNLIMITED)
     private val refreshQueued = AtomicBoolean(false)
+    private val pendingRefreshQueued = AtomicBoolean(false)
     private val deviceBrowserOpened = AtomicBoolean(false)
     private val visibilityVersion = AtomicLong()
     private var references = linkedMapOf<Long, String>()
@@ -125,7 +126,7 @@ class SyncPanelController(
                         handler.subscribeToOne {
                             sync_importQueries.countPendingImports(connection.space_id, connection.generation)
                         },
-                    ) { _, _, _ -> Unit }.collect { queueRefresh() }
+                    ) { _, _, _ -> Unit }.collect { queuePendingRefresh() }
                 }
             }
         }
@@ -303,6 +304,112 @@ class SyncPanelController(
         }
     }
 
+    /** Local choice feedback must not wait for credentials, recovery discovery or reports. */
+    private fun queuePendingRefresh() {
+        if (pendingRefreshQueued.compareAndSet(false, true)) {
+            enqueue {
+                pendingRefreshQueued.set(false)
+                refreshPending()
+            }
+        }
+    }
+
+    private data class PendingQueue(
+        val references: LinkedHashMap<Long, String>,
+        val items: List<mihon.data.sync.inbox.SyncPendingItem>,
+        val membership: Long,
+        val favorites: Long,
+        val follows: Long,
+        val reading: Long,
+        val imports: Long,
+        val bulk: SyncBulkStatus?,
+    )
+
+    private suspend fun isCurrentLocalConnection(connection: SyncConnection): Boolean = handler.await {
+        sync_journalQueries.getActiveSpace().executeAsOneOrNull()?.let {
+            it.space_id == connection.spaceId && it.generation == connection.generation
+        } == true
+    }
+
+    private suspend fun readPendingQueue(connection: SyncConnection?): PendingQueue? {
+        if (connection != null && !isCurrentLocalConnection(connection)) return null
+        var membership = 0L
+        var favorites = 0L
+        var follows = 0L
+        var reading = 0L
+        var imports = 0L
+        val references = linkedMapOf<Long, String>()
+        val items = mutableListOf<mihon.data.sync.inbox.SyncPendingItem>()
+        if (connection != null) {
+            handler.await {
+                sync_inboxQueries.getPendingReferences(connection.spaceId, connection.generation)
+                    .executeAsList().forEach { references[it._id] = it.binding }
+                sync_journalQueries.getPendingCategoryCounts(connection.spaceId, connection.generation)
+                    .executeAsList().forEach {
+                        when (it.category) {
+                            "FAVORITE" -> {
+                                favorites += it.count
+                                membership += it.count
+                            }
+                            "FOLLOW" -> {
+                                follows += it.count
+                                membership += it.count
+                            }
+                            "READING" -> reading += it.count
+                            else -> membership += it.count
+                        }
+                    }
+                imports = sync_importQueries.countPendingImports(connection.spaceId, connection.generation)
+                    .executeAsOne()
+            }
+            while (items.size < minOf(loadedCount, references.size)) {
+                val page = runtime.projector.pending(
+                    connection.spaceId,
+                    connection.generation,
+                    100,
+                    items.size.toLong(),
+                )
+                if (page.isEmpty()) break
+                items.addAll(page)
+            }
+        }
+        val savedBulk = connection?.let { runtime.preferences.activeBulkJob(it.spaceId, it.generation).get() }
+            ?.takeIf { it.isNotEmpty() }?.let { id ->
+                handler.await { sync_inboxQueries.getBulkJob(id).executeAsOneOrNull() }
+                    ?.takeIf { it.space_id == connection?.spaceId && it.generation == connection.generation }
+                    ?.let {
+                        val progress = runtime.projector.bulkProgress(id)
+                        progress.toStatus(id, progress.queued > 0 && bulkJob?.isActive == true)
+                    }
+            }
+        return PendingQueue(references, items, membership, favorites, follows, reading, imports, savedBulk)
+    }
+
+    private suspend fun refreshPending() {
+        val connection = state.value.connection ?: return
+        val queue = readPendingQueue(connection) ?: run {
+            queueRefresh()
+            return
+        }
+        references = queue.references
+        selectedBindings = selectedBindings.filter { (id, binding) -> references[id] == binding }
+        mutableState.update {
+            if (it.connection != connection) return@update it
+            it.copy(
+                queuedMembership = queue.membership,
+                queuedFavorites = queue.favorites,
+                queuedFollows = queue.follows,
+                queuedReading = queue.reading,
+                importRemaining = queue.imports,
+                pendingTotal = references.size.toLong(),
+                pending = queue.items,
+                hasMore = queue.items.size < references.size,
+                selected = selectedBindings.keys,
+                bulk = queue.bulk,
+            )
+        }
+    }
+
     private suspend fun refresh(
         forceFailureLog: Boolean = false,
         source: SyncDiagnosticRefreshSource = SyncDiagnosticRefreshSource.ACTION,
@@ -401,46 +508,11 @@ class SyncPanelController(
                 )
             }
         }
-        var membership = 0L
-        var favorites = 0L
-        var follows = 0L
-        var reading = 0L
-        var imports = 0L
-        references = linkedMapOf()
-        val items = mutableListOf<mihon.data.sync.inbox.SyncPendingItem>()
-        if (connection != null) {
-            handler.await {
-                sync_inboxQueries.getPendingReferences(connection.spaceId, connection.generation)
-                    .executeAsList().forEach { references[it._id] = it.binding }
-                sync_journalQueries.getPendingCategoryCounts(connection.spaceId, connection.generation)
-                    .executeAsList().forEach {
-                        when (it.category) {
-                            "FAVORITE" -> {
-                                favorites += it.count
-                                membership += it.count
-                            }
-                            "FOLLOW" -> {
-                                follows += it.count
-                                membership += it.count
-                            }
-                            "READING" -> reading += it.count
-                            else -> membership += it.count
-                        }
-                    }
-                imports = sync_importQueries.countPendingImports(connection.spaceId, connection.generation)
-                    .executeAsOne()
-            }
-            while (items.size < minOf(loadedCount, references.size)) {
-                val page = runtime.projector.pending(
-                    connection.spaceId,
-                    connection.generation,
-                    100,
-                    items.size.toLong(),
-                )
-                if (page.isEmpty()) break
-                items.addAll(page)
-            }
+        val queue = readPendingQueue(connection) ?: run {
+            queueRefresh()
+            return
         }
+        references = queue.references
         selectedBindings = selectedBindings.filter { (id, binding) -> references[id] == binding }
         val recovery = recoveryRead { runtime.spaceRecovery() }
         val recoveryObservation = recoveryRead { runtime.recoveryObservation() }
@@ -470,12 +542,7 @@ class SyncPanelController(
         } else {
             maxOf(prefs.scheduleAnchor.get(), prefs.lastAttempt.get(), prefs.lastSuccess.get()) + period * 60_000L
         }
-        val savedBulk = connection?.let { prefs.activeBulkJob(it.spaceId, it.generation).get() }
-            ?.takeIf { it.isNotEmpty() }?.let { id ->
-                handler.await { sync_inboxQueries.getBulkJob(id).executeAsOneOrNull() }
-                    ?.takeIf { it.space_id == connection?.spaceId && it.generation == connection.generation }
-                    ?.let { runtime.projector.bulkProgress(id).toStatus(id, bulkJob?.isActive == true) }
-            }
+        val savedBulk = queue.bulk
         val activeRun = connection?.let { runtime.runStore.active(it.spaceId, it.generation) }
         val run = activeRun ?: connection?.let {
             runtime.runStore.latest(it.spaceId, it.generation)?.takeIf { latest ->
@@ -538,13 +605,13 @@ class SyncPanelController(
                 },
                 recoveryRestartRequired = workflow?.flow?.request?.restartRequired == true,
                 connection = connection,
-                queuedMembership = membership,
-                queuedFavorites = favorites,
-                queuedFollows = follows,
-                queuedReading = reading,
+                queuedMembership = queue.membership,
+                queuedFavorites = queue.favorites,
+                queuedFollows = queue.follows,
+                queuedReading = queue.reading,
                 pendingTotal = references.size.toLong(),
-                pending = items,
-                hasMore = items.size < references.size,
+                pending = queue.items,
+                hasMore = queue.items.size < references.size,
                 loading = false,
                 selected = selectedBindings.keys,
                 bulk = savedBulk,
@@ -569,7 +636,7 @@ class SyncPanelController(
                 },
                 canCancelRecoverySwitch = pendingSwitch?.stage == SyncSpaceSwitchStage.PREPARING,
                 canChangeSpace = canChangeSpace,
-                importRemaining = imports,
+                importRemaining = queue.imports,
                 importPaused = prefs.importPaused.get(),
                 records = runtime.records().asReversed(),
                 run = run?.withObservedCounts(it.run),
@@ -1060,8 +1127,10 @@ class SyncPanelController(
             SyncPanelAction.ConfirmDecision -> {
                 val confirmation = state.value.confirmation ?: return
                 val job = handler.await { sync_inboxQueries.getBulkJob(confirmation.jobId).executeAsOne() }
-                val connection = runtime.connection()
-                if (job.space_id != connection?.spaceId || job.generation != connection.generation) {
+                val connection = state.value.connection
+                if (connection == null || job.space_id != connection.spaceId ||
+                    job.generation != connection.generation || !isCurrentLocalConnection(connection)
+                ) {
                     cancelConfirmation()
                     return
                 }
@@ -1077,7 +1146,7 @@ class SyncPanelController(
             SyncPanelAction.ResumeBulk -> state.value.bulk?.let { startBulk(it.jobId) }
             SyncPanelAction.LoadMore -> {
                 loadedCount += 100
-                refresh()
+                refreshPending()
             }
             SyncPanelAction.LoadMoreLogs -> {
                 logLimit = (logLimit + 20).coerceAtMost(500L)
@@ -3384,13 +3453,18 @@ class SyncPanelController(
         bulkJob = panelScope.launch {
             try {
                 val job = handler.await { sync_inboxQueries.getBulkJob(id).executeAsOne() }
-                if (runtime.activeSwitch() != null) return@launch
+                // Preparing a switch cancels this job before changing the local active identity.
+                if (switchIntent != null || state.value.pendingRecoveryPurpose != null) return@launch
                 do {
-                    val connection = runtime.connection()
-                    if (job.space_id != connection?.spaceId || job.generation != connection.generation) break
+                    val connection = state.value.connection
+                    if (connection == null || job.space_id != connection.spaceId ||
+                        job.generation != connection.generation || !isCurrentLocalConnection(connection)
+                    ) {
+                        break
+                    }
                     val progress = runtime.projector.processBulk(id)
                     enqueue {
-                        refresh()
+                        refreshPending()
                         if (progress.queued == 0L && state.value.visible &&
                             state.value.connection?.spaceId == job.space_id &&
                             state.value.connection?.generation == job.generation
@@ -3401,7 +3475,7 @@ class SyncPanelController(
                     yield()
                 } while (progress.queued > 0)
             } finally {
-                queueRefresh()
+                queuePendingRefresh()
             }
         }
     }
