@@ -26,7 +26,9 @@ class SyncPanelUiFixture : AutoCloseable {
     }
     private val storage = SyncRuntimeStorageContract.Storage(driver, JvmDatabaseHandler(database, driver))
     private val fixture = SyncOnboardingFixture(storage)
-    val panel: SyncPanel get() = fixture.panel
+    private var reopenedPanel: mihon.data.sync.runtime.SyncPanelController? = null
+    private var connectionCheckRelease: kotlinx.coroutines.CompletableDeferred<Unit>? = null
+    val panel: SyncPanel get() = reopenedPanel ?: fixture.panel
     val runtime: SyncRuntime get() = fixture.runtime
     val writes: Int get() = fixture.repositoryWrites
     val bootstrapWrites: Int get() = fixture.git.contentsPutBodies.size
@@ -45,6 +47,16 @@ class SyncPanelUiFixture : AutoCloseable {
         fixture.authorize()
         fixture.begin()
         fixture.panel.awaitIdle()
+    }
+
+    suspend fun reopenWhileCheckingConnection() {
+        fixture.panel.stop()
+        val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        connectionCheckRelease = release
+        fixture.secure.nextSpaceRead = entered to release
+        reopenedPanel = mihon.data.sync.runtime.SyncPanelController(runtime, storage.handler)
+        kotlinx.coroutines.withTimeout(5_000) { entered.await() }
     }
 
     suspend fun pendingCancellation(index: Int) {
@@ -100,6 +112,8 @@ class SyncPanelUiFixture : AutoCloseable {
     ).getOrThrow()
 
     override fun close() {
+        connectionCheckRelease?.complete(Unit)
+        kotlinx.coroutines.runBlocking { reopenedPanel?.stop() }
         fixture.close()
         storage.close()
     }

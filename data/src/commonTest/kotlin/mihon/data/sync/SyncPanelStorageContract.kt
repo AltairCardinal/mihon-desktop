@@ -85,6 +85,55 @@ import java.nio.file.Path as NioPath
 @Timeout(30)
 abstract class SyncPanelStorageContract {
     @Test
+    fun `reopened panel shows and resolves local conflicts before connection checking finishes`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                pending(storage, 1)
+                f.panel.stop()
+                val entered = CompletableDeferred<Unit>()
+                val release = CompletableDeferred<Unit>()
+                f.secure.nextSpaceRead = entered to release
+                val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+                val panel = SyncPanelController(f.runtime, storage.handler, scope)
+                try {
+                    withTimeout(5_000) { entered.await() }
+                    panel.dispatch(SyncPanelAction.Open)
+                    withTimeout(5_000) { panel.state.first { it.pendingTotal == 1L } }
+                    assertFalse(panel.state.value.loaded)
+                    val requests = f.git.server.requestCount
+                    val reads = f.secure.readCount.get()
+                    pending(storage, 1, offset = 1)
+                    withTimeout(5_000) { panel.state.first { it.pendingTotal == 2L } }
+                    for ((index, decision) in listOf(
+                        SyncCancellationDecision.KEEP_LOCAL,
+                        SyncCancellationDecision.CONFIRM,
+                    ).withIndex()) {
+                        val id = panel.state.value.pending.first().id
+                        panel.dispatch(SyncPanelAction.PrepareDecision(decision, SyncDecisionScope.ITEM, id))
+                        withTimeout(5_000) { panel.state.first { it.pendingTotal == 1L - index } }
+                        assertFalse(panel.state.value.loaded)
+                        assertFalse(release.isCompleted)
+                    }
+                    assertEquals(1, storage.manga.getLibraryManga().size)
+                    assertEquals(requests, f.git.server.requestCount)
+                    assertEquals(reads, f.secure.readCount.get())
+                    release.complete(Unit)
+                    panel.awaitIdle()
+                    assertEquals(0L, panel.state.value.pendingTotal)
+                    assertTrue(panel.state.value.loaded)
+                } finally {
+                    release.complete(Unit)
+                    panel.stop()
+                    scope.cancel()
+                }
+            }
+        }
+    }
+
+    @Test
     fun `local pending decisions commit and refresh without rereading secure credentials or contacting GitHub`() =
         runBlocking {
             open().use { storage ->

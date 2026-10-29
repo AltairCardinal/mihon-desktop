@@ -49,6 +49,27 @@ import java.util.concurrent.ConcurrentHashMap
 @OptIn(ExperimentalComposeUiApi::class)
 class SyncPanelOnboardingIntegrationTest {
     @Test
+    fun `connection checking still displays local conflicts and accepts a real pointer decision`() = runBlocking {
+        SyncPanelUiFixture().use { f ->
+            f.connectExistingPlain()
+            f.pendingCancellation(8)
+            f.reopenWhileCheckingConnection()
+            withScene(f) {
+                withTimeout(5_000) { f.panel.state.first { it.pendingTotal == 1L } }
+                assertFalse(f.panel.state.value.loaded)
+                val id = f.panel.state.value.pending.single().id
+                scroll("sync-pending-list", 2)
+                pointerClick("sync-remove-$id")
+                withTimeout(5_000) { f.panel.state.first { it.pendingTotal == 0L } }
+                assertFalse(f.panel.state.value.loaded)
+                assertNull(f.panel.state.value.confirmation)
+                render()
+                assertNull(find("sync-remove-$id"))
+            }
+        }
+    }
+
+    @Test
     fun `one pointer click directly applies production cancellation without a dialog`() = runBlocking {
         SyncPanelUiFixture().use { f ->
             f.connectExistingPlain()
