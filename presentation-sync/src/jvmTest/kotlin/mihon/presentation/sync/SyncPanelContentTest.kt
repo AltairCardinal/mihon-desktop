@@ -98,6 +98,37 @@ import java.util.Locale
 @OptIn(ExperimentalComposeUiApi::class)
 class SyncPanelContentTest {
     @Test
+    fun `one real pointer click on setup pending remove reaches the decision action`() = renderedEnglish(
+        connected().copy(
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.MERGING,
+            run = visualRun(SyncRunPhase.CHECKING).copy(state = SyncRunState.PARTIAL),
+            pendingTotal = 1,
+            pending = listOf(item(7)),
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        revealSetupControl("sync-remove-7")
+        val point = geometry("sync-remove-7").center
+        scene.sendPointerEvent(
+            androidx.compose.ui.input.pointer.PointerEventType.Press,
+            point,
+            button = androidx.compose.ui.input.pointer.PointerButton.Primary,
+        )
+        render()
+        scene.sendPointerEvent(
+            androidx.compose.ui.input.pointer.PointerEventType.Release,
+            point,
+            button = androidx.compose.ui.input.pointer.PointerButton.Primary,
+        )
+        render()
+        assertEquals(
+            listOf(SyncPanelAction.PrepareDecision(SyncCancellationDecision.CONFIRM, SyncDecisionScope.ITEM, 7)),
+            actions,
+        )
+    }
+
+    @Test
     fun `setup terminal review exposes the actual pending items and existing decision actions`() = renderedEnglish(
         connected().copy(
             page = SyncPanelPage.SETUP,

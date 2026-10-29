@@ -49,6 +49,29 @@ import java.util.concurrent.ConcurrentHashMap
 @OptIn(ExperimentalComposeUiApi::class)
 class SyncPanelOnboardingIntegrationTest {
     @Test
+    fun `one pointer click reaches production cancellation confirmation and removes the confirmed row`() = runBlocking {
+        SyncPanelUiFixture().use { f ->
+            f.connectExistingPlain()
+            f.pendingCancellation(7)
+            withScene(f) {
+                withTimeout(5_000) { f.panel.state.first { it.pendingTotal == 1L } }
+                val id = f.panel.state.value.pending.single().id
+                val requests = f.requestCount
+                scroll("sync-pending-list", 2)
+                pointerClick("sync-remove-$id")
+                awaitNode("sync-confirm-decision")
+                assertEquals(1L, f.panel.state.value.confirmation?.manga)
+                assertEquals(1L, f.panel.state.value.pendingTotal)
+                click("sync-confirm-decision")
+                withTimeout(5_000) { f.panel.state.first { it.pendingTotal == 0L } }
+                render()
+                assertNull(find("sync-remove-$id"))
+                assertEquals(requests, f.requestCount)
+            }
+        }
+    }
+
+    @Test
     fun `real UI dispatches invalid password to production controller without creating a plain space`() = runBlocking {
         MockWebServer().use { server ->
             val repository = """
@@ -278,6 +301,22 @@ class SyncPanelOnboardingIntegrationTest {
         }
         suspend fun click(tag: String) {
             requireNotNull(awaitNode(tag).config[SemanticsActions.OnClick].action).invoke()
+            render()
+        }
+        suspend fun pointerClick(tag: String) {
+            val bounds = awaitNode(tag).boundsInRoot
+            assertTrue(bounds.width > 0 && bounds.height > 0 && bounds.bottom <= 800)
+            scene.sendPointerEvent(
+                androidx.compose.ui.input.pointer.PointerEventType.Press,
+                bounds.center,
+                button = androidx.compose.ui.input.pointer.PointerButton.Primary,
+            )
+            render()
+            scene.sendPointerEvent(
+                androidx.compose.ui.input.pointer.PointerEventType.Release,
+                bounds.center,
+                button = androidx.compose.ui.input.pointer.PointerButton.Primary,
+            )
             render()
         }
         suspend fun text(value: String) {
