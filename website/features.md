@@ -33,6 +33,8 @@ Mihon’s reading and library experience gains a desktop home. Use the desktop i
 
 **Chapter action feedback:** On Windows, successful or skipped chapter actions on the manga detail page no longer show the success/skip/failure count snackbar. Failure feedback and the optional Add to library action remain available.
 
+**Reader toolbar shortcut:** While the reader viewport has keyboard focus, press **Space** to show or hide the top and bottom toolbars together without changing the page or chapter. This applies to all desktop reading modes, including left-to-right, right-to-left, automatic and Webtoon, with single-page or two-page layouts. This shortcut was accepted on Windows; native operation on other platforms is outside this acceptance.
+
 **Desktop fullscreen reader mode:** Press **F11** or click the fullscreen button to the left of the Settings button in the top reader bar to enter or exit fullscreen mode. Upon entering fullscreen, a corner tutorial bubble reminds the user of the F11 shortcut and automatically dismisses after 3 seconds (and is permanently suppressed once acknowledged). In fullscreen, the top and bottom navigation bars are hidden by default and reveal when the cursor hovers near the top edge (≤ 48dp) or bottom edge (within 80dp), hiding again when the pointer leaves. Pressing **Esc** exits fullscreen mode.
 
 **Windows comic continuity:** The displayed comic remains visible through fullscreen switches, including automatic single-page/two-page layout changes. Entering and exiting fullscreen in the accepted Windows reader case no longer produces the reported vertical jumps, black/white flashes, or top-left white block. Other platforms and fallback transitions that cannot retain a frame are outside this acceptance.

@@ -18,6 +18,16 @@ Public product releases and documentation updates are different events. A date h
 - Active sync sessions renew renewable GitHub credentials instead of retaining an expired access token for the whole session. Revoked authorization still requires reconnecting.
 - Accepted Windows preview: `0.11.24.6.5fbb6d9` (source `5fbb6d9582`); [integrated implementation](https://github.com/AltairCardinal/mihon-desktop/commit/0e9540b43b). Acceptance basis: project-owner confirmation on October 30, 2026 for these Windows sync fixes. This does not claim Android acceptance or a public release.
 
+## October 30, 2026 — Space toggles the reader toolbars
+
+**Accepted fix documentation · no public product release**
+
+- Space now shows or hides both reader toolbars in every desktop reading mode instead of turning a page, including the reported previous-page behavior in right-to-left reading. The reader viewport must have keyboard focus.
+- Original implementation: `597ffe15e2`; [main integration](https://github.com/AltairCardinal/mihon-desktop/commit/a22ee07e2f). The integration preserves the accepted patch unchanged.
+- The existing 37 focused keyboard, focus, navigation and fullscreen tests passed. This acceptance covers Windows desktop reading; other platforms were not accepted as natively tested. No new product version or package was allocated.
+
+Acceptance basis: the project owner explicitly accepted the reader shortcut in private chat on October 30, 2026 and requested main integration and a push.
+
 ## October 29, 2026 — Stable Windows fullscreen transitions
 
 **Accepted fix documentation · no public product release**
