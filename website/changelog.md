@@ -9,6 +9,15 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## October 30, 2026 — Windows sync connection and local decisions
+
+**Accepted fix documentation · no public product release**
+
+- The sync panel opens immediately, and existing or newly produced local conflicts remain visible while the initial connection check runs. Setup results expose pending items too.
+- A single keep/cancel decision applies locally without a confirmation dialog, credential rereads, or waiting for the full sync-state refresh. Batch decisions retain confirmation; download batches awaiting system confirmation are distinct from manual choices.
+- Active sync sessions renew renewable GitHub credentials instead of retaining an expired access token for the whole session. Revoked authorization still requires reconnecting.
+- Accepted Windows preview: `0.11.24.6.5fbb6d9` (source `5fbb6d9582`); [integrated implementation](https://github.com/AltairCardinal/mihon-desktop/commit/0e9540b43b). Acceptance basis: project-owner confirmation on October 30, 2026 for these Windows sync fixes. This does not claim Android acceptance or a public release.
+
 ## October 29, 2026 — Stable Windows fullscreen transitions
 
 **Accepted fix documentation · no public product release**
