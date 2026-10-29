@@ -85,6 +85,205 @@ import java.nio.file.Path as NioPath
 @Timeout(30)
 abstract class SyncPanelStorageContract {
     @Test
+    fun `reopened panel shows and resolves local conflicts before connection checking finishes`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                pending(storage, 1)
+                f.panel.stop()
+                val entered = CompletableDeferred<Unit>()
+                val release = CompletableDeferred<Unit>()
+                f.secure.nextSpaceRead = entered to release
+                val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+                val panel = SyncPanelController(f.runtime, storage.handler, scope)
+                try {
+                    withTimeout(5_000) { entered.await() }
+                    panel.dispatch(SyncPanelAction.Open)
+                    withTimeout(5_000) { panel.state.first { it.pendingTotal == 1L } }
+                    assertFalse(panel.state.value.loaded)
+                    val requests = f.git.server.requestCount
+                    val reads = f.secure.readCount.get()
+                    pending(storage, 1, offset = 1)
+                    withTimeout(5_000) { panel.state.first { it.pendingTotal == 2L } }
+                    for ((index, decision) in listOf(
+                        SyncCancellationDecision.KEEP_LOCAL,
+                        SyncCancellationDecision.CONFIRM,
+                    ).withIndex()) {
+                        val id = panel.state.value.pending.first().id
+                        panel.dispatch(SyncPanelAction.PrepareDecision(decision, SyncDecisionScope.ITEM, id))
+                        withTimeout(5_000) { panel.state.first { it.pendingTotal == 1L - index } }
+                        assertFalse(panel.state.value.loaded)
+                        assertFalse(release.isCompleted)
+                    }
+                    assertEquals(1, storage.manga.getLibraryManga().size)
+                    assertEquals(requests, f.git.server.requestCount)
+                    assertEquals(reads, f.secure.readCount.get())
+                    release.complete(Unit)
+                    panel.awaitIdle()
+                    assertEquals(0L, panel.state.value.pendingTotal)
+                    assertTrue(panel.state.value.loaded)
+                } finally {
+                    release.complete(Unit)
+                    panel.stop()
+                    scope.cancel()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `local pending decisions commit and refresh without rereading secure credentials or contacting GitHub`() =
+        runBlocking {
+            open().use { storage ->
+                SyncOnboardingFixture(storage).use { f ->
+                    f.existing("")
+                    f.authorize()
+                    f.begin()
+                    pending(storage, 2)
+                    f.panel.act(SyncPanelAction.Open)
+                    assertEquals(2L, f.panel.state.value.pendingTotal)
+                    val requests = f.git.server.requestCount
+                    val secureReads = f.secure.readCount.get()
+                    f.secure.readFailure = true
+                    try {
+                        for (decision in listOf(
+                            SyncCancellationDecision.KEEP_LOCAL,
+                            SyncCancellationDecision.CONFIRM,
+                        )) {
+                            val item = f.panel.state.value.pending.first()
+                            f.panel.act(SyncPanelAction.PrepareDecision(decision, SyncDecisionScope.ITEM, item.id))
+                            assertNull(f.panel.state.value.confirmation)
+                            f.panel.awaitIdle()
+                            val remaining = if (decision == SyncCancellationDecision.KEEP_LOCAL) 1L else 0L
+                            assertEquals(remaining, f.panel.state.value.pendingTotal)
+                            assertEquals(remaining.toInt(), f.panel.state.value.pending.size)
+                        }
+                        assertEquals(1, storage.manga.getLibraryManga().size)
+                        assertEquals(requests, f.git.server.requestCount)
+                        assertEquals(secureReads, f.secure.readCount.get())
+                    } finally {
+                        f.secure.readFailure = false
+                    }
+                }
+            }
+        }
+
+    @Test
+    fun `single local choices bypass a blocked full refresh without confirmation`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                pending(storage, 2)
+                f.panel.act(SyncPanelAction.Open)
+                val entered = CompletableDeferred<Unit>()
+                val release = CompletableDeferred<Unit>()
+                f.secure.nextSpaceRead = entered to release
+                try {
+                    f.panel.dispatch(SyncPanelAction.SetDeviceName("Blocked refresh"))
+                    withTimeout(5_000) { entered.await() }
+                    val requests = f.git.server.requestCount
+                    val secureReads = f.secure.readCount.get()
+                    for ((index, decision) in listOf(
+                        SyncCancellationDecision.KEEP_LOCAL,
+                        SyncCancellationDecision.CONFIRM,
+                    ).withIndex()) {
+                        val item = f.panel.state.value.pending.first()
+                        f.panel.dispatch(SyncPanelAction.PrepareDecision(decision, SyncDecisionScope.ITEM, item.id))
+                        withTimeout(5_000) { f.panel.state.first { it.pendingTotal == 1L - index } }
+                        assertNull(f.panel.state.value.confirmation)
+                        assertFalse(release.isCompleted)
+                    }
+                    assertEquals(1, storage.manga.getLibraryManga().size)
+                    assertEquals(requests, f.git.server.requestCount)
+                    assertEquals(secureReads, f.secure.readCount.get())
+                    release.complete(Unit)
+                    f.panel.awaitIdle()
+                    assertEquals(0L, f.panel.state.value.pendingTotal)
+                } finally {
+                    release.complete(Unit)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `toolbar opens immediately while production state refresh is waiting on secure storage`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                f.panel.act(SyncPanelAction.Close)
+                val entered = CompletableDeferred<Unit>()
+                val release = CompletableDeferred<Unit>()
+                f.secure.nextSpaceRead = entered to release
+                try {
+                    f.panel.dispatch(SyncPanelAction.SetDeviceName("Opening test"))
+                    withTimeout(5_000) { entered.await() }
+                    f.panel.dispatch(SyncPanelAction.Open)
+                    assertTrue(f.panel.state.value.visible, "opening must not wait for the queued storage read")
+                    assertEquals(SyncPanelPage.MAIN, f.panel.state.value.page)
+                    assertFalse(release.isCompleted)
+
+                    f.panel.dispatch(SyncPanelAction.Close)
+                    assertFalse(f.panel.state.value.visible, "closing must remain responsive during refresh")
+                    f.panel.dispatch(SyncPanelAction.Open)
+                    assertTrue(f.panel.state.value.visible)
+                    release.complete(Unit)
+                    f.panel.awaitIdle()
+                    assertTrue(f.panel.state.value.visible, "old queued close must not hide the new open request")
+                    assertEquals(SyncPanelPage.MAIN, f.panel.state.value.page)
+                    assertEquals("Opening test", f.panel.state.value.deviceName)
+                } finally {
+                    release.complete(Unit)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `closing during production refresh is immediate and a queued open cannot resurrect the panel`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                val entered = CompletableDeferred<Unit>()
+                val release = CompletableDeferred<Unit>()
+                f.secure.nextSpaceRead = entered to release
+                try {
+                    f.panel.dispatch(SyncPanelAction.SetDeviceName("Closing test"))
+                    withTimeout(5_000) { entered.await() }
+                    f.panel.dispatch(SyncPanelAction.Open)
+                    assertTrue(f.panel.state.value.visible)
+                    f.panel.dispatch(SyncPanelAction.Close)
+                    assertFalse(f.panel.state.value.visible)
+                    release.complete(Unit)
+                    f.panel.awaitIdle()
+                    assertFalse(f.panel.state.value.visible)
+                } finally {
+                    release.complete(Unit)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `stopped production panel ignores new toolbar open requests`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.panel.stop()
+                f.panel.dispatch(SyncPanelAction.Open)
+                assertFalse(f.panel.state.value.visible)
+            }
+        }
+    }
+
+    @Test
     fun `panel failed bulk retry freezes a new confirmation and never replays applied or invalidated rows`() =
         runBlocking {
             open().use { storage ->
@@ -1644,7 +1843,7 @@ abstract class SyncPanelStorageContract {
                         attemptNonce = "winner-attempt-nonce-0001",
                         stage = SyncInitializationStage.VERIFIED_EMPTY,
                     )
-                    val winnerResult = f.runtime.onboarding.transport("synthetic-token", winnerMaterial).initialize(
+                    val winnerResult = f.runtime.onboarding.transport({ "synthetic-token" }, winnerMaterial).initialize(
                         f.repository,
                         winnerMaterial.descriptor.spaceId,
                         winnerMaterial.descriptor.generation,

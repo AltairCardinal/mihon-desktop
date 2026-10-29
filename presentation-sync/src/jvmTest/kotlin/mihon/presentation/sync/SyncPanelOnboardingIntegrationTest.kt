@@ -49,6 +49,48 @@ import java.util.concurrent.ConcurrentHashMap
 @OptIn(ExperimentalComposeUiApi::class)
 class SyncPanelOnboardingIntegrationTest {
     @Test
+    fun `connection checking still displays local conflicts and accepts a real pointer decision`() = runBlocking {
+        SyncPanelUiFixture().use { f ->
+            f.connectExistingPlain()
+            f.pendingCancellation(8)
+            f.reopenWhileCheckingConnection()
+            withScene(f) {
+                withTimeout(5_000) { f.panel.state.first { it.pendingTotal == 1L } }
+                assertFalse(f.panel.state.value.loaded)
+                val id = f.panel.state.value.pending.single().id
+                scroll("sync-pending-list", 2)
+                pointerClick("sync-remove-$id")
+                withTimeout(5_000) { f.panel.state.first { it.pendingTotal == 0L } }
+                assertFalse(f.panel.state.value.loaded)
+                assertNull(f.panel.state.value.confirmation)
+                render()
+                assertNull(find("sync-remove-$id"))
+            }
+        }
+    }
+
+    @Test
+    fun `one pointer click directly applies production cancellation without a dialog`() = runBlocking {
+        SyncPanelUiFixture().use { f ->
+            f.connectExistingPlain()
+            f.pendingCancellation(7)
+            withScene(f) {
+                withTimeout(5_000) { f.panel.state.first { it.pendingTotal == 1L } }
+                val id = f.panel.state.value.pending.single().id
+                val requests = f.requestCount
+                scroll("sync-pending-list", 2)
+                pointerClick("sync-remove-$id")
+                withTimeout(5_000) { f.panel.state.first { it.pendingTotal == 0L } }
+                render()
+                assertNull(f.panel.state.value.confirmation)
+                assertNull(find("sync-confirm-decision"))
+                assertNull(find("sync-remove-$id"))
+                assertEquals(requests, f.requestCount)
+            }
+        }
+    }
+
+    @Test
     fun `real UI dispatches invalid password to production controller without creating a plain space`() = runBlocking {
         MockWebServer().use { server ->
             val repository = """
@@ -278,6 +320,22 @@ class SyncPanelOnboardingIntegrationTest {
         }
         suspend fun click(tag: String) {
             requireNotNull(awaitNode(tag).config[SemanticsActions.OnClick].action).invoke()
+            render()
+        }
+        suspend fun pointerClick(tag: String) {
+            val bounds = awaitNode(tag).boundsInRoot
+            assertTrue(bounds.width > 0 && bounds.height > 0 && bounds.bottom <= 800)
+            scene.sendPointerEvent(
+                androidx.compose.ui.input.pointer.PointerEventType.Press,
+                bounds.center,
+                button = androidx.compose.ui.input.pointer.PointerButton.Primary,
+            )
+            render()
+            scene.sendPointerEvent(
+                androidx.compose.ui.input.pointer.PointerEventType.Release,
+                bounds.center,
+                button = androidx.compose.ui.input.pointer.PointerButton.Primary,
+            )
             render()
         }
         suspend fun text(value: String) {

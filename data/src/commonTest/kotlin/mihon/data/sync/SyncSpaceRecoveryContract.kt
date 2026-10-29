@@ -959,7 +959,9 @@ abstract class SyncSpaceRecoveryContract {
                     open().use { sender ->
                         sender.connect("remote-source-actor", f.repository)
                         sender.favorite("/missing-source-object")
-                        val transport = f.runtime.onboarding.transport("synthetic-token", material, repositoryId = 99)
+                        val transport = f.runtime.onboarding.transport({
+                            "synthetic-token"
+                        }, material, repositoryId = 99)
                         val sent = SyncDatabaseExchange(
                             sender.handler,
                             sender.baseline,
@@ -1547,7 +1549,9 @@ abstract class SyncSpaceRecoveryContract {
                     open().use { sender ->
                         sender.connect("remote-repair-actor", f.repository)
                         sender.favorite("/source-repair-object")
-                        val transport = f.runtime.onboarding.transport("synthetic-token", material, repositoryId = 99)
+                        val transport = f.runtime.onboarding.transport({
+                            "synthetic-token"
+                        }, material, repositoryId = 99)
                         val sent = SyncDatabaseExchange(
                             sender.handler,
                             sender.baseline,
@@ -1561,7 +1565,7 @@ abstract class SyncSpaceRecoveryContract {
                         )
                         assertEquals(SyncRunStatus.SUCCESS, sent.status)
                     }
-                    val transport = f.runtime.onboarding.transport("synthetic-token", material, repositoryId = 99)
+                    val transport = f.runtime.onboarding.transport({ "synthetic-token" }, material, repositoryId = 99)
                     val snapshot = transport.readSnapshot(f.repository, "space", 1).getOrThrow()
                     val entry = snapshot.batches.single()
                     // A prior transient validator failure is persisted with the actual immutable remote body.

@@ -215,6 +215,7 @@ class SyncRuntime(
             endpoints.apiBaseUrl,
             SyncSetupStorage(secureStore),
             SyncSnapshotManifestStore(handler),
+            clock,
         )
 
     internal fun accountHttpRequestGate(accountId: Long) = SyncAccountHttpRequestGate(runStore, accountId, clock)
@@ -298,7 +299,9 @@ class SyncRuntime(
                 if (credentials.read() == null) return@withLock SyncRecoveryAuthorizationCheck(required = true)
                 val session = onboarding.session(stored?.accountId)
                 val credential = requireNotNull(credentials.read())
-                require(credential.credential.accessToken == session.token) { "sync credential changed" }
+                require(credentials.authorizationEpoch.value == session.authorizationEpoch) {
+                    "sync credential changed"
+                }
                 if (stored != null) {
                     onboarding.storage.updateRecoveryObservation(stored) {
                         it.copy(
@@ -405,7 +408,7 @@ class SyncRuntime(
             onboarding.verifyRepository(session, stored.repository(), stored.repositoryId)
             val material = stored.material.material()
             onboarding.transport(
-                session.token,
+                session.accessToken,
                 material,
                 repositoryId = stored.repositoryId,
                 requestGate = accountHttpRequestGate(stored.accountId),
@@ -937,7 +940,9 @@ class SyncRuntime(
         return try {
             val session = onboarding.session(stored.accountId)
             authorizationCredentialRevision =
-                credentials.read()?.takeIf { it.credential.accessToken == session.token }?.revision
+                credentials.read()?.takeIf {
+                    credentials.authorizationEpoch.value == session.authorizationEpoch
+                }?.revision
             authorizationConfirmed = authorizationCredentialRevision != null
             val inventory = session.http.authorizedRepositoryObjects(stored.accountId)
             val matches = inventory.filter { it["id"]?.jsonPrimitive?.longOrNull == stored.repositoryId }
@@ -957,7 +962,7 @@ class SyncRuntime(
                         onboarding.verifyRepository(session, candidate, stored.repositoryId)
                         val material = stored.material.material()
                         onboarding.transport(
-                            session.token,
+                            session.accessToken,
                             material,
                             repositoryId = stored.repositoryId,
                             requestGate = accountHttpRequestGate(stored.accountId),
@@ -988,7 +993,7 @@ class SyncRuntime(
             }
             onboarding.verifyRepository(session, connection.repository, stored.repositoryId)
             onboarding.transport(
-                session.token,
+                session.accessToken,
                 stored.material.material(),
                 repositoryId = stored.repositoryId,
                 requestGate = accountHttpRequestGate(stored.accountId),
@@ -1241,7 +1246,7 @@ class SyncRuntime(
                 baseline,
                 projector,
                 onboarding.transport(
-                    session.token,
+                    session.accessToken,
                     material,
                     repositoryId = stored.repositoryId,
                     manifestStore = SyncSnapshotManifestStore(handler),

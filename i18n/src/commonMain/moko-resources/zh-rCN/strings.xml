@@ -1939,8 +1939,8 @@
     <string name="sync_projection_pending">有数据尚未完成核对，请稍后重试同步</string>
     <string name="sync_terminal_partial">本次同步已结束，部分数据待处理</string>
     <string name="sync_terminal_cancelled">本次同步已取消</string>
-    <string name="sync_terminal_pending_receipts">%1$d 个下载批次待确认，涉及 %2$d 条变动</string>
-    <string name="sync_terminal_pending_explanation">批次内变动仍待核对，不代表这些变动都已失败</string>
+    <string name="sync_terminal_pending_receipts">系统确认尚未完成：%1$d 个下载批次，共 %2$d 条变动</string>
+    <string name="sync_terminal_pending_explanation">无需逐批确认。需要你决定的内容会单独列出；批次尚未确认不代表其中的变动都已失败。</string>
     <string name="sync_terminal_source_fields">上次有 %1$d 项核对内容因漫画源不可用而未能恢复</string>
     <string name="sync_terminal_source_retry">请重试同步，重新检查并恢复已保存的数据</string>
     <string name="sync_failure_log_count">本次有 %1$d 项无法还原，详情已保存至失败日志</string>

@@ -18,6 +18,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.yield
 import mihon.data.sync.auth.DiscoveredSyncSpace
 import mihon.data.sync.auth.EmptySyncRepositoryCandidate
@@ -45,6 +47,7 @@ import mihon.domain.sync.runtime.SyncRunStatus
 import mihon.domain.sync.runtime.SyncTrigger
 import tachiyomi.data.DatabaseHandler
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 class SyncPanelController(
     private val runtime: SyncRuntime,
@@ -58,8 +61,15 @@ class SyncPanelController(
     override val state: StateFlow<SyncPanelState> = mutableState
     override val diagnosticDirectory: String? get() = runtime.diagnosticDirectory?.toString()
     private val commands = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+    private val localCommands = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+
+    // Only database reads/publication share this lock; credentials and recovery never hold it.
+    private val pendingMutex = Mutex()
     private val refreshQueued = AtomicBoolean(false)
+    private val pendingRefreshQueued = AtomicBoolean(false)
+    private val initialPendingRefreshQueued = AtomicBoolean(false)
     private val deviceBrowserOpened = AtomicBoolean(false)
+    private val visibilityVersion = AtomicLong()
     private var references = linkedMapOf<Long, String>()
     private var selectedBindings = emptyMap<Long, String>()
     private var anchor: Long? = null
@@ -98,19 +108,24 @@ class SyncPanelController(
     private var observedCompletion = runtime.coordinator.activity.value.completion
 
     init {
-        panelScope.launch {
-            for (command in commands) {
-                try {
-                    command()
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (failure: Exception) {
-                    mutableState.update { it.copy(problem = failure.syncProblem(), setupBusy = false, loading = false) }
+        for (queue in listOf(commands, localCommands)) {
+            panelScope.launch {
+                for (command in queue) {
+                    try {
+                        command()
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (failure: Exception) {
+                        mutableState.update {
+                            it.copy(problem = failure.syncProblem(), setupBusy = false, loading = false)
+                        }
+                    }
                 }
             }
         }
         panelScope.launch {
             handler.subscribeToOneOrNull { sync_journalQueries.getActiveSpace() }.collectLatest { connection ->
+                queueInitialPendingRefresh()
                 queueRefresh()
                 if (connection != null) {
                     combine(
@@ -123,7 +138,10 @@ class SyncPanelController(
                         handler.subscribeToOne {
                             sync_importQueries.countPendingImports(connection.space_id, connection.generation)
                         },
-                    ) { _, _, _ -> Unit }.collect { queueRefresh() }
+                    ) { _, _, _ -> Unit }.collect {
+                        queueInitialPendingRefresh()
+                        queuePendingRefresh()
+                    }
                 }
             }
         }
@@ -232,8 +250,45 @@ class SyncPanelController(
         }
     }
 
+    @Synchronized
     override fun dispatch(action: SyncPanelAction) {
-        enqueue { handle(action) }
+        if (!lifetime.isActive) return
+        if (action is SyncPanelAction.PrepareDecision && action.scope == SyncDecisionScope.ITEM) {
+            val current = state.value
+            val connection = current.connection ?: return
+            val item = current.pending.firstOrNull { it.id == action.itemId } ?: return
+            localCommands.trySend {
+                pendingMutex.withLock {
+                    val latest = state.value
+                    if (latest.connection != connection || latest.confirmation != null ||
+                        latest.bulk?.let { it.running || it.remaining > 0 } == true ||
+                        switchIntent != null || latest.pendingRecoveryPurpose != null
+                    ) {
+                        return@withLock
+                    }
+                    runtime.projector.decide(connection.spaceId, connection.generation, item, action.decision)
+                    refreshPendingLocked(updateReferences = false)
+                }
+                queuePendingRefresh()
+            }
+            return
+        }
+        val version = if (action == SyncPanelAction.Open || action == SyncPanelAction.Close) {
+            visibilityVersion.incrementAndGet()
+        } else {
+            visibilityVersion.get()
+        }
+        // Presentation must not wait behind storage reads, reports or synchronization commands.
+        when (action) {
+            SyncPanelAction.Open -> mutableState.update {
+                it.copy(visible = true, page = SyncPanelPage.MAIN, notice = null)
+            }
+            SyncPanelAction.Close -> mutableState.update { it.copy(visible = false) }
+            else -> Unit
+        }
+        enqueue {
+            if (action != SyncPanelAction.Open || version == visibilityVersion.get()) handle(action, version)
+        }
     }
 
     override fun claimDeviceCodeBrowser(code: GitHubDeviceCode): Boolean =
@@ -258,10 +313,14 @@ class SyncPanelController(
     suspend fun stop() {
         lifetime.cancelAndJoin()
         commands.cancel()
+        localCommands.cancel()
         mutableState.value = SyncPanelState()
     }
 
     internal suspend fun awaitIdle() {
+        val localReady = CompletableDeferred<Unit>()
+        localCommands.send { localReady.complete(Unit) }
+        localReady.await()
         val ready = CompletableDeferred<Unit>()
         enqueue { ready.complete(Unit) }
         ready.await()
@@ -281,6 +340,158 @@ class SyncPanelController(
                 refreshQueued.set(false)
                 refresh(source = SyncDiagnosticRefreshSource.SUBSCRIPTION)
             }
+        }
+    }
+
+    /** Bootstrap local rows even while the first full connection check is suspended. */
+    private fun queueInitialPendingRefresh() {
+        if (!state.value.loaded && initialPendingRefreshQueued.compareAndSet(false, true)) {
+            localCommands.trySend {
+                initialPendingRefreshQueued.set(false)
+                pendingMutex.withLock {
+                    refreshPendingLocked(updateReferences = false, initial = true)
+                }
+            }
+        }
+    }
+
+    /** Local choice feedback must not reread credentials, recovery discovery or reports. */
+    private fun queuePendingRefresh() {
+        if (pendingRefreshQueued.compareAndSet(false, true)) {
+            enqueue {
+                pendingRefreshQueued.set(false)
+                refreshPending()
+            }
+        }
+    }
+
+    private data class PendingQueue(
+        val references: LinkedHashMap<Long, String>,
+        val items: List<mihon.data.sync.inbox.SyncPendingItem>,
+        val membership: Long,
+        val favorites: Long,
+        val follows: Long,
+        val reading: Long,
+        val imports: Long,
+        val bulk: SyncBulkStatus?,
+    )
+
+    private suspend fun isCurrentLocalConnection(connection: SyncConnection): Boolean = handler.await {
+        sync_journalQueries.getActiveSpace().executeAsOneOrNull()?.let {
+            it.space_id == connection.spaceId && it.generation == connection.generation
+        } == true
+    }
+
+    private suspend fun readPendingQueue(connection: SyncConnection?): PendingQueue? {
+        if (connection != null && !isCurrentLocalConnection(connection)) return null
+        var membership = 0L
+        var favorites = 0L
+        var follows = 0L
+        var reading = 0L
+        var imports = 0L
+        val references = linkedMapOf<Long, String>()
+        val items = mutableListOf<mihon.data.sync.inbox.SyncPendingItem>()
+        if (connection != null) {
+            handler.await {
+                sync_inboxQueries.getPendingReferences(connection.spaceId, connection.generation)
+                    .executeAsList().forEach { references[it._id] = it.binding }
+                sync_journalQueries.getPendingCategoryCounts(connection.spaceId, connection.generation)
+                    .executeAsList().forEach {
+                        when (it.category) {
+                            "FAVORITE" -> {
+                                favorites += it.count
+                                membership += it.count
+                            }
+                            "FOLLOW" -> {
+                                follows += it.count
+                                membership += it.count
+                            }
+                            "READING" -> reading += it.count
+                            else -> membership += it.count
+                        }
+                    }
+                imports = sync_importQueries.countPendingImports(connection.spaceId, connection.generation)
+                    .executeAsOne()
+            }
+            while (items.size < minOf(loadedCount, references.size)) {
+                val page = runtime.projector.pending(
+                    connection.spaceId,
+                    connection.generation,
+                    100,
+                    items.size.toLong(),
+                )
+                if (page.isEmpty()) break
+                items.addAll(page)
+            }
+        }
+        val savedBulk = connection?.let { runtime.preferences.activeBulkJob(it.spaceId, it.generation).get() }
+            ?.takeIf { it.isNotEmpty() }?.let { id ->
+                handler.await { sync_inboxQueries.getBulkJob(id).executeAsOneOrNull() }
+                    ?.takeIf { it.space_id == connection?.spaceId && it.generation == connection.generation }
+                    ?.let {
+                        val progress = runtime.projector.bulkProgress(id)
+                        progress.toStatus(id, progress.queued > 0 && bulkJob?.isActive == true)
+                    }
+            }
+        return PendingQueue(references, items, membership, favorites, follows, reading, imports, savedBulk)
+    }
+
+    private suspend fun refreshPending() = pendingMutex.withLock {
+        refreshPendingLocked(updateReferences = true)
+    }
+
+    private suspend fun refreshPendingLocked(updateReferences: Boolean, initial: Boolean = false) {
+        if (initial && state.value.loaded) return
+        // This is only the local DB projection. loaded remains false until the full check finishes.
+        val connection = if (initial) {
+            handler.await {
+                sync_journalQueries.getActiveSpace().executeAsOneOrNull()?.let {
+                    SyncConnection(
+                        it.space_id,
+                        it.generation,
+                        mihon.domain.sync.transport.SyncRepository(
+                            it.repository_owner,
+                            it.repository_name,
+                            it.repository_branch,
+                        ),
+                        it.exchange_enabled && runtime.repositoryScope.accepts(it.repository_name),
+                    )
+                }
+            }
+        } else {
+            state.value.connection ?: return
+        }
+        val queue = readPendingQueue(connection) ?: run {
+            queueRefresh()
+            return
+        }
+        if (updateReferences) {
+            references = queue.references
+            selectedBindings = selectedBindings.filter { (id, binding) -> references[id] == binding }
+        }
+        mutableState.update {
+            if (initial) {
+                if (it.loaded) return@update it
+            } else if (it.connection != connection) {
+                return@update it
+            }
+            it.copy(
+                connection = connection,
+                queuedMembership = queue.membership,
+                queuedFavorites = queue.favorites,
+                queuedFollows = queue.follows,
+                queuedReading = queue.reading,
+                importRemaining = queue.imports,
+                pendingTotal = queue.references.size.toLong(),
+                pending = queue.items,
+                hasMore = queue.items.size < queue.references.size,
+                selected = if (updateReferences) {
+                    selectedBindings.keys
+                } else {
+                    it.selected.filter { id -> queue.references[id] != null }.toSet()
+                },
+                bulk = queue.bulk,
+            )
         }
     }
 
@@ -382,47 +593,6 @@ class SyncPanelController(
                 )
             }
         }
-        var membership = 0L
-        var favorites = 0L
-        var follows = 0L
-        var reading = 0L
-        var imports = 0L
-        references = linkedMapOf()
-        val items = mutableListOf<mihon.data.sync.inbox.SyncPendingItem>()
-        if (connection != null) {
-            handler.await {
-                sync_inboxQueries.getPendingReferences(connection.spaceId, connection.generation)
-                    .executeAsList().forEach { references[it._id] = it.binding }
-                sync_journalQueries.getPendingCategoryCounts(connection.spaceId, connection.generation)
-                    .executeAsList().forEach {
-                        when (it.category) {
-                            "FAVORITE" -> {
-                                favorites += it.count
-                                membership += it.count
-                            }
-                            "FOLLOW" -> {
-                                follows += it.count
-                                membership += it.count
-                            }
-                            "READING" -> reading += it.count
-                            else -> membership += it.count
-                        }
-                    }
-                imports = sync_importQueries.countPendingImports(connection.spaceId, connection.generation)
-                    .executeAsOne()
-            }
-            while (items.size < minOf(loadedCount, references.size)) {
-                val page = runtime.projector.pending(
-                    connection.spaceId,
-                    connection.generation,
-                    100,
-                    items.size.toLong(),
-                )
-                if (page.isEmpty()) break
-                items.addAll(page)
-            }
-        }
-        selectedBindings = selectedBindings.filter { (id, binding) -> references[id] == binding }
         val recovery = recoveryRead { runtime.spaceRecovery() }
         val recoveryObservation = recoveryRead { runtime.recoveryObservation() }
         val pendingSwitch = try {
@@ -451,12 +621,6 @@ class SyncPanelController(
         } else {
             maxOf(prefs.scheduleAnchor.get(), prefs.lastAttempt.get(), prefs.lastSuccess.get()) + period * 60_000L
         }
-        val savedBulk = connection?.let { prefs.activeBulkJob(it.spaceId, it.generation).get() }
-            ?.takeIf { it.isNotEmpty() }?.let { id ->
-                handler.await { sync_inboxQueries.getBulkJob(id).executeAsOneOrNull() }
-                    ?.takeIf { it.space_id == connection?.spaceId && it.generation == connection.generation }
-                    ?.let { runtime.projector.bulkProgress(id).toStatus(id, bulkJob?.isActive == true) }
-            }
         val activeRun = connection?.let { runtime.runStore.active(it.spaceId, it.generation) }
         val run = activeRun ?: connection?.let {
             runtime.runStore.latest(it.spaceId, it.generation)?.takeIf { latest ->
@@ -482,90 +646,99 @@ class SyncPanelController(
         val failureLog = run?.let { runtime.failureLogFor(it, forceFailureLog) }
         val persistedProblem = run?.takeIf { it.state in setOf(SyncRunState.FAILED, SyncRunState.BLOCKED) }
             ?.let(::persistedProblem)
-        mutableState.update {
-            it.copy(
-                loaded = true,
-                recoveryBindingStatus = connectionFacts.decode,
-                recoveryCredentialAvailable = credentialAvailable,
-                externalRecoveryOrigin = runtime.externalRecoveryOrigin(),
-                authRetryAtMillis = runtime.authorizationNotBeforeMillis(),
-                recoveryStep = workflow?.flow?.step ?: it.recoveryStep,
-                recoveryOutcome = workflow?.flow?.outcome ?: it.recoveryOutcome,
-                recoveryFailure = if (
-                    workflow?.flow?.outcome in setOf(
-                        SyncRecoveryOutcome.ORIGINAL_VERIFIED,
-                        SyncRecoveryOutcome.NEW_SCOPE_VERIFIED_WITH_OLD_REMAINING,
-                    )
-                ) {
-                    null
-                } else {
-                    workflow?.flow?.failure
-                        ?: it.recoveryFailure
-                },
-                recoveryRepairReport = workflow?.report ?: it.recoveryRepairReport,
-                recoveryStepFailure = workflow?.flow?.secondaryFailure ?: it.recoveryStepFailure,
-                recoveryOfficialAction = workflow?.flow?.officialAction ?: it.recoveryOfficialAction,
-                recoveryPlatformResult = workflow?.flow?.request?.result ?: it.recoveryPlatformResult,
-                recoveryConditionsVerified = workflow?.flow?.conditionsVerified ?: it.recoveryConditionsVerified,
-                recoveryExternalScopes = workflow?.externalScopes ?: it.recoveryExternalScopes,
-                recoveryRepairMadeNoProgress = workflow?.flow?.repairMadeNoProgress ?: it.recoveryRepairMadeNoProgress,
-                recoveryOldScopes = workflow?.oldScopes ?: it.recoveryOldScopes,
-                recoveryPlatformRequest = if (
-                    workflow?.flow != null
-                ) {
-                    workflow.flow.request
-                } else {
-                    it.recoveryPlatformRequest
-                },
-                recoveryRestartRequired = workflow?.flow?.request?.restartRequired == true,
-                connection = connection,
-                queuedMembership = membership,
-                queuedFavorites = favorites,
-                queuedFollows = follows,
-                queuedReading = reading,
-                pendingTotal = references.size.toLong(),
-                pending = items,
-                hasMore = items.size < references.size,
-                loading = false,
-                selected = selectedBindings.keys,
-                bulk = savedBulk,
-                startup = prefs.startup.get(),
-                periodMinutes = period,
-                deviceName = prefs.deviceName.get(),
-                lastSuccessMillis = prefs.lastSuccess.get(),
-                nowMillis = clock(),
-                nextSyncAtMillis = if (recovery != null) 0L else next,
-                recovery = recovery?.copy(busy = recoveryJob?.isActive == true),
-                recoveryAuthorization = if (authJob?.isActive == true) {
-                    it.recoveryAuthorization
-                } else {
-                    recoveryObservation?.authorization ?: SyncRecoveryAuthorization.IDLE
-                },
-                pendingRecoveryPurpose = pendingSwitch?.let { intent ->
-                    if (intent.purpose == SyncSpaceSwitchPurpose.CREATE) {
-                        SyncRecoveryContinuation.CREATE
+        pendingMutex.withLock {
+            val queue = readPendingQueue(connection) ?: run {
+                queueRefresh()
+                return
+            }
+            references = queue.references
+            selectedBindings = selectedBindings.filter { (id, binding) -> references[id] == binding }
+            mutableState.update {
+                it.copy(
+                    loaded = true,
+                    recoveryBindingStatus = connectionFacts.decode,
+                    recoveryCredentialAvailable = credentialAvailable,
+                    externalRecoveryOrigin = runtime.externalRecoveryOrigin(),
+                    authRetryAtMillis = runtime.authorizationNotBeforeMillis(),
+                    recoveryStep = workflow?.flow?.step ?: it.recoveryStep,
+                    recoveryOutcome = workflow?.flow?.outcome ?: it.recoveryOutcome,
+                    recoveryFailure = if (
+                        workflow?.flow?.outcome in setOf(
+                            SyncRecoveryOutcome.ORIGINAL_VERIFIED,
+                            SyncRecoveryOutcome.NEW_SCOPE_VERIFIED_WITH_OLD_REMAINING,
+                        )
+                    ) {
+                        null
                     } else {
-                        SyncRecoveryContinuation.CONNECT
-                    }
-                },
-                canCancelRecoverySwitch = pendingSwitch?.stage == SyncSpaceSwitchStage.PREPARING,
-                canChangeSpace = canChangeSpace,
-                importRemaining = imports,
-                importPaused = prefs.importPaused.get(),
-                records = runtime.records().asReversed(),
-                run = run?.withObservedCounts(it.run),
-                runSource = when {
-                    activeRun != null -> SyncPanelRunSource.ACTIVE
-                    run != null -> SyncPanelRunSource.LATEST
-                    else -> null
-                },
-                terminalSummary = terminalSummary,
-                failureLog = failureLog,
-                progress = run?.let { runtime.progressFor(it.runId) ?: restoredProgress(it) },
-                logs = logs,
-                logsHasMore = run != null && logLimit < 500L && logs.size.toLong() == logLimit,
-                problem = persistedProblem ?: it.problem,
-            )
+                        workflow?.flow?.failure
+                            ?: it.recoveryFailure
+                    },
+                    recoveryRepairReport = workflow?.report ?: it.recoveryRepairReport,
+                    recoveryStepFailure = workflow?.flow?.secondaryFailure ?: it.recoveryStepFailure,
+                    recoveryOfficialAction = workflow?.flow?.officialAction ?: it.recoveryOfficialAction,
+                    recoveryPlatformResult = workflow?.flow?.request?.result ?: it.recoveryPlatformResult,
+                    recoveryConditionsVerified = workflow?.flow?.conditionsVerified ?: it.recoveryConditionsVerified,
+                    recoveryExternalScopes = workflow?.externalScopes ?: it.recoveryExternalScopes,
+                    recoveryRepairMadeNoProgress = workflow?.flow?.repairMadeNoProgress
+                        ?: it.recoveryRepairMadeNoProgress,
+                    recoveryOldScopes = workflow?.oldScopes ?: it.recoveryOldScopes,
+                    recoveryPlatformRequest = if (
+                        workflow?.flow != null
+                    ) {
+                        workflow.flow.request
+                    } else {
+                        it.recoveryPlatformRequest
+                    },
+                    recoveryRestartRequired = workflow?.flow?.request?.restartRequired == true,
+                    connection = connection,
+                    queuedMembership = queue.membership,
+                    queuedFavorites = queue.favorites,
+                    queuedFollows = queue.follows,
+                    queuedReading = queue.reading,
+                    pendingTotal = references.size.toLong(),
+                    pending = queue.items,
+                    hasMore = queue.items.size < references.size,
+                    loading = false,
+                    selected = selectedBindings.keys,
+                    bulk = queue.bulk,
+                    startup = prefs.startup.get(),
+                    periodMinutes = period,
+                    deviceName = prefs.deviceName.get(),
+                    lastSuccessMillis = prefs.lastSuccess.get(),
+                    nowMillis = clock(),
+                    nextSyncAtMillis = if (recovery != null) 0L else next,
+                    recovery = recovery?.copy(busy = recoveryJob?.isActive == true),
+                    recoveryAuthorization = if (authJob?.isActive == true) {
+                        it.recoveryAuthorization
+                    } else {
+                        recoveryObservation?.authorization ?: SyncRecoveryAuthorization.IDLE
+                    },
+                    pendingRecoveryPurpose = pendingSwitch?.let { intent ->
+                        if (intent.purpose == SyncSpaceSwitchPurpose.CREATE) {
+                            SyncRecoveryContinuation.CREATE
+                        } else {
+                            SyncRecoveryContinuation.CONNECT
+                        }
+                    },
+                    canCancelRecoverySwitch = pendingSwitch?.stage == SyncSpaceSwitchStage.PREPARING,
+                    canChangeSpace = canChangeSpace,
+                    importRemaining = queue.imports,
+                    importPaused = prefs.importPaused.get(),
+                    records = runtime.records().asReversed(),
+                    run = run?.withObservedCounts(it.run),
+                    runSource = when {
+                        activeRun != null -> SyncPanelRunSource.ACTIVE
+                        run != null -> SyncPanelRunSource.LATEST
+                        else -> null
+                    },
+                    terminalSummary = terminalSummary,
+                    failureLog = failureLog,
+                    progress = run?.let { runtime.progressFor(it.runId) ?: restoredProgress(it) },
+                    logs = logs,
+                    logsHasMore = run != null && logLimit < 500L && logs.size.toLong() == logLimit,
+                    problem = persistedProblem ?: it.problem,
+                )
+            }
         }
     }
 
@@ -660,7 +833,7 @@ class SyncPanelController(
         }
     }
 
-    private suspend fun handle(action: SyncPanelAction) {
+    private suspend fun handle(action: SyncPanelAction, requestVisibilityVersion: Long = visibilityVersion.get()) {
         when (action) {
             is SyncPanelAction.ExecuteRecoveryAction -> executeRecoveryAction(action.action)
             is SyncPanelAction.RecoveryPlatformCompleted -> completeRecoveryPlatform(action)
@@ -809,7 +982,6 @@ class SyncPanelController(
             }
             SyncPanelAction.Open -> {
                 runtime.diagnostics.record(SyncDiagnosticEventKind.OPEN)
-                mutableState.update { it.copy(visible = true, page = SyncPanelPage.MAIN, notice = null) }
                 refresh(forceFailureLog = true, source = SyncDiagnosticRefreshSource.OPEN)
                 if (restoreBoundRepositoryPreparation()) {
                     if (state.value.repositoryPreparedName != null) {
@@ -820,6 +992,12 @@ class SyncPanelController(
                 }
             }
             SyncPanelAction.Close -> {
+                synchronized(this) {
+                    // Back may arrive here directly; an older close cannot hide a later toolbar open.
+                    if (requestVisibilityVersion == visibilityVersion.get()) {
+                        mutableState.update { it.copy(visible = false) }
+                    }
+                }
                 runtime.diagnostics.record(SyncDiagnosticEventKind.CLOSE)
                 panelSession++
                 invalidateCreateContext()
@@ -831,7 +1009,6 @@ class SyncPanelController(
                 clearSelection()
                 mutableState.update {
                     it.copy(
-                        visible = false,
                         notice = null,
                         question = null,
                         deviceCode = null,
@@ -877,7 +1054,7 @@ class SyncPanelController(
                         refresh()
                     }
                 } else if (state.value.page == SyncPanelPage.MAIN) {
-                    handle(SyncPanelAction.Close)
+                    handle(SyncPanelAction.Close, requestVisibilityVersion)
                 } else {
                     cancelRecovery()
                     if (state.value.page == SyncPanelPage.SETUP) cancelAuthorization()
@@ -1037,8 +1214,10 @@ class SyncPanelController(
             SyncPanelAction.ConfirmDecision -> {
                 val confirmation = state.value.confirmation ?: return
                 val job = handler.await { sync_inboxQueries.getBulkJob(confirmation.jobId).executeAsOne() }
-                val connection = runtime.connection()
-                if (job.space_id != connection?.spaceId || job.generation != connection.generation) {
+                val connection = state.value.connection
+                if (connection == null || job.space_id != connection.spaceId ||
+                    job.generation != connection.generation || !isCurrentLocalConnection(connection)
+                ) {
                     cancelConfirmation()
                     return
                 }
@@ -1054,7 +1233,7 @@ class SyncPanelController(
             SyncPanelAction.ResumeBulk -> state.value.bulk?.let { startBulk(it.jobId) }
             SyncPanelAction.LoadMore -> {
                 loadedCount += 100
-                refresh()
+                refreshPending()
             }
             SyncPanelAction.LoadMoreLogs -> {
                 logLimit = (logLimit + 20).coerceAtMost(500L)
@@ -2216,7 +2395,7 @@ class SyncPanelController(
                     storage.saveRepositoryCreation(next, current)
                     current = next
                 }
-                val manager = runtime.onboarding.repositoryManager(session.token, session.account.id)
+                val manager = runtime.onboarding.repositoryManager(session)
                 val result = if (manual) {
                     manager.confirmManualSelection(requireNotNull(current), persist)
                 } else {
@@ -2368,7 +2547,7 @@ class SyncPanelController(
                         SyncDiscoveryProblem.ACCOUNT_CHANGED,
                     )
                 }
-                val manager = runtime.onboarding.repositoryManager(session.token, session.account.id)
+                val manager = runtime.onboarding.repositoryManager(session)
                 val creation = runtime.onboarding.storage.repositoryCreation(target.account.id)
                 val failure = if (authorize) {
                     manager.authorizeRepository(target, creation)
@@ -2579,7 +2758,7 @@ class SyncPanelController(
         storage.saveRepositoryCreation(proposal, recorded)
         recorded = proposal
         val session = runtime.onboarding.session(candidate.account.id)
-        val result = runtime.onboarding.repositoryManager(session.token, session.account.id)
+        val result = runtime.onboarding.repositoryManager(session)
             .verifyManualSelection(proposal) { next ->
                 storage.saveRepositoryCreation(next, recorded)
                 recorded = next
@@ -3361,13 +3540,18 @@ class SyncPanelController(
         bulkJob = panelScope.launch {
             try {
                 val job = handler.await { sync_inboxQueries.getBulkJob(id).executeAsOne() }
-                if (runtime.activeSwitch() != null) return@launch
+                // Preparing a switch cancels this job before changing the local active identity.
+                if (switchIntent != null || state.value.pendingRecoveryPurpose != null) return@launch
                 do {
-                    val connection = runtime.connection()
-                    if (job.space_id != connection?.spaceId || job.generation != connection.generation) break
+                    val connection = state.value.connection
+                    if (connection == null || job.space_id != connection.spaceId ||
+                        job.generation != connection.generation || !isCurrentLocalConnection(connection)
+                    ) {
+                        break
+                    }
                     val progress = runtime.projector.processBulk(id)
                     enqueue {
-                        refresh()
+                        refreshPending()
                         if (progress.queued == 0L && state.value.visible &&
                             state.value.connection?.spaceId == job.space_id &&
                             state.value.connection?.generation == job.generation
@@ -3378,7 +3562,7 @@ class SyncPanelController(
                     yield()
                 } while (progress.queued > 0)
             } finally {
-                queueRefresh()
+                queuePendingRefresh()
             }
         }
     }
