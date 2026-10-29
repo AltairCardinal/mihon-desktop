@@ -6,7 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -lc 'exec bash \"$(git rev-parse --show-toplevel)/.codex/hooks/enforce-build-script.sh\"'"
+            "command": "bash -lc 'exec bash \"$(git rev-parse --show-toplevel)/.codex/hooks/enforce-build-script.sh\"'",
+            "commandWindows": "$d = (Get-Location).ProviderPath; while ($d -and -not (Test-Path -LiteralPath (Join-Path $d '.git'))) { $parent = [System.IO.Directory]::GetParent($d); if ($null -eq $parent) { $d = $null } else { $d = $parent.FullName } }; if (-not $d) { exit 0 }; $hook = Join-Path $d '.codex/hooks/native_gate.ps1'; if (-not (Test-Path -LiteralPath $hook -PathType Leaf)) { exit 0 }; & $hook; exit $LASTEXITCODE"
           }
         ]
       }
