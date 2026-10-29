@@ -21,6 +21,8 @@ The initial guide carries forward the repository’s already-public README and g
 
 ## Desktop reading {#desktop-reading}
 
+**Windows library categories:** The system default category is labeled **默认** in Simplified Chinese and **default** in English. Hover over the category bar and use the mouse wheel to scroll it horizontally without changing the selected category. Scrolling stops at either end; moving the pointer outside the bar leaves other content's scrolling unchanged.
+
 Mihon’s reading and library experience gains a desktop home. Use the desktop interface to manage your library and downloads, open chapters, and choose a reading mode and direction.
 
 **Try it:** [build a desktop preview](./getting-started.md), add a work through a configured source or local library, then open a chapter.

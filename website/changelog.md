@@ -9,6 +9,16 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## October 30, 2026 — Windows library category labels and wheel scrolling
+
+**Accepted fix documentation · no public product release**
+
+- The system default category now displays **默认** in Simplified Chinese and **default** in English instead of a blank label. Item counts retain the label.
+- Hovering over the category bar lets the mouse wheel scroll it horizontally without selecting another category. Custom category names and the existing category visibility rules remain unchanged.
+- Accepted Windows preview: `0.11.24.6.3026516` (preview ID `main-c30ef487baba4273a2819788493e1913`); accepted source: `30265162bf`; [integrated implementation](https://github.com/AltairCardinal/mihon-desktop/commit/3ebbe1cf28). Four focused interaction checks and the packaged extension runtime check passed. Acceptance covers this Windows category-bar path only.
+
+Acceptance basis: the project owner explicitly accepted this candidate in private chat on October 30, 2026 and requested main integration and a push.
+
 ## October 29, 2026 — Stable Windows fullscreen transitions
 
 **Accepted fix documentation · no public product release**
