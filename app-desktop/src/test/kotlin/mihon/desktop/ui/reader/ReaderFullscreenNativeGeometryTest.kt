@@ -9,9 +9,13 @@ import com.sun.jna.Native
 import com.sun.jna.NativeLibrary
 import com.sun.jna.platform.win32.User32
 import com.sun.jna.platform.win32.WinDef
+import com.sun.jna.platform.win32.WinUser
+import mihon.desktop.platform.DesktopFullscreenAdapter
 import mihon.desktop.platform.DesktopWindowTransitions
+import mihon.desktop.platform.WindowsBorderlessFullscreenAdapter
 import mihon.desktop.platform.WindowsWindowTransitions
 import mihon.desktop.platform.setWindowsWindowCloaked
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Tag
@@ -26,6 +30,7 @@ import java.awt.GraphicsEnvironment
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.FutureTask
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import javax.swing.SwingUtilities
 import kotlin.math.abs
@@ -64,7 +69,19 @@ class ReaderFullscreenNativeGeometryTest {
                 if (!disabled) completed.get()?.countDown()
                 result
             }
-            val controller = DesktopReaderFullscreenController({ window }, transitions = transitions)
+            val reenterDuringExit = AtomicBoolean(false)
+            val nativeAdapter = WindowsBorderlessFullscreenAdapter()
+            lateinit var controller: DesktopReaderFullscreenController
+            val adapter = object : DesktopFullscreenAdapter by nativeAdapter {
+                override fun exit(window: java.awt.Window): Boolean = nativeAdapter.exit(window).also {
+                    if (reenterDuringExit.getAndSet(false)) controller.syncPlacement(true)
+                }
+            }
+            controller = DesktopReaderFullscreenController(
+                { window },
+                transitions = transitions,
+                fullscreenAdapter = adapter,
+            )
             fun switch(fullscreen: Boolean) {
                 val completion = CountDownLatch(1)
                 completed.set(completion)
@@ -74,11 +91,26 @@ class ReaderFullscreenNativeGeometryTest {
             try {
                 Thread.sleep(100)
                 onEdt { assertCanvasFillsClient(window, "initial ${device.iDstring}") }
+                val initialPlacement = onEdt { nativePlacement(window) }
                 repeat(6) { cycle ->
                     switch(true)
                     onEdt { assertCanvasFillsClient(window, "fullscreen ${device.iDstring} cycle=$cycle") }
                     switch(false)
                     onEdt { assertCanvasFillsClient(window, "restored ${device.iDstring} cycle=$cycle") }
+                }
+                switch(true)
+                reenterDuringExit.set(true)
+                // The new entry is queued by exit(), ahead of that exit's final-presentation callback.
+                switch(false)
+                onEdt { assertCanvasFillsClient(window, "reentered before exit completed ${device.iDstring}") }
+                switch(false)
+                onEdt {
+                    assertCanvasFillsClient(window, "restored after interrupted exit ${device.iDstring}")
+                    assertEquals(
+                        initialPlacement,
+                        nativePlacement(window),
+                        "Original normal/maximized state must survive",
+                    )
                 }
             } finally {
                 onEdt {
@@ -87,6 +119,17 @@ class ReaderFullscreenNativeGeometryTest {
                 }
             }
         }
+    }
+
+    private fun nativePlacement(window: java.awt.Window): List<Int> {
+        val placement = WinUser.WINDOWPLACEMENT().apply { length = size() }
+        assertTrue(
+            User32.INSTANCE.GetWindowPlacement(
+                WinDef.HWND(Native.getComponentPointer(window)),
+                placement,
+            ).booleanValue(),
+        )
+        return placement.rcNormalPosition.let { listOf(placement.showCmd, it.left, it.top, it.right, it.bottom) }
     }
 
     private fun assertCanvasFillsClient(window: ComposeWindow, context: String) {

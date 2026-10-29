@@ -10,13 +10,28 @@ Windows 优先保留原生窗口与绘制表面的无边框实现；其他平台
 无边框 adapter 必须同时更新 HWND 的物理边界和 AWT 的逻辑边界，退出时恢复两者；
 仅调用 Win32 改变边界会让 Skiko 的 heavyweight Canvas 继续消费旧 AWT 尺寸。
 
-Windows 进入前，adapter 在保存原窗口样式后对已经可见的 HWND 发送 `WM_SETREDRAW(FALSE)`，
+Windows 进入、退出前，adapter 对已经可见的 HWND 发送 `WM_SETREDRAW(FALSE)`；
+进入时先保存原窗口样式、WINDOWPLACEMENT、物理窗口边界和 AWT 逻辑边界，
 让既有窗口内容保留到新画布和 D3D 帧准备完成。仅禁用 DWM 过渡动画不能阻止系统在尺寸变化期间
 先显示旧缓冲区的拉伸版本。此消息会临时清除原生 `WS_VISIBLE`，但 AWT 窗口仍保持可见并继续渲染；
 因此过渡中的 `SetWindowLong` 也必须保持该位清除，保存的退出样式则必须来自暂停之前。
 下一事件周期的最终布局和 `renderImmediately()` 返回后，controller 调用 adapter 的
 `completeTransition()`：恢复原生重绘、请求窗口及子窗口重画，再沿用既有 DWM flush 和过渡恢复。
-此处理不创建快照窗口，不重投影漫画，不改启动窗口与普通退出全屏路径。
+此处理不创建快照窗口，不重投影漫画，不改启动窗口与 Compose fallback。
+
+退出不能在暂停后立即调用 `SetWindowPlacement()`：它会把原生可见状态重新打开，提前暴露仍按
+全屏尺寸绘制的内容。adapter 先用不带显示标记的 `SetWindowPos()` 恢复保存的物理边界，
+再同步 AWT 逻辑边界，让既有最终布局／绘制完成；`completeTransition()` 才恢复原
+WINDOWPLACEMENT（包括最大化状态和普通窗口位置），最后释放重绘暂停。
+若此时又请求进入，保留并复用最初的窗口状态，不把尚未完成的恢复阶段当成新的窗口基线；
+只有最新过渡完成才恢复状态和呈现。完成恢复失败时仍在 `finally` 中释放暂停。
+
+最终绘制前，controller 把根 SkiaLayer 的实际 Canvas 交给 adapter，按真实 HWND 客户区核对原生
+子画布的位置和尺寸。AWT 可能已报告目标逻辑矩形，但快速边框变化留下的 native child 仍有偏移，
+仅重复相同的 `setBounds()` 不会修正它。Windows adapter 用 `MapWindowPoints()` 映射到子窗口父坐标，
+仅在不匹配时调用不激活、不改变 Z 序的 `SetWindowPos()` 对齐。
+恢复 WINDOWPLACEMENT 后再核对一次，处理最大化／工作区边界在 DPI 换算中的像素取整差异。
+Canvas 引用只保留到本次完成回调，成功或失败均清除，不新增长期画布状态。
 
 暂停资源由该 adapter 保存，只由最新过渡回调释放；原生操作、最终绘制或调度失败时同样释放，
 旧回调不能提前释放新过渡。若进入尚未结束便请求退出，保留暂停直到退出画面完成。
@@ -60,7 +75,8 @@ renderDelegate：立即绘制入口先向已有父容器派发当前尺寸的 AW
 - `ReaderFullscreenFramePresentationTest` 覆盖进入、退出、关闭阅读器的绘制顺序及绘制失败清理。
 - `ReaderFullscreenCompositorTest` 使用真实 Compose／Skiko、真实无边框 adapter、原生 WGC 后端，
   在屏幕外且不激活的窗口上进行三次进入／退出。绘制中加入 45ms 延迟以跨越显示刷新，
-  检查收到的全屏合成帧始终使用目标漫画位置，所有尺寸的帧都有漫画像素，完成后原生窗口仍可见。
+  两个方向都检查收到的目标尺寸合成帧使用正确漫画位置，退出位置以最初真实窗口帧为基线；
+  所有尺寸的帧都有漫画像素，完成后原生窗口仍可见。
   未修复时曾录到 Y=80→118 的回跳，修复后同一场景通过。运行前需先构建
   `scripts/build-reader-compositor.ps1`；该测试不读取桌面、不派发输入，WGC 不代表显示器扫描输出。
   `WindowsWindowRedrawNativeTest` 另覆盖可见状态恢复、重复关闭、隐藏和原生销毁后的资源清理。
@@ -70,6 +86,8 @@ renderDelegate：立即绘制入口先向已有父容器派发当前尺寸的 AW
 - `ReaderFullscreenNativeGeometryTest` 使用不激活且由 DWM 隐藏的真实窗口，覆盖最多两块
   已连接屏幕、普通／最大化窗口各六次全屏往返，等待切换完成后比较客户区与实际原生 Canvas 的四条边；
   不能用仅创建但从未显示的 peer 代替该回归，因为它不执行同样的窗口尺寸事件链。
+  另在每种状态／屏幕上让一次新进入排在退出完成回调之前，检查最终窗口普通位置和最大化状态
+  与最初的原生 WINDOWPLACEMENT 一致，避免延迟恢复被快速切换覆盖。
 - `SharedDualPageNativeStablePresentationTest` 的全屏用例挂载真实 `ReaderViewport`，
   发送 F11／Escape，验证窗口调用与图片保留；单页／双页连续尺寸变化用例检查实际图片像素、
   页码与解码次数，并保留原有双页几何更新回归。自动布局用例推进真实稳定等待期，
