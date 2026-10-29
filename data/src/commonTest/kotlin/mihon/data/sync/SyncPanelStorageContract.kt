@@ -85,6 +85,79 @@ import java.nio.file.Path as NioPath
 @Timeout(30)
 abstract class SyncPanelStorageContract {
     @Test
+    fun `toolbar opens immediately while production state refresh is waiting on secure storage`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                f.panel.act(SyncPanelAction.Close)
+                val entered = CompletableDeferred<Unit>()
+                val release = CompletableDeferred<Unit>()
+                f.secure.nextSpaceRead = entered to release
+                try {
+                    f.panel.dispatch(SyncPanelAction.SetDeviceName("Opening test"))
+                    withTimeout(5_000) { entered.await() }
+                    f.panel.dispatch(SyncPanelAction.Open)
+                    assertTrue(f.panel.state.value.visible, "opening must not wait for the queued storage read")
+                    assertEquals(SyncPanelPage.MAIN, f.panel.state.value.page)
+                    assertFalse(release.isCompleted)
+
+                    f.panel.dispatch(SyncPanelAction.Close)
+                    assertFalse(f.panel.state.value.visible, "closing must remain responsive during refresh")
+                    f.panel.dispatch(SyncPanelAction.Open)
+                    assertTrue(f.panel.state.value.visible)
+                    release.complete(Unit)
+                    f.panel.awaitIdle()
+                    assertTrue(f.panel.state.value.visible, "old queued close must not hide the new open request")
+                    assertEquals(SyncPanelPage.MAIN, f.panel.state.value.page)
+                    assertEquals("Opening test", f.panel.state.value.deviceName)
+                } finally {
+                    release.complete(Unit)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `closing during production refresh is immediate and a queued open cannot resurrect the panel`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                val entered = CompletableDeferred<Unit>()
+                val release = CompletableDeferred<Unit>()
+                f.secure.nextSpaceRead = entered to release
+                try {
+                    f.panel.dispatch(SyncPanelAction.SetDeviceName("Closing test"))
+                    withTimeout(5_000) { entered.await() }
+                    f.panel.dispatch(SyncPanelAction.Open)
+                    assertTrue(f.panel.state.value.visible)
+                    f.panel.dispatch(SyncPanelAction.Close)
+                    assertFalse(f.panel.state.value.visible)
+                    release.complete(Unit)
+                    f.panel.awaitIdle()
+                    assertFalse(f.panel.state.value.visible)
+                } finally {
+                    release.complete(Unit)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `stopped production panel ignores new toolbar open requests`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.panel.stop()
+                f.panel.dispatch(SyncPanelAction.Open)
+                assertFalse(f.panel.state.value.visible)
+            }
+        }
+    }
+
+    @Test
     fun `panel failed bulk retry freezes a new confirmation and never replays applied or invalidated rows`() =
         runBlocking {
             open().use { storage ->
