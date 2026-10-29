@@ -9,6 +9,16 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## October 29, 2026 — Stable Windows fullscreen transitions
+
+**Accepted fix documentation · no public product release**
+
+- Entering and exiting fullscreen in the tested Windows reader case keeps the comic visible without the reported vertical jumps, black/white flashes, or top-left white block.
+- Accepted Windows preview: `0.11.24.6.693c6a2` (preview ID `main-0de74b9dc18544099ea272686b32d26a`); final implementation: `693c6a2618`.
+- Forty focused checks passed, including native transition pixels, window geometry, interrupted switches and resource cleanup. The packaged extension runtime check passed. This acceptance covers the tested Windows reading path; other platforms and fallback paths without a retained frame were not accepted by these results.
+
+Acceptance basis: the project owner explicitly accepted this candidate in private chat on October 29, 2026 and requested main integration and a push.
+
 ## October 29, 2026 — Windows fullscreen comic continuity
 
 **Accepted fix documentation · no public product release**
