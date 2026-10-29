@@ -118,6 +118,11 @@ class ExtensionRepoScreenLifecycleIntegrationTest {
             listOf(ExtensionRepoActionResult.Pending(action), ExtensionRepoActionResult.Success(action)),
             events,
         )
-        assertEquals("Completed", extensionRepoActionMessage(events.last()))
+        val expected = when (action) {
+            ExtensionRepoAction.CREATE -> "Repository added successfully"
+            ExtensionRepoAction.REPLACE -> "Repository replaced successfully"
+            ExtensionRepoAction.DELETE -> "Repository removed successfully"
+        }
+        assertEquals(expected, extensionRepoActionMessage(events.last()))
     }
 }

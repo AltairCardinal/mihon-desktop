@@ -26,7 +26,9 @@ class ExtensionRepoScreenFeedbackTest {
         val replacement = repo("https://new.example", "fingerprint")
         val cases = listOf(
             ExtensionRepoActionResult.Pending(ExtensionRepoAction.CREATE) to "Checking repository...",
-            ExtensionRepoActionResult.Success(ExtensionRepoAction.CREATE) to "Completed",
+            ExtensionRepoActionResult.Success(ExtensionRepoAction.CREATE) to "Repository added successfully",
+            ExtensionRepoActionResult.Success(ExtensionRepoAction.REPLACE) to "Repository replaced successfully",
+            ExtensionRepoActionResult.Success(ExtensionRepoAction.DELETE) to "Repository removed successfully",
             ExtensionRepoActionResult.Validation(ExtensionRepoAction.CREATE, ExtensionRepoValidation.INVALID_URL) to
                 "Repository URL must be HTTPS.",
             ExtensionRepoActionResult.Validation(ExtensionRepoAction.CREATE, ExtensionRepoValidation.ALREADY_EXISTS) to
@@ -63,6 +65,17 @@ class ExtensionRepoScreenFeedbackTest {
         actions.create(replacement.baseUrl, events::add)
         assertEquals(ExtensionRepoActionResult.Pending(ExtensionRepoAction.CREATE), events.first())
         assertEquals(ExtensionRepoActionResult.FingerprintConflict(old, replacement), events.last())
+    }
+
+    @Test
+    fun `repository creation success has a specific Chinese message`() {
+        assertEquals(
+            "仓库添加成功",
+            extensionRepoActionMessage(
+                ExtensionRepoActionResult.Success(ExtensionRepoAction.CREATE),
+                java.util.Locale.SIMPLIFIED_CHINESE,
+            ),
+        )
     }
 
     private fun repo(url: String, fingerprint: String) = ExtensionRepo(url, url, null, url, fingerprint)

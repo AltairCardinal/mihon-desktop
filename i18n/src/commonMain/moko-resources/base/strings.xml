@@ -1406,6 +1406,9 @@
     <string name="desktop_update_open_failed">Could not open the update page. Copy this URL: %1$s</string>
     <string name="desktop_extension_repo_empty_hint">Use Add repo to add a repository.</string>
     <string name="desktop_extension_repo_add_message">Enter the repository base URL or index.min.json URL.</string>
+    <string name="desktop_extension_repo_added">Repository added successfully</string>
+    <string name="desktop_extension_repo_replaced">Repository replaced successfully</string>
+    <string name="desktop_extension_repo_deleted">Repository removed successfully</string>
     <string name="desktop_extension_repo_pending">Checking repository...</string>
     <string name="desktop_extension_repo_https_required">Repository URL must be HTTPS.</string>
     <string name="desktop_extension_repo_unavailable">Could not reach repository. Check the URL or network connection.</string>

@@ -1216,6 +1216,9 @@
     <string name="desktop_update_open_failed">无法打开更新页面，请复制此地址：%1$s</string>
     <string name="desktop_extension_repo_empty_hint">使用“添加仓库”来添加仓库。</string>
     <string name="desktop_extension_repo_add_message">请输入仓库的基础地址或 index.min.json 地址。</string>
+    <string name="desktop_extension_repo_added">仓库添加成功</string>
+    <string name="desktop_extension_repo_replaced">仓库替换成功</string>
+    <string name="desktop_extension_repo_deleted">仓库删除成功</string>
     <string name="desktop_extension_repo_pending">正在检查仓库...</string>
     <string name="desktop_extension_repo_https_required">仓库地址必须使用 HTTPS。</string>
     <string name="desktop_extension_repo_unavailable">无法连接仓库，请检查地址或网络连接。</string>

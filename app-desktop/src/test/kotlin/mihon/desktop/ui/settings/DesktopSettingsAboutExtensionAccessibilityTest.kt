@@ -300,6 +300,40 @@ class DesktopSettingsAboutExtensionAccessibilityTest {
         }
     }
 
+    @Test
+    fun `repository creation shows one transient success message without a list banner`() = runBlocking {
+        val repository = FakeExtensionRepoRepository()
+        val repo = ExtensionRepo("https://new.invalid", "New", null, "https://new.invalid", "fingerprint")
+        val create = mockk<CreateExtensionRepo> {
+            coEvery { await(repo.baseUrl) } coAnswers {
+                repository.insertRepo(repo.baseUrl, repo.name, repo.shortName, repo.website, repo.signingKeyFingerprint)
+                CreateExtensionRepo.Result.Success
+            }
+        }
+        val scene = extensionScene(repository, ExtensionRepoScreen(repo.baseUrl), create)
+        try {
+            click(scene, MR.strings.action_add.localized())
+            awaitSceneCondition(scene, "repository creation success feedback", { sceneLabels(scene).toString() }) {
+                "New" in sceneLabels(scene) &&
+                    nodes(scene, true).any { it.config.contains(SemanticsProperties.LiveRegion) }
+            }
+            val text = nodes(scene, true).flatMap { node ->
+                node.config.getOrElse(SemanticsProperties.Text) { emptyList() }.map { it.text }
+            }
+            val message = extensionRepoActionMessage(
+                mihon.domain.extensionrepo.service.ExtensionRepoActionResult.Success(
+                    mihon.domain.extensionrepo.service.ExtensionRepoAction.CREATE,
+                ),
+                java.util.Locale.getDefault(),
+            )
+            assertEquals(1, text.count { it == message }, "Success must appear only in the snackbar")
+            assertEquals(1, text.count { it == repo.baseUrl }, "Only the repository card should show its URL")
+            coVerify(exactly = 1) { create.await(repo.baseUrl) }
+        } finally {
+            scene.close()
+        }
+    }
+
     private suspend fun extensionScene(
         repository: FakeExtensionRepoRepository,
         screen: ExtensionRepoScreen = ExtensionRepoScreen(),

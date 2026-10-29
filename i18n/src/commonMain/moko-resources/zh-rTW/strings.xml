@@ -1041,6 +1041,9 @@
     <string name="desktop_extension_repo_empty_hint">使用“新增倉庫”來新增倉庫。</string>
     <string name="desktop_extension_repo_https_required">倉庫地址必須使用 HTTPS。</string>
     <string name="desktop_extension_repo_invalid_metadata">倉庫後設資料缺失或無效。</string>
+    <string name="desktop_extension_repo_added">倉庫新增成功</string>
+    <string name="desktop_extension_repo_replaced">倉庫替換成功</string>
+    <string name="desktop_extension_repo_deleted">倉庫刪除成功</string>
     <string name="desktop_extension_repo_pending">正在檢查倉庫...</string>
     <string name="desktop_extension_repo_unavailable">無法連線倉庫，請檢查地址或網路連線。</string>
     <string name="desktop_extension_repository_error">%1$s：%2$s</string>
