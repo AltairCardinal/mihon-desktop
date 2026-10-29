@@ -2575,6 +2575,19 @@ private fun SetupPage(
                         horizontalPadding = 0.dp,
                     )
                 }
+                if (!state.showingCompactRun && state.pendingTotal > 0) {
+                    item("selection-toolbar") { SelectionBar(state, dispatch) }
+                    items(state.pending, key = { "pending-${it.id}" }) { pending ->
+                        PendingRow(pending, state, dispatch)
+                    }
+                    if (state.hasMore) {
+                        item("more") {
+                            Action("sync-load-more", MR.strings.sync_load_more, enabled = !state.loading) {
+                                dispatch(SyncPanelAction.LoadMore)
+                            }
+                        }
+                    }
+                }
             }
             SyncSetupStep.COMPLETE -> { }
             SyncSetupStep.PREPARE_REPOSITORY -> {

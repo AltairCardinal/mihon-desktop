@@ -1884,8 +1884,8 @@
     <string name="sync_projection_pending">Some data has not been confirmed yet. Try syncing again later.</string>
     <string name="sync_terminal_partial">This sync has ended with some data still pending</string>
     <string name="sync_terminal_cancelled">This sync was cancelled</string>
-    <string name="sync_terminal_pending_receipts">%1$d download batches await confirmation, containing %2$d changes</string>
-    <string name="sync_terminal_pending_explanation">Changes in these batches still need checking; they have not all failed</string>
+    <string name="sync_terminal_pending_receipts">System confirmation pending: %1$d download batches, containing %2$d changes</string>
+    <string name="sync_terminal_pending_explanation">You do not need to confirm each batch. Items that need your choice are listed separately; pending batches do not mean every change failed.</string>
     <string name="sync_terminal_source_fields">%1$d items could not be restored on the previous attempt because a manga source was unavailable</string>
     <string name="sync_terminal_source_retry">Retry sync to check and restore the saved data again</string>
     <string name="sync_failure_log_count">%1$d items could not be restored; details were saved to a failure log</string>
