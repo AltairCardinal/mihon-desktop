@@ -24,11 +24,15 @@ import org.jetbrains.skia.Image
 import org.jetbrains.skia.ImageInfo
 import org.jetbrains.skiko.SkiaLayer
 import org.jetbrains.skiko.SkikoRenderDelegate
+import java.awt.AWTEvent
 import java.awt.Component
 import java.awt.Container
 import java.awt.Rectangle
+import java.awt.Toolkit
+import java.awt.event.AWTEventListener
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
+import java.awt.event.PaintEvent
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -166,6 +170,31 @@ internal class ReaderRenderTrace(
         override fun componentMoved(event: ComponentEvent) = windowEvent("window-moved")
         override fun componentResized(event: ComponentEvent) = windowEvent("window-resized")
     }
+    private val paintListener = AWTEventListener { observed ->
+        val target = layer?.canvas
+        if (observed is PaintEvent && observed.source === target && isCapturing && target != null) {
+            guard("awt-paint-observer") {
+                windowEvent(
+                    "awt-canvas-paint",
+                    buildJsonObject {
+                        put("paintId", observed.id)
+                        put(
+                            "awtUpdateRect",
+                            buildJsonArray {
+                                add(JsonPrimitive(observed.updateRect.x))
+                                add(JsonPrimitive(observed.updateRect.y))
+                                add(JsonPrimitive(observed.updateRect.width))
+                                add(JsonPrimitive(observed.updateRect.height))
+                            },
+                        )
+                        put("canvasIgnoreRepaint", target.ignoreRepaint)
+                        put("canvasBackgroundArgb", target.background?.rgb)
+                        put("noEraseBackgroundProperty", System.getProperty("sun.awt.noerasebackground", "unset"))
+                    },
+                )
+            }
+        }
+    }
 
     private data class Render(val id: Long, val oldHolder: Any?, val fields: JsonObject, val wanted: Boolean)
 
@@ -252,6 +281,7 @@ internal class ReaderRenderTrace(
         }
         installed = wrapper
         target.renderDelegate = wrapper
+        Toolkit.getDefaultToolkit().addAWTEventListener(paintListener, AWTEvent.PAINT_EVENT_MASK)
         event(
             "session-start",
             buildJsonObject {
@@ -589,6 +619,7 @@ internal class ReaderRenderTrace(
             captureCompleted()
             layer?.let { if (it.renderDelegate === installed) it.renderDelegate = original }
             window.removeComponentListener(listener)
+            Toolkit.getDefaultToolkit().removeAWTEventListener(paintListener)
         }
         closed = true
         event("session-close")

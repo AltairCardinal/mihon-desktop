@@ -16,7 +16,8 @@ Windows 进入、退出前，adapter 对已经可见的 HWND 发送 `WM_SETREDRA
 先显示旧缓冲区的拉伸版本。此消息会临时清除原生 `WS_VISIBLE`，但 AWT 窗口仍保持可见并继续渲染；
 因此过渡中的 `SetWindowLong` 也必须保持该位清除，保存的退出样式则必须来自暂停之前。
 下一事件周期的最终布局和 `renderImmediately()` 返回后，controller 调用 adapter 的
-`completeTransition()`：恢复原生重绘、请求窗口及子窗口重画，再沿用既有 DWM flush 和过渡恢复。
+`completeTransition()`：恢复原生重绘，仅更新窗口边框，禁止再次擦背景和重画已完成的 GPU 子画布，
+再沿用既有 DWM flush 和过渡恢复。
 此处理不创建快照窗口，不重投影漫画，不改启动窗口与 Compose fallback。
 
 退出不能在暂停后立即调用 `SetWindowPlacement()`：它会把原生可见状态重新打开，提前暴露仍按
@@ -34,6 +35,12 @@ WINDOWPLACEMENT（包括最大化状态和普通窗口位置），最后释放�
 仅在不匹配时调用不激活、不改变 Z 序的 `SetWindowPos()` 对齐。
 恢复 WINDOWPLACEMENT 后再核对一次，处理最大化／工作区边界在 DPI 换算中的像素取整差异。
 Canvas 引用只保留到本次完成回调，成功或失败均清除，不新增长期画布状态。
+
+几何变更前同时保存并临时开启根 Canvas 的 `ignoreRepaint`，让尺寸变化期间的 AWT/GDI 重画
+不会排在最终 GPU 帧之后清除它。手动完成最终绘制并校正原生边界后，用 `ValidateRect()`
+标记这块实际已由 GPU 覆盖的区域，再恢复窗口显示；最后在 `finally` 中恢复原 `ignoreRepaint`。
+连续反向切换只保存第一次的原值，由最新完成回调恢复。窗口本身仍更新非客户区边框，
+不改变全局 AWT 属性，也不禁止正常阅读时的重绘。
 
 暂停资源由该 adapter 保存，只由最新过渡回调释放；原生操作、最终绘制或调度失败时同样释放，
 旧回调不能提前释放新过渡。若进入尚未结束便请求退出，保留暂停直到退出画面完成。
@@ -82,6 +89,8 @@ renderDelegate：立即绘制入口先向已有父容器派发当前尺寸的 AW
   未修复时曾录到 Y=80→118 的回跳，修复后同一场景通过。运行前需先构建
   `scripts/build-reader-compositor.ps1`；该测试不读取桌面、不派发输入，WGC 不代表显示器扫描输出。
   `WindowsWindowRedrawNativeTest` 另覆盖可见状态恢复、重复关闭、隐藏和原生销毁后的资源清理。
+  另检查单次恢复和完整进出完成后没有新的硬件 Canvas AWT PaintEvent；红／黑受控场景
+  逐帧检查大面积白像素、漫画存在、位置稳定，以及 `ignoreRepaint` 原值恢复。
 - `ReaderFullscreenNativeImagePositionTest` 使用简化色块、阅读器平移变换与默认 controller，
   仅覆盖独立快照的位置差异；没有挂载真实阅读器，也没有覆盖整个过渡过程。
   它使用隐藏且不激活的窗口，不读取桌面屏幕，不能单独证明前台合成器的逐帧显示。

@@ -96,6 +96,7 @@ internal class DesktopReaderFullscreenController(
         transitions.setDisabled(window, true)
         var posted = false
         try {
+            findLayer(window)?.let { fullscreenAdapter?.prepareTransition(window, it.canvas) }
             trace?.windowEvent("placement-mutation-begin")
             change()
             if (fullscreen && isAdapterFullscreen) {

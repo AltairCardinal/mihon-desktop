@@ -18,6 +18,8 @@ import mihon.desktop.platform.DesktopWindowTransitions
 import mihon.desktop.platform.WindowsBorderlessFullscreenAdapter
 import mihon.desktop.platform.WindowsFullscreenBounds
 import mihon.desktop.platform.WindowsWindowTransitions
+import mihon.desktop.platform.suspendWindowsWindowRedraw
+import org.jetbrains.skiko.SkiaLayer
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -25,7 +27,13 @@ import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledOnOs
 import org.junit.jupiter.api.condition.OS
+import java.awt.AWTEvent
+import java.awt.Component
+import java.awt.Container
 import java.awt.Rectangle
+import java.awt.Toolkit
+import java.awt.event.AWTEventListener
+import java.awt.event.PaintEvent
 import java.awt.image.BufferedImage
 import java.io.DataInputStream
 import java.nio.file.Files
@@ -35,6 +43,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.FutureTask
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import javax.imageio.ImageIO
 import javax.swing.SwingUtilities
@@ -44,6 +53,44 @@ import javax.swing.SwingUtilities
 @EnabledOnOs(OS.WINDOWS)
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 class ReaderFullscreenCompositorTest {
+    @Test
+    fun `resuming a completed GPU frame does not queue an AWT repaint of its hardware canvas`() {
+        val window = onEdt {
+            ComposeWindow().apply {
+                setBounds(-20000, -20000, 640, 480)
+                focusableWindowState = false
+                isAutoRequestFocus = false
+                setContent { Box(Modifier.fillMaxSize().background(Color.Black)) }
+                isVisible = true
+            }
+        }
+        val canvas = onEdt { requireNotNull(findLayer(window)).canvas }
+        val paints = AtomicInteger()
+        val observer = AWTEventListener { event ->
+            if (event is PaintEvent && event.source === canvas) paints.incrementAndGet()
+        }
+        try {
+            repeat(5) {
+                onEdt { window.renderImmediately() }
+                Thread.sleep(40)
+            }
+            onEdt {
+                Toolkit.getDefaultToolkit().addAWTEventListener(observer, AWTEvent.PAINT_EVENT_MASK)
+                val hold = requireNotNull(suspendWindowsWindowRedraw(window))
+                window.renderImmediately()
+                hold.close()
+            }
+            Thread.sleep(200)
+            onEdt { }
+            assertEquals(0, paints.get(), "A completed D3D frame must not be followed by an AWT canvas repaint")
+        } finally {
+            onEdt {
+                Toolkit.getDefaultToolkit().removeAWTEventListener(observer)
+                window.dispose()
+            }
+        }
+    }
+
     @Test
     fun `entry and exit never present stale comic positions at the new window size`() {
         val target = Rectangle(-20000, -20000, 1280, 720)
@@ -79,12 +126,25 @@ class ReaderFullscreenCompositorTest {
             bounds = { _, _ -> WindowsFullscreenBounds(physical) { target } },
         )
         val completion = AtomicReference<CountDownLatch>()
+        val gpuFrameCompleted = AtomicBoolean(false)
+        val lateCanvasPaints = AtomicInteger()
+        val canvas = onEdt { requireNotNull(findLayer(window)).canvas }
+        val paintObserver = AWTEventListener { event ->
+            if (event is PaintEvent && event.source === canvas && gpuFrameCompleted.get()) {
+                lateCanvasPaints.incrementAndGet()
+            }
+        }
+        val originalIgnoreRepaint = onEdt { canvas.ignoreRepaint }
         val controller = DesktopReaderFullscreenController(
             getWindow = { window },
             fullscreenAdapter = adapter,
             transitions = DesktopWindowTransitions { frame, disabled ->
+                if (disabled) gpuFrameCompleted.set(false)
                 WindowsWindowTransitions.setDisabled(frame, disabled).also {
-                    if (!disabled) completion.get()?.countDown()
+                    if (!disabled) {
+                        gpuFrameCompleted.set(true)
+                        completion.get()?.countDown()
+                    }
                 }
             },
         )
@@ -138,17 +198,39 @@ class ReaderFullscreenCompositorTest {
                             (pixels[i + 2].toInt() and 255) > 200 &&
                                 (pixels[i + 1].toInt() and 255) < 4 && (pixels[i].toInt() and 255) < 4
                         }
+                        var white = 0
+                        var sampled = 0
+                        for (y in 0 until height step 8) {
+                            for (x in 0 until width step 8) {
+                                val i = (y * width + x) * 4
+                                if ((pixels[i].toInt() and 255) > 235 &&
+                                    (pixels[i + 1].toInt() and 255) > 235 &&
+                                    (pixels[i + 2].toInt() and 255) > 235
+                                ) {
+                                    white++
+                                }
+                                sampled++
+                            }
+                        }
                         val sample = CapturedFrame(
                             width,
                             height,
                             redRows.firstOrNull() ?: -1,
                             redRows.lastOrNull() ?: -1,
                             timestamp,
+                            white.toDouble() / sampled,
                         )
                         frames += sample
                         // Keep metadata for every delivered frame, but only one PNG per geometry.
                         // Holding all full-resolution frames would let a longer capture exhaust the test JVM.
-                        if (written.add(listOf(width, height, sample.top, sample.bottom))) {
+                        val signature = listOf(
+                            width,
+                            height,
+                            sample.top,
+                            sample.bottom,
+                            (sample.whiteFraction * 1000).toInt(),
+                        )
+                        if (written.add(signature)) {
                             check(written.size <= 32)
                             val image = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
                             val rgb = IntArray(width * height) { i ->
@@ -166,6 +248,7 @@ class ReaderFullscreenCompositorTest {
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3)
             while (frames.isEmpty() && System.nanoTime() < deadline) Thread.sleep(10)
             assertTrue(frames.isNotEmpty(), "Capture must observe the initial real window before entry")
+            onEdt { Toolkit.getDefaultToolkit().addAWTEventListener(paintObserver, AWTEvent.PAINT_EVENT_MASK) }
             val initial = frames.last()
             val entries = mutableListOf<LongRange>()
             val exits = mutableListOf<LongRange>()
@@ -176,11 +259,13 @@ class ReaderFullscreenCompositorTest {
                 Thread.sleep(180)
                 entries += begin..System.nanoTime()
                 assertTrue(onEdt { User32.INSTANCE.IsWindowVisible(WinDef.HWND(Native.getComponentPointer(window))) })
+                assertEquals(originalIgnoreRepaint, onEdt { canvas.ignoreRepaint })
                 val exitBegin = System.nanoTime()
                 switch(controller, completion, false)
                 Thread.sleep(180)
                 exits += exitBegin..System.nanoTime()
                 assertTrue(onEdt { User32.INSTANCE.IsWindowVisible(WinDef.HWND(Native.getComponentPointer(window))) })
+                assertEquals(originalIgnoreRepaint, onEdt { canvas.ignoreRepaint })
             }
             assertTrue(capture.waitFor(10, TimeUnit.SECONDS))
             reader.join(2000)
@@ -190,6 +275,8 @@ class ReaderFullscreenCompositorTest {
             assertFalse(window.isActive)
             Files.writeString(output.resolve("frames.txt"), frames.joinToString("\n"))
             assertTrue(frames.all { it.top >= 0 }, "Comic must not disappear or turn black: $frames")
+            assertTrue(frames.all { it.whiteFraction < 0.1 }, "The red/black fixture must not flash white: $frames")
+            assertEquals(0, lateCanvasPaints.get(), "No AWT canvas paint may follow the completed fullscreen frame")
             entries.forEachIndexed { index, interval ->
                 val fullscreen = frames.filter {
                     it.timestamp in interval && it.width == physical.width && it.height == physical.height
@@ -215,6 +302,7 @@ class ReaderFullscreenCompositorTest {
             if (process?.isAlive == true) process.destroyForcibly().waitFor(5, TimeUnit.SECONDS)
             reader?.join(2000)
             onEdt {
+                Toolkit.getDefaultToolkit().removeAWTEventListener(paintObserver)
                 controller.onDispose(wasFullscreen = true)
                 window.dispose()
             }
@@ -227,7 +315,14 @@ class ReaderFullscreenCompositorTest {
         val top: Int,
         val bottom: Int,
         val timestamp: Long,
+        val whiteFraction: Double,
     )
+
+    private fun findLayer(component: Component): SkiaLayer? = when (component) {
+        is SkiaLayer -> component
+        is Container -> component.components.firstNotNullOfOrNull(::findLayer)
+        else -> null
+    }
 
     private fun switch(
         controller: DesktopReaderFullscreenController,

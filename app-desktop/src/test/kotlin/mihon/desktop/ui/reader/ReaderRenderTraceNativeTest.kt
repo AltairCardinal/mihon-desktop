@@ -33,6 +33,7 @@ import mihon.desktop.settings.DesktopAppPreferences
 import mihon.domain.reader.observability.ReaderIoProbe
 import mihon.domain.reader.observability.ReaderIoReporter
 import mihon.domain.reader.observability.ReaderMonotonicClock
+import org.jetbrains.skiko.SkiaLayer
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -42,8 +43,13 @@ import org.junit.jupiter.api.condition.EnabledOnOs
 import org.junit.jupiter.api.condition.OS
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.core.common.preference.DesktopPreferenceStore
+import java.awt.Component
+import java.awt.Container
 import java.awt.GraphicsConfiguration
 import java.awt.GraphicsEnvironment
+import java.awt.Rectangle
+import java.awt.Toolkit
+import java.awt.event.PaintEvent
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
@@ -94,6 +100,11 @@ class ReaderRenderTraceNativeTest {
         }
     }
 
+    @Test
+    fun `diagnostics record AWT hardware canvas paint events in the actual reader`() {
+        capture(ReadingMode.LTR, checkAwtPaint = true)
+    }
+
     private fun capture(
         mode: ReadingMode,
         partial: Boolean = false,
@@ -101,12 +112,14 @@ class ReaderRenderTraceNativeTest {
         entryCount: Int = 1,
         configuration: GraphicsConfiguration? = null,
         screenIndex: Int = 0,
+        checkAwtPaint: Boolean = false,
     ) {
         val root = System.getenv("MIHON_READER_TRACE_TEST_OUTPUT")?.let(Path::of) ?: output
         val suffix = when {
             partial -> "-bounded"
             entryCount > 1 -> "-repeated"
             checkEntryLayout -> "-entry-$screenIndex"
+            checkAwtPaint -> "-awt-paint"
             else -> ""
         }
         val directory = root.resolve(mode.name + suffix)
@@ -192,9 +205,20 @@ class ReaderRenderTraceNativeTest {
             )
             repeat(entryCount) {
                 onEdt { model.setFullscreen(true) }
-                repeat(35) {
+                repeat(35) { frame ->
                     Thread.sleep(35)
-                    onEdt { window.renderImmediately() }
+                    onEdt {
+                        window.renderImmediately()
+                        if (checkAwtPaint && frame == 2) {
+                            fun layer(component: Component): SkiaLayer? = when (component) {
+                                is SkiaLayer -> component
+                                is Container -> component.components.firstNotNullOfOrNull(::layer)
+                                else -> null
+                            }
+                            val canvas = requireNotNull(layer(window)).canvas
+                            canvas.dispatchEvent(PaintEvent(canvas, PaintEvent.PAINT, Rectangle(0, 0, 16, 16)))
+                        }
+                    }
                 }
                 onEdt { model.setFullscreen(false) }
                 repeat(10) {
@@ -229,6 +253,11 @@ class ReaderRenderTraceNativeTest {
                 Files.readAllLines(it).map { line -> Json.parseToJsonElement(line).jsonObject }
             }
             val kinds = events.map { it.getValue("type").jsonPrimitive.content }.toSet()
+            if (checkAwtPaint) {
+                val paints = events.filter { it["type"]?.jsonPrimitive?.content == "awt-canvas-paint" }
+                assertTrue(paints.isNotEmpty(), "Real AWT canvas dispatch must reach the reader trace")
+                assertTrue(paints.any { it["paintId"]?.jsonPrimitive?.content == PaintEvent.PAINT.toString() })
+            }
             if (checkEntryLayout) {
                 val request = events.first {
                     it["type"]?.jsonPrimitive?.content == "fullscreen-request" &&
