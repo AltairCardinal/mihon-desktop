@@ -1,6 +1,8 @@
 package mihon.data.sync.runtime
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonObject
@@ -29,6 +31,7 @@ import mihon.data.sync.http.requireSyncSuccess
 import mihon.data.sync.transport.GitHubSyncTransport
 import mihon.data.sync.transport.SyncSnapshotManifestBinding
 import mihon.data.sync.transport.SyncSnapshotManifestStore
+import mihon.domain.sync.auth.GitHubStoredCredential
 import mihon.domain.sync.crypto.SyncSpaceMaterial
 import mihon.domain.sync.transport.SyncInitializationCheckpoint
 import mihon.domain.sync.transport.SyncInitializationIntent
@@ -68,6 +71,7 @@ internal class SyncOnboarding(
     private val apiBaseUrl: String,
     val storage: SyncSetupStorage,
     private val snapshotManifestStore: SyncSnapshotManifestStore,
+    private val clock: () -> Long,
 ) {
     private fun requireRepository(name: String) {
         if (!runtime.repositoryScope.accepts(
@@ -80,11 +84,11 @@ internal class SyncOnboarding(
     suspend fun discover(repositoryName: String? = null, expectedAccountId: Long? = null): SyncSpaceDiscovery {
         requireLocalScope()
         repositoryName?.let(::requireRepository)
-        return spaces(runtime.accessToken()).discover(expectedAccountId, repositoryName)
+        return spaces(authorizedTokenProvider()).discover(expectedAccountId, repositoryName)
     }
 
     suspend fun checkRepositoryCreationPermission(expectedAccountId: Long? = null) =
-        spaces(runtime.accessToken()).checkRepositoryCreationPermission(expectedAccountId)
+        spaces(authorizedTokenProvider()).checkRepositoryCreationPermission(expectedAccountId)
 
     private suspend fun requireLocalScope() {
         if (!runtime.repositoryScope.isolated) return
@@ -129,7 +133,7 @@ internal class SyncOnboarding(
         requireRepository(setup.repository)
         val current = session(setup.accountId)
         require(storage.legacyPending(setup.accountId) == setup) { "legacy sync setup changed" }
-        val discovery = spaces(current.token).discover(setup.accountId)
+        val discovery = spaces(current.accessToken).discover(setup.accountId)
         val spaces = when (discovery) {
             is SyncSpaceDiscovery.Found -> listOf(discovery.space)
             is SyncSpaceDiscovery.Multiple -> discovery.spaces
@@ -277,7 +281,7 @@ internal class SyncOnboarding(
             require(intent.target == null)
             verifyRepository(session(space.account.id), space.repository, space.repositoryId)
             transport(
-                runtime.accessToken(),
+                authorizedTokenProvider(),
                 material,
                 repositoryId = space.repositoryId,
             ).readSnapshot(space.repository, material.descriptor.spaceId, material.descriptor.generation).getOrThrow()
@@ -340,10 +344,10 @@ internal class SyncOnboarding(
                                 creation.repositoryName == setup.repository &&
                                 creation.account.id == setup.accountId,
                         )
-                        GitHubSyncRepositoryManager(client, { session.token }, apiBaseUrl, requestGate)
+                        GitHubSyncRepositoryManager(client, session.accessToken, apiBaseUrl, requestGate)
                             .createOrResume(creation) {}
                     } else {
-                        spaces(session.token, requestGate).createOrResume(
+                        spaces(session.accessToken, requestGate).createOrResume(
                             SyncCreationAttempt(session.account, setup.attemptId, repositoryId = setup.repositoryId),
                         ) {}
                     }
@@ -374,7 +378,7 @@ internal class SyncOnboarding(
                 verifyRepository(session, setup.repository(), setup.repositoryId)
                 phase = SyncFailurePhase.RESUME_INITIALIZE
                 val result = transport(
-                    session.token,
+                    session.accessToken,
                     material,
                     repositoryId = setup.repositoryId,
                     persistentObjectCacheDirectory = runtime.persistentObjectCacheDirectory,
@@ -412,7 +416,7 @@ internal class SyncOnboarding(
                         }
                     }
                     else -> {
-                        val found = spaces(session.token, requestGate).discover(setup.accountId)
+                        val found = spaces(session.accessToken, requestGate).discover(setup.accountId)
                         if (found is SyncSpaceDiscovery.Found && found.space.descriptor != material.descriptor) {
                             if (!setup.matchesFixedRepository(found.space)) {
                                 throw SyncSetupException(SyncDiscoveryProblem.ACCOUNT_CHANGED)
@@ -442,7 +446,7 @@ internal class SyncOnboarding(
             verifyRepository(session, setup.repository(), requireNotNull(setup.repositoryId))
             phase = SyncFailurePhase.RESUME_READ_SNAPSHOT
             transport(
-                session.token,
+                session.accessToken,
                 material,
                 repositoryId = requireNotNull(setup.repositoryId),
                 manifestStore = snapshotManifestStore,
@@ -489,10 +493,12 @@ internal class SyncOnboarding(
         diagnosticAttemptId: Long? = null,
         diagnosticTrigger: mihon.domain.sync.runtime.SyncTrigger? = null,
     ): Session {
-        val token = accessToken ?: runtime.accessToken()
+        val epoch = if (accessToken == null) runtime.credentials.authorizationEpoch.value else null
+        val tokenProvider = accessToken?.let { candidate -> suspend { candidate } }
+            ?: authorizedTokenProvider(requireNotNull(epoch))
         val http = GitHubPrivateRepositorySelector(
             client,
-            { token },
+            tokenProvider,
             apiBaseUrl,
             expectedAccountId?.let(runtime::accountHttpRequestGate),
             runtime.diagnosticJournal?.let {
@@ -516,7 +522,7 @@ internal class SyncOnboarding(
         ) {
             throw SyncSetupException(SyncDiscoveryProblem.ACCOUNT_CHANGED)
         }
-        return Session(SyncGitHubAccount(id, login), token, http)
+        return Session(SyncGitHubAccount(id, login), http, tokenProvider, epoch)
     }
 
     suspend fun verifyRepository(session: Session, repository: SyncRepository, repositoryId: Long) {
@@ -566,7 +572,7 @@ internal class SyncOnboarding(
             space.repository.name.equals(repository, ignoreCase = true) && space.repository.branch == branch
 
     fun transport(
-        token: String,
+        tokenProvider: suspend () -> String,
         material: SyncSpaceMaterial,
         repositoryId: Long? = null,
         manifestStore: SyncSnapshotManifestStore? = null,
@@ -579,7 +585,7 @@ internal class SyncOnboarding(
         },
     ): GitHubSyncTransport = GitHubSyncTransport(
         client,
-        { token },
+        tokenProvider,
         apiBaseUrl,
         spaceMaterial = material,
         repositoryId = repositoryId,
@@ -593,26 +599,60 @@ internal class SyncOnboarding(
         }
     }
 
-    private fun spaces(token: String, requestGate: SyncHttpRequestGate? = null) =
+    private fun spaces(tokenProvider: suspend () -> String, requestGate: SyncHttpRequestGate? = null) =
         GitHubSyncSpaceClient(
             client,
-            { token },
+            tokenProvider,
             apiBaseUrl,
             requestGate,
             runtime.repositoryScope,
             runtime.diagnosticJournal?.let { SyncJournalContext(it, SyncJournalStage.SPACE_CHECK) },
         )
 
-    fun repositoryManager(token: String, accountId: Long) =
+    fun repositoryManager(session: Session) =
         GitHubSyncRepositoryManager(
             client,
-            { token },
+            session.accessToken,
             apiBaseUrl,
-            runtime.accountHttpRequestGate(accountId),
+            runtime.accountHttpRequestGate(session.account.id),
             runtime.diagnosticJournal?.let { SyncJournalContext(it, SyncJournalStage.SPACE_CHECK) },
         )
 
-    class Session(val account: SyncGitHubAccount, val token: String, val http: GitHubPrivateRepositorySelector) {
+    /** Refresh within this authorization only; a new login must create a new verified session. */
+    private suspend fun authorizedTokenProvider(
+        epoch: Long = runtime.credentials.authorizationEpoch.value,
+    ): suspend () -> String {
+        val mutex = Mutex()
+        var cached: GitHubStoredCredential? = null
+        var cachedRefreshEpoch = -1L
+        val provider: suspend () -> String = {
+            mutex.withLock {
+                check(runtime.credentials.authorizationEpoch.value == epoch) { "sync authorization changed" }
+                // Capture before I/O: a concurrent rotation must invalidate this cache on the next request.
+                val refreshEpoch = runtime.credentials.tokenRefreshEpoch.value
+                val now = clock()
+                val expiry = cached?.credential?.accessTokenExpiresAtMillis
+                if (cached == null || cachedRefreshEpoch != refreshEpoch ||
+                    (expiry != null && (expiry <= now || expiry - now <= 60_000))
+                ) {
+                    runtime.accessToken()
+                    cached = runtime.credentials.read()
+                    cachedRefreshEpoch = refreshEpoch
+                }
+                check(runtime.credentials.authorizationEpoch.value == epoch) { "sync authorization changed" }
+                requireNotNull(cached).credential.accessToken
+            }
+        }
+        provider()
+        return provider
+    }
+
+    class Session(
+        val account: SyncGitHubAccount,
+        val http: GitHubPrivateRepositorySelector,
+        val accessToken: suspend () -> String,
+        val authorizationEpoch: Long?,
+    ) {
         override fun toString(): String = "SyncSession(<redacted>)"
     }
 

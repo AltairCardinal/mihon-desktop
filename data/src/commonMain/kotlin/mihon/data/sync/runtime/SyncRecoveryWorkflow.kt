@@ -350,7 +350,7 @@ internal class SyncRecoveryWorkflow(
                 val session = runtime.onboarding.session(context.stored.accountId)
                 val material = context.stored.material.material()
                 val transport = runtime.onboarding.transport(
-                    session.token,
+                    session.accessToken,
                     material,
                     context.stored.repositoryId,
                     manifestStore = SyncSnapshotManifestStore(handler),
