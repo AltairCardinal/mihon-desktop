@@ -45,6 +45,7 @@ import mihon.domain.sync.runtime.SyncRunStatus
 import mihon.domain.sync.runtime.SyncTrigger
 import tachiyomi.data.DatabaseHandler
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 class SyncPanelController(
     private val runtime: SyncRuntime,
@@ -60,6 +61,7 @@ class SyncPanelController(
     private val commands = Channel<suspend () -> Unit>(Channel.UNLIMITED)
     private val refreshQueued = AtomicBoolean(false)
     private val deviceBrowserOpened = AtomicBoolean(false)
+    private val visibilityVersion = AtomicLong()
     private var references = linkedMapOf<Long, String>()
     private var selectedBindings = emptyMap<Long, String>()
     private var anchor: Long? = null
@@ -232,8 +234,25 @@ class SyncPanelController(
         }
     }
 
+    @Synchronized
     override fun dispatch(action: SyncPanelAction) {
-        enqueue { handle(action) }
+        if (!lifetime.isActive) return
+        val version = if (action == SyncPanelAction.Open || action == SyncPanelAction.Close) {
+            visibilityVersion.incrementAndGet()
+        } else {
+            visibilityVersion.get()
+        }
+        // Presentation must not wait behind storage reads, reports or synchronization commands.
+        when (action) {
+            SyncPanelAction.Open -> mutableState.update {
+                it.copy(visible = true, page = SyncPanelPage.MAIN, notice = null)
+            }
+            SyncPanelAction.Close -> mutableState.update { it.copy(visible = false) }
+            else -> Unit
+        }
+        enqueue {
+            if (action != SyncPanelAction.Open || version == visibilityVersion.get()) handle(action, version)
+        }
     }
 
     override fun claimDeviceCodeBrowser(code: GitHubDeviceCode): Boolean =
@@ -660,7 +679,7 @@ class SyncPanelController(
         }
     }
 
-    private suspend fun handle(action: SyncPanelAction) {
+    private suspend fun handle(action: SyncPanelAction, requestVisibilityVersion: Long = visibilityVersion.get()) {
         when (action) {
             is SyncPanelAction.ExecuteRecoveryAction -> executeRecoveryAction(action.action)
             is SyncPanelAction.RecoveryPlatformCompleted -> completeRecoveryPlatform(action)
@@ -809,7 +828,6 @@ class SyncPanelController(
             }
             SyncPanelAction.Open -> {
                 runtime.diagnostics.record(SyncDiagnosticEventKind.OPEN)
-                mutableState.update { it.copy(visible = true, page = SyncPanelPage.MAIN, notice = null) }
                 refresh(forceFailureLog = true, source = SyncDiagnosticRefreshSource.OPEN)
                 if (restoreBoundRepositoryPreparation()) {
                     if (state.value.repositoryPreparedName != null) {
@@ -820,6 +838,12 @@ class SyncPanelController(
                 }
             }
             SyncPanelAction.Close -> {
+                synchronized(this) {
+                    // Back may arrive here directly; an older close cannot hide a later toolbar open.
+                    if (requestVisibilityVersion == visibilityVersion.get()) {
+                        mutableState.update { it.copy(visible = false) }
+                    }
+                }
                 runtime.diagnostics.record(SyncDiagnosticEventKind.CLOSE)
                 panelSession++
                 invalidateCreateContext()
@@ -831,7 +855,6 @@ class SyncPanelController(
                 clearSelection()
                 mutableState.update {
                     it.copy(
-                        visible = false,
                         notice = null,
                         question = null,
                         deviceCode = null,
@@ -877,7 +900,7 @@ class SyncPanelController(
                         refresh()
                     }
                 } else if (state.value.page == SyncPanelPage.MAIN) {
-                    handle(SyncPanelAction.Close)
+                    handle(SyncPanelAction.Close, requestVisibilityVersion)
                 } else {
                     cancelRecovery()
                     if (state.value.page == SyncPanelPage.SETUP) cancelAuthorization()
