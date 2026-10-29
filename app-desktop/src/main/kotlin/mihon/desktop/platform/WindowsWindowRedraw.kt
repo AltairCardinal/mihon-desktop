@@ -26,12 +26,15 @@ internal fun suspendWindowsWindowRedraw(window: Window, user32: User32 = User32.
                 user32.IsWindow(hwnd)
             ) {
                 user32.SendMessage(hwnd, WM_SETREDRAW, WinDef.WPARAM(1), WinDef.LPARAM(0))
-                // The D3D canvas has already repainted; do not erase its completed frame.
+                // The D3D canvas has already repainted. Repaint only the window frame;
+                // another heavyweight AWT paint can clear the completed GPU surface.
+                val flags = WinUser.RDW_INVALIDATE or WinUser.RDW_FRAME or
+                    WinUser.RDW_NOCHILDREN or WinUser.RDW_NOERASE
                 user32.RedrawWindow(
                     hwnd,
                     null,
                     null,
-                    WinDef.DWORD((WinUser.RDW_INVALIDATE or WinUser.RDW_FRAME or WinUser.RDW_ALLCHILDREN).toLong()),
+                    WinDef.DWORD(flags.toLong()),
                 )
             }
         }

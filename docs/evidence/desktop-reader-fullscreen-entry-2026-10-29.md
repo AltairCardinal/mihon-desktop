@@ -185,3 +185,34 @@ WINDOWPLACEMENT 并释放暂停；快速重新进入时复用最初状态。合�
 已隐藏的 peer，再限定恢复只作用于仍可见的窗口。复核后 35 项 focused 检查全部通过，
 保留上述合成、快速切换、真实阅读器和生命周期范围；命令及日志为
 `.gradle-coordinator/reader-exit-reviewed.{json,log}`，最终证据另存绿色归档的 `reviewed/`。
+
+## 位置稳定后进入／退出闪白
+
+用户确认 `7de10c5611` 不再跳动，但两个方向的整张漫画区域都会闪白，体验仍未验收。
+实际会话 `2026-10-29T05-44-10.339786500Z-c4068447-ec18-4b3c-9e28-a5fbff93a83d`：
+应用 365/365，窗口合成 304/310、整体 PARTIAL。缺失帧 289、291、293、294、295、297
+均在四次进出之后。四次进入／退出的已录窗口图像未出现大面积白帧：均匀抽样白像素约 0.8%–1.0%，
+上方黑边也保持黑色。因此现有 Picture/WGC 未记录到用户所说的白闪，不能据此否定用户观察。
+
+本轮把验证补到 AWT 通道。真实 Compose/Skiko 窗口完成一帧后，直接执行生产重绘暂停的恢复，
+收到 1 次后续硬件 Canvas PaintEvent，红测失败；证据为
+`app-desktop/artifacts/diagnostics/reader-white-paint-red-20261029/`。
+取消 `RDW_ALLCHILDREN`、指定不擦背景／不重画子窗口后，单次恢复回归通过；
+但完整三次进出仍收到 12 次完成帧之后的 Canvas PaintEvent，故没有在这一中间状态交付。
+
+尺寸变化期间暂时抑制根 Canvas 的 AWT 重画请求，GPU 覆盖区域用 `ValidateRect()` 确认后再恢复原设置；
+窗口边框继续更新。完整回归随后不再收到晚到的 Canvas PaintEvent，进入／退出位置保持稳定。
+另为真实 ReaderViewport 的诊断增加 PaintEvent 观察，先在真实事件派发到日志接线的断言上失败，
+再补监听／释放；后续用户复现可按同一时间域比对 AWT 请求和已完成 Picture。
+
+这证实了多余／晚到重画的行为及其消除，没有把它描述为已经逐帧录下并证实用户白闪的唯一原因。
+窗口合成图像与 AWT 事件仍不等于显示器扫描输出，新候选的实际白闪结果需用户确认。
+本批文件共同覆盖这一条重画修复及其取证、回归和维护边界，没有增加桌面捕获或输入控制。
+
+最终 37 项 focused 检查通过（10 项 native、27 项 JVM），格式与 `git diff --check` 通过。
+三次往返没有完成帧之后的硬件 Canvas PaintEvent，红／黑场景的白像素比例低于 10% 检测阈值，
+位置、可见状态和原 `ignoreRepaint` 均正确。真实阅读器接线测试记录到 paintId=800、更新矩形
+`[0,0,16,16]` 的实际派发事件；它只证明观察链路有效，不证明用户白闪成因。
+命令及日志为 `.gradle-coordinator/reader-white-complete.{json,log}`；
+最终 XML、PNG 和逐帧字段归档于 `app-desktop/artifacts/diagnostics/reader-white-green-20261029/`。
+9 个文件分别承担既有 adapter/controller 修复、AWT 观察、真实回归和三份既有维护文档，属于同一局部修复。

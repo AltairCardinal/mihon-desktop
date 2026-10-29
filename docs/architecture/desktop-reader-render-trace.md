@@ -52,6 +52,11 @@ python scripts/analyze-reader-render-trace.py "D:\absolute\reader-render-traces\
 - `captureStage=completed-layer-picture` 表示将实际完成的应用绘制指令栅格化。它不是 GPU backbuffer、
   swap、DWM 合成或显示器扫描输出；`presentationObserved` 始终为 false。回调编号也不是 vsync 编号。
   若应用帧正常但用户仍看到跳动，需另查未观测的呈现阶段，不能反推用户观察错误。
+- 同一捕获时间窗内，额外记录根硬件 Canvas 的 AWT `PaintEvent` 为 `awt-canvas-paint`，包含
+  事件编号、AWT 逻辑更新矩形、Canvas 背景色、`ignoreRepaint` 和背景擦除系统属性。
+  仅监听当前阅读器的该画布，不监听输入；trace 关闭时移除 Toolkit 观察器。
+  它用于对齐最终 GPU 绘制之后是否仍有 AWT 绘画请求，不代表已观察实际 GDI 擦除或显示器扫描；
+  背景擦除属性也不能替代现有 peer 行为的证据。
 
 ## 资源和失败处理
 

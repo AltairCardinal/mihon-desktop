@@ -17,6 +17,7 @@ internal interface DesktopFullscreenAdapter {
     fun exit(window: Window): Boolean
     fun completeTransition(window: Window) = Unit
     fun synchronizeCanvas(window: Window, canvas: Canvas) = Unit
+    fun prepareTransition(window: Window, canvas: Canvas) = Unit
 }
 
 internal class WindowsBorderlessFullscreenAdapter(
@@ -41,6 +42,14 @@ internal class WindowsBorderlessFullscreenAdapter(
     private var restoring: WindowedState? = null
     private var redraw: AutoCloseable? = null
     private var canvasToSynchronize: Canvas? = null
+    private var canvasRepaintState: Pair<Canvas, Boolean>? = null
+
+    override fun prepareTransition(window: Window, canvas: Canvas) {
+        if (canvasRepaintState == null) {
+            canvasRepaintState = canvas to canvas.ignoreRepaint
+            canvas.ignoreRepaint = true
+        }
+    }
 
     override fun enter(window: Window): Boolean = runCatching {
         if (!window.isDisplayable) return false
@@ -124,6 +133,8 @@ internal class WindowsBorderlessFullscreenAdapter(
         restoring = null
         val canvas = canvasToSynchronize
         canvasToSynchronize = null
+        val repaintState = canvasRepaintState
+        canvasRepaintState = null
         try {
             if (state != null && window.isDisplayable && window.isVisible) {
                 user32.SetWindowPlacement(WinDef.HWND(Native.getComponentPointer(window)), state.placement)
@@ -131,7 +142,21 @@ internal class WindowsBorderlessFullscreenAdapter(
                 if (canvas != null) synchronizeNativeCanvas(window, canvas)
             }
         } finally {
-            current?.close()
+            try {
+                val completedCanvas = canvas ?: repaintState?.first
+                if (completedCanvas?.isDisplayable == true) {
+                    // The GPU has covered this region. Do not let an old native damage region
+                    // schedule a GDI clear after the window becomes visible again.
+                    NativeLibrary.getInstance("user32").getFunction("ValidateRect", Function.ALT_CONVENTION)
+                        .invokeInt(arrayOf(WinDef.HWND(Native.getComponentPointer(completedCanvas)), null))
+                }
+            } finally {
+                try {
+                    current?.close()
+                } finally {
+                    repaintState?.let { (target, ignored) -> target.ignoreRepaint = ignored }
+                }
+            }
         }
     }
 
