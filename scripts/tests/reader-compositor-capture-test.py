@@ -121,6 +121,41 @@ class OffscreenWindow:
 
 @unittest.skipUnless(os.name == "nt", "Windows Graphics Capture requires Windows")
 class NativeCompositorTest(unittest.TestCase):
+    def test_output_region_wiring_stops_before_reading_an_offscreen_display(self):
+        with tempfile.TemporaryDirectory() as temporary, OffscreenWindow() as window:
+            result = module.record_window(window.hwnd, os.getpid(), Path(temporary), seconds=1,
+                                          executable=Path(sys.executable), output_region=True)
+            self.assertEqual("dxgi-output-duplication-reader-region", result["captureStage"])
+            self.assertEqual("PARTIAL", result["status"])
+            self.assertEqual(0, result["received"])
+            self.assertEqual([-20000, -20000, 319, 239], result["captureRegion"])
+            events = [json.loads(line) for line in (Path(temporary) / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+            self.assertTrue(events[0]["monitorCapture"])
+            self.assertEqual(result["captureRegion"], events[0]["captureRegion"])
+            self.assertIn("one active display", (Path(temporary) / "native-stderr.log").read_text(encoding="utf-8"))
+
+    def test_output_region_uses_the_real_gpu_crop_and_packed_row_copy(self):
+        helper = Path(__file__).resolve().parents[2] / "app-desktop/artifacts/diagnostics/compositor-native/reader-compositor.exe"
+        result = subprocess.run([str(helper), "--test-region-copy"], stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+        self.assertEqual(0, result.returncode, result.stderr.decode("utf-8"))
+        magic, width, height, content_width, content_height, timestamp = struct.unpack("<IIIIIq", result.stdout[:28])
+        self.assertEqual((0x4d445247, 3, 2, 3, 2, 42),
+                         (magic, width, height, content_width, content_height, timestamp))
+        self.assertEqual(bytes(v for y in (1, 2) for x in (1, 2, 3) for v in (x, y, 140, 255)),
+                         result.stdout[28:])
+
+    def test_output_region_cannot_capture_a_region_outside_the_owned_reader(self):
+        helper = Path(__file__).resolve().parents[2] / "app-desktop/artifacts/diagnostics/compositor-native/reader-compositor.exe"
+        with OffscreenWindow() as window:
+            result = subprocess.run([str(helper), hex(window.hwnd), str(os.getpid()), "1",
+                                     "--output-region", "0", "0", "200", "100"],
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5,
+                                    creationflags=subprocess.CREATE_NO_WINDOW)
+            self.assertNotEqual(0, result.returncode)
+            self.assertEqual(b"", result.stdout)
+            self.assertIn(b"reader client region", result.stderr.lower())
+
     def test_offscreen_owned_window_really_captures_pixels(self):
         with tempfile.TemporaryDirectory() as temporary, OffscreenWindow() as window:
             before = module.windows().qpc() - 1_000_000_000
@@ -219,6 +254,44 @@ public class ReaderCaptureAwtFixture {
 
 
 class CompositorWriterTest(unittest.TestCase):
+    def test_duplicate_frames_do_not_need_another_encoding_slot(self):
+        started, release = threading.Event(), threading.Event()
+        encode = module.encode_png
+
+        def blocked_encoder(*args):
+            started.set()
+            if not release.wait(5):
+                raise RuntimeError("Test encoder was not released")
+            return encode(*args)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            writer = module.CompositorWriter(Path(temporary), max_queued_bytes=16)
+            module.encode_png = blocked_encoder
+            try:
+                writer.offer(bytes(16), 2, 2, 1, {})
+                self.assertTrue(started.wait(2))
+                writer.offer(bytes(16), 2, 2, 2, {})
+            finally:
+                release.set()
+                result = writer.close()
+                module.encode_png = encode
+            self.assertEqual(2, result["written"], "Reusing an in-flight PNG must not drop a duplicate frame")
+            self.assertEqual("RECORDED", result["status"])
+
+    def test_output_region_records_its_stage_and_fixed_scope(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            writer = module.CompositorWriter(Path(temporary), output_region=[8, 31, 2, 2])
+            writer.offer(bytes(16), 2, 2, 1, {})
+            result = writer.close()
+            self.assertEqual("dxgi-output-duplication-reader-region", result["captureStage"])
+            self.assertEqual([8, 31, 2, 2], result["captureRegion"])
+            self.assertFalse(result["displayScanoutObserved"])
+            events = [json.loads(line) for line in (Path(temporary) / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+            frame = next(event for event in events if event["type"] == "compositor-frame")
+            self.assertEqual(1, frame["lastPresentQpc100ns"])
+            self.assertEqual(100, frame["qpcNanos"])
+            self.assertNotIn("systemRelative100ns", frame)
+
     def test_identical_frames_keep_both_records_and_share_one_lossless_png(self):
         with tempfile.TemporaryDirectory() as temporary:
             writer = module.CompositorWriter(Path(temporary))

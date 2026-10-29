@@ -1,7 +1,8 @@
 # 阅读器全屏渲染取证
 
 用于调查实际阅读器的全屏瞬态：保存应用绘制帧、窗口几何、漫画绘制范围及状态切换。
-默认关闭；不使用 Computer Use，不读取桌面屏幕，不上传数据，也不改变全屏切换规则。
+默认关闭；不使用 Computer Use，不上传数据，也不改变全屏切换规则。
+应用 Picture 和默认窗口 WGC 不读取桌面屏幕；显式显示输出区域取证的范围与限制见文末。
 窗口适配、共用图片观察、保存和离线分析共同实现这一条取证链；主要风险集中在帧关联、Skiko 私有字段、
 资源释放和插桩开销，不能靠增加无关阅读器测试替代这些专项验证。
 
@@ -121,3 +122,41 @@ WGC 不保证每个显示刷新都有回调。RECORDED 只表示所有接收到�
 接口依据：[窗口捕获](https://learn.microsoft.com/en-us/windows/win32/api/windows.graphics.capture.interop/nf-windows-graphics-capture-interop-igraphicscaptureiteminterop-createforwindow)、
 [合成帧时间](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.direct3d11captureframe.systemrelativetime)、
 [HotSpot 21 Windows 时钟](https://github.com/openjdk/jdk21u/blob/master/src/hotspot/os/windows/os_windows.cpp)。
+
+## 显式显示输出区域取证
+
+窗口 WGC 可以继续交付正常的源窗口内容，不能据此排除用户看到整个阅读器区域闪白。
+需要观察这一边界时，复用同一候选绑定、原生后端与有界落盘链路，加 `--output-region`：
+
+```powershell
+python scripts/capture-reader-compositor.py --candidate <候选绝对目录> --expected-commit <源码完整SHA> --output-region --capture-seconds 30
+```
+
+该模式通过 DXGI Desktop Duplication 获取阅读器所在输出，GPU 只复制启动时核验的阅读器客户区固定矩形，
+CPU、管道与 PNG 不包含矩形外的像素。固定范围避免切换期间把“当前窗口几何”套到较早的显示帧上。
+范围会在 `source` 和 manifest 的 `captureRegion=[物理屏幕x,y,width,height]` 中明确记录。
+窗口短暂退出合成时，此范围可能包含后方画面；这正是与源窗口帧对照的目的，不能称为仅抓取源窗口内容。
+不发送输入、不上传文件、不移动或激活窗口，也不拼接或保存整幅显示器画面。
+
+仅接受精确 HWND/PID/EXE 绑定的可见、前台阅读器，其初始客户区必须完整位于同一块未旋转显示器。
+不切换目标屏幕；用户隐藏、最小化、离开该窗口，或正常状态的客户区不再覆盖固定矩形时结束采集。
+全屏原生 `WM_SETREDRAW` 暂停期间 `WS_VISIBLE` 会被清除，允许在其 `SysSetRedraw` 属性仍有效时
+继续观察，但这一例外最多 500ms。阻塞等待显示帧后、GPU readback 前再次检查范围。
+窗口防截屏策略仍生效；初始化失败、访问丢失、旋转／跨屏、超限与保护内容屏蔽均明确报告。
+
+输出位于同一 reader 会话的 `output-region/`，与默认 `compositor/` 分开。
+`captureStage=dxgi-output-duplication-reader-region`；帧时间来自 `LastPresentTime` 的 QPC，换算为
+`lastPresentQpc100ns`／`qpcNanos`，可与应用 `timeNanos` 对照。它仍不是显示器物理扫描测量，
+`displayScanoutObserved=false`；DXGI 报告累积多帧时记录 `CAPTURE_GAP` 并将结果标为 PARTIAL。
+进程、保护策略和固定范围的退出另记 `capture-stopped`；ARMED 仅表示等候新阅读器会话，
+CAPTURING 仍以第一张实际帧为准。默认等候 20 分钟，指定采集 30 秒或提前离开范围后结束。
+
+PNG 写入前先识别相同像素，重复帧可引用尚在编码的 PNG，不占第二个编码槽；
+其他帧仍受原有像素／磁盘／帧数预算约束，不靠扩大内存上限掩盖缺帧。
+16 项 focused 检查覆盖原窗口 WGC、真正 GPU 子矩形复制／原生行填充、范围越界拒绝、
+Python 到原生输出模式的真实接线，以及慢编码期间重复帧保留。
+GPU 裁剪测试使用合成纹理，输出拒绝测试使用屏幕外自建窗口，均不读取桌面、不派发输入。
+这些测试不代替用户前台复现，也不证明本机输出复制的实际像素采集已经成功。
+
+接口依据：[Desktop Duplication](https://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/desktop-dup-api)、
+[按显示器 adapter 创建复制接口](https://learn.microsoft.com/en-us/windows/win32/api/dxgi1_2/nf-dxgi1_2-idxgioutput1-duplicateoutput)。

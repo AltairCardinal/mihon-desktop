@@ -1,7 +1,8 @@
-"""Capture only the HWND of a verified reader process; never a display or desktop.
+"""Capture a verified reader's window surface or its explicit fixed output region.
 
 Windows Graphics Capture supplements Skia Pictures. QPC frame time is compositor
-time, not a display scanout observation. Capture and PNG queues remain bounded.
+time, not a physical display scanout observation. The opt-in output-region mode
+copies only the initial reader client rectangle from DXGI; no input is sent.
 """
 import argparse
 from concurrent.futures import ThreadPoolExecutor
@@ -150,7 +151,8 @@ def encode_png(pixels, width, height):
 
 
 class CompositorWriter:
-    def __init__(self, directory, max_frames=1800, max_queued_bytes=128 * 1024 * 1024, max_disk_bytes=512 * 1024 * 1024):
+    def __init__(self, directory, max_frames=1800, max_queued_bytes=128 * 1024 * 1024,
+                 max_disk_bytes=512 * 1024 * 1024, output_region=None):
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
         self.log = (self.directory / "events.jsonl").open("x", encoding="utf-8")
@@ -160,6 +162,7 @@ class CompositorWriter:
         self.received, self.missing, self.queued, self.disk = 0, 0, 0, 0
         self.last, self.references, self.saved, self.failures = None, [], set(), []
         self.result = None
+        self.output_region = list(output_region) if output_region is not None else None
 
     def event(self, kind, **fields):
         with self.lock:
@@ -183,12 +186,7 @@ class CompositorWriter:
                 self.missing += 1
                 self.gap("frame-dimensions-or-size-rejected")
                 return True
-            if self.queued + expected > self.max_bytes or not self.slots.acquire(blocking=False):
-                self.missing += 1
-                self.gap("pixel-queue-budget-exceeded")
-                return True
-            self.queued += expected
-        handed_off = False
+        handed_off, reserved = False, False
         try:
             if not isinstance(pixels, (bytes, bytearray, memoryview)):
                 raise ValueError("Expected owned packed BGRA8 bytes from the native capture pipe")
@@ -201,13 +199,22 @@ class CompositorWriter:
                 if self.last and self.last[0] == key and self.last[1] == owned:
                     file = self.last[2]
                 else:
+                    # A duplicate references an existing PNG, even while that PNG is
+                    # encoding. It must not consume another slot or pixel budget.
+                    if self.queued + expected > self.max_bytes or not self.slots.acquire(blocking=False):
+                        self.missing += 1
+                        self.gap("pixel-queue-budget-exceeded")
+                        return True
+                    self.queued += expected
+                    reserved = True
                     file = f"window-{frame_id:06}.png"
                     self.last = (key, owned, file)
                     self.pool.submit(self._save, file, owned, width, height)
                     handed_off = True
                 self.references.append(file)
+                clock = {"lastPresentQpc100ns": timestamp} if self.output_region is not None else {"systemRelative100ns": timestamp}
                 self.event("compositor-frame", frameId=frame_id, file=file, width=width, height=height,
-                           systemRelative100ns=timestamp, qpcNanos=timestamp * 100,
+                           **clock, qpcNanos=timestamp * 100,
                            observedWindowAtReceive=geometry)
             return True
         except BaseException as failure:
@@ -216,7 +223,7 @@ class CompositorWriter:
             self.gap(f"frame-copy-or-queue-failed:{failure}")
             return True
         finally:
-            if not handed_off:
+            if reserved and not handed_off:
                 with self.lock:
                     self.queued -= expected
                 self.slots.release()
@@ -245,10 +252,13 @@ class CompositorWriter:
         self.pool.shutdown(wait=True)
         with self.lock:
             written = sum(file in self.saved for file in self.references)
-            self.result = {"captureStage": "windows-graphics-capture-window", "displayScanoutObserved": False,
+            stage = "dxgi-output-duplication-reader-region" if self.output_region is not None else "windows-graphics-capture-window"
+            self.result = {"captureStage": stage, "displayScanoutObserved": False,
                            "received": self.received, "written": written, "missing": self.received - written,
                            "pngBytes": self.disk, "queuedPixelBytes": self.queued, "failures": self.failures,
                            "status": "RECORDED" if written and written == self.received and not self.failures else "PARTIAL"}
+            if self.output_region is not None:
+                self.result["captureRegion"] = self.output_region
             self.event("session-drained", **self.result)
             self.log.close()
             write_json(self.directory / "manifest.json", self.result)
@@ -256,10 +266,13 @@ class CompositorWriter:
             return self.result
 
 
-def record_window(hwnd, pid, directory, seconds=60, executable=None, stop_event=None, max_frames=1800, on_ready=None):
+def record_window(hwnd, pid, directory, seconds=60, executable=None, stop_event=None, max_frames=1800,
+                  on_ready=None, output_region=False):
     source = validate_source(hwnd, pid, executable)
     try:
-        writer = CompositorWriter(directory, max_frames=max_frames)
+        initial_geometry = source.geometry()
+        region = initial_geometry["nativeClient"] if output_region else None
+        writer = CompositorWriter(directory, max_frames=max_frames, output_region=region)
     except BaseException:
         source.close()
         raise
@@ -273,10 +286,15 @@ def record_window(hwnd, pid, directory, seconds=60, executable=None, stop_event=
         if hashlib.sha256(helper.read_bytes()).hexdigest().upper() != backend["executableSha256"] or hashlib.sha256(cpp.read_bytes()).hexdigest().upper() != backend["sourceSha256"]:
             raise ValueError("The native capture helper does not match its source/build manifest")
         writer.event("source", hwnd=hex(hwnd), pid=pid, executable=source.executable,
-                     qpcFrequency=source.api.frequency, window=source.geometry(), cursorCapture=False,
-                     monitorCapture=False, nativeBackend=backend)
+                     qpcFrequency=source.api.frequency, window=initial_geometry, cursorCapture=False,
+                     monitorCapture=output_region, captureRegion=region,
+                     captureStage="dxgi-output-duplication-reader-region" if output_region else "windows-graphics-capture-window",
+                     displayScanoutObserved=False, nativeBackend=backend)
         with (Path(directory) / "native-stderr.log").open("wb") as errors:
-            process = subprocess.Popen([str(helper), hex(hwnd), str(pid), str(seconds)], stdout=subprocess.PIPE,
+            command = [str(helper), hex(hwnd), str(pid), str(seconds)]
+            if output_region:
+                command += ["--output-region", *map(str, region)]
+            process = subprocess.Popen(command, stdout=subprocess.PIPE,
                                        stderr=errors, creationflags=subprocess.CREATE_NO_WINDOW)
             def stop_timeout():
                 if process.poll() is None:
@@ -292,8 +310,11 @@ def record_window(hwnd, pid, directory, seconds=60, executable=None, stop_event=
                     raise ValueError("Native capture header was truncated")
                 magic, width, height, content_width, content_height, timestamp = struct.unpack("<IIIIIq", header)
                 size = width * height * 4
-                if magic != 0x4d574743 or not 0 < size <= 64 * 1024 * 1024 or (width, height) != (content_width, content_height):
+                expected_magic = 0x4d445247 if output_region else 0x4d574743
+                if magic != expected_magic or not 0 < size <= 64 * 1024 * 1024 or (width, height) != (content_width, content_height):
                     raise ValueError("Native capture dimensions or protocol were rejected")
+                if region is not None and (width, height) != tuple(region[2:]):
+                    raise ValueError("Output pixels differ from the fixed reader client region")
                 pixels = process.stdout.read(size)
                 if len(pixels) != size:
                     raise ValueError("Native capture pixels were truncated")
@@ -317,6 +338,12 @@ def record_window(hwnd, pid, directory, seconds=60, executable=None, stop_event=
             code = process.wait(timeout=5)
             if code and not writer.failures:
                 writer.gap(f"native-capture-exit:{code}; see native-stderr.log")
+        with (Path(directory) / "native-stderr.log").open(encoding="utf-8") as native_log:
+            for line in native_log:
+                if line.startswith("CAPTURE_GAP "):
+                    writer.gap(line.strip())
+                elif line.startswith("CAPTURE_STOP "):
+                    writer.event("capture-stopped", reason=line.strip())
     except BaseException as failure:
         writer.gap(f"capture-unavailable:{failure}")
         raise
@@ -362,7 +389,7 @@ def reader_hwnd(pid):
     return max(matches)[1]
 
 
-def watch_candidate(candidate, expected_commit, wait_seconds=1200, capture_seconds=60):
+def watch_candidate(candidate, expected_commit, wait_seconds=1200, capture_seconds=60, output_region=False):
     candidate = candidate.resolve()
     manifest = json.loads((candidate / "preview-manifest.json").read_text(encoding="utf-8"))
     executable = Path(manifest["artifactPath"]).resolve()
@@ -379,7 +406,7 @@ def watch_candidate(candidate, expected_commit, wait_seconds=1200, capture_secon
     known = {item.name for item in root.iterdir() if item.is_dir()}
     state = candidate / "compositor-watch.json"
     write_json(state, {"status": "ARMED", "watcherPid": os.getpid(), "executable": str(executable),
-                       "sourceCommit": expected_commit, "waitSeconds": wait_seconds})
+                       "sourceCommit": expected_commit, "waitSeconds": wait_seconds, "outputRegion": output_region})
     deadline = time.monotonic() + wait_seconds
     while time.monotonic() < deadline:
         for session in root.iterdir():
@@ -396,9 +423,11 @@ def watch_candidate(candidate, expected_commit, wait_seconds=1200, capture_secon
             hwnd = reader_hwnd(pid)
             source = validate_source(hwnd, pid, executable)
             source.close()
-            context = {"watcherPid": os.getpid(), "sourcePid": pid, "hwnd": hex(hwnd), "session": str(session)}
+            context = {"watcherPid": os.getpid(), "sourcePid": pid, "hwnd": hex(hwnd), "session": str(session),
+                       "outputRegion": output_region}
             write_json(state, {"status": "CAPTURE_STARTING", **context})
-            result = record_window(hwnd, pid, session / "compositor", capture_seconds, executable=executable,
+            result = record_window(hwnd, pid, session / ("output-region" if output_region else "compositor"),
+                                   capture_seconds, executable=executable, output_region=output_region,
                                    on_ready=lambda: write_json(state, {"status": "CAPTURING", **context}))
             write_json(state, {"status": "FINISHED" if result["status"] == "RECORDED" else "PARTIAL",
                                "session": str(session), "capture": result})
@@ -414,9 +443,11 @@ if __name__ == "__main__":
     parser.add_argument("--expected-commit", required=True)
     parser.add_argument("--wait-seconds", type=int, default=1200)
     parser.add_argument("--capture-seconds", type=int, default=60)
+    parser.add_argument("--output-region", action="store_true",
+                        help="Save only the fixed initial reader client region from the display output")
     args = parser.parse_args()
     try:
-        result = watch_candidate(args.candidate, args.expected_commit, args.wait_seconds, args.capture_seconds)
+        result = watch_candidate(args.candidate, args.expected_commit, args.wait_seconds, args.capture_seconds, args.output_region)
         print(json.dumps(result, ensure_ascii=False))
     except BaseException as failure:
         if args.candidate.is_dir():
