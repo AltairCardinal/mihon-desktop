@@ -25,6 +25,8 @@ Windows 进入、退出前，adapter 对已经可见的 HWND 发送 `WM_SETREDRA
 WINDOWPLACEMENT（包括最大化状态和普通窗口位置），最后释放重绘暂停。
 若此时又请求进入，保留并复用最初的窗口状态，不把尚未完成的恢复阶段当成新的窗口基线；
 只有最新过渡完成才恢复状态和呈现。完成恢复失败时仍在 `finally` 中释放暂停。
+如果窗口在过渡期间已被隐藏，跳过会将其重新显示的 WINDOWPLACEMENT 恢复，仍释放暂停；
+用户的隐藏操作优先于尚未完成的呈现回调。
 
 最终绘制前，controller 把根 SkiaLayer 的实际 Canvas 交给 adapter，按真实 HWND 客户区核对原生
 子画布的位置和尺寸。AWT 可能已报告目标逻辑矩形，但快速边框变化留下的 native child 仍有偏移，

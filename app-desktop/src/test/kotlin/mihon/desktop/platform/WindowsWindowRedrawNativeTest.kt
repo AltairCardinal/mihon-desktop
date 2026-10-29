@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledOnOs
 import org.junit.jupiter.api.condition.OS
 import java.awt.Frame
+import java.awt.Rectangle
 import java.util.concurrent.FutureTask
 import javax.swing.SwingUtilities
 
@@ -49,6 +50,27 @@ class WindowsWindowRedrawNativeTest {
         hold.close()
         assertFalse(window.isDisplayable)
         assertFalse(window.isVisible)
+    }
+
+    @Test
+    fun `deferred exit completion cannot reshow a window hidden during the transition`() = withWindow { window ->
+        val target = Rectangle(-20000, -20000, 640, 480)
+        val transform = window.graphicsConfiguration.defaultTransform
+        val physical = Rectangle(
+            (target.x * transform.scaleX).toInt(),
+            (target.y * transform.scaleY).toInt(),
+            (target.width * transform.scaleX).toInt(),
+            (target.height * transform.scaleY).toInt(),
+        )
+        val adapter = WindowsBorderlessFullscreenAdapter(
+            bounds = { _, _ -> WindowsFullscreenBounds(physical) { target } },
+        )
+        assertTrue(adapter.enter(window))
+        adapter.completeTransition(window)
+        assertTrue(adapter.exit(window))
+        window.isVisible = false
+        adapter.completeTransition(window)
+        assertFalse(User32.INSTANCE.IsWindowVisible(WinDef.HWND(Native.getComponentPointer(window))))
     }
 
     private fun withWindow(action: (Frame) -> Unit) {
