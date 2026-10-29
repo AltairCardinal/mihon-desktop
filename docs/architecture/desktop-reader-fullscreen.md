@@ -12,13 +12,29 @@ Windows 优先保留原生窗口与绘制表面的无边框实现；其他平台
 
 Windows 进入、退出前，adapter 对已经可见的 HWND 发送 `WM_SETREDRAW(FALSE)`；
 进入时先保存原窗口样式、WINDOWPLACEMENT、物理窗口边界和 AWT 逻辑边界，
-让既有窗口内容保留到新画布和 D3D 帧准备完成。仅禁用 DWM 过渡动画不能阻止系统在尺寸变化期间
+避免直接呈现尺寸尚未同步的画布。仅禁用 DWM 过渡动画不能阻止系统在尺寸变化期间
 先显示旧缓冲区的拉伸版本。此消息会临时清除原生 `WS_VISIBLE`，但 AWT 窗口仍保持可见并继续渲染；
 因此过渡中的 `SetWindowLong` 也必须保持该位清除，保存的退出样式则必须来自暂停之前。
 下一事件周期的最终布局和 `renderImmediately()` 返回后，controller 调用 adapter 的
 `completeTransition()`：恢复原生重绘，仅更新窗口边框，禁止再次擦背景和重画已完成的 GPU 子画布，
 再沿用既有 DWM flush 和过渡恢复。
-此处理不创建快照窗口，不重投影漫画，不改启动窗口与 Compose fallback。
+原生暂停仍不足以保持显示输出：实际 DXGI 取证已录到暂停期间整个客户区变白，虽然源窗口 WGC 正常。
+因此真实可见的 Windows 阅读器在暂停前还会保留一次已完成的 Skia Picture，作为独立过渡帧；
+它覆盖新旧物理窗口范围的并集，图像按原 Canvas 的物理屏幕原点绘制，不缩放、不重新居中或重投影平移。
+只保留这一张图，连续反向请求复用它，最新完成回调才释放。
+
+过渡帧复用既有 Skia screenshot／Swing owned window 链路，窗口不可激活，不请求焦点；
+先在 DWM 隐藏状态下准备并绘制，再显示、flush，随后才暂停主 HWND。
+顶层窗口采用分层位图 backing，避免普通 GDI 绘制被裁剪时没有保留像素；
+按真实物理边界校正窗口尺寸，图像仍按物理像素 1:1 绘制。
+主画布最终绘制后先恢复其原生状态，再完成既有 DWM flush，最后调用 adapter 的
+`releaseTransitionFrame()` 移除过渡帧；绘制、恢复或 flush 失败时也必须在 finally 中释放。
+不改变启动窗口、Compose fallback 或漫画 holder 的生命周期。
+
+该保留仅在可见、未被 DWM 隐藏的窗口上启用；非活动窗口若覆盖真实显示器则不显示过渡帧。
+受防截屏保护的窗口不复制到新表面，继续原有切换路径；检查失败也跳过。
+单张图片及过渡范围分别最多 64 MiB，无法取得 Picture、超限或准备失败时回退既有流程，
+不据此承诺这些回退场景无白闪。图片随过渡结束释放，不写磁盘，不读取桌面。
 
 退出不能在暂停后立即调用 `SetWindowPlacement()`：它会把原生可见状态重新打开，提前暴露仍按
 全屏尺寸绘制的内容。adapter 先用不带显示标记的 `SetWindowPos()` 恢复保存的物理边界，
@@ -82,6 +98,10 @@ renderDelegate：立即绘制入口先向已有父容器派发当前尺寸的 AW
 验证边界：
 
 - `ReaderFullscreenFramePresentationTest` 覆盖进入、退出、关闭阅读器的绘制顺序及绘制失败清理。
+- `ReaderFullscreenRetainedFrameTest` 用真实 controller／adapter 和屏幕外、不激活的窗口，
+  在进入与退出的暂停中通过窗口 WGC 读取独立过渡帧，检查漫画存在、物理高度不变、背景未变白、
+  原屏幕位置只允许原生 DPI 栅格舍入（150% 下最多 1 像素），完成后 native HWND 已销毁。
+  另检查防截屏及 DWM 隐藏状态不会创建新的无保护表面。该测试不读取桌面显示输出。
 - `ReaderFullscreenCompositorTest` 使用真实 Compose／Skiko、真实无边框 adapter、原生 WGC 后端，
   在屏幕外且不激活的窗口上进行三次进入／退出。绘制中加入 45ms 延迟以跨越显示刷新，
   两个方向都检查收到的目标尺寸合成帧使用正确漫画位置，退出位置以最初真实窗口帧为基线；

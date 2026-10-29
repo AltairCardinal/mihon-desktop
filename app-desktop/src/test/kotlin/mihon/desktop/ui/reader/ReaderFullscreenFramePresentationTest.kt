@@ -39,6 +39,7 @@ class ReaderFullscreenFramePresentationTest {
             window.renderImmediately()
             adapter.completeTransition(window)
             transitions.setDisabled(window, false)
+            adapter.releaseTransitionFrame(window)
         }
     }
 
@@ -54,6 +55,7 @@ class ReaderFullscreenFramePresentationTest {
             window.renderImmediately()
             adapter.completeTransition(window)
             transitions.setDisabled(window, false)
+            adapter.releaseTransitionFrame(window)
         }
     }
 
@@ -209,6 +211,18 @@ class ReaderFullscreenFramePresentationTest {
             window.renderImmediately()
             adapter.completeTransition(window)
             transitions.setDisabled(window, false)
+            adapter.releaseTransitionFrame(window)
+        }
+    }
+
+    @Test
+    fun `presentation flush failure still releases the retained reader frame`() {
+        every { transitions.setDisabled(window, false) } throws IllegalStateException("DWM unavailable")
+        controller.syncPlacement(true)
+        verifyOrder {
+            adapter.completeTransition(window)
+            transitions.setDisabled(window, false)
+            adapter.releaseTransitionFrame(window)
         }
     }
 }
