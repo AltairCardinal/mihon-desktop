@@ -67,6 +67,7 @@ class SyncPanelController(
     private val pendingMutex = Mutex()
     private val refreshQueued = AtomicBoolean(false)
     private val pendingRefreshQueued = AtomicBoolean(false)
+    private val initialPendingRefreshQueued = AtomicBoolean(false)
     private val deviceBrowserOpened = AtomicBoolean(false)
     private val visibilityVersion = AtomicLong()
     private var references = linkedMapOf<Long, String>()
@@ -124,6 +125,7 @@ class SyncPanelController(
         }
         panelScope.launch {
             handler.subscribeToOneOrNull { sync_journalQueries.getActiveSpace() }.collectLatest { connection ->
+                queueInitialPendingRefresh()
                 queueRefresh()
                 if (connection != null) {
                     combine(
@@ -136,7 +138,10 @@ class SyncPanelController(
                         handler.subscribeToOne {
                             sync_importQueries.countPendingImports(connection.space_id, connection.generation)
                         },
-                    ) { _, _, _ -> Unit }.collect { queuePendingRefresh() }
+                    ) { _, _, _ -> Unit }.collect {
+                        queueInitialPendingRefresh()
+                        queuePendingRefresh()
+                    }
                 }
             }
         }
@@ -338,7 +343,19 @@ class SyncPanelController(
         }
     }
 
-    /** Local choice feedback must not wait for credentials, recovery discovery or reports. */
+    /** Bootstrap local rows even while the first full connection check is suspended. */
+    private fun queueInitialPendingRefresh() {
+        if (!state.value.loaded && initialPendingRefreshQueued.compareAndSet(false, true)) {
+            localCommands.trySend {
+                initialPendingRefreshQueued.set(false)
+                pendingMutex.withLock {
+                    refreshPendingLocked(updateReferences = false, initial = true)
+                }
+            }
+        }
+    }
+
+    /** Local choice feedback must not reread credentials, recovery discovery or reports. */
     private fun queuePendingRefresh() {
         if (pendingRefreshQueued.compareAndSet(false, true)) {
             enqueue {
@@ -423,8 +440,27 @@ class SyncPanelController(
         refreshPendingLocked(updateReferences = true)
     }
 
-    private suspend fun refreshPendingLocked(updateReferences: Boolean) {
-        val connection = state.value.connection ?: return
+    private suspend fun refreshPendingLocked(updateReferences: Boolean, initial: Boolean = false) {
+        if (initial && state.value.loaded) return
+        // This is only the local DB projection. loaded remains false until the full check finishes.
+        val connection = if (initial) {
+            handler.await {
+                sync_journalQueries.getActiveSpace().executeAsOneOrNull()?.let {
+                    SyncConnection(
+                        it.space_id,
+                        it.generation,
+                        mihon.domain.sync.transport.SyncRepository(
+                            it.repository_owner,
+                            it.repository_name,
+                            it.repository_branch,
+                        ),
+                        it.exchange_enabled && runtime.repositoryScope.accepts(it.repository_name),
+                    )
+                }
+            }
+        } else {
+            state.value.connection ?: return
+        }
         val queue = readPendingQueue(connection) ?: run {
             queueRefresh()
             return
@@ -434,8 +470,13 @@ class SyncPanelController(
             selectedBindings = selectedBindings.filter { (id, binding) -> references[id] == binding }
         }
         mutableState.update {
-            if (it.connection != connection) return@update it
+            if (initial) {
+                if (it.loaded) return@update it
+            } else if (it.connection != connection) {
+                return@update it
+            }
             it.copy(
+                connection = connection,
                 queuedMembership = queue.membership,
                 queuedFavorites = queue.favorites,
                 queuedFollows = queue.follows,
