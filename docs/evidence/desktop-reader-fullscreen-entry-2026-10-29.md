@@ -180,3 +180,8 @@ WINDOWPLACEMENT 并释放暂停；快速重新进入时复用最初状态。合�
 真实阅读器两种 DPI 的 Picture 分别为 80/80、186/186，无缺帧和丢事件。
 命令及日志为 `.gradle-coordinator/reader-exit-complete.{json,log}`；未运行模块全量。
 最终 XML、合成 PNG 和逐帧位置归档于 `app-desktop/artifacts/diagnostics/reader-exit-green-20261029/`。
+
+收尾复核新增真实 adapter 的“退出完成前隐藏窗口”测试，先证明延迟 WINDOWPLACEMENT 会重新显示
+已隐藏的 peer，再限定恢复只作用于仍可见的窗口。复核后 35 项 focused 检查全部通过，
+保留上述合成、快速切换、真实阅读器和生命周期范围；命令及日志为
+`.gradle-coordinator/reader-exit-reviewed.{json,log}`，最终证据另存绿色归档的 `reviewed/`。

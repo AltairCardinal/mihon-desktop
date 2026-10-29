@@ -125,7 +125,7 @@ internal class WindowsBorderlessFullscreenAdapter(
         val canvas = canvasToSynchronize
         canvasToSynchronize = null
         try {
-            if (state != null && window.isDisplayable) {
+            if (state != null && window.isDisplayable && window.isVisible) {
                 user32.SetWindowPlacement(WinDef.HWND(Native.getComponentPointer(window)), state.placement)
                 // Maximize/work-area rounding can adjust the extent again while restoring placement.
                 if (canvas != null) synchronizeNativeCanvas(window, canvas)
