@@ -3,6 +3,7 @@ package mihon.desktop.reader
 import androidx.compose.ui.graphics.asSkiaBitmap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import mihon.domain.reader.PageDecodePurpose
 import mihon.domain.reader.PageRotation
@@ -19,6 +20,11 @@ internal class DesktopReaderOptionalWorkPaused : CancellationException("Optional
 
 /** Executes the shared original-coordinate plan through existing bounded region leases. */
 internal object DesktopReaderSpreadSampler {
+    // One pairing region sampling at a time, in every runtime: the regions of one
+    // sample are decoded one after another, and another sampling must not interleave
+    // with them.
+    private val activeSampling = java.util.concurrent.atomic.AtomicReference<Any?>(null)
+
     suspend fun sample(
         pipeline: DesktopReaderPageImagePipeline,
         session: DesktopReaderRegionContentSession,
@@ -26,11 +32,21 @@ internal object DesktopReaderSpreadSampler {
         rawHeight: Int,
         orientation: ReaderImageOrientation,
         canContinue: () -> Boolean = { true },
+        pairingDemand: DesktopReaderPairingDecodeDemand? = null,
     ): ReaderSpreadEdgeSamples? {
         val plan = SharedSpreadMatching.plan(rawWidth, rawHeight, orientation) ?: return null
-        val (left, right) = sampleRegions(session, plan.left, plan.right, rawWidth, rawHeight, canContinue)
-            ?: return null
-        return ReaderSpreadEdgeSamples(left, right)
+        return withSamplingSlot(canContinue) {
+            val (left, right) = sampleRegions(
+                session,
+                plan.left,
+                plan.right,
+                rawWidth,
+                rawHeight,
+                canContinue,
+                pairingDemand,
+            ) ?: return@withSamplingSlot null
+            ReaderSpreadEdgeSamples(left, right)
+        }
     }
 
     suspend fun sampleOriginal(
@@ -41,13 +57,46 @@ internal object DesktopReaderSpreadSampler {
         orientation: ReaderImageOrientation,
         rotation: PageRotation = PageRotation.NONE,
         canContinue: () -> Boolean = { true },
+        pairingDemand: DesktopReaderPairingDecodeDemand? = null,
     ): ReaderOriginalPageSamples? {
         currentCoroutineContext().ensureActive()
         val plan = ReaderOriginalPageSampling.plan(rawWidth, rawHeight, orientation, rotation) ?: return null
-        val (left, right) = sampleRegions(session, plan.left, plan.right, rawWidth, rawHeight, canContinue)
-            ?: return null
-        return plan.samples(left, right)
+        return withSamplingSlot(canContinue) {
+            val (left, right) = sampleRegions(
+                session,
+                plan.left,
+                plan.right,
+                rawWidth,
+                rawHeight,
+                canContinue,
+                pairingDemand,
+            ) ?: return@withSamplingSlot null
+            plan.samples(left, right)
+        }
     }
+
+    /**
+     * Holds the global pairing sampling slot for the whole operation.
+     *
+     * A sampling that cannot take the slot waits for it and is bounded by the caller's
+     * own budget: when the budget is spent the operation is paused, not failed, so the
+     * publisher can admit it again later.
+     */
+    private suspend fun <T> withSamplingSlot(canContinue: () -> Boolean, block: suspend () -> T): T {
+        val token = Any()
+        while (!activeSampling.compareAndSet(null, token)) {
+            currentCoroutineContext().ensureActive()
+            if (!canContinue()) throw DesktopReaderOptionalWorkPaused()
+            delay(SAMPLING_SLOT_POLL_MILLIS)
+        }
+        return try {
+            block()
+        } finally {
+            activeSampling.compareAndSet(token, null)
+        }
+    }
+
+    private const val SAMPLING_SLOT_POLL_MILLIS = 16L
 
     private suspend fun sampleRegions(
         session: DesktopReaderRegionContentSession,
@@ -56,6 +105,7 @@ internal object DesktopReaderSpreadSampler {
         rawWidth: Int,
         rawHeight: Int,
         canContinue: () -> Boolean,
+        pairingDemand: DesktopReaderPairingDecodeDemand?,
     ): Pair<List<Int>, List<Int>>? {
         currentCoroutineContext().ensureActive()
         if (!canContinue()) throw DesktopReaderOptionalWorkPaused()
@@ -76,7 +126,12 @@ internal object DesktopReaderSpreadSampler {
                         bounds.height,
                         region = bounds,
                     )
-                val lease = session.acquireTile(key, optional = true) ?: return null
+                // Optionality follows the pairing demand: speculation stays pausable optional work, while a
+                // real certification need must not be refused because some other optional region lease is
+                // busy, which used to surface as a blocking RESOURCE on the target page.
+                val optional = pairingDemand?.speculative ?: true
+                val lease = session.acquireTile(key, optional = optional, pairingDemand = pairingDemand)
+                    ?: return null
                 lease.use {
                     val asset = it.asset
                     if (asset.sampled || asset.bitmap.width != bounds.width ||

@@ -262,9 +262,15 @@ class ReaderSpreadSamplesOwner(
         if (closed) return emptyList()
         val pairs = window.zipWithNext().let { if (forward) it else it.reversed() }
         return pairs.firstOrNull { pair ->
+            // The partner of a portrait page still owes its edge samples while its own
+            // fact is unknown: without them the pair cannot be scored, and that fact is
+            // exactly what the sampling produces. A partner that turns out not to be
+            // portrait stops the pair from qualifying, so the dependency cannot loop
+            // over a pair that can never be scored.
+            val partnerKnown = facts[pair.second]?.state != null
             pair.first != identity.pageIds.firstOrNull() && pair !in scores &&
                 facts[pair.first]?.state == ReaderPageFactState.PORTRAIT &&
-                facts[pair.second]?.state == ReaderPageFactState.PORTRAIT
+                (facts[pair.second]?.state == ReaderPageFactState.PORTRAIT || !partnerKnown)
         }?.let { pair -> listOf(pair.first, pair.second).filter { it !in samples } }.orEmpty()
     }
 

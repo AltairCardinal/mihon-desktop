@@ -22,6 +22,15 @@ enum class ReaderIoPurpose {
     FIRST_PRESENTATION,
     CACHE_MAINTENANCE,
     ADJACENT_PREFETCH,
+
+    /** Bounded header preparation for an ordinary Ready neighbour, outside spread matching. */
+    NORMAL_NEIGHBOUR_HEADER,
+
+    /** Bounded header preparation issued by the shared spread-matching scheduler for a real need. */
+    SPREAD_SAMPLE_HEADER,
+
+    /** Bounded header preparation issued by the shared spread-matching scheduler as pure lookahead. */
+    SPREAD_SPECULATIVE_HEADER,
 }
 
 data class ReaderIoEvent(

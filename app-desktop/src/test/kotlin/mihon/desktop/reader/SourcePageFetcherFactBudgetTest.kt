@@ -46,7 +46,7 @@ class SourcePageFetcherFactBudgetTest {
         val budget = ReaderDualPageFactBudget()
         val id = ReaderPageId(ReaderChapterId(1), 0)
         budget.reserve(listOf(id), nowMillis())
-        val permit = ReaderDualPageFactReadPermit(budget, id, ::nowMillis)
+        val permit = ReaderDualPageFactReadPermit(budget, id, { nowMillis() })
         try {
             server.enqueue(MockResponse.Builder().chunkedBody(Buffer().write(encoded), 4_864).build())
             var cancelled = false
@@ -85,7 +85,7 @@ class SourcePageFetcherFactBudgetTest {
             val prefixBudget = ReaderDualPageFactBudget()
             val prefixId = ReaderPageId(ReaderChapterId(1), 1)
             prefixBudget.reserve(listOf(prefixId), nowMillis())
-            val prefixPermit = ReaderDualPageFactReadPermit(prefixBudget, prefixId, ::nowMillis)
+            val prefixPermit = ReaderDualPageFactReadPermit(prefixBudget, prefixId, { nowMillis() })
             try {
                 server.enqueue(
                     MockResponse.Builder().body(Buffer().write(smallEncoded))
@@ -106,7 +106,7 @@ class SourcePageFetcherFactBudgetTest {
             val opaqueBudget = ReaderDualPageFactBudget()
             val opaqueId = ReaderPageId(ReaderChapterId(1), 2)
             opaqueBudget.reserve(listOf(opaqueId), nowMillis())
-            val opaquePermit = ReaderDualPageFactReadPermit(opaqueBudget, opaqueId, ::nowMillis)
+            val opaquePermit = ReaderDualPageFactReadPermit(opaqueBudget, opaqueId, { nowMillis() })
             try {
                 server.enqueue(
                     MockResponse.Builder().body(Buffer().write(smallEncoded))
@@ -137,7 +137,7 @@ class SourcePageFetcherFactBudgetTest {
             val excessBudget = ReaderDualPageFactBudget()
             val excessId = ReaderPageId(ReaderChapterId(1), 3)
             excessBudget.reserve(listOf(excessId), nowMillis())
-            val excessPermit = ReaderDualPageFactReadPermit(excessBudget, excessId, ::nowMillis)
+            val excessPermit = ReaderDualPageFactReadPermit(excessBudget, excessId, { nowMillis() })
             excessPermit.reserve(ReaderDualPageFactLimits.MAX_NEW_BYTES - 1)
             try {
                 server.enqueue(
@@ -180,7 +180,7 @@ class SourcePageFetcherFactBudgetTest {
         val destination = directory.resolve("hanging.png")
         val start = nowMillis()
         budget.reserve(listOf(id), start)
-        val permit = ReaderDualPageFactReadPermit(budget, id, ::nowMillis)
+        val permit = ReaderDualPageFactReadPermit(budget, id, { nowMillis() })
         server.enqueue(MockResponse.Builder().body(Buffer().write(png())).bodyDelay(20, TimeUnit.SECONDS).build())
         try {
             val result = fetcher.fetchToDestination(

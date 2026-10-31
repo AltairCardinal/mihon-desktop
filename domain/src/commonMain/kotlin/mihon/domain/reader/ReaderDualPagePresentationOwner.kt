@@ -82,7 +82,7 @@ internal class ReaderDualPagePresentationOwner(
 
     /** Overlay current physical leases without changing the canonical proposal or retaining history claims. */
     fun presentationFrameProjection(): List<ReaderDualPageUnit> {
-        records.values.filter { it.visible }.toList().forEach(::refresh)
+        records.values.toList().filter { it.visible }.forEach(::refresh)
         val claims = records.values.filter { it.visible && it.locked.isNotEmpty() }
             .flatMap { record -> record.unit.pageIds.map { it to record.unit } }.toMap()
         val emitted = mutableSetOf<ReaderPageId>()
@@ -152,7 +152,11 @@ internal class ReaderDualPagePresentationOwner(
     }
 
     fun metadataChanged(page: ReaderPageId) {
-        records.values.filter { it.locked.isEmpty() && page in it.unit.pageIds }.toList().forEach(::discard)
+        // Snapshot before filtering: a concurrent discard of another record would
+        // otherwise break this iteration.
+        records.values.toList()
+            .filter { it.locked.isEmpty() && page in it.unit.pageIds }
+            .forEach(::discard)
     }
 
     fun isManualUnit(unit: ReaderDualPageUnit): Boolean = unit.pageIds.size == 2 &&
@@ -180,7 +184,13 @@ internal class ReaderDualPagePresentationOwner(
         val record = records.values.firstOrNull { it.visible && it.unit.id == desired.id }
             ?: Record(ReaderDualPageFrameId(identity().generation, context, serial++), desired)
                 .also { records[it.id] = it }
-        if (!preparingPages.all { ready(record, it) && (!record.stale || it in record.locked) }) return null
+        // A page the platform declares as preparing may enter the viewport before its fact is
+        // known: the decoded fact is what makes it known, and it can only arrive through a
+        // ticket. It still becomes drawable only after that fact is known, because
+        // `preparePage` keeps the readiness check.
+        if (!preparingPages.all { it in record.unit.pageIds && (!record.stale || it in record.locked) }) {
+            return null
+        }
         record.visible = true
         record.appendable = !record.stale
         record.activeSequence = location.sequence

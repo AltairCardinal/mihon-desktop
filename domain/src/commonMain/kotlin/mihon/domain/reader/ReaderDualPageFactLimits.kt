@@ -3,6 +3,16 @@ package mihon.domain.reader
 /** Shared bounds for metadata probes and optional fact supplementation; visible loading remains independent. */
 object ReaderDualPageFactLimits {
     const val MAX_CONCURRENT_REQUESTS = 2
+    const val REQUIRED_CONCURRENT_REQUESTS = 4
+    const val REQUIRED_LOOKAHEAD_K = 4
+
+    /**
+     * How far the reader's own neighbourhood reaches around the current location.
+     *
+     * The decision window uses this radius, and a pairing lookahead may not reach
+     * further out than the neighbourhood it guesses for.
+     */
+    const val DECISION_WINDOW_RADIUS = 4
     const val MAX_ADDITIONAL_PAGES = 16
     const val MAX_NEW_BYTES = 32L * 1024 * 1024
     const val MAX_WAIT_MILLIS = 15_000L

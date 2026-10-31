@@ -63,8 +63,11 @@ import mihon.desktop.reader.ZoomState
 import mihon.desktop.reader.desktopReaderSessionState
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.domain.error.AppError
+import mihon.domain.reader.ReaderPageAnalysisEvidence
 import mihon.domain.reader.ReaderPageFact
 import mihon.domain.reader.ReaderPairingCertification
+import mihon.domain.reader.ReaderPairingSettings
+import mihon.domain.reader.SharedDualPageRules
 import mihon.domain.reader.SharedDualPageSession
 import mihon.domain.reader.observability.ReaderIoProbe
 import mihon.domain.reader.observability.ReaderIoReporter
@@ -561,6 +564,7 @@ class SharedDualPageNativeStablePresentationTest {
     fun `actual wide source corrects remote portrait guess before its first pixel`() = runTest {
         Fixture(this, facts = false, remoteFact = true, wideCurrent = true).use { fixture ->
             fixture.pump()
+            fixture.assertDecodedGeometryWithoutAnalysis(1, ReaderPageFact.dimensions(72, 48))
             assertTrue(
                 fixture.redBounds().first < 100,
                 "Actual wide content must use the full viewport before it emits pixels",
@@ -577,7 +581,7 @@ class SharedDualPageNativeStablePresentationTest {
 
     @Test
     fun `mounted offscreen neighbors remain decoded without being reported as displayed`() = runTest {
-        Fixture(this).use { fixture ->
+        Fixture(this, originalHeadersBeforeImages = true).use { fixture ->
             fixture.pump()
             fixture.partner.complete(Unit)
             repeat(60) {
@@ -648,7 +652,8 @@ class SharedDualPageNativeStablePresentationTest {
 
     @Test
     fun `first real image reports partial viewport then late portrait appends without moving pixels`() = runTest {
-        Fixture(this).use { fixture ->
+        Fixture(this, originalHeadersBeforeImages = true).use { fixture ->
+            fixture.assertOriginalHeadersKnownBeforeImages(1, 2)
             fixture.pump()
             val first = fixture.redBounds()
             val rectangle = fixture.redRectangle()
@@ -772,8 +777,13 @@ class SharedDualPageNativeStablePresentationTest {
 
     @Test
     fun `late decoded wide partner never paints half a page or moves current source image`() = runTest {
-        Fixture(this, widePartner = true).use { fixture ->
+        Fixture(this, widePartner = true, originalHeadersBeforeImages = true).use { fixture ->
+            fixture.assertOriginalHeadersKnownBeforeImages(1, 2)
             fixture.pump()
+            assertTrue(
+                fixture.redBounds().second < 200,
+                "The unzoomed opening portrait must occupy the RTL left slot: ${fixture.slotDiagnostic()}",
+            )
             fixture.zoom()
             repeat(8) {
                 fixture.frame()
@@ -801,6 +811,36 @@ class SharedDualPageNativeStablePresentationTest {
                     it.mapTo(mutableSetOf(), ReaderPageId::sourcePageIndex)
                 },
             )
+        }
+    }
+
+    @Test
+    fun `unknown wide partner header cannot lock a provisional first image slot`() = runTest {
+        Fixture(
+            this,
+            widePartner = true,
+            originalHeadersBeforeImages = true,
+            deferredOriginalHeaderPage = 2,
+        ).use { fixture ->
+            repeat(40) {
+                fixture.frame()
+                runCurrent()
+            }
+            fixture.assertUnknownPartnerHasNoExposure()
+            assertTrue(!fixture.hasRedPixels(), "An unknown partner must not expose a guessed current slot")
+            assertEquals(null, fixture.greenBounds())
+            assertTrue(fixture.reports.isEmpty())
+            fixture.partner.complete(Unit)
+            fixture.pump()
+            fixture.assertPortraitNotMarkedSpread(1)
+            println("CP1_UNKNOWN_WIDE_FIRST_DRAW " + fixture.slotDiagnostic())
+            assertTrue(
+                fixture.redBounds().second < 200,
+                "The first portrait pixels must use the certified RTL left slot: ${fixture.slotDiagnostic()}",
+            )
+            assertEquals(null, fixture.greenBounds(), "The wide partner must not paint in a half slot")
+            assertEquals(setOf(1), fixture.presented)
+            assertEquals(setOf(1), fixture.reports.flatten().mapTo(mutableSetOf(), ReaderPageId::sourcePageIndex))
         }
     }
 
@@ -909,9 +949,14 @@ class SharedDualPageNativeStablePresentationTest {
                 assertSame(image.second, fixture.imageOwners(1).second, "Layout changes must retain decoded pixels")
             }
             fixture.tapForward()
-            fixture.settle()
+            // A logical page change precedes the animated viewport. Use the existing real
+            // pixel pump, rather than treating eight rendered frames as a settled page turn.
+            fixture.pump(GREEN)
             assertEquals(2, fixture.page, "A real page turn must still work after automatic layout changes")
-            assertTrue(fixture.greenBounds() != null, "The next page must actually draw after automatic layout changes")
+            assertTrue(
+                fixture.greenBounds() != null,
+                "The next page must actually draw after automatic layout changes: " + fixture.slotDiagnostic(2),
+            )
             fixture.mountReader(false)
             assertEquals(0, fixture.imageHolderCount(), "Leaving the reader must release all mounted slots")
         }
@@ -1493,6 +1538,74 @@ class SharedDualPageNativeStablePresentationTest {
         private fun sharedSession() = model.javaClass.getDeclaredField("dualSession").run {
             isAccessible = true
             get(model) as SharedDualPageSession
+        }
+        fun assertPortraitNotMarkedSpread(index: Int) {
+            assertTrue(
+                index !in model.state.value.spreadPages,
+                "A portrait must not inherit a prior holder's wide marker",
+            )
+        }
+        fun slotDiagnostic(targetPage: Int = initialPage): String {
+            val session = sharedSession()
+            val pages = session.identity.pageIds
+            val facts = pages.mapNotNull { page -> session.pageFact(page)?.let { page to it } }.toMap()
+            val settings = session.javaClass.getDeclaredMethod("currentPairingSettings").run {
+                isAccessible = true
+                invoke(session) as ReaderPairingSettings
+            }
+            val oracle = SharedDualPageRules.canonicalPlan(
+                pages,
+                facts,
+                settings.direction,
+                settings.forcedSinglePages,
+                settings.manualPairStarts,
+                settings.openingMode,
+                settings.automatic,
+            )
+            val certification = session.certifyPairing()
+            val certified = (certification as? ReaderPairingCertification.Certified)?.segment?.unit
+            fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+            val nodes = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+            val displayUnits = nodes.filter {
+                it.config.contains(DualPageDisplayUnitIdKey) && it.boundsInRoot.contains(Offset(200f, 200f))
+            }.map { it.config[DualPageDisplayUnitIdKey] }
+            val physicalSlots = nodes.filter {
+                it.config.contains(DualPageSlotIdKey) &&
+                    it.config[DualPageSlotIdKey].pageId?.sourcePageIndex == targetPage
+            }.map { "${it.config[DualPagePhysicalSlotKey]}@${it.boundsInRoot}" }
+            val factSnapshot = facts.map { (page, fact) -> page.sourcePageIndex to fact }
+            val oracleSnapshot = oracle.filter { pages[targetPage] in it.pageIds }
+            return "bounds=${bounds(RED)} settings=$settings " +
+                "target=$targetPage page=${model.state.value.currentPage} cache=${pipeline.snapshot().cache.keys} " +
+                "spreadPages=${model.state.value.spreadPages} " +
+                "displayUnits=$displayUnits physicalSlots=$physicalSlots " +
+                "facts=$factSnapshot " +
+                "oracle=$oracleSnapshot " +
+                "certified=$certified canonical=${session.canonicalTargetUnit} presentation=${session.targetUnit} " +
+                "history=${session.displayedHistory}"
+        }
+        fun assertDecodedGeometryWithoutAnalysis(index: Int, expected: ReaderPageFact) {
+            val session = sharedSession()
+            val page = session.identity.pageIds[index]
+            assertEquals(expected, session.pageFact(page))
+            assertEquals(ReaderPageAnalysisEvidence.NotAnalyzed, session.originalAnalysis(page))
+        }
+        fun assertOriginalHeadersKnownBeforeImages(vararg pageIndexes: Int) {
+            val session = sharedSession()
+            pageIndexes.forEach { index ->
+                val page = session.identity.pageIds[index]
+                assertTrue(session.pageFact(page) != null, "The independent original header must precede pixels")
+                assertEquals(ReaderPageAnalysisEvidence.NotAnalyzed, session.originalAnalysis(page))
+            }
+            assertTrue(presented.isEmpty(), "Metadata setup must not expose any image")
+            assertTrue(!partner.isCompleted, "Metadata setup must not release the partner bitmap")
+        }
+        fun assertUnknownPartnerHasNoExposure() {
+            val session = sharedSession()
+            assertEquals(null, session.pageFact(session.identity.pageIds[2]))
+            assertTrue(session.displayedHistory.all { it.lockedPageIds.isEmpty() })
+            assertTrue(presented.isEmpty())
+            assertTrue(!partner.isCompleted)
         }
         fun assertOriginalHeaderPending(pageIndex: Int) {
             val session = sharedSession()

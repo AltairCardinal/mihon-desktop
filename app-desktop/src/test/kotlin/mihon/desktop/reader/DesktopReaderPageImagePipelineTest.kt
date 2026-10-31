@@ -5,12 +5,14 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -29,6 +31,7 @@ import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageId
 import org.jetbrains.skia.Bitmap
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotSame
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
@@ -43,6 +46,644 @@ import java.util.concurrent.atomic.AtomicLong
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class DesktopReaderPageImagePipelineTest {
+
+    private fun entryIdentity(pipeline: DesktopReaderPageImagePipeline, key: ReaderPageDecodeKey): Any? {
+        val lock = pipeline.javaClass.getDeclaredField("lock").apply { isAccessible = true }.get(pipeline)
+        return synchronized(lock) {
+            @Suppress("UNCHECKED_CAST")
+            val entries = pipeline.javaClass.getDeclaredField("entries").apply { isAccessible = true }
+                .get(pipeline) as Map<ReaderPageDecodeKey, Any>
+            entries[key]
+        }
+    }
+
+    private fun activeDecodeCount(pipeline: DesktopReaderPageImagePipeline): Int {
+        val lock = pipeline.javaClass.getDeclaredField("lock").apply { isAccessible = true }.get(pipeline)
+        return synchronized(lock) {
+            pipeline.javaClass.getDeclaredField("activeDecodes").apply { isAccessible = true }
+                .get(pipeline).let { it as Set<*> }.size
+        }
+    }
+
+    private data class EncodedReadCompletion(
+        val request: ReaderPageContentOpenRequest,
+        val matchedStart: Boolean,
+        val failureType: String?,
+    )
+
+    private class ControlledEncodedReader(private val bytes: ByteArray) {
+        val release = CompletableDeferred<Unit>()
+        val enteredRefs = CopyOnWriteArrayList<EncodedPageRef>()
+        val exitedRefs = CopyOnWriteArrayList<EncodedPageRef>()
+        val startedRequests = CopyOnWriteArrayList<ReaderPageContentOpenRequest>()
+        val completions = CopyOnWriteArrayList<EncodedReadCompletion>()
+        private val started = java.util.Collections.synchronizedSet(mutableSetOf<ReaderPageContentOpenRequest>())
+        private val active = AtomicInteger()
+        val maxConcurrent = AtomicInteger()
+        val activeCount: Int get() = active.get()
+
+        val ioGate = object : ReaderIoGate {
+            override suspend fun await(point: ReaderIoGatePoint) = Unit
+
+            override fun registerContentOwner(): Long = 91L
+
+            override fun contentReadStarted(ownerId: Long, request: ReaderPageContentOpenRequest) {
+                startedRequests += request
+                started += request
+            }
+
+            override fun contentReadCompleted(
+                ownerId: Long,
+                request: ReaderPageContentOpenRequest,
+                bytes: Int?,
+                failure: Throwable?,
+            ) {
+                completions += EncodedReadCompletion(
+                    request = request,
+                    matchedStart = started.remove(request),
+                    failureType = failure?.javaClass?.simpleName,
+                )
+            }
+        }
+
+        suspend fun read(ref: EncodedPageRef): ByteArray {
+            enteredRefs += ref
+            val current = active.incrementAndGet()
+            maxConcurrent.updateAndGet { previous -> maxOf(previous, current) }
+            try {
+                withContext(NonCancellable) { release.await() }
+                return bytes
+            } finally {
+                active.decrementAndGet()
+                exitedRefs += ref
+            }
+        }
+    }
+
+    @Test
+    fun `queued speculative demand promotes into the reserved slot without a second decode`() = runTest {
+        val reporter = reporter()
+        val entered = CopyOnWriteArrayList<Int>()
+        val gate = CompletableDeferred<Unit>()
+        val owner = contentOwner(this, reporter) { ENCODED_BYTES }
+        val pipeline = DesktopReaderPageImagePipeline(
+            scope = this,
+            pageContentOwner = owner,
+            ioReporter = reporter,
+            maxConcurrentDecodes = 2,
+            decoder = DesktopReaderPageImageDecoder { _, request ->
+                entered += request.pageIndex
+                if (request.pageIndex == 0) gate.await()
+                asset(request.pageIndex)
+            },
+        )
+        try {
+            val first = async { pipeline.acquireForPairing(key(), speculative = true) }
+            runCurrent()
+            val demand = DesktopReaderPairingDecodeDemand(speculative = true)
+            val promotedKey = key(pageIndex = 1, encodedPageRef = "opaque://promoted")
+            val promoted = async { pipeline.acquireForPairing(promotedKey, demand) }
+            runCurrent()
+            assertEquals(listOf(0), entered)
+            demand.promote()
+            pipeline.promotePairing(promotedKey)
+            runCurrent()
+            assertEquals(listOf(0, 1), entered)
+            promoted.await()?.close()
+            gate.complete(Unit)
+            first.await()?.close()
+        } finally {
+            gate.complete(Unit)
+            pipeline.close()
+            owner.close()
+        }
+    }
+
+    @Test
+    fun `promoting a content key wakes its queued region Entry while speculative decode stays held`() = runTest {
+        val ioEvents = CopyOnWriteArrayList<ReaderIoEvent>()
+        val reporter = reporter(ioEvents)
+        val pageOwner = contentOwner(this, reporter) { ENCODED_BYTES }
+        val fullEntered = CompletableDeferred<Unit>()
+        val releaseFull = CompletableDeferred<Unit>()
+        val regionEntered = CompletableDeferred<Unit>()
+        val releaseRegion = CompletableDeferred<Unit>()
+        val decoded = CopyOnWriteArrayList<Pair<Int, PageDecodePurpose>>()
+        val pipeline = DesktopReaderPageImagePipeline(
+            scope = this,
+            pageContentOwner = pageOwner,
+            ioReporter = reporter,
+            maxConcurrentDecodes = 2,
+            decoder = DesktopReaderPageImageDecoder { _, request ->
+                decoded += request.pageIndex to request.purpose
+                if (request.purpose == PageDecodePurpose.FULL_PAGE && request.pageIndex == 0) {
+                    fullEntered.complete(Unit)
+                    releaseFull.await()
+                } else if (request.purpose == PageDecodePurpose.REGION_TILE) {
+                    regionEntered.complete(Unit)
+                    releaseRegion.await()
+                }
+                asset(decoded.size)
+            },
+        )
+        val speculativeFullKey = key(pageIndex = 0, encodedPageRef = "opaque://running-full")
+        val promotedFullKey = key(pageIndex = 1, encodedPageRef = "opaque://region-only")
+        val regionKey = promotedFullKey.copy(
+            purpose = PageDecodePurpose.REGION_TILE,
+            region = PixelBounds(0, 0, 1, 1),
+        )
+        val regionSession = pipeline.openRegionSession(regionKey.contentKey)
+        val fullDemand = DesktopReaderPairingDecodeDemand(speculative = true)
+        val regionDemand = DesktopReaderPairingDecodeDemand(speculative = true)
+        try {
+            val full = async { pipeline.acquireForPairing(speculativeFullKey, fullDemand) }
+            fullEntered.await()
+            val region = async { regionSession.acquireForPairing(regionKey, regionDemand) }
+            runCurrent()
+            val entry = requireNotNull(entryIdentity(pipeline, regionKey))
+            assertTrue(
+                decoded.none { it.second == PageDecodePurpose.REGION_TILE },
+                "The speculative full decode occupies the optional slot, leaving the reserved slot free",
+            )
+            assertNull(
+                entryIdentity(pipeline, promotedFullKey),
+                "The content promotion must find the region Entry when no full-page Entry exists",
+            )
+            assertTrue(fullDemand.speculative)
+            assertTrue(regionDemand.speculative)
+
+            // This is the same full-content key the model has after materialization. Its Entry is
+            // absent, so promotion must still reach the queued region consumer for this content.
+            pipeline.promotePairing(promotedFullKey)
+            runCurrent()
+            assertFalse(regionDemand.speculative, "The real content promotion changes the region demand")
+            assertSame(entry, entryIdentity(pipeline, regionKey), "The queued Entry wakes without replacement")
+            regionEntered.await()
+            assertFalse(releaseFull.isCompleted, "The region starts while speculative native work is still held")
+            assertFalse(full.isCompleted, "Promotion does not wait for the unrelated full decoder to exit")
+            assertEquals(1, decoded.count { it == (1 to PageDecodePurpose.REGION_TILE) })
+
+            releaseRegion.complete(Unit)
+            requireNotNull(region.await()).close()
+            releaseFull.complete(Unit)
+            requireNotNull(full.await()).close()
+            assertEquals(0, pipeline.foregroundWork.value)
+            assertEquals(0, pipeline.optionalWork.value)
+        } finally {
+            releaseFull.complete(Unit)
+            releaseRegion.complete(Unit)
+            regionSession.close()
+            pipeline.close()
+            pageOwner.close()
+        }
+    }
+
+    @Test
+    fun `pairing region consumer shares a mounted tile and cannot cancel its normal owner`() = runTest {
+        val reporter = reporter()
+        val gate = CompletableDeferred<Unit>()
+        var decodes = 0
+        val owner = contentOwner(this, reporter) { ENCODED_BYTES }
+        val pipeline = DesktopReaderPageImagePipeline(
+            scope = this,
+            pageContentOwner = owner,
+            ioReporter = reporter,
+            decoder = DesktopReaderPageImageDecoder { _, _ ->
+                decodes++
+                gate.await()
+                asset(1)
+            },
+        )
+        val session = pipeline.openRegionSession(key().contentKey)
+        val tile = key().copy(purpose = PageDecodePurpose.REGION_TILE, region = PixelBounds(0, 0, 1, 1))
+        try {
+            val pairing = async { session.acquireForPairing(tile, DesktopReaderPairingDecodeDemand(true)) }
+            runCurrent()
+            val mounted = async { session.acquireTile(tile) }
+            runCurrent()
+            pairing.cancelAndJoin()
+            gate.complete(Unit)
+            val lease = requireNotNull(mounted.await())
+            assertEquals(1, decodes)
+            lease.close()
+        } finally {
+            gate.complete(Unit)
+            session.close()
+            pipeline.close()
+            owner.close()
+        }
+    }
+
+    @Test
+    fun `cancelled queued pairing consumer never starts ahead of a new visible page`() = runTest {
+        val reporter = reporter()
+        val entered = CopyOnWriteArrayList<Int>()
+        val gate = CompletableDeferred<Unit>()
+        val owner = contentOwner(this, reporter) { ENCODED_BYTES }
+        val pipeline = DesktopReaderPageImagePipeline(
+            scope = this,
+            pageContentOwner = owner,
+            ioReporter = reporter,
+            maxConcurrentDecodes = 1,
+            decoder = DesktopReaderPageImageDecoder { _, request ->
+                entered += request.pageIndex
+                if (request.pageIndex == 0) gate.await()
+                asset(request.pageIndex)
+            },
+        )
+        try {
+            val first = async { pipeline.acquire(key()) }
+            runCurrent()
+            assertEquals(listOf(0), entered)
+            val obsolete = async {
+                pipeline.acquireForPairing(key(pageIndex = 1, encodedPageRef = "opaque://old"), speculative = false)
+            }
+            runCurrent()
+            obsolete.cancelAndJoin()
+            val visible = async { pipeline.acquire(key(pageIndex = 2, encodedPageRef = "opaque://new")) }
+            runCurrent()
+            gate.complete(Unit)
+            first.await()?.close()
+            visible.await()?.close()
+            assertEquals(listOf(0, 2), entered, "Withdrawn pairing must never enter the actual decoder")
+        } finally {
+            gate.complete(Unit)
+            pipeline.close()
+            owner.close()
+        }
+    }
+
+    @Test
+    fun `speculative decodes leave a physical slot for a new visible page`() = runTest {
+        val reporter = reporter()
+        val entered = CopyOnWriteArrayList<Int>()
+        val gate = CompletableDeferred<Unit>()
+        val owner = contentOwner(this, reporter) { ENCODED_BYTES }
+        val pipeline = DesktopReaderPageImagePipeline(
+            scope = this,
+            pageContentOwner = owner,
+            ioReporter = reporter,
+            maxConcurrentDecodes = 2,
+            decoder = DesktopReaderPageImageDecoder { _, request ->
+                entered += request.pageIndex
+                if (request.pageIndex != 2) gate.await()
+                asset(request.pageIndex)
+            },
+        )
+        try {
+            val first = async {
+                pipeline.acquireForPairing(key(), speculative = true)
+            }
+            runCurrent()
+            val queued = async {
+                pipeline.acquireForPairing(
+                    key(pageIndex = 1, encodedPageRef = "opaque://speculative"),
+                    speculative = true,
+                )
+            }
+            runCurrent()
+            val visible = async { pipeline.acquire(key(pageIndex = 2, encodedPageRef = "opaque://visible")) }
+            runCurrent()
+            assertEquals(listOf(0, 2), entered, "Speculation cannot occupy every physical decode slot")
+            assertTrue(visible.isCompleted)
+            visible.await()?.close()
+            queued.cancelAndJoin()
+            first.cancelAndJoin()
+        } finally {
+            gate.complete(Unit)
+            pipeline.close()
+            owner.close()
+        }
+    }
+
+    @Test
+    fun `visible consumer retains a shared pairing decode when the pairing consumer leaves`() = runTest {
+        val reporter = reporter()
+        val gate = CompletableDeferred<Unit>()
+        var decodes = 0
+        var opens = 0
+        val owner = contentOwner(this, reporter) {
+            opens++
+            ENCODED_BYTES
+        }
+        val pipeline = DesktopReaderPageImagePipeline(
+            scope = this,
+            pageContentOwner = owner,
+            ioReporter = reporter,
+            decoder = DesktopReaderPageImageDecoder { _, _ ->
+                decodes++
+                gate.await()
+                asset(1)
+            },
+        )
+        try {
+            val pairing = async { pipeline.acquireForPairing(key(), speculative = true) }
+            runCurrent()
+            val visible = async { pipeline.acquire(key()) }
+            runCurrent()
+            pairing.cancelAndJoin()
+            assertEquals(1, pipeline.foregroundWork.value)
+            gate.complete(Unit)
+            val lease = requireNotNull(visible.await())
+            assertEquals(1, decodes)
+            assertEquals(1, opens)
+            lease.close()
+            assertEquals(0, pipeline.foregroundWork.value)
+        } finally {
+            gate.complete(Unit)
+            pipeline.close()
+            owner.close()
+        }
+    }
+
+    @Test
+    fun `cancelled physical pairing decode exits before the same key can reopen`() = runTest {
+        val reporter = reporter()
+        val gate = CompletableDeferred<Unit>()
+        var decodes = 0
+        var disposed = 0
+        val owner = contentOwner(this, reporter) { ENCODED_BYTES }
+        val pipeline = DesktopReaderPageImagePipeline(
+            scope = this,
+            pageContentOwner = owner,
+            ioReporter = reporter,
+            decoder = DesktopReaderPageImageDecoder { _, _ ->
+                decodes++
+                if (decodes == 1) withContext(kotlinx.coroutines.NonCancellable) { gate.await() }
+                asset(decodes) { disposed++ }
+            },
+        )
+        try {
+            val pairing = async { pipeline.acquireForPairing(key(), speculative = true) }
+            runCurrent()
+            pairing.cancelAndJoin()
+            assertEquals(1, decodes, "The physical decoder has entered before its speculative consumer withdraws")
+            assertFalse(gate.isCompleted, "The native decoder remains held after the pairing consumer withdraws")
+            assertEquals(1, pipeline.snapshot().inFlightCount, "The executing Entry remains present until native exit")
+            assertEquals(0, pipeline.foregroundWork.value, "Withdrawn pure speculation is no longer foreground")
+            assertEquals(
+                1,
+                pipeline.optionalWork.value,
+                "The still-running speculative Entry remains counted until physical exit",
+            )
+            val visible = async { pipeline.acquire(key()) }
+            runCurrent()
+            assertEquals(1, decodes, "The same key cannot run a second decoder before actual old exit")
+            gate.complete(Unit)
+            val lease = requireNotNull(visible.await())
+            assertEquals(2, decodes, "A withdrawn operation must not revive for a new consumer")
+            assertEquals(1, disposed)
+            lease.close()
+            assertEquals(0, pipeline.foregroundWork.value)
+            assertEquals(0, pipeline.optionalWork.value)
+        } finally {
+            gate.complete(Unit)
+            pipeline.close()
+            owner.close()
+        }
+    }
+
+    @Test
+    fun `cancelling the sole pairing waiter keeps an entered encoded read busy until actual exit`() = runTest {
+        val reporter = reporter()
+        val encodedReader = ControlledEncodedReader(ENCODED_BYTES)
+        val owner = DesktopReaderPageContentOwner(
+            scope = this,
+            encodedPageReader = encodedReader::read,
+            ioReporter = reporter,
+            ioGate = encodedReader.ioGate,
+        )
+        val decodeCalls = AtomicInteger()
+        val pipeline = DesktopReaderPageImagePipeline(
+            scope = this,
+            pageContentOwner = owner,
+            ioReporter = reporter,
+            decoder = DesktopReaderPageImageDecoder { _, _ ->
+                decodeCalls.incrementAndGet()
+                asset(1)
+            },
+        )
+        val key = key(pageIndex = 4, encodedPageRef = "opaque://entered-sole-pairing-reader")
+        val pairing = async { pipeline.acquireForPairing(key, speculative = true) }
+        var realConsumer: kotlinx.coroutines.Deferred<DesktopReaderImageAssetLease?>? = null
+        try {
+            runCurrent()
+            assertEquals(listOf(key.contentKey.encodedPageRef), encodedReader.enteredRefs)
+            assertTrue(encodedReader.startedRequests.contains(key.contentKey))
+            assertTrue(encodedReader.exitedRefs.isEmpty(), "The real encoded reader body is still held")
+            assertEquals(1, encodedReader.activeCount)
+            val originalEntry = requireNotNull(entryIdentity(pipeline, key))
+            assertEquals(1, pipeline.snapshot().inFlightCount)
+            assertEquals(0, activeDecodeCount(pipeline), "Encoded reading has not reached native decode admission")
+            assertEquals(0, decodeCalls.get())
+
+            pairing.cancelAndJoin()
+
+            assertTrue(encodedReader.exitedRefs.isEmpty(), "Cancelling the waiter cannot fake physical reader exit")
+            assertEquals(1, encodedReader.activeCount)
+            assertEquals(1, pipeline.snapshot().inFlightCount, "The live encoded operation retains its Entry")
+            assertSame(originalEntry, entryIdentity(pipeline, key))
+            assertEquals(1, pipeline.optionalWork.value, "Pure speculative work remains counted until reader exit")
+            assertEquals(0, pipeline.foregroundWork.value)
+            assertEquals(0, activeDecodeCount(pipeline))
+            assertEquals(0, decodeCalls.get())
+            assertTrue(encodedReader.completions.isEmpty())
+
+            realConsumer = async { pipeline.acquire(key) }
+            runCurrent()
+            assertFalse(realConsumer.isCompleted, "The replacement consumer waits on the still-entered read")
+            assertEquals(1, encodedReader.enteredRefs.size, "A same-key consumer cannot overlap a second encoded read")
+            assertEquals(1, encodedReader.maxConcurrent.get())
+            assertEquals(0, decodeCalls.get(), "The second native decode cannot begin before the original read exits")
+
+            encodedReader.release.complete(Unit)
+            val lease = requireNotNull(realConsumer.await())
+            lease.close()
+            runCurrent()
+
+            assertEquals(encodedReader.enteredRefs.size, encodedReader.exitedRefs.size)
+            assertEquals(encodedReader.enteredRefs.size, encodedReader.completions.size)
+            assertTrue(encodedReader.completions.all { it.matchedStart })
+            assertEquals(1, encodedReader.maxConcurrent.get(), "Any retry starts only after the original physical exit")
+            assertEquals(0, encodedReader.activeCount)
+            assertEquals(0, activeDecodeCount(pipeline))
+            assertEquals(0, pipeline.snapshot().inFlightCount)
+            assertEquals(0, pipeline.foregroundWork.value)
+            assertEquals(0, pipeline.optionalWork.value)
+        } finally {
+            encodedReader.release.complete(Unit)
+            pairing.cancelAndJoin()
+            realConsumer?.cancelAndJoin()
+            runCurrent()
+            pipeline.close()
+            owner.close()
+        }
+    }
+
+    @Test
+    fun `cancelling pairing preserves a normal consumer of the same entered encoded read`() = runTest {
+        val reporter = reporter()
+        val encodedReader = ControlledEncodedReader(ENCODED_BYTES)
+        val owner = DesktopReaderPageContentOwner(
+            scope = this,
+            encodedPageReader = encodedReader::read,
+            ioReporter = reporter,
+            ioGate = encodedReader.ioGate,
+        )
+        val decodeCalls = AtomicInteger()
+        val pipeline = DesktopReaderPageImagePipeline(
+            scope = this,
+            pageContentOwner = owner,
+            ioReporter = reporter,
+            decoder = DesktopReaderPageImageDecoder { _, _ ->
+                decodeCalls.incrementAndGet()
+                asset(2)
+            },
+        )
+        val key = key(pageIndex = 5, encodedPageRef = "opaque://shared-entered-reader")
+        val pairing = async { pipeline.acquireForPairing(key, speculative = true) }
+        var ordinaryConsumer: kotlinx.coroutines.Deferred<DesktopReaderImageAssetLease?>? = null
+        try {
+            runCurrent()
+            assertEquals(listOf(key.contentKey.encodedPageRef), encodedReader.enteredRefs)
+            assertTrue(encodedReader.startedRequests.contains(key.contentKey))
+            val sharedEntry = requireNotNull(entryIdentity(pipeline, key))
+            assertEquals(1, encodedReader.activeCount)
+            assertTrue(encodedReader.exitedRefs.isEmpty())
+            assertEquals(0, activeDecodeCount(pipeline))
+
+            ordinaryConsumer = async { pipeline.acquire(key) }
+            runCurrent()
+            assertSame(sharedEntry, entryIdentity(pipeline, key))
+            assertEquals(1, encodedReader.enteredRefs.size, "The ordinary consumer shares the entered owner read")
+            assertFalse(ordinaryConsumer.isCompleted)
+
+            pairing.cancelAndJoin()
+
+            assertSame(sharedEntry, entryIdentity(pipeline, key), "Withdrawing pairing must retain ordinary ownership")
+            assertTrue(encodedReader.exitedRefs.isEmpty(), "The ordinary consumer keeps the physical read alive")
+            assertEquals(1, encodedReader.activeCount)
+            assertEquals(1, pipeline.foregroundWork.value)
+            assertEquals(0, pipeline.optionalWork.value)
+            assertFalse(ordinaryConsumer.isCompleted)
+            assertEquals(0, decodeCalls.get(), "The shared encoded read has not reached native decode")
+
+            encodedReader.release.complete(Unit)
+            val lease = requireNotNull(ordinaryConsumer.await())
+            lease.close()
+            runCurrent()
+
+            assertEquals(listOf(key.contentKey.encodedPageRef), encodedReader.enteredRefs)
+            assertEquals(encodedReader.enteredRefs, encodedReader.exitedRefs)
+            assertEquals(1, encodedReader.completions.size)
+            assertTrue(encodedReader.completions.single().matchedStart)
+            assertEquals(1, decodeCalls.get(), "Shared ownership performs one physical decode")
+            assertEquals(0, encodedReader.activeCount)
+            assertEquals(0, pipeline.snapshot().inFlightCount)
+            assertEquals(0, pipeline.foregroundWork.value)
+            assertEquals(0, pipeline.optionalWork.value)
+        } finally {
+            encodedReader.release.complete(Unit)
+            pairing.cancelAndJoin()
+            ordinaryConsumer?.cancelAndJoin()
+            runCurrent()
+            pipeline.close()
+            owner.close()
+        }
+    }
+
+    @Test
+    fun `closing pipeline keeps an entered encoded read busy until actual exit`() = runTest {
+        assertEnteredReaderSurvivesPipelineInvalidation { pipeline, _ -> pipeline.close() }
+    }
+
+    @Test
+    fun `advancing generation keeps an entered encoded read busy until actual exit`() = runTest {
+        assertEnteredReaderSurvivesPipelineInvalidation { pipeline, _ ->
+            assertTrue(pipeline.beginGeneration(2L))
+        }
+    }
+
+    @Test
+    fun `cancelling pipeline parent keeps an entered encoded read busy until actual exit`() = runTest {
+        assertEnteredReaderSurvivesPipelineInvalidation { _, pipelineScope -> pipelineScope.cancel() }
+    }
+
+    private suspend fun TestScope.assertEnteredReaderSurvivesPipelineInvalidation(
+        invalidate: (DesktopReaderPageImagePipeline, CoroutineScope) -> Unit,
+    ) {
+        val reporter = reporter()
+        val encodedReader = ControlledEncodedReader(ENCODED_BYTES)
+        val owner = DesktopReaderPageContentOwner(
+            scope = this,
+            encodedPageReader = encodedReader::read,
+            ioReporter = reporter,
+            ioGate = encodedReader.ioGate,
+        )
+        val decodeCalls = AtomicInteger()
+        val pipelineScope = CoroutineScope(coroutineContext + SupervisorJob())
+        val pipeline = DesktopReaderPageImagePipeline(
+            scope = pipelineScope,
+            pageContentOwner = owner,
+            ioReporter = reporter,
+            decoder = DesktopReaderPageImageDecoder { _, _ ->
+                decodeCalls.incrementAndGet()
+                asset(3)
+            },
+        )
+        val key = key(pageIndex = 9, encodedPageRef = "opaque://invalidation-entered-reader")
+        val pairing = async { pipeline.acquireForPairing(key, speculative = true) }
+        try {
+            runCurrent()
+            assertEquals(listOf(key.contentKey.encodedPageRef), encodedReader.enteredRefs)
+            assertTrue(encodedReader.startedRequests.contains(key.contentKey))
+            assertTrue(encodedReader.exitedRefs.isEmpty(), "The encoded reader body is still held")
+            assertEquals(1, encodedReader.activeCount)
+            assertTrue(entryIdentity(pipeline, key) != null)
+            assertEquals(1, pipeline.optionalWork.value)
+            assertEquals(0, pipeline.foregroundWork.value)
+            assertEquals(0, activeDecodeCount(pipeline))
+            assertEquals(0, decodeCalls.get())
+
+            invalidate(pipeline, pipelineScope)
+            runCurrent()
+
+            assertTrue(encodedReader.exitedRefs.isEmpty(), "Invalidation cannot fake encoded reader exit")
+            assertEquals(1, encodedReader.activeCount)
+            assertEquals(1, pipeline.optionalWork.value, "Physical work stays counted until the reader exits")
+            assertEquals(0, pipeline.foregroundWork.value)
+            assertEquals(0, activeDecodeCount(pipeline))
+            assertEquals(0, decodeCalls.get(), "A withdrawn request cannot reach native decode")
+
+            encodedReader.release.complete(Unit)
+            runCurrent()
+
+            val staleLease = runCatching { pairing.await() }.getOrNull()
+            staleLease?.close()
+            assertNull(staleLease, "A withdrawn request cannot publish a lease")
+            assertEquals(listOf(key.contentKey.encodedPageRef), encodedReader.exitedRefs)
+            assertEquals(1, encodedReader.completions.size)
+            assertTrue(encodedReader.completions.single().matchedStart)
+            assertEquals(0, encodedReader.activeCount)
+            assertEquals(0, decodeCalls.get())
+            assertTrue(
+                owner.snapshot().activeLeaseCounts.isEmpty(),
+                "The cancelled acquire cannot leak a content lease",
+            )
+            assertTrue(pipeline.snapshot().cache.keys.isEmpty())
+            assertEquals(0, pipeline.snapshot().inFlightCount)
+            assertEquals(0, activeDecodeCount(pipeline))
+            assertEquals(0, pipeline.foregroundWork.value)
+            assertEquals(0, pipeline.optionalWork.value)
+        } finally {
+            encodedReader.release.complete(Unit)
+            pairing.cancelAndJoin()
+            runCurrent()
+            pipeline.close()
+            pipelineScope.cancel()
+            owner.close()
+        }
+    }
 
     private suspend fun acquireOriginal(
         pipeline: DesktopReaderPageImagePipeline,

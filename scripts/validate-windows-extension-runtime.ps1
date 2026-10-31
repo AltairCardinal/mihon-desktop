@@ -14,6 +14,71 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function ConvertTo-ProcessArgument([string]$Value) {
+    # ProcessStartInfo.ArgumentList is unavailable in Windows PowerShell 5.1.
+    # Quote each argv element using the Windows command-line backslash/quote rules.
+    $quoted = [Text.StringBuilder]::new()
+    [void]$quoted.Append('"')
+    $slashes = 0
+    foreach ($character in $Value.ToCharArray()) {
+        if ($character -eq '\') {
+            $slashes++
+        } elseif ($character -eq '"') {
+            [void]$quoted.Append(('\' * (2 * $slashes + 1)))
+            [void]$quoted.Append('"')
+            $slashes = 0
+        } else {
+            [void]$quoted.Append(('\' * $slashes))
+            [void]$quoted.Append($character)
+            $slashes = 0
+        }
+    }
+    [void]$quoted.Append(('\' * (2 * $slashes)))
+    [void]$quoted.Append('"')
+    return $quoted.ToString()
+}
+
+function Start-RuntimeProcess(
+    [string]$FilePath,
+    [string[]]$Arguments,
+    [string]$WorkingDirectory,
+    [string]$OutputPath,
+    [string]$ErrorPath
+) {
+    $start = [Diagnostics.ProcessStartInfo]::new()
+    $start.FileName = $FilePath
+    $start.Arguments = ($Arguments | ForEach-Object { ConvertTo-ProcessArgument $_ }) -join ' '
+    $start.UseShellExecute = $false
+    $start.CreateNoWindow = $true
+    if ($WorkingDirectory) { $start.WorkingDirectory = $WorkingDirectory }
+    $start.RedirectStandardOutput = [bool]$OutputPath
+    $start.RedirectStandardError = [bool]$ErrorPath
+    $process = [Diagnostics.Process]::new()
+    $process.StartInfo = $start
+    $started = $false
+    try {
+        if (-not $process.Start()) { throw "Could not start runtime process: $FilePath" }
+        $started = $true
+        # Keep the exact owned process handle, rather than reopening a potentially reused PID.
+        [void]$process.Handle
+        $ownedProcesses.Add($process)
+        foreach ($redirect in @(
+            @{ Path = $OutputPath; Stream = $(if ($OutputPath) { $process.StandardOutput.BaseStream }) },
+            @{ Path = $ErrorPath; Stream = $(if ($ErrorPath) { $process.StandardError.BaseStream }) }
+        )) {
+            if ($redirect.Path) {
+                $stream = [IO.File]::Open($redirect.Path, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::Read)
+                $outputCopies.Add(@{ Stream = $stream; Task = $redirect.Stream.CopyToAsync($stream) })
+            }
+        }
+        return $process
+    } catch {
+        if ($started -and -not $process.HasExited) { $process.Kill() }
+        if (-not $started) { $process.Dispose() }
+        throw
+    }
+}
+
 function Get-DescendantProcessIds([int]$RootProcessId) {
     $allProcesses = @(Get-CimInstance Win32_Process)
     $pending = [System.Collections.Generic.Queue[int]]::new()
@@ -94,7 +159,10 @@ $servedArtifact = Join-Path $serverRoot $artifactName
 $serverProcess = $null
 $appProcess = $null
 $observedProcessIds = [System.Collections.Generic.HashSet[int]]::new()
+$ownedProcesses = [System.Collections.Generic.List[Diagnostics.Process]]::new()
+$outputCopies = [System.Collections.Generic.List[object]]::new()
 $passed = $false
+$runtimeError = $null
 
 New-Item -ItemType Directory -Path $serverRoot, $profileRoot -Force | Out-Null
 Copy-Item -LiteralPath $resolvedArtifact -Destination $servedArtifact -Force
@@ -102,10 +170,9 @@ Copy-Item -LiteralPath $resolvedArtifact -Destination $servedArtifact -Force
 try {
     $port = Get-FreeLoopbackPort
     $artifactUrl = "http://127.0.0.1:$port/$artifactName"
-    $serverProcess = Start-Process -FilePath $python `
-        -ArgumentList @("-m", "http.server", "$port", "--bind", "127.0.0.1") `
-        -WorkingDirectory $serverRoot -WindowStyle Hidden -PassThru `
-        -RedirectStandardOutput $serverOutput -RedirectStandardError $serverError
+    $serverProcess = Start-RuntimeProcess -FilePath $python `
+        -Arguments @("-m", "http.server", "$port", "--bind", "127.0.0.1") `
+        -WorkingDirectory $serverRoot -OutputPath $serverOutput -ErrorPath $serverError
     Wait-HttpFixture $artifactUrl ([DateTime]::UtcNow.AddSeconds(15))
 
     $appArguments = @(
@@ -126,14 +193,20 @@ try {
         $appArguments += "--test-extension-runtime-source-id=$ExpectedSourceId"
     }
 
-    $appProcess = Start-Process -FilePath $resolvedExecutable -ArgumentList $appArguments -WindowStyle Hidden -PassThru
+    $appProcess = Start-RuntimeProcess -FilePath $resolvedExecutable -Arguments $appArguments
     $observedProcessIds.Add($appProcess.Id) | Out-Null
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     $result = $null
     while ([DateTime]::UtcNow -lt $deadline) {
         if ($appProcess) {
             foreach ($processId in @(Get-DescendantProcessIds $appProcess.Id)) {
-                $observedProcessIds.Add($processId) | Out-Null
+                if ($observedProcessIds.Add($processId)) {
+                    $child = Get-Process -Id $processId -ErrorAction SilentlyContinue
+                    if ($child -and $child.StartTime -ge $appProcess.StartTime) {
+                        [void]$child.Handle
+                        $ownedProcesses.Add($child)
+                    }
+                }
             }
         }
         if (Test-Path -LiteralPath $resultFile -PathType Leaf) {
@@ -143,6 +216,9 @@ try {
             } catch {
                 # The app may still be replacing the result file; retry until the deadline.
             }
+        }
+        if ($appProcess.HasExited -and $appProcess.ExitCode -ne 0) {
+            throw "Published executable exited with exit code $($appProcess.ExitCode) without runtime acceptance output; diagnostics: $tempRoot"
         }
         Start-Sleep -Milliseconds 100
     }
@@ -167,18 +243,51 @@ try {
 
     $passed = $true
     Write-Host "Extension runtime acceptance passed: $PackageName -> sources $(@($result.sourceIds) -join ',')"
+} catch {
+    $runtimeError = $_
+    throw
 } finally {
-    $cleanupIds = @($observedProcessIds)
-    [array]::Reverse($cleanupIds)
-    foreach ($processId in ($cleanupIds | Select-Object -Unique)) {
-        Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+    $cleanupErrors = [System.Collections.Generic.List[string]]::new()
+    for ($index = $ownedProcesses.Count - 1; $index -ge 0; $index--) {
+        $owned = $ownedProcesses[$index]
+        try {
+            if (-not $owned.HasExited) { $owned.Kill() }
+        } catch {
+            $cleanupErrors.Add("Kill owned process: $($_.Exception.Message)")
+        }
+        try {
+            if (-not $owned.WaitForExit(5000)) { throw "Owned runtime process did not exit: $($owned.Id)" }
+        } catch {
+            $cleanupErrors.Add("Wait for owned process: $($_.Exception.Message)")
+        }
+        try {
+            $owned.Dispose()
+        } catch {
+            $cleanupErrors.Add("Dispose owned process: $($_.Exception.Message)")
+        }
     }
-    if ($serverProcess) {
-        Stop-Process -Id $serverProcess.Id -Force -ErrorAction SilentlyContinue
+    foreach ($copy in $outputCopies) {
+        try {
+            if (-not $copy.Task.Wait(5000)) { throw "Runtime fixture output did not finish copying" }
+        } catch {
+            $cleanupErrors.Add("Copy runtime output: $($_.Exception.Message)")
+        }
+        try {
+            $copy.Stream.Dispose()
+        } catch {
+            $cleanupErrors.Add("Dispose runtime output: $($_.Exception.Message)")
+        }
+    }
+    if ($cleanupErrors.Count -gt 0) {
+        $passed = $false
+        Write-Warning ("Runtime cleanup failed: " + ($cleanupErrors -join '; '))
     }
     if ($passed -and (Test-Path -LiteralPath $tempRoot)) {
         Remove-Item -LiteralPath $tempRoot -Recurse -Force
     } elseif (Test-Path -LiteralPath $tempRoot) {
         Write-Host "Extension runtime acceptance diagnostics retained: $tempRoot"
+    }
+    if ($cleanupErrors.Count -gt 0 -and $null -eq $runtimeError) {
+        throw ("Runtime cleanup failed: " + ($cleanupErrors -join '; '))
     }
 }

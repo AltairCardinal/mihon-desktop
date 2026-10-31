@@ -117,10 +117,7 @@ class ReaderScreenModelDisposedPublisherTest {
             var disposedState = model.state.value
             synchronized(budgetLock) {
                 synchronized(lifecycleLock) {
-                    model.javaClass.declaredMethods.single { it.name == "startSpreadSamplesLocked" }.run {
-                        isAccessible = true
-                        invoke(model, owner, runtime, producerScope, Semaphore(2))
-                    }
+                    model.startSpreadPublisher(owner, runtime, producerScope, Semaphore(2))
                 }
                 val job = model.javaClass.getDeclaredField("spreadPublisherJob").run {
                     isAccessible = true
@@ -137,7 +134,7 @@ class ReaderScreenModelDisposedPublisherTest {
                             info.lockInfo?.identityHashCode == System.identityHashCode(budgetLock) &&
                             info.stackTrace.any { frame ->
                                 frame.className == ReaderDualPageFactBudget::class.java.name &&
-                                    frame.methodName == "reserve"
+                                    frame.methodName == "reserveClassified"
                             }
                     }
                     if (!reserveBlocked) Thread.sleep(5)

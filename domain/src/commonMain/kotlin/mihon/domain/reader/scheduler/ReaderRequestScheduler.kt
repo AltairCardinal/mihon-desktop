@@ -1,5 +1,6 @@
 package mihon.domain.reader.scheduler
 
+import mihon.domain.reader.ReaderDualPageFactReadPermit
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageId
 
@@ -41,6 +42,15 @@ data class ReaderScheduledRequest(
     val jobKey: ReaderRequestKey,
     val kind: ReaderRequestKind,
     val forceRefresh: Boolean = false,
+    /**
+     * The pairing's own capability token, when this request belongs to the dual page
+     * pairing.
+     *
+     * The token belongs to the request and not to the page: an ordinary request for
+     * the same page is a different request and carries no token. That is what tells
+     * the pairing's own work apart from the original reading work.
+     */
+    val factPermit: ReaderDualPageFactReadPermit? = null,
 ) {
     val pageId: ReaderPageId get() = jobKey.pageId
     val pageIndex: Int get() = jobKey.pageIndex
@@ -203,6 +213,7 @@ class ReaderRequestScheduler(
         pageId: ReaderPageId,
         kind: ReaderRequestKind,
         forceRefresh: Boolean = false,
+        factPermit: ReaderDualPageFactReadPermit? = null,
     ): ReaderEnqueueResult {
         val replaced = mutableSetOf<ReaderRequestKey>()
         val cancelled = mutableSetOf<ReaderRequestKey>()
@@ -236,11 +247,12 @@ class ReaderRequestScheduler(
                     pageId = worstActive.request.pageId,
                     kind = worstActive.request.kind,
                     forceRefresh = worstActive.request.forceRefresh,
+                    factPermit = worstActive.request.factPermit,
                 )
             }
         }
 
-        val request = addPending(pageId, kind, forceRefresh)
+        val request = addPending(pageId, kind, forceRefresh, factPermit)
         return ReaderEnqueueResult(request, cancelled, replaced)
     }
 
@@ -280,6 +292,11 @@ class ReaderRequestScheduler(
 
     fun accepts(jobKey: ReaderRequestKey): Boolean =
         jobKey.generation == generation && active.containsKey(jobKey)
+
+    /** Whether the request is still scheduled, whether it is queued or already running. */
+    fun acceptsScheduled(jobKey: ReaderRequestKey): Boolean =
+        jobKey.generation == generation &&
+            (pending.containsKey(jobKey) || active.containsKey(jobKey))
 
     fun acceptsGeneration(generation: Long): Boolean = generation == this.generation
 
@@ -396,11 +413,13 @@ class ReaderRequestScheduler(
         pageId: ReaderPageId,
         kind: ReaderRequestKind,
         forceRefresh: Boolean,
+        factPermit: ReaderDualPageFactReadPermit? = null,
     ): ReaderScheduledRequest {
         val request = ReaderScheduledRequest(
             jobKey = ReaderRequestKey(pageId, generation, nextRequestId++),
             kind = kind,
             forceRefresh = forceRefresh,
+            factPermit = factPermit,
         )
         val entry = Entry(request, nextSequence++)
         pending[request.jobKey] = entry

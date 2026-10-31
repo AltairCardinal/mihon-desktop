@@ -81,6 +81,8 @@ internal class ReaderPagerNativePresentation(
     private val legacyCallback: (VisiblePageSet) -> Unit,
 ) {
     private var ticket: ReaderDualPageViewportTicket? = null
+    private val demandToken = Any()
+    private var demandModel: ReaderScreenModel? = null
     private var active = false
     private var idle = false
     private var reported = false
@@ -155,6 +157,10 @@ internal class ReaderPagerNativePresentation(
     }
 
     fun update(unit: DisplayUnit, visible: VisiblePageSet, binding: ReaderPagerPresentationBinding?) {
+        if (this.binding?.model !== binding?.model) {
+            demandModel?.releasePagerViewportDemand(demandToken)
+            demandModel = null
+        }
         this.unit = unit
         this.visible = visible
         this.binding = binding
@@ -195,8 +201,10 @@ internal class ReaderPagerNativePresentation(
         navigationLocation = logicalLocation
         reportedPages = emptySet()
         val previous = ticket
-        val next = binding?.takeIf { it.currentGeometry }
-            ?.let { it.model.beginPagerViewport(visible, userNavigation, logicalLocation, selected) }
+        val next = binding?.takeIf { it.currentGeometry }?.let {
+            if (it.model.registerPagerViewportDemand(demandToken, visible, logicalLocation)) demandModel = it.model
+            it.model.beginPagerViewport(visible, userNavigation, logicalLocation, selected, demandToken)
+        }
         if (next == null && previous?.let { binding?.model?.isCurrentDualViewport(it) } == true) return
         ticket = next
         if (previous != ticket) previous?.let { binding?.model?.releaseDualViewport(it) }
@@ -204,6 +212,8 @@ internal class ReaderPagerNativePresentation(
 
     fun close() {
         active = false
+        demandModel?.releasePagerViewportDemand(demandToken)
+        demandModel = null
         ticket?.let { binding?.model?.releaseDualViewport(it) }
         ticket = null
         rendered.clear()
@@ -213,6 +223,8 @@ internal class ReaderPagerNativePresentation(
         if (exposed == value) return
         exposed = value
         if (!value) {
+            demandModel?.releasePagerViewportDemand(demandToken)
+            demandModel = null
             ticket?.let { binding?.model?.releaseDualViewport(it) }
             ticket = null
             rendered.clear()
@@ -262,7 +274,8 @@ internal class ReaderPagerNativePresentation(
         if (ticket != null && !selected && ticket?.locationSequence != binding?.logicalLocation?.sequence) return false
         val previous = ticket
         // Claim the successor's frame before retiring the old mount's release-only handle.
-        ticket = model.beginPagerViewport(visible, userNavigation, navigationLocation, selected)
+        if (model.registerPagerViewportDemand(demandToken, visible, navigationLocation)) demandModel = model
+        ticket = model.beginPagerViewport(visible, userNavigation, navigationLocation, selected, demandToken)
         if (previous != ticket) previous?.let(model::releaseDualViewport)
         return prepared()
     }

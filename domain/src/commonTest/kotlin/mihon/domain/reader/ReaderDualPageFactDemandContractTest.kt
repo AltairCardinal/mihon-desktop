@@ -8,7 +8,101 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class ReaderDualPageFactDemandContractTest {
+
+    @Test
+    fun `withdrawn speculation can upgrade once without renewing the deadline or consumed bytes`() {
+        val budget = ReaderDualPageFactBudget()
+        val page = pages.first()
+        assertEquals(listOf(page), budget.reserve(listOf(page), 100, required = true, speculative = true))
+        assertEquals(1024L, budget.reserveRead(page, 1024, 101))
+        budget.complete(page, 0, cacheHit = true)
+        assertEquals(listOf(page), budget.reserve(listOf(page), 102, required = true))
+        assertEquals(14_998L, budget.remainingWaitMillis(102))
+        budget.complete(page, 0, cacheHit = true)
+        assertTrue(budget.reserve(listOf(page), 103, required = true).isEmpty(), "Only one real upgrade is admitted")
+        val next = pages[1]
+        assertEquals(listOf(next), budget.reserve(listOf(next), 104, required = true))
+        assertEquals(
+            ReaderDualPageFactLimits.MAX_NEW_BYTES - 1024,
+            budget.reserveRead(next, Long.MAX_VALUE, 105),
+            "Speculative bytes remain charged after promotion",
+        )
+
+        val deadline = ReaderDualPageFactBudget()
+        assertEquals(listOf(page), deadline.reserve(listOf(page), 100, required = true, speculative = true))
+        deadline.complete(page, 0, cacheHit = true)
+        assertTrue(deadline.reserve(listOf(page), 15_100, required = true).isEmpty())
+    }
     private val pages = List(40) { ReaderPageId(ReaderChapterId(7), it) }
+
+    @Test
+    fun `real and speculative demand share one capacity allocation that two sequential reserves cannot express`() {
+        val capacity = ReaderDualPageFactLimits.REQUIRED_CONCURRENT_REQUESTS
+
+        // The allocation C4 must not rely on: sequential reserves share remainingConcurrency.
+        val sequential = ReaderDualPageFactBudget()
+        assertEquals(capacity, sequential.reserve(pages.take(capacity), 100, required = true).size)
+        assertTrue(
+            sequential.reserve(pages.drop(capacity).take(3), 100, required = true, speculative = true)
+                .isEmpty(),
+            "Two sequential reserves starve speculation once real demand fills the shared pool",
+        )
+
+        val shared = ReaderDualPageFactBudget()
+        val admitted = shared.reserveClassified(pages.take(2), pages.drop(2).take(3), 100)
+        assertEquals(capacity, admitted.size, "Speculation must use the capacity real demand left over")
+        assertEquals(pages.take(2), admitted.filterNot { it.speculative }.map { it.pageId })
+        assertEquals(pages.drop(2).take(2), admitted.filter { it.speculative }.map { it.pageId })
+        admitted.forEach { shared.complete(it.pageId, 0, cacheHit = true) }
+
+        val upgraded = ReaderDualPageFactBudget()
+        val speculativeFirst = upgraded.reserveClassified(pages.take(1), pages.drop(1).take(2), 100)
+        assertEquals(3, speculativeFirst.size)
+        speculativeFirst.forEach { upgraded.complete(it.pageId, 0, cacheHit = true) }
+        val speculativePage = pages[1]
+        assertTrue(
+            upgraded.reserveClassified(emptyList(), listOf(speculativePage), 101).isEmpty(),
+            "A finished speculative attempt cannot re-enter as speculation",
+        )
+        val promoted = upgraded.reserveClassified(listOf(speculativePage), emptyList(), 102)
+        assertEquals(
+            listOf(ReaderDualPageFactBudget.ReservedCapability(speculativePage, speculative = false)),
+            promoted,
+            "A failed speculation leaves one real recovery opportunity",
+        )
+        promoted.forEach { upgraded.complete(it.pageId, 0, cacheHit = true) }
+        assertTrue(
+            upgraded.reserveClassified(listOf(speculativePage), emptyList(), 103).isEmpty(),
+            "A real recovery is admitted only once",
+        )
+
+        val pressured = ReaderDualPageFactBudget()
+        val underPressure = pressured.reserveClassified(pages.take(6), pages.drop(6).take(2), 100)
+        assertEquals(capacity, underPressure.size)
+        assertTrue(underPressure.none { it.speculative }, "Real demand alone may fill the whole allocation")
+
+        val spent = ReaderDualPageFactBudget()
+        spent.reserveClassified(pages.take(capacity), pages.drop(capacity).take(2), 100)
+            .forEach { spent.complete(it.pageId, 0, cacheHit = true) }
+        assertTrue(spent.reserveClassified(pages.take(1), pages.drop(8).take(2), 101).isNotEmpty())
+        spent.close()
+        assertTrue(spent.reserveClassified(pages.take(1), pages.drop(1).take(1), 102).isEmpty())
+    }
+
+    @Test
+    fun `classified reservation still stops at the shared deadline and byte limits`() {
+        val budget = ReaderDualPageFactBudget()
+        budget.reserveClassified(pages.take(2), pages.drop(2).take(2), 100)
+            .forEach { budget.complete(it.pageId, 16L * 1024 * 1024, cacheHit = false) }
+        assertTrue(budget.reserveClassified(pages.take(1), pages.drop(1).take(1), 101).isEmpty())
+        val fresh = ReaderDualPageFactBudget()
+        fresh.reserveClassified(pages.take(2), pages.drop(2).take(1), 100)
+            .forEach { fresh.complete(it.pageId, 0, cacheHit = true) }
+        assertTrue(
+            fresh.reserveClassified(pages.take(1), pages.drop(1).take(1), 15_101).isEmpty(),
+            "Deadline stops classified reservation",
+        )
+    }
 
     @Test
     fun `reverse navigation shifts existing fact and sample demand to its source window`() {
@@ -127,5 +221,65 @@ class ReaderDualPageFactDemandContractTest {
         assertEquals(0L, budget.reserveRead(admitted[1], 8192, 15_100))
         budget.close()
         assertEquals(0L, budget.reserveRead(admitted[0], 8192, 103))
+    }
+
+    @Test
+    fun `required demand exceeds sixteen page cap while optional capped and sharing limits`() {
+        val budget = ReaderDualPageFactBudget()
+        val optionalAdmitted = mutableListOf<ReaderPageId>()
+        while (optionalAdmitted.size < 16) {
+            val next = budget.reserve(pages, 100, required = false)
+            optionalAdmitted += next
+            next.forEach { budget.complete(it, 1024, cacheHit = false) }
+        }
+        assertEquals(16, optionalAdmitted.size)
+        assertTrue(budget.reserve(pages, 101, required = false).isEmpty(), "Optional must be capped at 16")
+
+        val requiredAdmitted = budget.reserve(pages.drop(16), 102, required = true)
+        assertEquals(
+            pages.subList(16, 16 + ReaderDualPageFactLimits.REQUIRED_CONCURRENT_REQUESTS),
+            requiredAdmitted,
+            "Required must not be blocked by 16 optional page cap",
+        )
+        requiredAdmitted.forEach { budget.complete(it, 1024, cacheHit = false) }
+
+        val requiredMore = budget.reserve(pages.drop(20), 103, required = true)
+        assertEquals(
+            pages.subList(20, 20 + ReaderDualPageFactLimits.REQUIRED_CONCURRENT_REQUESTS),
+            requiredMore,
+        )
+        requiredMore.forEach { budget.complete(it, 1024, cacheHit = false) }
+
+        assertTrue(budget.reserve(pages, 104, required = false).isEmpty(), "Optional is still capped")
+
+        val concurrent = budget.reserve(pages.drop(24), 105, required = true)
+        assertEquals(ReaderDualPageFactLimits.REQUIRED_CONCURRENT_REQUESTS, concurrent.size)
+        assertTrue(budget.reserve(pages.drop(28), 105, required = true).isEmpty(), "Concurrency cap must apply")
+        assertTrue(budget.reserve(pages.drop(28), 105, required = false).isEmpty())
+        concurrent.forEach { budget.complete(it, 1024, cacheHit = false) }
+
+        val byteTest = budget.reserve(pages.drop(28), 106, required = true)
+        assertEquals(ReaderDualPageFactLimits.REQUIRED_CONCURRENT_REQUESTS, byteTest.size)
+        budget.complete(byteTest[0], 32L * 1024 * 1024, cacheHit = false)
+        byteTest.drop(1).forEach { budget.complete(it, 0, cacheHit = true) }
+        assertTrue(budget.reserve(pages.drop(32), 107, required = true).isEmpty(), "Byte limit stops required")
+        assertTrue(budget.reserve(pages.drop(32), 107, required = false).isEmpty(), "Byte limit stops optional")
+
+        val deadlineBudget = ReaderDualPageFactBudget()
+        val first = deadlineBudget.reserve(pages, 100, required = true)
+        first.forEach { deadlineBudget.complete(it, 0, cacheHit = true) }
+        assertTrue(
+            deadlineBudget.reserve(pages.drop(4), 15_101, required = true).isEmpty(),
+            "Deadline stops required",
+        )
+        assertTrue(
+            deadlineBudget.reserve(pages.drop(4), 15_101, required = false).isEmpty(),
+            "Deadline stops optional",
+        )
+
+        val closeBudget = ReaderDualPageFactBudget()
+        closeBudget.close()
+        assertTrue(closeBudget.reserve(pages, 100, required = true).isEmpty())
+        assertTrue(closeBudget.reserve(pages, 100, required = false).isEmpty())
     }
 }

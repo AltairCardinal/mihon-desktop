@@ -4,27 +4,33 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asComposeImageBitmap
 import androidx.compose.ui.graphics.asSkiaBitmap
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import mihon.domain.reader.PageDecodePurpose
 import mihon.domain.reader.PageDecodeRequest
 import mihon.domain.reader.PageDecodeResult
 import mihon.domain.reader.PageDecoder
 import mihon.domain.reader.ReaderPageDecodeKey
+import mihon.domain.reader.content.ReaderPageContentLease
 import mihon.domain.reader.content.ReaderPageContentOpenRequest
 import mihon.domain.reader.observability.ReaderIoEventType
 import mihon.domain.reader.observability.ReaderIoPurpose
 import mihon.domain.reader.observability.ReaderIoReporter
 import mihon.domain.reader.session.ReaderEncodedPageProvenance
 import mihon.domain.reader.session.ReaderPageId
+import java.util.concurrent.atomic.AtomicReference
 import org.jetbrains.skia.Bitmap as SkiaBitmap
 import org.jetbrains.skia.Canvas as SkiaCanvas
 import org.jetbrains.skia.Codec as SkiaCodec
@@ -264,6 +270,17 @@ internal data class DesktopReaderPageImagePipelineSnapshot(
     val closed: Boolean,
 )
 
+/** A pairing consumer may become required while its existing decode is queued. */
+internal class DesktopReaderPairingDecodeDemand(speculative: Boolean) {
+    @Volatile
+    var speculative = speculative
+        private set
+
+    fun promote() {
+        speculative = false
+    }
+}
+
 /**
  * Unique Desktop owner for encoded-content acquisition, full-page decode single-flight, and decoded caching.
  *
@@ -298,6 +315,28 @@ class DesktopReaderPageImagePipeline internal constructor(
         var fullCacheClaimed: Boolean = false
         var foreground = false
         var optional = false
+        var optionalAdmission = false
+        var withdrawnForeground = false
+        var realForeground = false
+        var withdrawnOptional = false
+        var ordinaryOwned = false
+        var visibleOwned = false
+        var withdrawn = false
+        var contentOpenPending = false
+        var startedSpeculative = false
+        val pairingConsumers = mutableMapOf<Any, DesktopReaderPairingDecodeDemand>()
+
+        fun speculativeOnly() =
+            !ordinaryOwned && pairingConsumers.isNotEmpty() && pairingConsumers.values.all { it.speculative }
+        fun priority() = when {
+            visibleOwned -> 0
+            pairingConsumers.values.any { !it.speculative } -> 1
+            else -> 2
+        }
+    }
+
+    private class DecodeWaiter(val key: ReaderPageDecodeKey, val entry: Entry) {
+        val ready = CompletableDeferred<Unit>()
     }
 
     private class ContentSessionEntry(
@@ -320,7 +359,9 @@ class DesktopReaderPageImagePipeline internal constructor(
         memoryAuthority = memoryAuthority,
         ownsMemoryAuthority = false,
     )
-    private val decodePermits = Semaphore(maxConcurrentDecodes)
+    private val decodeLimit = maxConcurrentDecodes
+    private val decodeWaiters = mutableListOf<DecodeWaiter>()
+    private val activeDecodes = mutableSetOf<Entry>()
     private val entries = mutableMapOf<ReaderPageDecodeKey, Entry>()
     private val contentSessions = mutableMapOf<ReaderPageContentOpenRequest, ContentSessionEntry>()
     private val minimumPageAttempts = mutableMapOf<PageGenerationIdentity, Long>()
@@ -337,11 +378,72 @@ class DesktopReaderPageImagePipeline internal constructor(
     /** Queued or executing original work; completed cache and presentation leases are not busy. */
     internal val foregroundWork: StateFlow<Int> = mutableForegroundWork.asStateFlow()
 
-    /** Original optional tasks remain qualified until completion, even after their caller leaves. */
+    /**
+     * The foreground work a user visible decode owns.
+     *
+     * [foregroundWork] also counts the publisher's own pairing consumers, so a pairing
+     * capability that waits for an idle foreground would wait for itself. This counter
+     * only counts the work a visible page owns, which is the work a pairing capability
+     * must not compete with. It is shared by every runtime, because a closed runtime
+     * cannot end native work that is still executing.
+     */
+    internal val visibleForegroundWork: StateFlow<Int> = mutableVisibleForegroundWork.asStateFlow()
+
+    /** Optional-role Entries remain counted until the underlying decode actually completes. */
     internal val optionalWork: StateFlow<Int> = mutableOptionalWork.asStateFlow()
 
     internal suspend fun acquire(key: ReaderPageDecodeKey): DesktopReaderImageAssetLease? =
-        acquireWithLoader(key) { load(key) }
+        acquireWithLoader(key) { entry -> load(key, entry) }
+
+    internal suspend fun acquireForPairing(
+        key: ReaderPageDecodeKey,
+        speculative: Boolean,
+    ): DesktopReaderImageAssetLease? =
+        acquireForPairing(key, DesktopReaderPairingDecodeDemand(speculative))
+
+    internal suspend fun acquireForPairing(
+        key: ReaderPageDecodeKey,
+        demand: DesktopReaderPairingDecodeDemand,
+    ): DesktopReaderImageAssetLease? =
+        acquireWithLoader(key, pairingDemand = demand) { entry -> load(key, entry) }
+
+    /** Promotion keeps the existing physical operation and its content/decode identity. */
+    internal fun promotePairing(key: ReaderPageDecodeKey) {
+        val admitted = synchronized(lock) {
+            if (closed || clearing) return
+            entries.forEach { (candidate, entry) ->
+                if (candidate.contentKey == key.contentKey && entries[candidate] === entry && !entry.withdrawn &&
+                    entry.pairingConsumers.isNotEmpty()
+                ) {
+                    entry.pairingConsumers.values.forEach { it.promote() }
+                    entry.startedSpeculative = false
+                    updateEntryWorkRoleLocked(entry)
+                }
+            }
+            admitDecodesLocked()
+        }
+        signalDecodes(admitted)
+    }
+
+    /** Promotes the live pairing demand across its full-page or region Entries for this exact content. */
+    internal fun promotePairing(
+        contentKey: ReaderPageContentOpenRequest,
+        demand: DesktopReaderPairingDecodeDemand,
+    ) {
+        val admitted = synchronized(lock) {
+            if (closed || clearing) return
+            entries.forEach { (key, entry) ->
+                if (key.contentKey == contentKey && entries[key] === entry && !entry.withdrawn &&
+                    entry.pairingConsumers.values.any { it === demand }
+                ) {
+                    entry.startedSpeculative = false
+                    updateEntryWorkRoleLocked(entry)
+                }
+            }
+            admitDecodesLocked()
+        }
+        signalDecodes(admitted)
+    }
 
     internal fun openAnimationSession(
         contentKey: ReaderPageContentOpenRequest,
@@ -375,8 +477,8 @@ class DesktopReaderPageImagePipeline internal constructor(
         require(key.contentKey == session.contentKey) {
             "Animation frame and source session identities must match"
         }
-        return acquireWithLoader(key) {
-            session.withContent { encoded -> decodeContent(key, encoded) }
+        return acquireWithLoader(key) { entry ->
+            session.withContent { encoded -> decodeContent(key, encoded, entry) }
         }
     }
 
@@ -384,6 +486,7 @@ class DesktopReaderPageImagePipeline internal constructor(
         session: DesktopReaderRegionContentSession,
         key: ReaderPageDecodeKey,
         optional: Boolean = false,
+        pairingDemand: DesktopReaderPairingDecodeDemand? = null,
     ): DesktopReaderImageAssetLease? {
         require(key.purpose == PageDecodePurpose.REGION_TILE) {
             "Region sessions only accept region-tile requests"
@@ -391,8 +494,8 @@ class DesktopReaderPageImagePipeline internal constructor(
         require(key.contentKey == session.contentKey) {
             "Region tile and source session identities must match"
         }
-        return acquireWithLoader(key, optional) {
-            session.withContent { encoded -> decodeContent(key, encoded) }
+        return acquireWithLoader(key, optional, pairingDemand) { entry ->
+            session.withContent { encoded -> decodeContent(key, encoded, entry) }
         }
     }
 
@@ -420,32 +523,61 @@ class DesktopReaderPageImagePipeline internal constructor(
     private suspend fun acquireWithLoader(
         key: ReaderPageDecodeKey,
         optional: Boolean = false,
-        loader: suspend () -> DesktopReaderImageAssetLease?,
+        pairingDemand: DesktopReaderPairingDecodeDemand? = null,
+        loader: suspend (Entry) -> DesktopReaderImageAssetLease?,
     ): DesktopReaderImageAssetLease? {
-        val entry = synchronized(lock) {
-            check(!closed) { "Desktop reader page image pipeline is closed" }
-            if (clearing || !isCurrentAttemptLocked(key.contentKey)) return null
-            cacheFor(key)?.acquire(key)?.let { return it }
-            entries.getOrPut(key) {
-                if (optional && mutableOptionalWork.value != 0) throw DesktopReaderOptionalWorkPaused()
-                createEntry(key, loader, optional)
-            }.also {
-                if (!optional && !it.foreground && !it.deferred.isCompleted) {
-                    it.foreground = true
-                    mutableForegroundWork.update { count -> count + 1 }
+        val consumer = Any()
+        lateinit var entry: Entry
+        while (true) {
+            var waitForExit = false
+            var admitted = emptyList<DecodeWaiter>()
+            entry = synchronized(lock) {
+                check(!closed) { "Desktop reader page image pipeline is closed" }
+                if (clearing || !isCurrentAttemptLocked(key.contentKey)) return null
+                cacheFor(key)?.acquire(key)?.let { return it }
+                if (pairingDemand?.speculative == true && decodeLimit == 1) return null
+                val existing = entries[key]
+                if (existing?.withdrawn == true) {
+                    waitForExit = true
+                    existing
+                } else {
+                    (
+                        existing ?: run {
+                            createEntry(key, loader, optional && pairingDemand == null).also { entries[key] = it }
+                        }
+                        ).also {
+                        if (pairingDemand == null) {
+                            // Preserve ordinary unfinished-owner semantics, including optional mounted tiles.
+                            it.ordinaryOwned = true
+                            if (!optional) it.visibleOwned = true
+                        } else {
+                            it.pairingConsumers[consumer] = pairingDemand
+                        }
+                        if (!it.speculativeOnly()) it.startedSpeculative = false
+                        updateEntryWorkRoleLocked(it)
+                        it.pendingAcquires++
+                        admitted = admitDecodesLocked()
+                    }
                 }
-                it.pendingAcquires++
-                it.deferred.start()
             }
+            if (waitForExit) {
+                // A cancelled coroutine can still own an executing native decode. Never revive it.
+                entry.deferred.join()
+                synchronized(lock) { if (entries[key] === entry) entries.remove(key) }
+                continue
+            }
+            signalDecodes(admitted)
+            entry.deferred.start()
+            break
         }
         val decoded = try {
             entry.deferred.await()
         } catch (error: Throwable) {
-            releasePending(key, entry)
+            releasePending(key, entry, consumer)
             throw error
         }
         if (decoded == null) {
-            releasePending(key, entry)
+            releasePending(key, entry, consumer)
             return null
         }
 
@@ -454,6 +586,7 @@ class DesktopReaderPageImagePipeline internal constructor(
         var callerAcquireFailure: Throwable? = null
         val callerLease = synchronized(lock) {
             entry.pendingAcquires--
+            entry.pairingConsumers.remove(consumer)
             val accepted = !closed &&
                 !clearing &&
                 isCurrentAttemptLocked(key.contentKey) &&
@@ -531,6 +664,14 @@ class DesktopReaderPageImagePipeline internal constructor(
         }
         failure?.let { throw it }
         return callerLease
+    }
+
+    /** Shutdown cancels optional scalar inspection rather than starting missing work on a closed runtime. */
+    internal fun acquireCachedForAnalysis(
+        key: ReaderPageDecodeKey,
+    ): DesktopReaderImageAssetLease? = synchronized(lock) {
+        if (closed) throw CancellationException("Desktop reader page image pipeline closed")
+        acquireCached(key)
     }
 
     internal fun acquireCached(key: ReaderPageDecodeKey): DesktopReaderImageAssetLease? = synchronized(lock) {
@@ -703,55 +844,56 @@ class DesktopReaderPageImagePipeline internal constructor(
 
     private fun createEntry(
         key: ReaderPageDecodeKey,
-        loader: suspend () -> DesktopReaderImageAssetLease?,
+        loader: suspend (Entry) -> DesktopReaderImageAssetLease?,
         optional: Boolean,
     ): Entry {
         val entry = Entry()
         if (optional) {
-            // Different runtime locks still observe the same original process decoder resources.
-            if (!mutableOptionalWork.compareAndSet(0, 1)) throw DesktopReaderOptionalWorkPaused()
-            entry.optional = true
-        } else {
-            entry.foreground = true
-            mutableForegroundWork.update { count -> count + 1 }
+            // The explicit optional-work token is distinct from a speculative pairing role. Both
+            // are counted as optional work, but only this token participates in admission throttling.
+            if (!activeOptionalAdmission.compareAndSet(null, entry)) {
+                throw DesktopReaderOptionalWorkPaused()
+            }
+            entry.optionalAdmission = true
         }
         entry.deferred = scope.async(start = CoroutineStart.LAZY) {
-            val decoded = loader()
-            try {
-                decoded?.asset?.attachMemoryAuthority(
-                    authority = memoryAuthority,
-                    kind = key.purpose.toImageMemoryKind(),
-                    retention = DesktopReaderImageMemoryRetention.IN_FLIGHT,
-                )
-            } catch (error: Throwable) {
+            withRegionDecodeSlot(key.purpose == PageDecodePurpose.REGION_TILE) {
+                val decoded = loader(entry)
                 try {
-                    decoded?.close()
-                } catch (closeError: Throwable) {
-                    if (closeError !== error) error.addSuppressed(closeError)
-                }
-                if (synchronized(lock) { closed }) {
-                    throw CancellationException("Desktop reader page image pipeline closed").apply {
-                        initCause(error)
+                    decoded?.asset?.attachMemoryAuthority(
+                        authority = memoryAuthority,
+                        kind = key.purpose.toImageMemoryKind(),
+                        retention = DesktopReaderImageMemoryRetention.IN_FLIGHT,
+                    )
+                } catch (error: Throwable) {
+                    try {
+                        decoded?.close()
+                    } catch (closeError: Throwable) {
+                        if (closeError !== error) error.addSuppressed(closeError)
                     }
+                    if (synchronized(lock) { closed }) {
+                        throw CancellationException("Desktop reader page image pipeline closed").apply {
+                            initCause(error)
+                        }
+                    }
+                    throw error
                 }
-                throw error
+                synchronized(lock) {
+                    entry.decodedLease = decoded
+                }
+                decoded
             }
-            synchronized(lock) {
-                entry.decodedLease = decoded
-            }
-            decoded
         }
         entry.deferred.invokeOnCompletion {
             var leaseToClose: DesktopReaderImageAssetLease? = null
             synchronized(lock) {
-                if (entry.foreground) {
-                    entry.foreground = false
-                    mutableForegroundWork.update { count -> count - 1 }
+                if (entry.optionalAdmission) {
+                    entry.optionalAdmission = false
+                    check(activeOptionalAdmission.compareAndSet(entry, null)) {
+                        "Optional admission token no longer belongs to its Entry"
+                    }
                 }
-                if (entry.optional) {
-                    entry.optional = false
-                    mutableOptionalWork.update { count -> count - 1 }
-                }
+                updateEntryWorkRoleLocked(entry)
                 leaseToClose = removeIfUnusedLocked(key, entry)
             }
             leaseToClose?.close()
@@ -759,28 +901,106 @@ class DesktopReaderPageImagePipeline internal constructor(
         return entry
     }
 
-    private suspend fun load(key: ReaderPageDecodeKey): DesktopReaderImageAssetLease? {
-        val contentLease = pageContentOwner.acquire(key.contentKey) ?: run {
-            handlePartialDecodeFailure(key)
-            return null
+    /**
+     * Runs one decode while holding the shared native region decoder.
+     *
+     * The slot belongs to the decode itself: it is released when the decode ends, so a
+     * cancelled caller never frees a resource that the native work still holds. The
+     * waiting decode is cancelled together with its pipeline.
+     */
+    private suspend fun <T> withRegionDecodeSlot(region: Boolean, block: suspend () -> T): T {
+        if (!region) return block()
+        val token = Any()
+        while (!activeRegionDecode.compareAndSet(null, token)) {
+            delay(REGION_DECODE_POLL_MILLIS)
         }
-        var contentOwnershipTransferred = false
         return try {
-            decodeContent(key, contentLease.content)?.also { decoded ->
+            block()
+        } finally {
+            activeRegionDecode.compareAndSet(token, null)
+        }
+    }
+
+    /** Counts each live physical Entry by its current role; optional admission is a separate token. */
+    private fun updateEntryWorkRoleLocked(entry: Entry) {
+        val active = !entry.deferred.isCompleted
+        val foreground = active && (
+            entry.visibleOwned || entry.pairingConsumers.values.any { !it.speculative } ||
+                entry.withdrawnForeground
+            )
+        val optional = active && (
+            entry.optionalAdmission ||
+                (!foreground && (entry.speculativeOnly() || entry.withdrawnOptional))
+            )
+        if (entry.foreground != foreground) {
+            entry.foreground = foreground
+            mutableForegroundWork.update { count -> count + if (foreground) 1 else -1 }
+        }
+        val realForeground = active && entry.visibleOwned
+        if (entry.realForeground != realForeground) {
+            entry.realForeground = realForeground
+            mutableVisibleForegroundWork.update { count -> count + if (realForeground) 1 else -1 }
+        }
+        if (entry.optional != optional) {
+            entry.optional = optional
+            mutableOptionalWork.update { count -> count + if (optional) 1 else -1 }
+        }
+    }
+
+    private suspend fun load(key: ReaderPageDecodeKey, entry: Entry): DesktopReaderImageAssetLease? {
+        val canOpenContent = synchronized(lock) {
+            if (closed || clearing || entry.withdrawn || entries[key] !== entry) {
+                false
+            } else {
+                entry.contentOpenPending = true
+                true
+            }
+        }
+        if (!canOpenContent) throw CancellationException("Desktop reader content request was withdrawn before open")
+        var contentLease: ReaderPageContentLease<ByteArray>? = null
+        var contentOwnershipTransferred = false
+        try {
+            try {
+                currentCoroutineContext().ensureActive()
+                withContext(NonCancellable) {
+                    // Keep the physical owner read and its Entry role alive through the real reader exit.
+                    // Capture the lease inside the bridge so prompt cancellation cannot lose it on return.
+                    contentLease = pageContentOwner.acquire(key.contentKey)
+                }
+            } finally {
+                synchronized(lock) {
+                    entry.contentOpenPending = false
+                    updateEntryWorkRoleLocked(entry)
+                }
+            }
+            currentCoroutineContext().ensureActive()
+            val withdrawn = synchronized(lock) {
+                closed || clearing || entry.withdrawn || entries[key] !== entry
+            }
+            if (withdrawn) {
+                throw CancellationException("Desktop reader content request was withdrawn before decode")
+            }
+            val acquiredContentLease = contentLease
+            if (acquiredContentLease == null) {
+                handlePartialDecodeFailure(key)
+                return null
+            }
+            return decodeContent(key, acquiredContentLease.content, entry)?.also { decoded ->
                 if (decoded.asset.animationMetadata != null) {
-                    decoded.asset.addFinalDisposer(contentLease::close)
+                    decoded.asset.addFinalDisposer(acquiredContentLease::close)
                     contentOwnershipTransferred = true
                 }
             }
         } finally {
-            if (!contentOwnershipTransferred) contentLease.close()
+            if (!contentOwnershipTransferred) contentLease?.close()
         }
     }
 
     private suspend fun decodeContent(
         key: ReaderPageDecodeKey,
         encoded: ByteArray,
-    ): DesktopReaderImageAssetLease? = decodePermits.withPermit {
+        entry: Entry,
+    ): DesktopReaderImageAssetLease? = withDecodeAdmission(key, entry) {
         ioReporter.report(
             type = ReaderIoEventType.DECODE,
             chapterId = key.contentKey.pageId.chapterId,
@@ -805,13 +1025,77 @@ class DesktopReaderPageImagePipeline internal constructor(
             key.contentKey.encodedPageProvenance is ReaderEncodedPageProvenance.Partial &&
             partialDecodeFailureHandler(key.contentKey)
 
-    private fun releasePending(key: ReaderPageDecodeKey, entry: Entry) {
+    private fun releasePending(key: ReaderPageDecodeKey, entry: Entry, consumer: Any) {
         var leaseToClose: DesktopReaderImageAssetLease? = null
+        var cancel: Deferred<DesktopReaderImageAssetLease?>? = null
         synchronized(lock) {
             if (entry.pendingAcquires > 0) entry.pendingAcquires--
+            entry.pairingConsumers.remove(consumer)
+            if (!entry.ordinaryOwned && entry.pendingAcquires == 0 && !entry.deferred.isCompleted) {
+                entry.withdrawn = true
+                if (entry in activeDecodes || entry.contentOpenPending) {
+                    entry.withdrawnForeground = entry.foreground
+                    entry.withdrawnOptional = entry.optional
+                }
+                if (!entry.contentOpenPending) cancel = entry.deferred
+            }
+            updateEntryWorkRoleLocked(entry)
             leaseToClose = removeIfUnusedLocked(key, entry)
         }
+        cancel?.cancel()
         leaseToClose?.close()
+    }
+
+    /** Called only under lock; continuations are signalled outside it. */
+    private fun admitDecodesLocked(): List<DecodeWaiter> = buildList {
+        while (activeDecodes.size < decodeLimit) {
+            val speculativeActive = activeDecodes.count { it.startedSpeculative }
+            val next = decodeWaiters.filter {
+                !it.entry.withdrawn && entries[it.key] === it.entry &&
+                    (!it.entry.speculativeOnly() || speculativeActive < decodeLimit - 1)
+            }.minByOrNull { it.entry.priority() } ?: break
+            decodeWaiters.remove(next)
+            next.entry.startedSpeculative = next.entry.speculativeOnly()
+            activeDecodes.add(next.entry)
+            add(next)
+        }
+    }
+
+    private fun signalDecodes(admitted: List<DecodeWaiter>) {
+        admitted.forEach { it.ready.complete(Unit) }
+    }
+
+    private suspend fun <T> withDecodeAdmission(
+        key: ReaderPageDecodeKey,
+        entry: Entry,
+        block: suspend () -> T,
+    ): T {
+        val waiter = DecodeWaiter(key, entry)
+        val admitted = synchronized(lock) {
+            if (closed || clearing || entry.withdrawn || entries[key] !== entry) {
+                throw CancellationException("Desktop reader decode became stale before admission")
+            }
+            decodeWaiters.add(waiter)
+            admitDecodesLocked()
+        }
+        signalDecodes(admitted)
+        try {
+            waiter.ready.await()
+            currentCoroutineContext().ensureActive()
+            synchronized(lock) {
+                if (entry.withdrawn || entries[key] !== entry) {
+                    throw CancellationException("Desktop reader decode became stale after admission")
+                }
+            }
+            return block()
+        } finally {
+            val next = synchronized(lock) {
+                decodeWaiters.remove(waiter)
+                activeDecodes.remove(entry)
+                admitDecodesLocked()
+            }
+            signalDecodes(next)
+        }
     }
 
     private fun removeIfUnusedLocked(
@@ -905,7 +1189,13 @@ class DesktopReaderPageImagePipeline internal constructor(
     companion object {
         // Closing a runtime cannot end native work still executing on the original shared dispatcher.
         private val mutableForegroundWork = MutableStateFlow(0)
+        private val mutableVisibleForegroundWork = MutableStateFlow(0)
         private val mutableOptionalWork = MutableStateFlow(0)
+        private val activeOptionalAdmission = AtomicReference<Entry?>(null)
+
+        // The native region decoder is one bounded resource that every runtime shares.
+        private val activeRegionDecode = AtomicReference<Any?>(null)
+        private const val REGION_DECODE_POLL_MILLIS = 16L
         const val DEFAULT_CACHE_ENTRIES = 7
         const val DEFAULT_CACHE_BYTES = 128L * 1024L * 1024L
         const val DEFAULT_TILE_CACHE_ENTRIES = 8
@@ -964,11 +1254,23 @@ internal class DesktopReaderRegionContentSession(
         withContent { Unit }
     }
 
-    suspend fun acquireTile(key: ReaderPageDecodeKey, optional: Boolean = false): DesktopReaderImageAssetLease? {
+    suspend fun acquireTile(
+        key: ReaderPageDecodeKey,
+        optional: Boolean = false,
+        pairingDemand: DesktopReaderPairingDecodeDemand? = null,
+    ): DesktopReaderImageAssetLease? {
         synchronized(lock) {
             check(!closed) { "Desktop reader region content session is closed" }
         }
-        return pipeline.acquireRegionTile(this, key, optional)
+        return pipeline.acquireRegionTile(this, key, optional, pairingDemand)
+    }
+
+    internal suspend fun acquireForPairing(
+        key: ReaderPageDecodeKey,
+        demand: DesktopReaderPairingDecodeDemand,
+    ): DesktopReaderImageAssetLease? {
+        synchronized(lock) { check(!closed) { "Desktop reader region content session is closed" } }
+        return pipeline.acquireRegionTile(this, key, pairingDemand = demand)
     }
 
     suspend fun <T> withContent(block: suspend (ByteArray) -> T): T {

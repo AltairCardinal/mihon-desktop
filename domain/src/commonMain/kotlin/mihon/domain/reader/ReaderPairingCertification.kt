@@ -63,6 +63,12 @@ sealed interface ReaderPairingCertification {
     ) : ReaderPairingCertification
 }
 
+/** The physical-content references touched by one finite certification pass. */
+data class ReaderPairingCertificationTrace(
+    val certification: ReaderPairingCertification,
+    val dependentPageIds: Set<ReaderPageId>,
+)
+
 /** Immutable proof dependencies, not an exposure history or a persisted byte identity. */
 class ReaderCertifiedPairingSegment internal constructor(
     val unit: ReaderDualPageUnit,
@@ -104,12 +110,22 @@ class ReaderCertifiedPairingSegment internal constructor(
     }
 }
 
-private fun effectiveFact(
+internal fun effectiveFact(
     owner: ReaderSpreadSamplesOwner,
     headers: Map<ReaderPageId, ReaderPageFact>,
     page: ReaderPageId,
-): ReaderPageFact? =
-    (owner.pageAnalysis(page) as? ReaderPageAnalysisEvidence.Computed)?.fact ?: headers[page]
+    reads: ReaderPairingReadSet? = null,
+): ReaderPageFact? {
+    val evidence = owner.pageAnalysis(page)
+    reads?.record(ReaderPairingReadKey.Analysis(page), ReaderPairingReadValue.Analysis(evidence))
+    val computed = (evidence as? ReaderPageAnalysisEvidence.Computed)?.fact
+    if (computed != null) return computed
+    // The header is consulted only when the analysis is not computed, and that
+    // conditional read is part of the observed input.
+    val header = headers[page]
+    reads?.record(ReaderPairingReadKey.Header(page), ReaderPairingReadValue.Header(header))
+    return header
+}
 
 /** Width/height already include EXIF normalization; only the user's rotation is classified here. */
 internal fun ReaderPageFact.hasOriginalGeometry(): Boolean = width > 0 && height > 0 && state == when (
@@ -128,10 +144,37 @@ object ReaderPairingCertifier {
         owner: ReaderSpreadSamplesOwner,
         settings: ReaderPairingSettings,
         target: ReaderPageId,
-    ): ReaderPairingCertification {
+    ): ReaderPairingCertification = certifyWithDependencies(identity, headers, owner, settings, target)
+        .certification
+
+    fun certifyWithDependencies(
+        identity: ReaderDualPageIdentity,
+        headers: Map<ReaderPageId, ReaderPageFact>,
+        owner: ReaderSpreadSamplesOwner,
+        settings: ReaderPairingSettings,
+        target: ReaderPageId,
+    ): ReaderPairingCertificationTrace = certifyCapturing(identity, headers, owner, settings, target, null)
+
+    /**
+     * The same certification, additionally recording every value it reads.
+     *
+     * The recorder has no effect on the result; it exists so a reuse decision
+     * can compare the complete observed input instead of guessing from page
+     * sets, global revisions or hashes.
+     */
+    internal fun certifyCapturing(
+        identity: ReaderDualPageIdentity,
+        headers: Map<ReaderPageId, ReaderPageFact>,
+        owner: ReaderSpreadSamplesOwner,
+        settings: ReaderPairingSettings,
+        target: ReaderPageId,
+        reads: ReaderPairingReadSet?,
+    ): ReaderPairingCertificationTrace {
         require(settings.direction != ReaderDirection.VERTICAL)
         check(!owner.isClosed)
         require(owner.identity == identity)
+        reads?.record(ReaderPairingReadKey.Identity, ReaderPairingReadValue.Identity(identity))
+        reads?.record(ReaderPairingReadKey.Settings, ReaderPairingReadValue.Settings(settings.snapshotCopy()))
         val pages = identity.pageIds
         val targetIndex = pages.indexOf(target)
         require(targetIndex >= 0)
@@ -141,15 +184,35 @@ object ReaderPairingCertifier {
         val dimensions = linkedMapOf<ReaderPageId, ReaderPageFact>()
         val analyses = linkedMapOf<ReaderPageId, ReaderPageAnalysisEvidence.Computed>()
         val edges = linkedMapOf<Pair<ReaderPageId, ReaderPageId>, ReaderEdgeAnalysisEvidence.Computed>()
+        fun dependencyPageIds(): Set<ReaderPageId> = buildSet {
+            addAll(dimensions.keys)
+            addAll(analyses.keys)
+            edges.keys.forEach { (first, second) ->
+                add(first)
+                add(second)
+            }
+            needs.forEach { need ->
+                add(need.pageId)
+                need.secondPageId?.let(::add)
+            }
+        }
         fun dimension(index: Int): ReaderPageFact? {
             val page = pages.getOrNull(index) ?: return null
-            val fact = effectiveFact(owner, headers, page)
+            val fact = effectiveFact(owner, headers, page, reads)
+            reads?.record(
+                ReaderPairingReadKey.Dimension(page),
+                ReaderPairingReadValue.Dimension(fact?.copy(sideHint = ReaderPageSideHint.UNKNOWN)),
+            )
             if (fact == null || !fact.hasOriginalGeometry() ||
                 fact.rotation != contents.getValue(page).rotation ||
                 fact.sourceOrientation != contents.getValue(page).sourceOrientation
             ) {
                 val unavailable = owner.pageAnalysis(page) as? ReaderPageAnalysisEvidence.RetryableFailure
                 if (unavailable != null) {
+                    reads?.record(
+                        ReaderPairingReadKey.Analysis(page),
+                        ReaderPairingReadValue.Analysis(unavailable),
+                    )
                     failures[page] = unavailable.reason
                 } else if (fact?.state == ReaderPageFactState.FAILED) {
                     failures[page] = ReaderAnalysisFailure.READ
@@ -162,7 +225,9 @@ object ReaderPairingCertifier {
         }
         fun side(index: Int): ReaderPageSideHint {
             val page = pages[index]
-            return when (val evidence = owner.pageAnalysis(page)) {
+            val evidence = owner.pageAnalysis(page)
+            reads?.record(ReaderPairingReadKey.Analysis(page), ReaderPairingReadValue.Analysis(evidence))
+            return when (evidence) {
                 is ReaderPageAnalysisEvidence.Computed -> {
                     analyses[page] = evidence
                     evidence.fact.sideHint
@@ -180,9 +245,11 @@ object ReaderPairingCertifier {
         }
         fun resolvedSide(index: Int): ReaderPageSideHint? {
             val page = pages[index]
-            val evidence = owner.pageAnalysis(page) as? ReaderPageAnalysisEvidence.Computed ?: return null
-            analyses[page] = evidence
-            return evidence.fact.sideHint
+            val evidence = owner.pageAnalysis(page)
+            reads?.record(ReaderPairingReadKey.Analysis(page), ReaderPairingReadValue.Analysis(evidence))
+            val computed = evidence as? ReaderPageAnalysisEvidence.Computed ?: return null
+            analyses[page] = computed
+            return computed.fact.sideHint
         }
         val scan = ReaderCanonicalPairingScan(
             pages,
@@ -195,7 +262,12 @@ object ReaderPairingCertifier {
             settings.automatic,
             ::resolvedSide,
         ) { a, b ->
-            when (val evidence = owner.edgeAnalysis(a, b, settings.direction)) {
+            val evidence = owner.edgeAnalysis(a, b, settings.direction)
+            reads?.record(
+                ReaderPairingReadKey.Edge(a, b, settings.direction),
+                ReaderPairingReadValue.Edge(evidence),
+            )
+            when (evidence) {
                 is ReaderEdgeAnalysisEvidence.Computed -> {
                     edges[a to b] = evidence
                     evidence.score
@@ -242,33 +314,42 @@ object ReaderPairingCertifier {
         }
         val targetFact = dimension(targetIndex)
         if (targetFact == null) {
-            return if (failures.isEmpty()) {
+            val certification = if (failures.isEmpty()) {
                 ReaderPairingCertification.NeedFacts(needs.toSet(), targetIndex, steps)
             } else {
                 ReaderPairingCertification.RetryableBlocked(failures.toMap(), needs.toSet(), targetIndex, steps)
             }
+            return ReaderPairingCertificationTrace(certification, dependencyPageIds())
         }
-        val isolatedSpread = targetFact.state == ReaderPageFactState.SPREAD
+        // A wide target cannot be paired, and a forced target is a hard boundary:
+        // `allowed()` rejects every pair that touches it, so the real scan can
+        // only make it a single page unit whose reason is one of the real reason
+        // priorities. Both cases can be decided at the target itself, so the
+        // scan starts there and the certificate depends on the target's own facts
+        // instead of the left neighbour, whose analysis cannot change the unit.
+        val isolatedSpread = targetFact.state == ReaderPageFactState.SPREAD || target in settings.forcedSinglePages
         var first = if (isolatedSpread) targetIndex else maxOf(0, targetIndex - 2)
-        fun certified(unit: ReaderDualPageUnit): ReaderPairingCertification.Certified {
+        fun certified(unit: ReaderDualPageUnit): ReaderPairingCertificationTrace {
             val used = dimensions.keys + analyses.keys + edges.keys.flatMap { listOf(it.first, it.second) }
-            return ReaderPairingCertification.Certified(
-                ReaderCertifiedPairingSegment(
-                    unit,
-                    first,
-                    steps,
-                    identity.generation,
-                    identity.pageListRevision,
-                    pages.toList(),
-                    settings.copy(
-                        forcedSinglePages = settings.forcedSinglePages.toSet(),
-                        manualPairStarts = settings.manualPairStarts.toSet(),
-                    ),
-                    used.associateWith(contents::getValue),
-                    dimensions.toMap(),
-                    analyses.toMap(),
-                    edges.toMap(),
+            val segment = ReaderCertifiedPairingSegment(
+                unit,
+                first,
+                steps,
+                identity.generation,
+                identity.pageListRevision,
+                pages.toList(),
+                settings.copy(
+                    forcedSinglePages = settings.forcedSinglePages.toSet(),
+                    manualPairStarts = settings.manualPairStarts.toSet(),
                 ),
+                used.associateWith(contents::getValue),
+                dimensions.toMap(),
+                analyses.toMap(),
+                edges.toMap(),
+            )
+            return ReaderPairingCertificationTrace(
+                ReaderPairingCertification.Certified(segment),
+                segment.dependentPageIds,
             )
         }
         while (true) {
@@ -278,18 +359,51 @@ object ReaderPairingCertifier {
                 listOf(ReaderPairingScanCursor(first, true), ReaderPairingScanCursor(first, false))
             } else {
                 buildList {
-                    for (opening in listOf(true, false)) {
+                    // A real scan reaches page 1 only through a single page 0, which
+                    // keeps the opening flag, so the "opening = false" state at page 1
+                    // is unreachable and does not belong in the proof.
+                    for (opening in if (first == 1) listOf(true) else listOf(true, false)) {
                         add(ReaderPairingScanCursor(first, opening))
-                        add(ReaderPairingScanCursor(first, opening, first))
+                        // A reserved entry means "the left neighbour already emitted a
+                        // single page and reserved this index". Only the step at
+                        // "first - 1" can create that reservation, and only when it may
+                        // pair away a page. A forced single page is a hard boundary,
+                        // so the reservation cannot exist and the entry is unreachable.
+                        // Keeping it would let an entry that no real scan needs request
+                        // an edge and hold the target pending for a fact that cannot
+                        // change it.
+                        if (first > 1 && pages[first - 1] !in settings.forcedSinglePages &&
+                            pages[first] !in settings.forcedSinglePages
+                        ) {
+                            add(ReaderPairingScanCursor(first, opening, first))
+                        }
                     }
-                    add(ReaderPairingScanCursor(first + 1, false))
+                    // The "(first + 1)" entry means "first was already paired away by
+                    // its left neighbour". A forced single page is a hard boundary:
+                    // `allowed()` rejects any pair that touches it, so the real scan
+                    // can never consume `first` that way and the entry is unreachable.
+                    // Keeping it would let an entry that no real scan needs request an
+                    // edge and hold the target pending for a fact that cannot change it.
+                    if (pages[first - 1] !in settings.forcedSinglePages &&
+                        pages[first] !in settings.forcedSinglePages
+                    ) {
+                        add(ReaderPairingScanCursor(first + 1, false))
+                    }
                 }
             }
             val candidates = entries.map(::targetUnit)
             if (failures.isNotEmpty()) {
-                return ReaderPairingCertification.RetryableBlocked(failures.toMap(), needs.toSet(), first, steps)
+                return ReaderPairingCertificationTrace(
+                    ReaderPairingCertification.RetryableBlocked(failures.toMap(), needs.toSet(), first, steps),
+                    dependencyPageIds(),
+                )
             }
-            if (needs.isNotEmpty()) return ReaderPairingCertification.NeedFacts(needs.toSet(), first, steps)
+            if (needs.isNotEmpty()) {
+                return ReaderPairingCertificationTrace(
+                    ReaderPairingCertification.NeedFacts(needs.toSet(), first, steps),
+                    dependencyPageIds(),
+                )
+            }
             val unit = candidates.firstOrNull()
             if (unit != null && candidates.all { it == unit }) {
                 return certified(unit)
@@ -298,9 +412,22 @@ object ReaderPairingCertifier {
             // Its reads are real dependencies; no tentative manual-cache reads are rolled back.
             if (first > 0 && !scan.allowed(first - 1)) {
                 if (failures.isNotEmpty()) {
-                    return ReaderPairingCertification.RetryableBlocked(failures.toMap(), needs.toSet(), first, steps)
+                    return ReaderPairingCertificationTrace(
+                        ReaderPairingCertification.RetryableBlocked(
+                            failures.toMap(),
+                            needs.toSet(),
+                            first,
+                            steps,
+                        ),
+                        dependencyPageIds(),
+                    )
                 }
-                if (needs.isNotEmpty()) return ReaderPairingCertification.NeedFacts(needs.toSet(), first, steps)
+                if (needs.isNotEmpty()) {
+                    return ReaderPairingCertificationTrace(
+                        ReaderPairingCertification.NeedFacts(needs.toSet(), first, steps),
+                        dependencyPageIds(),
+                    )
+                }
                 val normal = listOf(true, false).map { targetUnit(ReaderPairingScanCursor(first, it)) }
                 val agreed = normal.firstOrNull()
                 if (agreed != null && normal.all { it == agreed }) return certified(agreed)

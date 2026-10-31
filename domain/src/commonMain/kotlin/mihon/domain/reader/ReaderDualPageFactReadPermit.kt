@@ -11,6 +11,16 @@ class ReaderDualPageFactReadPermit(
     private val budget: ReaderDualPageFactBudget,
     private val pageId: ReaderPageId,
     private val clockMillis: () -> Long,
+    /**
+     * The publisher this capability belongs to.
+     *
+     * The capability token belongs to the request, so an ordinary request for the same
+     * page carries none. The token identifies the publisher that admitted the
+     * capability, which is what the reader's busy state needs: the pairing must not
+     * wait for the work it started itself, and it must wait for the work of every
+     * other publisher, whoever started it. A token of zero belongs to no publisher.
+     */
+    val ownerKey: Long = 0L,
 ) {
     fun reserve(byteCount: Long): Long = budget.reserveRead(pageId, byteCount, clockMillis())
     fun returnUnread(byteCount: Long) = budget.returnUnreadBytes(pageId, byteCount)
