@@ -95,6 +95,8 @@
 
 ## 4. Detached HEAD：九处逐项判断
 
+**最终取舍见第 9 节。** 本节是首轮身份和保存风险核对；第 9 节已补完未提交内容的用途判断，取代本节“先归档再判断”的建议。
+
 计数是相对本地 remote-tracking refs 的不可达提交数；本轮九处相对 main 的数量也相同。已有分支覆盖的提交不需要为每个工作树重复保留一份历史，但该树的未提交/ignored 内容仍须单独保存。
 
 | 工作树（简称） | HEAD / 数量 | 内容、覆盖与处理 |
@@ -156,3 +158,54 @@ stash 序号会随新建/drop 变化，后续操作应以这里固定的完整 S
 ## 8. 核验范围
 
 已读实际 refs、工作树登记、stash 各父树、差异统计及重点产品改动，并以 patch-id/实际主干内容核对已覆盖修复。大型 WIP 仅做有界内容分类，不声称逐行证明所有行为等价。没有运行 Gradle、全量测试、原生采样或网络请求；静态存在性不作为运行验收。本文为唯一交付报告，子代理扫描摘要仅为过程材料。
+
+## 9. 九处 detached HEAD 最终取舍（含未提交内容）
+
+补审基线 `e8beb212a0ead306f6441b130c40d4b0a6c660f6`。本节完成采用/已覆盖/淘汰的内容裁定，不以归档代替判断。没有执行删除或移植；“淘汰”表示不再作为产品或测试开发候选，“采用测试”表示应提取该具体场景到现有夹具，不能把它写成已经落地通过。
+
+**结果：旧 production 实现采用 0 项；采用测试场景 9 项；其余已覆盖或淘汰。** 历史正式测量和验收证据仍有证明来源的用途，这不使其旧工具成为待开发功能。
+
+| 工作树 | 已提交 HEAD 的最终决定 | 未提交内容的最终决定 | 后续用途 |
+|---|---|---|---|
+| `0877/mihon` | 淘汰：唯一差异是旧 BUILD 70→72 | 无 | 无代码需要提取 |
+| `l1-r3-baseline` | 已被最终 CP1 替代：必要事实准入、优先级及原图复用不再从旧版移植；旧 replay 工具不采用 | 无 | 仅原正式性能对照的版本身份/数据继续用于证据，不再开发 |
+| `luna-v12-candidate` | IO 测试有限渲染/偏好隔离已有更强后继实现 | 8 tracked/4 untracked 全部已分流：产品/设置/Workflow/普通页翻测试已覆盖；旧 parity 行号及重复 fixture 淘汰；只采用下面 T2–T3 | 提取两条测试刺激，不回迁产品 |
+| `luna-v7-mihon` | 18 文件逐簇裁定：下载身份、常驻章节边界、元数据/主题/方向展示已覆盖；动态插入边界、手工返回锚点、Webtoon 第二套 edge gate 淘汰；仅采用 T1 | 无 | 提取一条迟到几何测试刺激，不回迁旧 boundary 状态机 |
+| `mihon-fork-reader-perf-parallel…/mihon` | 早期 CP1 产品由最终闭包替代；平板对照记录是历史证据，不是遗漏能力 | 24 tracked/2 untracked 已分流：8 文件与 main 完全一致，pipeline test 仅断言换行差异；7 个 production 残差淘汰；其余旧测试/文档/benchmark 淘汰；仅采用 T4–T9 | 提取六条接线回归，不恢复旧测量构建分支 |
+| `mihon-m2-baseline-63236da` | `63236da236` 经 git cherry 证实主干 patch 等价 | 唯一修改将六种权限错误统一显示 unknown；main 有各自明确提示，旧映射淘汰 | 无需提取 |
+| `.candidate/reader-pairing-r6-baseline` | R6 旧策略不采用，当前认证/memo 合约为权威 | 两个 harness、trajectory、run.py 全部淘汰：依赖已不在 main 的 certifyConfluent/scopedReuse/候选 fixture；不为复用工具重建旧算法 | 无需提取，也不新建平行性能系统 |
+| `mihon-rv01-evidence` | 两项治理/非 Windows 发布测试修复已有 patch 等价主干提交；三笔旧版本分配淘汰 | 无 | 无需提取 |
+| `mihon-task151-windows` | tracking/settings 修复与主干 fcbb351ba9 patch 等价 | 6 tracked/4 untracked：分享/controller/test-mode/HTTP 已覆盖；controller test 与 main 完全一致；旧版本号、旧验收脚本淘汰 | 无需提取；旧脚本按 EXE 杀所有实例、旧截图端点和 provenance 做法不再采用 |
+
+### 9.1 明确采用的九个测试场景
+
+不是九套新测试系统，也不是九个已复现 bug。只把下列刺激/断言移到 main 现有测试类，旧独立夹具、旧产品接口、PNG输出及历史计时设施都不采用。
+
+| 编号 | 来源与精确场景 | 必须保留的价值 / 主干缺口 | 采用范围 |
+|---|---|---|---|
+| T1 | v7 `ReplayAcceptanceTest`：`real dual pager preserves a boundary across delayed geometry change and inward input` | 真正进入章节边界后，迟到事实改变单位布局，边界不消失、不额外读取内容、不推进进度；一次向内输入返回合法图像。当前边界展示与迟到事实测试分别存在，缺这条交叉时序 | 加到现有 `ReaderChapterTransitionPresentationTest` 夹具。经 SharedDualPage 真实事实入口改变布局；保留有/无变化对照。淘汰旧 setSpreadPages、chapterTransitionReturnDisplayUnitId 依赖，不强求恢复已被布局变化删除的旧单位 ID |
+| T2 | v12 `ReaderPageTurnIndependentTest`：`rapid requests keep the latest viewport when animation is disabled mid flight` | 先观察真实混合帧，动画中关闭开关，再连续发两个目的地；最新目的地及像素获胜，旧完成不得覆盖。main 快速请求测试没有中途关开关刺激 | 加到现有 `ReaderPageTurnPresentationTest`，复用真实像素 fixture、单/双页×LTR/RTL；预期按当前共享 owner 算，不搬旧硬编码页号 |
+| T3 | 同上：`animation toggle preserves a tap destination already in flight` | 点击已产生混合动画帧后关开关，仍到达点击目的地；main 的偏好开关测试是在下一轮输入前生效 | 同 T2，不另建独立 fixture |
+| T4 | 性能树 `SharedSpreadDesktopResourceWiringTest`：`mounted real neighbor demand promotes a queued same Entry when a slot becomes free` | 真实 viewport mount 把排队投机请求原位提为真实请求，Entry/registration/budget 不换、只解码一次。main 有 pipeline 排队单测与执行中 promotion wiring，但缺排队时真实 mount 接线 | 仅移入同名 main test 类及必要 helper |
+| T5 | 同上：`mounted real neighbor demand promotes before its content key is registered` | 已登记需求但 content key/Entry 尚未创建时，真实 mount 的升级不能丢失，不能延期/退已扣预算；放行后一次解码 | 同 T4，预算观察适配当前 FactBudgetWindow |
+| T6 | 同上：`late old publisher cleanup preserves a newer same page registration` | 新 publisher 同页登记之后，旧 finally 迟到不能删除新 registration。main 实际使用 compare-remove，现替换测试未固定这一 finally 次序 | 同 T4，保留两个可控调度器的真正生产工作，不复制旧 P5 快照设施 |
+| T7 | 同上：`location change cancels active pairing publisher outside lifecycle lock` | 真正 goToPage/collector 替换触发取消；取消回调不能持 lifecycle lock，防止重入/死锁。仅“最终取消成功”不足以检查锁拓扑 | 同 T4，使用 main 现有 internal startSpreadPublisher，不恢复旧反射接口 |
+| T8 | 同上：`page retry cancels active pairing publisher outside lifecycle lock` | retryPage 取消也必须在锁外；与导航是不同入口 | 同 T7 |
+| T9 | 同上：`screen disposal cancels active pairing publisher outside lifecycle lock` | 无 collector 干扰时 onDispose 自身取消 publisher，回调不得持锁；避免由 collector 取消掩盖 dispose 漏项 | 同 T7 |
+
+### 9.2 淘汰依据，不留笼统“另案复核”尾项
+
+- **v7 产品**：main 使用有明确前/后方向身份的常驻 boundary display item，三种 viewer 及真实 ReaderContent 测试已经覆盖。旧 return 字段/动态反馈页建立第二套位置所有权；旧 showClose=false 也不符合主干瞬时错误反馈契约。采用它们会改变现有交互，不是缺失修复。旧 delayed-geometry 刺激有独立价值，所以单独取出 T1。
+- **v12 产品与 Workflow**：main 已有 pageTurnAnimation 的设置、搜索、可达性、真实 pager 接线，以及 programmaticTarget/userTurnTarget/navigation intent。旧 pendingPagerPage 单个整数会损失这些协作。两个 Workflow 文件经去空白/import排序、归一类名比较，对应 main ReaderCriticalPathProductionTest/ReaderProductionTestFixture；main 还多 scene 尺寸、首帧截断、HEADER_READ 预算断言。旧文件不产生新能力。旧手动 beginGeneration 的迟到 decode 测试不采用：main 已有真实 runtime fence、lease 恰好释放及旧 generation 清理回归，旧手工推进测试接线更弱。
+- **性能树产品**：旧 pipeline/sampler 缺真实前台工作分类、跨 runtime region slot 和整轮 sampling slot；旧 Model 缺完成未消费期间持有预算、精确准入/释放、defer 重试及忙态恢复，还会删除全屏接口；旧 Android adapter 缺 mutex/前台忙态/closed owner 防护；旧 budget 缺 FactBudgetWindow/rebind；旧 certification/session 缺完整 read-set、不可达入口剪枝及有界 memo。均淘汰旧残差，保留 main 后继实现。
+- **性能树其余测试/工具**：旧“16页后停止”断言与当前 required 长前缀协议冲突；进度测试没有独有方法；网络/header 由当前真实 owner 和窗口契约覆盖。in-process 单页比较工具是特定外部 manifest/assets 和候选源码注入的一次性对照，旧构建修改还移除 updater 字段，不作为常驻工具采用。原始数据仍可证明历史测量，不能因此恢复旧构建配置。
+- **R6 四文件**：两套成本 harness 依赖 main 已不存在的候选接口；trajectory 仅被过期 harness 消费；run.py 固定 E/CSL/D3 旧策略。main Memo/EquivalentContracts 测试已有当前依赖失效、稳定 epoch 和物理读取边界。全部淘汰，不为“也许有用”维持空消费者设施。
+- **task151**：main controller 比旧版增加 openWebsite token/loopback/one-shot 保护，测试文件完全相同；HTTP/test-mode 有后继隔离和关停接线。旧 Windows 脚本按 EXE 批量杀实例，旧截图端点已撤销，provenance 也弱于 main。全部无需再移植。
+
+### 9.3 验证状态与实施边界
+
+本轮完成代码取舍，没有实施 T1–T9。主审复读了 T1–T3 的真实混合帧/布局刺激、T6 的双调度器旧 finally 竞争、T7–T9 的真实入口及持锁断言，并核对 main 的现有 promotion 测试、internal publisher 入口与 compare-remove。两位代理分别完成 reader 与性能/平台组的逐簇核对，未改变九处工作树。
+
+后续若实施测试，最小范围为：T1 对应边界测试类；T2–T3 对应页翻测试类；T4–T9 精确方法及现有 executing promotion wiring/pipeline queued promotion，加修改源格式检查。不得据此次静态取舍声称新增回归已通过，也不触发全模块、正式50或新性能研究。
+
+因此此前“九处没有内容值得使用”的说法过宽：**无旧产品需要恢复，但九个测试场景值得使用**。本节已完成具体取舍；测试移植与磁盘清理是后续执行动作，不再需要重新裁定这些旧产品实现。
