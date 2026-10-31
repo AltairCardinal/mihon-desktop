@@ -62,7 +62,7 @@ class ReaderDualPageTileSeamNativeTest {
                         val mountedImages = fixture.currentImages()
                         fixture.onReaderMain {
                             val images = mountedImages.sortedBy { image ->
-                                IntArray(2).also(image::getLocationInWindow)[0]
+                                IntArray(2).also((image.parent as View)::getLocationInWindow)[0]
                             }
                             val leftSlot = images.first().parent as View
                             val location = IntArray(2).also(leftSlot::getLocationInWindow)
