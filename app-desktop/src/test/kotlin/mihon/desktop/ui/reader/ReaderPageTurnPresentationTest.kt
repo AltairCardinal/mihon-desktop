@@ -339,6 +339,60 @@ class ReaderPageTurnPresentationTest {
         }
     }
 
+    @ParameterizedTest
+    @CsvSource("false,false", "false,true", "true,false", "true,true")
+    fun `rapid requests keep the latest viewport when animation is disabled mid flight`(
+        dual: Boolean,
+        rtl: Boolean,
+    ) = runTest {
+        Fixture(this, dual, rtl).use { fixture ->
+            fixture.frames(40)
+            val latestTarget = fixture.page
+            val expectedSources = fixture.sourcesForPage(latestTarget)
+            fixture.page = if (dual) 3 else 1
+            fixture.awaitMixedFrame()
+
+            fixture.preferences.pageTurnAnimation.set(false)
+            fixture.page = if (dual) 5 else 3
+            assertEquals(if (dual) 5 else 3, fixture.page, "The superseding request must reach production state")
+            fixture.frame()
+            runCurrent()
+            fixture.page = latestTarget
+            assertEquals(latestTarget, fixture.page, "The latest request must reach production state")
+            fixture.frames(80)
+
+            repeat(20) {
+                assertEquals(setOf(RED), fixture.frame(), "An old animation must not replace the latest pixels")
+                runCurrent()
+                assertEquals(latestTarget, fixture.page)
+                assertEquals(expectedSources, fixture.visibleSources())
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource("false,false", "false,true", "true,false", "true,true")
+    fun `animation toggle preserves a tap destination already in flight`(dual: Boolean, rtl: Boolean) = runTest {
+        Fixture(this, dual, rtl).use { fixture ->
+            fixture.frames(40)
+            val expectedSources = fixture.nextSources()
+            fixture.tap(forward = true, rtl = rtl)
+            fixture.awaitMixedFrame()
+            val requestedPage = fixture.page
+            assertTrue(requestedPage in expectedSources, "The real tap must request the next shared unit")
+
+            fixture.preferences.pageTurnAnimation.set(false)
+            fixture.frames(80)
+
+            repeat(20) {
+                assertEquals(setOf(GREEN), fixture.frame(), "Disabling animation must finish the requested turn")
+                runCurrent()
+                assertEquals(requestedPage, fixture.page)
+                assertEquals(expectedSources, fixture.visibleSources())
+            }
+        }
+    }
+
     private class Fixture(val scope: TestScope, val dual: Boolean, rtl: Boolean) : AutoCloseable {
         private val root = Preferences.userRoot().node("/mihon/page-turn-test/${System.nanoTime()}")
         private val store = DesktopPreferenceStore(root.node("store"))
@@ -362,6 +416,32 @@ class ReaderPageTurnPresentationTest {
         val presented = CopyOnWriteArraySet<Int>()
         var bothPageColorsDrawn = false
             private set
+        fun visibleSources(): Set<Int> = model.state.value.visiblePageIds.map { it.sourcePageIndex }.toSet()
+        fun sourcesForPage(page: Int): Set<Int> = if (dual) {
+            model.state.value.dualPageUnits.single { unit -> unit.pageIds.any { it.sourcePageIndex == page } }
+                .pageIds.map { it.sourcePageIndex }.toSet()
+        } else {
+            setOf(page)
+        }
+        fun nextSources(): Set<Int> = if (dual) {
+            val units = model.state.value.dualPageUnits
+            val current = units.indexOfFirst { unit -> unit.pageIds.any { it.sourcePageIndex == page } }
+            units[current + 1].pageIds.map { it.sourcePageIndex }.toSet()
+        } else {
+            setOf(page + 1)
+        }
+        fun frames(count: Int) = repeat(count) {
+            frame()
+            scope.runCurrent()
+        }
+        fun awaitMixedFrame() {
+            repeat(40) {
+                frame()
+                scope.runCurrent()
+                if (bothPageColorsDrawn) return
+            }
+            assertTrue(bothPageColorsDrawn, "The interruption requires a real mixed animation frame: ${diagnostic()}")
+        }
         private val reporter = ReaderIoReporter(ReaderIoProbe.None, ReaderMonotonicClock { 0L })
         private val content = DesktopReaderPageContentOwner(scope, { byteArrayOf(1) }, reporter)
         private val pipeline = DesktopReaderPageImagePipeline(
@@ -486,10 +566,19 @@ class ReaderPageTurnPresentationTest {
                 node: androidx.compose.ui.semantics.SemanticsNode,
             ): List<androidx.compose.ui.semantics.SemanticsNode> =
                 listOf(node) + node.children.flatMap(::flatten)
-            val native = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.firstOrNull {
+            val nodes = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+            val native = nodes.firstOrNull {
                 it.config.contains(ReaderPagerNativePresentationKey)
             }?.config?.get(ReaderPagerNativePresentationKey)
-            return "page=$page decoded=$decoded presented=$presented native=${native?.describe()}"
+            val positions = nodes.filter { it.config.contains(ReaderDisplayUnitIdKey) }.map { node ->
+                node.config[ReaderDisplayUnitIdKey].slots.mapNotNull { it.pageId?.sourcePageIndex } to
+                    node.boundsInRoot.left
+            }
+            val scroll = nodes.filter {
+                it.config.contains(androidx.compose.ui.semantics.SemanticsProperties.HorizontalScrollAxisRange)
+            }.map { it.config[androidx.compose.ui.semantics.SemanticsProperties.HorizontalScrollAxisRange].value() }
+            return "page=$page animation=${preferences.pageTurnAnimation.get()} positions=$positions " +
+                "scroll=$scroll decoded=$decoded presented=$presented native=${native?.describe()}"
         }
         fun writeFrame(path: String) {
             val bitmap = renderBitmap()

@@ -48,6 +48,7 @@ import mihon.desktop.ui.reader.presentation.ReaderPresentationMode
 import mihon.desktop.ui.reader.presentation.desktopReaderPresentationRequest
 import mihon.desktop.ui.reader.presentation.withSharedOwner
 import mihon.domain.reader.ReaderDirection
+import mihon.domain.reader.ReaderPageFact
 import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.observability.ReaderIoProbe
 import mihon.domain.reader.observability.ReaderIoReporter
@@ -64,6 +65,7 @@ import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.i18n.MR
 import java.io.File
 import java.util.Locale
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.prefs.Preferences
 import org.jetbrains.skia.Image as SkiaImage
 
@@ -460,23 +462,174 @@ class ReaderChapterTransitionPresentationTest {
         }
     }
 
+    @ParameterizedTest
+    @CsvSource("false", "true")
+    fun `real dual pager preserves a boundary across delayed geometry change and inward input`(
+        changeGeometry: Boolean,
+    ) = runTest {
+        val initial = desktopReaderSessionState(chapterId = 7L, pageCount = 5, initialPage = 3)
+        val progressPages = mutableListOf<Int>()
+        val model = ReaderScreenModel(
+            onViewportSettled = { _, page -> progressPages += page.sourcePageIndex },
+            initialSessionState = initial,
+            dualPageOverride = true,
+            prefs = ReaderPreferences(InMemoryPreferenceStore()).apply {
+                readingMode = ReadingMode.LTR
+                isAutoSpreadMatching = false
+                autoSplitPages = false
+            },
+        )
+        model.state.value.session.activeChapter.pages.forEach { page ->
+            assertTrue(
+                model.acceptDualFact(requireNotNull(model.captureDualFact(page.id)), ReaderPageFact.dimensions(32, 48)),
+            )
+        }
+        val preferenceRoot = Preferences.userRoot().node("/mihon/transition-late-geometry/${System.nanoTime()}")
+        val preferences = DesktopAppPreferences(InMemoryPreferenceStore(), preferenceRoot)
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { appPreferences } returns preferences
+        }
+        val owner = TransitionPresentationImageFixture(this, pageHeight = 48)
+        val scene = ImageComposeScene(640, 480, coroutineContext = coroutineContext) {}
+        var time = 0L
+        fun frame() {
+            time += 16_000_000L
+            scene.render(time).close()
+            runCurrent()
+        }
+        fun tap(forward: Boolean) {
+            val position = Offset(if (forward) 620f else 20f, 240f)
+            scene.sendPointerEvent(PointerEventType.Press, position, button = PointerButton.Primary)
+            scene.sendPointerEvent(PointerEventType.Release, position, button = PointerButton.Primary)
+        }
+        fun boundaryIsVisible(): Boolean = nodes(scene).any { node ->
+            node.config.contains(ReaderDisplayUnitTransitionDirectionKey) &&
+                node.config[ReaderDisplayUnitTransitionDirectionKey] == ReaderTransitionDirection.NEXT &&
+                node.boundsInRoot.right > 0f && node.boundsInRoot.left < 640f &&
+                node.boundsInRoot.bottom > 0f && node.boundsInRoot.top < 480f
+        }
+        try {
+            scene.setContent {
+                MaterialTheme {
+                    CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                        val state by model.state.collectAsState()
+                        ReaderContent(
+                            state = state,
+                            model = model,
+                            contextMenuScope = this@runTest,
+                            mangaTitle = initial.context.mangaTitle,
+                            chapterTitle = initial.context.chapterTitle,
+                            presentationImageOwner = owner.presentationImageOwner,
+                            readerNav = null,
+                            onPrevChapter = {},
+                            onNextChapter = {},
+                        )
+                    }
+                }
+            }
+            repeat(60) { frame() }
+            // The shared owner may initially certify a partial unit around the saved
+            // source anchor. Explicitly navigate to the last source after it is mounted.
+            model.goToPage(model.state.value.session.activeChapter.pages.lastIndex)
+            repeat(60) { frame() }
+            val settled = model.state.value
+            val originalUnit = requireNotNull(settled.currentDisplayUnitId)
+            assertTrue(settled.visiblePageIds.isNotEmpty(), "The real image viewport must settle before boundary entry")
+            assertTrue(
+                settled.session.activeChapter.pages.last().id in settled.visiblePageIds,
+                "A forward tap must start at the final shared image unit: " +
+                    "page=${settled.currentPage} visible=${settled.visiblePageIds} units=${settled.dualPageUnits}",
+            )
+            tap(forward = true)
+            repeat(60) { frame() }
+            assertTrue(boundaryIsVisible(), "The real tap must enter the next-chapter boundary")
+            val boundaryId = requireNotNull(model.state.value.currentDisplayUnitId)
+            assertTrue(boundaryId.slots.any { it.transitionDirection == ReaderTransitionDirection.NEXT })
+            val unitsBefore = model.state.value.dualPageUnits.map { it.id }
+            val revisionBefore = model.state.value.dualPageLayoutRevision
+            val readsBefore = owner.contentReads.toList()
+            val progressBefore = progressPages.toList()
+
+            // The encoded/header collector is outside this focused scene. Deliver its late
+            // geometry through the same model fact ticket accepted by the production runtime.
+            repeat(4) { frame() }
+            if (changeGeometry) {
+                val page = model.state.value.session.activeChapter.pages[1]
+                assertTrue(
+                    model.acceptDualFact(
+                        requireNotNull(model.captureDualFact(page.id)),
+                        ReaderPageFact.dimensions(64, 32),
+                    ),
+                    "The late original geometry must be accepted by the shared owner",
+                )
+                assertTrue(model.state.value.dualPageLayoutRevision > revisionBefore)
+                assertTrue(
+                    model.state.value.dualPageUnits.map { it.id } != unitsBefore,
+                    "The stimulus must change the actual shared layout, not only metadata",
+                )
+            } else {
+                assertEquals(revisionBefore, model.state.value.dualPageLayoutRevision)
+                assertEquals(unitsBefore, model.state.value.dualPageUnits.map { it.id })
+            }
+            repeat(80) {
+                frame()
+                assertEquals(boundaryId, model.state.value.currentDisplayUnitId)
+                assertTrue(boundaryIsVisible(), "Late geometry must not eject the mounted boundary")
+                assertEquals(settled.currentPage, model.state.value.currentPage)
+                assertEquals(progressBefore, progressPages, "Boundary geometry must not report image reading")
+                assertEquals(
+                    readsBefore,
+                    owner.contentReads.toList(),
+                    "Boundary geometry must not reopen encoded content",
+                )
+                assertEquals(5, model.state.value.session.activeChapter.pages.size)
+            }
+
+            tap(forward = false)
+            repeat(80) { frame() }
+            val returned = model.state.value
+            assertTrue(!boundaryIsVisible(), "One inward tap must return to a real image unit")
+            assertTrue(returned.visiblePageIds.isNotEmpty())
+            assertTrue(returned.visiblePageIds.any { it.sourcePageIndex == settled.currentPage })
+            val legalUnits = returned.dualPresentationSnapshot(false, false).displayUnits
+            assertTrue(legalUnits.any { it.id == returned.currentDisplayUnitId && it.transitionDirection == null })
+            if (legalUnits.any { it.id == originalUnit }) {
+                assertEquals(
+                    originalUnit,
+                    returned.currentDisplayUnitId,
+                    "A retained original unit must be restored exactly",
+                )
+            }
+        } finally {
+            scene.close()
+            owner.close()
+            model.onDispose()
+            preferenceRoot.removeNode()
+        }
+    }
+
     private class TransitionPresentationImageFixture(
         scope: kotlinx.coroutines.CoroutineScope,
+        pageHeight: Int = 32,
     ) : AutoCloseable {
         private val reporter = ReaderIoReporter(ReaderIoProbe.None, ReaderMonotonicClock { 0L })
-        private val content = DesktopReaderPageContentOwner(scope, { byteArrayOf(1) }, reporter)
+        val contentReads = CopyOnWriteArrayList<mihon.domain.reader.session.EncodedPageRef>()
+        private val content = DesktopReaderPageContentOwner(scope, { reference ->
+            contentReads += reference
+            byteArrayOf(1)
+        }, reporter)
         private val pipeline = DesktopReaderPageImagePipeline(
             scope = scope,
             pageContentOwner = content,
             ioReporter = reporter,
             decoder = DesktopReaderPageImageDecoder { _, key ->
-                val bitmap = Bitmap().apply { allocN32Pixels(32, 32) }
+                val bitmap = Bitmap().apply { allocN32Pixels(32, pageHeight) }
                 Canvas(bitmap).use { canvas -> canvas.clear(Color.White.toArgb()) }
                 DesktopReaderImageAsset(
                     bitmap.asComposeImageBitmap(),
                     32,
-                    32,
-                    4096L,
+                    pageHeight,
+                    32L * pageHeight * 4,
                     false,
                     disposer = bitmap::close,
                 )

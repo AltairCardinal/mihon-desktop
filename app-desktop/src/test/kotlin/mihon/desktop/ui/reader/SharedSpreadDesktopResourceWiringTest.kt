@@ -34,7 +34,9 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.withContext
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
@@ -44,6 +46,7 @@ import mihon.desktop.reader.DesktopReaderChapterContext
 import mihon.desktop.reader.DesktopReaderImageAsset
 import mihon.desktop.reader.DesktopReaderPageImageDecoder
 import mihon.desktop.reader.DesktopReaderPresentationImageHolder
+import mihon.desktop.reader.DesktopReaderRuntime
 import mihon.desktop.reader.DesktopReaderRuntimeFactory
 import mihon.desktop.reader.DesktopReaderSpreadSampler
 import mihon.desktop.reader.NextChapterPrefetchMode
@@ -73,6 +76,7 @@ import mihon.domain.reader.ReaderPageFactState
 import mihon.domain.reader.ReaderPageSideHint
 import mihon.domain.reader.ReaderPairingCertification
 import mihon.domain.reader.ReaderPairingCertifier
+import mihon.domain.reader.ReaderPairingPrefetchPlan
 import mihon.domain.reader.ReaderPairingSettings
 import mihon.domain.reader.ReaderSpreadSamplesOwner
 import mihon.domain.reader.SharedDualPageRules
@@ -116,9 +120,637 @@ import java.util.prefs.Preferences
 import java.util.zip.ZipFile
 import javax.imageio.ImageIO
 
-@OptIn(ExperimentalComposeUiApi::class, kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+@OptIn(
+    ExperimentalComposeUiApi::class,
+    kotlinx.coroutines.ExperimentalCoroutinesApi::class,
+    kotlinx.coroutines.InternalCoroutinesApi::class,
+)
 class SharedSpreadDesktopResourceWiringTest {
     @TempDir lateinit var temp: File
+
+    private fun lifecycleLock(model: ReaderScreenModel): Any =
+        ReaderScreenModel::class.java.getDeclaredField("productionRuntimeLifecycleLock")
+            .apply { isAccessible = true }.get(model)
+
+    private fun pairingRegistration(model: ReaderScreenModel, pageId: ReaderPageId): Any? =
+        synchronized(lifecycleLock(model)) {
+            val registrations = ReaderScreenModel::class.java.getDeclaredField("pairingRegistrations")
+                .apply { isAccessible = true }.get(model) as Map<*, *>
+            registrations[pageId]
+        }
+
+    private fun pairingDemand(registration: Any): mihon.desktop.reader.DesktopReaderPairingDecodeDemand =
+        registration.javaClass.getDeclaredField("demand").apply { isAccessible = true }.get(registration)
+            as mihon.desktop.reader.DesktopReaderPairingDecodeDemand
+
+    private fun pairingContent(model: ReaderScreenModel, pageId: ReaderPageId): ReaderPageContentOpenRequest? =
+        pairingRegistration(model, pageId)?.let { registration ->
+            registration.javaClass.getDeclaredField("content").apply { isAccessible = true }.get(registration)
+                as ReaderPageContentOpenRequest?
+        }
+
+    private fun inFlightFullEntry(
+        pipeline: mihon.desktop.reader.DesktopReaderPageImagePipeline,
+        pageId: ReaderPageId,
+    ): Any? {
+        val lock = pipeline.javaClass.getDeclaredField("lock").apply { isAccessible = true }.get(pipeline)
+        return synchronized(lock) {
+            val entries = pipeline.javaClass.getDeclaredField("entries").apply { isAccessible = true }
+                .get(pipeline) as Map<*, *>
+            entries.entries.firstOrNull { (key, _) ->
+                key as ReaderPageDecodeKey
+                key.purpose == PageDecodePurpose.FULL_PAGE && key.contentKey.pageId == pageId
+            }?.value
+        }
+    }
+
+    private fun registrationJob(registration: Any): Job =
+        registration.javaClass.getDeclaredField("job").apply { isAccessible = true }.get(registration) as Job
+
+    private fun mountNeighbor(model: ReaderScreenModel, page: ReaderPageId): ReaderPagerNativePresentation {
+        val snapshot = model.state.value.dualPresentationSnapshot(false, false)
+        val unit = snapshot.displayUnits.first { display -> display.slots.any { it.page?.id == page } }
+        return ReaderPagerNativePresentation(
+            unit,
+            snapshot.resolveDualVisiblePages(unit.id),
+            ReaderPagerPresentationBinding(Any(), model),
+            {},
+        ).also {
+            it.begin(
+                userNavigation = false,
+                selected = false,
+                logicalLocation = requireNotNull(ownerOf(model).location),
+            )
+        }
+    }
+
+    private fun ownerOf(model: ReaderScreenModel): SharedDualPageSession =
+        ReaderScreenModel::class.java.getDeclaredField("dualSession").apply { isAccessible = true }.get(model)
+            as SharedDualPageSession
+
+    private fun budgetNewlyReadBytes(budget: mihon.domain.reader.ReaderDualPageFactBudget): Long {
+        val window = budget.javaClass.getDeclaredField("window").apply { isAccessible = true }.get(budget)
+        val lock = window.javaClass.getDeclaredField("lock").apply { isAccessible = true }.get(window)
+        return synchronized(lock) {
+            window.javaClass.getDeclaredField("newlyReadBytes").apply { isAccessible = true }.getLong(window)
+        }
+    }
+
+    private fun startSpreadPublisher(
+        model: ReaderScreenModel,
+        owner: SharedDualPageSession,
+        runtime: DesktopReaderRuntime,
+        scope: CoroutineScope,
+        parallelism: Semaphore = Semaphore(ReaderDualPageFactLimits.REQUIRED_CONCURRENT_REQUESTS),
+    ) = model.startSpreadPublisher(owner, runtime, scope, parallelism)
+
+    private fun spreadPublisher(model: ReaderScreenModel): Job? =
+        synchronized(lifecycleLock(model)) {
+            ReaderScreenModel::class.java.getDeclaredField("spreadPublisherJob").apply { isAccessible = true }
+                .get(model) as Job?
+        }
+
+    private data class HeldSpreadPublisher(val job: Job, val pageId: ReaderPageId)
+
+    private fun observeCancellationLock(model: ReaderScreenModel, job: Job): CompletableDeferred<Boolean> =
+        CompletableDeferred<Boolean>().also { observed ->
+            val lock = lifecycleLock(model)
+            job.invokeOnCompletion(onCancelling = true, invokeImmediately = false) {
+                observed.complete(Thread.holdsLock(lock))
+            }
+        }
+
+    private suspend fun Fixture.startHeldSpreadPublisher(targetIndex: Int = 8): HeldSpreadPublisher {
+        pump(timeoutMillis = 10_000) {
+            model.state.value.session.activeChapter.pages.size >= 20
+        }
+        val pages = model.state.value.session.activeChapter.pages
+        model.goToPage(targetIndex)
+        val owner = requireNotNull(owner())
+        val target = pages[targetIndex].id
+        val need = owner.certifyPairing(target) as? ReaderPairingCertification.NeedFacts
+            ?: error("The production certifier must expose facts at the held-publisher target")
+        val candidate = ReaderPairingPrefetchPlan.classify(
+            need,
+            owner.identity.pageIds,
+            owner::originalAnalysis,
+            ReaderDualPageFactLimits.REQUIRED_LOOKAHEAD_K,
+            emptySet(),
+        ).speculative.firstOrNull() ?: error("The production classifier must expose a speculative candidate")
+
+        speculativeGatePredicate.set { it == candidate.sourcePageIndex }
+        scene.setContent {}
+        pump { true }
+        startSpreadPublisher(model, owner, runtime, scope)
+        pump(timeoutMillis = 15_000) {
+            speculativeEntered[candidate.sourcePageIndex]?.isCompleted == true
+        }
+        assertTrue(
+            speculativeEntered[candidate.sourcePageIndex]?.isCompleted == true,
+            "The real pairing publisher must be suspended at the selected decoder gate",
+        )
+        assertFalse(speculativeGate.isCompleted, "The physical decoder gate remains closed")
+        val publisher = requireNotNull(spreadPublisher(model))
+        assertTrue(publisher.isActive, "The observed Job must be the live production publisher")
+        assertNotNull(pairingRegistration(model, candidate), "The real publisher has registered its work")
+        assertNotNull(inFlightFullEntry(runtime.pageImagePipeline, candidate))
+        return HeldSpreadPublisher(publisher, candidate)
+    }
+
+    private suspend fun Fixture.cleanupHeldPublishers(vararg jobs: Job?) {
+        speculativeGate.complete(Unit)
+        val current = spreadPublisher(model)
+        val active = (jobs.asList() + current).filterNotNull().distinct()
+        active.forEach { it.cancel() }
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(8)
+        while (active.any { !it.isCompleted } && System.nanoTime() < deadline) delay(5)
+        assertTrue(active.all { it.isCompleted }, "Held production publishers must complete during bounded cleanup")
+    }
+
+    @Test
+    fun `mounted real neighbor demand promotes a queued same Entry when a slot becomes free`() = runBlocking {
+        Fixture(pageCount = 20, matching = true, manualSpreadPublisher = true).use { fixture ->
+            var native: ReaderPagerNativePresentation? = null
+            var initialNeighbor: ReaderPagerNativePresentation? = null
+            val consumeCompletions = CompletableDeferred<Unit>()
+            val blockerIds = mutableListOf<Int>()
+            val blockers = mutableListOf<Deferred<mihon.desktop.reader.DesktopReaderImageAssetLease?>>()
+            try {
+                fixture.mountReader()
+                fixture.pump {
+                    fixture.model.state.value.session.activeChapter.pages.size == 20 &&
+                        fixture.model.state.value.session.activeChapter.pages.all {
+                            it.loadState is ReaderPageLoadState.Ready
+                        }
+                }
+                val owner = requireNotNull(fixture.owner())
+                fixture.model.goToPage(8)
+                val pages = fixture.model.state.value.session.activeChapter.pages
+                val target = pages[8].id
+                val need = owner.certifyPairing(target) as? ReaderPairingCertification.NeedFacts
+                val candidate = requireNotNull(
+                    need?.let {
+                        ReaderPairingPrefetchPlan.classify(
+                            it,
+                            owner.identity.pageIds,
+                            owner::originalAnalysis,
+                            ReaderDualPageFactLimits.REQUIRED_LOOKAHEAD_K,
+                            emptySet(),
+                        ).speculative.firstOrNull()
+                    },
+                ) { "The real target classifier must provide a speculative queue candidate" }
+                fixture.speculativeGatePredicate.set { it == candidate.sourcePageIndex }
+                fixture.scene.setContent {}
+                fixture.pump { true }
+                fixture.runtime.pageImagePipeline.clear()
+                blockerIds += pages.asSequence()
+                    .map { it.id.sourcePageIndex }
+                    .filter { it != candidate.sourcePageIndex && it != target.sourcePageIndex }
+                    .take(3)
+                    .toList()
+                assertEquals(3, blockerIds.size, "Three distinct ready full decodes occupy the physical queue")
+                blockerIds.forEach { fixture.pageGate[it] = CompletableDeferred() }
+                blockers += blockerIds.map { index ->
+                    val page = pages[index]
+                    fixture.scope.async {
+                        fixture.runtime.pageImagePipeline.acquireForPairing(
+                            ReaderPageDecodeKey(
+                                ReaderPageContentOpenRequest(
+                                    page.id,
+                                    fixture.model.state.value.session.generation,
+                                    requireNotNull(page.encodedPageRef),
+                                    page.attemptGeneration,
+                                    page.encodedPageProvenance,
+                                ),
+                                PageDecodePurpose.FULL_PAGE,
+                                2_048,
+                                2_048,
+                            ),
+                            speculative = false,
+                        )
+                    }
+                }
+                fixture.pump(timeoutMillis = 8_000) {
+                    blockerIds.all { fixture.pageEntered[it]?.isCompleted == true }
+                }
+                assertTrue(blockerIds.all { fixture.pageEntered[it]?.isCompleted == true })
+                // Keep this real neighbor demand while the publisher registers its first round.
+                // Holding completion consumption prevents a later round from replacing that registration.
+                initialNeighbor = mountNeighbor(fixture.model, candidate)
+                fixture.model.p5SpreadPublisherCompletionGate = { consumeCompletions.await() }
+                startSpreadPublisher(fixture.model, owner, fixture.runtime, fixture.scope)
+                fixture.pump(timeoutMillis = 10_000) {
+                    pairingRegistration(fixture.model, candidate) != null &&
+                        inFlightFullEntry(fixture.runtime.pageImagePipeline, candidate) != null
+                }
+                val registration = requireNotNull(pairingRegistration(fixture.model, candidate))
+                val demand = pairingDemand(registration) as mihon.desktop.reader.DesktopReaderPairingDecodeDemand
+                val entry = requireNotNull(inFlightFullEntry(fixture.runtime.pageImagePipeline, candidate))
+                assertTrue(demand.speculative, "The candidate is still speculative while its Entry waits in queue")
+                assertTrue(registrationJob(registration).isActive, "The captured queued producer is still alive")
+                assertTrue(owner.factBudget.holds(candidate), "The live queued demand retains its actual budget slot")
+                initialNeighbor!!.close()
+                assertTrue(
+                    fixture.speculativeEntered[candidate.sourcePageIndex]?.isCompleted != true,
+                    "All decode slots are occupied, so the candidate has not entered the native decoder",
+                )
+
+                val snapshot = fixture.model.state.value.dualPresentationSnapshot(false, false)
+                val unit = snapshot.displayUnits.first { display ->
+                    display.slots.any { it.page?.id == candidate }
+                }
+                native = ReaderPagerNativePresentation(
+                    unit,
+                    snapshot.resolveDualVisiblePages(unit.id),
+                    ReaderPagerPresentationBinding(Any(), fixture.model),
+                    {},
+                )
+                val location = requireNotNull(owner.location)
+                val budget = owner.factBudget
+                native!!.begin(userNavigation = false, selected = false, logicalLocation = location)
+                assertEquals(location, owner.location, "Mounting a neighbor leaves the logical location unchanged")
+                fixture.pump(timeoutMillis = 8_000) { !demand.speculative }
+                assertFalse(demand.speculative, "The true mounted viewport promotes queued work")
+                assertSame(registration, pairingRegistration(fixture.model, candidate))
+                assertSame(entry, inFlightFullEntry(fixture.runtime.pageImagePipeline, candidate))
+                assertEquals(budget, owner.factBudget)
+
+                blockerIds.forEach { fixture.pageGate.getValue(it).complete(Unit) }
+                blockers.forEach { it.await()?.close() }
+                fixture.pump(timeoutMillis = 8_000) {
+                    fixture.speculativeEntered[candidate.sourcePageIndex]?.isCompleted == true
+                }
+                assertTrue(
+                    fixture.speculativeEntered[candidate.sourcePageIndex]?.isCompleted == true,
+                    "The same queued Entry reaches the decoder after the mounted-demand promotion",
+                )
+                assertSame(entry, inFlightFullEntry(fixture.runtime.pageImagePipeline, candidate))
+                assertEquals(1, fixture.decodeInvocations[candidate.sourcePageIndex]?.get())
+            } finally {
+                consumeCompletions.complete(Unit)
+                fixture.model.p5SpreadPublisherCompletionGate = null
+                initialNeighbor?.close()
+                fixture.speculativeGate.complete(Unit)
+                blockerIds.forEach { fixture.pageGate[it]?.complete(Unit) }
+                blockers.forEach { runCatching { it.await()?.close() } }
+                native?.close()
+            }
+        }
+    }
+
+    @Test
+    fun `mounted real neighbor demand promotes before its content key is registered`() = runBlocking {
+        Fixture(
+            pageCount = 20,
+            initialPage = 8,
+            online = true,
+            matching = true,
+            manualSpreadPublisher = true,
+        )
+            .use { fixture ->
+                var native: ReaderPagerNativePresentation? = null
+                var initialNeighbor: ReaderPagerNativePresentation? = null
+                val consumeCompletions = CompletableDeferred<Unit>()
+                val parallelism = Semaphore(ReaderDualPageFactLimits.REQUIRED_CONCURRENT_REQUESTS)
+                repeat(ReaderDualPageFactLimits.REQUIRED_CONCURRENT_REQUESTS) { parallelism.acquire() }
+                var permitsToRelease = ReaderDualPageFactLimits.REQUIRED_CONCURRENT_REQUESTS
+                try {
+                    fixture.mountReader()
+                    fixture.pump(timeoutMillis = 15_000) {
+                        val pages = fixture.model.state.value.session.activeChapter.pages
+                        pages.size == 20 && pages.getOrNull(8)?.loadState is ReaderPageLoadState.Ready
+                    }
+                    // The direct native mount below owns this event; the ordinary scene must not
+                    // introduce an unrelated viewport navigation while the materialization permit is held.
+                    fixture.scene.setContent {}
+                    fixture.pump { fixture.runtime.session.foregroundRequestsIdle }
+                    val owner = requireNotNull(fixture.owner())
+                    val pages = fixture.model.state.value.session.activeChapter.pages
+                    val targetPage = pages[8].id
+                    val targetCertification = owner.certifyPairing(targetPage) as? ReaderPairingCertification.NeedFacts
+                    val startupPlan = requireNotNull(targetCertification).let {
+                        ReaderPairingPrefetchPlan.classify(
+                            it,
+                            owner.identity.pageIds,
+                            owner::originalAnalysis,
+                            ReaderDualPageFactLimits.REQUIRED_LOOKAHEAD_K,
+                            emptySet(),
+                        )
+                    }
+                    val startupSpeculativeIds = startupPlan.speculative.filterTo(mutableSetOf()) { page ->
+                        pages[page.sourcePageIndex].loadState !is ReaderPageLoadState.Ready
+                    }
+                    assertTrue(
+                        startupSpeculativeIds.isNotEmpty(),
+                        "The current target classifier must expose an unmaterialized speculative candidate",
+                    )
+                    val initialCandidate = startupSpeculativeIds.first()
+                    initialNeighbor = mountNeighbor(fixture.model, initialCandidate)
+                    fixture.model.p5SpreadPublisherCompletionGate = { consumeCompletions.await() }
+                    // The producer registers its actual demand before waiting on this production semaphore.
+                    // Occupying every permit creates the pre-key state without touching demand/map state or
+                    // intercepting an HTTP request that may have started before registration.
+                    startSpreadPublisher(fixture.model, owner, fixture.runtime, fixture.scope, parallelism)
+                    fixture.pump(timeoutMillis = 10_000) {
+                        startupSpeculativeIds.any { pageId ->
+                            pairingRegistration(fixture.model, pageId)?.let { registration ->
+                                (
+                                    pairingDemand(registration) as
+                                        mihon.desktop.reader.DesktopReaderPairingDecodeDemand
+                                    ).speculative && registrationJob(registration).isActive &&
+                                    pairingContent(fixture.model, pageId) == null
+                            } == true
+                        }
+                    }
+                    val candidate = requireNotNull(
+                        startupSpeculativeIds.firstOrNull { pageId ->
+                            pairingRegistration(fixture.model, pageId)?.let { registration ->
+                                (
+                                    pairingDemand(registration) as
+                                        mihon.desktop.reader.DesktopReaderPairingDecodeDemand
+                                    ).speculative && registrationJob(registration).isActive &&
+                                    pairingContent(fixture.model, pageId) == null
+                            } == true
+                        },
+                    ) { "The publisher must register an admitted startup-speculative page before acquiring a permit" }
+                    assertTrue(candidate in startupSpeculativeIds)
+                    val observedCertification = owner.certifyPairing(targetPage)
+                    val observedPlan = (observedCertification as? ReaderPairingCertification.NeedFacts)?.let {
+                        ReaderPairingPrefetchPlan.classify(
+                            it,
+                            owner.identity.pageIds,
+                            owner::originalAnalysis,
+                            ReaderDualPageFactLimits.REQUIRED_LOOKAHEAD_K,
+                            emptySet(),
+                        )
+                    }
+                    val registration = requireNotNull(pairingRegistration(fixture.model, candidate)) {
+                        "No admitted candidate registration: candidate=$candidate " +
+                            "certification=$observedCertification " +
+                            "real=${observedPlan?.realMissing} speculative=${observedPlan?.speculative} " +
+                            "startupReal=${startupPlan.realMissing} startupSpeculative=${startupPlan.speculative}"
+                    }
+                    val demand = pairingDemand(registration) as mihon.desktop.reader.DesktopReaderPairingDecodeDemand
+                    assertTrue(demand.speculative, "The registered page remains the classifier's lookahead demand")
+                    assertTrue(registrationJob(registration).isActive, "The pre-key producer is still alive")
+                    assertTrue(owner.factBudget.holds(candidate), "The pre-key producer retains its actual budget slot")
+                    initialNeighbor!!.close()
+                    assertNull(pairingContent(fixture.model, candidate), "No decode content key exists before Ready")
+                    assertNull(
+                        inFlightFullEntry(fixture.runtime.pageImagePipeline, candidate),
+                        "No full decode Entry exists while physical content materialization is held",
+                    )
+                    val location = requireNotNull(owner.location)
+                    val budget = owner.factBudget
+                    val budgetRemainingBefore = budget.remainingWaitMillis(System.nanoTime() / 1_000_000)
+                    val budgetBytesBefore = budgetNewlyReadBytes(budget)
+
+                    val snapshot = fixture.model.state.value.dualPresentationSnapshot(false, false)
+                    val unit = snapshot.displayUnits.first { display ->
+                        display.slots.any { it.page?.id == candidate }
+                    }
+                    val visible = snapshot.resolveDualVisiblePages(unit.id)
+                    native = ReaderPagerNativePresentation(
+                        unit,
+                        visible,
+                        ReaderPagerPresentationBinding(Any(), fixture.model),
+                        {},
+                    )
+                    assertSame(owner, fixture.owner(), "The mounted demand must still belong to the live owner")
+                    native!!.begin(
+                        userNavigation = false,
+                        selected = false,
+                        logicalLocation = location,
+                    )
+                    assertEquals(location, owner.location, "A mounted neighbor is not a page navigation")
+                    fixture.pump(timeoutMillis = 10_000) { !demand.speculative }
+                    assertFalse(
+                        demand.speculative,
+                        "The actual mounted-neighbor event upgrades the existing demand before entry creation: " +
+                            "native=${native!!.describe()} ownerCurrent=${owner === fixture.owner()} " +
+                            "location=$location currentLocation=${fixture.owner()?.location} " +
+                            "registrationCurrent=${registration === pairingRegistration(fixture.model, candidate)} " +
+                            "visible=$visible",
+
+                    )
+                    assertSame(registration, pairingRegistration(fixture.model, candidate))
+                    assertEquals(budget, owner.factBudget, "Mounted demand retains the original location budget")
+                    assertTrue(
+                        budget.remainingWaitMillis(System.nanoTime() / 1_000_000) <= budgetRemainingBefore,
+                        "A role upgrade cannot extend the deadline",
+                    )
+                    assertTrue(
+                        budgetNewlyReadBytes(budget) >= budgetBytesBefore,
+                        "A role upgrade cannot return previously charged bytes",
+                    )
+                    assertNull(
+                        pairingContent(fixture.model, candidate),
+                        "The held permit precedes content-key creation",
+                    )
+                    assertNull(
+                        inFlightFullEntry(fixture.runtime.pageImagePipeline, candidate),
+                        "The held permit precedes Entry creation",
+                    )
+
+                    fixture.speculativeGatePredicate.set { it == candidate.sourcePageIndex }
+                    repeat(permitsToRelease) {
+                        parallelism.release()
+                        permitsToRelease--
+                    }
+                    fixture.pump(timeoutMillis = 15_000) {
+                        fixture.speculativeEntered[candidate.sourcePageIndex]?.isCompleted == true
+                    }
+                    assertNotNull(inFlightFullEntry(fixture.runtime.pageImagePipeline, candidate))
+                    assertEquals(1, fixture.decodeInvocations[candidate.sourcePageIndex]?.get())
+                    assertSame(registration, pairingRegistration(fixture.model, candidate))
+                } finally {
+                    consumeCompletions.complete(Unit)
+                    fixture.model.p5SpreadPublisherCompletionGate = null
+                    initialNeighbor?.close()
+                    repeat(permitsToRelease) {
+                        parallelism.release()
+                        permitsToRelease--
+                    }
+                    fixture.speculativeGate.complete(Unit)
+                    native?.close()
+                }
+            }
+    }
+
+    @Test
+    fun `late old publisher cleanup preserves a newer same page registration`() = runBlocking {
+        val oldScheduler = TestCoroutineScheduler()
+        val newScheduler = TestCoroutineScheduler()
+        val oldScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(oldScheduler))
+        val newScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(newScheduler))
+        Fixture(pageCount = 20, matching = true, manualSpreadPublisher = true).use { fixture ->
+            try {
+                fixture.mountReader()
+                fixture.pump {
+                    fixture.model.state.value.session.activeChapter.pages.size == 20 &&
+                        fixture.model.state.value.session.activeChapter.pages.all {
+                            it.loadState is ReaderPageLoadState.Ready
+                        }
+                }
+                fixture.scene.setContent {}
+                fixture.pump { true }
+                val owner = requireNotNull(fixture.owner())
+                val pages = fixture.model.state.value.session.activeChapter.pages
+                fixture.model.goToPage(8)
+                val certification = owner.certifyPairing(pages[8].id) as? ReaderPairingCertification.NeedFacts
+                val speculative = requireNotNull(
+                    certification?.let {
+                        ReaderPairingPrefetchPlan.classify(
+                            it,
+                            owner.identity.pageIds,
+                            owner::originalAnalysis,
+                            ReaderDualPageFactLimits.REQUIRED_LOOKAHEAD_K,
+                            emptySet(),
+                        ).realMissing.firstOrNull()
+                    },
+                ) { "The current production classifier must expose a required cleanup candidate" }
+                fixture.speculativeGatePredicate.set { index -> index == speculative.sourcePageIndex }
+                startSpreadPublisher(fixture.model, owner, fixture.runtime, oldScope)
+                val oldPublisher = requireNotNull(spreadPublisher(fixture.model))
+                val oldDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(8)
+                while (fixture.speculativeEntered[speculative.sourcePageIndex]?.isCompleted != true &&
+                    System.nanoTime() < oldDeadline
+                ) {
+                    oldScheduler.runCurrent()
+                    delay(5)
+                }
+                assertTrue(
+                    fixture.speculativeEntered[speculative.sourcePageIndex]?.isCompleted == true,
+                    "The old task must reach its real native decoder before navigation",
+                )
+                val oldRegistration = requireNotNull(pairingRegistration(fixture.model, speculative))
+                val oldDemand = pairingDemand(oldRegistration)
+                assertFalse(
+                    oldDemand.speculative,
+                    "The captured required demand is independent of automatic speculation promotion",
+                )
+
+                // This real navigation invalidates the old location. Keep its scheduler parked so
+                // its withContext return and finally cleanup cannot run before the replacement registers.
+                fixture.model.goToPage(speculative.sourcePageIndex)
+                startSpreadPublisher(fixture.model, owner, fixture.runtime, newScope)
+                val newDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(8)
+                var newRegistration: Any? = null
+                while (newRegistration == null && System.nanoTime() < newDeadline) {
+                    newScheduler.runCurrent()
+                    newRegistration = pairingRegistration(fixture.model, speculative)
+                        ?.takeIf { pairingDemand(it) !== oldDemand }
+                    delay(5)
+                }
+                assertNotNull(
+                    newRegistration,
+                    "The new location must register its same-page demand before old cleanup runs",
+                )
+                val capturedNewRegistration = requireNotNull(newRegistration)
+                val capturedNewDemand = pairingDemand(capturedNewRegistration)
+                assertFalse(oldPublisher.isCompleted, "The old finally must still be queued on its scheduler")
+
+                val cleanupDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(8)
+                while (!oldPublisher.isCompleted && System.nanoTime() < cleanupDeadline) {
+                    oldScheduler.runCurrent()
+                    delay(5)
+                }
+                assertTrue(
+                    oldPublisher.isCompleted,
+                    "The old publisher must complete its queued finally before checking the replacement",
+                )
+                assertSame(
+                    capturedNewRegistration,
+                    pairingRegistration(fixture.model, speculative),
+                    "A late old finally must compare-remove only its own registration",
+                )
+                assertSame(
+                    capturedNewDemand,
+                    pairingDemand(requireNotNull(pairingRegistration(fixture.model, speculative))),
+                )
+            } finally {
+                fixture.speculativeGate.complete(Unit)
+                oldScope.cancel()
+                newScope.cancel()
+            }
+        }
+    }
+
+    @Test
+    fun `location change cancels active pairing publisher outside lifecycle lock`() = runBlocking {
+        Fixture(pageCount = 20, matching = true, manualSpreadPublisher = true).use { fixture ->
+            var heldPublisher: HeldSpreadPublisher? = null
+            try {
+                val held = fixture.startHeldSpreadPublisher()
+                heldPublisher = held
+                val cancellationLockHeld = observeCancellationLock(fixture.model, held.job)
+
+                // Bind the real collector after the manual publisher is already active. Its immediate
+                // current-state pass keeps the same location; the public navigation below delivers the
+                // first location-change event that replaces this publisher.
+                fixture.model.bindDualFactPublisher(fixture.scope)
+                fixture.pump(timeoutMillis = 8_000) { spreadPublisher(fixture.model) === held.job }
+                assertSame(held.job, spreadPublisher(fixture.model))
+                fixture.model.goToPage(9)
+                fixture.pump(timeoutMillis = 8_000) { cancellationLockHeld.isCompleted }
+
+                assertTrue(cancellationLockHeld.isCompleted, "The real collector must cancel the old publisher")
+                assertFalse(
+                    cancellationLockHeld.await(),
+                    "Location replacement must call Job.cancel after releasing the lifecycle lock",
+                )
+            } finally {
+                fixture.cleanupHeldPublishers(heldPublisher?.job)
+            }
+        }
+    }
+
+    @Test
+    fun `page retry cancels active pairing publisher outside lifecycle lock`() = runBlocking {
+        Fixture(pageCount = 20, matching = true, manualSpreadPublisher = true).use { fixture ->
+            var heldPublisher: HeldSpreadPublisher? = null
+            try {
+                val held = fixture.startHeldSpreadPublisher()
+                heldPublisher = held
+                val cancellationLockHeld = observeCancellationLock(fixture.model, held.job)
+
+                fixture.model.retryPage(held.pageId)
+
+                assertTrue(cancellationLockHeld.isCompleted, "retryPage must cancel the real publisher synchronously")
+                assertFalse(
+                    cancellationLockHeld.await(),
+                    "Page retry must call Job.cancel after releasing the lifecycle lock",
+                )
+            } finally {
+                fixture.cleanupHeldPublishers(heldPublisher?.job)
+            }
+        }
+    }
+
+    @Test
+    fun `screen disposal cancels active pairing publisher outside lifecycle lock`() = runBlocking {
+        Fixture(pageCount = 20, matching = true, manualSpreadPublisher = true).use { fixture ->
+            var heldPublisher: HeldSpreadPublisher? = null
+            try {
+                val held = fixture.startHeldSpreadPublisher()
+                heldPublisher = held
+                val cancellationLockHeld = observeCancellationLock(fixture.model, held.job)
+
+                // This fixture deliberately starts the real pairing publisher as a sibling in its scope,
+                // with no fact-publisher collector, so the observed Job can only be cancelled by the
+                // spreadPublisherJob handling in the production disposal path.
+                fixture.model.onDispose()
+
+                assertTrue(cancellationLockHeld.isCompleted, "Screen disposal must cancel the real publisher")
+                assertFalse(
+                    cancellationLockHeld.await(),
+                    "Screen disposal must call Job.cancel after releasing the lifecycle lock",
+                )
+            } finally {
+                fixture.cleanupHeldPublishers(heldPublisher?.job)
+            }
+        }
+    }
 
     @Test
     fun `current demand replaces slider targets and null neighbor close revokes only its demand`() = runBlocking {
@@ -2442,6 +3074,7 @@ class SharedSpreadDesktopResourceWiringTest {
         originalDirectory: File? = null,
         matching: Boolean = false,
         withoutCachedOriginalSamples: Boolean = false,
+        private val manualSpreadPublisher: Boolean = false,
     ) : AutoCloseable {
         val dispatcher = StandardTestDispatcher()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -2499,6 +3132,12 @@ class SharedSpreadDesktopResourceWiringTest {
             if (diagnostic) performanceEvents += "${System.nanoTime()}/render${frameNumber.get()}:$label"
         }
         private fun payload(index: Int) = encodedPages?.let { it[index % it.size] } ?: image(index)
+        val decodeInvocations = ConcurrentHashMap<Int, AtomicInteger>()
+        val pageGate = ConcurrentHashMap<Int, CompletableDeferred<Unit>>()
+        val pageEntered = ConcurrentHashMap<Int, CompletableDeferred<Unit>>()
+        val speculativeGatePredicate = AtomicReference<((Int) -> Boolean)?>(null)
+        val speculativeGate = CompletableDeferred<Unit>()
+        val speculativeEntered = ConcurrentHashMap<Int, CompletableDeferred<Unit>>()
         val regionReads = AtomicInteger()
         val activeRegionReads = AtomicInteger()
         val peakRegionReads = AtomicInteger()
@@ -2525,6 +3164,15 @@ class SharedSpreadDesktopResourceWiringTest {
         }
         val decoder = DesktopReaderPageImageDecoder { bytes, key ->
             diagnose("decoderEnter:${key.pageIndex}:${key.purpose}")
+            decodeInvocations.computeIfAbsent(key.pageIndex) { AtomicInteger() }.incrementAndGet()
+            pageGate[key.pageIndex]?.let { gate ->
+                pageEntered.computeIfAbsent(key.pageIndex) { CompletableDeferred() }.complete(Unit)
+                gate.await()
+            }
+            speculativeGatePredicate.get()?.takeIf { it(key.pageIndex) }?.let {
+                speculativeEntered.computeIfAbsent(key.pageIndex) { CompletableDeferred() }.complete(Unit)
+                speculativeGate.await()
+            }
             if (key.purpose == PageDecodePurpose.REGION_TILE) {
                 firstRegionContent.compareAndSet(null, key.contentKey)
                 regionReads.incrementAndGet()
@@ -2638,7 +3286,9 @@ class SharedSpreadDesktopResourceWiringTest {
             localChapterPath = original.absolutePath.takeUnless { online },
         )
         var runtime = factory.createRuntime(context, scope)
-        var model = factory.createModel(runtime, false, 0, null)
+        private fun modelRuntime() =
+            runtime.takeUnless { manualSpreadPublisher } ?: runtime.copy(presentationScope = null)
+        var model = factory.createModel(modelRuntime(), false, 0, null)
         private var collector = scope.launch { runtime.session.state.collect { model.acceptSessionState(it) } }
         val scene = ImageComposeScene(700, 1200, coroutineContext = uiScope.coroutineContext) {}
 
@@ -3158,6 +3808,8 @@ class SharedSpreadDesktopResourceWiringTest {
             }
             fullGate.get()?.complete(Unit)
             regionGate.get()?.complete(Unit)
+            speculativeGate.complete(Unit)
+            pageGate.values.forEach { it.complete(Unit) }
             oldBackgroundRelease.complete(Unit)
             scene.close()
             collector.cancel()
