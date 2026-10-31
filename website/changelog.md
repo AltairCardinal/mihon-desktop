@@ -9,6 +9,17 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## November 1, 2026 — Consistent Windows two-page pairing
+
+**Accepted candidate documentation · no public product release**
+
+- Forward and backward turns, jumps, and reopening preserve the same pairing at a chapter position in the accepted Windows reader case. The initial page slots follow the confirmed layout, while background matching preserves the visible page and its partner.
+- Two-page and landscape reading, manual pairing, zoom, and reading progress remain available; automatic assistance still does not guarantee recognition of every scan or layout.
+- Accepted Windows preview: `0.11.24.6.987389f`; implementation/source commit: `987389f88231236178ae824086b26bde37eb5dce`. Main integration: `769488a519646ac965d1cf763f1ef99772c1e278`.
+- Shared and Android code integration was verified separately. This user acceptance covers the Windows preview; it does not establish Android device or macOS runtime acceptance, or a new Android release.
+
+Acceptance basis: the project owner accepted this Windows preview in private chat on November 1, 2026, covering pairing across navigation and reopening, layout switching, zoom, and progress. No public product release was allocated.
+
 ## October 30, 2026 — Windows library category labels and wheel scrolling
 
 **Accepted fix documentation · no public product release**

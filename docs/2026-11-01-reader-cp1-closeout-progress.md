@@ -8,7 +8,7 @@
 - 复用 L1/v3 各 50 条有效样本。T170 重开 completeUnit 为 744.918→592.997ms，改善 151.922ms，门槛 111.738ms；target-source 为 736.912→588.198ms，改善 148.714ms，门槛 110.537ms。原场景收益通过。历史混合中位改善 15.012ms、未达 100ms 的 NoGo 保留。
 - 不新增性能实验，不以未成立的数学不可达证明收口；排除 Skiko/D3D/VSync/窗口慢态研究及 R10 新优化。
 - 工程交付：获准产品/测试整合进入本地 main，必要验证与 Windows main-preview 就绪。
-- 用户体验：待用户实际验收，不能由工程测试替代。Goal 在两项完成前保持 active，除非用户明确调整范围。
+- 用户体验：项目所有者于 2026-11-01 明确确认本轮 Windows 预览体验通过。工程交付与用户体验两项完成条件均已满足，Goal 可在验收文档归档后标记 complete。
 
 正式原件仍在原研究树的 `.gradle-coordinator/research-evidence/cp1-s4-20261027/`：`validated-pair-v2/baseline-samples.jsonl` SHA256 `9e17ccc9bba5539063aba0ea30c2bdd6bc33f336294315f184750985ff0e4cba`；`post-t170-candidate-v3/candidate-samples.jsonl` SHA256 `5f801bed4bda4db1a3dbee3b458f73027588e58d2f830598060e7b8fe495daf8`；`comparison-v3.json` SHA256 `61f8dd9e4b3f1a201dfb16b87274ea1ad5219c62478fd61d0fba86752983acb0`。本轮只读核验均一致，两侧 50 条有效、同 oracle、完整样本/动作配对通过，uncaught 为 0。动作/页组最大中位退化分别为 15.447/8.347ms，均不超过 16ms；没有重写历史 `r3Passed=false` 的混合裁定。
 
@@ -78,10 +78,29 @@ stop/refill 修改后的契约追加了本轮重建负控，没有冒称读取�
 
 ## C2 本地 main 与 Windows 预览
 
-C2 固定审计入口：[协调器状态](D:/Shell/Github/mihon/.gradle-coordinator/cp1-c2-main-preview-20261101.json)、[构建与交付日志](D:/Shell/Github/mihon/.gradle-coordinator/cp1-c2-main-preview-20261101.log)。实际完成由状态 `PASSED`、日志末尾 `Final unpacked EXE:` 和 `Preview manifest:` 及该清单核验决定；完整冻结 main/必需功能 SHA 从同一状态中的命令回读。构建使用现行 main-preview 的独占 detached worktree；产物落在原仓库持久 preview 目录。交付时另提供实际 EXE 与 manifest 直达路径，不在打包后改写本记录并反向改变自身源码 SHA。
+已完成。功能提交和已验收包源码均为 `987389f88231236178ae824086b26bde37eb5dce`，版本 `0.11.24.6.987389f`。现行 main-preview 从独占 detached worktree 构建，[协调器状态](D:/Shell/Github/mihon/.gradle-coordinator/cp1-c2-main-preview-20261101.json)为 `PASSED`，[构建日志](D:/Shell/Github/mihon/.gradle-coordinator/cp1-c2-main-preview-20261101.log)记录实际交付路径。
 
-提交与快进前重新核对 main 未移动、暂存区及 AppVersion SHA，保留原未提交差异与 Android 单页进度修复。只提交本任务文件；不纳入原工作区 AppVersion，不分配版本、不推送、不正式发布。
+- [Windows 预览 EXE](<D:/Shell/Github/mihon/app-desktop/artifacts/preview/windows/main-67eb9cff56a240a6ad86440e55ea20b6/Mihon-Desktop-0.11.24.6.987389f-unpacked/Mihon Desktop.exe>)
+- [预览清单](D:/Shell/Github/mihon/app-desktop/artifacts/preview/windows/main-67eb9cff56a240a6ad86440e55ea20b6/preview-manifest.json)：源码 clean、sourceIntegrity/build/productionRuntime 均为 PASS；完整产物树 384 文件、272315860 bytes，SHA256 `24815ea79a02fbf709b8fe2600064fbe3d8ccbc4f02552440097dfc92a22826a`。
+
+可选 CDS 启动缓存因 Windows 命令长度限制跳过，应用使用正常启动路径。清单中 nativeInteraction 的 NOT_RUN 是构建时状态，保持原样；后续用户体验验收在 C3 单独记录。临时构建工作树与自有构建进程已清理。后续纯验收文档不改变已验收包的源码身份，无需重建产品。
+
+提交与快进后原 AppVersion 未提交差异的 SHA256 仍为接手值，暂存区为空；Android 单页进度修复及测试保持在主干历史中。本轮不分配版本、不推送、不发布、不安装用户应用。
 
 ## C3 用户体验
 
-待用户体验，不能由 C1/C2 自动化替代。体验清单：同章节顺读/倒读/跳读/重开配对一致；首次槽位正确；后台识别不移位或换伴；双页/宽图/手动调整/缩放/进度可用。Android 本轮不构建正式版本、不安装、不操作用户应用。
+已通过。项目所有者于 2026-11-01 对 Windows 预览 `0.11.24.6.987389f` 的体验问题卡片明确回复“体验通过”，确认本轮用户体验验收。
+
+问题卡片覆盖顺读、倒读、跳读、重开后的配对，以及单双页切换、缩放与进度。首次槽位、后台稳定、宽图与手动调整的相关 production 契约和定向证据保留在 C1；不把简短体验反馈扩写成逐步骤实测日志，不推及 Android 真机或 macOS。本轮没有正式 Android 构建、平板安装或用户应用操作。
+
+验收后同步原位更新中英文当前功能与 changelog，范围限定 Windows 已验收阅读路径。未改变摘要或操作入口，因此 README 与开始使用页不变；公共文档仅提交本地，不部署网站。本次文档构建、四个生成目标页与站内链接核验、git diff --check 均通过。A 方案研究收口、工程整合交付及用户体验验收现均完成。
+
+## 后续主干推送授权与边界
+
+2026-11-01，项目所有者在体验验收完成后明确要求“合入主干，提交并推送”。实际远端 main 基线为 `c4e391a135203d811504d059262636f9789370a2`，与原本地主干历史分叉；为避免夹带其他任务，仅在该远端基线上按净改动整合本次两个提交。
+
+- 功能净整合：`769488a519646ac965d1cf763f1ef99772c1e278`，对应已验收来源 `987389f88231236178ae824086b26bde37eb5dce`。26 个 CP1 production 文件保持已验收实现内容。
+- 保留远端分类栏、同步与阅读快捷键的现有公共说明。测试冲突仅涉及本地另一任务的自动单页进度回归方法及其辅助扩展；不把该无关历史加入远端交付，原本地主干中的该回归与 Android 修复继续保留。
+- 推送按现行 git-delivery 的精确提交集合执行，非强推。原 AppVersion 未提交差异保持不变；原预览包和性能证据继续保留，不因历史整理启动新性能采样或产品构建。
+
+本段记录后续授权与整合边界；远端推送结果以实际交付工具核验为准，不改写此前构建时的 manifest。

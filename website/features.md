@@ -55,6 +55,8 @@ Read adjacent pages side by side, display landscape pages, and adjust pairing ma
 
 **Desktop assistance:** image-edge information from adjacent pages helps identify spreads. This is an aid to pairing, not a guarantee that every scan or layout can be recognized. Manual adjustment remains part of the reading workflow.
 
+**Windows pairing continuity:** in the accepted Windows reader case, reaching the same chapter position by forward or backward turns, jumping, or reopening keeps the same page pairing. The first displayed slots use the confirmed page layout, and background matching preserves the displayed page and its partner. Two-page reading, landscape pages, manual adjustment, zoom, and reading progress remain available. This Windows acceptance does not establish Android or macOS runtime acceptance.
+
 **Android boundary:** this fork’s Android reader supports two-page reading and manual pairing. Automatic spread matching on Android remains a development direction.
 
 ## Multi-device favorites and reading progress {#multi-device-sync}
