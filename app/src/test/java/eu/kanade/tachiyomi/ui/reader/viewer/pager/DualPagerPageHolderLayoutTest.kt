@@ -730,6 +730,48 @@ class DualPagerPageHolderLayoutTest {
     }
 
     @Test
+    fun `ordinary single page actual pixels settle each page through the activity`() = runTest {
+        val activity = viewer.activity
+        val model = mockk<ReaderViewModel>(relaxed = true)
+        every { model.dualPagePairings } returns DualPagePairingStore()
+        every { model.state } returns MutableStateFlow(ReaderViewModel.State())
+        ReflectionHelpers.setField(activity, "viewModel\$delegate", lazyOf(model))
+        val ordinary = R2LPagerViewer(activity)
+        ordinary.config.navigationModeChangedListener = null
+        ordinary.config.usePageTransitions = false
+        val chapter = loadedChapter(62031, 3)
+        withContext(Dispatchers.IO) {
+            requireNotNull(chapter.pages).forEach {
+                it.status = Page.State.Ready
+                it.publishHeaderFact()
+            }
+        }
+        try {
+            ordinary.setChapters(ViewerChapters(chapter, null, null))
+            for (page in requireNotNull(chapter.pages)) {
+                val adapter = ordinary.pager.adapter as PagerViewerAdapter
+                ordinary.pager.setCurrentItem(adapter.items.indexOf(page), false)
+                measure(ordinary.pager, 720, 1280)
+                val holder = ordinary.pager.children.filterIsInstance<PagerPageHolder>().first { it.page === page }
+                bindOrdinary(holder)
+                measure(holder, 720, 1280)
+                holder.onImageLoaded()
+                io.mockk.verify(exactly = 0) { model.onDualViewportSettled(page, any()) }
+                paintReaderImage(holder, requireNotNull(page.stream).invoke().use { it.readBytes() })
+                val (owner, ticket) = requireNotNull(holder.presentationScope)
+                assertEquals(setOf(owner.identity.pageIds[page.index]), owner.frame(ticket)?.drawnPageIds)
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+                io.mockk.verify(exactly = 1) { model.onDualViewportSettled(page, listOf(page)) }
+                paintReaderImage(holder, requireNotNull(page.stream).invoke().use { it.readBytes() })
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+                io.mockk.verify(exactly = 1) { model.onDualViewportSettled(page, listOf(page)) }
+            }
+        } finally {
+            ordinary.destroy()
+        }
+    }
+
+    @Test
     fun `global settings composition offers automatic but never recursive default`() {
         val controller = Robolectric.buildActivity(ComponentActivity::class.java).setup().visible()
         var preferences: List<Preference> = emptyList()

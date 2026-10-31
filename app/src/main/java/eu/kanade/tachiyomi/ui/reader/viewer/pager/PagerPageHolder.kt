@@ -91,12 +91,35 @@ class PagerPageHolder(
         if (presentationScope?.second === next?.second) return
         presentationScope?.let(viewer::releasePresentation)
         presentationScope = next
+        renderedContent = null
+        if (next != null) invalidateImageDraw()
     }
 
     internal fun hasRenderedPage(): Boolean =
         page.status == Page.State.Ready && renderedContent == page.contentIdentity()
 
     init {
+        beforeImageDraw = { _, _ ->
+            if (!imageCallbackCurrent() || boundContent != page.contentIdentity()) {
+                false
+            } else {
+                if (presentationScope == null) beginPresentation()
+                presentationScope?.let { (owner, ticket) ->
+                    val pageId = owner.identity.pageIds[page.index]
+                    pageId in owner.frame(ticket)?.lockedPageIds.orEmpty() || owner.preparePage(ticket, pageId)
+                } ?: true
+            }
+        }
+        onImageDrawn = {
+            if (imageCallbackCurrent() && boundContent == page.contentIdentity()) {
+                presentationScope?.let { (owner, ticket) ->
+                    if (owner.reportDrawn(ticket, setOf(owner.identity.pageIds[page.index]))) {
+                        renderedContent = boundContent
+                        post { viewer.onHolderDisplayStateChanged(this@PagerPageHolder) }
+                    }
+                }
+            }
+        }
         loadJob = scope.launch { loadPageAndProcessStatus() }
         observeContent()
     }
@@ -429,9 +452,6 @@ class PagerPageHolder(
         if (!imageCallbackCurrent() || boundContent != page.contentIdentity()) return
         super.onImageLoaded()
         progressIndicator?.hide()
-        presentationScope?.let { (owner, ticket) -> owner.preparePage(ticket, owner.identity.pageIds[page.index]) }
-        renderedContent = boundContent
-        viewer.onHolderDisplayStateChanged(this)
     }
 
     /**
