@@ -177,6 +177,9 @@ internal fun SinglePagePagerViewer(
                 userTurnTarget.value = targetPage
                 programmaticTarget.value = action.page
                 if (pagerPresentationBinding != null && targetPage != null) {
+                    // The logical request advances location synchronously. The outgoing
+                    // native intent must not keep the incoming frame on its old location.
+                    navigationIntent.value = null
                     pagerPresentationBinding.model.goToPage(targetPage.sourcePageIndex)
                     return
                 }
