@@ -57,6 +57,7 @@ import java.time.Duration
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
 import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
+import kotlin.time.Duration.Companion.seconds
 
 /** Native pixels and gestures exercise the original holder, viewport, image and decode ownership. */
 @RunWith(RobolectricTestRunner::class)
@@ -2008,8 +2009,10 @@ class DualPageViewportZoomTest {
             invokeFixture("measure", subject.holder, 1400, 1000)
             paintReaderImage(left, subject.partnerEncoded)
             for (width in listOf(1400, 1401, 1250, 1461, 1400)) {
+                subject.holder.layoutParams = subject.holder.layoutParams.apply { this.width = width }
                 invokeFixture("measure", subject.holder, width, 1000)
                 settle(subject.holder)
+                assertEquals(width, subject.holder.width)
                 val spine = (left.parent as View).right.toFloat()
                 val leftNative = left.getChildAt(0) as SubsamplingScaleImageView
                 val leftEdge = requireNotNull(leftNative.sourceToViewCoord(leftWidth.toFloat(), leftHeight / 2f))
@@ -2408,6 +2411,141 @@ class DualPageViewportZoomTest {
             assertTrue(pixels(subject.holder).width() > 500)
             subject.image.recycle()
         } finally {
+            decoders.values.forEach { if (!it.isRecycled) it.recycle() }
+            unmockkConstructor(Decoder::class)
+        }
+    }
+
+    @Test
+    fun encodedDualPageTilesCoverTheSpineAtFractionalFitAndAfterZoomReset() = runTest {
+        assertEncodedTileSpine()
+    }
+
+    @Test
+    fun encodedMirroredDualPageTilesCoverTheSpineAtFractionalFitAndAfterZoomReset() = runTest(timeout = 180.seconds) {
+        for ((mirrorLeft, mirrorRight) in listOf(false to true, true to false, true to true)) {
+            assertEncodedTileSpine(mirrorLeft, mirrorRight)
+        }
+    }
+
+    private suspend fun assertEncodedTileSpine(mirrorLeft: Boolean = false, mirrorRight: Boolean = false) {
+        val subject = subject(ReaderPortraitSingleSlot.RIGHT, 4501, 6401, provisionalPair = true)
+        val partner = subject.pages[2]
+        assertTrue(subject.holder.updateDisplayPage(DisplayPage.Double(subject.pages[1], partner)))
+        load(subject.holder, partner, "LEFT")
+        val left = descendants(subject.holder).filterIsInstance<ReaderPageImageView>().first {
+            it !== subject.image
+        }
+        val images = listOf(left to subject.partnerEncoded, subject.image to subject.encoded)
+        val decoders = java.util.IdentityHashMap<Any, Bitmap>()
+        mockkConstructor(Decoder::class)
+        try {
+            // Adapt only Robolectric's codec seam. SSIV owns the real tile grid and draw matrices.
+            every { anyConstructed<Decoder>().init(any(), any()) } answers {
+                val provider = secondArg<InputProvider>()
+                val pixels = requireNotNull(provider.openStream()).use {
+                    requireNotNull(BitmapFactory.decodeStream(it))
+                }
+                decoders[self] = pixels
+                Point(pixels.width, pixels.height)
+            }
+            every { anyConstructed<Decoder>().decodeRegion(any(), any()) } answers {
+                val region = firstArg<Rect>()
+                val sample = secondArg<Int>()
+                Bitmap.createBitmap(
+                    (region.width() + sample - 1) / sample,
+                    (region.height() + sample - 1) / sample,
+                    Bitmap.Config.ARGB_8888,
+                ).also { tile ->
+                    Canvas(tile).drawBitmap(
+                        requireNotNull(decoders[self]),
+                        region,
+                        Rect(0, 0, tile.width, tile.height),
+                        Paint(Paint.FILTER_BITMAP_FLAG),
+                    )
+                }
+            }
+            every { anyConstructed<Decoder>().isReady() } answers { decoders[self]?.isRecycled == false }
+            every { anyConstructed<Decoder>().recycle() } answers {
+                decoders.remove(self)?.recycle()
+                Unit
+            }
+            for ((image, encoded) in images) {
+                val native = image.getChildAt(0) as SubsamplingScaleImageView
+                native.setExecutor { it.run() }
+                native.setMaxTileSize(256)
+                val mirrored = if (image === left) mirrorLeft else mirrorRight
+                val config = requireNotNull(image.decodedSideConfig).let {
+                    if (mirrored) it.copy(sourceOrientation = ReaderImageOrientation.MIRROR_HORIZONTAL) else it
+                }
+                image.setImage(Buffer().write(encoded), false, config, 0)
+            }
+            for (height in listOf(1000, 1001)) {
+                for (width in listOf(1283, 1327, 1393, 1282, 1284, 1400, 1401)) {
+                    subject.holder.layoutParams = subject.holder.layoutParams.apply {
+                        this.width = width
+                        this.height = height
+                    }
+                    invokeFixture("measure", subject.holder, width, height)
+                    settle(subject.holder)
+                    assertEquals(
+                        "The real window must retain the requested viewport width",
+                        width,
+                        subject.holder.width,
+                    )
+                    assertEquals(
+                        "The real window must retain the requested viewport height",
+                        height,
+                        subject.holder.height,
+                    )
+                    val spine = (left.parent as View).right
+                    fun assertSpinePixels() {
+                        val tiles = images.flatMap { (image, _) ->
+                            val native = image.getChildAt(0) as SubsamplingScaleImageView
+                            assertEquals(
+                                "Encoded regression must not fall back to a whole bitmap",
+                                null,
+                                ReflectionHelpers.getField<Bitmap?>(native, "bitmap"),
+                            )
+                            ReflectionHelpers.getField<Map<Int, List<Any>>>(native, "tileMap").values.flatten()
+                                .mapNotNull { ReflectionHelpers.getField<Bitmap?>(it, "bitmap") }
+                        }
+                        val drawn = mutableListOf<Bitmap>()
+                        val output = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                        try {
+                            output.eraseColor(Color.WHITE)
+                            subject.holder.draw(object : Canvas(output) {
+                                override fun drawBitmap(bitmap: Bitmap, matrix: Matrix, paint: Paint?) {
+                                    drawn += bitmap
+                                    super.drawBitmap(bitmap, matrix, paint)
+                                }
+                            })
+                            assertTrue("Actual SSIV tiles must reach the final canvas", drawn.any { it in tiles })
+                            for (y in height / 5 until height * 4 / 5) {
+                                for (x in spine - 1..spine) {
+                                    assertEquals(
+                                        "Tile seam at ${width}x$height x=$x y=$y",
+                                        Color.RED,
+                                        output.getPixel(x, y),
+                                    )
+                                }
+                            }
+                        } finally {
+                            output.recycle()
+                        }
+                    }
+                    assertSpinePixels()
+                    doubleTap(subject.holder, spine.toFloat(), height / 2f)
+                    settle(subject.holder)
+                    assertSpinePixels()
+                    doubleTap(subject.holder, spine.toFloat(), height / 2f)
+                    settle(subject.holder)
+                    assertSpinePixels()
+                }
+            }
+        } finally {
+            images.forEach { it.first.recycle() }
+            awaitNativeCodecTasks()
             decoders.values.forEach { if (!it.isRecycled) it.recycle() }
             unmockkConstructor(Decoder::class)
         }

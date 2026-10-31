@@ -61,6 +61,7 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.floor
 import kotlin.math.min
 
 /**
@@ -107,6 +108,8 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
     private data class ViewportTransform(
         val fit: RectF,
+        val fitScale: Float,
+        val alignRight: Boolean,
         val scale: Float,
         val offsetX: Float,
         val offsetY: Float,
@@ -130,8 +133,11 @@ open class ReaderPageImageView @JvmOverloads constructor(
         offsetY: Float,
         sourceWidth: Int,
         sourceHeight: Int,
+        fitScale: Float,
+        alignRight: Boolean,
     ) {
-        val next = ViewportTransform(RectF(fit), scale, offsetX, offsetY, sourceWidth, sourceHeight)
+        val next =
+            ViewportTransform(RectF(fit), fitScale, alignRight, scale, offsetX, offsetY, sourceWidth, sourceHeight)
         if (viewportTransform == next) return
         viewportTransform = next
         background = null
@@ -165,7 +171,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
             else -> null
         }
         val fit = RectF(pose.fit)
-        if (dimensions != null) {
+        if (dimensions != null && (dimensions.width != pose.sourceWidth || dimensions.height != pose.sourceHeight)) {
             val scale = min(fit.width() / dimensions.width, fit.height() / dimensions.height)
             val insetX = (fit.width() - dimensions.width * scale) / 2f
             val insetY = (fit.height() - dimensions.height * scale) / 2f
@@ -178,7 +184,14 @@ open class ReaderPageImageView @JvmOverloads constructor(
             centerY + (fit.top - centerY) * pose.scale + pose.offsetY,
             centerX + (fit.right - centerX) * pose.scale + pose.offsetX,
             centerY + (fit.bottom - centerY) * pose.scale + pose.offsetY,
-        )
+        ).also { bounds ->
+            if (dimensions != null && dimensions.width == pose.sourceWidth && dimensions.height == pose.sourceHeight) {
+                // Both pages use the same physical pixel boundary, including mirrored native views.
+                // Move the whole image by the fractional remainder; never stretch it or add overlap.
+                val spine = if (pose.alignRight) bounds.right else bounds.left
+                bounds.offset(floor(spine) - spine, 0f)
+            }
+        }
     }
 
     private fun applyNativeViewport() {
@@ -191,16 +204,32 @@ open class ReaderPageImageView @JvmOverloads constructor(
         if (width <= 0 || height <= 0) return
         val dimensions = config?.sourceOrientation?.orientedSize(native.sWidth, native.sHeight)
             ?: mihon.domain.reader.ReaderPageSize(native.sWidth, native.sHeight)
-        val baseScale = min(pose.fit.width() / dimensions.width, pose.fit.height() / dimensions.height)
+        val originalDimensions = dimensions.width == pose.sourceWidth && dimensions.height == pose.sourceHeight
+        val baseScale = if (originalDimensions) {
+            pose.fitScale
+        } else {
+            min(pose.fit.width() / dimensions.width, pose.fit.height() / dimensions.height)
+        }
         if (baseScale <= 0f) return
         val bounds = requireNotNull(viewportImageBounds())
         val scale = baseScale * pose.scale
         // Native mirroring is around its full viewport. Reflect the destination before supplying
         // the source center, otherwise a mirrored left page would move into the right slot.
-        val left = if (config?.sourceOrientation?.mirrorHorizontally == true) width - bounds.right else bounds.left
+        val mirrored = config?.sourceOrientation?.mirrorHorizontally == true
+        val left = if (mirrored) width - bounds.right else bounds.left
         // SSIV preDraw uses integer viewport halves when converting its source center to
         // translation. Match that inverse here; the group camera above keeps its float pivot.
-        val next = NativeViewportPose(scale, baseScale, (width / 2 - left) / scale, (height / 2 - bounds.top) / scale)
+        val centerX = if (originalDimensions) {
+            // Solve from the shared spine, not the far edge plus a rounded image width. SSIV
+            // truncates tile coordinates; even a one-ULP retreat can leave a whole pixel uncovered.
+            val physicalSpine = if (pose.alignRight) bounds.right else bounds.left
+            val nativeSpine = if (mirrored) width - physicalSpine else physicalSpine
+            val sourceSpine = if (pose.alignRight != mirrored) dimensions.width.toFloat() else 0f
+            nativeCenterAtSpine(scale, sourceSpine, nativeSpine)
+        } else {
+            (width / 2 - left) / scale
+        }
+        val next = NativeViewportPose(scale, baseScale, centerX, (height / 2 - bounds.top) / scale)
         if (nativeViewportPose == next) return
         nativeViewportPose = next
         native.minScale = baseScale
@@ -213,6 +242,19 @@ open class ReaderPageImageView @JvmOverloads constructor(
         native.setScaleAndCenter(scale, PointF(next.centerX, next.centerY))
     }
 
+    private fun nativeCenterAtSpine(scale: Float, sourceSpine: Float, nativeSpine: Float): Float {
+        val halfWidth = width / 2
+        var center = sourceSpine + (halfWidth - nativeSpine) / scale
+        // Match SSIV preDraw/sourceToViewX arithmetic before its tile-coordinate truncation.
+        // Correct only floating-point roundoff, by adjacent representable centers, without padding.
+        repeat(4) {
+            val mapped = sourceSpine * scale + (halfWidth - scale * center)
+            if (mapped.toInt() == nativeSpine.toInt()) return center
+            center = if (mapped < nativeSpine) Math.nextDown(center) else Math.nextUp(center)
+        }
+        return center
+    }
+
     private fun prepareNativeViewportMinimum(native: SubsamplingScaleImageView): Boolean {
         val pose = viewportTransform ?: return false
         // Slot dimensions are already oriented. An explicit raw source region needs the same
@@ -222,7 +264,11 @@ open class ReaderPageImageView @JvmOverloads constructor(
         }
         val sourceWidth = region?.width ?: pose.sourceWidth
         val sourceHeight = region?.height ?: pose.sourceHeight
-        native.minScale = min(pose.fit.width() / sourceWidth, pose.fit.height() / sourceHeight)
+        native.minScale = if (sourceWidth == pose.sourceWidth && sourceHeight == pose.sourceHeight) {
+            pose.fitScale
+        } else {
+            min(pose.fit.width() / sourceWidth, pose.fit.height() / sourceHeight)
+        }
         native.setMinimumScaleType(SubsamplingScaleImageView.SCALE_TYPE_CUSTOM)
         return true
     }
@@ -553,6 +599,12 @@ open class ReaderPageImageView @JvmOverloads constructor(
             WebtoonSubsamplingImageView(context)
         } else {
             object : SubsamplingScaleImageView(context) {
+                override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+                    super.onSizeChanged(w, h, oldw, oldh)
+                    // SSIV installs its own pending center during resize, replacing our old pose.
+                    nativeViewportPose = null
+                }
+
                 override fun onDraw(canvas: Canvas) {
                     applyNativeViewport()
                     if (decodedSideEnabled()) {

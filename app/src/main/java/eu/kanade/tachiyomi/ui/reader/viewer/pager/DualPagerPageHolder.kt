@@ -1036,7 +1036,8 @@ class DualPagerPageHolder(
             val fitHeight = imageHeight * fitScale
             val x = left + if (alignRight) width - fitWidth else 0f
             val y = (height - fitHeight) / 2f
-            val fit = RectF(x, y, x + fitWidth, y + fitHeight)
+            val right = if (alignRight) (left + width).toFloat() else x + fitWidth
+            val fit = RectF(x, y, right, y + fitHeight)
             for (index in 0 until childCount) {
                 (getChildAt(index) as? ReaderPageImageView)?.setViewportTransform(
                     fit,
@@ -1045,6 +1046,8 @@ class DualPagerPageHolder(
                     translateY,
                     imageWidth,
                     imageHeight,
+                    fitScale,
+                    alignRight,
                 )
             }
         }
