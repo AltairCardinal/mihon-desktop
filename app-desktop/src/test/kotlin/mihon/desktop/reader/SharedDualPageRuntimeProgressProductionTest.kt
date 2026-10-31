@@ -5,6 +5,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.unit.IntSize
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -13,6 +14,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.DesktopApplicationCloseCoordinator
@@ -40,6 +42,8 @@ import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import tachiyomi.data.Database
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.StringListColumnAdapter
@@ -60,6 +64,77 @@ import java.util.concurrent.atomic.AtomicBoolean
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class SharedDualPageRuntimeProgressProductionTest {
     @TempDir lateinit var tempDir: File
+
+    @ParameterizedTest
+    @CsvSource("false, false", "false, true", "true, false", "true, true")
+    fun `automatic single page native reading persists progress and completion`(
+        matching: Boolean,
+        resizeFromDual: Boolean,
+    ) = runTest {
+        val (driver, database) = database()
+        val fixture = MountedReaderPresentationFixture(
+            tempDir,
+            currentCoroutineContext(),
+            MountedReaderPresentationCase(MountedReaderPresentationMode.SINGLE, MountedReaderContentRoute.ONLINE),
+            mangaId = 10,
+            progressTracker = ReaderProgressTracker(RecordReadingProgress(SqlDelightReadingProgressRepository(database))),
+            automaticSpreadMatching = matching,
+            automaticLayout = true,
+            pageCount = 6,
+            initialPage = if (resizeFromDual) 1 else 0,
+        )
+        if (resizeFromDual) fixture.viewportSize = IntSize(640, 400)
+        fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+        fun binding() = fixture.scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+            .firstOrNull { it.config.contains(ReaderPagerNativePresentationKey) }
+            ?.config?.get(ReaderPagerNativePresentationKey)?.let { native ->
+                native.javaClass.getDeclaredField("binding").run {
+                    isAccessible = true
+                    get(native) as ReaderPagerPresentationBinding
+                }
+            }
+        var frame = 0L
+        fun pumpUntil(done: () -> Boolean) {
+            val deadline = System.nanoTime() + 5_000_000_000L
+            while (!done() && System.nanoTime() < deadline) {
+                fixture.scene.render(++frame * 16_000_000L).close()
+                runCurrent()
+                advanceTimeBy(16)
+                Thread.sleep(5)
+            }
+            assertTrue(done(), "Automatic single-page progress must reach SQL; state=${binding()?.model?.state?.value}")
+        }
+        try {
+            fixture.releaseBackgroundGates()
+            pumpUntil { binding() != null }
+            val model = requireNotNull(binding()).model
+            assertTrue(model.state.value.automaticLayout)
+            if (resizeFromDual) {
+                pumpUntil { database.chaptersQueries.getChapterById(7).executeAsOne().last_page_read == 2L }
+                assertTrue(model.state.value.dualPageMode)
+                fixture.viewportSize = IntSize(400, 640)
+                pumpUntil { !model.state.value.dualPageMode }
+                repeat(40) {
+                    fixture.scene.render(++frame * 16_000_000L).close()
+                    runCurrent()
+                    advanceTimeBy(16)
+                }
+                assertEquals(2L, database.chaptersQueries.getChapterById(7).executeAsOne().last_page_read)
+            }
+            assertFalse(model.state.value.dualPageMode)
+            // AUTO uses RTL: actual left-side taps advance each source page.
+            for (page in (if (resizeFromDual) 2 else 1)..5) {
+                fixture.scene.sendPointerEvent(PointerEventType.Press, Offset(20f, 300f), button = PointerButton.Primary)
+                fixture.scene.sendPointerEvent(PointerEventType.Release, Offset(20f, 300f), button = PointerButton.Primary)
+                assertEquals(page, model.state.value.currentPage)
+                pumpUntil { database.chaptersQueries.getChapterById(7).executeAsOne().last_page_read == page.toLong() }
+            }
+            assertTrue(database.chaptersQueries.getChapterById(7).executeAsOne().read)
+        } finally {
+            fixture.close()
+            driver.close()
+        }
+    }
 
     @Test
     fun `real EXIF header READY and original producer share normalized geometry`() = runTest {

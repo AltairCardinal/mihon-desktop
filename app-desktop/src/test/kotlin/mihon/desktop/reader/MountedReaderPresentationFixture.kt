@@ -1,12 +1,20 @@
 package mihon.desktop.reader
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.navigator.Navigator
 import dev.mihon.injekt.patchInjekt
 import eu.kanade.tachiyomi.network.NetworkHelper
@@ -97,8 +105,14 @@ internal class MountedReaderPresentationFixture(
     automaticSpreadMatching: Boolean = false,
     heldResponsePage: Int? = null,
     encodedPageBytes: ByteArray? = null,
+    automaticLayout: Boolean = false,
 ) : AutoCloseable {
-    private val productionFixture = ReaderProductionTestFixture(root, coroutineContext)
+    private val productionFixture = ReaderProductionTestFixture(
+        root,
+        coroutineContext,
+        sceneWidth = 640,
+        sceneHeight = if (automaticLayout) 640 else 480,
+    )
     private val pageBytes = encodedPageBytes ?: productionFixture.pageBytes
     private val previousInjekt = Injekt
     private val controller = ReaderTestModeController()
@@ -137,7 +151,7 @@ internal class MountedReaderPresentationFixture(
         chapterId = CHAPTER_ID,
         mangaId = mangaId,
         initialPage = initialPage,
-        isDualPage = case.mode.isDualPage,
+        isDualPage = case.mode.isDualPage.takeUnless { automaticLayout },
         localChapterPath = localChapterPath,
     )
     private val testPreferencesRoot = Preferences.userRoot().node("/mihon/test/mounted-reader/${UUID.randomUUID()}")
@@ -147,6 +161,7 @@ internal class MountedReaderPresentationFixture(
     )
 
     val scene = productionFixture.scene
+    var viewportSize by mutableStateOf(IntSize(400, 640))
     val allPageIndices: Set<Int> = (0 until pageCount).toSet()
     val visiblePageIndices: Set<Int> = case.mode.visiblePageIndices
     val mountedPageIndices: Set<Int> = when (case.mode) {
@@ -157,6 +172,9 @@ internal class MountedReaderPresentationFixture(
     }
 
     init {
+        if (automaticLayout) {
+            productionFixture.readerPreferences.readingMode = ReadingMode.AUTO
+        }
         productionFixture.readerPreferences.isAutoSpreadMatching = automaticSpreadMatching
         check(productionFixture.readerPreferences.isAutoSpreadMatching == automaticSpreadMatching)
         ReaderIoTestModeBridge.install(controller)
@@ -183,7 +201,17 @@ internal class MountedReaderPresentationFixture(
                     every { appPreferences } returns testAppPreferences
                 },
             ) {
-                MaterialTheme { Navigator(screen) { screen.Content() } }
+                MaterialTheme {
+                    Box(
+                        if (automaticLayout) {
+                            Modifier.requiredSize(viewportSize.width.dp, viewportSize.height.dp)
+                        } else {
+                            Modifier
+                        },
+                    ) {
+                        Navigator(screen) { screen.Content() }
+                    }
+                }
             }
         }
     }

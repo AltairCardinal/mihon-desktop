@@ -40,6 +40,8 @@ internal class ControllableReaderIoGate(
 internal class ReaderProductionTestFixture(
     private val root: File,
     coroutineContext: CoroutineContext,
+    sceneWidth: Int = 640,
+    sceneHeight: Int = 480,
 ) : AutoCloseable {
     companion object {
         const val STANDARD_PAGE_COUNT = 180
@@ -75,7 +77,7 @@ internal class ReaderProductionTestFixture(
         }
     }
     val server = MockWebServer().also { it.start() }
-    val scene = ImageComposeScene(640, 480, coroutineContext = coroutineContext) {}
+    val scene = ImageComposeScene(sceneWidth, sceneHeight, coroutineContext = coroutineContext) {}
     private val gates = ReaderIoGatePoint.entries.associateWith { point ->
         ControllableReaderIoGate(point)
     }
