@@ -15,10 +15,39 @@ Public product releases and documentation updates are different events. A date h
 
 - Forward and backward turns, jumps, and reopening preserve the same pairing at a chapter position in the accepted Windows reader case. The initial page slots follow the confirmed layout, while background matching preserves the visible page and its partner.
 - Two-page and landscape reading, manual pairing, zoom, and reading progress remain available; automatic assistance still does not guarantee recognition of every scan or layout.
-- Accepted Windows preview: `0.11.24.6.987389f`; implementation/source commit: `987389f88231236178ae824086b26bde37eb5dce`.
+- Accepted Windows preview: `0.11.24.6.987389f`; implementation/source commit: `987389f88231236178ae824086b26bde37eb5dce`. Main integration: `769488a519646ac965d1cf763f1ef99772c1e278`.
 - Shared and Android code integration was verified separately. This user acceptance covers the Windows preview; it does not establish Android device or macOS runtime acceptance, or a new Android release.
 
 Acceptance basis: the project owner accepted this Windows preview in private chat on November 1, 2026, covering pairing across navigation and reopening, layout switching, zoom, and progress. No public product release was allocated.
+
+## October 30, 2026 — Windows library category labels and wheel scrolling
+
+**Accepted fix documentation · no public product release**
+
+- The system default category now displays **默认** in Simplified Chinese and **default** in English instead of a blank label. Item counts retain the label.
+- Hovering over the category bar lets the mouse wheel scroll it horizontally without selecting another category. Custom category names and the existing category visibility rules remain unchanged.
+- Accepted Windows preview: `0.11.24.6.3026516` (preview ID `main-c30ef487baba4273a2819788493e1913`); accepted source: `30265162bf`; [integrated implementation](https://github.com/AltairCardinal/mihon-desktop/commit/3ebbe1cf28). Four focused interaction checks and the packaged extension runtime check passed. Acceptance covers this Windows category-bar path only.
+
+Acceptance basis: the project owner explicitly accepted this candidate in private chat on October 30, 2026 and requested main integration and a push.
+
+## October 30, 2026 — Windows sync connection and local decisions
+
+**Accepted fix documentation · no public product release**
+
+- The sync panel opens immediately, and existing or newly produced local conflicts remain visible while the initial connection check runs. Setup results expose pending items too.
+- A single keep/cancel decision applies locally without a confirmation dialog, credential rereads, or waiting for the full sync-state refresh. Batch decisions retain confirmation; download batches awaiting system confirmation are distinct from manual choices.
+- Active sync sessions renew renewable GitHub credentials instead of retaining an expired access token for the whole session. Revoked authorization still requires reconnecting.
+- Accepted Windows preview: `0.11.24.6.5fbb6d9` (source `5fbb6d9582`); [integrated implementation](https://github.com/AltairCardinal/mihon-desktop/commit/0e9540b43b). Acceptance basis: project-owner confirmation on October 30, 2026 for these Windows sync fixes. This does not claim Android acceptance or a public release.
+
+## October 30, 2026 — Space toggles the reader toolbars
+
+**Accepted fix documentation · no public product release**
+
+- Space now shows or hides both reader toolbars in every desktop reading mode instead of turning a page, including the reported previous-page behavior in right-to-left reading. The reader viewport must have keyboard focus.
+- Original implementation: `597ffe15e2`; [main integration](https://github.com/AltairCardinal/mihon-desktop/commit/a22ee07e2f). The integration preserves the accepted patch unchanged.
+- The existing 37 focused keyboard, focus, navigation and fullscreen tests passed. This acceptance covers Windows desktop reading; other platforms were not accepted as natively tested. No new product version or package was allocated.
+
+Acceptance basis: the project owner explicitly accepted the reader shortcut in private chat on October 30, 2026 and requested main integration and a push.
 
 ## October 29, 2026 — Stable Windows fullscreen transitions
 

@@ -21,6 +21,8 @@ The initial guide carries forward the repository’s already-public README and g
 
 ## Desktop reading {#desktop-reading}
 
+**Windows library categories:** The system default category is labeled **默认** in Simplified Chinese and **default** in English. Hover over the category bar and use the mouse wheel to scroll it horizontally without changing the selected category. Scrolling stops at either end; moving the pointer outside the bar leaves other content's scrolling unchanged.
+
 Mihon’s reading and library experience gains a desktop home. Use the desktop interface to manage your library and downloads, open chapters, and choose a reading mode and direction.
 
 **Try it:** [build a desktop preview](./getting-started.md), add a work through a configured source or local library, then open a chapter.
@@ -32,6 +34,8 @@ Mihon’s reading and library experience gains a desktop home. Use the desktop i
 **Manga details and chapter list:** The chapter list provides native dynamic scrollbars in both dual-pane and single-pane layouts, highlighting on scroll or hover. When the floating "Continue" action button is visible in the bottom-right corner, the list automatically maintains an 88dp bottom clearance so the final chapter row remains completely clear of the button when scrolled to the end.
 
 **Chapter action feedback:** On Windows, successful or skipped chapter actions on the manga detail page no longer show the success/skip/failure count snackbar. Failure feedback and the optional Add to library action remain available.
+
+**Reader toolbar shortcut:** While the reader viewport has keyboard focus, press **Space** to show or hide the top and bottom toolbars together without changing the page or chapter. This applies to all desktop reading modes, including left-to-right, right-to-left, automatic and Webtoon, with single-page or two-page layouts. This shortcut was accepted on Windows; native operation on other platforms is outside this acceptance.
 
 **Desktop fullscreen reader mode:** Press **F11** or click the fullscreen button to the left of the Settings button in the top reader bar to enter or exit fullscreen mode. Upon entering fullscreen, a corner tutorial bubble reminds the user of the F11 shortcut and automatically dismisses after 3 seconds (and is permanently suppressed once acknowledged). In fullscreen, the top and bottom navigation bars are hidden by default and reveal when the cursor hovers near the top edge (≤ 48dp) or bottom edge (within 80dp), hiding again when the pointer leaves. Pressing **Esc** exits fullscreen mode.
 
@@ -67,6 +71,8 @@ The documented sync scope is:
 - Reading position.
 
 **Try it:** connect GitHub from the sync panel on one device, create or join a sync space, then connect a compatible build on the other device to the same space. Use the panel’s status and feedback to follow the operation.
+
+**Accepted Windows behavior:** the panel opens immediately while connection checks continue. Locally stored cancellation conflicts remain visible during those checks and in setup results; choosing to keep or cancel one item on this device applies directly, without a confirmation dialog or waiting for GitHub. Batch decisions still require confirmation. Download batches awaiting system confirmation are separate from these manual decisions. Active sync sessions renew renewable GitHub credentials automatically; revoked authorization still requires reconnecting.
 
 **Compatibility boundary:** upstream Mihon for Android does not implement this fork’s sync protocol. Use compatible builds from this repository on both devices.
 
