@@ -74,9 +74,60 @@ class ReaderPageMaterializeRunner<T>(
 ) : AutoCloseable {
     companion object {
         private val mutableProcessPhysicalWorkCount = MutableStateFlow(0)
+        private val mutableProcessBlockingWorkCounts = MutableStateFlow<Map<Long, Int>>(emptyMap())
 
         /** Original reader work can survive closed sessions; this is observation, not another scheduler. */
         val processPhysicalWorkCount = mutableProcessPhysicalWorkCount.asStateFlow()
+
+        /**
+         * The physical work that keeps the reader busy, counted per publisher.
+         *
+         * A pairing capability must not compete with the ordinary reading work, and it
+         * must not wait for itself either. The request kind cannot tell the two apart:
+         * `CURRENT_BACKGROUND` is the ordinary kind for the rest of the current chapter,
+         * and the pairing uses it too. The request's fact permit can: it is the pairing's
+         * own capability token, and it belongs to the request, so an ordinary request for
+         * the same page carries none.
+         *
+         * The token of the permit identifies the publisher that admitted the capability.
+         * The work is therefore counted under its own publisher, and a publisher only
+         * counts the work of the other publishers: the pairing never waits for the work
+         * it started itself, and it waits for the work of every other publisher,
+         * including the pairing work of a replaced publisher.
+         *
+         * Ordinary reader work carries no permit and is counted under [ORDINARY_WORK_KEY],
+         * so it keeps the reader busy for every publisher.
+         *
+         * The count is process wide, so the work of a closed session stays visible, and
+         * it is released only when the work actually completes, so it survives exactly
+         * as long as the real work does.
+         */
+        val processBlockingWorkCounts = mutableProcessBlockingWorkCounts.asStateFlow()
+
+        /** The key of the ordinary reader work, which belongs to no publisher. */
+        const val ORDINARY_WORK_KEY = Long.MIN_VALUE
+
+        /**
+         * The blocking work that belongs to a publisher other than [ownerKey].
+         *
+         * The pairing asks this before it admits a capability and before it samples a
+         * region: it must not wait for its own work, and it must wait for the work of
+         * every other publisher until that work really exits.
+         */
+        fun blockingWorkExcept(ownerKey: Long): Int {
+            var total = 0
+            for ((key, value) in mutableProcessBlockingWorkCounts.value) {
+                if (key != ownerKey) total += value
+            }
+            return total
+        }
+
+        private fun MutableStateFlow<Map<Long, Int>>.addBlocking(key: Long, delta: Int) {
+            update { counts ->
+                val next = (counts[key] ?: 0) + delta
+                if (next <= 0) counts - key else counts + (key to next)
+            }
+        }
     }
 
     private class ActiveWork<T>(
@@ -135,6 +186,7 @@ class ReaderPageMaterializeRunner<T>(
                 if (shouldStart) {
                     mutableProcessPhysicalWorkCount.update { it + 1 }
                     mutablePhysicalWorkCount.update { it + 1 }
+                    mutableProcessBlockingWorkCounts.addBlocking(blockingWorkKey(work.request), 1)
                 }
                 registration.job.invokeOnCompletion { cause ->
                     try {
@@ -152,6 +204,7 @@ class ReaderPageMaterializeRunner<T>(
                         if (shouldStart) {
                             mutablePhysicalWorkCount.update { it - 1 }
                             mutableProcessPhysicalWorkCount.update { it - 1 }
+                            mutableProcessBlockingWorkCounts.addBlocking(blockingWorkKey(work.request), -1)
                         }
                     }
                 }
@@ -175,6 +228,19 @@ class ReaderPageMaterializeRunner<T>(
         }
         registrations.forEach { it.job.cancel() }
         pump()
+    }
+
+    /**
+     * The publisher whose busy state one request belongs to.
+     *
+     * A pairing capability carries the token of the publisher that admitted it, so its
+     * work is counted under that publisher and never blocks that publisher itself. The
+     * ordinary reader work carries no permit and belongs to no publisher, so it keeps
+     * every publisher busy.
+     */
+    private fun blockingWorkKey(request: ReaderScheduledRequest): Long {
+        val ownerKey = request.factPermit?.ownerKey ?: return ORDINARY_WORK_KEY
+        return if (ownerKey == 0L) ORDINARY_WORK_KEY else ownerKey
     }
 
     fun snapshot(): ReaderPageMaterializeRunnerSnapshot = synchronized(lock) {

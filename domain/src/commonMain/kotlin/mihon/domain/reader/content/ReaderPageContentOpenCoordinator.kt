@@ -79,11 +79,14 @@ class ReaderPageContentOpenCoordinator<T>(
     private val entries = mutableMapOf<ReaderPageContentOpenRequest, Entry<T>>()
     private var closed = false
 
-    suspend fun acquire(request: ReaderPageContentOpenRequest): ReaderPageContentLease<T>? {
+    suspend fun acquire(
+        request: ReaderPageContentOpenRequest,
+        openPort: ReaderPageContentOpenPort<T> = port,
+    ): ReaderPageContentLease<T>? {
         val entry = synchronized(lock) {
             check(!closed) { "Reader page content owner is closed" }
             entries.getOrPut(request) {
-                createEntry(request)
+                createEntry(request, openPort)
             }.also {
                 it.pendingAcquires++
                 it.content.start()
@@ -151,9 +154,12 @@ class ReaderPageContentOpenCoordinator<T>(
         }
     }
 
-    private fun createEntry(request: ReaderPageContentOpenRequest): Entry<T> {
+    private fun createEntry(
+        request: ReaderPageContentOpenRequest,
+        openPort: ReaderPageContentOpenPort<T>,
+    ): Entry<T> {
         lateinit var entry: Entry<T>
-        entry = Entry(scope.async(start = CoroutineStart.LAZY) { port.open(request) })
+        entry = Entry(scope.async(start = CoroutineStart.LAZY) { openPort.open(request) })
         entry.content.invokeOnCompletion {
             synchronized(lock) { removeIfUnused(request, entry) }
         }

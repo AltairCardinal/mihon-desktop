@@ -1,5 +1,6 @@
 package mihon.domain.reader.session
 
+import mihon.domain.reader.ReaderDualPageFactReadPermit
 import mihon.domain.reader.materialize.ReaderChapterMaterializeResult
 import mihon.domain.reader.materialize.ReaderPageMaterializeEvent
 import mihon.domain.reader.progress.ReaderProgressEffect
@@ -160,9 +161,23 @@ class ReaderSessionCore(
         return requestScheduler.enqueue(pageId, ReaderRequestKind.ADJACENT_BACKGROUND)
     }
 
-    fun enqueueFactPage(pageId: ReaderPageId): ReaderEnqueueResult {
+    /**
+     * Enqueues one page for the dual page pairing and carries its capability token.
+     *
+     * The token belongs to this request: an ordinary request for the same page is a
+     * different request without a token, so the pairing's own work stays separable
+     * from the original reading work.
+     */
+    fun enqueueFactPage(
+        pageId: ReaderPageId,
+        factPermit: ReaderDualPageFactReadPermit? = null,
+    ): ReaderEnqueueResult {
         require(snapshot.activeChapter.pages.any { it.id == pageId })
-        return requestScheduler.enqueue(pageId, ReaderRequestKind.CURRENT_BACKGROUND)
+        return requestScheduler.enqueue(
+            pageId,
+            ReaderRequestKind.CURRENT_BACKGROUND,
+            factPermit = factPermit,
+        )
     }
 
     fun cancelFactPageRequest(key: ReaderRequestKey) {
@@ -174,6 +189,14 @@ class ReaderSessionCore(
         requestScheduler.cancelChapter(chapterId)
 
     fun acceptsPageRequest(jobKey: ReaderRequestKey): Boolean = requestScheduler.accepts(jobKey)
+
+    /** Whether the request is still queued or running, not only whether it is running. */
+    fun acceptsScheduledPageRequest(jobKey: ReaderRequestKey): Boolean =
+        requestScheduler.acceptsScheduled(jobKey)
+
+    /** Whether another request for the same page took the page over. */
+    fun hasCurrentPageReplacement(pageId: ReaderPageId, excluding: ReaderRequestKey): Boolean =
+        requestScheduler.hasCurrentReplacement(pageId, excluding)
 
     fun acceptPageMaterialization(
         request: ReaderScheduledRequest,

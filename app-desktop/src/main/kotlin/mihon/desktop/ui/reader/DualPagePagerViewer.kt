@@ -453,7 +453,9 @@ internal fun DualPagePagerViewer(
                         }
                     }
                     val pairingFailures = pagerPresentationBinding?.model?.state?.value?.dualPairingFailures.orEmpty()
-                    if (page.id in pairingFailures) {
+                    if (page.id in pairingFailures &&
+                        presentationImage.state !is DesktopReaderPresentationImageState.Ready
+                    ) {
                         ReaderPageRetryContent(onRetry = { onRetryPage(page.id) }, modifier = modifier.fillMaxSize())
                         return@ReaderPageImageContent
                     }

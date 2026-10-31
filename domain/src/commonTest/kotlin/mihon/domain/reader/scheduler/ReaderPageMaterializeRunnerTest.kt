@@ -186,6 +186,97 @@ class ReaderPageMaterializeRunnerTest {
     }
 
     @Test
+    fun `preempted request with fact permit requeued under new job key is not claimed by late completing old job`() =
+        runTest {
+            val processBaseline = ReaderPageMaterializeRunner.processPhysicalWorkCount.value
+            val scheduler = serialSchedulerAfterInitialWindow()
+            val oldStarted = CompletableDeferred<Unit>()
+            val releaseOld = CompletableDeferred<Unit>()
+            val completions = mutableListOf<Pair<Int, ReaderPageMaterializeCompletion>>()
+            val published = mutableListOf<String>()
+            val budget = mihon.domain.reader.ReaderDualPageFactBudget()
+            val permit = mihon.domain.reader.ReaderDualPageFactReadPermit(
+                budget,
+                pageId(8),
+                clockMillis = { 0L },
+                ownerKey = 42L,
+            )
+            var attempts = 0
+
+            val port = schedulerPort(
+                scheduler = scheduler,
+                fetchPort = { pageIndex ->
+                    object : ReaderPageFetchPort {
+                        override suspend fun resolveImageUrl(request: ReaderPageFetchRequest) = "image:$pageIndex"
+
+                        override suspend fun findEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef? = null
+
+                        override suspend fun fetchEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef {
+                            if (pageIndex == 8 && attempts++ == 0) {
+                                oldStarted.complete(Unit)
+                                withContext(NonCancellable) {
+                                    releaseOld.await()
+                                }
+                                return EncodedPageRef("encoded:old-8")
+                            }
+                            return EncodedPageRef("encoded:new-$pageIndex")
+                        }
+                    }
+                },
+                completions = completions,
+                onAcceptedEvent = { binding, event ->
+                    if (event is ReaderPageMaterializeEvent.Ready) {
+                        published += "$binding:${event.encodedPageRef.value}"
+                    }
+                },
+            )
+            val runner = ReaderPageMaterializeRunner(
+                scope = this,
+                maxConcurrentRequests = 1,
+                port = port,
+            )
+
+            // 1. Enqueue page 8 as background with fact permit
+            scheduler.enqueue(pageId(8), ReaderRequestKind.ADJACENT_BACKGROUND, factPermit = permit)
+            runner.pump()
+            oldStarted.await()
+
+            // 2. Preempt page 8 with visible page 1. Preemption cancels old job
+            // and requeues page 8 with new job key preserving fact permit
+            val visible = scheduler.enqueue(pageId(1), ReaderRequestKind.INTERACTIVE_VISIBLE)
+            runner.cancel(visible.cancelRequests)
+            runner.pump()
+            advanceUntilIdle()
+
+            // Page 1 has completed
+            assertTrue(
+                completions.any { it.first == 1 && it.second is ReaderPageMaterializeCompletion.Completed },
+            )
+
+            // 3. Now release the old non-cooperative job 8 so it finishes late
+            releaseOld.complete(Unit)
+            advanceUntilIdle()
+
+            // Requeued page 8 runs and finishes
+            runner.pump()
+            advanceUntilIdle()
+
+            // 4. Assert: old late job did NOT publish into port or steal the new job
+            assertTrue(
+                published.any { it == "8:encoded:new-8" },
+                "New job must publish its own result: $published",
+            )
+            org.junit.jupiter.api.Assertions.assertFalse(
+                published.any { it == "8:encoded:old-8" },
+                "Old late job must not publish into port: $published",
+            )
+
+            assertEquals(processBaseline, ReaderPageMaterializeRunner.processPhysicalWorkCount.value)
+            assertEquals(0, ReaderPageMaterializeRunner.blockingWorkExcept(0L))
+            runner.close()
+        }
+
+    @Test
     fun `non cooperative old generation cannot publish after replacement`() = runTest {
         val processBaseline = ReaderPageMaterializeRunner.processPhysicalWorkCount.value
         val scheduler = ReaderRequestScheduler(
@@ -258,6 +349,130 @@ class ReaderPageMaterializeRunnerTest {
         assertEquals(processBaseline + 0, ReaderPageMaterializeRunner.processPhysicalWorkCount.value)
         assertEquals(processBaseline, ReaderPageMaterializeRunner.processPhysicalWorkCount.value)
         runner.close()
+    }
+
+    @Test
+    fun `blockingWorkExcept isolates publisher owner and ordinary work blocks every owner`() = runTest {
+        val budget = mihon.domain.reader.ReaderDualPageFactBudget()
+        val scheduler = ReaderRequestScheduler(
+            ReaderSchedulerPolicy(nearbyForward = 0, nearbyBackward = 0, maxConcurrentRequests = 2),
+        )
+        val startedOrdinary = CompletableDeferred<Unit>()
+        val releaseOrdinary = CompletableDeferred<Unit>()
+        val startedPermit100 = CompletableDeferred<Unit>()
+        val releasePermit100 = CompletableDeferred<Unit>()
+        val completions = java.util.concurrent.CopyOnWriteArrayList<Pair<Int, ReaderPageMaterializeCompletion>>()
+
+        val port = object : ReaderPageMaterializeRunnerPort<Int> {
+            override fun pollNext(): ReaderPageMaterializeWork<Int>? {
+                val request = scheduler.pollNext() ?: return null
+                val pageIndex = request.pageIndex
+                return ReaderPageMaterializeWork(
+                    request = request,
+                    fetchRequest = ReaderPageFetchRequest(
+                        pageId = request.pageId,
+                        generation = request.generation,
+                        url = "/$pageIndex",
+                        imageUrl = "image:$pageIndex",
+                    ),
+                    fetchPort = object : ReaderPageFetchPort {
+                        override suspend fun resolveImageUrl(request: ReaderPageFetchRequest) = "image:$pageIndex"
+                        override suspend fun findEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef? = null
+                        override suspend fun fetchEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef {
+                            if (pageIndex == 0) {
+                                startedOrdinary.complete(Unit)
+                                releaseOrdinary.await()
+                            } else if (pageIndex == 1) {
+                                startedPermit100.complete(Unit)
+                                releasePermit100.await()
+                            }
+                            return EncodedPageRef("encoded:$pageIndex")
+                        }
+                    },
+                    binding = pageIndex,
+                )
+            }
+
+            override fun accepts(work: ReaderPageMaterializeWork<Int>): Boolean =
+                scheduler.accepts(work.request.jobKey)
+
+            override fun publish(work: ReaderPageMaterializeWork<Int>, event: ReaderPageMaterializeEvent): Boolean =
+                scheduler.accepts(work.request.jobKey)
+
+            override fun complete(work: ReaderPageMaterializeWork<Int>, completion: ReaderPageMaterializeCompletion) {
+                completions += work.binding to completion
+                scheduler.complete(work.request.jobKey)
+            }
+        }
+
+        val runner = ReaderPageMaterializeRunner(
+            scope = this,
+            maxConcurrentRequests = 2,
+            port = port,
+        )
+
+        try {
+            // 1. Ordinary work (pageIndex = 0, no permit)
+            scheduler.enqueue(pageId(0), ReaderRequestKind.INTERACTIVE_VISIBLE)
+            runner.pump()
+            startedOrdinary.await()
+
+            // Ordinary work must be blocking for all publisher owners
+            val ordinaryBlocking100 = ReaderPageMaterializeRunner.blockingWorkExcept(100L)
+            val ordinaryBlocking200 = ReaderPageMaterializeRunner.blockingWorkExcept(200L)
+            assertTrue(ordinaryBlocking100 >= 1, "Ordinary work must block publisher 100")
+            assertTrue(ordinaryBlocking200 >= 1, "Ordinary work must block publisher 200")
+            assertEquals(
+                0,
+                ReaderPageMaterializeRunner.blockingWorkExcept(ReaderPageMaterializeRunner.ORDINARY_WORK_KEY),
+                "Ordinary work key should not block ordinary work key itself",
+            )
+
+            // 2. Publisher 100 work (pageIndex = 1, factPermit ownerKey = 100L)
+            val permit100 = mihon.domain.reader.ReaderDualPageFactReadPermit(
+                budget = budget,
+                pageId = pageId(1),
+                clockMillis = { 0L },
+                ownerKey = 100L,
+            )
+            scheduler.enqueue(pageId(1), ReaderRequestKind.INTERACTIVE_VISIBLE, factPermit = permit100)
+            runner.pump()
+            startedPermit100.await()
+
+            // Publisher 100's own work should NOT block publisher 100 itself (only ordinary work blocks it)
+            assertEquals(
+                ordinaryBlocking100,
+                ReaderPageMaterializeRunner.blockingWorkExcept(100L),
+                "Publisher 100 must not be blocked by its own work",
+            )
+            // But publisher 100's work MUST block publisher 200
+            assertEquals(
+                ordinaryBlocking200 + 1,
+                ReaderPageMaterializeRunner.blockingWorkExcept(200L),
+                "Publisher 200 must be blocked by publisher 100's work",
+            )
+
+            // Release both works
+            releaseOrdinary.complete(Unit)
+            releasePermit100.complete(Unit)
+            advanceUntilIdle()
+
+            // Both works completed, blocking counts must balance back to baseline
+            assertEquals(
+                0,
+                ReaderPageMaterializeRunner.blockingWorkExcept(100L),
+                "All blocking work should be cleared after completion for 100",
+            )
+            assertEquals(
+                0,
+                ReaderPageMaterializeRunner.blockingWorkExcept(200L),
+                "All blocking work should be cleared after completion for 200",
+            )
+        } finally {
+            releaseOrdinary.complete(Unit)
+            releasePermit100.complete(Unit)
+            runner.close()
+        }
     }
 
     private fun schedulerPort(

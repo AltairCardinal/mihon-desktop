@@ -1,10 +1,13 @@
 package mihon.domain.reader
 
+import kotlinx.coroutines.CancellationException
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageId
+import okio.Buffer
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNotSame
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -923,5 +926,273 @@ class SharedDualPageSessionContractTest {
         assertTrue(effect!!.reachedLastPage)
         known(session, setOf(13))
         assertNull(session.settle(event(session, ReaderDualPageSettlementReason.LAYOUT_ONLY), false, "test"))
+    }
+
+    @Test
+    fun `configure replaces fact budget and clears resource failures idempotently`() {
+        val session = SharedDualPageSession(identity(5), ReaderDirection.RTL)
+        known(session)
+        val page = session.identity.pageIds[1]
+        session.goToPage(page)
+        session.configure(ReaderDirection.RTL, automaticMatching = false)
+
+        val oldBudget = session.factBudget
+        val targetPage = session.identity.pageIds[2]
+        assertEquals(listOf(targetPage), oldBudget.reserve(listOf(targetPage), 1000L, required = true))
+        val oldPermit = ReaderDualPageFactReadPermit(oldBudget, targetPage, { 1000L }, ownerKey = 10L)
+        assertFalse(oldPermit.exhausted)
+        assertTrue(oldBudget.canRead(targetPage, 1000L))
+
+        val resourcePage = session.identity.pageIds[3]
+        val resourceContent = session.identity.content[3]
+        val resourceRequest = requireNotNull(session.requestOriginalAnalysis(resourcePage))
+        assertTrue(session.failOriginalAnalysis(resourceRequest, ReaderAnalysisFailure.RESOURCE))
+        assertEquals(
+            ReaderPageAnalysisEvidence.RetryableFailure(resourceContent, ReaderAnalysisFailure.RESOURCE),
+            session.originalAnalysis(resourcePage),
+        )
+
+        val readPage = session.identity.pageIds[4]
+        val readContent = session.identity.content[4]
+        val readRequest = requireNotNull(session.requestOriginalAnalysis(readPage))
+        assertTrue(session.failOriginalAnalysis(readRequest, ReaderAnalysisFailure.READ))
+        assertEquals(
+            ReaderPageAnalysisEvidence.RetryableFailure(readContent, ReaderAnalysisFailure.READ),
+            session.originalAnalysis(readPage),
+        )
+
+        val oldSampleRevision = session.sampleWorkRevision
+        val oldFactRevision = session.factWorkRevision
+
+        // 1. Same configuration must remain completely idempotent
+        session.configure(ReaderDirection.RTL, automaticMatching = false)
+        assertSame(oldBudget, session.factBudget, "Same configuration must not replace fact budget")
+        assertEquals(
+            oldSampleRevision,
+            session.sampleWorkRevision,
+            "Same configuration must not increment sample revision",
+        )
+        assertEquals(oldFactRevision, session.factWorkRevision, "Same configuration must not increment fact revision")
+        assertEquals(
+            ReaderPageAnalysisEvidence.RetryableFailure(resourceContent, ReaderAnalysisFailure.RESOURCE),
+            session.originalAnalysis(resourcePage),
+            "Same configuration must not clear resource failure",
+        )
+        assertFalse(oldPermit.exhausted, "Old permit must remain valid when configuration is unchanged")
+
+        // 2. Configuration change replaces budget, closes old budget/permit and clears resource failures
+        session.configure(ReaderDirection.LTR, automaticMatching = true)
+        val newBudget = session.factBudget
+        assertNotSame(oldBudget, newBudget, "New configuration must replace fact budget")
+        assertTrue(session.factWorkRevision > oldFactRevision, "Fact revision must increment on configuration change")
+        assertTrue(
+            session.sampleWorkRevision > oldSampleRevision,
+            "Sample revision must increment on configuration change",
+        )
+
+        assertFalse(oldBudget.canRead(targetPage, 1000L), "Old budget must be closed")
+        assertTrue(oldPermit.exhausted, "Old permit must become exhausted when old budget closes")
+        assertEquals(0L, oldPermit.reserve(1024L), "Old permit cannot reserve read bytes after budget closes")
+        val stream = oldPermit.bound(Buffer(), nanoTime = { 1000L })
+        assertThrows(CancellationException::class.java) {
+            stream.read(Buffer(), 1024L)
+        }
+
+        assertEquals(
+            ReaderPageAnalysisEvidence.NotAnalyzed,
+            session.originalAnalysis(resourcePage),
+            "Resource failure must be cleared on configuration change",
+        )
+        assertEquals(
+            ReaderPageAnalysisEvidence.RetryableFailure(readContent, ReaderAnalysisFailure.READ),
+            session.originalAnalysis(readPage),
+            "Non-resource failure must not be cleared",
+        )
+        assertNotNull(
+            session.requestSpreadSample(resourcePage),
+            "Cleared resource failure allows requesting spread sample again",
+        )
+
+        // 3. Applying the same new configuration is idempotent again
+        val nextFactRevision = session.factWorkRevision
+        session.configure(ReaderDirection.LTR, automaticMatching = true)
+        assertSame(newBudget, session.factBudget, "Re-applying identical configuration must remain idempotent")
+        assertEquals(nextFactRevision, session.factWorkRevision)
+
+        session.close()
+    }
+
+    @Test
+    fun `content rebind isolates old fact budget capabilities and admits changed page`() {
+        val session = SharedDualPageSession(identity(5), ReaderDirection.RTL)
+        known(session)
+        val page0 = session.identity.pageIds[0]
+        val page1 = session.identity.pageIds[1]
+        val page2 = session.identity.pageIds[2]
+        val page3 = session.identity.pageIds[3]
+        session.goToPage(page0)
+
+        // 1. Admit page 1 and page 2 as REQUIRED under initial session
+        val oldBudget = session.factBudget
+        assertEquals(listOf(page1, page2), oldBudget.reserve(listOf(page1, page2), 1000L, required = true))
+        val oldPermit = ReaderDualPageFactReadPermit(oldBudget, page2, { 1000L }, ownerKey = 10L)
+        assertFalse(oldPermit.exhausted)
+        assertTrue(oldBudget.canRead(page2, 1000L))
+        assertEquals(500L, oldPermit.reserve(500L))
+
+        // Complete fact for page 1 with 1024 read bytes
+        val req1 = requireNotNull(session.requestFact(page1))
+        session.acceptFact(req1, ReaderPageFact.dimensions(900, 1300))
+        oldBudget.complete(page1, 1024L, cacheHit = false)
+        assertEquals(ReaderPageFactState.PORTRAIT, session.pageFact(page1)?.state)
+
+        // 2. Content rebind occurs where page 2 content version changes (unexposed changed page)
+        val nextIdentity = replacedPage(session.identity, 2)
+        val next = session.rebindContent(nextIdentity)
+        val newBudget = next.factBudget
+
+        // Assert budget shells are separate instances
+        assertNotSame(oldBudget, newBudget, "Rebind must replace the fact budget shell")
+
+        // Unchanged page fact is preserved, changed page fact is cleared
+        assertEquals(ReaderPageFactState.PORTRAIT, next.pageFact(page1)?.state)
+        assertNull(next.pageFact(page2), "Changed page fact must be cleared upon rebind")
+
+        // 3. New budget admits the changed page for analysis
+        val admitted = newBudget.reserveClassified(listOf(page2), emptyList(), 1500L)
+        assertEquals(
+            listOf(ReaderDualPageFactBudget.ReservedCapability(page2, speculative = false)),
+            admitted,
+            "Changed page must be admitted in new budget",
+        )
+        assertTrue(newBudget.holds(page2), "New budget must hold the admitted changed page")
+
+        // 4. Old capabilities are physically isolated and rejected
+        assertFalse(oldBudget.canRead(page2, 1500L), "Old budget must be closed")
+        assertTrue(oldPermit.exhausted, "Old permit must become exhausted after content rebind")
+        assertEquals(0L, oldPermit.reserve(100L), "Old permit cannot reserve after content rebind")
+        val stream = oldPermit.bound(Buffer(), nanoTime = { 1500L })
+        assertThrows(CancellationException::class.java) {
+            stream.read(Buffer(), 100L)
+        }
+
+        // 5. Late complete or defer on old budget does not tamper with new budget's active slot
+        oldBudget.complete(page2, 0L, cacheHit = true)
+        oldBudget.defer(page2)
+        assertTrue(newBudget.holds(page2), "Late complete/defer on old budget must not remove new budget's active slot")
+
+        // 6. Shared accounting window retains time elapsed and bytes consumed
+        assertEquals(
+            ReaderDualPageFactLimits.MAX_WAIT_MILLIS - (1500L - 1000L),
+            newBudget.remainingWaitMillis(1500L),
+            "Remaining wait millis must reflect elapsed time from shared window start",
+        )
+
+        // Attempting an excessive refund on old budget cannot credit unreserved bytes into shared window
+        oldBudget.returnUnreadBytes(page2, 10_000L)
+
+        // Window timeout shuts down admission across shells
+        val expiredTime = 1000L + ReaderDualPageFactLimits.MAX_WAIT_MILLIS
+        assertEquals(0L, newBudget.remainingWaitMillis(expiredTime))
+        assertTrue(
+            newBudget.reserveClassified(listOf(page3), emptyList(), expiredTime).isEmpty(),
+            "Shared window timeout must reject admission",
+        )
+
+        next.close()
+    }
+
+    @Test
+    fun `content rebind separates refund tracking per budget shell and preserves late old refund after new complete`() {
+        val session = SharedDualPageSession(identity(5), ReaderDirection.RTL)
+        known(session)
+        val page1 = session.identity.pageIds[1]
+        val page2 = session.identity.pageIds[2]
+        val page3 = session.identity.pageIds[3]
+        session.goToPage(page1)
+
+        val oldBudget = session.factBudget
+        assertEquals(listOf(page2), oldBudget.reserve(listOf(page2), 1000L, required = true))
+        val oldPermit = ReaderDualPageFactReadPermit(oldBudget, page2, { 1000L }, ownerKey = 10L)
+
+        var newBudgetRef: ReaderDualPageFactBudget? = null
+        var nextSessionRef: SharedDualPageSession? = null
+        val controllableSource = object : okio.Source {
+            var onRead: (() -> Unit)? = null
+            override fun read(sink: Buffer, byteCount: Long): Long {
+                onRead?.invoke()
+                return -1L // EOF: 0 bytes consumed out of granted reservation
+            }
+            override fun close() {}
+            override fun timeout(): okio.Timeout = okio.Timeout.NONE
+        }
+
+        controllableSource.onRead = {
+            // Rebind content while old stream is active with 100 bytes reserved
+            val nextSession = session.rebindContent(replacedPage(session.identity, 2))
+            nextSessionRef = nextSession
+            val newBudget = nextSession.factBudget
+            newBudgetRef = newBudget
+            val admitted = newBudget.reserveClassified(listOf(page2), emptyList(), 1100L)
+            assertEquals(1, admitted.size)
+            val newPermit = ReaderDualPageFactReadPermit(newBudget, page2, { 1100L }, ownerKey = 20L)
+
+            // New permit reserves 100 bytes, reads 50 bytes, refunds 50 bytes, and completes
+            assertEquals(100L, newPermit.reserve(100L))
+            newPermit.returnUnread(50L)
+            newBudget.complete(page2, newlyReadBytes = 50L, cacheHit = false)
+        }
+
+        // Old permit stream reserves 100 bytes and triggers controllableSource.read
+        val oldStream = oldPermit.bound(controllableSource, nanoTime = { 1000L })
+        oldStream.read(Buffer(), 100L)
+
+        val newBudget = requireNotNull(newBudgetRef)
+
+        // After old stream read returns EOF, finally block refunds 100 - 0 = 100 unread bytes.
+        // Total bytes consumed in shared window must be exactly 50 bytes (from new budget).
+        // It must NOT be 150 bytes (which happens if new budget complete erased old budget's reserved tracking).
+        // Admit page 3 and page 4 in new budget before byte exhaustion
+        val page4 = session.identity.pageIds[4]
+        assertEquals(
+            listOf(page3, page4),
+            newBudget.reserve(listOf(page3, page4), 1200L, required = true),
+        )
+        assertTrue(newBudget.holds(page4))
+
+        val remainingCapacity = ReaderDualPageFactLimits.MAX_NEW_BYTES - 50L
+        assertEquals(
+            remainingCapacity,
+            newBudget.reserveRead(page3, remainingCapacity, 1200L),
+            "Late refund from old budget must restore shared byte budget so only 50 bytes remain consumed",
+        )
+
+        // Old complete or defer cannot remove active slot of newer budget
+        oldBudget.complete(page4, 0L, cacheHit = true)
+        oldBudget.defer(page4)
+        assertTrue(newBudget.holds(page4), "Old complete or defer must not remove active slot from newer budget shell")
+
+        // Monotonic byte exhaustion across multiple rebinds
+        val rebind2 = nextSessionRef!!.rebindContent(replacedPage(nextSessionRef!!.identity, 3))
+        val budget2 = rebind2.factBudget
+        // Window now has 0 remaining bytes because remainingCapacity was reserved
+        assertEquals(
+            0L,
+            budget2.reserveRead(page3, 100L, 1300L),
+            "Exhausted byte budget must reject further reservations after rebind",
+        )
+
+        // Preserves unchanged real failure across rebind
+        val failedContent = rebind2.identity.content[1]
+        val failedRequest = requireNotNull(rebind2.requestOriginalAnalysis(page1))
+        assertTrue(rebind2.failOriginalAnalysis(failedRequest, ReaderAnalysisFailure.READ))
+        val rebind3 = rebind2.rebindContent(replacedPage(rebind2.identity, 2))
+        assertEquals(
+            ReaderPageAnalysisEvidence.RetryableFailure(failedContent, ReaderAnalysisFailure.READ),
+            rebind3.originalAnalysis(page1),
+            "Unchanged real failure must be preserved across rebind",
+        )
+
+        rebind3.close()
     }
 }

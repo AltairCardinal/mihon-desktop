@@ -1,11 +1,14 @@
 package mihon.domain.reader.scheduler
 
+import mihon.domain.reader.ReaderDualPageFactBudget
+import mihon.domain.reader.ReaderDualPageFactReadPermit
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageId
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -165,6 +168,42 @@ class ReaderRequestSchedulerTest {
         val restartedBackground = requireNotNull(scheduler.pollNext())
         assertEquals(background.pageIndex, restartedBackground.pageIndex)
         assertNotEquals(background.jobKey, restartedBackground.jobKey)
+    }
+
+    @Test
+    fun `same generation preemption of active request preserves fact permit on requeue`() {
+        val scheduler = ReaderRequestScheduler(
+            ReaderSchedulerPolicy(nearbyForward = 0, nearbyBackward = 0, maxConcurrentRequests = 1),
+        )
+        val initial = scheduler.moveTo(currentPage = 0, pageCount = 1).requests.single()
+        scheduler.pollNext()
+        scheduler.complete(initial.jobKey)
+
+        val page8 = ReaderPageId(TEST_CHAPTER_ID, 8)
+        val budget = ReaderDualPageFactBudget()
+        val permit = ReaderDualPageFactReadPermit(budget, page8, clockMillis = { 1000L }, ownerKey = 42L)
+
+        scheduler.enqueue(page8, ReaderRequestKind.ADJACENT_BACKGROUND, factPermit = permit)
+        val background = requireNotNull(scheduler.pollNext())
+        assertSame(permit, background.factPermit)
+        assertEquals(42L, background.factPermit?.ownerKey)
+
+        val page1 = ReaderPageId(TEST_CHAPTER_ID, 1)
+        val promotion = scheduler.enqueue(page1, ReaderRequestKind.INTERACTIVE_VISIBLE)
+
+        assertEquals(setOf(background.jobKey), promotion.cancelRequests)
+        assertFalse(scheduler.accepts(background.jobKey))
+
+        val visible = requireNotNull(scheduler.pollNext())
+        assertEquals(1, visible.pageIndex)
+        assertNull(visible.factPermit, "Ordinary interactive visible request must carry no factPermit")
+        scheduler.complete(visible.jobKey)
+
+        val restartedBackground = requireNotNull(scheduler.pollNext())
+        assertEquals(background.pageIndex, restartedBackground.pageIndex)
+        assertNotEquals(background.jobKey, restartedBackground.jobKey)
+        assertSame(permit, restartedBackground.factPermit, "Requeued request must preserve the original fact permit")
+        assertEquals(42L, restartedBackground.factPermit?.ownerKey)
     }
 
     @Test

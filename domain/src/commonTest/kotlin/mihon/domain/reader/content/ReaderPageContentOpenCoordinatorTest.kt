@@ -121,6 +121,109 @@ class ReaderPageContentOpenCoordinatorTest {
     }
 
     @Test
+    fun `first acquire port owns a shared entry and later ports are ignored`() = runTest {
+        var defaultCalls = 0
+        var firstCalls = 0
+        var secondCalls = 0
+        val firstContent = byteArrayOf(10)
+        val coordinator = ReaderPageContentOpenCoordinator(
+            scope = this,
+            port = ReaderPageContentOpenPort {
+                defaultCalls++
+                byteArrayOf(0)
+            },
+        )
+        val firstPort = ReaderPageContentOpenPort<ByteArray> {
+            firstCalls++
+            firstContent
+        }
+        val secondPort = ReaderPageContentOpenPort<ByteArray> {
+            secondCalls++
+            byteArrayOf(20)
+        }
+        val request = request(generation = 21L)
+
+        val first = requireNotNull(coordinator.acquire(request, firstPort))
+        val joined = requireNotNull(coordinator.acquire(request, secondPort))
+
+        assertSame(first.content, joined.content)
+        assertEquals(1, firstCalls)
+        assertEquals(0, secondCalls, "A later caller cannot replace the port captured by the entry")
+        assertEquals(0, defaultCalls)
+        first.close()
+        joined.close()
+        coordinator.close()
+    }
+
+    @Test
+    fun `cancelled waiter does not replace the open port retained by the shared entry`() = runTest {
+        val entered = CompletableDeferred<Unit>()
+        val released = CompletableDeferred<Unit>()
+        var firstCalls = 0
+        var replacementCalls = 0
+        val coordinator = ReaderPageContentOpenCoordinator(
+            scope = this,
+            port = ReaderPageContentOpenPort { byteArrayOf(0) },
+        )
+        val firstPort = ReaderPageContentOpenPort<ByteArray> {
+            firstCalls++
+            withContext(NonCancellable) {
+                entered.complete(Unit)
+                released.await()
+            }
+            byteArrayOf(31)
+        }
+        val replacementPort = ReaderPageContentOpenPort<ByteArray> {
+            replacementCalls++
+            byteArrayOf(32)
+        }
+        val request = request(generation = 22L)
+
+        val cancelled = async { coordinator.acquire(request, firstPort) }
+        entered.await()
+        cancelled.cancelAndJoin()
+        val nextWaiter = async { coordinator.acquire(request, replacementPort) }
+        try {
+            runCurrent()
+            assertEquals(1, firstCalls)
+            assertEquals(0, replacementCalls)
+            released.complete(Unit)
+            val retainedLease = requireNotNull(nextWaiter.await())
+            assertEquals(31, retainedLease.content.single().toInt())
+            retainedLease.close()
+        } finally {
+            released.complete(Unit)
+            nextWaiter.cancelAndJoin()
+            coordinator.close()
+        }
+    }
+
+    @Test
+    fun `generation attempt and byte bound remain separate open identities`() = runTest {
+        val opened = mutableListOf<ReaderPageContentOpenRequest>()
+        val coordinator = ReaderPageContentOpenCoordinator(
+            scope = this,
+            port = ReaderPageContentOpenPort { request ->
+                opened += request
+                byteArrayOf((opened.size).toByte())
+            },
+        )
+        val base = request(generation = 23L).copy(maxBytes = 8)
+        val variants = listOf(
+            base,
+            base.copy(generation = 24L),
+            base.copy(attemptGeneration = 1L),
+            base.copy(maxBytes = 9),
+        )
+        val leases = variants.map { requireNotNull(coordinator.acquire(it)) }
+
+        assertEquals(4, opened.size)
+        assertEquals(variants.toSet(), opened.toSet())
+        leases.forEach(AutoCloseable::close)
+        coordinator.close()
+    }
+
+    @Test
     fun `close during successful open conversion reports cooperative cancellation`() = runTest {
         val ownerScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val entered = CompletableDeferred<Unit>()

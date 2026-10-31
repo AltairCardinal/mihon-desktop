@@ -15,6 +15,8 @@ import eu.kanade.tachiyomi.ui.reader.model.completePageListForTest
 import eu.kanade.tachiyomi.ui.reader.model.openPageListForTest
 import eu.kanade.tachiyomi.ui.reader.model.publishLoadedPageListForTest
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
+import eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler
+import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
 import eu.kanade.tachiyomi.ui.reader.viewer.RecordingReaderActivity
 import io.mockk.every
 import io.mockk.mockk
@@ -30,9 +32,15 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import mihon.domain.reader.ReaderAnalysisFailure
+import mihon.domain.reader.ReaderDualPageFactReadPermit
+import mihon.domain.reader.ReaderPageAnalysisEvidence
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -85,9 +93,34 @@ class SharedDualPageAndroidWiringTest {
 
     @After
     fun tearDown() {
-        if (::viewer.isInitialized) viewer.destroy()
-        Dispatchers.resetMain()
-        Injekt = previousInjekt
+        try {
+            if (::viewer.isInitialized) {
+                val ownedScope = ReflectionHelpers.getField<kotlinx.coroutines.CoroutineScope>(viewer.adapter, "scope")
+                val ownedJob = requireNotNull(ownedScope.coroutineContext[kotlinx.coroutines.Job])
+                viewer.destroy()
+                // Cancellation does not mean the native IO has exited. Its continuation and
+                // the sampler's completion counter still belong to this fixture's Main queue.
+                val deadline = System.nanoTime() + 10_000_000_000L
+                do {
+                    mainDispatcher.scheduler.runCurrent()
+                    if (ownedJob.isCompleted &&
+                        eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.optionalWork.value == 0
+                    ) {
+                        break
+                    }
+                    Thread.sleep(5)
+                } while (System.nanoTime() < deadline)
+                assertTrue("Destroyed adapter scope must finish its actual owned work: $ownedJob", ownedJob.isCompleted)
+                assertEquals(
+                    "Finish physical sampling and its completion callback before resetting the old Main dispatcher",
+                    0,
+                    eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.optionalWork.value,
+                )
+            }
+        } finally {
+            Dispatchers.resetMain()
+            Injekt = previousInjekt
+        }
     }
 
     private var replaceViewerDuringMatching = false
@@ -355,6 +388,8 @@ class SharedDualPageAndroidWiringTest {
         )
         var reads = 0
         var releases = 0
+        val encodedPages = mutableListOf<ByteArray>()
+        val sampledPages = mutableListOf<Int>()
         requireNotNull(chapter.pages).forEach { page ->
             val bitmap = android.graphics.Bitmap.createBitmap(40, 60, android.graphics.Bitmap.Config.ARGB_8888)
             for (y in 0 until 60) {
@@ -371,13 +406,18 @@ class SharedDualPageAndroidWiringTest {
                 bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
             }.toByteArray()
             bitmap.recycle()
+            encodedPages += bytes
             page.stream = { bytes.inputStream() }
             page.publishHeaderFact()
             page.status = eu.kanade.tachiyomi.source.model.Page.State.Ready
         }
         viewer.adapter.spreadDecoderFactory = { stream ->
             reads++
-            eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(stream) { releases++ }
+            val encoded = stream.readBytes()
+            val pageIndex = encodedPages.indexOfFirst { it.contentEquals(encoded) }
+            check(pageIndex >= 0) { "The actual decoder input must identify one encoded source page" }
+            sampledPages += pageIndex
+            eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(encoded.inputStream()) { releases++ }
         }
         fun groups() = viewer.adapter.items.filterIsInstance<DisplayPage>().asReversed().map { item ->
             when (item) {
@@ -401,7 +441,7 @@ class SharedDualPageAndroidWiringTest {
         assertEquals(0, reads)
         preferences.automaticSpreadMatching().set(true)
         pump {
-            listOf(2, 3) in groups() && reads == 4 && reads == releases &&
+            listOf(2, 3) in groups() && reads == 5 && reads == releases &&
                 requireNotNull(viewer.adapter.session(chapter)).spreadSampleDependencies().isEmpty()
         }
         assertTrue(
@@ -409,8 +449,25 @@ class SharedDualPageAndroidWiringTest {
             listOf(2, 3) in groups(),
         )
         assertEquals(reads, releases)
-        assertEquals("Only the original current plus four ready window is sampled", 4, reads)
-        assertTrue(requireNotNull(viewer.adapter.session(chapter)).spreadSampleDependencies().isEmpty())
+        assertEquals(
+            "Actual decoder inputs must cover current plus four ready pages once",
+            (0..4).toList(),
+            sampledPages.sorted(),
+        )
+        assertEquals("Only the original current plus four ready window is sampled", 5, reads)
+        val initialOwner = requireNotNull(viewer.adapter.session(chapter))
+        (0..4).forEach { index ->
+            assertTrue(
+                initialOwner.originalAnalysis(
+                    initialOwner.identity.pageIds[index],
+                ) is ReaderPageAnalysisEvidence.Computed,
+            )
+        }
+        assertEquals(
+            ReaderPageAnalysisEvidence.NotAnalyzed,
+            initialOwner.originalAnalysis(initialOwner.identity.pageIds[5]),
+        )
+        assertTrue(initialOwner.spreadSampleDependencies().isEmpty())
         preferences.automaticSpreadMatching().set(false)
         pump { groups() == baseline }
         assertEquals(baseline, groups())
@@ -434,6 +491,13 @@ class SharedDualPageAndroidWiringTest {
             ReflectionHelpers.getField<kotlinx.coroutines.Job?>(viewer.adapter, "matchingJob")?.isCompleted != false
         pump { reads == beforeFailure + 1 && reads == releases && samplePassFinished() }
         assertEquals(beforeFailure + 1, reads)
+        val failedOwner = requireNotNull(viewer.adapter.session(chapter))
+        val failedPageId = failedOwner.identity.pageIds[page.index]
+        val failedContent = failedOwner.identity.content.single { it.pageId == failedPageId }
+        assertEquals(
+            ReaderPageAnalysisEvidence.RetryableFailure(failedContent, ReaderAnalysisFailure.READ),
+            failedOwner.originalAnalysis(failedPageId),
+        )
         repeat(3) {
             viewer.setChapters(ViewerChapters(chapter, null, null))
             mainDispatcher.scheduler.runCurrent()
@@ -450,12 +514,19 @@ class SharedDualPageAndroidWiringTest {
         val nativePeak = java.util.concurrent.atomic.AtomicInteger()
         viewer.adapter.spreadDecoderFactory = { stream ->
             reads++
-            val original = eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(stream) { releases++ }
+            val encoded = stream.readBytes()
+            val isOldMatchingPage = encoded.contentEquals(encodedPages[page.index])
+            val original = eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(encoded.inputStream()) {
+                releases++
+            }
             object : eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageRegionDecoder {
                 override fun decode(region: android.graphics.Rect): android.graphics.Bitmap {
                     val active = nativeActive.incrementAndGet()
                     nativePeak.updateAndGet { maxOf(it, active) }
                     try {
+                        if (entered.count > 0L) {
+                            check(isOldMatchingPage) { "The blocked decoder must hold the old matching page 2 pixels" }
+                        }
                         entered.countDown()
                         check(release.await(5, java.util.concurrent.TimeUnit.SECONDS))
                         return original.decode(region)
@@ -467,6 +538,7 @@ class SharedDualPageAndroidWiringTest {
             }
         }
         try {
+            val blockedContentVersion = page.captureContentFact().first
             page.retryHeaderFact()
             pump { entered.count == 0L }
             assertEquals(0L, entered.count)
@@ -484,6 +556,11 @@ class SharedDualPageAndroidWiringTest {
                 pending.isCancelled,
             )
             assertTrue(!pending.isCompleted && nativeActive.get() == 1)
+            // Give the new owner genuinely different pixels while the cancelled decoder still holds the old match.
+            page.stream = { encodedPages[1].inputStream() }
+            page.publishHeaderFact()
+            val replacementContentVersion = page.captureContentFact().first
+            assertNotEquals(blockedContentVersion, replacementContentVersion)
             if (replaceViewer) {
                 val originalFactory = viewer.adapter.spreadDecoderFactory
                 viewer.destroy()
@@ -527,6 +604,13 @@ class SharedDualPageAndroidWiringTest {
             assertTrue(
                 "Original completion resumes the valid current owner without another setting or Retry",
                 owner.spreadSampleDependencies().isEmpty(),
+            )
+            val currentPageId = owner.identity.pageIds[page.index]
+            val currentAnalysis = owner.originalAnalysis(currentPageId)
+            assertTrue(currentAnalysis is ReaderPageAnalysisEvidence.Computed)
+            assertEquals(
+                replacementContentVersion,
+                (currentAnalysis as ReaderPageAnalysisEvidence.Computed).content.contentVersion,
             )
             assertTrue(
                 "A cancelled old-content sample cannot publish its earlier pairing after ordinary navigation",
@@ -690,31 +774,239 @@ class SharedDualPageAndroidWiringTest {
     }
 
     @Test
-    fun `same native page content replacement creates a new unknown owner without losing logical target`() {
-        val chapter = chapter(5).apply { requestedPage = 4 }
-        requireNotNull(chapter.pages)[4].apply {
-            stream = { byteArrayOf(4, 5, 6).inputStream() }
-            encodedPageRef = mihon.domain.reader.session.EncodedPageRef("original-content")
+    fun `same native page content replacement creates a new unknown owner without losing logical target`() =
+        runBlocking {
+            val reads = java.util.concurrent.atomic.AtomicInteger()
+            viewer.adapter.spreadDecoderFactory = { stream ->
+                reads.incrementAndGet()
+                eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(stream)
+            }
+
+            fun createPng(width: Int, height: Int): ByteArray {
+                val bitmap = android.graphics.Bitmap.createBitmap(
+                    width,
+                    height,
+                    android.graphics.Bitmap.Config.ARGB_8888,
+                )
+                return java.io.ByteArrayOutputStream().also {
+                    bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                    bitmap.recycle()
+                }.toByteArray()
+            }
+            val portraitPng = createPng(100, 200)
+            val replacementPortraitPng = createPng(120, 240)
+            val chapter = chapter(3, id = 7).apply { requestedPage = 1 }
+            val pages = requireNotNull(chapter.pages)
+            for (i in 0..2) {
+                pages[i].stream = { portraitPng.inputStream() }
+                pages[i].encodedPageRef = mihon.domain.reader.session.EncodedPageRef("page-$i-v1")
+                pages[i].status = eu.kanade.tachiyomi.source.model.Page.State.Ready
+                // Normal header publishing runs initially for all pages to establish baseline PORTRAIT dimensions
+                pages[i].publishHeaderFact()
+            }
+
+            suspend fun pump(condition: () -> Boolean) {
+                val deadline = System.nanoTime() + 10_000_000_000L
+                do {
+                    mainDispatcher.scheduler.runCurrent()
+                    kotlinx.coroutines.delay(5)
+                } while (!condition() && System.nanoTime() < deadline)
+            }
+
+            // This case tests content replacement with matching already enabled, rather than
+            // changing the matching setting while the initial chapter is being prepared.
+            val preferences = Injekt.get<ReaderPreferences>()
+            preferences.automaticSpreadMatching().set(true)
+            pump { viewer.config.automaticSpreadMatching }
+            assertTrue(
+                "The real preference must enable matching before the chapter starts",
+                viewer.config.automaticSpreadMatching,
+            )
+
+            viewer.setChapters(ViewerChapters(chapter, null, null))
+            viewer.adapter.selectPage(pages[1])
+            mainDispatcher.scheduler.runCurrent()
+
+            val initialSession = requireNotNull(viewer.adapter.session(chapter))
+            val page1Id = initialSession.identity.pageIds[1]
+            val targetPageId = initialSession.identity.pageIds[2]
+
+            // Wait for initial original analysis to be Computed via fact budget
+            pump {
+                val session = viewer.adapter.session(chapter)
+                reads.get() > 0 && session?.originalAnalysis(targetPageId) is ReaderPageAnalysisEvidence.Computed
+            }
+            val previous = requireNotNull(viewer.adapter.session(chapter))
+            val initialAnalysis = previous.originalAnalysis(targetPageId)
+            assertEquals(1, previous.location?.pageId?.sourcePageIndex)
+            assertTrue(
+                "Initial owner must produce Computed original analysis via fact budget: " +
+                    "automatic=${viewer.config.automaticSpreadMatching} reads=${reads.get()} " +
+                    "location=${previous.location} closed=${previous.isClosed} " +
+                    "proof=${previous.certifyPairing()} " +
+                    "analysis=${previous.identity.pageIds.map { previous.originalAnalysis(it) }} " +
+                    "required=${previous.factBudget.requiredPages()} optional=${previous.factBudget.optionalPages()} " +
+                    "job=${ReflectionHelpers.getField<kotlinx.coroutines.Job?>(viewer.adapter, "matchingJob")} " +
+                    "requested=${ReflectionHelpers.getField<Boolean>(viewer.adapter, "matchingRequested")} " +
+                    "work=${eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.optionalWork.value} " +
+                    "foreground=${eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView.foregroundWork.value} " +
+                    "pressure=${activity.optionalWorkUnderMemoryPressure.value}",
+                initialAnalysis is ReaderPageAnalysisEvidence.Computed,
+            )
+            val initialContentVersion = (initialAnalysis as ReaderPageAnalysisEvidence.Computed).content.contentVersion
+            assertEquals(
+                mihon.domain.reader.ReaderPageFactState.PORTRAIT,
+                previous.pageFact(targetPageId)?.state,
+            )
+            assertTrue(
+                "Initial budget must have attempted target page",
+                previous.factBudget.holds(targetPageId) ||
+                    targetPageId in previous.factBudget.requiredPages() ||
+                    targetPageId in previous.factBudget.optionalPages(),
+            )
+            val readsBefore = reads.get()
+
+            // Replace content on page 2 with new PORTRAIT dimensions requiring re-analysis without navigating away (staying at page 1)
+            pages[2].stream = { replacementPortraitPng.inputStream() }
+            pages[2].encodedPageRef = mihon.domain.reader.session.EncodedPageRef("replacement-content")
+            viewer.setChapters(ViewerChapters(chapter, null, null))
+            mainDispatcher.scheduler.runCurrent()
+            val current = requireNotNull(viewer.adapter.session(chapter))
+            assertNotSame(
+                "Changing actual content on the same native page must invalidate the old owner",
+                previous,
+                current,
+            )
+            assertEquals(1, current.location?.pageId?.sourcePageIndex)
+            assertEquals(
+                mihon.domain.reader.ReaderPageFactState.UNKNOWN,
+                current.pageFact(targetPageId)?.state ?: mihon.domain.reader.ReaderPageFactState.UNKNOWN,
+            )
+            assertTrue(
+                "Changed page original analysis must be reset to NotAnalyzed on new owner",
+                current.originalAnalysis(targetPageId) is ReaderPageAnalysisEvidence.NotAnalyzed,
+            )
+            assertEquals(
+                "Untouched page 1 fact must remain stable",
+                mihon.domain.reader.ReaderPageFactState.PORTRAIT,
+                current.pageFact(page1Id)?.state,
+            )
+
+            // B wiring: Re-admit replacement content via real adapter matching and fact budget without manual publication or navigation
+            pump {
+                val s = viewer.adapter.session(chapter)
+                reads.get() > readsBefore && s?.originalAnalysis(targetPageId) is ReaderPageAnalysisEvidence.Computed
+            }
+            val newAnalysis = current.originalAnalysis(targetPageId)
+            assertTrue(
+                "Replaced content must produce new Computed analysis via new budget shell",
+                newAnalysis is ReaderPageAnalysisEvidence.Computed,
+            )
+            val newContentVersion = (newAnalysis as ReaderPageAnalysisEvidence.Computed).content.contentVersion
+            assertNotEquals(
+                initialContentVersion,
+                newContentVersion,
+            )
+            assertEquals(
+                "Replaced content must publish its new PORTRAIT fact on the new owner",
+                mihon.domain.reader.ReaderPageFactState.PORTRAIT,
+                current.pageFact(targetPageId)?.state,
+            )
+            assertTrue("Sampling reads must increment via real read permit", reads.get() > readsBefore)
+
+            // Untouched pages remain stable
+            assertEquals(
+                "Untouched page 1 fact must remain stable",
+                mihon.domain.reader.ReaderPageFactState.PORTRAIT,
+                current.pageFact(page1Id)?.state,
+            )
+            // Ordinary adapter items and display units remain valid
+            assertTrue(viewer.adapter.items.isNotEmpty())
+            preferences.automaticSpreadMatching().set(false)
         }
-        viewer.setChapters(ViewerChapters(chapter, null, null))
-        requireNotNull(chapter.pages).forEach { viewer.adapter.updatePageDimensions(it, 100, 200) }
-        val previous = requireNotNull(viewer.adapter.session(chapter))
-        val pages = requireNotNull(chapter.pages)
-        pages[4].stream = { byteArrayOf(1, 2, 3).inputStream() }
-        pages[4].encodedPageRef = mihon.domain.reader.session.EncodedPageRef("replacement-content")
-        viewer.setChapters(ViewerChapters(chapter, null, null))
-        val current = requireNotNull(viewer.adapter.session(chapter))
-        assertNotSame(
-            "Changing actual content on the same native page must invalidate the old owner",
-            previous,
-            current,
-        )
-        assertEquals(4, current.location?.pageId?.sourcePageIndex)
-        assertEquals(
-            mihon.domain.reader.ReaderPageFactState.UNKNOWN,
-            current.pageFact(current.identity.pageIds[4])?.state ?: mihon.domain.reader.ReaderPageFactState.UNKNOWN,
-        )
-    }
+
+    @Test
+    fun `explicit capacity hold blocks analysis admission until slot released`() =
+        runTest(mainDispatcher) {
+            val reads = java.util.concurrent.atomic.AtomicInteger()
+            viewer.adapter.spreadDecoderFactory = { stream ->
+                reads.incrementAndGet()
+                eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(stream)
+            }
+
+            fun createPng(width: Int, height: Int): ByteArray {
+                val bitmap = android.graphics.Bitmap.createBitmap(
+                    width,
+                    height,
+                    android.graphics.Bitmap.Config.ARGB_8888,
+                )
+                return java.io.ByteArrayOutputStream().also {
+                    bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                    bitmap.recycle()
+                }.toByteArray()
+            }
+            val portraitPng = createPng(100, 200)
+            val spreadPng = createPng(300, 150)
+            val chapter = chapter(3, id = 8).apply { requestedPage = 1 }
+            val pages = requireNotNull(chapter.pages)
+            for (i in 0..2) {
+                pages[i].stream = { portraitPng.inputStream() }
+                pages[i].encodedPageRef = mihon.domain.reader.session.EncodedPageRef("page-$i-v1")
+                pages[i].status = eu.kanade.tachiyomi.source.model.Page.State.Ready
+                pages[i].publishHeaderFact()
+            }
+            viewer.setChapters(ViewerChapters(chapter, null, null))
+            viewer.adapter.selectPage(pages[1])
+            mainDispatcher.scheduler.runCurrent()
+
+            suspend fun pump(condition: () -> Boolean) {
+                val deadline = System.nanoTime() + 10_000_000_000L
+                do {
+                    mainDispatcher.scheduler.runCurrent()
+                    kotlinx.coroutines.delay(5)
+                } while (!condition() && System.nanoTime() < deadline)
+            }
+
+            val preferences = Injekt.get<ReaderPreferences>()
+            preferences.automaticSpreadMatching().set(true)
+
+            val initialSession = requireNotNull(viewer.adapter.session(chapter))
+            val targetPageId = initialSession.identity.pageIds[2]
+            pump {
+                val session = viewer.adapter.session(chapter)
+                reads.get() > 0 && session?.originalAnalysis(targetPageId) is ReaderPageAnalysisEvidence.Computed
+            }
+            val previous = requireNotNull(viewer.adapter.session(chapter))
+            assertTrue(previous.originalAnalysis(targetPageId) is ReaderPageAnalysisEvidence.Computed)
+
+            // Replace content on page 2
+            pages[2].stream = { spreadPng.inputStream() }
+            pages[2].encodedPageRef = mihon.domain.reader.session.EncodedPageRef("replacement-content")
+            viewer.setChapters(ViewerChapters(chapter, null, null))
+            mainDispatcher.scheduler.runCurrent()
+            val current = requireNotNull(viewer.adapter.session(chapter))
+            val currentTargetPageId = current.identity.pageIds[2]
+
+            // Explicit capacity hold: reserve slot to verify capacity limit blocks admission
+            current.factBudget.reserve(listOf(currentTargetPageId), 0L, required = true)
+            try {
+                // Verify matching with explicit capacity hold
+                for (step in 0..20) {
+                    mainDispatcher.scheduler.runCurrent()
+                    kotlinx.coroutines.delay(10)
+                }
+
+                // Verify that holding capacity blocks new analysis from being admitted and computed
+                assertTrue(
+                    "Explicit capacity hold must block new analysis admission",
+                    current.originalAnalysis(currentTargetPageId) !is ReaderPageAnalysisEvidence.Computed,
+                )
+            } finally {
+                current.factBudget.complete(currentTargetPageId, 0L, cacheHit = true)
+                preferences.automaticSpreadMatching().set(false)
+                mainDispatcher.scheduler.runCurrent()
+            }
+        }
 
     @Test
     fun `first encoded materialization preserves restored owner and committed manual boundaries`() {
@@ -958,10 +1250,20 @@ class SharedDualPageAndroidWiringTest {
             memoryPressureDuringSample = true,
         )
 
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `continuous foreground busy keeps matching rounds bounded and idle resumes automatically`() =
+        verifyOriginalHttpPhysicalWork(
+            switchLoader = false,
+            pauseDuringSample = false,
+            assertBoundedRounds = true,
+        )
+
     private fun verifyOriginalHttpPhysicalWork(
         switchLoader: Boolean,
         pauseDuringSample: Boolean = false,
         memoryPressureDuringSample: Boolean = false,
+        assertBoundedRounds: Boolean = false,
     ) = runBlocking<Unit> {
         val directory = java.nio.file.Files.createTempDirectory("reader-matching-http-").toFile()
         val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
@@ -1227,6 +1529,13 @@ class SharedDualPageAndroidWiringTest {
                     mainDispatcher.scheduler.runCurrent()
                     kotlinx.coroutines.delay(5)
                 }
+                if (assertBoundedRounds) {
+                    val rounds = ReflectionHelpers.getField<Int>(viewer.adapter, "matchingRounds")
+                    assertTrue(
+                        "Matching rounds must stay bounded while foreground is continuously busy, but was $rounds",
+                        rounds <= 1,
+                    )
+                }
                 assertEquals(
                     "Optional matching must not decode while original normal physical work is busy",
                     0,
@@ -1253,9 +1562,268 @@ class SharedDualPageAndroidWiringTest {
         }
     }
 
-    private fun chapter(count: Int): ReaderChapter = ReaderChapter(
+    @Test
+    fun `adapter matching setting change reconfigures session and refreshes budget`() {
+        val readerPreferences = Injekt.get<ReaderPreferences>()
+        readerPreferences.automaticSpreadMatching().set(false)
+        mainDispatcher.scheduler.runCurrent()
+        val chapter = chapter(5)
+        viewer.config.usePageTransitions = false
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        val session = requireNotNull(viewer.adapter.session(chapter))
+
+        val initialBudget = session.factBudget
+        val targetPage = session.identity.pageIds[1]
+        assertEquals(listOf(targetPage), initialBudget.reserve(listOf(targetPage), 1000L, required = true))
+        val permit = ReaderDualPageFactReadPermit(initialBudget, targetPage, { 1000L }, ownerKey = 1L)
+        assertFalse(permit.exhausted)
+        assertTrue(initialBudget.canRead(targetPage, 1000L))
+
+        val resourcePage = session.identity.pageIds[2]
+        val resourceContent = session.identity.content[2]
+        val req = requireNotNull(session.requestOriginalAnalysis(resourcePage))
+        assertTrue(session.failOriginalAnalysis(req, ReaderAnalysisFailure.RESOURCE))
+        assertEquals(
+            ReaderPageAnalysisEvidence.RetryableFailure(resourceContent, ReaderAnalysisFailure.RESOURCE),
+            session.originalAnalysis(resourcePage),
+        )
+
+        val oldFactRevision = session.factWorkRevision
+
+        // 1. Same configuration must remain completely idempotent
+        viewer.adapter.matchingSettingChanged()
+        assertSame("Same configuration must keep existing budget", initialBudget, session.factBudget)
+        assertEquals("Same configuration must be idempotent", oldFactRevision, session.factWorkRevision)
+        assertEquals(
+            ReaderPageAnalysisEvidence.RetryableFailure(resourceContent, ReaderAnalysisFailure.RESOURCE),
+            session.originalAnalysis(resourcePage),
+        )
+        assertFalse(permit.exhausted)
+
+        // 2. Setting change reconfigures session, refreshes budget and clears resource failure
+        readerPreferences.automaticSpreadMatching().set(true)
+        mainDispatcher.scheduler.runCurrent()
+        val newBudget = session.factBudget
+        assertNotSame("Config change must replace fact budget", initialBudget, newBudget)
+        assertTrue("Old permit must be exhausted", permit.exhausted)
+        assertFalse("Old budget must be closed", initialBudget.canRead(targetPage, 1000L))
+        assertTrue("Fact revision must increment", session.factWorkRevision > oldFactRevision)
+        assertEquals(
+            ReaderPageAnalysisEvidence.NotAnalyzed,
+            session.originalAnalysis(resourcePage),
+        )
+
+        // 3. Applying identical matching setting again remains idempotent
+        val nextFactRevision = session.factWorkRevision
+        viewer.adapter.matchingSettingChanged()
+        assertSame("Identical matching setting must not replace budget again", newBudget, session.factBudget)
+        assertEquals(nextFactRevision, session.factWorkRevision)
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `actual required original sample records resource failure when production clock budget expires`() =
+        runBlocking {
+            val chapter = chapter(4)
+            val pages = requireNotNull(chapter.pages)
+            val targetColor = android.graphics.Color.rgb(2, 80, 120)
+            pages.forEach { page ->
+                val bitmap = android.graphics.Bitmap.createBitmap(40, 60, android.graphics.Bitmap.Config.ARGB_8888)
+                bitmap.eraseColor(android.graphics.Color.rgb(page.index + 1, 80, 120))
+                val bytes = java.io.ByteArrayOutputStream().also {
+                    bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                }.toByteArray()
+                bitmap.recycle()
+                page.stream = { bytes.inputStream() }
+                page.status = eu.kanade.tachiyomi.source.model.Page.State.Ready
+                page.publishHeaderFact()
+            }
+            viewer.config.usePageTransitions = false
+            viewer.setChapters(ViewerChapters(chapter, null, null))
+            viewer.adapter.selectPage(pages[0])
+            mainDispatcher.scheduler.runCurrent()
+            val owner = requireNotNull(viewer.adapter.session(chapter))
+            val targetPageId = owner.identity.pageIds[1]
+            val targetContent = owner.identity.content.single { it.pageId == targetPageId }
+            val location = owner.location
+            val reads = java.util.concurrent.atomic.AtomicInteger()
+            val releases = java.util.concurrent.atomic.AtomicInteger()
+            val elapsedBudget = java.util.concurrent.atomic.AtomicBoolean()
+            val targetRegions = java.util.concurrent.atomic.AtomicInteger()
+            viewer.adapter.spreadDecoderFactory = { stream ->
+                reads.incrementAndGet()
+                val original = eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(stream) {
+                    releases.incrementAndGet()
+                }
+                object : eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageRegionDecoder {
+                    override fun decode(region: android.graphics.Rect): android.graphics.Bitmap {
+                        val decoded = original.decode(region)
+                        if (decoded.getPixel(0, 0) == targetColor && targetRegions.incrementAndGet() == 1) {
+                            val remaining = owner.factBudget.remainingWaitMillis(android.os.SystemClock.uptimeMillis())
+                            check(remaining > 0) { "Actual required sampling must begin inside the production budget" }
+                            check(targetPageId in owner.factBudget.requiredPages())
+                            check(!activity.optionalWorkUnderMemoryPressure.value)
+                            check(chapter.pageLoader?.hasForegroundWork != true)
+                            check(eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView.foregroundWork.value == 0)
+                            org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofMillis(remaining))
+                            elapsedBudget.set(true)
+                        }
+                        return decoded
+                    }
+
+                    override fun recycle() = original.recycle()
+                }
+            }
+            suspend fun pump(condition: () -> Boolean) {
+                // This wall-clock guard only bounds the test; the decoder advances the production clock above.
+                kotlinx.coroutines.withTimeout(10_000) {
+                    while (!condition()) {
+                        mainDispatcher.scheduler.runCurrent()
+                        kotlinx.coroutines.delay(5)
+                    }
+                }
+            }
+            Injekt.get<ReaderPreferences>().automaticSpreadMatching().set(true)
+            fun samplePassFinished() =
+                ReflectionHelpers.getField<kotlinx.coroutines.Job?>(viewer.adapter, "matchingJob")?.isCompleted != false
+            pump { elapsedBudget.get() && reads.get() == releases.get() && samplePassFinished() }
+            assertSame(owner, viewer.adapter.session(chapter))
+            assertEquals(location, owner.location)
+            assertEquals(0L, owner.factBudget.remainingWaitMillis(android.os.SystemClock.uptimeMillis()))
+            assertEquals(
+                ReaderPageAnalysisEvidence.RetryableFailure(targetContent, ReaderAnalysisFailure.RESOURCE),
+                owner.originalAnalysis(targetPageId),
+            )
+            assertEquals(
+                "The actual target page region must consume the remaining production budget",
+                1,
+                targetRegions.get(),
+            )
+            val completedReads = reads.get()
+            assertTrue(completedReads > 0)
+            assertEquals(completedReads, releases.get())
+            repeat(3) {
+                viewer.setChapters(ViewerChapters(chapter, null, null))
+                mainDispatcher.scheduler.runCurrent()
+            }
+            pump { samplePassFinished() }
+            assertEquals(
+                "Unrelated rebuilds must not restart a budget-exhausted original sample",
+                completedReads,
+                reads.get(),
+            )
+            assertEquals(completedReads, releases.get())
+            assertEquals(
+                ReaderPageAnalysisEvidence.RetryableFailure(targetContent, ReaderAnalysisFailure.RESOURCE),
+                owner.originalAnalysis(targetPageId),
+            )
+        }
+
+    @Test
+    fun `memory pressure during required sample defers work and auto-resumes on relief without retry`() =
+        runBlocking<Unit> {
+            val chapter = chapter(4)
+            val pages = requireNotNull(chapter.pages)
+            val bitmap = android.graphics.Bitmap.createBitmap(40, 60, android.graphics.Bitmap.Config.ARGB_8888)
+            val bytes = java.io.ByteArrayOutputStream().also {
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            }.toByteArray()
+            bitmap.recycle()
+
+            pages.forEach { page ->
+                page.stream = { bytes.inputStream() }
+                page.status = eu.kanade.tachiyomi.source.model.Page.State.Ready
+                page.publishHeaderFact()
+            }
+
+            val readerPreferences = Injekt.get<ReaderPreferences>()
+            readerPreferences.automaticSpreadMatching().set(true)
+            viewer.config.usePageTransitions = false
+
+            val regionEntered = java.util.concurrent.CountDownLatch(1)
+            val regionRelease = java.util.concurrent.CountDownLatch(1)
+            var pressureTriggered = false
+            viewer.adapter.spreadDecoderFactory = { stream ->
+                val original = eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(stream)
+                object : eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageRegionDecoder {
+                    override fun decode(region: android.graphics.Rect): android.graphics.Bitmap {
+                        if (!pressureTriggered) {
+                            pressureTriggered = true
+                            activity.onTrimMemory(android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW)
+                            regionEntered.countDown()
+                            check(regionRelease.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                        }
+                        return original.decode(region)
+                    }
+
+                    override fun recycle() {
+                        original.recycle()
+                    }
+                }
+            }
+
+            suspend fun pump(phase: String, condition: () -> Boolean) {
+                try {
+                    kotlinx.coroutines.withTimeout(10_000) {
+                        while (!condition()) {
+                            mainDispatcher.scheduler.runCurrent()
+                            kotlinx.coroutines.delay(5)
+                        }
+                    }
+                } catch (error: kotlinx.coroutines.TimeoutCancellationException) {
+                    val owner = viewer.adapter.session(chapter)
+                    val job = ReflectionHelpers.getField<kotlinx.coroutines.Job?>(viewer.adapter, "matchingJob")
+                    throw AssertionError(
+                        "$phase: entered=${regionEntered.count} release=${regionRelease.count} " +
+                            "pressure=${activity.optionalWorkUnderMemoryPressure.value} job=$job " +
+                            "optional=${AndroidReaderSpreadSampler.optionalWork.value} " +
+                            "foreground=${ReaderPageImageView.foregroundWork.value} " +
+                            "location=${owner?.location} proof=${owner?.certifyPairing()} " +
+                            "analysis=${owner?.identity?.pageIds?.map { owner.originalAnalysis(it) }}",
+                        error,
+                    )
+                }
+            }
+
+            viewer.setChapters(ViewerChapters(chapter, null, null))
+            viewer.adapter.selectPage(pages[0])
+            val session = requireNotNull(viewer.adapter.session(chapter))
+            val targetPage = session.identity.pageIds[1]
+
+            pump("Required native region must enter before applying the pause assertions") { regionEntered.count == 0L }
+            assertTrue(activity.optionalWorkUnderMemoryPressure.value)
+            regionRelease.countDown()
+
+            // Wait until the matchingJob finishes the paused round
+            pump("Paused matching round must finish its real work") {
+                val job = ReflectionHelpers.getField<kotlinx.coroutines.Job?>(viewer.adapter, "matchingJob")
+                job == null || job.isCompleted
+            }
+
+            assertNotEquals(
+                "Deferred page must NOT be recorded as RetryableFailure during temporary memory pressure",
+                ReaderAnalysisFailure.RESOURCE,
+                (session.originalAnalysis(targetPage) as? ReaderPageAnalysisEvidence.RetryableFailure)?.reason,
+            )
+            assertEquals(ReaderPageAnalysisEvidence.NotAnalyzed, session.originalAnalysis(targetPage))
+
+            // Relieve memory pressure
+            activity.onWindowFocusChanged(true)
+            assertFalse(activity.optionalWorkUnderMemoryPressure.value)
+
+            pump("Memory relief must resume the existing required sample") {
+                session.originalAnalysis(targetPage) is ReaderPageAnalysisEvidence.Computed
+            }
+
+            assertTrue(
+                "Page must complete analysis automatically after memory pressure relief",
+                session.originalAnalysis(targetPage) is ReaderPageAnalysisEvidence.Computed,
+            )
+        }
+
+    private fun chapter(count: Int, id: Long = 7): ReaderChapter = ReaderChapter(
         Chapter.create().copy(
-            id = 7,
+            id = id,
             mangaId =
             1,
         ),

@@ -406,7 +406,7 @@ class ReaderPageFactProductionWiringTest {
             val budget = mihon.domain.reader.ReaderDualPageFactBudget()
             budget.reserve(listOf(pageId), 0)
             val optional = async(Dispatchers.IO) {
-                httpLoader.loadFactPage(page, mihon.domain.reader.ReaderDualPageFactReadPermit(budget, pageId) { 0 })
+                httpLoader.loadFactPage(page, mihon.domain.reader.ReaderDualPageFactReadPermit(budget, pageId, { 0 }))
             }
             withContext(Dispatchers.IO) { delay(50) }
             org.junit.Assert.assertFalse(
@@ -444,7 +444,7 @@ class ReaderPageFactProductionWiringTest {
             val page = ReaderPage(0, imageUrl = server.url("/extra").toString())
             val budget = mihon.domain.reader.ReaderDualPageFactBudget()
             budget.reserve(listOf(pageId), 0)
-            val permit = mihon.domain.reader.ReaderDualPageFactReadPermit(budget, pageId) { 0 }
+            val permit = mihon.domain.reader.ReaderDualPageFactReadPermit(budget, pageId, { 0 })
             val request = mihon.domain.reader.materialize.ReaderPageFetchRequest(
                 pageId,
                 1,

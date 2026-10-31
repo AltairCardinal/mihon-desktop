@@ -2,6 +2,7 @@ package mihon.desktop.reader
 
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.semantics.SemanticsNode
@@ -23,9 +24,12 @@ import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.ui.reader.ReaderPagerNativePresentationKey
 import mihon.desktop.ui.reader.ReaderPagerPresentationBinding
 import mihon.desktop.ui.reader.ReaderScreenModel
+import mihon.desktop.ui.reader.ReaderSpreadPublisherRoundObserver
+import mihon.domain.reader.PageDecodePurpose
 import mihon.domain.reader.ReaderAnalysisFailure
 import mihon.domain.reader.ReaderDualPageFactLimits
 import mihon.domain.reader.ReaderDualPageViewportTicket
+import mihon.domain.reader.ReaderImageOrientation
 import mihon.domain.reader.ReaderPageAnalysisEvidence
 import mihon.domain.reader.ReaderPageDecodeKey
 import mihon.domain.reader.ReaderPageFact
@@ -59,6 +63,7 @@ import java.io.File
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Native paint -> factory model -> real reader session -> real tracker -> SQL transaction. */
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
@@ -77,7 +82,9 @@ class SharedDualPageRuntimeProgressProductionTest {
             currentCoroutineContext(),
             MountedReaderPresentationCase(MountedReaderPresentationMode.SINGLE, MountedReaderContentRoute.ONLINE),
             mangaId = 10,
-            progressTracker = ReaderProgressTracker(RecordReadingProgress(SqlDelightReadingProgressRepository(database))),
+            progressTracker = ReaderProgressTracker(
+                RecordReadingProgress(SqlDelightReadingProgressRepository(database)),
+            ),
             automaticSpreadMatching = matching,
             automaticLayout = true,
             pageCount = 6,
@@ -124,8 +131,16 @@ class SharedDualPageRuntimeProgressProductionTest {
             assertFalse(model.state.value.dualPageMode)
             // AUTO uses RTL: actual left-side taps advance each source page.
             for (page in (if (resizeFromDual) 2 else 1)..5) {
-                fixture.scene.sendPointerEvent(PointerEventType.Press, Offset(20f, 300f), button = PointerButton.Primary)
-                fixture.scene.sendPointerEvent(PointerEventType.Release, Offset(20f, 300f), button = PointerButton.Primary)
+                fixture.scene.sendPointerEvent(
+                    PointerEventType.Press,
+                    Offset(20f, 300f),
+                    button = PointerButton.Primary,
+                )
+                fixture.scene.sendPointerEvent(
+                    PointerEventType.Release,
+                    Offset(20f, 300f),
+                    button = PointerButton.Primary,
+                )
                 assertEquals(page, model.state.value.currentPage)
                 pumpUntil { database.chaptersQueries.getChapterById(7).executeAsOne().last_page_read == page.toLong() }
             }
@@ -202,10 +217,12 @@ class SharedDualPageRuntimeProgressProductionTest {
             ).also { independent = it }
             isolated.setDualPageMode(true)
             isolated.setAutoSpreadMatching(true)
-            isolated.javaClass.declaredMethods.single { it.name == "startSpreadSamplesLocked" }.run {
-                isAccessible = true
-                invoke(isolated, owner(isolated), runtime, CoroutineScope(currentCoroutineContext()), Semaphore(1))
-            }
+            isolated.startSpreadPublisher(
+                owner(isolated),
+                runtime,
+                CoroutineScope(currentCoroutineContext()),
+                Semaphore(1),
+            )
             pumpUntil { owner(isolated).originalAnalysis(id) is ReaderPageAnalysisEvidence.Computed }
             val fact = (owner(isolated).originalAnalysis(id) as ReaderPageAnalysisEvidence.Computed).fact
             assertEquals(60, fact.width)
@@ -319,25 +336,33 @@ class SharedDualPageRuntimeProgressProductionTest {
             }
             val location = owner.location
             val budget = owner.factBudget
+            // This case needs an outstanding producer; the separate cache case protects cache-only completion.
+            runtime.pageImagePipeline.clear()
+            assertTrue(
+                owner.certifyPairing() !is ReaderPairingCertification.Certified,
+                "The READY-consumption fixture must still require original analysis before producer admission",
+            )
             serial.acquire()
-            independent.javaClass.declaredMethods.single { it.name == "startSpreadSamplesLocked" }
-                .run {
-                    isAccessible = true
-                    invoke(
-                        independent,
-                        owner,
-                        runtime,
-                        CoroutineScope(currentCoroutineContext()),
-                        serial,
-                    )
-                }
+            independent.startSpreadPublisher(
+                owner,
+                runtime,
+                CoroutineScope(currentCoroutineContext()),
+                serial,
+            )
             runCurrent()
             assertEquals(0, serial.availablePermits)
             val job = independent.javaClass.getDeclaredField("spreadPublisherJob").run {
                 isAccessible = true
                 get(independent) as Job
             }
-            assertTrue(job.isActive)
+            assertTrue(
+                job.isActive,
+                "Publisher active=${job.isActive}, completed=${job.isCompleted}, cancelled=${job.isCancelled}; " +
+                    "proof=${owner.certifyPairing()}; " +
+                    "analyses=${owner.identity.pageIds.map { it to owner.originalAnalysis(it) }}; " +
+                    "core=${runtime.session.core.snapshot.activeChapter.pages}; " +
+                    "model=${independent.state.value.session.activeChapter.pages}",
+            )
             val holders = runtime.presentationImageOwner.javaClass.getDeclaredField("holders").run {
                 isAccessible = true
                 @Suppress("UNCHECKED_CAST")
@@ -396,14 +421,22 @@ class SharedDualPageRuntimeProgressProductionTest {
     fun `original normal decode expires with its existing location budget and recovers by retry`() =
         verifyCoreReplacement(true, 2, expires = true)
 
-    private fun verifyCoreReplacement(
-        automaticMatching: Boolean,
-        heldPage: Int,
-        expires: Boolean =
-            false,
-    ) = runTest {
-        val secondEntered = CompletableDeferred<Unit>()
-        val releaseSecond = CompletableDeferred<Unit>()
+    @Test
+    fun `accepted prior page replacement rejects later completion before delayed binding`() =
+        verifyCoreReplacement(true, 2, previousAccepted = true)
+
+    /**
+     * The published original analysis must re-check the whole admitted physical identity, not
+     * only its own page. The replacement lands in the production window between the size gate
+     * and the final publication: the target is already admitted, the real core replaces it, the
+     * UI binding stays delayed, and only then the partner's analysis completes.
+     */
+    @Test
+    fun `core replacement after the size gate rejects the later partner analysis publication`() = runTest {
+        val targetPageIndex = 1
+        val partnerPageIndex = 2
+        val partnerRegionEntered = CompletableDeferred<Unit>()
+        val releasePartnerRegion = CompletableDeferred<Unit>()
         val armed = AtomicBoolean(false)
         val delegate = SkiaDesktopReaderPageImageDecoder()
         val fixture = MountedReaderPresentationFixture(
@@ -414,6 +447,521 @@ class SharedDualPageRuntimeProgressProductionTest {
                 MountedReaderContentRoute.ONLINE,
             ),
             pageImageDecoder = DesktopReaderPageImageDecoder { encoded, key ->
+                val partner = key.contentKey.pageId.sourcePageIndex == partnerPageIndex
+                if (armed.get() && partner && key.purpose == PageDecodePurpose.REGION_TILE) {
+                    // The production region sampling of the partner's original analysis runs
+                    // between the size gate and the final publication of that analysis.
+                    partnerRegionEntered.complete(Unit)
+                    releasePartnerRegion.await()
+                }
+                if (armed.get() && partner && key.purpose == PageDecodePurpose.FULL_PAGE) {
+                    // A full-page decode that cannot carry its original samples takes the same
+                    // production region sampling path for the original analysis.
+                    val size = requireNotNull(SkiaImageDecoder.peekSize(encoded))
+                    val bitmap = SkiaImageDecoder.decodeDownsampled(encoded, key.maxWidth, key.maxHeight)
+                    DesktopReaderImageAsset(
+                        bitmap = bitmap,
+                        sourceWidth = size.first,
+                        sourceHeight = size.second,
+                        estimatedBytes = bitmap.width.toLong() * bitmap.height * 4,
+                        sampled = bitmap.width != size.first || bitmap.height != size.second,
+                        originalSamples = emptyMap(),
+                        sourceOrientation = ReaderImageOrientation.NORMAL,
+                        disposer = { bitmap.asSkiaBitmap()::close },
+                    )
+                } else {
+                    delegate.decode(encoded, key)
+                }
+            },
+            heldResponsePage = -1,
+        )
+        fun pumpUntil(done: () -> Boolean) {
+            val deadline = System.nanoTime() + 5_000_000_000L
+            do {
+                fixture.scene.render().close()
+                runCurrent()
+                if (done()) return
+                Thread.sleep(5)
+            } while (System.nanoTime() < deadline)
+            assertTrue(done()) {
+                fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+                val native = fixture.scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+                    .first { it.config.contains(ReaderPagerNativePresentationKey) }
+                    .config[ReaderPagerNativePresentationKey]
+                "Publication window unavailable: ${native.describe()}"
+            }
+        }
+        var independent: ReaderScreenModel? = null
+        lateinit var model: ReaderScreenModel
+        fun owner(): SharedDualPageSession = model.javaClass.getDeclaredField("dualSession").run {
+            isAccessible = true
+            get(model) as SharedDualPageSession
+        }
+        fun admittedPhysicalPages(): List<String> {
+            val field = model.javaClass.getDeclaredField("acceptedPhysicalContents")
+                .apply { isAccessible = true }
+
+            @Suppress("UNCHECKED_CAST")
+            val admitted = field.get(model) as Map<ReaderPageId, *>
+            val current = owner().identity.content.associateBy { it.pageId }
+            return admitted.entries.map { (pageId, value) ->
+                val requestField = value!!.javaClass.getDeclaredField("request")
+                    .apply { isAccessible = true }
+                val request = requestField.get(value) as ReaderPageContentOpenRequest
+                "$pageId attempt=${request.attemptGeneration} " +
+                    "current=${current[pageId]?.contentVersion}"
+            }
+        }
+        try {
+            // The partner's full-page decode never carries original samples, so the
+            // mounted presentation cannot consume its original analysis before the
+            // publisher produces it. Only the publisher's own analysis publication can
+            // make the partner Computed, and that publication happens after the size gate.
+            armed.set(true)
+            fixture.releaseBackgroundGates()
+            pumpUntil {
+                fixture.visiblePagesAtViewportCenter() == setOf(1, 2) && fixture
+                    .renderContainsFixturePixels()
+            }
+            fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+            val native = fixture.scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+                .first { it.config.contains(ReaderPagerNativePresentationKey) }
+                .config[ReaderPagerNativePresentationKey]
+            val binding = native.javaClass.getDeclaredField("binding").run {
+                isAccessible = true
+                get(native) as ReaderPagerPresentationBinding
+            }
+            val runtime = requireNotNull(binding.model.runtime)
+            pumpUntil {
+                runtime.session.state.value.snapshot.activeChapter.pages.all {
+                    it
+                        .loadState is ReaderPageLoadState.Ready
+                }
+            }
+            val initial = runtime.session.state.value
+            model = ReaderScreenModel(
+                initialSessionState = initial,
+                prefs = runtime.prefs,
+                runtime = runtime,
+            ).also { independent = it }
+            model.setDualPageMode(true)
+            model.setAutoSpreadMatching(true)
+            for (page in initial.snapshot.activeChapter.pages) {
+                val content = ReaderPageContentOpenRequest(
+                    page.id,
+                    initial.snapshot.generation,
+                    requireNotNull(page.encodedPageRef),
+                    page.attemptGeneration,
+                    page.encodedPageProvenance,
+                )
+                runtime.pageContentOwner.acquireHeader(content)!!.use { lease ->
+                    val size = requireNotNull(SkiaImageDecoder.peekSize(lease.content))
+                    assertTrue(
+                        model.acceptDualFact(
+                            requireNotNull(model.captureDualFact(page.id)),
+                            ReaderPageFact.dimensions(size.first, size.second),
+                        ),
+                    )
+                }
+            }
+            val ids = owner().identity.pageIds
+            runtime.pageImagePipeline.clear()
+            armed.set(true)
+            model.startSpreadPublisher(
+                owner(),
+                runtime,
+                CoroutineScope(currentCoroutineContext()),
+                Semaphore(2),
+            )
+            // The partner's original analysis is sampled inside the production window that
+            // follows its size gate, so the target is already admitted here.
+            pumpUntil { partnerRegionEntered.isCompleted }
+            pumpUntil {
+                owner().originalAnalysis(ids[targetPageIndex]) is ReaderPageAnalysisEvidence.Computed
+            }
+            assertTrue(
+                owner().originalAnalysis(ids[targetPageIndex]) is ReaderPageAnalysisEvidence.Computed,
+                "The target must be admitted before the real core replaces it",
+            )
+            assertTrue(
+                owner().originalAnalysis(ids[partnerPageIndex]) !is ReaderPageAnalysisEvidence.Computed,
+                "The partner's analysis must still be pending when the target is replaced",
+            )
+            assertTrue(
+                owner().certifyPairing() !is ReaderPairingCertification.Certified,
+                "The partner is still pending, so the spread cannot be certified yet",
+            )
+            // The real core replaces the admitted target while the UI binding stays delayed.
+            runtime.session.retryPage(ids[targetPageIndex])
+            pumpUntil {
+                runtime.session.state.value.snapshot.activeChapter.pages[targetPageIndex].let {
+                    it.attemptGeneration > initial.snapshot.activeChapter.pages[targetPageIndex]
+                        .attemptGeneration
+                }
+            }
+            assertEquals(
+                initial.snapshot.activeChapter.pages[targetPageIndex].attemptGeneration,
+                model.state
+                    .value.session.activeChapter.pages[targetPageIndex].attemptGeneration,
+                "The UI binding stays delayed while the real core already replaced the target",
+            )
+            // The partner's analysis now completes against the replaced dependency.
+            releasePartnerRegion.complete(Unit)
+            val publisherJob = model.javaClass.getDeclaredField("spreadPublisherJob").run {
+                isAccessible = true
+                get(model) as Job
+            }
+            pumpUntil {
+                publisherJob.isCompleted ||
+                    owner().originalAnalysis(ids[partnerPageIndex]) is ReaderPageAnalysisEvidence.Computed ||
+                    owner().originalAnalysis(ids[partnerPageIndex]) is
+                        ReaderPageAnalysisEvidence.RetryableFailure
+            }
+            assertTrue(
+                owner().originalAnalysis(ids[partnerPageIndex]) !is ReaderPageAnalysisEvidence.Computed,
+                "A replaced dependency must not be published together with the stale target: " +
+                    "analyses=${ids.map { it to owner().originalAnalysis(it) }}; " +
+                    "deps=${owner().certifyPairingWithDependencies(ids[targetPageIndex])
+                        .dependentPageIds.map { it.sourcePageIndex }}; " +
+                    "admitted=${admittedPhysicalPages()}; " +
+                    "core=${runtime.session.core.snapshot.activeChapter.pages}",
+            )
+            assertTrue(
+                owner().certifyPairing() !is ReaderPairingCertification.Certified,
+                "The stale target and the late partner must never certify the spread: " +
+                    "proof=${owner().certifyPairing()}; " +
+                    "analyses=${ids.map { it to owner().originalAnalysis(it) }}",
+            )
+        } finally {
+            releasePartnerRegion.complete(Unit)
+            independent?.onDispose()
+            fixture.close()
+        }
+    }
+
+    /**
+     * The gate validates the complete physical source set of the owner, not only the pages the
+     * pre-acceptance certification happened to read. A page outside that read set can still be
+     * read later, because the certifier's outer entry comparison walks further left once a new
+     * analysis is admitted. A stale source outside the read set must therefore still stop the
+     * publication, and it must stop only until the binding updates that source.
+     */
+    @Test
+    fun `a stale source outside the pre-acceptance read set still stops the publication`() = runTest {
+        val delegate = SkiaDesktopReaderPageImageDecoder()
+        val fixture = MountedReaderPresentationFixture(
+            tempDir,
+            currentCoroutineContext(),
+            MountedReaderPresentationCase(
+                MountedReaderPresentationMode.DUAL,
+                MountedReaderContentRoute.ONLINE,
+            ),
+            pageImageDecoder = DesktopReaderPageImageDecoder { encoded, key -> delegate.decode(encoded, key) },
+            heldResponsePage = -1,
+        )
+        var independent: ReaderScreenModel? = null
+        try {
+            fixture.releaseBackgroundGates()
+            fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+            fun pumpUntil(done: () -> Boolean) {
+                val deadline = System.nanoTime() + 10_000_000_000L
+                while (System.nanoTime() < deadline) {
+                    fixture.scene.render().close()
+                    runCurrent()
+                    if (done()) return
+                    Thread.sleep(5)
+                }
+                assertTrue(done()) { "the reader must render before its runtime is available" }
+            }
+            pumpUntil {
+                fixture.visiblePagesAtViewportCenter() == setOf(1, 2) && fixture.renderContainsFixturePixels()
+            }
+            val native = fixture.scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+                .first { it.config.contains(ReaderPagerNativePresentationKey) }
+                .config[ReaderPagerNativePresentationKey]
+            val binding = native.javaClass.getDeclaredField("binding").run {
+                isAccessible = true
+                get(native) as ReaderPagerPresentationBinding
+            }
+            val runtime = requireNotNull(binding.model.runtime)
+            val initial = runtime.session.state.value
+            val model = ReaderScreenModel(
+                initialSessionState = initial,
+                prefs = runtime.prefs,
+                runtime = runtime,
+            ).also { independent = it }
+            model.setDualPageMode(true)
+            model.setAutoSpreadMatching(true)
+            val owner = model.javaClass.getDeclaredField("dualSession").run {
+                isAccessible = true
+                get(model) as SharedDualPageSession
+            }
+            val ids = owner.identity.pageIds
+            // Every page gets an admitted physical source, so the owner holds a complete source set.
+            for (page in initial.snapshot.activeChapter.pages) {
+                val content = ReaderPageContentOpenRequest(
+                    page.id,
+                    initial.snapshot.generation,
+                    requireNotNull(page.encodedPageRef),
+                    page.attemptGeneration,
+                    page.encodedPageProvenance,
+                )
+                runtime.pageContentOwner.acquireHeader(content)!!.use { lease ->
+                    val size = requireNotNull(SkiaImageDecoder.peekSize(lease.content))
+                    assertTrue(
+                        model.acceptDualFact(
+                            requireNotNull(model.captureDualFact(page.id)),
+                            ReaderPageFact.dimensions(size.first, size.second),
+                        ),
+                        "page ${page.id.sourcePageIndex} must be admitted with its physical source",
+                    )
+                }
+            }
+            // The live core replaces a page that the pre-acceptance read set does not contain.
+            // The certification of the current target only reaches the pages around it, so the
+            // stale source is picked outside that reach: only the complete source set of the
+            // gate can see that it is stale.
+            model.goToPage(0)
+            val location = requireNotNull(owner.location).pageId
+            val readSet = owner.certifyPairingWithDependencies(location).dependentPageIds
+            val staleIndex = ids.indexOfLast { it !in readSet }
+            assertTrue(
+                staleIndex >= 0,
+                "the fixture needs a page outside the certification read set: $readSet",
+            )
+            runtime.session.retryPage(ids[staleIndex])
+            pumpUntil {
+                runtime.session.core.snapshot.activeChapter.pages[staleIndex].attemptGeneration >
+                    initial.snapshot.activeChapter.pages[staleIndex].attemptGeneration
+            }
+            // The publication of an unrelated page must not be mixed with the stale source.
+            val partnerIndex = 1
+            val partnerContent = ReaderPageContentOpenRequest(
+                ids[partnerIndex],
+                initial.snapshot.generation,
+                requireNotNull(initial.snapshot.activeChapter.pages[partnerIndex].encodedPageRef),
+                initial.snapshot.activeChapter.pages[partnerIndex].attemptGeneration,
+                initial.snapshot.activeChapter.pages[partnerIndex].encodedPageProvenance,
+            )
+            runtime.pageContentOwner.acquireHeader(partnerContent)!!.use { lease ->
+                val size = requireNotNull(SkiaImageDecoder.peekSize(lease.content))
+                assertFalse(
+                    model.acceptDualFact(
+                        requireNotNull(model.captureDualFact(ids[partnerIndex])),
+                        ReaderPageFact.dimensions(size.first, size.second),
+                    ),
+                    "A stale source outside the pre-acceptance read set must stop the publication",
+                )
+            }
+            // The binding updates that source, and only then the publication is allowed again.
+            model.acceptSessionState(runtime.session.state.value)
+            runtime.pageContentOwner.acquireHeader(partnerContent)!!.use { lease ->
+                val size = requireNotNull(SkiaImageDecoder.peekSize(lease.content))
+                assertTrue(
+                    model.acceptDualFact(
+                        requireNotNull(model.captureDualFact(ids[partnerIndex])),
+                        ReaderPageFact.dimensions(size.first, size.second),
+                    ),
+                    "The updated binding must let the publication proceed again",
+                )
+            }
+        } finally {
+            independent?.onDispose()
+            fixture.close()
+        }
+    }
+
+    /**
+     * A completion that the publisher reported but never consumed must not survive the
+     * publisher. The publisher is held between the start of a round's capabilities and the
+     * consumption of their completions, so one capability reports its completion while the
+     * publisher cannot consume it. The round's clean-up only covers the completions that were
+     * never reported, so the publisher's own exit must return that capacity: the next owner
+     * shares the budget, and a capacity nobody owns would silently shrink the logical
+     * capacity of that next owner.
+     */
+    @Test
+    fun `a cancelled publisher returns the completion it reported but never consumed`() = runTest {
+        val delegate = SkiaDesktopReaderPageImageDecoder()
+        val fixture = MountedReaderPresentationFixture(
+            tempDir,
+            currentCoroutineContext(),
+            MountedReaderPresentationCase(
+                MountedReaderPresentationMode.DUAL,
+                MountedReaderContentRoute.ONLINE,
+            ),
+            pageImageDecoder = DesktopReaderPageImageDecoder { encoded, key ->
+                delegate.decode(encoded, key)
+            },
+            heldResponsePage = -1,
+        )
+        var independent: ReaderScreenModel? = null
+        try {
+            fixture.releaseBackgroundGates()
+            fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+
+            // The native presentation exists only once the reader has rendered its pages.
+            fun pumpUntil(done: () -> Boolean) {
+                val deadline = System.nanoTime() + 10_000_000_000L
+                while (System.nanoTime() < deadline) {
+                    fixture.scene.render().close()
+                    runCurrent()
+                    if (done()) return
+                    Thread.sleep(5)
+                }
+                assertTrue(done()) { "the reader must render before its runtime is available" }
+            }
+            pumpUntil {
+                fixture.visiblePagesAtViewportCenter() == setOf(1, 2) && fixture.renderContainsFixturePixels()
+            }
+            val native = fixture.scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+                .first { it.config.contains(ReaderPagerNativePresentationKey) }
+                .config[ReaderPagerNativePresentationKey]
+            val binding = native.javaClass.getDeclaredField("binding").run {
+                isAccessible = true
+                get(native) as ReaderPagerPresentationBinding
+            }
+            val runtime = requireNotNull(binding.model.runtime)
+            val initial = runtime.session.state.value
+            val model = ReaderScreenModel(
+                initialSessionState = initial,
+                prefs = runtime.prefs,
+                runtime = runtime,
+            ).also { independent = it }
+            model.setDualPageMode(true)
+            model.setAutoSpreadMatching(true)
+            fun owner(): SharedDualPageSession = model.javaClass.getDeclaredField("dualSession").run {
+                isAccessible = true
+                get(model) as SharedDualPageSession
+            }
+            val budget = owner().factBudget
+            val activeField = budget.javaClass.getDeclaredField("active").apply { isAccessible = true }
+            val reported = AtomicInteger()
+            val reportedPages = CopyOnWriteArrayList<ReaderPageId>()
+            model.p5SpreadPublisherRoundObserver = ReaderSpreadPublisherRoundObserver(
+                captureSamples = { _, _ -> emptyMap() },
+                onRound = { _ -> },
+                onCompletionReported = { pageId, slotHeld ->
+                    reported.incrementAndGet()
+                    reportedPages += pageId
+                    assertTrue(
+                        slotHeld,
+                        "a reported completion must still occupy its logical slot: ${pageId.sourcePageIndex}",
+                    )
+                },
+            )
+            val held = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            val holding = AtomicBoolean(false)
+            // The publisher is held between the start of a round's capabilities and the
+            // consumption of their completions, so a completion really stays unconsumed.
+            model.p5SpreadPublisherCompletionGate = { outstanding ->
+                if (outstanding.isNotEmpty() && holding.compareAndSet(false, true)) {
+                    held.complete(Unit)
+                    release.await()
+                }
+            }
+            model.startSpreadPublisher(
+                owner(),
+                runtime,
+                CoroutineScope(currentCoroutineContext()),
+                Semaphore(2),
+            )
+            pumpUntil { held.isCompleted }
+            assertTrue(
+                held.isCompleted,
+                "the publisher must start a round with outstanding capabilities",
+            )
+            pumpUntil { reported.get() > 0 }
+            assertTrue(
+                reported.get() > 0,
+                "the held round must report a completion the publisher cannot consume",
+            )
+            val publisherJob = model.javaClass.getDeclaredField("spreadPublisherJob").run {
+                isAccessible = true
+                get(model) as Job
+            }
+            // The publisher is cancelled while it still owns the reported completion.
+            publisherJob.cancel()
+            release.complete(Unit)
+            pumpUntil { publisherJob.isCompleted }
+            assertTrue(
+                publisherJob.isCompleted,
+                "the cancelled publisher must leave its round",
+            )
+            // The next owner shares the budget of the replaced one.
+            val targetId = owner().identity.pageIds.first()
+            val reboundPages = initial.snapshot.activeChapter.pages.map { page ->
+                if (page.id == targetId) page.copy(attemptGeneration = page.attemptGeneration + 1L) else page
+            }
+            model.acceptSessionState(
+                initial.copy(
+                    snapshot = initial.snapshot.copy(
+                        activeChapter = initial.snapshot.activeChapter.copy(pages = reboundPages),
+                    ),
+                ),
+            )
+            val nextBudget = owner().factBudget
+            org.junit.jupiter.api.Assertions.assertNotSame(
+                budget,
+                nextBudget,
+                "Content rebind creates an independent budget shell",
+            )
+            val windowField = budget.javaClass.getDeclaredField("window").apply { isAccessible = true }
+            assertSame(
+                windowField.get(budget),
+                windowField.get(nextBudget),
+                "the next owner must share the physical accounting window of the replaced one",
+            )
+            val occupied = (activeField.get(budget) as Set<*>).filterIsInstance<ReaderPageId>()
+            assertTrue(
+                occupied.none { it in reportedPages },
+                "a cancelled publisher must return the capacity of a completion it never consumed: " +
+                    "${occupied.map { it.sourcePageIndex }}",
+            )
+            // The changed content has a new real demand. Its successor must be able to
+            // reserve and release it after the old publisher returned the unconsumed completion.
+            val successorAdmission = nextBudget.reserveClassified(
+                listOf(targetId),
+                emptyList(),
+                System.nanoTime() / 1_000_000,
+            )
+            assertEquals(listOf(targetId), successorAdmission.map { it.pageId })
+            assertTrue(nextBudget.holds(targetId))
+            nextBudget.complete(targetId, 0, cacheHit = true)
+            assertTrue(!nextBudget.holds(targetId))
+        } finally {
+            // The publisher must not wait in a gate when the test scope drains.
+            independent?.p5SpreadPublisherCompletionGate = null
+            independent?.onDispose()
+            fixture.close()
+        }
+    }
+
+    private fun verifyCoreReplacement(
+        automaticMatching: Boolean,
+        heldPage: Int,
+        expires: Boolean =
+            false,
+        previousAccepted: Boolean = false,
+    ) = runTest {
+        val secondEntered = CompletableDeferred<Unit>()
+        val releaseSecond = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        var physicalDiagnostic: () -> String = { "" }
+        val armed = AtomicBoolean(false)
+        val delegate = SkiaDesktopReaderPageImageDecoder()
+        val fixture = MountedReaderPresentationFixture(
+            tempDir,
+            currentCoroutineContext(),
+            MountedReaderPresentationCase(
+                MountedReaderPresentationMode.DUAL,
+                MountedReaderContentRoute.ONLINE,
+            ),
+            pageImageDecoder = DesktopReaderPageImageDecoder { encoded, key ->
+                if (armed.get() && automaticMatching && !previousAccepted && key.pageIndex == 1) {
+                    releaseFirst.await()
+                }
                 if (armed.get() && key.pageIndex == heldPage) {
                     secondEntered.complete(Unit)
                     releaseSecond.await()
@@ -436,7 +984,9 @@ class SharedDualPageRuntimeProgressProductionTest {
                 val native = fixture.scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
                     .first { it.config.contains(ReaderPagerNativePresentationKey) }
                     .config[ReaderPagerNativePresentationKey]
-                throw AssertionError("Physical-content window unavailable: ${native.describe()}")
+                throw AssertionError(
+                    "Physical-content window unavailable: ${native.describe()}; ${physicalDiagnostic()}",
+                )
             }
         }
         var independent: ReaderScreenModel? = null
@@ -497,15 +1047,17 @@ class SharedDualPageRuntimeProgressProductionTest {
             }
             val producerScope = CoroutineScope(currentCoroutineContext())
             fun start() {
-                model.javaClass.declaredMethods.single { it.name == "startSpreadSamplesLocked" }
-                    .run {
-                        isAccessible = true
-                        invoke(model, owner(), runtime, producerScope, Semaphore(1))
-                    }
+                model.startSpreadPublisher(owner(), runtime, producerScope, Semaphore(2))
             }
             val oldOwner = owner()
             val location = oldOwner.location
             val ids = oldOwner.identity.pageIds
+            physicalDiagnostic = {
+                "proof=${oldOwner.certifyPairing()}; " +
+                    "analyses=${ids.map { it to oldOwner.originalAnalysis(it) }}; " +
+                    "core=${runtime.session.core.snapshot.activeChapter.pages}; " +
+                    "model=${model.state.value.session.activeChapter.pages}"
+            }
             runtime.pageImagePipeline.clear()
             armed.set(true)
             if (expires) {
@@ -538,7 +1090,15 @@ class SharedDualPageRuntimeProgressProductionTest {
                 start()
                 pumpUntil { secondEntered.isCompleted }
             }
-            assertTrue(oldOwner.originalAnalysis(ids[1]) !is ReaderPageAnalysisEvidence.Computed)
+            if (previousAccepted) {
+                pumpUntil { oldOwner.originalAnalysis(ids[1]) is ReaderPageAnalysisEvidence.Computed }
+                assertTrue(
+                    oldOwner.originalAnalysis(ids[1]) is ReaderPageAnalysisEvidence.Computed,
+                    "A must actually be accepted before the real core replaces it while B remains pending",
+                )
+            } else {
+                assertTrue(oldOwner.originalAnalysis(ids[1]) !is ReaderPageAnalysisEvidence.Computed)
+            }
             if (expires) {
                 val job = model.javaClass.getDeclaredField("spreadPublisherJob").run {
                     isAccessible = true
@@ -548,6 +1108,7 @@ class SharedDualPageRuntimeProgressProductionTest {
                 val blocked = oldOwner.certifyPairing() as? ReaderPairingCertification
                     .RetryableBlocked
                 assertEquals(ReaderAnalysisFailure.RESOURCE, blocked?.failures?.get(ids[2]))
+                releaseFirst.complete(Unit)
                 releaseSecond.complete(Unit)
                 pumpUntil { runtime.pageImagePipeline.foregroundWork.value == 0 }
                 model.retryPage(ids[2])
@@ -592,6 +1153,7 @@ class SharedDualPageRuntimeProgressProductionTest {
                     "The actual bounded header callback cannot consume the old physical content",
                 )
             } else {
+                releaseFirst.complete(Unit)
                 releaseSecond.complete(Unit)
                 val job = model.javaClass.getDeclaredField("spreadPublisherJob").run {
                     isAccessible = true
@@ -599,10 +1161,17 @@ class SharedDualPageRuntimeProgressProductionTest {
                 }
                 pumpUntil { job.isCompleted }
             }
-            assertTrue(
-                oldOwner.originalAnalysis(ids[1]) !is ReaderPageAnalysisEvidence.Computed,
-                "The live core replaced the completed page: its old batch must not certify through a stale model",
-            )
+            if (!previousAccepted) {
+                assertTrue(
+                    oldOwner.originalAnalysis(ids[1]) !is ReaderPageAnalysisEvidence.Computed,
+                    "The live core replaced the completed page: its old batch must not certify through a stale model",
+                )
+            } else {
+                assertTrue(
+                    oldOwner.certifyPairing() !is ReaderPairingCertification.Certified,
+                    "A was accepted before replacement: old A plus the later B must never certify the stale model",
+                )
+            }
             assertTrue(
                 oldOwner.originalAnalysis(ids[2]) !is ReaderPageAnalysisEvidence.Computed,
                 "Reject the physical batch atomically, including its unchanged partner",
@@ -642,6 +1211,7 @@ class SharedDualPageRuntimeProgressProductionTest {
             )
             assertEquals(location?.pageId, owner().location?.pageId)
         } finally {
+            releaseFirst.complete(Unit)
             releaseSecond.complete(Unit)
             independent?.onDispose()
             fixture.close()

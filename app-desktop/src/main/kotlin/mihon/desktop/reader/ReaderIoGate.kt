@@ -18,6 +18,7 @@ fun interface ReaderIoGate {
     fun registerContentOwner(): Long = 0L
     fun closeContentOwner(ownerId: Long) = Unit
     suspend fun awaitContentRead(ownerId: Long, request: ReaderPageContentOpenRequest) = Unit
+    fun contentReadStarted(ownerId: Long, request: ReaderPageContentOpenRequest) = Unit
     fun contentReadCompleted(
         ownerId: Long,
         request: ReaderPageContentOpenRequest,

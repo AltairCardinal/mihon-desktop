@@ -1267,4 +1267,121 @@ class ReaderPairingCertificationResearchTest {
             ReaderPairingCertifier.certify(identity, headers, owner, settings, ids[7])
         }
     }
+
+    /**
+     * The accepted set can grow after the commit: the certification that runs before a new
+     * original analysis is admitted reads a smaller set than the certification that runs
+     * after it. A gate that only validates the pages read before the commit can therefore
+     * miss a page the new certificate depends on.
+     *
+     * The construction is the one the review proposed: every page is portrait, the samples
+     * carry the UNKNOWN side hint and equal neighbouring scores, and the target's own
+     * original analysis is the only missing one. With automatic pairing, the two entry points
+     * of the outer scan then disagree and walk further left than the target neighbourhood.
+     * An explicit manual pair is a control that remains valid without that automatic evidence.
+     */
+    @Test
+    fun `filling the target's own original analysis extends the certification read set`() {
+        val pages = List(40) { ReaderPageId(ReaderChapterId(73092), it) }
+        val target = pages[30]
+        val chapter = ReaderDualPageIdentity(
+            1,
+            1,
+            pages.map { ReaderDualPageContentIdentity(it, "bytes-$it") },
+        )
+        val headers = pages.associateWith { portrait }
+        val plan = requireNotNull(ReaderOriginalPageSampling.plan(portrait.width, portrait.height))
+        val gray = plan.samples(plan.left.map { 0xff8c8c8c.toInt() }, plan.right.map { 0xff8c8c8c.toInt() })
+        assertEquals(ReaderPageSideHint.UNKNOWN, gray.sideHint)
+
+        fun readSets(settings: ReaderPairingSettings): Pair<Set<Int>, Set<Int>> {
+            val owner = ReaderSpreadSamplesOwner(chapter)
+            try {
+                pages.filter { it != target }.forEach { page ->
+                    assertTrue(
+                        owner.acceptOriginal(
+                            owner.request(page),
+                            portrait.copy(sideHint = gray.sideHint),
+                            gray.edges,
+                        ),
+                    )
+                }
+                val before = ReaderPairingCertifier.certifyCapturing(
+                    chapter,
+                    headers,
+                    owner,
+                    settings,
+                    target,
+                    ReaderPairingReadSet(),
+                )
+                val manualUnit = if (settings.manualPairStarts.isEmpty()) {
+                    assertTrue(
+                        before.certification is ReaderPairingCertification.NeedFacts,
+                        "the missing target analysis must be the only pending fact: $before",
+                    )
+                    null
+                } else {
+                    val certificate = before.certification as Certified
+                    assertEquals(
+                        listOf(pages[29], target),
+                        certificate.segment.unit.pageIds,
+                        "The manual pair must be certified without the target's original side",
+                    )
+                    certificate.segment.unit
+                }
+                val beforePages = before.dependentPageIds.map { it.sourcePageIndex }.toSet()
+                assertTrue(
+                    owner.acceptOriginal(
+                        owner.request(target),
+                        portrait.copy(sideHint = gray.sideHint),
+                        gray.edges,
+                    ),
+                )
+                val after = ReaderPairingCertifier.certifyCapturing(
+                    chapter,
+                    headers,
+                    owner,
+                    settings,
+                    target,
+                    ReaderPairingReadSet(),
+                )
+                val afterPages = after.dependentPageIds.map { it.sourcePageIndex }.toSet()
+                val added = afterPages - beforePages
+                println("A_READ_SET before=$beforePages after=$afterPages added=$added")
+                if (manualUnit == null) {
+                    assertTrue(
+                        added.isNotEmpty(),
+                        "the accepted set must grow after the commit: before=$beforePages after=$afterPages",
+                    )
+                    assertTrue(
+                        added.any { it < 28 },
+                        "a new dependency must reach outside the fixed neighbourhood of the target: added=$added",
+                    )
+                } else {
+                    assertEquals(manualUnit, (after.certification as Certified).segment.unit)
+                    assertEquals(
+                        beforePages,
+                        afterPages,
+                        "A valid manual pair must not gain irrelevant prefix dependencies after target analysis",
+                    )
+                }
+                return beforePages to afterPages
+            } finally {
+                owner.close()
+            }
+        }
+
+        val automatic = readSets(ReaderPairingSettings(ReaderDirection.RTL, true))
+        // A single valid manual start fixes the pair before automatic side analysis is read.
+        // It is the control case: filling the target must preserve that pair without expanding
+        // the prefix dependencies. Overlapping manual clusters have their own contracts.
+        val manual = readSets(
+            ReaderPairingSettings(
+                ReaderDirection.RTL,
+                true,
+                manualPairStarts = setOf(29),
+            ),
+        )
+        println("A_MANUAL_START before=${manual.first} after=${manual.second}")
+    }
 }

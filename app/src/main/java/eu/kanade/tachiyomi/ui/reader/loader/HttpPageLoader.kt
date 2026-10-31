@@ -70,7 +70,6 @@ internal class HttpPageLoader(
     private val preloadJobLock = Any()
     private val foregroundRevision = MutableStateFlow(0L)
     private val scheduledPages = mutableMapOf<ReaderRequestKey, ReaderPage>()
-    private val factPermits = mutableMapOf<ReaderRequestKey, ReaderDualPageFactReadPermit>()
     private val pageRunner = ReaderPageMaterializeRunner(
         scope = scope,
         maxConcurrentRequests = requestScheduler.snapshot().maxConcurrentRequests,
@@ -170,9 +169,12 @@ internal class HttpPageLoader(
             return@withContext
         }
         val result = synchronized(preloadJobLock) {
-            requestScheduler.enqueue(readerPageId(page.index), ReaderRequestKind.CURRENT_BACKGROUND).also {
+            requestScheduler.enqueue(
+                readerPageId(page.index),
+                ReaderRequestKind.CURRENT_BACKGROUND,
+                factPermit = permit,
+            ).also {
                 registerEnqueueResultLocked(it, page.chapter.pages.orEmpty())
-                it.request?.let { request -> factPermits[request.jobKey] = permit }
             }
         }
         pageRunner.cancel(result.cancelRequests)
@@ -187,7 +189,6 @@ internal class HttpPageLoader(
                     requestScheduler.cancelPending(request.jobKey)
                     requestScheduler.complete(request.jobKey)
                     scheduledPages.remove(request.jobKey)
-                    factPermits.remove(request.jobKey)
                     foregroundRevision.update { it + 1 }
                 }
                 pageRunner.cancel(setOf(request.jobKey))
@@ -300,7 +301,7 @@ internal class HttpPageLoader(
                             generation = request.generation,
                             url = page.url,
                             imageUrl = page.imageUrl,
-                            factReadPermit = factPermits[request.jobKey],
+                            factReadPermit = request.factPermit,
                         ),
                         fetchPort = fetchPort,
                         binding = AndroidReaderPageBinding(page, fetchPort),
@@ -335,7 +336,6 @@ internal class HttpPageLoader(
                 if (rejected) discardStaleResultLocked(work.binding.page, work.request.jobKey)
                 requestScheduler.complete(work.request.jobKey)
                 scheduledPages.remove(work.request.jobKey)
-                factPermits.remove(work.request.jobKey)
                 foregroundRevision.update { it + 1 }
             }
         }

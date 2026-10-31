@@ -44,7 +44,6 @@ import mihon.domain.reader.scheduler.ReaderPageMaterializeRunnerPort
 import mihon.domain.reader.scheduler.ReaderPageMaterializeRunnerSnapshot
 import mihon.domain.reader.scheduler.ReaderPageMaterializeWork
 import mihon.domain.reader.scheduler.ReaderRequestCancellation
-import mihon.domain.reader.scheduler.ReaderRequestKey
 import mihon.domain.reader.scheduler.ReaderSchedulePlan
 import mihon.domain.reader.scheduler.ReaderScheduledRequest
 import mihon.domain.reader.session.ReaderChapterId
@@ -183,7 +182,6 @@ class DesktopReaderSession(
     private var closed = false
     private val lifecycleClosed = MutableStateFlow(false)
     private val requestRevision = MutableStateFlow(0L)
-    private val factPermits = mutableMapOf<ReaderRequestKey, ReaderDualPageFactReadPermit>()
 
     private val pageRunner = ReaderPageMaterializeRunner(
         scope = scope,
@@ -200,6 +198,27 @@ class DesktopReaderSession(
         get() = synchronized(lock) { nextChapterPrefetchMode }
     internal fun pageRunnerSnapshot(): ReaderPageMaterializeRunnerSnapshot = pageRunner.snapshot()
     internal val physicalWorkCount get() = ReaderPageMaterializeRunner.processPhysicalWorkCount
+
+    /**
+     * The physical work that keeps the reader busy.
+     *
+     * The count is process wide, so the work of a closed session stays visible, and it
+     * is released only when the work actually completes, so the non cooperative
+     * physical read of a closed session keeps the reader busy until its real exit.
+     * The pairing's own speculation is not counted: a real target is never held back
+     * by a guess.
+     */
+    internal val blockingPhysicalWorkCounts get() = ReaderPageMaterializeRunner.processBlockingWorkCounts
+
+    /**
+     * The physical work that keeps the reader busy for a publisher other than [ownerKey].
+     *
+     * The pairing must not wait for the work it started itself, and it must wait for
+     * the work of every other publisher - including the pairing work of a publisher
+     * that was replaced - until that work really exits.
+     */
+    internal fun blockingPhysicalWorkCountExcept(ownerKey: Long): Int =
+        ReaderPageMaterializeRunner.blockingWorkExcept(ownerKey)
     internal val foregroundRequestRevision = requestRevision.asStateFlow()
     internal val foregroundRequestsIdle: Boolean
         get() = synchronized(lock) { schedulerIdleLocked() } && physicalWorkCount.value == 0
@@ -467,8 +486,12 @@ class DesktopReaderSession(
     ): Boolean = synchronized(lock) {
         if (closed || requests.isEmpty()) return@synchronized false
         val snapshot = core.snapshot
+        // The gate validates the complete source set of the owner, so the chapter is indexed
+        // once here instead of scanning the page list for every request: O(N + M) instead of
+        // O(N * M) for N chapter pages and M physical references.
+        val pagesById = snapshot.activeChapter.pages.associateBy { it.id }
         if (requests.any { request ->
-                val page = snapshot.activeChapter.pages.firstOrNull { it.id == request.pageId }
+                val page = pagesById[request.pageId]
                 request.generation != snapshot.generation || page == null ||
                     page.loadState !is ReaderPageLoadState.Ready ||
                     page.attemptGeneration != request.attemptGeneration ||
@@ -490,8 +513,7 @@ class DesktopReaderSession(
             if (page.loadState is ReaderPageLoadState.Ready) return true
             if (page.loadState is ReaderPageLoadState.Error) return false
             generation = core.snapshot.generation
-            core.enqueueFactPage(pageId).also { update ->
-                update.request?.let { factPermits[it.jobKey] = permit }
+            core.enqueueFactPage(pageId, permit).also { update ->
                 applyEnqueueResultLocked(update)
             }
         }
@@ -501,8 +523,17 @@ class DesktopReaderSession(
                 val page = current.snapshot.activeChapter.pages.firstOrNull { it.id == pageId }
                 disposed || current.snapshot.generation != generation || page == null ||
                     page.loadState is ReaderPageLoadState.Ready || page.loadState is ReaderPageLoadState.Error ||
+                    // The wait ends when the optional request is really gone: a request
+                    // that is still queued counts as alive, and a visible request for
+                    // the same page preempts the optional one and requeues it with a
+                    // fresh identity. The page is still being loaded in that case, so
+                    // the optional consumer waits for the real event instead of
+                    // turning the missing content into a permanent read failure.
                     result.request?.let { request ->
-                        synchronized(lock) { !core.acceptsPageRequest(request.jobKey) }
+                        synchronized(lock) {
+                            !core.acceptsScheduledPageRequest(request.jobKey) &&
+                                !core.hasCurrentPageReplacement(pageId, request.jobKey)
+                        }
                     } ==
                     true
             }.first { it }
@@ -516,7 +547,6 @@ class DesktopReaderSession(
             result.request?.let { request ->
                 synchronized(lock) {
                     core.cancelFactPageRequest(request.jobKey)
-                    factPermits.remove(request.jobKey)
                 }
                 pageRunner.cancel(setOf(request.jobKey))
                 pumpPageRequests()
@@ -580,7 +610,6 @@ class DesktopReaderSession(
             if (closed) return
             closed = true
             lifecycleClosed.value = true
-            factPermits.clear()
             leaseOwnersToRelease = buildSet {
                 activeLeaseOwnerOrNull()?.let(::add)
                 adjacentLeaseOwnerOrNull()?.let(::add)
@@ -720,7 +749,7 @@ class DesktopReaderSession(
                             url = scheduledPage.descriptor.url,
                             imageUrl = scheduledPage.descriptor.imageUrl,
                             attemptGeneration = scheduledPage.attemptGeneration,
-                            factReadPermit = factPermits[request.jobKey],
+                            factReadPermit = request.factPermit,
                         ),
                         fetchPort = pageFetchPortFactory.create(scheduledPage.context, scheduledPage.descriptor),
                         binding = scheduledPage,
@@ -809,7 +838,6 @@ class DesktopReaderSession(
                         adjacentContext?.chapterId == scheduledPage.context.chapterId &&
                         core.acceptsPageRequest(request.jobKey)
                 core.completePageRequest(request.jobKey)
-                factPermits.remove(request.jobKey)
                 requestRevision.value++
                 if (blocksCurrentAdjacentTarget) {
                     adjacentQuotaBlocked = true

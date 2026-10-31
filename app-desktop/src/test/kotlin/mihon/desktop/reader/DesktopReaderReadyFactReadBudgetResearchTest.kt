@@ -76,7 +76,7 @@ class DesktopReaderReadyFactReadBudgetResearchTest {
             }.snapshot.activeChapter.pages.single()
             assertTrue(runtime.pageImagePipeline.snapshot().cache.keys.isEmpty())
             assertEquals(listOf(ready.id), budget.reserve(listOf(ready.id), 0))
-            val permit = ReaderDualPageFactReadPermit(budget, ready.id) { 0 }
+            val permit = ReaderDualPageFactReadPermit(budget, ready.id, { 0 })
             assertTrue(runtime.session.loadFactPage(ready.id, permit))
             assertEquals(0L, meteredBytes(budget), "Ready admission does not open or meter its encoded file")
             assertTrue(runtime.pageImagePipeline.snapshot().cache.keys.isEmpty(), "Ready is not a decoded cache hit")
@@ -95,7 +95,7 @@ class DesktopReaderReadyFactReadBudgetResearchTest {
         for (bindPermit in listOf(false, true)) {
             val budget = ReaderDualPageFactBudget()
             assertEquals(listOf(page), budget.reserve(listOf(page), 0))
-            val permit = ReaderDualPageFactReadPermit(budget, page) { 0 }
+            val permit = ReaderDualPageFactReadPermit(budget, page, { 0 })
             val bytesRead = AtomicLong()
             val opens = AtomicInteger()
             val closes = AtomicInteger()

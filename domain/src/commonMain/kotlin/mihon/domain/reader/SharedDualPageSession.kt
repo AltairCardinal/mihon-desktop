@@ -77,6 +77,9 @@ class SharedDualPageSession(
     direction: ReaderDirection,
     initialPage: ReaderPageId? = identity.pageIds.firstOrNull(),
     private val mangaId: Long? = null,
+    private val memoPageOrderLimit: Int = ReaderPairingMemoLimits.MAX_PAGE_ORDER,
+    private val memoReadKeyLimit: Int = ReaderPairingMemoLimits.MAX_READ_KEYS,
+    private val memoCapacity: Int = ReaderPairingMemoLimits.DEFAULT_ENTRIES,
 ) {
     var identity: ReaderDualPageIdentity = identity
         private set
@@ -91,7 +94,9 @@ class SharedDualPageSession(
     private val requests = mutableMapOf<ReaderPageId, ReaderDualPageFactRequest>()
     private val accepted = mutableMapOf<Long, ReaderPageFact>()
     private var nextRequestId = 0L
-    private var closed = false
+    var closed = false
+        private set
+    val isClosed: Boolean get() = closed
     private class PresentationReleaseRoute(var target: SharedDualPageSession?)
     private var releaseRoute = PresentationReleaseRoute(this)
     private var lastReadLocationSequence: Long? = null
@@ -110,6 +115,13 @@ class SharedDualPageSession(
     var factBudget = ReaderDualPageFactBudget()
         private set
     private var ownsFactBudget = true
+    private val certificationMemo = ReaderPairingCertificationMemo(memoCapacity)
+
+    /**
+     * Accounting for the certification reuse path. The counters are read-only;
+     * they never influence a certification result.
+     */
+    val certificationMetrics = ReaderPairingCertificationMetrics()
     var factWorkRevision: Long = 0
         private set
     val pairingState: ReaderPairingPersistenceState get() = pairingPersistence.state
@@ -166,36 +178,128 @@ class SharedDualPageSession(
         return acceptOriginalAnalyses(listOf(ReaderOriginalAnalysisPublication(request, fact, samples)))
     }
 
-    fun certifyPairing(pageId: ReaderPageId = checkNotNull(location).pageId): ReaderPairingCertification {
+    fun certifyPairing(pageId: ReaderPageId = checkNotNull(location).pageId): ReaderPairingCertification =
+        certifyPairingWithDependencies(pageId).certification
+
+    fun certifyPairingWithDependencies(
+        pageId: ReaderPageId = checkNotNull(location).pageId,
+    ): ReaderPairingCertificationTrace {
         check(!closed)
         require(pageId in identity.pageIds)
         val pairingNeed = setOf(ReaderPairingFactNeed(pageId, ReaderPairingFactKind.PAIRING_RULES))
         when (pairingState.status) {
             ReaderPairingPersistenceStatus.WAITING_FOR_RESTORE, ReaderPairingPersistenceStatus.RESTORING ->
-                return ReaderPairingCertification.NeedFacts(pairingNeed, 0, 0)
+                return ReaderPairingCertificationTrace(
+                    ReaderPairingCertification.NeedFacts(pairingNeed, 0, 0),
+                    emptySet(),
+                )
             ReaderPairingPersistenceStatus.RESTORE_FAILED, ReaderPairingPersistenceStatus.CONFLICT ->
-                return ReaderPairingCertification.RetryableBlocked(
-                    mapOf(pageId to ReaderAnalysisFailure.PAIRING_RESTORE),
-                    pairingNeed,
-                    0,
-                    0,
+                return ReaderPairingCertificationTrace(
+                    ReaderPairingCertification.RetryableBlocked(
+                        mapOf(pageId to ReaderAnalysisFailure.PAIRING_RESTORE),
+                        pairingNeed,
+                        0,
+                        0,
+                    ),
+                    emptySet(),
                 )
             else -> Unit
         }
-        return ReaderPairingCertifier.certify(
+        return certifyWithMemo(pageId)
+    }
+
+    /**
+     * Reuses a stored certification result only while the complete observed
+     * input still reads back exactly as it did. A miss runs the real engine and
+     * stores the result together with everything the engine read.
+     */
+    private fun certifyWithMemo(pageId: ReaderPageId): ReaderPairingCertificationTrace {
+        certificationMetrics.recordEntry()
+        val settings = currentPairingSettings()
+        val stored = certificationMemo.entryFor(pageId)
+        when {
+            stored == null -> certificationMetrics.recordMiss(
+                if (certificationMemo.wasEvicted(pageId)) {
+                    ReaderPairingMemoMissReason.TARGET_CHANGED
+                } else {
+                    ReaderPairingMemoMissReason.FIRST_USE
+                },
+            )
+            !storedGuardsMatch(stored, settings) ->
+                certificationMetrics.recordMiss(ReaderPairingMemoMissReason.DEPENDENCY_CHANGED)
+            firstChangedRead(
+                stored.reads,
+                identity,
+                originalHeaders,
+                spreadSamples,
+                settings,
+                certificationMetrics,
+            ) != null ->
+                certificationMetrics.recordMiss(ReaderPairingMemoMissReason.DEPENDENCY_CHANGED)
+            else -> {
+                certificationMetrics.recordHit()
+                return ReaderPairingCertificationTrace(stored.result, stored.dependentPageIds)
+            }
+        }
+        val reads = ReaderPairingReadSet()
+        val trace = ReaderPairingCertifier.certifyCapturing(
             identity,
             originalHeaders,
             spreadSamples,
-            ReaderPairingSettings(
-                direction,
-                automaticMatching,
-                forcedSinglePages,
-                pairingState.manualPairStarts,
-                pairingState.openingMode,
-                pairingState.revision ?: -1,
-            ),
+            settings,
             pageId,
+            reads,
         )
+        val scanSteps = scanStepsOf(trace.certification)
+        certificationMetrics.recordEngineRun(scanSteps)
+        val snapshot = reads.snapshot()
+        if (identity.pageIds.size > memoPageOrderLimit ||
+            snapshot.size > memoReadKeyLimit
+        ) {
+            // The bound limits what may be stored, never what may be read: an
+            // oversized input certifies normally and keeps the complete evidence.
+            certificationMetrics.recordOversizedBypass()
+        } else {
+            certificationMemo.store(
+                ReaderPairingMemoEntry(
+                    target = pageId,
+                    locationPageId = location?.pageId,
+                    locationSequence = location?.sequence ?: -1L,
+                    settings = settings.snapshotCopy(),
+                    pageOrder = identity.pageIds,
+                    reads = snapshot,
+                    result = trace.certification,
+                    dependentPageIds = trace.dependentPageIds,
+                    scanSteps = scanSteps,
+                ),
+            )
+            certificationMetrics.recordEviction(certificationMemo.evictions)
+        }
+        return trace
+    }
+
+    private fun storedGuardsMatch(stored: ReaderPairingMemoEntry, settings: ReaderPairingSettings): Boolean {
+        if (stored.locationSequence != (location?.sequence ?: -1L)) return false
+        if (stored.locationPageId != location?.pageId) return false
+        if (stored.pageOrder != identity.pageIds) return false
+        if (stored.settings != settings.snapshotCopy()) return false
+        return true
+    }
+
+    /** The exact settings the certifier observes; the restore revision is part of it. */
+    private fun currentPairingSettings(): ReaderPairingSettings = ReaderPairingSettings(
+        direction,
+        automaticMatching,
+        forcedSinglePages,
+        pairingState.manualPairStarts,
+        pairingState.openingMode,
+        pairingState.revision ?: -1,
+    )
+
+    private fun scanStepsOf(certification: ReaderPairingCertification): Int = when (certification) {
+        is ReaderPairingCertification.Certified -> certification.segment.scanSteps
+        is ReaderPairingCertification.NeedFacts -> certification.scanSteps
+        is ReaderPairingCertification.RetryableBlocked -> certification.scanSteps
     }
 
     fun acceptOriginalAnalyses(publications: List<ReaderOriginalAnalysisPublication>): Boolean {
@@ -276,9 +380,9 @@ class SharedDualPageSession(
         val index = identity.pageIds.indexOf(location?.pageId)
         if (index < 0) return emptyList()
         val range = if (navigationForward) {
-            index..minOf(index + 4, identity.pageIds.lastIndex)
+            index..minOf(index + ReaderDualPageFactLimits.DECISION_WINDOW_RADIUS, identity.pageIds.lastIndex)
         } else {
-            maxOf(0, index - 4)..index
+            maxOf(0, index - ReaderDualPageFactLimits.DECISION_WINDOW_RADIUS)..index
         }
         return range.map(identity.pageIds::get)
     }
@@ -316,9 +420,11 @@ class SharedDualPageSession(
         next.spreadSamples = spreadSamples.rebind(nextIdentity)
         next.sampleWorkRevision = sampleWorkRevision + 1
         next.factWorkRevision = factWorkRevision
-        next.factBudget = factBudget
-        ownsFactBudget = false
         val unchanged = nextIdentity.content.filter { content -> content in identity.content }.map { it.pageId }.toSet()
+        val failedPages = facts.entries.filter { it.value.state == ReaderPageFactState.FAILED }.map { it.key }.toSet()
+        next.factBudget = factBudget.rebind(unchanged, failedPages)
+        next.ownsFactBudget = true
+        ownsFactBudget = false
         next.facts.putAll(facts.filterKeys { it in unchanged })
         next.originalHeaders.putAll(originalHeaders.filterKeys { it in unchanged })
         next.layoutRevision = layoutRevision + 1
@@ -352,6 +458,7 @@ class SharedDualPageSession(
         factBudget.close()
         factBudget = ReaderDualPageFactBudget()
         factWorkRevision++
+        certificationMemo.clear()
         return true
     }
 
@@ -366,6 +473,7 @@ class SharedDualPageSession(
         factBudget.close()
         factBudget = ReaderDualPageFactBudget()
         factWorkRevision++
+        certificationMemo.clear()
         rebuild()
         return true
     }
@@ -386,6 +494,7 @@ class SharedDualPageSession(
         factBudget = ReaderDualPageFactBudget()
         factWorkRevision++
         sampleWorkRevision++
+        certificationMemo.clear()
         return true
     }
 
@@ -489,8 +598,15 @@ class SharedDualPageSession(
         require(direction != ReaderDirection.VERTICAL)
         if (this.direction == direction && this.automaticMatching == automaticMatching) return
         revokeConsumedLayoutCause()
-        if (this.direction != direction || this.automaticMatching != automaticMatching) sampleWorkRevision++
-        if (this.direction != direction || this.automaticMatching != automaticMatching) spreadSamples.cancelRequests()
+        if (this.direction != direction || this.automaticMatching != automaticMatching) {
+            sampleWorkRevision++
+            spreadSamples.cancelRequests()
+            spreadSamples.clearResourceFailures()
+            factBudget.close()
+            factBudget = ReaderDualPageFactBudget()
+            factWorkRevision++
+            certificationMemo.clear()
+        }
         this.direction = direction
         this.automaticMatching = automaticMatching
         presentation.configure(direction, automaticMatching, presentationMode == ReaderPresentationMode.SINGLE)
@@ -729,6 +845,7 @@ class SharedDualPageSession(
         if (ownsFactBudget) factBudget.close()
         pairingPersistence.close()
         spreadSamples.close()
+        certificationMemo.clear()
         requests.clear()
         accepted.clear()
     }

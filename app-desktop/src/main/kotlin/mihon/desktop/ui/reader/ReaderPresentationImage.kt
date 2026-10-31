@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import mihon.desktop.reader.DesktopReaderAnimatedPresentationImageHolder
 import mihon.desktop.reader.DesktopReaderAnimatedPresentationImageSnapshot
@@ -84,8 +85,8 @@ internal fun rememberReaderPresentationImage(
     val holder = remember(owner, identity, decodeKey) {
         owner.createHolder(identity, decodeKey)
     }
-    val state by holder.state.collectAsState()
-    val regionState by holder.regionHolder.state.collectAsState()
+    val state by key(holder) { holder.state.collectAsState() }
+    val regionState by key(holder.regionHolder) { holder.regionHolder.state.collectAsState() }
     DisposableEffect(holder) {
         holder.acquire()
         onDispose(holder::close)
@@ -97,7 +98,7 @@ internal fun rememberReaderPresentationImage(
     val animatedState = if (animatedHolder == null) {
         null
     } else {
-        val current by animatedHolder.state.collectAsState()
+        val current by key(animatedHolder) { animatedHolder.state.collectAsState() }
         current
     }
     DisposableEffect(animatedHolder, animationMetadata) {
