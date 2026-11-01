@@ -82,12 +82,13 @@ class LibraryPageCompositionTest {
     @TempDir
     lateinit var tempDir: Path
 
-    private fun bannerTask(status: mihon.domain.task.TaskStatus) = mihon.desktop.task.StoredTask(
+    private fun bannerTask(status: mihon.domain.task.TaskStatus, categoryId: Long? = 0L) = mihon.desktop.task.StoredTask(
         task = mihon.domain.task.BackgroundTask("library-update", "banner-test"),
         status = status,
         libraryUpdate = mihon.desktop.task.LibraryUpdateContext(
             trigger = mihon.desktop.task.LibraryUpdateTrigger.MANUAL,
             scope = mihon.desktop.task.LibraryUpdateScope.ALL,
+            categoryId = categoryId,
             units = listOf(
                 mihon.desktop.task.LibraryUpdateUnit(1, 1, "/1", mihon.desktop.task.LibraryUnitStatus.SUCCESS, 3),
                 mihon.desktop.task.LibraryUpdateUnit(2, 1, "/2", mihon.desktop.task.LibraryUnitStatus.FAILED),
@@ -116,8 +117,8 @@ class LibraryPageCompositionTest {
 
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
-    fun `category switch preserves running banner and completion remains until the next switch`() = runTest {
-        val observations = MutableStateFlow(mihon.desktop.domain.LibraryUpdateObservation(bannerTask(mihon.domain.task.TaskStatus.Running)))
+    fun `category owner hides progress elsewhere and suppresses completion while away`() = runTest {
+        val observations = MutableStateFlow(mihon.desktop.domain.LibraryUpdateObservation(bannerTask(mihon.domain.task.TaskStatus.Running, 1L)))
         val categories = FakeCategoryRepository().apply {
             insert(Category(1, "First", 1, 0))
             insert(Category(2, "Second", 2, 0))
@@ -137,10 +138,15 @@ class LibraryPageCompositionTest {
             }
             pointerClick(scene, "Second")
             settleContextMenu(scene)
-            assertTrue(label in semanticLabels(scene))
-            observations.value = mihon.desktop.domain.LibraryUpdateObservation(bannerTask(mihon.domain.task.TaskStatus.Completed))
+            assertTrue(label !in semanticLabels(scene))
+            pointerClick(scene, "First")
             settleContextMenu(scene)
             assertTrue(label in semanticLabels(scene))
+            pointerClick(scene, "Second")
+            settleContextMenu(scene)
+            observations.value = mihon.desktop.domain.LibraryUpdateObservation(bannerTask(mihon.domain.task.TaskStatus.Completed, 1L))
+            settleContextMenu(scene)
+            assertTrue(label !in semanticLabels(scene))
             pointerClick(scene, "First")
             settleContextMenu(scene)
             assertTrue(label !in semanticLabels(scene))
@@ -192,6 +198,64 @@ class LibraryPageCompositionTest {
             scene.close()
             running.cancel()
         }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `banner owner survives category reorder and duplicate refresh until a new task starts`() = runTest {
+        val task = bannerTask(mihon.domain.task.TaskStatus.Running, 1L)
+        val observations = MutableStateFlow(mihon.desktop.domain.LibraryUpdateObservation(task))
+        val categories = FakeCategoryRepository().apply {
+            insert(Category(1, "First", 1, 0))
+            insert(Category(2, "Second", 2, 0))
+        }
+        var starts = 0
+        val model = LibraryScreenModel(
+            getLibraryManga = GetLibraryManga(FakeMangaRepository()),
+            getCategories = GetCategories(categories),
+            backgroundUpdateObservations = observations,
+            backgroundUpdateSnapshot = { observations.value.task },
+            startBackgroundUpdate = {
+                starts++
+                observations.value = mihon.desktop.domain.LibraryUpdateObservation(
+                    bannerTask(mihon.domain.task.TaskStatus.Running, null).copy(
+                        task = mihon.domain.task.BackgroundTask("library-update", "new-task"),
+                    ),
+                )
+                kotlinx.coroutines.Job().apply { complete() }
+            },
+        )
+        val scene = rootScene(model)
+        try {
+            settleContextMenu(scene)
+            val label = MR.strings.desktop_library_update_results.localized()
+            assertTrue(label in semanticLabels(scene))
+            model.setCategories(listOf(Category(2, "Second", 0, 0), Category(1, "First", 1, 0)))
+            settleContextMenu(scene)
+            assertEquals(1L, model.state.value.categories[model.state.value.selectedCategoryIndex].id)
+            assertTrue(label in semanticLabels(scene))
+            pointerClick(scene, "Second")
+            settleContextMenu(scene)
+            assertTrue(label !in semanticLabels(scene))
+            model.refreshLibrary(emptyList())
+            settleContextMenu(scene)
+            assertEquals(0, starts)
+            assertTrue(label !in semanticLabels(scene), "Duplicate refresh must not move an existing banner")
+            pointerClick(scene, "First")
+            settleContextMenu(scene)
+            assertTrue(label in semanticLabels(scene))
+            observations.value = mihon.desktop.domain.LibraryUpdateObservation(task.copy(status = mihon.domain.task.TaskStatus.Completed))
+            settleContextMenu(scene)
+            pointerClick(scene, "Second")
+            settleContextMenu(scene)
+            model.refreshLibrary(emptyList())
+            settleContextMenu(scene)
+            assertEquals(1, starts)
+            assertTrue(label in semanticLabels(scene), "A new ALL-scope task belongs to its triggering category")
+            pointerClick(scene, "First")
+            settleContextMenu(scene)
+            assertTrue(label !in semanticLabels(scene))
+        } finally { scene.close() }
     }
 
     private object BannerOtherTab : cafe.adriel.voyager.navigator.tab.Tab {
@@ -488,6 +552,7 @@ class LibraryPageCompositionTest {
                 libraryUpdate = mihon.desktop.task.LibraryUpdateContext(
                     trigger = mihon.desktop.task.LibraryUpdateTrigger.MANUAL,
                     scope = mihon.desktop.task.LibraryUpdateScope.ALL,
+                    categoryId = 0L,
                     units = emptyList(),
                 ),
             )
