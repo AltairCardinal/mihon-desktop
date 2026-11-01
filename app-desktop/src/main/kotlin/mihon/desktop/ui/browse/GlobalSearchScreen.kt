@@ -602,7 +602,14 @@ class GlobalSearchScreen(
                                 .focusRequester(searchFocusRequester)
                                 .fillMaxWidth()
                                 .onFocusChanged { focusState ->
-                                    if (focusState.isFocused) historyExpanded = true
+                                    // Prefilled entry requests input focus without requesting history.
+                                    // Explicit anchor clicks still use onExpandedChange above.
+                                    if (
+                                        focusState.isFocused &&
+                                        (session.initialFocusRequested || initialQuery.isBlank())
+                                    ) {
+                                        historyExpanded = true
+                                    }
                                 }
                                 .testTag(GLOBAL_SEARCH_INPUT_TAG)
                                 .onKeyEvent { event ->

@@ -6,6 +6,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.pointer.PointerButton
+import androidx.compose.ui.input.pointer.PointerButtons
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -41,6 +44,78 @@ class GlobalSearchRecentHistoryWiringTest {
         @Composable
         override fun Content() {
             Text("detail")
+        }
+    }
+
+    @Test
+    fun `prefilled entry keeps focus and accepts typing without showing history in any frame`() = runBlocking {
+        for (history in listOf("[]", "[\"previous\"]")) {
+            val fixture = Fixture(coroutineContext)
+            fixture.seedHistory(history)
+            val scene = fixture.mount("original")
+            try {
+                settleWithoutHistory(scene)
+                assertTrue(inputFocused(scene))
+                assertEquals(
+                    AnnotatedString("original"),
+                    nodeByTag(scene, SEARCH_INPUT_TAG).config[SemanticsProperties.EditableText],
+                )
+                assertTrue(
+                    requireNotNull(fixture.persistedHistory()).contains("original"),
+                    "automatic search still records the query",
+                )
+                typeCharacter(scene, 'a')
+                settleWithoutHistory(scene)
+                assertTrue(inputFocused(scene))
+                val edited = nodeByTag(scene, SEARCH_INPUT_TAG).config[SemanticsProperties.EditableText].text
+                assertEquals(9, edited.length)
+                assertTrue(edited.contains('a'))
+
+                // Clicking the already focused editable anchor is an explicit history request.
+                val center = nodeByTag(scene, SEARCH_INPUT_TAG).boundsInWindow.center
+                scene.sendPointerEvent(
+                    PointerEventType.Press,
+                    center,
+                    buttons = PointerButtons(isPrimaryPressed = true),
+                    button = PointerButton.Primary,
+                )
+                scene.sendPointerEvent(
+                    PointerEventType.Release,
+                    center,
+                    buttons = PointerButtons(),
+                    button = PointerButton.Primary,
+                )
+                awaitTag(scene, HISTORY_MENU_TAG)
+                assertTrue(inputFocused(scene), "editable history anchor must keep text input focus")
+            } finally {
+                fixture.close(scene)
+            }
+        }
+    }
+
+    @Test
+    fun `whitespace entry focuses input and opens existing history`() = runBlocking {
+        val fixture = Fixture(coroutineContext)
+        fixture.seedHistory("[\"previous\"]")
+        val scene = fixture.mount("   ")
+        try {
+            awaitTag(scene, HISTORY_MENU_TAG)
+            assertTrue(inputFocused(scene))
+        } finally {
+            fixture.close(scene)
+        }
+    }
+
+    private suspend fun settleWithoutHistory(scene: ImageComposeScene) {
+        repeat(8) {
+            scene.render()
+            assertTrue(
+                nodes(scene).none {
+                    it.testTag() == HISTORY_MENU_TAG
+                },
+                "history must never flash during automatic entry",
+            )
+            yield()
         }
     }
 
