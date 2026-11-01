@@ -11,6 +11,7 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -18,6 +19,7 @@ import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
+import mihon.domain.reader.scheduler.ReaderRequestKind
 import mihon.domain.reader.scheduler.ReaderRequestScheduler
 import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
 import okhttp3.Response
@@ -33,6 +35,124 @@ import java.io.File
 import java.io.IOException
 
 class HttpPageLoaderIntegrationTest {
+
+    @Test
+    fun `visible holder replaces an ordinary request when its URL content attempt or page object changed`() = runTest {
+        for (change in listOf("url", "retry", "encoded", "page")) {
+            val scheduler = ReaderRequestScheduler(ReaderSchedulerPolicy(nearbyForward = 1, maxConcurrentRequests = 1))
+            val fixture = Fixture(testScheduler, requestScheduler = scheduler)
+            var holder: kotlinx.coroutines.Job? = null
+            try {
+                fixture.loader.onPageSelected(fixture.pages[0])
+                runCurrent()
+                fixture.release(0)
+                runCurrent()
+                val original = scheduler.snapshot().activeRequests.single()
+                var requested = fixture.pages[1]
+                when (change) {
+                    "url" -> requested.imageUrl = "https://example/replaced"
+                    "retry" -> requested.retryHeaderFact()
+                    "encoded" -> {
+                        requested.encodedPageRef = mihon.domain.reader.session.EncodedPageRef("previous")
+                        requested.encodedPageRef = mihon.domain.reader.session.EncodedPageRef("replacement")
+                    }
+                    "page" -> {
+                        requested = ReaderPage(requested.index, requested.url, requested.imageUrl).apply {
+                            chapter = fixture.pages[1].chapter
+                        }
+                        requested.chapter.publishLoadedPageListForTest(
+                            fixture.pages.map { if (it.index == requested.index) requested else it },
+                        )
+                    }
+                }
+                holder = launch { fixture.loader.loadPage(requested) }
+                runCurrent()
+                assertEquals(listOf(1), fixture.cancelled)
+                assertEquals(listOf(0, 1, 1), fixture.started)
+                assertFalse(scheduler.accepts(original.jobKey))
+                fixture.release(1)
+                runCurrent()
+                assertEquals(Page.State.Ready, requested.status, change)
+            } finally {
+                holder?.cancel()
+                fixture.loader.recycle()
+                runCurrent()
+            }
+        }
+    }
+
+    @Test
+    fun `visible holder replaces a fact capability instead of inheriting its permit`() = runTest {
+        val scheduler = ReaderRequestScheduler(ReaderSchedulerPolicy.originalMihon())
+        val fixture = Fixture(testScheduler, requestScheduler = scheduler)
+        val pageId = mihon.domain.reader.session.ReaderPageId(mihon.domain.reader.session.ReaderChapterId(1), 1)
+        val budget = mihon.domain.reader.ReaderDualPageFactBudget()
+        budget.reserve(listOf(pageId), 0, required = true)
+        val permit = mihon.domain.reader.ReaderDualPageFactReadPermit(budget, pageId, { 0L })
+        val factConsumer = async { fixture.loader.loadFactPage(fixture.pages[1], permit) }
+        var holder: kotlinx.coroutines.Job? = null
+        try {
+            runCurrent()
+            val original = scheduler.snapshot().activeRequests.single()
+            assertSame(permit, original.factPermit)
+            holder = launch { fixture.loader.loadPage(fixture.pages[1]) }
+            runCurrent()
+            assertEquals(listOf(1), fixture.cancelled)
+            assertEquals(listOf(1, 1), fixture.started)
+            assertFalse(scheduler.accepts(original.jobKey))
+            assertEquals(null, scheduler.snapshot().activeRequests.single().factPermit)
+            fixture.release(1)
+            runCurrent()
+            assertEquals(Page.State.Ready, fixture.pages[1].status)
+        } finally {
+            holder?.cancel()
+            factConsumer.cancel()
+            fixture.loader.recycle()
+            budget.close()
+            runCurrent()
+        }
+    }
+
+    @Test
+    fun `visible holder promotes the same bound ordinary source request without restarting it`() = runTest {
+        val scheduler = ReaderRequestScheduler(
+            ReaderSchedulerPolicy(nearbyForward = 1, maxConcurrentRequests = 1),
+        )
+        val fixture = Fixture(testScheduler, requestScheduler = scheduler)
+        var holder: kotlinx.coroutines.Job? = null
+        try {
+            fixture.loader.onPageSelected(fixture.pages[0])
+            runCurrent()
+            fixture.release(0)
+            runCurrent()
+            assertEquals(listOf(0, 1), fixture.started)
+            val original = scheduler.snapshot().activeRequests.single()
+            assertEquals(ReaderRequestKind.NEARBY, original.kind)
+
+            holder = launch { fixture.loader.loadPage(fixture.pages[1]) }
+            runCurrent()
+
+            assertEquals(emptyList<Int>(), fixture.cancelled, "A kind-only upgrade must retain the source request")
+            assertEquals(listOf(0, 1), fixture.started, "The same source port must not be called a second time")
+            val promoted = scheduler.snapshot().activeRequests.single()
+            assertEquals(original.jobKey, promoted.jobKey)
+            assertEquals(ReaderRequestKind.INTERACTIVE_VISIBLE, promoted.kind)
+            assertTrue(scheduler.accepts(original.jobKey), "The original execution still owns its publication")
+            assertTrue(fixture.loader.hasForegroundWork, "A promoted held source task remains busy")
+
+            fixture.release(1)
+            runCurrent()
+            assertEquals(Page.State.Ready, fixture.pages[1].status)
+            assertNotNull(fixture.pages[1].encodedPageRef)
+            assertTrue(fixture.loader.pageRunnerSnapshot().activeRequestKeys.isEmpty())
+            assertFalse(fixture.loader.hasForegroundWork)
+            assertEquals(listOf(0, 1), fixture.started)
+        } finally {
+            holder?.cancel()
+            fixture.loader.recycle()
+            runCurrent()
+        }
+    }
 
     @Test
     fun `shared scheduler policy controls bounded Android production concurrency`() = runTest {
@@ -209,6 +329,7 @@ class HttpPageLoaderIntegrationTest {
         val source = mockk<HttpSource>()
         val cache = mockk<ChapterCache>()
         val response = mockk<Response>()
+        every { response.code } returns 200
         every { response.close() } returns Unit
         val releaseFirst = Channel<Unit>(Channel.UNLIMITED)
         val cachedUrls = mutableSetOf<String>()
@@ -280,6 +401,7 @@ class HttpPageLoaderIntegrationTest {
             val source = mockk<HttpSource>()
             val cache = mockk<ChapterCache>()
             val response = mockk<Response>()
+            every { response.code } returns 200
             every { response.close() } returns Unit
             val cachedUrls = mutableSetOf<String>()
             every { cache.isImageInCache(any()) } answers { firstArg<String>() in cachedUrls }

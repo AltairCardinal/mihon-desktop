@@ -29,7 +29,7 @@ object SharedSpreadMatching {
     ): ReaderSpreadSamplingPlan? {
         if (rawWidth <= 0 || rawHeight <= 0) return null
         val size = orientation.orientedSize(rawWidth, rawHeight)
-        if (size.width > size.height) return null
+        if (size.width >= size.height) return null
         fun edge(x: Int) = List(SAMPLE_POINTS) { index ->
             val y = (index.toLong() * size.height / SAMPLE_POINTS).toInt()
             orientation.sourcePixel(x, y, rawWidth, rawHeight)
@@ -48,12 +48,21 @@ object SharedSpreadMatching {
 
     fun score(earlier: ReaderSpreadEdgeSamples, later: ReaderSpreadEdgeSamples, direction: ReaderDirection): Double? {
         require(direction != ReaderDirection.VERTICAL)
-        val a = (if (direction == ReaderDirection.RTL) earlier.left else earlier.right).map(::normalizeSample)
-        val b = (if (direction == ReaderDirection.RTL) later.right else later.left).map(::normalizeSample)
-        val distance = a.zip(b).sumOf { (first, second) ->
-            abs(red(first) - red(second)) + abs(green(first) - green(second)) + abs(blue(first) - blue(second))
-        }.toDouble() / SAMPLE_POINTS
-        if (distance >= COLOR_THRESHOLD) return null
+        val first = if (direction == ReaderDirection.RTL) earlier.left else earlier.right
+        val second = if (direction == ReaderDirection.RTL) later.right else later.left
+        val a = IntArray(SAMPLE_POINTS)
+        val b = IntArray(SAMPLE_POINTS)
+        var total = 0
+        for (index in 0 until SAMPLE_POINTS) {
+            val x = normalizeSample(first[index])
+            val y = normalizeSample(second[index])
+            a[index] = x
+            b[index] = y
+            total += abs(red(x) - red(y)) + abs(green(x) - green(y)) + abs(blue(x) - blue(y))
+            // Unread terms are nonnegative, so crossing the strict threshold is final.
+            if (total >= COLOR_THRESHOLD * SAMPLE_POINTS) return null
+        }
+        val distance = total.toDouble() / SAMPLE_POINTS
         if (bright(a) && bright(b)) return null
         if (dark(a) && dark(b)) return null
         if (variance(a) < MIN_EDGE_VARIANCE && variance(b) < MIN_EDGE_VARIANCE) return null
@@ -103,11 +112,14 @@ object SharedSpreadMatching {
     private fun red(color: Int) = (color ushr 16) and 255
     private fun green(color: Int) = (color ushr 8) and 255
     private fun blue(color: Int) = color and 255
-    private fun bright(edge: List<Int>) =
+    private fun bright(edge: IntArray) =
         edge.count { minOf(red(it), green(it), blue(it)) > 220 } >= SAMPLE_POINTS * 0.8
-    private fun dark(edge: List<Int>) = edge.count { maxOf(red(it), green(it), blue(it)) < 50 } >= SAMPLE_POINTS * 0.8
-    private fun variance(edge: List<Int>): Double {
-        val luminances = edge.map { 0.299 * red(it) + 0.587 * green(it) + 0.114 * blue(it) }
+    private fun dark(edge: IntArray) = edge.count { maxOf(red(it), green(it), blue(it)) < 50 } >= SAMPLE_POINTS * 0.8
+    private fun variance(edge: IntArray): Double {
+        val luminances = DoubleArray(SAMPLE_POINTS) { index ->
+            val color = edge[index]
+            0.299 * red(color) + 0.587 * green(color) + 0.114 * blue(color)
+        }
         val mean = luminances.average()
         return luminances.sumOf { it * it } / SAMPLE_POINTS - mean * mean
     }

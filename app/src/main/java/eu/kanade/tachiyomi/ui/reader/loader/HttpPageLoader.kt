@@ -6,6 +6,7 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
+import eu.kanade.tachiyomi.ui.reader.model.ReaderPageContentFact
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -48,6 +49,7 @@ import uy.kohesive.injekt.api.get
 private data class AndroidReaderPageBinding(
     val page: ReaderPage,
     val fetchPort: AndroidReaderPageFetchPort,
+    val content: Pair<String, ReaderPageContentFact>,
 )
 
 /**
@@ -143,6 +145,10 @@ internal class HttpPageLoader(
         }
 
         val enqueueResult = synchronized(preloadJobLock) {
+            if (promoteBoundOrdinaryPageLocked(page)) {
+                foregroundRevision.update { it + 1 }
+                return@synchronized mihon.domain.reader.scheduler.ReaderEnqueueResult(request = null)
+            }
             val result = requestScheduler.enqueue(
                 pageId = readerPageId(page.index),
                 kind = ReaderRequestKind.INTERACTIVE_VISIBLE,
@@ -304,7 +310,7 @@ internal class HttpPageLoader(
                             factReadPermit = request.factPermit,
                         ),
                         fetchPort = fetchPort,
-                        binding = AndroidReaderPageBinding(page, fetchPort),
+                        binding = AndroidReaderPageBinding(page, fetchPort, page.captureContentFact()),
                     )
                 }
                 @Suppress("UNREACHABLE_CODE")
@@ -339,6 +345,30 @@ internal class HttpPageLoader(
                 foregroundRevision.update { it + 1 }
             }
         }
+    }
+
+    /** Only a kind change may reuse the already running ordinary source operation. */
+    private fun promoteBoundOrdinaryPageLocked(page: ReaderPage): Boolean {
+        val request = requestScheduler.snapshot().activeRequests.singleOrNull {
+            it.pageId == readerPageId(page.index)
+        } ?: return false
+        if (request.forceRefresh || request.factPermit != null || scheduledPages[request.jobKey] !== page) return false
+        val work = pageRunner.runningWork(request.jobKey) ?: return false
+        if (work.binding.page !== page || work.request.forceRefresh || work.request.factPermit != null) return false
+        val expected = ReaderPageFetchRequest(
+            pageId = request.pageId,
+            generation = request.generation,
+            url = page.url,
+            imageUrl = page.imageUrl,
+        )
+        if (work.fetchRequest != expected) return false
+        var promoted = false
+        // The original binding captures this loader's source/cache/store owner. The page's
+        // existing content guard also excludes replacement and retry while preserving that binding.
+        page.consumeContentFact(work.binding.content) {
+            promoted = requestScheduler.promoteActive(request.jobKey, ReaderRequestKind.INTERACTIVE_VISIBLE)
+        }
+        return promoted
     }
 
     private fun ReaderPage.applyMaterializeEvent(

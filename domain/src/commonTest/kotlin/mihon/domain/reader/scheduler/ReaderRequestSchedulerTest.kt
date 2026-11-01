@@ -267,6 +267,63 @@ class ReaderRequestSchedulerTest {
         )
     }
 
+    @Test
+    fun `bound ordinary promotion preserves key and rejects non upgrades and explicit retry`() {
+        val scheduler = ReaderRequestScheduler(ReaderSchedulerPolicy(nearbyForward = 0, maxConcurrentRequests = 1))
+        scheduler.enqueue(4, ReaderRequestKind.NEARBY)
+        val original = requireNotNull(scheduler.pollNext())
+        for (kind in listOf(
+            ReaderRequestKind.NEARBY,
+            ReaderRequestKind.CURRENT_BACKGROUND,
+            ReaderRequestKind.EXPLICIT_RETRY,
+        )) {
+            assertFalse(scheduler.promoteActive(original.jobKey, kind))
+            assertEquals(listOf(original), scheduler.snapshot().activeRequests)
+        }
+        assertTrue(scheduler.promoteActive(original.jobKey, ReaderRequestKind.INTERACTIVE_VISIBLE))
+        assertEquals(
+            listOf(original.copy(kind = ReaderRequestKind.INTERACTIVE_VISIBLE)),
+            scheduler.snapshot().activeRequests,
+        )
+        assertTrue(scheduler.accepts(original.jobKey))
+        assertFalse(scheduler.promoteActive(original.jobKey, ReaderRequestKind.INTERACTIVE_VISIBLE))
+        assertTrue(scheduler.complete(original.jobKey))
+        assertFalse(scheduler.promoteActive(original.jobKey, ReaderRequestKind.INTERACTIVE_VISIBLE))
+    }
+
+    @Test
+    fun `bound promotion rejects refresh capability and stale generation without changing active work`() {
+        for ((kind, refresh) in listOf(
+            ReaderRequestKind.CURRENT_BACKGROUND to true,
+            ReaderRequestKind.EXPLICIT_RETRY to false,
+        )) {
+            val scheduler = ReaderRequestScheduler(ReaderSchedulerPolicy(nearbyForward = 0, maxConcurrentRequests = 1))
+            scheduler.enqueue(4, kind, forceRefresh = refresh)
+            val original = requireNotNull(scheduler.pollNext())
+            assertFalse(scheduler.promoteActive(original.jobKey, ReaderRequestKind.INTERACTIVE_VISIBLE))
+            assertEquals(listOf(original), scheduler.snapshot().activeRequests)
+            assertTrue(scheduler.accepts(original.jobKey))
+        }
+        val scheduler = ReaderRequestScheduler(ReaderSchedulerPolicy(nearbyForward = 0, maxConcurrentRequests = 1))
+        val page = ReaderPageId(TEST_CHAPTER_ID, 4)
+        val budget = ReaderDualPageFactBudget()
+        try {
+            budget.reserve(listOf(page), 0, required = true)
+            val permit = ReaderDualPageFactReadPermit(budget, page, { 0L })
+            scheduler.enqueue(page, ReaderRequestKind.CURRENT_BACKGROUND, factPermit = permit)
+            val original = requireNotNull(scheduler.pollNext())
+            assertFalse(scheduler.promoteActive(original.jobKey, ReaderRequestKind.INTERACTIVE_VISIBLE))
+            assertEquals(listOf(original), scheduler.snapshot().activeRequests)
+            assertSame(permit, scheduler.snapshot().activeRequests.single().factPermit)
+            scheduler.moveTo(currentPage = 0, pageCount = 2)
+            val afterMove = scheduler.snapshot()
+            assertFalse(scheduler.promoteActive(original.jobKey, ReaderRequestKind.INTERACTIVE_VISIBLE))
+            assertEquals(afterMove, scheduler.snapshot())
+        } finally {
+            budget.close()
+        }
+    }
+
     private fun ReaderRequestScheduler.moveTo(currentPage: Int, pageCount: Int) =
         moveTo(TEST_CHAPTER_ID, currentPage, pageCount)
 

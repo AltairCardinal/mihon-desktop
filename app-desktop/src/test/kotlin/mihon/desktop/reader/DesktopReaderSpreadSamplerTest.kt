@@ -1,10 +1,13 @@
 package mihon.desktop.reader
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.runTest
 import mihon.domain.reader.PageDecodePurpose
+import mihon.domain.reader.PageRotation
 import mihon.domain.reader.ReaderImageOrientation
 import mihon.domain.reader.ReaderOriginalPageSamples
+import mihon.domain.reader.ReaderPageDecodeKey
 import mihon.domain.reader.ReaderPageSideHint
 import mihon.domain.reader.ReaderPageSideHints
 import mihon.domain.reader.ReaderSpreadEdgeSamples
@@ -28,6 +31,203 @@ import javax.imageio.ImageIO
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DesktopReaderSpreadSamplerTest {
+    @Test
+    fun `square original regions read no encoded pixels in all four user rotations`() = runTest {
+        val encoded = largePng(40, 40)
+        var opens = 0
+        var regionCalls = 0
+        val background = java.util.concurrent.ConcurrentLinkedQueue<Throwable>()
+        val ownedRoot = kotlinx.coroutines.SupervisorJob(coroutineContext[kotlinx.coroutines.Job])
+        val ownedScope = kotlinx.coroutines.CoroutineScope(
+            coroutineContext + ownedRoot +
+                kotlinx.coroutines.CoroutineExceptionHandler { _, error -> background.add(error) },
+        )
+        val reporter = ReaderIoReporter(clock = ReaderMonotonicClock(System::nanoTime))
+        val owner = DesktopReaderPageContentOwner(ownedScope, {
+            opens++
+            encoded
+        }, reporter)
+        val decoder = SkiaDesktopReaderPageImageDecoder()
+        val pipeline = DesktopReaderPageImagePipeline(
+            ownedScope,
+            owner,
+            reporter,
+            decoder = DesktopReaderPageImageDecoder { bytes, key ->
+                assertEquals(PageDecodePurpose.REGION_TILE, key.purpose)
+                regionCalls++
+                decoder.decode(bytes, key)
+            },
+        )
+        val key = ReaderPageContentOpenRequest(
+            ReaderPageId(ReaderChapterId(87), 1),
+            3,
+            EncodedPageRef("square://original-regions"),
+        )
+        val results = mutableListOf<ReaderOriginalPageSamples>()
+        var failure: Throwable? = null
+        fun record(error: Throwable) {
+            val first = failure
+            if (first == null) {
+                failure = error
+            } else if (error !== first) {
+                first.addSuppressed(error)
+            }
+        }
+        try {
+            pipeline.openRegionSession(key).use { session ->
+                for (rotation in PageRotation.entries) {
+                    results += requireNotNull(
+                        DesktopReaderSpreadSampler.sampleOriginal(
+                            pipeline,
+                            session,
+                            40,
+                            40,
+                            ReaderImageOrientation.NORMAL,
+                            rotation,
+                        ),
+                    )
+                }
+            }
+            assertEquals(PageRotation.entries.size, results.size)
+            println(
+                "R10_SQUARE_DESKTOP_REGION rotations=${results.size} opens=$opens " +
+                    "regionApiCalls=$regionCalls returnedEdgeValues=" +
+                    results.sumOf { (it.edges?.left?.size ?: 0) + (it.edges?.right?.size ?: 0) },
+            )
+        } catch (error: Throwable) {
+            record(error)
+        } finally {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                try {
+                    runResourceActions(listOf(pipeline::close, owner::close))
+                } catch (error: Throwable) {
+                    record(error)
+                } finally {
+                    try {
+                        ownedRoot.cancelAndJoin()
+                    } catch (error: Throwable) {
+                        record(error)
+                    }
+                }
+            }
+        }
+        background.forEach(::record)
+        failure?.let { throw it }
+        assertTrue(ownedRoot.isCompleted)
+        assertTrue(background.isEmpty())
+        assertEquals(0, pipeline.snapshot().inFlightCount)
+        assertEquals(0L, pipeline.memoryAuthority.snapshot().residentBytes)
+        assertTrue(owner.snapshot().activeLeaseCounts.isEmpty())
+        println(
+            "R10_SQUARE_HEALTH case=desktop-region rootCompleted=${ownedRoot.isCompleted} " +
+                "background=${background.size} inFlight=${pipeline.snapshot().inFlightCount} " +
+                "resident=${pipeline.memoryAuthority.snapshot().residentBytes} " +
+                "leases=${owner.snapshot().activeLeaseCounts.size}",
+        )
+        // Intentional old-plan RED occurs only after all real cleanup and health assertions pass.
+        assertEquals(0, regionCalls, "An empty square plan must not create native regions")
+        assertEquals(0, opens)
+        assertEquals(0, results.sumOf { (it.edges?.left?.size ?: 0) + (it.edges?.right?.size ?: 0) })
+        assertTrue(results.all { it.sideHint == ReaderPageSideHint.UNKNOWN && it.edges == null })
+    }
+
+    @Test
+    fun `full square Skia decode preserves one bitmap and empty four rotation original evidence`() = runTest {
+        val encoded = largePng(40, 40)
+        var opens = 0
+        var fullCalls = 0
+        val background = java.util.concurrent.ConcurrentLinkedQueue<Throwable>()
+        val ownedRoot = kotlinx.coroutines.SupervisorJob(coroutineContext[kotlinx.coroutines.Job])
+        val ownedScope = kotlinx.coroutines.CoroutineScope(
+            coroutineContext + ownedRoot +
+                kotlinx.coroutines.CoroutineExceptionHandler { _, error -> background.add(error) },
+        )
+        val reporter = ReaderIoReporter(clock = ReaderMonotonicClock(System::nanoTime))
+        val owner = DesktopReaderPageContentOwner(ownedScope, {
+            opens++
+            encoded
+        }, reporter)
+        val decoder = SkiaDesktopReaderPageImageDecoder()
+        val pipeline = DesktopReaderPageImagePipeline(
+            ownedScope,
+            owner,
+            reporter,
+            decoder = DesktopReaderPageImageDecoder { bytes, key ->
+                assertEquals(PageDecodePurpose.FULL_PAGE, key.purpose)
+                fullCalls++
+                decoder.decode(bytes, key)
+            },
+        )
+        var evidence: Map<PageRotation, ReaderOriginalPageSamples> = emptyMap()
+        var failure: Throwable? = null
+        fun record(error: Throwable) {
+            val first = failure
+            if (first == null) {
+                failure = error
+            } else if (error !== first) {
+                first.addSuppressed(error)
+            }
+        }
+        try {
+            val key = ReaderPageDecodeKey(
+                ReaderPageContentOpenRequest(
+                    ReaderPageId(ReaderChapterId(87), 1),
+                    3,
+                    EncodedPageRef("square://full-original"),
+                ),
+                PageDecodePurpose.FULL_PAGE,
+                64,
+                64,
+            )
+            requireNotNull(pipeline.acquire(key)).use { lease ->
+                assertEquals(40, lease.asset.sourceWidth)
+                assertEquals(40, lease.asset.sourceHeight)
+                assertEquals(40, lease.asset.bitmap.width)
+                assertEquals(40, lease.asset.bitmap.height)
+                evidence = lease.asset.originalSamples
+                assertEquals(PageRotation.entries.toSet(), evidence.keys)
+                println(
+                    "R10_SQUARE_DESKTOP_FULL opens=$opens fullApiCalls=$fullCalls " +
+                        "rotationEvidence=${evidence.size} returnedEdgeValues=" +
+                        evidence.values.sumOf { (it.edges?.left?.size ?: 0) + (it.edges?.right?.size ?: 0) },
+                )
+            }
+        } catch (error: Throwable) {
+            record(error)
+        } finally {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                try {
+                    runResourceActions(listOf(pipeline::close, owner::close))
+                } catch (error: Throwable) {
+                    record(error)
+                } finally {
+                    try {
+                        ownedRoot.cancelAndJoin()
+                    } catch (error: Throwable) {
+                        record(error)
+                    }
+                }
+            }
+        }
+        background.forEach(::record)
+        failure?.let { throw it }
+        assertTrue(ownedRoot.isCompleted)
+        assertTrue(background.isEmpty())
+        assertEquals(0, pipeline.snapshot().inFlightCount)
+        assertEquals(0L, pipeline.memoryAuthority.snapshot().residentBytes)
+        assertTrue(owner.snapshot().activeLeaseCounts.isEmpty())
+        println(
+            "R10_SQUARE_HEALTH case=desktop-full rootCompleted=${ownedRoot.isCompleted} " +
+                "background=${background.size} inFlight=${pipeline.snapshot().inFlightCount} " +
+                "resident=${pipeline.memoryAuthority.snapshot().residentBytes} " +
+                "leases=${owner.snapshot().activeLeaseCounts.size}",
+        )
+        assertEquals(1, opens)
+        assertEquals(1, fullCalls, "This candidate removes evidence sampling, not the FULL decode")
+        assertEquals(0, evidence.values.sumOf { (it.edges?.left?.size ?: 0) + (it.edges?.right?.size ?: 0) })
+        assertTrue(evidence.values.all { it.sideHint == ReaderPageSideHint.UNKNOWN && it.edges == null })
+    }
+
     @Test
     fun `actual ICC JPEG region leases expose fixed sRGB rather than untagged linear channels`() = runTest {
         val profiled = requireNotNull(javaClass.classLoader?.getResourceAsStream("reader/linear-rgb-profile.jpg"))

@@ -12,11 +12,13 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -60,10 +62,145 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], manifest = Config.NONE)
 class ReaderPageFactProductionWiringTest {
+    @Test
+    fun `ordinary promotion preserves a held real HTTP body cache bytes and exit accounting`() =
+        runBlocking(Dispatchers.IO) {
+            val directory = Files.createTempDirectory("reader-r10-http-promote").toFile()
+            val context = mockk<Context>()
+            every { context.cacheDir } returns directory
+            val cache = ChapterCache(context, Json)
+            val entered = CountDownLatch(1)
+            val release = CountDownLatch(1)
+            val heldResponses = AtomicInteger()
+            val closedResponses = AtomicInteger()
+            val bodyBytes = AtomicLong()
+            val encoded = png(30, 50)
+            val client = OkHttpClient.Builder().addInterceptor { chain ->
+                val response = chain.proceed(chain.request())
+                val firstHeld = chain.request().url.encodedPath == "/held" &&
+                    heldResponses.incrementAndGet() == 1
+                val originalBody = response.body
+                val bodyClosed = AtomicBoolean()
+                val bodySource = object : ForwardingSource(originalBody.source()) {
+                    override fun read(sink: Buffer, byteCount: Long): Long {
+                        if (firstHeld) {
+                            entered.countDown()
+                            check(release.await(15, TimeUnit.SECONDS)) { "Held HTTP body gate expired" }
+                        }
+                        return super.read(sink, byteCount).also { if (it > 0) bodyBytes.addAndGet(it) }
+                    }
+
+                    override fun close() {
+                        try {
+                            super.close()
+                        } finally {
+                            if (bodyClosed.compareAndSet(false, true)) closedResponses.incrementAndGet()
+                        }
+                    }
+                }.buffer()
+                response.newBuilder().body(object : ResponseBody() {
+                    override fun contentType() = originalBody.contentType()
+                    override fun contentLength() = originalBody.contentLength()
+                    override fun source() = bodySource
+                }).build()
+            }.build()
+            MockWebServer().also { it.start() }.use { server ->
+                // OFF may replace the held response; ON consumes only the first two responses.
+                repeat(3) { server.enqueue(MockResponse.Builder().body(Buffer().write(encoded)).build()) }
+                val chapter = ReaderChapter(Chapter.create().copy(id = 7, mangaId = 1))
+                val pages = listOf("first", "held").mapIndexed { index, path ->
+                    ReaderPage(index, imageUrl = server.url("/$path").toString()).apply { this.chapter = chapter }
+                }
+                chapter.publishLoadedPageListForTest(pages)
+                val scheduler = mihon.domain.reader.scheduler.ReaderRequestScheduler(
+                    mihon.domain.reader.scheduler.ReaderSchedulerPolicy(nearbyForward = 1, maxConcurrentRequests = 1),
+                )
+                val processBaseline = ReaderPageMaterializeRunner.processPhysicalWorkCount.value
+                val loader = HttpPageLoader(
+                    chapter,
+                    HttpReaderMaterializeAdapterIntegrationTest.TestHttpSource(server, client),
+                    cache,
+                    dispatcher = Dispatchers.IO,
+                    requestScheduler = scheduler,
+                )
+                var holder: kotlinx.coroutines.Job? = null
+                var bodyFailure: Throwable? = null
+                try {
+                    loader.onPageSelected(pages[0])
+                    assertTrue(
+                        "Background response must enter the actual body read",
+                        entered.await(5, TimeUnit.SECONDS),
+                    )
+                    val originalKey = loader.pageRunnerSnapshot().activeRequestKeys.single()
+                    // Same IO dispatcher + UNDISPATCHED runs the kind change before launch returns.
+                    holder = launch(start = CoroutineStart.UNDISPATCHED) { loader.loadPage(pages[1]) }
+                    val promotedKey = loader.pageRunnerSnapshot().activeRequestKeys
+                    // The same frozen body stall is used by both OFF and ON; this is workload input,
+                    // not a latency assertion or a different completion endpoint for either arm.
+                    delay(250)
+                    release.countDown()
+                    withTimeout(5_000) {
+                        while (pages.any { it.status != Page.State.Ready } || loader.hasForegroundWork) delay(10)
+                    }
+                    pages.forEach { page ->
+                        assertArrayEquals(encoded, cache.getImageFile(checkNotNull(page.imageUrl)).readBytes())
+                        assertNotNull(page.encodedPageRef)
+                    }
+                    assertEquals(processBaseline, ReaderPageMaterializeRunner.processPhysicalWorkCount.value)
+                    assertEquals(server.requestCount, closedResponses.get())
+                    println(
+                        "R10_HTTP requests=${server.requestCount} heldResponses=${heldResponses.get()} " +
+                            "page0Requests=${server.requestCount - heldResponses.get()} " +
+                            "targetRequests=${heldResponses.get()} " +
+                            "bodyBytes=${bodyBytes.get()} closedResponses=${closedResponses.get()} " +
+                            "originalKey=$originalKey promotedKeys=$promotedKey ready=2 remaining=0",
+                    )
+                    assertEquals("Same bound request must consume one response per page", 2, server.requestCount)
+                    assertEquals(setOf(originalKey), promotedKey)
+                } catch (error: Throwable) {
+                    bodyFailure = error
+                    throw error
+                } finally {
+                    release.countDown()
+                    var cleanupFailure: Throwable? = null
+                    suspend fun cleanup(action: suspend () -> Unit) {
+                        try {
+                            action()
+                        } catch (error: Throwable) {
+                            val firstFailure = bodyFailure ?: cleanupFailure
+                            if (firstFailure == null) cleanupFailure = error else firstFailure.addSuppressed(error)
+                        }
+                    }
+                    cleanup {
+                        holder?.cancelAndJoin()
+                        withTimeout(5_000) { while (loader.hasForegroundWork) delay(10) }
+                    }
+                    cleanup { loader.recycle() }
+                    cleanup {
+                        assertEquals(processBaseline, ReaderPageMaterializeRunner.processPhysicalWorkCount.value)
+                        assertTrue(loader.pageRunnerSnapshot().activeRequestKeys.isEmpty())
+                    }
+                    cleanup { cache.close() }
+                    cleanup { client.dispatcher.executorService.shutdown() }
+                    cleanup { client.connectionPool.evictAll() }
+                    cleanup {
+                        check(
+                            directory.canonicalFile.parentFile ==
+                                File(System.getProperty("java.io.tmpdir")).canonicalFile,
+                        )
+                        check(directory.name.startsWith("reader-r10-http-promote"))
+                        check(directory.deleteRecursively())
+                    }
+                    if (bodyFailure == null) cleanupFailure?.let { throw it }
+                }
+            }
+        }
+
     @Test
     fun `cancelling a same ref writer wait closes the unconsumed original HTTP response`() = runBlocking {
         val directory = Files.createTempDirectory("reader-http-cache-wait-cancel").toFile()

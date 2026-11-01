@@ -247,6 +247,12 @@ class ReaderPageMaterializeRunner<T>(
         ReaderPageMaterializeRunnerSnapshot(activeWork.keys.toSet(), closed)
     }
 
+    /** An observation of the original binding, never a new authorization to publish or execute. */
+    fun runningWork(jobKey: ReaderRequestKey): ReaderPageMaterializeWork<T>? = synchronized(lock) {
+        if (closed) return@synchronized null
+        activeWork[jobKey]?.takeIf { !it.finalized && it.job.isActive }?.work
+    }
+
     override fun close() {
         val registrations = synchronized(lock) {
             if (closed) return
