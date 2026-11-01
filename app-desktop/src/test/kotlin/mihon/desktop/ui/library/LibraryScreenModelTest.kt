@@ -81,7 +81,7 @@ class LibraryScreenModelTest {
     lateinit var tempDir: Path
 
     @Test
-    fun `running banner survives category switch and completed banner is dismissed by the next switch`() = runTest {
+    fun `completion in another category dismisses the original banner`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val running = mihon.desktop.task.StoredTask(
             task = mihon.domain.task.BackgroundTask("library-update", "visibility-test"),
@@ -89,12 +89,14 @@ class LibraryScreenModelTest {
             libraryUpdate = mihon.desktop.task.LibraryUpdateContext(
                 trigger = mihon.desktop.task.LibraryUpdateTrigger.MANUAL,
                 scope = mihon.desktop.task.LibraryUpdateScope.ALL,
+                categoryId = 1L,
                 units = emptyList(),
             ),
         )
         val observations = MutableStateFlow(mihon.desktop.domain.LibraryUpdateObservation(running))
         val model = LibraryScreenModel(backgroundUpdateObservations = observations)
         try {
+            model.setCategories(listOf(Category(1, "First", 0, 0), Category(2, "Second", 1, 0)))
             model.syncBackgroundUpdate()
             runCurrent()
             assertTrue(model.state.value.updateBannerVisible)
@@ -102,7 +104,7 @@ class LibraryScreenModelTest {
             assertTrue(model.state.value.updateBannerVisible)
             observations.value = mihon.desktop.domain.LibraryUpdateObservation(running.copy(status = TaskStatus.Completed))
             runCurrent()
-            assertTrue(model.state.value.updateBannerVisible)
+            assertFalse(model.state.value.updateBannerVisible)
             model.setSelectedCategoryIndex(0)
             assertFalse(model.state.value.updateBannerVisible)
         } finally {

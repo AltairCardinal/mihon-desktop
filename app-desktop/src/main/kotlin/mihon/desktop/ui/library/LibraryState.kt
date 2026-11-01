@@ -44,6 +44,7 @@ data class LibraryState(
     val isUpdating: Boolean = false,
     val updateStatusText: String? = null,
     val updateBannerVisible: Boolean = false,
+    val updateBannerCategoryId: Long? = null,
     val updateTask: mihon.desktop.task.StoredTask? = null,
     val updateLaunchFailed: Boolean = false,
     val isLoading: Boolean = true,

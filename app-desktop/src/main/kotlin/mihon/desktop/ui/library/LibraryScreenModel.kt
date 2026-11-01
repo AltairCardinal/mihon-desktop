@@ -196,13 +196,18 @@ class LibraryScreenModel(
                 observesBackgroundUpdate = true
                 screenModelScope.launch {
                     observations.collect { observed ->
-                        val completedWhileAway = !updateBannerHostVisible && observed.task?.status in
+                        val recoveredCategoryId = state.value.updateBannerCategoryId
+                            ?: observed.task?.libraryUpdate?.categoryId
+                        val atOwnerCategory = (state.value.categories.getOrNull(state.value.selectedCategoryIndex)?.id ?: 0L) ==
+                            recoveredCategoryId
+                        val completedWhileAway = (!updateBannerHostVisible || !atOwnerCategory) && observed.task?.status in
                             setOf(TaskStatus.Completed, TaskStatus.Failed, TaskStatus.Cancelled)
                         if (completedWhileAway) updateBannerDismissed = true
                         _state.update { current ->
                             current.copy(
                                 updateTask = observed.task,
-                                updateBannerVisible = !completedWhileAway && (
+                                updateBannerCategoryId = recoveredCategoryId,
+                                updateBannerVisible = recoveredCategoryId != null && !completedWhileAway && (
                                     current.updateBannerVisible ||
                                         (!updateBannerDismissed && observed.task?.status == TaskStatus.Running)
                                     ),
@@ -467,9 +472,16 @@ class LibraryScreenModel(
         _state.update { it.copy(updateBannerVisible = false) }
     }
 
-    private fun revealUpdateBanner() {
+    private fun revealUpdateBanner(captureCategory: Boolean = true) {
         updateBannerDismissed = false
-        _state.update { it.copy(updateBannerVisible = true) }
+        _state.update {
+            val owner = if (captureCategory) {
+                it.categories.getOrNull(it.selectedCategoryIndex)?.id ?: 0L
+            } else {
+                it.updateBannerCategoryId
+            }
+            it.copy(updateBannerVisible = owner != null, updateBannerCategoryId = owner)
+        }
     }
 
     // ── Update status ─────────────────────────────────────────────────────────
@@ -863,7 +875,11 @@ class LibraryScreenModel(
     }
 
     suspend fun refreshLibrary(items: List<LibraryManga>, categoryId: Long? = null): Boolean {
-        revealUpdateBanner()
+        revealUpdateBanner(
+            captureCategory = !state.value.isUpdating &&
+                state.value.updateTask?.status !in setOf(TaskStatus.Pending, TaskStatus.Running) &&
+                backgroundUpdateJob?.invoke()?.isActive != true,
+        )
         if (
             !backgroundIsWaitingForDevice() && (
                 _state.value.isUpdating || backgroundUpdateJob?.invoke()?.isActive == true
@@ -998,8 +1014,11 @@ class LibraryScreenModel(
         } == true
 
     private fun runRecoveryUpdate(start: (() -> Job)?) {
-        if (start != null) revealUpdateBanner()
-        if ((_state.value.isUpdating && !backgroundIsWaitingForDevice()) || start == null) return
+        if ((_state.value.isUpdating && !backgroundIsWaitingForDevice()) || start == null) {
+            if (start != null) revealUpdateBanner(captureCategory = false)
+            return
+        }
+        revealUpdateBanner()
         screenModelScope.launch {
             setIsUpdating(!backgroundIsWaitingForDevice())
             try {
