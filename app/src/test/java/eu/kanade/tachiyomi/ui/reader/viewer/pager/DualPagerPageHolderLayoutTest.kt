@@ -72,6 +72,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowChoreographer
 import org.robolectric.shadows.ShadowToast
 import org.robolectric.util.ReflectionHelpers
@@ -1509,6 +1510,78 @@ class DualPagerPageHolderLayoutTest {
         Dispatchers.resetMain()
         Injekt = previousInjekt
         unmockkObject(ImageUtil)
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `real dual viewer observes ripple mode and captures before source navigation rebuilds its window`() = runTest {
+        useOriginalPngDecoder()
+        val preferences = Injekt.get<ReaderPreferences>()
+        preferences.pageTurnRipple().set(true)
+        preferences.pageTurnRippleMode().set(ReaderPreferences.PageTurnRippleMode.SMOOTH)
+        runCurrent()
+        assertTrue(viewer.pager.pageTurnRippleEnabled)
+        assertEquals(ReaderPreferences.PageTurnRippleMode.SMOOTH, viewer.pager.rippleMode)
+        val chapter = loadedChapter(74101, 6)
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        val host = Robolectric.buildActivity(ComponentActivity::class.java).setup().visible()
+        try {
+            host.get().setContentView(viewer.pager)
+            measure(viewer.pager, 1400, 1000)
+            runCurrent()
+            measure(viewer.pager, 1400, 1000)
+            val before = viewer.pager.captureSnapshot()
+            if (before == null) {
+                val probe = Bitmap.createBitmap(viewer.pager.width, viewer.pager.height, Bitmap.Config.ARGB_8888)
+                try {
+                    // Surface a fixture draw failure that the production fallback deliberately catches.
+                    viewer.pager.draw(android.graphics.Canvas(probe))
+                } finally {
+                    probe.recycle()
+                }
+                error("The mounted old viewport must be capturable before a real navigation")
+            }
+            before.recycle()
+            viewer.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_LEFT))
+            assertTrue(
+                "A source navigation must retain the prepared old viewport even if its adapter reuses the index",
+                viewer.pager.currentRippleBitmap != null,
+            )
+            preferences.pageTurnRippleMode().set(ReaderPreferences.PageTurnRippleMode.CLEAN)
+            runCurrent()
+            assertEquals(ReaderPreferences.PageTurnRippleMode.CLEAN, viewer.pager.rippleMode)
+            preferences.pageTurnRipple().set(false)
+            runCurrent()
+            assertNull(
+                "Disabling ripple must immediately remove its old page overlay",
+                viewer.pager.currentRippleBitmap,
+            )
+        } finally {
+            host.get().setContentView(View(host.get()))
+            host.pause().stop().destroy()
+        }
+    }
+
+    @Test
+    fun `real single viewer observes scheme A and clears its overlay when the preference is disabled`() = runTest {
+        val single = L2RPagerViewer(viewer.activity)
+        // Match this viewport fixture's existing dual-viewer setup: navigation help is outside its mount.
+        single.config.navigationModeChangedListener = null
+        try {
+            val preferences = Injekt.get<ReaderPreferences>()
+            preferences.pageTurnRipple().set(true)
+            preferences.pageTurnRippleMode().set(ReaderPreferences.PageTurnRippleMode.SMOOTH)
+            runCurrent()
+            assertTrue(single.pager.pageTurnRippleEnabled)
+            assertEquals(ReaderPreferences.PageTurnRippleMode.SMOOTH, single.pager.rippleMode)
+            measure(single.pager, 1400, 1000)
+            assertTrue(single.pager.prepareRipple(Pager.RippleDirection.RIGHT_TO_LEFT))
+            preferences.pageTurnRipple().set(false)
+            runCurrent()
+            assertNull(single.pager.currentRippleBitmap)
+        } finally {
+            single.destroy()
+        }
     }
 
     @Test

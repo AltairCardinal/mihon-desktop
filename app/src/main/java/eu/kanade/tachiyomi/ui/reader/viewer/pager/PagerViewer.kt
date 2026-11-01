@@ -154,8 +154,12 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
         }
 
         pager.pageTurnRippleEnabled = config.pageTurnRipple
+        pager.rippleMode = config.pageTurnRippleMode
         config.pageTurnRippleChangedListener = { enabled ->
             pager.pageTurnRippleEnabled = enabled
+        }
+        config.pageTurnRippleModeChangedListener = { mode ->
+            pager.rippleMode = mode
         }
         pager.swipeListener = { direction ->
             when (direction) {
@@ -510,6 +514,7 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
                     } else {
                         Pager.RippleDirection.RIGHT_TO_LEFT
                     }
+                    pager.prepareRipple(direction)
                     pager.setCurrentItemWithRipple(pager.currentItem + 1, direction)
                 } else {
                     pager.setCurrentItem(pager.currentItem + 1, config.usePageTransitions)
@@ -533,6 +538,7 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
                     } else {
                         Pager.RippleDirection.LEFT_TO_RIGHT
                     }
+                    pager.prepareRipple(direction)
                     pager.setCurrentItemWithRipple(pager.currentItem - 1, direction)
                 } else {
                     pager.setCurrentItem(pager.currentItem - 1, config.usePageTransitions)

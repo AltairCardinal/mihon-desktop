@@ -525,6 +525,10 @@
     <string name="pref_flash_page_summ">Reduces ghosting on e-ink displays</string>
     <string name="pref_page_turn_ripple">Ripple effect on page turn</string>
     <string name="pref_page_turn_ripple_summary">Use ripple wipe transition when turning pages</string>
+    <string name="pref_page_turn_ripple_style">Ripple effect</string>
+    <string name="pref_page_turn_ripple_style_clean">Clean (no shadow)</string>
+    <string name="pref_page_turn_ripple_style_shadow_line">Classic (stepped)</string>
+    <string name="pref_page_turn_ripple_style_smooth">Scheme A (smooth)</string>
     <string name="pref_eink_device_detected">E-Ink device detected</string>
     <string name="pref_flash_duration">Flash duration</string>
     <string name="pref_flash_duration_summary">%1$s ms</string>

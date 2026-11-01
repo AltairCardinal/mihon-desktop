@@ -12,6 +12,7 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import eu.kanade.tachiyomi.util.system.hasDisplayCutout
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.collections.immutable.toImmutableList
 import kotlinx.collections.immutable.toImmutableMap
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.pluralStringResource
@@ -136,6 +137,10 @@ object SettingsReaderScreen : SearchableSettings {
 
         val flashColorPref = readerPreferences.flashColor()
 
+        val ripplePref = readerPreferences.pageTurnRipple()
+        val rippleState by ripplePref.collectAsState()
+        val rippleModePref = readerPreferences.pageTurnRippleMode()
+
         val isEInk = eu.kanade.tachiyomi.util.system.DeviceUtil.isEInk
         val rippleSummary = if (isEInk) {
             "${stringResource(
@@ -147,17 +152,34 @@ object SettingsReaderScreen : SearchableSettings {
 
         return Preference.PreferenceGroup(
             title = "E-Ink",
-            preferenceItems = persistentListOf(
+            preferenceItems = listOfNotNull(
                 Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.flashOnPageChange(),
                     title = stringResource(MR.strings.pref_flash_page),
                     subtitle = stringResource(MR.strings.pref_flash_page_summ),
                 ),
                 Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.pageTurnRipple(),
+                    preference = ripplePref,
                     title = stringResource(MR.strings.pref_page_turn_ripple),
                     subtitle = rippleSummary,
                 ),
+                if (rippleState) {
+                    Preference.PreferenceItem.ListPreference(
+                        preference = rippleModePref,
+                        entries = persistentMapOf(
+                            ReaderPreferences.PageTurnRippleMode.CLEAN
+                                to stringResource(MR.strings.pref_page_turn_ripple_style_clean),
+                            ReaderPreferences.PageTurnRippleMode.SHADOW_LINE
+                                to stringResource(MR.strings.pref_page_turn_ripple_style_shadow_line),
+                            ReaderPreferences.PageTurnRippleMode.SMOOTH
+                                to stringResource(MR.strings.pref_page_turn_ripple_style_smooth),
+                        ),
+                        title = stringResource(MR.strings.pref_page_turn_ripple_style),
+                        enabled = rippleState,
+                    )
+                } else {
+                    null
+                },
                 Preference.PreferenceItem.SliderPreference(
                     value = flashMillis / ReaderPreferences.MILLI_CONVERSION,
                     valueRange = 1..15,
@@ -185,7 +207,7 @@ object SettingsReaderScreen : SearchableSettings {
                     title = stringResource(MR.strings.pref_flash_with),
                     enabled = flashPageState,
                 ),
-            ),
+            ).toImmutableList(),
         )
     }
 

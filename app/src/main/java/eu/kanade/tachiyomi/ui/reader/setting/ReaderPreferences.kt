@@ -48,6 +48,11 @@ class ReaderPreferences(
         eu.kanade.tachiyomi.util.system.DeviceUtil.isEInk,
     )
 
+    fun pageTurnRippleMode() = preferenceStore.getEnum(
+        "pref_reader_page_turn_ripple_mode",
+        PageTurnRippleMode.SHADOW_LINE,
+    )
+
     fun doubleTapAnimSpeed() = preferenceStore.getInt("pref_double_tap_anim_speed", 500)
 
     fun showPageNumber() = preferenceStore.getBoolean("pref_show_page_number_key", true)
@@ -168,6 +173,12 @@ class ReaderPreferences(
         BLACK,
         WHITE,
         WHITE_BLACK,
+    }
+
+    enum class PageTurnRippleMode {
+        CLEAN,
+        SHADOW_LINE,
+        SMOOTH,
     }
 
     enum class TappingInvertMode(

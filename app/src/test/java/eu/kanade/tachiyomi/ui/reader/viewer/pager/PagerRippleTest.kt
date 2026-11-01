@@ -204,6 +204,7 @@ class PagerRippleTest {
         )
         testPager.layout(0, 0, 800, 1200)
 
+        testPager.pageTurnRippleEnabled = true
         // Turn from page 0 to page 1
         testPager.setCurrentItemWithRipple(1, Pager.RippleDirection.RIGHT_TO_LEFT)
         val snapshot = testPager.currentRippleBitmap
@@ -233,14 +234,137 @@ class PagerRippleTest {
         assertEquals("Right of wipe boundary should be new page (BLUE)", android.graphics.Color.BLUE, rightPixel)
 
         testPager.cancelRipple()
+        testPager.setCurrentItemWithRipple(0, Pager.RippleDirection.LEFT_TO_RIGHT)
+        val reverse = requireNotNull(testPager.currentRippleBitmap)
+        assertEquals(
+            "A nonzero ViewPager offset must still capture the old BLUE viewport",
+            android.graphics.Color.BLUE,
+            reverse.getPixel(400, 600),
+        )
+        testPager.cancelRipple()
     }
 
     @Test
-    fun rippleModePreferenceDefaultsToCleanAndCanBeChangedToShadowLine() {
+    fun rippleModePreferenceDefaultsToLegacyShadowAndCanBeChangedToClean() {
+        assertEquals(
+            "A pager must retain the old main shadow-line visual by default",
+            ReaderPreferences.PageTurnRippleMode.SHADOW_LINE,
+            pager.rippleMode,
+        )
         val modePref = preferences.pageTurnRippleMode()
-        assertEquals(ReaderPreferences.PageTurnRippleMode.CLEAN, modePref.get())
-        modePref.set(ReaderPreferences.PageTurnRippleMode.SHADOW_LINE)
         assertEquals(ReaderPreferences.PageTurnRippleMode.SHADOW_LINE, modePref.get())
+        modePref.set(ReaderPreferences.PageTurnRippleMode.CLEAN)
+        assertEquals(ReaderPreferences.PageTurnRippleMode.CLEAN, modePref.get())
+        val reopened = ReaderPreferences(AndroidPreferenceStore(context))
+        assertEquals(
+            "An explicit saved style must remain compatible",
+            ReaderPreferences.PageTurnRippleMode.CLEAN,
+            reopened.pageTurnRippleMode().get(),
+        )
+    }
+
+    @Test
+    fun smoothClockAdvancesWithSystemAnimationsDisabledAndCancelRecyclesSnapshot() {
+        val previous = android.animation.ValueAnimator.getDurationScale()
+        val activity = Robolectric.buildActivity(androidx.activity.ComponentActivity::class.java).setup().visible()
+        activity.get().setContentView(pager)
+        ShadowLooper.shadowMainLooper().idleFor(Duration.ofMillis(16))
+        try {
+            android.animation.ValueAnimator::class.java.getDeclaredMethod(
+                "setDurationScale",
+                Float::class.javaPrimitiveType,
+            )
+                .invoke(null, 0f)
+            pager.pageTurnRippleEnabled = true
+            pager.rippleMode = ReaderPreferences.PageTurnRippleMode.SMOOTH
+            pager.layout(0, 0, 800, 1200)
+            assertTrue(pager.prepareRipple(Pager.RippleDirection.RIGHT_TO_LEFT))
+            val snapshot = requireNotNull(pager.currentRippleBitmap)
+            pager.startRippleAnimation()
+            ShadowLooper.shadowMainLooper().idleFor(Duration.ofMillis(64))
+            assertTrue(
+                "Clock driven scheme A must paint intermediate frames with duration_scale=0",
+                pager.rippleProgress in 0.01f..0.99f,
+            )
+            assertFalse(snapshot.isRecycled)
+            pager.cancelRipple()
+            assertTrue(snapshot.isRecycled)
+            assertNull(pager.currentRippleBitmap)
+            ShadowLooper.shadowMainLooper().idleFor(Duration.ofMillis(400))
+            assertNull("Cancelled callbacks must not restore a stale snapshot", pager.currentRippleBitmap)
+            assertTrue(pager.prepareRipple(Pager.RippleDirection.RIGHT_TO_LEFT))
+            val completed = requireNotNull(pager.currentRippleBitmap)
+            pager.startRippleAnimation()
+            ShadowLooper.shadowMainLooper().idleFor(Duration.ofMillis(400))
+            assertTrue("Scheme A must release its snapshot after normal completion", completed.isRecycled)
+            assertNull(pager.currentRippleBitmap)
+        } finally {
+            android.animation.ValueAnimator::class.java.getDeclaredMethod(
+                "setDurationScale",
+                Float::class.javaPrimitiveType,
+            )
+                .invoke(null, previous)
+            activity.pause().stop().destroy()
+        }
+    }
+
+    @Test
+    fun prepareWithoutDimensionsDoesNotRetainPreviousSnapshot() {
+        pager.pageTurnRippleEnabled = true
+        pager.layout(0, 0, 800, 1200)
+        assertTrue(pager.prepareRipple(Pager.RippleDirection.RIGHT_TO_LEFT))
+        val old = requireNotNull(pager.currentRippleBitmap)
+        pager.layout(0, 0, 0, 0)
+        assertFalse(pager.prepareRipple(Pager.RippleDirection.LEFT_TO_RIGHT))
+        assertTrue(old.isRecycled)
+        assertNull(pager.currentRippleBitmap)
+        pager.layout(0, 0, 800, 1200)
+        assertTrue(
+            "A restored viewport must accept the next transition",
+            pager.prepareRipple(Pager.RippleDirection.LEFT_TO_RIGHT),
+        )
+        pager.cancelRipple()
+    }
+
+    @Test
+    fun preparedOldViewportSurvivesAdapterReusingTheSamePagePosition() {
+        val activity = Robolectric.buildActivity(androidx.activity.ComponentActivity::class.java).setup().visible()
+        val subject = Pager(activity.get(), isHorizontal = true)
+        val page = android.view.View(activity.get()).apply { setBackgroundColor(android.graphics.Color.RED) }
+        subject.adapter = object : androidx.viewpager.widget.PagerAdapter() {
+            override fun getCount() = 1
+            override fun isViewFromObject(view: android.view.View, value: Any) = view === value
+            override fun instantiateItem(container: android.view.ViewGroup, position: Int): Any {
+                container.addView(page)
+                return page
+            }
+            override fun destroyItem(container: android.view.ViewGroup, position: Int, value: Any) {
+                container.removeView(value as android.view.View)
+            }
+        }
+        subject.pageTurnRippleEnabled = true
+        activity.get().setContentView(subject)
+        try {
+            subject.measure(
+                android.view.View.MeasureSpec.makeMeasureSpec(800, android.view.View.MeasureSpec.EXACTLY),
+                android.view.View.MeasureSpec.makeMeasureSpec(1200, android.view.View.MeasureSpec.EXACTLY),
+            )
+            subject.layout(0, 0, 800, 1200)
+            assertTrue(subject.prepareRipple(Pager.RippleDirection.RIGHT_TO_LEFT))
+            val old = requireNotNull(subject.currentRippleBitmap)
+            assertEquals(android.graphics.Color.RED, old.getPixel(400, 600))
+            page.setBackgroundColor(android.graphics.Color.BLUE)
+            subject.setCurrentItemWithRipple(0, Pager.RippleDirection.RIGHT_TO_LEFT)
+            assertTrue(
+                "A regrouped source window may reuse the selected pager index",
+                subject.currentRippleBitmap === old,
+            )
+            assertFalse(old.isRecycled)
+            assertEquals(0f, subject.rippleProgress, 0.001f)
+        } finally {
+            subject.cancelRipple()
+            activity.pause().stop().destroy()
+        }
     }
 
     @Test
@@ -293,6 +417,7 @@ class PagerRippleTest {
         )
         testPager.layout(0, 0, 800, 1200)
 
+        testPager.pageTurnRippleEnabled = true
         // Test CLEAN mode: boundary pixel should remain WHITE (no black line)
         testPager.rippleMode = ReaderPreferences.PageTurnRippleMode.CLEAN
         testPager.setCurrentItemWithRipple(1, Pager.RippleDirection.RIGHT_TO_LEFT)
