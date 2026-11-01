@@ -2166,8 +2166,9 @@ class ReaderScreenModel(
                 pairingEpoch++
                 pairingRequest = null
             }
-            ensureDualSession()
-            beginPairingRestore(accepted)
+            if (ensureDualSession()?.pairingState?.status == ReaderPairingPersistenceStatus.WAITING_FOR_RESTORE) {
+                beginPairingRestore(accepted)
+            }
         }
 
     private fun beginPairingRestore(reader: DesktopReaderSessionState) =
@@ -2228,10 +2229,6 @@ class ReaderScreenModel(
         ) {
             beginPairingRestore(DesktopReaderSessionState(current.context, current.session))
         }
-    }
-
-    fun useDefaultPairingThisSession() = synchronized(productionRuntimeLifecycleLock) {
-        dualSession?.let { if (it.useDefaultPairingForSession()) publishDualSession(it) }
     }
 
     fun activateChapter(context: DesktopReaderChapterContext) {
@@ -2682,11 +2679,6 @@ class ReaderScreenModel(
         visiblePages: VisiblePageSet,
         webtoonScrollAnchor: WebtoonScrollAnchor?,
     ) {
-        if (_state.value.pairingLoad == PairingLoad.LOADING || _state.value
-                .pairingLoad == PairingLoad.ERROR
-        ) {
-            return
-        }
         if (visiblePages.transitionDirection != null) {
             _state.update { state ->
                 state.copy(

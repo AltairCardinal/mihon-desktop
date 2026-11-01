@@ -224,6 +224,187 @@ class DesktopChapterPairingComposePersistenceTest {
     }
 
     @Test
+    fun singleRecordRecoveryNeverBlocksPixelsAndReloadKeepsCurrentAnchor() =
+        recordRecovery(MountedReaderPresentationMode.SINGLE)
+
+    @Test
+    fun webtoonRecordRecoveryNeverBlocksPixelsAndReloadKeepsCurrentAnchor() =
+        recordRecovery(MountedReaderPresentationMode.WEBTOON)
+
+    @Test
+    fun dualRecordRecoveryRetainsPendingReloadAction() =
+        recordRecovery(MountedReaderPresentationMode.DUAL)
+
+    private fun recordRecovery(mode: MountedReaderPresentationMode) = runBlocking {
+        openDatabase(tempDir.resolve("${mode.name}-recovery.sqlite"), create = true).use { (handler, driver) ->
+            seed(driver)
+            val repository = ChapterPairingRepositoryImpl(handler)
+            val saved = repository.replace(7, 10, 0, 8, setOf(3))
+            val reads = AtomicInteger()
+            val gate = AtomicReference(CompletableDeferred<Boolean>())
+            val coordinator = DesktopChapterPairingCoordinator(object : ChapterPairingRepository by repository {
+                override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot {
+                    assertEquals(7L, chapterId)
+                    assertEquals(10L, mangaId)
+                    reads.incrementAndGet()
+                    check(gate.get().await()) { "Original pairing read failed" }
+                    return repository.load(chapterId, mangaId)
+                }
+            })
+            mihon.desktop.test.state.readerState.open(7, 1, 8, mode.isWebtoon, "M", "C", false, false)
+            val fixture = mounted(
+                tempDir.resolve(mode.name),
+                coordinator,
+                1,
+                ConcurrentHashMap.newKeySet(),
+                mode = mode,
+            )
+            try {
+                fixture.releaseBackgroundGates()
+                pump(fixture, "$mode must paint actual pixels while the original SQL read is held") {
+                    reads.get() == 1 && fixture.renderContainsFixturePixels(System.nanoTime()) &&
+                        blueBounds(fixture).isNotEmpty()
+                }
+                assertEquals(PairingLoad.LOADING, mihon.desktop.test.state.readerState.mountedSnapshot()?.pairingLoad)
+                gate.get().complete(false)
+                pump(fixture, "$mode must keep actual pixels after the original read fails") {
+                    mihon.desktop.test.state.readerState.mountedSnapshot()?.pairingLoad == PairingLoad.ERROR &&
+                        fixture.renderContainsFixturePixels(System.nanoTime())
+                }
+                openSettings(fixture)
+                pump(fixture, "$mode settings must expose its optional recovery") {
+                    readerActionNodes(fixture, "Reload page pairing").size == 1
+                }
+                assertTrue(
+                    texts(fixture).none {
+                        it == "Could not load the saved page pairing." || it == "Retry" ||
+                            it == "Use default pairing this time"
+                    },
+                )
+                for (succeeds in listOf(false, true)) {
+                    val next = CompletableDeferred<Boolean>()
+                    gate.set(next)
+                    val reload = requireReaderAction(fixture, "Reload page pairing")
+                    val click = requireNotNull(reload.config[SemanticsActions.OnClick].action)
+                    val count = reads.get()
+                    assertTrue(click.invoke())
+                    pump(fixture, "Reload must read the current owner exactly once") { reads.get() == count + 1 }
+                    pump(fixture, "The same Reload action must remain disabled while pending") {
+                        readerActionNodes(fixture, "Reload page pairing").singleOrNull()
+                            ?.config?.contains(SemanticsProperties.Disabled) == true
+                    }
+                    click.invoke()
+                    repeat(3) {
+                        fixture.scene.render(System.nanoTime()).close()
+                        delay(5)
+                    }
+                    assertEquals(count + 1, reads.get())
+                    if (mode == MountedReaderPresentationMode.SINGLE && succeeds) {
+                        clickText(fixture, "Dual Page (side-by-side)")
+                        pump(fixture, "Changing mode during reload must retain the pending owner action") {
+                            mihon.desktop.test.state.readerState.mountedSnapshot()?.dualPageMode == false &&
+                                readerActionNodes(fixture, "Reload page pairing").singleOrNull()
+                                    ?.config?.contains(SemanticsProperties.Disabled) == true
+                        }
+                    }
+                    clickText(fixture, "Close")
+                    pump(fixture, "Closing pending settings must leave real pixels readable") {
+                        mihon.desktop.test.state.readerState.mountedSnapshot()?.showSettings == false &&
+                            fixture.renderContainsFixturePixels(System.nanoTime())
+                    }
+                    openSettings(fixture)
+                    assertTrue(
+                        requireReaderAction(
+                            fixture,
+                            "Reload page pairing",
+                        ).config.contains(SemanticsProperties.Disabled),
+                    )
+                    clickText(fixture, "Close")
+                    pump(fixture, "Reclosing pending settings returns to the same pixels") {
+                        mihon.desktop.test.state.readerState.mountedSnapshot()?.showSettings == false &&
+                            fixture.renderContainsFixturePixels(System.nanoTime())
+                    }
+                    val before = blueBounds(fixture)
+                    val page = mihon.desktop.test.state.readerState.currentPage
+                    next.complete(succeeds)
+                    pump(fixture, "The actual read result must publish without changing the source anchor") {
+                        mihon.desktop.test.state.readerState.mountedSnapshot()?.pairingLoad ==
+                            if (succeeds) PairingLoad.READY else PairingLoad.ERROR
+                    }
+                    repeat(8) {
+                        fixture.scene.render(System.nanoTime()).close()
+                        assertEquals(page, mihon.desktop.test.state.readerState.currentPage)
+                        assertEquals(before, blueBounds(fixture))
+                    }
+                    assertEquals(saved, repository.load(7, 10))
+                    openSettings(fixture)
+                    if (succeeds) {
+                        assertTrue(readerActionNodes(fixture, "Reload page pairing").isEmpty())
+                    } else {
+                        pump(fixture, "Failed reload must become actionable again") {
+                            readerActionNodes(fixture, "Reload page pairing").singleOrNull()?.let {
+                                !it.config.contains(SemanticsProperties.Disabled)
+                            } == true
+                        }
+                        if (mode == MountedReaderPresentationMode.SINGLE) {
+                            clickText(fixture, "Dual Page (side-by-side)")
+                            pump(fixture, "Actual mode change after failure must preserve the anchor") {
+                                mihon.desktop.test.state.readerState.mountedSnapshot()?.dualPageMode == true
+                            }
+                            clickText(fixture, "Close")
+                            pump(fixture, "Temporary dual group must include the same source with actual pixels") {
+                                fixture.visiblePagesAtViewportCenter().contains(page) &&
+                                    fixture.renderContainsFixturePixels(System.nanoTime())
+                            }
+                            assertEquals(page, mihon.desktop.test.state.readerState.currentPage)
+                            openSettings(fixture)
+                        }
+                    }
+                }
+            } finally {
+                gate.get().complete(false)
+                fixture.close()
+                coordinator.stop()
+                coordinator.awaitStopped()
+                mihon.desktop.test.state.readerState.reset()
+            }
+        }
+    }
+
+    private suspend fun openSettings(fixture: MountedReaderPresentationFixture) {
+        repeat(12) {
+            fixture.scene.render(System.nanoTime()).close()
+            val settings = readerActionNodes(fixture, "Reader Settings", description = true).firstOrNull()
+            if (settings != null) {
+                assertTrue(requireNotNull(settings.config[SemanticsActions.OnClick].action).invoke())
+                pump(fixture, "Existing settings must open") {
+                    mihon.desktop.test.state.readerState.mountedSnapshot()?.showSettings == true &&
+                        readerActionNodes(fixture, "Close").isNotEmpty()
+                }
+                return
+            }
+            if (fixture.case.mode == MountedReaderPresentationMode.WEBTOON) {
+                // Webtoon exposes the common toolbar through the existing Space shortcut, not pager taps.
+                val events = Class.forName("androidx.compose.ui.input.key.KeyEvent_desktopKt")
+                val type = Class.forName("androidx.compose.ui.input.key.KeyEventType")
+                    .getMethod("access\$getKeyDown\$cp").invoke(null)
+                val factory = events.declaredMethods.single {
+                    it.name.startsWith("KeyEvent-") && !it.name.endsWith("\$default")
+                }
+                val native = factory.invoke(
+                    null, androidx.compose.ui.input.key.Key.Spacebar.keyCode, type,
+                    0, false, false, false, false, null,
+                )
+                assertTrue(fixture.scene.sendKeyEvent(androidx.compose.ui.input.key.KeyEvent(native)))
+            } else {
+                tap(fixture, Offset(320f, 240f))
+            }
+            delay(5)
+        }
+        error("Reader settings toolbar unavailable: ${texts(fixture)}")
+    }
+
+    @Test
     fun legalUnknownPartnerAdjustmentUsesOriginalButtonWithoutDisablingMatching() = runBlocking {
         openDatabase(tempDir.resolve("unknown-partner.sqlite"), create = true).use { (handler, driver) ->
             seed(driver)
@@ -565,11 +746,12 @@ class DesktopChapterPairingComposePersistenceTest {
         initialPage: Int,
         completedDecodes: MutableSet<Int>,
         route: MountedReaderContentRoute = MountedReaderContentRoute.DIRECTORY,
+        mode: MountedReaderPresentationMode = MountedReaderPresentationMode.DUAL,
     ) =
         MountedReaderPresentationFixture(
             root = root,
             coroutineContext = currentCoroutineContext(),
-            case = MountedReaderPresentationCase(MountedReaderPresentationMode.DUAL, route),
+            case = MountedReaderPresentationCase(mode, route),
             pageCount = 8,
             mangaId = 10,
             pairingCoordinator = coordinator,

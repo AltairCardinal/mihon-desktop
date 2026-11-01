@@ -237,6 +237,7 @@ internal fun GeneralTab(
             )
             Text(MR.strings.desktop_reader_default_summary.localized(), style = MaterialTheme.typography.bodySmall)
         }
+        pairingRecovery()
     }
 
     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -283,7 +284,6 @@ internal fun GeneralTab(
                     onCheckedChange = onAutoSpreadMatchingChange,
                     indented = true,
                 )
-                pairingRecovery()
             }
         }
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))

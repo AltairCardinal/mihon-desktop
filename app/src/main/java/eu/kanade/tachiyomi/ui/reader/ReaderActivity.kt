@@ -402,9 +402,6 @@ open class ReaderActivity : BaseActivity() {
                     },
                 )
             }
-            is ReaderViewModel.Dialog.PairingRestoreError -> {
-                PairingRestoreControls()
-            }
             is ReaderViewModel.Dialog.Settings -> {
                 ReaderSettingsControls(settingsScreenModel)
             }
@@ -452,19 +449,11 @@ open class ReaderActivity : BaseActivity() {
             screenModel = screenModel,
             pairingRecovery = {
                 if (state.pairingReadUnavailable) {
-                    TextButton(onClick = viewModel::retryPairingRestore) {
+                    TextButton(onClick = viewModel::retryPairingRestore, enabled = !state.pairingRestoring) {
                         Text(composeStringResource(MR.strings.action_reload_page_pairing))
                     }
                 }
             },
-        )
-    }
-
-    @Composable
-    internal fun PairingRestoreControls() {
-        PairingRestoreDialog(
-            onRetry = viewModel::retryPairingRestore,
-            onUseDefault = viewModel::useDefaultPairingThisSession,
         )
     }
 
@@ -1296,20 +1285,4 @@ internal class ReaderChapterErrorRetryHandler(
     fun retry(dialog: ReaderViewModel.Dialog.ChapterError) {
         retryChapter(dialog.state.retryCommand())
     }
-}
-
-@Composable
-internal fun PairingRestoreDialog(onRetry: () -> Unit, onUseDefault: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = {},
-        confirmButton = {
-            TextButton(onClick = onRetry) { Text(composeStringResource(MR.strings.action_retry)) }
-        },
-        dismissButton = {
-            TextButton(onClick = onUseDefault) {
-                Text(composeStringResource(MR.strings.desktop_reader_pairing_use_default))
-            }
-        },
-        text = { Text(composeStringResource(MR.strings.desktop_reader_pairing_load_failed)) },
-    )
 }

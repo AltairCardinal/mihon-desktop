@@ -1,6 +1,6 @@
 # 双页阅读非阻塞配对：功能设计
 
-日期：2026-11-01，2026-11-02 补充统一恢复方案。状态：**既有双页 A／B 定向证据与 Windows 图片重试人工验收保留；全阅读模式的非阻塞恢复仍待实现、验证，第 4.6 节为当前修复规格**。本次只更新设计，不代表缺陷已修复；未推送／发布。配套 [roadmap](roadmap/2026-11-01-reader-nonblocking-pairing-roadmap.md) 是执行入口与验证记录。
+日期：2026-11-01，2026-11-02 补充统一恢复方案。状态：**既有双页 A／B 定向证据与 Windows 图片重试人工验收保留；全阅读模式的非阻塞恢复已完成 NR01～NR03 定向实现与验证，第 4.6 节为当前规格**。设计快照为3017994；当前执行已获授权，准确实现／验证状态以roadmap为准，未推送／发布。配套 [roadmap](roadmap/2026-11-01-reader-nonblocking-pairing-roadmap.md) 是执行入口与验证记录。
 
 ## 1. 用户目标与范围
 
@@ -108,11 +108,11 @@ Android 恢复须处理阅读模式及章节身份在 I/O 期间变化的时序�
 
 准备人工验收时，若出现 RESTORE_FAILED、错误按钮未实际确认、捕获失败或证据来自不同章节，均标记准备未完成，不要求用户猜测应测试哪个按钮。一次原生验证前完成离线准备；失败后记录准确链路停点和新信息，再决定下一步，禁止无新证据重复点击／重建。
 
-### 4.6 全阅读模式统一非阻塞恢复（2026-11-02 待实现修复）
+### 4.6 全阅读模式统一非阻塞恢复（2026-11-02）
 
-本节为 **PROJECT_POLICY**，来源是用户明确要求：“配对记录读取失败也继续显示漫画，自动采用临时配对并保护原记录；主动重读留在设置里，不要求用户先做二选一。”它取代本文和旧架构中的单页例外；本轮仅设计、文档检查和提交，未改 production 或执行产品测试。
+本节为 **PROJECT_POLICY**，来源是用户明确要求：“配对记录读取失败也继续显示漫画，自动采用临时配对并保护原记录；主动重读留在设置里，不要求用户先做二选一。”它取代本文和旧架构中的单页例外；3017994记录的是设计阶段；本轮执行Goal已接续实现与真实定向验证，过程及结果见roadmap。
 
-**已核实的 SOURCE 与问题边界。** 基线 `0f9245e64d0fd2548fa7f0466dc5e09d1e6e0548` 已修复“挂起期间先切双页、随后读取失败”与“邻章预读失败后的当前章重读”。但 Android `ReaderViewModel.showPairingRestoreFailure` 仍在非双页时设置 `Dialog.PairingRestoreError`，`ReaderActivity.PairingRestoreControls` 仍提供重试／默认二选一。如果 AUTO 单页先失败、随后切双页，`updateViewer` 只换 viewer；初始章节尚未激活，`retryPairingRestore` 的双页分支因 `currentChapter == null` 直接返回。这是调用链审查发现，尚未运行该顺序的失败测试。Desktop `readerViewportBody` 的非双页分支同样以 `PairingLoad.LOADING/ERROR` 取代内容，错误体仍是 `PairingRestoreError` 二选一；不能仅修 Android 按钮而留下两端相同的产品违约。
+**设计阶段核实的 SOURCE 与问题边界。** 基线 `0f9245e64d0fd2548fa7f0466dc5e09d1e6e0548` 已修复“挂起期间先切双页、随后读取失败”与“邻章预读失败后的当前章重读”。但 Android `ReaderViewModel.showPairingRestoreFailure` 仍在非双页时设置 `Dialog.PairingRestoreError`，`ReaderActivity.PairingRestoreControls` 仍提供重试／默认二选一。如果 AUTO 单页先失败、随后切双页，`updateViewer` 只换 viewer；初始章节尚未激活，`retryPairingRestore` 的双页分支因 `currentChapter == null` 直接返回。这是设计阶段的调用链发现；当前对应红绿与AUTO两顺序证据见roadmap。Desktop `readerViewportBody` 的非双页分支同样以 `PairingLoad.LOADING/ERROR` 取代内容，错误体仍是 `PairingRestoreError` 二选一；不能仅修 Android 按钮而留下两端相同的产品违约。
 
 **章节与配对读取解耦。** 页列表已成功加载、目标页和当前内容身份有效时，沿现有章节激活／普通图片加载链继续，不 await 配对记录后才激活，也不因配对失败返回无章节。Android 复用现有 owner、coordinator 和后台恢复链，在必要时先按当前 pages 建立有效 owner；Desktop 保留真实章节加载／错误分支，移除内容区域由配对状态决定的 loading/error 门禁。章节窗口、进度会话挂起返回后的身份复核与取消传播继续有效。页面列表失败、图片加载失败、失效内容和真实取消仍走各自既有处理，不能吞掉或误标为配对失败。
 

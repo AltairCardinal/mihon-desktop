@@ -95,8 +95,8 @@ internal fun ColumnScope.ReadingModePage(
             label = stringResource(MR.strings.desktop_ui_auto_spread_matching),
             pref = screenModel.preferences.automaticSpreadMatching(),
         )
-        pairingRecovery()
     }
+    pairingRecovery()
 
     val orientation = remember(manga) { ReaderOrientation.fromPreference(manga?.readerOrientation?.toInt()) }
     SettingsChipRow(MR.strings.rotation_type) {

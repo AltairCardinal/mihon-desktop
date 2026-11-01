@@ -1,5 +1,5 @@
 ---
-status: in_progress
+status: complete
 date: 2026-11-01
 ---
 
@@ -9,7 +9,7 @@ date: 2026-11-01
 
 唯一功能规格：[双页阅读非阻塞配对设计](../2026-11-01-reader-nonblocking-pairing-design.md)。目标是未下载长章冷跳时先显示，后台匹配在下一次主动翻页纠正，允许重复边界页而不自动漏页。
 
-**当前结论（2026-11-02）：全模式恢复尚未完成，下一任务为 NR01。** NB01～NB04及 A／B 的既有双页证据、Windows 图片重试人工验收保留；`0f9245e64d0fd2548fa7f0466dc5e09d1e6e0548` 又关闭两个 Android 特定时序，但复审发现“先单页恢复失败、随后切双页”的无效重试，以及单页仍保留配对二选一的设计错误。Desktop 非双页也仍有配对 loading/error 内容门禁。用户现已明确所有模式均应继续阅读、原记录受保护、仅设置内可选重读；以设计第 4.6 节和下面 NR01～NR03 为当前规格。本次仅文档设计，三个任务均未实施／验收，不把历史勾选视为新目标完成。未推送／发布。
+**当前结论（2026-11-02）：全模式恢复 NR01～NR03 已完成定向实现、独立审查及验证。** 起点为设计提交 `3017994cdc2cb93a5b2046ca3b7cc26ef6f6da18`，两端单页／条漫／双页不再受配对读取挂起或失败阻断；设置内仅保留当前有效 owner 的可选重读。Android AUTO 两种时序、旧回调、未知记录保护及 Desktop 条漫位置／进度分别取得真实红绿。NB01～NB04及 A／B 的既有双页证据、Windows 图片重试人工验收按影响保留；本轮未生成新候选、未追加原生或用户验收，不扩大公共功能说明，未推送／发布。准确组合证据及层级边界见下方执行记录。
 
 本文件是这次独立修复的执行计划，不启动旧双页 roadmap 的 DP02 完整发布矩阵，不重做已完成历史批次。与旧文档冲突时，采用设计第 3 节的有限替代；未列出的身份、资源、持久化、原生和验证约束继续遵守。按第一个未勾选项推导当前进度，不另建 `active-task` 状态或第二套 manifest。
 
@@ -21,13 +21,13 @@ date: 2026-11-01
 4. 确认源页编号：验收第 126 页等于 index 125。按设计处理“同组未绘伙伴一次精确激活后可主动离开”，不得为了防漏页引入无限重复。
 5. NB01～NB04与A／B原定选定行为的有效证据按影响复用；下一会话从第一个未勾选的 NR 任务接续，不重启历史批次。会话切换不重置预算、不授权全量验证；代理与写入权按当时规则及明确范围分配，两端不能另写配对规则。
 
-### 2026-11-02 当前待办：全模式非阻塞恢复与 AUTO 后切换修复
+### 2026-11-02 全模式非阻塞恢复与 AUTO 后切换修复
 
-工作目录继续使用 `D:/Codex/worktrees/reader-nonblocking-pairing-integration-20261101`，分支 `codex/reader-nonblocking-pairing-integration`。设计核对的 production 基线为 `0f9245e64d0fd2548fa7f0466dc5e09d1e6e0548`；实施前核对实际 HEAD、未提交差异和进程，保护其它任务改动。下文旧阶段的单页例外、冻结范围及“已收口”仅表示历史阶段，不能覆盖当前待办。当前用户请求只授权本轮设计落文档，不在该文档任务中自动启动实现或持续 Goal。
+工作目录继续使用 `D:/Codex/worktrees/reader-nonblocking-pairing-integration-20261101`，分支 `codex/reader-nonblocking-pairing-integration`。设计核对的 production 基线为 `0f9245e64d0fd2548fa7f0466dc5e09d1e6e0548`；实施前核对实际 HEAD、未提交差异和进程，保护其它任务改动。下文旧阶段的单页例外、冻结范围及“已收口”仅表示历史阶段，不能覆盖当前待办。3017994阶段仅授权设计落文档；随后用户以执行本roadmap的持久Goal明确授权本轮实现，结果见下方执行记录。
 
-已证实的是静态生产调用链：Android 单页失败后 `Dialog.PairingRestoreError` 与未激活章节共存，切为双页后 `retryPairingRestore` 因无当前章返回；Desktop 非双页 `readerViewportBody` 用配对 loading/error 替换内容。尚无这两个新目标的运行失败证据，须按下面任务先取得真实红测。原两个 Android 时序的 2 RED、7 项定向绿及最终 2 项补验仍有效，不能冒充本轮新红绿。
+已证实的是静态生产调用链：Android 单页失败后 `Dialog.PairingRestoreError` 与未激活章节共存，切为双页后 `retryPairingRestore` 因无当前章返回；Desktop 非双页 `readerViewportBody` 用配对 loading/error 替换内容。该设计阶段尚无这两个新目标的运行失败证据；本轮按下面任务取得真实红绿，见执行记录。原两个 Android 时序的 2 RED、7 项定向绿及最终 2 项补验仍有效，不能冒充本轮新红绿。
 
-- [ ] **NR01：Android 章节激活独立于配对恢复，统一设置重读入口。**
+- [x] **NR01：Android 章节激活独立于配对恢复，统一设置重读入口。**
 
   **责任与边界：** 复用 `ReaderViewModel`、`AndroidChapterPairingCoordinator`、`ReaderActivity` 和 `ReaderSettingsDialog.ReadingModePage`。成功页列表／有效内容身份可正常激活，恢复走现有后台链；配对挂起或失败不再等待激活、生成恢复弹窗或要求使用默认。保留实际页列表错误、图片错误、取消、进度会话与内容身份复核。设置入口移出实际双页条件，当前有效失败 owner 才可重读；各模式用同一当前目标链，去重在途读取，不重激活章节、不依赖旧 dialog／全局目标。移除二选一展示及无调用的旧 UI 状态，保留被其它合法路径使用的数据语义。无需修改配对算法、数据库、点击导航或其它设置。
 
@@ -35,7 +35,7 @@ date: 2026-11-01
 
   **逐任务收口：** 同一精确方法红绿、直接受影响的未知 revision 禁写／已知约束与 CAS／邻章及旧回调回归、改动文件格式检查。核对恢复成功后真实 viewer 重绑与下一源页可达；记录真实命令、非零用例及失败停点。测试及必要内部文档随实现提交，不执行整个测试类、全模块或原生矩阵。
 
-- [ ] **NR02：Desktop 非双页内容解除配对门禁，设置入口与 Android 一致。**
+- [x] **NR02：Desktop 非双页内容解除配对门禁，设置入口与 Android 一致。**
 
   **责任与边界：** `DesktopReaderScreen.readerViewportBody` 保留真实章节加载／错误分支，对已加载内容不再按配对 loading/error 返回全屏门禁；`ReaderSettingsPanel` 中恢复入口独立于实际双页／pager 条件。核对 `ReaderScreenModel` 的现有 coordinator 和当前 owner 重读接线，若已满足则复用，只修改真实缺口。清理二选一生产 UI，不自动触发 `useDefault`；单页／条漫仍按自身布局显示。未改的真实在线图片 Retry、算法和 Windows 人工路径不重新实施。
 
@@ -43,11 +43,40 @@ date: 2026-11-01
 
   **逐任务收口：** 复验上述精确方法及被改接线直接影响的记录禁写／帧稳定测试、改动文件格式；此前双页和图片 Retry 证据按源码差异复用。NR02可沿用NR01已固定的语义和验收，不引入共享新引擎或格式。不得为了勾选新增 Windows 候选包或重跑人工图片重试。
 
-- [ ] **NR03：一次集中实现审查与证据收口。**
+- [x] **NR03：一次集中实现审查与证据收口。**
 
   NR01／NR02稳定后做一轮独立审查，聚焦全模式激活、AUTO两种顺序、当前owner重读、旧回调和未知记录保护；有问题只修复并补验受影响范围。核对设计 NR-A～NR-D 到真实方法／结果的映射，直接读取产物证明先红后绿，明确 JVM、Compose、像素及原生证据各自边界。文档与对应实现批次一并提交；不为关闭状态另建纯记录提交。检查工作区仅含本任务预期变更，报告本地提交、实际测试及未验证项，不推送／打包／发布、不扩大公共功能说明。
 
   **预算与停止条件：** 后续执行者按当时进程和依赖报告预算；默认按两端上述 focused 范围及一轮审查完成，不重跑 NB01～NB04、Windows 图片重试、全模块或全量。编译／夹具错误单独记录，产品红必须来自行为断言。仅当具体原生接线风险无法被现有有效证据和本次接线测试覆盖时，明确缺口后补最小原生验证；不把全新设备像素验收列为本轮默认条件。产品失败、证据缺失或未执行项保留未勾选，不以设计提交作为实现完成。
+
+### NR01～NR03 执行记录（基线3017994，本轮定向收口）
+
+用户已以持久Goal明确授权执行本roadmap；上文“仅设计、未实施”的权限描述是3017994文档阶段历史，不限制本轮。起点HEAD `3017994cdc2cb93a5b2046ca3b7cc26ef6f6da18`、工作区干净。Android与Desktop两个实施代理分模块写入，Gradle执行权逐次正式串行移交，主代理集中独立审查和维护文档；不打包、不启动原生／桌面、不推送／发布、不扩大公共说明。涉及跨端VM/model、Activity/Screen、设置入口及真实接线测试，文件数超过8是同一全模式恢复链的必要组成，不扩展算法、schema、导航偏好或资源预算。
+
+Android初始 `nr01-android-all-modes-red` 有效2 tests／2 failures／0 error／0 skip：普通图片数据可用但Single初读挂起时不能激活，以及实际Single设置没有Reload入口。Desktop `nondual-red.xml` 有效2 tests／2 failures，Single/Webtoon SQL读取挂起时完整Viewport真实图片未绘；`pending-red.xml` 有效1 test／1 failure，Dual已绘图片与实际Settings重读前置通过，但LOADING时原按钮消失。Desktop首次两次启动因Windows wrapper路径及未整体引用Gradle属性失败，均未执行测试，不能计产品红。
+
+Android首批九方法在旧stale-save夹具的无界entered.await处未完成：新后台初读未由StandardTestDispatcher推进到READY，使保存入口不可达。准确worker栈定位后仅取消本任务并保留 `nb-a-artifacts/nr01-incomplete-green/gradle.log`；不冒称九项XML。其实际PASSED的CAS、邻章激活Settings、新旧邻章重读三个方法按未受后续差异影响复用。两项设置失败停在测试触摸注入，改为观察到实际AppBars节点可见、bounds有效后调用原OnClick语义并断言真实Dialog；不是新的原生点击证据。随后七方法XML五项通过，AUTO两顺序、跨模式重读、pages替换／旧回调、旧保存回调及已知约束分别保留，不重复已绿范围。
+
+Desktop首批十方法九项通过；Webtoon held/fail真实图片已过，夹具误用Pager中心tap找工具栏失败。按生产Webtoon入口改为真实Space后，该完整Settings／失败再读／成功像素与锚点方法通过，`webtoon-publication-*.xml`归档。此批同轮新增ordinary-publication模型方法准确RED：初读失败后普通同owner发布使loads由1到2。最小只限制acceptSessionState自动入口为WAITING_FOR_RESTORE；constructor首次恢复、显式retry及CAS冲突原直接恢复链保持，不以普通图片／元数据发布自动重试。
+
+集中审查另外核对原结果拒收与图像证据：Dual adapter会关闭出窗口owner，故最初只看RESTORING的retained断言无效，不计产品红；在真实Single、合法holder ref、同pages/live owner及显式测试调度推进VM回调后，`nr01-single-callback-red-and-display.xml`才证明拒收旧结果会遗留pending。最小通过store的原chapter/pages/owner/request身份保护失败该原operation，不接受旧记录，也不改变当前章节。新NR-A原透明PNG／Ready+prepare不足以证明图片内容，改为仅新夹具的不透明MAGENTA PNG和实际SSIV Canvas.drawBitmap命令／解码bitmap内容检查；Windows JVM缺imagedecoder的证据保留，仅复用既有静态PNG动画探针适配，不改生产codec。bind后按既有holder样例重新测量，保持原绘制实现及设备证据边界。
+
+Android最终组合为10个不同精确方法通过：取消批次的3项PASSED console（见上）、`nb-a-artifacts/nr01-focused-recovery-first.xml`中的5项PASS（该XML总7项／2失败，不冒称整批全绿）及 `nb-a-artifacts/nr01-final-two-green.xml` 的2 tests／0 failure／0 error／0 skip。最后两项分别为实际Single保留owner拒收结果清理、全模式挂起／失败后实际图片绘制；`nr01-android-final-two-green` 同时通过4文件限定Spotless，任务2m55s。本轮Android worker及其新建Java进程已退出，起始已有JVM未触碰。
+
+| 验收 | 本轮实际方法／证据映射 | 层级与边界 |
+| --- | --- | --- |
+| NR-A | Android `all modes activate before held pairing read and retain content after failure`；Desktop `singleRecordRecoveryNeverBlocksPixelsAndReloadKeepsCurrentAnchor`、`webtoonRecordRecoveryNeverBlocksPixelsAndReloadKeepsCurrentAnchor`、既有双页完整Viewport两方法 | Android实际VM／Activity模式更新及Single／Webtoon holder的实际解码bitmap绘制命令；Desktop真实SQL／coordinator／完整Viewport的Skia像素。不是新设备像素或用户人工验收 |
+| NR-B | Android `AUTO stays readable for both failure and viewer switch orders` | 实际AUTO viewer尺寸变化与Activity.updateViewer；覆盖先切换再失败、先失败再切换及实际设置重读，恢复后当前源页保持 |
+| NR-C | Android `all mode Settings reload retains disabled action and current owner through mode changes`、`Settings reload ignores replaced pages and old chapter callbacks`、`rejected restore releases pending operation when a retained chapter leaves the window`；Desktop上述单页／条漫方法、`dualRecordRecoveryRetainsPendingReloadAction`、`current owner reload deduplicates and rejected old pages cannot restore a replacement`、`late read from prior chapter cannot replace the new chapter pairing` | 实际Settings动作、请求去重、disabled→可点／消失、切模式及pages／章节身份保护；Android语义OnClick不冒称原生指针测试 |
+| NR-D | Android上述3项console及 `failed conflict restore retains known manual boundary and stored record without a modal`、`late failed save from A cannot notify after A to B to A with reused page objects`；Desktop `read failure cannot overwrite unknown record until current owner reload succeeds` 及全Viewport方法 | SQL原记录、未知revision禁写、CAS、已知边界、邻章当前owner，Android真实viewer重绑与下一源页可达；未改共享已绘帧／算法契约按既有有效证据复用 |
+
+集中审查还发现Desktop条漫内容解除门禁后，`settleWebtoonVisiblePages`仍按配对LOADING／ERROR提前返回，导致滚动后当前源页、anchor及进度不更新。`nr02-desktop-webtoon-settlement-red`／`nr02-desktop-artifacts/webtoon-settlement-red.xml` 有效1 test／1 failure／0 error／0 skip，真实coordinator首次读取挂起、reads=1前置通过，实际settle源页1后currentPage仍0。最小仅删除该附加门禁，原canonical身份、布局和进度去重规则保留；同方法覆盖挂起时页1／scroll43、失败时页2／scroll91及实际切Pager／Dual后源页2保持。
+
+Desktop组合为14个不同精确方法通过：首批10项中的9项PASS、修正生产入口夹具后的Webtoon完整Viewport方法、`publication-green.xml` 的4项PASS（其中3项与首批重复）以及最后3项条漫进度回归。最后 `nr02-desktop-webtoon-settlement-green` 为3 tests／0 failure／0 error／0 skip，任务1m39s；XML `nr02-desktop-artifacts/webtoon-settlement-green-TEST-mihon.desktop.ui.reader.DesktopChapterPairingModelIntegrationTest.xml`（1项）和同目录 `webtoon-settlement-green-TEST-mihon.desktop.ui.reader.ReaderScreenModelTest.xml`（2项）。后两项为 `settled webtoon and dual viewports report canonical page identities`、`load-state updates do not resettle identical viewports in any presentation mode`。5个Desktop变更文件限定格式已通过，最终model修复亦经限定格式；worker72836／process76280退出。
+
+NR03由未编写生产实现的主代理集中审查，额外发现并关闭Android拒收请求未结束、Desktop普通发布自动重读与条漫进度门禁，均有本轮有效RED及修复后GREEN。两端累计是组合定向证据，未执行完整class／模块／全量或finalParityAudit；未重新验证Windows在线图片重试，未打包、启动原生／桌面或变更导航偏好。Android为JVM／Robolectric的实际VM／Activity设置接线及holder解码／绘制命令，Desktop完整Viewport为Compose／Skia像素；本轮没有新的ART、GPU／设备像素或用户人工验收。既有已绘帧契约按未改影响复用，未发现必须追加原生验证的具体接线缺口。内部设计、架构及本roadmap与实现同步，公共说明未变；本批12文件共同关闭同一跨端状态／呈现依赖，按一个本地功能提交收口，不推送／发布。
+
+最终3份内部文档UTF-8、21个本地链接及变更的第4.6节anchor检查通过，`git diff --check`通过。提交前HEAD仍为3017994、暂存区原为空，工作区仅有上述12个本任务文件；本地提交及干净状态以最终Git回执核对。
 
 ### 2026-11-02 冻结的剩余工作与交接
 
