@@ -63,6 +63,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineStart
@@ -87,6 +88,7 @@ import kotlinx.coroutines.yield
 import mihon.domain.reader.ChapterPairingRepository
 import mihon.domain.reader.ChapterPairingSnapshot
 import mihon.domain.reader.ReaderAdjacentChapterEffect
+import mihon.domain.reader.ReaderPairingPersistenceStatus
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -134,9 +136,11 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.time.Duration
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
 import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 
@@ -1317,6 +1321,304 @@ class AndroidChapterPairingPersistenceWiringTest {
     }
 
     @Test
+    fun `Settings reread remains disabled after returning to the same retained owner`() = runBlocking {
+        openDatabase(temporaryFolder.newFile("return-pending-recovery.db"), create = true).use { fixture ->
+            seed(fixture.driver)
+            seedAdjacent(fixture.driver)
+            val saved = fixture.repository.replace(2, 1, 0, 8, setOf(3))
+            val loads = AtomicInteger()
+            val aReads = AtomicInteger()
+            val last = AtomicReference<Long>()
+            val release = CompletableDeferred<Unit>()
+            val bEntered = CompletableDeferred<Unit>()
+            val bRelease = CompletableDeferred<Unit>()
+            val repository = object : ChapterPairingRepository by fixture.repository {
+                override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot {
+                    loads.incrementAndGet()
+                    last.set(chapterId)
+                    if (chapterId == 2L) {
+                        when (aReads.incrementAndGet()) {
+                            1 -> throw IOException("A initial failure")
+                            2 -> {
+                                release.await()
+                                throw IOException("A reread failure")
+                            }
+                            3 -> throw CancellationException("Actual user reread cancelled")
+                        }
+                    }
+                    if (chapterId == 3L && !bEntered.isCompleted) {
+                        bEntered.complete(Unit)
+                        bRelease.await()
+                    }
+                    return fixture.repository.load(chapterId, mangaId)
+                }
+            }
+            session(
+                fixture,
+                repository,
+                readingMode = 1,
+                includeAdjacent = true,
+                reuseLoadedPages = true,
+            ).use { reader ->
+                val chapter = requireNotNull(reader.model.state.value.currentChapter)
+                awaitPairingStatus(reader, chapter, ReaderPairingPersistenceStatus.RESTORE_FAILED)
+                updateActualViewer(reader)
+                val pages = requireNotNull(chapter.pages)
+                val owner = requireNotNull(reader.model.dualPagePairings.chapters[chapter]).session
+                val label = reader.host.stringResource(MR.strings.action_reload_page_pairing)
+                chapter.ref()
+                try {
+                    openPairingSettings(reader)
+                    invokeSettingsReload(reader, loads, last)
+                    compose.onNodeWithText(label).assertIsNotEnabled()
+                    reader.model.closeDialog()
+                    navigateRecoveryChapter(reader, forward = true)
+                    withTimeout(5_000) { bEntered.await() }
+                    val adjacent = requireNotNull(reader.model.state.value.currentChapter)
+                    openPairingSettings(reader, expectRecovery = false)
+                    bRelease.complete(Unit)
+                    awaitPairingStatus(reader, adjacent, ReaderPairingPersistenceStatus.READY)
+                    reader.model.closeDialog()
+                    navigateRecoveryChapter(reader, forward = false)
+                    assertTrue(chapter === reader.model.state.value.currentChapter)
+                    assertTrue(pages === chapter.pages)
+                    assertTrue(owner === reader.model.dualPagePairings.chapters[chapter]?.session)
+                    assertFalse(owner.isClosed)
+                    assertEquals(2, aReads.get())
+                    openPairingSettings(reader)
+                    compose.onNodeWithText(label).assertIsNotEnabled()
+                    reader.model.retryPairingRestore()
+                    reader.model.retryPairingRestore()
+                    assertEquals(2, aReads.get())
+                    val window = reader.model.state.value.viewerChapters
+                    val position = reader.model.currentReaderPage
+                    release.complete(Unit)
+                    awaitPairingStatus(reader, chapter, ReaderPairingPersistenceStatus.RESTORE_FAILED)
+                    compose.waitUntil(5_000) { !reader.model.state.value.pairingRestoring }
+                    compose.onNodeWithText(label).assertIsEnabled()
+                    invokeSettingsReload(reader, loads, last)
+                    awaitPairingStatus(reader, chapter, ReaderPairingPersistenceStatus.RESTORE_FAILED)
+                    compose.waitUntil(5_000) { !reader.model.state.value.pairingRestoring }
+                    compose.onNodeWithText(label).assertIsEnabled()
+                    assertNull(owner.pairingState.revision)
+                    invokeSettingsReload(reader, loads, last)
+                    awaitPairingStatus(reader, chapter, ReaderPairingPersistenceStatus.READY)
+                    compose.waitUntil(5_000) { !reader.model.state.value.pairingReadUnavailable }
+                    compose.onNodeWithText(label).assertDoesNotExist()
+                    assertTrue(window === reader.model.state.value.viewerChapters)
+                    assertTrue(position === reader.model.currentReaderPage)
+                    assertEquals(4, aReads.get())
+                    assertEquals(saved, fixture.repository.load(2, 1))
+                } finally {
+                    release.complete(Unit)
+                    bRelease.complete(Unit)
+                    Injekt.get<AndroidChapterPairingCoordinator>().awaitAcceptedOperations()
+                    chapter.unref()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `Settings rereads for two chapters retain independent pending feedback`() = runBlocking {
+        openDatabase(temporaryFolder.newFile("two-pending-recoveries.db"), create = true).use { fixture ->
+            seed(fixture.driver)
+            seedAdjacent(fixture.driver)
+            // Keep A's ordinary viewport outside the last-five-page adjacent preload window.
+            fixture.driver.execute(null, "UPDATE chapters SET last_page_read = 0 WHERE _id = 2", 0)
+            val loads = AtomicInteger()
+            val reads = mapOf(2L to AtomicInteger(), 3L to AtomicInteger())
+            val last = AtomicReference<Long>()
+            val aRelease = CompletableDeferred<Unit>()
+            val bRelease = CompletableDeferred<Unit>()
+            val repository = object : ChapterPairingRepository by fixture.repository {
+                override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot {
+                    loads.incrementAndGet()
+                    last.set(chapterId)
+                    when (reads.getValue(chapterId).incrementAndGet()) {
+                        1 -> throw IOException("Initial failure $chapterId")
+                        2 -> if (chapterId == 2L) {
+                            aRelease.await()
+                        } else {
+                            bRelease.await()
+                            throw IOException("B reread failed")
+                        }
+                    }
+                    return fixture.repository.load(chapterId, mangaId)
+                }
+            }
+            session(
+                fixture,
+                repository,
+                readingMode = 1,
+                includeAdjacent = true,
+                reuseLoadedPages = true,
+            ).use { reader ->
+                val a = requireNotNull(reader.model.state.value.currentChapter)
+                awaitPairingStatus(reader, a, ReaderPairingPersistenceStatus.RESTORE_FAILED)
+                updateActualViewer(reader)
+                a.ref()
+                try {
+                    openPairingSettings(reader)
+                    invokeSettingsReload(reader, loads, last)
+                    reader.model.closeDialog()
+                    navigateRecoveryChapter(reader, forward = true)
+                    val b = requireNotNull(reader.model.state.value.currentChapter)
+                    awaitPairingStatus(reader, b, ReaderPairingPersistenceStatus.RESTORE_FAILED)
+                    b.ref()
+                    try {
+                        openPairingSettings(reader)
+                        invokeSettingsReload(reader, loads, last)
+                        reader.model.closeDialog()
+                        navigateRecoveryChapter(reader, forward = false)
+                        openPairingSettings(reader)
+                        val label = reader.host.stringResource(MR.strings.action_reload_page_pairing)
+                        compose.onNodeWithText(label).assertIsNotEnabled()
+                        assertEquals(2, reads.getValue(2L).get())
+                        assertEquals(2, reads.getValue(3L).get())
+                        reader.model.closeDialog()
+                        navigateRecoveryChapter(reader, forward = true)
+                        openPairingSettings(reader)
+                        aRelease.complete(Unit)
+                        awaitPairingStatus(reader, a, ReaderPairingPersistenceStatus.READY)
+                        compose.onNodeWithText(label).assertIsNotEnabled()
+                        assertTrue(reader.model.state.value.pairingRestoring)
+                        reader.model.closeDialog()
+                        navigateRecoveryChapter(reader, forward = false)
+                        awaitPairingStatus(reader, a, ReaderPairingPersistenceStatus.READY)
+                        openPairingSettings(reader, expectRecovery = false)
+                        val window = reader.model.state.value.viewerChapters
+                        val position = reader.model.currentReaderPage
+                        bRelease.complete(Unit)
+                        awaitPairingStatus(reader, b, ReaderPairingPersistenceStatus.RESTORE_FAILED)
+                        assertTrue(window === reader.model.state.value.viewerChapters)
+                        assertTrue(position === reader.model.currentReaderPage)
+                        compose.onNodeWithText(label).assertDoesNotExist()
+                        reader.model.closeDialog()
+                        navigateRecoveryChapter(reader, forward = true)
+                        awaitPairingStatus(reader, b, ReaderPairingPersistenceStatus.READY)
+                        // The new chapter activation may reread a failed owner automatically;
+                        // it is not a user request and must not inherit either prior pending marker.
+                        openPairingSettings(reader, expectRecovery = false)
+                    } finally {
+                        b.unref()
+                    }
+                } finally {
+                    aRelease.complete(Unit)
+                    bRelease.complete(Unit)
+                    Injekt.get<AndroidChapterPairingCoordinator>().awaitAcceptedOperations()
+                    a.unref()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `Settings reread replacement ignores old completion while a new request is pending`() = runBlocking {
+        openDatabase(temporaryFolder.newFile("replacement-pending-recovery.db"), create = true).use { fixture ->
+            seed(fixture.driver)
+            seedAdjacent(fixture.driver)
+            val loads = AtomicInteger()
+            val aReads = AtomicInteger()
+            val last = AtomicReference<Long>()
+            val oldRelease = CompletableDeferred<Unit>()
+            val newEntered = CompletableDeferred<Unit>()
+            val newRelease = CompletableDeferred<Unit>()
+            val scheduler = TestCoroutineScheduler()
+            val dispatcher = HeldRecoveryDispatcher(scheduler)
+            val repository = object : ChapterPairingRepository by fixture.repository {
+                override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot {
+                    loads.incrementAndGet()
+                    last.set(chapterId)
+                    if (chapterId == 2L) {
+                        when (aReads.incrementAndGet()) {
+                            1, 3 -> throw IOException("Failure for current A owner")
+                            2 -> oldRelease.await()
+                            4 -> {
+                                newEntered.complete(Unit)
+                                newRelease.await()
+                            }
+                        }
+                    }
+                    return fixture.repository.load(chapterId, mangaId)
+                }
+            }
+            session(
+                fixture,
+                repository,
+                readingMode = 1,
+                includeAdjacent = true,
+                reuseLoadedPages = true,
+                pairingCallbackDispatcher = dispatcher,
+            ).use { reader ->
+                val a = requireNotNull(reader.model.state.value.currentChapter)
+                awaitPairingStatus(reader, a, ReaderPairingPersistenceStatus.RESTORE_FAILED, scheduler)
+                updateActualViewer(reader)
+                a.ref()
+                try {
+                    openPairingSettings(reader)
+                    val before = reader.model.viewModelScope.coroutineContext[Job]!!.children.toSet()
+                    clickSettingsReload(reader)
+                    scheduler.runCurrent()
+                    withTimeout(5_000) { while (aReads.get() < 2) yield() }
+                    val oldJob = reader.model.viewModelScope.coroutineContext[Job]!!.children.single { it !in before }
+                    dispatcher.heldJob = oldJob
+                    val oldOwner = requireNotNull(reader.model.dualPagePairings.chapters[a]).session
+                    val replacementPages = requireNotNull(a.pages).map { old ->
+                        ReaderPage(old.index).apply {
+                            chapter = a
+                            stream = old.stream
+                            status = Page.State.Ready
+                            publishHeaderFact()
+                        }
+                    }
+                    a.publishLoadedPageListForTest(replacementPages)
+                    reader.activity.handleReaderEvent(ReaderViewModel.Event.ReloadViewerChapters)
+                    assertTrue(oldOwner.isClosed)
+                    reader.model.closeDialog()
+                    reader.model.loadNextChapter()
+                    reader.activity.handleReaderEvent(ReaderViewModel.Event.ReloadViewerChapters)
+                    reader.model.loadPreviousChapter()
+                    reader.activity.handleReaderEvent(ReaderViewModel.Event.ReloadViewerChapters)
+                    scheduler.runCurrent()
+                    oldRelease.complete(Unit)
+                    withTimeout(5_000) { while (!dispatcher.hasHeldCallback) yield() }
+                    awaitPairingStatus(reader, a, ReaderPairingPersistenceStatus.RESTORE_FAILED, scheduler)
+                    val owner = requireNotNull(reader.model.dualPagePairings.chapters[a]).session
+                    assertTrue(owner !== oldOwner)
+                    openPairingSettings(reader)
+                    clickSettingsReload(reader)
+                    scheduler.runCurrent()
+                    withTimeout(5_000) { newEntered.await() }
+                    val label = reader.host.stringResource(MR.strings.action_reload_page_pairing)
+                    compose.onNodeWithText(label).assertIsNotEnabled()
+                    val window = reader.model.state.value.viewerChapters
+                    val position = reader.model.currentReaderPage
+                    dispatcher.releaseHeld()
+                    scheduler.runCurrent()
+                    withTimeout(5_000) { oldJob.join() }
+                    compose.onNodeWithText(label).assertIsNotEnabled()
+                    assertEquals(4, aReads.get())
+                    assertTrue(owner === reader.model.dualPagePairings.chapters[a]?.session)
+                    newRelease.complete(Unit)
+                    awaitPairingStatus(reader, a, ReaderPairingPersistenceStatus.READY, scheduler)
+                    compose.waitUntil(5_000) { !reader.model.state.value.pairingReadUnavailable }
+                    compose.onNodeWithText(label).assertDoesNotExist()
+                    assertTrue(window === reader.model.state.value.viewerChapters)
+                    assertTrue(position === reader.model.currentReaderPage)
+                } finally {
+                    oldRelease.complete(Unit)
+                    newRelease.complete(Unit)
+                    dispatcher.releaseHeld()
+                    Injekt.get<AndroidChapterPairingCoordinator>().awaitAcceptedOperations()
+                    scheduler.runCurrent()
+                    a.unref()
+                }
+            }
+        }
+    }
+
+    @Test
     fun `all modes activate before held pairing read and retain content after failure`() = runBlocking {
         // Reuse the existing Windows JVM PNG fixture boundary: the native format probe is
         // unavailable, while BitmapFactory, the original holder and SSIV still draw real pixels.
@@ -2048,7 +2350,8 @@ class AndroidChapterPairingPersistenceWiringTest {
             activity,
             viewer,
             host,
-            (pairingCallbackDispatcher as? kotlinx.coroutines.test.TestDispatcher)?.scheduler,
+            (pairingCallbackDispatcher as? kotlinx.coroutines.test.TestDispatcher)?.scheduler
+                ?: (pairingCallbackDispatcher as? HeldRecoveryDispatcher)?.scheduler,
         )
     }
 
@@ -2193,7 +2496,22 @@ class AndroidChapterPairingPersistenceWiringTest {
         }
     }
 
-    private fun openPairingSettings(reader: ReaderSession) {
+    private suspend fun navigateRecoveryChapter(reader: ReaderSession, forward: Boolean) {
+        val window = requireNotNull(reader.model.state.value.viewerChapters)
+        val expected = requireNotNull(if (forward) window.nextChapter else window.prevChapter)
+        if (forward) reader.model.loadNextChapter() else reader.model.loadPreviousChapter()
+        assertTrue(
+            "Actual VM navigation must activate chapter ${expected.chapter.id}",
+            expected === reader.model.state.value.currentChapter,
+        )
+        updateActualViewer(reader)
+        assertTrue(
+            "The actual Single viewer must retain chapter ${expected.chapter.id}",
+            expected === reader.model.state.value.currentChapter,
+        )
+    }
+
+    private fun openPairingSettings(reader: ReaderSession, expectRecovery: Boolean = true) {
         reader.host.setContent {
             val state by reader.model.state.collectAsState()
             MaterialTheme {
@@ -2224,7 +2542,7 @@ class AndroidChapterPairingPersistenceWiringTest {
         assertTrue(reader.model.state.value.dialog is ReaderViewModel.Dialog.Settings)
         compose.onAllNodesWithText(
             reader.host.stringResource(MR.strings.action_reload_page_pairing),
-        ).assertCountEquals(1)
+        ).assertCountEquals(if (expectRecovery) 1 else 0)
         compose.onNodeWithText(reader.host.stringResource(MR.strings.desktop_reader_pairing_load_failed))
             .assertDoesNotExist()
         compose.onNodeWithText(reader.host.stringResource(MR.strings.desktop_reader_pairing_use_default))
@@ -2240,13 +2558,7 @@ class AndroidChapterPairingPersistenceWiringTest {
         }
     }
 
-    private suspend fun invokeSettingsReload(
-        reader: ReaderSession,
-        loads: AtomicInteger,
-        lastChapter: AtomicReference<Long>,
-    ) {
-        val expectedChapter = requireNotNull(reader.model.state.value.currentChapter?.chapter?.id)
-        val before = loads.get()
+    private fun clickSettingsReload(reader: ReaderSession) {
         val label = reader.host.stringResource(MR.strings.action_reload_page_pairing)
         var action: (() -> Boolean)? = null
         compose.waitUntil(5_000) {
@@ -2263,6 +2575,16 @@ class AndroidChapterPairingPersistenceWiringTest {
             action != null
         }
         assertTrue(requireNotNull(action).invoke())
+    }
+
+    private suspend fun invokeSettingsReload(
+        reader: ReaderSession,
+        loads: AtomicInteger,
+        lastChapter: AtomicReference<Long>,
+    ) {
+        val expectedChapter = requireNotNull(reader.model.state.value.currentChapter?.chapter?.id)
+        val before = loads.get()
+        clickSettingsReload(reader)
         assertTrue(
             "Actual Settings Reload must reread current chapter $expectedChapter; loads stayed at $before",
             withTimeoutOrNull(5_000) {
@@ -2277,9 +2599,14 @@ class AndroidChapterPairingPersistenceWiringTest {
         reader: ReaderSession,
         chapter: ReaderChapter,
         status: mihon.domain.reader.ReaderPairingPersistenceStatus,
+        scheduler: TestCoroutineScheduler? = null,
     ) {
         withTimeout(5_000) {
-            while (reader.model.dualPagePairings.chapters[chapter]?.session?.pairingState?.status != status) yield()
+            scheduler?.runCurrent()
+            while (reader.model.dualPagePairings.chapters[chapter]?.session?.pairingState?.status != status) {
+                scheduler?.runCurrent()
+                yield()
+            }
         }
     }
 
@@ -2361,6 +2688,26 @@ class AndroidChapterPairingPersistenceWiringTest {
         val handler: AndroidDatabaseHandler,
     ) : AutoCloseable {
         override fun close() = driver.close()
+    }
+
+    private class HeldRecoveryDispatcher(val scheduler: TestCoroutineScheduler) : CoroutineDispatcher() {
+        private val delegate = StandardTestDispatcher(scheduler)
+        private val held = ConcurrentLinkedQueue<Pair<CoroutineContext, Runnable>>()
+
+        @Volatile var heldJob: Job? = null
+        val hasHeldCallback: Boolean get() = held.isNotEmpty()
+
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            if (context[Job] === heldJob) held.add(context to block) else delegate.dispatch(context, block)
+        }
+
+        fun releaseHeld() {
+            heldJob = null
+            while (true) {
+                val (context, block) = held.poll() ?: return
+                delegate.dispatch(context, block)
+            }
+        }
     }
 
     private data class ReaderSession(

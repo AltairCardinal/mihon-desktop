@@ -9,7 +9,7 @@ date: 2026-11-01
 
 唯一功能规格：[双页阅读非阻塞配对设计](../2026-11-01-reader-nonblocking-pairing-design.md)。目标是未下载长章冷跳时先显示，后台匹配在下一次主动翻页纠正，允许重复边界页而不自动漏页。
 
-**当前结论（2026-11-02）：全模式恢复 NR01～NR03 已完成定向实现、独立审查及验证。** 起点为设计提交 `3017994cdc2cb93a5b2046ca3b7cc26ef6f6da18`，两端单页／条漫／双页不再受配对读取挂起或失败阻断；设置内仅保留当前有效 owner 的可选重读。Android AUTO 两种时序、旧回调、未知记录保护及 Desktop 条漫位置／进度分别取得真实红绿。NB01～NB04及 A／B 的既有双页证据、Windows 图片重试人工验收按影响保留；本轮未生成新候选、未追加原生或用户验收，不扩大公共功能说明，未推送／发布。准确组合证据及层级边界见下方执行记录。
+**当前结论（2026-11-02）：全模式恢复 NR01～NR03 及后续 Android 主动重读跨章反馈修复均已完成定向实现、独立审查及验证。** 起点为设计提交 `3017994cdc2cb93a5b2046ca3b7cc26ef6f6da18`，两端单页／条漫／双页不再受配对读取挂起或失败阻断；设置内仅保留当前有效 owner 的可选重读。Android AUTO 两种时序、旧回调、未知记录保护及 Desktop 条漫位置／进度分别取得真实红绿。NB01～NB04及 A／B 的既有双页证据、Windows 图片重试人工验收按影响保留；本轮未生成新候选、未追加原生或用户验收，不扩大公共功能说明，未推送／发布。准确组合证据及层级边界见下方执行记录。
 
 本文件是这次独立修复的执行计划，不启动旧双页 roadmap 的 DP02 完整发布矩阵，不重做已完成历史批次。与旧文档冲突时，采用设计第 3 节的有限替代；未列出的身份、资源、持久化、原生和验证约束继续遵守。按第一个未勾选项推导当前进度，不另建 `active-task` 状态或第二套 manifest。
 
@@ -48,6 +48,32 @@ date: 2026-11-01
   NR01／NR02稳定后做一轮独立审查，聚焦全模式激活、AUTO两种顺序、当前owner重读、旧回调和未知记录保护；有问题只修复并补验受影响范围。核对设计 NR-A～NR-D 到真实方法／结果的映射，直接读取产物证明先红后绿，明确 JVM、Compose、像素及原生证据各自边界。文档与对应实现批次一并提交；不为关闭状态另建纯记录提交。检查工作区仅含本任务预期变更，报告本地提交、实际测试及未验证项，不推送／打包／发布、不扩大公共功能说明。
 
   **预算与停止条件：** 后续执行者按当时进程和依赖报告预算；默认按两端上述 focused 范围及一轮审查完成，不重跑 NB01～NB04、Windows 图片重试、全模块或全量。编译／夹具错误单独记录，产品红必须来自行为断言。仅当具体原生接线风险无法被现有有效证据和本次接线测试覆盖时，明确缺口后补最小原生验证；不把全新设备像素验收列为本轮默认条件。产品失败、证据缺失或未执行项保留未勾选，不以设计提交作为实现完成。
+
+### Android 主动重读跨章反馈修复（基线8e4699f77c）
+
+- [x] **主动重读反馈绑定有效请求并跨章保留。** 同owner A→B→A反馈、两章独立在途、替换／旧回调及取消／拒收清理取得真实红绿；相关数据／位置回归、限定格式、内部文档、独立审查及本地提交完成后收口。
+
+本次为用户明确授权的独立限定Goal，接续NR01～NR03之后发现的反馈生命周期缺陷；不重新实施全模式功能。起点HEAD `8e4699f77c057bfda9a3968e62aa1d344dc4d8de`、工作区及暂存区干净，沿用原worktree／分支。单一pairingRecoveryOwner在章节激活、非当前章发布时清空，激活又硬编码pairingRestoring=false；这是最初核实的生产调用链，随后真实行为RED确认运行失败，证据如下。
+
+范围仅Android VM内存反馈与直接接线测试、本文及现有设计维护约束。复用1个实施代理负责VM／测试，主代理独立审查及文档；Gradle经协调器串行，只运行精确方法红绿、直接相关请求去重／记录／位置回归及改动文件格式。预算25～45分钟，无完整class／模块／全量、打包、原生／桌面操作、Desktop／算法／导航／图片Retry变更、推送或发布。必须证明同owner A→B→A仍显示唯一disabled按钮且不增加请求，A／B两主动请求独立终结、替换／旧回调与取消／拒收清理；用可控挂起／释放及实际VM切章／Activity Settings，不以sleep或夹具失败替代产品RED。
+
+最小实现只改ReaderViewModel：IdentityHashMap按有效owner保存完整RestoreRequest；用户设置点击传入当时有效owner，只有beginRestore实际取得同owner请求才登记，内部替换owner的自动再读取不继承主动标记。章节激活和普通发布复用同一当前章节状态投影，按chapter／pages／store entry／owner／request内容身份及真实RESTORING状态淘汰失效项，不因其它章当前不可见清除仍有效请求。每个已取得operation在NonCancellable finally中仅按原对象身份清理自身；成功、失败、取消、拒收均执行，onCleared清空内存记录。未修改store、Activity、Desktop、共享协议或持久字段。
+
+`android-recovery-ledger-green` 先执行两个变更文件限定Spotless Apply／Check，再执行 `:app:testDebugUnitTest` 的下列5个精确 `--tests`；完整参数保留同key协调器JSON。归档 `nb-a-artifacts/recovery-ledger-green.xml` 为5 tests／0 failure／0 error／0 skip，测试34.705秒、任务3m5s，无自动失败重试：
+
+- `Settings reread remains disabled after returning to the same retained owner`：真实A→B→A、同pages／live owner、唯一disabled且A读取次数仍2；B初始后台挂起不带主动反馈；A失败后可点，实际取消后仍可点，之后成功消失，原SQL记录与当前位置保持。
+- `Settings rereads for two chapters retain independent pending feedback`：A／B各自从实际Settings发起，当前章只显示自己的状态；A成功不移除B的disabled，B失败不改变当前A位置或反馈。
+- `Settings reread replacement ignores old completion while a new request is pending`：实际pages／owner替换，新owner先真实失败再主动重读挂起；测试dispatcher仅延迟旧回调，旧结果完成不清新请求、不改变章节／位置，最后成功移除按钮。此方法基线也通过，作为保护回归，不计产品RED。
+- `all mode Settings reload retains disabled action and current owner through mode changes`：复验跨模式设置重读、重复点击去重、未知revision及原记录／真实viewer重绑后源页保持。
+- `rejected restore releases pending operation when a retained chapter leaves the window`：复验初始后台请求、合法保留owner与出窗口旧结果拒收，原pending结束后可再次读取。
+
+主代理独立审查确认登记发生在实际取得请求后、激活／发布无硬编码清空、A／B独立投影、旧操作的精确身份finally清理及退出清理；未发现新的阻塞。四文件虽然超过400行，主要为三个可控时序及其真实VM／Activity设置接线、必要helper，属于同一反馈生命周期修复，不拆成不可独立验收的提交。worker61116／process19512及该任务新建Java均已退出，起始已有30104未触碰。未执行完整class／模块／全量、新候选、原生／桌面或人工验收；证据为确定性JVM／Robolectric生产状态管理与Settings语义接线，未声称新增设备像素或人工通过。设计与本roadmap同步，公共说明未改；本地提交完成后结束，不推送／发布。
+
+最终两个文档UTF-8及5个本地链接核验通过，`git diff --check`通过；提交前HEAD仍为8e4699f77c、暂存区为空且工作区只有本任务4文件。本地提交hash与提交后干净状态以最终Git回执报告。
+
+首轮 `android-recovery-ledger-red` 为3 tests／2 failures／0 error／0 skip，其中替换owner后旧回调方法通过；另两项停在B章状态等待，尚未到返回A的按钮断言，不能计有效产品RED。夹具切章后手工向旧Single viewer发送Reload，其旧currentItem触发真实onPageChange／onPageSelected并返回A；只将夹具切章后的绑定改为既有Activity viewer更新接线，先核准确当前章节及同pages／owner，不改生产行为或扩大selector。
+
+`android-recovery-ledger-red-navigation-fixed`／`nb-a-artifacts/recovery-ledger-effective-red.xml` 的同owner返回A方法取得有效RED：准确章节、原pages、同一live owner前置通过，真实Settings Reload节点0；该XML共3项／2失败，另一失败仍是两章夹具前置，替换／旧回调方法PASS，不能冒称两个产品红。两章夹具原last_page_read=5/8会触发Pager最后5页的普通邻章预读；激活B又读一次，使计数型gate在用户点击前挂起。仅把该夹具初始SQL进度改0后，`android-recovery-ledger-two-chapters-red` 只执行该方法，取得1 test／1 failure／0 error／0 skip，停于A／B均已主动重读后返回A的真实Settings按钮缺失。首次有效RED与替换方法PASS未重复执行。
 
 ### NR01～NR03 执行记录（基线3017994，本轮定向收口）
 
