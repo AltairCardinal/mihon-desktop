@@ -256,7 +256,6 @@ internal fun ZoomablePageBox(
     val presentationState = presentationImage.state
     val readyState = presentationState as? DesktopReaderPresentationImageState.Ready
     val asset = readyState?.asset
-    val mountedCoordinates = remember { arrayOfNulls<LayoutCoordinates>(1) }
     val renderTrace = LocalReaderRenderTrace.current
     val traceRevision = if (renderTrace != null) renderTrace.captureRevision.collectAsState().value else 0L
     val observesImage = onObservedImageDraw != null || renderTrace != null
@@ -404,8 +403,8 @@ internal fun ZoomablePageBox(
                                 if (onPageDrawn != null && renderedImage.currentPixels()) onPageDrawn.invoke()
                                 accepted
                             },
-                            prepareDraw = {
-                                val coordinates = mountedCoordinates[0]?.takeIf { it.isAttached }
+                            prepareDraw = { mounted ->
+                                val coordinates = mounted.takeIf { it.isAttached }
                                 val localGeometry = coordinates?.takeIf {
                                     it.size.width > 0 && it.size.height > 0
                                 }?.let {
@@ -465,7 +464,7 @@ internal fun ZoomablePageBox(
                         )
                     }
                 }
-                Box(imageModifier.onGloballyPositioned { mountedCoordinates[0] = it }) {
+                Box(imageModifier) {
                     if (imageViewport != null && contextMenuScope != null) {
                         val binding = readerPageContextMenuBinding(presentationImage)
                         PageContextMenu(

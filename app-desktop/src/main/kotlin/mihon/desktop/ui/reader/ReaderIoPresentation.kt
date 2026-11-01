@@ -7,10 +7,16 @@ import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.node.DrawModifierNode
+import androidx.compose.ui.node.GlobalPositionAwareModifierNode
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.invalidateDraw
+import androidx.compose.ui.node.requireLayoutCoordinates
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import mihon.desktop.test.state.ReaderDrawPoint
@@ -174,15 +180,43 @@ internal class ReaderObservedBitmapPainter(
 
 internal fun Modifier.observeReaderPageDraw(
     acknowledgeDraw: (() -> Boolean)?,
-    prepareDraw: (() -> Boolean)? = null,
+    prepareDraw: ((LayoutCoordinates) -> Boolean)? = null,
 ): Modifier {
-    return if (acknowledgeDraw != null) {
-        drawWithContent {
-            if (prepareDraw?.invoke() == false) return@drawWithContent
+    return when {
+        acknowledgeDraw == null -> this
+        prepareDraw != null -> then(ReaderPreparedPageDrawElement(prepareDraw, acknowledgeDraw))
+        else -> drawWithContent {
             drawContent()
             acknowledgeDraw()
         }
-    } else {
-        this
+    }
+}
+
+private data class ReaderPreparedPageDrawElement(
+    val prepareDraw: (LayoutCoordinates) -> Boolean,
+    val acknowledgeDraw: () -> Boolean,
+) : ModifierNodeElement<ReaderPreparedPageDrawNode>() {
+    override fun create() = ReaderPreparedPageDrawNode(prepareDraw, acknowledgeDraw)
+
+    override fun update(node: ReaderPreparedPageDrawNode) {
+        node.prepareDraw = prepareDraw
+        node.acknowledgeDraw = acknowledgeDraw
+    }
+}
+
+private class ReaderPreparedPageDrawNode(
+    var prepareDraw: (LayoutCoordinates) -> Boolean,
+    var acknowledgeDraw: () -> Boolean,
+) : Modifier.Node(), DrawModifierNode, GlobalPositionAwareModifierNode {
+    override fun onGloballyPositioned(coordinates: LayoutCoordinates) {
+        // A prefetched page may have recorded an empty draw while clipped away.
+        // Moving its existing layer into view must re-run preparation in this frame.
+        if (isAttached && coordinates.isAttached) invalidateDraw()
+    }
+
+    override fun ContentDrawScope.draw() {
+        if (!isAttached || !prepareDraw(requireLayoutCoordinates())) return
+        drawContent()
+        acknowledgeDraw()
     }
 }

@@ -860,6 +860,12 @@ Android 的 trim 回调设置 pressure，而原普通 HTTP／native 工作转 id
 
 原生观察器只可包装已有非空回调并转发原函数；重绑定清空回调后，不得补造 Ready、绘制或 prepare 回调。ReaderPageImageView 在 beforeImageDraw 与 onImageDrawn 都为空时直接允许原绘制，补入观察函数会改变此分支，因而不能称为透明观测。回调修正后的定向绿色仅证明实际执行场景，不能自动解释旧图片 Error 或旧上下文下未绘制的失败；完整对照、原异常原因和正式运行须分别记录。
 
+### Desktop 预取页进入视口时的绘制失效
+
+Pager 的已解码预取页可能在离屏时记录空绘制；父层把同一节点移入视口，并不保证重新录制该绘制。带准备门禁的图片由同一个 DrawModifierNode 接收全局布局回调并直接 invalidateDraw，绘制时读取该节点当前 LayoutCoordinates，避免依赖外部坐标缓存或跨阶段的 Snapshot 通知。未附着、空裁剪、无可见源区域及失效的原呈现能力仍拒绝绘制；仅在原 prepare 成功后画图并发出一次原 acknowledge。布局失效本身不授予票据或产生阅读进度。
+
+无准备门禁的 Webtoon 继续使用原 drawWithContent 路径。维护时须覆盖 LTR／RTL 的即时与动画翻页、实际 tap／key／wheel／外部定位，以及离屏不记读、缩放、resize、伙伴失败重试与设置重组；不能用放宽首帧像素或共享票据规则解决显示缓存失效。
+
 ### Android 同图缓存写入与响应所有权
 
 原 Android ChapterCache 使用 DiskLruCache，同一个 URL 的 editor 已被占用时，第二次写入返回 false。ReaderPageMaterializeRunner 的逻辑取消不保证旧 HTTP 正文或写入已经物理退出；仅更换请求 generation 不能防止同图重定位产生写入冲突。不能等待旧 materialize job 整体结束：旧 source.getImage 尚未返回时，新的请求仍须能正常完成，迟到的旧失败不得覆盖当前页。
