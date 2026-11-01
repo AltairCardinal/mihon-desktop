@@ -10,6 +10,29 @@ import org.junit.jupiter.api.Assertions.assertEquals
 class NotificationServiceTest {
 
     @Test
+    fun `library notifications belong only to the banner while other tasks retain notifications`() = runTest {
+        val fallback = DesktopNotificationService()
+        val received = mutableListOf<DesktopNotification>()
+        val collector = backgroundScope.launch(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)) {
+            fallback.notifications.collect { received += it }
+        }
+        val system = mutableListOf<DesktopNotification>()
+        val notifier = DesktopSystemNotifier({ system += it; false }, fallback)
+        listOf(
+            mihon.domain.task.NotificationEvent.Progress("library-update", "progress", .5f),
+            mihon.domain.task.NotificationEvent.Success("library-update", "done", "done"),
+            mihon.domain.task.NotificationEvent.Failure("library-update", "failed", "failed"),
+            mihon.domain.task.NotificationEvent.Cancelled("library-update", "cancelled"),
+        ).forEach(notifier::notify)
+        assertEquals(emptyList<DesktopNotification>(), system)
+        assertEquals(emptyList<DesktopNotification>(), received)
+        notifier.notify(mihon.domain.task.NotificationEvent.Success("backup", "backup", "saved"))
+        assertEquals(1, system.size)
+        assertEquals(1, received.size)
+        collector.cancel()
+    }
+
+    @Test
     fun `post emits a notification to the flow`() = runTest {
         val service = DesktopNotificationService()
         val notification = DesktopNotification(

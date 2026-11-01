@@ -4,6 +4,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
@@ -338,7 +339,10 @@ class LibraryRootScreen : Screen {
         var contextMenuPosition by remember { mutableStateOf(Offset.Zero) }
         var contextMenuAnchorOrigin by remember { mutableStateOf(Offset.Zero) }
         DisposableEffect(model) {
-            onDispose { model.setContextMenuManga(null) }
+            onDispose {
+                model.setContextMenuManga(null)
+                model.dismissUpdateBanner()
+            }
         }
         val showBatchCategoryDialog = state.showBatchCategoryDialog
         LaunchedEffect(selectionState.isInSelectionMode) {
@@ -836,18 +840,27 @@ class LibraryRootScreen : Screen {
                     }
                 }
 
-                if (updateStatusText != null) {
+                if (state.updateBannerVisible && updateStatusText != null) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            text = updateStatusText,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.weight(1f, fill = false).padding(vertical = 4.dp),
-                        )
+                        Row(
+                            modifier = Modifier.weight(1f, fill = false).horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            updateStatusText.split(" | ").forEachIndexed { index, column ->
+                                if (index > 0) Text("|", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    text = column,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(vertical = 4.dp),
+                                )
+                            }
+                        }
                         if (state.updateTask?.libraryUpdate != null) {
                             TextButton(
                                 onClick = { showUpdateResults = true },

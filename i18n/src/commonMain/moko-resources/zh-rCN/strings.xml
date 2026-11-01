@@ -2433,4 +2433,8 @@
     <string name="feedback_diagnostic_settings">详细日志请在“报告问题”中选择类别并临时开启。</string>
     <string name="feedback_diagnostic_storage_active">日志模式未能保存，仍在记录。请重试停止。</string>
     <string name="feedback_diagnostic_storage_inactive">无法开启或恢复日志。请检查本地存储后重试。</string>
+    <string name="desktop_library_update_banner_running">更新书架中 · %1$d%%</string>
+    <string name="desktop_library_update_banner_completed">更新完成</string>
+    <string name="desktop_library_update_banner_chapters">%1$d个作品有更新，合计%2$d个新章节</string>
+    <string name="desktop_library_update_banner_failures">%1$d个作品更新失败</string>
 </resources>

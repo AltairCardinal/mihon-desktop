@@ -1,5 +1,6 @@
 package mihon.desktop.ui.library
 
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
@@ -80,6 +81,178 @@ import tachiyomi.domain.library.model.LibraryDisplayMode as SharedLibraryDisplay
 class LibraryPageCompositionTest {
     @TempDir
     lateinit var tempDir: Path
+
+    private fun bannerTask(status: mihon.domain.task.TaskStatus) = mihon.desktop.task.StoredTask(
+        task = mihon.domain.task.BackgroundTask("library-update", "banner-test"),
+        status = status,
+        libraryUpdate = mihon.desktop.task.LibraryUpdateContext(
+            trigger = mihon.desktop.task.LibraryUpdateTrigger.MANUAL,
+            scope = mihon.desktop.task.LibraryUpdateScope.ALL,
+            units = listOf(
+                mihon.desktop.task.LibraryUpdateUnit(1, 1, "/1", mihon.desktop.task.LibraryUnitStatus.SUCCESS, 3),
+                mihon.desktop.task.LibraryUpdateUnit(2, 1, "/2", mihon.desktop.task.LibraryUnitStatus.FAILED),
+            ),
+        ),
+    )
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `historical completed update does not restore the banner`() = runTest {
+        val model = LibraryScreenModel(
+            getLibraryManga = GetLibraryManga(FakeMangaRepository()),
+            getCategories = GetCategories(FakeCategoryRepository()),
+            backgroundUpdateObservations = kotlinx.coroutines.flow.flowOf(
+                mihon.desktop.domain.LibraryUpdateObservation(bannerTask(mihon.domain.task.TaskStatus.Completed)),
+            ),
+        )
+        val scene = rootScene(model)
+        try {
+            settleContextMenu(scene)
+            assertTrue(MR.strings.desktop_library_update_results.localized() !in semanticLabels(scene))
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `category switch dismisses running banner and later completion cannot restore it`() = runTest {
+        val observations = MutableStateFlow(mihon.desktop.domain.LibraryUpdateObservation(bannerTask(mihon.domain.task.TaskStatus.Running)))
+        val categories = FakeCategoryRepository().apply {
+            insert(Category(1, "First", 1, 0))
+            insert(Category(2, "Second", 2, 0))
+        }
+        val model = LibraryScreenModel(
+            getLibraryManga = GetLibraryManga(FakeMangaRepository()),
+            getCategories = GetCategories(categories),
+            backgroundUpdateObservations = observations,
+        )
+        val scene = rootScene(model)
+        try {
+            settleContextMenu(scene)
+            val label = MR.strings.desktop_library_update_results.localized()
+            assertTrue(label in semanticLabels(scene))
+            libraryUpdateSummary(observations.value.task!!)!!.split(" | ").forEach {
+                assertTrue(it in semanticLabels(scene), "Each banner column must be a real text node: $it")
+            }
+            pointerClick(scene, "Second")
+            settleContextMenu(scene)
+            assertTrue(label !in semanticLabels(scene))
+            observations.value = mihon.desktop.domain.LibraryUpdateObservation(bannerTask(mihon.domain.task.TaskStatus.Completed))
+            settleContextMenu(scene)
+            pointerClick(scene, "First")
+            settleContextMenu(scene)
+            assertTrue(label !in semanticLabels(scene))
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `leaving library for details hides banner on return until refresh is triggered`() = runTest {
+        val task = bannerTask(mihon.domain.task.TaskStatus.Running)
+        val running = kotlinx.coroutines.Job()
+        var starts = 0
+        val item = sampleLibraryManga(sampleManga(1L, "Banner work", 1L))
+        val model = LibraryScreenModel(
+            getLibraryManga = GetLibraryManga(FakeMangaRepository().apply { libraryManga = listOf(item) }),
+            getCategories = GetCategories(FakeCategoryRepository()),
+            backgroundUpdateObservations = kotlinx.coroutines.flow.flowOf(mihon.desktop.domain.LibraryUpdateObservation(task)),
+            backgroundUpdateSnapshot = { task },
+            backgroundUpdateJob = { running },
+            startBackgroundUpdate = { starts++; running },
+        )
+        var navigator: Navigator? = null
+        val scene = rootScene(model, onNavigator = { navigator = it })
+        try {
+            settleContextMenu(scene)
+            val label = MR.strings.desktop_library_update_results.localized()
+            assertTrue(label in semanticLabels(scene))
+            pointerClick(scene, "Banner work")
+            settleContextMenu(scene)
+            assertTrue(navigator!!.lastItem is MangaDetailScreen)
+            navigator!!.pop()
+            settleContextMenu(scene)
+            assertTrue(label !in semanticLabels(scene))
+            model.refreshLibrary(listOf(item))
+            settleContextMenu(scene)
+            assertTrue(label in semanticLabels(scene))
+            assertEquals(0, starts)
+        } finally {
+            scene.close()
+            running.cancel()
+        }
+    }
+
+    private object BannerOtherTab : cafe.adriel.voyager.navigator.tab.Tab {
+        override val options: cafe.adriel.voyager.navigator.tab.TabOptions
+            @Composable get() = cafe.adriel.voyager.navigator.tab.TabOptions(99u, "Other", null)
+        @Composable override fun Content() { androidx.compose.material3.Text("Other page") }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `main navigation tab switch hides banner without restoring it on return`() = runTest {
+        val task = bannerTask(mihon.domain.task.TaskStatus.Running)
+        val model = LibraryScreenModel(
+            getLibraryManga = GetLibraryManga(FakeMangaRepository()),
+            getCategories = GetCategories(FakeCategoryRepository()),
+            backgroundUpdateObservations = kotlinx.coroutines.flow.flowOf(mihon.desktop.domain.LibraryUpdateObservation(task)),
+        )
+        val scene = ImageComposeScene(1200, 900, coroutineContext = kotlinx.coroutines.Dispatchers.Unconfined) {}
+        try {
+            scene.setContent {
+                CompositionLocalProvider(
+                    LocalDesktopUiDependencies provides mockk<DesktopUiDependencies>(relaxed = true) {
+                        every { syncPanel } returns null
+                    },
+                ) {
+                    ProvideLibraryScreenModelFactory({ model }) {
+                        ProvideLibraryNavigationHost(VoyagerLibraryNavigationHost()) {
+                            cafe.adriel.voyager.navigator.tab.TabNavigator(LibraryTab) { tabs ->
+                                mihon.desktop.ui.home.HomeNavigationHost(
+                                    current = tabs.current,
+                                    onSelect = { tabs.current = it },
+                                    showNavigation = true,
+                                    badgeCount = 0,
+                                    tabs = listOf(LibraryTab, BannerOtherTab),
+                                ) { cafe.adriel.voyager.navigator.tab.CurrentTab() }
+                            }
+                        }
+                    }
+                }
+            }
+            settleContextMenu(scene)
+            val label = MR.strings.desktop_library_update_results.localized()
+            assertTrue(label in semanticLabels(scene))
+            pointerClick(scene, "Other")
+            settleContextMenu(scene)
+            assertTrue("Other page" in semanticLabels(scene))
+            pointerClick(scene, MR.strings.label_library.localized())
+            settleContextMenu(scene)
+            assertTrue(label !in semanticLabels(scene))
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    fun `banner summary reports new chapters and failures rather than processing counters`() {
+        val original = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale.SIMPLIFIED_CHINESE)
+            assertEquals("更新完成 | 1个作品有更新，合计3个新章节 | 1个作品更新失败", libraryUpdateSummary(bannerTask(mihon.domain.task.TaskStatus.Completed)))
+            val empty = bannerTask(mihon.domain.task.TaskStatus.Completed).let { it.copy(libraryUpdate = it.libraryUpdate!!.copy(units = emptyList())) }
+            assertEquals("更新完成", libraryUpdateSummary(empty))
+            val failedOnly = empty.copy(libraryUpdate = empty.libraryUpdate!!.copy(
+                units = listOf(bannerTask(mihon.domain.task.TaskStatus.Completed).libraryUpdate!!.units.last()),
+            ))
+            assertEquals("更新完成 | 1个作品更新失败", libraryUpdateSummary(failedOnly))
+        } finally {
+            Locale.setDefault(original)
+        }
+    }
 
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
@@ -293,7 +466,7 @@ class LibraryPageCompositionTest {
             val repository = FakeMangaRepository()
             val task = mihon.desktop.task.StoredTask(
                 task = mihon.domain.task.BackgroundTask("layout-update", "layout-update"),
-                status = mihon.domain.task.TaskStatus.Completed,
+                status = mihon.domain.task.TaskStatus.Running,
                 libraryUpdate = mihon.desktop.task.LibraryUpdateContext(
                     trigger = mihon.desktop.task.LibraryUpdateTrigger.MANUAL,
                     scope = mihon.desktop.task.LibraryUpdateScope.ALL,
@@ -315,8 +488,9 @@ class LibraryPageCompositionTest {
                 }
                 settleContextMenu(scene)
                 val summary = requireNotNull(model.state.value.updateStatusText)
+                assertTrue("|" !in semanticLabels(scene), "Empty chapter and failure columns must not render separators")
                 val label = MR.strings.desktop_library_update_results.localized()
-                val text = nodes(scene).first { semanticLabels(it).contains(summary) }.boundsInWindow
+                val text = nodes(scene).first { semanticLabels(it).contains(summary.substringBefore(" | ")) }.boundsInWindow
                 val button = nodes(scene).first {
                     it.config.contains(androidx.compose.ui.semantics.SemanticsActions.OnClick) &&
                         semanticLabels(it).contains(label)
@@ -1435,6 +1609,7 @@ class LibraryPageCompositionTest {
             override fun openUri(uri: String) = Unit
         },
         sceneWidth: Int = 1_200,
+        onNavigator: (Navigator) -> Unit = {},
     ): ImageComposeScene =
         ImageComposeScene(sceneWidth, 900, coroutineContext = kotlinx.coroutines.Dispatchers.Unconfined) {
         }.also { scene ->
@@ -1447,6 +1622,7 @@ class LibraryPageCompositionTest {
                 ) {
                     ProvideLibraryScreenModelFactory(factory = { model }) {
                         Navigator(LibraryRootScreen()) { navigator ->
+                            onNavigator(navigator)
                             onDestination(navigator.lastItem)
                             if (navigator.lastItem is LibraryRootScreen) CurrentScreen()
                         }
