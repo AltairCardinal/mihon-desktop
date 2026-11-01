@@ -37,6 +37,10 @@ Mihon’s reading and library experience gains a desktop home. Use the desktop i
 
 **Chapter action feedback:** On Windows, successful or skipped chapter actions on the manga detail page no longer show the success/skip/failure count snackbar. Failure feedback and the optional Add to library action remain available.
 
+**Windows batch read status:** Select chapters on the manga detail page to mark them read or unread, or use the action to mark the chapters below the current position as read. The normal path writes the selected chapter states in one batch. An explicit command is preserved even when the local state already matches, so it can carry the user's sync intent. If the batch fails, individual retries report the actual successful and failed chapters; marking unread resets reading progress. This does not promise a fixed completion time on every device.
+
+**Windows reader settings:** Reader settings → General labels the scaling option **缩放模式** in Simplified Chinese and **縮放模式** in Traditional Chinese. The Reading mode page no longer contains the zoom-in, zoom-out, reset and multiplier shortcut bar; existing viewport gestures and keyboard zoom remain available.
+
 **Windows batch bookmarks:** On the manga detail page, select chapters and choose **Bookmark chapter** or **Unbookmark chapter** to update them as a batch. A mixed selection adds bookmarks only to chapters that do not already have one; selecting only bookmarked chapters removes their bookmarks. Normal additions and removals use one batch write. If the batch fails, chapters are retried individually and failed items remain selected for retry. Successful operations keep the existing quiet feedback. This acceptance covers Windows; it does not establish Android or macOS acceptance or a fixed completion time on every device.
 
 **Reader toolbar shortcut:** While the reader viewport has keyboard focus, press **Space** to show or hide the top and bottom toolbars together without changing the page or chapter. This applies to all desktop reading modes, including left-to-right, right-to-left, automatic and Webtoon, with single-page or two-page layouts. This shortcut was accepted on Windows; native operation on other platforms is outside this acceptance.
@@ -56,6 +60,8 @@ Read adjacent pages side by side, display landscape pages, and adjust pairing ma
 **Try it:** open a chapter, select two-page reading, and inspect the page order. If a pair is wrong, adjust it manually in the reader. Use a chapter you know well to compare the result with the intended spread.
 
 **Android reading direction:** Reader settings → Reading mode offers **Double page (right to left)** and **Double page (left to right)**. In Simplified Chinese these appear as **双页式（从右到左）** and **双页式（从左到右）**. Page placement and navigation follow the selected direction. Older clients that do not recognize the new left-to-right two-page setting fall back to single-page left-to-right when reading its saved work setting.
+
+**Android reading settings:** Descriptions for Default mode, including a global Automatic default, use the standard horizontal inset and the theme's secondary text color. In either two-page direction, **Auto Spread Matching** appears directly after the reading-mode choices and before Rotation, without an extra Pager heading. Its saved state persists when reopening the reader; single-page and Webtoon modes do not show this two-page option. This acceptance covers the menu and preference behavior, not the automatic-matching algorithm or every Android reading scenario.
 
 **Desktop assistance:** image-edge information from adjacent pages helps identify spreads. This is an aid to pairing, not a guarantee that every scan or layout can be recognized. Manual adjustment remains part of the reading workflow.
 
