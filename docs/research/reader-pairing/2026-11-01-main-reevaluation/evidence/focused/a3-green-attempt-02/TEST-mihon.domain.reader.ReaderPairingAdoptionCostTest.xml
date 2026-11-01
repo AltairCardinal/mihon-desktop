@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="mihon.domain.reader.ReaderPairingAdoptionCostTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-10-31T23:19:27.206Z" hostname="G-BURST" time="0.2">
+  <properties/>
+  <testcase name="compact comparison treats absent or mismatched recorded values as changed without throwing()[jvm]" classname="mihon.domain.reader.ReaderPairingAdoptionCostTest" time="0.11"/>
+  <testcase name="exact settings validation stays within bounded allocation after warmup()[jvm]" classname="mihon.domain.reader.ReaderPairingAdoptionCostTest" time="0.076"/>
+  <testcase name="compact dimension comparison keeps every geometry field and ignores only current side hint()[jvm]" classname="mihon.domain.reader.ReaderPairingAdoptionCostTest" time="0.011"/>
+  <system-out><![CDATA[PAIRING_EXACT_ALLOCATION bytesPerValidation=[1.872, 0.0, 0.0] warmup=20000 batch=10000
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

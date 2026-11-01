@@ -1,0 +1,8 @@
+{
+  "baselineCommit": "e8beb212a0ead306f6441b130c40d4b0a6c660f6",
+  "prerequisitesAvailableFromRemoteMain": "04a265395d1a115eeb492b0ed13d149a9f093c62",
+  "bundleRef": "refs/research/reader-pairing-baseline-e8beb",
+  "bundleBytes": 130973,
+  "bundleSha256": "7ce78731595c8680ef659a86b356542b5f7ae61e53d04536a8381687c9349372",
+  "verification": "PASS: fetched remote history into a new bare repository, bundle verified and imported, exact baseline SHA restored"
+}

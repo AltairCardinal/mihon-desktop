@@ -1,0 +1,2273 @@
+{
+  "launcher": {
+    "key": "reevaluation-cost-baseline-attempt-02-20261101",
+    "variant": "baseline",
+    "attempt": "02",
+    "startUtc": "2026-10-31T22:37:52.318723+00:00",
+    "elapsedSeconds": 52.284,
+    "exitCode": 0,
+    "stdoutSha256": "70d825fb0e1ee67e438552a25e0d8571cf1c75fdda510d562bf2f000251ceae9",
+    "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "rawDirectory": "D:\\Codex\\worktrees\\reader-r1-r10-reevaluation-20261101\\.gradle-coordinator\\reevaluation\\costs\\baseline-attempt-02\\raw",
+    "testXmlCount": 3,
+    "testTotals": {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "measuredRows": 930,
+    "measuredRowStatuses": {
+      "PASS": 930,
+      "FAIL": 0
+    },
+    "scenarioSummaryRows": 30,
+    "metricUnavailableRows": 0,
+    "invalidScenarios": 0,
+    "artifactsComplete": true,
+    "guardFinishedEventCaptured": true
+  },
+  "head": "e8beb212a0ead306f6441b130c40d4b0a6c660f6",
+  "productionAndTestTreeDigest": "35bd7012c2ab36167ca4a66db9555968f3fc9bc57733e7bda34520a81b4fec4e",
+  "workerJvmProtocol": "three test classes; forkEvery=1; maxParallelForks=1; sequential distinct JVM pids",
+  "fixedWorkload": {
+    "inputSeed": 739,
+    "scenarioCount": 10,
+    "scenarios": [
+      "A1.distant-edge-early-reject",
+      "A1.similar-edge-full-score",
+      "A2.owner-index-large-176",
+      "A2.owner-index-small-8",
+      "A3.settings-exact-default-empty",
+      "A3.settings-exact-small-4",
+      "A3.settings-exact-large-64",
+      "A3.settings-exact-tail-change-64",
+      "A4.memo-unchanged-repeated",
+      "A4.memo-frequent-header-writes"
+    ],
+    "distinctWorkerJvms": 3,
+    "warmupBatchesPerScenarioPerJvm": 5,
+    "warmupOperationsPerBatch": 1000,
+    "measuredSamplesPerScenarioPerJvm": 31,
+    "operationsPerSample": 1000,
+    "expectedMeasuredRows": 930
+  },
+  "harnessSha256": "a8c7fe9d35259dd7f4d14f2785e0d53867ffe7050f874860de073bc5cd3406df",
+  "runnerSha256": "6ea08cbea75c4dc4832f5086f93811a5f049d8489996b340367ea8bad953e29c",
+  "initSha256": "a0dbc83a41f6e5d7bcc8bde0c28f5272ec89988d93f731833ce8221db9e1b181",
+  "guardSha256": "4c8ea1cc40a44ab48ac84af0dd15d0ba93a7bbc491039c9864e4bb4b1ab9caf2",
+  "guard": {
+    "status": "PASSED",
+    "exit_code": 0,
+    "before": {
+      "physical_mib": 9714,
+      "commit_mib": 79782
+    },
+    "after": {
+      "physical_mib": 8842,
+      "commit_mib": 78925
+    },
+    "peak_job_mib": 2215.23,
+    "peak_process_mib": 1543.34,
+    "elapsed_seconds": 51.435
+  },
+  "cpuResolutionAudit": {
+    "queryRows": 930,
+    "nonzeroQueryCpuRows": 78,
+    "distinctQueryCpuValuesNs": [
+      0,
+      15625000
+    ],
+    "note": "Thread CPU samples are quantized at 15,625,000 ns; most 1\u20134 ms query batches read 0, so per-scenario CPU medians are not decision-grade."
+  },
+  "a4FrequentHeaderValidationTupleSet": [
+    {
+      "before": 0,
+      "after": 1000,
+      "delta": 1000,
+      "deltaEquals1000": true
+    }
+  ],
+  "scenarios": [
+    {
+      "scenario": "A1.distant-edge-early-reject",
+      "processes": [
+        {
+          "process": 1,
+          "pid": 36164,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 1324100,
+            "q1": 1191050.5,
+            "q3": 1492498.5,
+            "min": 843300,
+            "max": 3955800
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 2664608,
+            "q1": 2664608.0,
+            "q3": 2664608.0,
+            "min": 2664608,
+            "max": 2832608
+          },
+          "queryWallNs": {
+            "median": 1296100,
+            "q1": 1179300.0,
+            "q3": 1476549.0,
+            "min": 827700,
+            "max": 3903700
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 2661952,
+            "q1": 2661952.0,
+            "q3": 2661952.0,
+            "min": 2661952,
+            "max": 2829952
+          },
+          "prepareWallNs": {
+            "median": 12800,
+            "q1": 11300.5,
+            "q3": 16050.5,
+            "min": 9500,
+            "max": 35600
+          },
+          "closeWallNs": {
+            "median": 500,
+            "q1": 400.0,
+            "q3": 749.5,
+            "min": 300,
+            "max": 16500
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 50001,
+            "q1": 36000.5,
+            "q3": 60251.5,
+            "min": 25800,
+            "max": 7949700
+          }
+        },
+        {
+          "process": 2,
+          "pid": 61668,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 1543299,
+            "q1": 1198200.0,
+            "q3": 2464900.5,
+            "min": 1080400,
+            "max": 4107000
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 2736608,
+            "q1": 2736608.0,
+            "q3": 2832608.0,
+            "min": 2736608,
+            "max": 2832608
+          },
+          "queryWallNs": {
+            "median": 1524799,
+            "q1": 1187100.0,
+            "q3": 2443950.0,
+            "min": 1069400,
+            "max": 4090900
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 2733952,
+            "q1": 2733952.0,
+            "q3": 2829952.0,
+            "min": 2733952,
+            "max": 2829952
+          },
+          "prepareWallNs": {
+            "median": 13501,
+            "q1": 10550.5,
+            "q3": 16150.5,
+            "min": 9801,
+            "max": 29600
+          },
+          "closeWallNs": {
+            "median": 500,
+            "q1": 400.0,
+            "q3": 700.5,
+            "min": 300,
+            "max": 1801
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 52499,
+            "q1": 36500.0,
+            "q3": 77399.5,
+            "min": 26001,
+            "max": 7914500
+          }
+        },
+        {
+          "process": 3,
+          "pid": 65224,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 1168700,
+            "q1": 1057850.0,
+            "q3": 1292950.0,
+            "min": 825101,
+            "max": 3734598
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 2664608,
+            "q1": 2664608.0,
+            "q3": 2664608.0,
+            "min": 2664608,
+            "max": 2832608
+          },
+          "queryWallNs": {
+            "median": 1157099,
+            "q1": 1046700.0,
+            "q3": 1279700.5,
+            "min": 813900,
+            "max": 3708299
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 2661952,
+            "q1": 2661952.0,
+            "q3": 2661952.0,
+            "min": 2661952,
+            "max": 2829952
+          },
+          "prepareWallNs": {
+            "median": 11201,
+            "q1": 10449.5,
+            "q3": 12899.5,
+            "min": 9800,
+            "max": 25900
+          },
+          "closeWallNs": {
+            "median": 400,
+            "q1": 399.0,
+            "q3": 500.0,
+            "min": 300,
+            "max": 2499
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 39902,
+            "q1": 30801.0,
+            "q3": 58501.0,
+            "min": 26700,
+            "max": 6395302
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "A1.similar-edge-full-score",
+      "processes": [
+        {
+          "process": 1,
+          "pid": 36164,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 1402801,
+            "q1": 1170299.5,
+            "q3": 3480549.5,
+            "min": 1039300,
+            "max": 5582098
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 4999056,
+            "q1": 4999056.0,
+            "q3": 5095056.0,
+            "min": 4999056,
+            "max": 5141136
+          },
+          "queryWallNs": {
+            "median": 1393401,
+            "q1": 1164500.0,
+            "q3": 3473600.0,
+            "min": 1035000,
+            "max": 5575800
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 4997952,
+            "q1": 4997952.0,
+            "q3": 5093952.0,
+            "min": 4997952,
+            "max": 5140032
+          },
+          "prepareWallNs": {
+            "median": 5500,
+            "q1": 4550.5,
+            "q3": 6050.0,
+            "min": 3901,
+            "max": 13000
+          },
+          "closeWallNs": {
+            "median": 500,
+            "q1": 350.5,
+            "q3": 750.0,
+            "min": 299,
+            "max": 2500
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 35001,
+            "q1": 21900.0,
+            "q3": 54350.0,
+            "min": 15000,
+            "max": 192101
+          }
+        },
+        {
+          "process": 2,
+          "pid": 61668,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 1213200,
+            "q1": 1113601.0,
+            "q3": 1901198.0,
+            "min": 1088600,
+            "max": 5581398
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 4999056,
+            "q1": 4999056.0,
+            "q3": 5026848.0,
+            "min": 4999056,
+            "max": 5150352
+          },
+          "queryWallNs": {
+            "median": 1208200,
+            "q1": 1107850.5,
+            "q3": 1894899.0,
+            "min": 1084000,
+            "max": 5571099
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 4997952,
+            "q1": 4997952.0,
+            "q3": 5025744.0,
+            "min": 4997952,
+            "max": 5149248
+          },
+          "prepareWallNs": {
+            "median": 5200,
+            "q1": 4900.0,
+            "q3": 5850.5,
+            "min": 3700,
+            "max": 9300
+          },
+          "closeWallNs": {
+            "median": 500,
+            "q1": 400.0,
+            "q3": 599.5,
+            "min": 300,
+            "max": 4001
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 31299,
+            "q1": 24499.5,
+            "q3": 55249.5,
+            "min": 15699,
+            "max": 183197
+          }
+        },
+        {
+          "process": 3,
+          "pid": 65224,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 3264801,
+            "q1": 1236601.0,
+            "q3": 4060499.0,
+            "min": 1109100,
+            "max": 4796699
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 5095056,
+            "q1": 4999056.0,
+            "q3": 5095056.0,
+            "min": 4999056,
+            "max": 5132112
+          },
+          "queryWallNs": {
+            "median": 3258200,
+            "q1": 1229750.5,
+            "q3": 4054200.0,
+            "min": 1104600,
+            "max": 4790099
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 5093952,
+            "q1": 4997952.0,
+            "q3": 5093952.0,
+            "min": 4997952,
+            "max": 5131008
+          },
+          "prepareWallNs": {
+            "median": 6100,
+            "q1": 5499.5,
+            "q3": 8450.5,
+            "min": 4200,
+            "max": 12400
+          },
+          "closeWallNs": {
+            "median": 500,
+            "q1": 400.0,
+            "q3": 700.0,
+            "min": 300,
+            "max": 1101
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 44102,
+            "q1": 31148.5,
+            "q3": 82300.0,
+            "min": 15100,
+            "max": 133599
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "A2.owner-index-large-176",
+      "processes": [
+        {
+          "process": 1,
+          "pid": 36164,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 3252500,
+            "q1": 2946799.5,
+            "q3": 3902550.5,
+            "min": 2708501,
+            "max": 4906600
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 7812500.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 9681584,
+            "q1": 9681584.0,
+            "q3": 9809712.0,
+            "min": 9681584,
+            "max": 9856312
+          },
+          "queryWallNs": {
+            "median": 3068801,
+            "q1": 2724849.5,
+            "q3": 3663550.0,
+            "min": 2494500,
+            "max": 4705399
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 7812500.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 9605952,
+            "q1": 9605952.0,
+            "q3": 9733952.0,
+            "min": 9605952,
+            "max": 9780520
+          },
+          "prepareWallNs": {
+            "median": 208199,
+            "q1": 180599.0,
+            "q3": 243650.5,
+            "min": 165201,
+            "max": 374400
+          },
+          "closeWallNs": {
+            "median": 3601,
+            "q1": 3000.0,
+            "q3": 4900.0,
+            "min": 2301,
+            "max": 6400
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 50200,
+            "q1": 43100.5,
+            "q3": 63749.0,
+            "min": 28500,
+            "max": 112201
+          }
+        },
+        {
+          "process": 2,
+          "pid": 61668,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 3510599,
+            "q1": 3109299.5,
+            "q3": 4053748.5,
+            "min": 2767601,
+            "max": 5475300
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 9745648,
+            "q1": 9745648.0,
+            "q3": 9809712.0,
+            "min": 9745648,
+            "max": 9856688
+          },
+          "queryWallNs": {
+            "median": 3328099,
+            "q1": 2921400.5,
+            "q3": 3786749.5,
+            "min": 2579901,
+            "max": 5227000
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 9669952,
+            "q1": 9669952.0,
+            "q3": 9733952.0,
+            "min": 9669952,
+            "max": 9780896
+          },
+          "prepareWallNs": {
+            "median": 187599,
+            "q1": 178649.5,
+            "q3": 217150.0,
+            "min": 169400,
+            "max": 468700
+          },
+          "closeWallNs": {
+            "median": 3899,
+            "q1": 3150.0,
+            "q3": 4900.0,
+            "min": 2501,
+            "max": 51000
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 51699,
+            "q1": 43450.5,
+            "q3": 69551.5,
+            "min": 31501,
+            "max": 156099
+          }
+        },
+        {
+          "process": 3,
+          "pid": 65224,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 3812401,
+            "q1": 3219199.5,
+            "q3": 4418198.5,
+            "min": 2647200,
+            "max": 5482900
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 9681584,
+            "q1": 9681584.0,
+            "q3": 9809712.0,
+            "min": 9681584,
+            "max": 9856360
+          },
+          "queryWallNs": {
+            "median": 3622300,
+            "q1": 3011150.0,
+            "q3": 4135499.0,
+            "min": 2475501,
+            "max": 5293500
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 9605952,
+            "q1": 9605952.0,
+            "q3": 9733952.0,
+            "min": 9605952,
+            "max": 9780568
+          },
+          "prepareWallNs": {
+            "median": 200799,
+            "q1": 182150.0,
+            "q3": 257900.0,
+            "min": 136599,
+            "max": 385200
+          },
+          "closeWallNs": {
+            "median": 4900,
+            "q1": 4150.0,
+            "q3": 5699.5,
+            "min": 3099,
+            "max": 8500
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 64201,
+            "q1": 56851.5,
+            "q3": 72850.0,
+            "min": 33200,
+            "max": 132902
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "A2.owner-index-small-8",
+      "processes": [
+        {
+          "process": 1,
+          "pid": 36164,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 484600,
+            "q1": 446550.0,
+            "q3": 710799.5,
+            "min": 411399,
+            "max": 818601
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 1932496,
+            "q1": 1932496.0,
+            "q3": 1932496.0,
+            "min": 1932496,
+            "max": 1932632
+          },
+          "queryWallNs": {
+            "median": 440699,
+            "q1": 406100.0,
+            "q3": 648349.5,
+            "min": 388000,
+            "max": 776501
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 1925952,
+            "q1": 1925952.0,
+            "q3": 1925952.0,
+            "min": 1925952,
+            "max": 1925952
+          },
+          "prepareWallNs": {
+            "median": 32701,
+            "q1": 24150.0,
+            "q3": 40299.5,
+            "min": 21200,
+            "max": 120100
+          },
+          "closeWallNs": {
+            "median": 1600,
+            "q1": 1200.0,
+            "q3": 2200.0,
+            "min": 900,
+            "max": 77401
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 29000,
+            "q1": 17450.0,
+            "q3": 38250.5,
+            "min": 14901,
+            "max": 113901
+          }
+        },
+        {
+          "process": 2,
+          "pid": 61668,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 490800,
+            "q1": 460100.0,
+            "q3": 575750.0,
+            "min": 427999,
+            "max": 948800
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 1996560,
+            "q1": 1996560.0,
+            "q3": 1996560.0,
+            "min": 1996560,
+            "max": 1997128
+          },
+          "queryWallNs": {
+            "median": 445000,
+            "q1": 431750.5,
+            "q3": 521349.5,
+            "min": 405300,
+            "max": 866401
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 1989952,
+            "q1": 1989952.0,
+            "q3": 1989952.0,
+            "min": 1989952,
+            "max": 1989952
+          },
+          "prepareWallNs": {
+            "median": 27800,
+            "q1": 23800.0,
+            "q3": 44100.5,
+            "min": 21500,
+            "max": 116500
+          },
+          "closeWallNs": {
+            "median": 1400,
+            "q1": 1100.0,
+            "q3": 2049.0,
+            "min": 900,
+            "max": 20699
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 21100,
+            "q1": 16800.5,
+            "q3": 32649.5,
+            "min": 15099,
+            "max": 79602
+          }
+        },
+        {
+          "process": 3,
+          "pid": 65224,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 525800,
+            "q1": 458651.0,
+            "q3": 724000.0,
+            "min": 414901,
+            "max": 838598
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 1932496,
+            "q1": 1932496.0,
+            "q3": 1932496.0,
+            "min": 1932496,
+            "max": 1932632
+          },
+          "queryWallNs": {
+            "median": 476900,
+            "q1": 422500.0,
+            "q3": 647500.0,
+            "min": 394000,
+            "max": 795800
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 1925952,
+            "q1": 1925952.0,
+            "q3": 1925952.0,
+            "min": 1925952,
+            "max": 1925952
+          },
+          "prepareWallNs": {
+            "median": 32499,
+            "q1": 26500.0,
+            "q3": 47200.0,
+            "min": 19001,
+            "max": 98700
+          },
+          "closeWallNs": {
+            "median": 1800,
+            "q1": 1401.0,
+            "q3": 2499.5,
+            "min": 1100,
+            "max": 22000
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 30101,
+            "q1": 22300.5,
+            "q3": 41150.5,
+            "min": 17600,
+            "max": 75898
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "A3.settings-exact-default-empty",
+      "processes": [
+        {
+          "process": 1,
+          "pid": 36164,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 139399,
+            "q1": 133950.5,
+            "q3": 230700.0,
+            "min": 128600,
+            "max": 2420399
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 0
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 96408,
+            "q1": 96408.0,
+            "q3": 96408.0,
+            "min": 96408,
+            "max": 109960
+          },
+          "queryWallNs": {
+            "median": 123000,
+            "q1": 120550.0,
+            "q3": 211500.5,
+            "min": 115300,
+            "max": 2396500
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 0
+          },
+          "queryAllocatedBytes": {
+            "median": 93992,
+            "q1": 93992.0,
+            "q3": 93992.0,
+            "min": 93992,
+            "max": 107544
+          },
+          "prepareWallNs": {
+            "median": 13301,
+            "q1": 11550.5,
+            "q3": 21700.0,
+            "min": 10799,
+            "max": 34600
+          },
+          "closeWallNs": {
+            "median": 900,
+            "q1": 699.5,
+            "q3": 1150.0,
+            "min": 600,
+            "max": 3699
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 14700,
+            "q1": 12551.0,
+            "q3": 21900.5,
+            "min": 11299,
+            "max": 65800
+          }
+        },
+        {
+          "process": 2,
+          "pid": 61668,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 154301,
+            "q1": 127800.0,
+            "q3": 201851.0,
+            "min": 76400,
+            "max": 2326400
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 96408,
+            "q1": 96408.0,
+            "q3": 96408.0,
+            "min": 96408,
+            "max": 109896
+          },
+          "queryWallNs": {
+            "median": 136700,
+            "q1": 114000.0,
+            "q3": 185199.5,
+            "min": 63900,
+            "max": 2295300
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 93992,
+            "q1": 93992.0,
+            "q3": 93992.0,
+            "min": 93992,
+            "max": 107480
+          },
+          "prepareWallNs": {
+            "median": 12899,
+            "q1": 11700.0,
+            "q3": 20850.0,
+            "min": 9700,
+            "max": 37800
+          },
+          "closeWallNs": {
+            "median": 899,
+            "q1": 800.0,
+            "q3": 1250.0,
+            "min": 600,
+            "max": 2700
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 17300,
+            "q1": 13501.0,
+            "q3": 27250.5,
+            "min": 11998,
+            "max": 67500
+          }
+        },
+        {
+          "process": 3,
+          "pid": 65224,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 137398,
+            "q1": 131099.0,
+            "q3": 160749.0,
+            "min": 91601,
+            "max": 2625799
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 0
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 96408,
+            "q1": 96408.0,
+            "q3": 96408.0,
+            "min": 96408,
+            "max": 109960
+          },
+          "queryWallNs": {
+            "median": 126300,
+            "q1": 116649.0,
+            "q3": 142349.0,
+            "min": 79200,
+            "max": 2599600
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 0
+          },
+          "queryAllocatedBytes": {
+            "median": 93992,
+            "q1": 93992.0,
+            "q3": 93992.0,
+            "min": 93992,
+            "max": 107544
+          },
+          "prepareWallNs": {
+            "median": 11501,
+            "q1": 10950.0,
+            "q3": 15350.0,
+            "min": 10199,
+            "max": 53701
+          },
+          "closeWallNs": {
+            "median": 799,
+            "q1": 700.0,
+            "q3": 949.5,
+            "min": 600,
+            "max": 4600
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 13702,
+            "q1": 12851.0,
+            "q3": 16099.5,
+            "min": 11899,
+            "max": 61602
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "A3.settings-exact-large-64",
+      "processes": [
+        {
+          "process": 1,
+          "pid": 36164,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 1344401,
+            "q1": 1127800.5,
+            "q3": 1671451.0,
+            "min": 741500,
+            "max": 2961100
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 3322792,
+            "q1": 3322792.0,
+            "q3": 3322792.0,
+            "min": 3242792,
+            "max": 3322792
+          },
+          "queryWallNs": {
+            "median": 1304701,
+            "q1": 1087050.0,
+            "q3": 1589850.5,
+            "min": 718000,
+            "max": 2919300
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 3294016,
+            "q1": 3294016.0,
+            "q3": 3294016.0,
+            "min": 3214016,
+            "max": 3294016
+          },
+          "prepareWallNs": {
+            "median": 42600,
+            "q1": 35401.0,
+            "q3": 58000.5,
+            "min": 22301,
+            "max": 156900
+          },
+          "closeWallNs": {
+            "median": 1900,
+            "q1": 1400.0,
+            "q3": 2550.5,
+            "min": 1099,
+            "max": 4000
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 37401,
+            "q1": 22250.5,
+            "q3": 45051.0,
+            "min": 17099,
+            "max": 90002
+          }
+        },
+        {
+          "process": 2,
+          "pid": 61668,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 908200,
+            "q1": 839300.5,
+            "q3": 1229900.0,
+            "min": 737600,
+            "max": 2541501
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 3322792,
+            "q1": 3322792.0,
+            "q3": 3322792.0,
+            "min": 3242792,
+            "max": 3322792
+          },
+          "queryWallNs": {
+            "median": 856800,
+            "q1": 801149.0,
+            "q3": 1156249.5,
+            "min": 722100,
+            "max": 2511100
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 3294016,
+            "q1": 3294016.0,
+            "q3": 3294016.0,
+            "min": 3214016,
+            "max": 3294016
+          },
+          "prepareWallNs": {
+            "median": 40099,
+            "q1": 30350.5,
+            "q3": 66200.5,
+            "min": 14500,
+            "max": 173400
+          },
+          "closeWallNs": {
+            "median": 1701,
+            "q1": 1349.5,
+            "q3": 2250.5,
+            "min": 999,
+            "max": 4500
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 30299,
+            "q1": 21850.0,
+            "q3": 46448.5,
+            "min": 16601,
+            "max": 88199
+          }
+        },
+        {
+          "process": 3,
+          "pid": 65224,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 1022500,
+            "q1": 846451.0,
+            "q3": 1163149.0,
+            "min": 798400,
+            "max": 2325500
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 3322792,
+            "q1": 3322792.0,
+            "q3": 3322792.0,
+            "min": 3322792,
+            "max": 3322792
+          },
+          "queryWallNs": {
+            "median": 963600,
+            "q1": 806850.0,
+            "q3": 1098849.5,
+            "min": 762400,
+            "max": 2286100
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 3294016,
+            "q1": 3294016.0,
+            "q3": 3294016.0,
+            "min": 3294016,
+            "max": 3294016
+          },
+          "prepareWallNs": {
+            "median": 42900,
+            "q1": 33050.0,
+            "q3": 57699.5,
+            "min": 23800,
+            "max": 105701
+          },
+          "closeWallNs": {
+            "median": 1801,
+            "q1": 1500.0,
+            "q3": 2400.0,
+            "min": 1001,
+            "max": 15200
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 37002,
+            "q1": 25048.5,
+            "q3": 42401.0,
+            "min": 18001,
+            "max": 56901
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "A3.settings-exact-small-4",
+      "processes": [
+        {
+          "process": 1,
+          "pid": 36164,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 453801,
+            "q1": 416850.0,
+            "q3": 672850.0,
+            "min": 393701,
+            "max": 1661001
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 449944,
+            "q1": 449944.0,
+            "q3": 449944.0,
+            "min": 449944,
+            "max": 449944
+          },
+          "queryWallNs": {
+            "median": 433200,
+            "q1": 395400.0,
+            "q3": 647950.0,
+            "min": 376601,
+            "max": 1642400
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 446016,
+            "q1": 446016.0,
+            "q3": 446016.0,
+            "min": 446016,
+            "max": 446016
+          },
+          "prepareWallNs": {
+            "median": 19301,
+            "q1": 14250.0,
+            "q3": 26149.5,
+            "min": 11499,
+            "max": 46900
+          },
+          "closeWallNs": {
+            "median": 1300,
+            "q1": 950.0,
+            "q3": 1851.0,
+            "min": 799,
+            "max": 3300
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 23698,
+            "q1": 16349.5,
+            "q3": 36149.5,
+            "min": 12299,
+            "max": 118898
+          }
+        },
+        {
+          "process": 2,
+          "pid": 61668,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 555200,
+            "q1": 514500.0,
+            "q3": 634950.0,
+            "min": 263801,
+            "max": 1008601
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 449944,
+            "q1": 449944.0,
+            "q3": 449944.0,
+            "min": 449944,
+            "max": 449944
+          },
+          "queryWallNs": {
+            "median": 537800,
+            "q1": 499799.0,
+            "q3": 611200.0,
+            "min": 250699,
+            "max": 983301
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 446016,
+            "q1": 446016.0,
+            "q3": 446016.0,
+            "min": 446016,
+            "max": 446016
+          },
+          "prepareWallNs": {
+            "median": 21199,
+            "q1": 13750.0,
+            "q3": 25650.5,
+            "min": 12101,
+            "max": 54600
+          },
+          "closeWallNs": {
+            "median": 1200,
+            "q1": 901.0,
+            "q3": 1450.0,
+            "min": 700,
+            "max": 2600
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 23399,
+            "q1": 17149.5,
+            "q3": 30099.0,
+            "min": 13901,
+            "max": 320700
+          }
+        },
+        {
+          "process": 3,
+          "pid": 65224,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 545799,
+            "q1": 494400.0,
+            "q3": 713199.5,
+            "min": 273801,
+            "max": 1000702
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 449944,
+            "q1": 449944.0,
+            "q3": 449944.0,
+            "min": 449944,
+            "max": 449944
+          },
+          "queryWallNs": {
+            "median": 524499,
+            "q1": 477600.0,
+            "q3": 685650.0,
+            "min": 258400,
+            "max": 976101
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 446016,
+            "q1": 446016.0,
+            "q3": 446016.0,
+            "min": 446016,
+            "max": 446016
+          },
+          "prepareWallNs": {
+            "median": 17900,
+            "q1": 13500.0,
+            "q3": 21200.0,
+            "min": 11499,
+            "max": 54300
+          },
+          "closeWallNs": {
+            "median": 1200,
+            "q1": 1000.0,
+            "q3": 1700.0,
+            "min": 700,
+            "max": 4200
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 22500,
+            "q1": 17549.5,
+            "q3": 32001.0,
+            "min": 14201,
+            "max": 52500
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "A3.settings-exact-tail-change-64",
+      "processes": [
+        {
+          "process": 1,
+          "pid": 36164,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 887500,
+            "q1": 811700.5,
+            "q3": 1065700.5,
+            "min": 760699,
+            "max": 1806799
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 3287568,
+            "q1": 3287568.0,
+            "q3": 3287568.0,
+            "min": 3287568,
+            "max": 3356080
+          },
+          "queryWallNs": {
+            "median": 841500,
+            "q1": 773050.0,
+            "q3": 1020350.0,
+            "min": 729600,
+            "max": 1783699
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 3254040,
+            "q1": 3254040.0,
+            "q3": 3254040.0,
+            "min": 3254040,
+            "max": 3322552
+          },
+          "prepareWallNs": {
+            "median": 29300,
+            "q1": 26250.5,
+            "q3": 38249.5,
+            "min": 21000,
+            "max": 57000
+          },
+          "closeWallNs": {
+            "median": 1499,
+            "q1": 1250.5,
+            "q3": 2100.0,
+            "min": 999,
+            "max": 8400
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 30201,
+            "q1": 21250.0,
+            "q3": 42900.5,
+            "min": 15999,
+            "max": 121598
+          }
+        },
+        {
+          "process": 2,
+          "pid": 61668,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 919001,
+            "q1": 846251.0,
+            "q3": 1404251.5,
+            "min": 796399,
+            "max": 2781200
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 3327568,
+            "q1": 3327568.0,
+            "q3": 3327568.0,
+            "min": 3327568,
+            "max": 3359568
+          },
+          "queryWallNs": {
+            "median": 872700,
+            "q1": 809750.0,
+            "q3": 1347650.5,
+            "min": 772699,
+            "max": 2708600
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 3294040,
+            "q1": 3294040.0,
+            "q3": 3294040.0,
+            "min": 3294040,
+            "max": 3326040
+          },
+          "prepareWallNs": {
+            "median": 34201,
+            "q1": 28199.5,
+            "q3": 46849.5,
+            "min": 21400,
+            "max": 74901
+          },
+          "closeWallNs": {
+            "median": 1701,
+            "q1": 1349.0,
+            "q3": 2550.5,
+            "min": 900,
+            "max": 4401
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 33498,
+            "q1": 23249.0,
+            "q3": 53999.5,
+            "min": 17501,
+            "max": 104699
+          }
+        },
+        {
+          "process": 3,
+          "pid": 65224,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 964501,
+            "q1": 842600.0,
+            "q3": 1231150.5,
+            "min": 796900,
+            "max": 2202199
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 3327568,
+            "q1": 3327568.0,
+            "q3": 3327568.0,
+            "min": 3327568,
+            "max": 3359568
+          },
+          "queryWallNs": {
+            "median": 895099,
+            "q1": 806450.0,
+            "q3": 1200900.0,
+            "min": 762200,
+            "max": 2178400
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 3294040,
+            "q1": 3294040.0,
+            "q3": 3294040.0,
+            "min": 3294040,
+            "max": 3326040
+          },
+          "prepareWallNs": {
+            "median": 34000,
+            "q1": 31550.0,
+            "q3": 42300.5,
+            "min": 20699,
+            "max": 99400
+          },
+          "closeWallNs": {
+            "median": 2099,
+            "q1": 1649.0,
+            "q3": 2449.5,
+            "min": 900,
+            "max": 4500
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 37800,
+            "q1": 30400.5,
+            "q3": 47849.5,
+            "min": 17200,
+            "max": 97099
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "A4.memo-frequent-header-writes",
+      "processes": [
+        {
+          "process": 1,
+          "pid": 36164,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 1577501,
+            "q1": 960499.0,
+            "q3": 1781550.0,
+            "min": 675200,
+            "max": 2177199
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 1385416,
+            "q1": 1383528.0,
+            "q3": 1417672.0,
+            "min": 1353160,
+            "max": 1417800
+          },
+          "queryWallNs": {
+            "median": 1406100,
+            "q1": 770499.0,
+            "q3": 1592500.0,
+            "min": 590300,
+            "max": 1979000
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 1352584,
+            "q1": 1350696.0,
+            "q3": 1384584.0,
+            "min": 1320584,
+            "max": 1384712
+          },
+          "prepareWallNs": {
+            "median": 159900,
+            "q1": 136949.5,
+            "q3": 192350.0,
+            "min": 81901,
+            "max": 388100
+          },
+          "closeWallNs": {
+            "median": 8400,
+            "q1": 5199.5,
+            "q3": 10599.5,
+            "min": 2800,
+            "max": 108100
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 34200,
+            "q1": 23299.5,
+            "q3": 40550.5,
+            "min": 14700,
+            "max": 79599
+          }
+        },
+        {
+          "process": 2,
+          "pid": 61668,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 1718200,
+            "q1": 1583700.0,
+            "q3": 1913600.5,
+            "min": 1402999,
+            "max": 2507902
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 1353160,
+            "q1": 1313160.0,
+            "q3": 1417672.0,
+            "min": 1313160,
+            "max": 1417800
+          },
+          "queryWallNs": {
+            "median": 1532199,
+            "q1": 1428000.0,
+            "q3": 1694100.0,
+            "min": 1237100,
+            "max": 2229901
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 1320584,
+            "q1": 1280584.0,
+            "q3": 1384584.0,
+            "min": 1280584,
+            "max": 1384712
+          },
+          "prepareWallNs": {
+            "median": 184501,
+            "q1": 146449.5,
+            "q3": 236750.0,
+            "min": 95800,
+            "max": 329100
+          },
+          "closeWallNs": {
+            "median": 9100,
+            "q1": 6950.0,
+            "q3": 11200.0,
+            "min": 4099,
+            "max": 28800
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 43300,
+            "q1": 36899.5,
+            "q3": 62049.5,
+            "min": 19800,
+            "max": 96399
+          }
+        },
+        {
+          "process": 3,
+          "pid": 65224,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 1839799,
+            "q1": 1493900.5,
+            "q3": 2024250.0,
+            "min": 752701,
+            "max": 2742799
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 1313160,
+            "q1": 1313160.0,
+            "q3": 1414936.0,
+            "min": 1313160,
+            "max": 1417800
+          },
+          "queryWallNs": {
+            "median": 1640199,
+            "q1": 1269299.5,
+            "q3": 1780550.0,
+            "min": 629701,
+            "max": 2585499
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 1280584,
+            "q1": 1280584.0,
+            "q3": 1381848.0,
+            "min": 1280584,
+            "max": 1384712
+          },
+          "prepareWallNs": {
+            "median": 191700,
+            "q1": 150199.5,
+            "q3": 232100.0,
+            "min": 118800,
+            "max": 322900
+          },
+          "closeWallNs": {
+            "median": 9099,
+            "q1": 7450.0,
+            "q3": 13700.0,
+            "min": 4200,
+            "max": 24200
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 41999,
+            "q1": 34598.5,
+            "q3": 57050.0,
+            "min": 17798,
+            "max": 83700
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "A4.memo-unchanged-repeated",
+      "processes": [
+        {
+          "process": 1,
+          "pid": 36164,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 1570699,
+            "q1": 1300300.0,
+            "q3": 1746749.5,
+            "min": 1144200,
+            "max": 2699102
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 743064,
+            "q1": 743064.0,
+            "q3": 783104.0,
+            "min": 743064,
+            "max": 783672
+          },
+          "queryWallNs": {
+            "median": 1269500,
+            "q1": 1074350.0,
+            "q3": 1476949.5,
+            "min": 973100,
+            "max": 1895201
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 709976,
+            "q1": 709976.0,
+            "q3": 749976.0,
+            "min": 709976,
+            "max": 750544
+          },
+          "prepareWallNs": {
+            "median": 231799,
+            "q1": 188150.0,
+            "q3": 325151.0,
+            "min": 141000,
+            "max": 794300
+          },
+          "closeWallNs": {
+            "median": 7400,
+            "q1": 5249.5,
+            "q3": 9151.0,
+            "min": 3401,
+            "max": 21900
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 38302,
+            "q1": 28949.5,
+            "q3": 54648.5,
+            "min": 17899,
+            "max": 255301
+          }
+        },
+        {
+          "process": 2,
+          "pid": 61668,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 1495599,
+            "q1": 1388850.0,
+            "q3": 1669450.5,
+            "min": 1219600,
+            "max": 2035100
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 783104,
+            "q1": 743064.0,
+            "q3": 783104.0,
+            "min": 743064,
+            "max": 783560
+          },
+          "queryWallNs": {
+            "median": 1233399,
+            "q1": 1191900.0,
+            "q3": 1420500.0,
+            "min": 990500,
+            "max": 1714000
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 749976,
+            "q1": 709976.0,
+            "q3": 749976.0,
+            "min": 709976,
+            "max": 750432
+          },
+          "prepareWallNs": {
+            "median": 225101,
+            "q1": 183899.5,
+            "q3": 261050.0,
+            "min": 142800,
+            "max": 476201
+          },
+          "closeWallNs": {
+            "median": 6501,
+            "q1": 4801.0,
+            "q3": 7550.0,
+            "min": 3300,
+            "max": 14000
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 36001,
+            "q1": 31750.5,
+            "q3": 50800.5,
+            "min": 18800,
+            "max": 81897
+          }
+        },
+        {
+          "process": 3,
+          "pid": 65224,
+          "samples": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "median": 1673899,
+            "q1": 1589500.5,
+            "q3": 1853901.0,
+            "min": 1149201,
+            "max": 2347099
+          },
+          "serviceThreadCpuNsPerRow": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "serviceAllocatedBytesPerRow": {
+            "median": 763384,
+            "q1": 743064.0,
+            "q3": 783104.0,
+            "min": 743064,
+            "max": 783560
+          },
+          "queryWallNs": {
+            "median": 1443701,
+            "q1": 1227349.5,
+            "q3": 1564250.0,
+            "min": 966001,
+            "max": 1965099
+          },
+          "queryThreadCpuNs": {
+            "median": 0,
+            "q1": 0.0,
+            "q3": 0.0,
+            "min": 0,
+            "max": 15625000
+          },
+          "queryAllocatedBytes": {
+            "median": 730256,
+            "q1": 709976.0,
+            "q3": 749976.0,
+            "min": 709976,
+            "max": 750432
+          },
+          "prepareWallNs": {
+            "median": 264000,
+            "q1": 226200.0,
+            "q3": 347750.5,
+            "min": 120700,
+            "max": 581000
+          },
+          "closeWallNs": {
+            "median": 7600,
+            "q1": 6650.0,
+            "q3": 9501.0,
+            "min": 4600,
+            "max": 34701
+          },
+          "harnessLifecycleOverheadWallNs": {
+            "median": 42998,
+            "q1": 36400.0,
+            "q3": 62050.5,
+            "min": 22300,
+            "max": 110100
+          }
+        }
+      ]
+    }
+  ]
+}

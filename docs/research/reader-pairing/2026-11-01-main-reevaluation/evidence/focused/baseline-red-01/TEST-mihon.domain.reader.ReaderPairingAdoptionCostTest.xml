@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="mihon.domain.reader.ReaderPairingAdoptionCostTest" tests="9" skipped="0" failures="4" errors="0" timestamp="2026-10-31T22:18:47.295Z" hostname="G-BURST" time="0.234">
+  <properties/>
+  <testcase name="real score stays exactly equal to original formula across alpha direction and guards()[jvm]" classname="mihon.domain.reader.ReaderPairingAdoptionCostTest" time="0.057"/>
+  <testcase name="compact comparison treats absent or mismatched recorded values as changed without throwing()[jvm]" classname="mihon.domain.reader.ReaderPairingAdoptionCostTest" time="0.032"/>
+  <testcase name="certification reuses owner content index without traversing chapter again()[jvm]" classname="mihon.domain.reader.ReaderPairingAdoptionCostTest" time="0.02">
+    <failure message="org.opentest4j.AssertionFailedError: An existing owner already owns the immutable content index ==&gt; expected: &lt;0&gt; but was: &lt;160&gt;" type="org.opentest4j.AssertionFailedError">org.opentest4j.AssertionFailedError: An existing owner already owns the immutable content index ==&gt; expected: &lt;0&gt; but was: &lt;160&gt;
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:158)
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:139)
+	at app//org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:201)
+	at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:152)
+	at app//org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:590)
+	at app//mihon.domain.reader.ReaderPairingAdoptionCostTest.certification reuses owner content index without traversing chapter again(ReaderPairingAdoptionCostTest.kt:89)
+</failure>
+  </testcase>
+  <testcase name="exact settings validation stays within bounded allocation after warmup()[jvm]" classname="mihon.domain.reader.ReaderPairingAdoptionCostTest" time="0.091">
+    <failure message="org.opentest4j.AssertionFailedError: Exact validation must not copy the 64-page settings sets on every lookup: [3168.0, 3168.0, 3168.0] ==&gt; expected: &lt;true&gt; but was: &lt;false&gt;" type="org.opentest4j.AssertionFailedError">org.opentest4j.AssertionFailedError: Exact validation must not copy the 64-page settings sets on every lookup: [3168.0, 3168.0, 3168.0] ==&gt; expected: &lt;true&gt; but was: &lt;false&gt;
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:158)
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:139)
+	at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:69)
+	at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:41)
+	at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:228)
+	at app//mihon.domain.reader.ReaderPairingAdoptionCostTest.exact settings validation stays within bounded allocation after warmup(ReaderPairingAdoptionCostTest.kt:205)
+</failure>
+  </testcase>
+  <testcase name="compact dimension comparison keeps every geometry field and ignores only current side hint()[jvm]" classname="mihon.domain.reader.ReaderPairingAdoptionCostTest" time="0.004"/>
+  <testcase name="header writes invalidate global stamp even when retained original fact does not change()[jvm]" classname="mihon.domain.reader.ReaderPairingAdoptionCostTest" time="0.021"/>
+  <testcase name="failure writes and clearing invalidate unchanged session stamp without inventing scans()[jvm]" classname="mihon.domain.reader.ReaderPairingAdoptionCostTest" time="0.002"/>
+  <testcase name="score stops reading acquired samples once nonnegative distance rejects()[jvm]" classname="mihon.domain.reader.ReaderPairingAdoptionCostTest" time="0.001">
+    <failure message="org.opentest4j.AssertionFailedError: expected: &lt;2&gt; but was: &lt;50&gt;" type="org.opentest4j.AssertionFailedError">org.opentest4j.AssertionFailedError: expected: &lt;2&gt; but was: &lt;50&gt;
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:158)
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:139)
+	at app//org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:201)
+	at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:152)
+	at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:147)
+	at app//org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:558)
+	at app//mihon.domain.reader.ReaderPairingAdoptionCostTest.score stops reading acquired samples once nonnegative distance rejects(ReaderPairingAdoptionCostTest.kt:45)
+</failure>
+  </testcase>
+  <testcase name="unchanged session memo skips exact value rereads with global evidence stamp()[jvm]" classname="mihon.domain.reader.ReaderPairingAdoptionCostTest" time="0.001">
+    <failure message="org.opentest4j.AssertionFailedError: expected: &lt;0&gt; but was: &lt;21&gt;" type="org.opentest4j.AssertionFailedError">org.opentest4j.AssertionFailedError: expected: &lt;0&gt; but was: &lt;21&gt;
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:158)
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:139)
+	at app//org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:201)
+	at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:168)
+	at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:163)
+	at app//org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:662)
+	at app//mihon.domain.reader.ReaderPairingAdoptionCostTest.unchanged session memo skips exact value rereads with global evidence stamp(ReaderPairingAdoptionCostTest.kt:105)
+</failure>
+  </testcase>
+  <system-out><![CDATA[PAIRING_EXACT_ALLOCATION bytesPerValidation=[3168.0, 3168.0, 3168.0] warmup=20000 batch=10000
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

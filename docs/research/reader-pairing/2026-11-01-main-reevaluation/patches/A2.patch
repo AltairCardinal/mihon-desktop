@@ -1,0 +1,44 @@
+diff --git a/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt b/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt
+index 96749106c6..3c700a590f 100644
+--- a/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt
++++ b/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt
+@@ -97,7 +97,11 @@ class ReaderCertifiedPairingSegment internal constructor(
+         ) {
+             return false
+         }
+-        val current = identity.content.associateBy { it.pageId }
++        val current = if (owner.identity === identity) {
++            owner.pairingContentByPage
++        } else {
++            identity.content.associateBy { it.pageId }
++        }
+         if (content.any { (page, value) -> current[page] != value }) return false
+         if (dimensions.any { (page, value) ->
+                 effectiveFact(owner, headers, page)?.copy(sideHint = ReaderPageSideHint.UNKNOWN) != value
+@@ -176,9 +180,9 @@ object ReaderPairingCertifier {
+         reads?.record(ReaderPairingReadKey.Identity, ReaderPairingReadValue.Identity(identity))
+         reads?.record(ReaderPairingReadKey.Settings, ReaderPairingReadValue.Settings(settings.snapshotCopy()))
+         val pages = identity.pageIds
+-        val targetIndex = pages.indexOf(target)
++        val targetIndex = owner.pairingOrdinalByPage[target] ?: -1
+         require(targetIndex >= 0)
+-        val contents = identity.content.associateBy { it.pageId }
++        val contents = owner.pairingContentByPage
+         val needs = linkedSetOf<ReaderPairingFactNeed>()
+         val failures = linkedMapOf<ReaderPageId, ReaderAnalysisFailure>()
+         val dimensions = linkedMapOf<ReaderPageId, ReaderPageFact>()
+diff --git a/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderSpreadSamplesOwner.kt b/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderSpreadSamplesOwner.kt
+index 41b81e6bd5..a19a7f995a 100644
+--- a/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderSpreadSamplesOwner.kt
++++ b/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderSpreadSamplesOwner.kt
+@@ -21,6 +21,10 @@ class ReaderSpreadSamplesOwner(
+         private set
+     private var contentByPage = identity.content.associateBy { it.pageId }
+     private val ordinalByPage = identity.pageIds.withIndex().associate { it.value to it.index }
++
++    // These maps are replaced, never mutated, and already belong to this owner.
++    internal val pairingContentByPage: Map<ReaderPageId, ReaderDualPageContentIdentity> get() = contentByPage
++    internal val pairingOrdinalByPage: Map<ReaderPageId, Int> get() = ordinalByPage
+     private var closed = false
+     val isClosed: Boolean get() = closed
+     private val requests = mutableMapOf<ReaderPageId, ReaderSpreadSampleRequest>()

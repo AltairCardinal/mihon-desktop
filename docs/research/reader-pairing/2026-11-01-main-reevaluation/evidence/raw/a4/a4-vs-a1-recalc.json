@@ -1,0 +1,3844 @@
+{
+  "comparison": "A4 (isolated A1+A4 tree) versus A1-only accepted control",
+  "comparisonLimit": "Separate Gradle runs and separate JVMs; per-process medians summarize three independent JVMs and are not same-process A/B pairs.",
+  "a1RawDirectory": "D:\\Codex\\worktrees\\reader-r1-r10-reevaluation-20261101\\.gradle-coordinator\\reevaluation\\costs\\a1-attempt-01\\raw",
+  "a4RawDirectory": "D:\\Codex\\worktrees\\reader-stamp-reevaluation-20261101\\.gradle-coordinator\\reevaluation\\costs\\a4-attempt-01\\raw",
+  "sampleIntegrity": {
+    "a1": {
+      "rows": 930,
+      "passed": 930,
+      "failed": 0,
+      "processes": [
+        1,
+        2,
+        3
+      ],
+      "scenarios": [
+        "A1.distant-edge-early-reject",
+        "A1.similar-edge-full-score",
+        "A2.owner-index-large-176",
+        "A2.owner-index-small-8",
+        "A3.settings-exact-default-empty",
+        "A3.settings-exact-large-64",
+        "A3.settings-exact-small-4",
+        "A3.settings-exact-tail-change-64",
+        "A4.memo-frequent-header-writes",
+        "A4.memo-unchanged-repeated"
+      ]
+    },
+    "a4": {
+      "rows": 930,
+      "passed": 930,
+      "failed": 0,
+      "processes": [
+        1,
+        2,
+        3
+      ],
+      "scenarios": [
+        "A1.distant-edge-early-reject",
+        "A1.similar-edge-full-score",
+        "A2.owner-index-large-176",
+        "A2.owner-index-small-8",
+        "A3.settings-exact-default-empty",
+        "A3.settings-exact-large-64",
+        "A3.settings-exact-small-4",
+        "A3.settings-exact-tail-change-64",
+        "A4.memo-frequent-header-writes",
+        "A4.memo-unchanged-repeated"
+      ]
+    }
+  },
+  "scenarioComparisons": [
+    {
+      "scenario": "A1.distant-edge-early-reject",
+      "metrics": {
+        "prepareWallNs": {
+          "a1ProcessMedians": {
+            "1": 12400,
+            "2": 11500,
+            "3": 10700
+          },
+          "a4ProcessMedians": {
+            "1": 12100,
+            "2": 11300,
+            "3": 14800
+          },
+          "a1MedianAcrossThreeIndependentJvms": 11500,
+          "a4MedianAcrossThreeIndependentJvms": 12100,
+          "a4OverA1": 1.0521739130434782,
+          "a1ProcessMedianRange": [
+            10700,
+            12400
+          ],
+          "a4ProcessMedianRange": [
+            11300,
+            14800
+          ]
+        },
+        "queryWallNs": {
+          "a1ProcessMedians": {
+            "1": 89000,
+            "2": 84900,
+            "3": 78900
+          },
+          "a4ProcessMedians": {
+            "1": 82201,
+            "2": 84700,
+            "3": 121700
+          },
+          "a1MedianAcrossThreeIndependentJvms": 84900,
+          "a4MedianAcrossThreeIndependentJvms": 84700,
+          "a4OverA1": 0.9976442873969376,
+          "a1ProcessMedianRange": [
+            78900,
+            89000
+          ],
+          "a4ProcessMedianRange": [
+            82201,
+            121700
+          ]
+        },
+        "closeWallNs": {
+          "a1ProcessMedians": {
+            "1": 400,
+            "2": 300,
+            "3": 300
+          },
+          "a4ProcessMedians": {
+            "1": 400,
+            "2": 400,
+            "3": 500
+          },
+          "a1MedianAcrossThreeIndependentJvms": 300,
+          "a4MedianAcrossThreeIndependentJvms": 400,
+          "a4OverA1": 1.3333333333333333,
+          "a1ProcessMedianRange": [
+            300,
+            400
+          ],
+          "a4ProcessMedianRange": [
+            400,
+            500
+          ]
+        },
+        "serviceWallNsPerRow": {
+          "a1ProcessMedians": {
+            "1": 105099,
+            "2": 95800,
+            "3": 90600
+          },
+          "a4ProcessMedians": {
+            "1": 95300,
+            "2": 99300,
+            "3": 139800
+          },
+          "a1MedianAcrossThreeIndependentJvms": 95800,
+          "a4MedianAcrossThreeIndependentJvms": 99300,
+          "a4OverA1": 1.0365344467640918,
+          "a1ProcessMedianRange": [
+            90600,
+            105099
+          ],
+          "a4ProcessMedianRange": [
+            95300,
+            139800
+          ]
+        },
+        "prepareThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "queryThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "closeThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "serviceThreadCpuNsPerRow": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "prepareAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 2656,
+            "2": 2656,
+            "3": 2656
+          },
+          "a4ProcessMedians": {
+            "1": 2656,
+            "2": 2656,
+            "3": 2656
+          },
+          "a1MedianAcrossThreeIndependentJvms": 2656,
+          "a4MedianAcrossThreeIndependentJvms": 2656,
+          "a4OverA1": 1.0,
+          "a1ProcessMedianRange": [
+            2656,
+            2656
+          ],
+          "a4ProcessMedianRange": [
+            2656,
+            2656
+          ]
+        },
+        "queryAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 445952,
+            "2": 445952,
+            "3": 445952
+          },
+          "a4ProcessMedians": {
+            "1": 445952,
+            "2": 445952,
+            "3": 445952
+          },
+          "a1MedianAcrossThreeIndependentJvms": 445952,
+          "a4MedianAcrossThreeIndependentJvms": 445952,
+          "a4OverA1": 1.0,
+          "a1ProcessMedianRange": [
+            445952,
+            445952
+          ],
+          "a4ProcessMedianRange": [
+            445952,
+            445952
+          ]
+        },
+        "closeAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "serviceAllocatedBytesPerRow": {
+          "a1ProcessMedians": {
+            "1": 448608,
+            "2": 448608,
+            "3": 448608
+          },
+          "a4ProcessMedians": {
+            "1": 448608,
+            "2": 448608,
+            "3": 448608
+          },
+          "a1MedianAcrossThreeIndependentJvms": 448608,
+          "a4MedianAcrossThreeIndependentJvms": 448608,
+          "a4OverA1": 1.0,
+          "a1ProcessMedianRange": [
+            448608,
+            448608
+          ],
+          "a4ProcessMedianRange": [
+            448608,
+            448608
+          ]
+        },
+        "queryAllocatedBytesPerCompletedOperation": {
+          "a1ProcessMedians": {
+            "1": 445.952,
+            "2": 445.952,
+            "3": 445.952
+          },
+          "a4ProcessMedians": {
+            "1": 445.952,
+            "2": 445.952,
+            "3": 445.952
+          },
+          "a1MedianAcrossThreeIndependentJvms": 445.952,
+          "a4MedianAcrossThreeIndependentJvms": 445.952,
+          "a4OverA1": 1.0,
+          "a1ProcessMedianRange": [
+            445.952,
+            445.952
+          ],
+          "a4ProcessMedianRange": [
+            445.952,
+            445.952
+          ]
+        },
+        "lifecycleWallNs": {
+          "a1ProcessMedians": {
+            "1": 158499,
+            "2": 124300,
+            "3": 114700
+          },
+          "a4ProcessMedians": {
+            "1": 124100,
+            "2": 127699,
+            "3": 190500
+          },
+          "a1MedianAcrossThreeIndependentJvms": 124300,
+          "a4MedianAcrossThreeIndependentJvms": 127699,
+          "a4OverA1": 1.027345132743363,
+          "a1ProcessMedianRange": [
+            114700,
+            158499
+          ],
+          "a4ProcessMedianRange": [
+            124100,
+            190500
+          ]
+        },
+        "harnessLifecycleOverheadWallNs": {
+          "a1ProcessMedians": {
+            "1": 45200,
+            "2": 28900,
+            "3": 24498
+          },
+          "a4ProcessMedians": {
+            "1": 28300,
+            "2": 30501,
+            "3": 50200
+          },
+          "a1MedianAcrossThreeIndependentJvms": 28900,
+          "a4MedianAcrossThreeIndependentJvms": 30501,
+          "a4OverA1": 1.0553979238754325,
+          "a1ProcessMedianRange": [
+            24498,
+            45200
+          ],
+          "a4ProcessMedianRange": [
+            28300,
+            50200
+          ]
+        },
+        "harnessMetricsBeforeQueryWallNs": {
+          "a1ProcessMedians": {
+            "1": 1200,
+            "2": 1000,
+            "3": 900
+          },
+          "a4ProcessMedians": {
+            "1": 1200,
+            "2": 1200,
+            "3": 1700
+          },
+          "a1MedianAcrossThreeIndependentJvms": 1000,
+          "a4MedianAcrossThreeIndependentJvms": 1200,
+          "a4OverA1": 1.2,
+          "a1ProcessMedianRange": [
+            900,
+            1200
+          ],
+          "a4ProcessMedianRange": [
+            1200,
+            1700
+          ]
+        }
+      },
+      "cpuReadings": {
+        "nonZeroStageReadings": 2,
+        "zeroStageReadings": 556,
+        "negativeStageReadings": 0,
+        "interpretation": "CPU stage comparisons are indeterminate when the thread CPU clock quantizes these short batches to zero."
+      }
+    },
+    {
+      "scenario": "A1.similar-edge-full-score",
+      "metrics": {
+        "prepareWallNs": {
+          "a1ProcessMedians": {
+            "1": 4500,
+            "2": 4400,
+            "3": 4500
+          },
+          "a4ProcessMedians": {
+            "1": 5800,
+            "2": 5300,
+            "3": 8500
+          },
+          "a1MedianAcrossThreeIndependentJvms": 4500,
+          "a4MedianAcrossThreeIndependentJvms": 5800,
+          "a4OverA1": 1.288888888888889,
+          "a1ProcessMedianRange": [
+            4400,
+            4500
+          ],
+          "a4ProcessMedianRange": [
+            5300,
+            8500
+          ]
+        },
+        "queryWallNs": {
+          "a1ProcessMedians": {
+            "1": 722200,
+            "2": 688700,
+            "3": 716800
+          },
+          "a4ProcessMedians": {
+            "1": 1083399,
+            "2": 851100,
+            "3": 1052000
+          },
+          "a1MedianAcrossThreeIndependentJvms": 716800,
+          "a4MedianAcrossThreeIndependentJvms": 1052000,
+          "a4OverA1": 1.4676339285714286,
+          "a1ProcessMedianRange": [
+            688700,
+            722200
+          ],
+          "a4ProcessMedianRange": [
+            851100,
+            1083399
+          ]
+        },
+        "closeWallNs": {
+          "a1ProcessMedians": {
+            "1": 300,
+            "2": 301,
+            "3": 301
+          },
+          "a4ProcessMedians": {
+            "1": 500,
+            "2": 400,
+            "3": 900
+          },
+          "a1MedianAcrossThreeIndependentJvms": 301,
+          "a4MedianAcrossThreeIndependentJvms": 500,
+          "a4OverA1": 1.6611295681063123,
+          "a1ProcessMedianRange": [
+            300,
+            301
+          ],
+          "a4ProcessMedianRange": [
+            400,
+            900
+          ]
+        },
+        "serviceWallNsPerRow": {
+          "a1ProcessMedians": {
+            "1": 726600,
+            "2": 693598,
+            "3": 721700
+          },
+          "a4ProcessMedians": {
+            "1": 1089699,
+            "2": 857401,
+            "3": 1061501
+          },
+          "a1MedianAcrossThreeIndependentJvms": 721700,
+          "a4MedianAcrossThreeIndependentJvms": 1061501,
+          "a4OverA1": 1.4708341416100872,
+          "a1ProcessMedianRange": [
+            693598,
+            726600
+          ],
+          "a4ProcessMedianRange": [
+            857401,
+            1089699
+          ]
+        },
+        "prepareThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "queryThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "closeThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "serviceThreadCpuNsPerRow": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "prepareAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 1104,
+            "2": 1104,
+            "3": 1104
+          },
+          "a4ProcessMedians": {
+            "1": 1104,
+            "2": 1104,
+            "3": 1104
+          },
+          "a1MedianAcrossThreeIndependentJvms": 1104,
+          "a4MedianAcrossThreeIndependentJvms": 1104,
+          "a4OverA1": 1.0,
+          "a1ProcessMedianRange": [
+            1104,
+            1104
+          ],
+          "a4ProcessMedianRange": [
+            1104,
+            1104
+          ]
+        },
+        "queryAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 885952,
+            "2": 885952,
+            "3": 885952
+          },
+          "a4ProcessMedians": {
+            "1": 885952,
+            "2": 885952,
+            "3": 885952
+          },
+          "a1MedianAcrossThreeIndependentJvms": 885952,
+          "a4MedianAcrossThreeIndependentJvms": 885952,
+          "a4OverA1": 1.0,
+          "a1ProcessMedianRange": [
+            885952,
+            885952
+          ],
+          "a4ProcessMedianRange": [
+            885952,
+            885952
+          ]
+        },
+        "closeAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "serviceAllocatedBytesPerRow": {
+          "a1ProcessMedians": {
+            "1": 887056,
+            "2": 887056,
+            "3": 887056
+          },
+          "a4ProcessMedians": {
+            "1": 887056,
+            "2": 887056,
+            "3": 887056
+          },
+          "a1MedianAcrossThreeIndependentJvms": 887056,
+          "a4MedianAcrossThreeIndependentJvms": 887056,
+          "a4OverA1": 1.0,
+          "a1ProcessMedianRange": [
+            887056,
+            887056
+          ],
+          "a4ProcessMedianRange": [
+            887056,
+            887056
+          ]
+        },
+        "queryAllocatedBytesPerCompletedOperation": {
+          "a1ProcessMedians": {
+            "1": 885.952,
+            "2": 885.952,
+            "3": 885.952
+          },
+          "a4ProcessMedians": {
+            "1": 885.952,
+            "2": 885.952,
+            "3": 885.952
+          },
+          "a1MedianAcrossThreeIndependentJvms": 885.952,
+          "a4MedianAcrossThreeIndependentJvms": 885.952,
+          "a4OverA1": 1.0,
+          "a1ProcessMedianRange": [
+            885.952,
+            885.952
+          ],
+          "a4ProcessMedianRange": [
+            885.952,
+            885.952
+          ]
+        },
+        "lifecycleWallNs": {
+          "a1ProcessMedians": {
+            "1": 742400,
+            "2": 714700,
+            "3": 742601
+          },
+          "a4ProcessMedians": {
+            "1": 1114701,
+            "2": 885200,
+            "3": 1111200
+          },
+          "a1MedianAcrossThreeIndependentJvms": 742400,
+          "a4MedianAcrossThreeIndependentJvms": 1111200,
+          "a4OverA1": 1.4967672413793103,
+          "a1ProcessMedianRange": [
+            714700,
+            742601
+          ],
+          "a4ProcessMedianRange": [
+            885200,
+            1114701
+          ]
+        },
+        "harnessLifecycleOverheadWallNs": {
+          "a1ProcessMedians": {
+            "1": 19502,
+            "2": 20798,
+            "3": 21399
+          },
+          "a4ProcessMedians": {
+            "1": 33301,
+            "2": 29900,
+            "3": 54098
+          },
+          "a1MedianAcrossThreeIndependentJvms": 20798,
+          "a4MedianAcrossThreeIndependentJvms": 33301,
+          "a4OverA1": 1.6011635734205212,
+          "a1ProcessMedianRange": [
+            19502,
+            21399
+          ],
+          "a4ProcessMedianRange": [
+            29900,
+            54098
+          ]
+        },
+        "harnessMetricsBeforeQueryWallNs": {
+          "a1ProcessMedians": {
+            "1": 900,
+            "2": 900,
+            "3": 999
+          },
+          "a4ProcessMedians": {
+            "1": 1299,
+            "2": 1200,
+            "3": 1701
+          },
+          "a1MedianAcrossThreeIndependentJvms": 900,
+          "a4MedianAcrossThreeIndependentJvms": 1299,
+          "a4OverA1": 1.4433333333333334,
+          "a1ProcessMedianRange": [
+            900,
+            999
+          ],
+          "a4ProcessMedianRange": [
+            1200,
+            1701
+          ]
+        }
+      },
+      "cpuReadings": {
+        "nonZeroStageReadings": 11,
+        "zeroStageReadings": 547,
+        "negativeStageReadings": 0,
+        "interpretation": "CPU stage comparisons are indeterminate when the thread CPU clock quantizes these short batches to zero."
+      }
+    },
+    {
+      "scenario": "A2.owner-index-large-176",
+      "metrics": {
+        "prepareWallNs": {
+          "a1ProcessMedians": {
+            "1": 179701,
+            "2": 197800,
+            "3": 196100
+          },
+          "a4ProcessMedians": {
+            "1": 228300,
+            "2": 276999,
+            "3": 265800
+          },
+          "a1MedianAcrossThreeIndependentJvms": 196100,
+          "a4MedianAcrossThreeIndependentJvms": 265800,
+          "a4OverA1": 1.3554309026007139,
+          "a1ProcessMedianRange": [
+            179701,
+            197800
+          ],
+          "a4ProcessMedianRange": [
+            228300,
+            276999
+          ]
+        },
+        "queryWallNs": {
+          "a1ProcessMedians": {
+            "1": 2697300,
+            "2": 2795500,
+            "3": 3025701
+          },
+          "a4ProcessMedians": {
+            "1": 3807000,
+            "2": 4734100,
+            "3": 4594800
+          },
+          "a1MedianAcrossThreeIndependentJvms": 2795500,
+          "a4MedianAcrossThreeIndependentJvms": 4594800,
+          "a4OverA1": 1.6436415668037918,
+          "a1ProcessMedianRange": [
+            2697300,
+            3025701
+          ],
+          "a4ProcessMedianRange": [
+            3807000,
+            4734100
+          ]
+        },
+        "closeWallNs": {
+          "a1ProcessMedians": {
+            "1": 3100,
+            "2": 3200,
+            "3": 4099
+          },
+          "a4ProcessMedians": {
+            "1": 5999,
+            "2": 8500,
+            "3": 9500
+          },
+          "a1MedianAcrossThreeIndependentJvms": 3200,
+          "a4MedianAcrossThreeIndependentJvms": 8500,
+          "a4OverA1": 2.65625,
+          "a1ProcessMedianRange": [
+            3100,
+            4099
+          ],
+          "a4ProcessMedianRange": [
+            5999,
+            9500
+          ]
+        },
+        "serviceWallNsPerRow": {
+          "a1ProcessMedians": {
+            "1": 2875500,
+            "2": 2972300,
+            "3": 3251101
+          },
+          "a4ProcessMedians": {
+            "1": 4143000,
+            "2": 4930602,
+            "3": 4872600
+          },
+          "a1MedianAcrossThreeIndependentJvms": 2972300,
+          "a4MedianAcrossThreeIndependentJvms": 4872600,
+          "a4OverA1": 1.6393365407260372,
+          "a1ProcessMedianRange": [
+            2875500,
+            3251101
+          ],
+          "a4ProcessMedianRange": [
+            4143000,
+            4930602
+          ]
+        },
+        "prepareThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "queryThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "closeThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "serviceThreadCpuNsPerRow": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "prepareAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 75632,
+            "2": 75696,
+            "3": 75632
+          },
+          "a4ProcessMedians": {
+            "1": 75640,
+            "2": 75640,
+            "3": 75640
+          },
+          "a1MedianAcrossThreeIndependentJvms": 75632,
+          "a4MedianAcrossThreeIndependentJvms": 75640,
+          "a4OverA1": 1.0001057753331923,
+          "a1ProcessMedianRange": [
+            75632,
+            75696
+          ],
+          "a4ProcessMedianRange": [
+            75640,
+            75640
+          ]
+        },
+        "queryAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 9605952,
+            "2": 9669952,
+            "3": 9605952
+          },
+          "a4ProcessMedians": {
+            "1": 9605952,
+            "2": 9605952,
+            "3": 9605952
+          },
+          "a1MedianAcrossThreeIndependentJvms": 9605952,
+          "a4MedianAcrossThreeIndependentJvms": 9605952,
+          "a4OverA1": 1.0,
+          "a1ProcessMedianRange": [
+            9605952,
+            9669952
+          ],
+          "a4ProcessMedianRange": [
+            9605952,
+            9605952
+          ]
+        },
+        "closeAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "serviceAllocatedBytesPerRow": {
+          "a1ProcessMedians": {
+            "1": 9681584,
+            "2": 9745648,
+            "3": 9681584
+          },
+          "a4ProcessMedians": {
+            "1": 9681592,
+            "2": 9681592,
+            "3": 9681592
+          },
+          "a1MedianAcrossThreeIndependentJvms": 9681584,
+          "a4MedianAcrossThreeIndependentJvms": 9681592,
+          "a4OverA1": 1.0000008263110665,
+          "a1ProcessMedianRange": [
+            9681584,
+            9745648
+          ],
+          "a4ProcessMedianRange": [
+            9681592,
+            9681592
+          ]
+        },
+        "queryAllocatedBytesPerCompletedOperation": {
+          "a1ProcessMedians": {
+            "1": 9605.952,
+            "2": 9669.952,
+            "3": 9605.952
+          },
+          "a4ProcessMedians": {
+            "1": 9605.952,
+            "2": 9605.952,
+            "3": 9605.952
+          },
+          "a1MedianAcrossThreeIndependentJvms": 9605.952,
+          "a4MedianAcrossThreeIndependentJvms": 9605.952,
+          "a4OverA1": 1.0,
+          "a1ProcessMedianRange": [
+            9605.952,
+            9669.952
+          ],
+          "a4ProcessMedianRange": [
+            9605.952,
+            9605.952
+          ]
+        },
+        "lifecycleWallNs": {
+          "a1ProcessMedians": {
+            "1": 2923501,
+            "2": 3009001,
+            "3": 3367500
+          },
+          "a4ProcessMedians": {
+            "1": 4229499,
+            "2": 5032500,
+            "3": 4976000
+          },
+          "a1MedianAcrossThreeIndependentJvms": 3009001,
+          "a4MedianAcrossThreeIndependentJvms": 4976000,
+          "a4OverA1": 1.6537050004303755,
+          "a1ProcessMedianRange": [
+            2923501,
+            3367500
+          ],
+          "a4ProcessMedianRange": [
+            4229499,
+            5032500
+          ]
+        },
+        "harnessLifecycleOverheadWallNs": {
+          "a1ProcessMedians": {
+            "1": 35500,
+            "2": 41901,
+            "3": 50599
+          },
+          "a4ProcessMedians": {
+            "1": 71699,
+            "2": 95901,
+            "3": 93402
+          },
+          "a1MedianAcrossThreeIndependentJvms": 41901,
+          "a4MedianAcrossThreeIndependentJvms": 93402,
+          "a4OverA1": 2.2291114770530536,
+          "a1ProcessMedianRange": [
+            35500,
+            50599
+          ],
+          "a4ProcessMedianRange": [
+            71699,
+            95901
+          ]
+        },
+        "harnessMetricsBeforeQueryWallNs": {
+          "a1ProcessMedians": {
+            "1": 3000,
+            "2": 3101,
+            "3": 3899
+          },
+          "a4ProcessMedians": {
+            "1": 4400,
+            "2": 7000,
+            "3": 6600
+          },
+          "a1MedianAcrossThreeIndependentJvms": 3101,
+          "a4MedianAcrossThreeIndependentJvms": 6600,
+          "a4OverA1": 2.128345694937117,
+          "a1ProcessMedianRange": [
+            3000,
+            3899
+          ],
+          "a4ProcessMedianRange": [
+            4400,
+            7000
+          ]
+        }
+      },
+      "cpuReadings": {
+        "nonZeroStageReadings": 46,
+        "zeroStageReadings": 512,
+        "negativeStageReadings": 0,
+        "interpretation": "CPU stage comparisons are indeterminate when the thread CPU clock quantizes these short batches to zero."
+      }
+    },
+    {
+      "scenario": "A2.owner-index-small-8",
+      "metrics": {
+        "prepareWallNs": {
+          "a1ProcessMedians": {
+            "1": 33400,
+            "2": 29999,
+            "3": 26000
+          },
+          "a4ProcessMedians": {
+            "1": 38000,
+            "2": 43100,
+            "3": 48500
+          },
+          "a1MedianAcrossThreeIndependentJvms": 29999,
+          "a4MedianAcrossThreeIndependentJvms": 43100,
+          "a4OverA1": 1.436714557151905,
+          "a1ProcessMedianRange": [
+            26000,
+            33400
+          ],
+          "a4ProcessMedianRange": [
+            38000,
+            48500
+          ]
+        },
+        "queryWallNs": {
+          "a1ProcessMedians": {
+            "1": 442700,
+            "2": 433899,
+            "3": 470801
+          },
+          "a4ProcessMedians": {
+            "1": 533100,
+            "2": 652201,
+            "3": 769301
+          },
+          "a1MedianAcrossThreeIndependentJvms": 442700,
+          "a4MedianAcrossThreeIndependentJvms": 652201,
+          "a4OverA1": 1.4732346961825165,
+          "a1ProcessMedianRange": [
+            433899,
+            470801
+          ],
+          "a4ProcessMedianRange": [
+            533100,
+            769301
+          ]
+        },
+        "closeWallNs": {
+          "a1ProcessMedians": {
+            "1": 1701,
+            "2": 1200,
+            "3": 1200
+          },
+          "a4ProcessMedians": {
+            "1": 2000,
+            "2": 3000,
+            "3": 3700
+          },
+          "a1MedianAcrossThreeIndependentJvms": 1200,
+          "a4MedianAcrossThreeIndependentJvms": 3000,
+          "a4OverA1": 2.5,
+          "a1ProcessMedianRange": [
+            1200,
+            1701
+          ],
+          "a4ProcessMedianRange": [
+            2000,
+            3700
+          ]
+        },
+        "serviceWallNsPerRow": {
+          "a1ProcessMedians": {
+            "1": 479599,
+            "2": 475500,
+            "3": 505700
+          },
+          "a4ProcessMedians": {
+            "1": 572499,
+            "2": 688999,
+            "3": 849401
+          },
+          "a1MedianAcrossThreeIndependentJvms": 479599,
+          "a4MedianAcrossThreeIndependentJvms": 688999,
+          "a4OverA1": 1.436614755243443,
+          "a1ProcessMedianRange": [
+            475500,
+            505700
+          ],
+          "a4ProcessMedianRange": [
+            572499,
+            849401
+          ]
+        },
+        "prepareThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "queryThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "closeThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "serviceThreadCpuNsPerRow": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "prepareAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 6544,
+            "2": 6608,
+            "3": 6544
+          },
+          "a4ProcessMedians": {
+            "1": 6552,
+            "2": 6552,
+            "3": 6552
+          },
+          "a1MedianAcrossThreeIndependentJvms": 6544,
+          "a4MedianAcrossThreeIndependentJvms": 6552,
+          "a4OverA1": 1.0012224938875305,
+          "a1ProcessMedianRange": [
+            6544,
+            6608
+          ],
+          "a4ProcessMedianRange": [
+            6552,
+            6552
+          ]
+        },
+        "queryAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 1925952,
+            "2": 1989952,
+            "3": 1925952
+          },
+          "a4ProcessMedians": {
+            "1": 1925952,
+            "2": 1925952,
+            "3": 1925952
+          },
+          "a1MedianAcrossThreeIndependentJvms": 1925952,
+          "a4MedianAcrossThreeIndependentJvms": 1925952,
+          "a4OverA1": 1.0,
+          "a1ProcessMedianRange": [
+            1925952,
+            1989952
+          ],
+          "a4ProcessMedianRange": [
+            1925952,
+            1925952
+          ]
+        },
+        "closeAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "serviceAllocatedBytesPerRow": {
+          "a1ProcessMedians": {
+            "1": 1932496,
+            "2": 1996560,
+            "3": 1932496
+          },
+          "a4ProcessMedians": {
+            "1": 1932504,
+            "2": 1932504,
+            "3": 1932504
+          },
+          "a1MedianAcrossThreeIndependentJvms": 1932496,
+          "a4MedianAcrossThreeIndependentJvms": 1932504,
+          "a4OverA1": 1.0000041397239632,
+          "a1ProcessMedianRange": [
+            1932496,
+            1996560
+          ],
+          "a4ProcessMedianRange": [
+            1932504,
+            1932504
+          ]
+        },
+        "queryAllocatedBytesPerCompletedOperation": {
+          "a1ProcessMedians": {
+            "1": 1925.952,
+            "2": 1989.952,
+            "3": 1925.952
+          },
+          "a4ProcessMedians": {
+            "1": 1925.952,
+            "2": 1925.952,
+            "3": 1925.952
+          },
+          "a1MedianAcrossThreeIndependentJvms": 1925.952,
+          "a4MedianAcrossThreeIndependentJvms": 1925.952,
+          "a4OverA1": 1.0,
+          "a1ProcessMedianRange": [
+            1925.952,
+            1989.952
+          ],
+          "a4ProcessMedianRange": [
+            1925.952,
+            1925.952
+          ]
+        },
+        "lifecycleWallNs": {
+          "a1ProcessMedians": {
+            "1": 514900,
+            "2": 494001,
+            "3": 525100
+          },
+          "a4ProcessMedians": {
+            "1": 598399,
+            "2": 713600,
+            "3": 894300
+          },
+          "a1MedianAcrossThreeIndependentJvms": 514900,
+          "a4MedianAcrossThreeIndependentJvms": 713600,
+          "a4OverA1": 1.3859001747912216,
+          "a1ProcessMedianRange": [
+            494001,
+            525100
+          ],
+          "a4ProcessMedianRange": [
+            598399,
+            894300
+          ]
+        },
+        "harnessLifecycleOverheadWallNs": {
+          "a1ProcessMedians": {
+            "1": 30299,
+            "2": 18901,
+            "3": 21099
+          },
+          "a4ProcessMedians": {
+            "1": 29000,
+            "2": 40701,
+            "3": 44899
+          },
+          "a1MedianAcrossThreeIndependentJvms": 21099,
+          "a4MedianAcrossThreeIndependentJvms": 40701,
+          "a4OverA1": 1.9290487700838903,
+          "a1ProcessMedianRange": [
+            18901,
+            30299
+          ],
+          "a4ProcessMedianRange": [
+            29000,
+            44899
+          ]
+        },
+        "harnessMetricsBeforeQueryWallNs": {
+          "a1ProcessMedians": {
+            "1": 2600,
+            "2": 2101,
+            "3": 2300
+          },
+          "a4ProcessMedians": {
+            "1": 3099,
+            "2": 3301,
+            "3": 3600
+          },
+          "a1MedianAcrossThreeIndependentJvms": 2300,
+          "a4MedianAcrossThreeIndependentJvms": 3301,
+          "a4OverA1": 1.4352173913043478,
+          "a1ProcessMedianRange": [
+            2101,
+            2600
+          ],
+          "a4ProcessMedianRange": [
+            3099,
+            3600
+          ]
+        }
+      },
+      "cpuReadings": {
+        "nonZeroStageReadings": 7,
+        "zeroStageReadings": 551,
+        "negativeStageReadings": 0,
+        "interpretation": "CPU stage comparisons are indeterminate when the thread CPU clock quantizes these short batches to zero."
+      }
+    },
+    {
+      "scenario": "A3.settings-exact-default-empty",
+      "metrics": {
+        "prepareWallNs": {
+          "a1ProcessMedians": {
+            "1": 14600,
+            "2": 13301,
+            "3": 11700
+          },
+          "a4ProcessMedians": {
+            "1": 17300,
+            "2": 28699,
+            "3": 21300
+          },
+          "a1MedianAcrossThreeIndependentJvms": 13301,
+          "a4MedianAcrossThreeIndependentJvms": 21300,
+          "a4OverA1": 1.6013833546349898,
+          "a1ProcessMedianRange": [
+            11700,
+            14600
+          ],
+          "a4ProcessMedianRange": [
+            17300,
+            28699
+          ]
+        },
+        "queryWallNs": {
+          "a1ProcessMedians": {
+            "1": 72100,
+            "2": 93599,
+            "3": 74299
+          },
+          "a4ProcessMedians": {
+            "1": 204900,
+            "2": 202100,
+            "3": 130800
+          },
+          "a1MedianAcrossThreeIndependentJvms": 74299,
+          "a4MedianAcrossThreeIndependentJvms": 202100,
+          "a4OverA1": 2.7200904453626564,
+          "a1ProcessMedianRange": [
+            72100,
+            93599
+          ],
+          "a4ProcessMedianRange": [
+            130800,
+            204900
+          ]
+        },
+        "closeWallNs": {
+          "a1ProcessMedians": {
+            "1": 901,
+            "2": 900,
+            "3": 700
+          },
+          "a4ProcessMedians": {
+            "1": 1500,
+            "2": 2400,
+            "3": 1700
+          },
+          "a1MedianAcrossThreeIndependentJvms": 900,
+          "a4MedianAcrossThreeIndependentJvms": 1700,
+          "a4OverA1": 1.8888888888888888,
+          "a1ProcessMedianRange": [
+            700,
+            901
+          ],
+          "a4ProcessMedianRange": [
+            1500,
+            2400
+          ]
+        },
+        "serviceWallNsPerRow": {
+          "a1ProcessMedians": {
+            "1": 86700,
+            "2": 107199,
+            "3": 89701
+          },
+          "a4ProcessMedians": {
+            "1": 223799,
+            "2": 245398,
+            "3": 153099
+          },
+          "a1MedianAcrossThreeIndependentJvms": 89701,
+          "a4MedianAcrossThreeIndependentJvms": 223799,
+          "a4OverA1": 2.4949443150020625,
+          "a1ProcessMedianRange": [
+            86700,
+            107199
+          ],
+          "a4ProcessMedianRange": [
+            153099,
+            245398
+          ]
+        },
+        "prepareThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "queryThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "closeThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "serviceThreadCpuNsPerRow": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "prepareAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 2416,
+            "2": 2416,
+            "3": 2416
+          },
+          "a4ProcessMedians": {
+            "1": 2424,
+            "2": 2424,
+            "3": 2424
+          },
+          "a1MedianAcrossThreeIndependentJvms": 2416,
+          "a4MedianAcrossThreeIndependentJvms": 2424,
+          "a4OverA1": 1.0033112582781456,
+          "a1ProcessMedianRange": [
+            2416,
+            2416
+          ],
+          "a4ProcessMedianRange": [
+            2424,
+            2424
+          ]
+        },
+        "queryAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 93992,
+            "2": 93992,
+            "3": 93992
+          },
+          "a4ProcessMedians": {
+            "1": 93992,
+            "2": 93992,
+            "3": 93992
+          },
+          "a1MedianAcrossThreeIndependentJvms": 93992,
+          "a4MedianAcrossThreeIndependentJvms": 93992,
+          "a4OverA1": 1.0,
+          "a1ProcessMedianRange": [
+            93992,
+            93992
+          ],
+          "a4ProcessMedianRange": [
+            93992,
+            93992
+          ]
+        },
+        "closeAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "serviceAllocatedBytesPerRow": {
+          "a1ProcessMedians": {
+            "1": 96408,
+            "2": 96408,
+            "3": 96408
+          },
+          "a4ProcessMedians": {
+            "1": 96416,
+            "2": 96416,
+            "3": 96416
+          },
+          "a1MedianAcrossThreeIndependentJvms": 96408,
+          "a4MedianAcrossThreeIndependentJvms": 96416,
+          "a4OverA1": 1.000082980665505,
+          "a1ProcessMedianRange": [
+            96408,
+            96408
+          ],
+          "a4ProcessMedianRange": [
+            96416,
+            96416
+          ]
+        },
+        "queryAllocatedBytesPerCompletedOperation": {
+          "a1ProcessMedians": {
+            "1": 93.992,
+            "2": 93.992,
+            "3": 93.992
+          },
+          "a4ProcessMedians": {
+            "1": 93.992,
+            "2": 93.992,
+            "3": 93.992
+          },
+          "a1MedianAcrossThreeIndependentJvms": 93.992,
+          "a4MedianAcrossThreeIndependentJvms": 93.992,
+          "a4OverA1": 1.0,
+          "a1ProcessMedianRange": [
+            93.992,
+            93.992
+          ],
+          "a4ProcessMedianRange": [
+            93.992,
+            93.992
+          ]
+        },
+        "lifecycleWallNs": {
+          "a1ProcessMedians": {
+            "1": 105100,
+            "2": 136300,
+            "3": 101299
+          },
+          "a4ProcessMedians": {
+            "1": 245700,
+            "2": 283400,
+            "3": 176400
+          },
+          "a1MedianAcrossThreeIndependentJvms": 105100,
+          "a4MedianAcrossThreeIndependentJvms": 245700,
+          "a4OverA1": 2.3377735490009517,
+          "a1ProcessMedianRange": [
+            101299,
+            136300
+          ],
+          "a4ProcessMedianRange": [
+            176400,
+            283400
+          ]
+        },
+        "harnessLifecycleOverheadWallNs": {
+          "a1ProcessMedians": {
+            "1": 15201,
+            "2": 14599,
+            "3": 12501
+          },
+          "a4ProcessMedians": {
+            "1": 21102,
+            "2": 34300,
+            "3": 22500
+          },
+          "a1MedianAcrossThreeIndependentJvms": 14599,
+          "a4MedianAcrossThreeIndependentJvms": 22500,
+          "a4OverA1": 1.5412014521542572,
+          "a1ProcessMedianRange": [
+            12501,
+            15201
+          ],
+          "a4ProcessMedianRange": [
+            21102,
+            34300
+          ]
+        },
+        "harnessMetricsBeforeQueryWallNs": {
+          "a1ProcessMedians": {
+            "1": 3201,
+            "2": 3001,
+            "3": 2900
+          },
+          "a4ProcessMedians": {
+            "1": 4000,
+            "2": 4900,
+            "3": 3800
+          },
+          "a1MedianAcrossThreeIndependentJvms": 3001,
+          "a4MedianAcrossThreeIndependentJvms": 4000,
+          "a4OverA1": 1.3328890369876707,
+          "a1ProcessMedianRange": [
+            2900,
+            3201
+          ],
+          "a4ProcessMedianRange": [
+            3800,
+            4900
+          ]
+        }
+      },
+      "cpuReadings": {
+        "nonZeroStageReadings": 4,
+        "zeroStageReadings": 554,
+        "negativeStageReadings": 0,
+        "interpretation": "CPU stage comparisons are indeterminate when the thread CPU clock quantizes these short batches to zero."
+      }
+    },
+    {
+      "scenario": "A3.settings-exact-small-4",
+      "metrics": {
+        "prepareWallNs": {
+          "a1ProcessMedians": {
+            "1": 13900,
+            "2": 13299,
+            "3": 14100
+          },
+          "a4ProcessMedians": {
+            "1": 12600,
+            "2": 44199,
+            "3": 28501
+          },
+          "a1MedianAcrossThreeIndependentJvms": 13900,
+          "a4MedianAcrossThreeIndependentJvms": 28501,
+          "a4OverA1": 2.050431654676259,
+          "a1ProcessMedianRange": [
+            13299,
+            14100
+          ],
+          "a4ProcessMedianRange": [
+            12600,
+            44199
+          ]
+        },
+        "queryWallNs": {
+          "a1ProcessMedians": {
+            "1": 424199,
+            "2": 449399,
+            "3": 408001
+          },
+          "a4ProcessMedians": {
+            "1": 456900,
+            "2": 711899,
+            "3": 676201
+          },
+          "a1MedianAcrossThreeIndependentJvms": 424199,
+          "a4MedianAcrossThreeIndependentJvms": 676201,
+          "a4OverA1": 1.5940655211351276,
+          "a1ProcessMedianRange": [
+            408001,
+            449399
+          ],
+          "a4ProcessMedianRange": [
+            456900,
+            711899
+          ]
+        },
+        "closeWallNs": {
+          "a1ProcessMedians": {
+            "1": 1000,
+            "2": 900,
+            "3": 900
+          },
+          "a4ProcessMedians": {
+            "1": 1000,
+            "2": 4599,
+            "3": 2400
+          },
+          "a1MedianAcrossThreeIndependentJvms": 900,
+          "a4MedianAcrossThreeIndependentJvms": 2400,
+          "a4OverA1": 2.6666666666666665,
+          "a1ProcessMedianRange": [
+            900,
+            1000
+          ],
+          "a4ProcessMedianRange": [
+            1000,
+            4599
+          ]
+        },
+        "serviceWallNsPerRow": {
+          "a1ProcessMedians": {
+            "1": 439298,
+            "2": 469000,
+            "3": 423300
+          },
+          "a4ProcessMedians": {
+            "1": 470298,
+            "2": 776101,
+            "3": 696600
+          },
+          "a1MedianAcrossThreeIndependentJvms": 439298,
+          "a4MedianAcrossThreeIndependentJvms": 696600,
+          "a4OverA1": 1.5857117491998598,
+          "a1ProcessMedianRange": [
+            423300,
+            469000
+          ],
+          "a4ProcessMedianRange": [
+            470298,
+            776101
+          ]
+        },
+        "prepareThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "queryThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "closeThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "serviceThreadCpuNsPerRow": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "prepareAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 3928,
+            "2": 3928,
+            "3": 3928
+          },
+          "a4ProcessMedians": {
+            "1": 3936,
+            "2": 3936,
+            "3": 3936
+          },
+          "a1MedianAcrossThreeIndependentJvms": 3928,
+          "a4MedianAcrossThreeIndependentJvms": 3936,
+          "a4OverA1": 1.0020366598778003,
+          "a1ProcessMedianRange": [
+            3928,
+            3928
+          ],
+          "a4ProcessMedianRange": [
+            3936,
+            3936
+          ]
+        },
+        "queryAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 446016,
+            "2": 446016,
+            "3": 446016
+          },
+          "a4ProcessMedians": {
+            "1": 446016,
+            "2": 446016,
+            "3": 446016
+          },
+          "a1MedianAcrossThreeIndependentJvms": 446016,
+          "a4MedianAcrossThreeIndependentJvms": 446016,
+          "a4OverA1": 1.0,
+          "a1ProcessMedianRange": [
+            446016,
+            446016
+          ],
+          "a4ProcessMedianRange": [
+            446016,
+            446016
+          ]
+        },
+        "closeAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "serviceAllocatedBytesPerRow": {
+          "a1ProcessMedians": {
+            "1": 449944,
+            "2": 449944,
+            "3": 449944
+          },
+          "a4ProcessMedians": {
+            "1": 449952,
+            "2": 449952,
+            "3": 449952
+          },
+          "a1MedianAcrossThreeIndependentJvms": 449944,
+          "a4MedianAcrossThreeIndependentJvms": 449952,
+          "a4OverA1": 1.0000177799903989,
+          "a1ProcessMedianRange": [
+            449944,
+            449944
+          ],
+          "a4ProcessMedianRange": [
+            449952,
+            449952
+          ]
+        },
+        "queryAllocatedBytesPerCompletedOperation": {
+          "a1ProcessMedians": {
+            "1": 446.016,
+            "2": 446.016,
+            "3": 446.016
+          },
+          "a4ProcessMedians": {
+            "1": 446.016,
+            "2": 446.016,
+            "3": 446.016
+          },
+          "a1MedianAcrossThreeIndependentJvms": 446.016,
+          "a4MedianAcrossThreeIndependentJvms": 446.016,
+          "a4OverA1": 1.0,
+          "a1ProcessMedianRange": [
+            446.016,
+            446.016
+          ],
+          "a4ProcessMedianRange": [
+            446.016,
+            446.016
+          ]
+        },
+        "lifecycleWallNs": {
+          "a1ProcessMedians": {
+            "1": 453800,
+            "2": 482699,
+            "3": 441199
+          },
+          "a4ProcessMedians": {
+            "1": 483300,
+            "2": 828800,
+            "3": 743499
+          },
+          "a1MedianAcrossThreeIndependentJvms": 453800,
+          "a4MedianAcrossThreeIndependentJvms": 743499,
+          "a4OverA1": 1.6383847509916263,
+          "a1ProcessMedianRange": [
+            441199,
+            482699
+          ],
+          "a4ProcessMedianRange": [
+            483300,
+            828800
+          ]
+        },
+        "harnessLifecycleOverheadWallNs": {
+          "a1ProcessMedians": {
+            "1": 15601,
+            "2": 15798,
+            "3": 16501
+          },
+          "a4ProcessMedians": {
+            "1": 13899,
+            "2": 52100,
+            "3": 36800
+          },
+          "a1MedianAcrossThreeIndependentJvms": 15798,
+          "a4MedianAcrossThreeIndependentJvms": 36800,
+          "a4OverA1": 2.3294087859222685,
+          "a1ProcessMedianRange": [
+            15601,
+            16501
+          ],
+          "a4ProcessMedianRange": [
+            13899,
+            52100
+          ]
+        },
+        "harnessMetricsBeforeQueryWallNs": {
+          "a1ProcessMedians": {
+            "1": 2900,
+            "2": 2900,
+            "3": 2900
+          },
+          "a4ProcessMedians": {
+            "1": 2800,
+            "2": 5300,
+            "3": 4801
+          },
+          "a1MedianAcrossThreeIndependentJvms": 2900,
+          "a4MedianAcrossThreeIndependentJvms": 4801,
+          "a4OverA1": 1.6555172413793104,
+          "a1ProcessMedianRange": [
+            2900,
+            2900
+          ],
+          "a4ProcessMedianRange": [
+            2800,
+            5300
+          ]
+        }
+      },
+      "cpuReadings": {
+        "nonZeroStageReadings": 6,
+        "zeroStageReadings": 552,
+        "negativeStageReadings": 0,
+        "interpretation": "CPU stage comparisons are indeterminate when the thread CPU clock quantizes these short batches to zero."
+      }
+    },
+    {
+      "scenario": "A3.settings-exact-large-64",
+      "metrics": {
+        "prepareWallNs": {
+          "a1ProcessMedians": {
+            "1": 29100,
+            "2": 33300,
+            "3": 60600
+          },
+          "a4ProcessMedians": {
+            "1": 37099,
+            "2": 92500,
+            "3": 73399
+          },
+          "a1MedianAcrossThreeIndependentJvms": 33300,
+          "a4MedianAcrossThreeIndependentJvms": 73399,
+          "a4OverA1": 2.2041741741741743,
+          "a1ProcessMedianRange": [
+            29100,
+            60600
+          ],
+          "a4ProcessMedianRange": [
+            37099,
+            92500
+          ]
+        },
+        "queryWallNs": {
+          "a1ProcessMedians": {
+            "1": 827901,
+            "2": 839900,
+            "3": 1153900
+          },
+          "a4ProcessMedians": {
+            "1": 797600,
+            "2": 1716000,
+            "3": 1630600
+          },
+          "a1MedianAcrossThreeIndependentJvms": 839900,
+          "a4MedianAcrossThreeIndependentJvms": 1630600,
+          "a4OverA1": 1.941421597809263,
+          "a1ProcessMedianRange": [
+            827901,
+            1153900
+          ],
+          "a4ProcessMedianRange": [
+            797600,
+            1716000
+          ]
+        },
+        "closeWallNs": {
+          "a1ProcessMedians": {
+            "1": 1200,
+            "2": 1101,
+            "3": 2700
+          },
+          "a4ProcessMedians": {
+            "1": 1901,
+            "2": 7199,
+            "3": 5000
+          },
+          "a1MedianAcrossThreeIndependentJvms": 1200,
+          "a4MedianAcrossThreeIndependentJvms": 5000,
+          "a4OverA1": 4.166666666666667,
+          "a1ProcessMedianRange": [
+            1101,
+            2700
+          ],
+          "a4ProcessMedianRange": [
+            1901,
+            7199
+          ]
+        },
+        "serviceWallNsPerRow": {
+          "a1ProcessMedians": {
+            "1": 857001,
+            "2": 887799,
+            "3": 1211300
+          },
+          "a4ProcessMedians": {
+            "1": 832602,
+            "2": 1819900,
+            "3": 1761099
+          },
+          "a1MedianAcrossThreeIndependentJvms": 887799,
+          "a4MedianAcrossThreeIndependentJvms": 1761099,
+          "a4OverA1": 1.983668600662988,
+          "a1ProcessMedianRange": [
+            857001,
+            1211300
+          ],
+          "a4ProcessMedianRange": [
+            832602,
+            1819900
+          ]
+        },
+        "prepareThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "queryThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "closeThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "serviceThreadCpuNsPerRow": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "prepareAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 28776,
+            "2": 28776,
+            "3": 28776
+          },
+          "a4ProcessMedians": {
+            "1": 28784,
+            "2": 28784,
+            "3": 28784
+          },
+          "a1MedianAcrossThreeIndependentJvms": 28776,
+          "a4MedianAcrossThreeIndependentJvms": 28784,
+          "a4OverA1": 1.0002780094523214,
+          "a1ProcessMedianRange": [
+            28776,
+            28776
+          ],
+          "a4ProcessMedianRange": [
+            28784,
+            28784
+          ]
+        },
+        "queryAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 3294016,
+            "2": 3294016,
+            "3": 3294016
+          },
+          "a4ProcessMedians": {
+            "1": 3214016,
+            "2": 3294016,
+            "3": 3294016
+          },
+          "a1MedianAcrossThreeIndependentJvms": 3294016,
+          "a4MedianAcrossThreeIndependentJvms": 3294016,
+          "a4OverA1": 1.0,
+          "a1ProcessMedianRange": [
+            3294016,
+            3294016
+          ],
+          "a4ProcessMedianRange": [
+            3214016,
+            3294016
+          ]
+        },
+        "closeAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "serviceAllocatedBytesPerRow": {
+          "a1ProcessMedians": {
+            "1": 3322792,
+            "2": 3322792,
+            "3": 3322792
+          },
+          "a4ProcessMedians": {
+            "1": 3242800,
+            "2": 3322800,
+            "3": 3322800
+          },
+          "a1MedianAcrossThreeIndependentJvms": 3322792,
+          "a4MedianAcrossThreeIndependentJvms": 3322800,
+          "a4OverA1": 1.000002407613838,
+          "a1ProcessMedianRange": [
+            3322792,
+            3322792
+          ],
+          "a4ProcessMedianRange": [
+            3242800,
+            3322800
+          ]
+        },
+        "queryAllocatedBytesPerCompletedOperation": {
+          "a1ProcessMedians": {
+            "1": 3294.016,
+            "2": 3294.016,
+            "3": 3294.016
+          },
+          "a4ProcessMedians": {
+            "1": 3214.016,
+            "2": 3294.016,
+            "3": 3294.016
+          },
+          "a1MedianAcrossThreeIndependentJvms": 3294.016,
+          "a4MedianAcrossThreeIndependentJvms": 3294.016,
+          "a4OverA1": 1.0,
+          "a1ProcessMedianRange": [
+            3294.016,
+            3294.016
+          ],
+          "a4ProcessMedianRange": [
+            3214.016,
+            3294.016
+          ]
+        },
+        "lifecycleWallNs": {
+          "a1ProcessMedians": {
+            "1": 877800,
+            "2": 907500,
+            "3": 1289800
+          },
+          "a4ProcessMedians": {
+            "1": 857600,
+            "2": 1898900,
+            "3": 1827000
+          },
+          "a1MedianAcrossThreeIndependentJvms": 907500,
+          "a4MedianAcrossThreeIndependentJvms": 1827000,
+          "a4OverA1": 2.013223140495868,
+          "a1ProcessMedianRange": [
+            877800,
+            1289800
+          ],
+          "a4ProcessMedianRange": [
+            857600,
+            1898900
+          ]
+        },
+        "harnessLifecycleOverheadWallNs": {
+          "a1ProcessMedians": {
+            "1": 20700,
+            "2": 18999,
+            "3": 49798
+          },
+          "a4ProcessMedians": {
+            "1": 23700,
+            "2": 80100,
+            "3": 58100
+          },
+          "a1MedianAcrossThreeIndependentJvms": 20700,
+          "a4MedianAcrossThreeIndependentJvms": 58100,
+          "a4OverA1": 2.8067632850241546,
+          "a1ProcessMedianRange": [
+            18999,
+            49798
+          ],
+          "a4ProcessMedianRange": [
+            23700,
+            80100
+          ]
+        },
+        "harnessMetricsBeforeQueryWallNs": {
+          "a1ProcessMedians": {
+            "1": 2901,
+            "2": 3100,
+            "3": 5101
+          },
+          "a4ProcessMedians": {
+            "1": 2999,
+            "2": 6100,
+            "3": 5301
+          },
+          "a1MedianAcrossThreeIndependentJvms": 3100,
+          "a4MedianAcrossThreeIndependentJvms": 5301,
+          "a4OverA1": 1.71,
+          "a1ProcessMedianRange": [
+            2901,
+            5101
+          ],
+          "a4ProcessMedianRange": [
+            2999,
+            6100
+          ]
+        }
+      },
+      "cpuReadings": {
+        "nonZeroStageReadings": 14,
+        "zeroStageReadings": 544,
+        "negativeStageReadings": 0,
+        "interpretation": "CPU stage comparisons are indeterminate when the thread CPU clock quantizes these short batches to zero."
+      }
+    },
+    {
+      "scenario": "A3.settings-exact-tail-change-64",
+      "metrics": {
+        "prepareWallNs": {
+          "a1ProcessMedians": {
+            "1": 26301,
+            "2": 24200,
+            "3": 28701
+          },
+          "a4ProcessMedians": {
+            "1": 29400,
+            "2": 59101,
+            "3": 32900
+          },
+          "a1MedianAcrossThreeIndependentJvms": 26301,
+          "a4MedianAcrossThreeIndependentJvms": 32900,
+          "a4OverA1": 1.2509030074902094,
+          "a1ProcessMedianRange": [
+            24200,
+            28701
+          ],
+          "a4ProcessMedianRange": [
+            29400,
+            59101
+          ]
+        },
+        "queryWallNs": {
+          "a1ProcessMedians": {
+            "1": 833100,
+            "2": 808499,
+            "3": 844500
+          },
+          "a4ProcessMedians": {
+            "1": 783901,
+            "2": 1263500,
+            "3": 812100
+          },
+          "a1MedianAcrossThreeIndependentJvms": 833100,
+          "a4MedianAcrossThreeIndependentJvms": 812100,
+          "a4OverA1": 0.9747929420237667,
+          "a1ProcessMedianRange": [
+            808499,
+            844500
+          ],
+          "a4ProcessMedianRange": [
+            783901,
+            1263500
+          ]
+        },
+        "closeWallNs": {
+          "a1ProcessMedians": {
+            "1": 1299,
+            "2": 1100,
+            "3": 1500
+          },
+          "a4ProcessMedians": {
+            "1": 2100,
+            "2": 4900,
+            "3": 2401
+          },
+          "a1MedianAcrossThreeIndependentJvms": 1299,
+          "a4MedianAcrossThreeIndependentJvms": 2401,
+          "a4OverA1": 1.8483448806774443,
+          "a1ProcessMedianRange": [
+            1100,
+            1500
+          ],
+          "a4ProcessMedianRange": [
+            2100,
+            4900
+          ]
+        },
+        "serviceWallNsPerRow": {
+          "a1ProcessMedians": {
+            "1": 863699,
+            "2": 837100,
+            "3": 876200
+          },
+          "a4ProcessMedians": {
+            "1": 820902,
+            "2": 1353299,
+            "3": 867500
+          },
+          "a1MedianAcrossThreeIndependentJvms": 863699,
+          "a4MedianAcrossThreeIndependentJvms": 867500,
+          "a4OverA1": 1.0044008387181182,
+          "a1ProcessMedianRange": [
+            837100,
+            876200
+          ],
+          "a4ProcessMedianRange": [
+            820902,
+            1353299
+          ]
+        },
+        "prepareThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "queryThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "closeThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "serviceThreadCpuNsPerRow": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "prepareAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 33528,
+            "2": 33528,
+            "3": 33528
+          },
+          "a4ProcessMedians": {
+            "1": 33536,
+            "2": 33536,
+            "3": 33536
+          },
+          "a1MedianAcrossThreeIndependentJvms": 33528,
+          "a4MedianAcrossThreeIndependentJvms": 33536,
+          "a4OverA1": 1.000238606537819,
+          "a1ProcessMedianRange": [
+            33528,
+            33528
+          ],
+          "a4ProcessMedianRange": [
+            33536,
+            33536
+          ]
+        },
+        "queryAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 3294040,
+            "2": 3294040,
+            "3": 3294040
+          },
+          "a4ProcessMedians": {
+            "1": 3294040,
+            "2": 3294040,
+            "3": 3294040
+          },
+          "a1MedianAcrossThreeIndependentJvms": 3294040,
+          "a4MedianAcrossThreeIndependentJvms": 3294040,
+          "a4OverA1": 1.0,
+          "a1ProcessMedianRange": [
+            3294040,
+            3294040
+          ],
+          "a4ProcessMedianRange": [
+            3294040,
+            3294040
+          ]
+        },
+        "closeAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "serviceAllocatedBytesPerRow": {
+          "a1ProcessMedians": {
+            "1": 3327568,
+            "2": 3327568,
+            "3": 3327568
+          },
+          "a4ProcessMedians": {
+            "1": 3327576,
+            "2": 3327576,
+            "3": 3327576
+          },
+          "a1MedianAcrossThreeIndependentJvms": 3327568,
+          "a4MedianAcrossThreeIndependentJvms": 3327576,
+          "a4OverA1": 1.000002404158232,
+          "a1ProcessMedianRange": [
+            3327568,
+            3327568
+          ],
+          "a4ProcessMedianRange": [
+            3327576,
+            3327576
+          ]
+        },
+        "queryAllocatedBytesPerCompletedOperation": {
+          "a1ProcessMedians": {
+            "1": 3294.04,
+            "2": 3294.04,
+            "3": 3294.04
+          },
+          "a4ProcessMedians": {
+            "1": 3294.04,
+            "2": 3294.04,
+            "3": 3294.04
+          },
+          "a1MedianAcrossThreeIndependentJvms": 3294.04,
+          "a4MedianAcrossThreeIndependentJvms": 3294.04,
+          "a4OverA1": 1.0,
+          "a1ProcessMedianRange": [
+            3294.04,
+            3294.04
+          ],
+          "a4ProcessMedianRange": [
+            3294.04,
+            3294.04
+          ]
+        },
+        "lifecycleWallNs": {
+          "a1ProcessMedians": {
+            "1": 885000,
+            "2": 857400,
+            "3": 898701
+          },
+          "a4ProcessMedians": {
+            "1": 858600,
+            "2": 1412200,
+            "3": 894600
+          },
+          "a1MedianAcrossThreeIndependentJvms": 885000,
+          "a4MedianAcrossThreeIndependentJvms": 894600,
+          "a4OverA1": 1.0108474576271187,
+          "a1ProcessMedianRange": [
+            857400,
+            898701
+          ],
+          "a4ProcessMedianRange": [
+            858600,
+            1412200
+          ]
+        },
+        "harnessLifecycleOverheadWallNs": {
+          "a1ProcessMedians": {
+            "1": 22300,
+            "2": 20399,
+            "3": 23400
+          },
+          "a4ProcessMedians": {
+            "1": 25602,
+            "2": 61099,
+            "3": 28598
+          },
+          "a1MedianAcrossThreeIndependentJvms": 22300,
+          "a4MedianAcrossThreeIndependentJvms": 28598,
+          "a4OverA1": 1.2824215246636772,
+          "a1ProcessMedianRange": [
+            20399,
+            23400
+          ],
+          "a4ProcessMedianRange": [
+            25602,
+            61099
+          ]
+        },
+        "harnessMetricsBeforeQueryWallNs": {
+          "a1ProcessMedians": {
+            "1": 3199,
+            "2": 3099,
+            "3": 3099
+          },
+          "a4ProcessMedians": {
+            "1": 3400,
+            "2": 6100,
+            "3": 3200
+          },
+          "a1MedianAcrossThreeIndependentJvms": 3099,
+          "a4MedianAcrossThreeIndependentJvms": 3400,
+          "a4OverA1": 1.0971281058405937,
+          "a1ProcessMedianRange": [
+            3099,
+            3199
+          ],
+          "a4ProcessMedianRange": [
+            3200,
+            6100
+          ]
+        }
+      },
+      "cpuReadings": {
+        "nonZeroStageReadings": 14,
+        "zeroStageReadings": 544,
+        "negativeStageReadings": 0,
+        "interpretation": "CPU stage comparisons are indeterminate when the thread CPU clock quantizes these short batches to zero."
+      }
+    },
+    {
+      "scenario": "A4.memo-unchanged-repeated",
+      "metrics": {
+        "prepareWallNs": {
+          "a1ProcessMedians": {
+            "1": 239200,
+            "2": 217701,
+            "3": 354300
+          },
+          "a4ProcessMedians": {
+            "1": 312300,
+            "2": 337500,
+            "3": 206600
+          },
+          "a1MedianAcrossThreeIndependentJvms": 239200,
+          "a4MedianAcrossThreeIndependentJvms": 312300,
+          "a4OverA1": 1.3056020066889633,
+          "a1ProcessMedianRange": [
+            217701,
+            354300
+          ],
+          "a4ProcessMedianRange": [
+            206600,
+            337500
+          ]
+        },
+        "queryWallNs": {
+          "a1ProcessMedians": {
+            "1": 1280101,
+            "2": 1207400,
+            "3": 4782299
+          },
+          "a4ProcessMedians": {
+            "1": 113200,
+            "2": 143299,
+            "3": 89201
+          },
+          "a1MedianAcrossThreeIndependentJvms": 1280101,
+          "a4MedianAcrossThreeIndependentJvms": 113200,
+          "a4OverA1": 0.08843052227910142,
+          "a1ProcessMedianRange": [
+            1207400,
+            4782299
+          ],
+          "a4ProcessMedianRange": [
+            89201,
+            143299
+          ]
+        },
+        "closeWallNs": {
+          "a1ProcessMedians": {
+            "1": 6900,
+            "2": 5101,
+            "3": 11299
+          },
+          "a4ProcessMedians": {
+            "1": 4400,
+            "2": 5899,
+            "3": 3000
+          },
+          "a1MedianAcrossThreeIndependentJvms": 6900,
+          "a4MedianAcrossThreeIndependentJvms": 4400,
+          "a4OverA1": 0.6376811594202898,
+          "a1ProcessMedianRange": [
+            5101,
+            11299
+          ],
+          "a4ProcessMedianRange": [
+            3000,
+            5899
+          ]
+        },
+        "serviceWallNsPerRow": {
+          "a1ProcessMedians": {
+            "1": 1525498,
+            "2": 1466900,
+            "3": 5181897
+          },
+          "a4ProcessMedians": {
+            "1": 432500,
+            "2": 500099,
+            "3": 314200
+          },
+          "a1MedianAcrossThreeIndependentJvms": 1525498,
+          "a4MedianAcrossThreeIndependentJvms": 432500,
+          "a4OverA1": 0.2835139737974091,
+          "a1ProcessMedianRange": [
+            1466900,
+            5181897
+          ],
+          "a4ProcessMedianRange": [
+            314200,
+            500099
+          ]
+        },
+        "prepareThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "queryThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "closeThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "serviceThreadCpuNsPerRow": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "prepareAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 33072,
+            "2": 33072,
+            "3": 33032
+          },
+          "a4ProcessMedians": {
+            "1": 33128,
+            "2": 33128,
+            "3": 33128
+          },
+          "a1MedianAcrossThreeIndependentJvms": 33072,
+          "a4MedianAcrossThreeIndependentJvms": 33128,
+          "a4OverA1": 1.0016932752781809,
+          "a1ProcessMedianRange": [
+            33032,
+            33072
+          ],
+          "a4ProcessMedianRange": [
+            33128,
+            33128
+          ]
+        },
+        "queryAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 719536,
+            "2": 749976,
+            "3": 709976
+          },
+          "a4ProcessMedians": {
+            "1": 157952,
+            "2": 157952,
+            "3": 157952
+          },
+          "a1MedianAcrossThreeIndependentJvms": 719536,
+          "a4MedianAcrossThreeIndependentJvms": 157952,
+          "a4OverA1": 0.21951924573614107,
+          "a1ProcessMedianRange": [
+            709976,
+            749976
+          ],
+          "a4ProcessMedianRange": [
+            157952,
+            157952
+          ]
+        },
+        "closeAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 56,
+            "2": 56,
+            "3": 56
+          },
+          "a4ProcessMedians": {
+            "1": 56,
+            "2": 56,
+            "3": 56
+          },
+          "a1MedianAcrossThreeIndependentJvms": 56,
+          "a4MedianAcrossThreeIndependentJvms": 56,
+          "a4OverA1": 1.0,
+          "a1ProcessMedianRange": [
+            56,
+            56
+          ],
+          "a4ProcessMedianRange": [
+            56,
+            56
+          ]
+        },
+        "serviceAllocatedBytesPerRow": {
+          "a1ProcessMedians": {
+            "1": 752664,
+            "2": 783104,
+            "3": 743064
+          },
+          "a4ProcessMedians": {
+            "1": 191136,
+            "2": 191136,
+            "3": 191136
+          },
+          "a1MedianAcrossThreeIndependentJvms": 752664,
+          "a4MedianAcrossThreeIndependentJvms": 191136,
+          "a4OverA1": 0.2539459838653104,
+          "a1ProcessMedianRange": [
+            743064,
+            783104
+          ],
+          "a4ProcessMedianRange": [
+            191136,
+            191136
+          ]
+        },
+        "queryAllocatedBytesPerCompletedOperation": {
+          "a1ProcessMedians": {
+            "1": 719.536,
+            "2": 749.976,
+            "3": 709.976
+          },
+          "a4ProcessMedians": {
+            "1": 157.952,
+            "2": 157.952,
+            "3": 157.952
+          },
+          "a1MedianAcrossThreeIndependentJvms": 719.536,
+          "a4MedianAcrossThreeIndependentJvms": 157.952,
+          "a4OverA1": 0.2195192457361411,
+          "a1ProcessMedianRange": [
+            709.976,
+            749.976
+          ],
+          "a4ProcessMedianRange": [
+            157.952,
+            157.952
+          ]
+        },
+        "lifecycleWallNs": {
+          "a1ProcessMedians": {
+            "1": 1560801,
+            "2": 1517800,
+            "3": 5241899
+          },
+          "a4ProcessMedians": {
+            "1": 462801,
+            "2": 549100,
+            "3": 336200
+          },
+          "a1MedianAcrossThreeIndependentJvms": 1560801,
+          "a4MedianAcrossThreeIndependentJvms": 462801,
+          "a4OverA1": 0.2965150586141347,
+          "a1ProcessMedianRange": [
+            1517800,
+            5241899
+          ],
+          "a4ProcessMedianRange": [
+            336200,
+            549100
+          ]
+        },
+        "harnessLifecycleOverheadWallNs": {
+          "a1ProcessMedians": {
+            "1": 35699,
+            "2": 36302,
+            "3": 60002
+          },
+          "a4ProcessMedians": {
+            "1": 40200,
+            "2": 42701,
+            "3": 19098
+          },
+          "a1MedianAcrossThreeIndependentJvms": 36302,
+          "a4MedianAcrossThreeIndependentJvms": 40200,
+          "a4OverA1": 1.107377004021817,
+          "a1ProcessMedianRange": [
+            35699,
+            60002
+          ],
+          "a4ProcessMedianRange": [
+            19098,
+            42701
+          ]
+        },
+        "harnessMetricsBeforeQueryWallNs": {
+          "a1ProcessMedians": {
+            "1": 4099,
+            "2": 3699,
+            "3": 5200
+          },
+          "a4ProcessMedians": {
+            "1": 6499,
+            "2": 7400,
+            "3": 4101
+          },
+          "a1MedianAcrossThreeIndependentJvms": 4099,
+          "a4MedianAcrossThreeIndependentJvms": 6499,
+          "a4OverA1": 1.5855086606489388,
+          "a1ProcessMedianRange": [
+            3699,
+            5200
+          ],
+          "a4ProcessMedianRange": [
+            4101,
+            7400
+          ]
+        }
+      },
+      "cpuReadings": {
+        "nonZeroStageReadings": 16,
+        "zeroStageReadings": 542,
+        "negativeStageReadings": 0,
+        "interpretation": "CPU stage comparisons are indeterminate when the thread CPU clock quantizes these short batches to zero."
+      }
+    },
+    {
+      "scenario": "A4.memo-frequent-header-writes",
+      "metrics": {
+        "prepareWallNs": {
+          "a1ProcessMedians": {
+            "1": 132199,
+            "2": 108100,
+            "3": 191299
+          },
+          "a4ProcessMedians": {
+            "1": 229500,
+            "2": 387900,
+            "3": 261700
+          },
+          "a1MedianAcrossThreeIndependentJvms": 132199,
+          "a4MedianAcrossThreeIndependentJvms": 261700,
+          "a4OverA1": 1.9795913736109956,
+          "a1ProcessMedianRange": [
+            108100,
+            191299
+          ],
+          "a4ProcessMedianRange": [
+            229500,
+            387900
+          ]
+        },
+        "queryWallNs": {
+          "a1ProcessMedians": {
+            "1": 1314000,
+            "2": 1345700,
+            "3": 856500
+          },
+          "a4ProcessMedians": {
+            "1": 1927300,
+            "2": 2159200,
+            "3": 2338100
+          },
+          "a1MedianAcrossThreeIndependentJvms": 1314000,
+          "a4MedianAcrossThreeIndependentJvms": 2159200,
+          "a4OverA1": 1.643226788432268,
+          "a1ProcessMedianRange": [
+            856500,
+            1345700
+          ],
+          "a4ProcessMedianRange": [
+            1927300,
+            2338100
+          ]
+        },
+        "closeWallNs": {
+          "a1ProcessMedians": {
+            "1": 6000,
+            "2": 4700,
+            "3": 8500
+          },
+          "a4ProcessMedians": {
+            "1": 14400,
+            "2": 21101,
+            "3": 12300
+          },
+          "a1MedianAcrossThreeIndependentJvms": 6000,
+          "a4MedianAcrossThreeIndependentJvms": 14400,
+          "a4OverA1": 2.4,
+          "a1ProcessMedianRange": [
+            4700,
+            8500
+          ],
+          "a4ProcessMedianRange": [
+            12300,
+            21101
+          ]
+        },
+        "serviceWallNsPerRow": {
+          "a1ProcessMedians": {
+            "1": 1484401,
+            "2": 1471300,
+            "3": 1074401
+          },
+          "a4ProcessMedians": {
+            "1": 2190100,
+            "2": 2609201,
+            "3": 2603499
+          },
+          "a1MedianAcrossThreeIndependentJvms": 1471300,
+          "a4MedianAcrossThreeIndependentJvms": 2603499,
+          "a4OverA1": 1.7695228709304696,
+          "a1ProcessMedianRange": [
+            1074401,
+            1484401
+          ],
+          "a4ProcessMedianRange": [
+            2190100,
+            2609201
+          ]
+        },
+        "prepareThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "queryThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "closeThreadCpuNs": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "serviceThreadCpuNsPerRow": {
+          "a1ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a4ProcessMedians": {
+            "1": 0,
+            "2": 0,
+            "3": 0
+          },
+          "a1MedianAcrossThreeIndependentJvms": 0,
+          "a4MedianAcrossThreeIndependentJvms": 0,
+          "a4OverA1": null,
+          "a1ProcessMedianRange": [
+            0,
+            0
+          ],
+          "a4ProcessMedianRange": [
+            0,
+            0
+          ]
+        },
+        "prepareAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 32520,
+            "2": 32776,
+            "3": 33032
+          },
+          "a4ProcessMedians": {
+            "1": 32616,
+            "2": 32616,
+            "3": 32616
+          },
+          "a1MedianAcrossThreeIndependentJvms": 32776,
+          "a4MedianAcrossThreeIndependentJvms": 32616,
+          "a4OverA1": 0.9951183793019283,
+          "a1ProcessMedianRange": [
+            32520,
+            33032
+          ],
+          "a4ProcessMedianRange": [
+            32616,
+            32616
+          ]
+        },
+        "queryAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 1307904,
+            "2": 1352584,
+            "3": 1344584
+          },
+          "a4ProcessMedians": {
+            "1": 1400584,
+            "2": 1400584,
+            "3": 1400584
+          },
+          "a1MedianAcrossThreeIndependentJvms": 1344584,
+          "a4MedianAcrossThreeIndependentJvms": 1400584,
+          "a4OverA1": 1.0416485693716422,
+          "a1ProcessMedianRange": [
+            1307904,
+            1352584
+          ],
+          "a4ProcessMedianRange": [
+            1400584,
+            1400584
+          ]
+        },
+        "closeAllocatedBytes": {
+          "a1ProcessMedians": {
+            "1": 56,
+            "2": 56,
+            "3": 56
+          },
+          "a4ProcessMedians": {
+            "1": 56,
+            "2": 56,
+            "3": 56
+          },
+          "a1MedianAcrossThreeIndependentJvms": 56,
+          "a4MedianAcrossThreeIndependentJvms": 56,
+          "a4OverA1": 1.0,
+          "a1ProcessMedianRange": [
+            56,
+            56
+          ],
+          "a4ProcessMedianRange": [
+            56,
+            56
+          ]
+        },
+        "serviceAllocatedBytesPerRow": {
+          "a1ProcessMedians": {
+            "1": 1340480,
+            "2": 1385416,
+            "3": 1377672
+          },
+          "a4ProcessMedians": {
+            "1": 1433256,
+            "2": 1433256,
+            "3": 1433256
+          },
+          "a1MedianAcrossThreeIndependentJvms": 1377672,
+          "a4MedianAcrossThreeIndependentJvms": 1433256,
+          "a4OverA1": 1.0403463233628905,
+          "a1ProcessMedianRange": [
+            1340480,
+            1385416
+          ],
+          "a4ProcessMedianRange": [
+            1433256,
+            1433256
+          ]
+        },
+        "queryAllocatedBytesPerCompletedOperation": {
+          "a1ProcessMedians": {
+            "1": 1307.904,
+            "2": 1352.584,
+            "3": 1344.584
+          },
+          "a4ProcessMedians": {
+            "1": 1400.584,
+            "2": 1400.584,
+            "3": 1400.584
+          },
+          "a1MedianAcrossThreeIndependentJvms": 1344.584,
+          "a4MedianAcrossThreeIndependentJvms": 1400.584,
+          "a4OverA1": 1.0416485693716422,
+          "a1ProcessMedianRange": [
+            1307.904,
+            1352.584
+          ],
+          "a4ProcessMedianRange": [
+            1400.584,
+            1400.584
+          ]
+        },
+        "lifecycleWallNs": {
+          "a1ProcessMedians": {
+            "1": 1514300,
+            "2": 1491400,
+            "3": 1108500
+          },
+          "a4ProcessMedians": {
+            "1": 2247900,
+            "2": 2725499,
+            "3": 2673601
+          },
+          "a1MedianAcrossThreeIndependentJvms": 1491400,
+          "a4MedianAcrossThreeIndependentJvms": 2673601,
+          "a4OverA1": 1.792678691162666,
+          "a1ProcessMedianRange": [
+            1108500,
+            1514300
+          ],
+          "a4ProcessMedianRange": [
+            2247900,
+            2725499
+          ]
+        },
+        "harnessLifecycleOverheadWallNs": {
+          "a1ProcessMedians": {
+            "1": 25199,
+            "2": 21898,
+            "3": 32700
+          },
+          "a4ProcessMedians": {
+            "1": 66999,
+            "2": 93100,
+            "3": 69102
+          },
+          "a1MedianAcrossThreeIndependentJvms": 25199,
+          "a4MedianAcrossThreeIndependentJvms": 69102,
+          "a4OverA1": 2.7422516766538356,
+          "a1ProcessMedianRange": [
+            21898,
+            32700
+          ],
+          "a4ProcessMedianRange": [
+            66999,
+            93100
+          ]
+        },
+        "harnessMetricsBeforeQueryWallNs": {
+          "a1ProcessMedians": {
+            "1": 3201,
+            "2": 3100,
+            "3": 2900
+          },
+          "a4ProcessMedians": {
+            "1": 5500,
+            "2": 7600,
+            "3": 6001
+          },
+          "a1MedianAcrossThreeIndependentJvms": 3100,
+          "a4MedianAcrossThreeIndependentJvms": 6001,
+          "a4OverA1": 1.9358064516129032,
+          "a1ProcessMedianRange": [
+            2900,
+            3201
+          ],
+          "a4ProcessMedianRange": [
+            5500,
+            7600
+          ]
+        }
+      },
+      "cpuReadings": {
+        "nonZeroStageReadings": 22,
+        "zeroStageReadings": 536,
+        "negativeStageReadings": 0,
+        "interpretation": "CPU stage comparisons are indeterminate when the thread CPU clock quantizes these short batches to zero."
+      }
+    }
+  ]
+}

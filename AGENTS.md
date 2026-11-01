@@ -36,6 +36,7 @@
 | 即将执行的动作 | 必须读取 |
 |---|---|
 | 规划、实现或审查业务/共享逻辑、UI/导航、模块、DI、schema 或构建依赖 | [架构与 UI](docs/agent-guides/architecture-and-ui.md)；Desktop 页面/导航/弹层/列表及原型先读其链接的 UI 规范 |
+| 重新提出、恢复或优化阅读器配对／原图认证／采样／请求复用方案 | [配对研究档案索引](docs/research/reader-pairing/README.md)：先查已有假设、反例及未覆盖条件；有新条件时记录新证据后再评估，暂缓不是永久禁令 |
 | 设计行为测试、确定验证范围、执行 Gradle/产品验证或分析失败 | [验证与接线](docs/agent-guides/verification.md)，文档中的完整测试命令不是执行授权 |
 | 规划 roadmap、维护 manifest/checkoff、代理交接、提交/整合/推送或完成报告 | [进度、交接与报告](docs/agent-guides/governance-and-reporting.md) |
 | Desktop 体验/正式构建、版本分配或 Windows/macOS 产物交付 | [Desktop 构建](docs/agent-guides/desktop-build.md)，同时遵循验证规则 |

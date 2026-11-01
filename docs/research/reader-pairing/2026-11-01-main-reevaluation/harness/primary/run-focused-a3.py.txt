@@ -1,0 +1,93 @@
+from __future__ import annotations
+import hashlib, json, os, shutil, subprocess, sys, time
+from datetime import datetime, timezone
+from pathlib import Path
+from xml.etree import ElementTree as ET
+repo=Path(r"D:/Codex/worktrees/reader-r1-r10-reevaluation-20261101")
+central=Path(r"D:/Codex/worktrees/reader-pairing-research-next-20261014/.gradle-coordinator")
+inputs=repo/".gradle-coordinator/reevaluation/inputs"
+attempt=os.environ.get("REEVAL_ATTEMPT","01")
+if attempt not in {"01","02"}: raise SystemExit("A3 focused run supports only predeclared attempts 01/02")
+out=repo/f".gradle-coordinator/reevaluation/a3-green-attempt-{attempt}"
+raw=out/"raw"
+key=f"reevaluation-a3-green-attempt-{attempt}-20261101"
+if out.exists() and any(out.iterdir()): raise SystemExit(f"Refusing to overwrite prior focused evidence: {out}")
+
+def sha256(path:Path)->str:
+ d=hashlib.sha256()
+ with path.open("rb") as f:
+  for chunk in iter(lambda:f.read(1024*1024),b""): d.update(chunk)
+ return d.hexdigest()
+active=[]; json_count=0
+for p in central.glob("*.json"):
+ json_count+=1
+ if p.stat().st_size>8*1024*1024: raise SystemExit(f"Oversized coordinator state: {p.name}")
+ state=json.loads(p.read_text(encoding="utf-8"))
+ if isinstance(state,dict) and state.get("status") in {"STARTING","RUNNING"}:
+  active.append({"key":p.stem,"status":state.get("status"),"workerPid":state.get("workerPid"),"processPid":state.get("processPid")})
+if active: raise SystemExit(f"Coordinator has active work; no launch: {active}")
+if (central/"luna-resource-fault.json").exists(): raise SystemExit("Resource fault latch exists; no launch")
+methods=[
+ "mihon.domain.reader.ReaderPairingAdoptionCostTest.exact settings validation stays within bounded allocation after warmup",
+ "mihon.domain.reader.ReaderPairingAdoptionCostTest.compact dimension comparison keeps every geometry field and ignores only current side hint",
+ "mihon.domain.reader.ReaderPairingAdoptionCostTest.compact comparison treats absent or mismatched recorded values as changed without throwing",
+ "mihon.domain.reader.ReaderPairingCertificationMemoTest.A03 a changed matching mode and a changed direction reject the stored result",
+]
+profile_base=json.loads((inputs/"domain-focused-resource-profile.json").read_text(encoding="utf-8"))
+profile=dict(profile_base)
+resource_adjustment=None
+if attempt=="02":
+ profile["gradleJvmargs"]="-Xmx640m -XX:MaxMetaspaceSize=384m -Dfile.encoding=UTF-8"
+ resource_adjustment={"reason":"A3 attempt-01 hit process soft limit by 1.71 MiB; reduce only Gradle heap for source compilation","originalGradleJvmargs":profile_base["gradleJvmargs"],"effectiveGradleJvmargs":profile["gradleJvmargs"],"testHeapUnchanged":True,"guardAndWorkersUnchanged":True}
+argv=[sys.executable,str(repo/"scripts/gradle-coordinator.py"),"run","--state-dir",str(central),"--key",key,"--timeout-seconds",str(profile["timeoutSeconds"]),"--",
+ sys.executable,str(inputs/"windows_memory_guard.py"),"--job-mib",str(profile["jobMiB"]),"--process-mib",str(profile["processMiB"]),
+ "--reserve-phys-mib",str(profile["reservePhysicalMiB"]),"--reserve-commit-mib",str(profile["reserveCommitMiB"]),"--startup-phys-mib",str(profile["startupPhysicalMiB"]),"--timeout-seconds",str(profile["timeoutSeconds"]),"--state-dir",str(central),"--",
+ str(repo/"gradlew.bat"),"--offline","--console=plain","--no-daemon","--no-parallel","--max-workers=1",f"-Dorg.gradle.jvmargs={profile['gradleJvmargs']}",
+ "-I",str(inputs/"cp1-luna-p5.init.gradle"),"-I",str(inputs/"disable-retries.init.gradle"),
+ "-I",str(inputs/"reevaluation-benchmark.init.gradle"),"-Preeval.variant=a3",
+ f"-Pcp1.test.maxHeapSize={profile['testMaxHeap']}",":domain:jvmTest"]
+for method in methods: argv += ["--tests",method]
+record={"key":key,"attempt":attempt,"runnerSha256":sha256(Path(__file__)),"frozenHead":subprocess.run(["git","rev-parse","HEAD"],cwd=repo,check=True,capture_output=True,text=True,encoding="utf-8",creationflags=subprocess.CREATE_NO_WINDOW).stdout.strip(),
+  "trackedProductionFiles":{
+   "domain/src/commonMain/kotlin/mihon/domain/reader/SharedSpreadMatching.kt":sha256(repo/"domain/src/commonMain/kotlin/mihon/domain/reader/SharedSpreadMatching.kt"),
+   "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertificationMemo.kt":sha256(repo/"domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertificationMemo.kt"),
+   "domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageSession.kt":sha256(repo/"domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageSession.kt"),
+  },
+  "testSources":{
+   "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingAdoptionCostTest.kt":sha256(repo/"domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingAdoptionCostTest.kt"),
+   "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingCertificationMemoTest.kt":sha256(repo/"domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingCertificationMemoTest.kt"),
+  },
+ "harnessProtocol":"four exact A3 GREEN methods only; same benchmark init/source set as cost run; no retries; 0 skips required","methodSelectors":methods,"argv":argv,"coordinatorJsonCountBeforeLaunch":json_count,"activeBeforeLaunch":active,
+ "guardSha256":sha256(inputs/"windows_memory_guard.py"),"retryInitSha256":sha256(inputs/"disable-retries.init.gradle"),
+ "benchmarkInitSha256":sha256(inputs/"reevaluation-benchmark.init.gradle"),"benchmarkHarnessSha256":sha256(inputs/"ReaderPairingReevaluationBenchmark.kt"),"baseResourceProfile":profile_base,"resourceAdjustment":resource_adjustment,"resourceProfile":profile}
+out.mkdir(parents=True,exist_ok=True); raw.mkdir()
+(out/"argv.json").write_text(json.dumps(record,indent=2)+"\n",encoding="utf-8")
+env=os.environ.copy(); env.update({"PYTHONUTF8":"1","PYTHONIOENCODING":"utf-8","PYTHONDONTWRITEBYTECODE":"1"})
+started=time.monotonic(); start_utc=datetime.now(timezone.utc).isoformat()
+result=subprocess.run(argv,cwd=repo,env=env,stdin=subprocess.DEVNULL,capture_output=True,text=True,encoding="utf-8",creationflags=subprocess.CREATE_NO_WINDOW)
+(out/"coordinator.stdout.txt").write_text(result.stdout,encoding="utf-8"); (out/"coordinator.stderr.txt").write_text(result.stderr,encoding="utf-8")
+for suffix in ("json","log"):
+ original=central/f"{key}.{suffix}"
+ if original.exists(): shutil.copy2(original,raw/original.name)
+xml_relatives=[
+ "domain/build/test-results/jvmTest/TEST-mihon.domain.reader.ReaderPairingAdoptionCostTest.xml",
+ "domain/build/test-results/jvmTest/TEST-mihon.domain.reader.ReaderPairingCertificationMemoTest.xml",
+]
+counts={"tests":0,"failures":0,"errors":0,"skipped":0}; testcase_rows=[]; copied_xml=[]
+for relative in xml_relatives:
+ xml=repo/relative
+ if not xml.exists(): continue
+ copied=raw/xml.name; shutil.copy2(xml,copied); copied_xml.append(xml.name)
+ for _,element in ET.iterparse(copied,events=("end",)):
+  tag=element.tag.rsplit("}",1)[-1]
+  if tag=="testsuite":
+   for field in counts: counts[field]+=int(element.attrib.get(field,"0"))
+  elif tag=="testcase":
+   testcase_rows.append({"name":element.attrib.get("name"),"classname":element.attrib.get("classname"),"failureCount":sum(1 for c in element if c.tag.rsplit("}",1)[-1]=="failure"),"errorCount":sum(1 for c in element if c.tag.rsplit("}",1)[-1]=="error"),"skipped":any(c.tag.rsplit("}",1)[-1]=="skipped" for c in element)})
+  if tag in {"testcase","testsuite"}: element.clear()
+(raw/"testcases.json").write_text(json.dumps(testcase_rows,indent=2)+"\n",encoding="utf-8")
+summary={"key":key,"attempt":attempt,"startUtc":start_utc,"elapsedSeconds":round(time.monotonic()-started,3),"exitCode":result.returncode,"testTotals":counts,"testcaseRows":testcase_rows,"copiedXml":copied_xml,"stdoutSha256":hashlib.sha256(result.stdout.encode()).hexdigest(),"stderrSha256":hashlib.sha256(result.stderr.encode()).hexdigest()}
+(out/"launcher-result.json").write_text(json.dumps(summary,indent=2)+"\n",encoding="utf-8")
+print(json.dumps(summary,ensure_ascii=False))
+if result.returncode!=0: raise SystemExit(result.returncode)
+if counts!={"tests":4,"failures":0,"errors":0,"skipped":0} or len(testcase_rows)!=4 or len(copied_xml)!=2: raise SystemExit("A3 focused GREEN did not execute exactly four passing, non-skipped tests across both source classes")

@@ -1,0 +1,141 @@
+from __future__ import annotations
+
+import json
+import statistics
+from pathlib import Path
+
+
+repo = Path.cwd()
+a4_root = repo / ".gradle-coordinator/reevaluation/costs/a4-attempt-01"
+a1_root = Path("D:/Codex/worktrees/reader-r1-r10-reevaluation-20261101/.gradle-coordinator/reevaluation/costs/a1-attempt-01")
+variants = {
+    "a1": a1_root,
+    "a4": a4_root,
+}
+scenarios = [
+    "A1.distant-edge-early-reject",
+    "A1.similar-edge-full-score",
+    "A2.owner-index-large-176",
+    "A2.owner-index-small-8",
+    "A3.settings-exact-default-empty",
+    "A3.settings-exact-small-4",
+    "A3.settings-exact-large-64",
+    "A3.settings-exact-tail-change-64",
+    "A4.memo-unchanged-repeated",
+    "A4.memo-frequent-header-writes",
+]
+metrics = [
+    "prepareWallNs",
+    "queryWallNs",
+    "closeWallNs",
+    "serviceWallNsPerRow",
+    "prepareThreadCpuNs",
+    "queryThreadCpuNs",
+    "closeThreadCpuNs",
+    "serviceThreadCpuNsPerRow",
+    "prepareAllocatedBytes",
+    "queryAllocatedBytes",
+    "closeAllocatedBytes",
+    "serviceAllocatedBytesPerRow",
+    "queryAllocatedBytesPerCompletedOperation",
+    "lifecycleWallNs",
+    "harnessLifecycleOverheadWallNs",
+    "harnessMetricsBeforeQueryWallNs",
+]
+
+
+def read_rows(root: Path) -> list[dict]:
+    path = root / "raw/samples.jsonl"
+    with path.open("r", encoding="utf-8") as stream:
+        return [json.loads(line) for line in stream if line.strip()]
+
+
+rows = {variant: read_rows(root) for variant, root in variants.items()}
+for variant, data in rows.items():
+    if len(data) != 930:
+        raise SystemExit(f"{variant}: expected 930 measured rows, found {len(data)}")
+    if any(row.get("sampleStatus") != "PASS" for row in data):
+        raise SystemExit(f"{variant}: a failed sample exists; preserve denominator")
+    if any(row.get("completedOperations") != 1000 or row.get("inputSeed") != 739 for row in data):
+        raise SystemExit(f"{variant}: fixed workload metadata mismatch")
+
+
+def grouped(variant: str, scenario: str, process: int) -> list[dict]:
+    found = [row for row in rows[variant] if row["scenario"] == scenario and row["process"] == process]
+    if len(found) != 31 or len({row["sample"] for row in found}) != 31:
+        raise SystemExit(f"{variant}/{scenario}/process-{process}: expected 31 distinct samples, got {len(found)}")
+    return found
+
+
+def median(values: list[int | float]) -> int | float:
+    return statistics.median(values)
+
+
+comparisons = []
+for scenario in scenarios:
+    result = {"scenario": scenario, "metrics": {}}
+    a1_workers = {process: grouped("a1", scenario, process) for process in (1, 2, 3)}
+    a4_workers = {process: grouped("a4", scenario, process) for process in (1, 2, 3)}
+    for row in rows["a1"] + rows["a4"]:
+        if row["scenario"] != scenario:
+            continue
+        if row["serviceWallNsPerRow"] != row["prepareWallNs"] + row["queryWallNs"] + row["closeWallNs"]:
+            raise SystemExit(f"{row['variant']}/{scenario}: wall service total does not equal stage sum")
+        if row["serviceAllocatedBytesPerRow"] != row["prepareAllocatedBytes"] + row["queryAllocatedBytes"] + row["closeAllocatedBytes"]:
+            raise SystemExit(f"{row['variant']}/{scenario}: allocation service total does not equal stage sum")
+    for metric in metrics:
+        process_medians = {}
+        for variant, process_rows in (("a1", a1_workers), ("a4", a4_workers)):
+            process_medians[variant] = {
+                str(process): median([row[metric] for row in sample_rows])
+                for process, sample_rows in process_rows.items()
+            }
+        a1_values = list(process_medians["a1"].values())
+        a4_values = list(process_medians["a4"].values())
+        a1_center = median(a1_values)
+        a4_center = median(a4_values)
+        result["metrics"][metric] = {
+            "a1ProcessMedians": process_medians["a1"],
+            "a4ProcessMedians": process_medians["a4"],
+            "a1MedianAcrossThreeIndependentJvms": a1_center,
+            "a4MedianAcrossThreeIndependentJvms": a4_center,
+            "a4OverA1": (a4_center / a1_center) if a1_center else None,
+            "a1ProcessMedianRange": [min(a1_values), max(a1_values)],
+            "a4ProcessMedianRange": [min(a4_values), max(a4_values)],
+        }
+    cpu_values = [
+        row[field]
+        for variant in ("a1", "a4")
+        for row in rows[variant]
+        if row["scenario"] == scenario
+        for field in ("prepareThreadCpuNs", "queryThreadCpuNs", "closeThreadCpuNs")
+    ]
+    result["cpuReadings"] = {
+        "nonZeroStageReadings": sum(value > 0 for value in cpu_values),
+        "zeroStageReadings": sum(value == 0 for value in cpu_values),
+        "negativeStageReadings": sum(value < 0 for value in cpu_values),
+        "interpretation": "CPU stage comparisons are indeterminate when the thread CPU clock quantizes these short batches to zero.",
+    }
+    comparisons.append(result)
+
+
+output = {
+    "comparison": "A4 (isolated A1+A4 tree) versus A1-only accepted control",
+    "comparisonLimit": "Separate Gradle runs and separate JVMs; per-process medians summarize three independent JVMs and are not same-process A/B pairs.",
+    "a1RawDirectory": str(a1_root / "raw"),
+    "a4RawDirectory": str(a4_root / "raw"),
+    "sampleIntegrity": {
+        variant: {
+            "rows": len(data),
+            "passed": sum(row["sampleStatus"] == "PASS" for row in data),
+            "failed": sum(row["sampleStatus"] != "PASS" for row in data),
+            "processes": sorted({row["process"] for row in data}),
+            "scenarios": sorted({row["scenario"] for row in data}),
+        }
+        for variant, data in rows.items()
+    },
+    "scenarioComparisons": comparisons,
+}
+out_path = a4_root / "a4-vs-a1-recalc.json"
+out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+print(json.dumps({"output": str(out_path), "integrity": output["sampleIntegrity"], "scenarioCount": len(comparisons)}, ensure_ascii=False))

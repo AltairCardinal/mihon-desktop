@@ -1,0 +1,86 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+
+repo = Path(r"D:/Codex/worktrees/reader-r1-r10-reevaluation-20261101")
+central = Path(r"D:/Codex/worktrees/reader-pairing-research-next-20261014/.gradle-coordinator")
+inputs = repo / ".gradle-coordinator/reevaluation/inputs"
+out = repo / ".gradle-coordinator/reevaluation/baseline-red-01"
+key = "reevaluation-red-a-20261101-02"
+coord = repo / "scripts/gradle-coordinator.py"
+guard = inputs / "windows_memory_guard.py"
+cp1 = inputs / "cp1-luna-p5.init.gradle"
+no_retry = inputs / "disable-retries.init.gradle"
+test_source = repo / "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingAdoptionCostTest.kt"
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+argv = [
+    sys.executable, str(coord), "run", "--state-dir", str(central), "--key", key,
+    "--timeout-seconds", "1800", "--",
+    sys.executable, str(guard), "--job-mib", "3072", "--process-mib", "2048",
+    "--reserve-phys-mib", "4096", "--reserve-commit-mib", "8192",
+    "--startup-phys-mib", "7168", "--timeout-seconds", "1800",
+    "--state-dir", str(central), "--",
+    str(repo / "gradlew.bat"), "--offline", "--console=plain", "--no-daemon",
+    "--no-parallel", "--max-workers=1",
+    "-Dorg.gradle.jvmargs=-Xmx768m -XX:MaxMetaspaceSize=384m -Dfile.encoding=UTF-8",
+    "-I", str(cp1), "-I", str(no_retry), "-Pcp1.test.maxHeapSize=256m",
+    ":domain:jvmTest", "--tests", "mihon.domain.reader.ReaderPairingAdoptionCostTest",
+]
+run_record = {
+    "key": key,
+    "cwd": str(repo),
+    "frozenHead": subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True,
+        text=True, encoding="utf-8", creationflags=subprocess.CREATE_NO_WINDOW,
+    ).stdout.strip(),
+    "testSource": str(test_source),
+    "testSourceSha256": sha256(test_source),
+    "guardSha256": sha256(guard),
+    "cp1InitSha256": sha256(cp1),
+    "retryInitSha256": sha256(no_retry),
+    "argv": argv,
+    "guardLimitsMiB": {
+        "job": 3072, "process": 2048, "reservePhysical": 4096,
+        "reserveCommit": 8192, "startupPhysical": 7168,
+    },
+}
+out.mkdir(parents=True, exist_ok=True)
+(out / "argv.json").write_text(json.dumps(run_record, indent=2) + "\n", encoding="utf-8")
+env = os.environ.copy()
+env.update({"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", "PYTHONDONTWRITEBYTECODE": "1"})
+started = time.monotonic()
+start_utc = datetime.now(timezone.utc).isoformat()
+result = subprocess.run(
+    argv, cwd=repo, env=env, stdin=subprocess.DEVNULL, capture_output=True,
+    text=True, encoding="utf-8", creationflags=subprocess.CREATE_NO_WINDOW,
+)
+(out / "coordinator.stdout.txt").write_text(result.stdout, encoding="utf-8")
+(out / "coordinator.stderr.txt").write_text(result.stderr, encoding="utf-8")
+summary = {
+    "key": key,
+    "startUtc": start_utc,
+    "elapsedSeconds": round(time.monotonic() - started, 3),
+    "exitCode": result.returncode,
+    "stdoutSha256": hashlib.sha256(result.stdout.encode("utf-8")).hexdigest(),
+    "stderrSha256": hashlib.sha256(result.stderr.encode("utf-8")).hexdigest(),
+}
+(out / "launcher-result.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+print(result.stdout, end="")
+if result.stderr:
+    print(result.stderr, file=sys.stderr, end="")
+print(json.dumps(summary, ensure_ascii=False))
+raise SystemExit(result.returncode)
