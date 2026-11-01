@@ -62,6 +62,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SecondaryScrollableTabRow
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -114,6 +116,7 @@ import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import mihon.desktop.BuildInfo
@@ -288,6 +291,13 @@ class LibraryRootScreen : Screen {
         val screenModelFactory = LocalLibraryScreenModelFactory.current
         val model = rememberScreenModel { screenModelFactory() }
         val state by model.state.collectAsState()
+        val downloadSnackbar = remember { SnackbarHostState() }
+        LaunchedEffect(model) {
+            model.downloadMessages.collectLatest { message ->
+                downloadSnackbar.currentSnackbarData?.dismiss()
+                downloadSnackbar.showSnackbar(message)
+            }
+        }
         val manualTrackingFeedback by model.manualTracking?.feedback?.collectAsState()
             ?: remember { mutableStateOf<String?>(null) }
         LaunchedEffect(manualTrackingFeedback) {
@@ -425,7 +435,7 @@ class LibraryRootScreen : Screen {
                 model.clearOperationResults()
                 scope.launchAcceptedLibraryOperation(
                     desktopDependencies.notificationService,
-                    feedback = { model.state.value.batchCategoryResultMessage },
+                    feedback = { model.state.value.downloadResultMessage },
                     operation = task,
                 )
             },
@@ -534,7 +544,7 @@ class LibraryRootScreen : Screen {
                         model.clearOperationResults()
                         scope.launchAcceptedLibraryOperation(
                             desktopDependencies.notificationService,
-                            feedback = { model.state.value.batchCategoryResultMessage },
+                            feedback = { model.state.value.downloadResultMessage },
                         ) { model.enqueueDownloads(listOf(ctxManga), MangaDetailDownloadAction.NEXT_1_CHAPTER) }
                     },
                     onDownloadAllUnread = {
@@ -542,7 +552,7 @@ class LibraryRootScreen : Screen {
                         model.clearOperationResults()
                         scope.launchAcceptedLibraryOperation(
                             desktopDependencies.notificationService,
-                            feedback = { model.state.value.batchCategoryResultMessage },
+                            feedback = { model.state.value.downloadResultMessage },
                         ) { model.enqueueDownloads(listOf(ctxManga), MangaDetailDownloadAction.UNREAD_CHAPTERS) }
                     },
                     canDownload = ctxManga.manga.source != 0L,
@@ -616,6 +626,7 @@ class LibraryRootScreen : Screen {
 
         Scaffold(
             contentWindowInsets = WindowInsets(0),
+            snackbarHost = { SnackbarHost(downloadSnackbar) },
             // ── Selection action bar ───────────────────────────────────────
             bottomBar = {
                 if (selectionState.isInSelectionMode) {
@@ -826,17 +837,23 @@ class LibraryRootScreen : Screen {
                 }
 
                 if (updateStatusText != null) {
-                    Text(
-                        text = updateStatusText!!,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    )
-                    if (state.updateTask?.libraryUpdate != null) {
-                        TextButton(
-                            onClick = { showUpdateResults = true },
-                            modifier = Modifier.focusRequester(updateResultsFocusRequester),
-                        ) { Text(MR.strings.desktop_library_update_results.localized()) }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = updateStatusText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.weight(1f, fill = false).padding(vertical = 4.dp),
+                        )
+                        if (state.updateTask?.libraryUpdate != null) {
+                            TextButton(
+                                onClick = { showUpdateResults = true },
+                                modifier = Modifier.focusRequester(updateResultsFocusRequester),
+                            ) { Text(MR.strings.desktop_library_update_results.localized()) }
+                        }
                     }
                 }
 

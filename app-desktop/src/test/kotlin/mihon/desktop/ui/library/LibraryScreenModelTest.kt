@@ -1294,12 +1294,16 @@ class LibraryScreenModelTest {
 
         assertEquals(LibraryBatchDownloadResult(queued = 2, skipped = 4, failures = 1), result)
         assertEquals(listOf(5L, 6L), enqueued)
-        assertEquals("2 queued, 4 skipped, 1 failed", model.state.value.batchCategoryResultMessage)
+        assertEquals(
+            "Added 2 chapters to the download queue\nDownload failed. Please retry.",
+            model.state.value.downloadResultMessage,
+        )
+        assertNull(model.state.value.batchCategoryResultMessage)
         assertEquals(
             LibraryBatchDownloadResult(),
             model.enqueueDownloads(emptyList(), MangaDetailDownloadAction.UNREAD_CHAPTERS),
         )
-        assertEquals("No manga selected", model.state.value.batchCategoryResultMessage)
+        assertEquals("No manga selected", model.state.value.downloadResultMessage)
     }
 
     @Test

@@ -288,6 +288,53 @@ class LibraryPageCompositionTest {
 
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
+    fun `update results follows summary on the same row and opens the real results dialog`() = runTest {
+        for (width in listOf(1_200, 420)) {
+            val repository = FakeMangaRepository()
+            val task = mihon.desktop.task.StoredTask(
+                task = mihon.domain.task.BackgroundTask("layout-update", "layout-update"),
+                status = mihon.domain.task.TaskStatus.Completed,
+                libraryUpdate = mihon.desktop.task.LibraryUpdateContext(
+                    trigger = mihon.desktop.task.LibraryUpdateTrigger.MANUAL,
+                    scope = mihon.desktop.task.LibraryUpdateScope.ALL,
+                    units = emptyList(),
+                ),
+            )
+            val model = LibraryScreenModel(
+                getLibraryManga = GetLibraryManga(repository),
+                getCategories = GetCategories(FakeCategoryRepository()),
+                backgroundUpdateObservations = kotlinx.coroutines.flow.flowOf(
+                    mihon.desktop.domain.LibraryUpdateObservation(task),
+                ),
+            )
+            val scene = rootScene(model, sceneWidth = width)
+            try {
+                val statusDeadline = System.nanoTime() + 2_000_000_000L
+                while (model.state.value.updateStatusText == null && System.nanoTime() < statusDeadline) {
+                    settleContextMenu(scene)
+                }
+                settleContextMenu(scene)
+                val summary = requireNotNull(model.state.value.updateStatusText)
+                val label = MR.strings.desktop_library_update_results.localized()
+                val text = nodes(scene).first { semanticLabels(it).contains(summary) }.boundsInWindow
+                val button = nodes(scene).first {
+                    it.config.contains(androidx.compose.ui.semantics.SemanticsActions.OnClick) &&
+                        semanticLabels(it).contains(label)
+                }.boundsInWindow
+                assertTrue(button.left >= text.right, "Results must follow the summary")
+                assertTrue(button.top < text.bottom && button.bottom > text.top, "Results must share the summary row")
+                assertTrue(button.right <= width, "Results button must remain inside a narrow window")
+                pointerClick(scene, label)
+                settleContextMenu(scene)
+                assertTrue(semanticLabels(scene).contains(MR.strings.action_close.localized()))
+            } finally {
+                scene.close()
+            }
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
     fun `context menu follows actual secondary click in every layout and stays inside window edges`() = runTest {
         val items = (1L..80L).map { sampleLibraryManga(sampleManga(it, "Context $it", 7L)) }
         val model = rootModel(items)
@@ -333,7 +380,7 @@ class LibraryPageCompositionTest {
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
     fun `context all unread pointer click preserves manga and reports success empty and failure`() = runTest {
-        for (outcome in listOf("success", "empty", "failure")) {
+        for (outcome in listOf("success", "empty", "queued", "failure")) {
             val manga = sampleManga(94L, "Download context", 7L)
             val other = sampleManga(95L, "Selected other", 7L)
             val repository = FakeMangaRepository().apply {
@@ -362,7 +409,7 @@ class LibraryPageCompositionTest {
                 getLibraryManga = GetLibraryManga(repository),
                 getCategories = GetCategories(FakeCategoryRepository()),
                 getChaptersByMangaId = GetChaptersByMangaId(chapters),
-                isChapterQueued = { it.id == 1L },
+                isChapterQueued = { it.id == 1L || outcome == "queued" },
                 enqueueDownload = {
                     if (outcome == "failure") error("download unavailable")
                     enqueued += it.chapterId
@@ -390,30 +437,49 @@ class LibraryPageCompositionTest {
                         labels.indexOf(MR.strings.desktop_ui_download_next_unread.localized()),
                 )
                 pointerClick(scene, "Download all unread chapters")
-                withContext(kotlinx.coroutines.Dispatchers.Default.limitedParallelism(1)) {
-                    withTimeout(2_000) { while (model.state.value.batchCategoryResultMessage == null) delay(10) }
+                val expected = when (outcome) {
+                    "success" -> "Added 2 chapters to the download queue"
+                    "empty" -> "No unread chapters"
+                    "queued" -> "No unread chapters available to add"
+                    else -> MR.strings.desktop_ui_download_failed.localized()
+                }
+                val deadline = System.nanoTime() + 2_000_000_000L
+                while (expected !in semanticLabels(scene) && System.nanoTime() < deadline) {
+                    settleContextMenu(scene)
+                }
+                assertTrue(expected in semanticLabels(scene), "Missing download bubble: $outcome")
+                assertEquals(if (outcome == "success") listOf(3L, 2L) else emptyList<Long>(), enqueued.toList())
+                assertEquals(null, model.state.value.batchCategoryResultMessage)
+                val bubble = nodes(scene).first {
+                    it.config.contains(androidx.compose.ui.semantics.SemanticsActions.Dismiss)
+                }
+                if (outcome == "success") {
+                    withContext(kotlinx.coroutines.Dispatchers.Default) { delay(4_250) }
+                } else {
+                    assertTrue(
+                        requireNotNull(
+                            bubble.config[androidx.compose.ui.semantics.SemanticsActions.Dismiss].action,
+                        ).invoke(),
+                    )
                 }
                 settleContextMenu(scene)
-                assertEquals(
-                    if (outcome ==
-                        "success"
+                assertTrue(expected !in semanticLabels(scene), "Download feedback must disappear without leaving a row")
+                model.setSearchQuery("")
+                settleContextMenu(scene)
+                assertTrue(expected !in semanticLabels(scene), "Recomposition must not replay old feedback")
+                if (outcome == "empty") {
+                    val sameTarget = contextItems(scene).first { semanticLabels(it).contains(manga.title) }
+                    secondaryClick(scene, sameTarget.boundsInWindow.center)
+                    settleContextMenu(scene)
+                    pointerClick(scene, "Download all unread chapters")
+                    val repeatDeadline = System.nanoTime() + 2_000_000_000L
+                    while (expected !in semanticLabels(scene) &&
+                        System.nanoTime() < repeatDeadline
                     ) {
-                        listOf(3L, 2L)
-                    } else {
-                        emptyList<Long>()
-                    },
-                    enqueued.toList(),
-                    outcome,
-                )
-                assertEquals(
-                    when (outcome) {
-                        "success" -> "2 queued, 1 skipped, 0 failed"
-                        "empty" -> "0 queued, 0 skipped, 0 failed"
-                        else -> "0 queued, 1 skipped, 2 failed"
-                    },
-                    model.state.value.batchCategoryResultMessage,
-                )
-                assertTrue(semanticLabels(scene).contains(requireNotNull(model.state.value.batchCategoryResultMessage)))
+                        settleContextMenu(scene)
+                    }
+                    assertTrue(expected in semanticLabels(scene), "A repeated action must show an identical new bubble")
+                }
                 assertEquals(1, selectionCount(scene), "Context action must preserve the unrelated selection")
                 assertEquals(null, model.state.value.contextMenuManga)
             } finally {
@@ -615,7 +681,7 @@ class LibraryPageCompositionTest {
             settleContextMenu(scene)
             pointerClick(scene, MR.strings.desktop_ui_download_next_unread.localized())
             withContext(kotlinx.coroutines.Dispatchers.Default.limitedParallelism(1)) {
-                withTimeout(2_000) { while (model.state.value.batchCategoryResultMessage == null) delay(10) }
+                withTimeout(2_000) { while (model.state.value.downloadResultMessage == null) delay(10) }
             }
             assertEquals(listOf(manga.id), enqueued.map { it.mangaId })
             assertEquals(listOf(921L), enqueued.map { it.chapterId })
@@ -1368,8 +1434,10 @@ class LibraryPageCompositionTest {
         uriHandler: UriHandler = object : UriHandler {
             override fun openUri(uri: String) = Unit
         },
+        sceneWidth: Int = 1_200,
     ): ImageComposeScene =
-        ImageComposeScene(1_200, 900, coroutineContext = kotlinx.coroutines.Dispatchers.Unconfined) {}.also { scene ->
+        ImageComposeScene(sceneWidth, 900, coroutineContext = kotlinx.coroutines.Dispatchers.Unconfined) {
+        }.also { scene ->
             scene.setContent {
                 CompositionLocalProvider(
                     LocalDesktopUiDependencies provides mockk<DesktopUiDependencies>(relaxed = true) {
