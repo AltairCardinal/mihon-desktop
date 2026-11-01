@@ -21,6 +21,7 @@ kotlin {
                 implementation(compose.ui)
                 api(projects.i18n)
                 implementation(projects.domain)
+                implementation(projects.core.common)
             }
         }
         commonTest {

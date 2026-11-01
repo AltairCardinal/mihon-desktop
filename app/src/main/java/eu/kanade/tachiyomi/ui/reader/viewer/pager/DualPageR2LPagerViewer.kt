@@ -210,8 +210,12 @@ class DualPageR2LPagerViewer(
         }
 
         pager.pageTurnRippleEnabled = config.pageTurnRipple
+        pager.rippleMode = config.pageTurnRippleMode
         config.pageTurnRippleChangedListener = { enabled ->
             pager.pageTurnRippleEnabled = enabled
+        }
+        config.pageTurnRippleModeChangedListener = { mode ->
+            pager.rippleMode = mode
         }
         pager.swipeListener = { direction ->
             when (direction) {
@@ -350,6 +354,9 @@ class DualPageR2LPagerViewer(
     private fun moveToPrevious() = if (isRtl) moveRight() else moveLeft()
 
     private fun moveLeft() {
+        if (config.pageTurnRipple) {
+            pager.prepareRipple(Pager.RippleDirection.LEFT_TO_RIGHT)
+        }
         if (navigateSource(forward = isRtl)) return
         if (pager.currentItem != 0) {
             if (config.pageTurnRipple) {
@@ -357,10 +364,15 @@ class DualPageR2LPagerViewer(
             } else {
                 pager.setCurrentItem(pager.currentItem - 1, config.usePageTransitions)
             }
+        } else {
+            pager.cancelRipple()
         }
     }
 
     private fun moveRight() {
+        if (config.pageTurnRipple) {
+            pager.prepareRipple(Pager.RippleDirection.RIGHT_TO_LEFT)
+        }
         if (navigateSource(forward = !isRtl)) return
         if (pager.currentItem != adapter.count - 1) {
             if (config.pageTurnRipple) {
@@ -368,6 +380,8 @@ class DualPageR2LPagerViewer(
             } else {
                 pager.setCurrentItem(pager.currentItem + 1, config.usePageTransitions)
             }
+        } else {
+            pager.cancelRipple()
         }
     }
 
@@ -385,9 +399,16 @@ class DualPageR2LPagerViewer(
         val wasReplacing = replacingPairing
         replacingPairing = true
         try {
-            val target = adapter.navigate(chapter, forward) ?: return false
+            val target = adapter.navigate(chapter, forward)
+            if (target == null) {
+                pager.cancelRipple()
+                return false
+            }
             val position = adapter.items.indexOfFirst { it is DisplayPage && it.containsPage(target) }
-            if (position < 0) return false
+            if (position < 0) {
+                pager.cancelRipple()
+                return false
+            }
             if (config.pageTurnRipple) {
                 val rippleDirection = if (position > pager.currentItem) {
                     Pager.RippleDirection.RIGHT_TO_LEFT

@@ -473,11 +473,28 @@ CUSTOM 最小倍率、PAN_LIMIT_OUTSIDE 和 scale/center。因此高清采样可
 尺寸预置；未知裁边先按完整页保守采样，原 decoder 返回实际尺寸后再精确映射，不增加读图或更换 decoder。
 镜像目标按完整视口反解；裁边/有效源区域继续在固定 Fit 内居中。
 Android 槽内 Fit 宽高与坐标保留浮点精度，不分别向下截断宽高后再次 CENTER_INSIDE；否则非整数缩放会让
-贴脊边缘退开。共享 Fit 向量保留原整像素布局基线，Android 浮点矩形与其允许小于 1 像素的表达差异，
-贴脊与原生绘制映射另作精确验证。SSIV adapter 反解 source center 时匹配当前 SSIV `preDraw` 的整数视口半宽高，
-整组缩放仍以浮点视口中心为 pivot；升级 SSIV 时须复验奇数视口、镜像和缩放复位，不把该整数处理扩散到整组相机。
+贴脊边缘退开。槽位同时传入原始 Fit 比例及贴脊方向；解码后的方向修正尺寸未改变时，不能从 RectF 高度相减再
+反算比例或再次 CENTER_INSIDE。裁边／有效源区域改变尺寸时仍在原 Fit 内居中。共享 Fit 向量保留原整像素布局基线，
+Android 浮点矩形与其允许小于 1 像素的表达差异。
+整组相机仍以浮点视口中心为 pivot；未改变源尺寸的两页将变换后的共同书脊落在同一物理像素边界，只平移整个图像，
+不改变比例或增加重叠。SSIV adapter 从该书脊反解 source center，匹配当前 SSIV `preDraw` 的整数视口半宽高；
+原生乘加后的瓦片整数边界若仍因浮点误差退开，最多检查四个相邻可表示的 source center，以消除反算舍入误差。
+SSIV 瓦片坐标会截断为整数，因此仅断言原生坐标误差小于 0.001 不足以保证没有白缝；回归必须执行编码流的真实瓦片
+网格、矩阵及最终 Canvas，检查共同高度范围的书脊像素，并断言宿主窗口后续布局仍保持请求的实际尺寸。
+升级 SSIV 时须复验奇数视口、单侧／双侧镜像和缩放复位，不把该整数处理扩散到整组相机。
+SSIV 在自身尺寸变化时会设置 pending center；adapter 必须失效已缓存的原生 pose，在下一次绘制前重新应用书脊变换，
+避免窗口放大再缩回时保留上一个尺寸的中心点。
 动画图片使用同一 drawable 的外部绘制矩阵，保留原动画时钟。背景只画实际图像矩形，避免全屏子 View 互相遮盖。
 普通单页没有这项视口适配，沿用原生控件的既有手势。窗口变化可重算 Fit，伙伴迟到不是重算当前页的理由。
+
+Android 水波继续由现有 `Pager` 保存旧视口快照和绘制擦除层，滑动直接发出翻页请求，不建立第二套位置或加载 owner。
+开启水波后，阅读器和全局 E-Ink 设置才显示方案选择；未保存模式时默认 `SHADOW_LINE`，保留旧主干的分步阴影线视觉；
+显式保存的 `CLEAN`（无阴影分步）、`SHADOW_LINE` 和 `SMOOTH` 均继续读取，
+`SMOOTH` 对应方案 A：以 `SystemClock.uptimeMillis()`、16ms Handler 和 `DecelerateInterpolator(1.2f)`
+自行计算 280ms 进度，不依赖 `ValueAnimator` 或修改系统动画缩放。此技术约束不保证厂商墨水屏刷新驱动的实际显示效果。
+双页源导航必须在 session/adapter 重组前准备旧快照；已经准备快照时，目标复用同一 pager 索引仍应播放转场。
+关闭水波、窗口分离或准备时没有有效尺寸，均停止本 Pager 的回调并释放快照；无尺寸时直接定位，尺寸恢复后仍可再次准备。
+
 
 Android 双槽与半槽 Single 放大后，单指拖动先平移整组相机；达到完整视口相机的左右边界后继续向外水平拖动，
 允许原父 Pager 在同次手势的后续 MOVE 接管并翻整组。交接时仅重置原生 Pager 的拖动距离与速度起点，
@@ -836,6 +853,12 @@ Desktop 开发对照使用原 B2 encoded payload、正常 Factory／图片 owner
 Android 的 trim 回调设置 pressure，而原普通 HTTP／native 工作转 idle、Activity resume 或 focus 回来时，会查询真实 ActivityManager.MemoryInfo.lowMemory 并据此解除。这是自动恢复边界，不能在测试中把瞬时 trim 当成持续低内存。实际 false 区间可以启动可选工作；再次 true 后不能新增可选 IO／解码，已入物理 decoder 的有界工作按原每条 edge 的 canContinue 检查退出，计数只在实际 completion 清除。开发采样须记录此真实压力波形；持续 foreground busy 的原 SSIV／Coil 门闩证据另行复用，不能声称波形覆盖持续 lowMemory。私有字段／callback 观测仅为开发宿主证据，正式 R8 需核对应产物的实际入口，不能靠 bulk keep／关闭 shrink 替代。
 
 原生观察器只可包装已有非空回调并转发原函数；重绑定清空回调后，不得补造 Ready、绘制或 prepare 回调。ReaderPageImageView 在 beforeImageDraw 与 onImageDrawn 都为空时直接允许原绘制，补入观察函数会改变此分支，因而不能称为透明观测。回调修正后的定向绿色仅证明实际执行场景，不能自动解释旧图片 Error 或旧上下文下未绘制的失败；完整对照、原异常原因和正式运行须分别记录。
+
+### Desktop 预取页进入视口时的绘制失效
+
+Pager 的已解码预取页可能在离屏时记录空绘制；父层把同一节点移入视口，并不保证重新录制该绘制。带准备门禁的图片由同一个 DrawModifierNode 接收全局布局回调并直接 invalidateDraw，绘制时读取该节点当前 LayoutCoordinates，避免依赖外部坐标缓存或跨阶段的 Snapshot 通知。未附着、空裁剪、无可见源区域及失效的原呈现能力仍拒绝绘制；仅在原 prepare 成功后画图并发出一次原 acknowledge。布局失效本身不授予票据或产生阅读进度。
+
+无准备门禁的 Webtoon 继续使用原 drawWithContent 路径。维护时须覆盖 LTR／RTL 的即时与动画翻页、实际 tap／key／wheel／外部定位，以及离屏不记读、缩放、resize、伙伴失败重试与设置重组；不能用放宽首帧像素或共享票据规则解决显示缓存失效。
 
 ### Android 同图缓存写入与响应所有权
 

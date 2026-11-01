@@ -21,6 +21,8 @@ abstract class ViewerConfig(readerPreferences: ReaderPreferences, private val sc
     var usePageTransitions = false
     var pageTurnRipple = false
     var pageTurnRippleChangedListener: ((Boolean) -> Unit)? = null
+    var pageTurnRippleMode = ReaderPreferences.PageTurnRippleMode.SHADOW_LINE
+    var pageTurnRippleModeChangedListener: ((ReaderPreferences.PageTurnRippleMode) -> Unit)? = null
     var doubleTapAnimDuration = 500
     var volumeKeysEnabled = false
     var volumeKeysInverted = false
@@ -58,6 +60,12 @@ abstract class ViewerConfig(readerPreferences: ReaderPreferences, private val sc
             .register(
                 { pageTurnRipple = it },
                 { pageTurnRippleChangedListener?.invoke(it) },
+            )
+
+        readerPreferences.pageTurnRippleMode()
+            .register(
+                { pageTurnRippleMode = it },
+                { pageTurnRippleModeChangedListener?.invoke(it) },
             )
 
         readerPreferences.doubleTapAnimSpeed()

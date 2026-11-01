@@ -31,6 +31,12 @@ private val flashColors = listOf(
     MR.strings.pref_flash_style_white_black to ReaderPreferences.FlashColor.WHITE_BLACK,
 )
 
+private val rippleModes = listOf(
+    MR.strings.pref_page_turn_ripple_style_clean to ReaderPreferences.PageTurnRippleMode.CLEAN,
+    MR.strings.pref_page_turn_ripple_style_shadow_line to ReaderPreferences.PageTurnRippleMode.SHADOW_LINE,
+    MR.strings.pref_page_turn_ripple_style_smooth to ReaderPreferences.PageTurnRippleMode.SMOOTH,
+)
+
 @Composable
 internal fun ColumnScope.GeneralPage(screenModel: ReaderSettingsScreenModel) {
     val readerTheme by screenModel.preferences.readerTheme().collectAsState()
@@ -45,6 +51,10 @@ internal fun ColumnScope.GeneralPage(screenModel: ReaderSettingsScreenModel) {
 
     val flashColorPref = screenModel.preferences.flashColor()
     val flashColor by flashColorPref.collectAsState()
+
+    val rippleState by screenModel.preferences.pageTurnRipple().collectAsState()
+    val rippleModePref = screenModel.preferences.pageTurnRippleMode()
+    val rippleMode by rippleModePref.collectAsState()
 
     SettingsChipRow(MR.strings.pref_reader_theme) {
         themes.map { (labelRes, value) ->
@@ -102,6 +112,17 @@ internal fun ColumnScope.GeneralPage(screenModel: ReaderSettingsScreenModel) {
         label = stringResource(MR.strings.pref_page_turn_ripple),
         pref = screenModel.preferences.pageTurnRipple(),
     )
+    if (rippleState) {
+        SettingsChipRow(MR.strings.pref_page_turn_ripple_style) {
+            rippleModes.map { (labelRes, value) ->
+                FilterChip(
+                    selected = rippleMode == value,
+                    onClick = { rippleModePref.set(value) },
+                    label = { Text(stringResource(labelRes)) },
+                )
+            }
+        }
+    }
     if (flashPageState) {
         SliderItem(
             value = flashMillis / ReaderPreferences.MILLI_CONVERSION,

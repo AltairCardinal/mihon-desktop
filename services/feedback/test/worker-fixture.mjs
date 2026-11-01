@@ -19,6 +19,7 @@ export function fixture(overrides = {}) {
   sqlite.exec(migration);
   sqlite.exec(privateLogMigration);
   sqlite.exec(readFileSync(new URL("../migrations/0003_native_verification.sql", import.meta.url), "utf8"));
+  sqlite.exec(readFileSync(new URL("../migrations/0004_private_screenshots.sql", import.meta.url), "utf8"));
   const calls = [];
   const reads = [];
   const env = {

@@ -2,6 +2,11 @@
 
 package mihon.desktop.backup
 
+import tachiyomi.core.common.feedback.DiagnosticCategory
+import tachiyomi.core.common.feedback.DiagnosticEvent
+import tachiyomi.core.common.feedback.DiagnosticEvents
+import tachiyomi.core.common.feedback.DiagnosticOperation
+import tachiyomi.core.common.feedback.DiagnosticStage
 import eu.kanade.tachiyomi.data.backup.models.backupExtensionReposMapper
 import eu.kanade.tachiyomi.data.backup.models.backupTrackMapper
 import mihon.desktop.backup.models.Backup
@@ -68,10 +73,21 @@ object DesktopBackupCreator {
      */
     @Synchronized
     fun writeBackupFile(backup: Backup, directory: File): File {
+        DiagnosticEvents.record(DiagnosticEvent(
+            DiagnosticCategory.BACKUP_SYNC,
+            DiagnosticOperation.BACKUP,
+            DiagnosticStage.START,
+        ))
         directory.mkdirs()
         val timestamp = LocalDateTime.now().format(filenameDateFormat)
         val file = nextAvailableBackupFile(directory, timestamp)
         file.writeBytes(encodeToBytes(backup))
+        DiagnosticEvents.record(DiagnosticEvent(
+            DiagnosticCategory.BACKUP_SYNC,
+            DiagnosticOperation.BACKUP,
+            DiagnosticStage.SUCCESS,
+            count = backup.backupManga.size,
+        ))
         return file
     }
 

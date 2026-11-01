@@ -141,7 +141,9 @@ test("configuration exposes only public metadata, receipt and unknown paths reve
   const f = fixture();
   try {
     const config = await worker.fetch(new Request(`${origin}/api/config`), f.env);
-    assert.deepEqual(await config.json(), { accepting: true, siteKey: "production-site-key" });
+    assert.deepEqual(await config.json(), { accepting: true, siteKey: "production-site-key",
+      capabilities: { nativeV2: true, screenshots: true }, limits: { maxScreenshots: 2, maxScreenshotBytes: 524288,
+        maxTotalScreenshotBytes: 1048576, maxScreenshotSide: 1920, maxBodyBytes: 2097152, maxLogBytes: 262144 } });
     const accepted = await (await f.submit()).json();
     assert.equal((await worker.fetch(new Request(`${origin}/api/feedback/${accepted.receipt}`), f.env)).status, 404);
   } finally { f.close(); }

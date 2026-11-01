@@ -39,35 +39,41 @@ class HttpReaderMaterializeAdapterIntegrationTest {
 
     @Test
     fun `real HTTP adapter resolves page list image url and encoded image`() = runTest {
-        withServer { server ->
-            server.enqueue(MockResponse(body = "page:/resolve"))
-            server.enqueue(MockResponse(body = server.url("/image").toString()))
-            server.enqueue(MockResponse(body = "image bytes"))
-            val fixture = Fixture(server)
-            val request = ReaderChapterContentRequest(ReaderChapterId(7), generation = 1)
+        val diagnosticLog = mihon.feedback.withDiagnosticRecording(
+            tachiyomi.core.common.feedback.DiagnosticCategory.READER,
+        ) {
+            withServer { server ->
+                server.enqueue(MockResponse(body = "page:/resolve"))
+                server.enqueue(MockResponse(body = server.url("/image").toString()))
+                server.enqueue(MockResponse(body = "image bytes"))
+                val fixture = Fixture(server)
+                val request = ReaderChapterContentRequest(ReaderChapterId(7), generation = 1)
 
-            val chapterResult = CanonicalReaderMaterializeExecutor.materializeChapter(request, fixture.chapterPort)
-            val page = fixture.chapterPort.materializedPages.single()
-            val events = mutableListOf<ReaderPageMaterializeEvent>()
-            val pageResult = CanonicalReaderMaterializeExecutor.materializePage(
-                request = ReaderPageFetchRequest(ReaderPageId(ReaderChapterId(7), 0), 1, page.url, page.imageUrl),
-                port = AndroidReaderPageFetchPort(page, fixture.source, fixture.cache),
-                publish = { event -> events.add(event) },
-            )
+                val chapterResult = CanonicalReaderMaterializeExecutor.materializeChapter(request, fixture.chapterPort)
+                val page = fixture.chapterPort.materializedPages.single()
+                val events = mutableListOf<ReaderPageMaterializeEvent>()
+                val pageResult = CanonicalReaderMaterializeExecutor.materializePage(
+                    request = ReaderPageFetchRequest(ReaderPageId(ReaderChapterId(7), 0), 1, page.url, page.imageUrl),
+                    port = AndroidReaderPageFetchPort(page, fixture.source, fixture.cache),
+                    publish = { event -> events.add(event) },
+                )
 
-            assertInstanceOf(ReaderChapterMaterializeResult.Loaded::class.java, chapterResult)
-            assertInstanceOf(ReaderPageMaterializeResult.Ready::class.java, pageResult)
-            assertEquals(
-                listOf(
-                    ReaderPageMaterializeEvent.ResolvingImage,
-                    ReaderPageMaterializeEvent.Downloading(server.url("/image").toString()),
-                    events.last(),
-                ),
-                events,
-            )
-            assertInstanceOf(ReaderPageMaterializeEvent.Ready::class.java, events.last())
-            assertEquals(listOf("/chapter", "/resolve", "/image"), serverPaths(server, 3))
+                assertInstanceOf(ReaderChapterMaterializeResult.Loaded::class.java, chapterResult)
+                assertInstanceOf(ReaderPageMaterializeResult.Ready::class.java, pageResult)
+                assertEquals(
+                    listOf(
+                        ReaderPageMaterializeEvent.ResolvingImage,
+                        ReaderPageMaterializeEvent.Downloading(server.url("/image").toString()),
+                        events.last(),
+                    ),
+                    events,
+                )
+                assertInstanceOf(ReaderPageMaterializeEvent.Ready::class.java, events.last())
+                assertEquals(listOf("/chapter", "/resolve", "/image"), serverPaths(server, 3))
+            }
         }
+        org.junit.jupiter.api.Assertions.assertTrue(diagnosticLog.contains("READER_IMAGE"))
+        org.junit.jupiter.api.Assertions.assertTrue(diagnosticLog.contains("HTTP"))
     }
 
     @Test

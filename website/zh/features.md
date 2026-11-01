@@ -69,7 +69,12 @@ Mihon 的书库与阅读体验有了桌面入口。可以在桌面界面管理�
 
 **Windows 放大拖动：** 放大后拖动漫画查看边缘，单页和双页阅读中，拖动产生的单侧空白最多为阅读区对应宽度或高度的三分之一；双页按整组漫画的外框计算。到边界立即停止，反向拖动立即响应，改变倍率或窗口尺寸后重新限位。小图原本不可避免的留白保留，不允许继续向外扩大。本次验收仅覆盖 Windows 桌面阅读。
 
-**Android 边界：** 本分支 Android 阅读器已支持双页阅读和手动配对；Android 自动跨页匹配属于后续开发方向。
+**Android 边界：** 本分支 Android 阅读器已支持双页阅读和手动配对；Android 自动匹配已在本次设置和阅读连续性范围内验收，不保证完整识别所有排版。
+
+
+**已验收的 Android 阅读改进：** 设置 → 阅读器 → **翻页时用水波纹**，提供 **经典（分步）**、**方案 A（平滑）** 和保留的 **简洁（无阴影）**，适用于单页和双页阅读，已有明确偏好继续保留。原图瓦片双页在已测试的奇数阅读区尺寸及恢复尺寸时保持贴合；交付候选通过模拟器像素检查。实体墨水屏刷新表现受设备影响。
+
+**Windows 即时翻页：** 已准备的新页进入可视区时重新绘制，修复已确认的单页/双页即时翻页空帧；切换自动匹配保持阅读连续性，合法重配本身不是错误。本次验收不扩展到 macOS，也不保证识别所有扫描图。
 
 ## 多端收藏与阅读进度同步 {#multi-device-sync}
 
@@ -122,6 +127,15 @@ Mihon 的书库与阅读体验有了桌面入口。可以在桌面界面管理�
 | 桌面 Webtoon 自动滚动 | 在 Webtoon 阅读设置中开启自动滚动并选择速度；本说明不宣称 Android 已有同等支持。 | [已记录的桌面差异](https://github.com/AltairCardinal/mihon-desktop/blob/main/docs/MIHON_ANDROID_DESKTOP_FEATURE_IMPLEMENTATION_COMPARISON.md#desktop-产品差异) |
 | 桌面扩展兼容 | APK-to-JAR 兼容层将受支持的 Android 扩展行为适配到桌面，不保证所有 Android 扩展都可运行。 | [已记录的桌面差异](https://github.com/AltairCardinal/mihon-desktop/blob/main/docs/MIHON_ANDROID_DESKTOP_FEATURE_IMPLEMENTATION_COMPARISON.md#desktop-产品差异) |
 | 桌面输入与系统集成 | 键盘鼠标操作、宽屏布局，以及桌面文件目录和剪贴板集成适配桌面使用习惯；各项操作的平台支持有所不同。 | [平台对照说明](https://github.com/AltairCardinal/mihon-desktop/blob/main/docs/MIHON_ANDROID_DESKTOP_FEATURE_IMPLEMENTATION_COMPARISON.md) |
+
+
+### 应用内反馈、私密截图与临时诊断 {#feedback}
+
+在已验收的 Android 和 Windows 候选中，打开设置／关于 → 报告问题，选择类别后获得可编辑模板；只有阅读器类别追加漫画源、作品、章节和页码定位段。切换类别前确认是否替换已编辑草稿。设备信息默认勾选且可取消；类别、描述和选中的设备摘要会公开，附加日志和截图仅维护者可见。
+
+可选择最多两张本地 PNG/JPEG，查看处理进度、最终 JPEG 预览并移除；编码后长边不超过1920像素、每张不超过512 KiB。图片在本地准备，只在最终提交时发送。本期没有内置涂抹编辑器，请提交前检查私人信息。
+
+临时诊断由用户明确开启，一次记录一个选定类别；可离开表单复现后返回当前进程草稿，确认切换类别，或立即停止。取消和提交失败继续保留记录状态，下一份报告成功接收后停止；存储故障明确提示，不冒充已经捕获问题。本说明覆盖 Android 和 Windows，不扩展到 macOS。
 
 ## 后续方向 {#direction}
 

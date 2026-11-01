@@ -2,7 +2,6 @@ package eu.kanade.tachiyomi.ui.reader.viewer.pager
 
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
-import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -10,13 +9,16 @@ import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Shader
+import android.os.SystemClock
 import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import android.view.animation.DecelerateInterpolator
 import android.view.animation.LinearInterpolator
 import androidx.viewpager.widget.DirectionalViewPager
+import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.GestureDetectorWithLongTap
 import kotlin.math.abs
 import kotlin.math.max
@@ -49,6 +51,11 @@ open class Pager(
      * Whether E-Ink water ripple page turn animation and swipe gesture direct-turning are enabled.
      */
     var pageTurnRippleEnabled: Boolean = false
+        set(value) {
+            field = value
+            if (!value) cancelRipple()
+        }
+    var rippleMode: ReaderPreferences.PageTurnRippleMode = ReaderPreferences.PageTurnRippleMode.SHADOW_LINE
 
     /**
      * Tap listener function to execute when a tap is detected.
@@ -68,7 +75,8 @@ open class Pager(
     internal var currentRippleBitmap: Bitmap? = null
     internal var rippleDirection: RippleDirection = RippleDirection.RIGHT_TO_LEFT
     internal var rippleProgress: Float = 1f
-    private var rippleRunnable: Runnable? = null
+    internal var rippleRunnable: Runnable? = null
+    private val smoothDecelerateInterpolator = DecelerateInterpolator(1.2f)
 
     private val density = context.resources.displayMetrics.density
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
@@ -243,20 +251,24 @@ open class Pager(
     }
 
     /**
-     * Navigates to [targetItem] with a water ripple wipe animation.
+     * Prepares the ripple transition by capturing the current pager snapshot before page/layout changes occur.
      */
-    fun setCurrentItemWithRipple(targetItem: Int, direction: RippleDirection) {
-        if (targetItem == currentItem || targetItem < 0 || targetItem >= (adapter?.count ?: 0)) {
-            return
-        }
-        if (width <= 0 || height <= 0) {
-            setCurrentItem(targetItem, false)
-            return
-        }
-
+    fun prepareRipple(direction: RippleDirection): Boolean {
         cancelRipple()
+        if (!pageTurnRippleEnabled || width <= 0 || height <= 0) return false
+        val snapshot = captureSnapshot() ?: return false
+        currentRippleBitmap = snapshot
+        rippleDirection = direction
+        rippleProgress = 0f
+        return true
+    }
 
-        val snapshot = try {
+    /**
+     * Captures a snapshot bitmap of the visible pager viewport.
+     */
+    fun captureSnapshot(): Bitmap? {
+        if (width <= 0 || height <= 0) return null
+        return try {
             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
             canvas.save()
@@ -267,51 +279,100 @@ open class Pager(
         } catch (e: Throwable) {
             null
         }
+    }
 
-        if (snapshot == null) {
+    /**
+     * Navigates to [targetItem] with a water ripple wipe animation.
+     */
+    fun setCurrentItemWithRipple(targetItem: Int, direction: RippleDirection) {
+        if (targetItem < 0 || targetItem >= (adapter?.count ?: 0) ||
+            (targetItem == currentItem && currentRippleBitmap == null)
+        ) {
+            cancelRipple()
+            return
+        }
+        if (width <= 0 || height <= 0) {
+            cancelRipple()
             setCurrentItem(targetItem, false)
             return
         }
 
-        currentRippleBitmap = snapshot
-        rippleDirection = direction
-        rippleProgress = 0f
+        if (currentRippleBitmap == null) {
+            if (!prepareRipple(direction)) {
+                setCurrentItem(targetItem, false)
+                return
+            }
+        } else {
+            rippleDirection = direction
+            rippleProgress = 0f
+        }
 
         setCurrentItem(targetItem, false)
 
         startRippleAnimation()
     }
 
-    private fun startRippleAnimation() {
-        val totalSteps = 8
-        val stepDurationMs = 40L // ~320ms total duration, 8 discrete wipe steps (KOReader default)
-        var currentStep = 0
+    fun startRippleAnimation() {
+        if (currentRippleBitmap == null) return
+        stopRippleAnimation()
+        rippleProgress = 0f
+        invalidate()
 
-        val runnable = object : Runnable {
-            override fun run() {
-                currentStep++
-                if (currentStep >= totalSteps) {
-                    cleanupRipple()
-                } else {
-                    rippleProgress = currentStep.toFloat() / totalSteps.toFloat()
-                    invalidate()
-                    postDelayed(this, stepDurationMs)
+        if (rippleMode == ReaderPreferences.PageTurnRippleMode.SMOOTH) {
+            val totalDurationMs = 280L
+            val frameIntervalMs = 16L
+            val startTime = SystemClock.uptimeMillis()
+
+            val runnable = object : Runnable {
+                override fun run() {
+                    val elapsed = SystemClock.uptimeMillis() - startTime
+                    if (elapsed >= totalDurationMs) {
+                        cleanupRipple()
+                    } else {
+                        val fraction = (elapsed.toFloat() / totalDurationMs.toFloat()).coerceIn(0f, 1f)
+                        rippleProgress = smoothDecelerateInterpolator.getInterpolation(fraction)
+                        invalidate()
+                        postDelayed(this, frameIntervalMs)
+                    }
                 }
             }
+            rippleRunnable = runnable
+            postDelayed(runnable, frameIntervalMs)
+        } else {
+            // Discrete 8 steps via Handler for maximum compatibility on E-Ink / zero-animator devices
+            val totalSteps = 8
+            val stepDurationMs = 40L // ~320ms total duration, 8 discrete wipe steps (KOReader default)
+            var currentStep = 0
+
+            val runnable = object : Runnable {
+                override fun run() {
+                    currentStep++
+                    if (currentStep >= totalSteps) {
+                        cleanupRipple()
+                    } else {
+                        rippleProgress = currentStep.toFloat() / totalSteps.toFloat()
+                        invalidate()
+                        postDelayed(this, stepDurationMs)
+                    }
+                }
+            }
+            rippleRunnable = runnable
+            postDelayed(runnable, stepDurationMs)
         }
-        rippleRunnable = runnable
-        postDelayed(runnable, stepDurationMs)
+    }
+
+    private fun stopRippleAnimation() {
+        rippleRunnable?.let(::removeCallbacks)
+        rippleRunnable = null
     }
 
     fun cancelRipple() {
-        rippleRunnable?.let(::removeCallbacks)
-        rippleRunnable = null
+        stopRippleAnimation()
         cleanupRipple()
     }
 
     private fun cleanupRipple() {
-        rippleRunnable?.let(::removeCallbacks)
-        rippleRunnable = null
+        stopRippleAnimation()
         currentRippleBitmap?.recycle()
         currentRippleBitmap = null
         rippleProgress = 1f
@@ -328,6 +389,7 @@ open class Pager(
             val sx = scrollX.toFloat()
             val sy = scrollY.toFloat()
             val p = rippleProgress
+            val isClean = rippleMode == ReaderPreferences.PageTurnRippleMode.CLEAN
             val shadowWidth = 16f * density
 
             canvas.save()
@@ -340,7 +402,7 @@ open class Pager(
                     canvas.clipRect(0f, 0f, splitX, h)
                     canvas.drawBitmap(bitmap, 0f, 0f, null)
 
-                    if (splitX > 0f) {
+                    if (!isClean && splitX > 0f) {
                         waveShadowPaint.shader = LinearGradient(
                             max(0f, splitX - shadowWidth),
                             0f,
@@ -354,7 +416,9 @@ open class Pager(
                     }
                     canvas.restore()
 
-                    canvas.drawLine(splitX, 0f, splitX, h, waveLinePaint)
+                    if (!isClean) {
+                        canvas.drawLine(splitX, 0f, splitX, h, waveLinePaint)
+                    }
                 }
                 RippleDirection.LEFT_TO_RIGHT -> {
                     val splitX = w * p
@@ -362,7 +426,7 @@ open class Pager(
                     canvas.clipRect(splitX, 0f, w, h)
                     canvas.drawBitmap(bitmap, 0f, 0f, null)
 
-                    if (splitX < w) {
+                    if (!isClean && splitX < w) {
                         waveShadowPaint.shader = LinearGradient(
                             splitX,
                             0f,
@@ -376,7 +440,9 @@ open class Pager(
                     }
                     canvas.restore()
 
-                    canvas.drawLine(splitX, 0f, splitX, h, waveLinePaint)
+                    if (!isClean) {
+                        canvas.drawLine(splitX, 0f, splitX, h, waveLinePaint)
+                    }
                 }
                 RippleDirection.BOTTOM_TO_TOP -> {
                     val splitY = h * (1f - p)
@@ -384,7 +450,7 @@ open class Pager(
                     canvas.clipRect(0f, 0f, w, splitY)
                     canvas.drawBitmap(bitmap, 0f, 0f, null)
 
-                    if (splitY > 0f) {
+                    if (!isClean && splitY > 0f) {
                         waveShadowPaint.shader = LinearGradient(
                             0f,
                             max(0f, splitY - shadowWidth),
@@ -398,7 +464,9 @@ open class Pager(
                     }
                     canvas.restore()
 
-                    canvas.drawLine(0f, splitY, w, splitY, waveLinePaint)
+                    if (!isClean) {
+                        canvas.drawLine(0f, splitY, w, splitY, waveLinePaint)
+                    }
                 }
                 RippleDirection.TOP_TO_BOTTOM -> {
                     val splitY = h * p
@@ -406,7 +474,7 @@ open class Pager(
                     canvas.clipRect(0f, splitY, w, h)
                     canvas.drawBitmap(bitmap, 0f, 0f, null)
 
-                    if (splitY < h) {
+                    if (!isClean && splitY < h) {
                         waveShadowPaint.shader = LinearGradient(
                             0f,
                             splitY,
@@ -420,7 +488,9 @@ open class Pager(
                     }
                     canvas.restore()
 
-                    canvas.drawLine(0f, splitY, w, splitY, waveLinePaint)
+                    if (!isClean) {
+                        canvas.drawLine(0f, splitY, w, splitY, waveLinePaint)
+                    }
                 }
             }
 

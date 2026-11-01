@@ -255,11 +255,20 @@ class AboutFeedbackWiringTest {
             every { presentation() } returns DesktopUpdateState.Idle.presentation()
         }
         val extensions = DesktopExtensionManager()
+        val diagnostics = mihon.desktop.feedback.FeedbackDiagnosticFixture(root.resolve("diagnostics").toFile())
+        val server = mockwebserver3.MockWebServer().also {
+            it.start()
+            it.enqueue(mockwebserver3.MockResponse(body = """{"accepting":false}"""))
+        }
+        val client = okhttp3.OkHttpClient.Builder().addInterceptor { chain ->
+            chain.proceed(chain.request().newBuilder().url(server.url(chain.request().url.encodedPath)).build())
+        }.build()
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { extensionPresentationService } returns extensions
             every { updateScreenModel } returns update
+            every { feedbackRuntime } returns mihon.desktop.feedback.DesktopFeedbackRuntime(diagnostics.store)
             every { networkHelper } returns
-                mockk<mihon.desktop.platform.DesktopNetworkHelper> { every { client } returns okhttp3.OkHttpClient() }
+                mockk<mihon.desktop.platform.DesktopNetworkHelper> { every { this@mockk.client } returns client }
         }
         val scene = ImageComposeScene(900, 1_600, coroutineContext = coroutineContext) {}
         try {
@@ -302,6 +311,8 @@ class AboutFeedbackWiringTest {
             assertEquals(0, opened.size)
         } finally {
             scene.close()
+            diagnostics.close()
+            server.close()
             Locale.setDefault(previousLocale)
         }
     }

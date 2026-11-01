@@ -393,7 +393,47 @@ class ReaderPageTurnPresentationTest {
         }
     }
 
-    private class Fixture(val scope: TestScope, val dual: Boolean, rtl: Boolean) : AutoCloseable {
+    @ParameterizedTest
+    @CsvSource("false", "true")
+    fun `matching preference changes retain the mounted pixels and do not repeat reading`(rtl: Boolean) = runTest {
+        Fixture(this, dual = true, rtl, distinctPages = true).use { fixture ->
+            fixture.frames(50)
+            fixture.page = 3
+            fixture.frames(80)
+            val before = fixture.currentState()
+            val pixels = fixture.frame()
+            assertEquals(setOf(GREEN, CYAN), pixels)
+            val pixelLine = fixture.pixelLine
+            val drawn = fixture.drawnSources()
+            assertEquals(setOf(3, 4), drawn)
+            val reports = fixture.reports.toList()
+            for (enabled in listOf(true, false, true)) {
+                fixture.matching(enabled)
+                repeat(40) {
+                    assertEquals(
+                        pixels,
+                        fixture.frame(),
+                        "Matching preferences must not blank or replace displayed pixels",
+                    )
+                    assertEquals(pixelLine, fixture.pixelLine, "Matching preferences must retain fitted image geometry")
+                    runCurrent()
+                }
+                assertEquals(before.currentPage, fixture.page)
+                // visiblePageIds is a settlement cache, which a preference may clear.
+                // Check the actual mounted draw receipts instead of demanding its old value.
+                assertEquals(drawn, fixture.drawnSources())
+                assertEquals(before.dualPageLocation, fixture.currentState().dualPageLocation)
+                assertEquals(reports, fixture.reports, "A layout preference change is not another reading action")
+            }
+        }
+    }
+
+    private class Fixture(
+        val scope: TestScope,
+        val dual: Boolean,
+        rtl: Boolean,
+        distinctPages: Boolean = false,
+    ) : AutoCloseable {
         private val root = Preferences.userRoot().node("/mihon/page-turn-test/${System.nanoTime()}")
         private val store = DesktopPreferenceStore(root.node("store"))
         val preferences = DesktopAppPreferences(store, root.node("app"))
@@ -402,11 +442,15 @@ class ReaderPageTurnPresentationTest {
             autoSplitPages = false
             isAutoSpreadMatching = false
         }
+        val reports = mutableListOf<Int>()
         private val model = ReaderScreenModel(
             prefs = readerPreferences,
             dualPageOverride = dual,
             initialSessionState = desktopReaderSessionState(pageCount = 7, initialPage = if (dual) 1 else 0),
+            onViewportSettled = { _, active -> reports += active.sourcePageIndex },
         )
+        fun currentState() = model.state.value
+        fun matching(enabled: Boolean) = model.setAutoSpreadMatching(enabled, readerPreferences)
         var page: Int
             get() = model.state.value.currentPage
             set(value) {
@@ -416,6 +460,21 @@ class ReaderPageTurnPresentationTest {
         val presented = CopyOnWriteArraySet<Int>()
         var bothPageColorsDrawn = false
             private set
+        var pixelLine: List<Int> = emptyList()
+            private set
+        fun drawnSources(): Set<Int> {
+            fun flatten(
+                node: androidx.compose.ui.semantics.SemanticsNode,
+            ): List<androidx.compose.ui.semantics.SemanticsNode> =
+                listOf(node) + node.children.flatMap(::flatten)
+            val native = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+                .first { it.config.contains(ReaderPagerNativePresentationKey) }.config[ReaderPagerNativePresentationKey]
+
+            @Suppress("UNCHECKED_CAST")
+            val slots = ReaderPagerNativePresentation::class.java.getDeclaredField("rendered")
+                .apply { isAccessible = true }.get(native) as Set<mihon.desktop.ui.reader.presentation.DisplaySlotId>
+            return slots.mapNotNull { it.pageId?.sourcePageIndex }.toSet()
+        }
         fun visibleSources(): Set<Int> = model.state.value.visiblePageIds.map { it.sourcePageIndex }.toSet()
         fun sourcesForPage(page: Int): Set<Int> = if (dual) {
             model.state.value.dualPageUnits.single { unit -> unit.pageIds.any { it.sourcePageIndex == page } }
@@ -451,7 +510,18 @@ class ReaderPageTurnPresentationTest {
             decoder = DesktopReaderPageImageDecoder { _, key ->
                 decoded += key.pageIndex
                 val bitmap = Bitmap().apply { allocN32Pixels(32, 48) }
-                Canvas(bitmap).use { canvas -> canvas.clear(if (key.pageIndex < (if (dual) 3 else 1)) RED else GREEN) }
+                Canvas(bitmap).use { canvas ->
+                    val color = if (distinctPages) {
+                        when (key.pageIndex) {
+                            3 -> GREEN
+                            4 -> CYAN // Distinguishes the partner from other decoded pages.
+                            else -> RED
+                        }
+                    } else {
+                        if (key.pageIndex < (if (dual) 3 else 1)) RED else GREEN
+                    }
+                    canvas.clear(color)
+                }
                 DesktopReaderImageAsset(
                     bitmap.asComposeImageBitmap(),
                     32,
@@ -553,6 +623,7 @@ class ReaderPageTurnPresentationTest {
             val bitmap = renderBitmap()
             return try {
                 val wholeViewport = (10 until 400 step 10).map { bitmap.getColor(it, 200) }.toSet()
+                pixelLine = (0 until 400 step 4).map { bitmap.getColor(it, 200) }
                 bothPageColorsDrawn = RED in wholeViewport && GREEN in wholeViewport
                 // Sample inside the fitted portrait content, excluding legitimate outer bars.
                 // This still includes both physical dual slots and catches an undrawn viewport.
@@ -577,8 +648,15 @@ class ReaderPageTurnPresentationTest {
             val scroll = nodes.filter {
                 it.config.contains(androidx.compose.ui.semantics.SemanticsProperties.HorizontalScrollAxisRange)
             }.map { it.config[androidx.compose.ui.semantics.SemanticsProperties.HorizontalScrollAxisRange].value() }
+
+            @Suppress("UNCHECKED_CAST")
+            val holders = DesktopReaderPresentationImageOwner::class.java.getDeclaredField("holders")
+                .apply {
+                    isAccessible = true
+                }.get(owner) as Set<mihon.desktop.reader.DesktopReaderPresentationImageHolder>
+            val imageStates = holders.map { it.identity.pageId.sourcePageIndex to it.state.value::class.simpleName }
             return "page=$page animation=${preferences.pageTurnAnimation.get()} positions=$positions " +
-                "scroll=$scroll decoded=$decoded presented=$presented native=${native?.describe()}"
+                "scroll=$scroll decoded=$decoded presented=$presented images=$imageStates native=${native?.describe()}"
         }
         fun writeFrame(path: String) {
             val bitmap = renderBitmap()
@@ -611,5 +689,6 @@ class ReaderPageTurnPresentationTest {
     private companion object {
         const val RED = -65536
         const val GREEN = -16711936
+        const val CYAN = -16711681
     }
 }

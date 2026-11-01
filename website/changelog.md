@@ -9,6 +9,17 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## November 1, 2026 — Accepted reader fixes, ripple choices and private feedback attachments
+
+**Accepted candidate documentation · no public product release**
+
+- Android two-page original tiles remain joined in the verified odd-size/resize cases. Single/two-page ripple keeps Classic (stepped), adds Scheme A (smooth), and retains Clean (no shadow). Reading-mode summaries and matching controls have corrected placement and theme behavior.
+- Windows immediate single/two-page turns redraw prepared pages correctly; matching-toggle continuity is retained.
+- Android/Windows feedback adds category templates, optional default-selected device summaries, private JPEG screenshots with processing/preview/removal, and explicitly enabled single-category temporary diagnostics. Public text/device summary and private attachments remain distinguished.
+- Accepted candidates: Android `0.19.4-aex.115` (133, verified source `8b16f1d61c`) and Windows `0.11.24.6.5dd165c`. Android passed real 132→133 upgrade and 12 emulator pixel cases; Windows focused page-turn checks passed 50/50. macOS and broad performance claims are outside this acceptance. An automated Windows headless shutdown timeout remains recorded separately.
+
+Acceptance basis: the project owner accepted this delivered scope in private chat on November 1, 2026 and authorized main integration, commit and push. No product release or artifact upload is implied.
+
 ## November 1, 2026 — Reader settings and batch read status
 
 **Accepted candidate documentation · no public product release**

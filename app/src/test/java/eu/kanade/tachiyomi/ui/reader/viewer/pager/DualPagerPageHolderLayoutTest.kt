@@ -59,6 +59,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import logcat.LogPriority
 import logcat.LogcatLogger
+import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderPortraitSingleSlot
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -72,6 +73,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowChoreographer
 import org.robolectric.shadows.ShadowToast
 import org.robolectric.util.ReflectionHelpers
@@ -726,6 +728,48 @@ class DualPagerPageHolderLayoutTest {
         suspendCoroutineUninterceptedOrReturn<Unit> { continuation ->
             val result = method.invoke(holder, continuation)
             if (result === COROUTINE_SUSPENDED) COROUTINE_SUSPENDED else Unit
+        }
+    }
+
+    @Test
+    fun `ordinary single page actual pixels settle each page through the activity`() = runTest {
+        val activity = viewer.activity
+        val model = mockk<ReaderViewModel>(relaxed = true)
+        every { model.dualPagePairings } returns DualPagePairingStore()
+        every { model.state } returns MutableStateFlow(ReaderViewModel.State())
+        ReflectionHelpers.setField(activity, "viewModel\$delegate", lazyOf(model))
+        val ordinary = R2LPagerViewer(activity)
+        ordinary.config.navigationModeChangedListener = null
+        ordinary.config.usePageTransitions = false
+        val chapter = loadedChapter(62031, 3)
+        withContext(Dispatchers.IO) {
+            requireNotNull(chapter.pages).forEach {
+                it.status = Page.State.Ready
+                it.publishHeaderFact()
+            }
+        }
+        try {
+            ordinary.setChapters(ViewerChapters(chapter, null, null))
+            for (page in requireNotNull(chapter.pages)) {
+                val adapter = ordinary.pager.adapter as PagerViewerAdapter
+                ordinary.pager.setCurrentItem(adapter.items.indexOf(page), false)
+                measure(ordinary.pager, 720, 1280)
+                val holder = ordinary.pager.children.filterIsInstance<PagerPageHolder>().first { it.page === page }
+                bindOrdinary(holder)
+                measure(holder, 720, 1280)
+                holder.onImageLoaded()
+                io.mockk.verify(exactly = 0) { model.onDualViewportSettled(page, any()) }
+                paintReaderImage(holder, requireNotNull(page.stream).invoke().use { it.readBytes() })
+                val (owner, ticket) = requireNotNull(holder.presentationScope)
+                assertEquals(setOf(owner.identity.pageIds[page.index]), owner.frame(ticket)?.drawnPageIds)
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+                io.mockk.verify(exactly = 1) { model.onDualViewportSettled(page, listOf(page)) }
+                paintReaderImage(holder, requireNotNull(page.stream).invoke().use { it.readBytes() })
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+                io.mockk.verify(exactly = 1) { model.onDualViewportSettled(page, listOf(page)) }
+            }
+        } finally {
+            ordinary.destroy()
         }
     }
 
@@ -1467,6 +1511,141 @@ class DualPagerPageHolderLayoutTest {
         Dispatchers.resetMain()
         Injekt = previousInjekt
         unmockkObject(ImageUtil)
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `real dual viewer observes ripple mode and captures before source navigation rebuilds its window`() = runTest {
+        useOriginalPngDecoder()
+        val preferences = Injekt.get<ReaderPreferences>()
+        preferences.pageTurnRipple().set(true)
+        preferences.pageTurnRippleMode().set(ReaderPreferences.PageTurnRippleMode.SMOOTH)
+        runCurrent()
+        assertTrue(viewer.pager.pageTurnRippleEnabled)
+        assertEquals(ReaderPreferences.PageTurnRippleMode.SMOOTH, viewer.pager.rippleMode)
+        val chapter = loadedChapter(74101, 6)
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        val host = Robolectric.buildActivity(ComponentActivity::class.java).setup().visible()
+        try {
+            host.get().setContentView(viewer.pager)
+            measure(viewer.pager, 1400, 1000)
+            runCurrent()
+            measure(viewer.pager, 1400, 1000)
+            val before = viewer.pager.captureSnapshot()
+            if (before == null) {
+                val probe = Bitmap.createBitmap(viewer.pager.width, viewer.pager.height, Bitmap.Config.ARGB_8888)
+                try {
+                    // Surface a fixture draw failure that the production fallback deliberately catches.
+                    viewer.pager.draw(android.graphics.Canvas(probe))
+                } finally {
+                    probe.recycle()
+                }
+                error("The mounted old viewport must be capturable before a real navigation")
+            }
+            before.recycle()
+            viewer.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_LEFT))
+            assertTrue(
+                "A source navigation must retain the prepared old viewport even if its adapter reuses the index",
+                viewer.pager.currentRippleBitmap != null,
+            )
+            assertEquals(Pager.RippleDirection.LEFT_TO_RIGHT, viewer.pager.rippleDirection)
+            preferences.pageTurnRippleMode().set(ReaderPreferences.PageTurnRippleMode.CLEAN)
+            runCurrent()
+            assertEquals(ReaderPreferences.PageTurnRippleMode.CLEAN, viewer.pager.rippleMode)
+            preferences.pageTurnRipple().set(false)
+            runCurrent()
+            assertNull(
+                "Disabling ripple must immediately remove its old page overlay",
+                viewer.pager.currentRippleBitmap,
+            )
+        } finally {
+            host.get().setContentView(View(host.get()))
+            host.pause().stop().destroy()
+        }
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `source ripple follows physical direction in RTL and LTR regrouping`() = runTest {
+        val preferences = Injekt.get<ReaderPreferences>()
+        preferences.pageTurnRipple().set(true)
+        preferences.pageTurnRippleMode().set(ReaderPreferences.PageTurnRippleMode.SMOOTH)
+        val actual = mutableListOf<Pager.RippleDirection>()
+        val expected = mutableListOf<Pager.RippleDirection>()
+        val visits = mutableListOf<String>()
+        for (direction in listOf(ReaderDirection.RTL, ReaderDirection.LTR)) {
+            for (initial in listOf(0, 3)) {
+                val subject = DualPageR2LPagerViewer(viewer.activity, direction = direction)
+                subject.config.navigationModeChangedListener = null
+                subject.adapter.spreadDecoderFactory = { input ->
+                    eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(input)
+                }
+                val host = Robolectric.buildActivity(ComponentActivity::class.java).setup().visible()
+                try {
+                    val chapter = loadedChapter(74200L + initial + if (direction == ReaderDirection.LTR) 10 else 0, 8)
+                    subject.setChapters(ViewerChapters(chapter, null, null))
+                    if (initial != 0) subject.moveToPage(requireNotNull(chapter.pages)[initial])
+                    host.get().setContentView(subject.pager)
+                    runCurrent()
+                    measure(subject.pager, 1400, 1000)
+                    val keys = if (initial == 0) {
+                        listOf(
+                            if (direction ==
+                                ReaderDirection.RTL
+                            ) {
+                                KeyEvent.KEYCODE_DPAD_LEFT
+                            } else {
+                                KeyEvent.KEYCODE_DPAD_RIGHT
+                            },
+                        )
+                    } else {
+                        listOf(KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT)
+                    }
+                    for (key in keys) {
+                        val oldIndex = subject.pager.currentItem
+                        subject.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, key))
+                        assertTrue(
+                            "A valid source turn retains its old viewport",
+                            subject.pager.currentRippleBitmap != null,
+                        )
+                        actual += subject.pager.rippleDirection
+                        expected += if (key == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                            Pager.RippleDirection.RIGHT_TO_LEFT
+                        } else {
+                            Pager.RippleDirection.LEFT_TO_RIGHT
+                        }
+                        visits += "$direction initial=$initial key=$key index=$oldIndex->${subject.pager.currentItem}"
+                    }
+                } finally {
+                    host.get().setContentView(View(host.get()))
+                    subject.destroy()
+                    host.pause().stop().destroy()
+                }
+            }
+        }
+        assertEquals("Physical direction must survive adapter reindexing: $visits", expected, actual)
+    }
+
+    @Test
+    fun `real single viewer observes scheme A and clears its overlay when the preference is disabled`() = runTest {
+        val single = L2RPagerViewer(viewer.activity)
+        // Match this viewport fixture's existing dual-viewer setup: navigation help is outside its mount.
+        single.config.navigationModeChangedListener = null
+        try {
+            val preferences = Injekt.get<ReaderPreferences>()
+            preferences.pageTurnRipple().set(true)
+            preferences.pageTurnRippleMode().set(ReaderPreferences.PageTurnRippleMode.SMOOTH)
+            runCurrent()
+            assertTrue(single.pager.pageTurnRippleEnabled)
+            assertEquals(ReaderPreferences.PageTurnRippleMode.SMOOTH, single.pager.rippleMode)
+            measure(single.pager, 1400, 1000)
+            assertTrue(single.pager.prepareRipple(Pager.RippleDirection.RIGHT_TO_LEFT))
+            preferences.pageTurnRipple().set(false)
+            runCurrent()
+            assertNull(single.pager.currentRippleBitmap)
+        } finally {
+            single.destroy()
+        }
     }
 
     @Test

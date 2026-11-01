@@ -1,5 +1,10 @@
 package mihon.desktop.backup
 
+import tachiyomi.core.common.feedback.DiagnosticCategory
+import tachiyomi.core.common.feedback.DiagnosticEvent
+import tachiyomi.core.common.feedback.DiagnosticEvents
+import tachiyomi.core.common.feedback.DiagnosticOperation
+import tachiyomi.core.common.feedback.DiagnosticStage
 import eu.kanade.tachiyomi.data.backup.models.chapterUrlIdentity
 import eu.kanade.tachiyomi.data.backup.models.validateBackupChapterIdentities
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
@@ -76,6 +81,11 @@ class DesktopBackupRestorer(
         appSettings: Boolean,
         onProgress: suspend (RestoreProgress) -> Unit = {},
     ): RestoreResult {
+        DiagnosticEvents.record(DiagnosticEvent(
+            DiagnosticCategory.BACKUP_SYNC,
+            DiagnosticOperation.RESTORE,
+            DiagnosticStage.START,
+        ))
         (backupRestoreSync as? mihon.presentation.sync.SyncRecoveryBackupObserver)?.expectObjects(
             backup.backupManga.map {
                 mihon.domain.sync.SyncObjectKey(
@@ -109,6 +119,15 @@ class DesktopBackupRestorer(
             outcome = SyncRestoreOutcome.CANCELLED
             throw error
         } finally {
+            DiagnosticEvents.record(DiagnosticEvent(
+                DiagnosticCategory.BACKUP_SYNC,
+                DiagnosticOperation.RESTORE,
+                when (outcome) {
+                    SyncRestoreOutcome.COMPLETED -> DiagnosticStage.SUCCESS
+                    SyncRestoreOutcome.CANCELLED -> DiagnosticStage.CANCELLED
+                    else -> DiagnosticStage.FAILURE
+                },
+            ))
             withContext(NonCancellable) { backupRestoreSync.finish(importId, outcome) }
         }
     }

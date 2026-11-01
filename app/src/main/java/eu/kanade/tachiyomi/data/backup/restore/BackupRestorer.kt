@@ -26,6 +26,9 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import mihon.data.sync.journal.BackupRestoreSync
 import mihon.data.sync.journal.SyncRestoreOutcome
+import tachiyomi.core.common.feedback.DiagnosticCategory
+import tachiyomi.core.common.feedback.DiagnosticOperation
+import tachiyomi.core.common.feedback.diagnosticOperation
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.data.backup.AuthorArchiveBackupContributor
 import tachiyomi.i18n.MR
@@ -62,7 +65,10 @@ class BackupRestorer(
      */
     private var sourceMapping: Map<Long, String> = emptyMap()
 
-    suspend fun restore(uri: Uri, options: RestoreOptions) {
+    suspend fun restore(uri: Uri, options: RestoreOptions) = diagnosticOperation(
+        DiagnosticCategory.BACKUP_SYNC,
+        DiagnosticOperation.RESTORE,
+    ) {
         val startTime = System.currentTimeMillis()
 
         restoreFromFile(uri, options)

@@ -1,5 +1,6 @@
 package mihon.desktop.platform
 
+import tachiyomi.core.common.feedback.DiagnosticNetworkInterceptor
 import eu.kanade.tachiyomi.network.DesktopCookieJar
 import eu.kanade.tachiyomi.network.interceptor.UncaughtExceptionInterceptor
 import eu.kanade.tachiyomi.network.interceptor.UserAgentInterceptor
@@ -102,6 +103,7 @@ class DesktopNetworkHelper(
         )
         .addInterceptor(UncaughtExceptionInterceptor())
         .addInterceptor(UserAgentInterceptor(::defaultUserAgentProvider))
+        .addInterceptor(DiagnosticNetworkInterceptor())
         .eventListenerFactory { routeMonitor.listener(GlobalScope) }
         .apply {
             when (globalMode) {

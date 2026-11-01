@@ -59,18 +59,24 @@ class ForkAppUpdateWiringTest {
 
     @Test
     fun `checker passes own repository version and trusted package identity from release configuration`() = runTest {
-        val captured = slot<GetApplicationRelease.Arguments>()
-        val interactor = mockk<GetApplicationRelease>()
-        coEvery { interactor.await(capture(captured)) } returns GetApplicationRelease.Result.NoCompatiblePackage
-        val checker = AppUpdateChecker(interactor, notifyUpdate = { _, _ -> error("unexpected notification") })
+        val diagnosticLog = mihon.feedback.withDiagnosticRecording(
+            tachiyomi.core.common.feedback.DiagnosticCategory.UPDATE_INSTALL,
+        ) {
+            val captured = slot<GetApplicationRelease.Arguments>()
+            val interactor = mockk<GetApplicationRelease>()
+            coEvery { interactor.await(capture(captured)) } returns GetApplicationRelease.Result.NoCompatiblePackage
+            val checker = AppUpdateChecker(interactor, notifyUpdate = { _, _ -> error("unexpected notification") })
 
-        assertEquals(GetApplicationRelease.Result.NoCompatiblePackage, checker.checkForUpdate(application, true))
-        assertEquals(ForkUpdateRequest.REPOSITORY, captured.captured.repository)
-        val fork = requireNotNull(captured.captured.forkUpdate)
-        assertEquals(UpdateChannel.TESTING, fork.channel)
-        assertEquals(BuildConfig.VERSION_CODE.toLong(), fork.installedVersionCode)
-        assertEquals(BuildConfig.FORK_RELEASE_PACKAGE, fork.expectedApplicationId)
-        assertEquals(BuildConfig.FORK_RELEASE_CERTIFICATE_SHA256, fork.expectedCertificateSha256)
+            assertEquals(GetApplicationRelease.Result.NoCompatiblePackage, checker.checkForUpdate(application, true))
+            assertEquals(ForkUpdateRequest.REPOSITORY, captured.captured.repository)
+            val fork = requireNotNull(captured.captured.forkUpdate)
+            assertEquals(UpdateChannel.TESTING, fork.channel)
+            assertEquals(BuildConfig.VERSION_CODE.toLong(), fork.installedVersionCode)
+            assertEquals(BuildConfig.FORK_RELEASE_PACKAGE, fork.expectedApplicationId)
+            assertEquals(BuildConfig.FORK_RELEASE_CERTIFICATE_SHA256, fork.expectedCertificateSha256)
+        }
+        org.junit.Assert.assertTrue(diagnosticLog.contains("UPDATE"))
+        Unit
     }
 
     @Test

@@ -158,6 +158,7 @@ class SharedSpreadAndroidSettingsWiringTest {
                     }
                 }
             }
+            compose.onNodeWithText(MR.strings.pager_viewer.getString(activity.get())).assertDoesNotExist()
             compose.onNodeWithText("Auto Spread Matching").performScrollTo().assertIsDisplayed().performClick()
             assertTrue("The real checkbox must persist the shared semantic setting", preference.get())
             val matchingY = compose.onNodeWithText("Auto Spread Matching").fetchSemanticsNode().positionInRoot.y

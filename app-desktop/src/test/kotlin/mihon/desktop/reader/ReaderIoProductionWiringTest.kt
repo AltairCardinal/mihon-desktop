@@ -1,5 +1,10 @@
 package mihon.desktop.reader
 
+import tachiyomi.core.common.feedback.DiagnosticCategory
+import tachiyomi.core.common.feedback.DiagnosticEvents
+import tachiyomi.core.common.feedback.DiagnosticPersistence
+import tachiyomi.core.common.feedback.DiagnosticSession
+import tachiyomi.core.common.feedback.DiagnosticStore
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -46,6 +51,17 @@ class ReaderIoProductionWiringTest {
 
     @Test
     fun `production local reader reports intent page list decode and first drawn page in order`() = runTest {
+        val diagnosticScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+        val diagnosticStore = DiagnosticStore(
+            tempDir.resolve("private-diagnostics"),
+            object : DiagnosticPersistence {
+                override fun load(): DiagnosticSession? = null
+                override fun save(session: DiagnosticSession?) = Unit
+            },
+            diagnosticScope,
+        )
+        diagnosticStore.start(DiagnosticCategory.READER)
+        DiagnosticEvents.install(diagnosticStore)
         val fixture = ReaderProductionTestFixture(tempDir, currentCoroutineContext())
         val controller = ReaderTestModeController()
         ReaderIoTestModeBridge.install(controller)
@@ -190,7 +206,17 @@ class ReaderIoProductionWiringTest {
             )
             assertEquals(7L, events.first { it.type == ReaderIoEventType.FIRST_PAGE_PRESENTED.name }.chapterId)
             assertEquals(0, events.first { it.type == ReaderIoEventType.FIRST_PAGE_PRESENTED.name }.pageIndex)
+            diagnosticStore.flush()
+            val dates = diagnosticStore.dates(DiagnosticCategory.READER)
+            assertFalse(dates.isEmpty(), "Real reader operations must reach the private feedback store")
+            val privateLog = requireNotNull(diagnosticStore.read(DiagnosticCategory.READER, dates.first())).content
+            assertTrue(privateLog.contains("DECODE"))
+            assertTrue(privateLog.contains("READER_PAGE"))
+            assertFalse(privateLog.contains("Chapter 1"))
+            assertFalse(privateLog.contains(tempDir.path))
         } finally {
+            DiagnosticEvents.install(null)
+            diagnosticScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
             ReaderIoGatePoint.entries.forEach { fixture.gate(it).release() }
             fixture.close()
             ReaderIoTestModeBridge.clear(controller)

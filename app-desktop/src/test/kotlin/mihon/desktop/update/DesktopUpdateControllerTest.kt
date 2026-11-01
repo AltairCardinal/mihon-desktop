@@ -21,6 +21,22 @@ import tachiyomi.domain.release.model.ReleaseVariant
 import java.nio.file.Path
 class DesktopUpdateControllerTest {
     @Test
+    fun `update production operations report safe category stages`() = runTest {
+        val root = java.nio.file.Files.createTempDirectory("update-diagnostics-").toFile()
+        mihon.desktop.feedback.FeedbackDiagnosticFixture(root).use { fixture ->
+            fixture.store.start(tachiyomi.core.common.feedback.DiagnosticCategory.UPDATE_INSTALL)
+            val controller = controller()
+            controller.check(ARGUMENTS)
+            controller.download()
+            controller.handoff(true)
+            val log = fixture.content(tachiyomi.core.common.feedback.DiagnosticCategory.UPDATE_INSTALL)
+            assertTrue(log.contains("UPDATE"))
+            assertTrue(log.contains("INSTALL"))
+            assertFalse(log.contains(RELEASE.releaseLink))
+        }
+        root.deleteRecursively()
+    }
+    @Test
     fun `check maps every release result and retries only retryable failures`() = runTest {
         listOf(
             GetApplicationRelease.Result.NoNewUpdate to DesktopUpdateState.UpToDate,

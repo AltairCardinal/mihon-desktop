@@ -1,5 +1,10 @@
 package mihon.desktop.reader
 
+import tachiyomi.core.common.feedback.DiagnosticCategory
+import tachiyomi.core.common.feedback.DiagnosticEvent
+import tachiyomi.core.common.feedback.DiagnosticEvents
+import tachiyomi.core.common.feedback.DiagnosticOperation
+import tachiyomi.core.common.feedback.DiagnosticStage
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.Page
@@ -90,6 +95,15 @@ class DesktopReaderChapterContentPort(
             ReaderChapterRoute.UNSUPPORTED -> throw AppErrorException(
                 AppError.MalformedData(IllegalStateException("Unsupported reader source (id=${context.sourceId})")),
             )
+        }.also { pages ->
+            if (chapterDownloaded == true) {
+                DiagnosticEvents.record(DiagnosticEvent(
+                    DiagnosticCategory.DOWNLOAD_LOCAL,
+                    DiagnosticOperation.LOCAL_FILE,
+                    DiagnosticStage.SUCCESS,
+                    count = pages.size,
+                ))
+            }
         }
     }
 

@@ -20,6 +20,7 @@ abstract class NativeFeedbackContract {
         var verified = false
         var fail = false
         var polls = 0
+        override suspend fun capabilities() = NativeFeedbackCapabilities(true, true, true)
         override suspend fun createSession(contentHash: String): NativeFeedbackSession {
             hashes += contentHash
             return NativeFeedbackSession(
@@ -49,7 +50,7 @@ abstract class NativeFeedbackContract {
                 1000
         })
     private fun fill(controller: NativeFeedbackController) {
-        controller.title("  Fictional crash report  ")
+        controller.category(FeedbackCategory.OTHER)
         controller.description("  A fictional page failed while opening in this test.  ")
         controller.publicConsent(true)
     }
@@ -101,7 +102,7 @@ abstract class NativeFeedbackContract {
             {},
             { testScheduler.currentTime / 1000 },
         )
-        c.title("\uFEFFFictional title\uFEFF")
+        c.category(FeedbackCategory.OTHER)
         c.description("\uFEFFA fictional description with Unicode 问😀.\uFEFF")
         c.includeSummary(true)
         c.publicConsent(true)
@@ -111,17 +112,17 @@ abstract class NativeFeedbackContract {
         runCurrent()
         advanceTimeBy(2000)
         runCurrent()
-        assertEquals("a255cf0da63a136126244f200c4617676808fe81ef335c7b08ffa4209df91e32", service.hashes.single())
+        assertEquals("72a621061d73032c25cdcd82df6c24d0f9201a2ea51612f9b829c54e27547e0e", service.hashes.single())
         val payload = service.payloads.single()
-        assertEquals("Fictional title", payload.title)
+        assertEquals(FeedbackCategory.OTHER.publicTitle, payload.title)
         assertEquals("A fictional description with Unicode 问😀.", payload.description)
         assertEquals("Application: Mihon", payload.summary)
         assertEquals("\uFEFF log\n", payload.crashLog)
     }
 
     @Test
-    fun `public consent and separate private consent block every external action until explicit submit`() = runTest {
-        val service = Service()
+    fun `public consent blocks external action while private inclusion defaults remain optional`() = runTest {
+        val service = Service().apply { verified = true }
         val opened = mutableListOf<String>()
         var reads = 0
         val c = controller(
@@ -132,23 +133,27 @@ abstract class NativeFeedbackContract {
             },
             opened,
         )
-        assertFalse(c.state.value.draft.includeSummary)
+        assertTrue(c.state.value.draft.includeSummary)
+        assertTrue(c.state.value.draft.logConsent)
         assertEquals(0, reads)
-        c.title("Fictional report")
+        c.category(FeedbackCategory.OTHER)
         c.description("A fictional problem detailed only inside this test.")
         c.submit()
         runCurrent()
         assertEquals(NativeFeedbackFailure.PUBLIC_CONSENT, c.state.value.failure)
-        c.publicConsent(true)
+        assertTrue(service.hashes.isEmpty())
+        assertTrue(opened.isEmpty())
         c.readLog()
         runCurrent()
         assertEquals(1, reads)
-        assertFalse(c.state.value.draft.logConsent)
+        c.logConsent(false)
+        c.publicConsent(true)
         c.submit()
         runCurrent()
-        assertEquals(NativeFeedbackFailure.LOG_CONSENT, c.state.value.failure)
-        assertTrue(service.hashes.isEmpty())
-        assertTrue(opened.isEmpty())
+        advanceTimeBy(2000)
+        runCurrent()
+        assertEquals("", service.payloads.single().crashLog)
+        assertTrue(c.state.value.draft.crashLog.isNotEmpty())
     }
 
     @Test
@@ -169,14 +174,14 @@ abstract class NativeFeedbackContract {
         assertFalse(opened.single().contains("Fictional"))
         c.title("Changed during request")
         c.log("Changed during request")
-        assertEquals("  Fictional crash report  ", c.state.value.draft.title)
+        assertEquals(FeedbackCategory.OTHER, c.state.value.draft.category)
         service.verified = true
         advanceTimeBy(2000)
         runCurrent()
         assertEquals(NativeFeedbackPhase.RECEIVED, c.state.value.phase)
         assertEquals("r".repeat(43), c.state.value.receipt)
         val payload = service.payloads.single()
-        assertEquals("Fictional crash report", payload.title)
+        assertEquals(FeedbackCategory.OTHER.publicTitle, payload.title)
         assertEquals("Fictional crash\n", payload.crashLog)
         assertEquals("Application: Mihon\nVersion: 0.19.4", payload.summary)
         c.submit()
@@ -198,7 +203,7 @@ abstract class NativeFeedbackContract {
         runCurrent()
         assertTrue(service.payloads.isEmpty())
         assertEquals(NativeFeedbackFailure.CANCELLED, c.state.value.failure)
-        assertEquals("  Fictional crash report  ", c.state.value.draft.title)
+        assertEquals(FeedbackCategory.OTHER, c.state.value.draft.category)
         assertFalse(c.state.value.busy)
     }
 
@@ -221,7 +226,7 @@ abstract class NativeFeedbackContract {
         runCurrent()
         assertEquals(2, service.hashes.size)
         assertEquals(service.payloads[0].submissionId, service.payloads[1].submissionId)
-        c.title("A different fictional title")
+        c.description("A different fictional description after editing the report.")
         c.submit()
         runCurrent()
         advanceTimeBy(2000)
@@ -230,18 +235,18 @@ abstract class NativeFeedbackContract {
     }
 
     @Test
-    fun `log edits reset permission without trimming and removal permits no-log submission`() = runTest {
+    fun `log edits preserve inclusion preference without trimming and removal permits no-log submission`() = runTest {
         val service = Service().apply { verified = true }
         val c = controller(service)
         fill(c)
         c.log(" \t\r\n ")
         c.logConsent(true)
         c.log(" \t\r\n more ")
-        assertFalse(c.state.value.draft.logConsent)
+        assertTrue(c.state.value.draft.logConsent)
         assertEquals(" \t\n more ", c.state.value.draft.crashLog)
         c.removeLog()
         assertEquals("", c.state.value.draft.crashLog)
-        assertFalse(c.state.value.draft.logConsent)
+        assertTrue(c.state.value.draft.logConsent)
         c.submit()
         runCurrent()
         advanceTimeBy(2000)
@@ -284,7 +289,7 @@ abstract class NativeFeedbackContract {
         c.readLog()
         runCurrent()
         assertEquals(NativeFeedbackFailure.LOG_UNAVAILABLE, c.state.value.failure)
-        assertEquals("  Fictional crash report  ", c.state.value.draft.title)
+        assertEquals(FeedbackCategory.OTHER, c.state.value.draft.category)
         c.submit()
         runCurrent()
         advanceTimeBy(600_001)
