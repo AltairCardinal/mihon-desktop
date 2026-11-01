@@ -5,8 +5,10 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
@@ -155,6 +157,9 @@ class LibraryScreenModel(
     private val resumeBackgroundUpdate: (() -> Job)? = null,
     private val acceptScopedBackgroundUpdate: ((Long?) -> mihon.desktop.domain.AcceptedLibraryUpdate?)? = null,
 ) : ScreenModel {
+
+    private val _downloadMessages = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val downloadMessages = _downloadMessages.asSharedFlow()
 
     private val _state = MutableStateFlow(LibraryState())
     val state: StateFlow<LibraryState> = _state.asStateFlow()
@@ -744,6 +749,7 @@ class LibraryScreenModel(
         pendingInitialCategoryIndex = null
         _state.update {
             it.copy(
+                contextMenuManga = null,
                 selectedCategoryIndex = if (it.categories.isEmpty()) {
                     index.coerceAtLeast(0)
                 } else {
@@ -789,7 +795,9 @@ class LibraryScreenModel(
     }
 
     fun clearOperationResults() {
-        _state.update { it.copy(operationFeedback = null, batchCategoryResultMessage = null) }
+        _state.update {
+            it.copy(operationFeedback = null, batchCategoryResultMessage = null, downloadResultMessage = null)
+        }
     }
 
     fun setShowBatchCategoryDialog(show: Boolean) {
@@ -1157,7 +1165,7 @@ class LibraryScreenModel(
         queue: List<DownloadItem> = emptyList(),
     ): LibraryBatchDownloadResult {
         if (items.isEmpty()) {
-            _state.update { it.copy(batchCategoryResultMessage = MR.strings.desktop_ui_no_manga_selected.localized()) }
+            publishDownloadMessage(MR.strings.desktop_ui_no_manga_selected.localized())
             return LibraryBatchDownloadResult()
         }
         val chaptersByManga = requireNotNull(getChaptersByMangaId) { "GetChaptersByMangaId is required" }
@@ -1180,6 +1188,7 @@ class LibraryScreenModel(
             else -> null
         }
         var result = LibraryBatchDownloadResult()
+        var hasUnreadChapters = false
         val unavailable = mutableListOf<String>()
         for (item in items) {
             if (item.manga.source == 0L || sourceManager?.get(item.manga.source) == null) {
@@ -1193,6 +1202,7 @@ class LibraryScreenModel(
             }
             val candidates = try {
                 val raw = chaptersByManga.awaitOrThrow(item.id, applyScanlatorFilter = false)
+                hasUnreadChapters = hasUnreadChapters || raw.any { !it.read }
                 if (skipFiltered) {
                     val visible = chaptersByManga.awaitOrThrow(item.id, applyScanlatorFilter = true)
                         .filterAndSortChapters(item.manga, downloadedOnly, false) { chapterIsDownloaded(item, it) }
@@ -1245,19 +1255,31 @@ class LibraryScreenModel(
                 }
             }
         }
-        val message = MR.strings.desktop_ui_download_batch_result.localized(
-            Locale.getDefault(),
-            result.queued,
-            result.skipped,
-            result.failures,
-        )
-        _state.update {
-            it.copy(
-                batchCategoryResultMessage =
-                (listOf(message) + unavailable.distinct()).joinToString("\n"),
-            )
+        val messages = buildList {
+            if (result.queued > 0) {
+                add(MR.strings.desktop_library_download_added.localized(Locale.getDefault(), result.queued))
+            }
+            if (result.failures > 0) add(MR.strings.desktop_ui_download_failed.localized())
+            addAll(unavailable.distinct())
+            if (isEmpty()) {
+                add(
+                    when {
+                        action == MangaDetailDownloadAction.BOOKMARKED_CHAPTERS ->
+                            MR.strings.no_chapters_error.localized()
+                        !hasUnreadChapters -> MR.strings.desktop_library_no_unread.localized()
+                        else -> MR.strings.desktop_library_no_downloadable_unread.localized()
+                    },
+                )
+            }
         }
+        publishDownloadMessage(messages.joinToString("\n"))
         return result
+    }
+
+    private suspend fun publishDownloadMessage(message: String) {
+        _state.update { it.copy(downloadResultMessage = message) }
+        // Replay-free events keep returning to the shelf from showing an old download bubble.
+        _downloadMessages.emit(message)
     }
 
     private fun eligibleReaderChapters(item: LibraryManga, chapters: List<Chapter>): List<Chapter> =

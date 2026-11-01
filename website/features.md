@@ -21,6 +21,8 @@ The initial guide carries forward the repository’s already-public README and g
 
 ## Desktop reading {#desktop-reading}
 
+**Windows library download feedback:** Right-click a work to download the next unread chapter or all unread chapters; the menu opens at the click position and avoids window edges. Download feedback appears in a temporary bubble instead of a persistent shelf row. The count includes only newly accepted chapters; a work with no unread chapters reports zero additions and the reason, while already downloaded or queued chapters are distinguished from having no unread chapters. The update-results button follows the update summary on the same row and opens the existing results dialog. This acceptance covers Windows only.
+
 **Windows library categories:** The system default category is labeled **默认** in Simplified Chinese and **default** in English. Hover over the category bar and use the mouse wheel to scroll it horizontally without changing the selected category. Scrolling stops at either end; moving the pointer outside the bar leaves other content's scrolling unchanged.
 
 Mihon’s reading and library experience gains a desktop home. Use the desktop interface to manage your library and downloads, open chapters, and choose a reading mode and direction.

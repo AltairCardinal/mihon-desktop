@@ -19,6 +19,17 @@ Public product releases and documentation updates are different events. A date h
 
 Acceptance basis: the project owner accepted the one-third blank-space limit in private chat on November 1, 2026 and authorized main integration, a commit, and a push.
 
+## November 1, 2026 — Windows library context menu and transient download feedback
+
+**Accepted candidate documentation · no public product release**
+
+- Library context menus follow the clicked work and keep download actions available: next unread chapter and all unread chapters.
+- Download feedback is a temporary bubble with the actual newly queued count, an explicit zero-addition reason when there are no unread chapters, and a distinct message for unread chapters already downloaded or queued. Category feedback and download errors remain available.
+- Update results follow the update summary on the same row; narrow layouts keep the button accessible.
+- Accepted Windows preview: `0.11.24.6.b11e547`, source `b11e5471272dfa5f2f4d6fefc74a6115eed71a32`. Scoped main implementations: [context menu](https://github.com/AltairCardinal/mihon-desktop/commit/b26b599054) and [download feedback](https://github.com/AltairCardinal/mihon-desktop/commit/fbcdfe5530). The zero-chapter wording was clarified during acceptance. No Android or macOS acceptance or product release is implied.
+
+Acceptance basis: the project owner accepted this Windows library candidate in private chat on November 1, 2026 and requested main integration and a push.
+
 ## November 1, 2026 — Windows batch chapter bookmarks
 
 **Accepted fix documentation · no public product release**

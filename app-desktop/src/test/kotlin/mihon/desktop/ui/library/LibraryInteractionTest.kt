@@ -916,7 +916,7 @@ class LibraryInteractionTest {
                                 selectionState = LibrarySelectionState(),
                                 downloadCountsByManga = mapOf(item.id to 33),
                                 showDownloadBadge = true,
-                                onContextMenu = {},
+                                onContextMenu = { _, _ -> },
                                 onItemClick = { _, _ -> },
                                 onItemLongClick = {},
                             )
@@ -926,7 +926,7 @@ class LibraryInteractionTest {
                                 comfortable = mode == LibraryDisplayMode.ComfortableGrid,
                                 coverOnly = mode == LibraryDisplayMode.CoverOnlyGrid,
                                 selectionState = LibrarySelectionState(), downloadCountsByManga = mapOf(item.id to 33),
-                                onContextMenu = {
+                                onContextMenu = { _, _ ->
                                 }, onItemClick = { _, _ -> }, onItemLongClick = {}, onContinueReading = {},
                             )
                         }

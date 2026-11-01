@@ -1294,7 +1294,8 @@
     <string name="desktop_ui_done">完畢</string>
     <string name="desktop_ui_download_queue">下載佇列</string>
     <string name="desktop_ui_download_chapters">下載章節</string>
-    <string name="desktop_ui_download_next_unread">下載下一個未讀</string>
+    <string name="desktop_ui_download_next_unread">下載下一未讀章節</string>
+    <string name="desktop_ui_download_all_unread">下載全部未讀章節</string>
     <string name="desktop_ui_download_selected">下載選定的</string>
     <string name="desktop_ui_drag_to_reorder">拖動以重新排序</string>
     <string name="desktop_ui_dual_page_side_by_side">雙頁（並排）</string>
@@ -1624,4 +1625,7 @@
     <string name="desktop_action_exit_fullscreen">退出全螢幕</string>
     <string name="source_error_authentication">需要登入（HTTP 401），請登入後重試。</string>
     <string name="source_error_forbidden">伺服器拒絕存取（HTTP 403），請檢查圖源設定或存取限制。</string>
+    <string name="desktop_library_download_added">已新增%1$d個章節至下載佇列</string>
+    <string name="desktop_library_no_unread">已新增0個章節至下載佇列：沒有未讀章節</string>
+    <string name="desktop_library_no_downloadable_unread">沒有可新增的未讀章節</string>
 </resources>
