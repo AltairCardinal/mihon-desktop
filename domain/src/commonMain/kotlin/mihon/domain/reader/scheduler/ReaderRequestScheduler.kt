@@ -264,6 +264,23 @@ class ReaderRequestScheduler(
         return next.request
     }
 
+    /**
+     * Raises an ordinary execution's priority without replacing its publication authority.
+     * The platform must first prove that its already-bound execution is still the exact request
+     * being requested. Capability work and refreshes retain the cancellation/replacement path.
+     */
+    fun promoteActive(jobKey: ReaderRequestKey, kind: ReaderRequestKind): Boolean {
+        if (jobKey.generation != generation) return false
+        val existing = active[jobKey] ?: return false
+        if (existing.request.forceRefresh || existing.request.factPermit != null ||
+            kind == ReaderRequestKind.EXPLICIT_RETRY || compareKinds(kind, existing.request.kind) >= 0
+        ) {
+            return false
+        }
+        active[jobKey] = existing.copy(request = existing.request.copy(kind = kind))
+        return true
+    }
+
     fun complete(jobKey: ReaderRequestKey): Boolean {
         val removed = active.remove(jobKey) ?: return false
         currentRequestByPage.remove(removed.request.pageId, jobKey)

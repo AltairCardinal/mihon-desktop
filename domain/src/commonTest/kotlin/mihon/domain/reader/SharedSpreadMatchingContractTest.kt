@@ -4,7 +4,6 @@ import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageId
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -24,7 +23,7 @@ class SharedSpreadMatchingContractTest {
     }
 
     @Test
-    fun `fifty source samples follow normalized EXIF spine sides including squares`() {
+    fun `fifty source samples follow normalized EXIF spine sides excluding spreads`() {
         val turned = requireNotNull(SharedSpreadMatching.plan(60, 40, ReaderImageOrientation.CLOCKWISE))
         assertEquals(50, turned.left.size)
         assertEquals(0 to 37, turned.left.first())
@@ -33,9 +32,83 @@ class SharedSpreadMatchingContractTest {
         val mirrored = requireNotNull(SharedSpreadMatching.plan(40, 60, ReaderImageOrientation.MIRROR_HORIZONTAL))
         assertEquals(37 to 0, mirrored.left.first())
         assertEquals(2 to 58, mirrored.right.last())
-        assertNotNull(SharedSpreadMatching.plan(13, 13))
+        assertNull(SharedSpreadMatching.plan(13, 13))
         assertNull(SharedSpreadMatching.plan(60, 40))
         assertNull(SharedSpreadMatching.plan(0, 40))
+    }
+
+    @Test
+    fun `square original analysis stays Computed without sample pool or adjacent score work`() {
+        val measurements = mutableListOf<Triple<PageRotation, Int, Pair<Int, Int>>>()
+        for (rotation in PageRotation.entries) {
+            val content = identity().content.map {
+                if (it.pageId == pages[2]) it.copy(rotation = rotation) else it
+            }
+            val owner = ReaderSpreadSamplesOwner(identity().copy(content = content))
+            var squareReads = 0
+            try {
+                for (index in listOf(0, 1, 3, 4)) {
+                    val plan = requireNotNull(ReaderOriginalPageSampling.plan(40, 60))
+                    val evidence = plan.samples(
+                        plan.left.map { artwork[it.second % 50] },
+                        plan.right.map { artwork[it.second % 50] },
+                    )
+                    assertTrue(
+                        owner.acceptOriginal(
+                            owner.request(pages[index]),
+                            ReaderPageFact.dimensions(40, 60),
+                            evidence.edges,
+                        ),
+                    )
+                }
+                assertEquals(4, owner.cachedSampleCount)
+                assertEquals(2, owner.confirmedEdgeCount)
+                val plan = requireNotNull(ReaderOriginalPageSampling.plan(13, 13, rotation = rotation))
+                val evidence = plan.samples(
+                    plan.left.map {
+                        squareReads++
+                        artwork[it.second % 50]
+                    },
+                    plan.right.map {
+                        squareReads++
+                        artwork[it.second % 50]
+                    },
+                )
+                val fact = ReaderPageFact.dimensions(13, 13, rotation = rotation)
+                assertEquals(ReaderPageFactState.SPREAD, fact.state)
+                assertEquals(ReaderPageSideHint.UNKNOWN, evidence.sideHint)
+                assertTrue(
+                    owner.acceptOriginal(owner.request(pages[2]), fact, evidence.edges),
+                    "An empty square plan must remain admissible original evidence",
+                )
+                assertTrue(
+                    pages.all { owner.pageAnalysis(it) is ReaderPageAnalysisEvidence.Computed },
+                    "The original all-page Computed gate must not lose square pages",
+                )
+                val facts = portraitFacts().toMutableMap().apply { put(pages[2], fact) }
+                for (direction in listOf(ReaderDirection.RTL, ReaderDirection.LTR)) {
+                    assertEquals(setOf(pages[3] to pages[4]), owner.selected(direction, facts))
+                    assertEquals(
+                        emptySet<Pair<ReaderPageId, ReaderPageId>>(),
+                        owner.selected(direction, facts, setOf(pages[3])),
+                    )
+                    for ((first, second) in listOf(pages[1] to pages[2], pages[2] to pages[3])) {
+                        val edge = owner.edgeAnalysis(first, second, direction)
+                        assertTrue(edge is ReaderEdgeAnalysisEvidence.Computed)
+                        assertNull((edge as ReaderEdgeAnalysisEvidence.Computed).score)
+                    }
+                }
+                measurements += Triple(rotation, squareReads, owner.cachedSampleCount to owner.confirmedEdgeCount)
+            } finally {
+                owner.close()
+            }
+        }
+        println("R10_SQUARE_OWNER rotations=$measurements")
+        assertEquals(0, measurements.sumOf { it.second }, "No original-coordinate callback is needed for square edges")
+        assertTrue(
+            measurements.all { it.third == (4 to 2) },
+            "Square cannot occupy the sample LRU or materialize its two unused adjacent scores",
+        )
     }
 
     @Test

@@ -890,3 +890,13 @@ AndroidReaderPageFetchPort 持有 source 返回的原 Response，用 use 包住 
 `DatabaseMigration.migrateAtomically`先按既有schema41边界汇合章节身份和暂停时钟，再校验并汇合配对意图与同步修复家族。已发布reader schema43保留其opening_mode、手动配对、修订和边界，补齐缺失同步修复表；主干schema44保留同步修复证据与章节身份，补齐配对字段。存在的家族须验证结构；只有可识别的已发布缺失家族可以补建，残缺字段、键或丢失的新版本家族拒绝升级，事务回滚并保留原始证据。后续迁移不得直接重放会与另一发布线冲突的ALTER。
 
 共享`PublishedSchema40ConvergenceContract`覆盖两个平台的真实SQLite迁移，Android额外通过AppModule的生产数据库回调验证。升级测试必须保留真实已发布DDL夹具；不得仅创建最新版数据库、改低user_version便声称覆盖旧版升级。
+
+## 2026-11-01 评分、方图采样与 Android 同绑定请求提升
+
+`SharedSpreadMatching.score` 按固定 50 个采样点逐项归一化并累加非负 RGB 距离，使用原始类型数组保存归一化颜色与亮度。部分和达到 `COLOR_THRESHOLD * SAMPLE_POINTS` 时即可拒绝；其余样本只会增加距离。有效候选仍执行原亮暗、方差与严格颜色阈值检查。修改颜色合成、阈值、样本数或方差计算时，须复验真实评分与独立旧公式在 alpha、方向和边界输入上的精确一致性，以及远差输入的有界读取。
+
+`SharedSpreadMatching.plan` 对归一化后宽度大于或等于高度的图像返回空计划。方图仍保留真实 `SPREAD` 几何和合法的 `Computed` 原图分析，但不占边缘样本池、不生成无用邻边评分。平台采样入口对空计划不打开编码源或创建 region；正常 FULL 显示解码仍可发生，缓存的同一 bitmap 可提供四种用户旋转对应的空原图证据。维护时同时覆盖共享原坐标回调、Android 无 stream／region 工作及 Desktop 默认 FULL 联合缓存、对象复用和资源释放。
+
+Android `HttpPageLoader.loadPage` 仅在已经运行的普通请求仍绑定同一 `ReaderPage`、原 fetch port、相同 fetch 参数及原子内容事实快照时，通过 `ReaderRequestScheduler.promoteActive` 原位提升优先级。提升保留原 `jobKey` 和发布权；`ReaderPageMaterializeRunner.runningWork` 只读取原绑定，不授予新的执行或发布能力。物理工作计数及资源释放继续由原 Job 实际退出收口。fact permit、force refresh、显式重试、旧 generation、内容／URL／页面对象变化或非提升 kind 均不能走该捷径；校验失败沿用原 enqueue／取消替换路径。
+
+回归入口为 `ReaderPairingAdoptionCostTest`、共享方图契约、双端 `ReaderSpreadSamplerTest`，以及真实 `HttpPageLoaderIntegrationTest`／`ReaderPageFactProductionWiringTest` 和 scheduler 拒绝向量。HTTP 回归须同时核对请求次数、原缓存字节、响应关闭、原请求身份及实际退出后的工作归零，不能只以页面 Ready 判断提升成功。
