@@ -13,6 +13,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextRange
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
@@ -57,6 +58,10 @@ class GlobalSearchRecentHistoryWiringTest {
                 settleWithoutHistory(scene)
                 assertTrue(inputFocused(scene))
                 assertEquals(
+                    TextRange(8),
+                    nodeByTag(scene, SEARCH_INPUT_TAG).config[SemanticsProperties.TextSelectionRange],
+                )
+                assertEquals(
                     AnnotatedString("original"),
                     nodeByTag(scene, SEARCH_INPUT_TAG).config[SemanticsProperties.EditableText],
                 )
@@ -68,8 +73,7 @@ class GlobalSearchRecentHistoryWiringTest {
                 settleWithoutHistory(scene)
                 assertTrue(inputFocused(scene))
                 val edited = nodeByTag(scene, SEARCH_INPUT_TAG).config[SemanticsProperties.EditableText].text
-                assertEquals(9, edited.length)
-                assertTrue(edited.contains('a'))
+                assertEquals("originala", edited)
 
                 // Clicking the already focused editable anchor is an explicit history request.
                 val center = nodeByTag(scene, SEARCH_INPUT_TAG).boundsInWindow.center
@@ -90,6 +94,51 @@ class GlobalSearchRecentHistoryWiringTest {
             } finally {
                 fixture.close(scene)
             }
+        }
+    }
+
+    @Test
+    fun `manual selection survives recomposition refocus and detail navigation`() = runBlocking {
+        val fixture = Fixture(coroutineContext)
+        val scene = fixture.mount("original")
+        try {
+            settleWithoutHistory(scene)
+            val input = nodeByTag(scene, SEARCH_INPUT_TAG)
+            assertTrue(requireNotNull(input.config[SemanticsActions.SetSelection].action).invoke(2, 2, false))
+            settle(scene)
+            assertEquals(
+                TextRange(2),
+                nodeByTag(scene, SEARCH_INPUT_TAG).config[SemanticsProperties.TextSelectionRange],
+            )
+            assertTrue(requireNotNull(input.config[SemanticsActions.SetSelection].action).invoke(1, 4, false))
+            settle(scene)
+            fixture.updateHistory(listOf("previous"))
+            settle(scene)
+            requestFocus(scene, SEARCH_SUBMIT_TAG)
+            settle(scene)
+            requestFocus(scene, SEARCH_INPUT_TAG)
+            settle(scene)
+            assertEquals(
+                TextRange(1, 4),
+                nodeByTag(scene, SEARCH_INPUT_TAG).config[SemanticsProperties.TextSelectionRange],
+            )
+            requireNotNull(fixture.navigator).push(DetailScreen())
+            settle(scene)
+            requireNotNull(fixture.navigator).pop()
+            settle(scene)
+            assertEquals(
+                TextRange(1, 4),
+                nodeByTag(scene, SEARCH_INPUT_TAG).config[SemanticsProperties.TextSelectionRange],
+            )
+            requestFocus(scene, SEARCH_INPUT_TAG)
+            typeCharacter(scene, 'a')
+            settle(scene)
+            assertEquals(
+                AnnotatedString("oainal"),
+                nodeByTag(scene, SEARCH_INPUT_TAG).config[SemanticsProperties.EditableText],
+            )
+        } finally {
+            fixture.close(scene)
         }
     }
 
@@ -274,6 +323,7 @@ class GlobalSearchRecentHistoryWiringTest {
 
             val input = nodeByTag(scene, SEARCH_INPUT_TAG)
             assertEquals(AnnotatedString("second"), input.config[SemanticsProperties.EditableText])
+            assertEquals(TextRange(6), input.config[SemanticsProperties.TextSelectionRange])
             assertEquals("""["second","third","first"]""", fixture.persistedHistory())
         } finally {
             fixture.close(scene)

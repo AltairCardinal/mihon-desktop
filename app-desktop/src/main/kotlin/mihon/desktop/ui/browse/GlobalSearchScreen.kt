@@ -4,6 +4,7 @@ import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.ui.source.desktopSourceErrorMessage
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,6 +55,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -374,7 +376,8 @@ class GlobalSearchScreen(
         val session = this.session
         val searchFocusRequester = remember { FocusRequester() }
         // Search state, retained across navigation like the Android screen model.
-        var query by session.query
+        val query by session.query
+        var queryInput by session.queryInput
         var searchMode by session.searchMode
         var mangaLanguageFilter by session.mangaLanguageFilter
         var authorIdentityFilter by session.authorIdentityFilter
@@ -403,6 +406,7 @@ class GlobalSearchScreen(
             initial = recentSearchesPreference.get(),
         )
         var historyExpanded by remember { mutableStateOf(false) }
+        var searchInputFocused by remember { mutableStateOf(false) }
         val searchUiState = GlobalSearchStateProjector.project(
             sourcesByGeneration[searchState.generation].orEmpty(),
             searchState,
@@ -483,7 +487,7 @@ class GlobalSearchScreen(
         fun launchSearch(q: String, filter: GlobalSearchSourceFilter = sourceFilter) {
             val normalizedQuery = q.trim()
             if (normalizedQuery.isEmpty()) return
-            query = normalizedQuery
+            if (query != normalizedQuery) session.replaceQuery(normalizedQuery)
             session.markSearched()
             historyExpanded = false
             synchronized(recentSearchesPreference) {
@@ -587,13 +591,24 @@ class GlobalSearchScreen(
                     ExposedDropdownMenuBox(
                         expanded = historyExpanded && recentSearches.isNotEmpty(),
                         onExpandedChange = { historyExpanded = it },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            // Exit is observed before the text field collapses its selection.
+                            .focusProperties { onExit = { searchInputFocused = false } }
+                            .focusGroup(),
                     ) {
                         OutlinedTextField(
-                            value = query,
+                            value = queryInput,
                             onValueChange = {
-                                mihon.domain.easteregg.PigEasterEggTrigger.check(it)
-                                query = it
+                                mihon.domain.easteregg.PigEasterEggTrigger.check(it.text)
+                                // The text field collapses selection on blur; retain the user's
+                                // range for refocus and navigation while accepting IME updates.
+                                val leavingInput = !searchInputFocused || navigator.lastItem !== this@GlobalSearchScreen
+                                queryInput = if (leavingInput && it.text == queryInput.text) {
+                                    it.copy(selection = queryInput.selection)
+                                } else {
+                                    it
+                                }
                             },
                             placeholder = { Text(MR.strings.desktop_ui_search_all_sources.localized()) },
                             singleLine = true,
@@ -602,6 +617,7 @@ class GlobalSearchScreen(
                                 .focusRequester(searchFocusRequester)
                                 .fillMaxWidth()
                                 .onFocusChanged { focusState ->
+                                    searchInputFocused = focusState.isFocused
                                     // Prefilled entry requests input focus without requesting history.
                                     // Explicit anchor clicks still use onExpandedChange above.
                                     if (
@@ -639,7 +655,7 @@ class GlobalSearchScreen(
                                 DropdownMenuItem(
                                     text = { Text(recentQuery) },
                                     onClick = {
-                                        query = recentQuery
+                                        session.replaceQuery(recentQuery)
                                         launchSearch(recentQuery)
                                     },
                                     trailingIcon = {

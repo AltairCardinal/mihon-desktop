@@ -1,6 +1,9 @@
 package mihon.desktop.ui.browse
 
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.CoroutineScope
@@ -32,8 +35,14 @@ internal class DesktopGlobalSearchSession(
     /** Scope that keeps the result materialisation running while the screen is not composed. */
     val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    /** Text of the search field. */
-    val query = mutableStateOf(initialQuery)
+    /** Retain the editor, including selection and IME composition, across detail navigation. */
+    val queryInput = mutableStateOf(TextFieldValue(initialQuery, selection = TextRange(initialQuery.length)))
+    val query = derivedStateOf { queryInput.value.text }
+
+    /** Programmatic replacements start editing at the end; user edits keep their own selection. */
+    fun replaceQuery(text: String) {
+        queryInput.value = TextFieldValue(text, selection = TextRange(text.length))
+    }
 
     /** Entry focus belongs to this screen instance, so returning from details cannot steal it. */
     var initialFocusRequested: Boolean = false
