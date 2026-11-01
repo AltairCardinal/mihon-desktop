@@ -401,7 +401,7 @@ class LibraryParityIntegrationTest {
                     showDownloadBadge = true,
                     showUnreadBadge = false,
                     showContinueReadingButton = false,
-                    onContextMenu = {},
+                    onContextMenu = { _, _ -> },
                     onItemClick = { _, _ -> },
                     onItemLongClick = {},
                 )
@@ -430,7 +430,7 @@ class LibraryParityIntegrationTest {
                     items = listOf(libraryManga(Manga.create().copy(id = 1L, title = "Read sample"))),
                     selectionState = LibrarySelectionState(),
                     showContinueReadingButton = true,
-                    onContextMenu = {},
+                    onContextMenu = { _, _ -> },
                     onItemClick = { _, _ -> },
                     onItemLongClick = {},
                 )

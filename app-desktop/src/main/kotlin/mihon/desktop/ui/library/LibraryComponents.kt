@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -105,6 +106,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -114,10 +116,14 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerButton
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isCtrlPressed
+import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -126,6 +132,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.round
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
@@ -653,7 +660,7 @@ internal fun LibraryGrid(
     continueReadingMangaIds: Set<Long>? = null,
     scrollState: LazyGridState = rememberLazyGridState(),
     resolveCoverModel: (Long, String?) -> String? = { _, url -> url },
-    onContextMenu: (LibraryManga) -> Unit,
+    onContextMenu: (LibraryManga, Offset) -> Unit,
     onItemClick: (LibraryManga, LibraryClickModifiers) -> Unit,
     onItemLongClick: (LibraryManga) -> Unit,
     onContinueReading: (LibraryManga) -> Unit,
@@ -709,7 +716,7 @@ internal fun LibraryGrid(
                     onClick = { shiftPressed -> onItemClick(item, shiftPressed) },
                     onLongClick = { onItemLongClick(item) },
                     onContinueReading = { onContinueReading(item) },
-                    onContextMenu = { onContextMenu(item) },
+                    onContextMenu = { position -> onContextMenu(item, position) },
                 )
             }
         }
@@ -742,7 +749,7 @@ internal fun LibraryList(
     continueReadingMangaIds: Set<Long>? = null,
     scrollState: LazyListState = rememberLazyListState(),
     resolveCoverModel: (Long, String?) -> String? = { _, url -> url },
-    onContextMenu: (LibraryManga) -> Unit,
+    onContextMenu: (LibraryManga, Offset) -> Unit,
     onItemClick: (LibraryManga, LibraryClickModifiers) -> Unit,
     onItemLongClick: (LibraryManga) -> Unit,
     onContinueReading: (LibraryManga) -> Unit = {},
@@ -769,6 +776,7 @@ internal fun LibraryList(
                 val showContinueReading = showContinueReadingButton &&
                     (continueReadingMangaIds?.contains(item.id) ?: (item.unreadCount > 0))
                 val selectionAlpha = if (LocalDesktopDarkTheme.current) 0.16f else 0.22f
+                var itemCoordinates by remember(item.id) { mutableStateOf<LayoutCoordinates?>(null) }
                 ListItem(
                     colors = ListItemDefaults.colors(
                         containerColor = if (isSelected) {
@@ -855,6 +863,7 @@ internal fun LibraryList(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
+                        .onGloballyPositioned { itemCoordinates = it }
                         .shiftAwareCombinedClickable(
                             onClick = { onItemClick(item, it) },
                             onLongClick = { onItemLongClick(item) },
@@ -867,7 +876,12 @@ internal fun LibraryList(
                                     if (event.type == PointerEventType.Press &&
                                         event.button == PointerButton.Secondary
                                     ) {
-                                        onContextMenu(item)
+                                        itemCoordinates?.let { coordinates ->
+                                            onContextMenu(
+                                                item,
+                                                coordinates.localToWindow(event.changes.first().position),
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -908,7 +922,7 @@ internal fun MangaCoverCard(
     onClick: (LibraryClickModifiers) -> Unit,
     onLongClick: () -> Unit,
     onContinueReading: () -> Unit,
-    onContextMenu: () -> Unit,
+    onContextMenu: (Offset) -> Unit,
 ) {
     val badges = projectLibraryBadges(
         { downloadCount },
@@ -920,9 +934,11 @@ internal fun MangaCoverCard(
         showLocalBadge,
         showLanguageBadge,
     )
+    var itemCoordinates by remember(item.id) { mutableStateOf<LayoutCoordinates?>(null) }
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .onGloballyPositioned { itemCoordinates = it }
             .shiftAwareCombinedClickable(onClick = onClick, onLongClick = onLongClick)
             .semantics { selected = isSelected }
             .pointerInput(item.manga.id) {
@@ -932,7 +948,9 @@ internal fun MangaCoverCard(
                         if (event.type == PointerEventType.Press &&
                             event.button == PointerButton.Secondary
                         ) {
-                            onContextMenu()
+                            itemCoordinates?.let { coordinates ->
+                                onContextMenu(coordinates.localToWindow(event.changes.first().position))
+                            }
                         }
                     }
                 }
@@ -1140,35 +1158,63 @@ internal fun EmptyLibrary(onGettingStarted: () -> Unit = {}) {
 
 // ── Manga right-click context menu ────────────────────────────────────────────
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun MangaContextMenu(
     expanded: Boolean,
+    positionInAnchor: Offset,
     onDismiss: () -> Unit,
     onMarkAllRead: () -> Unit,
     onMarkAllUnread: () -> Unit,
     onRemoveFromLibrary: () -> Unit,
     onDownload: () -> Unit,
+    onDownloadAllUnread: () -> Unit,
     canDownload: Boolean = true,
 ) {
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        DropdownMenuItem(
-            text = { Text(MR.strings.desktop_ui_mark_all_read.localized()) },
-            onClick = onMarkAllRead,
-        )
-        DropdownMenuItem(
-            text = { Text(MR.strings.desktop_ui_mark_all_unread.localized()) },
-            onClick = onMarkAllUnread,
-        )
-        if (canDownload) {
+    val firstItemFocus = remember { FocusRequester() }
+    Box(Modifier.absoluteOffset { positionInAnchor.round() }) {
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = onDismiss,
+            modifier = Modifier
+                .onPreviewKeyEvent {
+                    if (it.key == Key.Escape && it.type == KeyEventType.KeyDown) {
+                        onDismiss()
+                        true
+                    } else {
+                        false
+                    }
+                }
+                .onPointerEvent(PointerEventType.Scroll, PointerEventPass.Initial) { onDismiss() },
+        ) {
+            LaunchedEffect(Unit) {
+                androidx.compose.runtime.withFrameNanos { }
+                firstItemFocus.requestFocus()
+            }
             DropdownMenuItem(
-                text = { Text(MR.strings.desktop_ui_download_next_unread.localized()) },
-                onClick = onDownload,
+                text = { Text(MR.strings.desktop_ui_mark_all_read.localized()) },
+                onClick = onMarkAllRead,
+                modifier = Modifier.focusRequester(firstItemFocus),
+            )
+            DropdownMenuItem(
+                text = { Text(MR.strings.desktop_ui_mark_all_unread.localized()) },
+                onClick = onMarkAllUnread,
+            )
+            if (canDownload) {
+                DropdownMenuItem(
+                    text = { Text(MR.strings.desktop_ui_download_next_unread.localized()) },
+                    onClick = onDownload,
+                )
+                DropdownMenuItem(
+                    text = { Text(MR.strings.desktop_ui_download_all_unread.localized()) },
+                    onClick = onDownloadAllUnread,
+                )
+            }
+            DropdownMenuItem(
+                text = { Text(MR.strings.remove_from_library.localized(), color = MaterialTheme.colorScheme.error) },
+                onClick = onRemoveFromLibrary,
             )
         }
-        DropdownMenuItem(
-            text = { Text(MR.strings.remove_from_library.localized(), color = MaterialTheme.colorScheme.error) },
-            onClick = onRemoveFromLibrary,
-        )
     }
 }
 

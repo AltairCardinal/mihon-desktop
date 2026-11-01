@@ -62,6 +62,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SecondaryScrollableTabRow
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -83,6 +85,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -98,6 +101,8 @@ import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -111,6 +116,7 @@ import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import mihon.desktop.BuildInfo
@@ -285,6 +291,13 @@ class LibraryRootScreen : Screen {
         val screenModelFactory = LocalLibraryScreenModelFactory.current
         val model = rememberScreenModel { screenModelFactory() }
         val state by model.state.collectAsState()
+        val downloadSnackbar = remember { SnackbarHostState() }
+        LaunchedEffect(model) {
+            model.downloadMessages.collectLatest { message ->
+                downloadSnackbar.currentSnackbarData?.dismiss()
+                downloadSnackbar.showSnackbar(message)
+            }
+        }
         val manualTrackingFeedback by model.manualTracking?.feedback?.collectAsState()
             ?: remember { mutableStateOf<String?>(null) }
         LaunchedEffect(manualTrackingFeedback) {
@@ -322,6 +335,11 @@ class LibraryRootScreen : Screen {
         val updateStatusText = state.updateStatusText
         val displayMode = state.displayMode
         val contextMenuManga = state.contextMenuManga
+        var contextMenuPosition by remember { mutableStateOf(Offset.Zero) }
+        var contextMenuAnchorOrigin by remember { mutableStateOf(Offset.Zero) }
+        DisposableEffect(model) {
+            onDispose { model.setContextMenuManga(null) }
+        }
         val showBatchCategoryDialog = state.showBatchCategoryDialog
         LaunchedEffect(selectionState.isInSelectionMode) {
             if (selectionState.isInSelectionMode) rootFocusRequester.requestFocus()
@@ -417,7 +435,7 @@ class LibraryRootScreen : Screen {
                 model.clearOperationResults()
                 scope.launchAcceptedLibraryOperation(
                     desktopDependencies.notificationService,
-                    feedback = { model.state.value.batchCategoryResultMessage },
+                    feedback = { model.state.value.downloadResultMessage },
                     operation = task,
                 )
             },
@@ -489,46 +507,57 @@ class LibraryRootScreen : Screen {
             )
         }
 
-        // Right-click context menu
-        val ctxManga = contextMenuManga
-        if (ctxManga != null) {
-            MangaContextMenu(
-                expanded = true,
-                onDismiss = { model.setContextMenuManga(null) },
-                onMarkAllRead = {
-                    model.setContextMenuManga(null)
-                    model.clearOperationResults()
-                    scope.launchAcceptedLibraryOperation(
-                        desktopDependencies.notificationService,
-                        feedback = { model.state.value.operationFeedback },
-                    ) {
-                        model.markMangaRead(ctxManga.manga.id, read = true)
-                    }
-                },
-                onMarkAllUnread = {
-                    model.setContextMenuManga(null)
-                    model.clearOperationResults()
-                    scope.launchAcceptedLibraryOperation(
-                        desktopDependencies.notificationService,
-                        feedback = { model.state.value.operationFeedback },
-                    ) {
-                        model.markMangaRead(ctxManga.manga.id, read = false)
-                    }
-                },
-                onRemoveFromLibrary = {
-                    model.setContextMenuManga(null)
-                    removalTarget = listOf(ctxManga)
-                },
-                onDownload = {
-                    model.setContextMenuManga(null)
-                    model.clearOperationResults()
-                    scope.launchAcceptedLibraryOperation(
-                        desktopDependencies.notificationService,
-                        feedback = { model.state.value.operationFeedback },
-                    ) { model.enqueueNextUnreadDownload(ctxManga) }
-                },
-                canDownload = ctxManga.manga.source != 0L,
-            )
+        // Measure the anchor before opening so its first visible frame uses window-relative coordinates.
+        Box(Modifier.onGloballyPositioned { contextMenuAnchorOrigin = it.positionInWindow() }) {
+            val ctxManga = contextMenuManga
+            if (ctxManga != null) {
+                MangaContextMenu(
+                    expanded = true,
+                    positionInAnchor = contextMenuPosition - contextMenuAnchorOrigin,
+                    onDismiss = { model.setContextMenuManga(null) },
+                    onMarkAllRead = {
+                        model.setContextMenuManga(null)
+                        model.clearOperationResults()
+                        scope.launchAcceptedLibraryOperation(
+                            desktopDependencies.notificationService,
+                            feedback = { model.state.value.operationFeedback },
+                        ) {
+                            model.markMangaRead(ctxManga.manga.id, read = true)
+                        }
+                    },
+                    onMarkAllUnread = {
+                        model.setContextMenuManga(null)
+                        model.clearOperationResults()
+                        scope.launchAcceptedLibraryOperation(
+                            desktopDependencies.notificationService,
+                            feedback = { model.state.value.operationFeedback },
+                        ) {
+                            model.markMangaRead(ctxManga.manga.id, read = false)
+                        }
+                    },
+                    onRemoveFromLibrary = {
+                        model.setContextMenuManga(null)
+                        removalTarget = listOf(ctxManga)
+                    },
+                    onDownload = {
+                        model.setContextMenuManga(null)
+                        model.clearOperationResults()
+                        scope.launchAcceptedLibraryOperation(
+                            desktopDependencies.notificationService,
+                            feedback = { model.state.value.downloadResultMessage },
+                        ) { model.enqueueDownloads(listOf(ctxManga), MangaDetailDownloadAction.NEXT_1_CHAPTER) }
+                    },
+                    onDownloadAllUnread = {
+                        model.setContextMenuManga(null)
+                        model.clearOperationResults()
+                        scope.launchAcceptedLibraryOperation(
+                            desktopDependencies.notificationService,
+                            feedback = { model.state.value.downloadResultMessage },
+                        ) { model.enqueueDownloads(listOf(ctxManga), MangaDetailDownloadAction.UNREAD_CHAPTERS) }
+                    },
+                    canDownload = ctxManga.manga.source != 0L,
+                )
+            }
         }
 
         // Batch category assignment dialog
@@ -597,6 +626,7 @@ class LibraryRootScreen : Screen {
 
         Scaffold(
             contentWindowInsets = WindowInsets(0),
+            snackbarHost = { SnackbarHost(downloadSnackbar) },
             // ── Selection action bar ───────────────────────────────────────
             bottomBar = {
                 if (selectionState.isInSelectionMode) {
@@ -672,6 +702,10 @@ class LibraryRootScreen : Screen {
                             return@onPreviewKeyEvent false
                         }
                         when {
+                            contextMenuManga != null -> {
+                                model.setContextMenuManga(null)
+                                true
+                            }
                             removalTarget != null -> {
                                 removalTarget = null
                                 true
@@ -803,17 +837,23 @@ class LibraryRootScreen : Screen {
                 }
 
                 if (updateStatusText != null) {
-                    Text(
-                        text = updateStatusText!!,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    )
-                    if (state.updateTask?.libraryUpdate != null) {
-                        TextButton(
-                            onClick = { showUpdateResults = true },
-                            modifier = Modifier.focusRequester(updateResultsFocusRequester),
-                        ) { Text(MR.strings.desktop_library_update_results.localized()) }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = updateStatusText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.weight(1f, fill = false).padding(vertical = 4.dp),
+                        )
+                        if (state.updateTask?.libraryUpdate != null) {
+                            TextButton(
+                                onClick = { showUpdateResults = true },
+                                modifier = Modifier.focusRequester(updateResultsFocusRequester),
+                            ) { Text(MR.strings.desktop_library_update_results.localized()) }
+                        }
                     }
                 }
 
@@ -836,21 +876,29 @@ class LibraryRootScreen : Screen {
                 }
 
                 Box(
-                    Modifier.weight(1f).fillMaxWidth().libraryCategoryWheel(
-                        categoryWheelSegment,
-                        enabled = !editingSearch && !toolbarPopupVisible && !selectionPopupVisible && !showFilterMenu &&
-                            !showBatchCategoryDialog && removalTarget == null && contextMenuManga == null &&
-                            !syncPanelVisible && !showUpdateResults &&
-                            model.manualTracking?.prompts?.collectAsState()?.value?.isNotEmpty() != true &&
-                            navigator.lastItem is LibraryRootScreen && windowInfo.isWindowFocused,
-                    ) { direction ->
-                        val current = model.state.value
-                        if (current.categories.isNotEmpty()) {
-                            model.setSelectedCategoryIndex(
-                                (current.selectedCategoryIndex + direction).coerceIn(0, current.categories.lastIndex),
-                            )
+                    Modifier.weight(1f).fillMaxWidth()
+                        .onPointerEvent(PointerEventType.Scroll, PointerEventPass.Initial) {
+                            model.setContextMenuManga(null)
                         }
-                    },
+                        .libraryCategoryWheel(
+                            categoryWheelSegment,
+                            enabled =
+                            !editingSearch && !toolbarPopupVisible && !selectionPopupVisible && !showFilterMenu &&
+                                !showBatchCategoryDialog && removalTarget == null && contextMenuManga == null &&
+                                !syncPanelVisible && !showUpdateResults &&
+                                model.manualTracking?.prompts?.collectAsState()?.value?.isNotEmpty() != true &&
+                                navigator.lastItem is LibraryRootScreen && windowInfo.isWindowFocused,
+                        ) { direction ->
+                            val current = model.state.value
+                            if (current.categories.isNotEmpty()) {
+                                model.setSelectedCategoryIndex(
+                                    (current.selectedCategoryIndex + direction).coerceIn(
+                                        0,
+                                        current.categories.lastIndex,
+                                    ),
+                                )
+                            }
+                        },
                 ) {
                     if (state.isLoading) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -902,6 +950,14 @@ class LibraryRootScreen : Screen {
                             ) {
                                 val viewport =
                                     rememberLibraryViewportState(model, selectedCategoryId, displayedItems, displayMode)
+                                LaunchedEffect(
+                                    viewport.list.firstVisibleItemIndex,
+                                    viewport.list.firstVisibleItemScrollOffset,
+                                    viewport.grid.firstVisibleItemIndex,
+                                    viewport.grid.firstVisibleItemScrollOffset,
+                                ) {
+                                    model.setContextMenuManga(null)
+                                }
                                 mihon.desktop.ui.refresh.RefreshGestureContent(
                                     refresh,
                                     refreshEnabled,
@@ -945,7 +1001,10 @@ class LibraryRootScreen : Screen {
                                                 continueReadingMangaIds = state.continueReadingMangaIds,
                                                 resolveCoverModel = desktopDependencies.customCoverStore::resolveModel,
                                                 localMangaIds = state.localMangaIds,
-                                                onContextMenu = { item -> model.setContextMenuManga(item) },
+                                                onContextMenu = { item, position ->
+                                                    contextMenuPosition = position
+                                                    model.setContextMenuManga(item)
+                                                },
                                                 onItemClick = onItemPrimaryClick,
                                                 onItemLongClick = onItemLongClick,
                                                 onContinueReading = onContinueReading,
@@ -973,7 +1032,10 @@ class LibraryRootScreen : Screen {
                                                 continueReadingMangaIds = state.continueReadingMangaIds,
                                                 resolveCoverModel = desktopDependencies.customCoverStore::resolveModel,
                                                 localMangaIds = state.localMangaIds,
-                                                onContextMenu = { item -> model.setContextMenuManga(item) },
+                                                onContextMenu = { item, position ->
+                                                    contextMenuPosition = position
+                                                    model.setContextMenuManga(item)
+                                                },
                                                 onItemClick = onItemPrimaryClick,
                                                 onItemLongClick = onItemLongClick,
                                                 onContinueReading = onContinueReading,
@@ -997,7 +1059,10 @@ class LibraryRootScreen : Screen {
                                                 continueReadingMangaIds = state.continueReadingMangaIds,
                                                 resolveCoverModel = desktopDependencies.customCoverStore::resolveModel,
                                                 localMangaIds = state.localMangaIds,
-                                                onContextMenu = { item -> model.setContextMenuManga(item) },
+                                                onContextMenu = { item, position ->
+                                                    contextMenuPosition = position
+                                                    model.setContextMenuManga(item)
+                                                },
                                                 onItemClick = onItemPrimaryClick,
                                                 onItemLongClick = onItemLongClick,
                                                 onContinueReading = onContinueReading,
@@ -1025,7 +1090,10 @@ class LibraryRootScreen : Screen {
                                                 continueReadingMangaIds = state.continueReadingMangaIds,
                                                 resolveCoverModel = desktopDependencies.customCoverStore::resolveModel,
                                                 localMangaIds = state.localMangaIds,
-                                                onContextMenu = { item -> model.setContextMenuManga(item) },
+                                                onContextMenu = { item, position ->
+                                                    contextMenuPosition = position
+                                                    model.setContextMenuManga(item)
+                                                },
                                                 onItemClick = onItemPrimaryClick,
                                                 onItemLongClick = onItemLongClick,
                                                 onContinueReading = onContinueReading,

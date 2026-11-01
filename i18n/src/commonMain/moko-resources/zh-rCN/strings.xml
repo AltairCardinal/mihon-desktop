@@ -1355,7 +1355,8 @@
     <string name="desktop_ui_done">完毕</string>
     <string name="desktop_ui_download_queue">下载队列</string>
     <string name="desktop_ui_download_chapters">下载章节</string>
-    <string name="desktop_ui_download_next_unread">下载下一个未读</string>
+    <string name="desktop_ui_download_next_unread">下载下一未读章节</string>
+    <string name="desktop_ui_download_all_unread">下载全部未读章节</string>
     <string name="desktop_ui_download_selected">下载选定的</string>
     <string name="desktop_ui_drag_to_reorder">拖动以重新排序</string>
     <string name="desktop_ui_dual_page_side_by_side">双页（并排）</string>
@@ -2432,4 +2433,7 @@
     <string name="feedback_diagnostic_settings">详细日志请在“报告问题”中选择类别并临时开启。</string>
     <string name="feedback_diagnostic_storage_active">日志模式未能保存，仍在记录。请重试停止。</string>
     <string name="feedback_diagnostic_storage_inactive">无法开启或恢复日志。请检查本地存储后重试。</string>
+    <string name="desktop_library_download_added">已添加%1$d个章节到下载队列</string>
+    <string name="desktop_library_no_unread">已添加0个章节到下载队列：没有未读章节</string>
+    <string name="desktop_library_no_downloadable_unread">没有可添加的未读章节</string>
 </resources>

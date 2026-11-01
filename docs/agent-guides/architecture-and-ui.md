@@ -107,3 +107,9 @@ Desktop 的 `ReaderPanBounds` 是阅读器视口交互策略：放大后，拖�
 同步的账户查询、仓库管理、恢复和 Git 数据交换通过 `SyncOnboarding` 的请求级 token provider 获取凭据，不能把会话开始时的访问令牌固定到整轮同步。provider 缓存绑定当前 `authorizationEpoch`；显式重新授权或清除凭据后，旧会话必须停止，不能自动跟随新账号。浏览器返回的候选令牌在身份验证期间固定使用，不得替换成当前已保存账号的令牌。
 
 有效令牌只在内存中复用，临近到期或 `PersistentGitHubCredentialStore.tokenRefreshEpoch` 改变时才重新读取并续期，避免每个请求都启动 Windows DPAPI 解密子进程。刷新 epoch 仅在新凭据成功持久化后更新；续期失败仍保留原凭据，并沿用网络重试或确认失效后的授权恢复路径。身份确认使用授权 epoch，不能把正常令牌轮换当作账号变更。相关行为由 `SyncRuntimeWiringTest` 的会话续期、缓存和身份隔离用例覆盖。
+
+### 书架下载反馈与更新摘要
+
+书架下载数量不使用 `batchCategoryResultMessage`，该字段只负责分类操作反馈。下载结果由 `downloadResultMessage` 保留最近一次文案供离页通知使用，页面通过无 replay 的 `downloadMessages` 事件显示 Material Snackbar；连续请求替换当前气泡，关闭、超时或返回书架不能重播旧事件。下载数量以真实入队接受结果为准；原始目录没有未读时提示没有未读，有未读但被筛选、已下载或已排队时提示没有可添加的未读。部分失败和源不可用保留错误信息，不伪装成没有未读；书签下载为空仍使用章节不可用提示。
+
+更新摘要与“更新结果”在同一行，摘要按可用宽度换行、按钮保留可访问宽度，不改变现有结果弹窗与任务状态权威。回归位于 `LibraryPageCompositionTest`，执行真实下载菜单点击、Snackbar 生命周期、重复提示和宽窄窗口按钮接线。

@@ -66,6 +66,7 @@ data class LibraryState(
     val contextMenuManga: LibraryManga? = null,
     val showBatchCategoryDialog: Boolean = false,
     val batchCategoryResultMessage: String? = null,
+    val downloadResultMessage: String? = null,
     val operationFeedback: String? = null,
 ) {
     val filterUnread get() = filter.unread == TriState.ENABLED_IS

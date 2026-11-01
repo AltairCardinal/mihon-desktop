@@ -1541,7 +1541,8 @@
     <string name="desktop_ui_done">Done</string>
     <string name="desktop_ui_download_queue">Download Queue</string>
     <string name="desktop_ui_download_chapters">Download chapters</string>
-    <string name="desktop_ui_download_next_unread">Download next unread</string>
+    <string name="desktop_ui_download_next_unread">Download next unread chapter</string>
+    <string name="desktop_ui_download_all_unread">Download all unread chapters</string>
     <string name="desktop_ui_download_selected">Download selected</string>
     <string name="desktop_ui_drag_to_reorder">Drag to reorder</string>
     <string name="desktop_ui_dual_page_side_by_side">Dual Page (side-by-side)</string>
@@ -2640,4 +2641,7 @@
     <string name="feedback_diagnostic_settings">To capture detailed logs, choose a category under Report a problem and turn on temporary logging.</string>
     <string name="feedback_diagnostic_storage_active">Could not save the logging mode. Logging is still on. Retry stopping it.</string>
     <string name="feedback_diagnostic_storage_inactive">Logging could not start or restore. Check local storage and retry.</string>
+    <string name="desktop_library_download_added">Added %1$d chapters to the download queue</string>
+    <string name="desktop_library_no_unread">Added 0 chapters to the download queue: No unread chapters</string>
+    <string name="desktop_library_no_downloadable_unread">No unread chapters available to add</string>
 </resources>

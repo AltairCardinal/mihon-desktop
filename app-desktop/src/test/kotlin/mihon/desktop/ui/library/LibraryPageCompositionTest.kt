@@ -288,6 +288,324 @@ class LibraryPageCompositionTest {
 
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
+    fun `update results follows summary on the same row and opens the real results dialog`() = runTest {
+        for (width in listOf(1_200, 420)) {
+            val repository = FakeMangaRepository()
+            val task = mihon.desktop.task.StoredTask(
+                task = mihon.domain.task.BackgroundTask("layout-update", "layout-update"),
+                status = mihon.domain.task.TaskStatus.Completed,
+                libraryUpdate = mihon.desktop.task.LibraryUpdateContext(
+                    trigger = mihon.desktop.task.LibraryUpdateTrigger.MANUAL,
+                    scope = mihon.desktop.task.LibraryUpdateScope.ALL,
+                    units = emptyList(),
+                ),
+            )
+            val model = LibraryScreenModel(
+                getLibraryManga = GetLibraryManga(repository),
+                getCategories = GetCategories(FakeCategoryRepository()),
+                backgroundUpdateObservations = kotlinx.coroutines.flow.flowOf(
+                    mihon.desktop.domain.LibraryUpdateObservation(task),
+                ),
+            )
+            val scene = rootScene(model, sceneWidth = width)
+            try {
+                val statusDeadline = System.nanoTime() + 2_000_000_000L
+                while (model.state.value.updateStatusText == null && System.nanoTime() < statusDeadline) {
+                    settleContextMenu(scene)
+                }
+                settleContextMenu(scene)
+                val summary = requireNotNull(model.state.value.updateStatusText)
+                val label = MR.strings.desktop_library_update_results.localized()
+                val text = nodes(scene).first { semanticLabels(it).contains(summary) }.boundsInWindow
+                val button = nodes(scene).first {
+                    it.config.contains(androidx.compose.ui.semantics.SemanticsActions.OnClick) &&
+                        semanticLabels(it).contains(label)
+                }.boundsInWindow
+                assertTrue(button.left >= text.right, "Results must follow the summary")
+                assertTrue(button.top < text.bottom && button.bottom > text.top, "Results must share the summary row")
+                assertTrue(button.right <= width, "Results button must remain inside a narrow window")
+                pointerClick(scene, label)
+                settleContextMenu(scene)
+                assertTrue(semanticLabels(scene).contains(MR.strings.action_close.localized()))
+            } finally {
+                scene.close()
+            }
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `context menu follows actual secondary click in every layout and stays inside window edges`() = runTest {
+        val items = (1L..80L).map { sampleLibraryManga(sampleManga(it, "Context $it", 7L)) }
+        val model = rootModel(items)
+        val scene = rootScene(model)
+        try {
+            for (mode in LibraryDisplayMode.entries) {
+                model.setDisplayMode(mode)
+                settleContextMenu(scene)
+                val item = contextItems(scene).first()
+                for (point in listOf(
+                    item.boundsInWindow.topLeft + Offset(12f, 12f),
+                    item.boundsInWindow.topLeft + Offset(item.boundsInWindow.width - 12f, 24f),
+                )) {
+                    secondaryClick(scene, point)
+                    settleContextMenu(scene)
+                    val menu = contextMenuBounds(scene)
+                    if (point.x + menu.width < 1_200f) {
+                        assertEquals(point.x, menu.left, 2f, "$mode must anchor at the clicked x")
+                    }
+                    assertTrue(menu.top >= point.y && menu.top <= point.y + 10f, "$mode: $point -> $menu")
+                    escapeContextMenu(scene)
+                    settleContextMenu(scene)
+                }
+                val edgeItem = contextItems(scene)
+                    .filter { it.boundsInWindow.top >= 0f && it.boundsInWindow.bottom <= 880f }
+                    .maxBy { it.boundsInWindow.right + it.boundsInWindow.bottom }
+                val edge = Offset(
+                    (edgeItem.boundsInWindow.right - 12f).coerceAtMost(1_180f),
+                    edgeItem.boundsInWindow.bottom - 12f,
+                )
+                secondaryClick(scene, edge)
+                settleContextMenu(scene)
+                val menu = contextMenuBounds(scene)
+                assertTrue(menu.left >= 0 && menu.top >= 0 && menu.right <= 1_200 && menu.bottom <= 900, "$mode: $menu")
+                escapeContextMenu(scene)
+                settleContextMenu(scene)
+            }
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `context all unread pointer click preserves manga and reports success empty and failure`() = runTest {
+        for (outcome in listOf("success", "empty", "queued", "failure")) {
+            val manga = sampleManga(94L, "Download context", 7L)
+            val other = sampleManga(95L, "Selected other", 7L)
+            val repository = FakeMangaRepository().apply {
+                seed(manga)
+                seed(other)
+                libraryManga = listOf(manga, other).map(::sampleLibraryManga)
+            }
+            val chapters = FakeChapterRepository().apply {
+                for (id in 1L..4L) {
+                    seed(
+                        Chapter.create().copy(
+                            id = id,
+                            mangaId = manga.id,
+                            name = "Chapter $id",
+                            url = "/$id",
+                            sourceOrder = id,
+                            read =
+                            id == 4L || outcome == "empty",
+                        ),
+                    )
+                }
+                seed(Chapter.create().copy(id = 5L, mangaId = other.id, name = "Other", url = "/other"))
+            }
+            val enqueued = java.util.concurrent.CopyOnWriteArrayList<Long>()
+            val model = LibraryScreenModel(
+                getLibraryManga = GetLibraryManga(repository),
+                getCategories = GetCategories(FakeCategoryRepository()),
+                getChaptersByMangaId = GetChaptersByMangaId(chapters),
+                isChapterQueued = { it.id == 1L || outcome == "queued" },
+                enqueueDownload = {
+                    if (outcome == "failure") error("download unavailable")
+                    enqueued += it.chapterId
+                },
+                sourceManager = FakeDesktopSourceManager(
+                    listOf(mihon.desktop.source.FakeHttpSource(7, "en", "Context HTTP source")),
+                ),
+            )
+            val scene = rootScene(model)
+            try {
+                settleContextMenu(scene)
+                val selected = contextItems(scene).first { semanticLabels(it).contains(other.title) }
+                assertTrue(
+                    requireNotNull(
+                        selected.config[androidx.compose.ui.semantics.SemanticsActions.OnLongClick].action,
+                    ).invoke(),
+                )
+                settleContextMenu(scene)
+                val target = contextItems(scene).first { semanticLabels(it).contains(manga.title) }
+                secondaryClick(scene, target.boundsInWindow.center)
+                settleContextMenu(scene)
+                val labels = semanticLabels(scene)
+                assertTrue(
+                    labels.indexOf("Download all unread chapters") >
+                        labels.indexOf(MR.strings.desktop_ui_download_next_unread.localized()),
+                )
+                pointerClick(scene, "Download all unread chapters")
+                val expected = when (outcome) {
+                    "success" -> "Added 2 chapters to the download queue"
+                    "empty" -> "Added 0 chapters to the download queue: No unread chapters"
+                    "queued" -> "No unread chapters available to add"
+                    else -> MR.strings.desktop_ui_download_failed.localized()
+                }
+                val deadline = System.nanoTime() + 2_000_000_000L
+                while (expected !in semanticLabels(scene) && System.nanoTime() < deadline) {
+                    settleContextMenu(scene)
+                }
+                assertTrue(expected in semanticLabels(scene), "Missing download bubble: $outcome")
+                assertEquals(if (outcome == "success") listOf(3L, 2L) else emptyList<Long>(), enqueued.toList())
+                assertEquals(null, model.state.value.batchCategoryResultMessage)
+                val bubble = nodes(scene).first {
+                    it.config.contains(androidx.compose.ui.semantics.SemanticsActions.Dismiss)
+                }
+                if (outcome == "success") {
+                    withContext(kotlinx.coroutines.Dispatchers.Default) { delay(4_250) }
+                } else {
+                    assertTrue(
+                        requireNotNull(
+                            bubble.config[androidx.compose.ui.semantics.SemanticsActions.Dismiss].action,
+                        ).invoke(),
+                    )
+                }
+                settleContextMenu(scene)
+                assertTrue(expected !in semanticLabels(scene), "Download feedback must disappear without leaving a row")
+                model.setSearchQuery("")
+                settleContextMenu(scene)
+                assertTrue(expected !in semanticLabels(scene), "Recomposition must not replay old feedback")
+                if (outcome == "empty") {
+                    val sameTarget = contextItems(scene).first { semanticLabels(it).contains(manga.title) }
+                    secondaryClick(scene, sameTarget.boundsInWindow.center)
+                    settleContextMenu(scene)
+                    pointerClick(scene, "Download all unread chapters")
+                    val repeatDeadline = System.nanoTime() + 2_000_000_000L
+                    while (expected !in semanticLabels(scene) &&
+                        System.nanoTime() < repeatDeadline
+                    ) {
+                        settleContextMenu(scene)
+                    }
+                    assertTrue(expected in semanticLabels(scene), "A repeated action must show an identical new bubble")
+                }
+                assertEquals(1, selectionCount(scene), "Context action must preserve the unrelated selection")
+                assertEquals(null, model.state.value.contextMenuManga)
+            } finally {
+                scene.close()
+            }
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `context menu dismisses on escape outside scroll and category change without clearing selection`() = runTest {
+        val categories = FakeCategoryRepository().apply {
+            insert(Category(1L, "First category", 0L, 0L))
+            insert(Category(2L, "Second category", 1L, 0L))
+        }
+        val items = (1L..80L).map {
+            sampleLibraryManga(sampleManga(it, "Context $it", 7L)).copy(categories = listOf(1L, 2L))
+        }
+        val model = rootModel(items, categories)
+        val scene = rootScene(model)
+        try {
+            settleContextMenu(scene)
+            val selected = contextItems(scene).first()
+            assertTrue(
+                requireNotNull(
+                    selected.config[androidx.compose.ui.semantics.SemanticsActions.OnLongClick].action,
+                ).invoke(),
+            )
+            settleContextMenu(scene)
+            for (dismissal in listOf("escape", "outside", "scroll", "category")) {
+                secondaryClick(scene, contextItems(scene)[1].boundsInWindow.center)
+                settleContextMenu(scene)
+                assertTrue(model.state.value.contextMenuManga != null)
+                when (dismissal) {
+                    "escape" -> escapeContextMenu(scene)
+                    "outside" -> {
+                        scene.sendPointerEvent(
+                            PointerEventType.Press,
+                            Offset(1f, 1f),
+                            button = PointerButton.Primary,
+                            buttons = PointerButtons(isPrimaryPressed = true),
+                        )
+                        scene.sendPointerEvent(PointerEventType.Release, Offset(1f, 1f), button = PointerButton.Primary)
+                    }
+                    "scroll" -> scene.sendPointerEvent(
+                        PointerEventType.Scroll,
+                        contextMenuBounds(scene).center,
+                        scrollDelta = Offset(0f, 5f),
+                    )
+                    else -> model.setSelectedCategoryIndex(1)
+                }
+                settleContextMenu(scene)
+                assertEquals(null, model.state.value.contextMenuManga, dismissal)
+                assertEquals(1, selectionCount(scene), dismissal)
+            }
+        } finally {
+            scene.close()
+        }
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    private fun contextItems(scene: ImageComposeScene) = nodes(scene).filter {
+        it.config.contains(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    private fun contextMenuBounds(scene: ImageComposeScene): androidx.compose.ui.geometry.Rect {
+        val menuItems = nodes(scene).filter {
+            it.config.contains(androidx.compose.ui.semantics.SemanticsActions.OnClick) &&
+                semanticLabels(it).any { label ->
+                    label in listOf(
+                        MR.strings.desktop_ui_mark_all_read.localized(),
+                        MR.strings.remove_from_library.localized(),
+                    )
+                }
+        }
+        assertEquals(2, menuItems.size)
+        val first = menuItems.first().boundsInWindow
+        val last = menuItems.last().boundsInWindow
+        return androidx.compose.ui.geometry.Rect(first.left, first.top, last.right, last.bottom)
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    private fun secondaryClick(scene: ImageComposeScene, point: Offset) {
+        scene.sendPointerEvent(
+            PointerEventType.Press,
+            point,
+            button = PointerButton.Secondary,
+            buttons = PointerButtons(isSecondaryPressed = true),
+        )
+        scene.sendPointerEvent(PointerEventType.Release, point, button = PointerButton.Secondary)
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    private fun pointerClick(scene: ImageComposeScene, label: String) {
+        val point = nodes(scene).first {
+            it.config.contains(androidx.compose.ui.semantics.SemanticsActions.OnClick) &&
+                semanticLabels(it).contains(label)
+        }.boundsInWindow.center
+        scene.sendPointerEvent(
+            PointerEventType.Press,
+            point,
+            button = PointerButton.Primary,
+            buttons = PointerButtons(isPrimaryPressed = true),
+        )
+        scene.sendPointerEvent(PointerEventType.Release, point, button = PointerButton.Primary)
+    }
+
+    private var contextFrameNanos = System.nanoTime()
+
+    private suspend fun settleContextMenu(scene: ImageComposeScene) {
+        repeat(4) {
+            contextFrameNanos = maxOf(contextFrameNanos + 100_000_000L, System.nanoTime())
+            scene.render(contextFrameNanos)
+            yield()
+        }
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    private fun escapeContextMenu(scene: ImageComposeScene) {
+        scene.sendKeyEvent(composeKeyEvent(Key.Escape, KeyEventType.KeyDown))
+        scene.sendKeyEvent(composeKeyEvent(Key.Escape, KeyEventType.KeyUp))
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
     fun `local manga context menu hides the unsupported single download action`() = runTest {
         val manga = sampleManga(91L, "Local context", 0L)
         val model = rootModel(listOf(sampleLibraryManga(manga)))
@@ -302,6 +620,7 @@ class LibraryPageCompositionTest {
             render(scene)
 
             assertTrue(!semanticLabels(scene).contains(MR.strings.desktop_ui_download_next_unread.localized()))
+            assertTrue(!semanticLabels(scene).contains("Download all unread chapters"))
             assertTrue(semanticLabels(scene).contains(MR.strings.remove_from_library.localized()))
             secondaryRelease(scene, item)
         } finally {
@@ -312,14 +631,28 @@ class LibraryPageCompositionTest {
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
     fun `remote manga context actions use the production mark and download model ports`() = runTest {
-        val manga = sampleManga(92L, "Remote context", 7L)
+        val manga = sampleManga(92L, "Remote context", 7L).copy(
+            chapterFlags = Manga.CHAPTER_SORTING_NUMBER or Manga.CHAPTER_SORT_ASC,
+        )
         val mangaRepository = FakeMangaRepository().apply {
             seed(manga)
-            libraryManga = listOf(sampleLibraryManga(manga).copy(totalChapters = 1L))
+            libraryManga = listOf(sampleLibraryManga(manga).copy(totalChapters = 2L))
         }
         val chapters = FakeChapterRepository().apply {
-            seed(Chapter.create().copy(id = 921L, mangaId = manga.id, name = "Chapter", url = "/chapter", read = false))
+            seed(
+                Chapter.create().copy(
+                    id = 921L,
+                    mangaId = manga.id,
+                    name = "Chapter",
+                    url = "/chapter",
+                    read = false,
+                    chapterNumber = 1.0,
+                ),
+            )
         }
+        chapters.seed(
+            Chapter.create().copy(id = 922L, mangaId = manga.id, name = "Second", url = "/second", chapterNumber = 2.0),
+        )
         val getChapters = GetChaptersByMangaId(chapters)
         val enqueued = mutableListOf<mihon.desktop.download.DownloadItem>()
         val model = LibraryScreenModel(
@@ -339,27 +672,27 @@ class LibraryPageCompositionTest {
         )
         val scene = rootScene(model)
         try {
-            render(scene)
+            settleContextMenu(scene)
             var item = nodes(scene).first {
                 it.config.contains(androidx.compose.ui.semantics.SemanticsActions.OnLongClick) &&
                     semanticLabels(it).contains(manga.title)
             }
-            secondaryPress(scene, item)
-            render(scene)
-            click(scene, MR.strings.desktop_ui_download_next_unread.localized())
-            secondaryRelease(scene, item)
+            secondaryClick(scene, item.boundsInWindow.center)
+            settleContextMenu(scene)
+            pointerClick(scene, MR.strings.desktop_ui_download_next_unread.localized())
             withContext(kotlinx.coroutines.Dispatchers.Default.limitedParallelism(1)) {
-                withTimeout(2_000) { while (enqueued.isEmpty()) delay(10) }
+                withTimeout(2_000) { while (model.state.value.downloadResultMessage == null) delay(10) }
             }
             assertEquals(listOf(manga.id), enqueued.map { it.mangaId })
+            assertEquals(listOf(921L), enqueued.map { it.chapterId })
 
-            render(scene)
+            settleContextMenu(scene)
             item = nodes(scene).first {
                 it.config.contains(androidx.compose.ui.semantics.SemanticsActions.OnLongClick) &&
                     semanticLabels(it).contains(manga.title)
             }
-            secondaryPress(scene, item)
-            render(scene)
+            secondaryClick(scene, item.boundsInWindow.center)
+            settleContextMenu(scene)
             click(scene, MR.strings.desktop_ui_mark_all_read.localized())
             withContext(kotlinx.coroutines.Dispatchers.Default.limitedParallelism(1)) {
                 withTimeout(2_000) { while (chapters.getChapterById(921L)?.read != true) delay(10) }
@@ -1101,8 +1434,10 @@ class LibraryPageCompositionTest {
         uriHandler: UriHandler = object : UriHandler {
             override fun openUri(uri: String) = Unit
         },
+        sceneWidth: Int = 1_200,
     ): ImageComposeScene =
-        ImageComposeScene(1_200, 900, coroutineContext = kotlinx.coroutines.Dispatchers.Unconfined) {}.also { scene ->
+        ImageComposeScene(sceneWidth, 900, coroutineContext = kotlinx.coroutines.Dispatchers.Unconfined) {
+        }.also { scene ->
             scene.setContent {
                 CompositionLocalProvider(
                     LocalDesktopUiDependencies provides mockk<DesktopUiDependencies>(relaxed = true) {
