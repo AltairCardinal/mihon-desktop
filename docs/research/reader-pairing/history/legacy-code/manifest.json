@@ -1,0 +1,762 @@
+{
+  "pathBase": "legacy-code directory",
+  "selfExcluded": true,
+  "algorithm": "SHA-256",
+  "files": [
+    {
+      "path": ".gitattributes",
+      "bytes": 415,
+      "sha256": "f8431a78de8996ed1037d0ca36b217670cdd4cc89dd2944527bf753aeaffd300"
+    },
+    {
+      "path": "baseline-3d524/ChapterPairingRepository.kt.txt",
+      "bytes": 2894,
+      "sha256": "84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba"
+    },
+    {
+      "path": "baseline-3d524/PageTransform.kt.txt",
+      "bytes": 5477,
+      "sha256": "3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f"
+    },
+    {
+      "path": "baseline-3d524/ReaderCanonicalPairingScan.kt.txt",
+      "bytes": 7595,
+      "sha256": "37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf"
+    },
+    {
+      "path": "baseline-3d524/ReaderDualPageFactLimits.kt.txt",
+      "bytes": 582,
+      "sha256": "bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5"
+    },
+    {
+      "path": "baseline-3d524/ReaderImageOrientation.kt.txt",
+      "bytes": 8504,
+      "sha256": "77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb"
+    },
+    {
+      "path": "baseline-3d524/ReaderOriginalPageSampling.kt.txt",
+      "bytes": 2613,
+      "sha256": "05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0"
+    },
+    {
+      "path": "baseline-3d524/ReaderPairingCertification.kt.txt",
+      "bytes": 19355,
+      "sha256": "b1d79a8acd3f2b7d47721fbbb81f269883d3c8a45cad34f280ba41fb7acce1f0"
+    },
+    {
+      "path": "baseline-3d524/ReaderPairingReadSet.kt.txt",
+      "bytes": 2463,
+      "sha256": "da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb"
+    },
+    {
+      "path": "baseline-3d524/ReaderPortraitSingleSlot.kt.txt",
+      "bytes": 1227,
+      "sha256": "5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb"
+    },
+    {
+      "path": "baseline-3d524/ReaderSpreadSamplesOwner.kt.txt",
+      "bytes": 13149,
+      "sha256": "d18bbb64887740ec442d63f121357b29dbec65c2a2ce42ca5581eb0a7e58c23a"
+    },
+    {
+      "path": "baseline-3d524/SharedDualPageRules.kt.txt",
+      "bytes": 16067,
+      "sha256": "252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755"
+    },
+    {
+      "path": "baseline-3d524/SharedSpreadMatching.kt.txt",
+      "bytes": 5420,
+      "sha256": "7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af"
+    },
+    {
+      "path": "current-main/ReaderCanonicalPairingScan.kt.txt",
+      "bytes": 7595,
+      "sha256": "37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf"
+    },
+    {
+      "path": "current-main/ReaderDualPagePresentationOwner.kt.txt",
+      "bytes": 15592,
+      "sha256": "c476943c17537c3943696d7a35b20b33ea39f934ac659b7594ab99359ca06050"
+    },
+    {
+      "path": "current-main/ReaderPairingCertification.kt.txt",
+      "bytes": 20504,
+      "sha256": "f94eb4afde8e9f61c85d0308df95d247966a6b5f47e964d9177882c2c1a9242d"
+    },
+    {
+      "path": "current-main/ReaderPairingReachableEntryPruneTest.kt.txt",
+      "bytes": 8211,
+      "sha256": "9bcd70b4c48d8511d29162928bda384788015fd5de601f6209262be070cf9960"
+    },
+    {
+      "path": "desktop-maintenance/base/app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt.txt",
+      "bytes": 84928,
+      "sha256": "f70df83a6bb4cf106e6346475dd8659535090619165c7f98802518057738ce37"
+    },
+    {
+      "path": "desktop-maintenance/base/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/AdaptiveReaderViewportTest.kt.txt",
+      "bytes": 12088,
+      "sha256": "25ba312eb9dca68fb1c1abc5b4f7d701ae82f0ce1cb671fd9d0e9b176432e2c9"
+    },
+    {
+      "path": "desktop-maintenance/base/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DefaultReaderModeTest.kt.txt",
+      "bytes": 11554,
+      "sha256": "527484895b3ef3d3200fd857220b92322019b212bac3de46bdbe22cfe236119e"
+    },
+    {
+      "path": "desktop-maintenance/base/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/SharedDualPageDesktopWiringTest.kt.txt",
+      "bytes": 11441,
+      "sha256": "e9c119595029f76c45b0f44ea11a28cdfbbd10f6c347cca33381e351f2cabdbf"
+    },
+    {
+      "path": "desktop-maintenance/base/docs/evidence/reader-pairing-research-2026-10-12.md.txt",
+      "bytes": 147246,
+      "sha256": "2e45070ff2a21c7bde6b9c0d624b2f137a97ed4f1292c03c1a133adacfa3e10b"
+    },
+    {
+      "path": "desktop-maintenance/comparison/AdaptiveReaderViewportTest.kt.diff.txt",
+      "bytes": 4586,
+      "sha256": "1e3493080a7c8f511b6f984c27af40f1e4df631f064ce51de550901c92f823db"
+    },
+    {
+      "path": "desktop-maintenance/comparison/DefaultReaderModeTest.kt.diff.txt",
+      "bytes": 2394,
+      "sha256": "f1e6c95b495e50f48b4189f50e49162e9dec12395fe6f0f55cce70625161a0bf"
+    },
+    {
+      "path": "desktop-maintenance/comparison/DesktopReaderSessionIntegrationTest.kt.diff.txt",
+      "bytes": 4674,
+      "sha256": "8949f651bdeaa751c9774356fbcc40d1cd735c0ab49020f6b42bcec598ce5449"
+    },
+    {
+      "path": "desktop-maintenance/comparison/SharedDualPageDesktopWiringTest.kt.diff.txt",
+      "bytes": 5133,
+      "sha256": "9bb1ddd43f46d6307e0ecef1eceb2e12a2a34a92e9ecc1ee7faad1dd2b8ce9d7"
+    },
+    {
+      "path": "desktop-maintenance/current-main/app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt.txt",
+      "bytes": 85924,
+      "sha256": "e87afef87a404edf213dbc7c30c6c804ae9d7a890ae0d8f876f7172dfe2536de"
+    },
+    {
+      "path": "desktop-maintenance/current-main/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/AdaptiveReaderViewportTest.kt.txt",
+      "bytes": 12563,
+      "sha256": "aa10f05013d3feb50df97a41c58e0cf3e9ba1bafddbe2fe1160c82731a41b0a7"
+    },
+    {
+      "path": "desktop-maintenance/current-main/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DefaultReaderModeTest.kt.txt",
+      "bytes": 11554,
+      "sha256": "527484895b3ef3d3200fd857220b92322019b212bac3de46bdbe22cfe236119e"
+    },
+    {
+      "path": "desktop-maintenance/current-main/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/SharedDualPageDesktopWiringTest.kt.txt",
+      "bytes": 14274,
+      "sha256": "75894a171c85f324fd83749f691352ef6aa1c58fda19934b75ecb39587affcdc"
+    },
+    {
+      "path": "desktop-maintenance/uncommitted.patch",
+      "bytes": 11676,
+      "sha256": "aab34edb92b00821b32ef9727cdf06a591a1977868026b6b7e47864adf553de7"
+    },
+    {
+      "path": "desktop-maintenance/working/app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt.txt",
+      "bytes": 84940,
+      "sha256": "e65b022dcdbb472ba692831b7a7c76e1b38b3a575867971a038244f4801625b0"
+    },
+    {
+      "path": "desktop-maintenance/working/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/AdaptiveReaderViewportTest.kt.txt",
+      "bytes": 12663,
+      "sha256": "89903625aeba5198891a8ace307ae20a5dc6918ca0a3755d6c36d4648d9070f0"
+    },
+    {
+      "path": "desktop-maintenance/working/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DefaultReaderModeTest.kt.txt",
+      "bytes": 11542,
+      "sha256": "8897e7e46da6f672807e68cad3f3a7f62110775d7bd1a78a735ad3b827601a6f"
+    },
+    {
+      "path": "desktop-maintenance/working/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/SharedDualPageDesktopWiringTest.kt.txt",
+      "bytes": 12032,
+      "sha256": "92181cb85c3e7de05cd92df1fc2cb6de5e2bd582eaed4f2155bfddd0e9939646"
+    },
+    {
+      "path": "desktop-maintenance/working/docs/evidence/reader-pairing-research-2026-10-12.md.txt",
+      "bytes": 150437,
+      "sha256": "c2990f4f394d3d5364a340b179b94828427c28033fcf93ecbaf1d3580b5429f2"
+    },
+    {
+      "path": "desktop-test-maintenance.md",
+      "bytes": 4411,
+      "sha256": "7bb38d960adbfa56c7f18943d00c377ffa9f90012537a8cdff77b900dc95bbd0"
+    },
+    {
+      "path": "execution-source/confluence-R4-CD-hook/ChapterPairingRepository.kt.txt",
+      "bytes": 2894,
+      "sha256": "84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba"
+    },
+    {
+      "path": "execution-source/confluence-R4-CD-hook/PageTransform.kt.txt",
+      "bytes": 5477,
+      "sha256": "3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f"
+    },
+    {
+      "path": "execution-source/confluence-R4-CD-hook/ReaderCanonicalPairingScan.kt.txt",
+      "bytes": 7943,
+      "sha256": "4a51940554f3c9e75019e421af45cd958634286b5ce562086a9b1126d8ec15bf"
+    },
+    {
+      "path": "execution-source/confluence-R4-CD-hook/ReaderDualPageFactLimits.kt.txt",
+      "bytes": 582,
+      "sha256": "bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5"
+    },
+    {
+      "path": "execution-source/confluence-R4-CD-hook/ReaderImageOrientation.kt.txt",
+      "bytes": 8504,
+      "sha256": "77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb"
+    },
+    {
+      "path": "execution-source/confluence-R4-CD-hook/ReaderOriginalPageSampling.kt.txt",
+      "bytes": 2613,
+      "sha256": "05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0"
+    },
+    {
+      "path": "execution-source/confluence-R4-CD-hook/ReaderPairingCertification.kt.txt",
+      "bytes": 19914,
+      "sha256": "04f6d00d207fd415de15f5ba09a8bfbdee36b2d17958bd96b1d79c9ec588c85f"
+    },
+    {
+      "path": "execution-source/confluence-R4-CD-hook/ReaderPairingReadSet.kt.txt",
+      "bytes": 2463,
+      "sha256": "da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb"
+    },
+    {
+      "path": "execution-source/confluence-R4-CD-hook/ReaderPortraitSingleSlot.kt.txt",
+      "bytes": 1227,
+      "sha256": "5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb"
+    },
+    {
+      "path": "execution-source/confluence-R4-CD-hook/ReaderSpreadSamplesOwner.kt.txt",
+      "bytes": 13149,
+      "sha256": "d18bbb64887740ec442d63f121357b29dbec65c2a2ce42ca5581eb0a7e58c23a"
+    },
+    {
+      "path": "execution-source/confluence-R4-CD-hook/SharedDualPageRules.kt.txt",
+      "bytes": 16067,
+      "sha256": "252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755"
+    },
+    {
+      "path": "execution-source/confluence-R4-CD-hook/SharedSpreadMatching.kt.txt",
+      "bytes": 5420,
+      "sha256": "7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af"
+    },
+    {
+      "path": "execution-source/R1-candidate/ReaderPairingCertification.kt.txt",
+      "bytes": 18304,
+      "sha256": "1c7cc64062c36eef92df92dba0a1762ded9cdbac805377450dccdca9894b34c1"
+    },
+    {
+      "path": "execution-source/R1-exact/ChapterPairingRepository.kt.txt",
+      "bytes": 2894,
+      "sha256": "84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba"
+    },
+    {
+      "path": "execution-source/R1-exact/PageTransform.kt.txt",
+      "bytes": 5477,
+      "sha256": "3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f"
+    },
+    {
+      "path": "execution-source/R1-exact/ReaderCanonicalPairingScan.kt.txt",
+      "bytes": 7595,
+      "sha256": "37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf"
+    },
+    {
+      "path": "execution-source/R1-exact/ReaderDualPageFactLimits.kt.txt",
+      "bytes": 582,
+      "sha256": "bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5"
+    },
+    {
+      "path": "execution-source/R1-exact/ReaderImageOrientation.kt.txt",
+      "bytes": 8504,
+      "sha256": "77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb"
+    },
+    {
+      "path": "execution-source/R1-exact/ReaderOriginalPageSampling.kt.txt",
+      "bytes": 2613,
+      "sha256": "05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0"
+    },
+    {
+      "path": "execution-source/R1-exact/ReaderPairingCertification.kt.txt",
+      "bytes": 18111,
+      "sha256": "8cfd9fef0c992c479ffc448b10574c2b6c24da82602b696b0a2a95ed82ffd95b"
+    },
+    {
+      "path": "execution-source/R1-exact/ReaderPairingReadSet.kt.txt",
+      "bytes": 2463,
+      "sha256": "da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb"
+    },
+    {
+      "path": "execution-source/R1-exact/ReaderPortraitSingleSlot.kt.txt",
+      "bytes": 1227,
+      "sha256": "5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb"
+    },
+    {
+      "path": "execution-source/R1-exact/ReaderSpreadSamplesOwner.kt.txt",
+      "bytes": 13149,
+      "sha256": "d18bbb64887740ec442d63f121357b29dbec65c2a2ce42ca5581eb0a7e58c23a"
+    },
+    {
+      "path": "execution-source/R1-exact/SharedDualPageRules.kt.txt",
+      "bytes": 16067,
+      "sha256": "252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755"
+    },
+    {
+      "path": "execution-source/R1-exact/SharedSpreadMatching.kt.txt",
+      "bytes": 5420,
+      "sha256": "7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af"
+    },
+    {
+      "path": "execution-source/R2-exact/ChapterPairingRepository.kt.txt",
+      "bytes": 2894,
+      "sha256": "84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba"
+    },
+    {
+      "path": "execution-source/R2-exact/PageTransform.kt.txt",
+      "bytes": 5477,
+      "sha256": "3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f"
+    },
+    {
+      "path": "execution-source/R2-exact/ReaderCanonicalPairingScan.kt.txt",
+      "bytes": 7595,
+      "sha256": "37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf"
+    },
+    {
+      "path": "execution-source/R2-exact/ReaderDualPageFactLimits.kt.txt",
+      "bytes": 582,
+      "sha256": "bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5"
+    },
+    {
+      "path": "execution-source/R2-exact/ReaderImageOrientation.kt.txt",
+      "bytes": 8504,
+      "sha256": "77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb"
+    },
+    {
+      "path": "execution-source/R2-exact/ReaderOriginalPageSampling.kt.txt",
+      "bytes": 2613,
+      "sha256": "05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0"
+    },
+    {
+      "path": "execution-source/R2-exact/ReaderPairingCertification.kt.txt",
+      "bytes": 18828,
+      "sha256": "6f5aa3d7c9352db4c7679929344b97cbb5e1f2b8b44c6ada964ae248e1b1c761"
+    },
+    {
+      "path": "execution-source/R2-exact/ReaderPairingReadSet.kt.txt",
+      "bytes": 2463,
+      "sha256": "da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb"
+    },
+    {
+      "path": "execution-source/R2-exact/ReaderPortraitSingleSlot.kt.txt",
+      "bytes": 1227,
+      "sha256": "5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb"
+    },
+    {
+      "path": "execution-source/R2-exact/ReaderSpreadSamplesOwner.kt.txt",
+      "bytes": 13149,
+      "sha256": "d18bbb64887740ec442d63f121357b29dbec65c2a2ce42ca5581eb0a7e58c23a"
+    },
+    {
+      "path": "execution-source/R2-exact/SharedDualPageRules.kt.txt",
+      "bytes": 16067,
+      "sha256": "252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755"
+    },
+    {
+      "path": "execution-source/R2-exact/SharedSpreadMatching.kt.txt",
+      "bytes": 5420,
+      "sha256": "7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af"
+    },
+    {
+      "path": "execution-source/R3-exact/ChapterPairingRepository.kt.txt",
+      "bytes": 2894,
+      "sha256": "84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba"
+    },
+    {
+      "path": "execution-source/R3-exact/PageTransform.kt.txt",
+      "bytes": 5477,
+      "sha256": "3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f"
+    },
+    {
+      "path": "execution-source/R3-exact/ReaderCanonicalPairingScan.kt.txt",
+      "bytes": 7595,
+      "sha256": "37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf"
+    },
+    {
+      "path": "execution-source/R3-exact/ReaderDualPageFactLimits.kt.txt",
+      "bytes": 582,
+      "sha256": "bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5"
+    },
+    {
+      "path": "execution-source/R3-exact/ReaderImageOrientation.kt.txt",
+      "bytes": 8504,
+      "sha256": "77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb"
+    },
+    {
+      "path": "execution-source/R3-exact/ReaderOriginalPageSampling.kt.txt",
+      "bytes": 2613,
+      "sha256": "05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0"
+    },
+    {
+      "path": "execution-source/R3-exact/ReaderPairingCertification.kt.txt",
+      "bytes": 19355,
+      "sha256": "b1d79a8acd3f2b7d47721fbbb81f269883d3c8a45cad34f280ba41fb7acce1f0"
+    },
+    {
+      "path": "execution-source/R3-exact/ReaderPairingReadSet.kt.txt",
+      "bytes": 2463,
+      "sha256": "da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb"
+    },
+    {
+      "path": "execution-source/R3-exact/ReaderPortraitSingleSlot.kt.txt",
+      "bytes": 1227,
+      "sha256": "5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb"
+    },
+    {
+      "path": "execution-source/R3-exact/ReaderSpreadSamplesOwner.kt.txt",
+      "bytes": 13149,
+      "sha256": "d18bbb64887740ec442d63f121357b29dbec65c2a2ce42ca5581eb0a7e58c23a"
+    },
+    {
+      "path": "execution-source/R3-exact/SharedDualPageRules.kt.txt",
+      "bytes": 16067,
+      "sha256": "252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755"
+    },
+    {
+      "path": "execution-source/R3-exact/SharedSpreadMatching.kt.txt",
+      "bytes": 5420,
+      "sha256": "7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af"
+    },
+    {
+      "path": "execution-source/round5-instrumented-before/ChapterPairingRepository.kt.txt",
+      "bytes": 2894,
+      "sha256": "84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba"
+    },
+    {
+      "path": "execution-source/round5-instrumented-before/PageTransform.kt.txt",
+      "bytes": 5477,
+      "sha256": "3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f"
+    },
+    {
+      "path": "execution-source/round5-instrumented-before/ReaderCanonicalPairingScan.kt.txt",
+      "bytes": 7595,
+      "sha256": "37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf"
+    },
+    {
+      "path": "execution-source/round5-instrumented-before/ReaderDualPageFactLimits.kt.txt",
+      "bytes": 582,
+      "sha256": "bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5"
+    },
+    {
+      "path": "execution-source/round5-instrumented-before/ReaderImageOrientation.kt.txt",
+      "bytes": 8504,
+      "sha256": "77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb"
+    },
+    {
+      "path": "execution-source/round5-instrumented-before/ReaderOriginalPageSampling.kt.txt",
+      "bytes": 2613,
+      "sha256": "05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0"
+    },
+    {
+      "path": "execution-source/round5-instrumented-before/ReaderPairingCertification.kt.txt",
+      "bytes": 19355,
+      "sha256": "b1d79a8acd3f2b7d47721fbbb81f269883d3c8a45cad34f280ba41fb7acce1f0"
+    },
+    {
+      "path": "execution-source/round5-instrumented-before/ReaderPairingReadSet.kt.txt",
+      "bytes": 2463,
+      "sha256": "da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb"
+    },
+    {
+      "path": "execution-source/round5-instrumented-before/ReaderPortraitSingleSlot.kt.txt",
+      "bytes": 1227,
+      "sha256": "5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb"
+    },
+    {
+      "path": "execution-source/round5-instrumented-before/ReaderSpreadSamplesOwner.kt.txt",
+      "bytes": 13197,
+      "sha256": "a0250db213362b2fa3935e4c870d1bcefccd1faf30c180e0f49003bdac4531a8"
+    },
+    {
+      "path": "execution-source/round5-instrumented-before/SharedDualPageRules.kt.txt",
+      "bytes": 16067,
+      "sha256": "252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755"
+    },
+    {
+      "path": "execution-source/round5-instrumented-before/SharedSpreadMatching.kt.txt",
+      "bytes": 5420,
+      "sha256": "7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af"
+    },
+    {
+      "path": "math-tools/PairingConfluenceExperiment.kt.txt",
+      "bytes": 14353,
+      "sha256": "33391e7bcb6765ffbe16e0cadaf4fad8808f5eacd75ecb43583a230b918a4673"
+    },
+    {
+      "path": "math-tools/PairingDemandExperiment.kt.txt",
+      "bytes": 15349,
+      "sha256": "dd834f581b741b5baa17d3433e0efe72c63c706675b1aa26cb8833a9cc65bd2c"
+    },
+    {
+      "path": "math-tools/PairingEvidenceExperiment.kt.txt",
+      "bytes": 17556,
+      "sha256": "f124109c99d17339e63dda118a7fab14c4a13c41e63c9d973148b2aff4fac9f0"
+    },
+    {
+      "path": "math-tools/PairingFunctionExperiment.kt.txt",
+      "bytes": 22698,
+      "sha256": "00d21a762e1ed71de06c53dc04585f99046242f07efe7db255c6c8071e555a13"
+    },
+    {
+      "path": "math-tools/PairingImplementationExperiment.kt.txt",
+      "bytes": 13689,
+      "sha256": "74d5ee76b8fe394121ba8cba57c867b2f67913e9ba43cbaefbc4fbb13ec9c69d"
+    },
+    {
+      "path": "math-tools/PairingMathExperiment.kt.txt",
+      "bytes": 13173,
+      "sha256": "d7fb440c1481c6a1504f02834745d75fd4bd8d0ee73d0306b8ca95375e98ebbe"
+    },
+    {
+      "path": "math-tools/PairingQueryCounters.kt.txt",
+      "bytes": 494,
+      "sha256": "32c7c4ae21a1c58a64560a3accd3c1698e3911221d692eb52c8bb4d77e0f3bfe"
+    },
+    {
+      "path": "math-tools/run.py.txt",
+      "bytes": 51809,
+      "sha256": "533ce384b02b9e1b7c61f0e06e3852f0194391fb85cdff6f5459da21f2d5043a"
+    },
+    {
+      "path": "math-tools/run_confluence.py.txt",
+      "bytes": 9156,
+      "sha256": "2a2abb5c552391379f3f2b5c4c4bfcf2e84ef8fd7b938920ffd56bd769fd26f9"
+    },
+    {
+      "path": "math-tools/summarize.py.txt",
+      "bytes": 5470,
+      "sha256": "c05dd6bb364f79308f12477d27c668296add59ed14b57f6be5106a041bf7716f"
+    },
+    {
+      "path": "proofs/candidate.patch",
+      "bytes": 727,
+      "sha256": "b7c6bc680249389139aeaa4c3cad7ef05ae0dc2e675f3d523e6713cd4c701da5"
+    },
+    {
+      "path": "proofs/confluence/baseline-R4-CD.patch",
+      "bytes": 3330,
+      "sha256": "c924a4ca52362062a0903cdbcc9fb84b3711e558708cf0a4de3c195f6076aff5"
+    },
+    {
+      "path": "proofs/confluence/frozen_run.py.txt",
+      "bytes": 37233,
+      "sha256": "62d36f0dba391285c0a64d39806bdd8000b87708914cb7e394838b026ec67b2b"
+    },
+    {
+      "path": "proofs/confluence/lookbehind-hook.patch",
+      "bytes": 1146,
+      "sha256": "2cf3af0e393646f0d6883fe4be0f4ba9ff29f9b9dda2fc37585912d014df0f08"
+    },
+    {
+      "path": "proofs/confluence/manifest.json",
+      "bytes": 16753,
+      "sha256": "129f9d651faae0d17897c3d01de2468eb00a6414179f0747a08f3b3e94e9b928"
+    },
+    {
+      "path": "proofs/confluence/result.json",
+      "bytes": 1202611,
+      "sha256": "606a2fc5b050245d3b78cf8e7faba0ae86a8f7c45d6f32537cb8202fe82a626b"
+    },
+    {
+      "path": "proofs/manifest.json",
+      "bytes": 12107,
+      "sha256": "e273d85f4dd966103f914751ee1f90f0ae67fbee192c24b8898cfbf0c064cd34"
+    },
+    {
+      "path": "proofs/result.json",
+      "bytes": 3391,
+      "sha256": "bb6302d9d14a6715f442a97e193d42729995eb1b92df67d8c623456bf1ecdb2e"
+    },
+    {
+      "path": "proofs/round2/forced-baseline.json",
+      "bytes": 33016,
+      "sha256": "13e4fda46172b5995b01a15c646441e936e9941a00cc57c691908d4985750914"
+    },
+    {
+      "path": "proofs/round2/forced-candidate.json",
+      "bytes": 31965,
+      "sha256": "48996c838d44f542a9421f06251ca2300a11f6e9dedb849047c426ed9a6809ae"
+    },
+    {
+      "path": "proofs/round2/forced-candidate.patch",
+      "bytes": 726,
+      "sha256": "a089e4ea074e89fcfc9e9fa0210749cd5988a141c87ea63a33c8570e344b58b4"
+    },
+    {
+      "path": "proofs/round2/manifest.json",
+      "bytes": 14024,
+      "sha256": "ddf613468950fdd4e8a7ab17ad36089244d7addc345fc0aa0acccfb23440d568"
+    },
+    {
+      "path": "proofs/round2/result.json",
+      "bytes": 20793,
+      "sha256": "838d887ee9a30b76ec2cc57925e408ea35c3108547273e26cc24586da377cbab"
+    },
+    {
+      "path": "proofs/round3/A/candidate.patch",
+      "bytes": 1811,
+      "sha256": "84c3138f49cbb2bc80f47b91b17e6cb0b4de9255188423138b74b4877bc1b011"
+    },
+    {
+      "path": "proofs/round3/B/candidate.patch",
+      "bytes": 1704,
+      "sha256": "308eb806f2e64689aaaf5bb6f5ef41c793042d04092270ec31916ee6330d7469"
+    },
+    {
+      "path": "proofs/round3/manifest.json",
+      "bytes": 30635,
+      "sha256": "8a1314ec1fd658228778b197fb59215db4b603c180e33533a6830f6c2ec826ae"
+    },
+    {
+      "path": "proofs/round3/result.json",
+      "bytes": 3034,
+      "sha256": "d1726f58d63fbc7dc9b35f653554ab5b55feedeafbe5ef49ceb2c4ad0873c72c"
+    },
+    {
+      "path": "proofs/round4/C/candidate.patch",
+      "bytes": 2340,
+      "sha256": "6134dacd35fb702c0dbbe85da14818b34072db7998ab6808c7f2d2a5c8d54c94"
+    },
+    {
+      "path": "proofs/round4/D/candidate.patch",
+      "bytes": 1073,
+      "sha256": "7843b24f061814f0b13df6525451e2b58cd0f14da7ae6baf970f83667b433ebe"
+    },
+    {
+      "path": "proofs/round4/manifest.json",
+      "bytes": 23604,
+      "sha256": "17be69125025617b126983885d7e6bcb29c8fb84b37323a97764aab436be7deb"
+    },
+    {
+      "path": "proofs/round4/result.json",
+      "bytes": 8630,
+      "sha256": "9c9c00d097b9f6b56609884f72d81d8e8f50158d2e9dab1f7815200358583e31"
+    },
+    {
+      "path": "proofs/round5/manifest.json",
+      "bytes": 32931,
+      "sha256": "89442469ff949dd8bdc04394baccc919c219b475a3fb07e192c926ec7d7e80a7"
+    },
+    {
+      "path": "proofs/round5/result.json",
+      "bytes": 5230,
+      "sha256": "c68f14fcfcca09a1ebf2d5cd1bd1613360e8dca83a3ca2ab54789975157ef3b9"
+    },
+    {
+      "path": "provenance.json",
+      "bytes": 51746,
+      "sha256": "ca892cb6268c40a51cc60cfc851f63782fa683177b2a0556e2c5d2a2d6e5bcee"
+    },
+    {
+      "path": "README.md",
+      "bytes": 2248,
+      "sha256": "22105743ddd05c846175758110a08b4fd37820c6840d46b3e9d71e25fee7d612"
+    },
+    {
+      "path": "research-next/base/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt.txt",
+      "bytes": 19355,
+      "sha256": "b1d79a8acd3f2b7d47721fbbb81f269883d3c8a45cad34f280ba41fb7acce1f0"
+    },
+    {
+      "path": "research-next/base/scripts/reader-pairing-math/run.py.txt",
+      "bytes": 37233,
+      "sha256": "62d36f0dba391285c0a64d39806bdd8000b87708914cb7e394838b026ec67b2b"
+    },
+    {
+      "path": "research-next/uncommitted.patch",
+      "bytes": 17738,
+      "sha256": "d99f724f30f76981734ca3872187bfde29d63b828474498d44efaffd8200ed37"
+    },
+    {
+      "path": "research-next/working/docs/2026-10-22-reader-pairing-implementation-and-measurement.md.txt",
+      "bytes": 18173,
+      "sha256": "0835cce47565ba8af5fdff1fd928bdc9b6750f0a9d48271a6b84c731b6104208"
+    },
+    {
+      "path": "research-next/working/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt.txt",
+      "bytes": 20504,
+      "sha256": "f94eb4afde8e9f61c85d0308df95d247966a6b5f47e964d9177882c2c1a9242d"
+    },
+    {
+      "path": "research-next/working/domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingReachableEntryPruneTest.kt.txt",
+      "bytes": 7980,
+      "sha256": "494b9dd08a942a5fdcb21ca883d11c717b12ef62b7daf5e7ba20fe1a9392e4cd"
+    },
+    {
+      "path": "research-next/working/domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingTestPixels.kt.txt",
+      "bytes": 1430,
+      "sha256": "7154f949ff753f57ca50ed6dda04195ddd64f10b32092df065b9facc5c71601a"
+    },
+    {
+      "path": "research-next/working/scripts/reader-pairing-math/PairingImplementationExperiment.kt.txt",
+      "bytes": 13689,
+      "sha256": "74d5ee76b8fe394121ba8cba57c867b2f67913e9ba43cbaefbc4fbb13ec9c69d"
+    },
+    {
+      "path": "research-next/working/scripts/reader-pairing-math/PairingQueryCounters.kt.txt",
+      "bytes": 494,
+      "sha256": "32c7c4ae21a1c58a64560a3accd3c1698e3911221d692eb52c8bb4d77e0f3bfe"
+    },
+    {
+      "path": "research-next/working/scripts/reader-pairing-math/run.py.txt",
+      "bytes": 51809,
+      "sha256": "533ce384b02b9e1b7c61f0e06e3852f0194391fb85cdff6f5459da21f2d5043a"
+    },
+    {
+      "path": "research-next-dirty.md",
+      "bytes": 4976,
+      "sha256": "dde7052a95d9f83a8818fb732947265952e3834dbb42f662d0c546e169071380"
+    },
+    {
+      "path": "rounds-r1-r5.md",
+      "bytes": 6172,
+      "sha256": "81377076f5019a9ed63f8b881dee79958506fdceabcab7178e61c87c6d1f3a27"
+    },
+    {
+      "path": "theory/2026-10-20-reader-pairing-full-algorithm-mathematical-model.md.txt",
+      "bytes": 27221,
+      "sha256": "88444cd472e1a83bc92e111ca9a08eab20d8e44d0a51511b755987174e7d2b75"
+    },
+    {
+      "path": "theory/2026-10-20-reader-pairing-mathematical-analysis.md.txt",
+      "bytes": 20564,
+      "sha256": "75e428e889dfde99cac3a97ad16aa112b3cfe360731111c80f6473219329fda8"
+    },
+    {
+      "path": "theory/2026-10-21-reader-pairing-mathematical-analysis-round2.md.txt",
+      "bytes": 18802,
+      "sha256": "2aebc04b741fea6db438200cc195acf7f8730880471f96ec9803733ac1d35161"
+    },
+    {
+      "path": "theory/2026-10-21-reader-pairing-mathematical-analysis-round3.md.txt",
+      "bytes": 19053,
+      "sha256": "20bf13626f912662bce55f80116d8db909c8b442838192f0859f5f7e92b50748"
+    },
+    {
+      "path": "theory/2026-10-22-reader-pairing-mathematical-analysis-round4.md.txt",
+      "bytes": 16722,
+      "sha256": "61fc52411b96da7cd6c2de2bf91e0e5a8cc2c8dba2ded1c1a0d8407d598547ef"
+    },
+    {
+      "path": "theory/2026-10-22-reader-pairing-mathematical-analysis-round5.md.txt",
+      "bytes": 17311,
+      "sha256": "2edf3f585353469a69a51790aff14c95f860ecccdcd7c1967e262be482c1b96f"
+    }
+  ]
+}

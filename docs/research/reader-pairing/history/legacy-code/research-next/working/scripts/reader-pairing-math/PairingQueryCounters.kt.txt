@@ -1,0 +1,20 @@
+package mihon.domain.reader
+
+/**
+ * Research-only counters.
+ *
+ * They observe how often the owner is asked for an edge and how often the
+ * "later edge has no match" hint is consulted. They never change a result: the
+ * production sources only increment them.
+ */
+internal object PairingQueryCounters {
+    var ownerEdgeQueries: Int = 0
+    var hintQueries: Int = 0
+    var hintHits: Int = 0
+
+    fun reset() {
+        ownerEdgeQueries = 0
+        hintQueries = 0
+        hintHits = 0
+    }
+}

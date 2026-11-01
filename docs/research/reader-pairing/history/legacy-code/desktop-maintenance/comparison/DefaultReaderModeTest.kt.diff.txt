@@ -1,0 +1,41 @@
+diff --git "a/D:\\Codex\\worktrees\\reader-pairing-main-20261013\\app-desktop\\src\\test\\kotlin\\mihon\\desktop\\ui\\reader\\DefaultReaderModeTest.kt" "b/D:\\Codex\\worktrees\\reader-r1-r10-reevaluation-20261101\\app-desktop\\src\\test\\kotlin\\mihon\\desktop\\ui\\reader\\DefaultReaderModeTest.kt"
+index cf4cd4cc1e..b75665bcc6 100644
+--- "a/D:\\Codex\\worktrees\\reader-pairing-main-20261013\\app-desktop\\src\\test\\kotlin\\mihon\\desktop\\ui\\reader\\DefaultReaderModeTest.kt"
++++ "b/D:\\Codex\\worktrees\\reader-r1-r10-reevaluation-20261101\\app-desktop\\src\\test\\kotlin\\mihon\\desktop\\ui\\reader\\DefaultReaderModeTest.kt"
+@@ -159,7 +159,7 @@ class DefaultReaderModeTest {
+     }
+ 
+     @Test
+-    fun `layout settles preserve logical anchor without reusing consumed reading cause`() = runTest {
++    fun `layout settles preserve logical anchor while newly painted companion and next page report`() = runTest {
+         val initial = desktopReaderSessionState(chapterId = 7L, pageCount = 6, initialPage = 2)
+         val reader = initial.copy(context = initial.context.copy(mangaId = 1))
+         val repository = object : mihon.domain.reader.ChapterPairingRepository {
+@@ -206,22 +206,22 @@ class DefaultReaderModeTest {
+         advanceTimeBy(150)
+         runCurrent()
+         val dual = model.presentReadyPagerViewport()
+-        assertEquals(setOf(1, 2), dual.pageIds.mapTo(linkedSetOf()) { it.sourcePageIndex })
++        assertEquals(setOf(2, 3), dual.pageIds.mapTo(linkedSetOf()) { it.sourcePageIndex })
+         assertEquals(2, model.state.value.currentPage)
+-        assertEquals(1, reports)
++        assertEquals(2, reports)
+         model.updateViewportSize(900, 1000, this)
+         runCurrent()
+         advanceTimeBy(150)
+         runCurrent()
+         model.setSpreadPages(setOf(2))
+         model.presentReadyPagerViewport()
+-        assertEquals(1, reports)
++        assertEquals(2, reports)
+         assertEquals(setOf(4), model.state.value.forcedSinglePages)
+         model.goToPage(3)
+         model.presentReadyPagerViewport()
+-        assertEquals(2, reports)
++        assertEquals(3, reports)
+         model.presentReadyPagerViewport()
+-        assertEquals(2, reports, "An unchanged fully painted idle viewport is deduplicated")
++        assertEquals(3, reports, "An unchanged fully painted idle viewport is deduplicated")
+         model.onDispose()
+     }
+ 

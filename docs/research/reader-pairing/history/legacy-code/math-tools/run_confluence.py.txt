@@ -1,0 +1,151 @@
+"""Offline, fixed-commit R4-CD baseline and one independent wider-entry retry."""
+
+from __future__ import annotations
+
+import difflib
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import time
+import types
+
+
+ROOT = Path(__file__).resolve().parents[2]
+COMMIT = "3d52489d944485835846bc1e5b3160aa71a8e7c3"
+OUT = ROOT / ".gradle/reader-pairing-math/confluence"
+
+
+def committed(name: str) -> str:
+    return subprocess.check_output(["git", "show", f"{COMMIT}:{name}"], cwd=ROOT).decode("utf-8")
+
+
+def once(source: str, old: str, new: str) -> str:
+    if source.count(old) != 1:
+        raise RuntimeError("Frozen patch anchor mismatch: " + old[:80])
+    return source.replace(old, new)
+
+
+def main() -> None:
+    OUT.mkdir(parents=True, exist_ok=True)
+    helper_name = "scripts/reader-pairing-math/run.py"
+    helper_source = committed(helper_name)
+    frozen_helper = OUT / "frozen_run.py"
+    frozen_helper.write_text(helper_source, encoding="utf-8", newline="\n")
+    helper = types.ModuleType("frozen_pairing_helpers")
+    helper.__file__ = str(ROOT / helper_name)
+    exec(compile(helper_source, str(frozen_helper), "exec"), helper.__dict__)
+    java = shutil.which("java")
+    if not java:
+        raise RuntimeError("Existing JDK required; no download")
+    compiler = [helper.jar(*item) for item in (
+        ("org.jetbrains.kotlin", "kotlin-compiler-embeddable", "2.3.20"),
+        ("org.jetbrains.kotlin", "kotlin-stdlib", "2.3.20"),
+        ("org.jetbrains.kotlin", "kotlin-script-runtime", "2.3.20"),
+        ("org.jetbrains.kotlin", "kotlin-reflect", "1.6.10"),
+        ("org.jetbrains.kotlin", "kotlin-daemon-embeddable", "2.3.20"),
+        ("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm", "1.8.0"),
+        ("org.jetbrains", "annotations", "23.0.0"),
+    )]
+    original_jar = ROOT / "domain/build/libs/domain-jvm.jar"
+    jar_before = helper.digest(original_jar)
+    peripheral = OUT / "peripheral-domain.jar"
+    shutil.copyfile(original_jar, peripheral)
+    if helper.digest(original_jar) != jar_before or helper.digest(peripheral) != jar_before:
+        raise RuntimeError("SOURCE_CHANGED while freezing peripheral jar; stop without retry")
+    original = {name: committed(name) for name in helper.SOURCES}
+    baseline = dict(original)
+    scan_name = helper.READER + "ReaderCanonicalPairingScan.kt"
+    cert_name = helper.READER + "ReaderPairingCertification.kt"
+    # These are exactly the two R4 candidate edits, not a new claimed benefit.
+    baseline[scan_name] = once(baseline[scan_name],
+        "    private val distance: (ReaderPageId, ReaderPageId) -> Double?,\n",
+        "    private val distance: (ReaderPageId, ReaderPageId) -> Double?,\n"
+        "    private val knownLaterNoMatch: ((ReaderPageId, ReaderPageId) -> Boolean)? = null,\n")
+    baseline[scan_name] = once(baseline[scan_name],
+        "        val nearDistance = distance(pages[i], pages[i + 1])\n        val laterDistance = distance(pages[i + 1], pages[i + 2])",
+        "        val hintedLater = if (knownLaterNoMatch?.invoke(pages[i + 1], pages[i + 2]) == true) {\n"
+        "            val observed = distance(pages[i + 1], pages[i + 2])\n"
+        "            if (observed == null) return false\n            observed\n        } else null\n"
+        "        val nearDistance = distance(pages[i], pages[i + 1])\n"
+        "        val laterDistance = hintedLater ?: distance(pages[i + 1], pages[i + 2])")
+    baseline[cert_name] = once(baseline[cert_name], "            ::resolvedSide,\n        ) { a, b ->",
+        "            ::resolvedSide,\n            distance = { a, b ->")
+    baseline[cert_name] = once(baseline[cert_name],
+        "        }\n        data class State(val index: Int, val opening: Boolean, val reserved: Boolean)",
+        "            },\n            knownLaterNoMatch = { a, b ->\n"
+        "                val evidence = owner.edgeAnalysis(a, b, settings.direction)\n"
+        "                evidence is ReaderEdgeAnalysisEvidence.Computed && evidence.score == null\n"
+        "            },\n        )\n        data class State(val index: Int, val opening: Boolean, val reserved: Boolean)")
+    baseline[cert_name] = once(baseline[cert_name], """                    for (opening in listOf(true, false)) {
+                        add(ReaderPairingScanCursor(first, opening))
+                        add(ReaderPairingScanCursor(first, opening, first))
+                    }""", """                    for (opening in if (first == 1) listOf(true) else listOf(true, false)) {
+                        add(ReaderPairingScanCursor(first, opening))
+                        if (first > 1 && pages[first - 1] !in settings.forcedSinglePages &&
+                            pages[first] !in settings.forcedSinglePages
+                        ) {
+                            add(ReaderPairingScanCursor(first, opening, first))
+                        }
+                    }""")
+    execution = dict(baseline)
+    execution[cert_name] = once(execution[cert_name],
+        "        reads: ReaderPairingReadSet?,\n    ): ReaderPairingCertificationTrace {",
+        "        reads: ReaderPairingReadSet?,\n        initialLookbehind: Int = 2,\n    ): ReaderPairingCertificationTrace {")
+    execution[cert_name] = once(execution[cert_name], "maxOf(0, targetIndex - 2)", "maxOf(0, targetIndex - initialLookbehind)")
+    def patch(before: dict[str, str], after: dict[str, str]) -> str:
+        return "".join("".join(difflib.unified_diff(before[n].splitlines(keepends=True), after[n].splitlines(keepends=True),
+            fromfile="before/" + Path(n).name, tofile="after/" + Path(n).name)) for n in before if before[n] != after[n])
+    (OUT / "baseline-R4-CD.patch").write_text(patch(original, baseline), encoding="utf-8")
+    (OUT / "lookbehind-hook.patch").write_text(patch(baseline, execution), encoding="utf-8")
+    source_dir = OUT / "sources"
+    source_dir.mkdir(exist_ok=True)
+    sources = []
+    for name, value in execution.items():
+        path = source_dir / Path(name).name
+        path.write_text(value, encoding="utf-8", newline="\n")
+        sources.append(path)
+    study = ROOT / "scripts/reader-pairing-math/PairingConfluenceExperiment.kt"
+    watched = [*sources, peripheral, study, Path(__file__).resolve(), frozen_helper]
+    fingerprints = {str(p): helper.digest(p) for p in watched}
+    compiler_hashes = {str(p): helper.digest(p) for p in compiler}
+    manifest = {"baseline": "fixed commit + explicit R4 C/D research patches; not current production",
+        "commit": COMMIT, "commitSourceHashes": {n: __import__('hashlib').sha256(s.encode('utf-8')).hexdigest() for n, s in original.items()},
+        "hashesBefore": fingerprints, "compilerJars": compiler_hashes, "peripheralOriginalSha256": jar_before,
+        "worktreeAtFreeze": subprocess.check_output(["git", "status", "--short"], cwd=ROOT, text=True, encoding="utf-8"),
+        "limits": {"compilerHeapMiB": 768, "compilerMetaspaceMiB": 256, "runHeapMiB": 256, "timeoutSeconds": 60}}
+    def stable() -> None:
+        if any(helper.digest(Path(p)) != h for p, h in {**fingerprints, **compiler_hashes}.items()):
+            (OUT / "result.json").write_text('{"status":"SOURCE_CHANGED"}', encoding="utf-8")
+            raise RuntimeError("SOURCE_CHANGED: frozen execution input changed; stop without retry")
+    classes = OUT / "classes"
+    classes.mkdir(exist_ok=True)
+    compile_command = [java, "-Xmx768m", "-XX:MaxMetaspaceSize=256m", "-Dfile.encoding=UTF-8", "-cp",
+        os.pathsep.join(map(str, compiler)), "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler", "-no-stdlib", "-no-reflect",
+        "-jvm-target", "17", "-classpath", os.pathsep.join(map(str, [compiler[1], peripheral])), "-d", str(classes),
+        *map(str, sources), str(study)]
+    run_command = [java, "-Xmx256m", "-XX:MaxMetaspaceSize=128m", "-Dfile.encoding=UTF-8", "-cp",
+        os.pathsep.join(map(str, [classes, compiler[1], peripheral])), "mihon.domain.reader.PairingConfluenceExperimentKt"]
+    manifest["commands"] = {"compile": compile_command, "run": run_command}
+    (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    (OUT / "result.json").write_text('{"status":"RUNNING"}', encoding="utf-8")
+    started = time.monotonic()
+    stable()
+    print(f"Compile frozen R4-CD/E; timeout=60s; log={OUT / 'compile.log'}", flush=True)
+    helper.run(compile_command, OUT / "compile.log", 60)
+    stable()
+    print(f"Run 222 bounded states; timeout=60s; log={OUT / 'run.log'}", flush=True)
+    result = json.loads(helper.run(run_command, OUT / "run.log", 60))
+    stable()
+    manifest["hashesAfter"] = {str(p): helper.digest(p) for p in watched}
+    manifest["sourceStable"] = True
+    result["elapsedCompileAndResearchSeconds"] = round(time.monotonic() - started, 3)
+    result["sourceStable"] = True
+    (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    (OUT / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    print(json.dumps({k: v for k, v in result.items() if k != "records"}), flush=True)
+
+
+if __name__ == "__main__":
+    main()

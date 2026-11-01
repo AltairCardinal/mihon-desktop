@@ -1,0 +1,57 @@
+# 最终收尾清单（bench/build_final_status.py 生成）
+
+## 原门槛与真实状态
+
+| 门槛 | 状态 | 数值 |
+|---|---|---|
+| D3（含 D4）≥ 24 | 机制层满足 | 机制 34（D4 3 + D3 31，共 45 个独立机制）；题目 31 |
+| D4 ≥ 12 | 未满足 | 机制 3；题目 4（只有在含 bound 确认的完整配置下同时测了正确性与成本的才算 D4） |
+| 深入 6 类范式 | 未核定 | 本轮与修复轮都没有逐类核定，不能声称满足 |
+| 12 个非重复新假设 | 尚未证明满足 | 30 条中重复 15、题内细化 15；'题外新方向 0'不等于'合格新假设 0'——15 条细化是否满足'非重复新假设'的标准尚未核定 |
+
+## 下一阶段优先候选（不默认全部启用）
+
+- P0：I1 会话级 close（异步三段）（接口强化，必需）
+- P0：M32 bound_confirm（接口强化，必需）
+- P0：I2 BC-2 预算合同（接口强化，必需）
+- P1：M31 inc_revoke + bound（等价优化，完整配置已测）
+- P1：M06 D04 INTERVAL（等价优化，owner 内部）
+- P2：M01 gated_shadow 修正版 + bound + 树路线（条件候选，默认关闭）
+
+## 本轮补证
+
+- 关闭排空终点：异步三段（请求/逻辑关闭/物理排空）+ 8 项回归（修复前 4 项失败）+ 逐事件日志 results/raw/final/close_repro_*
+- 零耗时证明：选项 A（q_u≤0 在构造时拒绝），证明前提 P1–P3 写入 proofs/fix_LC.md L-LC2；复现日志 results/raw/final/q0_repro_*
+- 完整配置成本：inc_revoke+bound / package+bound 墙钟 0.157 [0.146, 0.159]；gated_shadow+bound / incumbent+bound 1.067 [0.979, 1.856]；判定哈希与无 bound 运行 196/196 相同（results/summary/formal_final/）
+- 完整配置格子的 tracemalloc 探测（results/raw/fix/costprobe/bench_final.jsonl）
+
+## 降级
+
+- M02 持久关系树（PersistentStrongSession） D4→D3（生命周期与留出通过，但含 bound 确认的完整配置成本未测）
+- M03 块摘要（BlockSummary 核心 + BlockSession 会话接线，同一机制两层证据） D4→D3（生命周期与留出通过，但含 bound 确认的完整配置成本未测）
+- M20 门控全信息索引 D4→D3（生命周期与留出通过，但含 bound 确认的完整配置成本未测）
+- M21 选择器 SEL D4→D3（生命周期与留出通过，但含 bound 确认的完整配置成本未测）
+- M22 derive_first（模型修正） D4→D3（生命周期与留出通过，但含 bound 确认的完整配置成本未测）
+- M23 投影支撑 D4→D3（生命周期与留出通过，但含 bound 确认的完整配置成本未测）
+- M24 重签（GSession reissue eager/lazy） D4→D3（生命周期与留出通过，但含 bound 确认的完整配置成本未测）
+- M33 value 复用 + incarnation 授权 D4→D3（生命周期与留出通过，但含 bound 确认的完整配置成本未测）
+- M34 reserve1 预留 D4→D3（生命周期与留出通过，但含 bound 确认的完整配置成本未测）
+- M38 跨 rebind 重签（MigratingSession） D4→D3（生命周期与留出通过，但含 bound 确认的完整配置成本未测）
+- BlockSummary 核心与 BlockSession 接线合并为一个机制（R9/修复轮重复计数）
+- M39 T04 D3→D2：正式计时只覆盖校验器内核；旧校验器（路线 1）未补域检查前不能作授权器
+- gated_shadow 用 fresh exact 路线：冻结留出未用此配置运行，标为未验证（不推荐为默认）
+- A06、X21、O01、P03：撤回默认持久树建议
+- 题目层 D4 12→4（R9 的 12 个 D4 与修复轮的 13 个机制 D4 不再保留）
+
+## 未完成（如实保留）
+
+- W18：生成器已完成，完整复合压力未验证（所有 W18 运行都过滤掉了 late_fail/settings/close_rebind/confirm/cancel）
+- T04 携证明证书的证书构造与维护成本未计时
+- 除 inc_revoke 与 gated_shadow 外，其他机制在含 bound 确认的完整配置下的成本未测（降为 D3）
+- inc_revoke 等价性只是有界随机搜索 + 证明草图，不是机器检查的证明
+- 生命周期不是全交错穷举；N01/N06 是族内证明
+- 原生服务时间、自然频率、质量真值、原生表示成本全部缺失；没有原生提速证据
+- 深入 6 类范式、15 条细化是否为合格新假设：未核定
+- 零耗时证明与多 lane 并行证明：不支持（拒绝输入域），未实现尝试序号身份
+
+收益边界：新留出上影子策略虚拟延迟改善约 0.5%–2.7%，物理获取不变；没有原生提速证据

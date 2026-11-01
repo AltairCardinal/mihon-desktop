@@ -1,0 +1,11 @@
+--- current-production/ReaderPairingCertification.kt
++++ round2-isolated-forced/ReaderPairingCertification.kt
+@@ -321,7 +321,7 @@
+             }
+             return ReaderPairingCertificationTrace(certification, dependencyPageIds())
+         }
+-        val isolatedSpread = targetFact.state == ReaderPageFactState.SPREAD
++        val isolatedSpread = targetFact.state == ReaderPageFactState.SPREAD || target in settings.forcedSinglePages
+         var first = if (isolatedSpread) targetIndex else maxOf(0, targetIndex - 2)
+         fun certified(unit: ReaderDualPageUnit): ReaderPairingCertificationTrace {
+             val used = dimensions.keys + analyses.keys + edges.keys.flatMap { listOf(it.first, it.second) }

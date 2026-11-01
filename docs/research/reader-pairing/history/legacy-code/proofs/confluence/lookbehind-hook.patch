@@ -1,0 +1,19 @@
+--- before/ReaderPairingCertification.kt
++++ after/ReaderPairingCertification.kt
+@@ -169,6 +169,7 @@
+         settings: ReaderPairingSettings,
+         target: ReaderPageId,
+         reads: ReaderPairingReadSet?,
++        initialLookbehind: Int = 2,
+     ): ReaderPairingCertificationTrace {
+         require(settings.direction != ReaderDirection.VERTICAL)
+         check(!owner.isClosed)
+@@ -333,7 +334,7 @@
+         // scan starts there and the certificate depends on the target's own facts
+         // instead of the left neighbour, whose analysis cannot change the unit.
+         val isolatedSpread = targetFact.state == ReaderPageFactState.SPREAD || target in settings.forcedSinglePages
+-        var first = if (isolatedSpread) targetIndex else maxOf(0, targetIndex - 2)
++        var first = if (isolatedSpread) targetIndex else maxOf(0, targetIndex - initialLookbehind)
+         fun certified(unit: ReaderDualPageUnit): ReaderPairingCertificationTrace {
+             val used = dimensions.keys + analyses.keys + edges.keys.flatMap { listOf(it.first, it.second) }
+             val segment = ReaderCertifiedPairingSegment(

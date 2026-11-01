@@ -1,0 +1,46 @@
+# 复现与恢复
+
+环境：标准 Python 3（实测 3.13.17，Linux，2 vCPU，7.8 GiB），只用标准库，无网络/账户/外部求解器。
+所有命令在**包根目录**执行。包文件与 MANIFEST 未改动（`results/summary/stage0.json`：57 个文件哈希一致，61 项测试、smoke seed 905、data 检查全部通过，smoke 输出与 fixture 逐字节相同）。
+
+## 1. 最小检查（约 2 分钟）
+```
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests                         # 包内 61 项
+python3 smoke.py --seed 905 && python3 data/recompute.py --check
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s research_out/tests -t research_out   # 研究 92 项（约 90 s）
+```
+测试族：test_core_strong（3）、test_wpA（10）、test_wpB（16）、test_wpC（16）、test_wpG（24）、test_wpH（19）、test_wpT（4）。
+
+## 2. 研究实验（各写 results/raw/<wp>/；括号为本机耗时量级）
+```
+python3 research_out/bench/run_wpA_grid.py ; run_wpA_studies.py ; run_wpA_attack.py ; run_wpA_cex.py ; run_wpA_shadow.py ; run_wpA_boundary.py   (各 1–20 min)
+python3 research_out/bench/run_wpB_studies.py ; run_wpB_coupled.py ; run_wpB_equiv.py ; run_wpB_domains.py ; run_wpB_ablation.py               (各 1–10 min)
+python3 research_out/candidates/wpC_experiments.py <section>        # C01 C02 C03 C04 C06 E O02 P01 P06 Q X06 ...（见 sections/wpC.md）
+python3 research_out/candidates/wpG_experiments.py ; wpG_d4.py ; wpG_combos.py                                                                 (见 sections/wpG.md)
+python3 research_out/candidates/wpH_exp_sched.py ; wpH_exp_commit.py ; wpH_robust.py ; wpH_combos.py ; wpH_d4.py ; wpH_extra.py                 (见 sections/wpH.md)
+python3 research_out/bench/run_wpS.py          # S01–S06 (≈1.5 min)
+python3 research_out/bench/run_wpT05.py        # T05 oracle 参照点 (≈1 min)
+python3 -c "import sys; sys.path.insert(0,'research_out/candidates'); import paths, wpM_q02_x12 as M; print(M.x12_study()); print(M.q02_study(direction_flip=True))"
+```
+各工作包的确切入口与参数写在对应 `sections/<wp>.md`。
+
+## 3. 正式计时（串行，约 25 分钟）
+```
+sh research_out/bench/formal_all.sh                 # 5 个 bench 模块 × 3 独立进程 × (1 预热 + 3 测量)，配置顺序轮换
+python3 research_out/bench/summarize_formal.py      # → results/summary/formal/*.json 与 FORMAL_TABLES.md
+```
+本次正式计时：2026-10-26T14:06:57Z – 14:31:55Z，原始行 A 11 760、B 732、C 1 596、G 1 536、H 528，子进程错误 0。
+
+## 4. 交付表重建
+```
+python3 research_out/bench/build_deliverables.py   # coverage.csv（150 行 + 审计）
+python3 research_out/bench/build_hypotheses.py     # hypotheses.csv（30 条）并追加 NH 行
+```
+`ADOPTION_MATRIX.csv` 由 adoption_parts 合并（WP-H 的调度项路线由主会话更正为 L1）；`source-manifest.json` 记录 research_out 全部文件哈希。
+
+## 5. 未完成项与继续入口
+- 真实服务时间/自然频率/质量真值缺失：所有采用结论为条件结论；最少校准量见 REPORT §8。
+- 未正式计时而封顶 D2 的 31 行（coverage.csv `audit_note`）：把机制加入对应 `bench_<wp>.py` 后用 `drive_formal.py` 即可补齐。
+- WP-B：块边界中边选择/序分量的必要性未证；世界 oracle 只到 n≤6。WP-C：门控半径 2 的充分性未证；Q 分支无耦合运行。
+  WP-H：I/J 族多数只在模拟器中；N03 只到容量 2、深度 6。WP-A：随机服务时间未测；F05/X17/O05 无耦合运行。
+- 无正在运行的进程；所有结果文件已落盘。

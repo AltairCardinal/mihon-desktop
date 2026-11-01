@@ -1,0 +1,606 @@
+"""Bounded offline experiment using cached Kotlin tools and freshly compiled production rules."""
+
+from __future__ import annotations
+
+import hashlib
+import difflib
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import time
+
+
+ROOT = Path(__file__).resolve().parents[2]
+OUT = ROOT / ".gradle" / "reader-pairing-math"
+CACHE = Path(os.environ.get("GRADLE_USER_HOME", Path.home() / ".gradle")) / "caches/modules-2/files-2.1"
+READER = "domain/src/commonMain/kotlin/mihon/domain/reader/"
+SOURCES = [
+    READER + name + ".kt"
+    for name in (
+        "ReaderCanonicalPairingScan", "SharedDualPageRules", "ReaderPairingCertification",
+        "SharedSpreadMatching", "ReaderSpreadSamplesOwner", "ReaderOriginalPageSampling",
+        "ReaderPortraitSingleSlot", "PageTransform", "ReaderImageOrientation", "ReaderDualPageFactLimits",
+        "ReaderPairingReadSet", "ChapterPairingRepository",
+    )
+]
+
+
+def digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def jar(group: str, name: str, version: str) -> Path:
+    files = sorted((CACHE / group / name / version).glob(f"*/{name}-{version}.jar"))
+    if len(files) != 1:
+        raise RuntimeError(f"Expected one cached {group}:{name}:{version}; found {len(files)}. No download attempted.")
+    return files[0]
+
+
+def run(command: list[str], log: Path, timeout: int) -> str:
+    with log.open("w", encoding="utf-8", newline="\n") as stream:
+        completed = subprocess.run(
+            command, cwd=ROOT, stdout=stream, stderr=subprocess.STDOUT,
+            env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", "PYTHONDONTWRITEBYTECODE": "1"},
+            timeout=timeout, check=False, encoding="utf-8",
+        )
+    output = log.read_text(encoding="utf-8")
+    if completed.returncode:
+        raise RuntimeError(f"Command failed ({completed.returncode}); inspect {log}\n{output[-6000:]}")
+    return output
+
+
+def main() -> None:
+    OUT.mkdir(parents=True, exist_ok=True)
+    java = shutil.which("java")
+    if not java:
+        raise RuntimeError("Java not available")
+    compiler = [
+        jar("org.jetbrains.kotlin", "kotlin-compiler-embeddable", "2.3.20"),
+        jar("org.jetbrains.kotlin", "kotlin-stdlib", "2.3.20"),
+        jar("org.jetbrains.kotlin", "kotlin-script-runtime", "2.3.20"),
+        jar("org.jetbrains.kotlin", "kotlin-reflect", "1.6.10"),
+        jar("org.jetbrains.kotlin", "kotlin-daemon-embeddable", "2.3.20"),
+        jar("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm", "1.8.0"),
+        jar("org.jetbrains", "annotations", "23.0.0"),
+    ]
+    peripheral = ROOT / "domain/build/libs/domain-jvm.jar"
+    if not peripheral.is_file():
+        raise RuntimeError("Existing peripheral production jar missing; no Gradle or download attempted")
+    main_source = ROOT / "scripts/reader-pairing-math/PairingMathExperiment.kt"
+    classes = OUT / "classes"
+    classes.mkdir(exist_ok=True)
+    compile_classpath = os.pathsep.join(map(str, [compiler[1], peripheral]))
+    command = [
+        java, "-Xmx768m", "-XX:MaxMetaspaceSize=256m", "-Dfile.encoding=UTF-8",
+        "-cp", os.pathsep.join(map(str, compiler)), "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
+        "-no-stdlib", "-no-reflect", "-jvm-target", "17", "-classpath", compile_classpath,
+        "-d", str(classes), *[str(ROOT / source) for source in SOURCES], str(main_source),
+    ]
+    started = time.monotonic()
+    source_hashes = {source: digest(ROOT / source) for source in SOURCES}
+    jar_hash = digest(peripheral)
+
+    def stable() -> None:
+        if any(digest(ROOT / source) != value for source, value in source_hashes.items()) or digest(peripheral) != jar_hash:
+            (OUT / "result.json").write_text('{"status":"SOURCE_CHANGED"}', encoding="utf-8")
+            raise RuntimeError("SOURCE_CHANGED: core source or peripheral jar changed during experiment; results invalid")
+
+    manifest = {
+        "scope": "algorithm research only; peripheral source/jar equivalence is not established",
+        "baselineHead": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, encoding="utf-8").strip(),
+        "sources": source_hashes,
+        "experimentSha256": digest(main_source),
+        "peripheralJar": {"path": str(peripheral), "sha256": jar_hash},
+        "peripheralTypes": ["ReaderChapterId", "ReaderPageId", "ReaderDualPageContentIdentity", "ReaderDualPageIdentity",
+                            "ReaderDirection", "ReaderPageSize", "ReaderPairingAdjustment"],
+        "peripheralSourceHashes": {source: digest(ROOT / source) for source in (
+            READER + "session/ReaderSession.kt", READER + "SharedDualPageSession.kt",
+            READER + "ReaderNavigation.kt", READER + "ReaderPairingAdjustment.kt", READER + "ReaderPageModel.kt",
+        )},
+        "compilerJars": {str(path): digest(path) for path in compiler},
+        "compileCommand": command,
+        "limits": {"compilerHeapMiB": 768, "compilerMetaspaceMiB": 256, "runHeapMiB": 256,
+                   "compileTimeoutSeconds": 60, "runTimeoutSeconds": 60, "maxPages": 8, "maxCases": 10000},
+    }
+    (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    (OUT / "result.json").write_text('{"status":"RUNNING"}', encoding="utf-8")
+    javap = Path(java).with_name("javap.exe" if os.name == "nt" else "javap")
+    if not javap.is_file():
+        raise RuntimeError("javap missing; cannot record peripheral signatures")
+    run([
+        str(javap), "-classpath", str(peripheral),
+        *["mihon.domain.reader." + name for name in manifest["peripheralTypes"]
+          if name not in ("ReaderChapterId", "ReaderPageId")],
+        "mihon.domain.reader.session.ReaderChapterId", "mihon.domain.reader.session.ReaderPageId",
+    ], OUT / "peripheral-signatures.log", 15)
+    variants = {}
+    certifier = ROOT / (READER + "ReaderPairingCertification.kt")
+    with certifier.open(encoding="utf-8", newline="") as source_stream:
+        original = source_stream.read()
+    needle = "                    add(ReaderPairingScanCursor(first + 1, false))"
+    if original.count(needle) != 1:
+        raise RuntimeError("Expected exactly one shifted-entry source line; current source is unsupported")
+    newline = "\r\n" if "\r\n" in original else "\n"
+    replacement = newline.join([
+        "                    if (pages[first - 1] !in settings.forcedSinglePages &&",
+        "                        pages[first] !in settings.forcedSinglePages",
+        "                    ) {",
+        "                        add(ReaderPairingScanCursor(first + 1, false))",
+        "                    }",
+    ])
+    candidate_source = OUT / "candidate-source" / "ReaderPairingCertification.kt"
+    candidate_source.parent.mkdir(exist_ok=True)
+    with candidate_source.open("w", encoding="utf-8", newline="") as candidate_stream:
+        candidate_stream.write(original.replace(needle, replacement))
+    patch = "".join(difflib.unified_diff(
+        original.splitlines(keepends=True), original.replace(needle, replacement).splitlines(keepends=True),
+        fromfile="production/ReaderPairingCertification.kt", tofile="isolated-candidate/ReaderPairingCertification.kt",
+    ))
+    (OUT / "candidate.patch").write_text(patch, encoding="utf-8")
+    manifest["isolatedCandidateSha256"] = digest(candidate_source)
+    manifest["isolatedPatch"] = patch
+    (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    for variant in ("baseline", "candidate"):
+        stable()
+        variant_classes = OUT / (variant + "-classes")
+        variant_classes.mkdir(exist_ok=True)
+        variant_command = command.copy()
+        variant_command[variant_command.index("-d") + 1] = str(variant_classes)
+        if variant == "candidate":
+            variant_command[variant_command.index(str(certifier))] = str(candidate_source)
+        print(f"Compile {variant}; timeout=60s; log={OUT / (variant + '-compile.log')}", flush=True)
+        run(variant_command, OUT / (variant + "-compile.log"), 60)
+        stable()
+        print(f"Run {variant}; timeout=60s; log={OUT / (variant + '-run.log')}", flush=True)
+        result = run([
+            java, "-Xmx256m", "-XX:MaxMetaspaceSize=128m", "-Dfile.encoding=UTF-8", "-cp",
+            os.pathsep.join(map(str, [variant_classes, compiler[1], peripheral])),
+            "mihon.domain.reader.PairingMathExperimentKt", variant,
+        ], OUT / (variant + "-run.log"), 60)
+        stable()
+        variants[variant] = json.loads(result)
+        (OUT / (variant + ".json")).write_text(json.dumps(variants[variant], indent=2), encoding="utf-8")
+    baseline = {row["key"]: row for row in variants["baseline"]["pruning"]}
+    candidate = {row["key"]: row for row in variants["candidate"]["pruning"]}
+    assert baseline.keys() == candidate.keys()
+    transitions: dict[str, int] = {}
+    for key, old in baseline.items():
+        new = candidate[key]
+        assert old["oracle"] == new["oracle"], key
+        if old["result"]["status"] == "Certified":
+            assert new["result"] == old["result"], key
+        transition = old["result"]["status"] + "->" + new["result"]["status"]
+        transitions[transition] = transitions.get(transition, 0) + 1
+    strict_key = "5-LTR-2-AUTO-1"
+    persisted_key = "6-LTR-2-AUTO-1"
+    decoded = {
+        "status": "PASS", "sourceStable": True, "baselineHead": manifest["baselineHead"],
+        "casesPerVariant": variants["baseline"]["cases"], "pairedPruningCases": len(baseline),
+        "transitions": transitions,
+        "strictFixture": {"baseline": baseline[strict_key], "candidate": candidate[strict_key]},
+        "validPersistedFixture": {"baseline": baseline[persisted_key], "candidate": candidate[persisted_key],
+                                  "zeroBasedAnalysisOrder": [0, 3, 4, 2, 1, 5], "forcedSinglePage": 1,
+                                  "target": 4, "ownerCapacity": 2},
+        "persistedValidPruningCases": sum(row["persistedRecordValid"] for row in baseline.values()),
+        "domain": {"pageCounts": [5, 6, 7, 8], "directions": ["LTR", "RTL"], "capacities": [2, 16],
+                   "openingModes": ["AUTO", "FIRST_SINGLE", "FIRST_PAIR"],
+                   "forceMasks": "all 32 subsets of last five pages; earlier pages unforced",
+                   "sides": "leading side at page n-4; all others UNKNOWN; all from physical pixel functions",
+                   "geometry": "all portraits in pruning family; 4 separate lower-bound portrait/spread cases",
+                   "target": "n-2", "analysisOrder": "earlier prefix, then local indices 2,3,1,0,4",
+                   "manualPairStarts": [], "automatic": True,
+                   "capacityCaveat": "capacity 2 is supported owner state; not evidence of default-16 five-page eviction"},
+        "elapsedSeconds": round(time.monotonic() - started, 3),
+    }
+    stable()
+    manifest["sourcesAfter"] = {source: digest(ROOT / source) for source in SOURCES}
+    manifest["peripheralJarAfterSha256"] = digest(peripheral)
+    manifest["sourceStable"] = True
+    (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    (OUT / "result.json").write_text(json.dumps(decoded, indent=2), encoding="utf-8")
+    print(json.dumps({"status": "PASS", "pairedCases": len(baseline), "transitions": transitions,
+                      "result": str(OUT / "result.json")}), flush=True)
+
+
+def round2() -> None:
+    """Compile an independent complete-input function experiment; leave the default experiment unchanged."""
+    output = OUT / "round2"
+    output.mkdir(parents=True, exist_ok=True)
+    java = shutil.which("java")
+    if not java:
+        raise RuntimeError("Java not available")
+    compiler = [
+        jar("org.jetbrains.kotlin", "kotlin-compiler-embeddable", "2.3.20"),
+        jar("org.jetbrains.kotlin", "kotlin-stdlib", "2.3.20"),
+        jar("org.jetbrains.kotlin", "kotlin-script-runtime", "2.3.20"),
+        jar("org.jetbrains.kotlin", "kotlin-reflect", "1.6.10"),
+        jar("org.jetbrains.kotlin", "kotlin-daemon-embeddable", "2.3.20"),
+        jar("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm", "1.8.0"),
+        jar("org.jetbrains", "annotations", "23.0.0"),
+    ]
+    peripheral = ROOT / "domain/build/libs/domain-jvm.jar"
+    if not peripheral.is_file():
+        raise RuntimeError("Existing peripheral production jar missing; no Gradle or download attempted")
+    research = ROOT / "scripts/reader-pairing-math/PairingFunctionExperiment.kt"
+    watched = [*[ROOT / source for source in SOURCES], peripheral, research, Path(__file__).resolve()]
+    before = {str(path): digest(path) for path in watched}
+
+    def stable() -> None:
+        if any(digest(Path(path)) != value for path, value in before.items()):
+            (output / "result.json").write_text('{"status":"SOURCE_CHANGED"}', encoding="utf-8")
+            raise RuntimeError("SOURCE_CHANGED: round2 source or peripheral jar changed; results invalid")
+
+    classes = output / "classes"
+    classes.mkdir(exist_ok=True)
+    compile_command = [
+        java, "-Xmx768m", "-XX:MaxMetaspaceSize=256m", "-Dfile.encoding=UTF-8",
+        "-cp", os.pathsep.join(map(str, compiler)), "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
+        "-no-stdlib", "-no-reflect", "-jvm-target", "17", "-classpath",
+        os.pathsep.join(map(str, [compiler[1], peripheral])), "-d", str(classes),
+        *[str(ROOT / source) for source in SOURCES], str(research),
+    ]
+    run_command = [
+        java, "-Xmx256m", "-XX:MaxMetaspaceSize=128m", "-Dfile.encoding=UTF-8", "-cp",
+        os.pathsep.join(map(str, [classes, compiler[1], peripheral])),
+        "mihon.domain.reader.PairingFunctionExperimentKt",
+    ]
+    manifest = {
+        "scope": "round2 complete-input algorithm experiment; no UI/runtime/performance claim",
+        "baselineHead": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, encoding="utf-8").strip(),
+        "hashesBefore": before, "compilerJars": {str(path): digest(path) for path in compiler},
+        "compileCommand": compile_command, "runCommand": run_command,
+        "limits": {"compileTimeoutSeconds": 60, "runTimeoutSeconds": 60,
+                   "compilerHeapMiB": 768, "compilerMetaspaceMiB": 256, "runHeapMiB": 256},
+    }
+    (output / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    (output / "result.json").write_text('{"status":"RUNNING"}', encoding="utf-8")
+    started = time.monotonic()
+    print(f"Compile round2; timeout=60s; log={output / 'compile.log'}", flush=True)
+    run(compile_command, output / "compile.log", 60)
+    stable()
+    print(f"Run round2; timeout=60s; log={output / 'run.log'}", flush=True)
+    result = json.loads(run(run_command, output / "run.log", 60))
+    stable()
+    print(f"Run round2 forced baseline; timeout=60s; log={output / 'forced-baseline.log'}", flush=True)
+    forced_baseline = json.loads(run(run_command + ["forced-baseline"], output / "forced-baseline.log", 60))
+    stable()
+    certifier = ROOT / (READER + "ReaderPairingCertification.kt")
+    with certifier.open(encoding="utf-8", newline="") as source_stream:
+        original = source_stream.read()
+    needle = "val isolatedSpread = targetFact.state == ReaderPageFactState.SPREAD"
+    if original.count(needle) != 1:
+        raise RuntimeError("Unsupported isolatedSpread condition; expected exactly one source occurrence")
+    patched = original.replace(needle, needle + " || target in settings.forcedSinglePages")
+    candidate_source = output / "forced-candidate-source" / certifier.name
+    candidate_source.parent.mkdir(exist_ok=True)
+    with candidate_source.open("w", encoding="utf-8", newline="") as candidate_stream:
+        candidate_stream.write(patched)
+    patch = "".join(difflib.unified_diff(
+        original.splitlines(keepends=True), patched.splitlines(keepends=True),
+        fromfile="current-production/ReaderPairingCertification.kt",
+        tofile="round2-isolated-forced/ReaderPairingCertification.kt",
+    ))
+    (output / "forced-candidate.patch").write_text(patch, encoding="utf-8")
+    manifest["forcedCandidateSha256"] = digest(candidate_source)
+    manifest["forcedCandidatePatch"] = patch
+    candidate_classes = output / "forced-candidate-classes"
+    candidate_classes.mkdir(exist_ok=True)
+    candidate_compile = compile_command.copy()
+    candidate_compile[candidate_compile.index("-d") + 1] = str(candidate_classes)
+    candidate_compile[candidate_compile.index(str(certifier))] = str(candidate_source)
+    print(f"Compile round2 forced candidate; timeout=60s; log={output / 'forced-candidate-compile.log'}", flush=True)
+    run(candidate_compile, output / "forced-candidate-compile.log", 60)
+    stable()
+    candidate_run = run_command.copy()
+    candidate_run[candidate_run.index("-cp") + 1] = os.pathsep.join(map(str, [candidate_classes, compiler[1], peripheral]))
+    print(f"Run round2 forced candidate; timeout=60s; log={output / 'forced-candidate.log'}", flush=True)
+    forced_candidate = json.loads(run(candidate_run + ["forced-candidate"], output / "forced-candidate.log", 60))
+    stable()
+    transitions: dict[str, int] = {}
+    assert forced_baseline["cases"] == forced_candidate["cases"] == 96
+    for old, new in zip(forced_baseline["records"], forced_candidate["records"], strict=True):
+        assert old["key"] == new["key"] and old["oracle"] == new["oracle"]
+        if old["status"] == "Certified":
+            assert new["status"] == "Certified"
+        transition = old["status"] + "->" + new["status"]
+        transitions[transition] = transitions.get(transition, 0) + 1
+    for name, data in (("forced-baseline.json", forced_baseline), ("forced-candidate.json", forced_candidate)):
+        (output / name).write_text(json.dumps(data, indent=2), encoding="utf-8")
+    result["forcedCasesPerVariant"] = 96
+    result["forcedTransitions"] = transitions
+    core_key = "GRAY-LTR-AUTO-true-true"
+    result["forcedCore"] = {
+        "baseline": next(row for row in forced_baseline["records"] if row["key"] == core_key),
+        "candidate": next(row for row in forced_candidate["records"] if row["key"] == core_key),
+    }
+    result["elapsedCompileAndResearchSeconds"] = round(time.monotonic() - started, 3)
+    result["sourceStable"] = True
+    manifest["hashesAfter"] = {str(path): digest(path) for path in watched}
+    manifest["sourceStable"] = True
+    (output / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    (output / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    print(json.dumps({"status": result["status"], "subjectQueries": result["subjectQueries"],
+                      "probeQueries": result["probeQueries"], "result": str(output / "result.json")}), flush=True)
+
+
+def round3() -> None:
+    """Compare two independent demand-reduction candidates against the current production baseline."""
+    output = OUT / "round3"
+    output.mkdir(parents=True, exist_ok=True)
+    java = shutil.which("java")
+    if not java:
+        raise RuntimeError("Java not available")
+    compiler = [
+        jar("org.jetbrains.kotlin", "kotlin-compiler-embeddable", "2.3.20"),
+        jar("org.jetbrains.kotlin", "kotlin-stdlib", "2.3.20"),
+        jar("org.jetbrains.kotlin", "kotlin-script-runtime", "2.3.20"),
+        jar("org.jetbrains.kotlin", "kotlin-reflect", "1.6.10"),
+        jar("org.jetbrains.kotlin", "kotlin-daemon-embeddable", "2.3.20"),
+        jar("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm", "1.8.0"),
+        jar("org.jetbrains", "annotations", "23.0.0"),
+    ]
+    peripheral = ROOT / "domain/build/libs/domain-jvm.jar"
+    research = ROOT / "scripts/reader-pairing-math/PairingDemandExperiment.kt"
+    watched = [*[ROOT / name for name in SOURCES], peripheral, research, Path(__file__).resolve()]
+    hashes = {str(path): digest(path) for path in watched}
+
+    def stable() -> None:
+        if any(digest(Path(path)) != value for path, value in hashes.items()):
+            (output / "result.json").write_text('{"status":"SOURCE_CHANGED"}', encoding="utf-8")
+            raise RuntimeError("SOURCE_CHANGED: round3 inputs changed")
+
+    scan_name = READER + "ReaderCanonicalPairingScan.kt"
+    cert_name = READER + "ReaderPairingCertification.kt"
+    originals = {name: (ROOT / name).read_text(encoding="utf-8") for name in (scan_name, cert_name)}
+
+    def once(source: str, old: str, new: str) -> str:
+        if source.count(old) != 1:
+            raise RuntimeError("Unsupported production patch anchor: " + old[:90])
+        return source.replace(old, new)
+
+    scan_a = once(originals[scan_name], "    private val distance: (ReaderPageId, ReaderPageId) -> Double?,\n",
+                  "    private val distance: (ReaderPageId, ReaderPageId) -> Double?,\n    private val distancesNonNegative: Boolean = false,\n")
+    scan_a = once(scan_a, "        val laterDistance = distance(pages[i + 1], pages[i + 2])",
+                  "        if (distancesNonNegative && nearDistance == 0.0) return false\n        val laterDistance = distance(pages[i + 1], pages[i + 2])")
+    cert_a = once(originals[cert_name], "            ::resolvedSide,\n        ) { a, b ->",
+                  "            ::resolvedSide,\n            distance = { a, b ->")
+    cert_a = once(cert_a, "        }\n        data class State(val index: Int, val opening: Boolean, val reserved: Boolean)",
+                  "            },\n            distancesNonNegative = true,\n        )\n        data class State(val index: Int, val opening: Boolean, val reserved: Boolean)")
+    cert_b = once(originals[cert_name], "        var first = if (isolatedSpread) targetIndex else maxOf(0, targetIndex - 2)",
+                  "        val leadingTarget = !isolatedSpread && settings.automatic && targetIndex > 0 &&\n" +
+                  "            targetIndex - 1 !in settings.manualPairStarts &&\n" +
+                  "            !(targetIndex == 1 && settings.openingMode == ReaderChapterOpeningMode.FIRST_PAIR) &&\n" +
+                  "            resolvedSide(targetIndex) == if (settings.direction == ReaderDirection.RTL) ReaderPageSideHint.RIGHT else ReaderPageSideHint.LEFT\n" +
+                  "        val directEntry = isolatedSpread || leadingTarget\n" +
+                  "        var first = if (directEntry) targetIndex else maxOf(0, targetIndex - 2)")
+    cert_b = once(cert_b, "            } else if (isolatedSpread) {",
+                  "            } else if (isolatedSpread || (leadingTarget && first == targetIndex)) {")
+    patches = {"baseline": {}, "A": {scan_name: scan_a, cert_name: cert_a}, "B": {cert_name: cert_b}}
+    prior_focused = None
+    if (output / "result.json").is_file() and (output / "manifest.json").is_file():
+        prior_result = json.loads((output / "result.json").read_text(encoding="utf-8"))
+        prior_manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
+        if prior_result.get("status") == "PASS":
+            prior_focused = {"baselineHead": prior_manifest["baselineHead"],
+                             "hashesBefore": prior_manifest["hashesBefore"], "result": prior_result,
+                             "scopeNote": "First focused pass; did not cover two-opening disagreement fallback"}
+    manifest = {
+        "scope": "round3 physical owner/scan/certifier algorithm experiment; no platform/performance claim",
+        "baselineHead": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, encoding="utf-8").strip(),
+        "hashesBefore": hashes, "compilerJars": {str(path): digest(path) for path in compiler}, "commands": {},
+        "limits": {"compilerHeapMiB": 768, "compilerMetaspaceMiB": 256, "runHeapMiB": 256, "timeoutSeconds": 60},
+        "priorFocusedPass": prior_focused,
+    }
+    (output / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    (output / "result.json").write_text('{"status":"RUNNING"}', encoding="utf-8")
+    variants = {}
+    started = time.monotonic()
+    for variant, changed in patches.items():
+        stable()
+        variant_dir = output / variant
+        variant_dir.mkdir(exist_ok=True)
+        source_paths = {}
+        patch = ""
+        for name, source in changed.items():
+            destination = variant_dir / Path(name).name
+            destination.write_text(source, encoding="utf-8", newline="\n")
+            source_paths[name] = destination
+            patch += "".join(difflib.unified_diff(originals[name].splitlines(keepends=True), source.splitlines(keepends=True),
+                                                 fromfile="production/" + Path(name).name, tofile=variant + "/" + Path(name).name))
+        (variant_dir / "candidate.patch").write_text(patch, encoding="utf-8")
+        classes = variant_dir / "classes"
+        classes.mkdir(exist_ok=True)
+        command = [java, "-Xmx768m", "-XX:MaxMetaspaceSize=256m", "-Dfile.encoding=UTF-8", "-cp",
+                   os.pathsep.join(map(str, compiler)), "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler", "-no-stdlib", "-no-reflect",
+                   "-jvm-target", "17", "-classpath", os.pathsep.join(map(str, [compiler[1], peripheral])), "-d", str(classes),
+                   *[str(source_paths.get(name, ROOT / name)) for name in SOURCES], str(research)]
+        run_command = [java, "-Xmx256m", "-XX:MaxMetaspaceSize=128m", "-Dfile.encoding=UTF-8", "-cp",
+                       os.pathsep.join(map(str, [classes, compiler[1], peripheral])), "mihon.domain.reader.PairingDemandExperimentKt", variant]
+        manifest["commands"][variant] = {"compile": command, "run": run_command,
+            "candidateHashes": {str(path): digest(path) for path in source_paths.values()}}
+        print(f"Compile round3 {variant}; timeout=60s; log={variant_dir / 'compile.log'}", flush=True)
+        run(command, variant_dir / "compile.log", 60)
+        stable()
+        print(f"Run round3 {variant}; timeout=60s; log={variant_dir / 'run.log'}", flush=True)
+        variants[variant] = json.loads(run(run_command, variant_dir / "run.log", 60))
+        stable()
+        (variant_dir / "result.json").write_text(json.dumps(variants[variant], indent=2), encoding="utf-8")
+    baseline = {row["key"]: row for row in variants["baseline"]["records"]}
+    transitions = {}
+    for variant in ("A", "B"):
+        counts: dict[str, int] = {}
+        for new in variants[variant]["records"]:
+            old = baseline[new["key"]]
+            assert new["oracle"] == old["oracle"], new["key"]
+            if old["status"] == "Certified":
+                assert new["status"] == "Certified", new["key"]
+            old_needs = {json.dumps(x, sort_keys=True) for x in old["needs"]}
+            assert {json.dumps(x, sort_keys=True) for x in new["needs"]} <= old_needs, new["key"]
+            key = new["key"][0] + ":" + old["status"] + "->" + new["status"]
+            counts[key] = counts.get(key, 0) + 1
+        transitions[variant] = counts
+    witnesses = {}
+    for name, key in (("A", "A-16-ZERO-RTL-AUTO-true"), ("B", "B-2-LEADING-LTR-AUTO-true-NONE")):
+        witnesses[name] = {variant: next(row for row in variants[variant]["records"] if row["key"] == key)
+                           for variant in ("baseline", name)}
+    result = {"status": "PASS", "casesPerVariant": len(baseline), "transitions": transitions, "witnesses": witnesses,
+              "elapsedCompileAndResearchSeconds": round(time.monotonic() - started, 3), "sourceStable": True}
+    manifest["hashesAfter"] = {str(path): digest(path) for path in watched}
+    manifest["sourceStable"] = True
+    (output / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    (output / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    print(json.dumps(result), flush=True)
+
+
+def round4() -> None:
+    """Bounded independent comparisons: evidence-directed edge order and reachable scan entries."""
+    output = OUT / "round4"
+    output.mkdir(parents=True, exist_ok=True)
+    java = shutil.which("java")
+    if not java:
+        raise RuntimeError("Java not available")
+    compiler = [
+        jar("org.jetbrains.kotlin", "kotlin-compiler-embeddable", "2.3.20"),
+        jar("org.jetbrains.kotlin", "kotlin-stdlib", "2.3.20"),
+        jar("org.jetbrains.kotlin", "kotlin-script-runtime", "2.3.20"),
+        jar("org.jetbrains.kotlin", "kotlin-reflect", "1.6.10"),
+        jar("org.jetbrains.kotlin", "kotlin-daemon-embeddable", "2.3.20"),
+        jar("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm", "1.8.0"),
+        jar("org.jetbrains", "annotations", "23.0.0"),
+    ]
+    peripheral = ROOT / "domain/build/libs/domain-jvm.jar"
+    research = ROOT / "scripts/reader-pairing-math/PairingEvidenceExperiment.kt"
+    watched = [*[ROOT / name for name in SOURCES], peripheral, research, Path(__file__).resolve()]
+    hashes = {str(path): digest(path) for path in watched}
+
+    def stable() -> None:
+        if any(digest(Path(path)) != value for path, value in hashes.items()):
+            (output / "result.json").write_text('{"status":"SOURCE_CHANGED"}', encoding="utf-8")
+            raise RuntimeError("SOURCE_CHANGED: round4 inputs changed")
+
+    scan_name = READER + "ReaderCanonicalPairingScan.kt"
+    cert_name = READER + "ReaderPairingCertification.kt"
+    originals = {name: (ROOT / name).read_text(encoding="utf-8") for name in (scan_name, cert_name)}
+
+    def once(source: str, old: str, new: str) -> str:
+        if source.count(old) != 1:
+            raise RuntimeError("Unsupported round4 patch anchor: " + old[:90])
+        return source.replace(old, new)
+
+    scan_c = once(originals[scan_name], "    private val distance: (ReaderPageId, ReaderPageId) -> Double?,\n",
+                  "    private val distance: (ReaderPageId, ReaderPageId) -> Double?,\n" +
+                  "    private val knownLaterNoMatch: ((ReaderPageId, ReaderPageId) -> Boolean)? = null,\n")
+    scan_c = once(scan_c,
+        "        val nearDistance = distance(pages[i], pages[i + 1])\n        val laterDistance = distance(pages[i + 1], pages[i + 2])",
+        "        val hintedLater = if (knownLaterNoMatch?.invoke(pages[i + 1], pages[i + 2]) == true) {\n" +
+        "            val observed = distance(pages[i + 1], pages[i + 2])\n" +
+        "            if (observed == null) return false\n            observed\n        } else null\n" +
+        "        val nearDistance = distance(pages[i], pages[i + 1])\n" +
+        "        val laterDistance = hintedLater ?: distance(pages[i + 1], pages[i + 2])")
+    cert_c = once(originals[cert_name], "            ::resolvedSide,\n        ) { a, b ->",
+                  "            ::resolvedSide,\n            distance = { a, b ->")
+    cert_c = once(cert_c,
+        "        }\n        data class State(val index: Int, val opening: Boolean, val reserved: Boolean)",
+        "            },\n            knownLaterNoMatch = { a, b ->\n" +
+        "                val evidence = owner.edgeAnalysis(a, b, settings.direction)\n" +
+        "                evidence is ReaderEdgeAnalysisEvidence.Computed && evidence.score == null\n" +
+        "            },\n        )\n        data class State(val index: Int, val opening: Boolean, val reserved: Boolean)")
+    old_entries = """                    for (opening in listOf(true, false)) {
+                        add(ReaderPairingScanCursor(first, opening))
+                        add(ReaderPairingScanCursor(first, opening, first))
+                    }"""
+    new_entries = """                    for (opening in if (first == 1) listOf(true) else listOf(true, false)) {
+                        add(ReaderPairingScanCursor(first, opening))
+                        if (first > 1 && pages[first - 1] !in settings.forcedSinglePages &&
+                            pages[first] !in settings.forcedSinglePages
+                        ) {
+                            add(ReaderPairingScanCursor(first, opening, first))
+                        }
+                    }"""
+    cert_d = once(originals[cert_name], old_entries, new_entries)
+    patches = {"baseline": {}, "C": {scan_name: scan_c, cert_name: cert_c}, "D": {cert_name: cert_d}}
+    manifest = {
+        "scope": "round4 physical evidence experiment; no product/performance claim",
+        "baselineHead": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, encoding="utf-8").strip(),
+        "hashesBefore": hashes, "compilerJars": {str(path): digest(path) for path in compiler}, "commands": {},
+        "limits": {"compilerHeapMiB": 768, "compilerMetaspaceMiB": 256, "runHeapMiB": 256, "timeoutSeconds": 60},
+    }
+    (output / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    (output / "result.json").write_text('{"status":"RUNNING"}', encoding="utf-8")
+    variants = {}
+    started = time.monotonic()
+    for variant, changed in patches.items():
+        stable()
+        directory = output / variant
+        directory.mkdir(exist_ok=True)
+        paths = {}
+        patch = ""
+        for name, source in changed.items():
+            destination = directory / Path(name).name
+            destination.write_text(source, encoding="utf-8", newline="\n")
+            paths[name] = destination
+            patch += "".join(difflib.unified_diff(originals[name].splitlines(keepends=True), source.splitlines(keepends=True),
+                                                 fromfile="production/" + Path(name).name, tofile=variant + "/" + Path(name).name))
+        (directory / "candidate.patch").write_text(patch, encoding="utf-8")
+        classes = directory / "classes"
+        classes.mkdir(exist_ok=True)
+        compile_command = [java, "-Xmx768m", "-XX:MaxMetaspaceSize=256m", "-Dfile.encoding=UTF-8", "-cp",
+            os.pathsep.join(map(str, compiler)), "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler", "-no-stdlib", "-no-reflect",
+            "-jvm-target", "17", "-classpath", os.pathsep.join(map(str, [compiler[1], peripheral])), "-d", str(classes),
+            *[str(paths.get(name, ROOT / name)) for name in SOURCES], str(research)]
+        run_command = [java, "-Xmx256m", "-XX:MaxMetaspaceSize=128m", "-Dfile.encoding=UTF-8", "-cp",
+            os.pathsep.join(map(str, [classes, compiler[1], peripheral])), "mihon.domain.reader.PairingEvidenceExperimentKt", variant]
+        manifest["commands"][variant] = {"compile": compile_command, "run": run_command,
+            "candidateHashes": {str(path): digest(path) for path in paths.values()}}
+        print(f"Compile round4 {variant}; timeout=60s; log={directory / 'compile.log'}", flush=True)
+        run(compile_command, directory / "compile.log", 60)
+        stable()
+        print(f"Run round4 {variant}; timeout=60s; log={directory / 'run.log'}", flush=True)
+        variants[variant] = json.loads(run(run_command, directory / "run.log", 60))
+        stable()
+        (directory / "result.json").write_text(json.dumps(variants[variant], indent=2), encoding="utf-8")
+    baseline = {row["key"]: row for row in variants["baseline"]["records"]}
+    transitions = {}
+    for variant in ("C", "D"):
+        counts: dict[str, int] = {}
+        for new in variants[variant]["records"]:
+            old = baseline[new["key"]]
+            assert new["oracle"] == old["oracle"], new["key"]
+            if old["status"] == "Certified":
+                assert new["status"] == "Certified", new["key"]
+            assert new["failures"] == old["failures"], new["key"]
+            assert {json.dumps(x, sort_keys=True) for x in new["needs"]} <= {json.dumps(x, sort_keys=True) for x in old["needs"]}, new["key"]
+            if new["key"].startswith("R3-"):
+                assert new["readKeys"] == old["readKeys"], new["key"]
+            key = new["key"][0] + ":" + old["status"] + "->" + new["status"]
+            counts[key] = counts.get(key, 0) + 1
+        transitions[variant] = counts
+    witnesses = {}
+    for name, key in (("C", "C-16-POSITIVE-NO_MATCH-RTL-AUTO-true"),
+                      ("D", "D-16-FORCE2-POSITIVE-RTL-FIRST_PAIR-true")):
+        witnesses[name] = {variant: next(row for row in variants[variant]["records"] if row["key"] == key)
+                           for variant in ("baseline", name)}
+    result = {"status": "PASS", "casesPerVariant": len(baseline), "transitions": transitions, "witnesses": witnesses,
+              "hintContracts": variants["C"]["hintContracts"], "sourceStable": True,
+              "elapsedCompileAndResearchSeconds": round(time.monotonic() - started, 3)}
+    manifest["hashesAfter"] = {str(path): digest(path) for path in watched}
+    manifest["sourceStable"] = True
+    (output / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    (output / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    print(json.dumps(result), flush=True)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) == 1:
+        main()
+    elif sys.argv[1:] == ["round2"]:
+        round2()
+    elif sys.argv[1:] == ["round3"]:
+        round3()
+    elif sys.argv[1:] == ["round4"]:
+        round4()
+    else:
+        raise SystemExit("Usage: run.py [round2|round3|round4]")

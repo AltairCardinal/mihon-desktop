@@ -1,0 +1,97 @@
+# 正式计时汇总（由 bench/summarize_formal.py 从 results/raw/formal/*.jsonl 生成）
+
+每个候选：各场景"逐进程配对墙钟比值的中位"的中位 [最小, 最大]（相对该场景族的 incumbent）；墙钟为整段 run_one 的本机测量。
+
+## bench_wpA（原始行 11760，子进程错误 0，ok=False 行 0）
+
+| incumbent | 候选 | 场景数 | 比值中位 | 最小 | 最大 |
+|---|---|---|---|---|---|
+| incumbent | adaptive | 98 | 1.354 | 0.903 | 4.629 |
+| incumbent | gated_keep | 98 | 0.998 | 0.827 | 2.016 |
+| incumbent | gated_proof_first | 98 | 1.086 | 0.888 | 1.931 |
+| incumbent | gated_shadow | 98 | 1.028 | 0.895 | 1.413 |
+| incumbent | persistent_gated_shadow | 98 | 1.034 | 0.919 | 1.433 |
+| incumbent | race_cancel | 98 | 1.343 | 0.924 | 5.825 |
+| incumbent | race_keep | 98 | 1.026 | 0.824 | 5.741 |
+| incumbent | shadow | 98 | 1.06 | 0.933 | 5.592 |
+| incumbent | ski | 98 | 1.007 | 0.856 | 1.951 |
+
+## bench_wpB（原始行 732，子进程错误 0，ok=False 行 0）
+
+| incumbent | 候选 | 场景数 | 比值中位 | 最小 | 最大 |
+|---|---|---|---|---|---|
+| exact0 | goal | 3 | 2.829 | 1.775 | 4.311 |
+| exact0 | seeded | 3 | 2.7 | 2.686 | 2.973 |
+| frontier | blocks32 | 4 | 2.581 | 1.501 | 4.017 |
+| frontier | blocks8 | 4 | 1.241 | 0.784 | 1.282 |
+| frontier | exact0 | 4 | 3.894 | 2.373 | 4.543 |
+| frontier | tree | 4 | 0.407 | 0.117 | 0.965 |
+| incumbent | gated_blocks | 5 | 1.047 | 1.024 | 1.271 |
+| incumbent | gated_exact | 5 | 1.026 | 0.973 | 1.38 |
+| incumbent | gated_tree | 5 | 1.053 | 1.008 | 2.236 |
+| owner | sig | 4 | 0.975 | 0.838 | 1.012 |
+| symbolic | bitset | 2 | 1.565 | 1.004 | 2.126 |
+
+## bench_wpC（原始行 1596，子进程错误 0，ok=False 行 0）
+
+| incumbent | 候选 | 场景数 | 比值中位 | 最小 | 最大 |
+|---|---|---|---|---|---|
+| fulloutput | diffplan | 2 | 0.517 | 0.038 | 0.997 |
+| incumbent | gated | 4 | 1.043 | 0.985 | 2.421 |
+| incumbent | indexed | 4 | 1.099 | 0.961 | 1.813 |
+| incumbent | selector | 4 | 1.496 | 1.073 | 2.464 |
+| r8tree | dirtylog | 10 | 1.47 | 0.524 | 1.976 |
+| r8tree | hybrid | 10 | 0.449 | 0.267 | 10.341 |
+| r8tree | lazytree | 10 | 1.434 | 0.544 | 1.878 |
+| r8tree | prefixscan | 10 | 4.208 | 0.246 | 8.778 |
+| r8tree | r8resync | 10 | 0.526 | 0.406 | 15.134 |
+| r8tree | skikeep | 10 | 0.425 | 0.276 | 2.1 |
+| r8tree | skirental | 10 | 0.453 | 0.275 | 2.194 |
+| r8tree | sparsecp | 10 | 2.221 | 0.245 | 6.75 |
+| rebuild | rope | 2 | 0.114 | 0.098 | 0.13 |
+| scan_only | dedicated | 1 | 0.22 | 0.22 | 0.22 |
+| scan_only | shared | 1 | 0.089 | 0.089 | 0.089 |
+| separate | fused_eager | 4 | 1.387 | 0.413 | 1059.93 |
+| separate | fused_lazy | 4 | 1.213 | 0.415 | 1.869 |
+| separate | fused_prefix | 4 | 0.552 | 0.512 | 2.124 |
+
+## bench_wpG（原始行 1536，子进程错误 0，ok=False 行 0）
+
+| incumbent | 候选 | 场景数 | 比值中位 | 最小 | 最大 |
+|---|---|---|---|---|---|
+| incumbent | fact_support | 12 | 0.995 | 0.918 | 1.029 |
+| incumbent | no_instrument | 12 | 1.007 | 0.988 | 1.097 |
+| incumbent | noop_none | 12 | 0.933 | 0.842 | 1.002 |
+| incumbent | posrev | 12 | 1.005 | 0.768 | 1.037 |
+| incumbent | proj_posrev | 12 | 0.933 | 0.694 | 1.042 |
+| incumbent | proj_support | 12 | 0.942 | 0.695 | 1.035 |
+| lru | both | 5 | 0.993 | 0.048 | 0.996 |
+| lru | derive | 5 | 0.998 | 0.049 | 1.001 |
+| lru | proj_reissue | 5 | 1.61 | 1.117 | 1.675 |
+| lru | reissue | 5 | 1.584 | 1.103 | 1.717 |
+| lru | useless | 5 | 0.998 | 0.965 | 1.0 |
+| lru4 | bytes | 1 | 0.883 | 0.883 | 0.883 |
+| lru4 | gds_clock | 1 | 0.658 | 0.658 | 0.658 |
+| lru4 | gds_steps | 1 | 0.764 | 0.764 | 0.764 |
+| optimized | lut_fused | 1 | 0.373 | 0.373 | 0.373 |
+| snapshot | view | 2 | 0.011 | 0.002 | 0.02 |
+| tuple | bytes_translate | 1 | 0.687 | 0.687 | 0.687 |
+| tuple | packed_int | 1 | 1.527 | 1.527 | 1.527 |
+| tuple | straight | 1 | 0.35 | 0.35 | 0.35 |
+
+## bench_wpH（原始行 528，子进程错误 0，ok=False 行 18）
+
+| incumbent | 候选 | 场景数 | 比值中位 | 最小 | 最大 |
+|---|---|---|---|---|---|
+| full_revalidate | inc_revoke | 3 | 0.561 | 0.391 | 0.6 |
+| identity_only | value_cache | 3 | 0.49 | 0.42 | 0.627 |
+| immediate | batch_barrier | 2 | 0.859 | 0.848 | 0.871 |
+| immediate | batch_peritem | 2 | 0.826 | 0.825 | 0.827 |
+| no_reserve | reserve1 | 3 | 1.02 | 1.011 | 1.023 |
+| none | dyn_b10 | 2 | 0.946 | 0.912 | 0.98 |
+| none | fixed1 | 2 | 0.919 | 0.908 | 0.93 |
+| none | global | 2 | 1.008 | 0.997 | 1.02 |
+| none | isolated | 2 | 1.014 | 1.001 | 1.028 |
+| none | refund_isolated | 2 | 1.0 | 0.998 | 1.003 |
+| package_confirm | bound_confirm | 3 | 0.995 | 0.977 | 1.002 |
+

@@ -1,0 +1,112 @@
+"""Summarise the round3 demand-reduction magnitude from the recorded variant artifacts.
+
+Reads only the ignored round3 outputs produced by ``run.py round3`` and reports how much
+pairing evidence each candidate removed. The numbers are counts of recorded read set keys
+and certification outcomes, never timings: this script performs no measurement.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+import statistics
+
+
+ROOT = Path(__file__).resolve().parents[2]
+ROUND3 = ROOT / ".gradle" / "reader-pairing-math" / "round3"
+VARIANTS = ("baseline", "A", "B")
+
+
+def load(variant: str) -> dict[str, dict]:
+    path = ROUND3 / variant / "result.json"
+    if not path.is_file():
+        raise RuntimeError(f"Missing recorded round3 output for {variant}; run `run.py round3` first")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return {row["key"]: row for row in payload["records"]}
+
+
+def main() -> None:
+    data = {variant: load(variant) for variant in VARIANTS}
+    baseline = data["baseline"]
+    keys = list(baseline)
+    a_domain = [key for key in keys if key.startswith("A-")]
+    b_domain = [key for key in keys if key.startswith("B-")]
+
+    print("## 认证率")
+    print()
+    print("| 变体 | Certified | 占比 | 全部362项读集唯一键均值 |")
+    print("|---|---:|---:|---:|")
+    for variant in VARIANTS:
+        certified = sum(1 for row in data[variant].values() if row["status"] == "Certified")
+        mean = statistics.mean(data[variant][key]["readCount"] for key in keys)
+        print(f"| {variant} | {certified}/{len(keys)} | {100 * certified / len(keys):.1f}% | {mean:.2f} |")
+    print()
+
+    print("## 各候选在其专属域内的取证减少")
+    print()
+    print("| 候选 | 专属域 | 读集键数变小项 | 降幅（键） | 状态变化项 | 专属域读集均值 |")
+    print("|---|---|---:|---|---:|---|")
+    for variant, domain in (("A", a_domain), ("B", b_domain)):
+        candidate = data[variant]
+        smaller = [key for key in domain if candidate[key]["readCount"] < baseline[key]["readCount"]]
+        drops = [baseline[key]["readCount"] - candidate[key]["readCount"] for key in smaller]
+        changed = [key for key in domain if candidate[key]["status"] != baseline[key]["status"]]
+        mean = statistics.mean(candidate[key]["readCount"] for key in domain)
+        span = f"{min(drops)}~{max(drops)}" if drops else "-"
+        print(f"| {variant} | {len(domain)} 项 | {len(smaller)} | {span} | {len(changed)} | {mean:.2f} |")
+    print()
+
+    print("## 省掉的取证事实")
+    print()
+    for variant in ("A", "B"):
+        candidate = data[variant]
+        for key in sorted(key for key in keys
+                          if baseline[key]["status"] == "NeedFacts" and candidate[key]["status"] == "Certified"):
+            kinds = ", ".join(fact["kind"] for fact in baseline[key]["needs"])
+            print(f"- {variant} `{key}`: {kinds} -> []，读集 {baseline[key]['readCount']} -> {candidate[key]['readCount']} 键")
+    print()
+
+    print("## 生效条件核对")
+    print()
+    candidate = data["B"]
+    smaller = [key for key in b_domain if candidate[key]["readCount"] < baseline[key]["readCount"]]
+    other = [key for key in b_domain if candidate[key]["readCount"] != baseline[key]["readCount"]
+             and "-LEADING-" not in key]
+    print(f"- B 读集变小的项是否全部为 LEADING side: {all('-LEADING-' in key for key in smaller)}")
+    print(f"- B 在非 LEADING side 项上是否逐项未变: {not other}")
+    print(f"- B 读集变小的项数: {len(smaller)}（其中状态变化 {sum(1 for key in smaller if candidate[key]['status'] != baseline[key]['status'])} 项）")
+    breakdown: dict[tuple[int, int, str], int] = {}
+    for key in smaller:
+        label = (baseline[key]["readCount"], candidate[key]["readCount"],
+                 "changed" if candidate[key]["status"] != baseline[key]["status"] else "same")
+        breakdown[label] = breakdown.get(label, 0) + 1
+    for (old, new, state), count in sorted(breakdown.items()):
+        print(f"- B 读集转移 {old}->{new}（{state}）: {count} 项")
+    a_candidate = data["A"]
+    a_same = [key for key in a_domain
+              if a_candidate[key]["status"] == baseline[key]["status"]
+              and a_candidate[key]["readCount"] < baseline[key]["readCount"]]
+    print(f"- A 在状态不变项上是否额外省取证: {bool(a_same)}")
+    print()
+
+    payload = {
+        "certificationRate": {variant: sum(1 for row in data[variant].values()
+                                          if row["status"] == "Certified") for variant in VARIANTS},
+        "cases": len(keys),
+        "meanReadSetKeys": {variant: round(statistics.mean(data[variant][key]["readCount"] for key in keys), 2)
+                            for variant in VARIANTS},
+        "domainReadSetReduction": {
+            variant: {
+                "domainCases": len(domain),
+                "smallerReadSetCases": sum(1 for key in domain
+                                           if data[variant][key]["readCount"] < baseline[key]["readCount"]),
+                "statusChangedCases": sum(1 for key in domain
+                                          if data[variant][key]["status"] != baseline[key]["status"]),
+            } for variant, domain in (("A", a_domain), ("B", b_domain))
+        },
+    }
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

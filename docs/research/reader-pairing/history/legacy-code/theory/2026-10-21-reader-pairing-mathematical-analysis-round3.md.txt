@@ -1,0 +1,248 @@
+# 双页配对算法第三轮：支配证书与前缀同步边界
+
+日期：2026-10-21。范围：路线 A，保持真实完整事实 canonicalPlan 的成员、槽位、certainty 与 singleReason。
+
+**结论：当未知信息在数学上已经不可能改变目标时，可以少取证而不改配对语义。真实非负距离的零下界，以及排除 incoming manual 的 leading 页侧，分别提供了两类可复用的证明。**
+
+## 1. 交付与证据边界
+
+本轮新增 [PairingDemandExperiment.kt](../scripts/reader-pairing-math/PairingDemandExperiment.kt) 与本报告，给 [runner](../scripts/reader-pairing-math/run.py) 增加独立 round3 模式；复跑后追加只读统计脚本 [summarize.py](../scripts/reader-pairing-math/summarize.py) 支撑第8节量化附录。
+三个文件构成一个内聚研究实验，summarize.py 只读其产物；没有修改产品源码、参数、持久格式、UI 或公共功能说明。
+现有 round1/round2 函数 AST 保持不变，没有重跑旧轮实验或把旧成果计为本轮新优化。
+
+| 结论 | 已有证据 | 边界 |
+|---|---|---|
+| A：零距离支配未知竞争 edge | 真实 sampling/owner 默认容量16的19页见证；非负 provider 证明 | 不适用于可返回负数的任意 callback；默认关闭 |
+| B：leading 同步入口 | 完整 unit 等值、必要目标事实保留、manual/auto/缺分析控制 | 不强制单页；两 opening 不一致时必须回退 |
+| 有界对照 | 362状态、baseline/A/B独立运行、724项比较 | 不等于任意图像/setting全域证明或平台验收 |
+| 证书失效 | target/partner内容、incoming manual/settings改变时拒旧 | 没有执行 Session/Memo/平台生命周期接线 |
+
+没有运行 Gradle、全量测试、应用构建、设备、网络下载或性能基准。
+不宣称 bug 已修复、CP1 完成、U1–U5 已全部通过或用户已经验收。
+本轮一次独立只读审查已通过，无实质阻塞，复用现有focused证据；审查后仅作报告措辞收口。
+
+## 2. 实际基线与可复现条件
+
+最终 focused 基线 HEAD：`11ea6dc3ef7586e9710822e6620974c3d2f691dc`，以 manifest 中实际源码指纹为准。
+首次 focused 基线是 `f19db398babb30ab5fbe55bc20d315253b334016` 加受保护 dirty certifier；不能把首次输入描述为纯 HEAD。
+并行工作推进了 Git HEAD，但两次实验的12核心源码及外围 jar 内容相同；研究源/runner因回退修正而重新记录指纹。
+certifier SHA为 `b1d79a8a…`，已经包括上一轮 forced 边界入口剪枝及 forced-target isolated 条件。
+因此本轮新增收益是在这两项既有优化之上，不是再次消除相同的旧需求；这些外部产品变更未被本任务写入或暂存。
+
+重新编译的核心位于 `domain/src/commonMain/kotlin/mihon/domain/reader/`：
+
+| 文件 | SHA-256 |
+|---|---|
+| ReaderCanonicalPairingScan.kt | `37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf` |
+| SharedDualPageRules.kt | `252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755` |
+| ReaderPairingCertification.kt | `b1d79a8acd3f2b7d47721fbbb81f269883d3c8a45cad34f280ba41fb7acce1f0` |
+| SharedSpreadMatching.kt | `7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af` |
+| ReaderSpreadSamplesOwner.kt | `d18bbb64887740ec442d63f121357b29dbec65c2a2ce42ca5581eb0a7e58c23a` |
+| ReaderOriginalPageSampling.kt | `05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0` |
+| ReaderPortraitSingleSlot.kt | `5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb` |
+| PageTransform.kt | `3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f` |
+| ReaderImageOrientation.kt | `77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb` |
+| ReaderDualPageFactLimits.kt | `bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5` |
+| ReaderPairingReadSet.kt | `da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb` |
+| ChapterPairingRepository.kt | `84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba` |
+
+外围 `domain/build/libs/domain-jvm.jar` SHA：`802a5307915951fc90e110722d11b682f712a782efa85a26f95fbffb0c2d1505`。
+新 classes 优先；旧 jar 只提供外围真实 identity/页ID/方向等类型，没有替代新编译的 scan、采样、owner、certifier。
+未证明旧 jar 全部行为与当前源相同；本证据限定为记录的算法闭包，不是正式 runtime/wiring 验收。
+复跑要求源码 SHA、已有 jar 与本地缓存工具匹配；缺依赖 fail-fast，不下载、不以旧 HEAD 源替代。
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$env:PYTHONUTF8 = '1'
+$env:PYTHONIOENCODING = 'utf-8'
+$env:PYTHONDONTWRITEBYTECODE = '1'
+python scripts/reader-pairing-math/run.py round3
+```
+
+工具为 JDK21 与缓存 Kotlin compiler2.3.20；编译 heap768MiB/metaspace256MiB，研究 JVM heap256MiB/metaspace128MiB，每进程60秒截止。
+baseline、A、B顺序编译运行；A/B各自从真实 baseline 派生，没有互相叠加或重加前两轮 patch。
+ignored 产物 `.gradle/reader-pairing-math/round3/` 包含：
+
+- `manifest.json`：HEAD、15项输入及 compiler 指纹、实际命令、资源限制、候选源指纹与先前 focused 证据。
+- `baseline/`、`A/`、`B/`：各自 compile/run 日志、362项 JSON、候选精确 patch 与临时 classes。
+- `result.json`：转移统计、核心见证、整体稳定性。
+- `manifest.json` 的 `priorFocusedPass` 保存前一次 PASS 证据及其原输入指纹：首次 focused 为360项/43.174秒；每次成功复跑会把上一次的 PASS 前滚为 prior。
+
+每阶段前后核对12核心源、外围 jar、研究源及 runner 共15项；漂移标为 SOURCE_CHANGED，拒绝归纳。
+最终362项 focused PASS，24.855秒是编译及研究工具总耗时，不是阅读耗时。
+2026-10-21 在 HEAD `9b2b808a` 独立复跑一次：362项 PASS，转移矩阵、两个见证与读集键数与首跑逐项相同，耗时24.457秒，sourceStable=true，15项输入指纹前后一致；12核心源在 `11ea6dc3` 与 `9b2b808a` 之间 git blob 完全相同，外围 jar SHA-256 仍为 `802a5307…`。
+首次360项未覆盖两 opening 分歧回退；自查补正B入口范围并增加2项明确控制后复验，而非追加性能轮次。
+没有单独运行旧错误接入的反例，不声称已复现其误认证；新增控制证明真实回退路径被覆盖。
+
+## 3. 统一数学解释：用已知条件消除无关信息依赖
+
+固定版本v与已观察知识K，令完整输入集合为Ω(K)，完整计划为Γ(X)。
+目标完整unit投影集合为 `S_t(K)={π_t Γ(X):X∈Ω(K)}`。
+稳定认证要求该集合只有一个元素；临时计划Γ_now(K)不是这个证书，更不自动授权曝光。
+本轮分别证明一个数值比较不再需要未知量，以及一个左侧控制入口已不可达。
+仍需的几何、side、manual、原始内容与setting依赖继续经过真实扫描/收集器，不丢弃失败或缺失事实。
+
+## 4. A：真实非负 provider 下的零距离支配
+
+[laterWins](../domain/src/commonMain/kotlin/mihon/domain/reader/ReaderCanonicalPairingScan.kt#L88)先比较相邻候选强度，再在等强且自动开启时比较距离。
+设已观察 near=d，未知 later=e，现规则仅在 `e!=null && (d==null || e<d)` 时选 later。
+[真实 score](../domain/src/commonMain/kotlin/mihon/domain/reader/SharedSpreadMatching.kt)由三通道绝对差求和，成功返回的数值非负；白/黑/低方差或超阈值返回null。
+所以在该 provider 域 d=0 时，任何e≥0或null都不能胜出，读取 e 不会改变这次扫描决定。
+这发生在既有强度比较之后，不覆盖更高manual/side强度，不省略为取得强度所需的其他事实。
+
+隔离 scan 增加默认关闭的 `distancesNonNegative=false` 参数，仅 certifier 的真实 owner 距离回调显式设true：
+
+```kotlin
+val nearDistance = distance(pages[i], pages[i + 1])
+if (distancesNonNegative && nearDistance == 0.0) return false
+val laterDistance = distance(pages[i + 1], pages[i + 2])
+```
+
+**公开 canonicalPlan 的任意 distance callback 不能默认视为非负。** 若near=0而later=-1，真实旧规则会选later。
+三版都运行此负数小控制，仍选pair(2,3)；公开API未标记时保持原行为。
+A只在 isolated certifier 可信回调接线中开启标志；没有给普通 canonicalPlan 或B开启。
+若未来 provider/评分语义允许负数，该契约必须撤销或重新给出下界，不可继续引用本证明。
+
+### 默认容量16的真实19页见证
+
+全部0-based，target=p1，RTL/AUTO/automatic=true。p1/p2为同纹理纵图，p3同纹理，其余灰纵图，全部side已分析为UNKNOWN。
+原始像素通过真实采样，实际 near score(1,2)=0；不注入scalar、不反射删除score。
+owner默认容量16，接受顺序：p1,p2，然后p0,p4…p18这16个互异filler，最后p3。
+p2样本在p3首次加入前已逐出；已计算的edge(1,2)=0标量保留，edge(2,3)从未计算；所有分析标量均仍Computed。
+真实step(0)实际到达cursor index1，reservedStart不为1：AUTO封面不与UNKNOWN side的p1配对，也没有预留pair(1,2)。
+因此后续确实进入i1的等强 near=0比较，不是借早先原子预留绕过了laterWins。
+
+| 对照 | 目标结果 | edge读取 | readset唯一键数 |
+|---|---|---|---:|
+| baseline | NeedFacts EDGE_SAMPLES(2,3) | (1,2)、(2,3) | 12 |
+| A | Certified [1 RIGHT,2 LEFT] | 只(1,2) | 11 |
+
+完整 oracle owner得到同一pair，含certainty与完整unit等值；少一个readset键不是一次IO或毫秒收益的等价单位。
+
+### A的精确域
+
+`容量2/16 × near真实0/15/null × LTR/RTL × 3开篇 × auto开/关 = 72` 项，分别5/19页。
+纹理每通道偏移5产生真实三通道距离15；灰/纹理组合产生computed null；接收顺序相同，竞争edge保持缺失。
+自动开启且非FIRST_PAIR时，near>0/null控制必须仍NeedFacts，不能沿用零下界捷径。
+FIRST_PAIR是实际开篇配走target的控制；auto=false不进入距离比较，不计为新增收益。
+8个新增认证为两容量×两方向×AUTO/FIRST_SINGLE，均auto=true/near0；默认容量16占其中4个。
+
+## 5. B：leading页侧形成前缀同步边界
+
+target完整几何先按原流程验证；自动开启且target已有Computed leading side时，incoming edge(t−1,t)会被resolved侧向veto。
+但manual优先于side，因此只在 raw incoming manual 不存在、且 t=1 时没有FIRST_PAIR隐式manual0，才采用该充分条件。
+保守检查原始starts而不自行重算manual有效性；即便某条raw manual最后无效，也宁可保留原认证路径。
+
+同步lemma：incoming不可能配对，则真实扫描不能跨过target，也不可能在t−1合法创建reservedStart=t。
+更早reservation只能到更早index；到达target时没有有效reservedNow，opening只剩true/false两种可能。
+所以可直接从target枚举这两个入口，再运行原step；target仍可与下一页配对，绝不是强制单页。
+实际step仍可能需要必要右侧/前邻几何，不能把“控制同步”扩张为“所有左侧事实都无关”。
+
+实际条件为：
+
+```text
+!isolatedSpread && automatic && targetIndex>0
+&& incoming start不在manualPairStarts
+&& !(targetIndex==1 && openingMode==FIRST_PAIR)
+&& resolvedSide(targetIndex)==direction.leading
+```
+
+当前 certifier 本地无Need检查函数实际名为 [resolvedSide](../domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt#L246)：
+NotAnalyzed返回null，不发新增Need；读取真实analysis并记录readset，Computed也加入analyses依赖。
+会发Need的是side()；本候选不调用它做快捷条件检测，也不使用跳过readset的peek。
+targetFact缺几何/身份不匹配的早期返回未改；auto=false、UNKNOWN、缺分析或incoming manual存在时不启用快捷入口。
+未命中仍可能增加一次analysis查询/record操作；readset去重后的唯一键数不等于执行次数，成功见证12→6不能泛化为所有输入读集总是子集。
+当前b1d的dimension/effectiveFact已记录目标Analysis，实跑MISSING+OWN控制的唯一键数未增加；不声称已经测得新增唯一依赖或重认证。
+这里确定的是额外metadata查询/记录操作；不新增NeedFacts并不表示零成本，也不等于已测整体延迟。
+
+只有 `leadingTarget && first==targetIndex` 时使用这两个新入口；两opening完整unit不同则继续原来向左扩展。
+first减小后恢复原四正规/独立入口枚举，不把更早位置也错误限定成两个入口；既有isolatedSpread路径保持原样。
+
+### 四页双页认证见证
+
+0-based四页全纵图，LTR/AUTO/auto=true，无forced/manual；full oracle中p0/p1是真实Computed UNKNOWN。
+partial只接受p2 LEFT与p3 RIGHT的真实原始分析，p0/p1仅header；不能把这些NotAnalyzed叫作Computed UNKNOWN。
+完整canonical输出[0][1][2,3]，target2的两个opening入口都为pair(2,3)。
+
+| 对照 | 目标结果 | readset唯一键数 |
+|---|---|---:|
+| baseline | NeedFacts p1 ORIGINAL_ANALYSIS | 12 |
+| B | Certified [2 LEFT,3 RIGHT] | 6 |
+
+这证明实际新增认证可以是双页，而非删掉伙伴、固定单页或冻结第一次猜测。
+另两个新增认证来自target自身显式manual pair，均为可保存记录；NONE/AUTO是无需手动记录的正常设置。
+JSON中NONE/AUTO的recordValid=false仅表示空记录没有可保存的手动选择，不表示正常设置非法。
+
+### B的域与回退控制
+
+基本域 `target1/2 × side leading/trailing/UNKNOWN/未分析 × 两方向 × 三开篇 × auto开关 × NONE/INCOMING/OWN manual = 288` 项。
+实际调用ChapterPairingRecord.isValidFor；显式封面manual0、与FIRST_PAIR冲突的manual等只作为API域控制，不冒充有效用户记录。
+其中176项记录可保存，32项NONE/AUTO无需记录，80项是上述API冲突控制；B新增4项中2项无需记录、2项记录有效。
+target自己的manual pair且target分析缺失时，真实路径仍能认证的例子保持认证，证明快捷检测没有新增目标分析需求。
+
+再加LTR/RTL两项next-wide：target2为leading、p3宽图，partial只分析这两页。
+真实step(2,true)输出OPENING，step(2,false)输出REMAINDER_BEFORE_SPREAD；物理slot可能相同，完整unit确实不同。
+B必须回退；实跑continuationFirstIndex=1<2，仍需p1 ORIGINAL_ANALYSIS，没有强行认证；baseline/A在first0返回相同事实需求。
+这覆盖回退路径，不宣称已经用这两项复现旧接入的误认证。
+
+## 6. 最终结果与依赖保护
+
+每variant运行A72+B290=362项，独立baseline→A/B比较共724项，另各一次公开负distance API控制。
+每项完整oracle来自真实采样/完整owner/canonical，partial认证走真实certifyCapturing与readset。
+任何Certified都检查完整unit等值、isCurrent；baseline已认证不能退化，候选Need集合也不能比baseline新增需求。
+
+| 独立候选/自有域 | 原Certified保持 | NeedFacts→Certified | NeedFacts保持 |
+|---|---:|---:|---:|
+| A / 72项 | 48 | 8 | 16 |
+| B / 290项 | 256 | 4 | 30 |
+
+A在B域无结果变化，B在A域无结果变化；没有运行A+B组合，不相加比例推断真实体验。
+取证需求的量化幅度见第8节：认证率与读集唯一键数的逐项统计。
+新增证书在target内容版本、partner/near端点内容版本、incoming manual集合或manualRevision变化时均拒旧。
+保留near=0事实及所有必要strength/side/geometry依赖；B的已观察side/setting同样是证书条件，不是无条件跳前缀。
+这些是现有segment/isCurrent路径的代表性控制，没有验证整个Memo、Session、原生曝光与持久恢复。
+
+## 7. 推荐及可推翻条件
+
+优先保留两种证明思路：A用可信下界剪掉无胜算比较；B用不可能的incoming边建立同步入口。
+它们用已知条件证明部分信息不影响结果，保持原输出并缩小取证需求。
+默认非负契约、readset、必要事实与原有回退必须同时保留；不能把Γ_now临时结果当稳定证书。
+
+下一步若实施产品变更，仍需focused红绿TDD、真实DI/provider契约、Memo/readset失效与受影响Session接线验证。
+之后才测冷/热、真实淘汰/慢邻页下的IO、decode、总CPU及intent到正确像素分布；本轮没有此类数据。
+A减少的竞争edge可能早已便宜可得，B的前缀可能已热，故8/4个新增认证不能外推用户延迟改善比例。
+
+可推翻或收窄候选的条件：provider允许负值却启用A；side/manual/旋转身份失配；有效reservation绕过B同步lemma；两opening分歧仍提前认证；遗漏负向读集/内容失效；真实接线无法维持上述契约。
+尚未覆盖任意像素、失败/重试、EXIF/用户旋转变换族、长manual链、A+B组合及原生呈现/导航/进度。
+未观察到的这些路径不视为通过；本轮交付是可复跑的数学/算法研究证据。
+
+## 8. 量化附录：取证需求减少的实测幅度
+
+本节只统计已记录的读集唯一键数与认证结果，不做任何计时。复跑命令：
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$env:PYTHONUTF8 = '1'
+$env:PYTHONIOENCODING = 'utf-8'
+$env:PYTHONDONTWRITEBYTECODE = '1'
+python scripts/reader-pairing-math/summarize.py
+```
+
+该脚本只读 `.gradle/reader-pairing-math/round3/{baseline,A,B}/result.json`，不重跑实验，统计对象正是本文记录的同一份产物。
+
+| 变体 | Certified | 占比 | 全部362项读集唯一键均值 |
+|---|---:|---:|---:|
+| baseline | 304/362 | 84.0% | 11.12 |
+| A | 312/362 | 86.2% | 11.10 |
+| B | 308/362 | 85.1% | 10.86 |
+
+| 候选 | 专属域 | 读集键数变小项 | 降幅（键） | 状态变化项 | 专属域读集均值 |
+|---|---|---:|---|---:|---|
+| A | 72 项 | 8 | 1 | 8 | 9.89 |
+| B | 290 项 | 20 | 3~6 | 4 | 11.07 |
+
+A的取证减少完全落在8个新增认证项上：各省1个 `EDGE_SAMPLES` 事实（12→11键），状态不变的项没有额外省取证。
+
+B的取证减少分两类：4项由 NeedFacts 变为 Certified，省掉 `ORIGINAL_ANALYSIS`（12→6键）；另16项状态未变但读集再降3~6键（8项12→9键、8项12→6键），来自 `leadingTarget` 直接从 target 起扫、不再读取更早页的 metadata。生效条件核对：读集变小的20项全部是 LEADING side，非 LEADING side 逐项未变。
+
+边界与第7节一致：以上全部是取证需求计数，不是耗时；读集唯一键数不等于执行次数，更不等于一次 IO 或毫秒。生产源码未改，`distancesNonNegative`/`leadingTarget`/`directEntry` 在 `domain/` 中零命中，用户可见提升目前为0。362项是为覆盖条件专门构造的域，不是真实使用分布（B域290项中112项为API域控制：32项NONE/AUTO无需记录、80项manual冲突控制）。冷/热、真实淘汰/慢邻页下的 IO、decode、总 CPU 与 intent 到正确像素分布本轮没有数据，后续路线不变。

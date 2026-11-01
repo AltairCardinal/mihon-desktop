@@ -1,0 +1,80 @@
+# WP-B — exact summaries, domains, witnesses and limits (B01–B06, D01–D06, E01–E03, N01/N02/N05/N06, X02/X03/X04/X05/X10)
+
+Evidence layers: **core** (exact DP `omega.certify_exact`, independent world oracle `omega.oracle_units`,
+`reference.complete_plan`), **owner** (`corrected_owner.Owner` → `wpB_sigmemo.SigOwner`), **coupled**
+(`wpB_coupled.BlockSession(StrongSession)` + `BlockRunner(coupled_runner.Runner)`, virtual u, held-out seeds
+100–109, service 3u, queue 1u), **local_measured** single-process trial wall times only (no formal timing; formal
+runs are main-session `drive_formal.py bench_wpB`). Work counters are DP evaluations (one `T.explore` outcome).
+Raw: `results/raw/wpB/{studies,coupled,equiv,domains_brute,prune_ablation}.json`, `bench_trial.jsonl`;
+summaries `results/summary/wpB/{bench_trial_summary,coupled_summary}.json`. Proofs: `proofs/wpB.md`.
+Tests: `tests/test_wpB_core.py` (16 tests, ≈45 s).
+
+## 1. Exact summaries (B)
+* **B01 exact block summaries (D4).** Lemma B-1 fixes the boundary interface (cursor state, state/side of b-1…b+2,
+  edge (b,b+1) choice, order components touching edges ≥ b); Theorem B-2 makes block relations compose exactly,
+  with dependency range [L-1,R+2] / edges L-1…R. `BlockSummary` = exact DP on 12 272 checks with updates
+  (0 mismatches); world-oracle agreement; stale-frontier mutant killed; empty world set → `contradiction`.
+  Ablation: dropping the b-1 state changes unit sets in 66/1 500 cases (necessary); edge/order parts were never
+  observed necessary (kept as proven-sufficient). Cost grows with density (n=96, pu=0.6, B=4: 647 entries, 7 094
+  exit keys; 111 interned exit sets). Coupled D4: strong evaluations W01 1 083 (exact 2 320, tree 11 318), W06
+  3 323 (4 728 / 20 431), W05 141 (205 / 1 782); identical certificates, wrong = 0.
+* **B02 order type (D3, with X03).** Ranks enter only through strict order ⇒ the symbolic order-type abstraction is
+  exact; quantised K=10/50 costs 2.4×/29× evaluations and certifies nothing extra.
+* **B03 layered precision (D3, refuted as a speed-up).** Tree-seeded exact windows are sound but 2–5× the
+  evaluations of exact DP from 0 (n=128, pu=0.3: 14 466 vs 3 827).
+* **B04 on-demand shared frontier (D3, conditional).** Lazy tables + cached prefix frontiers: blocks8 beats the r8
+  `FrontierCache` incumbent at n=128 (pu 0.3: 7 463 vs 9 627 evaluations, 76.7 vs 98.8 ms trial; pu 0.6:
+  1 134.6 vs 1 207.3 ms though more evaluations) and loses at n=32 (16.7 vs 14.3; 186.2 vs 145.5 ms).
+* **B05 backward goal propagation (D3, refuted as a speed-up).** Sound; 11 491 vs 3 827 evaluations (n=128, pu=0.3).
+* **B06 precision/space Pareto (D3).** On 40 cases exact DP reaches full coverage at budget 3 000 (6 certified,
+  20 123 evaluations); seeded needs 10 000 (59 264), tree 3 000 (28 365). Lower bound side: N02.
+
+## 2. Domains and representations (D)
+* **D01 bitset (D3).** Theorem D-1 (bounds propagation complete over finite masks); = symbolic = brute force on
+  389 G0 cases; holes work (integer mask makes 0.1<x<0.5 infeasible). Slower in Python (147 vs 40 ms trial).
+* **D02 binary64 representatives (D2).** Gap-counting completeness; 250 dense nextafter/subnormal/±0/±max cases, 0 mismatches.
+* **D03 automatic domain switching (D3).** Shape guessing is unsafe (G0 certifies, ext has 2 units); tag-driven
+  selection is safe; in the coupled block session an out-of-domain delta forces a rebuild that falls back to ext (test).
+* **D04 comparison signatures (D3).** Theorem D-4; `SigOwner` 0 wrong / 3 600 requests, order-blind mutant 9 wrong.
+  Trial: shuffle n64 engine runs 62 → 33, 164.8 → 82.7 ms; when nothing reorders (order family) no gain
+  (n64 113.5 vs 81.6 ms, i.e. overhead).
+* **D05 sparsity (D2).** Max live vars 7, rank components ≤ 2 edges, frontier ≤ 43 (pins: 6 live).
+* **D06 serialisation (D2).** 0.30000000000000001 vs 0.3 changes the plan; reject non-round-trip literals.
+
+## 3. Witnesses (E)
+* **E01 (D2).** Statistics insufficient (1.0 vs 10.8), direction matters (7.0 vs 5.0) ⇒ keep both normalised
+  sides (300 B/object); raw is many-to-one; scalar ranks do not transfer to new neighbours.
+* **E02 (D2).** Exact exclusion sets for repeated rows (h|50 ⇒ lattice step 50/h; h=3 ⇒ 1 380 values; mixed ⇒ all).
+* **E03 / X10 (D2/D3).** Structural impossibilities listed; Theorem X-10: with null and 0 realisable, masks never
+  change a single decision ⇒ no certification gain (measured unchanged); premise check `masks_consistent` required.
+
+## 4. Limits (N)
+* **N01 (D2, limit_proved for the family).** Dependent edges ≈ 2/3 of the prefix (t=21 → 14) ⇒ Θ(t) support.
+* **N02 (D2, limit_proved).** Up to 14 suffix classes vs ≤ 5 states; 22/40 boundaries exceed the state count.
+* **N05 (D3).** Shared-code mutant: 62 active, independent world oracle 62, shared-code differential 0.
+* **N06 (D2).** Exactness × locality × insertion stability: reference radius 63 in a 64-chain; LMP radius 3
+  but 6.85 % positions changed; parity relabels on front insertion.
+
+## 5. Combinations
+| combo | 0 / A / B / A+B (evaluations unless noted) | interaction |
+|---|---|---|
+| X02 B01×lazy | far jump n=64: eager build 1 453 + 6 vs lazy 1 451; sweep 2 504 both; wide-then-precise 3 271 | lazy = eager on one far query, never worse; precise-after-wide adds cost |
+| X03 B02×D01 | symbolic = bitset verdicts; quantised K=10/50 2.4×/29× | order type dominates; bitset adds nothing on G0 |
+| X04 B03×budget | expand_then_refine 82 607, locate_then_allocate 59 264, exact_doubling 44 773 (all 6 certified) | budget doubling on exact DP is best; layering hurts |
+| X05 B04×support DAG | block invalidation by window dependency (≤ 2 blocks per edge, L-1…R+2 per item); coupled block_updates via owner deltas | correct (mutant killed); separate 0/A/B/A+B cost split not run |
+| X10 D03×E03 | G0 vs G0+geometry masks: verdict unchanged | Theorem X-10: zero gain by construction |
+
+## 6. Coupled chain (D4) and adoption boundary
+`BlockSession` keeps the summary in step with the owner's actual deltas (item/edge dirty sets; rebuild on guard
+change), signs certificates with support [0,t+3] and the Session guard. Held-out runs: wrong = 0 in every cell;
+lifecycle publish → confirmed → support change → `stale` (publication and confirmation removed); rebind → old
+handle `unsigned`. Strong attempts cut physical admissions (W01 56 → 34, W06 260 → 154, W05 17 → 8) at higher
+virtual latency (57 → 77, 177 → 188, 15 → 18). The raw gate matters: on RP/W02 (no certifiable targets) gated runs
+make 9/3 attempts vs 225/159 for proof_first, latency 228 vs 297 and 157 vs 203. Kind choice: blocks is cheapest
+except W02 proof_first (52 942 vs exact 43 413, island churn). Boundary: use strong-blocks only behind the raw gate,
+when the workload optimises admissions rather than latency; use exact when updates hit many blocks per query.
+
+## 7. Gaps
+No formal timing (trial walls are single-process indications). X05 cost split not run. Necessity of keeping edge
+choice/order components at boundaries not observed (n ≤ 8). D04 order-mode never pays. World-oracle checks limited
+to n ≤ 6.

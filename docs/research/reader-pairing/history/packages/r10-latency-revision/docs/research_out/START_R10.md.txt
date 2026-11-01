@@ -1,0 +1,21 @@
+# R10 研究结果：入口（修订版）
+
+把 `research_out/` 放回研究包根目录（与 `START_HERE.md` 同级）。所有命令都在包根目录执行。原包文件没有改动（`python3 -B research_out/check_integrity.py --verify`）。
+
+| 要看什么 | 文件 |
+|---|---|
+| 决策报告（先看这个；§0 回答撤回/变化/试验/观测/停止/缺口） | `REPORT.md` |
+| 本轮逐项改动（旧问题、修改、复验、结论是否变化） | `CHANGELOG.md` |
+| 验收矩阵（T01–T08 + 自查问题，含独立验收结论） | `ACCEPTANCE.md` |
+| 输入字段说明的勘误（原文件不改） | `INPUT_ERRATA.md` |
+| 逐题状态与裁定（150 行，模板列） | `coverage.csv`；带结论/正例/反例/成本/失败边界/观测的版本：`coverage_detail.csv` |
+| 逐题详细记录 | `sections/QUESTIONS_DETAIL.md` |
+| 30 个组合：两种联合设计各自的 0/A/B/AB、交互项、区分输入 | `sections/COMBINATIONS_DETAIL.md` |
+| 20 类对抗轨迹 | `summary/WORKLOADS.md` |
+| 失败、中断、被替换的实现 | `FAILURES.md` |
+| 复现与干净重跑记录 | `REPRODUCE.md`、`summary/clean_run.json` |
+| 代码 | `lab/`（重建 Γ、中性检查 gamma_ref2、可能世界、特征、调度/协议模型、入口见证）、`bench/`（实验脚本，joint_*.py 为组合研究）、`tests/` |
+| 原始结果 | `raw/`（每个实验一个 JSON；`raw/regressions/` 为修复前后证据） |
+| 逐文件 SHA-256 | `SHA256SUMS.txt` |
+
+一句话结论：主门槛（中位 ≤ 30.19685 ms）在现有证据下仍不能保证。上一版“补授权时刻即可裁定”的判据已被反例推翻；修订后需要授权后不可移除服务的下界（B_i 或机会时刻表）。能进入小型工程试验的是资源保护、意图与退出这几类机制，它们都不针对主门槛。

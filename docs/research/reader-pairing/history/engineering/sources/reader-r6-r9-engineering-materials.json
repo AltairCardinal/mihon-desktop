@@ -1,0 +1,1479 @@
+{
+  "schemaVersion": 1,
+  "kind": "r6-r9-engineering-report-and-evidence-recovery",
+  "archives": [
+    {
+      "sourceCommit": "e4ba69f35588952a66addb2a50528dc981ea6565",
+      "sourcePath": "docs/2026-10-23-reader-pairing-csl-d3-candidate-report.md",
+      "sourceGitBlob": "66d6d64325cd8a2eb84d2397b3f4e7fd5878b712",
+      "role": "R6 candidate report",
+      "bytes": 32008,
+      "sha256": "04133208a1bf8771d6e641ca22052fcb2411f273e044f997d42446288d8a2e13",
+      "archivePath": "r6/reports/2026-10-23-reader-pairing-csl-d3-candidate-report.md.txt"
+    },
+    {
+      "sourceCommit": "2dae092bbb33b6e581cf6c88da3ffda455049f9c",
+      "sourcePath": "docs/2026-10-24-reader-pairing-csl-d3-optimization-report.md",
+      "sourceGitBlob": "ec1ac201e94fce05984effbbb71c4e5d3628a90f",
+      "role": "R6 optimization report",
+      "bytes": 38072,
+      "sha256": "198667f01b2c5307dd7db92c02cc65d3d95794ae83f8f0cf6262e7565ca971f7",
+      "archivePath": "r6/reports/2026-10-24-reader-pairing-csl-d3-optimization-report.md.txt"
+    },
+    {
+      "sourceCommit": "e4ba69f35588952a66addb2a50528dc981ea6565",
+      "sourcePath": "docs/roadmap/2026-10-23-reader-pairing-csl-d3-candidate-roadmap.md",
+      "sourceGitBlob": "b0f78e955adce91cb9fc4586793b8b86075f7169",
+      "role": "R6 candidate roadmap",
+      "bytes": 7425,
+      "sha256": "02743853e67e3f49940c0348a0a66e97ed2714acfaad5dd788b26a3e989c4a14",
+      "archivePath": "r6/reports/2026-10-23-reader-pairing-csl-d3-candidate-roadmap.md.txt"
+    },
+    {
+      "sourceCommit": "e38315c595d66a971ac9621d2ee984e0b3715d3a",
+      "sourcePath": "docs/2026-10-25-reader-pairing-r7-engineering-report.md",
+      "sourceGitBlob": "ec45e42e87c0a3860b9cdc847c4c339658037067",
+      "role": "R7 initial report",
+      "bytes": 12887,
+      "sha256": "b9dd3e55bd93d222aae668f2f2bff25d2b5d96814287d308641fcd539becc1c3",
+      "archivePath": "r7/reports/2026-10-25-reader-pairing-r7-engineering-report.initial-e38315c5.md.txt"
+    },
+    {
+      "sourceCommit": "31d6b59fa19ef33e306dad60f5ba2fad378f97a0",
+      "sourcePath": "docs/2026-10-25-reader-pairing-r7-engineering-report.md",
+      "sourceGitBlob": "719650b2ad87afc85e8dad976dba3400973e1423",
+      "role": "R7 final report",
+      "bytes": 18244,
+      "sha256": "910fe4ce77aa1f3c297d02feb148a100192b93d69f9dc756d1aba71d512ab59a",
+      "archivePath": "r7/reports/2026-10-25-reader-pairing-r7-engineering-report.final-31d6b59f.md.txt"
+    },
+    {
+      "sourceCommit": "31d6b59fa19ef33e306dad60f5ba2fad378f97a0",
+      "sourcePath": "docs/roadmap/2026-10-25-reader-pairing-r7-engineering-experiments.md",
+      "sourceGitBlob": "81046a5c882d94c23830ffb5d5d9c01e24fa4bbf",
+      "role": "R7 experiment roadmap",
+      "bytes": 8047,
+      "sha256": "85c5f00678ef1a877da69b8ca6afe98269a3e9048a044e4970bd5e5150330d1e",
+      "archivePath": "r7/reports/2026-10-25-reader-pairing-r7-engineering-experiments.md.txt"
+    },
+    {
+      "sourceCommit": "2ae30f16ecbcb0869b4b6c4ff50104b89ce2b392",
+      "sourcePath": "docs/2026-10-26-reader-pairing-r8-research-package-report.md",
+      "sourceGitBlob": "330e143a289ed0d73d1e55d3aff9503676ee703a",
+      "role": "R8 research package report",
+      "bytes": 7451,
+      "sha256": "3300225c0effaa409604af6c5702d60831660b881b6a0d224233524114e1a6a1",
+      "archivePath": "r8/reports/2026-10-26-reader-pairing-r8-research-package-report.md.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/2026-10-26-reader-pairing-r8-engineering-report.md",
+      "sourceGitBlob": "d2670911c25237103e6da64f13c92afb2d3231dd",
+      "role": "R8 engineering report",
+      "bytes": 17993,
+      "sha256": "9b006fcfe594cf5ea528758d2adb916d98be5a1320bf56290fbe1ac64c3bd5be",
+      "archivePath": "r8/reports/2026-10-26-reader-pairing-r8-engineering-report.md.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/roadmap/2026-10-26-reader-pairing-r8-engineering-experiments.md",
+      "sourceGitBlob": "f6f30c1c94d8bce09830295b3adcb45f592662a2",
+      "role": "R8 experiment roadmap",
+      "bytes": 6819,
+      "sha256": "5cc2de83b605c54e90831a44ee77512862c7b9c7dd98bffe6811809e8930c4c9",
+      "archivePath": "r8/reports/2026-10-26-reader-pairing-r8-engineering-experiments.md.txt"
+    },
+    {
+      "sourceCommit": "9b9ada3cd9ddfa828acdf13702406cb9edf58522",
+      "sourcePath": "docs/2026-10-26-reader-pairing-strong-certification-report.md",
+      "sourceGitBlob": "729db39ec04fee452bc35a8285b2ae929db12ceb",
+      "role": "R9 certification report",
+      "bytes": 13521,
+      "sha256": "a5fdca0dd8f9b2fcd4e293a5a1d5575695bf40fc318e8baa5a1267fccbab6c18",
+      "archivePath": "r9/reports/2026-10-26-reader-pairing-strong-certification-report.md.txt"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/2026-10-27-reader-pairing-r9-engineering-report.md",
+      "sourceGitBlob": "1fdbf81692aa8c19e6c90501c0fbc2fe9d6f89cd",
+      "role": "R9 engineering report",
+      "bytes": 12132,
+      "sha256": "955661c8744f0f7d68ad0914b4a9db836a662bebf7195dd3aa11ae09bd9b8105",
+      "archivePath": "r9/reports/2026-10-27-reader-pairing-r9-engineering-report.md.txt"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/roadmap/2026-10-27-reader-pairing-r9-engineering.md",
+      "sourceGitBlob": "3bfd9c3c2a9a59ecd2ecb4a836c118ea7365c401",
+      "role": "R9 engineering roadmap",
+      "bytes": 6224,
+      "sha256": "ab17722f03f0335a5b054795c1ff27ed065cde9f02b79d4e9684290e094a8e5e",
+      "archivePath": "r9/reports/2026-10-27-reader-pairing-r9-engineering.md.txt"
+    },
+    {
+      "sourceCommit": "31d6b59fa19ef33e306dad60f5ba2fad378f97a0",
+      "sourcePath": "docs/evidence/2026-10-25-reader-pairing-r7/host-bx-git-normalization.json",
+      "sourceGitBlob": "048f9d17c6a136147ba0a63a32b45e6149648ef1",
+      "role": "r7 evidence",
+      "bytes": 14719,
+      "sha256": "a0a9a83b7a35572a4734e0113c891ce4fe1e5329dc15941f2c2c7a151a735a1c",
+      "archivePath": "r7/evidence/host-bx-git-normalization.json"
+    },
+    {
+      "sourceCommit": "31d6b59fa19ef33e306dad60f5ba2fad378f97a0",
+      "sourcePath": "docs/evidence/2026-10-25-reader-pairing-r7/host-bx-raw.jsonl",
+      "sourceGitBlob": "11c186256092c81145bb5e31646c037817170b14",
+      "role": "r7 evidence",
+      "bytes": 1296207,
+      "sha256": "9c3266a18e0a30fd256515cf903fd5fd35139ba0e358f39d9815d65dc29c0d01",
+      "archivePath": "r7/evidence/host-bx-raw.jsonl"
+    },
+    {
+      "sourceCommit": "31d6b59fa19ef33e306dad60f5ba2fad378f97a0",
+      "sourcePath": "docs/evidence/2026-10-25-reader-pairing-r7/host-bx-source.json",
+      "sourceGitBlob": "cd2682afd6e96de4697c89af28e14b33eecb83d0",
+      "role": "r7 evidence",
+      "bytes": 14457,
+      "sha256": "6796f4cdf7f8590a23faa28538b0a4fb7ec2e7ce84dd9bde8f392f21ed4a1888",
+      "archivePath": "r7/evidence/host-bx-source.json"
+    },
+    {
+      "sourceCommit": "31d6b59fa19ef33e306dad60f5ba2fad378f97a0",
+      "sourcePath": "docs/evidence/2026-10-25-reader-pairing-r7/host-bx-summary.json",
+      "sourceGitBlob": "fdecc47f8fcdadecc118de8f7dd80b08296aac96",
+      "role": "r7 evidence",
+      "bytes": 74763,
+      "sha256": "e7a648ab195eccc898ce0905c7ed3ba394037e63666fbfad0f1cf91fc930ecbe",
+      "archivePath": "r7/evidence/host-bx-summary.json"
+    },
+    {
+      "sourceCommit": "31d6b59fa19ef33e306dad60f5ba2fad378f97a0",
+      "sourcePath": "docs/evidence/2026-10-25-reader-pairing-r7/host-bx-validation.json",
+      "sourceGitBlob": "68055516265351b8a2deed318b57e3b5aad13053",
+      "role": "r7 evidence",
+      "bytes": 1158,
+      "sha256": "b09d9b689081a6f542834373c16b0074a863c3637eeb0a078e641fb8d4e6770f",
+      "archivePath": "r7/evidence/host-bx-validation.json"
+    },
+    {
+      "sourceCommit": "31d6b59fa19ef33e306dad60f5ba2fad378f97a0",
+      "sourcePath": "docs/evidence/2026-10-25-reader-pairing-r7/host-nonbx-raw.jsonl",
+      "sourceGitBlob": "1a36acfffe15ecd0dbde53b0996be4eb3f954ede",
+      "role": "r7 evidence",
+      "bytes": 1308295,
+      "sha256": "b60f341794b7175f7edb8dddea3879960cdd97fb5ea8b182f1254d6821c1c352",
+      "archivePath": "r7/evidence/host-nonbx-raw.jsonl"
+    },
+    {
+      "sourceCommit": "31d6b59fa19ef33e306dad60f5ba2fad378f97a0",
+      "sourcePath": "docs/evidence/2026-10-25-reader-pairing-r7/host-nonbx-source.json",
+      "sourceGitBlob": "0d3972879b80b40ee8b76bee0cd8707f94f70498",
+      "role": "r7 evidence",
+      "bytes": 13712,
+      "sha256": "f5e6b707f7a5d011bb1d5a29bb4be1240aa4e1f4cb676462a9edc579ba34ac1c",
+      "archivePath": "r7/evidence/host-nonbx-source.json"
+    },
+    {
+      "sourceCommit": "31d6b59fa19ef33e306dad60f5ba2fad378f97a0",
+      "sourcePath": "docs/evidence/2026-10-25-reader-pairing-r7/host-nonbx-summary.json",
+      "sourceGitBlob": "496de273591cd98b270a9a75afb4e680182065d2",
+      "role": "r7 evidence",
+      "bytes": 58421,
+      "sha256": "26c550b4ec95e10f6f9592ac6da6b90dd3ff69063e470512a7de6de69def23de",
+      "archivePath": "r7/evidence/host-nonbx-summary.json"
+    },
+    {
+      "sourceCommit": "31d6b59fa19ef33e306dad60f5ba2fad378f97a0",
+      "sourcePath": "docs/evidence/2026-10-25-reader-pairing-r7/host-nonbx-validation.json",
+      "sourceGitBlob": "69cd517ff9a2da248641e26c63bbf64e675217cd",
+      "role": "r7 evidence",
+      "bytes": 1693,
+      "sha256": "bd98fd574b36d2d28f0a085aaf32622d933db46be8cfaf09d164e3d37cf11062",
+      "archivePath": "r7/evidence/host-nonbx-validation.json"
+    },
+    {
+      "sourceCommit": "31d6b59fa19ef33e306dad60f5ba2fad378f97a0",
+      "sourcePath": "docs/evidence/2026-10-25-reader-pairing-r7/retained-raw.jsonl",
+      "sourceGitBlob": "90f050e24af5aeba4bac71821586484dad3dbeb1",
+      "role": "r7 evidence",
+      "bytes": 1310957,
+      "sha256": "cd6e039a7714dcbd0000f85bf52272d97cd3f4050f173e3ecbf504833db5dac0",
+      "archivePath": "r7/evidence/retained-raw.jsonl"
+    },
+    {
+      "sourceCommit": "31d6b59fa19ef33e306dad60f5ba2fad378f97a0",
+      "sourcePath": "docs/evidence/2026-10-25-reader-pairing-r7/retained-source.json",
+      "sourceGitBlob": "7d1c5580127f16bd5bb482beee0536292b05c198",
+      "role": "r7 evidence",
+      "bytes": 13832,
+      "sha256": "6b4ec6dceee6530a43f71ac49cddf319c2c089c5264a254b246f357c2d08c79f",
+      "archivePath": "r7/evidence/retained-source.json"
+    },
+    {
+      "sourceCommit": "31d6b59fa19ef33e306dad60f5ba2fad378f97a0",
+      "sourcePath": "docs/evidence/2026-10-25-reader-pairing-r7/retained-summary.json",
+      "sourceGitBlob": "cb7970676b2fe0078c13f7201e0cc4dad718af68",
+      "role": "r7 evidence",
+      "bytes": 58408,
+      "sha256": "1b4a319f1a3a99657e9dfbc81dbaf5f53c96f845c7df64fce3be3b075f5de410",
+      "archivePath": "r7/evidence/retained-summary.json"
+    },
+    {
+      "sourceCommit": "31d6b59fa19ef33e306dad60f5ba2fad378f97a0",
+      "sourcePath": "docs/evidence/2026-10-25-reader-pairing-r7/retained-validation.json",
+      "sourceGitBlob": "3c386fc26b2b67ad40a1d5f90cb012c89a8af00b",
+      "role": "r7 evidence",
+      "bytes": 22069,
+      "sha256": "101b51524bd8ece028a608ee778eef95f36a051cab0204482a35e5d291dd23dc",
+      "archivePath": "r7/evidence/retained-validation.json"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-android-c5-before-failures.json",
+      "sourceGitBlob": "348c797322d44d81bbfb0686b5cf5888fa4046db",
+      "role": "r8 evidence",
+      "bytes": 1719,
+      "sha256": "8faf42a26f16f0097cbf1f215ff7abc286ea041b352d4ad0249afe2966631407",
+      "archivePath": "r8/evidence/core-android-c5-before-failures.json"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-android-final-failures.json",
+      "sourceGitBlob": "f5e2346a41550079a0a6f335235ff97a7a8d92cc",
+      "role": "r8 evidence",
+      "bytes": 1966,
+      "sha256": "8b76b3f8ba79cd47f3a3f52494af07e5ac2d2a904968831d2f3699b2e3df2d63",
+      "archivePath": "r8/evidence/core-android-final-failures.json"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-c5-wiring-mutant.txt",
+      "sourceGitBlob": "de4547078e232a11efa0026501e503c911ef6d75",
+      "role": "r8 evidence",
+      "bytes": 1660,
+      "sha256": "523fdf965810cf26976d0714c70dff5f3811fd4a41b14507c9ab00820417beae",
+      "archivePath": "r8/evidence/core-c5-wiring-mutant.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-cache-corrected-summary.csv",
+      "sourceGitBlob": "192bf613c3797934f4977164c75200340a5f0c89",
+      "role": "r8 evidence",
+      "bytes": 18063,
+      "sha256": "9e76a8951cbee51c571f2f1e6356e62db07d6533204b731685b1602e64a32ec1",
+      "archivePath": "r8/evidence/core-cache-corrected-summary.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-desktop-before-failures.json",
+      "sourceGitBlob": "2dd61c75f3e424b05b51ff803840fd2f5e5ca43b",
+      "role": "r8 evidence",
+      "bytes": 711,
+      "sha256": "8798eb637b0849d1b9b878aa08aad166951316ef2726c64ebfe7b12972dfbf03",
+      "archivePath": "r8/evidence/core-desktop-before-failures.json"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-direction-summary.csv",
+      "sourceGitBlob": "fa591c9bfd46b0f9f271d94a3fc1bd87852191b7",
+      "role": "r8 evidence",
+      "bytes": 987,
+      "sha256": "92925a50ade36b7ac476b6c05263aa9ffebf84e4f3c9a853522ed54c309b98d4",
+      "archivePath": "r8/evidence/core-direction-summary.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-final-state.json",
+      "sourceGitBlob": "34c8532a6ee7cead221ad165523f5410a6b9e2d0",
+      "role": "r8 evidence",
+      "bytes": 1219,
+      "sha256": "e6ebd494786db83a25413e80f6e8a87ddbf0210dec808b537623a726c43fef9c",
+      "archivePath": "r8/evidence/core-final-state.json"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-focused-xml-snapshots.json",
+      "sourceGitBlob": "619b34db630ad9e5f35014dcc939b9db075783b6",
+      "role": "r8 evidence",
+      "bytes": 3328,
+      "sha256": "c9c63c3b6eb29b42d42308a125c802eedf23ae8c8dd40127798292ed154c6575",
+      "archivePath": "r8/evidence/core-focused-xml-snapshots.json"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-joint-witness-test-result.json",
+      "sourceGitBlob": "aba9911d377e6dbf4fe587003d610f2ae5d2301a",
+      "role": "r8 evidence",
+      "bytes": 359,
+      "sha256": "e9c71a2f0df082a8a0cd1ce2a342d5b2815c85662116ad6615d7378e8194bd81",
+      "archivePath": "r8/evidence/core-joint-witness-test-result.json"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-mechanisms.csv",
+      "sourceGitBlob": "1b1df47565c3b6112656cd0370e271ff704d1a56",
+      "role": "r8 evidence",
+      "bytes": 27334,
+      "sha256": "f5887580c789ea98397e5c88fbe3401081872fcb19d68e730765b3aed4947a9b",
+      "archivePath": "r8/evidence/core-mechanisms.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-native-summary.json",
+      "sourceGitBlob": "eafedd3743c128f783254a62fa29e378894ca1bf",
+      "role": "r8 evidence",
+      "bytes": 256630,
+      "sha256": "32d2dfe758501a54a90afbddfca300479590e24016f27d7cfa9295035788278e",
+      "archivePath": "r8/evidence/core-native-summary.json"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-partial-summary.csv",
+      "sourceGitBlob": "c4d549338d0e02b28bfb764e30ae4b8e43b3e7a4",
+      "role": "r8 evidence",
+      "bytes": 14041,
+      "sha256": "67ef7412ea4b150c0381cf98a0d566e6cb05e0382edf9fb17c04b00642129938",
+      "archivePath": "r8/evidence/core-partial-summary.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-platform-all-before-2ae-baseline.json",
+      "sourceGitBlob": "5d502aba585c9fcd0d07d4aaa980a527d8302aff",
+      "role": "r8 evidence",
+      "bytes": 3793,
+      "sha256": "86d77a988da9cd095af5a273c9b536c6c86d4ecddaca4569a0fd392f7c5525cc",
+      "archivePath": "r8/evidence/core-platform-all-before-2ae-baseline.json"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-platform-all-before-failures.json",
+      "sourceGitBlob": "a0a7f809a4caa7246c736bd71eb198d6e81c6b81",
+      "role": "r8 evidence",
+      "bytes": 2929,
+      "sha256": "96f864a7810e54bf45b0d9c98ee5d29eb680845cd71601f656182908138ea903",
+      "archivePath": "r8/evidence/core-platform-all-before-failures.json"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-platform-android-baseline.json",
+      "sourceGitBlob": "50d755fa2ffdf9767b976713c72c5c287269a33e",
+      "role": "r8 evidence",
+      "bytes": 1982,
+      "sha256": "6a92c4ef719a362d431b1579b430d1ce748fde2809ce5460c6519b4a696e9c85",
+      "archivePath": "r8/evidence/core-platform-android-baseline.json"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-platform-baseline.json",
+      "sourceGitBlob": "1121543cb4aaf393a0a3b8ce42db84a15324438e",
+      "role": "r8 evidence",
+      "bytes": 1845,
+      "sha256": "ba171fa2f3168a9a2683493e84099387ec203576c7c7e046f2a4a0488db667d6",
+      "archivePath": "r8/evidence/core-platform-baseline.json"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-review-regression.txt",
+      "sourceGitBlob": "06101f583892b83497e7f532411bc318a0e0ef66",
+      "role": "r8 evidence",
+      "bytes": 3277,
+      "sha256": "8007a16d21407b4c1c77f97560cb4d8c7aa34167d549c73250034b08ee0cce40",
+      "archivePath": "r8/evidence/core-review-regression.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-session-summary.csv",
+      "sourceGitBlob": "9520830648f44c0492748b76bba7ba7d65602d60",
+      "role": "r8 evidence",
+      "bytes": 24096,
+      "sha256": "3ef0b366b1a8e5bd377a1cd7a66975dc46a3a104fde7c0d39e07c11ec59be7c3",
+      "archivePath": "r8/evidence/core-session-summary.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-tests-r8-cache-freshness-green.txt",
+      "sourceGitBlob": "f577f31deae70057309714a1d462d3d6e62dbb29",
+      "role": "r8 evidence",
+      "bytes": 496,
+      "sha256": "47241d91476eefb5b9c75fafa3a6771fbc4c717cd535b64093853b7a2633f5a8",
+      "archivePath": "r8/evidence/core-tests-r8-cache-freshness-green.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-tests-r8-cache-freshness-red.txt",
+      "sourceGitBlob": "9a1ac030b08ced00cc2f12246e58a51214e027bf",
+      "role": "r8 evidence",
+      "bytes": 236,
+      "sha256": "472f292c38a328a53162f7a31c2d828cb3eca2da31eee8aabb5aea2ff75c2845",
+      "archivePath": "r8/evidence/core-tests-r8-cache-freshness-red.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-tests-r8-corrected-harness-check.txt",
+      "sourceGitBlob": "e490c7639f648c4a9521d8c95081bc66042bb7ce",
+      "role": "r8 evidence",
+      "bytes": 984,
+      "sha256": "d14eb0c0e67ff7446ca41dd885d06536a22348c74ed84866ea6253997ca06847",
+      "archivePath": "r8/evidence/core-tests-r8-corrected-harness-check.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-tests-r8-final-focused.txt",
+      "sourceGitBlob": "da68a1a372bbbe34b6c67c631262c1d068bf8a02",
+      "role": "r8 evidence",
+      "bytes": 11851,
+      "sha256": "7f9285379bf758d18ee84c91fe92075eadac04d4a2b5f96d9555b6e5beaa3340",
+      "archivePath": "r8/evidence/core-tests-r8-final-focused.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-tests-r8-platform-focused.txt",
+      "sourceGitBlob": "c5639dd8c76d13adf18a919040d497195cb5c738",
+      "role": "r8 evidence",
+      "bytes": 500,
+      "sha256": "6cc0196e52b5d07a265caef51560cd8fa263ec0bd50a39d310033b54fceb90c3",
+      "archivePath": "r8/evidence/core-tests-r8-platform-focused.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-tests-r8-review-regression-green2.txt",
+      "sourceGitBlob": "0dfa9fba15f145fc6ba797fbad7331bf9fe05321",
+      "role": "r8 evidence",
+      "bytes": 1801,
+      "sha256": "c3f959ba2261b350cde2859a5182dd9e183e9972183a1cd2480b6029f7db75fb",
+      "archivePath": "r8/evidence/core-tests-r8-review-regression-green2.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/core-tests-r8-review-regression-red.txt",
+      "sourceGitBlob": "9a83cd0360cbe0b6ad877d0f8df703d99b80273d",
+      "role": "r8 evidence",
+      "bytes": 468,
+      "sha256": "baf9772893f661b198cd3a807ea3f9dc808d26ca629822867cf8e0993eb751f9",
+      "archivePath": "r8/evidence/core-tests-r8-review-regression-red.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/integration-data-validation.json",
+      "sourceGitBlob": "73cf230cbd94dec563ca1f7b235558bf2182ca48",
+      "role": "r8 evidence",
+      "bytes": 10063,
+      "sha256": "ad7d82980c1c29c982385324ab9630245a5baafeef4d151fc5eca33078466cb0",
+      "archivePath": "r8/evidence/integration-data-validation.json"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-cache-14044.csv",
+      "sourceGitBlob": "7fcb5b0d21f514cf81766cac72742e25930c37f8",
+      "role": "r8 evidence",
+      "bytes": 28592,
+      "sha256": "a3ce35c71d833f74ab0f4b0c4253bb56f259ecd8f5d86b65b0d8f7e82e571b68",
+      "archivePath": "r8/evidence/native/core-cache-14044.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-cache-20652.csv",
+      "sourceGitBlob": "11a1923a7e9baa8fa3e34e176393753d6c68423d",
+      "role": "r8 evidence",
+      "bytes": 28573,
+      "sha256": "b9659461ced937cdbd770ec1cde83410805ce992f10debec3dab0a7923f55287",
+      "archivePath": "r8/evidence/native/core-cache-20652.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-cache-34240.csv",
+      "sourceGitBlob": "b3eb967aab2cbf742ac6f6b373068e774538c1c9",
+      "role": "r8 evidence",
+      "bytes": 28616,
+      "sha256": "a5d9ee019f9bd071d75e6f013e64bfc2e75dab3cead1fe614680402c5c4db448",
+      "archivePath": "r8/evidence/native/core-cache-34240.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-cache-jvm-14044.txt",
+      "sourceGitBlob": "ce55866ca23b5a7a294f3c51823274fce619a342",
+      "role": "r8 evidence",
+      "bytes": 201,
+      "sha256": "b208f945d5d05383df8953e9f4acd2902d6c2033bce4136bd2a50b6930e2865e",
+      "archivePath": "r8/evidence/native/core-cache-jvm-14044.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-cache-jvm-20652.txt",
+      "sourceGitBlob": "60afb4f67457064c25fcff2ab41585639c5daecf",
+      "role": "r8 evidence",
+      "bytes": 201,
+      "sha256": "0839b0edbf62a408d373a216f97bccfb675a6ca3cad5f574861052b0ef062556",
+      "archivePath": "r8/evidence/native/core-cache-jvm-20652.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-cache-jvm-34240.txt",
+      "sourceGitBlob": "e186a6420a3a0a332dedd456039dbed13d4179e6",
+      "role": "r8 evidence",
+      "bytes": 201,
+      "sha256": "d998ce807a23b4148fb7459e35a599de8fe2ae2a9afd7d6c882f4e37d02d550c",
+      "archivePath": "r8/evidence/native/core-cache-jvm-34240.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-campaign-provenance.json",
+      "sourceGitBlob": "9a2a1fc04eeca663b7452b9853da9bd936de508f",
+      "role": "r8 evidence",
+      "bytes": 16448,
+      "sha256": "3ad1cf190053e21878921ca086b10ae44d2d531c905e1b2a27166049b77cdc4f",
+      "archivePath": "r8/evidence/native/core-campaign-provenance.json"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-direction-0-20652.csv",
+      "sourceGitBlob": "7e0b7bdb4d00cde76f1ce135472ba216cd82302e",
+      "role": "r8 evidence",
+      "bytes": 2047,
+      "sha256": "3f1ee691171056377ea8f63c743591ee994d12ed1cd4f330872b2927944f647e",
+      "archivePath": "r8/evidence/native/core-direction-0-20652.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-direction-1-34240.csv",
+      "sourceGitBlob": "c7c498d3f53df2795533822b66077f3b66dde577",
+      "role": "r8 evidence",
+      "bytes": 2051,
+      "sha256": "1b75f29c077761e75a2eee97c5040685d4026c55b8c3964d877d44db1345472f",
+      "archivePath": "r8/evidence/native/core-direction-1-34240.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-direction-2-14044.csv",
+      "sourceGitBlob": "17f645c45bcf0cbbb4b005db1db09ccb0cf47bd2",
+      "role": "r8 evidence",
+      "bytes": 2047,
+      "sha256": "565f2745dc5e1d170c7a7dd0e18cba197447ce129e5cfe9a6fbe513081aa764a",
+      "archivePath": "r8/evidence/native/core-direction-2-14044.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-jvm-before-2ae-0-31880.txt",
+      "sourceGitBlob": "0fd75ba42c9333034e2a3328a86caf16fb9e78ba",
+      "role": "r8 evidence",
+      "bytes": 201,
+      "sha256": "cbd7c733103f8647dddee2510748436745450fe504e9eb0b709797a6bec11156",
+      "archivePath": "r8/evidence/native/core-jvm-before-2ae-0-31880.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-jvm-before-2ae-1-39544.txt",
+      "sourceGitBlob": "74e7df3da2f178512e0f01a22ca354eb0d95e3ac",
+      "role": "r8 evidence",
+      "bytes": 201,
+      "sha256": "4f1fc5450b02f3bbbb50749595bdb8f7b41838861b1e865974180d256579a1ba",
+      "archivePath": "r8/evidence/native/core-jvm-before-2ae-1-39544.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-jvm-before-2ae-2-30300.txt",
+      "sourceGitBlob": "5c98b249d768f9c78ef9de323bf5b9ffee2cba5d",
+      "role": "r8 evidence",
+      "bytes": 201,
+      "sha256": "ca3a575f5e7a5b67b6d77ed46847dcb0abebc8a8834cc7d8a85afff43940d1c0",
+      "archivePath": "r8/evidence/native/core-jvm-before-2ae-2-30300.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-jvm-final-0-41492.txt",
+      "sourceGitBlob": "1f83ed711af889181533453cba4b8854862e29a2",
+      "role": "r8 evidence",
+      "bytes": 201,
+      "sha256": "0bc657b05bcd559ce920a3189c024d7697d4a8cedd9272bdba8ddc94ffc2c071",
+      "archivePath": "r8/evidence/native/core-jvm-final-0-41492.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-jvm-final-1-3300.txt",
+      "sourceGitBlob": "00d3a38ffd71ed435a2bbe172cacabbf97e23a40",
+      "role": "r8 evidence",
+      "bytes": 200,
+      "sha256": "c13b6fba1f6279b7bbdedef0918cd58576b498df0fcbaf4b039ed2dfceace442",
+      "archivePath": "r8/evidence/native/core-jvm-final-1-3300.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-jvm-final-2-45680.txt",
+      "sourceGitBlob": "a3606d463b3a102525fe48f90027c2d10c67fe9d",
+      "role": "r8 evidence",
+      "bytes": 201,
+      "sha256": "278d127028ff658ceab5eb8a24206a1db6094e6f09119b26d49ebe7c9cfa184e",
+      "archivePath": "r8/evidence/native/core-jvm-final-2-45680.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-jvm-strong-c5-0-27892.txt",
+      "sourceGitBlob": "44d2473f6791bb4ffd573176e253238f80845800",
+      "role": "r8 evidence",
+      "bytes": 201,
+      "sha256": "e6e3df3b2f514bc5849e2094244f71af73369fe3239213cf08d898a1b35c2c21",
+      "archivePath": "r8/evidence/native/core-jvm-strong-c5-0-27892.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-jvm-strong-c5-1-43196.txt",
+      "sourceGitBlob": "1c3e05141876a750d1752a1ac17a48fd9d7334cd",
+      "role": "r8 evidence",
+      "bytes": 201,
+      "sha256": "6a692cdcae869d6b4844c0d7e80eff41e28003ae56e0048c83cb3da5e282badd",
+      "archivePath": "r8/evidence/native/core-jvm-strong-c5-1-43196.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-jvm-strong-c5-2-37404.txt",
+      "sourceGitBlob": "e21d6c4bad0f542664a2d6d33885630a70dcab84",
+      "role": "r8 evidence",
+      "bytes": 201,
+      "sha256": "0d13f9aae7c928c8d2fcfa09290b9d61902740ea51ccd667d9a233d9d28d06d7",
+      "archivePath": "r8/evidence/native/core-jvm-strong-c5-2-37404.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-launch-before-2ae-0.log",
+      "sourceGitBlob": "13cf94d0077da445d5ae99a4ad60f55dcf1bf9d0",
+      "role": "r8 evidence",
+      "bytes": 129,
+      "sha256": "4bb6a452f3cc76a9e663ac93ec65b133073fba7a22c60efe5547683af974cdf6",
+      "archivePath": "r8/evidence/native/core-launch-before-2ae-0.log"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-launch-before-2ae-1.log",
+      "sourceGitBlob": "5741b2aab740d4d5f73fa09ab8432bf03aaa6552",
+      "role": "r8 evidence",
+      "bytes": 129,
+      "sha256": "db83691909321370221bd42bc0cb3e99f40f947a7847d8963c53efde174b10fb",
+      "archivePath": "r8/evidence/native/core-launch-before-2ae-1.log"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-launch-before-2ae-2.log",
+      "sourceGitBlob": "b3eb544dc41a995c540b23b6abd586e16ca890f9",
+      "role": "r8 evidence",
+      "bytes": 129,
+      "sha256": "b488fb4368c4b391412b540ba8f8988e135b88385a546a782c9f22699c021ff4",
+      "archivePath": "r8/evidence/native/core-launch-before-2ae-2.log"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-launch-final-0.log",
+      "sourceGitBlob": "7712c73f83d59c355f820add7b8827c5a32bc73f",
+      "role": "r8 evidence",
+      "bytes": 118,
+      "sha256": "44f8a1f8457fe07d3266c2835b5ac01e854daca78fe5d5564e770bd2bc577afc",
+      "archivePath": "r8/evidence/native/core-launch-final-0.log"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-launch-final-1.log",
+      "sourceGitBlob": "a5093ef76038cbcc7b24f2cffe42ac1885990f65",
+      "role": "r8 evidence",
+      "bytes": 119,
+      "sha256": "51018d506f2ceb40ebb93b7b01aae1fd8007d9dec1f1ad0b82e317c362039304",
+      "archivePath": "r8/evidence/native/core-launch-final-1.log"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-launch-final-2.log",
+      "sourceGitBlob": "5685862e713ca6660740db77f3f13cc62a62cd1c",
+      "role": "r8 evidence",
+      "bytes": 119,
+      "sha256": "1288aeb861617c1ed0db08cfed6eec75ee2521a92fafe5b9e41bdafb01404f71",
+      "archivePath": "r8/evidence/native/core-launch-final-2.log"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-launch-research-0.log",
+      "sourceGitBlob": "316642c63107af76e4e359accfa14274026a34c2",
+      "role": "r8 evidence",
+      "bytes": 125,
+      "sha256": "babb6beadd3aad0ed71d8bb61f4876e9ab192431e92e36ba7562092444707549",
+      "archivePath": "r8/evidence/native/core-launch-research-0.log"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-launch-research-1.log",
+      "sourceGitBlob": "1720481bf1c8937e8bbbee2fc53ae510d283d9ef",
+      "role": "r8 evidence",
+      "bytes": 125,
+      "sha256": "3a5cbea1bdd1a6f16baf641c857228c6d4f3f216ea3a16bd6a6dcc730990f828",
+      "archivePath": "r8/evidence/native/core-launch-research-1.log"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-launch-research-2.log",
+      "sourceGitBlob": "7c556e33f590d0f6c2f0e686f2dff59e266e5d27",
+      "role": "r8 evidence",
+      "bytes": 125,
+      "sha256": "be8f9bbd4f510d63b71daf019d0263b56ecebe5486df467cb568e71531d63eb1",
+      "archivePath": "r8/evidence/native/core-launch-research-2.log"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-launch-strong-c5-0.log",
+      "sourceGitBlob": "b25c57ecfad6e4630ba50d328afe7cb2733e35b9",
+      "role": "r8 evidence",
+      "bytes": 127,
+      "sha256": "593c5940c93c48813ac5fea0e227b83a3928bf1a14764bc00e888167020fa179",
+      "archivePath": "r8/evidence/native/core-launch-strong-c5-0.log"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-launch-strong-c5-1.log",
+      "sourceGitBlob": "7e1c33141985cd2cecd10de01c3ed3773706b961",
+      "role": "r8 evidence",
+      "bytes": 127,
+      "sha256": "7b197ede8c205d8011edfd21dfa4b6fc96a14773d54d587a28155907895f479a",
+      "archivePath": "r8/evidence/native/core-launch-strong-c5-1.log"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-launch-strong-c5-2.log",
+      "sourceGitBlob": "095b6d19943bd75feb14a28220a549cdb803c61a",
+      "role": "r8 evidence",
+      "bytes": 127,
+      "sha256": "7989130c5c1fdf3191253f9e9ddcbfe26f6f82dd965b4bc9ec8f5ccb67aa079e",
+      "archivePath": "r8/evidence/native/core-launch-strong-c5-2.log"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-partial-0-20652.csv",
+      "sourceGitBlob": "b76e1915b6ce3f7ea41bbd386dc88283033cd763",
+      "role": "r8 evidence",
+      "bytes": 24766,
+      "sha256": "0e15ce8ab66337597dc03b822d9e1336467ebfc268593d3c67b5eee119605f10",
+      "archivePath": "r8/evidence/native/core-partial-0-20652.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-partial-1-34240.csv",
+      "sourceGitBlob": "eca421c6411ee496be7b7f71eccb40abb29f660a",
+      "role": "r8 evidence",
+      "bytes": 24809,
+      "sha256": "e234c9d441243f6557b3b8cac40e9a1933a0e38d87b470b9ab08a9cdf777b57e",
+      "archivePath": "r8/evidence/native/core-partial-1-34240.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-partial-2-14044.csv",
+      "sourceGitBlob": "cad7268944cbcc9648747cc0bb9cda1a410d17e2",
+      "role": "r8 evidence",
+      "bytes": 24782,
+      "sha256": "3b1b2b791c0d2375ea1e80808c5d1d29a8c139a8813d72a59305c271e32cbdef",
+      "archivePath": "r8/evidence/native/core-partial-2-14044.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-session-before-2ae-0-31880.csv",
+      "sourceGitBlob": "df2ae6a12ce683fb96c79531a1f37b89da0d2bca",
+      "role": "r8 evidence",
+      "bytes": 22954,
+      "sha256": "9fc7da61ee54c694358bd848f9c23e9eb1af30950b5d86407e808bda4740c9d8",
+      "archivePath": "r8/evidence/native/core-session-before-2ae-0-31880.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-session-before-2ae-1-39544.csv",
+      "sourceGitBlob": "6350cb75c7e342ff33e83088d4e23dce2a8571f9",
+      "role": "r8 evidence",
+      "bytes": 22925,
+      "sha256": "597bc013e21de7bb761880745de48890d7ac7913d80d6dc98bc04eb542d7d383",
+      "archivePath": "r8/evidence/native/core-session-before-2ae-1-39544.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-session-before-2ae-2-30300.csv",
+      "sourceGitBlob": "4fba9981f35ccf828f2861c53b8d1e664e743574",
+      "role": "r8 evidence",
+      "bytes": 22915,
+      "sha256": "27ed794677d144ff752499a0e8a743c99ad6c22732633a56e7f2de6bffdc858d",
+      "archivePath": "r8/evidence/native/core-session-before-2ae-2-30300.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-session-final-0-41492.csv",
+      "sourceGitBlob": "3bdaaf210fe3d5edd3fc95dfa9f342177d615de6",
+      "role": "r8 evidence",
+      "bytes": 21957,
+      "sha256": "ec0bb4eac6149483128dfa39622ffe2450d2006b137ddfec807be62982c44230",
+      "archivePath": "r8/evidence/native/core-session-final-0-41492.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-session-final-1-3300.csv",
+      "sourceGitBlob": "c60efcc8fe791a39d7dbec19e20fa7787964cd2e",
+      "role": "r8 evidence",
+      "bytes": 21750,
+      "sha256": "6f22709d3f1729f5ddd240f817ac4bc7bf66e4a6ed83f2a4c69d874bb50baae0",
+      "archivePath": "r8/evidence/native/core-session-final-1-3300.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-session-final-2-45680.csv",
+      "sourceGitBlob": "abd94a86380e8a413210e825b154b17e83a8f7b5",
+      "role": "r8 evidence",
+      "bytes": 21956,
+      "sha256": "82ea580c81f55e7dbb4703d616dbc38192260d2c6158c32336f73b1c7a607252",
+      "archivePath": "r8/evidence/native/core-session-final-2-45680.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-session-strong-c5-0-27892.csv",
+      "sourceGitBlob": "5f23fb0be8e26571d886a408be67091eb0d52deb",
+      "role": "r8 evidence",
+      "bytes": 22721,
+      "sha256": "ad1d5a1046186194e85c197b41442ce514c0c1d684a6a83496840b6ffdfc2d44",
+      "archivePath": "r8/evidence/native/core-session-strong-c5-0-27892.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-session-strong-c5-1-43196.csv",
+      "sourceGitBlob": "7718033fbfdb2a7c897d5a5159bbbd9475643373",
+      "role": "r8 evidence",
+      "bytes": 22744,
+      "sha256": "3404de3d8c54e30d85bcfe9aa5bb9b2a5bd60f5df0581f25de375ada65cd40a5",
+      "archivePath": "r8/evidence/native/core-session-strong-c5-1-43196.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-session-strong-c5-2-37404.csv",
+      "sourceGitBlob": "34914c6520ff906eff20be9065481050d6e57978",
+      "role": "r8 evidence",
+      "bytes": 22709,
+      "sha256": "03d2462a76a08be272833135be1c377e40035895308b11b74ee60b804786dcba",
+      "archivePath": "r8/evidence/native/core-session-strong-c5-2-37404.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-source-before-2ae.json",
+      "sourceGitBlob": "c46d6696503a63ff51764bab0da3754327a8e55f",
+      "role": "r8 evidence",
+      "bytes": 80983,
+      "sha256": "a034a7aef35faece0a349ec0c28fdf1b4e3491519d7b62f5b0598ec7ecf80b01",
+      "archivePath": "r8/evidence/native/core-source-before-2ae.json"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-source-final.json",
+      "sourceGitBlob": "7731684bd751043b693f3d8492c6f9de6acf606e",
+      "role": "r8 evidence",
+      "bytes": 80976,
+      "sha256": "6641c291532afbdf496caff5d0f2fd60496e064688ac14eb8d3f162c34efc729",
+      "archivePath": "r8/evidence/native/core-source-final.json"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/core-source-strong-c5.json",
+      "sourceGitBlob": "b63bf7a5e6d0d6137e4ce0d548eea4676c7fa8dd",
+      "role": "r8 evidence",
+      "bytes": 80980,
+      "sha256": "33c94a3b2ddb37383e7dcae63fc0a45557615af4f0e75ee6a6d7c687c74536a9",
+      "archivePath": "r8/evidence/native/core-source-strong-c5.json"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/corrected/core-cache-22444.csv",
+      "sourceGitBlob": "cd69133491107d9431516368f91aa46bc996faf0",
+      "role": "r8 evidence",
+      "bytes": 28569,
+      "sha256": "051d6b6b4c8047dd38717fdad7ea497226a644b10a21a8dcaef3ab087e602663",
+      "archivePath": "r8/evidence/native/corrected/core-cache-22444.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/corrected/core-cache-28280.csv",
+      "sourceGitBlob": "432614a730ff58a73d56662226da5ee134007554",
+      "role": "r8 evidence",
+      "bytes": 28512,
+      "sha256": "27694a3629f503e82a1e31d41320fcb26d566cb123bd9157c984d9770f59db47",
+      "archivePath": "r8/evidence/native/corrected/core-cache-28280.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/corrected/core-cache-45064.csv",
+      "sourceGitBlob": "dd4828e5781796b829109fbb2086a4161102900e",
+      "role": "r8 evidence",
+      "bytes": 28605,
+      "sha256": "85000d8ee0a9c9558a54ba62285cf07d8560612639eb5445cc9f94bec88e9807",
+      "archivePath": "r8/evidence/native/corrected/core-cache-45064.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/corrected/core-cache-jvm-22444.txt",
+      "sourceGitBlob": "3107f73d5a13908d051565785a4a4c4a8e76168e",
+      "role": "r8 evidence",
+      "bytes": 201,
+      "sha256": "bc0a9b29cf913f4099ea38d7e733270907b119ad37d42b91ce13fdea3db8ef28",
+      "archivePath": "r8/evidence/native/corrected/core-cache-jvm-22444.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/corrected/core-cache-jvm-28280.txt",
+      "sourceGitBlob": "d9ac9e157c1560fb2aadddd6f59dcc921a934327",
+      "role": "r8 evidence",
+      "bytes": 201,
+      "sha256": "13739000092a0bc95cdb53179b12b4d9b54cf9f30e1fa031c0a1ed4d5ce94de8",
+      "archivePath": "r8/evidence/native/corrected/core-cache-jvm-28280.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/corrected/core-cache-jvm-45064.txt",
+      "sourceGitBlob": "849a54570c52a3983a38c5943ef7ee7a1d94877b",
+      "role": "r8 evidence",
+      "bytes": 201,
+      "sha256": "46a5fa5911f0a04ba599eac37288ed656167dcea319749aad33a8f76d470d733",
+      "archivePath": "r8/evidence/native/corrected/core-cache-jvm-45064.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/corrected/core-corrected-launch-0.log",
+      "sourceGitBlob": "c70e256a7189f19d83c0f32e398de20d7e3071ab",
+      "role": "r8 evidence",
+      "bytes": 127,
+      "sha256": "80319df1a11a4a0925d3ff82cea5165f98b8a8dba296201d97c8c25a14b7c065",
+      "archivePath": "r8/evidence/native/corrected/core-corrected-launch-0.log"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/corrected/core-corrected-launch-1.log",
+      "sourceGitBlob": "04141cb489e6228dbb7a44f4c45ff047051e4f53",
+      "role": "r8 evidence",
+      "bytes": 127,
+      "sha256": "ae93b6d1987d6c403328abd4bbea5645455aac234c528efea09a95e3393c0775",
+      "archivePath": "r8/evidence/native/corrected/core-corrected-launch-1.log"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/corrected/core-corrected-launch-2.log",
+      "sourceGitBlob": "fda2ff895a9fbd61b7be122f6abdc90a5d75417a",
+      "role": "r8 evidence",
+      "bytes": 127,
+      "sha256": "92902cc82777f80cbaa280296197001ca75627f6fc0c3f8fc242c71b00abbc4e",
+      "archivePath": "r8/evidence/native/corrected/core-corrected-launch-2.log"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/corrected/core-corrected-provenance.json",
+      "sourceGitBlob": "50be21ca612d5f42fa5cd684394d94baa0f7fe9a",
+      "role": "r8 evidence",
+      "bytes": 12792,
+      "sha256": "ca87a974ef2307787bead40a4a67243b8d893c340355817903a32d6f0271db85",
+      "archivePath": "r8/evidence/native/corrected/core-corrected-provenance.json"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/corrected/physical-conditional-warm-0-28280.jsonl",
+      "sourceGitBlob": "449f924dc472d1c31e91325495e8dfe4c074bcef",
+      "role": "r8 evidence",
+      "bytes": 45303,
+      "sha256": "f8d25eba02a08ef6445da483f9d7352e0df46523b78bf9b83a859a59e77c3c6c",
+      "archivePath": "r8/evidence/native/corrected/physical-conditional-warm-0-28280.jsonl"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/corrected/physical-conditional-warm-1-45064.jsonl",
+      "sourceGitBlob": "d22d89bcfa948d1cd8e6ac779cf53a9bd88c3731",
+      "role": "r8 evidence",
+      "bytes": 45340,
+      "sha256": "3f5f2e702946409c23b99132148b7b72a7b87cde2606780573dc027b9f989fd3",
+      "archivePath": "r8/evidence/native/corrected/physical-conditional-warm-1-45064.jsonl"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/corrected/physical-conditional-warm-2-22444.jsonl",
+      "sourceGitBlob": "31bf6decb872e7dea0ea4d07a45d9e968b51592b",
+      "role": "r8 evidence",
+      "bytes": 45317,
+      "sha256": "8ab413d17bb7e9e8db2b291535d36ee02be24169683f799c587819fa28414fd6",
+      "archivePath": "r8/evidence/native/corrected/physical-conditional-warm-2-22444.jsonl"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/corrected/physical-conditional-warm-summary.json",
+      "sourceGitBlob": "70fc41322729094eae74f9c9ed7749114810a209",
+      "role": "r8 evidence",
+      "bytes": 11517,
+      "sha256": "ff9f70d19bda2bd999bc16471a56358bba7a96ca687dda582cbebd87d83151d8",
+      "archivePath": "r8/evidence/native/corrected/physical-conditional-warm-summary.json"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/physical-conditional-0-20652.jsonl",
+      "sourceGitBlob": "f52497530b31bddf12be703eec1baacfa3fa7f4e",
+      "role": "r8 evidence",
+      "bytes": 14164,
+      "sha256": "82571ace55e9b19b29e613653ae9160b563ac80a32d9e50e47d7c506aa6688c5",
+      "archivePath": "r8/evidence/native/physical-conditional-0-20652.jsonl"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/physical-conditional-1-34240.jsonl",
+      "sourceGitBlob": "f857fa246a02c38111d8b0a54ef5ac8098db7096",
+      "role": "r8 evidence",
+      "bytes": 14161,
+      "sha256": "7a82645efc663d756aacce4567c1c02379b3525feb3d538d59bf50d0ffd2cfca",
+      "archivePath": "r8/evidence/native/physical-conditional-1-34240.jsonl"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/physical-conditional-2-14044.jsonl",
+      "sourceGitBlob": "2ae6a39602ad998d3f21e0c33fb73052d41fd9b5",
+      "role": "r8 evidence",
+      "bytes": 14164,
+      "sha256": "6d5b75aee401190f27b879ad629c60230dc563f622571ad158dbf1e29524f716",
+      "archivePath": "r8/evidence/native/physical-conditional-2-14044.jsonl"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/physical-conditional-summary.json",
+      "sourceGitBlob": "3faa6b8c9a80a9386309ee899477decfc4092c13",
+      "role": "r8 evidence",
+      "bytes": 15136,
+      "sha256": "8fa69f39721f224bbf3ff55bfd530ae7ae54a0af0964891bf1ec54986653091f",
+      "archivePath": "r8/evidence/native/physical-conditional-summary.json"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/physical-lifecycle-0-20652.jsonl",
+      "sourceGitBlob": "07b723832b1fe8a7e957f9e322ae9e61e51a3511",
+      "role": "r8 evidence",
+      "bytes": 51873,
+      "sha256": "54525eb9d704bba50700a870774f71a569b3aa92c2bec75cdce6addd9842792a",
+      "archivePath": "r8/evidence/native/physical-lifecycle-0-20652.jsonl"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/physical-lifecycle-1-34240.jsonl",
+      "sourceGitBlob": "d6052b6c54021c920f781ab3aec887085a36d32a",
+      "role": "r8 evidence",
+      "bytes": 51883,
+      "sha256": "54ae7c76b332aa4ca5d455ccf8228c5ce60db07086724538c63aa9ad271b5f44",
+      "archivePath": "r8/evidence/native/physical-lifecycle-1-34240.jsonl"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/physical-lifecycle-2-14044.jsonl",
+      "sourceGitBlob": "ae4971c2911aacc29901d4ca3e7ed514608156b0",
+      "role": "r8 evidence",
+      "bytes": 51880,
+      "sha256": "f59e010e6a3a7af1efc315a58e3603d7d8389fa6e2c88b2c0cd6f829c2443f14",
+      "archivePath": "r8/evidence/native/physical-lifecycle-2-14044.jsonl"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/native/physical-summary.json",
+      "sourceGitBlob": "5967342ba78f186757ac6e0de2d9c9b9752e3ab5",
+      "role": "r8 evidence",
+      "bytes": 18544,
+      "sha256": "a86b4d1ea143bcd72ab9ce56fb394995ed9b46b5e938de3f7e7f6ce6e89571e5",
+      "archivePath": "r8/evidence/native/physical-summary.json"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/physical-cold-metrics-invalid.json",
+      "sourceGitBlob": "b6ec7d6bbba929c61a7166e33eec7039df51fd6a",
+      "role": "r8 evidence",
+      "bytes": 636,
+      "sha256": "9cbb063031f34dd85283ec51957b6333838a715ee97f6d7929e04e4f32bcadbb",
+      "archivePath": "r8/evidence/physical-cold-metrics-invalid.json"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/physical-header-contract.md",
+      "sourceGitBlob": "63164089d8d8e71bea318de75f4bb5417415e4b6",
+      "role": "r8 evidence",
+      "bytes": 2211,
+      "sha256": "12813148343b0a3f313daa8d20b1b58854181478eb3a1382941ce9047201696b",
+      "archivePath": "r8/evidence/physical-header-contract.md.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/physical-joint-witness-work.txt",
+      "sourceGitBlob": "d54928327de74f2388c2668b28958fb13b4690bf",
+      "role": "r8 evidence",
+      "bytes": 2424,
+      "sha256": "c48daab9a2189b82fb826a2887b4d4f744bb9da074a867e02086661303c32c98",
+      "archivePath": "r8/evidence/physical-joint-witness-work.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/physical-mechanisms.csv",
+      "sourceGitBlob": "6d7779d703db749b521e8aff031b8557bac825c9",
+      "role": "r8 evidence",
+      "bytes": 5638,
+      "sha256": "5f2242e8b5200638602133455440f8c9ebe99fadfe66ae0db0da02f81350ab9b",
+      "archivePath": "r8/evidence/physical-mechanisms.csv"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/physical-package-check.md",
+      "sourceGitBlob": "c95e1b6a6500341407df1b0938e088edb7f3bf9c",
+      "role": "r8 evidence",
+      "bytes": 1350,
+      "sha256": "d8327db68bcd214a5897c941ab164672cd9b500ba3686c95e837c99ac057ed81",
+      "archivePath": "r8/evidence/physical-package-check.md.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/physical-results.md",
+      "sourceGitBlob": "2d20ada727ae146a9830b3888e64e6cbaaacf5a1",
+      "role": "r8 evidence",
+      "bytes": 9119,
+      "sha256": "b6ed5592f73a8150cd3a31d90642b9eb0503b6abc46b48cbe2cffe9b7cd56f98",
+      "archivePath": "r8/evidence/physical-results.md.txt"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/physical-source-data-check.json",
+      "sourceGitBlob": "84630698be421b0ad976145919afd2dbe6eefe51",
+      "role": "r8 evidence",
+      "bytes": 950,
+      "sha256": "d95678545c2e50ac2f3973f0bf647a74859e8466b94b86e8e86a866cf39e8c3d",
+      "archivePath": "r8/evidence/physical-source-data-check.json"
+    },
+    {
+      "sourceCommit": "375b567ccc58423daaff0495cc498915d7efeb9e",
+      "sourcePath": "docs/evidence/2026-10-26-reader-pairing-r8/starting-source.json",
+      "sourceGitBlob": "70c8eaee606efe97daf29c7fcedbd3a4e3c3b554",
+      "role": "r8 evidence",
+      "bytes": 13058,
+      "sha256": "3c82b0451f934608a702198c4bb733c6b3346b773cd0b0d4966acca8dacff8a6",
+      "archivePath": "r8/evidence/starting-source.json"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/baseline.json",
+      "sourceGitBlob": "470975599548252e47e309be3a9f4e87aa074d68",
+      "role": "r9 evidence",
+      "bytes": 738,
+      "sha256": "9856d17e801c80ea95228fed7c77e5caa2b919f5ed262bffe71437810ef08c86",
+      "archivePath": "r9/evidence/baseline.json"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/campaign.json",
+      "sourceGitBlob": "b589eeb0f656c2cc9f6ae2cce4bc673e0831e9d4",
+      "role": "r9 evidence",
+      "bytes": 1381,
+      "sha256": "8ce72f19334f885f2ed1b9d45e53710e8b39f9f465c151bf03f8b836e4b939a3",
+      "archivePath": "r9/evidence/campaign.json"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/core-cost-summary.json",
+      "sourceGitBlob": "3d9b25b05c8b9d6ab8581cb2d6302f5b43df23e8",
+      "role": "r9 evidence",
+      "bytes": 19940,
+      "sha256": "a075a1ab3ff1f36dd96b3fe1b0ba8e44fa9bcafab86c811356d18f6f28179bb3",
+      "archivePath": "r9/evidence/core-cost-summary.json"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/core-jvm0.jsonl",
+      "sourceGitBlob": "95c8c408d9da45a60d85025c07bcdf799bdcfc5b",
+      "role": "r9 evidence",
+      "bytes": 26560,
+      "sha256": "55375d5d3219e462ea973e0733680ed164baebef988136a409a7e50d83057b05",
+      "archivePath": "r9/evidence/core-jvm0.jsonl"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/core-jvm1.jsonl",
+      "sourceGitBlob": "c96a42b3a5715b0bf1cb6f3ba981330041441ecd",
+      "role": "r9 evidence",
+      "bytes": 26570,
+      "sha256": "f0e2b5a99afcce38243392ee7d92bedaa80cfad10ad048e006aeaf0619475f57",
+      "archivePath": "r9/evidence/core-jvm1.jsonl"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/core-jvm2.jsonl",
+      "sourceGitBlob": "c6b2c6384e6176b312a043c2d9044812310d8ff7",
+      "role": "r9 evidence",
+      "bytes": 26598,
+      "sha256": "132d949b016727f9ef7cec901e67397b9fb7ca8afe5fa2247c368100c9cf290c",
+      "archivePath": "r9/evidence/core-jvm2.jsonl"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/default-green-ReaderNullRankPruningTest.xml",
+      "sourceGitBlob": "80829b4801c94dc2294663a127cee63291279ef3",
+      "role": "r9 evidence",
+      "bytes": 996,
+      "sha256": "8adc31c2a2cb1edc383c1fc44eead4396057e76336abc9f339b206b0e1b2280c",
+      "archivePath": "r9/evidence/default-green-ReaderNullRankPruningTest.xml"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/default-green-ReaderStrongCertificationSessionTest.xml",
+      "sourceGitBlob": "88f3eaa41776d08cdf0117a2dd030b53d9044316",
+      "role": "r9 evidence",
+      "bytes": 2248,
+      "sha256": "c180c66401f28322402ac826a351cb67d5322770ee402cc0b4408d6f058c536b",
+      "archivePath": "r9/evidence/default-green-ReaderStrongCertificationSessionTest.xml"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/default-green-desktop-explicit.xml",
+      "sourceGitBlob": "c78cd59c05e59732174c801e056890d201852a25",
+      "role": "r9 evidence",
+      "bytes": 4628,
+      "sha256": "fedae392dd91e75415ba6cbac931cfd4c471042f44203fe0ab2a5a3992d833e3",
+      "archivePath": "r9/evidence/default-green-desktop-explicit.xml"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/default-platform-android.xml",
+      "sourceGitBlob": "1e00e0d059745d072dc02dad105bd09dbe2fbe75",
+      "role": "r9 evidence",
+      "bytes": 1232,
+      "sha256": "becfdd5ae63b145c1b5db5257a71761d63766df2c676d1439b89de6bdf38c9c6",
+      "archivePath": "r9/evidence/default-platform-android.xml"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/default-platform-desktop.xml",
+      "sourceGitBlob": "12df3bd99738385ccea2c74ae831c695ff51b60b",
+      "role": "r9 evidence",
+      "bytes": 4796,
+      "sha256": "8b3228b919ae540a91650c6c65b3a34cb64a8600df15cc7bce83eae6a063a174",
+      "archivePath": "r9/evidence/default-platform-desktop.xml"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/default-pruning-red.xml",
+      "sourceGitBlob": "529da3e9c3749e41cf4027f0494bef399e067fbb",
+      "role": "r9 evidence",
+      "bytes": 1994,
+      "sha256": "edd36cc22ab02c952ffbae210735920f8d0a6bc3ff130ba5b5eabdb73587b1ef",
+      "archivePath": "r9/evidence/default-pruning-red.xml"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/final-default-delta.json",
+      "sourceGitBlob": "06f381df10796de980acada5772968c8fe672380",
+      "role": "r9 evidence",
+      "bytes": 1719,
+      "sha256": "a7855df535a1d3a552150d28d0491f8067aeb1b01d078d44fdfceb85ecc73645",
+      "archivePath": "r9/evidence/final-default-delta.json"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/final-source-fingerprint.json",
+      "sourceGitBlob": "05f63d2b59d3c0c0483fdbaa35492e110e985fb1",
+      "role": "r9 evidence",
+      "bytes": 58182,
+      "sha256": "9be91e612c1c7ddf0b1059f1bc6acdf8f087557d0a8564a84f19dc7acc53b95d",
+      "archivePath": "r9/evidence/final-source-fingerprint.json"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/host-jvm0.csv",
+      "sourceGitBlob": "0291a6ec7d4dee92db7180789ab6d924aff1c1c0",
+      "role": "r9 evidence",
+      "bytes": 52634,
+      "sha256": "23c919baa8a592274776663838ff0a968a1221bdd93919c0b1518ab20804e4b4",
+      "archivePath": "r9/evidence/host-jvm0.csv"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/host-jvm0.csv.runtime.json",
+      "sourceGitBlob": "76cc412529d605454d5306634397908374508dfd",
+      "role": "r9 evidence",
+      "bytes": 528,
+      "sha256": "bbb550421c8142dfef7bb1c52c693c83e9e930b3fa463bd9decbae2b6a6d7555",
+      "archivePath": "r9/evidence/host-jvm0.csv.runtime.json"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/host-jvm1.csv",
+      "sourceGitBlob": "234a6e987a3d57c9ca39d97aa40b768b5942b7f0",
+      "role": "r9 evidence",
+      "bytes": 52644,
+      "sha256": "e7ddcf4cbff6459e7b225457c969d472674a3f99b4b35efdb0d17589f00e442e",
+      "archivePath": "r9/evidence/host-jvm1.csv"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/host-jvm1.csv.runtime.json",
+      "sourceGitBlob": "3455757df925973e9a311888b98371bcdc5a7d74",
+      "role": "r9 evidence",
+      "bytes": 528,
+      "sha256": "aaef67b9e311150c4eba08912c9643c05bd68ed4129c3012d5f5a82d71311076",
+      "archivePath": "r9/evidence/host-jvm1.csv.runtime.json"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/host-jvm2.csv",
+      "sourceGitBlob": "6fee0ee97d0622e07ef205cb50594c0d584b6c8a",
+      "role": "r9 evidence",
+      "bytes": 52653,
+      "sha256": "ad2b04875893438ae11a0731beff157c7f99e223d67f26c621cdc64e66f7c3b7",
+      "archivePath": "r9/evidence/host-jvm2.csv"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/host-jvm2.csv.runtime.json",
+      "sourceGitBlob": "13e9a177f09d55356a4930b4f360744e04ac6e97",
+      "role": "r9 evidence",
+      "bytes": 528,
+      "sha256": "5c11e901d97a38974d7811df32e64f80110792244fe3076f6174ddb197a7a6b9",
+      "archivePath": "r9/evidence/host-jvm2.csv.runtime.json"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/host-summary.json",
+      "sourceGitBlob": "b10a1cef030f4ef41be5cfde37a358e7abc78d62",
+      "role": "r9 evidence",
+      "bytes": 112341,
+      "sha256": "4a5debb9e4326a33b50e9dde7d26101851505cbf8688903f7e9591111786d36b",
+      "archivePath": "r9/evidence/host-summary.json"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/integration-validation.json",
+      "sourceGitBlob": "d961e1f98fe5775fba88b5ed3854da9f8f85f8cb",
+      "role": "r9 evidence",
+      "bytes": 4911,
+      "sha256": "5e46658d3f91f4c10806ce0d374258268d698cb6c5b01de10986582eebdf5280",
+      "archivePath": "r9/evidence/integration-validation.json"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/processes.json",
+      "sourceGitBlob": "1194eaab12c7003fec61805f82488d1fc65273dd",
+      "role": "r9 evidence",
+      "bytes": 431,
+      "sha256": "ca3976fd5540de94c6f0b7ebc685db2c59e090d3b5dd626c2d487a27acf5c970",
+      "archivePath": "r9/evidence/processes.json"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/source-fingerprint.json",
+      "sourceGitBlob": "c29fcf9bbb80320e57498db33c45872c875087be",
+      "role": "r9 evidence",
+      "bytes": 58668,
+      "sha256": "3b9db41db8bae9ae02fefe396d19e23c624c58175fbaf260032bc15bad70795d",
+      "archivePath": "r9/evidence/source-fingerprint.json"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/target11-campaign.json",
+      "sourceGitBlob": "58f87f6c67af88d8314f661da1edefe99fe9717b",
+      "role": "r9 evidence",
+      "bytes": 725,
+      "sha256": "a8b7d992db6827ef21131a1317834cfc9b7d02119f2361b29829c70e88a63fea",
+      "archivePath": "r9/evidence/target11-campaign.json"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/target11-focused.xml",
+      "sourceGitBlob": "49a65fadb2273cbd75227b78c2553a4317fcfa9d",
+      "role": "r9 evidence",
+      "bytes": 4769,
+      "sha256": "2469cf5f2a0e52fdee493774161d4047134cfaf1e903835fc6af7bf2c5397cb7",
+      "archivePath": "r9/evidence/target11-focused.xml"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/target11-jvm0.csv",
+      "sourceGitBlob": "240bf4bad858a03d57e23ee1fda167b566fae104",
+      "role": "r9 evidence",
+      "bytes": 4702,
+      "sha256": "99b55ebcf27be28a919ca99964acfbb072c638b9a4fbb7647726c6743924e13c",
+      "archivePath": "r9/evidence/target11-jvm0.csv"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/target11-jvm0.csv.runtime.json",
+      "sourceGitBlob": "4bf272a106e0e169203bdb6f8cb6cccea438f226",
+      "role": "r9 evidence",
+      "bytes": 365,
+      "sha256": "9437dfc957c3fa9aeb2b7f0f90d4b01e7dd5fa8668d37ef993c1a4d7e9259b0e",
+      "archivePath": "r9/evidence/target11-jvm0.csv.runtime.json"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/target11-jvm1.csv",
+      "sourceGitBlob": "d4d847404d88771d7acd715515e9bc1d379d4d1c",
+      "role": "r9 evidence",
+      "bytes": 4700,
+      "sha256": "425ca84e0e56b8a2f6324482d5c91b403ad8838490d9fcba6e1aa1fa3ddce222",
+      "archivePath": "r9/evidence/target11-jvm1.csv"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/target11-jvm1.csv.runtime.json",
+      "sourceGitBlob": "694e03963b2b629add99ebe568ecc6d177bf1d5e",
+      "role": "r9 evidence",
+      "bytes": 365,
+      "sha256": "df399646bdacf970233ff2436b24d4ab29edfd101879f30f8f2c03d6a9083c64",
+      "archivePath": "r9/evidence/target11-jvm1.csv.runtime.json"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/target11-jvm2.csv",
+      "sourceGitBlob": "40397a2dacbfc7c8a8ab569ae0e80be72d45c680",
+      "role": "r9 evidence",
+      "bytes": 4702,
+      "sha256": "433e4a76ec2c4bef91c45d3abc5ab13f0ac34723dbbd0f1c0331a43ba1c1e64c",
+      "archivePath": "r9/evidence/target11-jvm2.csv"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/target11-jvm2.csv.runtime.json",
+      "sourceGitBlob": "b2d717a14e0e720a6dfbc414d80857a683832401",
+      "role": "r9 evidence",
+      "bytes": 365,
+      "sha256": "a92ccc50192f44bf87911401d1aa76c4462e04f69cebda820c8193f5bc2a8284",
+      "archivePath": "r9/evidence/target11-jvm2.csv.runtime.json"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/target11-processes.json",
+      "sourceGitBlob": "24f99a83db3b7f04d63207665ea2ef17161fd624",
+      "role": "r9 evidence",
+      "bytes": 3479,
+      "sha256": "f78a9d7032b2e5880a3d3facd3c96235db58e5775d115195acf8249a31d228c2",
+      "archivePath": "r9/evidence/target11-processes.json"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/target11-source-fingerprint.json",
+      "sourceGitBlob": "737b28d1cd92566ba499a7119f2c6339c4dee037",
+      "role": "r9 evidence",
+      "bytes": 60718,
+      "sha256": "630e6e51453d8d3f5a683f982f01591a28325f7a037023a0f8ad169a51b2a3ba",
+      "archivePath": "r9/evidence/target11-source-fingerprint.json"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/target11-summary.json",
+      "sourceGitBlob": "037285d9e324c3fdb9c307022c9658d9bab2d9b2",
+      "role": "r9 evidence",
+      "bytes": 16774,
+      "sha256": "94fbce9e988ec623f2791710e61c489778fe97d0546a4a559e2a263af69c3b48",
+      "archivePath": "r9/evidence/target11-summary.json"
+    },
+    {
+      "sourceCommit": "bb78b48237cc0954495b035d7f2c758c3aaaf1b0",
+      "sourcePath": "docs/evidence/2026-10-27-reader-pairing-r9/target11-validation.json",
+      "sourceGitBlob": "32f4ac6630dc5ba7001311e845d4bfe8da9d7c7a",
+      "role": "r9 evidence",
+      "bytes": 1459,
+      "sha256": "c90e78876d48b3fc060fae0e40aa7afa334f66ef2ef0f2eb55def81a918a3bcd",
+      "archivePath": "r9/evidence/target11-validation.json"
+    }
+  ],
+  "notes": [
+    "Markdown reports are saved with .md.txt suffix as inert research material; no archived script was executed.",
+    "R7 initial and final reports are separately preserved with their source commits.",
+    "Direction-level evidence trees are copied from R7 final, R8 final and R9 final commit snapshots.",
+    "The Git bundle beside this archive preserves the full incremental commit history and is the source for code/historical versions."
+  ]
+}

@@ -1,0 +1,101 @@
+# 有序系统 R9 修订包：最终收尾报告
+
+> 本报告是当前唯一有效的结论版本。历史版本保留：R9 原文 `REPORT_R9.md`；修复轮版本 `results/raw/final/REPORT_fixround_before_final.md`。
+> 修改只在 `research_out/` 内；包与 MANIFEST 未动（57 个文件哈希一致、包内 61 项测试、smoke、数据检查通过）。
+> 清单：`results/summary/fix/FINAL_CHECKLIST.md`（门槛、优先候选、补证/降级/未完成）。正文：`sections/fix_main.md`（含最终轮 §7）、
+> `sections/fix_LC.md`、`sections/fix_Q1.md`、`sections/fix_Q2.md`、`sections/fix_PH.md`；证明：`proofs/fix_*.md`。
+> **所有结论都在虚拟服务模型与本机 Python 层；没有任何原生提速证据。**
+
+## 0. 结论
+
+1. **两项边界问题已消除或拒绝输入域。**
+   - 关闭排空终点：运行器原来遇到普通外生事件就宣布排空完成（q=1、service=4：prefetch@0 → close@1 → probe@2 → 实际退出@4，
+     在 t=2 记录 close_end 而 occupied=1）。现在关闭分三段——请求、逻辑关闭、物理排空——分别记时；被取消的任务一直占槽到真实退出，
+     关闭后不接纳旧结果、不重启工作、不直接清空任务表；重复关闭只应答。
+   - 零耗时证明：选项 A。"到期时间唯一标识一次尝试"只在 q>0 且单条串行证明 lane 下成立；原证明中"q=0 总走即时路径"是错的
+     （只有 strong_only 走即时路径）。修正版影子运行器在构造时拒绝 q_u ≤ 0。
+   - 回归 `tests/test_final_boundaries.py` 8 项：修复前 4 项失败，修复后全部通过；全部研究测试 160/160 通过。
+2. **下一阶段只推荐少量候选**（`ADOPTION_MATRIX.csv` 的 priority 列）：P0 三个必需接口（异步会话 close、bound_confirm、BC-2 预算合同）；
+   P1 inc_revoke（与 bound 组合）、D04 INTERVAL；P2 修正版 gated_shadow（与 bound 组合、树路线，默认关闭）。其余不默认启用。
+3. **推荐候选的正确性与成本用同一完整配置测量**（含 bound 确认）：inc_revoke+bound / package+bound 墙钟 0.157 [0.146, 0.159]，
+   发布读校验 84 778→2 411，物理获取不变；gated_shadow+bound / incumbent+bound 墙钟 1.067 [0.979, 1.856]，虚拟延迟与物理获取同无 bound 运行
+   （判定哈希 196/196 相同）。
+4. **证据等级重新核定**：45 个独立机制（BlockSummary 核心与 BlockSession 接线合并为一个）中 **D4 3、D3 31、D2 11**；题目层 D4 4、D3 27、D2 119。
+   D4 现在要求在含 bound 确认的完整配置下同时测了正确性与成本；其余 10 个原 D4 机制降为 D3。
+5. **收益边界不变**：新留出上影子策略虚拟延迟改善约 0.5%–2.7%，物理获取不变；开发网格的 −8.5% 只适用于 R9 网格；没有原生提速证据。
+
+## 1. 原门槛与真实状态
+
+| 门槛 | 状态 | 数值 |
+|---|---|---|
+| D3（含 D4）≥ 24 | 机制层满足 | 机制 34（D4 3 + D3 31）；题目 31 |
+| D4 ≥ 12 | **未满足** | 机制 3（gated_shadow 修正版、inc_revoke、bound_confirm）；题目 4（A01、A02、H03、H04） |
+| 深入 6 类范式 | **未核定** | 没有逐类核定，不能声称满足 |
+| 12 个非重复新假设 | **尚未证明满足** | 30 条中重复 15、题内细化 15。"题外新方向 0"不等于"合格新假设 0"：15 条细化是否满足"非重复新假设"的标准没有核定 |
+
+修复轮报告把门槛写成"≥12 条新假设、≥6 个新方向"，并把"新方向 0"当作结论，这是错的；以上表为准。
+
+## 2. 关闭排空（最终轮第一项）
+
+- 失败回归先写：`tests/test_final_boundaries.py::CloseDrain`（5 项）。修复前 `close_end` 在 t=2、occupied=1
+  （`results/raw/final/close_repro_before_fix_*.jsonl`，LC 运行器与修正版运行器相同）。
+- 修复（`candidates/fixLC_shadow.py::LifeShadowRunner._close/_maybe_finish_drain`，修正版运行器继承）：
+  请求（close 事件到达，记录物理接纳数）→ 逻辑关闭（同一时刻：拒绝意图与工作、取消全部任务、撤销发布与证书、运行器拒绝请求）→
+  物理排空（最后一个运行中任务经 `finish()` 真实退出、结果被丢弃之后，才关闭 owner、清空存储、调用候选释放钩子）。
+  `close_end` 行记录 requested/logical/drained 三个时间；修复后为 (1, 1, 4)，occupied、raw、证书、候选驻留全部为 0。
+- 验证：关闭期间 probe（t=2，仍占 1 个槽，certify/publish/confirm 全部被拒）、迟到完成（t=4，`discarded`，未接纳）、重复关闭
+  （`already_closing`、`already_closed`）、关闭后的 prefetch/target 被忽略且物理接纳数不变、`physical_finishes = physical_admissions`
+  （排空来自真实退出，不是清表）。原有生命周期脚本全部组照旧通过（`results/raw/final/shadow_lifecycle_after_close_fix.json`）。
+- 会话层驱动器 `fixLC_lifecycle.Life.close` 是同步的（推进到全部任务退出才关闭），不受此问题影响。包内 Session 仍没有 close，原生必须提供。
+
+## 3. 零耗时证明（最终轮第二项）
+
+- 复现：reserved_eviction(seed 0, n 40)，t=0 目标 8，第 20 项同一时刻连续 rebind 两次，q=0、service=4：三个尝试的到期时间都是 0，
+  旧 epoch 事件被当作当前尝试交付（`unsigned`），当前尝试被丢弃，目标 8 等到 t=8 才由 L0 发布（`results/raw/final/q0_repro_before_fix.jsonl`）。
+  同一触发方式在 q=1 下两次旧尝试被丢弃、当前尝试在 t=3 交付。
+- 处理：选项 A。`fix_main_shadow._check_q`：两个修正版影子运行器在 q_u ≤ 0 时构造失败；incumbent 运行器不调度证明，不受影响。
+  所有已有实验都没有用过 q_u=0 的影子运行器，结论不变。
+- 证明修订（`proofs/fix_LC.md` L-LC2）：前提 P1 每次证明耗时 > 0，P2 一条串行证明 lane（due = max(now, lane_free) + q，lane_free := due），
+  P3 rebind 不重置 lane_free；在此前提下同一目标的到期时间严格递增，因而唯一。不支持零耗时与多 lane 并行证明；若需要，必须改用显式尝试序号并重新验证。
+
+## 4. 按采用价值处理的成本证据（最终轮第三项）
+
+| 候选 | 正确性（同一配置） | 成本（同一配置） |
+|---|---|---|
+| bound_confirm（P0） | LC 全组 + HO-2 留出 | R9 bench_wpH 0.995；bench_fixLC 0.981 |
+| inc_revoke + bound（P1） | LC 全组（bound）+ HO-2；公开观察开发 156 000 + 留出 54 000 事件 0 差异（有界随机搜索） | `bench_final`：0.157 [0.146, 0.159]，32.8 vs 209.3 ms/轨迹；读校验 84 778→2 411 |
+| D04 INTERVAL（P1） | 3 996 个变化 0 观察改变；HO-4 留出 0 不一致 | owner 层 1.0 [0.824, 1.117]；驻留与 owner 相同（不依赖 bound） |
+| gated_shadow 修正版 + bound + 树路线（P2） | LC 运行器脚本（bound）全部组；HO-1 352 格（轨迹不含确认事件，bound 适配只改 confirm，不被调用） | `bench_final`：1.067 [0.979, 1.856]，29.7 vs 28.6 ms/场景；强评估 16 936/98 格 |
+
+- 正式计时（最终轮）：2026-10-27T07:35:09Z–07:38:06Z，3 个串行独立进程，原始行 2 424，子进程错误 0（`results/raw/formal_final/`）。
+  没有重跑整套 formal 或长时留出；修复轮数据（`results/raw/formal_fix/`）对未改变的配置继续适用。
+- gated_shadow 用 fresh exact 路线：开发网格评估更少（1 895 vs 16 936）、墙钟 1.037，但冻结留出没有用此配置运行——**未验证，不推荐为默认**。
+- T04：正式计时只覆盖**校验器内核**（证书在计时外签发）；证书构造与维护未计时 → D2，不在优先列表；旧校验器（路线 1）不查域合法性
+  （接受了 62 个 G0 域外声明），补检查前不能作为可靠授权器。
+- 其他候选（持久树、块摘要、门控索引、选择器、derive_first、投影支撑、重签、value_cache、reserve1、迁移重签等）不补计时，按规则降级或保留未验证。
+
+## 5. 如实标明的覆盖（最终轮第四项）
+
+- **W18：生成器已完成，完整复合压力未验证。** 所有 W18 运行（PH 小例与长寿命版本、HO-1 的 W18 格子）都经过 `for_runner` 过滤，每条轨迹
+  丢掉 late_fail 1、settings 1、close_rebind 1、confirm 4、cancel 4 个事件。"全部完成"只指过滤后轨迹上的 target 请求；raw 容量 1 的配置
+  双方触顶、请求未完成。分立生命周期测试不能替代整条复合轨迹。
+- HO-1 的 W14（失败族）32 格两边都活锁、请求未完成；7 类结构/仿真负载没有运行器事件，未进入 HO-1。
+- T04 路线 1 的用途限制见 §4。
+
+## 6. 统一后的结论（最终轮第五项）
+
+- 已撤回的默认持久树建议从 A06、X21、O01、P03 移除；持久树被 fresh exact 支配，不采用为默认。
+- BlockSummary 核心与 BlockSession 接线计为同一机制（两层证据）。
+- D4 只保留完整配置下测齐的 3 个机制；`coverage.csv`、`results/summary/fix/QUESTION_STATUS.md`、`results/summary/fix/D3_INDEX.*`、
+  `ADOPTION_MATRIX.csv`（当前矩阵，每机制一行；历史行在 `ADOPTION_MATRIX_detail.csv` 与 `ADOPTION_MATRIX_R9.csv`）、`NEXT_IMPLEMENTER.md`
+  与 `proofs/fix_LC.md` 已同步。
+- 修复轮其余结论保持：BC-2 预算合同（三条绕过，含门控索引）；derive_first 是模型修正、bound_confirm 是接口强化、inc_revoke 是等价优化；
+  所有机制都必须与 bound 确认组合才过 rebind 迟到回调检查；R9 运行器两处缺陷（尝试身份、重新取得）已修正并保持引理 S1；
+  R9"收益 iff q<service"被留出反例否定（正确边界是 q 小于 L0 剩余串行服务时间）；N01/N06 族内任意规模证明；67 条全称结论审计。
+
+## 7. 未完成（保留，不扩大工作）
+
+W18 完整复合压力；T04 证书构造与维护成本；exact 路线的冻结留出；非优先机制在完整配置下的成本；inc_revoke 的机器检查证明；
+生命周期全交错穷举；深入 6 类范式与 15 条细化的核定；零耗时/多 lane 证明（拒绝输入域）；原生服务时间、自然频率、质量真值、原生表示成本。
+
+复现：`REPRODUCE.md` §7；交接：`NEXT_IMPLEMENTER.md`；数字复算：`python3 research_out/bench/check_fix_claims.py`。

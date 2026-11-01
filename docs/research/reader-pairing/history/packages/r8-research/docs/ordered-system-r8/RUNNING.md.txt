@@ -1,0 +1,35 @@
+# Running the anonymous executable package
+
+Python 3.10 or newer and the standard library are sufficient. Extract the package into a fresh directory and run commands from that directory. No installation, network, external service or parent directory is required. All text fixtures use UTF-8.
+
+In PowerShell, set the process environment first:
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$env:PYTHONUTF8 = '1'
+$env:PYTHONIOENCODING = 'utf-8'
+$env:PYTHONDONTWRITEBYTECODE = '1'
+python -m unittest discover -s tests -p 'test_*.py'
+python benchmark.py --smoke
+```
+
+The first command runs frozen golden contracts, complete/partial differential checks, exported projection cases, host reuse/invalidation tests, deterministic event checks, intentional mutant witnesses and protocol negatives. The second performs a small synthetic trace on all three explicit profiles. It checks equal verdict hashes and reports time, separate allocation peak and work counters. A fast smoke is not a performance finding.
+
+On a POSIX shell:
+
+```sh
+PYTHONUTF8=1 PYTHONIOENCODING=utf-8 PYTHONDONTWRITEBYTECODE=1 python -m unittest discover -s tests -p 'test_*.py'
+PYTHONUTF8=1 PYTHONIOENCODING=utf-8 PYTHONDONTWRITEBYTECODE=1 python benchmark.py --smoke
+```
+
+Optional reproducible input and independent interpreter runs:
+
+```sh
+python benchmark.py --trace examples/smoke.json
+python benchmark.py --smoke --processes 3
+python benchmark.py --smoke --profile current
+```
+
+The three-process mode starts three independent interpreters serially, and each interpreter runs the selected profiles on the same trace. It does not claim statistical sufficiency or warm/cold process equivalence. This delivery only uses the one-process small smoke; the three-process option is available for subsequent research. Record interpreter version, machine, process count, trace hash, all explicit controls and both successful and rejected work when reporting later results.
+
+To call the frozen JSONL interface, send one JSON object per line with `op` (`plan`, `certify`, or `strategy`), `case`, and `target` for partial operations to `python reference.py`. `lookbehind` is accepted for `certify`. See [MODEL_API.md](MODEL_API.md) for schema, layers, limits and simplifications. The executable code establishes no external-runtime latency or resource claim.

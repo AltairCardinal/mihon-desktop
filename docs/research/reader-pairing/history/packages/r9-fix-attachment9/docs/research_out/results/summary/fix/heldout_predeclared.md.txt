@@ -1,0 +1,16 @@
+# 冻结后留出验证：预先声明（写于运行之前）
+
+冻结清单：results/summary/fix/freeze_manifest.json（manifest sha256 ac7dd03d074ccf7c…，98 个文件，UTC 见清单）。
+留出种子基：5926461（由清单哈希导出，冻结后才确定）；开发种子 0–999 与 R9 的 100–103/200–203 留出均不再使用。
+此前 R9 的 heldout/heldout2 结果从本轮起一律降为**开发证据**（已被反复查看）。
+声明时间（UTC）：2026-10-26T17:28:43Z
+
+| 编号 | 机制 | 负载 | 判据（预先声明） |
+|---|---|---|---|
+| HO-1 | gated_shadow（修复版 F1/F2）vs incumbent（修复版） | PH heldout_suite 中可由 ARunner 运行的全部类 × 4 种子；(service,q) ∈ {(4,1),(3,1),(2,1),(2,3)}；capacity ∈ {3,1}；raw_capacity 3 | (a) 每格物理接纳相等（引理 S1）；(b) wrong=0；(c) 每个目标延迟 ≤ incumbent；(d) q<service 的格子中出现至少一次改进；q>service 的格子（2,3）改进为 0 —— 这是对 R9"iff"的检验，若不成立则如实记为反例 |
+| HO-2 | 15 个会话层机制（LC 生命周期组 E1–E6 + 活性，bound 确认） | 留出 W01 相位链 4 个种子作为生命周期夹具 | 每组 ok；夹具不适用的检查单列，不计为通过 |
+| HO-3 | inc_revoke / derive_first / bound_confirm 公开观察差分 | LC 随机流，种子从留出基开始 | inc_revoke 0 差异；derive_first、bound_confirm 的差异类别与开发集一致（分类稳定） |
+| HO-4 | D04 INTERVAL vs SIG vs owner | 留出种子的链与随机 G0 变化流 | 公开观察 0 不一致；引擎运行 INTERVAL ≤ SIG ≤ owner |
+| HO-5 | B01 ZDD vs 表 | 留出种子随机部分案例 | 0 不一致 |
+| HO-6 | X05 AB1 vs AB2 | 留出种子流 | AB1 评估数与校验读 ≤ AB2；wrong 0 |
+| HO-7 | 预算合同 BC-2 | 留出案例上所有强路线可认证的目标 | 预算=所需数时认证、所需数−1 时停止且不发证；停止后结构指纹不变 |

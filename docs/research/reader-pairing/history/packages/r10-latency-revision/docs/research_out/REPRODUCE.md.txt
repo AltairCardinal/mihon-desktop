@@ -1,0 +1,57 @@
+# 复现（R10 修订版）
+
+前提：Python 3.11+（本轮用 3.13.17），只需标准库，不联网。在包根目录（与 `START_HERE.md` 同级）执行。
+
+## 快速检查（约 2 分钟）
+
+```
+python3 -X utf8 -B tests/test_lab.py                    # 包内 14 项
+python3 -B research_out/tests/test_r10.py               # 研究 24 项（含“破坏接线”测试）
+python3 -B research_out/tests/test_regressions.py       # T03/T04 回归 13 项（含 600 个随机交错、3 个变异检查、常驻去重）
+python3 -B research_out/tests/test_revision.py          # T01/T07/中性检查/剪枝/自查 23 项
+python3 -B research_out/check_integrity.py --verify     # 原包 38 个文件 + 研究输出清单；任何不符退出码 1
+python3 -B research_out/records/build.py                # 由记录重建 coverage.csv 与逐题/组合详情（严格字段检查）
+python3 -B research_out/check_report_consistency.py     # 报告分类与 coverage.csv 一致、关键数字与原始结果一致
+```
+
+`check_integrity.py` 不带参数时会重写 `SHA256SUMS.txt`，只在研究输出改动后使用；验证用 `--verify`。
+
+## 全部实验（约 75–90 分钟，2 CPU）
+
+```
+sh research_out/run_all.sh
+```
+
+按顺序生成 `research_out/raw/` 下的全部原始结果，并在最后跑全部测试与两项检查。
+
+| 脚本 | 输出 | 备注 |
+|---|---|---|
+| lab/reach.py, lab/n0_structure.py, lab/obsworlds.py | raw/pass1/*.json | obsworlds 含 T01 反例与修订判据 |
+| lab/gamma_xcheck.py 20000 | raw/gamma/xcheck_r9.json | **历史证据**：需要上一包的 reference.py（R9_REFERENCE）。缺失时写 `xcheck_r9_status.json`=NOT_RUN 并保留历史结果 |
+| bench/exp_certificates.py | raw/gamma/certificates.json | 含 SF-1 的剩余缺口重分类 |
+| bench/exp_evidence.py, exp_gamma2.py, exp_q097*.py, exp_summarytree.py | raw/gamma/*.json | |
+| bench/exp_cache.py | raw/cache/cache.json | T03 修复后 |
+| bench/exp_sched.py | raw/sched/sched.json | S10 改为调用可执行模型 |
+| bench/exp_mailbox.py | raw/sched/mailbox.json | T04：Q028/C05 |
+| bench/exp_lifecycle.py, exp_stats.py, exp_misc.py | raw/lifecycle, stats, misc | |
+| bench/exp_combos.py | raw/combos/combos.json | v1 的四格研究（历史，C07/C19 预取关） |
+| bench/exp_workloads.py | raw/workloads/workloads.json | |
+| bench/exp_q053.py | raw/gamma/q053.json | Q053 路线 B 与信息边界见证 |
+| bench/exp_q119.py | raw/gamma/q119.json | Q119 门控实验 |
+| bench/exp_joint.py [Cxx …] | raw/joint/Cxx.json, index.json | 30 个组合的两设计 0/A/B/AB |
+| bench/bench_micro.py drive | raw/bench/micro_*.jsonl | 3 个独立串行进程 |
+| bench/bench_prune.py drive | raw/bench/prune_*.json, prune_summary.json | Q053 剪枝 vs C09 的 Python 计时，3 个独立串行进程 |
+
+所有随机过程都固定了种子。微基准计时随机器变化，应比较相对大小，不比较绝对值。
+
+## 比较两次运行
+
+```
+python3 -B research_out/bench/compare_runs.py <raw目录A> <raw目录B>
+```
+
+比较时会忽略易变字段（env、pid、seconds、计时字段）。
+
+## 干净复现记录
+
+见 `summary/clean_run.json`：在独立目录中删除 `raw/` 后全量重跑，PASS/FAIL/SKIP/NOT_RUN 分列，并给出与交付结果的逐文件比较。

@@ -1,0 +1,442 @@
+# 30个耦合课题：同一模型四格（0/A/B/AB）与两种联合设计
+
+AB_I、AB_II是两种实质不同的联合架构；交互项 I = f(AB) − f(A) − f(B) + f(0)，f为每行声明的标量。单位见每行。
+
+## C01 共享物化×证据旁路（Q015,Q033）
+
+- 状态/裁定：**completed / probe_first**；证据：同一模型四格（模型单位）
+- 干预：A=共享底层物化；B=证据旁路不阻塞普通物化
+- 联合设计：I=消费者主导物化、邻居证据降为投机；II=中性共享物化服务
+- 标量f：unit ack time (model units); cost=physical work
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 38 | 28 | 35 | 28 | 28 | 3 | 3 |
+
+- 结论：2工人：0格ack 38，共享A/AB 28，旁路B 35；物理工作随共享下降。交互I=+3（旁路的收益被共享吸收）。曝光仍须等证书，所以旁路单独价值小。
+- 代码/原始：`bench/exp_combos.py::c01 → raw/combos/combos.json#C01`
+
+## C02 共享工作×多消费者取消（Q029,Q063）
+
+- 状态/裁定：**completed / engineering_trial**；证据：同一模型四格（模型单位）
+- 干预：A=去重共享；B=引用计数/需求集合取消协议
+- 联合设计：I=引用租约；II=需求集合+优先级继承+关闭移交
+- 标量f：orderings where C2 loses its demanded result
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 0 | 5 | 0 | 0 | 0 | -5 | -5 |
+
+- 结论：8种交错：A单独时有5种让C2失去结果；AB_I（引用计数）与AB_II（需求集合+优先级继承）都是0错、物理作业最少。两者的差别在队列中的共享作业：AB_I的消费完成为36，AB_II为16（同一模型中分别计算）。
+- 代码/原始：`bench/exp_combos.py::c02 → raw/combos/combos.json#C02`
+
+## C03 非抢占保护×可选准入（Q026,Q038）
+
+- 状态/裁定：**completed / engineering_trial**；证据：同一模型四格（模型单位）
+- 干预：A=逻辑池预留1槽；B=可选借用
+- 联合设计：I=硬物理预留；II=按服务上界门控借用
+- 标量f：required completion (model units)
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 70 | 70 | 70 | 15 | 15 | -55 | -55 |
+
+- 结论：逻辑预留不能保护必需工作（A=0格=70）：optional占满共享物理工人。物理预留或服务上界门控把完成降到15。
+- 代码/原始：`bench/exp_combos.py::c03 → raw/combos/combos.json#C03`
+
+## C04 升级协议×字节许可（Q027,Q040）
+
+- 状态/裁定：**completed / engineering_trial**；证据：同一模型四格（模型单位）
+- 干预：A=投机原位升级；B=许可结算（单一所有者）
+- 联合设计：I=许可不变只升级优先级；II=所有权转移并原子迁移预留
+- 标量f：re-read MiB
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 5 | 0 | 5 | 0 | 0 | 0 | 0 |
+
+- 结论：取消重启会重读5 MiB，在逐任务许可下预留峰值翻倍到16 MiB（隐形扩容）；原位升级0重读、峰值8。消费者换context时两种设计分开：I把许可留在旧owner，旧context关闭时退款而读取仍在进行，账本出现−3 MiB；II原子迁移预留，账本保持8 MiB。
+- 代码/原始：`bench/exp_combos.py::c04 → raw/combos/combos.json#C04`
+
+## C05 完成邮箱×状态合批（Q028,Q075）
+
+- 状态/裁定：**incomplete / engineering_trial**；证据：同一模型四格（模型单位）
+- 干预：A=有界结果池；B=有界提交合批
+- 联合设计：I=完整unit优先drain，只合并独立状态；II=按截止预留结果空间
+- 标量f：required task start (model units)
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 40 | 10 | 40 | 10 | 10 | 0 | 0 |
+
+- 结论：UI停顿到40：无池时必需任务等到40；有池时10开始；合批只在无池时追加延迟。
+- 代码/原始：`bench/exp_combos.py::c05 → raw/combos/combos.json#C05`
+- 未完成：两种联合设计在代码中没有分别实现（AB_II与AB_I相同、是参数变体，或有格子写死）；只有四格方向性证据：AB_I/AB_II只是结果池容量2与4（参数变体）。恢复：在bench/exp_combos.py中为C05实现第二种联合设计并重算交互项
+
+## C06 缓存策略×调度顺序（Q047,Q109）
+
+- 状态/裁定：**incomplete / conditional_theory**；证据：同一模型四格（模型单位）
+- 干预：A=价值保留；B=目标依赖调度
+- 联合设计：I=小域精确联合；II=可见需求硬优先+边际重建成本
+- 标量f：sum of rebuild costs on the demand sequence
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 42 | 26 | 42 | 26 | 26 | 0 | 0 |
+
+- 结论：LRU 4次命中/成本42，价值策略1次命中/成本26；可见需求固定顺序时调度不加值（交互0）。
+- 代码/原始：`bench/exp_combos.py::c06 → raw/combos/combos.json#C06`
+- 未完成：两种联合设计在代码中没有分别实现（AB_II与AB_I相同、是参数变体，或有格子写死）；只有四格方向性证据：AB_II与AB_I同代码。恢复：在bench/exp_combos.py中为C06实现第二种联合设计并重算交互项
+
+## C07 样本保留×证明支持（Q045,Q049）
+
+- 状态/裁定：**incomplete / stop**；证据：同一模型四格（模型单位）
+- 干预：A=保留样本（容量16）；B=强证书
+- 联合设计：I=证书支持与标量分离、样本自然淘汰；II=按支持热度保留材料（容量64近似）
+- 标量f：transforms over 20 far-jump histories
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 320 | 321 | 319 | 319 | 319 | -1 | -1 |
+
+- 结论：20个远跳历史：物化319–321，差异<1%：事实持久时样本只在首访有用。
+- 代码/原始：`bench/exp_combos.py::c07 → raw/combos/combos.json#C07`
+- 未完成：两种联合设计在代码中没有分别实现（AB_II与AB_I相同、是参数变体，或有格子写死）；只有四格方向性证据：AB_II只是样本容量64（参数变体）。恢复：在bench/exp_combos.py中为C07实现第二种联合设计并重算交互项
+
+## C08 checkpoint×精确有限入口（Q053,Q099）
+
+- 状态/裁定：**incomplete / probe_first**；证据：同一模型四格（模型单位）
+- 干预：A=左侧精确游标checkpoint；B=更精确入口关系
+- 联合设计：I=checkpoint存精确状态+局部后向；II=关系摘要+目标组合再认证
+- 标量f：median objects read to certify the target
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 6.0 | 5.0 | 6.0 | 5.0 | 5.0 | 0.0 | 0.0 |
+
+- 结论：中位读取6→5个对象只来自checkpoint；B单独无变化（交互0）。
+- 代码/原始：`bench/exp_combos.py::c08 → raw/combos/combos.json#C08`
+- 未完成：两种联合设计在代码中没有分别实现（AB_II与AB_I相同、是参数变体，或有格子写死）；只有四格方向性证据：B格没有实现（照抄0格）；A的收益部分来自读集定义。恢复：在bench/exp_combos.py中为C08实现第二种联合设计并重算交互项
+
+## C09 摘要树×惰性消费（Q098,Q100）
+
+- 状态/裁定：**incomplete / stop**；证据：同一模型四格（模型单位）
+- 干预：A=可结合摘要树；B=惰性输出
+- 联合设计：I=树直接解析目标投影；II=持久分块序列惰性展开（建模为变化块重建）
+- 标量f：scan steps after one early change, to obtain the target unit
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 176 | 88 | 122 | 88 | 176 | 54 | 142 |
+
+- 结论：早期一次变化后取目标unit：全量176步，树88步（更新+查询），惰性重扫到目标122步；消费者只看一个unit，树的维护税不回本（见Q099）。
+- 代码/原始：`bench/exp_combos.py::c09 → raw/combos/combos.json#C09`
+- 未完成：两种联合设计在代码中没有分别实现（AB_II与AB_I相同、是参数变体，或有格子写死）；只有四格方向性证据：AB_II写死为n（未实现分块惰性展开）。恢复：在bench/exp_combos.py中为C09实现第二种联合设计并重算交互项
+
+## C10 小memo×全尝试依赖（Q050,Q052）
+
+- 状态/裁定：**incomplete / stop**；证据：同一模型四格（模型单位）
+- 干预：A=结果memo；B=精确失效（全尝试并集+饱和回退）
+- 联合设计：I=并集+戳快路；II=证明DAG按路径条件失效
+- 标量f：stale memo hits after one support fact change
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 0 | 1 | 0 | 0 | 0 | -1 | -1 |
+
+- 结论：memo只按选中路径失效会返回陈旧结果；AB 0陈旧。
+- 代码/原始：`bench/exp_combos.py::c10 → raw/combos/combos.json#C10`
+- 未完成：两种联合设计在代码中没有分别实现（AB_II与AB_I相同、是参数变体，或有格子写死）；只有四格方向性证据：0/B格按定义为0、AB_II（证明DAG）未实现。恢复：在bench/exp_combos.py中为C10实现第二种联合设计并重算交互项
+
+## C11 最少取证×非抢占队列（Q104,Q106）
+
+- 状态/裁定：**incomplete / probe_first**；证据：同一模型四格（模型单位）
+- 干预：A=回跳倍增预取（消歧动作选择）；B=轮内短作业优先
+- 联合设计：I=决策树+短关键动作先发；II=并行候选批+有界保留
+- 标量f：median certification completion (model units), long-chain worlds
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 52.0 | 50.0 | 55.0 | 51.0 | 51.0 | -2.0 | -2.0 |
+
+- 结论：长链80世界：中位完成52→50（A），B 55（短作业优先不改轮的最长作业），交互约−2；最大值见原始。
+- 代码/原始：`bench/exp_combos.py::c11 → raw/combos/combos.json#C11`
+- 未完成：两种联合设计在代码中没有分别实现（AB_II与AB_I相同、是参数变体，或有格子写死）；只有四格方向性证据：AB_II与AB_I相同。恢复：在bench/exp_combos.py中为C11实现第二种联合设计并重算交互项
+
+## C12 便宜信息×精确回退（Q107,Q116）
+
+- 状态/裁定：**completed / conditional_theory**；证据：同一模型四格（模型单位）
+- 干预：A=以header几何出证；B=要求解码几何（精确回退）
+- 联合设计：I=已证充分域内用便宜证书，域外原路径；II=知识区间自适应精化
+- 标量f：first-slot errors under one wrong descriptor (800 trials)
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 0 | 238 | 0 | 133 | 0 | -105 | -238 |
+
+- 结论：一个对象header几何错误时，800次试验中A有238次发布与真值不同的首个unit（自动开105、关133）。B（出证要求解码事实）实际计算为0次错误，代价是额外分析轮次。AB_I（只在“已证充分”的自动关闭域用便宜证书）仍有133次；AB_II（区间精化到解码事实）为0。条件：header可以与解码几何不一致、又通过身份检查。
+- 代码/原始：`bench/exp_combos.py::c12 → raw/combos/combos.json#C12`
+
+## C13 首次授权×分段资源准备（Q055,Q073）
+
+- 状态/裁定：**completed / stop**；证据：同一模型四格（模型单位）
+- 干预：A=两阶段发布；B=单次提交
+- 联合设计：I=不可曝光计划先就绪；II=精确布局快照先定、成员逐步绑定、最终完整屏障
+- 标量f：orderings exposing a partial/placeholder unit
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 22 | 0 | 0 | 0 | 0 | 22 | 22 |
+
+- 结论：证书即曝光22/60交错露出部分unit；两种联合设计0错；占位提交只移首成员ack。
+- 代码/原始：`bench/exp_combos.py::c13 → raw/combos/combos.json#C13`
+
+## C14 frame租约×惰性布局更新（Q006,Q077）
+
+- 状态/裁定：**completed / stop**；证据：同一模型四格（模型单位）
+- 干预：A=旧曝光资源租约；B=item锚定导航
+- 联合设计：I=ticket固定快照+版本桥；II=多版本快照
+- 标量f：wrong orderings (exposure moved/blanked + wrong navigation target)
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 2 | 1 | 1 | 0 | 0 | 0 | 0 |
+
+- 结论：单项各留1错（移动/导航错）；AB 0错；II常驻两个版本。
+- 代码/原始：`bench/exp_combos.py::c14 → raw/combos/combos.json#C14`
+
+## C15 快速意图合并×物理退出（Q068,Q062）
+
+- 状态/裁定：**completed / engineering_trial**；证据：同一模型四格（模型单位）
+- 干预：A=丢弃未曝光旧意图；B=旧任务协作退出
+- 联合设计：I=最新有效意图队列+独立退出回收；II=惰性事件日志
+- 标量f：latency of the final intent (model units)
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 45 | 15 | 45 | 11 | 13 | -4 | -2 |
+
+- 结论：末意图时延：0格45，A 15，B 45（单独无效），AB_I（合并+协作退出）11，AB_II（惰性事件日志：安静期3后只执行最新意图）13，后者物理工作只有10。交互(AB_I)为−4。
+- 代码/原始：`bench/exp_combos.py::c15 → raw/combos/combos.json#C15`
+
+## C16 跨重开复用×身份键（Q044,Q071）
+
+- 状态/裁定：**incomplete / stop**；证据：同一模型四格（模型单位）
+- 干预：A=跨context数据复用（按值）；B=当前授权重建
+- 联合设计：I=内容寻址数据+重新签发能力；II=可验证派生支持+版本键
+- 标量f：unsafe reuses of authority across a content change (model check)
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 0 | 1 | 0 | 0 | 0 | -1 | -1 |
+
+- 结论：按值复用授权不安全（模型检查）；历史数据中重开在4个格子里都不比新runtime快：没有可回收的复用收益。
+- 代码/原始：`bench/exp_combos.py::c16 → raw/combos/combos.json#C16`
+- 未完成：两种联合设计在代码中没有分别实现（AB_II与AB_I相同、是参数变体，或有格子写死）；只有四格方向性证据：四格为模型检查常量。恢复：在bench/exp_combos.py中为C16实现第二种联合设计并重算交互项
+
+## C17 关闭协议×双资源账（Q063,Q112）
+
+- 状态/裁定：**completed / stop**；证据：同一模型四格（模型单位）
+- 干预：A=转移后关闭；B=单一所有者账本
+- 联合设计：I=严格join；II=转移
+- 标量f：ledger leaks/wrong orders at close
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 1 | 0 | 1 | 0 | 0 | 0 | 0 |
+
+- 结论：丢租约泄漏1/6交错；join与转移都无泄漏（join关闭多等1步）；双账本无单一所有权会把12 MiB记成24 MiB。
+- 代码/原始：`bench/exp_combos.py::c17 → raw/combos/combos.json#C17`
+
+## C18 预建索引×自适应晋升（Q046,Q114）
+
+- 状态/裁定：**incomplete / stop**；证据：同一模型四格（模型单位）
+- 干预：A=预建摘要树；B=第二次需求才晋升
+- 联合设计：I=第二次建立、前提失效回短路径；II=租约+复用阈值
+- 标量f：steps for M=1 (one target)
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 20 | 1715 | 20 | 20 | 20 | -1695 | -1695 |
+
+- 结论：单目标：认证20步、预建1715步；重访10次与扫描20目标同样不回本。
+- 代码/原始：`bench/exp_combos.py::c18 → raw/combos/combos.json#C18`
+- 未完成：两种联合设计在代码中没有分别实现（AB_II与AB_I相同、是参数变体，或有格子写死）；只有四格方向性证据：AB_II与AB_I相同。恢复：在bench/exp_combos.py中为C18实现第二种联合设计并重算交互项
+
+## C19 证书增强×触发可达性（Q054,Q070）
+
+- 状态/裁定：**incomplete / conditional_theory**；证据：同一模型四格（模型单位）
+- 干预：A=强证书；B=合法远跳历史
+- 联合设计：I=普通失败后按需触发强证明；II=与普通取证竞争但零无益税
+- 标量f：transforms (forward history = normal route analogue; trigger = legal far jumps)
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 320 | 320 | 275 | 273 | 273 | -2 | -2 |
+
+- 结论：前进历史（正常路线类比）A省0；远跳历史上强证书省2个物化（275→273）：机会只在跳转首访出现。
+- 代码/原始：`bench/exp_combos.py::c19 → raw/combos/combos.json#C19`
+- 未完成：两种联合设计在代码中没有分别实现（AB_II与AB_I相同、是参数变体，或有格子写死）；只有四格方向性证据：AB_II与AB_I相同。恢复：在bench/exp_combos.py中为C19实现第二种联合设计并重算交互项
+
+## C20 固定窗口×精确reset摘要（Q094,Q098）
+
+- 状态/裁定：**incomplete / stop**；证据：同一模型四格（模型单位）
+- 干预：A=固定回看窗口；B=精确reset/入口合流证书
+- 联合设计：I=有reset证书才截断；II=精确转移摘要跨长前缀
+- 标量f：wrong target units out of 300
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 0 | 41 | 0 | 0 | 0 | -41 | -41 |
+
+- 结论：300个长链目标：固定窗口错41；Γ自身的认证（只在入口合流处截断）0错。
+- 代码/原始：`bench/exp_combos.py::c20 → raw/combos/combos.json#C20`
+- 未完成：两种联合设计在代码中没有分别实现（AB_II与AB_I相同、是参数变体，或有格子写死）；只有四格方向性证据：B格未计算；AB用Γ自己的证书对照Γ的计划，0错是同义反复。恢复：在bench/exp_combos.py中为C20实现第二种联合设计并重算交互项
+
+## C21 最小探针×关键路径界（Q010,Q023）
+
+- 状态/裁定：**incomplete / probe_first**；证据：同一相容世界集合上的观测/推界消融（非性能消融）（模型单位）
+- 干预：A=新增C_i探针；B=最坏相容上界
+- 联合设计：I=探针分辨GO/NO-GO；II=先推界、跨门槛才加探针
+- 标量f：decision ambiguity (1 = GO/NO-GO undecided across compatible worlds)
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 1.0 | 0.0 | 1.0 | 0.0 | 0.0 | 0.0 | 0.0 |
+
+- 结论：不加C_i时相容世界给相反决策；只推界不能裁定；C_i一项即可裁定（若中位U−C>门槛）。观测/推界消融，不是时延加速。
+- 代码/原始：`bench/exp_combos.py::c21 → raw/combos/combos.json#C21`
+- 未完成：两种联合设计在代码中没有分别实现（AB_II与AB_I相同、是参数变体，或有格子写死）；只有四格方向性证据：四格为常量（观测消融）。恢复：在bench/exp_combos.py中为C21实现第二种联合设计并重算交互项
+
+## C22 观测采样×排程扰动（Q012,Q087）
+
+- 状态/裁定：**incomplete / unresolved**；证据：同一模型四格（模型单位）
+- 干预：A=稀疏采样；B=分阶段互补采集
+- 联合设计：I=固定锚点全记+非关键稀疏；II=分阶段+受控校准
+- 标量f：observer cost per sample (model units)
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 1.2000000000000002 | 0.12000000000000002 | 0.6000000000000001 | 0.06000000000000001 | 0.6000000000000001 | 0.54 | 1.08 |
+
+- 结论：只有算术模型（每事件0.2单位）；没有被测系统扰动的可执行实验。
+- 代码/原始：`bench/exp_combos.py::c22 → raw/combos/combos.json#C22`
+- 未完成：需要真实观察器
+
+## C23 逐样本可达界×整体中位（Q080,Q093）
+
+- 状态/裁定：**incomplete / stop**；证据：同一相容世界集合上的观测/推界消融（非性能消融）（ns（历史或假设比例））
+- 干预：A=每样本可削减比例（假设值）；B=只能作用于推进场景的统一策略
+- 联合设计：I=顺序统计区间优化；II=共同策略精确求解
+- 标量f：candidate median (ns) under hypothetical removable fractions
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 130196850.0 | 32549212.5 | 130196850.0 | 32549212.5 | 13019685.0 | 0.0 | -19529527.5 |
+
+- 结论：即使每个样本都去掉75%（A），中位仍为32.5 ms，高于门槛。只作用于推进场景时，统一比例需要≥76.8%（因为第25、26小都是推进样本，比例上限0.2319）；表中90%只是测试点。比例是假设，不是估计。
+- 代码/原始：`bench/exp_combos.py::c23 → raw/combos/combos.json#C23`
+- 未完成：两种联合设计在代码中没有分别实现（AB_II与AB_I相同、是参数变体，或有格子写死）；只有四格方向性证据：AB_I/AB_II只是假设比例75%与90%。恢复：在bench/exp_combos.py中为C23实现第二种联合设计并重算交互项
+
+## C24 冷热区组×参数选择（Q085,Q086）
+
+- 状态/裁定：**incomplete / stop**；证据：同一模型四格（模型单位）
+- 干预：A=多次重跑选优；B=顺序/携带效应
+- 联合设计：I=区组heldout；II=预声明顺序检验+携带模型
+- 标量f：false pass rate of a 15 ms median gate under a null (stratified F0 noise)
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 0.20025 | 0.6825 | 0.20025 | 0.21875 | 0.21875 | -0.46375 | -0.46375 |
+
+- 结论：零效应15 ms闸门：单次20%，重跑到绿68%，冻结heldout 22%；固定OFF→ON把8 ms携带效应变成7.9 ms假收益，ABBA为0.09 ms。
+- 代码/原始：`bench/exp_combos.py::c24 → raw/combos/combos.json#C24`
+- 未完成：两种联合设计在代码中没有分别实现（AB_II与AB_I相同、是参数变体，或有格子写死）；只有四格方向性证据：B格未单独模拟，AB_II=AB_I。恢复：在bench/exp_combos.py中为C24实现第二种联合设计并重算交互项
+
+## C25 尾部护栏×全分母失败（Q082,Q083）
+
+- 状态/裁定：**incomplete / stop**；证据：同一模型四格（ns（历史或假设比例））
+- 干预：A=成功子集P95；B=失败计入（按15 s超时）
+- 联合设计：I=正确性门禁后描述；II=删失分析
+- 标量f：R0 statistics (ns): success-only vs full denominator (failures at the 15 s timeout)
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 106340750.0 | 274140000 | 118508000.0 | 15000000000 | 15000000000 | 14713692750.0 | 14713692750.0 |
+
+- 结论：R0：成功子集中位106.3 ms、P95 274.1 ms；全分母中位118.5 ms、P95 15 s。
+- 代码/原始：`bench/exp_combos.py::c25 → raw/combos/combos.json#C25`
+- 未完成：两种联合设计在代码中没有分别实现（AB_II与AB_I相同、是参数变体，或有格子写死）；只有四格方向性证据：格子混用中位数与P95，交互项无意义；AB_II=AB_I。恢复：在bench/exp_combos.py中为C25实现第二种联合设计并重算交互项
+
+## C26 数值快路×证书支持（Q115,Q117）
+
+- 状态/裁定：**completed / engineering_trial**；证据：同一模型四格（模型单位）
+- 干预：A=精确/重排快路；B=证书携带支持独立检查
+- 联合设计：I=精确早拒+最小支持；II=区间批算+近阈值回退
+- 标量f：decision flips vs the reference float evaluation (strip-level grey pairs)
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 0 | 9 | 0 | 0 | 0 | -9 | -9 |
+
+- 结论：精确快路在25个灰度中翻转9个方差门判定（A）。I（保持参考求值）与II（快路+近阈值回退到参考序列）都实际计算，均为0次翻转。
+- 代码/原始：`bench/exp_combos.py::c26 → raw/combos/combos.json#C26`
+
+## C27 缓存价值×预测安全保护（Q110,Q111）
+
+- 状态/裁定：**completed / engineering_trial**；证据：同一模型四格（模型单位）
+- 干预：A=投机预算2；B=短作业门控
+- 联合设计：I=前台硬保留，预测只排序空闲；II=服务上界+后悔界门控
+- 标量f：required blocking with long speculation (spec=500)
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 497 | 0 | 0 | 0 | 0 | 497 | 497 |
+
+- 结论：投机服务500：无保护时阻塞497；预算2（A）、短作业门控（B）、两者联合（AB_I）都为0；II（只准入有声明服务上界的投机，这里没有上界因此不准入）也为0，但投机吞吐为0。服务时长未知时只有预算能保证。
+- 代码/原始：`bench/exp_combos.py::c27 → raw/combos/combos.json#C27`
+
+## C28 固定Γ′内的证书×取证（Q102,Q105）
+
+- 状态/裁定：**incomplete / conditional_theory**；证据：同一模型四格（模型单位）
+- 干预：A=Γ′_local目标投影证书；B=取证顺序
+- 联合设计：I=完整优化器的可验证投影证书；II=精确边界消息摘要
+- 标量f：objects read for one target under fixed Γ'_local
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 30.0 | 5.0 | 30 | 5.0 | 5.0 | 0.0 | 0.0 |
+
+- 结论：固定Γ′_local时目标证书是5对象窗口（30→5）；取证顺序不改读集。相对Γ的输出差异另列（292/300计划不同）。
+- 代码/原始：`bench/exp_combos.py::c28 → raw/combos/combos.json#C28`
+- 未完成：两种联合设计在代码中没有分别实现（AB_II与AB_I相同、是参数变体，或有格子写死）；只有四格方向性证据：B格写死为30。恢复：在bench/exp_combos.py中为C28实现第二种联合设计并重算交互项
+
+## C29 共享转换×多版本快照（Q036,Q057）
+
+- 状态/裁定：**incomplete / conditional_theory**；证据：同一模型四格（模型单位）
+- 干预：A=共享解码对象；B=稳定布局快照
+- 联合设计：I=低层共享、各版本独立适配；II=高层结果共享+租约
+- 标量f：resident units with two coexisting layout versions
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 24 | 12 | 24 | 12 | 12 | 0 | 0 |
+
+- 结论：两个版本并存：常驻24→12；II少一次适配但需帧租约。仅为算术模型。
+- 代码/原始：`bench/exp_combos.py::c29 → raw/combos/combos.json#C29`
+- 未完成：两种联合设计在代码中没有分别实现（AB_II与AB_I相同、是参数变体，或有格子写死）；只有四格方向性证据：四格为算术常量。恢复：在bench/exp_combos.py中为C29实现第二种联合设计并重算交互项
+
+## C30 最小可逆实现×研究停止证据（Q095,Q119）
+
+- 状态/裁定：**incomplete / stop**；证据：同一模型四格（模型单位）
+- 干预：A=窄域启用候选；B=松弛下界排除无头寸域
+- 联合设计：I=shadow检查后封闭域试验；II=先松弛排除再设计最小试验
+- 标量f：1 = an engineering trial is justified for the 30.19685 ms gate
+
+| 0 | A | B | AB_I | AB_II | 交互(AB_I) | 交互(AB_II) |
+|---|---|---|---|---|---|---|
+| 1 | 1 | 0 | 0 | 0 | 0 | 0 |
+
+- 结论：松弛（B）排除了主门槛的工程试验：26个样本须各降54–106 ms，而唯一测得的“事实/证明窗口内为0”路线仍约145 ms（条件）。资源侧候选另按各自目标小试。
+- 代码/原始：`bench/exp_combos.py::c30 → raw/combos/combos.json#C30`
+- 未完成：两种联合设计在代码中没有分别实现（AB_II与AB_I相同、是参数变体，或有格子写死）；只有四格方向性证据：四格为常量（停止证据的汇总）。恢复：在bench/exp_combos.py中为C30实现第二种联合设计并重算交互项

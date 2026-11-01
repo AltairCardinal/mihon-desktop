@@ -1,0 +1,18 @@
+# R10 研究结果：入口
+
+把 `research_out/` 放回研究包根目录（与 `START_HERE.md` 同级）。所有命令都在包根目录执行。原包文件没有改动（`summary/package_integrity.json`）。
+
+| 要看什么 | 文件 |
+|---|---|
+| 决策报告（先看这个） | `REPORT.md` |
+| 逐题状态与裁定（150行，模板列） | `coverage.csv`；带结论/正例/反例/成本的版本：`coverage_detail.csv` |
+| 逐题详细记录 | `sections/QUESTIONS_DETAIL.md` |
+| 30个组合：四格、交互项、两种联合设计 | `sections/COMBINATIONS_DETAIL.md` |
+| 20类对抗轨迹的运行情况与反例 | `summary/WORKLOADS.md` |
+| 失败、中断、被替换的实现、审计改正 | `FAILURES.md` |
+| 复现 | `REPRODUCE.md`（快速检查约1分钟；全部实验 `sh research_out/run_all.sh` 约20–30分钟） |
+| 代码 | `lab/`（重建Γ、可能世界、特征、调度/协议模型、可达性）、`bench/`（实验脚本）、`tests/test_r10.py` |
+| 原始结果 | `raw/`（每个实验一个JSON；微基准 `raw/bench/*.jsonl`） |
+| 逐文件SHA-256 | `SHA256SUMS.txt` |
+
+一句话结论：主门槛（中位 ≤ 30.19685 ms）在现有证据下不能保证，并且有可观测的条件不可达证书。决定性的新增观测只有一项：每个样本中确切 unit 被授权的时刻。能进入小型工程试验的只有资源保护、意图与退出这几类机制，而且它们不针对主门槛。

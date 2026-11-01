@@ -1,0 +1,2 @@
+# Original extracted reports preserve historical whitespace, like their byte-identical ZIP originals.
+**/*.md.txt -text whitespace=-blank-at-eol,-blank-at-eof,space-before-tab,cr-at-eol

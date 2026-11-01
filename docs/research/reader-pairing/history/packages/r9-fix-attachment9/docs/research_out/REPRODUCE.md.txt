@@ -1,0 +1,95 @@
+# 复现与恢复
+
+环境：标准 Python 3（实测 3.13.17，Linux，2 vCPU，7.8 GiB），只用标准库，无网络/账户/外部求解器。
+所有命令在**包根目录**执行。包文件与 MANIFEST 未改动（`results/summary/stage0.json`：57 个文件哈希一致，61 项测试、smoke seed 905、data 检查全部通过，smoke 输出与 fixture 逐字节相同）。
+
+## 1. 最小检查（约 2 分钟）
+```
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests                         # 包内 61 项
+python3 smoke.py --seed 905 && python3 data/recompute.py --check
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s research_out/tests -t research_out   # 研究 92 项（约 90 s）
+```
+测试族：test_core_strong（3）、test_wpA（10）、test_wpB（16）、test_wpC（16）、test_wpG（24）、test_wpH（19）、test_wpT（4）。
+
+## 2. 研究实验（各写 results/raw/<wp>/；括号为本机耗时量级）
+```
+python3 research_out/bench/run_wpA_grid.py ; run_wpA_studies.py ; run_wpA_attack.py ; run_wpA_cex.py ; run_wpA_shadow.py ; run_wpA_boundary.py   (各 1–20 min)
+python3 research_out/bench/run_wpB_studies.py ; run_wpB_coupled.py ; run_wpB_equiv.py ; run_wpB_domains.py ; run_wpB_ablation.py               (各 1–10 min)
+python3 research_out/candidates/wpC_experiments.py <section>        # C01 C02 C03 C04 C06 E O02 P01 P06 Q X06 ...（见 sections/wpC.md）
+python3 research_out/candidates/wpG_experiments.py ; wpG_d4.py ; wpG_combos.py                                                                 (见 sections/wpG.md)
+python3 research_out/candidates/wpH_exp_sched.py ; wpH_exp_commit.py ; wpH_robust.py ; wpH_combos.py ; wpH_d4.py ; wpH_extra.py                 (见 sections/wpH.md)
+python3 research_out/bench/run_wpS.py          # S01–S06 (≈1.5 min)
+python3 research_out/bench/run_wpT05.py        # T05 oracle 参照点 (≈1 min)
+python3 -c "import sys; sys.path.insert(0,'research_out/candidates'); import paths, wpM_q02_x12 as M; print(M.x12_study()); print(M.q02_study(direction_flip=True))"
+```
+各工作包的确切入口与参数写在对应 `sections/<wp>.md`。
+
+## 3. 正式计时（串行，约 25 分钟）
+```
+sh research_out/bench/formal_all.sh                 # 5 个 bench 模块 × 3 独立进程 × (1 预热 + 3 测量)，配置顺序轮换
+python3 research_out/bench/summarize_formal.py      # → results/summary/formal/*.json 与 FORMAL_TABLES.md
+```
+本次正式计时：2026-10-26T14:06:57Z – 14:31:55Z，原始行 A 11 760、B 732、C 1 596、G 1 536、H 528，子进程错误 0。
+
+## 4. 交付表重建
+```
+python3 research_out/bench/build_deliverables.py   # coverage.csv（150 行 + 审计）
+python3 research_out/bench/build_hypotheses.py     # hypotheses.csv（30 条）并追加 NH 行
+```
+`ADOPTION_MATRIX.csv` 由 adoption_parts 合并（WP-H 的调度项路线由主会话更正为 L1）；`source-manifest.json` 记录 research_out 全部文件哈希。
+
+## 5. 未完成项与继续入口
+- 真实服务时间/自然频率/质量真值缺失：所有采用结论为条件结论；最少校准量见 REPORT §8。
+- 未正式计时而封顶 D2 的 31 行（coverage.csv `audit_note`）：把机制加入对应 `bench_<wp>.py` 后用 `drive_formal.py` 即可补齐。
+- WP-B：块边界中边选择/序分量的必要性未证；世界 oracle 只到 n≤6。WP-C：门控半径 2 的充分性未证；Q 分支无耦合运行。
+  WP-H：I/J 族多数只在模拟器中；N03 只到容量 2、深度 6。WP-A：随机服务时间未测；F05/X17/O05 无耦合运行。
+- 无正在运行的进程；所有结果文件已落盘。
+
+## 6. 修复轮（R9 定点补交）
+
+所有命令在**包根目录**执行（`research_out/` 的上一级）。研究测试现为 152 项（R9 92 + 修复轮 60）：
+```
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s research_out/tests -t research_out      # 约 3 分钟
+```
+新增测试：test_budget_contract（10，预算合同）、test_fixLC（12，生命周期与观察差分）、test_fixQ1（12）、test_fixQ2（8）、
+test_fixPH（13）、test_fix_main（5，修正版影子运行器、BlockSession 释放、计数修复）。
+
+### 6.1 预算修复（第 1 项）
+```
+python3 research_out/bench/run_fix_budget_probe.py after_fix          # 逐路线 budget 0/1/None（修复前的输出已保存为 before_fix）
+python3 research_out/bench/run_fix_differential.py before --prefix     # 用 candidates/_r9_prefix 中的修复前模块
+python3 research_out/bench/run_fix_differential.py after
+python3 research_out/bench/compare_fix_differential.py                # → results/summary/fix/differential.json
+```
+### 6.2 分支实验（第 2、3、5、6、7 项；各写 results/raw/fix/<TAG>/）
+```
+python3 research_out/bench/run_fixLC.py groups|shadow|mutants|costs|observe|observe_rc ; python3 research_out/bench/summarize_fixLC.py
+python3 research_out/bench/run_fixQ1_a04.py ; run_fixQ1_a04_coupled.py ; run_fixQ1_b01.py exact|small|ablation|blowup ; run_fixQ1_b01_rk.py ;
+        run_fixQ1_b05.py ; run_fixQ1_d04.py ; run_fixQ1_d04_examples.py ; run_fixQ1_d05.py ; build_fixQ1_parts.py
+python3 research_out/bench/run_fixQ2_t04.py ; run_fixQ2_x05.py ; run_fixQ2_x30.py ; summarize_fixQ2.py
+python3 research_out/bench/run_fixPH.py <part> ; run_fixPH_claims_grep.py ; build_fixPH_audit.py ; build_fixPH_dedupe.py ; build_fixPH_tables.py
+```
+各脚本的确切参数写在对应 `sections/fix_<TAG>.md` 开头。
+### 6.3 冻结与留出（第 7 项）
+```
+python3 research_out/bench/freeze_fix.py                 # 已执行；清单存在时拒绝覆盖
+python3 research_out/bench/run_fix_heldout_ho1.py        # 约 55 分钟（W14 格子两边都活锁到步数上限）
+python3 research_out/bench/run_fix_heldout_ho2.py        # 约 3 分钟
+for p in ho3 ho4 ho5 ho6 ho7; do python3 research_out/bench/run_fix_heldout_rest.py $p; done
+```
+### 6.4 D3 成本（第 4 项）
+```
+sh research_out/bench/formal_fix.sh                      # 串行三进程正式计时，约 17 分钟；期间不要运行其他计算
+python3 research_out/bench/summarize_formal.py --fix bench_wpA bench_wpB bench_wpC bench_wpG bench_fix_main bench_fixQ1 bench_fixQ2 bench_fixLC
+for m in bench_wpA bench_wpB bench_wpG bench_wpH bench_wpC bench_fix_main bench_fixQ1 bench_fixQ2 bench_fixLC; do
+    python3 research_out/bench/run_fix_costprobe.py $m; done                        # tracemalloc，约 17 分钟，与计时分开
+python3 research_out/bench/run_fix_costs_postfreeze.py ; run_fix_residency.py ; run_fix_residency_misc.py
+python3 research_out/bench/build_fix_d3_index.py         # → results/summary/fix/D3_INDEX.{csv,md}, D3_COUNTS.json
+```
+### 6.5 交付表
+```
+python3 research_out/bench/build_fix_deliverables.py     # coverage.csv / hypotheses.csv / ADOPTION_MATRIX.csv（R9 版本保留为 *_R9.*）
+python3 research_out/bench/build_fix_status.py           # results/summary/fix/QUESTION_STATUS.md
+```
+修复轮正式计时：2026-10-26T18:37:49Z – 18:54:54Z，原始行 11 796，子进程错误 0。冻结：manifest `ac7dd03d…`，留出种子基 5 926 461。
+无正在运行的进程；所有结果文件已落盘。

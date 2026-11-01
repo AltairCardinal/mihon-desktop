@@ -1,0 +1,67 @@
+# 修复轮 LC：生命周期引理、反例与证明草图
+
+## L-LC0 包内没有安全的关闭（可执行反例）
+`coupling.Session` 无 close。`Owner.close()` 置 `_case=None`。若此时某任务仍在运行且**未取消**，它的真实完成调用
+`Session.finish` → `_current` → `len(self.owner._case['items'])` → `TypeError`（`results/raw/fix/LC/naive_close.json`，
+`fixLC_lifecycle.naive_close_crash`）。关闭后 `certify` 同样以 `TypeError` 失败，而不是返回"已关闭"拒绝。
+
+## L-LC1 驱动器关闭协议是安全的
+协议：取消全部任务 → 运行至每个任务真实退出 → `owner.close()` → 清空会话存储 → 候选 `close()`。
+`Session.finish` 先检查 `task['cancelled']` 再调用 `_current`（代码顺序，coupling.py），因此已取消任务的退出返回
+`discarded` 且不读 `_case`；`cancel` 对已完成任务直接删除。第二步结束时 `_tasks` 为空（每个运行中任务都恰好退出一次，
+`finish` 删除它），第三步之后不再有任何会调用 `_current` 的物理事件；迟到的 `finish(token)` 返回 `absent`。
+因此协议不会崩溃、不提前释放运行中的槽（释放只发生在真实退出），也不接纳被取消的结果。E5 在 29 个会话配置上逐项实测。
+
+**最终轮更正。** 上述论证适用于会话层驱动器 `fixLC_lifecycle.Life.close`（同步：一直推进到所有运行中任务退出才关闭 owner）。
+运行器层 `fixLC_shadow.LifeShadowRunner._close` 原来**不满足**第二步：排空循环遇到普通外生事件就停止并宣布关闭完成。反例：q=1、
+service=4，prefetch@0 → close@1 → probe@2 → 被取消任务实际退出@4，原实现在 t=2 记录 close_end 而 occupied=1
+（`results/raw/final/close_repro_before_fix_*.jsonl`）。修正后关闭是异步的三段：请求（close 事件到达）、逻辑关闭（同一时刻：不再接受
+意图与工作、取消全部任务、撤销发布与证书、拒绝请求）、物理排空（最后一个运行中任务经 finish() 真实退出、结果被丢弃之后，才关闭 owner、
+清空存储、调用候选释放钩子）；三个时间分别记录在 close_end 行；重复 close 只应答 already_closing/already_closed；没有直接清空任务表或
+occupied。回归 `tests/test_final_boundaries.py`（8 项）。
+
+## L-LC2 运行器的证明尝试身份（反例 + 修正）
+反例（`groups_shadow.json`，gated_shadow、touched、rebind 第 31 项）：第 59u 为目标 27 启动证明（到期 61u），第 60u rebind
+清空 `proof_inflight`，新 epoch 立即重启证明（到期 63u）；第 61u 旧事件按目标匹配被当作新证明交付，旧证书 `unsigned`、
+新证明被弹出，第 63u 新证明的事件被丢弃。安全性未破（会话拒绝），活性受损（目标 27 只能等 L0）。
+修正：交付当且仅当事件时间等于 `proof_inflight[target]` 记录的到期时间。
+
+**最终轮更正（前提与适用范围）。** 上文原写"q_u=0 时 `ARunner` 走即时路径，没有在途事件"，**这是错的**：只有 policy
+`strong_only` 走即时路径；gated_shadow / shadow 在 q_u=0 时仍把证明事件排进队列，到期时间 = 当前时刻。已确认的触发方式：
+reserved_eviction(seed 0, n 40)，t=0 目标 8，同一时刻对第 20 项连续 rebind 两次，q=0、service=4——三个尝试的到期时间都是 0，
+旧 epoch 的事件被当作当前尝试交付（`unsigned`），当前尝试被丢弃，目标 8 只能等 L0 在 t=8 发布
+（`results/raw/final/q0_repro_before_fix.jsonl`）。
+
+引理 L-LC2（修正后的陈述）。前提：(P1) 每次证明耗时 q > 0（q_model='fixed' 时 q_u>0；q_model='eval' 时 q_u>0 蕴含耗时 ≥1）；
+(P2) 所有证明在**一条串行计算 lane** 上执行：start = max(now, lane_free)，due = start + q，随后 lane_free := due；(P3) rebind 只清空
+在途表，不重置 lane_free。则同一目标的任意两次尝试 a 先 b 后满足 due_b ≥ lane_free(b 启动时) + q ≥ due_a + q > due_a，
+所以在 P1–P3 下到期时间唯一标识一次尝试，"事件时间 = 记录的到期时间"恰好挑出当前尝试。**不满足 P1 或 P2 时结论不成立。**
+处理（选项 A）：修正版影子运行器在构造时拒绝 q_u ≤ 0（`fix_main_shadow._check_q`），并有回归 `tests/test_final_boundaries.py`；
+q>0 时同一时刻两次 rebind 的同一触发方式下，两次旧尝试被丢弃、当前尝试交付（同一测试）。不支持零耗时证明与多 lane 并行证明；
+若将来需要，必须换成显式的尝试序号身份，并重新验证同 due、多次 rebind、迟到完成和重复事件。
+
+## L-LC3 inc_revoke 与全量重验的公开观察等价（证明草图 + 有界搜索）
+设发布 p 的证书 c 在写批 W 之前当前（guard、epoch、支撑逐键相等）。
+1. 若 W 改变 guard 或 epoch，或是设置变化/rebind（`_dirty_all`），IncSession 走与包相同的全量检查。
+2. 否则 W 只能是 `owner.apply` 的项/边写（consume 也经 apply）。支撑读值只依赖：`analysis(i)`、`header(i)`、
+   `dimension(i)=effective(i)` ← 只读第 i 项记录；`rank(a,a+1)=edge(a,a+1)` ← 第 a、a+1 项分析与边记录 (a,a+1)
+   （compact_core.Index.effective/edge）。IncSession 对一次**确有变化**的项写 i 标脏 analysis/header/dimension(i) 与
+   rank(i−1,i)、rank(i,i+1)，对边写标脏 rank(a,b)。所以若 c 的支撑与脏键不相交，c 的每个读值不变，全量检查也判它当前；
+   若相交，IncSession 对 c 做与全量相同的检查。两者在每次过期检查时删除的发布集合相同，于是 published/confirmed/
+   publish/confirm 的返回值逐一相同。
+3. 前提：只有 owner.apply/replace/rebind 改 owner 状态（replace 改 identity ticket → guard）；没有其他写路径。
+有界搜索：L0 2 000 条轨迹 120 000 事件、强路线 600 条 36 000 事件，0 差异（`observe_inc_revoke*_s*.json`）。
+变异体"跳过秩键"被 E6_edge 捕获。
+
+## L-LC4 derive_first 不是观察等价
+`observe_derive_first_by_rc.json`：raw 容量 1/2/3 下分别有 25/300、8/300、3/300 条轨迹的 observe() 派生事实不同。
+最小机制：consume 接纳见证后，evict-first 先把 raw 压到容量再派生，可能驱逐掉刚好配对所需的邻居见证；derive-first
+先派生再驱逐。`NATIVE_OWNER.pseudo` 的 complete() 写的是后者。故它是模型保真修正。
+
+## L-LC5 包确认不绑定发布实例（所有机制共有的 E4 失败）
+任何机制在"发布 → 过期 → 同单元重发"后，旧回调 `confirm(target)` 返回 confirmed（381 个组运行中 42 个失败组全部是
+这一检查，外加包会话 rc=1 活性 2 个、BlockSession 关闭残留 2 个）。`BoundMixin`（句柄必须等于当前发布句柄）使全部这些检查通过。
+
+## L-LC6 BlockSession 关闭残留
+`_strong_call` 每次把事务快照存于 `self._cur_snap`（含调用前的块摘要对象、表列表副本、前沿副本），提交与回滚都不清除，
+`close()` 也不清除；关闭后会话可达 66 262 字节（包会话 6 324）。三行修复后 E5 通过，随机 rebind 差分仍 240/0。

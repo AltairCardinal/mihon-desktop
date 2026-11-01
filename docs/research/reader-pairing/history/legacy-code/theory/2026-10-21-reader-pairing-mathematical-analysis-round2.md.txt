@@ -1,0 +1,233 @@
+# 双页配对算法第二轮：完整快照函数摘要与强制目标局部认证
+
+日期：2026-10-21。路线 A：保持真实当前 `canonicalPlan` 的完整 unit 输出。
+
+**结论：强制目标的局部投影可减少已证实的无关取证；五态函数树则验证了更根本的计算复用结构，本轮验证限于已有完整事实，冷建更贵，尚不能承诺整体更新或真实阅读提速。**
+
+## 1. 本轮产物与证据等级
+
+本轮只修改 [runner](../scripts/reader-pairing-math/run.py)，新增 [Kotlin 实验](../scripts/reader-pairing-math/PairingFunctionExperiment.kt) 与本报告。
+三个文件是同一个内聚研究实验，不按机械行数拆包；不改产品源码、参数、持久格式或公共功能说明。
+
+| 内容 | 证据 | 尚未证明 |
+|---|---|---|
+| 五态确定扫描与组合 | 真实 step 构表；完整 unit 与 canonical 对照；状态归纳 | 最小状态数、未知事实关系的精确性 |
+| 增量摘要 | 384 个初始/更新对，3,456 个目标查询；更新后所有叶表独立重算对照 | 实际 CPU、IO、端上稳定性、partial facts 适用性 |
+| 大章节成本形状 | 32/128/512 页，各 16 次单页替换，分阶段操作计数 | 毫秒收益、等价 CPU 倍率、production 内存 |
+| 强制目标局部认证 | 96 个真实 owner 状态对照，6 个消除无关需求，18 个真缺口保留 | 全部 manual/失败/失效组合，平台接线 |
+
+未运行 Gradle、全量测试、应用打包、设备、网络下载或多轮性能基准。
+不宣称 bug 已修复、CP1 完成、U1–U5 全部验收通过或用户已接受产品实现。
+已完成一次独立只读审查，无实质阻塞，复用现有 focused 证据；审查后仅修正快照引用检查措辞，没有追加实验。
+下文区分数学推导、有界运行和未测成本。
+
+## 2. 当前基线、隔离与复跑条件
+
+基线 HEAD：`1820663edd5fcae86ff9119f2cb0f737ac502704`。
+当前 certifier **已经包含上一轮的 forced 边界独立入口剪枝**；本轮不重复加入它，也不拿上一轮旧数字当当前结果。
+第二候选只在 ignored 副本扩展 isolated 条件，精确 diff 见本节产物；实际 product 文件未改。
+
+重新编译的 12 份源码均位于 `domain/src/commonMain/kotlin/mihon/domain/reader/`：
+
+| 文件 | SHA-256 |
+|---|---|
+| ReaderCanonicalPairingScan.kt | `37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf` |
+| SharedDualPageRules.kt | `252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755` |
+| ReaderPairingCertification.kt | `6f5aa3d7c9352db4c7679929344b97cbb5e1f2b8b44c6ada964ae248e1b1c761` |
+| SharedSpreadMatching.kt | `7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af` |
+| ReaderSpreadSamplesOwner.kt | `d18bbb64887740ec442d63f121357b29dbec65c2a2ce42ca5581eb0a7e58c23a` |
+| ReaderOriginalPageSampling.kt | `05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0` |
+| ReaderPortraitSingleSlot.kt | `5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb` |
+| PageTransform.kt | `3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f` |
+| ReaderImageOrientation.kt | `77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb` |
+| ReaderDualPageFactLimits.kt | `bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5` |
+| ReaderPairingReadSet.kt | `da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb` |
+| ChapterPairingRepository.kt | `84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba` |
+
+外围 `domain/build/libs/domain-jvm.jar` SHA：`97c9ffdb8110e99843171d98765ae760c71447769a2b45af7ed1ae7ac7f564ba`。
+新编译 classes 优先；旧 jar 只提供章节/页身份、内容 identity、方向、尺寸等外围真实类型，不调用旧 Session/Memo 或平台逻辑。
+没有证明旧 jar 的全部实现等于当前源；这是算法隔离实验，不是 release runtime 或 integration 通过证据。
+首次复跑需这些精确源码、已有 jar、本机缓存 compiler；仅 checkout 研究提交不保证可运行，不下载、不用旧 HEAD 替代缺失依赖。
+
+环境：Windows、JDK 21、缓存 Kotlin compiler 2.3.20。
+编译 heap 768 MiB/metaspace 256 MiB；研究 JVM heap 256 MiB/metaspace 128 MiB；每个进程 60 秒截止，串行执行。
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$env:PYTHONUTF8 = '1'
+$env:PYTHONIOENCODING = 'utf-8'
+$env:PYTHONDONTWRITEBYTECODE = '1'
+python scripts/reader-pairing-math/run.py round2
+```
+
+ignored 产物位于 `.gradle/reader-pairing-math/round2/`：
+
+- `manifest.json`：当前 HEAD、12 核心源/外围 jar/研究源/runner 与 compiler 指纹、实际命令、资源限制。
+- `compile.log`、`run.log`：函数树编译与运行；`forced-baseline.log`、`forced-candidate-compile.log`、`forced-candidate.log`：局部认证对照。
+- `forced-baseline.json`、`forced-candidate.json`、`forced-candidate.patch`：96 例逐项结果及唯一隔离修改。
+- `result.json`：操作计数、域大小、关键反例与 sourceStable；临时副本/classes 不提交。
+
+核心源、外围 jar、研究源、runner 在编译及各运行阶段前后核对一致；变化则写 `SOURCE_CHANGED` 并拒绝归纳。
+最终结果稳定且全部 PASS；最终编译与研究流程共 19.114 秒，该时间不是阅读性能数据。
+首次执行的所有 JVM 断言已通过，但最终聚合因 Python 选取 JSON 键写成 `True`、Kotlin 输出 `true` 而失败。
+修正此一处键后，同一 focused 正确性范围重跑通过；没有增加另一套实验域或性能采样轮次。
+随后为补可见分支证据加入正匹配/预留断言，发现纹理 B 每通道 +10 使 L1 距离恰为 30，被真实阈值排除。
+该新增覆盖断言失败后，将同一 B 原型改为每通道 +5（距离 15），同域再验证通过；这是夹具修复，不是产品 bug。
+因此有聚合修复、补覆盖与夹具修复的必要 focused 复验，不能把本轮描述为只执行一次；没有新增基准分布或计时轮次。
+默认 `main()` 的 AST 与 HEAD 相同；错误 mode 已确认在编译前 fail-fast，不重跑旧基线专属实验。
+
+## 3. 五态摘要实际表示什么
+
+固定完整事实 `X_v`、方向、开篇、forced 与 manual；扫描的外部位置为源页 index i。
+正规态编码为 `2*opening + reservedNow`，共 0…3；第五态 `S=4` 表示 i 已被前页 pair 消费。
+初始为 index0 的 `(opening=true,reservedNow=false)`。
+
+每个正规叶状态直接调用 [真实 scan.step](../domain/src/commonMain/kotlin/mihon/domain/reader/ReaderCanonicalPairingScan.kt#L98)：
+
+1. cursor 为 `(i,opening,reservedNow ? i : -1)`；不复制 allowed、manual、laterWins、原因或槽位分支。
+2. 真实输出 pair 时，下一源位置 i+1 的状态为 S；S 再转至 `(false,false)`。
+3. 真实输出 singleton 时，下一状态从 step.next 的 opening 与 `reservedStart==i+1` 归一取得。
+
+真实 reservation 只可能等于当前 index 或已经落后；旧值不影响将来，故归一不丢失配对决定。
+完整输入下 manualCache 只是相同确定输入的 memo；每次新版本都新建 scan，不能跨版本沿用它。
+五态是足够的表示，没有证明最小。
+
+叶表为 `f_i: Q→Q`；节点只存五个整数，左段 A、右段 B 的父函数为 `f_B∘f_A`。
+函数复合满足结合律；从起始态归纳即可得到任意源前缀出口态，不存或拼接长输出列表。
+查询 t 时先求 prefix(t)：正规态调用真实 step(t)；若为 S，则求 prefix(t−1)，再真实 step(t−1)恢复包含 t 的 pair。
+所有比较使用完整 `ReaderDualPageUnit` 等值，含成员、物理槽位、certainty 和 singleReason，不只比较配对边。
+
+这些表覆盖的是完整事实扫描。尚未分析与 Computed UNKNOWN、缺失 edge 与 Computed(null)不能混同。
+只要必需标签缺失，就不能把 null 当完整事实构建单值函数；应继续当前 certifier/取证链。
+**本候选不允许为了建树新增全章读取、解码或分析。** 当前范围是已经合法取得完整事实后的计算复用。
+
+## 4. 版本更新、halo 与回退
+
+研究快照保留稳定 ReaderPageId/order，每页单独 `contentVersions`，并有整体 snapshot version。
+替换页 j 时只递增 j 的内容版本，其他页版本不变；整体版本递增；重新真实采样 j，重算其最多两条相邻 edge。
+不同像素不在同一 immutable 内容版本下覆盖事实；旧 CompleteInput 快照引用被研究树拒绝（`input === current` 检查）。
+这只是研究 API 的版本约束，不代表产品 ticket/lease/权限机制已验证。
+
+局部重标只在 settings/order 固定、唯一 j 内容更新、geometry/rotation/sourceOrientation 不变、无显式 manual 时使用。
+保守 halo 是 `[j−2,j+1] ∩ indices`：
+
+- laterWins(i)读取竞争边 i/i+1，j 的相邻 edge 只影响 i=j−2/j−1。
+- side/allowed 的近邻，以及 singleton 原因读取前邻宽图，仍包含在此范围。
+- FIRST_PAIR 的隐式 start0 在本轮同几何更新中不改变有效性；显式 manual 链不使用局部假设。
+
+更新时新 scan 重建这些叶表，再只重合成共同祖先；另以新 scan 全量重建所有叶表检查 halo，验证成本不算进候选更新计数。
+geometry 变化或存在显式 manual 则全量重标；direction/opening/forced/manual/page-list 等 context 变化拒旧并新建整树。
+6 个 context 对照覆盖方向、开篇、forced、manual、页数及纯版本变化；没有模拟端上切换或持久化恢复。
+
+设一次标签求值成本为 T_label、变化标签数为 M，则冷建 `O(n*T_label+5n)`，维护 `O(M*T_label+5M log n)`。
+只有精确差异与上述局部前提成立时 M 才有常数界；manual、全局设置、清单变化可使 M=Ω(n)。
+目标恢复为前缀函数应用加一次 step，不代表整个产品更新的无条件 O(log n)。
+
+## 5. 主体域、物理像素与断言
+
+384 个初始/更新对为 `n=1…8 × 8模板 × LTR/RTL × 3开篇`；更新后形成 768 个完整版本。
+每版本查询全部源页，共 3,456 次目标查询，不是所有像素和设置的笛卡尔穷举。
+七种真实像素原型：灰纵图、左右留白纵图、灰宽图、两种同形纹理与反相纹理。
+纵图 256×384、宽图 512×384；纹理由 y 条带决定，真实 sampling/SharedSpreadMatching.score 产生 side 和竞争 edge，不直接伪造分数。
+
+| 模板 | 页面模式与额外约束 |
+|---|---|
+| 0 | 全灰普通串 |
+| 1 | LEFT/RIGHT 页侧交错 |
+| 2 | 每三页中的一页为宽图 |
+| 3 | 灰/同纹理/同纹理交替，覆盖自动竞争与预留 |
+| 4 | 两种相近纹理混合 |
+| 5 | 同纹理/反相纹理，非重叠 manual starts |
+| 6 | 同纹理，连续重叠 manual starts；明确为规则 API 域 |
+| 7 | 局部 leading 页侧及中部 forced 单页 |
+
+更新位置为确定公式 `(template+n/2)%n`，替换原型覆盖 side、纹理及 geometry 改变。
+更新路径分布：264 个 halo、48 个 geometry 全重标、72 个 manual 全重标；均与新完整 canonical 严格相同。
+另检查旧快照拒绝与所有新叶表等值；重叠 manual 不被宣称为可保存的用户记录。
+主体候选计数为 label step 12,240、整数合成项 15,390、前缀应用 4,983、目标 step 3,456。
+初始版本累计 390 条非 null edge，其中 114 条严格正分；真实 canonical step 轨迹累计创建 24 次新预留。
+另在 n6/模板3/LTR/AUTO 明确断言 i3 的 near=null、later=0，真实 step 输出 MATCH_BOUNDARY 并原子预留 pair(4,5)，随后真实 step 确实输出该对。
+这些覆盖轨迹是独立验证工作，不计入候选操作量；不宣称全部分支或全部像素均已穷举。
+同版本 cached full-plan/page→unit 对照只做 3,456 次 O(1)查找；当前已有完整计划缓存，不能靠强迫 baseline 每次重扫来制造收益。
+
+## 6. 分阶段算法成本探针
+
+32/128/512 页各一个完整纵页章节：每七页一个灰页，其余纹理 A；LTR/AUTO，无额外 manual/forced。
+每章先构建一次树与一次 canonical；不变输入下重复 16 次三个目标查询，双方复用各自缓存。
+再做 16 次中部相邻位置的单页纹理替换；每版只查替换处、右邻和尾页，三目标共享一次 oracle 重建。
+总 probe 查询 288 次（144 次不变输入、144 次真实更新后），另有 6 个 context 重建查询。
+
+| n | 冷树真实 step | 冷整数合成项 | 冷 canonical step/K | 树整数槽数 |
+|---:|---:|---:|---:|---:|
+| 32 | 128 | 155 | 19 | 320 |
+| 128 | 512 | 635 | 73 | 1,280 |
+| 512 | 2,048 | 2,555 | 293 | 5,120 |
+
+canonical step 数按实际输出 K 及 production 循环每 unit 调用一次 step 得出，不是 profiler CPU 指令数。
+冷树对四个正规入口求值明显多于一次 canonical；只求一次全计划时不能称建树更便宜。
+
+| n | 不变输入 full-plan 查找 | 树不变输入 step / 前缀应用 | 每次局部更新 label step / 合成项 | 更新版完整 canonical step/K |
+|---:|---:|---:|---:|---:|
+| 32 | 48 | 48 / 192 | 16 / 45–50 | 19 |
+| 128 | 48 | 48 / 272 | 16 / 65–70 | 72–73 |
+| 512 | 48 | 48 / 320 | 16 / 85–90 | 293 |
+
+每个更新还需三个目标 step，前缀函数应用分别为 9–14、18–26、15–20；不与整数合成项或 step 简单相加成同成本操作。
+32 页时局部更新加三目标已需 19 次 step，对照一次 canonical 为 19 次，还另有整数合成；该探针没有 step 数优势。
+已有 full-plan 缓存的不变输入 O(1)更合适；树的潜在场景是事实版本确实变了而暂时只需要少数目标。
+若 pager 需要显式新全章输出，仍须另付 Ω(K)；本实验未实现 production 惰性 pager，不把三目标查询当全章交付。
+
+供数与内存成本没有消失：fixture 快照仍复制 O(n)的列表/maps；该 bookkeeping 未优化、未单独计时。
+每次替换只重采一页、重算相邻 edge，但完整事实及所有页样本保留，不遵守 production 默认 16 页驻留上限。
+纵页每页保留 100 个 ARGB 样本，加对象/列表/全部标量及 O(n)树；原生解码、encoded读取、GPU与真实字节占用未测。
+因此以上只能证明标签/函数路径的计数形状，不能断言实现整体更新已是 O(log n)，也不能换算毫秒或 CPU 倍率。
+
+## 7. 新增少取证机会：forced target 的局部投影
+
+目标 t 已在有效 forced 集合，且目标几何完整并符合当前 identity 时，allowed(t−1)与 allowed(t)都被 hard guard 禁止。
+真实扫描不可能把 t 放入相邻 pair，必单页；目标 unit 直接由真实 step(t)产生。
+原因/槽位不另写规则：ONLY_PAGE、SPREAD、FIRST_PAGE、MANUAL_BOUNDARY 的真实优先级继续保留。
+portrait 的 auto=true 情形仍需目标自身已分析 side；Computed UNKNOWN 是有效事实，不是缺失；auto=false 时 side closure 恒 UNKNOWN。
+forced+wide 已被原 isolatedSpread 覆盖，不把这个既有收益算成新结果。
+
+唯一隔离 patch 是：
+
+```diff
+- val isolatedSpread = targetFact.state == ReaderPageFactState.SPREAD
++ val isolatedSpread = targetFact.state == ReaderPageFactState.SPREAD || target in settings.forcedSinglePages
+```
+
+沿用变量名及现有 first=target、两个 opening 入口、真实 step、依赖收集和 certified 构造；不复制单页分支。
+targetFact==null 的早期缺几何路径没有改；不借 forced 越过必要目标分析、内容身份或失败语义。
+setting/identity/page-order 与原 isCurrent 校验仍在；一般可靠性前提与现有扫描/依赖机制相同，不背书整个 readset 或 UI。
+
+小族固定 4 页、0-based target2/forced2，其余页只有 header；目标原始分析可有可无，完整 owner 为 oracle。
+`4目标原型(UNKNOWN/LEFT/RIGHT/宽) × 2方向 × 3开篇 × 2自动开关 × 2目标分析可用性 = 96` 个状态，每 variant 运行一次。
+全部真实调用 ChapterPairingRecord.isValidFor(4)通过；样本来自相同像素函数，经真实 owner.acceptOriginal，不篡改缓存。
+
+| baseline→隔离候选 | 数量 |
+|---|---:|
+| Certified→Certified | 72 |
+| NeedFacts→NeedFacts | 18 |
+| NeedFacts→Certified | 6 |
+
+核心 LTR/AUTO/auto=true、目标灰 UNKNOWN 且已分析：baseline 唯一需求为 **p1 ORIGINAL_ANALYSIS**。
+候选直接认证 p2 LEFT、MANUAL_BOUNDARY、certain=true，与完整 canonical 一致；不读取无关前缀原图。
+6 个新增认证恰为 AUTO/auto=true/目标已分析的三个 portrait side 原型与两方向；没有把 wide 当新增收益。
+18 个保留 pending 是目标 portrait、auto=true、目标分析缺失的三种原型×两方向×三开篇；都仍要求目标事实。
+auto=false 的完整 header 足以让真实 step 走 side UNKNOWN fallback；不误报为必须先分析目标。
+每个 Certified 完整 unit 与 oracle 等值、isCurrent 通过，并检查目标新 contentVersion 使旧证书失效。
+
+## 8. 推荐、反证门槛与剩余工作
+
+优先把 forced-target 短路作为下一项最小工程候选：新信息需求更少、没有全章建索引前置，且收益在已含上一轮剪枝的当前基线上仍出现。
+进入产品前仍须 focused 红绿 TDD、目标边界/失败/setting失效与真实 Session/wiring 回归；本轮无产品变更。
+函数摘要作为更根本的结构候选保留：先确认真实消费链是否只需少数目标、完整事实何时自然可用、标签维护和 materialization 的成本，再决定是否接入。
+不变输入继续复用既有完整计划缓存；partial facts 冷进入继续真实 certifier，不能预读全章满足树前提。
+后续还需区分两层：部分知识 K 按当前 null/UNKNOWN 默认值可产生确定临时计划 `Γ_now(K)`，其计算也可能适合函数摘要且不需额外读图。
+稳定显示却要求 `S_t(K)={π_t Γ(X): X∈Ω(K)}` 为单元素；临时计划不能替代该证书，也不能授权成员/slot 曝光。
+本轮仅验证完整事实树；部分 snapshot 索引及其与现有 certifier 的组合仍是未执行的后续问题，不能称已解决冷输入。
+
+可推翻或收窄候选的情形包括：halo 外有变化叶、manual/版本状态遗漏、SKIP 恢复错误、full-unit 槽位/reason差异、树供数成本压过节省、消费方必需全章输出、目标 forced 仍被非法并入 pair、目标自身缺失被错误认证。
+尚未覆盖真实持久旧数据、重试/失败、旋转/方向失效接线、目标0/单页/尾页的 isolated 小族、平台呈现/曝光/导航/进度与 U2 延迟分布。
+数学与有界算法证据不替代这些真实 integration 和体验验证。

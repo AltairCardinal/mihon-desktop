@@ -1,0 +1,123 @@
+# WP-G proofs and counterexamples
+
+Scope: G01–G06, K01–K06, L01–L06, M01–M06, T03, X11 X18 X19 X20 X26 X27 X28.
+Incumbent: `corrected_owner.Owner` (all-attempt union support, global stamp, typed no-op detection)
+and `coupling.Session` (frozen evict-before-derive raw order). Code: `candidates/wpG_*.py`.
+Tests: `python3 -m unittest discover -s research_out/tests -t research_out -p 'test_wpG*.py'` (24 tests).
+
+Notation. For target t and admitted evidence E, `S(E,t)` = union of `proof[2]` over the attempts of
+the 2/3 strategy (window 2; window 3 iff the first is `need_facts`). `P(E,t)` = public result
+(every field except `proof`). Memo validity of the incumbent: reuse iff guard equal and
+`typed(E'[k]) == typed(E[k])` for all k in S(E,t).
+
+## L-G1 (derived dimension keys)  — used by `support='fact'`
+In `compact_core.certify`, `dimension(i)` reads `analysis(i)` and, iff it is not computed, `header(i)`,
+records both reads, then records `('dimension', i) = f[:5]+('UNKNOWN',)` where `f` is the computed
+fact or the header. Hence `S[('dimension',i)]` is a pure function of `S[('analysis',i)]` and
+(if present) `S[('header',i)]`, and both keys are always in the same attempt's read set.
+If the non-dimension keys of S are equal under E' then the dimension values are equal too, so
+validation over `S \ dimension` accepts exactly the same E' as validation over S. ∎
+Measured: 914/2153 union keys (42%) are dimension keys (`g01_support.json`).
+
+## L-G2 (decision-relevant projection) — used by `support='proj'`
+Read sites of the scan (`compact_core.certify` + `reference._Scan`):
+* dimension dict → only `state` (`wide`, `known`), plus validity test `_geometry_t(f)` and
+  `f[3],f[4]` vs identity (rotation, orientation) inside `dimension`; failure reason from failed analysis,
+  `'READ'` from a FAILED header state.
+* side/resolved → analysis status and `fact[5]` (side) only.
+* rank → status; computed value used only in `None` tests and `b < a`; failed → failures tuple.
+* public fields: status/unit/needs/failures/first/steps/dependent_items are built only from the values
+  above, the scan path (a function of them) and which keys were read (a function of them).
+Versions, widths/heights preserving validity and state, and numeric type tags (`1` vs `1.0`, both
+compared with `<` only) never reach a public field or a branch. Define `π` (`wpG_owner.project`)
+mapping each read to exactly the observed components. If `π(E'[k]) == π(E[k])` for all k in
+`S(E,t)\dimension`, every branch of both attempts takes the same direction under E' (induction over
+the deterministic read sequence: same reads ⇒ same projected answers ⇒ same next read), so
+`P(E',t) = P(E,t)`. NaN projections never compare equal ⇒ conservative invalidation. ∎
+Tests: differential vs `reference.certify_strategy` on 5 mixes × 2 seeds; int→float + version bump unobservable.
+
+## L-G3 (exact publication support after a projection hit)
+Under the hypothesis of L-G2, the recomputation under E' reads exactly the same key sequence, so
+`S(E',t)` has the same key set and `S(E',t)[k] = E'[k]`. Hence on a projection hit the owner
+refreshes `entry['exact'] := {k: E'[k]}` (dimension keys re-read), which equals a fresh
+recomputation's union support (test `test_projection_exact_refresh_equals_fresh_union_support`). ∎
+
+**Counterexample X20 / R_policy→R_publish leak (found and fixed this round).** `GSession` with a
+projection owner and `reissue=True` first recertified through the base `Session.certify`, which stores
+the memo `support` (the projection π-values) as certificate support. `_certificate_current` compares
+π-values with raw typed reads → every reissued certificate is stale at birth. Observed on held-out
+RPjump48 (6 seeds): publications valid at end 123 (= no reissue) instead of 165, wrong = 0 (safe, but
+the mechanism silently does nothing). Raw invalid run kept as
+`results/raw/wpG/d4_proj_reissue_INVALID_policy_support_leak.json`. Fix: certificates always use
+`entry['exact']` (L-G3); after fix 165/165, test `test_proj_reissue_uses_exact_support_not_projection`.
+General rule: a compressed policy support may decide memo reuse but must never be the publication support.
+
+## L-G4 (posrev barrier soundness) — `barrier='posrev'`
+Every support key's value is a function of the records at its positions: analysis/header/dimension(i)
+→ item i; rank(a,b) → edge record (a,b) and analysis(a), analysis(b). `apply` sets `posrev[i] := rev`
+for every changed item i and `posrev[a]` for every changed/removed edge (a,a+1); an entry stores the
+positions `{k[1]} ∪ {k[2] for rank keys}`. Identity, settings, generation/order_revision and binding
+changes are covered by the unchanged guard (memo cleared). If `posrev[p] ≤ stamp` for all stored p,
+no record read by any support key changed since the stamp, so typed validation would succeed;
+otherwise the incumbent typed validation runs. With `noop='none'` posrev is marked conservatively.
+At `revision == SAT` posrev is disabled (incumbent rule). ∎
+
+## G04 hazard (producer no-op hint)
+`noop='hint'` trusts the producer's `same` set. Counterexample (test `test_lying_noop_hint_returns_stale_verdict`):
+analysis changed to failed but hinted same → revision not bumped → stamp hit → stale verdict.
+Typed detection (incumbent) or `noop='none'` are the only producer-independent choices.
+
+## L-K1 (derive-before-evict, coupled raw witnesses)
+Frozen `Session.consume` inserts witness i, evicts LRU to capacity r, then derives ranks (i±1,i) from
+current residents (contrary to `NATIVE_OWNER.pseudo`, which derives then evicts: model infidelity).
+(a) **Livelock at r = 1.** After insertion |R| = 2 > 1, the LRU victim is the only other resident, so
+no pair is ever resident at derivation: no rank is ever derived by consume. A target whose certification
+needs a computed rank stays `need_facts` forever; an L0 policy re-acquires it indefinitely (observed:
+W06 11,967 admissions / 4 of 64 published at horizon; held-out W01 11,836 / 23 of 78).
+(b) **Step dominance.** With LRU, both orders evict the same victim (oldest of R∪{i}), so the
+retained set after a step is identical; derive-first derives from R∪{i} ⊇ evict(R∪{i}), so the ranks
+derived in the step are a superset. Admitted ranks are persistent scalars and reads are L0, so every
+verdict is still exact. Global dominance in admissions is *not* a theorem (later policy decisions can
+diverge); held-out evidence: 288 rows, derive never worse (`d4_k01_heldout.json`).
+(c) **Cost.** Derive-first holds r+1 raw witnesses transiently inside one atomic consume (`peak_raw`,
+test `test_derive_first_rebind_cancel_and_publication`). If the platform bound counts transient
+residency, derive@r must be compared with evict@(r+1); measured derive@r ≈ evict@(r+1).
+(d) **Dependency-closure eviction does not fix (a)** (X11 org. 2): protecting {i-1,i,i+1} inside the
+evict-first order still must evict one of two protected residents at r = 1 → same livelock (test).
+Dead-raw definition: a resident raw i is dead iff each existing adjacent rank is already computed;
+evicting it first cannot lose a derivation in the current evidence (changes of analysis invalidate raws).
+
+## G05/G06 (atomic reissue, certificate GC) safety
+Reissue publishes under a new handle only if a fresh L0 certification (exact support) returns
+`certified` with a unit typed-equal to the published one, in the same serial step; confirmation is
+dropped (FORMAL §4); otherwise the publication is revoked. Lazy organisation (X20 org. 2) does the same
+check at the next observation (`published`/`confirmed`/`publish`/`confirm` all call
+`_expire_publications` first), so every observed publication has a current certificate. GC deletes only
+certificates that are not referenced by a publication and are stale now. **Semantic difference
+(honest):** without GC a stale handle can become current again after an A→B→A evidence revert (support
+compare is by value); after GC it returns `unsigned`. Safety holds (never a stale success); liveness
+under ABA differs. Versioned worlds (monotone versions) cannot revert.
+
+## K04 (negative caches)
+A negative result cached by target only is wrong after recovery: 98/98 recovered cases wrong
+(`k04_negative.json`); the incumbent's union support already covers failed/unknown reads (0/98 wrong).
+A sound nogood must be validated over the same support — i.e. it is the incumbent memo.
+
+## K06 (adversary bound)
+For any deterministic online retention policy with k entries over k+1 equal-cost targets, requesting
+the target not resident misses every request, while Belady misses at most once per k requests ⇒ ratio
+≥ k. Generator realised for LRU; Belady misses 101/53/32 for k = 2/4/8 vs 100% for LRU
+(`k06_adversary.json`). Cost-aware retention can only beat this with an access commitment
+(e.g. a declared working set or skew bound).
+
+## M03 / X28 (paired faults)
+With one shared RNG stream, policy B's speculative tasks consume draws, so the common tasks see an
+independent sample: B "wins" on 108/300 seeds although it only adds work. Keyed draws
+`h(seed, task identity, attempt)` give the common tasks identical potential outcomes ⇒ exact 0
+difference (0/300). X28: screening 8 useless candidates, false-winner rate 0.82 (shared, no holdout),
+0.38 (shared + holdout), 0.00 with keyed draws, with or without holdout.
+
+## M01/M02 (identifiability)
+Physical admission counts are identical for q ∈ {0,1,2} u while intent latency is 6/8/12 u: latency
+is a function of the unobserved q/service-time ratio, so no count-only observation identifies the
+end-to-end gain (`m01_m02_identifiability.json`).

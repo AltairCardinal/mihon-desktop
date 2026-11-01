@@ -1,0 +1,18 @@
+--- production/ReaderPairingCertification.kt
++++ D/ReaderPairingCertification.kt
+@@ -359,9 +359,13 @@
+                 listOf(ReaderPairingScanCursor(first, true), ReaderPairingScanCursor(first, false))
+             } else {
+                 buildList {
+-                    for (opening in listOf(true, false)) {
++                    for (opening in if (first == 1) listOf(true) else listOf(true, false)) {
+                         add(ReaderPairingScanCursor(first, opening))
+-                        add(ReaderPairingScanCursor(first, opening, first))
++                        if (first > 1 && pages[first - 1] !in settings.forcedSinglePages &&
++                            pages[first] !in settings.forcedSinglePages
++                        ) {
++                            add(ReaderPairingScanCursor(first, opening, first))
++                        }
+                     }
+                     // The "(first + 1)" entry means "first was already paired away by
+                     // its left neighbour". A forced single page is a hard boundary:

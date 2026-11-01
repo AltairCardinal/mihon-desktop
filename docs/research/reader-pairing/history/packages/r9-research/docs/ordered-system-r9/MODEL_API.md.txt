@@ -1,0 +1,130 @@
+# Executable model API
+
+Python 3.10+; standard library only. Start with `smoke.py`, not the historical
+`benchmark.py`. The latter and `current_baseline.py` are preserved defect
+controls. A selected-only memo is **not an eligible incumbent**.
+
+## Frozen rule and current owner
+
+`reference.py` defines the deterministic scan and finite-entry certification.
+`compact_core.py` executes that same rule with immutable read fingerprints.
+Neither file has been edited. Their rules include directional slots, geometry
+and transform consistency, opening restrictions, alternating overlapping pins,
+forced isolation, side precedence, reserved successor state, strict rank ties,
+failure aggregation, and insertion-ordered needs. Computed rank `null` is known
+evidence. Missing rank and failed rank are separate states. A computed analysis
+whose **fact itself** is null is outside the usable scan domain; it is not the
+computed-null rank case. The frozen rule may raise on malformed inputs.
+
+`corrected_owner.Owner(case, config=Config())` is the eligible default owner.
+
+- `request(target)` returns exactly the selected 2/3-strategy public fields:
+  status, unit, needs, failures, first, steps, dependent_items. It does not merge
+  discarded-attempt needs or failures into public output. Its memo support is
+  the union of **all attempts actually executed**. This distinction is tested
+  on two real abstract counterexamples.
+- `apply(item_updates={ordinal: field_patch}, edge_updates={(a,b): record},
+  settings=field_patch, generation=..., order_revision=...)` is atomic. Supplied
+  nested values are copied into ownership. An edge value of `None` removes that
+  edge; `{'status':'computed','score':None}` records a known null rank. Item
+  patches merge fields, not nested subfields. Structural changes use `replace`.
+  Duplicate identities and invalid ordinals reject the complete batch. Swapping
+  two IDs in one batch is permitted. Owner input is trusted accepted evidence:
+  callers changing content must also supply appropriate replacement evidence.
+- `replace(case)` performs an explicit complete ownership boundary copy and
+  invalidates all memo entries, even for equal input. This conservative API is
+  not a substitute for measuring the delta path.
+- `snapshot()` returns an isolated complete copy, explicitly charged by slots;
+  do not call it for every local update and call the result incremental.
+- `locate(item_id, sequence)`, `close()`, `rebind(case)` implement location,
+  lifetime, and binding guards. Closed owners reject requests and writes.
+- `Config` controls memo use, change-stamp fast path, shared identity/edge
+  indexing, memo count, order size, and union-support key admission. Limits
+  bypass storage, never manufacture a certificate. Disabling memo still pays
+  real indexing, certification, support construction, and boundary work.
+
+Evidence revisions saturate at signed 63-bit maximum; fast stamp reuse then
+stops, and exact typed support comparison remains mandatory. Successful fallback
+validation refreshes the saved stamp. All identity/settings/order mutations
+change an opaque owner-issued identity ticket and clear memo entries, so a
+saturated identity counter cannot validate an old certificate. The ticket is a
+symbolic process identity, not a persisted finite-width native protocol.
+There is no arbitrary evidence refinement or scoped identity relaxation.
+Targets and delta ordinals are exact integers, excluding booleans.
+
+## Acquisition, physical work, admission, and publication
+
+`coupling.Session(case, capacity=3, raw_capacity=3, owner=None,
+scope='default', version=1)` starts with admitted partial evidence, never latent
+truth. Its owner is available for harness-level scalar-evidence tests. Candidate
+code must not mutate owner internals. Change content/order/settings or service
+recipe with `Session.rebind(...)` using an appropriate new partial case. Raw
+reuse additionally verifies content identity and the accepted analysis
+fingerprint; it cannot cross a replaced analysis or content version.
+
+`acquire(item, required=True)` returns an immutable `TaskKey` or `None` on full
+capacity. Physical identity includes a unique owner incarnation (even when two
+Sessions have the same owner label), scope, epoch, recipe version,
+content identity and transform. Requests sharing an in-flight physical identity
+share one task; required demand promotes optional demand. Every fresh issuance
+has a distinct sequence: a late duplicate finish from a consumed task cannot
+complete a later task with the same physical identity.
+
+`finish(token, Witness(...))` marks a physical completion; `consume(token)`
+separately admits evidence and releases its permit. Running cancellation is
+nonpreemptible: `cancel` marks it cancelling, and capacity stays occupied until
+its actual finish. Completed cancellation discards and releases it. Rebind
+cancels old work, rejects old-owner/version/epoch results, clears raw evidence
+and current publications, but does not release running physical permits early.
+
+`Witness(analysis, raw=None, available=True)` is one service extraction. A
+successful extraction supplies analysis and a reusable raw scalar witness.
+Each accepted witness can serve both adjacent channels if their raw endpoints
+are resident and current. The adapter's rank is `abs(left-right)`; a resident
+raw `None` yields a computed-null rank. `available=False` means no raw witness,
+and failed analysis remains failed. This adapter is a deliberately restricted
+service domain, not a replacement for the arbitrary independent scalar-rank
+extension in the frozen oracle. Persistent scalar ranks survive raw LRU
+eviction. A missing endpoint can require reacquisition even when its analysis
+is already admitted.
+
+`certify(target, mode='L0', budget=None)` returns a public verdict. A certified
+verdict includes an opaque certificate handle. L0 uses the corrected owner and
+union support. L1 is a **toy prefix-start attempt** over admitted evidence,
+using the frozen rule from the unique initial state. It demonstrates an adapter
+boundary and can certify more observations; it is not an implementation of a
+new strong summary algorithm. It does not access hidden completions. The budget
+is an acceptance limit on actual scan steps: refusal is `status='budget'` and
+does not issue a certificate; work already performed is still charged.
+
+`publish(target, handle)` requires an issued current certificate, matching
+target, target membership in the unit, exact support equality, global owner
+guard, and absence of incompatible overlap with another current unit. No caller
+can provide an unsigned replacement unit through this API. Publication is
+independent of other targets becoming ready. `confirm(target)` is separate and
+checks current certificate validity again. Stale publications and confirmations
+are removed from current public views and cannot block a new valid unit.
+
+## Harness-only latent data and time
+
+`World` belongs to the harness; `Controller` receives only a Session and mode.
+`observe()` contains admitted evidence only, including explicit unknowns.
+Finishing a task does not reveal evidence until consumption. This is an API
+noninterference contract, not a Python sandbox against a malicious controller.
+
+`run_trace(trace, mode='L0', service_units=1, capacity=3, raw_capacity=3)` compares
+the same exogenous target/prefetch/cancel/confirm/tick events with endogenous
+candidate requests. `fixtures/coupled-smoke.json` contains a separate harness
+`world` field; candidate logic never receives that field. The integer virtual
+clock does not sleep. Before an external event, due completions execute in
+`(due_time, admission_order)` order. Equal-time external events retain input
+order. Service duration must be positive. The bundled runner accepts one fixed
+duration per run; direct Session APIs cover rebind and finish/consume separation.
+Virtual time and operation counts are not elapsed native time.
+
+`smoke.py` performs fixed coupled traces at service units 1 and 3, compares L0/L1
+public output, exercises both C5 counterexamples on real owner deltas, performs
+240 seeded delta/oracle checks, and shows one additional L1 certificate. Public
+goal equality does not require identical needs, attempts, costs, or coverage.
+
+See `EXECUTABLE_LIMITS.md` before treating any passing result as adoption evidence.

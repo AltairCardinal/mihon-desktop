@@ -1,0 +1,63 @@
+# Executable model API
+
+Three layers have different authority:
+
+1. `reference.py` freezes the deterministic complete-plan rule and conservative finite-entry certificate. `complete_plan(case)` returns all units; `certify(case, target, lookbehind=2)` returns one partial verdict. `certify_strategy` retries window 3 only after `need_facts`, adopts only a certified retry, and keeps only the adopted attempt's evidence. The scan rule is normative for equivalence questions; its waiting policy is replaceable.
+2. `current_baseline.py` is a small serial virtual host, not an instruction-for-instruction implementation of another runtime. It uses the frozen rule through `compact_core.py` or the reference. It models selected reuse boundaries and counts their work.
+3. `protocol.py` is a corrected and extended synthetic task/publication state machine, not an unchanged frozen artifact. It is not integrated with `Host`, does not acquire facts, and cannot establish end-to-end correctness or performance.
+
+## Case schema
+
+All ordinals are zero-based. `items` is an ordered list of unique `id` values. Each item has `content_version` (default 0), `rotation` (default 0), `orientation` (default 1), optional `header`, and `analysis`.
+
+A fact has `state` (`NARROW`, `WIDE`, `UNKNOWN`, or `FAILED`), `width`, `height`, `rotation`, `orientation`, and `side` (`A`, `B`, or `UNKNOWN`). Width/height/rotation validation follows the reference. An analysis is exactly one of `{status: unknown}`, `{status: computed, fact: ..., version: ...}`, or `{status: failed, reason: ...}`. Unknown, computed null rank, and failure remain distinct. Do not attach extra semantic fields to these records: compact tuples intentionally preserve only schema fields.
+
+`edges` contains `{first, second, status, score?, version?, failures?}`; only adjacent computed endpoints expose rank evidence. An explicit computed `score: null` differs from missing rank evidence. Scalar ranks are an abstract extension domain; independent arbitrary ranks are not asserted physically realizable. Use finite JSON numbers. Nonfinite numbers are outside the portable harness input contract.
+
+Global fields are `generation`, `order_revision`, optional `closed`, and `settings`. Settings include `direction` (`AB` or `BA`), `automatic`, `hard_isolates`, `pinned_links`, `opening` (`AUTO`, `PAIR`, or `SINGLE`), and `revision`. Normalization and defaults are frozen in the reference. A unit contains ordered `slots` (`item`, `slot`), `certain`, and `reason`. Partial verdicts include `status`, `unit`, `needs`, `failures`, `first`, `steps`, and `dependent_items`; reference verdicts additionally contain typed `reads`. Compact verdicts carry internal immutable tuple fingerprints instead.
+
+## Host API and controls
+
+```python
+from current_baseline import Host, Config
+host = Host(case, config=Config.current())
+result = host.request(target)
+host.replace(next_case)
+host.locate(item_id, sequence)
+host.close()
+host.rebind(case)
+```
+
+`request` returns the public verdict fields, excludes internal proof representation, and owns its returned copy. `replace` owns a deep snapshot. Callers cannot mutate stored evidence through the original input or `snapshot()` output. `locate` changes a global memo guard. Closed hosts reject requests until `rebind`; rebinding clears memo/index resources and advances an owner binding token. The host is serial and not thread safe.
+
+| Explicit profile | Shared structural index | Compact typed proof | Global change stamps | Bounded cross-target memo |
+|---|---|---|---|---|
+| `Config.current()` | true | true | true | true, capacity 4 |
+| `Config.strict()` | false | false | false | true, capacity 4 |
+| `Config.cold()` | false | false | false | false |
+
+There is no implicit default `Host` configuration. `dataclasses.replace(Config.current(), change_stamps=False)` changes one control explicitly. The other controls remain exactly as stated; run single-control ablations separately from the three profiles. Branching and refinement are absent. Scoped identity relaxation is absent.
+
+All memo paths first check full ordered identity, normalized settings, binding and location. Stamp hits require the same binding and unsaturated global evidence revision. Every changed owned snapshot advances that conservative revision, including removals, failures and header-only mutations. At saturation, exact validation remains enabled and stamp hits are disabled. After stamp mismatch, every recorded typed value must match; no unknown-to-known refinement exception applies. Unrelated evidence changes can therefore fall through exact validation and preserve an entry. Relevant changes recompute. Identity changes anywhere invalidate globally. No-op replacement does not advance revision.
+
+The shared index holds only immutable item identities and ordinals. Every request gets a fresh dynamic evidence view. The host never retains dynamic analysis/header/rank caches in the shared structure. Index building, snapshot update slots, exact reads, scanning including rejected retries, storage and eviction are counted separately. Entries are bounded by target count, order length and read-key count. Oversized cases compute normally and bypass memo storage; limits do not truncate the proof. Replacing an entry moves it to the newest insertion position; hits do not reorder the insertion queue.
+
+## Deliberate simplifications
+
+- Whole-case snapshot copying and whole-case equality during `replace` substitute for incremental owner methods. Their time is counted, but is not a native update estimate.
+- Structural identities are dictionaries/tuples; compact proofs use Python objects. Allocation and lookup costs do not predict another language's representation.
+- Binding and one integer revision conservatively stand in for distinct evidence/header revisions and immutable owner identity references. Its hit rate may differ from another runtime; no universal higher or lower relation is guaranteed.
+- Location is an explicit caller-supplied `(item_id, sequence)` guard. No navigation, persistence, observation confirmation, or permission-bearing token lifecycle is implemented.
+- Facts/ranks arrive already formed. There is no extraction, acquisition, derivation, external service, background scheduler, lock, physical resource, or queue implementation in `Host`.
+- `close`/`rebind` clear the virtual host's memo/index state. Nonpreemptible task exit and completed-but-unconsumed capacity are modeled separately in the protocol simulator; clearing a host is not proof that real work has exited.
+- The complete plan is a distinct full-input oracle path, but shares the frozen scan rule with certification. Small-domain comparison validates partial-vs-complete agreement; it is not an independent proof of the scan rule itself.
+- `fixtures/host-projections.json` has 14 exported cases and 22 projections: status, slots, certainty and selected failure fields; eight include complete-plan projections. No reason, needs, read-set, memo, stamp, update or binding equivalence is established by this bridge. Provenance is deliberately excluded from this anonymous package.
+- Mutant tests demonstrate detection of stale stamp bypass and removed optimization work. Protocol negatives cover completed/unconsumed capacity, cancellation before exit, old completion, same-target replacement, cross-target overlap and identity rollback. These are bounded counterexamples, not exhaustive scheduling proofs.
+
+## Protocol boundary
+
+`run_event_trace({capacity, version, events})` consumes serial `request`, `cancel`, `finish`, `consume`, `version`, and `publish` events. Task identity is `(version,key)`; optional-to-required promotion reuses the admitted task. The environment must issue a trusted nonrepeating incarnation or strictly increasing epoch. Versions here are monotone integers; rollback is rejected by the simulator. Incarnation reuse is forbidden by the environmental precondition; the simulator cannot detect new content relabeled with the current epoch, because an equal version event returns unchanged. This does not make arbitrary externally reused version numbers safe. Running cancelled/stale tasks keep capacity until finish. Completed unconsumed tasks also keep capacity. A completed task is not an accepted fact, and `consume` is not a user confirmation. Publication requires same-target consistency and consistency of all overlapping units in the current version. Disjoint units are independent. Earlier synthetic same-target-only publication admitted cross-target overlapping replacements; this model retains the same-target guard and additionally rejects conflicting overlaps. An overlap-only replacement would itself admit disjoint replacement of one target; a regression test rejects that counterexample too. This simulator checks no certificate or publication entitlement; research extending those properties must supply the missing coupling.
+
+## Measurements and missing data
+
+`trace_generator.generate` freezes external events before any profile executes. `failure_for(seed, identity, attempt)` is a keyed synthetic failure function, independent of call order. This is a reproducibility device, not a measured failure law. All profiles replay one trace and report identical trace and verdict hashes. Host elapsed time includes construction, updates, validation, recomputation, close and rebind. Allocation is measured on a separate replay using `tracemalloc`; counters are work quantities, not time conversions. There are no service-time sleeps in this harness. The service profile has explicit `null` and `missing` fields. Real acquisition/derivation/queue/end-to-end costs cannot be inferred from these results; they require external measurements or explicitly parameterized analysis.

@@ -1,0 +1,2 @@
+# Byte-preserved historical measurement protocol, not an executable instruction.
+*.txt -text whitespace=-blank-at-eol,-blank-at-eof,space-before-tab,cr-at-eol

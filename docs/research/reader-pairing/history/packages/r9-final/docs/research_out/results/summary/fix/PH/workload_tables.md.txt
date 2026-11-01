@@ -1,0 +1,46 @@
+| 类 | 生成器 | 产物 | 最小实例：对手性质（针对机制） | 成立 | 关键数值 | 主要压测对象 | R9 已有证据 |
+|---|---|---|---|---|---|---|---|
+| W01 | `w01_phase_flip_chain (+workloads.w01_phase_chain)` | session_trace | one rank edit (edge 1) changes the unit of a far item（any fixed-radius exact rule / local certifier） | 是 | {"farthest_changed": 9, "n": 12} | fixed-radius rules (N06), tree increments, resync worst O(n), first tree build; strong tree vs L0 | results/raw/wpB/studies.json#N06_relaxations; results/raw/wpC/O02.json; results/raw/wpT/t05.json (W01 rows) |
+| W02 | `w02_sparse_islands (= workloads.w02_islands)` | session_trace | fully known island target ambiguous because the bridge is unknown（interval summary with assumed entry (O05/B01)） | 是 | {"seed": 0, "target": 11, "island": [9, 10, 11, 12]} | interval summaries/independent entry assumption (O05/B01), joint realisability | tests/test_core_strong.py (W02 family); results/raw/wpB/coupled.json |
+| W03 | `w03_long_unqueried_updates` | owner_stream | long unqueried update run overflows the log (forced full drop) yet stays exact（bounded dirty log (C02-A)） | 是 | {"overflow_drops": 12, "exact": true} | dirty-log growth/overflow (C02), lazy peak, first-result delay | results/raw/wpC/C02.json |
+| W04 | `w04_query_mode_switch` | owner_stream | mode switch + front flips force at least one promotion (tree build)（resync/tree hybrid promote/demote (C03)） | 是 | {"promotions": 1, "demotions": 0, "wrong": 0} | hybrid promote/demote chasing (C03/X06/P01), cache pollution | results/raw/wpC/C03.json; results/raw/wpC/X06.json; results/raw/wpC/P01.json |
+| W05 | `w05_resident_missing_derivation (= workloads.w05_raw_eviction)` | session_trace | at raw capacity 1 two adjacent admitted witnesses never derive their rank（package Session.consume (evict-before-derive, K01)） | 是 | {"rank_computations_by_capacity": {"1": 0, "2": 1}} | derive-first vs evict-first (K01), L1 extra certificates, gate_rank_only | results/raw/wpG/k01_coupled.json; results/raw/wpG/d4_k01_heldout.json; results/raw/wpA/grid_*.jsonl |
+| W06 | `w06_complete_analysis_insufficient (= workloads.w06)` | session_trace | all analyses known, some targets still ambiguous; strong never certifies wrong（strong certification (no mis-certification)） | 是 | {"ambiguous_targets": [1, 2, 3, 4, 5, 6, 7], "wrong": 0} | strong proof must not mis-certify; T05 residual gain | tests/test_core_strong.py; results/raw/wpT/t05.json |
+| W07 | `w07_simultaneous_completion_invalidation` | session_trace | no stale publish/confirm over all same-instant orders（Session publish/confirm linearisation (A04/H01)） | 是 | {"orders": 120, "violations": 0} | linearisation, first-legal-wins, double publish, confirm revival (A04/H01/H04) | results/raw/wpA/a04_interleavings.json; results/raw/wpH/commit.json |
+| W08 | `w08_cancel_without_exit` | session_trace | cancel does not free the slot until the physical finish（capacity ledger (nonpreemptible cancel)） | 是 | {"cancel": "cancelling", "refused_while_cancelling": true, "finish": "discarded", "admitted_after_exit": true} | capacity ledger, reserved slots, duplicate starts (I02/J02) | results/raw/wpH/sched.json (I02); tests/test_wpH.py |
+| W09 | `w09_high_fanout_bottleneck` | session_trace | six consumers of the slow witness share one admission; first result waits for it（shared physical task (I03)） | 是 | {"admissions": 1, "slow_service_u": 10} | sharing vs bounded bypass (I03/X16), first-result delay | results/raw/wpH/sched.json#I03 |
+| W10 | `w10_correlated_churn` | session_trace | a change before the service finishes discards its completion（stale completion rejection under churn (J04)） | 是 | {"finish": "discarded", "occupied": 0} | debounce, stale completions, progress under unrelated change (J04/X25) | results/raw/wpH/extra.json; results/raw/wpH/combos.json |
+| W11 | `w11_overload_fairness` | sim_stream | at load rho >= 1 optional work is starved for the whole horizon（required-first admission at capacity 1） | 是 | {"rho": 1.0, "optional_served": 0, "horizon": 120} | required-first starvation, credits (I01/J06/X23) | results/raw/wpH/sched.json; results/raw/wpH/extra.json#J06_sim |
+| W12 | `w12_numeric_edges` | case_set | a one-ulp change flips a later_wins decision; +0/-0 equal; NaN rejected at the JSON boundary（binary64 representatives / JSON contract (D02/D06)） | 是 | {"ulp_flip": true, "signed_zero_equal": true, "nan_rejected": true} | binary64 representatives, JSON contract, domain switch (D02/D03/D06) | results/raw/wpB/domains_brute.json; results/raw/wpB/studies.json |
+| W13 | `w13_identity_aba` | session_trace | after A->B->A the old certificate is not revived（authority across incarnations (H05/R05)） | 是 | {"first": "certified", "publish_old": "unsigned"} | value reuse vs authority (H05/X22/R05/X29), saturation | results/raw/wpH/commit.json#H05; results/raw/wpH/robust.json |
+| W14 | `w14_failure_families` | session_trace | a failed analysis yields blocked (not need_facts); available=False admits analysis without raw（failure contract (blocked vs need_facts; no raw witness)） | 是 | {"failed_status": "blocked", "no_raw_resident": true} | failure contract, negative caches (K04/X25), blocked vs need_facts | results/raw/wpG/k04_negative.json; results/raw/wpH/combos.json#X25 |
+| W15 | `w15_space_skew` | owner_stream | one expensive long support vs many cheap small ones: max support / median cheap support >= 5（equal-space retention / size estimators (K02)） | 是 | {"max_support": 173, "median_cheap_support": 10.5, "ratio": 16.48, "requests": 60} | equal-space eviction, size estimators (K02/K03/X26) | results/raw/wpG/k02_k03_retention.json; results/raw/wpG/combo_x26.json |
+| W16 | `w16_witness_coincidence` | witness_set | with raw extent 1 only ranks {0,1} are realisable, so a strictly decreasing rank triple (an ext-domain world) is not physical（extension domain vs service domain (E02/X10)） | 是 | {"realised_ranks": [0, 1]} | extension-domain worlds not physically realisable (E02/E03/X10) | results/raw/wpB/studies.json (E02/E03) |
+| W17 | `w17_observer_perturbation` | config_matrix | extra wakeups change logical certification counters but not outputs or physical work（logical counters vs physical events (M06)） | 是 | {"certification_calls": [21, 36], "physical": [5, 5]} | counter oracles vs physical events (M06/L06) | results/raw/wpG/m06_counter_oracle.json; results/raw/wpG/l06_instrument.json |
+| W18 | `w18_composite (new; no R9 evidence)` | session_trace | reducible small composite trace runs with wrong=0; extended ops listed for the LC harness（composite lifecycle (ShadowRunner / ARunner core ops)） | 是 | {"runs": {"incumbent": {"wrong": 0, "published": 11, "intents": 11, "livelock": false, "admissions": 41, "rebinds": 6}, "gated_shadow": {"wrong": 0, "publish... | all lifecycle mechanisms under combined pressure (LC D4 harness, ShadowRunner, coupled_runner) | none in R9 (new in fix round) |
+
+全部生成器确定性（同种子两次指纹相同）：True；全部最小实例成立：True；留出种子守卫（<10^6 拒绝）：enforced。
+
+| 种子 | 策略 | raw 容量 | 结果 | wrong | 发布/意图 | 活锁 | 物理接纳 | rebind | 结束 u | 本机 s |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 0 | incumbent | 1 | cap_hit | — | — | — | — | — | — | ≥280 |
+| 0 | incumbent | 3 | 完成 | 0 | 142/142 | False | 141 | 30 | 2997 | 77.7 |
+| 0 | gated_shadow | 1 | cap_hit | — | — | — | — | — | — | ≥280 |
+| 0 | gated_shadow | 3 | 完成 | 0 | 142/142 | False | 141 | 30 | 2997 | 86.4 |
+| 1 | incumbent | 1 | cap_hit | — | — | — | — | — | — | ≥280 |
+| 1 | incumbent | 3 | 完成 | 0 | 157/157 | False | 145 | 30 | 2997 | 177.4 |
+| 1 | gated_shadow | 1 | cap_hit | — | — | — | — | — | — | ≥280 |
+| 1 | gated_shadow | 3 | 完成 | 0 | 157/157 | False | 145 | 30 | 2997 | 153.6 |
+
+development seeds 0,1; n=192, horizon 3000 (300 targets, 411 core events + 11 extended); max_steps 150000 => livelock flag; 280 s process cap => cap_hit row
+
+W18 可约简小例（种子 0–5，n=24，horizon 400；步数上限 raw 容量 3 为 6000、容量 1 为 500）：
+
+| 配置 | 运行 | wrong | 活锁 | 发布/意图 | 物理接纳 |
+|---|---|---|---|---|---|
+| incumbent_rc1 | 6 | 0 | 6 | 29/121 | 2682 |
+| incumbent_rc3 | 6 | 0 | 0 | 121/121 | 233 |
+| gated_shadow_rc1 | 6 | 0 | 6 | 34/121 | 2560 |
+| gated_shadow_rc3 | 6 | 0 | 0 | 121/121 | 233 |
+
+核心 runner 显式丢弃的扩展事件：{'late_fail': 1, 'settings': 1, 'close_rebind': 1, 'confirm': 4, 'cancel': 4}

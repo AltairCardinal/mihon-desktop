@@ -1,0 +1,6 @@
+# Preserve old source/report bytes and unified diff syntax.
+* -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+*.txt whitespace=blank-at-eol,-blank-at-eof,space-before-tab,cr-at-eol
+*.patch whitespace=-blank-at-eol,-blank-at-eof,space-before-tab,cr-at-eol
+# Read-only current-main comparisons are also unified diffs.
+*.diff.txt whitespace=-blank-at-eol,-blank-at-eof,space-before-tab,cr-at-eol

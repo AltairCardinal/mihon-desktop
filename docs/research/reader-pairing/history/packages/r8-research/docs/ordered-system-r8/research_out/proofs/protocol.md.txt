@@ -1,0 +1,175 @@
+# Protocol / identity family — definitions, lemmas, counterexamples
+
+Layer: `protocol` (synthetic state machine `candidates/protocol2.py`), `simulated` (unit-less event simulator
+`candidates/proto_sim.py`, time unit `u`, uncalibrated), `core` where real units come from `reference.py`.
+Raw records: `results/protocol/{checker,sim,identity,publication}.json` (regenerate:
+`python3 research_out/candidates/proto_experiments.py`). Nothing here is a native-runtime claim.
+
+## 0. Model
+
+Events (N17 separation): `request` (consumer attaches, optional/required) · `cancel` (one consumer detaches;
+cancel *intent* only when no consumer remains) · `finish` (completion notice) · `exit` (physical worker gone) ·
+`consume` (fact admitted; not a confirmation) · `certify` (certificate for the current full context) ·
+`publish` (entitlement) · `confirm` (only source of confirmation history) · `replace` (new full input).
+
+Slot rule (H7): an instance holds a slot from admission until `exit ∧ (consumed ∨ discarded)`.
+Identity sources: `epoch` = caller label (protocol.py precondition), `ticket` = owner-issued incarnation
+incremented by the model on every content change, `content` = exact content value.
+
+`compat=True` reproduces frozen `protocol.py` outcome-for-outcome: 20 000 + 3 000 random traces, 0 mismatches
+(`tests/test_protocol2.py::CompatDifferential`).
+
+The checker (`candidates/proto_check.py`) explores all interleavings of a 25-event alphabet (keys a,b; consumers
+c1,c2; contents X,Y; targets 0..2; true plans `PLAN[X]`, `PLAN[Y]`) breadth-first, so every reported violation
+is a shortest trace (minimal in event count; physical events are only enabled on existing instances, so every
+trace is environment-legal). Its monitor never reads model internals: physical occupancy, consumers, truth
+content and the true unit are rebuilt from events and reported outcomes.
+
+## 1. Invariants checked exhaustively (bounded)
+
+Unmutated `ticket` model, capacity 1 to depth 7 (4 806 states) and capacity 2 to depth 6 (14 902 states), and
+`content` model (value-identity monitor) cap 1/depth 7, cap 2/depth 6: **no violation** of
+H5 (no stale fact admitted), H6 (no duplicate live instance), H7 (physical occupancy ≤ C), H8 (a ready current
+result is admitted on request, no batch barrier), H9 (confirmation history = explicit confirm events),
+H10 (no stale publication visible after a real change), H2 (no same-target / cross-target replacement),
+H1/H5 for published units (published unit = true unit of the current input), D5 (no consumer loses work
+because another consumer cancelled). Bounded exhaustive ≠ proof for unbounded traces; the lemmas below are.
+
+## 2. Mutants → minimal counterexamples (checker, `results/protocol/checker.json`)
+
+| mutant / variant | first violation | shortest trace |
+|---|---|---|
+| `cancel_releases` (adversarial #9) | H7 | request a · cancel a · request b |
+| `finish_releases` (completion ≠ resource return, N17) | H7 | request a · finish · request b |
+| `dup_on_promote` (H6) | H6 | request a (optional) · request a (required) [cap 2] |
+| `cancel_kills_all` (D5) | D5 | request a c1 · cancel a c2 (2 events) |
+| `accept_stale` (#4) | H5 | request a · replace Y · finish · consume |
+| epoch mode, caller reuses label (N12, #4) | H5 | request a · finish · replace(Y, same label) · consume |
+| `stale_cert` (#3: incarnation guard missing) | H1/H5 | request a · finish · consume · certify 0 · replace Y · publish 0 |
+| `publish_confirms` (#11) | H9 | request a · finish · consume · certify 0 · publish 0 |
+| `barrier` (H8) | H8 | request a · request b · finish a · consume a [cap 2] |
+| local-start certifier (#5 seen at protocol layer) | H1/H5 | request b · finish · consume · certify 2 · publish 2 |
+| eager (unsound) certifier, full guards, stability-only monitor | none | — (wrong-but-stable) |
+| eager certifier + `publish_same_target_only` (#10) | H2 cross | request b · finish · consume · certify 1 · publish 1 · certify 2 · publish 2 |
+| eager certifier + `publish_overlap_only` (#10) | none (see L-P1) | — |
+| `no_revive` (protocol.py behaviour) | none | not a safety defect; costs work (D5 §8) |
+
+Every trace also replays cleanly on the unmutated model (`test_every_safety_mutant_is_killed`).
+
+## 3. Lemma L-P1 (well-formed units make the overlap guard sufficient)
+
+If every published unit contains its own target, then "cross-target equal-or-disjoint" implies same-target
+stability. *Proof.* Two different units u ≠ u′ for target t both contain t, hence overlap and are unequal, so the
+cross-target check rejects u′. ∎
+Without well-formedness the implication fails: N11 trace `publish(2,[2,3]); publish(2,[4,5])` is accepted by an
+overlap-only guard and rejected by member+overlap (`g5.n11_*`). This is why `publish_overlap_only` is never
+caught by the checker (all certifier units are well-formed) — the guard pair is redundant only *given* the
+membership invariant, so the membership check must stay (it is O(1)).
+
+## 4. Lemma A6-1 (local certificates compose)
+
+Let K be knowledge of one full context (one incarnation, same settings), Ω(K) ≠ ∅, and let every certificate be
+sound for the same domain assumption: ∀X∈Ω(K): π_t Γ(X) = u_t. Then t ∈ u_t and for all s, t either u_s = u_t or
+members(u_s) ∩ members(u_t) = ∅. *Proof.* Fix X∈Ω(K). Γ(X) is a partition of the items; u_s and u_t are the
+blocks of the same partition containing s and t. ∎
+Corollary (refinement): for K ⊆ K′ inside one incarnation with Ω(K′) ≠ ∅, Ω(K′) ⊆ Ω(K), so certificates issued at
+K and at K′ also compose; a published unit can never be contradicted by a later sound certificate (H2 without
+locking guesses).
+Corollary (guard role): with sound certificates the entitlement guard never fires; a guard conflict is evidence of
+an unsound certificate or a context mismatch, never a normal event.
+
+Shared conditions that are actually needed (each shown necessary):
+1. same full context — after a real change Ω changes (stale_cert counterexample);
+2. the *same domain assumption* — under β (header not authoritative) frozen `reference.certify` is unsound:
+   486 unsound target comparisons in 89 / 240 random cases over 1 920 sampled β completions, 0 under α;
+3. sound certifiers — the local-start certifier produced pairwise-inconsistent certificates in 28 / 240 cases;
+   the guard then makes the published set depend on publish order in 27 cases (10 254 of 10 974 enumerated
+   orders hit a rejection): **a guard gives stability, not correctness** (first-come-wins = H1 violation).
+Not needed: same certifier implementation, same read sets, same lookbehind.
+Evidence: 240 cases / 765 certified units, 0 pairwise violations, 0 unsound α comparisons; 120 refinement
+sequences (1 234 knowledge steps, 5 968 publications), 0 conflicts, 0 differences from the final plan, 0 cases of
+"certified then need_facts" for the same target. (Sampled worlds = evidence; the lemma is the proof.)
+
+## 5. Identity (G1, C3, X8)
+
+* L-G1 (owner tickets). If the incarnation is issued by the owner, strictly increases on every content change
+  and is never reused, then an instance started before the last change carries a smaller number and is rejected
+  at finish/consume; certificates are cleared or rejected by number. Hence no stale fact or publication. ∎
+* Epoch labels need the caller precondition; violating it gives the 4-event H5 trace above.
+* Finite counters: a 1-bit wrapping counter lets knowledge recorded under the reused number certify and publish
+  a wrong unit (`identity.wrap3/ticket_1bit_wrap`: safe=false). Saturating at the maximum and falling back to
+  exact content comparison is safe (`ticket_1bit_saturate`).
+* Value (content) identity is safe only with exact comparison: a lossy hash accepted a stale completion and a
+  stale publication (`content_lossy_hash`: safe=false in `relabel` and `wrap3`). Hash = index, never proof.
+* Value identity makes A→B→A work reusable (`aba_inflight/content_exact`: completion accepted, correct; ticket
+  modes discard it and need one extra start) **but** confirmation/entitlement must stay per incarnation: after
+  X→Y→X the content-keyed confirmation counts as current (1) while the ticket model reports 0. X8 conclusion:
+  key facts by value, key entitlements and confirmations by incarnation.
+* Typed contract: plain tuple equality says content_version 0 == 0.0 while `typed()` separates them; a cheaper
+  identity key must keep the type tag (`identity.type_conflation`).
+
+## 6. Capacity, cancellation, admission (G2, G3, X3, D4)
+
+* L-G2 (slot rule) is the H7 invariant above; its two plausible simplifications are refuted by 3-event traces.
+* T-G2a (no unconditional bound). Nonpreemptible tasks, unknown service times, capacity C: for any policy that
+  starts speculative work while all C slots would otherwise be idle there is an input where a required request
+  waits ≥ S for any S (adversary gives the started speculative task service S). Cancellation cannot help:
+  the slot is held until exit. Simulated: second-request latency 2.5 / 11.5 / 101.5 / 1001.5 u for S = 1 / 10 /
+  100 / 1000 u; with cancel-all the cancelled instance still occupies ≈ S (cancel_occupancy 0.5 / 9.5 / 99.5 /
+  999.5 u).
+* T-G2b (conditional bounds). (i) If r ≥ 1 slots are reserved for required work, required work never waits for
+  speculative work (latency 2.0 u for every S); this forbids speculation when C = 1. (ii) If speculative tasks are
+  admitted only when their service time is known to be ≤ B, the extra foreground delay is ≤ B per occupied slot
+  (B = 10: 11.5 u at S = 10, 2.0 u at S ≥ 100). Both preconditions are assumptions, not package data.
+* T-G3 (fairness). With required utilisation ρ ≥ 1 no policy can both give required work strict priority and bound
+  optional waiting (work conservation). Simulated C = 1: strict priority optional wait 103 → 403 u (ρ = 1) and
+  127 → 503 u (ρ = 1.25) when the horizon grows 100 → 400 u; aging (20 u) keeps it at 25 / 29 u for both horizons,
+  paying required p95 2 → 7 u. For ρ = 0.9 strict priority is bounded (41 u) – conditional on bounded service.
+* D4: a whole-batch barrier makes the first result wait for the slowest batch member (104.5 u vs 2.5 u with one
+  100 u item); dynamic batches with per-item admission keep batching's shared setup (work 56 → 26 u at setup 5 u)
+  and per-item first-result latency (7 u). Closing a batch after a slow item (τ) did not help here (work 130 vs
+  125 u).
+
+## 7. Progress under churn (G4)
+
+* T-G4a (impossibility). If an identity needed by a request changes with period < S forever (S = its service
+  time), no policy produces a result that is current at completion. Simulated (S = 3 u, period 2 u, relevant):
+  every policy completes only after the last update (≥ 29 u + S).
+* T-G4b (conditional progress). If after time T no relevant identity changes, per-identity invalidation completes
+  by T + S + (debounce) + queueing. Irrelevant churn: fine-grained 6 u, global invalidation 36 u (wasted 0 vs
+  30 u). Debounce cuts wasted work under frequent relevant churn (27 → 3 u) but costs latency when the period
+  exceeds S (9 → 33 u): no dominant setting.
+
+## 8. Promotion / revive (D5)
+
+Re-requesting a cancelling instance of the *same incarnation*: revive (re-attach) vs restart-after-exit vs
+duplicate start. Designed case (C = 3, service 10 u): starts 5 / 6 / 6, p95 10 / 17 / 17 u, wasted 0 / 10 / 10 u,
+cancel occupancy 0 / 9 / 9 u; mixed zigzag workload (C = 2): busy 61 / 91 / 91 u, wasted 2 / 32 / 32 u.
+Revive across a real version change is forbidden (identity mismatch) — enforced by protocol2 `_find`.
+
+## 9. Incremental retention × entitlement (X7)
+
+* Counterexample to radius-based revocation: all-NARROW, automatic off, n items, item 1 becomes WIDE ⇒ n/2 units
+  change, farthest at distance n−2 (n = 16/32/64/128 ⇒ 8/16/32/64 changed units, farthest 14/30/62/126). No
+  revocation radius is sufficient (N02 at the entitlement layer).
+* Random single changes (400): 5.2 % of units change, max distance 12; radius revocation keeps wrong units
+  (r = 1/2/4/8: 44/11/6/2). Exact complete-plan diff keeps 94.8 % of entitlements but needs complete
+  information; with 25 % unknown analyses only 64 % of the units kept by the diff are immediately re-certifiable
+  by `reference.certify` under the new version (36 % need facts). Retained entitlements therefore have to be
+  re-issued from new-version certificates; the diff is a candidate list, not a proof.
+
+## 10. Combination X12 (certificate coupling × per-completion admission)
+
+Bounded search, unrelated slow task b never finishes:
+
+| group | publish target 0 without b | wrong publication reachable |
+|---|---|---|
+| baseline: no certificate + barrier | yes (by guessing, 1 event) | yes |
+| A: certificate coupling + barrier | no | no |
+| B: no certificate + per-completion | yes (guess) | yes |
+| A+B | yes (4 events) | no |
+| A+B with coarse certificate (support = all keys) | no | no |
+
+Reinforcing: only A+B is both safe and live. Conflict: coarse certificates re-introduce the barrier. Necessary
+condition for liveness: the certificate support of t excludes the slow task; if it does not, no policy can publish
+t safely earlier (the missing fact is needed).

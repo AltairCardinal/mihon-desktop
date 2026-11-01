@@ -1,0 +1,74 @@
+# What the executable does and does not establish
+
+The package has an actual connected abstract path: candidate demand → shared
+physical task → finish → consume → admitted analysis and raw witness → adjacent
+scalar channels → finite-entry certification → guarded publication → separate
+confirmation. Passing a standalone protocol trace is not evidence for this
+connected path. Neither path proves any particular native implementation.
+
+## Deliberate limits
+
+1. The service adapter uses scalar absolute distance or null. It does not model
+   physical acquisition, decoding, extraction, I/O, native buffers, or the
+   optimized operator. Arbitrary independent rank fixtures are oracle-domain
+   cases, not claims of physical realizability by this scalar service adapter.
+   Service completion accepts computed/failed analysis; ranks are derived,
+   rather than separate service jobs with an independent failure distribution.
+2. L1 is a prefix-start toy using the frozen scan. No strong partial summary,
+   compositional relation, universal-completion engine, persistent transition
+   tree, or native strong-certification wiring has been ported here. The extra
+   prefix certificate demonstrates API feasibility, not a speedup or complete
+   proof over the generative domain. L0 remains the corrected strong incumbent
+   for the supplied 2/3 strategy; stronger research candidates need new proofs.
+3. Raw LRU entries, occupied tasks and owner memo are bounded. Certificate
+   handles, publications, confirmations, input order, and the harness event log
+   have no global byte budget in this model. Certificate admission's scan budget
+   is checked after work, not an interruptible CPU deadline. No total bounded
+   memory or hard latency guarantee follows. Counter widths and opaque identity
+   tickets are symbolic Python mechanisms; a finite native lifecycle protocol
+   must prove wrap/saturation behavior independently.
+4. The runner has a uniform, positive integer service duration per profile and
+   serial event order. It does not model multicore races, operating-system
+   scheduling, asynchronous lock behavior, fairness, backpressure beyond task
+   capacity, service-tail distributions, or adaptive time estimation. Direct
+   Session tests cover rebind and nonpreemptible cancellation; the bundled trace
+   runner does not expose all direct methods as external event types.
+5. Candidate code is trusted to use the documented API. The controller receives
+   no World, and tests verify observation isolation before consumption. Python
+   introspection, direct field mutation, or reading the harness fixture bypasses
+   that convention; this is not adversarial process isolation. `Session.owner`
+   allows test-harness scalar updates; content/order/settings/recipe changes
+   must use Session.rebind with an appropriate new partial case. Owner itself
+   trusts supplied accepted records; it does not infer freshness of records
+   supplied together with a new content identity. Transform/source validation
+   remains a producer obligation.
+6. Output copies are isolated. Owner delta copies changed records, not the
+   entire order; complete replace/snapshot are explicit O(n) boundaries. Edge
+   deletion rebuilds a list and is charged by visited slots. Normal request
+   paths use lazy compact views. Counts expose scan work, support creation,
+   typed validations, physical admission/finish, raw retention and publications,
+   but are **not exhaustive allocation or CPU accounting**. In particular,
+   settings normalization, task-key comparison, observation copies, Python GC,
+   certificate retention, and some object construction are not a calibrated
+   cost model. Native measurement tables and virtual units stay separate.
+7. Publication validates certificate support and target membership, and rejects
+   incompatible current overlaps; it does not implement an external atomic
+   display transaction, durable confirmation store, crash recovery, or a global
+   plan reconciliation protocol. Reading current public state can expire stale
+   entries and incurs validation work. Historical publication event logs are
+   historical observations, not current certifications.
+8. The frozen oracle retains its extension-domain validation behavior. This
+   adapter does not redefine nonfinite numbers, malformed failures, type aliases,
+   or inconsistent transforms to make tests pass. Use the normative domain
+   documents to distinguish admissible source-derived values from extension
+   inputs. No claim is made for values outside the declared usable domain.
+
+## Required before adoption
+
+A serious candidate must retain all-attempt strategy support, bind each reused
+raw witness and certificate to accepted identities, isolate hidden completions,
+charge all shared facilities to the incumbent and candidate, prove the claimed
+partial-evidence domain, and test real physical lifetime and public-state
+integration. It must provide evidence for any additional boundedness, scheduling,
+native cost, portability or durable-publication claim. This package supplies
+counterexamples and executable hooks; missing layers remain missing.

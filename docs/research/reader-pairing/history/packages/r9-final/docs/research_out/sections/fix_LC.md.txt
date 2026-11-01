@@ -1,0 +1,154 @@
+# 修复轮 LC：逐机制 D4 生命周期验证（§3）与"完全等价、立即采用"的更正（§2）
+
+代码：`candidates/fixLC_lifecycle.py`（会话层逐事件驱动器 `Life`、关闭协议、`BoundMixin`、可达字节）、
+`candidates/fixLC_groups.py`（机制登记、E1–E6、活性、随机 rebind 差分、变异体）、
+`candidates/fixLC_shadow.py`（运行器层：原样继承 `wpA_lib.ShadowRunner`，只扩展事件循环）、
+`candidates/fixLC_observe.py`（公开观察差分）、`candidates/fixLC_costs.py`（公共负载上的驻留与内存）。
+驱动：`bench/run_fixLC.py groups|shadow|mutants|costs|observe …|observe_rc`；汇总：`bench/summarize_fixLC.py`
+→ `results/summary/fix/LC/{d4_verdicts.json, observe.json, costs.json, TABLES.md}`；原始逐事件日志
+`results/raw/fix/LC/events_session.jsonl.gz`（gzip）、`events_shadow.jsonl`、`events_mutants.jsonl`。测试：`tests/test_fixLC.py`（12 项）。
+证据层：coupled（coupling.Session，虚拟 u）+ local_measured（tracemalloc 字节、本机墙钟）。**全部不是原生验收。**
+
+## 1. 夹具与事件组
+
+夹具：W01 相位链种子 0（n=32，秩洞 13、28），目标 12。对强路线机制，目标 12 在初态即可由强路线认证而 L0 需要事实；
+对 L0 机制，控制器先取证。"触及支撑"的变化 = 第 12 项（或支撑内某条边）以新版本标签重新交付等值事实；
+"未触及"的变化 = 第 28 条边的世界真值（在目标 12 的任何证书支撑之外）。每一组都在全新会话上实际执行：
+
+| 组 | 实际执行的事件 | 检查 |
+|---|---|---|
+| E1 | 驱动到首个合法发布 → 当前句柄确认 | 发布、单元=隐藏世界真值、confirm=confirmed、确认视图含目标、排空后无任务 |
+| E2 | 取得证书（不发布）→ 接纳触及/未触及支撑的事实 → 发布旧证书 → 继续驱动 | 触及：拒绝；未触及：接受且真值；请求最终完成且真值 |
+| E3 | 取 14 号 → 取消 → 1u 后填满容量 → 推进到被取消任务的真实退出 | 返回 cancelling；退出前仍占槽（只能再接纳 capacity−1 个）；退出=discarded；owner 修订号/边/raw 不变；退出时释放槽；重复 finish=absent；请求随后完成；reserve1 另查可选取证被保留位拒绝 |
+| E4 ×3 | 发布+确认 → 另起 20 号任务 → rebind（同内容 / 第 13 项换内容标签分析未知 / 第 13 项换成 WIDE 新见证并随 rebind 接纳）| 旧证书不可用；重发布前、**重发布后**旧回调都被拒；rebind 后首个判定 = 同类全新实例在同一证据上的判定；旧 epoch 迟到完成 discarded 且释放槽；重复旧 finish=absent；新 epoch 请求完成且真值；当前回调可确认 |
+| E4 差分 | 6 个种子 × 40 步随机：rebind（某项换内容 + 邻边新秩值）、同绑定下秩写入/删除、随机目标认证 | 每步判定（状态、单元）= 在当前已接纳证据上新建的同类实例（无携带结构）|
+| E5 | 发布+确认、再发布两个目标、两个运行中任务、一个已完成未消费任务 → 关闭协议 | 占槽/raw/证书/发布/确认/候选驻留全部 0；关闭后迟到 finish/confirm/publish 被拒、certify 抛错；**关闭后从会话对象可达的字节 ≤ 包会话的 1.1 倍 + 4 KiB**；tracemalloc 前后 |
+| E6 ×3 | 发布+确认 → 支撑变化（第 12 项版本、支撑内一条边的版本、或经 consume 路径重新交付第 12 项）→ 继续驱动 | 旧证书被拒；旧句柄下的过期发布不可见；确认不被带过；重新取得合法、真值、可确认的发布 |
+| LV | W01 s0、W05 s2、RP s0 的全部不同目标（每条轨迹 10–24 个）逐个驱动并确认 | 全部发布且真值；包会话与 derive_first 另跑 raw 容量 1 |
+
+**关闭协议**（包内 Session 没有 close）：`Owner.close()` 把 `_case` 置空，之后一个**未取消**的运行中任务一旦完成，
+`finish()` 在 `Session._current` 内抛 `TypeError`（`results/raw/fix/LC/naive_close.json`，可执行复现）；关闭后 `certify()`
+同样以 `TypeError` 而不是干净的"已关闭"拒绝。协议：停止发出意图 → 取消全部任务（已完成者立即丢弃并释放，运行中者变为
+cancelling）→ 推进时间直到每个运行中任务真实退出（finish=discarded，释放槽）→ `owner.close()` → 清空会话的 raw/证书/
+发布存储（包没有对应 API）→ 调用候选 `close()`。**原生实现需要一个会话级 close 接口**，这是采用要求而不是本研究的优化。
+
+为让 E5 能检查候选驻留，以下只做了**增量方法**（无行为变化）：`wpH_commit.IncSession.residency/close`、
+`wpH_commit.ValueCacheSession.residency/close`、`wpH_combos.MigratingSession.residency/close`、
+`wpG_session.GSession.residency/close`（投影 owner 时数投影/精确对，其余为 0）。持久树、BlockSession、门控索引的钩子
+已由主会话在预算修复中加入。
+
+## 2. 结果：会话层（`results/summary/fix/LC/TABLES.md`）
+
+381 个组运行（15 个会话机制 × {包 confirm, 组合 bound 确认}，每次 13–14 组）：
+
+- **用包内 `confirm(target)` 时，所有机制（包括包会话本身）都在 E4 失败于同一检查**：过期后重新发布同一单元，
+  旧发布的迟到回调确认了新发布（`old_callback_rejected_after_republish`，3 种 rebind 各 1 次）。这不是某个候选的缺陷，
+  而是包确认接口不绑定发布实例（R9 H04）。**因此任何机制的 D4 都只在与 bound_confirm 组合时成立。**
+- **组合 bound 确认后**：15 个会话配置中 13 个全部组通过（含 fresh 强路线参照与迁移重签），例外两项：
+  1. **BlockSession E5 失败**：关闭后从会话可达 66 262 字节（包会话 6 324），原因是修复轮代码
+     `BlockSession._cur_snap` 在调用提交后、乃至关闭后仍引用上一次调用前的块摘要（表列表副本、前沿副本）。
+     这不计入 `residency()`，只有可达性检查能发现。三行修复（提交/回滚/关闭时把 `_cur_snap` 置空，见
+     `bench/run_fixLC.py::groups` 中的 `BlockSessionReleased`）使 E5 与随机 rebind 差分都通过
+     （`results/raw/fix/LC/block_residual_fix.json`）。`wpB_coupled.py` 归主会话所有，本分支未改动它。
+  2. 包会话在 raw 容量 1 下活性失败（冻结的先驱逐后派生，见 §4 derive_first）；derive_first 在同一检查通过。
+- 随机 rebind 差分：每个机制 240 次调用 0 不一致；**变异体"持久树在 rebind/更新后不失效"39/240 不一致**。
+- 每个强/索引机制确实走了自己的路线（汇总里的 `routes` 与机制计数器）：持久树 `strong-persistent-tree`、
+  块 `strong-blocks`、索引 `index`、迁移 `migrated`（同内容 rebind 后）、value_cache 命中（内容 rebind 后）、
+  延迟/即时重签 `reissued_publications`（即时重签只在 consume 路径触发，故加了 E6_consume 组）、增量撤销 `incremental_suspects`、
+  reserve1 `reservation_refusals`。
+
+## 3. 结果：运行器层 gated_shadow / shadow / 持久树 + 规则 gate（`results/raw/fix/LC/groups_shadow.json`）
+
+`LifeShadowRunner` 原样继承 `ShadowRunner` 的 drive/证明启动/证明交付/发布/rebind，只在事件循环里加入 churn、admit_edge、
+confirm、late_confirm、cancel_item、prefetch、rebind、reintent、close、关闭后探测。脚本：E1/E2 目标 12（证明 2u 在途时
+接纳变化），E3 目标 19 取消 21 号任务，E6 第 40u 支撑变化 + 第 41u 重新意图，E4 第 58u 预取 3 号、第 59u 目标 27
+（证明与任务在途）、第 60u rebind（第 13 项或第 31 项换内容），E5 第 99u 预取、第 101u 关闭、第 200u 探测。
+
+| 配置（每个 4 个脚本变体）| 包 confirm | bound 确认 |
+|---|---|---|
+| gated_shadow（R9 原实现）| E4 旧回调 ×4；**E4 旧 epoch 证明事件被当作新证明交付 ×1**；**E6 未重新取得 ×4** | E4 证明身份 ×1；E6 ×4 |
+| shadow（R9）| 同上，证明身份 ×2 | 证明身份 ×2；E6 ×4 |
+| persistent_gated_shadow（R9）| 同 gated_shadow | 同 gated_shadow |
+| incumbent 运行器（对照）| E6 ×4（E2 两项不适用：没有证明）| E6 ×4 |
+| 修正变体 `fixed=True`（三者）| 仅 E4 旧回调 ×4 | **全部通过** |
+
+两个运行器缺陷（所有运行 0 次错误发布，安全性由会话守卫保住，损失的是活性/延迟）：
+
+1. **证明事件没有尝试身份**：`ARunner` 的证明事件只按目标匹配 `proof_inflight`。rebind 清空 `proof_inflight` 后，
+   若新 epoch 立刻为同一目标再起证明（rebind 的项在 [0,t+3] 之外、规则 gate 仍为真时），旧 epoch 证明的事件到达时
+   被当作新证明交付：旧证书 publish 返回 `unsigned`（被会话拒绝），并把新证明弹出队列，新证明的结果随后被丢弃
+   （第 61u 交付旧判定、第 63u 丢弃新证明，目标 27 只能等 L0 在第 67u 发布）。修正：交付时要求事件时间 = 记录的到期时间。
+2. **过期发布永不重新取得**：运行器把"首次发布"当作请求完成（`first_pub`），之后同目标的意图被忽略；支撑变化使发布
+   过期后，在下一次 rebind 之前不会重新发布。incumbent 运行器同样如此，所以引理 S1（"当前发布集合 ⊇ incumbent"）本身成立，
+   但两者都不满足 E6"重新取得合法结果"。修正：意图到达时若目标已首发但当前未发布，则按已有的 `republish` 机制重新排队。
+
+修正变体保持 S1 的前提（证明结果只走发布通道；物理控制器仍为 incumbent 逐字动作，重新意图对 incumbent 同样生效）。
+它是本轮新代码，尚未进入留出负载与正式计时。
+
+## 4. §2 更正："完全等价、立即采用"不成立（`results/summary/fix/LC/observe.json`）
+
+在相同随机事件流上比较包声明的全部公开观察（每步：acquire/finish/consume/cancel/certify/publish/confirm/rebind 返回值；
+observe()、published、confirmed、活任务 task()、occupied、raw_size、certificate_count；结束时关闭后的状态）。
+事件菜单含取证、真实退出、只 finish、只 consume、取消、认证、发布、确认（当前/旧/无句柄）、秩写入/删除、版本 churn、
+设置变化、两种 rebind、关闭。两种流：mixed 与 expiry（三个目标上反复发布—支撑变化—重发—回调）。
+对照：Session vs GSession(evict_first) 在 600 条轨迹 36 000 个事件上 **0 差异**（说明差分器本身不制造差异）。
+
+| 机制 | 搜索规模 | 观察差异 | 分类 |
+|---|---|---|---|
+| derive_first | 600 轨迹 / 36 000 事件（rc 随机 1–3）+ 按 rc 各 300 轨迹 | **observe() 的派生事实不同**（mixed 370、expiry 113 处），随之 certify/published/证书数不同；rc=1：25/300 轨迹、rc=2：8/300、rc=3：3/300 有差异——**rc≥2 也不等价** | **模型修正**：`NATIVE_OWNER.pseudo` 规定"派生相邻秩 → 再把 raw 驱逐到容量"，包内 `Session.consume` 顺序相反。它修的是模型与规格的不一致；rc=1 的活锁消除（包会话 7 216 次获取仍未全部发布 vs 21 次）是**移除模型伪影，不计为原生优化收益** |
+| bound_confirm | 600 轨迹 / 36 000 事件 | 只有 confirm 返回与确认视图不同：持有**旧句柄**的回调在包里确认了重新签发的发布 128 次（expiry 流），bound 返回 `stale_callback`；**旧式无句柄调用**原本成功的 83 次变为 `unbound`；目标未发布时返回值由 `unpublished` 变为 `unbound`/`stale_callback` | **接口强化**：改变了 `confirm(target)` 的调用合同（见 §5 接线与迁移）|
+| inc_revoke | L0：2 000 轨迹 / 120 000 事件；强路线 mode S：600 轨迹 / 36 000 事件 | **0 差异**。覆盖：L0 发布 7 408、过期 2 387、确认 1 521、有效设置变化 2 106、rebind 6 613、关闭 2 000；强路线发布 2 325、过期 848。只有成本计数不同（publication_read_checks、incremental_suspects）| **等价优化**（在本搜索范围内；见下方局限）|
+| projection support | 300 轨迹 / 18 000 事件 | 0 差异 | 等价优化（owner 层；认证步计数器在投影路径上恒为 0，是 R9 GSession 的计数遗漏，不是收益）|
+| 重签 reissue（即时/延迟）| 各 300 轨迹 | published/confirmed/证书数与 certify 返回不同（延迟 expiry 流 703 处发布视图差异）；**未绑定时旧回调会确认重签后的新实例**（延迟：70 次 `unpublished→confirmed`）| 条件候选（行为变化：发布连续性）；必须与 bound 确认组合 |
+| 迁移重签 migrate | 300 轨迹 | certify/certpub 返回不同：`migrated` 路线的公开字段 first=None、steps=0、dependent_items=[] 与 L0 判定不同（单元相同）| 条件候选（改变 certify 的公开轨迹字段）|
+| value_cache | 300 轨迹 | acquire/退出/occupied/raw/task/observe 都不同（命中不产生物理任务）| 条件候选（依赖生产者"同身份同版本 ⇒ 同内容"合同）|
+
+inc_revoke 的局限：随机搜索不是证明（证明草图见 `proofs/fix_LC.md` L-LC3）；n≤16、单 owner、事件长度 60、
+L0 与 fresh 强证书两种支撑形状；未覆盖投影 owner 与 inc_revoke 的组合、跨 owner 迁移。
+
+## 5. bound_confirm 的接线、迁移与迟到回调
+
+- **句柄来源**：`publish(target, handle)` 返回 `published` 时，调用者手里的 `handle` 就是该发布实例的身份；
+  把它随回调令牌一起交给确认方（例如放进发出去的绘制/通知请求里）。重签（reissue/migrate）产生新句柄，必须重新下发。
+- **迁移**：阶段 1 双写——确认方同时上报句柄，会话记录 `unbound` 调用次数（本搜索中旧式调用原本成功的 83 次会被拒，
+  这就是迁移期需要清零的量）；阶段 2 拒绝无句柄调用（`unbound`），旧式调用方须重取当前句柄后重新确认。不提供
+  "只有一个发布实例时自动绑定"的兼容捷径：它在过期—重发后恰好会把旧回调绑定到新实例。
+- **迟到回调**：旧句柄（发布已过期或被重签）→ `stale_callback`；rebind 之后任何旧句柄 → `stale_callback`；
+  关闭后 → `stale_callback`（会话无发布）；均不改变确认集合。当前句柄 → 与包相同的 `confirmed`/`stale`。
+
+## 6. 采用分类总表（逐机制，证据在 `results/summary/fix/LC/`）
+
+| 机制 | 分类 | 生命周期（组合 bound 确认）| 依据 |
+|---|---|---|---|
+| derive_first | 模型修正 | 全部通过；rc=1 活性通过（包失败）| observe() 差异；伪代码顺序 |
+| bound_confirm | 接口强化 | 全部通过 | 改变 confirm 合同；修复所有机制共有的 E4 迟到回调 |
+| inc_revoke | 等价优化 | 全部通过 | 156 000 事件 0 观察差异；成本：读校验 84 778→2 411（公共负载）|
+| projection support | 等价优化（owner 层）| 全部通过 | 18 000 事件 0 差异 |
+| 持久树 | 相对 fresh 强路线为等价优化；整体为条件候选（L1）| 会话层全部通过；运行器层需修正变体 | 240 次 rebind 差分 0 不一致；强评估 3 561→1 456（公共负载，BC-2 计费）|
+| BlockSession | 同上（相对精确 DP 等价）；**E5 未过，降级** | 除 E5 外全部通过；修复后通过 | 关闭后可达 66 262 B；三行修复 |
+| 门控索引 I/SEL | 条件候选（只改成本，从不扩大可发布集合）| 全部通过 | 认证步 1 259→490（I）|
+| gated_shadow / 规则 gate | 条件候选（L1，发布通道）| **R9 运行器未过 E4（证明身份）与 E6（重新取得）→ 降级**；修正变体通过 | §3 |
+| 重签 reissue / migrate | 条件候选 | 全部通过 | 行为变化；必须组合 bound 确认 |
+| value_cache | 条件候选 | 全部通过 | 生产者标签唯一合同 |
+| reserve1 | 条件候选（R9 已判无收益）| 全部通过 | — |
+
+**"12 个完整 D4"不保留。** 生命周期层面：没有任何机制能单独（用包 confirm）通过 E4。组合 bound 确认后，R9 列为 D4 的
+12 个机制中：持久树（会话层）、门控索引、derive_first、投影支撑、重签、inc_revoke、bound_confirm、value_cache、reserve1
+共 9 个通过全部生命周期组；BlockSession 在修复 `_cur_snap` 前不通过；gated_shadow 与规则 gate（以及持久树的影子运行器
+形态）在 R9 运行器上不通过 E4 证明身份与 E6 重新取得，修正变体通过但是新代码。D4 的另外两部分（未参与调参的留出负载、可执行采用边界）由主会话在冻结后重新核定。
+
+## 7. 公共负载上的成本（`results/summary/fix/LC/costs.json`；层逐列标注）
+
+结构条目峰值（候选自身持有，非字节）：持久树 64（=线段树数组，n=32）、BlockSession 7–10、索引 19–88、inc_revoke 211–669
+（反向索引条目，随发布数增长）、value_cache 2–14、投影 4；关闭后全部 0。tracemalloc 峰值（含驱动器日志与包会话，字节）：
+包 714 462，持久树 786 278，块 808 900，索引 781 670，inc_revoke 674 922；关闭后保留：块 155 112（其余约 97–103 K，
+即 §2 的残留）。正增量和（累计分配的下界）：包 1 994 640，持久树 2 195 126，块 2 288 596，inc_revoke 1 619 176。
+墙钟是分支在共享 2 vCPU 上的单次探索值，**不是正式计时**；正式计时由主会话用 `bench/bench_fixLC.py` 串行三进程完成。
+
+## 8. 剩余缺口
+
+- 留出负载与采用边界不在本分支范围；修正版影子运行器、BlockSession 释放修复都未进入正式计时与新留出。
+- 生命周期脚本是确定性构造（每组 1 个夹具 + 3 条活性轨迹 + 随机 rebind 差分）；不是对全部交错的穷举
+  （R9 A04 的 5 040 交错穷举仍是唯一穷举证据）。
+- 关闭协议是驱动器约定；包内没有会话 close，原生需要接口。
+- inc_revoke 的等价性是有界随机搜索 + 证明草图，不是机器检查的证明。

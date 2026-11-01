@@ -1,0 +1,140 @@
+{
+  "status": "PASS",
+  "casesPerVariant": 362,
+  "transitions": {
+    "A": {
+      "A:Certified->Certified": 48,
+      "A:NeedFacts->Certified": 8,
+      "A:NeedFacts->NeedFacts": 16,
+      "B:Certified->Certified": 256,
+      "B:NeedFacts->NeedFacts": 34
+    },
+    "B": {
+      "A:Certified->Certified": 48,
+      "A:NeedFacts->NeedFacts": 24,
+      "B:Certified->Certified": 256,
+      "B:NeedFacts->NeedFacts": 30,
+      "B:NeedFacts->Certified": 4
+    }
+  },
+  "witnesses": {
+    "A": {
+      "baseline": {
+        "key": "A-16-ZERO-RTL-AUTO-true",
+        "status": "NeedFacts",
+        "needs": [
+          {
+            "page": 2,
+            "kind": "EDGE_SAMPLES",
+            "second": 3
+          }
+        ],
+        "edgeReads": [
+          [
+            1,
+            2
+          ],
+          [
+            2,
+            3
+          ]
+        ],
+        "readCount": 12,
+        "oracle": {
+          "slots": [
+            {
+              "page": 1,
+              "slot": "RIGHT"
+            },
+            {
+              "page": 2,
+              "slot": "LEFT"
+            }
+          ],
+          "certain": true,
+          "reason": "null"
+        }
+      },
+      "A": {
+        "key": "A-16-ZERO-RTL-AUTO-true",
+        "status": "Certified",
+        "needs": [],
+        "edgeReads": [
+          [
+            1,
+            2
+          ]
+        ],
+        "readCount": 11,
+        "oracle": {
+          "slots": [
+            {
+              "page": 1,
+              "slot": "RIGHT"
+            },
+            {
+              "page": 2,
+              "slot": "LEFT"
+            }
+          ],
+          "certain": true,
+          "reason": "null"
+        }
+      }
+    },
+    "B": {
+      "baseline": {
+        "key": "B-2-LEADING-LTR-AUTO-true-NONE",
+        "status": "NeedFacts",
+        "needs": [
+          {
+            "page": 1,
+            "kind": "ORIGINAL_ANALYSIS",
+            "second": null
+          }
+        ],
+        "edgeReads": [],
+        "readCount": 12,
+        "oracle": {
+          "slots": [
+            {
+              "page": 2,
+              "slot": "LEFT"
+            },
+            {
+              "page": 3,
+              "slot": "RIGHT"
+            }
+          ],
+          "certain": true,
+          "reason": "null"
+        },
+        "recordValid": false
+      },
+      "B": {
+        "key": "B-2-LEADING-LTR-AUTO-true-NONE",
+        "status": "Certified",
+        "needs": [],
+        "edgeReads": [],
+        "readCount": 6,
+        "oracle": {
+          "slots": [
+            {
+              "page": 2,
+              "slot": "LEFT"
+            },
+            {
+              "page": 3,
+              "slot": "RIGHT"
+            }
+          ],
+          "certain": true,
+          "reason": "null"
+        },
+        "recordValid": false
+      }
+    }
+  },
+  "elapsedCompileAndResearchSeconds": 24.457,
+  "sourceStable": true
+}

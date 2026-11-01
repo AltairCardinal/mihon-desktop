@@ -1,0 +1,98 @@
+# WP-H proofs and proof sketches (commit protocol, admission, robustness)
+
+Model: `coupling.Session` over `corrected_owner.Owner`.  A certificate *c* stores
+(support S_c : key→typed value, guard g_c = (binding, identity_epoch, ticket, settings, location), epoch e_c).
+`publish/confirm` accept *c* iff `guard()==g_c`, `epoch==e_c` and ∀k∈S_c: typed(read(k)) == S_c[k]
+("commit check").  Owner writes are atomic `apply` batches; rebind = close + replace (new binding).
+
+## L1 (H01) Commit-check safety — linearisation point
+**Claim.** If the commit check passes at time t, the published unit equals the unit the certifier would
+return on the owner state at t.
+**Proof.** The certifier is a deterministic function of (settings, identities, values read).  Its trace on
+state σ_c (certification time) read exactly the keys in S_c (all-attempt union, Owner L: baseline and retry
+reads are both included) and branched only on their values.  At t: same guard ⇒ same binding, identity
+epoch/ticket (no identity change, so ordinal→identity map equal), same settings and location; equal typed
+values on S_c ⇒ the certifier replayed on σ_t takes the identical branch sequence and reads the identical
+values, so it returns the identical unit.  Keys outside S_c were never read, so they cannot influence it. ∎
+Linearisation point = the commit check (an owner-serial step); the proof itself runs outside the critical
+section.  **Necessity (counterexamples, H01):** guard-only check → 122 wrong publications in 1590
+exhaustive interleavings; checking only the target's own items → 46.  Session: 0 (1153 published, 437 stale).
+Critical-section cost: commit reads |S_c| (mean 8.53) vs whole proof inside (mean 6.48 steps + support build).
+
+## L2 (H02/H03) Minimal revalidation set
+**Claim.** After a write batch with dirty key set D and unchanged guard/epoch, a publication *h* can change
+validity only if S_h ∩ D ≠ ∅.  If guard or epoch changed, every publication must be re-checked (or dropped).
+**Proof.** Validity of *h* is a conjunction over S_h of equalities plus guard/epoch equality (L1); a write that
+touches no key of S_h leaves every conjunct unchanged. ∎  Minimality: for any k ∈ S_h there is a write to k
+that invalidates *h* (change its typed value), so no proper subset of {h : S_h∩D≠∅} is safe in general.
+**Cross-world counterexample (H02):** t1 publishes unit (0,1) before, t2 publishes [0] WIDE after one
+analysis write; without revalidation both are visible (two worlds).  Session and IncSession: consistent.
+**Implementation** `IncSession` keeps reverse index key→handles; the dirty set is collected from the
+`apply` arguments (item keys = analysis/header/dimension of the item, edge keys = the pair, settings ⇒ dirty_all).
+Differential: 1800 random steps 0 view mismatches, read checks 67 966→5 484; D4 held-out (10 runs):
+identical publications/confirmations/latency, read checks 128 092→18 936.
+
+## L3 (H04) Confirmation must be bound to the publication instance
+`Session.confirm(target)` checks the *current* publication of the target.  A late callback for an expired
+publication P1 confirms the re-issued publication P2 of an equal unit: counterexample H04 ("confirmed",
+confirmed_new_context=True) and 16 such confirmations in 35 late callbacks over 10 held-out D4 runs (7/10
+runs affected).  **Fix** confirm(target, handle) ⇒ accept iff handle == current publication handle.
+Safety: the confirmation then refers to exactly the context the caller observed.  Liveness unchanged: a
+caller holding the current handle is never rejected.  (Wrong-publication count is 0 either way: the
+defect is attribution of the confirmation, not the unit.)
+
+## L4 (H05) Value reuse vs identity authority
+Witness cache key = (typed full content identity, typed recipe/version).  **Safe** iff producer contract:
+equal key ⇒ equal content (otherwise counterexample "label reuse": stale value served — a precondition,
+not detectable by the cache).  Authority objects are never cached: rebind clears certificates,
+publications and confirmations (D4: 0 old-epoch certificates retained in 10 runs).  ABA (content A→B→A)
+yields a correct cache hit, while the old certificate is not publishable (guard changed).
+
+## L5 (H06) Local correctness vs global liveness
+Per-target commit of target j succeeds in a window of q u iff no write hits S_j in that window.  With
+independent per-target commits the waiting time of j is geometric in P(no hit on S_j in q); a joint
+transaction needs no hit on ∪_j S_j, whose probability decays multiplicatively in the number of targets.
+Counterexample: q=3 period 1 and q=6 periods 1/2/4 → joint 0/8 published in 400 u, per-target 8/8.
+Liveness window = q per target support (not for the union).
+
+## L6 (I02) Dynamic reservation bound
+Policy: optional tasks may hold at most C−r slots; an optional may borrow a reserved slot iff its declared
+upper bound b ≤ B.  **Claim.** A required arrival waits at most B for the reserved capacity, plus what it
+waits under the fixed reservation.  **Proof.** A reserved slot is occupied either by required work (as in
+the fixed policy) or by one borrowed optional task whose remaining service ≤ b ≤ B; nonpreemptibility
+means it is released by its true exit ≤ start + b. ∎  Holds only for honest declared bounds.  Measured
+(C=1): required max 9 (fixed) vs ≤ 9+B; dyn_b10 9 with 7/36 optional served, dyn_b20 19 with 15 served.
+Mutant "cancel releases slot": max physical 2 > C=1 (nonpreemptible semantics violated).
+
+## L7 (I04) Phase split
+Route A (analytic): split work = a + p·d < a + d iff p < 1; cost one extra hop for needed jobs.
+Route B (queueing DES): needed-job latency improves iff the joint pipeline is overloaded: in all 72 configs
+split wins exactly when p<1 and ρ_joint ≥ 1.25 and loses when ρ_joint ≤ 0.75 or p=1 (gate `gate_split`).
+
+## L8 (J04) Relevant-only debounce
+Global window w with an unrelated change stream of period < w: the window never becomes quiet while the
+stream lasts, so the start is delayed until the stream ends (unbounded for an infinite stream: liveness
+loss).  Relevant-only window: final wait ≤ w + S after the last relevant change.  Simulation: 63/43 vs 15.
+
+## L9 (R05/X29) Saturation and incarnation induction
+Invariant I(t): a memo entry is returned by a stamp hit only if stamp == revision and revision < SAT and
+guard equal; every write that changes a read value increments revision unless saturated; at SAT the
+owner falls back to the exact support check (`_valid`).  Base: empty memo.  Step: a write either bumps
+revision (all old stamps differ, unique since the counter is monotone and never wraps) or revision == SAT
+(stamp path disabled, exact path decides).  Incarnation switch (rebuild with fresh counter + new guard
+ticket) preserves I because the guard differs.  Wrap-around violates monotonicity: exhaustive counters
+w=2 → 15 stale hits, w=3 → 255; saturate+exact 0, incarnation 0; with rebind events (X29) wrap 855, others 0.
+
+## L10 (N03) Bounded-to-general limits
+BFS over the real Session (capacity 1 and 2, depth 6, symmetry reduction by item permutation): 0
+violations (C1 71/46 states, C2 201/152).  What generalises: per-identity physical task invariants (one
+in-flight task per identity, consume only after finish, cancel holds the slot) are local to one identity
+and induct over event sequences.  What does **not** generalise from the bounded check: (i) unbounded
+retry loops (liveness), (ii) capacity-specific occupancy counts (C>2 not checked), (iii) the trusted
+incarnation assumption (a forged/reused binding ticket is outside the model).
+
+## Interaction terms (combinations)
+I = m(A+B) − m(A) − m(B) + m(0), per metric, recorded in results/raw/wpH/combos.json.
+X22 (value reuse × re-sign migration) fresh rebinds: proof steps I = −503 (reinforcing); carry: I = 0.
+X23 (reservation × speculation): 1-step lookahead I = 0 (reservation never binds); 3-step lookahead
+forward I = +96 (fixed1) / +57 (dyn5) required-u (antagonistic), drift +60.

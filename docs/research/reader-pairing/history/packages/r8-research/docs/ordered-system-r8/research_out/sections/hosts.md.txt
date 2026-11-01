@@ -1,0 +1,184 @@
+# Host caching / invalidation family (C1 C2 C4 C5 C6 B4 B5 B6 G6 + X5)
+
+Layer: `virtual_host`; measurements: `local_measured` (Python 3.13, 2 vCPU, shared box).
+**All timing quoted here is TRIAL data (1 process, 1–3 reps; noise ±10–20 %).** The formal serial
+3-process campaign is to be run by the main session (command at the end). Ratios are against
+`x_fix_stamp` = the same re-implementation with the frozen mechanism set (global stamp, FIFO 4,
+compact proofs, per-request view, replace API) **plus the C5 correctness fix**; the frozen
+`current` host is also run (`current` vs `x_fix_stamp` median 1.08, range 0.93–1.18: representation
+differences of the re-implementation, not mechanism gains — reported, never credited to a mechanism).
+
+Code: `candidates/hosts.py` (XHost + XConfig + HostMutant), `candidates/host_traces.py` (trace v2,
+keyed failures, frozen before runs), `candidates/host_driver.py` (candidate table, replay, truth).
+Tests: `tests/test_hosts.py` (18 tests, ~55 s). Proofs: `proofs/hosts.md`.
+Raw: `results/hosts/*.jsonl|json`; frozen traces `fixtures/host_traces/**`.
+
+## Headline findings
+
+1. **Correctness defect in the frozen virtual host (C5/H4).** Its memo keeps only the selected
+   attempt's reads; a `need_facts` (or adopted) strategy verdict also depends on the other attempt.
+   Two minimal fixtures make `Config.current()` and `Config.strict()` return a stale public verdict
+   (`Config.cold()` correct). Fixes `attempts`/`union` are proven (T-C5) and cost ≈ nothing in time
+   (union 0.88–1.04 × fix) but ≈1.6× stored read keys. Frequency on 17 280 generated requests: 0 — rare,
+   but an L0 violation the package's own differential tests cannot see.
+2. **The update path, not certification, dominates host cost.** Inside the replace-API host, time in
+   `compact_core.certify` is 1–13 % of wall (69 % only on a long decreasing-rank chain)
+   (`results/hosts/engine_share.json`). An owned delta API (complete write barrier, no whole-snapshot
+   copy) cuts wall to 0.03–0.46× — but this is mostly the Python deep-copy artefact the package warns
+   about (N15/MODEL_API "whole snapshot copy substitutes incremental owner methods"); it is reported
+   as a representation/API result, not as an invalidation-algorithm result.
+3. **Fine-grained invalidation (C1/C2) gives no stable gain once updates are cheap.** Within the
+   delta API, posrev / revdep / bitmap / log vs global stamp: 0.89–1.11 (median ≈0.98). Under the
+   replace API they look 0.64–0.98× better, but the gain comes from a cheaper diff (one typed pass with
+   cached item fingerprints instead of two whole-case typed passes), which any scheme could adopt.
+4. **Cost-aware caching (C6) wins only on skewed rebuild costs.** GreedyDual-Size at the same entry
+   capacity: 0.53× on the rare-expensive workload (one target needing a 475-step proof), ≈1.0 elsewhere.
+5. **X5:** combining GDS with a byte budget reinforces when the budget is generous (640 units:
+   0.36× vs GDS 0.53×, bytes 0.41×, but it holds up to 20 entries → +40 % retained bytes); at equal
+   space (200 units ≈ 4 typical entries) the byte budget cannot admit the large expensive proof and the
+   combination loses its advantage (1.0–1.24×): a genuine conflict between cost awareness and a tight
+   total-space bound.
+
+## Per question
+
+### C1 — fine-grained revision stamps + write barrier — D2 (D3-ready)
+Routes: (A) per-item/per-edge revision vector with an owned write barrier (`invalidation='posrev'`,
+barrier = typed diff in `replace` or owner methods `set_*`); (B) global revision + bounded change log
+(`'log'`, cap 64, floor fallback). Proof L-H2 (barrier completeness, Lemma H-E for non-adjacent
+records, saturation W14, log floor). Mutants killed: header-only write skipped, adjacent-edge write
+skipped (4 frozen traces). Evidence: trial vs fix (replace API) 0.64–0.98, delta API vs delta stamp
+0.89–1.05. Verdict: **conditional** — correct and cheap to maintain, but its measured benefit under the
+replace API is the cheaper diff, and under a delta API it is within noise of the global stamp. Keep the
+global stamp + exact fallback as default; adopt per-position revisions only where updates are cheap
+*and* validations are expensive (large proofs, many requests per write). Gap: native cost of revision
+maintenance (N16) unmeasured; formal 3-process run pending.
+
+### C2 — reverse dependency index / precise invalidation — D2 (D3-ready)
+Routes: (A) reverse index atom → {(target, attempt)} with push dirty marks, deregistration on
+evict/replace (`'revdep'`); (B) per-entry dependency bitmask swept on every write (`'bitmap'`).
+Invariant L-H3; mutants `revdep_no_reregister` (correctness, killed by a frozen trace built from the C5
+fixture) and `revdep_no_deregister` (space, killed by the G6 test). Evidence: zero read validations on
+irrelevant writes; time ≈ global stamp within noise (delta API 0.90–1.11). Verdict: **drop as default /
+conditional** — push invalidation pays registration cost on every insert and does not beat exact
+fallback validation of ≤ ~100 typed reads. Gap: high-fan-out workloads with large proofs not explored.
+
+### C4 — certificate representation and sharing — D2
+Routes: (A) exact interning of `(key, typed value)` (`proof='interned'`, prune at 2×live); (B) shared
+dynamic view with identity fast path (`view='snapshot'`) and carried parse tuples across writes
+(`view='carry'`). Hash-only mutant killed via CPython `hash(-1)==hash(-2)`; unpruned interner grows
+420 vs 59 values. Evidence: interned 0.81–1.26 × fix (median 1.04), retained bytes +41 % at capacity 4
+(355 vs 252 KiB); carry 0.84–1.09 (median 1.03), delta-carry vs delta-stamp 0.88–1.06. Verdict:
+**drop** at the current cache size — sharing needs many overlapping certificates to repay the table;
+identity fast path is sound but saves too little. Gap: larger caches (≥ 64 entries) not measured.
+
+### C5 — safe negative-result cache — D2 (defect found; fix D3-ready)
+Routes: (A) per-attempt entries (`support='attempts'`); (B) union support (`'union'`). Theorem T-C5 +
+two counterexamples to the frozen host; semantics table for computed-null / blocked / need_facts /
+budget-abort / oversized (proofs/hosts.md). Mutants: selected-only support, unknown≡null, budget-abort
+cached as final (killed only under selected support: per-attempt representation makes partial work
+harmless). Verdict: **keep** (route A) — it is a correctness fix with ≈ zero time cost and ≈1.6× key
+storage; union is an acceptable cheaper-to-explain alternative.
+
+### C6 — cost-aware admission/eviction — D2 (D3-ready)
+Routes: (A) GreedyDual-Size by rebuild cost/size at the same entry capacity (`cache='gds'`);
+(B) FIFO under a structural byte budget (`'bytes'`, equal-space 200 and generous 640). New workload
+`c6_rare_expensive`. Evidence: gds 0.53 there, median 0.99 elsewhere; bytes200 ≈ 1.0; one trial
+showed gds 1.25 on a repeat workload (not reproduced, 0.99) — formal run must settle it. Verdict:
+**conditional keep** — only when rebuild costs are highly skewed (long proofs); otherwise FIFO 4 is as
+good. Gap: rebuild cost proxy = steps + reads, not wall time.
+
+### B4 — reuse of proof-search intermediate results — D2
+Routes: (A) attempts as versioned sub-problems: a still-valid attempt is reused when the other is
+recomputed (`subproblem_reuse` counter; also the C5 fix); (B) step-level transition cache across
+attempts/targets — analysed and bounded instead of built: the public verdict includes `steps`, `needs`
+order and `first`, so replayed steps must reproduce the scan's callback order including `_Scan`
+manual-cache state (not L0-safe without full side-effect logs), and the whole engine is only 1–13 % of
+host wall (engine_share.json) → upper bound on its saving. Verdict: (A) **keep** (comes with C5);
+(B) **drop** (bounded ≤13 % except long chains, high L0 risk). Gap: long-chain workloads (69 % engine
+share) could justify a transducer-style summary — owned by the main session's A2/B2 work.
+
+### B5 — joint multi-target certification — D2
+Routes: (A) L0 batch API sharing one view/guard (`request_many`, `view='snapshot'`); identical
+verdicts (test_batch_trace); no algorithmic saving beyond the view. (B) L1 pair sharing — answer a
+partner from a certified pair unit: same unit, but `steps/first/dependent_items` differ in 12 of 13
+shareable cases (`results/hosts/b5_b6_counts.json`, `test_b5_pair_sharing_is_not_L0`); only 13/120
+batch requests were shareable. Verdict: (A) neutral, (B) **L1-only, low value** (≤ 11 % of batch
+requests, changes public fields).
+
+### B6 — revocable background preparation — D2
+Routes: (A) prepare predicted neighbours into the main cache under an attempt budget checked before
+each attempt; (B) separate side cache (`prep_side=2`, no pollution, promoted on use). No publication
+right: prepared entries are validated exactly like others; budget-abort never stored as a final
+verdict (mutants `budget_after`, `budget_abort_cached`). Evidence (counts, 4 idle traces):
+roundtrip: foreground attempts 83 → 21 (A) / 18 (B) at total 127 / 104; neighbour-growth 62 → 45/48
+at total 160/156; jump: 88 → 92/91 (worse) at total 208/207; churn: 103 → 97/100 at 204/209.
+Verdict: **conditional** — useful only for predictable sequential access with genuinely idle capacity;
+side cache removes pollution and waste on roundtrip but cannot fix a wrong predictor.
+
+### G6 — whole-lifecycle space bound — D2
+Routes: (A) structural accounting per component (`structural_size()`); (B) tracemalloc retained/peak
+bytes under 200 rounds of churn, with and without rebinds (`bench/host_g6_space.py`,
+`results/hosts/g6_space.json`). Bounds in proofs/hosts.md; three unbounded variants exhibited
+(uncapped log, unpruned interner, no deregistration) and killed by `test_unbounded_variants_grow`.
+Verdict: bounded for all kept variants; transient deep-copy peaks of the replace API (≈ 2 snapshot
+copies per write) dominate peak bytes and are outside any cache policy.
+
+### X5 — C6 × G6 — D2 (D3-ready)
+Four groups on the same frozen traces: fix (FIFO 4) / gds (C6) / bytes (G6 budget) / gdsbytes.
+Reinforcing: c6_rare_expensive with budget 640: 0.36 vs 0.53 (gds) vs 0.41 (bytes) — at +40 % retained
+bytes. Conflict / no gain: equal-space budget 200: gdsbytes200 1.24, bytes200 1.08 (the expensive
+proof is larger than the budget); uniform workloads: all ≈ 1.0. Conclusion: cost awareness only pays
+if the space bound admits the expensive certificate; under a tight total-space bound prefer plain FIFO.
+
+## Mutant → killing test
+
+| mutant (ADVERSARIAL list item) | killed by |
+|---|---|
+| barrier skips header (1) | `Mutants.test_mutants_killed_and_clean_passes` (2 traces), `test_delta_api_header_barrier` |
+| barrier skips adjacent edge (1) | same (2 traces) |
+| unknown ≡ computed-null (2) | `mutant_unknown_eq_null.json` (exact and stamp invalidation) |
+| drop pruned/outside-unit reads (7) | `mutant_drop_pruned_reads.json` |
+| budget checked after attempt (8) | `test_budget_checked_before_attempt` |
+| budget-abort cached as final (C5) | `test_budget_abort_cache_harmless_only_with_attempt_support` |
+| replaced dependency set not registered (C2) | `mutant_revdep_no_reregister.json` |
+| stale registrations never removed (C2/G6) | `test_unbounded_variants_grow` |
+| hash-only equality (C4) | `mutant_hash_only.json` |
+| unpruned interner (G6) | `test_unbounded_variants_grow` |
+| selected-only support = frozen behaviour (C5) | `test_selected_support_mutant_reproduces_bug` |
+
+## Formal campaign (main session, serial)
+
+```
+cd <package root>
+python3 research_out/bench/bench_hosts.py --freeze          # already frozen; re-run is idempotent
+python3 research_out/bench/bench_hosts.py --processes 3 --reps 3 --warmup 1 --alloc \
+        --out research_out/results/hosts/formal.jsonl          # ≈ 25–30 min total, 15 scenarios × 21 candidates
+python3 research_out/bench/summarize_hosts.py research_out/results/hosts/formal.jsonl research_out/results/hosts/formal_summary.json
+```
+D3-ready candidates: x_fix_stamp (C5 fix), x_union, x_posrev, x_revdep, x_log, x_bitmap, x_gds,
+x_bytes200, x_gdsbytes200, x_bytes, x_gdsbytes, x_delta_stamp, x_delta_posrev, x_delta_revdep,
+x_carry_delta_stamp (+ x_interned, x_carry as negative controls; *_prep for B6).
+Note: `engine_runs` counts strategies in the frozen host but attempts in XHost — not comparable.
+
+## Formal serial 3-process results (main session, `results/formal/hosts.jsonl`, summary `hosts_summary.json`)
+
+1 warmup + 3 measured reps × 3 independent processes, rotated configuration order, `--alloc` pass per process.
+Medians over 15 scenarios of the per-scenario paired ratio vs `x_fix_stamp` [min, max]:
+
+| candidate | vs fix | note |
+|---|---|---|
+| current (frozen) | 1.083 [0.933, 1.197] | **fails `ok` on c5_retry_support_trace** (formal confirmation of the C5 defect) |
+| x_union | 1.007 [0.917, 1.055] | C5 route B |
+| x_posrev / x_log / x_revdep / x_bitmap | 0.776 / 0.791 / 0.805 / 0.782 | replace API: gain = cheaper diff (one typed pass), see C1 |
+| x_carry / x_interned | 1.009 / 1.035 | C4 negative confirmed |
+| x_gds | 1.013 [0.486, 1.067] | 0.486 only on c6_rare_expensive |
+| x_bytes (640) / x_gdsbytes (640) | 0.998 [0.337, 1.127] / 0.994 [0.341, 1.060] | rare_expensive 0.337 / 0.341 |
+| x_bytes200 / x_gdsbytes200 | 1.009 / 1.025 | equal-space budget; rare_expensive 1.043 / 0.965 |
+| x_delta_stamp / posrev / revdep / carry_delta_stamp | 0.077 / 0.075 / 0.075 / 0.076 [0.033, ≈1.0] | owner-method API (representation effect, N15) |
+| x_fix_stamp_prep / x_side2_prep | 1.017 / 1.006 | B6 in wall time: preparation inside the timed replay does not pay back (idle growth 1.152 / 1.086) |
+
+**Revision of the trial X5 claim:** in the formal run the generous byte budget alone already reaches 0.337 on
+c6_rare_expensive and GDS+bytes(640) is 0.341 — the combination adds nothing over `x_bytes`; at equal space GDS+bytes200
+(0.965) beats bytes200 (1.043) but loses to GDS alone (0.486). X5 conclusion: cost awareness helps only if the space bound
+admits the expensive certificate; a generous byte budget is the simpler way to get the same gain.
+x_fix_stamp vs the frozen host: 0.923× [0.836, 1.072] — the C5 fix costs nothing measurable in time.

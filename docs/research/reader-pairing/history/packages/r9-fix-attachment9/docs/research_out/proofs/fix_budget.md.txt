@@ -1,0 +1,78 @@
+# 修复轮 §1：强证明预算合同 BC-2 与绕过修复
+
+代码：`candidates/budget.py`（合同与计量器）、`candidates/strong.py`（统一驱动 `_strong_call`）、
+`candidates/wpA_lib.py::PersistentStrongSession`、`candidates/wpB_coupled.py::BlockSession/TxnBlockSummary`、
+`candidates/wpC_coupled.py::IndexedSession._index_call`。修复前原文件逐字节保存在 `candidates/_r9_prefix/`
+（sha256 前缀 strong 0d8e3370、wpA_lib de20df79、wpB_coupled 4ee2fb5c、wpC_coupled 6f694d3d）。
+
+## 1. 已确认的绕过（修复前，可执行复现）
+
+`results/raw/fix/budget_probe_before_fix.json`（`bench/run_fix_budget_probe.py before_fix`）：
+
+| 路线 | budget=0 | budget=1 | 记录的评估数 |
+|---|---|---|---|
+| fresh tree / fresh exact | 不发证（stopped） | 不发证 | 1 / 2（如实） |
+| **persistent tree** | **发证** | **发证** | **0**（建树、更新、查询都没计） |
+| **BlockSession** | **发证** | **发证** | 12（计了但从不检查） |
+| **门控索引（mode I）** | **发证** | **发证** | **0** |
+
+门控索引是用户列出的两条之外**新发现的第三条绕过**。先写的回归 `tests/test_budget_contract.py`（10 项）在修复前
+8 项失败（`results/raw/fix/regression_before.txt`；unittest 在每项第一个失败路线处停止，逐路线结果见上表）。
+
+## 2. 合同 BC-2（统一定义）
+
+- **适用范围**：除包内 L0 owner 之外、能签发证书的所有认证路线（"强路线"）：fresh tree/exact/portfolio、持久树、
+  块摘要、门控全信息索引（mode `I`/`SEL`）。
+- **计量单位**：一次 *步评估* = `transducer.explore` 在冻结步谓词上返回的一个（结果, 赋值）对；返回空集的 explore
+  调用也记 1；完整事实上的单个确定性步（索引查询）记 1。这正是 R9 fresh 路线已经用的单位（**未改变**）。
+  线段树合成（位掩码并）与事实刷新/失效属于**维护**，不是步评估：单独报告（`persistent_compose`、
+  `invalidated_blocks`、`index_rollbacks` 等），不进入预算。
+- **计费**：预算限制的是**本次调用中**实际执行的步评估：建树/重建、脏叶或脏块重算、块表与前沿填充、查询探索。
+  任何路线都不得把执行过的工作记为 0。
+- **停止**：计数在越过上限的那次 explore 之后立即抛出；本次调用不签发任何证书，返回 L0 判定，`strong_stops`+1，
+  已做工作照样计入。需要恰好 B 次评估的调用在预算 B 下成功，B−1 停止。
+- **事务**：停止的调用回滚——本次创建的结构项全部丢弃、待处理脏集合保留，因此多次小预算调用**不会累积成一个证明**
+  （不能"切片"绕过）。只移除缓存或从 owner 刷新事实的维护保留（安全且幂等）；块摘要与索引对失效也做精确恢复，
+  使停止调用前后的结构指纹逐项相同（测试 `test_midway_stop_rolls_back_and_never_accumulates`）。
+- **复用**：(a) 复用**先前成功调用已提交**的结构是允许的，其评估已计入那次调用——这就是持久化的摊销收益，
+  不是绕过，因为没有任何结构能由超预算调用留下；(b) 复用已签发证书（对仍有效句柄 publish/confirm、rebind 后
+  支撑逐键相等的重签）**不是证明计算**，不受本预算约束，由 guard/epoch/支撑检查决定，单独计数。
+- **调用级预算**：mode `S` 下 `certify(..., budget=B)` 限制本次调用的 L0 扫描步 + 强评估之和
+  （强上限 = min(strong.budget, B − L0 步)）。
+
+## 3. 合同变化（相对 R9，明确列出）
+
+| 编号 | 变化 | 影响 |
+|---|---|---|
+| C1 | 持久树、块摘要、门控索引的评估计费并强制执行（R9：0 / 计费不执行 / 0） | 持久树在 54 个正式格子中强评估由 0 变为 13 433（同格子 fresh 16 936） |
+| C2 | 停止的调用回滚共享结构（对三条共享路线是新增） | 预算为 None 的全部运行不受影响 |
+| C3 | mode `S` 的调用级 budget 与 strong.budget 组合（R9 只约束 L0） | R9 实验从未在 mode `S` 传调用级 budget |
+| C4 | 门控索引是强路线：服从 strong.budget，计入 strong_attempts/evaluations/certificates | 索引格子的 strong_certificates 由 0 变为 29（同样的证书，原来没计） |
+
+单位定义、fresh 路线行为、守卫与发布规则**均未改变**。
+
+## 4. 修复后证据
+
+- `tests/test_budget_contract.py` 10/10 通过（`results/raw/fix/regression_after.txt`）：预算 0、1、刚好足够、刚好不足
+  （全部 5 条路线）；缓存命中（查询至少 1 次评估、严格少于建树；Q 成功、Q−1 失败、0 失败）；更新后重算
+  （空操作重复接纳导致的脏叶/脏块重算必须付费，只够查询的预算失败）；中途停止 5 次后结构指纹不变、
+  证书数不变，之后无限预算调用的计费与从零开始完全相同（没有进度被带过来）；停止调用无法授权发布；
+  证书复用在 budget=0 下仍可 publish/confirm；调用级预算 = L0 步 + 强评估。
+- 持久树首次调用计费 = fresh tree 计费（177 = 177：同样建树 + 同样查询），说明三条路线的单位一致。
+- 全部研究测试 102/102 通过（R9 的 92 项 + 新 10 项）。
+- **逐格差分**（`bench/run_fix_differential.py`，修复前模块从 `_r9_prefix` 精确加载）：所有可能经过强路线的正式格子
+  1 016 个（A 980、B 耦合 20、C 耦合 16）中，判定哈希、ok、全部确定性虚拟计数**逐格相同**；只有记账字段不同：
+  持久树 `strong_evaluations` 0→13 433（54 格），索引/选择器 `strong_certificates` 0→29（各 3 格）。
+  汇总：`results/summary/fix/differential.json`。
+
+## 5. 对 R9 结论的直接影响
+
+1. R9 中"持久树强证明计算减少 3–13×"来自 wpA 求解器研究中的**每次尝试本机 ns**，而持久树当时记 0 次评估。
+   按统一单位，在正式 A 族格子上持久树 13 433 次评估 vs fresh 16 936 次（0.79×）；本机 ns 126.6→98.3 ms（0.78×）
+   与之一致。"3–13×"只在 wpA 求解器研究那组每次尝试数据上成立，不能作为一般结论——在 §4（D3 索引）重新核定。
+2. 预算研究 P02（`sec_budget`）只用 fresh 路线，结论不受影响。
+3. 门控索引：修复中顺带检查（W01 种子 0–5 全部目标），**没有找到索引能认证而 L0 不能认证的目标**；
+   它的价值只在于成本（R9：W01 认证步数 10 329→744），从不扩大可发布集合。在 §8 采用结论中如实写明。
+4. 受修复影响、需要重新计时的格子：A 族 `persistent_gated_shadow`（以及配对的 incumbent、gated_shadow）、
+   B 族 `coupled_*`、C 族 `coupled_*`；由主会话按串行三进程重跑，新原始数据另存 `results/raw/formal_fix/`，
+   旧原始数据保留不动。

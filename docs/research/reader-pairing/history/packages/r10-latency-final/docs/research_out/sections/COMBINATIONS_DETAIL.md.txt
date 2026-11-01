@@ -1,0 +1,674 @@
+# 30个耦合课题：两种联合设计，各自0/A/B/AB消融（R10修订）
+
+每个组合有两种机制不同的联合设计I、II；每个设计拆成自己的两个组件A_d、B_d，在同一输入、oracle、资源与账本上
+运行0 / A_d / B_d / AB_d四格（0格共享）。交互项 I_d = f(AB_d) − f(A_d) − f(B_d) + f(0)。数值全部来自
+`raw/joint/Cxx.json`（由 `bench/exp_joint.py` 运行模型得到，不拼表）。v1的四格研究保留在 `raw/combos/combos.json` 作历史。
+
+## C01 共享物化×证据旁路（Q015,Q033）
+
+- 状态/裁定：**completed / probe_first**；证据：同一模型、每设计0/A/B/AB消融（模型单位）
+- 干预：A=一个物理物化服务两种消费者（否则可见与证据各物化一次）；B=可见路径不等证书先物化
+- 联合设计：I=消费者主导：成员/可见工作必需，邻居证据投机；II=中性物化服务：按对象位置FIFO，按消费者发租约
+- 设计I：consumer-led: members/visible required, neighbour evidence speculative
+- 设计II：neutral materialisation service: FIFO by object position, leases per consumer
+- 机制差异：priority by consumer (I) vs consumer-blind service order with lease delivery (II)
+- 标量f：complete-unit ack time (model units)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| w1_k1 | 60 | 40 | 60 | 40 | 40 | 60 | 40 | 0 | 0 |
+| w1_k3 | 84 | 64 | 84 | 64 | 64 | 84 | 64 | 0 | 0 |
+| w2_k1 | 38 | 26 | 33 | 26 | 28 | 35 | 28 | 5 | 3 |
+| w2_k3 | 50 | 40 | 50 | 40 | 40 | 47 | 40 | 0 | 3 |
+| w4_k1 | 26 | 16 | 23 | 16 | 16 | 23 | 16 | 3 | 3 |
+| w4_k3 | 38 | 26 | 26 | 26 | 28 | 28 | 28 | 12 | 10 |
+
+- 区分AB_I与AB_II的输入：w1_k1: consumer_leases=0/5, visible_ready=32/34；w1_k3: consumer_leases=0/7, visible_ready=32/58；w2_k1: metric=26/28, cert_done=23/25, consumer_leases=0/5, visible_ready=20/22；w2_k3: consumer_leases=0/7, visible_ready=20/34；w4_k1: consumer_leases=0/5；w4_k3: metric=26/28, cert_done=23/25, consumer_leases=0/7, visible_ready=20/22
+- 结论：6个输入（工人1/2/4×左邻1/3）：共享（A）在全部输入把完整ack从0格降到40/64/26–28/40/16/26–28；旁路（B）单独只在工人≥2时有效（38→33/35等）。两设计在工人2、左邻1与工人4、左邻3时分开：I 26 vs II 28（I先做可见/成员工作，证书早2单位）；II在所有输入多5–7个租约记账。交互项I_d为0到+12：共享吸收了旁路的收益。
+- 正例：工人4、左邻3：0格38→AB 26（I）/28（II）。；退化例：单工人：旁路无效（B=0格）。；最小反例：工人2、左邻1：II的中性FIFO先物化左邻，证书晚2单位，ack 28>26。
+- 成本：租约记账（II每输入5–7个）；物理工作两设计相同。；失败边界：邻居证据成为关键路径时I的降级会推迟证书（本输入族未出现，需要更多左邻）。；所需观测：真实系统中证据物化与可见物化重合的比例（共享机会）。
+- 代码/原始：`bench/joint_*.py::c01 → raw/joint/C01.json（每设计四格+区分输入）`
+
+## C02 共享工作×多消费者取消（Q029,Q063）
+
+- 状态/裁定：**completed / engineering_trial**；证据：同一模型、每设计0/A/B/AB消融（模型单位）
+- 干预：A=去重：C2挂到C1的作业上（否则C2自建作业）；B=取消/放弃协议
+- 联合设计：I=引用计数租约，计数归零才物理取消；II=需求集合+优先级继承（加入时作业取最强需求者优先级），放弃时显式所有权转移
+- 设计I：reference-counted lease; physical cancel only when no live demand
+- 设计II：demand set with priority inheritance; explicit ownership transfer on abandonment
+- 机制差异：I keeps the creator's priority and only protects against cancellation; II changes the job's priority to the strongest live demander at join and at transfer
+- 标量f：C2 result time (model units)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| C1_never_abandons | 15 | 35 | 15 | 35 | 15 | 15 | 15 | 0 | 0 |
+| abandon_before_join_t1 | 15 | 15 | 15 | 15 | 15 | 15 | 15 | 0 | 0 |
+| abandon_queued_t3 | 15 | 15 | 15 | 35 | 15 | 15 | 15 | 20 | 0 |
+| abandon_t12 | 15 | 35 | 15 | 35 | 20 | 15 | 15 | 0 | -5 |
+
+- 区分AB_I与AB_II的输入：C1_never_abandons: metric=35/15；abandon_queued_t3: metric=35/15；abandon_t12: metric=35/15
+- 结论：单工人、busy与s1占队列：不去重时C2自建必需作业，所有输入都在15拿到结果。去重而无协议（A单独）在C1于3或12放弃时让C2失去结果并重启（wrong_restart=1）。I（引用计数）在C1不放弃、3或12放弃时C2都要等到35（共享作业保持投机优先级排在s1之后）；II（需求集合+继承）都是15，与不去重相同，同时在C1不放弃时少做一份物理工作（35 vs 不去重40）。交互：I在放弃于3时为+20，II为0/−5。
+- 正例：II：所有输入C2在15拿到结果、无重启，并保住去重的工作节省。；退化例：C1在C2加入前放弃：所有格相同（15）。；最小反例：I在C1从不放弃时：35 vs 不去重15——去重把高优先消费者排到低优先作业后面。
+- 成本：II需要可变作业优先级与需求集合；I只需计数。；失败边界：需求者优先级频繁变化时继承需要传递（链式）；本模型只有一层。；所需观测：同一物化被多消费者请求的真实频率与优先级组合。
+- 代码/原始：`bench/joint_*.py::c02 → raw/joint/C02.json（每设计四格+区分输入）`
+
+## C03 非抢占保护×可选准入（Q026,Q038）
+
+- 状态/裁定：**completed / engineering_trial**；证据：同一模型、每设计0/A/B/AB消融（模型单位）
+- 干预：A=前台容量保护；B=optional准入策略
+- 联合设计：I=硬物理预留：非必需工作不拿最后一个空闲工人；optional只用剩余（1个optional槽）。II=服务上界门控：只准入服务≤阻塞预算10的投机（A_II）/optional（B_II）
+- 设计I：hard physical reserve + optional only in the remainder
+- 设计II：service-bound admission gate (speculative, optional)
+- 机制差异：I reserves capacity regardless of service time; II admits by declared service bound and needs that bound
+- 标量f：max blocking of required work (start - release, model units)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| single_burst | 55 | 0 | 0 | 0 | 0 | 0 | 0 | 55 | 55 |
+| double_burst | 55 | 10 | 10 | 10 | 0 | 0 | 0 | 45 | 55 |
+| short_background | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| no_required | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+
+- 区分AB_I与AB_II的输入：single_burst: background_tasks_never_admitted=0/4, background_work_by_70=190/0；double_burst: metric=10/0, background_tasks_never_admitted=0/4, background_work_by_70=190/0；no_required: background_tasks_never_admitted=0/3, background_work_by_70=146/16
+- 结论：单个必需突发：0格阻塞55，两设计各自任一组件即为0。两个必需同时到达：I阻塞10（只预留1个），II为0。代价相反：I在突发与无必需输入下保持背景工作190/146单位；II拒绝全部60单位长作业（背景工作0/16，4/3个任务从未准入）。没有服务上界时II不能工作。
+- 正例：单突发：两设计阻塞0。；退化例：背景作业都短（4）：所有格阻塞0。；最小反例：两个必需同时到达：I阻塞10（预留不足）。
+- 成本：I：预留工人的空闲时间；II：长背景作业全部被拒（吞吐损失）。；失败边界：I：同时到达的必需数>预留数；II：服务上界未知或背景都长。；所需观测：必需工作突发规模分布与背景作业服务时长分布。
+- 代码/原始：`bench/joint_*.py::c03 → raw/joint/C03.json（每设计四格+区分输入）`
+
+## C04 升级协议×字节/时限许可（Q027,Q040）
+
+- 状态/裁定：**completed / engineering_trial**；证据：同一模型、每设计0/A/B/AB消融（模型单位）
+- 干预：A=原位升级（否则取消重启T'）；B=许可结算方式
+- 联合设计：I=保留任务与许可、只提高消费者优先级；许可由唯一账户在真实退出时结算（关闭context不退款）。II=升级时把任务所有权转给新context并原子迁移预留
+- 设计I：keep task and permit; raise consumer priority; settle once at the real exit
+- 设计II：transfer ownership to the new context and migrate the reservation atomically
+- 机制差异：I leaves the permit with the creator and forbids refund-before-exit; II moves the permit to the new owner
+- 标量f：interleavings (of 24) with a ledger violation (hole, double refund, unrenewable permit)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| all_orders_of_upgrade_close_deadline_exit | 12 | 12 | 0 | 0 | 12 | 19 | 8 | 0 | -11 |
+
+- 区分AB_I与AB_II的输入：all_orders_of_upgrade_close_deadline_exit: metric=0/8, deadline_fail=0/1, hole=0/8
+- 结论：upgrade/close_X/deadline/exit的24种顺序：0格12种违例（取消重启+逐任务许可）；AB_I 0种（无重读、无双退、无空洞、峰值8 MiB）；AB_II 8种：creator context在升级之前关闭时许可被退款而读取仍在进行（空洞），其中1种还有无人续约。B_II单独（重启+迁移）19种违例——迁移把仍在读的T的预留拿走。
+- 正例：AB_I：24种顺序全部0违例。；退化例：exit在所有事件之前：所有格0违例。；最小反例：close_X先于upgrade：II的迁移来不及发生，退款造成读取空洞。
+- 成本：I需要任务级唯一账户；II需要原子迁移（两账户同时改）。；失败边界：II在创建者先关闭时失效，除非另加“真实退出才结算”（即I的B）。；所需观测：不适用：协议账本在模型内穷举；真实实现需对照取消/退出/退款事件。
+- 代码/原始：`bench/joint_*.py::c04 → raw/joint/C04.json（每设计四格+区分输入）`
+
+## C05 完成邮箱×状态合批（Q028,Q075）
+
+- 状态/裁定：**completed / engineering_trial**；证据：同一模型、每设计0/A/B/AB消融（模型单位）
+- 干预：A=有界待消费结果池（否则结果占着工人与槽直到被接纳）；B=有界提交合批
+- 联合设计：I=池（容量3）腾出的位置先给等待中的完整unit成员；只合并独立结果，unit成员不进批。II=同一容量的池为完整unit预留2个位置；每个截止一批，超时拆批（提交已就绪部分）
+- 设计I：bounded pool, freed places go first to held members of the awaited unit; only independent results batched
+- 设计II：same pool with 2 places reserved for the complete unit; one batch per deadline, split on time-out
+- 机制差异：drain order (I) vs ahead-of-time space reservation + common deadline (II), equal pool capacity
+- 标量f：complete-unit ack time (model units); r_start = required task start（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| stall_resume | 40 | 40 | 40 | 40 | 40 | 40 | 40 | 0 | 0 |
+| slow_member | 30 | 30 | 30 | 30 | 30 | 30 | 30 | 0 | 0 |
+| close_conflict | None | None | None | None | None | None | None | None | None |
+| independent_burst_first | 49 | 40 | 57 | 40 | 40 | 65 | 40 | -8 | -16 |
+| independent_burst_first@pool2 | 49 | 40 | 57 | 40 | 49 | 65 | 65 | -8 | 0 |
+
+- 区分AB_I与AB_II的输入：stall_resume: independent_commit_max=48/40；slow_member: held_worker_time=0/20, independent_commit_max=16/28；independent_burst_first: held_worker_time=101/108, independent_commit_max=48/40；independent_burst_first@pool2: metric=40/65, held_worker_time=145/210, independent_commit_max=48/56, peak_resident_results=6/4, r_start=40/56
+- 结论：在可执行调度器上（4个非抢占工人、每事件不变量）：池（A）把必需任务开始从40降到10（停顿恢复、独立突发），合批（B）单独只会加延迟（独立突发：完整ack 49→57/65）。容量3时两设计的完整ack与必需开始相同；区别在独立结果提交（I 48/16，II 40/28）与HELD工人时间（慢成员：I 0，II 20）。容量2（独立突发）时II的预留把通用位置挤到0：必需任务推迟到56、完整ack 65，而I为40/40。所有格0违例、0双重释放、关闭后0残留。
+- 正例：停顿恢复：池使必需任务在10开始（0格40）。；退化例：消费者不停顿：池不被使用。；最小反例：容量2+独立结果先完成：II的预留让必需任务等到56。
+- 成本：池常驻（峰值4–6个结果）；HELD工人时间；II的预留空位。；失败边界：停顿期间完成的结果数超过池容量；II在容量≤unit大小+独立结果数时失效。；所需观测：真实UI停顿时长、停顿中完成的结果数与结果大小。
+- 代码/原始：`bench/joint_*.py::c05 → raw/joint/C05.json（每设计四格+区分输入）`
+
+## C06 缓存策略×调度顺序（Q047,Q109）
+
+- 状态/裁定：**completed / conditional_theory**；证据：同一模型、每设计0/A/B/AB消融（模型单位）
+- 干预：A=价值保留（淘汰）；B=目标依赖调度（预取决策）
+- 联合设计：I=小域离线精确联合优化（需要未来需求序列；只能当界）。II=在线分层：GreedyDual代价感知淘汰+可见需求优先的预取门控
+- 设计I：exact offline joint optimum of eviction and prefetch (small domain, needs the future demand)
+- 设计II：online cost-aware eviction (GreedyDual) + visible-demand-first prefetch gate
+- 机制差异：I is an offline oracle-style optimiser (not deployable without the future sequence; a bound), II is an online layered policy
+- 标量f：visible rebuild latency over the demand sequence（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| v1_sequence_k2 | 42 | 26 | 42 | 26 | 26 | 42 | 26 | 0 | 0 |
+| prefetch_pollution_k2 | 45 | 45 | 44 | 23 | 26 | 45 | 26 | -21 | 0 |
+| random0_k3 | 21 | 21 | 21 | 21 | 21 | 21 | 21 | 0 | 0 |
+| random1_k3 | 51 | 25 | 31 | 24 | 25 | 51 | 25 | 19 | 0 |
+| random2_k3 | 46 | 24 | 25 | 24 | 27 | 46 | 26 | 21 | -1 |
+
+- 区分AB_I与AB_II的输入：prefetch_pollution_k2: metric=23/26, work=23/42；random0_k3: work=24/25；random1_k3: metric=24/25, work=33/34；random2_k3: metric=24/26, work=24/37
+- 结论：5个序列：v1序列上LRU 42、两设计A组件都到26（=离线最优）；预取污染序列I联合最优23，II 26且工作42 vs 23；随机序列II与最优差0–2。I的联合交互可为−21（只有同时优化淘汰与预取才拿到23）。命中率反例保留：v1序列LRU命中4次而延迟42，GreedyDual命中1次延迟26。
+- 正例：v1序列：A组件把延迟从42降到26。；退化例：随机序列0：所有格21。；最小反例：预取污染：在线II比离线最优多3单位延迟、多19单位工作。
+- 成本：I需要整段未来序列（不可部署，只作界）；II每对象需要重建成本。；失败边界：重建成本估计错误时II可劣于LRU。；所需观测：真实可见需求序列与重建成本（判断在线策略离界多远）。
+- 代码/原始：`bench/joint_*.py::c06 → raw/joint/C06.json（每设计四格+区分输入）`
+
+## C08 checkpoint×精确有限入口（Q053,Q099）
+
+- 状态/裁定：**completed / probe_first**；证据：同一模型、每设计0/A/B/AB消融（模型单位）
+- 干预：A=左侧checkpoint；B=更精确的入口关系
+- 联合设计：I=从认证过的配对之后收割精确游标checkpoint（逐对象身份校验）+剪枝入口关系（Q053路线B）。II=摘要树关系在查询时组合+证书复用（C12当前性检查）
+- 设计I：exact cursor checkpoints harvested after certified pairs (identity-validated) + pruned entry relation
+- 设计II：summary relation (tree) composed at query + certificate reuse with C12 currency check
+- 机制差异：I keeps exact states and validates object identities; II keeps composable transfer relations and re-certifies
+- 标量f：scan work over the query sequence (certification/tree steps; maintenance in cost)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| forward | 1688 | 861 | 1644 | 849 | 655 | 1688 | 2343 | 32 | 1688 |
+| random_targets | 1700 | 1273 | 1608 | 1217 | 617 | 1628 | 2182 | 36 | 1637 |
+| early_update | 1684 | 966 | 1640 | 942 | 659 | 1684 | 2343 | 20 | 1684 |
+| long_chain_no_reset | 3289 | 2106 | 3289 | 2106 | 585 | 3013 | 3532 | 0 | 3223 |
+
+- 区分AB_I与AB_II的输入：forward: metric=849/2343, maintenance=594/6990, reads=999/1152；random_targets: metric=1217/2182, maintenance=333/6990, reads=922/1016；early_update: metric=942/2343, maintenance=594/14829, reads=932/1152；long_chain_no_reset: metric=2106/3532, maintenance=512/6747, reads=1145/1000
+- 结论：12个60对象世界×4类查询序列：扫描工作0格1688/1700/1684/3289；I（AB）849/1217/942/2106，维护（身份校验）333–594；II的树单独（A_II）查询最少（585–659），但树建与更新维护6747–14829，再加查询时重认证（B_II）后总扫描2182–3532。剪枝（B_I）单独只减少2–6%。早期更新被身份校验捕获，所有格0个错误unit。
+- 正例：前进阅读：I把扫描工作减半（1688→849），维护594。；退化例：目标间距大于收割范围：checkpoint不可用，回到认证。；最小反例：II：树查询便宜，但每次更新的维护与重认证让总工作反超0格。
+- 成本：I：每个checkpoint保存其依赖对象的身份快照；II：树常驻与更新。；失败边界：checkpoint左侧任一对象内容身份改变即失效；跨会话复用需要持久化身份。；所需观测：真实导航中相邻目标间距与跨会话重访比例（决定收割的checkpoint能否被用到）。
+- 代码/原始：`bench/joint_*.py::c08 → raw/joint/C08.json（每设计四格+区分输入）`
+
+## C09 摘要树×惰性消费（Q098,Q100）
+
+- 状态/裁定：**completed / conditional_theory**；证据：同一模型、每设计0/A/B/AB消融（模型单位）
+- 干预：A=可结合摘要结构；B=惰性输出（只解析需要的unit）
+- 联合设计：I=平衡摘要树，消费者只查目标及其后3个unit。II=持久分块序列（收口修复F2）：每块记录实际读集；更新时精确比对新旧输入，读集含改动输入的块为“直接脏”，必须重展开；前块出口变化造成的“传播脏”在入口与前块出口一致（收敛）时才可跳过——收敛不能跳过右侧的直接改动
+- 设计I：balanced summary tree; lazy consumer queries only the needed units
+- 设计II：persistent chunked sequence; exact read-set dirtiness (direct) + exit-cursor convergence (propagated only), re-expanded lazily
+- 机制差异：I recomputes O(log n) summaries per change and answers any target; II re-expands directly dirty chunks and chunks whose entry changed, left to right, and is sequential
+- 标量f：scan work for one change + target unit + 3 following units (5 worlds, n=176)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| early_change_far_target | 581 | 1462 | 412 | 582 | 581 | 412 | 34 | -711 | -378 |
+| change_near_target | 583 | 1477 | 414 | 597 | 216 | 414 | 29 | -711 | -18 |
+| long_chain_early_change | 531 | 1443 | 383 | 563 | 531 | 383 | 33 | -732 | -350 |
+| no_change | 579 | 1002 | 410 | 122 | 0 | 410 | 0 | -711 | 169 |
+
+- 区分AB_I与AB_II的输入：early_change_far_target: metric=582/34, diff_compares=None/1755, entry_checks=None/75, fallbacks=None/0；change_near_target: metric=597/29, diff_compares=None/1755, entry_checks=None/5, fallbacks=None/0；long_chain_early_change: metric=563/33, diff_compares=None/1755, entry_checks=None/75, fallbacks=None/0；no_change: metric=122/0, diff_compares=None/0, entry_checks=None/0, fallbacks=None/0
+- 结论：5个176对象世界：早期变化+远目标：0格581，树+惰性（AB_I）582，分块+收敛（AB_II）34；近目标变化：597 vs 29；无变化：122 vs 0。树单独配急切消费者为1443–1477。所有格0错误unit（与完整计划逐个比对）。收口修复F2：旧实现（ChunkedLazyV1，已撤回）只记最早可疑块，第一次收敛后把右侧全部当作有效。两次更新之间不查询时，200个世界中195个出错（296个错误unit）；单次更新若跨块（改动在块首/块尾）或经手工起点链的长依赖，200个世界中分别有5个、3个出错。C09的四个输入恰好不跨块，修复前后步数完全相同（34/29/33/0，0错误），单次更新域的原数值保留。修复后的代价：随机位置单次更新步数1314→1413（+7.5%），手工链1440→1907，多次更新1325→4231（旧实现跳过了必要工作）；另有每次更新一次O(n)快照复制和351次精确比对（n=176的对象+边）以及入口比较（raw/regressions/c09_fix.json）。快照使调用方原地修改case后再调用update()也能被检出（验收发现的输入契约反例，已加回归）。
+- 正例：早期变化+远目标：II 34步（收敛后不再展开）。；退化例：无变化：II为0步（比对后无脏块）。；最小反例：旧实现的最小反例：40个SHAPE_X、自动关，预热后把对象0与24改为SHAPE_Y且中间不查询，查询24返回旧unit(23,24)，完整Γ是对象24的FULL SHAPE_Y（tests/test_final_fixes.py::ChunkedLazyUpdates）。未构造：无reset的长相位传播（G7链族）下II可能一直不收敛。
+- 成本：I：树常驻与O(log n)更新；II：块常驻、每块读集与出口游标；每次更新O(n)快照复制与精确比对（可信的变更通知可降到O(改动数)，未测）。；失败边界：II只适合顺序访问附近；跨越很远的随机目标需要先展开中间块；输入改动若绕过update()则失效检测不成立；设置或长度变化时精确回退为全量重展开（fallbacks计数）。；所需观测：真实变化位置与导航目标的相对距离分布；连续更新之间的查询间隔。
+- 代码/原始：`bench/joint_*.py::c09 → raw/joint/C09.json（每设计四格+区分输入）`
+
+## C12 便宜信息×精确回退（Q107,Q116）
+
+- 状态/裁定：**completed / conditional_theory**；证据：同一模型、每设计0/A/B/AB消融（模型单位）
+- 干预：A=低成本筛查；B=阈值邻域的精确处理
+- 联合设计：I=只在元数据与内容绑定（已验证）时用元数据类别出证（两侧都白/都暗→无分数，不读像素），其余走原参考路径。II=精确有理数区间快路，远离100时直接判定，|v−100|<ε时回到参考浮点序列
+- 设计I：cheap metadata certificate only where content-bound (proven sufficient), else the original path
+- 设计II：exact-rational interval fast path with near-threshold fallback to the reference sequence
+- 机制差异：I skips pixel work entirely in a proven domain; II computes with different arithmetic and refines only near the threshold
+- 标量f：decision flips vs the reference float evaluation (150 pairs)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| realizable_mixed | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| near_threshold_grey | 0 | 0 | 0 | 0 | 38 | 0 | 0 | 0 | -38 |
+| bad_metadata | 0 | 7 | 0 | 0 | 0 | 0 | 0 | -7 | 0 |
+
+- 区分AB_I与AB_II的输入：realizable_mixed: pixels_read=13800/15000；near_threshold_grey: fallbacks=0/150
+- 违反正确性oracle的格（这些格的标量不可比）：[['near_threshold_grey', 'A_II'], ['bad_metadata', 'A_I']]
+- 结论：150对条带×3输入：坏元数据下I的A单独7次翻转，加绑定（AB_I）0次；近阈值灰阶下II的快路单独38次翻转，加回退（AB_II）0次（150次回退）。I在可实现混合输入中少读8%像素；II不省像素。
+- 正例：可实现混合：I少读8%像素且0翻转。；退化例：条带都有纹理：元数据规则不触发，两设计等于参考。；最小反例：近阈值灰阶：精确算术本身就是翻转来源（契约是参考浮点序列）。
+- 成本：I：元数据绑定校验；II：每个近阈值条带一次回退。；失败边界：元数据未绑定内容时I不得使用；ε过小时II漏回退。；所需观测：真实元数据与解码内容的一致率。
+- 代码/原始：`bench/joint_*.py::c12 → raw/joint/C12.json（每设计四格+区分输入）`
+
+## C13 首次授权×分段资源准备（Q055,Q073）
+
+- 状态/裁定：**completed / stop**；证据：同一模型、每设计0/A/B/AB消融（模型单位）
+- 干预：A=资源与证明并行准备（否则证书后才准备）；B=提交纪律
+- 联合设计：I=计划不可曝光，计划与全部资源齐时一次授权（替换后重规划）。II=证书时提交精确布局快照，成员资源逐步绑定，最终完整ack屏障（替换使快照重建）
+- 设计I：unexposable plan, single authorisation when plan + all resources are ready
+- 设计II：layout snapshot at certification, progressive binding, complete-ack barrier
+- 机制差异：I materialises the layout at authorisation; II pins it at certification and pays snapshot residency and rebuilds on replacement
+- 标量f：orderings exposing a partial unit (no complete-unit ack in that frame)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| plain | 40 | 40 | 0 | 0 | 40 | 0 | 0 | 0 | 0 |
+| replacement_after_cert | 185 | 231 | 0 | 0 | 231 | 0 | 0 | -46 | -46 |
+| only_one_side_available | 9 | 12 | 0 | 0 | 12 | 0 | 0 | -3 | -3 |
+
+- 区分AB_I与AB_II的输入：plain: snapshot_held_frame_steps=0/90；replacement_after_cert: snapshot_held_frame_steps=0/888；only_one_side_available: snapshot_held_frame_steps=0/30
+- 结论：无纪律时部分曝光：普通顺序40种、证书后替换185种（并行准备单独反而增加到231）、只一侧可用9种；两设计（B_I/B_II/AB）全部0种。完整ack帧两设计相同（不提前）；II多出快照驻留90/888/30帧步。
+- 正例：两设计全部输入0部分曝光。；退化例：只一侧可用：两设计都不曝光（正确）。；最小反例：并行准备（A）单独：部分曝光从185增到231。
+- 成本：II快照驻留；I无额外状态。；失败边界：成员资源永不就绪时两设计都无限等待（需另定降级）。；所需观测：不适用：协议正确性穷举；不产生时延收益。
+- 代码/原始：`bench/joint_*.py::c13 → raw/joint/C13.json（每设计四格+区分输入）`
+
+## C14 frame租约×惰性布局更新（Q006,Q077）
+
+- 状态/裁定：**completed / stop**；证据：同一模型、每设计0/A/B/AB消融（模型单位）
+- 干预：A=旧曝光资源租约；B=布局更新后的导航映射
+- 联合设计：I=只给已曝光ticket加帧租约+按源item身份在当前布局导航。II=多版本布局快照+从旧布局出发的版本桥
+- 设计I：frame lease on the exposed ticket + navigation by source-item identity in the current layout
+- 设计II：multi-version layout snapshots + versioned unit bridge from the old layout
+- 机制差异：I keeps only the exposed capability; II keeps whole old layout versions and maps through them
+- 标量f：wrong orderings (exposure moved/blanked + wrong navigation)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| split | 7 | 0 | 7 | 0 | 0 | 7 | 0 | 0 | 0 |
+| merge | 14 | 7 | 7 | 0 | 7 | 7 | 0 | 0 | 0 |
+| long_suffix_shift | 7 | 0 | 7 | 0 | 0 | 7 | 0 | 0 | 0 |
+
+- 区分AB_I与AB_II的输入：split: layout_versions_resident_max=1/2；merge: layout_versions_resident_max=1/2；long_suffix_shift: layout_versions_resident_max=1/2
+- 结论：拆分/合并/长后缀移位三种更新×全部事件顺序：0格7/14/7个错误顺序；两设计0错。区别：II常驻2个布局版本（I为1）。
+- 正例：两设计全部输入0错。；退化例：布局不变：所有格0错。；最小反例：只有租约（A单独）在合并时仍导航错（7）。
+- 成本：II多一个布局版本常驻直到旧帧退休。；失败边界：item身份在更新中被重用时I的锚定失效。；所需观测：不适用：协议正确性穷举。
+- 代码/原始：`bench/joint_*.py::c14 → raw/joint/C14.json（每设计四格+区分输入）`
+
+## C15 快速意图合并×物理退出（Q068,Q062）
+
+- 状态/裁定：**completed / engineering_trial**；证据：同一模型、每设计0/A/B/AB消融（模型单位）
+- 干预：A=未曝光意图处理；B=旧作业回收
+- 联合设计：I=最新有效队列（丢弃排队中的旧意图）+旧运行作业在下一分段边界协作退出。II=惰性意图日志（安静期3后只执行最新意图）+同一对象的运行作业重绑定到新意图
+- 设计I：latest-valid queue + cooperative exit of stale running work
+- 设计II：lazy intent log with quiet period + rebinding of running work to a newer intent on the same object
+- 机制差异：I acts on every intent immediately and reclaims; II defers decisions and reuses running work
+- 标量f：latency of the final intent (model units)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| fast_stream_6 | 45 | 15 | 45 | 11 | 13 | 45 | 13 | -4 | 0 |
+| reverse_duplicates | 38 | 18 | 38 | 10 | 13 | 28 | 13 | -8 | 10 |
+| single_intent | 10 | 10 | 10 | 10 | 13 | 10 | 13 | 0 | 0 |
+| slow_stream | 10 | 10 | 10 | 10 | 13 | 10 | 13 | 0 | 0 |
+
+- 区分AB_I与AB_II的输入：fast_stream_6: metric=11/13, physical_work=26/10, wasted_work=16/0；reverse_duplicates: metric=10/13, physical_work=22/10, wasted_work=12/0；single_intent: metric=10/13；slow_stream: metric=10/13
+- 结论：单工人、服务10、间隔3：末意图时延0格45；I 11（工作26，其中16浪费）；II 13（工作10，无浪费）。反向重复a,b,a,b,a：I 10，II 13。单意图：I 10，II 13（安静期税3）。
+- 正例：快速流：I末意图11；II只做1次物理工作。；退化例：慢流（间隔12）：I与0格相同。；最小反例：单意图：II付安静期税3。
+- 成本：I：协作退出点；II：意图日志与安静期计时。；失败边界：I需要可分段的作业；II在意图稀疏时纯付税。；所需观测：真实意图到达间隔分布（决定安静期是否划算）。
+- 代码/原始：`bench/joint_*.py::c15 → raw/joint/C15.json（每设计四格+区分输入）`
+
+## C16 跨重开复用×身份键（Q044,Q071）
+
+- 状态/裁定：**completed / stop**；证据：同一模型、每设计0/A/B/AB消融（模型单位）
+- 干预：A=跨context数据复用；B=当前context重建授权
+- 联合设计：I=内容寻址数据缓存（内容摘要+设置/算法版本）+新context完整重认证。II=版本键分层缓存（路径+内容版本），命中时验证实际读集+携带证明的重签
+- 设计I：content-addressed data + full re-certification in the new context
+- 设计II：version-keyed layered cache with read-set verification + proof-carrying re-issue
+- 机制差异：I keys by content and recomputes authority; II keys by version, verifies supports, and re-issues by checking a carried proof
+- 标量f：unsafe reuses (stale data or old authority accepted)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| same_content_same_path | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| replaced_same_path | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| same_content_moved | 0 | 1 | 0 | 0 | 0 | 0 | 0 | -1 | 0 |
+| same_value_new_version | 0 | 1 | 0 | 0 | 0 | 0 | 0 | -1 | 0 |
+| late_old_ack | 0 | 1 | 0 | 0 | 1 | 0 | 0 | -1 | -1 |
+
+- 区分AB_I与AB_II的输入：replaced_same_path: work=26/23；same_content_moved: data_hit=True/False, work=6/23；same_value_new_version: data_hit=True/False, work=6/23
+- 结论：5个重开场景：无B时A单独在移动/同值新版本/迟到旧ack中出现1次不安全复用（旧授权被接受）；两设计AB都0。I在同内容移动、同值新版本时命中数据（工作6），II不命中（23）；替换后I 26、II 23。历史数据中重开没有可回收的收益（Q004）。
+- 正例：同内容移动：I命中数据，工作6。；退化例：同内容同路径：所有格0不安全。；最小反例：A单独：迟到旧ack被接受。
+- 成本：I：内容摘要计算；II：读集验证。；失败边界：摘要不覆盖派生参数时I不安全。；所需观测：真实重开中同内容复用的比例；历史数据显示重开不快于新runtime。
+- 代码/原始：`bench/joint_*.py::c16 → raw/joint/C16.json（每设计四格+区分输入）`
+
+## C17 关闭协议×内存双资源账（Q063,Q112）
+
+- 状态/裁定：**completed / stop**；证据：同一模型、每设计0/A/B/AB消融（模型单位）
+- 干预：A=局部关闭/移交；B=共享内存记账
+- 联合设计：I=作业为唯一所有者，消费者租约在作业真实退出时释放。II=分层账本显式去重共享常驻对象+关闭时能力转移
+- 设计I：unique owner account; consumer leases released at the job's real exit
+- 设计II：layered ledger with explicit dedupe; capability transfer at close
+- 机制差异：I makes the job the owner and waits at close; II keeps per-consumer views and moves capabilities
+- 标量f：orderings with a ledger mismatch (double count / hidden cost)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| all_orders | 20 | 20 | 0 | 0 | 20 | 0 | 0 | 0 | 0 |
+
+- 区分AB_I与AB_II的输入：all_orders: close_waits=24/0
+- 结论：close_C1/exit_J/close_C2/reopen_C1全部24种顺序：0格20种账不一致（重复计数或隐藏成本）；两设计的B组件即消除不一致（0种）。区别：I在24种顺序中有24次关闭等待（等作业真实退出），II为0。
+- 正例：两设计0不一致。；退化例：作业先退出：所有格只剩重复计数问题。；最小反例：朴素逐消费者求和：共享12 MiB记成24 MiB。
+- 成本：I：关闭等待；II：转移与去重逻辑。；失败边界：存在多个物理所有者时去重不合法。；所需观测：不适用：账本规则在模型内穷举。
+- 代码/原始：`bench/joint_*.py::c17 → raw/joint/C17.json（每设计四格+区分输入）`
+
+## C18 预建索引×自适应晋升（Q046,Q114）
+
+- 状态/裁定：**completed / stop**；证据：同一模型、每设计0/A/B/AB消融（模型单位）
+- 干预：A=额外索引；B=按需启用/降级
+- 联合设计：I=摘要树，第二次需求才建，更新风暴后降级（晋升需重新累积复用证据）。II=稀疏checkpoint，预计复用≥3次才在租约内建立，更新即撤回
+- 设计I：summary tree promoted at the second demand, demoted after an update storm
+- 设计II：checkpoint lease with reuse threshold, revoked on update
+- 机制差异：I builds a full relation index lazily; II builds cheap prefix checkpoints on predicted reuse
+- 标量f：total scan steps (index build + maintenance + queries)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| M1 | 20 | 1736 | 20 | 20 | 66 | 20 | 20 | -1716 | -46 |
+| revisit10 | 200 | 1781 | 200 | 1796 | 201 | 200 | 201 | 15 | 0 |
+| scan20 | 129 | 1825 | 129 | 1829 | 150 | 129 | 150 | 4 | 0 |
+| frequent_replacement | 70 | 3074 | 70 | 5761 | 154 | 70 | 358 | 2687 | 204 |
+
+- 区分AB_I与AB_II的输入：revisit10: metric=1796/201；scan20: metric=1829/150；frequent_replacement: metric=5761/358
+- 结论：176对象世界：单次目标0格20步；I预建树1736，II checkpoint 66；带门控时两设计都20。同目标10次：I 1796（第二次建树仍不回本），II 201（≈0格200）。频繁替换：I 5761（反复建树的切换税），II 358。局部认证本身已很便宜，索引在已测负载下不回本。
+- 正例：门控后单次目标：两设计都不付建表税。；退化例：M=1：门控等于不建。；最小反例：频繁替换：I反复晋升/降级，切换税5761步。
+- 成本：I：树建表约1700步；II：checkpoint建立与撤回。；失败边界：认证需要回溯很远且同目标多次访问时checkpoint才可能回本。；所需观测：同目标重访频率与更新率。
+- 代码/原始：`bench/joint_*.py::c18 → raw/joint/C18.json（每设计四格+区分输入）`
+
+## C19 证书增强×触发可达性（Q054,Q070）
+
+- 状态/裁定：**completed / conditional_theory**；证据：同一模型、每设计0/A/B/AB消融（模型单位）
+- 干预：A=更强（分支）证书；B=何时允许尝试
+- 联合设计：I=每轮在取证之前先试强证明，B_I只在本轮需求含新物化时触发。II=强证明与本轮取证竞速（取证照常发出，赢了只省后续轮次），B_II只在本轮有空闲通道时尝试（零税）
+- 设计I：strong proof before acquisitions, gated by a new-materialisation trigger
+- 设计II：strong proof raced with acquisitions, zero-tax guard (idle lane only)
+- 机制差异：I spends proof time on the critical path to save materialisations; II never delays acquisitions and saves only later rounds
+- 标量f：materialisations over 20 worlds (prefetch OFF)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| forward | 320 | 320 | 320 | 320 | 320 | 320 | 320 | 0 | 0 |
+| far_jumps | 275 | 273 | 275 | 273 | 275 | 275 | 275 | 0 | 0 |
+
+- 区分AB_I与AB_II的输入：forward: adopted=8/20, latency_units=2559/2380, proof_calls=179/129；far_jumps: metric=273/275, adopted=2/10, latency_units=1967/1860, proof_calls=127/113
+- 结论：20个世界、预取关：前进历史所有格320个物化（强证明采纳20次也不省物化）；远跳历史I省2个（275→273），II为0。延迟单位：I在前进上2380→2638（A_I单独；联合AB_I为2559，证明在关键路径上），II保持2380。门控把证明调用从258/238降到179/129。
+- 正例：远跳：I省2个物化。；退化例：前进阅读：所有格320（正常路线0收益形状）。；最小反例：前进：强证明被采纳20次而物化不变——省下的是本来就要物化的邻居事实。
+- 成本：证明调用（每次约100倍C09）；I把证明放在关键路径上。；失败边界：冻结容量与前进阅读下两设计都0收益。；所需观测：真实跳转首访比例与物化服务时长。
+- 代码/原始：`bench/joint_*.py::c19 → raw/joint/C19.json（每设计四格+区分输入）`
+
+## C21 最小探针×关键路径界（Q010,Q023）
+
+- 状态/裁定：**completed / probe_first**；证据：同一相容世界集合上的观测/推界消融（非性能消融）（合成世界）
+- 干预：A=新增观测选择；B=最坏相容区间推界
+- 联合设计：I=按“最能分开GO/NO-GO”的自适应探针选择，事后算区间。II=预先选能分开所有异决策世界对的最便宜探针集合，且先推界、区间不跨门槛就不探
+- 设计I：decision-relevant probe choice + post-hoc worst-case interval
+- 设计II：pairwise set-cover probe set + bound-first gating
+- 机制差异：I chooses probes adaptively per decision; II fixes a separating probe set in advance and skips probing when the bound already decides
+- 标量f：true worlds whose GO/NO-GO stays undecided（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| T01_family_same_U | 5 | 0 | 5 | 0 | 0 | 5 | 0 | 0 | 0 |
+| mixed_U_family | 2 | 0 | 2 | 0 | 0 | 2 | 0 | 0 | 0 |
+
+- 区分AB_I与AB_II的输入：T01_family_same_U: probe_cost=12/10；mixed_U_family: probe_cost=6/4
+- 结论：两个相容世界族：T01族（5个世界、U都等于130.19685：相位锁定×2、必需服务×2、排队）只看U时5个都无法裁定，推界单独（B）也不能（区间都跨门槛）；两设计加探针后0个，探针成本I 12、II 10。混合U族（4个世界，其中2个U已低于门槛）：0格2个无法裁定；II的先推界跳过已能裁定的世界，探针成本4（A_II单独8，I为6）。所有能裁定T01族的探针集合都含B_i或机会表：C_i单独分不开相位锁定与必需服务。B_I单独（事后区间）在没有探针时不改变裁定，是弱组件。
+- 正例：两设计：两族全部世界被裁定。；退化例：所有世界决策相同时：不需探针。；最小反例：只补C_i：P与S世界观测相同、决策相反。
+- 成本：探针成本：C=1，B=2，O=2。；失败边界：若授权后服务开始事件不可定义，只能用受控延迟实验（改变负载）。；所需观测：C_i与B_i（同scope同ticket），或消费机会时刻表。
+- 代码/原始：`bench/joint_*.py::c21 → raw/joint/C21.json（每设计四格+区分输入）`
+
+## C22 观测采样×排程扰动（Q012,Q087）
+
+- 状态/裁定：**completed / probe_first**；证据：合成模型（不运行真实产品）
+- 干预：A=缓冲/采样观察器；B=阶段关联与校准
+- 联合设计：I=锚点全记+非关键阶段事件在固定的10%样本上记录；B_I=经锚点把采样事件关联到样本（逐样本DAG）。II=分阶段互补探针（3次运行各记2个阶段）；B_II=已知每事件延迟的校准运行，扣除固定成本
+- 设计I：anchors always + sparse sampling; per-sample DAG for sampled samples
+- 设计II：phased complementary probes + calibration run; marginals only
+- 机制差异：I keeps per-sample joint structure for a subsample; II covers every stage for every sample but only marginally (no single DAG)
+- 标量f：observer perturbation per sample (model units, synthetic)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| synthetic_6_stage | 6.6 | 1.02 | 6.6 | 1.02 | 0.8 | 6.6 | 0.8 | 0.0 | 0.0 |
+
+- 区分AB_I与AB_II的输入：synthetic_6_stage: metric=1.02/0.8, runs=1/4, stages_identified_per_sample_DAG=6/0, uncorrected_perturbation=1.02/0.0
+- 结论：合成6阶段服务、200样本（固定成本0.2/事件，每帧>4个事件时flush停顿5）：全量记录扰动6.6；I约1.02（约1/6.5），关联后6个阶段都有≥20个样本的逐样本DAG，不关联则0；II约0.8（约1/8），6个阶段都有边际分布但逐样本DAG为0；II的校准扣掉固定成本后未校正扰动0（全量记录配校准时还剩5.0：争用停顿不能被校准扣除）。观测等价世界：只有固定成本的世界与有争用的世界在每帧事件数≤4时完全相同；把每帧事件数推过缓冲阈值即可区分（扫描见raw/joint/C22.json notes）。真实运行：NOT_RUN。
+- 正例：I：扰动降到约1/6.5且保留子样本DAG。；退化例：每帧事件数≤4：固定成本与争用成本观测等价。；最小反例：II：把三次运行拼成单样本DAG会制造不存在的关联。
+- 成本：II需要3–4次运行；I损失未采样样本的结构。；失败边界：真实flush/背压阈值未知或不可调时无法区分两类成本。；所需观测：真实观察器的每事件成本与缓冲阈值扫描（委托方执行；本轮NOT_RUN）。
+- 代码/原始：`bench/joint_*.py::c22 → raw/joint/C22.json（每设计四格+区分输入）`
+
+## C23 逐样本可达界×整体中位门槛（Q080,Q093）
+
+- 状态/裁定：**completed / stop**；证据：冻结样本上的参数分析（ns；R为假设参数）
+- 干预：A=逐样本可削减界R；B=统一可部署策略（只作用于推进场景、其余+2 ms、组护栏）
+- 联合设计：I=次序统计界（每样本取自己的最优削减，引理R1）。II=单一共同策略（同一参数、同一策略作用于所有适用样本），组护栏精确检查
+- 设计I：order-statistic floors (Lemma R1), scenario restriction on floors
+- 设计II：single common parameter theta, same for all groups, guard checked
+- 机制差异：I allows sample-wise optimum within the bound; II forbids per-sample cherry-picking
+- 标量f：smallest per-sample reduction R (ms) that passes the frozen median gate (None = never)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| F0_frozen | None | 100.0 | None | 100.0 | 100.0 | None | 100.0 | None | None |
+| q093_two_policies_synthetic | None | 90.0 | None | 90.0 | None | None | None | None | None |
+
+- 区分AB_I与AB_II的输入：q093_two_policies_synthetic: metric=90.0/None, impossible_below_ms=None/200
+- 结论：冻结F0：两设计都需要每样本最多削减R=100 ms才能过门槛；在F0上没有策略选择，两设计的A组件计算相同，加推进限制与护栏后仍为100。Q093合成构造（两个策略各覆盖24个样本）：I取逐样本最优，R=90即声称可过；II（只能选一个共同策略）在任何R下都不可行——次序统计界只有在一个共同策略同时达到时才有效。R是参数，不是收益估计。
+- 正例：F0：R≥100 ms时两设计都过（假设机制）。；退化例：R=0：都不过。；最小反例：Q093构造：逐样本最优过门槛，任一共同策略不过。
+- 成本：零：计算。；失败边界：允许逐样本挑策略时I的界才可达。；所需观测：不适用：冻结样本上的数学/参数分析。
+- 代码/原始：`bench/joint_*.py::c23 → raw/joint/C23.json（每设计四格+区分输入）`
+
+## C24 冷热区组×参数选择（Q085,Q086）
+
+- 状态/裁定：**completed / stop**；证据：零效应模拟（不是产品收益）
+- 干预：A=探索选择（5个候选挑最好）；B=比较顺序/携带效应处理
+- 联合设计：I=区组内随机化探索+冻结heldout裁定，ABBA区组。II=5候选×3次查看的序贯检验，阈值按零效应预注册校准到5%族错误率，携带效应用OFF-OFF校准对扣除
+- 设计I：randomised exploration + frozen held-out verdict, ABBA blocks
+- 设计II：sequential test with alpha split over candidates and looks, carry-over subtracted by calibration
+- 机制差异：I removes selection and order bias by design; II models them and corrects statistically
+- 标量f：false pass rate under a null (zero true effect)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| null_with_carryover_8ms | 0.364 | 0.354 | 0.287 | 0.282 | 0.069 | 0.257 | 0.071 | 0.0050000000000000044 | 0.10899999999999999 |
+
+- 区分AB_I与AB_II的输入：null_with_carryover_8ms: metric=0.282/0.071, calibrated_threshold_ms=None/63.319, runs_per_study=12.0/58.58
+- 结论：零真实效应、8 ms携带效应、15 ms中位闸门：固定OFF→ON单次误通过约36%；I的heldout不降低（35%，探索不再放大但闸门本身弱），ABBA降到约28%；II的校准阈值（约52–63 ms）把误通过压到约7%，代价是每研究约29–59次运行。冻结的100 ms主规则不受噪声影响（Q085）。
+- 正例：II：误通过约7%。；退化例：只有一个候选：选择偏差为0。；最小反例：固定OFF→ON：携带效应把零效应变成约36%的误通过。
+- 成本：I：12次运行/研究；II：29–59次。；失败边界：heldout被反复使用后失效；校准分布与真实噪声不同则II的5%不成立。；所需观测：真实系统的携带效应大小与session间噪声。
+- 代码/原始：`bench/joint_*.py::c24 → raw/joint/C24.json（每设计四格+区分输入）`
+
+## C25 尾部护栏×全分母失败（Q082,Q083）
+
+- 状态/裁定：**completed / stop**；证据：历史复算+构造（ns）
+- 干预：A=尾部报告；B=超时/失败处理
+- 联合设计：I=正确性/有效性硬门禁先行：有失败就不作时延结论，失败列入完整分母。II=删失尾部统计（失败按15 s超时右删失）+全分母组门禁
+- 设计I：validity hard gate first; durations described only for valid runs, full denominator listed
+- 设计II：censored-tail statistics + full-denominator group gate
+- 机制差异：I refuses any duration claim when failures exist; II keeps failures in the statistic as censored values
+- 标量f：apparent improvement claimed (ms; >0 is a fake gain created by dropped failures)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| R0_with_synthetic_failure_shift | 6.066 | 41.501 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | -35.434999999999995 | 6.066 |
+
+- 区分AB_I与AB_II的输入：R0_with_synthetic_failure_shift: claim=withheld: failures present (full denominator listed)/rejected by group gate: more failures in candidate
+- 违反正确性oracle的格（这些格的标量不可比）：[['R0_with_synthetic_failure_shift', '0'], ['R0_with_synthetic_failure_shift', 'A_I']]
+- 结论：R0+合成候选（最慢6个成功样本变成失败）：只看成功样本的中位虚构6.1 ms改善，P95虚构41.5 ms；两设计的B组件都阻止虚假结论（I拒绝结论，II因候选失败更多被组门禁拒绝）；II的删失P95单独也不显示改善（两臂都到超时）。R0本身因首槽错误无效。
+- 正例：两设计：虚假改善0。；退化例：两臂都无失败：两设计与描述统计相同。；最小反例：剔除失败：P95虚构41.5 ms改善。
+- 成本：零：只用R0已有数据与一个构造的候选臂。；失败边界：失败与时延相关时任何插补都有偏。；所需观测：不适用：历史复算+构造。
+- 代码/原始：`bench/joint_*.py::c25 → raw/joint/C25.json（每设计四格+区分输入）`
+
+## C26 数值快路×证书支持（Q115,Q117）
+
+- 状态/裁定：**completed / conditional_theory**；证据：同一模型、每设计0/A/B/AB消融（模型单位）
+- 干预：A=快路计算；B=精确证明验证
+- 联合设计：I=精确有理数早拒快路+把决定性检查作为最小支持，用参考浮点序列验证后才使用。II=反序浮点批算+误差区间，近阈值（ε带）回退到参考序列（证明携带）
+- 设计I：exact-rational early-reject fast path + minimal support verified with reference semantics
+- 设计II：reversed-order float batch + near-threshold fallback (proof-carrying)
+- 机制差异：I always verifies the decisive check; II verifies only inside an eps band around the threshold
+- 标量f：decision flips vs the reference float evaluation (200 strip pairs)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| near_threshold_grey | 0 | 41 | 0 | 0 | 0 | 0 | 0 | -41 | 0 |
+| realizable_mixed | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+
+- 区分AB_I与AB_II的输入：near_threshold_grey: fallbacks=0/200, verifications=200/0；realizable_mixed: verifications=200/0
+- 违反正确性oracle的格（这些格的标量不可比）：[['near_threshold_grey', 'A_I']]
+- 结论：近阈值灰阶200对：I的快路单独41次翻转，加验证（AB_I）0次但每对都验证（200次）；II快路单独在本输入族0翻转，加回退后200次回退、0翻转；可实现混合输入两设计都0翻转、II 0次回退。
+- 正例：混合输入：II无回退、0翻转。；退化例：条带有纹理：方差远离100，两设计都不触发额外工作。；最小反例：精确有理数快路：近阈值41次翻转（契约是参考浮点）。
+- 成本：I：每次验证；II：ε带内回退。；失败边界：ε带外的舍入差异若能翻转判定，II会漏（本族未出现）。；所需观测：不适用：参考求值序列就是契约。
+- 代码/原始：`bench/joint_*.py::c26 → raw/joint/C26.json（每设计四格+区分输入）`
+
+## C27 缓存价值×预测安全保护（Q110,Q111）
+
+- 状态/裁定：**completed / probe_first**；证据：同一模型、每设计0/A/B/AB消融（模型单位）
+- 干预：A=预测驱动准备；B=稳健保护
+- 联合设计：I=投机准备预测的下一个目标+硬预留一个工人（最多一个投机作业）。II=保留上一个目标（不做额外工作）+服务上界与漂移门控（服务≤10且最近未连续2次失误才投机）
+- 设计I：predictive speculation of the next target + hard reserve of one worker
+- 设计II：predictive retention of the previous target + service/drift-gated speculation
+- 机制差异：I spends work ahead and protects by capacity; II spends cache space and protects by declared service bounds and drift detection
+- 标量f：total required latency over the trajectory (model units)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| stable_forward_s10 | 120 | 10 | 120 | 10 | 120 | 120 | 10 | 0 | -110 |
+| back_and_forth_s10 | 120 | 50 | 120 | 50 | 50 | 120 | 10 | 0 | -40 |
+| reversal_adversary_s10 | 120 | 60 | 120 | 60 | 20 | 120 | 10 | 0 | -10 |
+| stable_forward_s50_no_bound | 120 | 720 | 120 | 120 | 120 | 120 | 120 | -600 | 0 |
+
+- 区分AB_I与AB_II的输入：back_and_forth_s10: metric=50/10；reversal_adversary_s10: metric=60/10；stable_forward_s50_no_bound: wasted_work=200/0
+- 结论：12步轨迹、2个工人：稳定前进时两设计AB都把总延迟从120降到10；来回与反转对手下I为50/60，II为10（保留命中）；服务50且无上界时I的投机单独把延迟推到720，加预留后回到120但浪费200单位工作，II门控拒绝投机（120，0浪费）。
+- 正例：稳定前进：两设计延迟10。；退化例：单步序列：无可预测性。；最小反例：无服务上界时投机单独：延迟120→720。
+- 成本：I：浪费的投机工作；II：缓存槽。；失败边界：预测连续失误或服务时长未知时I只能靠预留限损。；所需观测：真实导航轨迹的可预测性与投机作业服务时长。
+- 代码/原始：`bench/joint_*.py::c27 → raw/joint/C27.json（每设计四格+区分输入）`
+
+## C28 固定替代规则内的证书×取证（Q102,Q105）
+
+- 状态/裁定：**completed / conditional_theory**；证据：固定Γ′上的计算（Route B）
+- 干预：A=目标投影证书构造；B=查询/取证策略（固定Γ′_local）
+- 联合设计：I=Γ′_local的有界决策窗口证书+逐个自适应取证。II=精确边界消息（只取决策用到的强度邻域）+每轮4个并行批次
+- 设计I：window certificate + one-at-a-time adaptive acquisition
+- 设计II：boundary-message support (strength neighbourhood) + parallel batches
+- 机制差异：I certifies with a fixed window; II with the exact neighbourhood the Γ' decision uses
+- 标量f：facts acquired to fix the target under fixed Γ'_local (60 targets)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| gamma_prime_local | 1800 | 360 | 1800 | 360 | 420 | 1800 | 420 | 0 | 0 |
+
+- 区分AB_I与AB_II的输入：gamma_prime_local: metric=360/420, rounds=360/120
+- 结论：60个目标：全局重算1800个事实；I窗口360个，II邻域420个；轮次I 360、II 120（并行批）。两设计0个错误unit（对照完整Γ′）。这是Route B：Γ′与Γ在292/300个计划中不同，不能当Route A收益。
+- 正例：I：每目标6个事实。；退化例：目标在边界：窗口截断。；最小反例：II多取的事实来自强度邻域比窗口宽。
+- 成本：I：串行轮次；II：多取事实。；失败边界：Γ′没有品质标注，不能裁定它优于Γ。；所需观测：不适用：Route B研究，不需要产品观测。
+- 代码/原始：`bench/joint_*.py::c28 → raw/joint/C28.json（每设计四格+区分输入）`
+
+## C29 共享转换×多版本快照（Q036,Q057）
+
+- 状态/裁定：**completed / conditional_theory**；证据：同一模型、每设计0/A/B/AB消融（算术模型（单位为常驻块））
+- 干预：A=共享层次；B=稳定布局快照（旧版本保留到帧退休）
+- 联合设计：I=共享低层解码、各版本独立适配与授权。II=共享高层不可变结果，版本只持租约与映射
+- 设计I：low-level shared, per-version adaptation and authorisation
+- 设计II：high-level immutable result shared, versions hold leases and mappings
+- 机制差异：I duplicates adaptations; II duplicates nothing when parameters agree and everything when they differ
+- 标量f：peak resident units with two coexisting layout versions（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| orientation_same | 16 | 16 | 32 | 20 | 12 | 32 | 18 | -12 | -10 |
+| direction_changed | 16 | 16 | 32 | 20 | 20 | 32 | 36 | -12 | 0 |
+
+- 区分AB_I与AB_II的输入：orientation_same: metric=20/18, transform_work=16/14；direction_changed: metric=20/36, transform_work=16/28
+- 违反正确性oracle的格（这些格的标量不可比）：[['orientation_same', '0'], ['orientation_same', 'A_I'], ['orientation_same', 'A_II'], ['direction_changed', '0'], ['direction_changed', 'A_I'], ['direction_changed', 'A_II']]
+- 结论：两个版本并存：适配参数相同时II常驻18、转换工作14，I为20/16；方向改变时高层结果不可共享，II退化为36/28，I仍20/16。无快照（B关）的格子都提前释放旧版本（不安全，判为正确性失败）。
+- 正例：参数相同：II常驻18。；退化例：只有一个版本：两设计相同。；最小反例：方向改变：II常驻36（高层结果不可共享）。
+- 成本：I：每版本一次适配；II：参数相同时零额外适配。；失败边界：适配参数随版本变化时II失效。；所需观测：真实设置/方向变化频率。
+- 代码/原始：`bench/joint_*.py::c29 → raw/joint/C29.json（每设计四格+区分输入）`
+
+## C30 最小可逆实现×研究停止证据（Q095,Q119）
+
+- 状态/裁定：**completed / probe_first**；证据：决策计算（三值）（包内工件+显式合成输入；不产生任何产品收益）
+- 干预：A=窄域启用候选（先做shadow精化检查，才可做封闭域试验）；B=三值头寸裁定：有依据排除（NO-GO）/有依据支持（GO）/证据不足
+- 联合设计：I=先在全部候选域做shadow精化检查，再按三值规则裁定。II=先用已证的逐样本下界或可移除工作上界排除NO-GO域（不在其上做shadow），只对其余域做shadow
+- 设计I：shadow refinement on every domain first, three-valued verdict after the evidence
+- 设计II：proven bounds first (no shadow work on proven NO-GO domains), shadow only the rest
+- 机制差异：I spends shadow work on domains later proven NO-GO; II spends none there
+- 标量f：wrong actions on the MAIN-GATE question: unsound (stop while a compatible world passes; trial while one fails) + deferred although the package evidence decides the domain（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| package_artifacts | 5 | 5 | 0 | 0 | 5 | 0 | 0 | 0 | 0 |
+| synthetic_required_service | 2 | 2 | 0 | 0 | 2 | 0 | 0 | 0 | 0 |
+| synthetic_real_upper_bound | 1 | 1 | 0 | 0 | 1 | 0 | 0 | 0 | 0 |
+| synthetic_lower_bound_below_T | 2 | 2 | 0 | 0 | 2 | 0 | 0 | 0 | 0 |
+| synthetic_model_upper_bound | 2 | 2 | 0 | 0 | 2 | 0 | 0 | 0 | 0 |
+| missing_data | 2 | 2 | 0 | 0 | 2 | 0 | 0 | 0 | 0 |
+
+- 区分AB_I与AB_II的输入：package_artifacts: shadow_cost=12/6；synthetic_required_service: shadow_cost=4/1
+- 违反正确性oracle的格（这些格的标量不可比）：[['package_artifacts', '0'], ['package_artifacts', 'A_I'], ['package_artifacts', 'A_II'], ['synthetic_required_service', '0'], ['synthetic_required_service', 'A_I'], ['synthetic_required_service', 'A_II'], ['synthetic_real_upper_bound', '0'], ['synthetic_real_upper_bound', 'A_I'], ['synthetic_real_upper_bound', 'A_II'], ['synthetic_lower_bound_below_T', '0'], ['synthetic_lower_bound_below_T', 'A_I'], ['synthetic_lower_bound_below_T', 'A_II'], ['synthetic_model_upper_bound', '0'], ['synthetic_model_upper_bound', 'A_I'], ['synthetic_model_upper_bound', 'A_II'], ['missing_data', '0'], ['missing_data', 'A_I'], ['missing_data', 'A_II']]
+- 结论：收口修复F1。三值规则（bench/joint_d.py::c30_classify）：NO-GO仅当逐样本下界向量（不可移除服务s_i，或观测时延减去已证的可移除工作上界）的中位>T；GO仅当真实系统上已确立的逐样本上界中位≤T；两者同时成立记为矛盾；下界超过同一样本观测时延记为矛盾，负值输入报错；其余为证据不足，动作是先补观测，不批准主门槛工程试验。适用范围：只回答“能否过主门槛”；结果池等候选的尾部/资源安全试验不在此裁定之内（凭各自证据），但不能写成主门槛收益。包内裁定：D1主门槛（只改授权前工作）=证据不足→先补观测。必要削减量为正（26个样本共需1.859 s）只说明至少要削多少，不说明最多能削多少；包内相容世界W_fact_bound（事实侧去除后中位13.39 ms≤30.20 ms）与同一数据、minred>0同时相容。D1p伙伴类（首成员ack不变的前提）=NO-GO（下界中位124.4 ms）；D1s只作用于新开/重开（推进样本不变的前提）=NO-GO（下界中位91.7 ms）；D2结果池、D3剪枝入口作为主门槛机制=证据不足（只有模型收益）。指标=错误动作数：不安全动作（有相容世界通过却停止；有相容世界不通过却试验）+证据已能裁定却仍“先补观测”。六个输入（包内工件、合成必需服务、合成真实上界、合成下界中位≤T、合成仅模型上界、缺数据）中，带B的格都是0，无B的格分别为5/2/1/2/2/2。对照规则（AB_II）：始终先补观测2/1/1/0/0/0，始终停止3/1/2/2/2/2，始终试验5/2/1/2/2/2，只看有无下界/上界而不看数值0/0/0/1/1/0，把模型上界当真实0/0/0/0/1/0——都被扣分（验收发现：只算不安全动作、且没有“证据存在但不决定”的输入时，前两类会得0）。D1p/D1s的oracle来自lab/reach.py的同一界的另一实现，只检验一致性，H2/H3前提本身是假设。包内工件上II的shadow成本6，I为12（I在两个已证NO-GO域上白做shadow）。撤回：旧规则headroom_possible = (min_total_reduction_ns ≤ 0)、旧指标“主门槛工程试验数（应为0）”，以及旧结论“有B时主门槛试验0个、主门槛方向停止”（旧原始输出：history/before_closing_round/joint/C30.json）。
+- 正例：合成必需服务输入（T01世界S，s_i=125.19685 ms）：D1判NO-GO并停止，II在D1上不做shadow。；退化例：合成真实上界输入（假设每样本真实上界20 ms）：D1判有依据支持，进入最小封闭域试验；只有B而没有A时记1个未经shadow的试验。；最小反例：旧规则在包内工件上把D1判为停止，而相容世界W_fact_bound通过门槛（13393630 ns≤30196850 ns，min_total_reduction_ns=1859290300>0）。
+- 成本：I在已证NO-GO域上多付shadow（包内12对6）；三值规则本身零成本，但要裁定D1需要每样本的s_i下界或真实上界。；失败边界：下界向量的前提不成立时对应NO-GO失效：伙伴类机制同时改变首成员ack，或跳转机制同时作用于推进样本。模型上界永远不能升级为真实GO。；所需观测：D1：同scope、同ticket的C_i与B_i（或消费机会时刻表）以确立s_i，并用受控授权延迟检验尾部不变性；D2/D3：真实触发频率与收益分母。
+- 代码/原始：`bench/joint_*.py::c30 → raw/joint/C30.json（每设计四格+区分输入）`
+
+## C07 样本保留×证明支持（Q045,Q049）
+
+- 状态/裁定：**completed / stop**；证据：同一模型、每设计0/A/B/AB消融（模型单位）
+- 干预：A=保留轻量事实/重建材料；B=最小支持验证（预取关，C07明确关闭预取）
+- 联合设计：I=标量事实单独持久保存（与样本分离）+分支（最小支持）证书。II=按证书支持热度保留样本+证书复用（其完整支持仍在才复用）
+- 设计I：persistent scalar-fact store separate from samples + branch certificate
+- 设计II：support-heat sample retention + certificate reuse when its exact support is still held
+- 机制差异：I keeps the facts themselves; II keeps rebuild material and re-validates certificates
+- 标量f：materialisations over 20 worlds (prefetch OFF; facts bounded to 24 unless A_I; branch leaf cap 256)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| far_jumps | 384 | 320 | 369 | 319 | 384 | 384 | 384 | 14 | 0 |
+| revisits | 195 | 159 | 184 | 159 | 195 | 195 | 195 | 11 | 0 |
+| forward | 320 | 320 | 320 | 320 | 320 | 320 | 320 | 0 | 0 |
+
+- 区分AB_I与AB_II的输入：far_jumps: metric=319/384, memo_hits=0/4, probes=275/394, rounds=201/286；revisits: metric=159/195, memo_hits=0/57, probes=175/221, rounds=98/158；forward: probes=320/322
+- 结论：20个16对象世界，事实存储有界24（A_I除外）：远跳历史物化0格384，I的持久事实（A_I）320、加分支证书319；重访195→159。II的热度保留与证书复用不改变物化数（384/195；复用命中4/57次，但命中时事实本来就在，省下的是证书计算而不是物化）。前进阅读所有格320。失败边界：事实存储20时60条历史中4条活锁（同一次认证需要的事实多于存储容量，取一个就挤掉另一个）。
+- 正例：远跳：持久事实省64个物化（384→320）。；退化例：前进阅读：所有格320。；最小反例：事实存储20：4/60条历史活锁。
+- 成本：I：事实常驻（每对象≤3个标量）；II：热度计数与证书表。；失败边界：事实存储小于单次认证的需求集合时活锁；II在本模型中不省物化。；所需观测：真实标量事实的保留策略与容量。
+- 代码/原始：`bench/joint_*.py::c07 → raw/joint/C07.json（每设计四格+区分输入）`
+
+## C10 小memo×全尝试依赖（Q050,Q052）
+
+- 状态/裁定：**completed / stop**；证据：同一模型、每设计0/A/B/AB消融（模型单位）
+- 干预：A=重试结果memo；B=精确失效/饱和回退
+- 联合设计：I=身份戳（k位）覆盖全部尝试的读集并集+戳回绕时禁用快路。II=按值验证证书的逻辑支持（证明支持，无戳）
+- 设计I：identity stamps over the union of all attempts' reads + saturation fallback
+- 设计II：value-level validation of the certificate's logical support (proof), no stamps
+- 机制差异：I validates by cheap stamps over a larger read set and must handle wrap-around; II validates the smaller proof support by value and is immune to stamp overflow
+- 标量f：stale memo hits (wrong units served)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| random_flips_cap8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| small_cap2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| negative_fact_flips_cap8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| stamp_overflow_k2 | 0 | 8 | 0 | 0 | 0 | 0 | 0 | -8 | 0 |
+
+- 区分AB_I与AB_II的输入：random_flips_cap8: false_invalidations=6/5, recompute_steps=1371/1369, validation_reads=360/145；small_cap2: false_invalidations=6/5, recompute_steps=1436/1434, validation_reads=285/116；negative_fact_flips_cap8: false_invalidations=15/0, recompute_steps=1449/1326, validation_reads=498/197；stamp_overflow_k2: false_invalidations=13/7, recompute_steps=1443/1401, validation_reads=437/179
+- 违反正确性oracle的格（这些格的标量不可比）：[['stamp_overflow_k2', 'A_I']]
+- 结论：4个输入（随机翻转、容量2、只翻失败尝试读到的“负事实”、2位戳回绕）：只有选中路径依赖+k位戳（A_I单独）在戳回绕输入中出现8次陈旧命中；I的饱和回退与II的按值验证都0陈旧。代价：验证读取I 285–498，II 116–197；负事实翻转下I因读集并集更大有15次误失效，II 0次。memo把重算步数从1683降到约1326–1449。
+- 正例：两设计0陈旧命中，memo省约15–20%重算。；退化例：无memo：0陈旧但全重算。；最小反例：2位戳在4次更新后回绕：A_I单独8次陈旧命中。
+- 成本：I：戳与读集并集；II：按值验证的读取。；失败边界：I的读集并集比证明支持大，误失效更多；II需要可比较的事实值。；所需观测：不适用：重建Γ上的精确判定。
+- 代码/原始：`bench/joint_*.py::c10 → raw/joint/C10.json（每设计四格+区分输入）`
+
+## C11 最少取证×非抢占队列（Q104,Q106）
+
+- 状态/裁定：**completed / probe_first**；证据：同一模型、每设计0/A/B/AB消融（模型单位）
+- 干预：A=取证动作选择；B=队列内次序
+- 联合设计：I=屏障轮次+倍增式向后投机（A_I）+短动作先发并在长动作前重认证（B_I）。II=无屏障：每次完成即重认证并丢弃过时排队需求（A_II）+至多一个有界向后前瞻（B_II）
+- 设计I：barrier rounds + galloping backward speculation + short-actions-first with re-certification
+- 设计II：event-driven re-certification at every completion (no barrier) + one bounded speculative lookahead
+- 机制差异：I keeps rounds and speculates aggressively; II removes the barrier and speculates at most one step
+- 标量f：median certification completion (model units; analysis 10, edge 3, header 1; 4 workers)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| long_chain | 41.0 | 30.0 | 51.0 | 33.0 | 42.0 | 44.0 | 32.0 | -7.0 | -13.0 |
+| sided | 21.0 | 30.0 | 25.0 | 33.0 | 21.0 | 23.0 | 20.0 | -1.0 | -3.0 |
+| sparse | 21.0 | 30.0 | 25.0 | 33.0 | 22.0 | 24.0 | 21.0 | -1.0 | -4.0 |
+
+- 区分AB_I与AB_II的输入：long_chain: metric=33.0/32.0, facts=732/1098, max_time=136/182, speculative_facts=276/171；sided: metric=33.0/20.0, facts=465/520, max_time=44/33, speculative_facts=128/48；sparse: metric=33.0/21.0, facts=497/630, max_time=54/65, speculative_facts=148/75
+- 结论：分析10/边3/header1、4个工人、40个世界：长链世界中位完成0格41，I 33（倍增投机30），II 32；有方向、稀疏世界0格21，I变差到33（投机浪费、短先发打断并行），II 20/21。B_I单独总是变差（25–51：拆相位使并行度下降）。I多取的投机事实148–276个。
+- 正例：长链：两设计都约降到1/1.3；有方向世界II 20。；退化例：需求都在一轮内：屏障无影响。；最小反例：短动作先发+重认证（B_I）单独：长链41→51。
+- 成本：I：投机事实（浪费）；II：每次完成一次重认证计算。；失败边界：I在短链/有方向世界纯浪费；II的单步前瞻在长链上不如倍增。；所需观测：真实事实服务时长与链长分布（决定投机是否划算）。
+- 代码/原始：`bench/joint_*.py::c11 → raw/joint/C11.json（每设计四格+区分输入）`
+
+## C20 固定窗口×精确reset摘要（Q094,Q098）
+
+- 状态/裁定：**completed / stop**；证据：同一模型、每设计0/A/B/AB消融（模型单位）
+- 干预：A=局部固定窗口（截到t−3）；B=可证reset/跨界摘要
+- 联合设计：I=只在Γ自己的reset证书（C08/C09）证明入口合并时截断，否则向左扩。II=用精确转移摘要跨过整个前缀，目标从摘要给出的边界状态开始扫窗口
+- 设计I：truncate only where Γ's reset certificate proves the merge; otherwise extend left
+- 设计II：exact transfer summary across the prefix; the target keeps the full boundary state
+- 机制差异：I reads locally and extends on demand; II pays prefix summarisation (maintenance) for a constant window
+- 标量f：wrong target units (of 120)（越低越好）
+
+| 输入 | 0 | A_I | B_I | AB_I | A_II | B_II | AB_II | 交互I | 交互II |
+|---|---|---|---|---|---|---|---|---|---|
+| no_reset_long_chain | 0 | 26 | 0 | 0 | 26 | 0 | 0 | -26 | -26 |
+| sparse_sides | 0 | 14 | 0 | 0 | 14 | 0 | 0 | -14 | -14 |
+| frequent_true_reset | 0 | 8 | 0 | 0 | 8 | 0 | 0 | -8 | -8 |
+
+- 区分AB_I与AB_II的输入：no_reset_long_chain: reads=951/1087, summary_maintenance_steps=0/66639；sparse_sides: reads=807/1098, summary_maintenance_steps=0/68724；frequent_true_reset: reads=507/1131, summary_maintenance_steps=0/80847
+- 结论：120个目标×3族：固定窗口（A）错26/14/8个；两设计的B都0错。读取：I 951/807/507（只按需向左扩），II窗口读取1087–1131但每世界建摘要维护66639–80847步。真reset频繁的族中I读得最少。
+- 正例：频繁真reset：I平均每目标约4个对象。；退化例：全量重扫：0错但读7200。；最小反例：无reset长链：固定窗口错26/120。
+- 成本：I：按需左扩；II：前缀摘要维护。；失败边界：II在前缀频繁变化时维护成本主导；I在无reset长链上左扩很远。；所需观测：不适用：重建Γ上的构造与计算。
+- 代码/原始：`bench/joint_*.py::c20 → raw/joint/C20.json（每设计四格+区分输入）`

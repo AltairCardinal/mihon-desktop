@@ -1,0 +1,51 @@
+# 复现与继续
+
+环境：标准 Python 3（实测 3.13.17，Linux，2 vCPU），只用标准库；无需联网、账户或外部求解器。
+所有命令在**包根目录**（含 `reference.py` 的目录）执行。`research_out/` 是本轮全部新增内容；冻结文件未改动
+（`python3 research_out/stage0_baseline.py` 复核 MANIFEST 中 33 个文件的 SHA-256 并重跑 35 项冻结测试与 smoke）。
+
+## 1. 最小检查（约 3 分钟）
+
+```
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py'                       # 冻结测试 35 项
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s research_out/tests -t research_out          # 新增测试 55 项
+```
+新增测试分三族：`test_core_research.py`（18，~25 s），`test_protocol2.py`（19），`test_hosts.py`（18，~55 s）。
+
+## 2. 研究实验（各自写 `research_out/results/*.json`；括号内为本机耗时）
+
+```
+python3 research_out/stage0_baseline.py              # 基线绑定 (5 s)
+python3 research_out/bench/run_theory_a.py           # A1 A5 E3 E4 (15 s)
+python3 research_out/bench/run_generative.py         # E1 E3 E5 (2 s)
+python3 research_out/bench/run_relational.py         # A3 A4 E2 E6 F3 + 三域配对 (50 s)
+python3 research_out/bench/run_f.py                  # F2 F4 (≈4 min)
+python3 research_out/bench/run_acqsim.py             # D1 D2 D3 D6 NH-3 (≈10 min)
+python3 research_out/bench/run_theory_h.py           # H1 H2 H3 H4 H5 (45 s)
+python3 research_out/bench/run_combos_new.py         # X2 X6 X9 X10 + NH-1..NH-7 (≈3 min)
+python3 research_out/candidates/proto_experiments.py # 协议族 G/A6/C3/D4/D5/X3/X7/X8/X12 原始记录
+python3 research_out/bench/host_g6_space.py          # 宿主族空间/引擎占比等（见 sections/hosts.md）
+```
+
+## 3. 正式计时（串行，三个独立进程；约 75 分钟）
+
+```
+sh research_out/bench/formal_all.sh                  # rel → incremental → protocol → hosts，依次执行
+python3 research_out/bench/summarize_formal.py       # → results/formal/formal_summary.json
+```
+`formal_all.sh` 内各命令也可单独运行。每条原始记录含 PID、UTC、预热标记、配置轮换后的顺序、判决哈希、工作计数
+与（每进程一次的）tracemalloc 峰值；预热行保留在原始文件中但不进入汇总。
+
+## 4. 覆盖表
+
+```
+python3 research_out/bench/build_coverage.py         # 合并主会话行与 coverage_parts/*.csv → coverage.csv（67 行）
+```
+
+## 5. 继续入口（未完成项）
+
+- H5（L2 规则）需要外部质量真值或产品裁定；代码 `candidates/theory_h.py:lmp_plan`。
+- 真实获取/派生/排队成本：把 `candidates/acqsim.py` 的计数乘以实测 A、D、L 即得端到端估计；参数化表见 REPORT §6。
+- 生成域未刻画部分（h<50、旋转、侧向标签过程）：扩展 `candidates/generative.py`。
+- 精确部分信息区间摘要（边界赋值）未构建：A2 路线 2 的完整实现。
+- 本机为 Python 3.13；冻结包声明 3.10+，未逐版本验证。

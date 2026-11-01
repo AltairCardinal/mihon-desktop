@@ -1,0 +1,279 @@
+package mihon.domain.reader
+
+import mihon.domain.reader.session.ReaderChapterId
+import mihon.domain.reader.session.ReaderPageId
+
+private enum class EvidencePixels { GRAY, TEXTURE, SHIFTED, INVERTED, WIDE }
+private data class EvidenceOriginal(val fact: ReaderPageFact, val samples: ReaderOriginalPageSamples)
+
+private fun evidenceOriginal(kind: EvidencePixels): EvidenceOriginal {
+    val width = if (kind == EvidencePixels.WIDE) 512 else 256
+    val height = 384
+    fun pixel(y: Int): Int {
+        if (kind == EvidencePixels.GRAY || kind == EvidencePixels.WIDE) return 0xff8c8c8c.toInt()
+        val light = (y / 7) % 2 == if (kind == EvidencePixels.INVERTED) 1 else 0
+        val value = (if (light) 180 else 70) + if (kind == EvidencePixels.SHIFTED) 5 else 0
+        return 0xff000000.toInt() or (value shl 16) or (value shl 8) or value
+    }
+    val plan = requireNotNull(ReaderOriginalPageSampling.plan(width, height))
+    val samples = plan.samples(plan.left.map { (_, y) -> pixel(y) }, plan.right.map { (_, y) -> pixel(y) })
+    check(samples.sideHint == ReaderPageSideHint.UNKNOWN)
+    return EvidenceOriginal(ReaderPageFact.dimensions(width, height), samples)
+}
+
+private class EvidenceFixture(kinds: List<EvidencePixels>, chapter: Long) {
+    val pages = kinds.indices.map { ReaderPageId(ReaderChapterId(chapter), it) }
+    val identity = ReaderDualPageIdentity(1, 1, pages.map { ReaderDualPageContentIdentity(it, "resource-$it/v0") })
+    val originals = kinds.map(::evidenceOriginal)
+    val facts = pages.associateWith { originals[it.sourcePageIndex].fact }
+
+    fun accept(owner: ReaderSpreadSamplesOwner, index: Int) {
+        val value = originals[index]
+        check(owner.acceptOriginal(owner.request(pages[index]), value.fact, value.samples.edges))
+    }
+
+    fun fullOwner(): ReaderSpreadSamplesOwner = ReaderSpreadSamplesOwner(identity).also { owner ->
+        pages.indices.forEach { accept(owner, it) }
+    }
+
+    fun scan(owner: ReaderSpreadSamplesOwner, settings: ReaderPairingSettings): ReaderCanonicalPairingScan =
+        ReaderCanonicalPairingScan(
+            pages, { facts[pages[it]] }, { facts.getValue(pages[it]).sideHint }, settings.direction,
+            settings.forcedSinglePages, settings.manualPairStarts, settings.openingMode, settings.automatic,
+            { facts.getValue(pages[it]).sideHint },
+            { a, b -> (owner.edgeAnalysis(a, b, settings.direction) as ReaderEdgeAnalysisEvidence.Computed).score },
+        )
+
+    fun observe(owner: ReaderSpreadSamplesOwner, settings: ReaderPairingSettings, target: Int): EvidenceObservation {
+        val full = fullOwner()
+        try {
+            val oracle = SharedDualPageRules.canonicalPlan(
+                pages, facts, settings.direction, settings.forcedSinglePages, settings.manualPairStarts,
+                settings.openingMode, settings.automatic,
+                distance = { a, b -> (full.edgeAnalysis(a, b, settings.direction) as ReaderEdgeAnalysisEvidence.Computed).score },
+            ).single { pages[target] in it.pageIds }
+            val reads = ReaderPairingReadSet()
+            val result = ReaderPairingCertifier.certifyCapturing(identity, facts, owner, settings, pages[target], reads).certification
+            if (result is ReaderPairingCertification.Certified) {
+                check(result.segment.unit == oracle)
+                check(result.segment.isCurrent(identity, settings, owner, facts))
+                for (page in result.segment.dependentPageIds) {
+                    val replaced = identity.copy(content = identity.content.map {
+                        if (it.pageId == page) it.copy(contentVersion = "new-content/v1") else it
+                    })
+                    check(!result.segment.isCurrent(replaced, settings, owner, facts))
+                }
+                check(!result.segment.isCurrent(identity, settings.copy(manualRevision = 1), owner, facts))
+            }
+            return EvidenceObservation(result, oracle, reads.snapshot())
+        } finally {
+            full.close()
+        }
+    }
+}
+
+private data class EvidenceObservation(
+    val result: ReaderPairingCertification,
+    val oracle: ReaderDualPageUnit,
+    val reads: Map<ReaderPairingReadKey, ReaderPairingReadValue>,
+) {
+    fun json(key: String, extra: String = ""): String {
+        val status = when (result) {
+            is ReaderPairingCertification.Certified -> "Certified"
+            is ReaderPairingCertification.NeedFacts -> "NeedFacts"
+            is ReaderPairingCertification.RetryableBlocked -> "RetryableBlocked"
+        }
+        val needs = when (result) {
+            is ReaderPairingCertification.NeedFacts -> result.facts
+            is ReaderPairingCertification.RetryableBlocked -> result.facts
+            else -> emptySet()
+        }.joinToString(prefix = "[", postfix = "]") {
+            "{\"page\":${it.pageId.sourcePageIndex},\"kind\":\"${it.kind}\",\"second\":${it.secondPageId?.sourcePageIndex}}"
+        }
+        val failures = if (result is ReaderPairingCertification.RetryableBlocked) result.failures.entries.joinToString(
+            prefix = "[", postfix = "]",
+        ) { "{\"page\":${it.key.sourcePageIndex},\"reason\":\"${it.value}\"}" } else "[]"
+        val slots = oracle.slots.joinToString(prefix = "[", postfix = "]") {
+            "{\"page\":${it.pageId.sourcePageIndex},\"slot\":\"${it.position}\"}"
+        }
+        val readKeys = reads.keys.map { it.toString().replace("\"", "\\\"") }.sorted()
+            .joinToString(prefix = "[", postfix = "]") { "\"$it\"" }
+        return "{\"key\":\"$key\",\"status\":\"$status\",\"needs\":$needs,\"failures\":$failures," +
+            "\"readKeys\":$readKeys,\"readCount\":${reads.size},\"oracle\":{\"slots\":$slots," +
+            "\"reason\":\"${oracle.singleReason}\",\"certain\":${oracle.certain}}$extra}"
+    }
+}
+
+/** Contract tests invoke the actual candidate scan; callbacks deliberately include stale hints and negative/NaN values. */
+private fun hintContracts(variant: String): Int {
+    if (variant != "C") return 0
+    val fixture = EvidenceFixture(List(4) { EvidencePixels.GRAY }, 20261031)
+    val cases = listOf(
+        Triple(20.0, 15.0, true), Triple(0.0, -1.0, true), Triple(Double.NaN, null, true),
+        Triple(15.0, null, true), Triple(0.0, -1.0, false),
+    )
+    val constructor = ReaderCanonicalPairingScan::class.java.declaredConstructors.single { it.parameterCount == 11 }
+    cases.forEach { (near, later, hint) ->
+        val calls = mutableListOf<Int>()
+        val dimensions: (Int) -> ReaderPageFact? = { fixture.facts[fixture.pages[it]] }
+        val side: (Int) -> ReaderPageSideHint = { ReaderPageSideHint.UNKNOWN }
+        val resolved: (Int) -> ReaderPageSideHint? = { ReaderPageSideHint.UNKNOWN }
+        val distance: (ReaderPageId, ReaderPageId) -> Double? = { a, _ ->
+            calls += a.sourcePageIndex
+            if (a.sourcePageIndex == 1) near else later
+        }
+        val hintFunction: (ReaderPageId, ReaderPageId) -> Boolean = { _, _ -> hint }
+        val scan = constructor.newInstance(fixture.pages, dimensions, side, ReaderDirection.LTR, emptySet<ReaderPageId>(),
+            emptySet<Int>(), ReaderChapterOpeningMode.FIRST_SINGLE, true, resolved, distance, hintFunction) as ReaderCanonicalPairingScan
+        // Inspect one comparison; discarded singleton formatting can evaluate laterWins a second time.
+        val step = scan.step(ReaderPairingScanCursor(1, false), includeSingleUnit = false)
+        val choosesLater = later != null && (later < near)
+        check((step.next.reservedStart == 2) == choosesLater)
+        check(calls.first() == if (hint) 2 else 1)
+        if (hint && later == null) check(calls == listOf(2))
+        if (hint && later != null) check(calls == listOf(2, 1))
+        if (!hint) {
+            // The public API does not opt in: a negative competing callback still wins.
+            val plan = SharedDualPageRules.canonicalPlan(
+                fixture.pages, fixture.facts, ReaderDirection.LTR,
+                openingMode = ReaderChapterOpeningMode.FIRST_SINGLE, automatic = true,
+                distance = { a, _ -> if (a.sourcePageIndex == 1) near else later },
+            )
+            check(plan.single { fixture.pages[2] in it.pageIds }.pageIds == fixture.pages.slice(2..3))
+        }
+    }
+    return cases.size
+}
+
+fun main(args: Array<String>) {
+    val variant = args.single()
+    require(variant in setOf("baseline", "C", "D"))
+    val records = mutableListOf<String>()
+    for (capacity in listOf(2, 16)) for (near in listOf("POSITIVE", "NONE")) {
+        for (later in listOf("NO_MATCH", "FINITE", "MISSING", "FAILURE")) {
+            val count = capacity + 3
+            val fixture = EvidenceFixture(List(count) { index -> when (index) {
+                1 -> if (near == "POSITIVE") EvidencePixels.SHIFTED else EvidencePixels.GRAY
+                2 -> EvidencePixels.TEXTURE
+                3 -> if (later == "FINITE") EvidencePixels.SHIFTED else EvidencePixels.INVERTED
+                else -> EvidencePixels.GRAY
+            } }, 20261028)
+            for (direction in listOf(ReaderDirection.RTL, ReaderDirection.LTR)) {
+                for (opening in ReaderChapterOpeningMode.entries) for (automatic in listOf(false, true)) {
+                    val owner = ReaderSpreadSamplesOwner(fixture.identity, capacity)
+                    try {
+                        val fillers = listOf(0) + (4 until count).toList()
+                        if (later in setOf("MISSING", "FAILURE")) {
+                            fixture.accept(owner, 3)
+                            fillers.forEach { fixture.accept(owner, it) }
+                            fixture.accept(owner, 2)
+                            fillers.forEach { fixture.accept(owner, it) }
+                        } else {
+                            fixture.accept(owner, 2)
+                            fixture.accept(owner, 3)
+                            fillers.forEach { fixture.accept(owner, it) }
+                        }
+                        fixture.accept(owner, 1)
+                        if (later == "FAILURE") check(owner.failOriginal(owner.request(fixture.pages[3]), ReaderAnalysisFailure.READ))
+                        check(fixture.pages.all { owner.pageAnalysis(it) is ReaderPageAnalysisEvidence.Computed })
+                        check(owner.edgeAnalysis(fixture.pages[1], fixture.pages[2], direction) is ReaderEdgeAnalysisEvidence.NotAnalyzed)
+                        val evidence = owner.edgeAnalysis(fixture.pages[2], fixture.pages[3], direction)
+                        when (later) {
+                            "NO_MATCH" -> check(evidence is ReaderEdgeAnalysisEvidence.Computed && evidence.score == null)
+                            "FINITE" -> check(evidence is ReaderEdgeAnalysisEvidence.Computed && evidence.score == 15.0)
+                            "MISSING" -> check(evidence is ReaderEdgeAnalysisEvidence.NotAnalyzed)
+                            else -> check(evidence is ReaderEdgeAnalysisEvidence.RetryableFailure)
+                        }
+                        val settings = ReaderPairingSettings(direction, automatic, openingMode = opening)
+                        val observation = fixture.observe(owner, settings, 1)
+                        if (variant == "C" && automatic && opening != ReaderChapterOpeningMode.FIRST_PAIR && later == "NO_MATCH") {
+                            val segment = (observation.result as ReaderPairingCertification.Certified).segment
+                            check(fixture.pages[3] in segment.dependentPageIds)
+                        }
+                        if (automatic && opening != ReaderChapterOpeningMode.FIRST_PAIR) {
+                            when {
+                                variant == "C" && later == "NO_MATCH" -> check(observation.result is ReaderPairingCertification.Certified)
+                                later == "FAILURE" -> check(observation.result is ReaderPairingCertification.RetryableBlocked)
+                                else -> check(observation.result is ReaderPairingCertification.NeedFacts)
+                            }
+                        }
+                        records += observation.json("C-$capacity-$near-$later-$direction-$opening-$automatic")
+                    } finally { owner.close() }
+                }
+            }
+        }
+    }
+    check(records.size == 192)
+    for (capacity in listOf(2, 16)) for (boundary in listOf("FORCE0", "WIDE0", "FORCE2")) {
+        val first = if (boundary == "FORCE2") 3 else 1
+        val count = maxOf(capacity + 4, first + 5)
+        for (near in listOf("POSITIVE", "NONE")) {
+            val fixture = EvidenceFixture(List(count) { index -> when {
+                boundary == "WIDE0" && index == 0 -> EvidencePixels.WIDE
+                index == first -> if (near == "POSITIVE") EvidencePixels.TEXTURE else EvidencePixels.GRAY
+                index == first + 1 || index == first + 2 -> EvidencePixels.SHIFTED
+                else -> EvidencePixels.GRAY
+            } }, 20261029)
+            for (direction in listOf(ReaderDirection.RTL, ReaderDirection.LTR)) {
+                for (opening in ReaderChapterOpeningMode.entries) for (automatic in listOf(false, true)) {
+                    val forced = if (boundary == "WIDE0") emptySet() else setOf(fixture.pages[first - 1])
+                    val record = ChapterPairingRecord(2, count, forced.map { it.sourcePageIndex }.toSet(), openingMode = opening)
+                    val recordValid = record.isValidFor(count)
+                    if (boundary == "FORCE2") check(recordValid)
+                    if (boundary == "FORCE0") check(!recordValid)
+                    val owner = ReaderSpreadSamplesOwner(fixture.identity, capacity)
+                    try {
+                        listOf(first, first + 1, first + 2).forEach { fixture.accept(owner, it) }
+                        fixture.pages.indices.filter { it !in first..first + 3 }.forEach { fixture.accept(owner, it) }
+                        // A wide page has no edge samples and consumes no sample slot. Refresh an evicted portrait.
+                        if (boundary == "WIDE0") fixture.accept(owner, first)
+                        fixture.accept(owner, first + 3)
+                        check(owner.edgeAnalysis(fixture.pages[first + 2], fixture.pages[first + 3], direction)
+                            is ReaderEdgeAnalysisEvidence.NotAnalyzed)
+                        check(owner.requiredSamples(fixture.facts, fixture.pages.slice(first + 2..first + 3)) ==
+                            listOf(fixture.pages[first + 2]))
+                        for (index in first..first + 3) check(owner.pageAnalysis(fixture.pages[index]) is ReaderPageAnalysisEvidence.Computed)
+                        val nearEvidence = owner.edgeAnalysis(fixture.pages[first], fixture.pages[first + 1], direction)
+                        val laterEvidence = owner.edgeAnalysis(fixture.pages[first + 1], fixture.pages[first + 2], direction)
+                        check(nearEvidence is ReaderEdgeAnalysisEvidence.Computed &&
+                            nearEvidence.score == if (near == "POSITIVE") 15.0 else null)
+                        check(laterEvidence is ReaderEdgeAnalysisEvidence.Computed && laterEvidence.score == 0.0)
+                        val settings = ReaderPairingSettings(direction, automatic, forced, openingMode = opening)
+                        if (boundary == "FORCE2" && opening == ReaderChapterOpeningMode.FIRST_PAIR) {
+                            val full = fixture.fullOwner()
+                            try {
+                                val scan = fixture.scan(full, settings)
+                                val pair = scan.step(ReaderPairingScanCursor(0, true))
+                                check(pair.next.index == 2 && !pair.next.opening)
+                                val boundaryStep = scan.step(pair.next)
+                                check(boundaryStep.next.index == 3 && !boundaryStep.next.opening)
+                            } finally { full.close() }
+                        }
+                        val observation = fixture.observe(owner, settings, first + 2)
+                        if (variant == "D" && boundary != "WIDE0") check(observation.result is ReaderPairingCertification.Certified)
+                        records += observation.json("D-$capacity-$boundary-$near-$direction-$opening-$automatic",
+                            ",\"recordValid\":$recordValid")
+                    } finally { owner.close() }
+                }
+            }
+        }
+    }
+    check(records.size == 336)
+    for (capacity in listOf(2, 16)) {
+        val count = capacity + 3
+        val fixture = EvidenceFixture(List(count) { if (it in 1..3) EvidencePixels.TEXTURE else EvidencePixels.GRAY }, 20261030)
+        val owner = ReaderSpreadSamplesOwner(fixture.identity, capacity)
+        try {
+            listOf(1, 2, 0).plus((4 until count).toList()).plus(3).forEach { fixture.accept(owner, it) }
+            val settings = ReaderPairingSettings(ReaderDirection.LTR, true)
+            val observed = fixture.observe(owner, settings, 1)
+            check(observed.result is ReaderPairingCertification.NeedFacts)
+            records += observed.json("R3-UNKNOWN-HINT-$capacity")
+        } finally { owner.close() }
+    }
+    check(records.size == 338)
+    val contracts = hintContracts(variant)
+    println("{\"status\":\"PASS\",\"variant\":\"$variant\",\"cases\":${records.size}," +
+        "\"hintContracts\":$contracts,\"records\":[${records.joinToString(",")}]}"
+    )
+}

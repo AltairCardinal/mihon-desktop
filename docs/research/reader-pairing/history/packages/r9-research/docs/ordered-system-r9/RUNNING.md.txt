@@ -1,0 +1,55 @@
+# Run the current executable experiments
+
+From this directory, with Python 3.10+ and no third-party dependencies:
+
+```text
+python -m unittest discover -s tests
+python smoke.py --seed 905
+python data/recompute.py --check
+```
+
+The tests reuse the frozen golden and differential contracts and add owner,
+coupled-service, physical lifetime, and publication regressions. `smoke.py`
+defaults to the corrected owner, exercises the real delta path, and compares
+two virtual service profiles. Its optional `--out result.json` writes UTF-8
+JSON. The checked-in `fixtures/smoke-result.json` records seed 905; regenerate
+it only after understanding changes in verdict, work, and event order.
+The separate data checker validates anonymous measurement projections; these
+measurements must not be mixed with virtual service units as a single clock.
+
+On PowerShell, set process-local UTF-8 behavior before running commands:
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$env:PYTHONUTF8 = '1'
+$env:PYTHONIOENCODING = 'utf-8'
+$env:PYTHONDONTWRITEBYTECODE = '1'
+python -m unittest discover -s tests
+if ($LASTEXITCODE -ne 0) { throw 'model tests failed' }
+python smoke.py --seed 905
+if ($LASTEXITCODE -ne 0) { throw 'model smoke failed' }
+python data/recompute.py --check
+if ($LASTEXITCODE -ne 0) { throw 'data check failed' }
+```
+
+Narrow diagnosis commands:
+
+```text
+python -m unittest discover -s tests -p test_owner.py
+python -m unittest discover -s tests -p test_coupling.py
+python -m unittest discover -s tests -p test_reference.py
+```
+
+`reference.py`, `compact_core.py`, `current_baseline.py`, `protocol.py`,
+`trace_generator.py`, `benchmark.py`, the five original test files, and the
+two original fixtures remain byte-for-byte frozen. The first two are current
+rule oracles. `current_baseline.py` and `benchmark.py` are **historical defect
+controls**, not the current incumbent. Original tests passing does not repair
+their selected-only support bug. `protocol.py` is a standalone historical
+contract simulator, not the coupled executable. Do not report its success as
+acquisition-to-publication integration evidence.
+
+All runs are local, deterministic and short. No external service, native build,
+wall-clock service benchmark, or installation is necessary. Use the research
+questions to design substantive further work; repeated smoke runs are not
+additional evidence of performance or completeness.

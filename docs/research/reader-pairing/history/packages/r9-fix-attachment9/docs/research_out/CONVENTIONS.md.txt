@@ -1,0 +1,35 @@
+# research_out conventions (R9 internal working agreement)
+
+All new work under `research_out/`; the package and its manifest are never edited.
+Import bootstrap: `import paths` (in `candidates/`) puts the package root, `candidates/` and the
+reproduced round-8 modules (`candidates/r8/`, see PROVENANCE.md) on sys.path.
+
+Layout: candidates/ (code; prefix files with your work-package tag: wpA_, wpB_, wpG_, wpH_, wpC_),
+tests/test_<wp>*.py (unittest; must pass with `python3 -m unittest discover -s research_out/tests -t research_out`),
+proofs/<wp>.md, sections/<wp>.md, coverage_parts/<wp>.csv, hypotheses_parts/<wp>.csv,
+adoption_parts/<wp>.csv, results/raw/<wp>/..., results/summary/<wp>/..., fixtures/<wp>/..., bench/bench_<wp>.py.
+
+coverage_parts header = coverage-template.csv header (question_id,title,family,prior_anchor,new_gap,route_a,route_b,
+status,depth,implementation,proof_or_counterexample,test_command,raw_evidence,source_fingerprint,domain,cost_layer,
+assumptions,refutation_condition,decision,remaining). status: implemented_verified|conditional|refuted|limit_proved|
+incomplete_budget. depth D1..D4 (actual). Reused mechanism -> name the parent mechanism id in `implementation`.
+hypotheses_parts header: id,origin,difference_from_questions,prediction,minimal_experiment,result,depth,decision
+adoption_parts header: candidate,route(L0/L1/L2),gate_observable,fallback,physical_work_saved,extra_cost,
+first_miss_penalty,worst_case,parameter_range,reversal_point,min_calibration,interface_change,lifecycle_evidence,decision
+
+Evidence layers: core | owner (corrected_owner) | coupled (coupling.Session, virtual u) | simulated |
+local_measured (Python 3.13, 2 vCPU) | native_anchor (data/*, never re-entered as our data).
+Never add virtual u to ns. Never claim native IO/user latency.
+
+Strong baseline = corrected_owner.Owner (all-attempt union support); current_baseline/benchmark are defect controls.
+Existing strong candidates = ALGORITHM_FRONTIER; our reproduction = candidates/r8 + candidates/strong.py.
+
+Bench registration (D3): bench/bench_<wp>.py exposing SCENARIOS, CANDIDATES ([0]=incumbent), run_one(sc,cand,rep)
+-> dict(wall_ns, verdict_sha256, ok, work, ...). Formal timing runs ONLY in the main session via
+`python3 research_out/bench/drive_formal.py bench_<wp> --out results/raw/formal/<wp>.jsonl`.
+D4 = coupled chain (Session/StrongSession/coupled_runner or your own Session-based harness) with adoption,
+publication, cancellation, invalidation, release, held-out workloads not used for tuning, and an executable
+adoption boundary.
+
+CPU: 2 vCPU shared by up to 5 forks + main. Cap every run (`timeout`, <=300 s), never more than one heavy
+process per fork, no formal timing campaigns, no sleeps.

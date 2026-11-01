@@ -1,0 +1,225 @@
+# 已有算法前沿：具体机制与尚未接通的边界
+
+本节摘要的是已经实现并在宿主运行时测试、测量的研究候选，不是待研究的新提案。
+测量投影见 `data/partial.jsonl`、`data/kernels.jsonl` 与 `COST_EVIDENCE.md`。
+以下使用匿名记号表达原实现；没有复制宿主源码，也没有把这些候选移植到
+`coupling.py`。该文件的 L1 仍只是 prefix-start toy，不能代表这里的 best-known
+候选，更不能用 toy 的成本作为这些候选的实测成本。
+
+## 共同语义与五态局部转移
+
+当前位置为 `i`，状态编码为：
+
+| state | opening | reserved at i | 含义 |
+|---|---|---|---|
+| 0 | true | false | 正常边界 |
+| 1 | true | true | 已保留当前相邻双项 unit |
+| 2 | false | false | 正常边界 |
+| 3 | false | true | 已保留当前相邻双项 unit |
+| 4 | — | — | 前一位置的双项 unit 已覆盖当前 item；本位置跳过 |
+
+`state=4` 的转移固定为 `(2, no unit)`。其他状态调用同一个规范局部扫描器，
+不另写一个近似决策规则：
+
+```text
+step(i, s, assignment):
+    if s == 4: return (2, no_unit, assignment)
+    cursor = (i, opening=(s < 2), reserved=(i if s is odd else absent))
+    result = canonical_step(cursor, evidence_view(assignment))
+    if result.next.index == i + 2: next = 4
+    else: next = 2 * (not result.next.opening) + (result.next.reserved == i+1)
+    return (next, result.unit, assignment)
+```
+
+规范 unit 的实际比较字段是有序 `slots=[(item, position), ...]`、`certain`、
+`single_reason`；其 identity 由有序 slots 得到，anchor 是首 item。仅比较 item
+集合、数量、anchor 或配对关系会漏掉槽位、确定性和单项原因差异。
+
+缺失几何分支为 NARROW/WIDE，缺失 side 分支为 A/B/UNKNOWN，缺失相邻 rank
+分支为下文网格值（含已知 null 的独立代表）。已接纳 failure 不分支成成功世界；
+不匹配当前 transform 的事实也不是自由变量。局部 view 在真实访问时记录 typed
+analysis、dimension、header、rank 观察，聚合实际失败和 needs。一个失败并非整个
+有序输入的全局禁用标志；请求中观察到的失败及其支撑范围必须保真。
+
+## 有限秩代表：source-grid 已经存在
+
+每次请求先重置请求级 reads、failures、needs、几何/analysis/rank 集合和工作计数，
+记录 identity/settings，再读取 edge 起点 `e=0 .. min(n-1,t+2)-1`。
+所以最多读取目标 `t` 后一个 edge 起点，而不是任意未来 suffix 的全部 ranks。
+这些前缀 rank 观察单独进入 `grid_support`；构造代表网格所用的观察也是证书依赖。
+
+已有三个域：任意有限 binary64 扩展域、非负有限域、source-grid。
+后者为 `{q/50 | q=0,...,1499}` 加 null，是已有算子的保守秩外包，不能当作
+所有多个相邻 rank/side/geometry 组合都能同时由真实 witnesses 实现的证明。
+
+```text
+prepare_grid(target, requested_domain):
+    observations = read_adjacent_evidence_in_target_prefix(target)
+    known = nonnull_computed_scores(observations)
+    if known violates requested_domain: domain = finite_extension
+    else: domain = requested_domain
+    if domain == source_grid:
+        anchors = {50*v for v in known} union {0,1499}
+        points = {(floor(a)+d)/50 : a in anchors, -n <= d <= n,
+                  0 <= floor(a)+d <= 1499}
+    else:
+        anchors = known union finite_extremes_and_zero(domain)
+        points = known
+        for a in anchors:
+            lower = a
+            upper = a
+            repeat max(1,n):
+                lower = nextDown(lower); upper = nextUp(upper)
+                retain only finite values admitted by domain
+    grid = [null] + sorted_distinct(points)
+    if grid or domain changed: clear relation tree and shared-prefix cache
+    retain grid_support = exact observations used above
+```
+
+这里没有使用 `v±1` 或可能溢出的插值。网格构造包含全局 `n`，网格变化会使旧摘要
+失效；不能把代表数、重建和 typed 支撑维护从算法成本中删去。它是已测试的有限
+代表实现，仍需对新主张的输入域和相关 witness 约束给出相应证明。
+
+## 路线一：lazy 五态关系树
+
+每个位置保存 `R_i[s]`，一个五位 mask，表示在该位置所有合法局部分支下可能的
+后继状态。局部分支通过重试规范 step 获得：遇到一个尚未赋值的自由变量，就把
+它的每个选项加入 pending assignment；已绑定变量必须沿同一次局部展开复用。
+关系树不保留跨位置赋值相关性，因此是保守关系外包，可能比精确 DP 多出 units。
+
+```text
+expand(i, s, seed_assignment):
+    pending = [seed_assignment]; transitions = []
+    while pending is not empty:
+        if ++evaluations > budget: STOP_THIS_ATTEMPT
+        assignment = pop(pending)
+        try: transitions += step(i,s,assignment)
+        catch free_variable(k, options):
+            for v in options:
+                if size(pending)+size(transitions) >= budget: STOP_THIS_ATTEMPT
+                push(pending, assignment union {k:v})
+    return transitions
+
+leaf(i).relation[s] = OR(1 << x.state for x in expand(i,s,{}))
+compose(A,B)[s] = OR(B[m] for m whose bit is set in A[s])
+node = (relation, exact_reads, failures, needs)
+```
+
+节点是 lazy 的：仅访问请求前缀涉及的节点；补齐到二次幂的空叶是恒等关系。
+构造一个叶节点时临时替换记录器和失败/needs 集合，完成后恢复外层请求集合。
+父节点组合关系，并合并两子节点的实际 reads、failures、needs。
+读取一个缓存节点时必须把这些支撑和失败/needs 重新并入当前请求，而不是只取 mask。
+
+```text
+reachable = apply_prefix_relations([0,t), initial_mask=(1<<0))
+units = target-containing outputs of expand(t,s,{}) for reachable s in 0..3
+if reachable contains 4:
+    previous = apply_prefix_relations([0,t-1), initial_mask=(1<<0))
+    add target-containing outputs of expand(t-1,s,{}) for previous s in 0..3
+```
+
+state 4 的补查不可省略：目标可能已被前一步 unit 覆盖。只有所有可能输出收敛到
+同一个完整 unit，才有额外候选；单个任意代表世界的 unit 不能代替这一集合。
+
+## 路线二：共享赋值 frontier 的精确 DP
+
+DP 保存 `(state, live_assignment, target_unit)`，从真实唯一初态 0 前进。
+与关系树不同，同一自由变量在尚可能被再次读取的未来窗口内保持同一个赋值。
+通过结构相等去重路径；不能只按 state 合并而丢掉相关赋值。
+
+```text
+start = largest cached_prefix_position strictly less than target, or 0
+frontier = cached_prefix.paths, or {(0, {}, no_unit)}
+merge cached_prefix.exact_reads into this request
+for i from start through target:
+    next = empty_set
+    for (s, assignment, old_unit) in frontier:
+        for tr in expand(i,s,assignment):
+            unit = tr.unit if it contains target else old_unit
+            live = {k:v in tr.assignment : ordinal(k) >= i
+                    or (k is geometry_state and pinned_starts is nonempty)}
+            next.add((tr.state,live,unit))
+            if size(next) > budget: STOP_THIS_ATTEMPT
+    frontier = next
+    if i+1 <= target and no observed failures or needs:
+        cache[i+1] = (frontier with every target_unit reset to no_unit,
+                      immutable snapshot of actual prefix reads)
+return distinct nonnull target_units in frontier
+```
+
+保留 pins 情况下的旧几何分支是为了不遗忘交替 pin 判定的历史依赖。
+缓存前缀清除旧 target 输出，防止请求 A 的 unit 泄漏到请求 B。
+每次请求仍重置工作与失败集合；一次晚目标失败或耗尽预算不得污染下一次较早目标。
+缓存不能仅携 paths：前缀 analysis 支撑必须随缓存返回，稍后改变该事实应使证书无效。
+
+## 更新、支撑与 portfolio 门控
+
+相同 owner 绑定下，变化位置集合 `C` 的更新规则是：
+
+```text
+first = max(0, min(C)-3)
+drop cached_prefix_positions >= first
+if pinned_starts is nonempty: dirty = [first,n)
+else: dirty = union([c-3,c+1] intersect valid_positions for c in C)
+invalidate each dirty relation leaf and all its ancestors
+rebuild knowledge from current owner
+```
+
+这不是“所有更新 O(log n)”的承诺：pins 可使部分证据关系树大范围失效；网格变化
+也可整体重建；共享 prefix 集合和 typed 支撑的合并本身有成本。
+
+已有 portfolio 总是先运行并保留完整 L0 verdict，仅当 L0 为 need_facts 时开启强尝试；
+已 certified 或 blocked 的 L0 不被改写。TREE 只选关系结果，EXACT 只选 DP，
+PORTFOLIO 先做关系尝试，关系 unit 集合非 singleton 时再独立做 DP。
+结果同时保留 baseline、candidate、supported、proof 和两个尝试的实际 evaluations/stops。
+
+```text
+candidate = sole unit in selected_proof.units
+require selected_proof not stopped
+require selected_proof.failures empty and candidate.certain
+scope = items named by selected_proof.actual_read_support
+supported = every item in scope has accepted computed analysis
+            and every exact typed observation is still current
+```
+
+outcome 还会在 needs 或 failures 非空时清空 unit 集合。默认不赋予 header 几何
+权威的路线，不能让仅 header 支撑混入原始 analysis 证书；另一条允许 header 权威
+的路线须明确其输入前提。二者不是同一证明域。
+
+任一展开工作、pending/result 容量或 frontier 超过该次预算，都停止该 attempt 并
+返回空 unit 集合；不能保留已枚举 subset 的 singleton 来签证。要区分 **attempt**
+和 **portfolio**：先前关系 attempt 超预算不产生证书，但既有 portfolio 可以再运行
+独立 DP；若后者完整完成且门控满足，可以报告其候选。现实现没有跨两个 attempts
+共享的总时间预算，也没有认证→发布的正式宿主接线；不能把候选 supported 当成已发布。
+
+## 全信息转移树与重同步：已知不变式和反例
+
+全信息候选的叶是确定函数 `T_i:{0..4}->{0..4}`，组合为函数复合，不是上述
+多后继关系。初始状态为 0，点查询目标前缀状态；若目标状态为 4，回查前一位置
+的真实 unit。更新重算 `[c-3,c+2]` 内的至多六个五态叶，再从叶到根组合。
+
+这里用到的可达态不变式是：正常边界处若前一个 pin 已被接纳，当前位置应已由
+skip 状态消费；因此正常边界的前一 pin 不再处于接纳状态。局部构造只需检查当前
+附近的 pins，但不能不加证明地把此不变式套到任意不可达状态或部分证据关系树。
+
+重同步候选保存边界 states 和 item→unit 覆盖，变化后从最早 dirty 位置重新扫描；
+越过 dirty 末端后，新旧下一边界状态相等才可停止。长段连续 pins 中改变开头几何
+可翻转整段交替相位，重同步需要传播到很远；有界 hybrid 达到传播上限后必须回退
+到树查询，不能截断后继续返回旧 cover。已有 1024-item 相位翻转测试执行过这一回退。
+完整输出仍有输出数量的下界；点查询快不等于每次物化全计划也快。
+
+## 合法额外候选的具体正例
+
+已有一个 40-item 受限源构造：全部 40 个 analysis 已 computed，方向固定，自动
+规则开启；前缀合法递减 ranks 使 `(8,9)` 成为保留 unit。有限 raw 驱逐后 `(9,10)`
+的 rank 缺失；该缺失只影响 L0 枚举的不可达有限入口。source-grid 精确 DP 从真实
+初态排除这些入口，返回与完整源构造 oracle 相同的 unit，且 supported=true。
+当轮工程报告记录支撑 scope 为 **12/40 items**；原始 stdout 未随本包保留，现有
+回归断言验证 candidate/oracle 一致、supported 为真和全部 analysis 已接纳，没有
+把 scope==12 写成断言。因此 12/40 是报告级证据，不是可由公开 CSV 重算的测量。
+该构造并不要求全部输入的 raw witness 驻留。
+
+这不是“缺失时总能签”或“只需固定 12 项”的定理。它证明非空采用域存在：所有被
+该证书实际读取的 item analysis 均已接纳，缺失的是邻接 scalar 证据；局部候选不靠
+偷偷查看缺失 witness 的真实值。新的研究应测量这一域出现的频率、强尝试维护成本、
+补取服务替代成本，以及连接到物理 work/证书接纳/发布后是否仍获益。

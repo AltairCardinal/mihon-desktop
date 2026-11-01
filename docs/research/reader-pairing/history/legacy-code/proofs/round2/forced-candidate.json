@@ -1,0 +1,1537 @@
+{
+  "status": "PASS",
+  "candidate": true,
+  "cases": 96,
+  "records": [
+    {
+      "key": "GRAY-LTR-AUTO-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "GRAY-LTR-AUTO-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "GRAY-LTR-AUTO-true-false",
+      "status": "NeedFacts",
+      "needs": [
+        {
+          "page": 2,
+          "kind": "ORIGINAL_ANALYSIS"
+        }
+      ],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "GRAY-LTR-AUTO-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "GRAY-LTR-FIRST_SINGLE-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "GRAY-LTR-FIRST_SINGLE-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "GRAY-LTR-FIRST_SINGLE-true-false",
+      "status": "NeedFacts",
+      "needs": [
+        {
+          "page": 2,
+          "kind": "ORIGINAL_ANALYSIS"
+        }
+      ],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "GRAY-LTR-FIRST_SINGLE-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "GRAY-LTR-FIRST_PAIR-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "GRAY-LTR-FIRST_PAIR-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "GRAY-LTR-FIRST_PAIR-true-false",
+      "status": "NeedFacts",
+      "needs": [
+        {
+          "page": 2,
+          "kind": "ORIGINAL_ANALYSIS"
+        }
+      ],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "GRAY-LTR-FIRST_PAIR-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "GRAY-RTL-AUTO-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "GRAY-RTL-AUTO-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "GRAY-RTL-AUTO-true-false",
+      "status": "NeedFacts",
+      "needs": [
+        {
+          "page": 2,
+          "kind": "ORIGINAL_ANALYSIS"
+        }
+      ],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "GRAY-RTL-AUTO-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "GRAY-RTL-FIRST_SINGLE-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "GRAY-RTL-FIRST_SINGLE-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "GRAY-RTL-FIRST_SINGLE-true-false",
+      "status": "NeedFacts",
+      "needs": [
+        {
+          "page": 2,
+          "kind": "ORIGINAL_ANALYSIS"
+        }
+      ],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "GRAY-RTL-FIRST_SINGLE-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "GRAY-RTL-FIRST_PAIR-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "GRAY-RTL-FIRST_PAIR-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "GRAY-RTL-FIRST_PAIR-true-false",
+      "status": "NeedFacts",
+      "needs": [
+        {
+          "page": 2,
+          "kind": "ORIGINAL_ANALYSIS"
+        }
+      ],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "GRAY-RTL-FIRST_PAIR-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-LTR-AUTO-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-LTR-AUTO-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-LTR-AUTO-true-false",
+      "status": "NeedFacts",
+      "needs": [
+        {
+          "page": 2,
+          "kind": "ORIGINAL_ANALYSIS"
+        }
+      ],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-LTR-AUTO-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-LTR-FIRST_SINGLE-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-LTR-FIRST_SINGLE-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-LTR-FIRST_SINGLE-true-false",
+      "status": "NeedFacts",
+      "needs": [
+        {
+          "page": 2,
+          "kind": "ORIGINAL_ANALYSIS"
+        }
+      ],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-LTR-FIRST_SINGLE-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-LTR-FIRST_PAIR-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-LTR-FIRST_PAIR-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-LTR-FIRST_PAIR-true-false",
+      "status": "NeedFacts",
+      "needs": [
+        {
+          "page": 2,
+          "kind": "ORIGINAL_ANALYSIS"
+        }
+      ],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-LTR-FIRST_PAIR-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-RTL-AUTO-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-RTL-AUTO-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-RTL-AUTO-true-false",
+      "status": "NeedFacts",
+      "needs": [
+        {
+          "page": 2,
+          "kind": "ORIGINAL_ANALYSIS"
+        }
+      ],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-RTL-AUTO-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-RTL-FIRST_SINGLE-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-RTL-FIRST_SINGLE-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-RTL-FIRST_SINGLE-true-false",
+      "status": "NeedFacts",
+      "needs": [
+        {
+          "page": 2,
+          "kind": "ORIGINAL_ANALYSIS"
+        }
+      ],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-RTL-FIRST_SINGLE-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-RTL-FIRST_PAIR-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-RTL-FIRST_PAIR-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-RTL-FIRST_PAIR-true-false",
+      "status": "NeedFacts",
+      "needs": [
+        {
+          "page": 2,
+          "kind": "ORIGINAL_ANALYSIS"
+        }
+      ],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "LEFT-RTL-FIRST_PAIR-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-LTR-AUTO-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-LTR-AUTO-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-LTR-AUTO-true-false",
+      "status": "NeedFacts",
+      "needs": [
+        {
+          "page": 2,
+          "kind": "ORIGINAL_ANALYSIS"
+        }
+      ],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-LTR-AUTO-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-LTR-FIRST_SINGLE-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-LTR-FIRST_SINGLE-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-LTR-FIRST_SINGLE-true-false",
+      "status": "NeedFacts",
+      "needs": [
+        {
+          "page": 2,
+          "kind": "ORIGINAL_ANALYSIS"
+        }
+      ],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-LTR-FIRST_SINGLE-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-LTR-FIRST_PAIR-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-LTR-FIRST_PAIR-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-LTR-FIRST_PAIR-true-false",
+      "status": "NeedFacts",
+      "needs": [
+        {
+          "page": 2,
+          "kind": "ORIGINAL_ANALYSIS"
+        }
+      ],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-LTR-FIRST_PAIR-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-RTL-AUTO-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-RTL-AUTO-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-RTL-AUTO-true-false",
+      "status": "NeedFacts",
+      "needs": [
+        {
+          "page": 2,
+          "kind": "ORIGINAL_ANALYSIS"
+        }
+      ],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-RTL-AUTO-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-RTL-FIRST_SINGLE-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-RTL-FIRST_SINGLE-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-RTL-FIRST_SINGLE-true-false",
+      "status": "NeedFacts",
+      "needs": [
+        {
+          "page": 2,
+          "kind": "ORIGINAL_ANALYSIS"
+        }
+      ],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-RTL-FIRST_SINGLE-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-RTL-FIRST_PAIR-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-RTL-FIRST_PAIR-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-RTL-FIRST_PAIR-true-false",
+      "status": "NeedFacts",
+      "needs": [
+        {
+          "page": 2,
+          "kind": "ORIGINAL_ANALYSIS"
+        }
+      ],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "RIGHT-RTL-FIRST_PAIR-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "RIGHT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-LTR-AUTO-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-LTR-AUTO-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-LTR-AUTO-true-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-LTR-AUTO-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-LTR-FIRST_SINGLE-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-LTR-FIRST_SINGLE-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-LTR-FIRST_SINGLE-true-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-LTR-FIRST_SINGLE-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-LTR-FIRST_PAIR-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-LTR-FIRST_PAIR-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-LTR-FIRST_PAIR-true-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-LTR-FIRST_PAIR-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-RTL-AUTO-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-RTL-AUTO-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-RTL-AUTO-true-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-RTL-AUTO-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-RTL-FIRST_SINGLE-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-RTL-FIRST_SINGLE-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-RTL-FIRST_SINGLE-true-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-RTL-FIRST_SINGLE-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-RTL-FIRST_PAIR-false-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-RTL-FIRST_PAIR-false-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-RTL-FIRST_PAIR-true-false",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    },
+    {
+      "key": "WIDE-RTL-FIRST_PAIR-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "FULL"
+          }
+        ],
+        "reason": "SPREAD",
+        "certain": true
+      }
+    }
+  ]
+}

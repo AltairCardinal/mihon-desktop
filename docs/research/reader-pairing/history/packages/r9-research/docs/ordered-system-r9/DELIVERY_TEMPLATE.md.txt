@@ -1,0 +1,55 @@
+# 一次性交付模板
+
+所有新增成果位于 `research_out/`，不要覆盖输入。
+
+```text
+research_out/
+  REPORT.md
+  coverage.csv
+  hypotheses.csv
+  ADOPTION_MATRIX.csv
+  REPRODUCE.md
+  NEXT_IMPLEMENTER.md
+  candidates/
+  tests/
+  proofs/
+  fixtures/
+  results/raw/
+  results/summary/
+  source-manifest.json
+```
+
+## 整合报告
+
+1. 先说最终得到什么：默认/条件候选、没有得到的成果、最强负结果和前三名反转条件。
+2. 前提：域、α/β、数值、身份、资源、观察合同、模型与native分层。
+3. 实际实现/证明：哪条新机制改变什么，不能只列文件名或复制本包题目。
+4. 对照：正确强基线、旧缺陷辅助对照、已有强候选、关键组件和组合消融。
+5. 成本：完整生命周期和关键路径，绝对量、进程中位/范围、分配/驻留、物理工作和维护。
+6. 覆盖：120+30逐题D2以上的实际情况，D3/D4独立机制数、新假设与未满足门槛。
+7. 负结果：反例、输的场景、无效对照、失败/超时/资源触顶、未完成的地方。
+8. 采用：gate、回退、支撑、任务/发布/确认、净收益区间及最少待校准观测。
+
+## coverage.csv
+
+至少字段：`question_id,family,prior_anchor,new_gap,route_a,route_b,status,depth,`
+`implementation,proof_or_counterexample,test_command,raw_evidence,source_fingerprint,`
+`domain,cost_layer,assumptions,refutation_condition,decision,remaining`。
+
+初始150行模板在 `coverage-template.csv`。状态建议：not_started、in_progress、
+implemented_verified、conditional、refuted、limit_proved、incomplete_budget。
+深度填实际D1/D2/D3/D4；同一机制复用必须指向父机制，不能重复算独立候选。
+附新发现行用 NH01…，不可拿新行替代原150题缺口。
+
+## 假设与采用矩阵
+
+每个新假设说明发现来源、与原题差异、可推翻预测、最小实验和实际结果。
+采用矩阵按当前可观察gate/成本区间列出候选，不以事后隐藏真值选择算法。
+标明尚未具备原生服务参数时只能给条件建议；抽象D4不写成native验收通过。
+
+## 复现与恢复
+
+环境、依赖、过程资源、命令、数据生成规则、种子、原始文件hash、进程身份和UTC保留。
+无效数据保留但排除采用统计，说明修复及哪部分结果复用。
+最小检查命令要短且能抓真实故障；深度实验命令分层列预计成本，禁止一键偷偷启动巨大计算。
+未完成时写正在运行的真实进程/日志和恢复命令，不能重启重复任务或伪造已完成。

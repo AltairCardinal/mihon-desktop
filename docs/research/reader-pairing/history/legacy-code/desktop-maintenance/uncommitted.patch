@@ -1,0 +1,160 @@
+diff --git a/app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt b/app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt
+index 0baad2615f..742f4f6a13 100644
+--- a/app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt
++++ b/app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt
+@@ -377,16 +377,16 @@ class DesktopReaderSessionIntegrationTest {
+             val pairViewport = model.presentReadyPagerViewport()
+             advanceUntilIdle()
+ 
+-            assertEquals(setOf(2, 3), pairViewport.pageIds.mapTo(linkedSetOf(), ReaderPageId::sourcePageIndex))
++            assertEquals(setOf(1, 2), pairViewport.pageIds.mapTo(linkedSetOf(), ReaderPageId::sourcePageIndex))
+             assertEquals(2, model.state.value.currentPage)
+-            assertEquals(3, progress.single().lastPageRead)
+-            assertTrue(progress.single().isRead)
++            assertEquals(2, progress.single().lastPageRead)
++            assertFalse(progress.single().isRead)
+ 
+             model.goToPage(3)
+             model.presentReadyPagerViewport()
+             advanceUntilIdle()
+ 
+-            assertTrue(progress.all { it.lastPageRead == 3 })
++            assertEquals(listOf(2, 3), progress.map { it.lastPageRead })
+             assertTrue(progress.last().isRead)
+         } finally {
+             session.close()
+diff --git a/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/AdaptiveReaderViewportTest.kt b/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/AdaptiveReaderViewportTest.kt
+index a3e5991ed8..2da2d98718 100644
+--- a/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/AdaptiveReaderViewportTest.kt
++++ b/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/AdaptiveReaderViewportTest.kt
+@@ -119,14 +119,23 @@ class AdaptiveReaderViewportTest {
+             frames()
+             assertTrue(model.state.value.dualPageMode)
+             assertEquals(
+-                listOf(2, 3),
++                listOf(1, 2),
+                 model.state.value.dualPageUnits.single { unit ->
+                     unit.pageIds.any { it.sourcePageIndex == 2 }
+                 }.pageIds.map { it.sourcePageIndex },
+             )
+             assertEquals(2, model.state.value.dualPageLocation?.pageId?.sourcePageIndex)
+             assertEquals(2, model.state.value.currentPage)
+-            assertEquals(listOf(2, 3), reports)
++            assertEquals(listOf(2), reports)
++            val shared = ReaderScreenModel::class.java.getDeclaredField("dualSession")
++                .apply { isAccessible = true }.get(model) as mihon.domain.reader.SharedDualPageSession
++            assertTrue(
++                shared.displayedHistory.any { frame ->
++                    frame.unit.pageIds.map { it.sourcePageIndex }.toSet() == setOf(1, 2) &&
++                        frame.drawnPageIds.map { it.sourcePageIndex }.toSet() == setOf(1, 2)
++                },
++                "The layout companion really draws without manufacturing another reading cause",
++            )
+             model.toggleUI()
+             frames()
+             assertTrue(model.state.value.dualPageMode)
+@@ -134,7 +143,7 @@ class AdaptiveReaderViewportTest {
+             frames()
+             assertFalse(model.state.value.dualPageMode)
+             assertEquals(2, model.state.value.currentPage)
+-            assertEquals(listOf(2, 3), reports)
++            assertEquals(listOf(2), reports)
+             val pageBounds = scene.semanticsOwners.flatMap { flatten(it.unmergedRootSemanticsNode) }
+                 .first { node ->
+                     node.config.contains(ReaderDisplayUnitIdKey) &&
+@@ -149,7 +158,7 @@ class AdaptiveReaderViewportTest {
+             scene.sendPointerEvent(PointerEventType.Release, nextTap, button = PointerButton.Primary)
+             frames()
+             assertEquals(4, model.state.value.currentPage)
+-            assertEquals(listOf(2, 3, 3, 4), reports)
++            assertEquals(listOf(2, 3, 4), reports)
+         } finally {
+             scene.close()
+             owner.close()
+diff --git a/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DefaultReaderModeTest.kt b/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DefaultReaderModeTest.kt
+index b75665bcc6..cf4cd4cc1e 100644
+--- a/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DefaultReaderModeTest.kt
++++ b/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DefaultReaderModeTest.kt
+@@ -159,7 +159,7 @@ class DefaultReaderModeTest {
+     }
+ 
+     @Test
+-    fun `layout settles preserve logical anchor while newly painted companion and next page report`() = runTest {
++    fun `layout settles preserve logical anchor without reusing consumed reading cause`() = runTest {
+         val initial = desktopReaderSessionState(chapterId = 7L, pageCount = 6, initialPage = 2)
+         val reader = initial.copy(context = initial.context.copy(mangaId = 1))
+         val repository = object : mihon.domain.reader.ChapterPairingRepository {
+@@ -206,22 +206,22 @@ class DefaultReaderModeTest {
+         advanceTimeBy(150)
+         runCurrent()
+         val dual = model.presentReadyPagerViewport()
+-        assertEquals(setOf(2, 3), dual.pageIds.mapTo(linkedSetOf()) { it.sourcePageIndex })
++        assertEquals(setOf(1, 2), dual.pageIds.mapTo(linkedSetOf()) { it.sourcePageIndex })
+         assertEquals(2, model.state.value.currentPage)
+-        assertEquals(2, reports)
++        assertEquals(1, reports)
+         model.updateViewportSize(900, 1000, this)
+         runCurrent()
+         advanceTimeBy(150)
+         runCurrent()
+         model.setSpreadPages(setOf(2))
+         model.presentReadyPagerViewport()
+-        assertEquals(2, reports)
++        assertEquals(1, reports)
+         assertEquals(setOf(4), model.state.value.forcedSinglePages)
+         model.goToPage(3)
+         model.presentReadyPagerViewport()
+-        assertEquals(3, reports)
++        assertEquals(2, reports)
+         model.presentReadyPagerViewport()
+-        assertEquals(3, reports, "An unchanged fully painted idle viewport is deduplicated")
++        assertEquals(2, reports, "An unchanged fully painted idle viewport is deduplicated")
+         model.onDispose()
+     }
+ 
+diff --git a/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/SharedDualPageDesktopWiringTest.kt b/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/SharedDualPageDesktopWiringTest.kt
+index 754a8e307c..83a8918719 100644
+--- a/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/SharedDualPageDesktopWiringTest.kt
++++ b/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/SharedDualPageDesktopWiringTest.kt
+@@ -212,6 +212,22 @@ class SharedDualPageDesktopWiringTest {
+ 
+ /** Feeds synthetic Ready metadata through the real presenter protocol; this is not a Skia pixel observation. */
+ internal fun ReaderScreenModel.presentReadyPagerViewport(): mihon.desktop.ui.reader.presentation.VisiblePageSet {
++    state.value.session.activeChapter.pages
++        .filter { it.loadState is mihon.domain.reader.session.ReaderPageLoadState.Ready }
++        .forEach { page ->
++            val request = requireNotNull(captureDualFact(page.id))
++            assertTrue(
++                acceptDualFact(
++                    request,
++                    ReaderPageFact.dimensions(
++                        40,
++                        60,
++                        request.content.rotation,
++                        request.content.sourceOrientation,
++                    ),
++                ),
++            )
++        }
+     val current = state.value
+     val snapshot = if (current.dualPageMode) {
+         current.dualPresentationSnapshot(false, false)
+diff --git a/docs/evidence/reader-pairing-research-2026-10-12.md b/docs/evidence/reader-pairing-research-2026-10-12.md
+index 10e2ca22c5..c81670f51e 100644
+--- a/docs/evidence/reader-pairing-research-2026-10-12.md
++++ b/docs/evidence/reader-pairing-research-2026-10-12.md
+@@ -745,3 +745,14 @@ EXIF HTTP fixture 源 JPEG 原始尺寸为 40×60；orientation 6/8 后的视觉
+ 原因：`setAutoSpreadMatching` 复用通用 `changePresentation` 清空 displayed/visible state，但冻结的原生实体 ID 不变，native `reportedPages` 已消费同一画面，随后不再重复上报来补回被清空的状态。最小修复仅让此设置在既有 lifecycle lock 内更新匹配偏好并 `ensureDualSession`，保留仍有效的当前显示记录；shared owner 的自动匹配配置仍撤销已消费位置的再次记读资格，未来未准备页面仍按新规则决定，方向/模式/裁边等真实呈现变化仍使用原入口。
+ 
+ `ci-matching-rendered-green` 同一精确用例 1/1 通过。补充关闭匹配的同路径和几何、逻辑位置、位置序号及不重复记进度断言后，`ci-matching-rendered-final` scoped Spotless Apply/Check 与原生类 27/27 通过、0 skipped。证据追加到 `ci-luna-audit/matching-rendered-red.xml`、`matching-rendered-final.xml` 和同名协调器日志。此变更覆盖真实模型设置入口和 native prepare/draw/settle，取样夹具仍为合成输入；未进行正式产物或真机验收，没有把当前状态缺陷扩称已解决安卓故障或性能目标。
++
++
++### 2026-10-14 转交新聊天时的保留状态
++
++用户要求先退出 GitHub 旧自动产品测试、改为本地测试优先，并在远端配置核验后停止本会话；双页匹配交由新聊天继续。GitHub 配置提交为 `c104535272`，对应旧 required checks 删除及治理记录为 `7dd535af0e`，均已推送 origin/main。没有继续阅读器实现、构建或实体设备操作。
++
++已验证但尚未推送的 reader 分支仍在 `D:/Codex/worktrees/reader-pairing-main-20261013`：HEAD `f38e0f9f98`，包含 `498be0f901`、`1839515689`、`489d5f0a36`、`f38e0f9f98` 四份已说明范围的提交。当前四份测试文件另有未提交维护改动；`ci-reader-ready-contract-red` 6项中5失败，之后 `ci-reader-ready-contract-green` 6项中3通过、3失败，仍失败的是 ReaderScreenModelTest 的 invalid sync resume/load-state 两方法及 DesktopReaderSessionIntegrationTest 的 dual progress 方法。未认为变绿、未提交这些改动；接手时应先核对默认偏好隔离和认证前提，不能只按本机失败放宽原进度断言。
++
++复用实施者的未提交目标测试在 `D:/Codex/worktrees/reader-ci-history-20261014`（HEAD `977e06c588`），仅 SharedDualPageNativeStablePresentationTest.kt 变化。有效 PNG、production 原图解码样本及新 attempt header 已补齐；完整目标类31项中30通过、1失败，最新 retry 定向仍失败，所有进程已结束。新 header 后完整红像素矩形与 transform 保持，但 composition mount 变更，frame serial从0变3；保留这些失败断言，是否违反当前 pending-partner 重绑契约仍需接手者独立判定，不能推定为安卓历史黑页原因。原图与像素检查均以数值输出进行，未给 root 加载图片。crop 已精确证明原sequence不变、原ticket readingEligible=true且已settle，显式几何更新后新ticket readingEligible=false；伙伴实际draw而不追加read，下一次真实tap正常报告，属于已消费原因契约，不是漏记同一实体帧的自然迟到伙伴。
++
++本会话的 GitHub 调整使用独立 worktree `D:/Codex/worktrees/ci-local-priority-20261014`，未合入上述未完成测试 diff，未修改主工作区其他任务的现有阅读器改动。后续按本地真实行为及必要 focused 回归推进，不以旧全模块 CI 清零作为产品目标，也不将关闭自动CI描述为产品故障已全部解决。

@@ -1,0 +1,29 @@
+# 20类对抗轨迹：运行状态与反例索引
+
+层级：GAMMA = 研究者重建的Γ（gamma.py，非产品）；LAB = 合成资源/协议模型；DATA = 匿名历史复算；COND = 条件理论。
+每类都给了正例、退化例和最小反例。有限域结论不推广到无限域。机器可读的索引在 `raw/workloads/workloads.json`。
+
+| 类 | 状态 | 层级 | 正例 / 退化例 / 最小反例 | 原始结果 |
+|---|---|---|---|---|
+| W01 长无reset区间 | 已运行 | GAMMA | 正：长链族认证正确；退：m=0；反：固定回看窗口在300个目标中错74/55/30/10/4次（回看2/3/5/8/16）；[X,(Y\|X),X×m] 链在m=4..256上末端unit都改变 | raw/gamma/evidence.json, raw/gamma/q097.json |
+| W02 真/伪reset邻接 | 已运行 | GAMMA | 正：已有双对象unit后再遇强制边界才是真reset；反：opening伪reset把(7,LEFT) OPENING变成(7,RIGHT) BEFORE_SHAPE_Y；形状域中伪reset占92/392（强制单独）、46/196（SHAPE_Y） | raw/gamma/q097.json, raw/workloads/workloads.json |
+| W03 冷跳双世界歧义 | 已运行 | GAMMA | 反：几何全同、一个对象方向不同，目标unit就不同；36种方向/分数组合都有构造见证；3000个随机世界漏掉5种 | raw/gamma/gamma2.json#G10, raw/workloads/workloads.json#W03_realizability |
+| W04 显式约束重叠 | 已运行 | GAMMA | 手工起点{1,2}、{1,2,3}、{2,3,4}及链内SHAPE_Y；带手工起点的穷举域0次不可靠 | raw/workloads/workloads.json#W04, raw/gamma/certificates.json |
+| W05 普通证明已足够 | 已运行 | GAMMA+LAB | 冻结容量7/16下的前进历史：强证书被采纳31次，节省0个物化（正常路线54→54的类比）；容量3/6时：预取关LRU省26、距离省16，预取开LRU省0、距离省16（T03修复后重算；修复前预取开LRU误为省9） | raw/cache/cache.json |
+| W06 强证明独占机会 | 已运行 | GAMMA+LAB | 最短合法历史长1–3步（跳转首访），每条省1–5个物化（T03修复后；修复前写1–4）；不注入事实、不清缓存 | raw/cache/cache.json shortest_gain_* |
+| W07 缓存边界往返 | 已运行 | GAMMA+LAB | 往返历史：7/16与64/64下强证书节省0；3/6下预取关省26（LRU）/16（距离），预取开省0（LRU）/16（距离）；7/16时距离策略比LRU少2.6%物化，3/6时距离策略反而更多（预取开3013 vs 1720） | raw/cache/cache.json |
+| W08 非抢占长投机 | 已运行 | LAB | 阻塞=最小剩余服务（10/90/390）；预留或预算后为0；没有服务上界就没有统一的有限保证 | raw/sched/sched.json#S8,S19 |
+| W09 多消费者交错 | 已运行 | LAB | 朴素去重时取消会杀掉共享作业：5/8；需求集合协议0错；联合研究C02中去重+引用计数让必需者等到35，需求集合+继承为15 | raw/joint/C02.json, raw/lifecycle/lifecycle.json |
+| W10 完成邮箱饱和 | 已运行 | LAB | 可执行调度器（T04重建）：UI停顿时占槽的结果把必需任务推迟到40；容量2的结果池让它在10开始；独立结果先完成时容量需≥3；600个随机交错中容量不变量0违例、0双重释放 | raw/sched/mailbox.json#Q028（v1的S10是独立算术，已撤回） |
+| W11 时间/字节极限 | 已运行 | LAB | 包内Protocol：窗口剩余12 MiB、15 s后申请返回0、取消的完成不被接纳；双重退款会让账本为负 | raw/sched/sched.json#S14, lifecycle Q064 |
+| W12 快意图与反向 | 已运行 | LAB | 末意图时延FIFO 59 → 最新有效意图19；已曝光意图不得被压缩 | raw/sched/sched.json#S11, lifecycle Q068 |
+| W13 只曝光一侧 | 已运行 | LAB | 证书一就绪就曝光：22/60交错露出部分unit；新证书撤销已曝光unit：1/8 | raw/workloads/workloads.json#W13 |
+| W14 内容替换/同值异身份 | 已运行 | GAMMA+LAB | 值相等接纳20/24错；同值替换后证书不再current；错误header导致错误首槽238/800 | lifecycle Q002, gamma2 G6, combos C12 |
+| W15 证明失效与计数饱和 | 已运行 | GAMMA | 只看选中路径漏29/673；Absent读不订阅导致活性缺陷；k位回绕计数器2^k次更新后假命中 | raw/gamma/gamma2.json#G1-G3 |
+| W16 帧相位与批处理 | 已运行 | LAB | 占位提交只移动首成员ack；批截止16时税16 | lifecycle Q073_Q075 |
+| W17 关闭后重开与晚退出 | 已运行 | LAB | 删除旧记录导致泄漏（3/4）；丢弃租约泄漏（1/6）；包内Protocol.close在有运行工作时返回False | lifecycle Q061_Q063, Q062 |
+| W18 稀疏/错误观测 | 已运行 | DATA | 缺终点、错scope、target晚于unit、时延不符、槽位交换、重复ID都会被包内分析器拒绝；同键重复按ambiguous处理（FIFO与LIFO得到的时长不同） | raw/workloads/workloads.json#W18 |
+| W19 统计混杂/门槛边界 | 已运行 | DATA | 第25、26阶都是推进样本；组护栏通过而单条退化+66 ms；删掉慢失败后P95从15 s变成274 ms | raw/pass1/reach.json, stats Q081, combos C25 |
+| W20 前沿候选对抗联合域 | 已运行 | GAMMA+LAB | 预取在书页族中68/200个世界少轮次、0个多轮次，但浪费356个物化；每次访问替换左侧一个对象后，只有113/240次访问仍有可用checkpoint；短会话中物理预留空闲25%（实测）；分支证书在7/16下前进/往返省0；3/6下预取开LRU省0（修复前误为9）、距离省16，预取关省16–26 | raw/workloads/workloads.json#W20 |
+
+全部20类都已运行（在声明的有界域内）。没有一类在真实消费者上运行过。

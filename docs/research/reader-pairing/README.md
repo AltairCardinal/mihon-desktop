@@ -2,6 +2,14 @@
 
 本目录保存已经测过但尚未确认净收益的方案、反例和可复查原件，供后续维护先查证据再提出新假设。暂缓不是永久禁令，也不是数学上否定方案；改变采用决定需要记录新的适用条件和真实证据。
 
+## 全历史 R1～R10 处置
+
+- [历史总清单与逐组结论](HISTORY_INDEX.md)：覆盖早期数学轮次、九份返回包、修订、工程报告及旧未提交材料。
+- [R1～R5与旧未提交源码](history/legacy-code/README.md)、[R6～R9逐项裁定](history/engineering/DECISIONS-R6-R9.md)、[R10工程处置](history/engineering/R10.md)及[150题对照](history/R10_QUESTIONS.md)。
+- [原包与版本关系](history/packages/README.md)、[工程来源及恢复限制](history/engineering/sources/SOURCE_INDEX.md)、[过程文件与遗漏扫描](history/PROCESS_DISPOSITION.md)。
+
+“已处理”表示来源已登记、去留明确并保全必要原件；不表示所有历史问题都已解决。100ms可达性、真实缓存上界等未知项继续保留研究价值，需新证据才重启。旧工作树可仍有脏文件；已归档副本不会自动删除原件。
+
 ## 2026-11-01 当前主干复评
 
 - [A2：复用owner索引，暂缓](2026-11-01-main-reevaluation/A2.md)

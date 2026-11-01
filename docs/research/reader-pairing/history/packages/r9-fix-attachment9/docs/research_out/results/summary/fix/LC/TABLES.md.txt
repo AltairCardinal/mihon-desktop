@@ -1,0 +1,122 @@
+# LC 汇总表（bench/summarize_fixLC.py 生成）
+
+## 会话层生命周期（每机制 E1–E6 + 两种 rebind + 随机 rebind 差分 + 活性）
+
+| 机制 | 确认 | 组数 | 失败组 | 关闭后可达字节 | rebind 差分 调用/不一致 |
+|---|---|---|---|---|---|
+| block_session | 包 confirm | 13 | E4_rebind_same:old_callback_rejected_after_republish; E5_close:no_hidden_residual_reachable; E4_rebind_content:old_callback_rejected_after_republish; E4_rebind_content_known:old_callback_rejected_after_republish | 66262 | 240/0 |
+| block_session | bound | 13 | E5_close:no_hidden_residual_reachable | 66262 | 240/0 |
+| bound_confirm | bound | 13 | — | 6784 | 240/0 |
+| derive_first | 包 confirm | 14 | E4_rebind_same:old_callback_rejected_after_republish; E4_rebind_content:old_callback_rejected_after_republish; E4_rebind_content_known:old_callback_rejected_after_republish | 6505 | 240/0 |
+| derive_first | bound | 14 | — | 6505 | 240/0 |
+| fresh_strong | 包 confirm | 13 | E4_rebind_same:old_callback_rejected_after_republish; E4_rebind_content:old_callback_rejected_after_republish; E4_rebind_content_known:old_callback_rejected_after_republish | 6944 | 240/0 |
+| fresh_strong | bound | 13 | — | 6944 | 240/0 |
+| gated_index_I | 包 confirm | 13 | E4_rebind_same:old_callback_rejected_after_republish; E4_rebind_content:old_callback_rejected_after_republish; E4_rebind_content_known:old_callback_rejected_after_republish | 7584 | 240/0 |
+| gated_index_I | bound | 13 | — | 7584 | 240/0 |
+| gated_index_SEL | 包 confirm | 13 | E4_rebind_same:old_callback_rejected_after_republish; E4_rebind_content:old_callback_rejected_after_republish; E4_rebind_content_known:old_callback_rejected_after_republish | 7800 | 240/0 |
+| gated_index_SEL | bound | 13 | — | 7800 | 240/0 |
+| inc_revoke | 包 confirm | 13 | E4_rebind_same:old_callback_rejected_after_republish; E4_rebind_content:old_callback_rejected_after_republish; E4_rebind_content_known:old_callback_rejected_after_republish | 8092 | 240/0 |
+| inc_revoke | bound | 13 | — | 8092 | 240/0 |
+| migrate_resign | 包 confirm | 13 | E4_rebind_same:old_callback_rejected_after_republish; E4_rebind_content:old_callback_rejected_after_republish; E4_rebind_content_known:old_callback_rejected_after_republish | 6848 | 240/0 |
+| migrate_resign | bound | 13 | — | 6848 | 240/0 |
+| package_session | 包 confirm | 14 | E4_rebind_same:old_callback_rejected_after_republish; E4_rebind_content:old_callback_rejected_after_republish; E4_rebind_content_known:old_callback_rejected_after_republish; LV_liveness_rc1:all_published_W01_s0,all_published_W05_s2,all_published_RP_s0 | 6324 | 240/0 |
+| package_session | bound | 14 | LV_liveness_rc1:all_published_W01_s0,all_published_W05_s2,all_published_RP_s0 | 6380 | 240/0 |
+| persistent_tree | 包 confirm | 13 | E4_rebind_same:old_callback_rejected_after_republish; E4_rebind_content:old_callback_rejected_after_republish; E4_rebind_content_known:old_callback_rejected_after_republish | 7716 | 240/0 |
+| persistent_tree | bound | 13 | — | 7716 | 240/0 |
+| proj_support | 包 confirm | 13 | E4_rebind_same:old_callback_rejected_after_republish; E4_rebind_content:old_callback_rejected_after_republish; E4_rebind_content_known:old_callback_rejected_after_republish | 7010 | 240/0 |
+| proj_support | bound | 13 | — | 7010 | 240/0 |
+| reissue_eager | 包 confirm | 13 | E4_rebind_same:old_callback_rejected_after_republish; E4_rebind_content:old_callback_rejected_after_republish; E4_rebind_content_known:old_callback_rejected_after_republish | 7010 | 240/0 |
+| reissue_eager | bound | 13 | — | 7010 | 240/0 |
+| reissue_lazy | 包 confirm | 13 | E4_rebind_same:old_callback_rejected_after_republish; E4_rebind_content:old_callback_rejected_after_republish; E4_rebind_content_known:old_callback_rejected_after_republish | 7055 | 240/0 |
+| reissue_lazy | bound | 13 | — | 7055 | 240/0 |
+| reserve1 | 包 confirm | 13 | E4_rebind_same:old_callback_rejected_after_republish; E4_rebind_content:old_callback_rejected_after_republish; E4_rebind_content_known:old_callback_rejected_after_republish | 6784 | 240/0 |
+| reserve1 | bound | 13 | — | 6784 | 240/0 |
+| value_cache | 包 confirm | 13 | E4_rebind_same:old_callback_rejected_after_republish; E4_rebind_content:old_callback_rejected_after_republish; E4_rebind_content_known:old_callback_rejected_after_republish | 6848 | 240/0 |
+| value_cache | bound | 13 | — | 6848 | 240/0 |
+
+## 运行器层（ShadowRunner 脚本生命周期，每配置 4 个脚本变体：E2 touched/untouched × rebind 第 13 项/第 31 项）
+
+| 配置 | 确认 | 运行 | 错误发布 | 失败检查（次数） |
+|---|---|---|---|---|
+| gated_shadow_fixed | 包 confirm | 4 | 0 | E4:old_callback_rejected_after_republish×4 |
+| gated_shadow_fixed | bound | 4 | 0 | — |
+| gated_shadow_r9 | 包 confirm | 4 | 0 | E4:old_callback_rejected_after_republish×4; E4:old_epoch_proof_event_not_delivered×1; E6:reobtained_after_invalidation×4 |
+| gated_shadow_r9 | bound | 4 | 0 | E4:old_epoch_proof_event_not_delivered×1; E6:reobtained_after_invalidation×4 |
+| incumbent_runner | 包 confirm | 4 | 0 | E2:stale_proof_rejected×2; E2:untouched_proof_accepted×2; E4:old_callback_rejected_after_republish×4; E6:reobtained_after_invalidation×4 |
+| incumbent_runner | bound | 4 | 0 | E2:stale_proof_rejected×2; E2:untouched_proof_accepted×2; E6:reobtained_after_invalidation×4 |
+| persistent_gated_shadow_fixed | 包 confirm | 4 | 0 | E4:old_callback_rejected_after_republish×4 |
+| persistent_gated_shadow_fixed | bound | 4 | 0 | — |
+| persistent_gated_shadow_r9 | 包 confirm | 4 | 0 | E4:old_callback_rejected_after_republish×4; E4:old_epoch_proof_event_not_delivered×1; E6:reobtained_after_invalidation×4 |
+| persistent_gated_shadow_r9 | bound | 4 | 0 | E4:old_epoch_proof_event_not_delivered×1; E6:reobtained_after_invalidation×4 |
+| shadow_fixed | 包 confirm | 4 | 0 | E4:old_callback_rejected_after_republish×4 |
+| shadow_fixed | bound | 4 | 0 | — |
+| shadow_r9 | 包 confirm | 4 | 0 | E4:old_callback_rejected_after_republish×4; E4:old_epoch_proof_event_not_delivered×2; E6:reobtained_after_invalidation×4 |
+| shadow_r9 | bound | 4 | 0 | E4:old_epoch_proof_event_not_delivered×2; E6:reobtained_after_invalidation×4 |
+
+## 变异体
+
+| 变异体 | 被捕获 | 失败检查 |
+|---|---|---|
+| cancel_frees_slot | True | slot_still_held_after_cancel, cancelled_task_counts_against_capacity, cancelled_exit_discarded, cancelled_result_not_admitted, slot_released_at_exit |
+| unbound_confirm(package) | True | old_callback_rejected_after_republish |
+| inc_revoke_skips_rank_key | True | stale_publication_not_visible_under_old_handle, confirmation_not_carried |
+| persistent_tree_not_invalidated | True | verdicts_equal_fresh_instance |
+| reissue_carries_confirmation | True | confirmation_not_carried |
+
+## 公开观察差分
+
+| 对 | 流 | 轨迹 | 事件 | 有差异轨迹 | 差异（类别:次数） |
+|---|---|---|---|---|---|
+| bound_confirm | expiry | 300 | 18000 | 300 | observation:confirmed:731; return:confirm/current:808; return:confirm/none:869; return:confirm/stale:1742 |
+| bound_confirm | mixed | 300 | 18000 | 296 | observation:confirmed:8; return:confirm/current:618; return:confirm/none:332; return:confirm/stale:291 |
+| control | expiry | 300 | 18000 | 0 | 无 |
+| control | mixed | 300 | 18000 | 0 | 无 |
+| derive_first | expiry | 300 | 18000 | 6 | observation:certs:26; observation:confirmed:11; observation:observe:113; observation:published:22; observation:raw:7; return:certpub:12; return:confirm/none:1; return:edge:1 |
+| derive_first | mixed | 300 | 18000 | 18 | observation:certs:17; observation:observe:370; observation:published:13; return:certify:5; return:certpub:9 |
+| inc_revoke | expiry | 500 | 30000 | 0 | 无 |
+| inc_revoke | expiry | 500 | 30000 | 0 | 无 |
+| inc_revoke | mixed | 500 | 30000 | 0 | 无 |
+| inc_revoke | mixed | 500 | 30000 | 0 | 无 |
+| inc_revoke_strong | expiry | 300 | 18000 | 0 | 无 |
+| inc_revoke_strong | mixed | 300 | 18000 | 0 | 无 |
+| migrate_resign | expiry | 150 | 9000 | 52 | return:certpub:82 |
+| migrate_resign | mixed | 150 | 9000 | 26 | return:certify:18; return:certpub:13 |
+| proj_support | expiry | 150 | 9000 | 0 | 无 |
+| proj_support | mixed | 150 | 9000 | 0 | 无 |
+| reissue_eager | expiry | 150 | 9000 | 14 | observation:certs:96; observation:confirmed:11; observation:published:62; return:certpub:63; return:confirm/current:1; return:confirm/none:1; return:confirm/stale:2 |
+| reissue_eager | mixed | 150 | 9000 | 10 | observation:certs:70; observation:published:38; return:certify:6; return:certpub:7 |
+| reissue_lazy | expiry | 150 | 9000 | 73 | observation:certs:979; observation:confirmed:264; observation:published:703; return:certpub:365; return:confirm/current:20; return:confirm/none:16; return:confirm/stale:34 |
+| reissue_lazy | mixed | 150 | 9000 | 28 | observation:certs:291; observation:confirmed:8; observation:published:283; return:certify:50; return:certpub:39; return:confirm/current:1 |
+| value_cache | expiry | 150 | 9000 | 42 | observation:observe:133; observation:occupied:452; observation:published:1; observation:raw:198; observation:tasks:565; return:acquire:10; return:exit:26 |
+| value_cache | mixed | 150 | 9000 | 77 | observation:observe:169; observation:occupied:669; observation:published:1; observation:raw:401; observation:tasks:927; return:acquire:79; return:cancel:10; return:certify:2; return:consume:7; return:exit:95; return:finish:17 |
+
+derive_first 按 raw 容量：
+
+- rc=1 mixed：20/150 条轨迹有差异，observation:observe:485; return:certify:7; return:certpub:2
+- rc=1 expiry：5/150 条轨迹有差异，observation:certs:8; observation:observe:116; observation:published:4; return:certpub:4
+- rc=2 mixed：7/150 条轨迹有差异，observation:certs:6; observation:observe:212; observation:published:4; return:certify:3; return:certpub:6
+- rc=2 expiry：1/150 条轨迹有差异，observation:observe:43
+- rc=3 mixed：2/150 条轨迹有差异，observation:observe:18; observation:raw:6; return:certify:1
+- rc=3 expiry：1/150 条轨迹有差异，observation:observe:15
+
+## 公共工作负载上的成本（W01 s0、W05 s2、RP s0 全部目标 + 关闭；层见 candidates/fixLC_costs.py）
+
+| 机制 | rc | 全部真值发布 | 结构条目峰值 | 关闭后条目 | tracemalloc 峰值 B | 关闭后保留 B | 正增量和 B（累计分配下界） | 获取 | 认证步 | 强评估 | 发布读校验 | 墙钟 ms（分支内探索性） |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| package_session | 3 | True | [None, None, None] | [None, None, None] | 714462 | 97992 | 1994640 | 21 | 1259 | 0 | 84778 | 6816.1 |
+| fresh_strong | 3 | True | [None, None, None] | [None, None, None] | 766536 | 102744 | 2196940 | 19 | 1240 | 3561 | 106167 | 7584.0 |
+| persistent_tree | 3 | True | [64, 64, 64] | [0, 0, 0] | 786278 | 99608 | 2195126 | 19 | 1240 | 1456 | 106167 | 9193.0 |
+| block_session | 3 | True | [10, 7, 7] | [0, 0, 0] | 808900 | 155112 | 2288596 | 19 | 1240 | 1221 | 106167 | 7718.1 |
+| gated_index_I | 3 | True | [88, 19, 25] | [0, 0, 0] | 781670 | 98912 | 2132308 | 21 | 490 | 204 | 111603 | 7724.5 |
+| gated_index_SEL | 3 | True | [88, 20, 25] | [0, 0, 0] | 809300 | 98968 | 2253188 | 19 | 471 | 803 | 132992 | 9048.1 |
+| derive_first | 3 | True | [0, 0, 0] | [0, 0, 0] | 713974 | 97552 | 1993672 | 21 | 1259 | 0 | 84778 | 7566.4 |
+| proj_support | 3 | True | [4, 4, 4] | [0, 0, 0] | 729046 | 97896 | 2018032 | 21 | 0 | 0 | 84778 | 6195.9 |
+| reissue_eager | 3 | True | [4, 4, 4] | [0, 0, 0] | 728958 | 97808 | 2028912 | 21 | 0 | 0 | 89749 | 6638.4 |
+| reissue_lazy | 3 | True | [4, 4, 4] | [0, 0, 0] | 732694 | 97736 | 2039176 | 21 | 0 | 0 | 174142 | 11430.2 |
+| migrate_resign | 3 | True | [0, 0, 0] | [0, 0, 0] | 714190 | 97768 | 1994712 | 21 | 1259 | 0 | 84778 | 6239.5 |
+| inc_revoke | 3 | True | [669, 289, 211] | [0, 0, 0] | 674922 | 99100 | 1619176 | 21 | 1259 | 0 | 2411 | 1086.6 |
+| bound_confirm | 3 | True | [None, None, None] | [None, None, None] | 714126 | 97704 | 1994040 | 21 | 1259 | 0 | 84778 | 6362.0 |
+| value_cache | 3 | True | [4, 2, 14] | [0, 0, 0] | 720214 | 97768 | 2024872 | 20 | 1259 | 0 | 84230 | 6034.5 |
+| reserve1 | 3 | True | [None, None, None] | [None, None, None] | 714126 | 97704 | 1994040 | 21 | 1259 | 0 | 84778 | 6045.4 |
+| package_session | 1 | False | [None, None, None] | [None, None, None] | 12429866 | 97400 | 20570074 | 7216 | 893 | 0 | 1348357 | 84101.4 |
+| derive_first | 1 | True | [0, 0, 0] | [0, 0, 0] | 709866 | 97392 | 1982818 | 21 | 1259 | 0 | 84778 | 4517.2 |

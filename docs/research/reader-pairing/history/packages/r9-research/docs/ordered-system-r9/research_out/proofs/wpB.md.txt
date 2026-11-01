@@ -1,0 +1,150 @@
+# WP-B proofs, proof sketches and counterexamples (summaries, domains, witnesses, limits)
+
+Model. `reference._Scan` is a deterministic left-to-right transducer. Step *i* reads item facts on
+positions [i-1, i+3] and the rank records of edges (i,i+1), (i+1,i+2); its only use of ranks is
+`later_wins(a,b) := b is not None and (a is None or b < a)`. Ω_D(K) = all completions of the unknown
+facts K inside domain D (ext / nonneg / G0 = q/50 grid), constrained by α/β header authority.
+A target is *certified* iff every world of Ω_D(K) yields the same unit; an empty Ω is reported as
+`contradiction` and is never a certificate. `omega.certify_exact` (r8 reproduction) is the exact DP over
+frontier keys (cursor state, pruned partial assignment). All numbers below come from
+`results/raw/wpB/*` (commands listed in each file).
+
+## B01 — exact interval summaries with boundary assignment
+
+**Lemma B-1 (boundary interface).** After step b-1 the future steps b, b+1, … depend on the past only through
+(i) the cursor state (5 modes; the manual bit is redundant, L-M2 of r8), (ii) the already-chosen state/side of
+positions b-1 … b+2, (iii) the null/value choice of edge (b,b+1), (iv) every order-constraint component
+(between unknown ranks) that touches an edge ≥ b.
+*Proof.* Steps ≥ b read positions ≥ b-1 and edges ≥ b (window lemma). A past choice on a position < b-1 or an
+edge < b is never read again, and it can only constrain the future through an order constraint chain that
+reaches an edge ≥ b; those chains are exactly the components kept in (iv). Positions > b+2 have not been read,
+so they carry no choice. `omega._prune(asg, b-1)` keeps exactly (ii)–(iv). ∎
+
+**Theorem B-2 (composition is exact).** For a block [L,R), let Rel_[L,R) map an entry key (state, pruned
+assignment at L) to the set of exit keys at R that the DP reaches. Then the relational product
+Rel_[0,B)∘Rel_[B,2B)∘…, followed by the target block run with the DP's include/skip rules, gives exactly
+the unit set of `certify_exact`. The table of block [L,R) depends only on positions [L-1, R+2] and edges L-1 … R.
+*Proof.* By Lemma B-1 the DP transition on keys is a function of the key and of the inputs in the step window;
+the block table is the memoised R-L fold of that function, and relational composition is associative and
+equals the fold. The dependency range is the union of the step windows of steps L … R-1. ∎
+*Corollary (update rule).* Updating position p invalidates exactly the blocks with L-1 ≤ p ≤ R+2; updating edge a
+invalidates blocks ⌊(a-1)/B⌋ and ⌊a/B⌋; every cached prefix frontier at or beyond the first dirty block must be
+dropped. `StaleFrontierMutant` (keeps the old prefix frontier) is killed by `test_stale_frontier_mutant_killed`.
+*Evidence.* `BlockSummary` = `certify_exact` on 12 272 target checks with item and edge updates, 0 mismatches
+(`equiv.json`); equals the independent world oracle on small cases (test). Domain: out-of-domain score delta
+⇒ `ValueError` ⇒ the session rebuilds and `Facts` falls back to ext (test `test_out_of_domain_delta_forces_ext_rebuild`).
+
+**Necessity check (ablation, `prune_ablation.json`, 1 500 cases, n ≤ 8).** Dropping the state/side of position
+b-1 changed the unit set (verdict or ambiguity count) in 66 cases; dropping all states/sides changed 198 and
+lost 8 of 481 certificates. Dropping (iii) or (iv) changed nothing in this generator, so they are proven
+sufficient but their necessity was **not** observed; they stay (sound and cheap: ≤ 2 rank-component edges, D05).
+
+**Blow-up (cost limit, not a proof).** Entries and exit keys grow with unknown density: n=96, pu=0.6, B=4 gives
+647 table entries, 7 094 exit keys, max 8 key variables; interning leaves only 111 distinct exit sets.
+
+## B02 / X03 — order type versus concrete (quantised) ranks
+The scan uses ranks only through the strict order of the pairs it compares (`later_wins`), so the order-type
+(symbolic constraint) abstraction is exact. Quantising to K buckets duplicates branches per bucket and adds no
+information: K=10 / K=50 cost 2.4× / 29× the symbolic evaluations and never certified a target the symbolic
+search did not (`studies.json#X03`).
+
+## D01 — bit-set reasoning over a finite rank set
+**Theorem D-1.** Let V be a finite totally ordered value set (G0 grid, possibly with holes = domain mask),
+constraints x<y or ¬(x<y) between variables and constants. Bounds propagation to fixpoint
+(lo(y) > lo(x), hi(x) < hi(y) for x<y; lo(x) ≥ lo(y), hi(y) ≤ hi(x) for ¬(x<y); each bound snapped to the
+mask) is sound and complete: if every mask is non-empty at the fixpoint then "every variable takes its
+lowest remaining value" satisfies all constraints.
+*Proof.* Soundness: each removal deletes a value that no solution can use. Completeness: at the fixpoint, for
+x<y we have min(y) > min(x); for ¬(x<y) we have min(x) ≥ min(y); constants are singletons. Termination: masks
+only shrink. A cycle x<y<…<x empties some mask. ∎
+Evidence: `feasible_bits` = symbolic `T.feasible` = brute force on 389 G0 cases (0 wrong each); with the
+integer-rank mask, 0.1 < x < 0.5 is infeasible while the full grid is feasible (`domains_brute.json`).
+Speed is the negative part: bitset 20.3 ms vs symbolic 14.8 ms (local run), 147 ms vs 40 ms in the trial bench.
+
+## D02 — completeness of binary64 order-type representatives
+For m variables and constant set K, a constraint system is feasible over binary64 (NaN excluded, −0 = +0 in
+order) iff it is feasible over K ∪ {up to m representatives in every open gap of K that contains ≥ 1 float,
+m below min K and m above max K, counted with nextafter}. *Sketch:* a solution only matters through its order
+pattern relative to K; any pattern with ≤ m distinct new values per gap is realisable iff the gap holds that many
+floats. Evidence: 250 dense neighbourhood cases (subnormals, ±max, ±0, nextafter chains), 0 mismatches between
+the symbolic engine and brute force over the dense set.
+
+## D03 — automatic safe domain switching
+Counterexample to shape guessing: a case whose ranks look like G0 is certified under G0 while an admissible
+ext world gives a second unit (2 ext units). Safe rule: the narrow domain only on a provenance tag that names the
+generator, plus data check (`domain_ok`); otherwise ext. The coupled block session re-checks the data on every
+delta and rebuilds wider when a score leaves the domain (test).
+
+## D04 — comparison-signature validation versus value validation
+**Theorem D-4.** Let S be the support of a memoised L0 result (typed reads). If a new state has the same
+non-rank reads, the same null flags for every rank read, and the same strict-order bit for every rank pair the
+scan compared, the L0 public output (and its read set) is identical.
+*Proof.* Induction over scan steps: each step's control flow depends on non-rank reads and on
+`later_wins`, whose value is a function of the null flags and the strict-order bit only; equal control flow
+gives equal reads and equal output. ∎
+Mutant `SigMutantNoOrder` (ignores the order bit): 9 wrong of 3 600 requests; `SigOwner`: 0 wrong
+(`equiv.json`). Value changes that keep the signature save engine runs (trial bench shuffle n64: 62 → 33 runs).
+
+## D05 — sparsity of constraints
+Across 60 cases (with pins and all openings): max live boundary variables 7, max rank-constraint component
+2 edges, max frontier 43; with pins 6 live variables. The short-chain premise holds; Lemma B-1 bounds live
+order components by those touching edges ≥ b.
+
+## D06 — arithmetic / serialisation consistency
+Counterexample: the text scores 0.30000000000000001 and 0.3 are equal in binary64 but different as decimals;
+the plan differs ([[0],[1,2],[3,4]] vs [[0],[1],[2,3],[4]]). Rule: reject numeric literals whose decimal text
+does not round-trip through binary64 (or carry the decimal exactly end to end).
+
+## E01 — minimal reusable sufficient features
+(a) Summary statistics are not sufficient: two pixel packs with identical statistics score 1.0 vs 10.8.
+(b) The operator is directional: the same pair scores 7.0 (AB) vs 5.0 (BA), so each object must keep both
+normalised sides (300 B per object vs 400 B raw).
+(c) Raw → normalised is many-to-one, so raw is not minimal.
+(d) A per-edge scalar rank is a function of the pair; it cannot answer a new neighbour.
+Sufficient and reusable: the normalised two-sided representation; it is minimal among the tested encodings.
+
+## E02 — joint realisability for low or repeated coordinates
+`realizable_q(h1,h2)` enumerates the joint-block structure (sound superset). Usable direction: q outside the set
+is impossible. Equal heights h|50 give a lattice (h=1: 30 values, step 50; h=2: step 25; h=5: step 10;
+h=10: step 5; h=25: step 2); h=3 gives 1 380 values (min 16); unequal heights (7,9), (2,200) give all 1 500.
+Height 1 on both sides ⇒ zero variance ⇒ the edge is null (E03).
+
+## E03 / X10 — common generative constraints and geometry masks
+Structural impossibilities: WIDE endpoint ⇒ null rank; oriented w>h ⇒ no sample; h=1 both sides ⇒ null;
+h=2 both sides ⇒ q multiple of 25; side labels are not transportable (generator unpublished).
+**Theorem X-10.** If the realisable set of every unknown edge contains null and the domain minimum 0, a per-edge
+mask cannot change the feasibility of any single `later_wins` decision: outcome *false* is realisable through
+b = null; outcome *true* is realisable iff a is null or a > 0, and 0 lies in every mask. Masks can only matter
+through joint constraints (the i=0 rank chain). Measured: masks on 4 edges, verdict unchanged (ambiguous in both).
+Premise violation (a known 0.3 when masks require multiples of 0.5) is not seen by the feasibility engine; it is
+caught by `masks_consistent`, which must run before masks are installed (test).
+
+## N01 — certificate complexity under partial evidence
+Any support-based certificate must contain every key whose single change alters the output (otherwise the
+changed state passes validation with a wrong unit). On G0-realised chains the dependent edges are ≈ 2/3 of the
+prefix: t=6 → 4, t=9 → 6, t=14 → 10, t=21 → 14 edges; hence certificate size Θ(t) in this family. Some
+targets are independent of the prefix (count 0; a phase reset), so the bound is per family, not universal.
+
+## N02 — state lower bound for exact summaries
+At a boundary, the number of Myhill–Nerode classes of frontier keys with respect to the remaining suffix is a
+lower bound for any exact summary interface there. Measured: up to 14 classes against ≤ 5 distinct cursor
+states; 22 of 40 boundaries exceed their state count. A partial summary keyed by the cursor state alone is
+therefore not exact; it must carry assignment information (Lemma B-1 gives the sufficient part).
+
+## N05 — independence of mutation testing
+A common-mode mutant in shared code (`Ctx.choose` drops side-label branches, used by both the DP and the block
+summary) was active on 62 cases: the DP-vs-blocks differential caught 0, the independent world enumeration +
+`reference.complete_plan` caught 62. Rule: a differential oracle counts as independent only if it shares no
+choice-enumeration code with the candidate.
+
+## N06 — impossibility triangle and minimal relaxation
+Exact frozen semantics, bounded edit radius, and identity stability under insertion cannot all hold for the
+reference rule: a single edit in a chain of 64 changes positions up to 63 away. The LMP relaxation reaches radius
+3 but changes 6.85 % of positions (not exact), and its parity rule relabels everything under front insertion.
+
+## B03 / B05 — layered precision and backward goal propagation (soundness; negative cost)
+Seeded exact windows start from the tree's reachable states with an empty assignment, i.e. a superset of the true
+world set; a single unit over the superset is therefore the true unit (given a non-empty true set). Goal pruning
+removes only keys that cannot reach a target-covering unit. Both agree with exact DP (tests). Cost: 2–5× the
+evaluations of exact DP from position 0 for single queries (n=128, pu=0.3: 3 827 exact vs 14 466 seeded vs
+11 491 goal); the approximate tree is cheaper only at high density (n=64, pu=0.6: 10 620 vs 13 359).

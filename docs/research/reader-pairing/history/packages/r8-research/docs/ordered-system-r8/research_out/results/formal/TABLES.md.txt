@@ -1,0 +1,362 @@
+# 正式计时表（由 bench/report_tables.py 从 results/formal 生成）
+
+格式：基线列为三进程中位数的中位（ms）；其他列为"逐进程配对比值的中位 [最小, 最大]"；括号内为已认证判决数。
+
+### L1 关系认证 / X1 / NH-2（虚拟宿主，宿主族冻结轨迹）
+
+| 场景 | x_fix_stamp | current | always_bump | rel_tree | rel_exact | rel_portfolio | x_delta_posrev | rel_tree_dposrev |
+|---|---|---|---|---|---|---|---|---|
+| s16_neighbor_relevant | 112.5 ms (38) | 1.044 [0.986, 1.064] (38) | 59.7 ms (38) | 1.378 [1.308, 1.440] (44) | 1.276 [1.258, 1.325] (44) | 1.457 [1.375, 1.527] (44) | 0.134 [0.126, 0.137] (38) | 0.342 [0.327, 0.365] (44) |
+| s256_neighbor_irrelevant_r4 | 1287.5 ms (80) | 1.058 [1.038, 1.084] (80) | 559.4 ms (80) | 1.286 [1.253, 1.291] (84) | 1.273 [1.252, 1.354] (84) | 1.271 [1.216, 1.336] (84) | 0.042 [0.041, 0.050] (80) | 0.092 [0.089, 0.101] (84) |
+| s256_roundtrip_growth | 1094.2 ms (42) | 1.064 [1.002, 1.116] (42) | 455.8 ms (42) | 1.228 [1.154, 1.244] (46) | 1.189 [1.168, 1.280] (46) | 1.282 [1.246, 1.299] (46) | 0.051 [0.051, 0.051] (42) | 0.151 [0.146, 0.162] (46) |
+| s512_jump_relevant | 1802.5 ms (22) | 1.098 [1.004, 1.112] (22) | 776.6 ms (22) | 1.237 [1.204, 1.312] (22) | 1.237 [1.214, 1.275] (24) | 1.287 [1.278, 1.369] (24) | 0.032 [0.031, 0.034] (22) | 0.104 [0.100, 0.111] (22) |
+| s512_neighbor_irrelevant_r4 | 1597.7 ms (60) | 1.042 [1.040, 1.172] (60) | 658.9 ms (60) | 1.223 [1.199, 1.369] (68) | 1.219 [1.185, 1.292] (68) | 1.267 [1.203, 1.314] (68) | 0.032 [0.031, 0.036] (60) | 0.103 [0.102, 0.110] (68) |
+| s64_jump_churn | 1092.6 ms (64) | 1.174 [1.130, 1.283] (64) | 507.8 ms (64) | 1.334 [1.323, 1.350] (66) | 1.285 [1.266, 1.324] (66) | 1.359 [1.306, 1.413] (66) | 0.046 [0.044, 0.046] (64) | 0.138 [0.132, 0.139] (66) |
+| s64_neighbor_fail | 315.9 ms (22) | 1.066 [1.051, 1.130] (22) | 161.3 ms (22) | 1.261 [1.209, 1.298] (24) | 1.246 [1.172, 1.330] (24) | 1.271 [1.231, 1.317] (24) | 0.085 [0.082, 0.087] (22) | 0.127 [0.121, 0.132] (24) |
+| s64_neighbor_irrelevant_r4 | 413.0 ms (148) | 1.143 [1.047, 1.174] (148) | 190.7 ms (148) | 1.248 [1.232, 1.318] (188) | 1.319 [1.259, 1.340] (188) | 1.338 [1.327, 1.668] (188) | 0.061 [0.058, 0.061] (148) | 0.138 [0.135, 0.160] (188) |
+| s64_repeat_quiet_r4 | 43.7 ms (240) | 1.072 [1.001, 1.074] (240) | 30.2 ms (240) | 1.163 [1.115, 1.309] (240) | 1.149 [1.124, 1.230] (240) | 1.206 [1.140, 1.223] (240) | 0.430 [0.422, 0.475] (240) | 0.572 [0.533, 0.632] (240) |
+| s64_ws3_relevant | 456.6 ms (68) | 1.098 [1.077, 1.178] (68) | 216.5 ms (68) | 1.438 [1.246, 1.456] (68) | 1.349 [1.234, 1.376] (68) | 1.461 [1.443, 1.478] (68) | 0.054 [0.051, 0.055] (68) | 0.164 [0.163, 0.179] (68) |
+| s64_ws5_quiet | 66.2 ms (62) | 1.087 [1.065, 1.129] (62) | 44.1 ms (62) | 1.663 [1.662, 1.706] (62) | 1.530 [1.530, 1.533] (62) | 1.881 [1.869, 1.989] (62) | 0.401 [0.396, 0.414] (62) | 0.982 [0.964, 0.988] (62) |
+
+always_bump 的比值是相对 current（冻结宿主）：
+
+### NH-2 无条件推进 vs 冻结宿主
+
+| 场景 | current | always_bump |
+|---|---|---|
+| s16_neighbor_relevant | 110.9 ms (38) | 0.534 [0.530, 0.541] (38) |
+| s256_neighbor_irrelevant_r4 | 1362.2 ms (80) | 0.408 [0.406, 0.421] (80) |
+| s256_roundtrip_growth | 1162.7 ms (42) | 0.399 [0.386, 0.416] (42) |
+| s512_jump_relevant | 1945.7 ms (22) | 0.399 [0.386, 0.414] (22) |
+| s512_neighbor_irrelevant_r4 | 1711.9 ms (60) | 0.385 [0.377, 0.403] (60) |
+| s64_jump_churn | 1296.0 ms (64) | 0.408 [0.392, 0.415] (64) |
+| s64_neighbor_fail | 352.3 ms (22) | 0.463 [0.454, 0.464] (22) |
+| s64_neighbor_irrelevant_r4 | 460.0 ms (148) | 0.414 [0.411, 0.431] (148) |
+| s64_repeat_quiet_r4 | 45.7 ms (240) | 0.676 [0.660, 0.676] (240) |
+| s64_ws3_relevant | 501.6 ms (68) | 0.432 [0.410, 0.465] (68) |
+| s64_ws5_quiet | 74.7 ms (62) | 0.594 [0.581, 0.630] (62) |
+
+### B1–B3 计划维护（比值相对线性转换器扫描）
+
+| 场景 | linear | recompute | tree | resync |
+|---|---|---|---|---|
+| chain_n1024_q1 | 1804.3 ms | — | 0.045 [0.044, 0.048] | 0.037 [0.037, 0.038] |
+| chain_n256_q0.1 | 47.7 ms | 22.448 [22.156, 22.498] | 0.662 [0.651, 0.688] | 0.446 [0.437, 0.447] |
+| chain_n256_q1 | 407.1 ms | 23.886 [23.339, 25.451] | 0.088 [0.085, 0.097] | 0.051 [0.051, 0.052] |
+| chain_n256_q8 | 445.2 ms | 22.023 [20.808, 22.751] | 0.121 [0.111, 0.124] | 0.058 [0.053, 0.058] |
+| chain_n64_q1 | 94.3 ms | 24.034 [23.838, 24.526] | 0.243 [0.242, 0.252] | 0.139 [0.135, 0.145] |
+| chainfront_n1024_q1 | 1922.0 ms | — | 0.042 [0.040, 0.045] | 1.062 [0.993, 1.065] |
+| chainfront_n256_q1 | 410.9 ms | 23.637 [22.604, 24.514] | 0.079 [0.076, 0.080] | 1.002 [0.902, 1.008] |
+| random_n1024_q1 | 1384.2 ms | — | 0.054 [0.053, 0.057] | 0.028 [0.028, 0.028] |
+| random_n1024_queryonly | 64.3 ms | — | 0.751 [0.733, 0.759] | 0.412 [0.412, 0.420] |
+| random_n256_plan | 147.8 ms | 19.937 [19.892, 21.114] | 1.135 [1.134, 1.169] | 0.110 [0.109, 0.112] |
+| random_n256_q0.1 | 41.7 ms | 16.867 [16.388, 16.900] | 0.853 [0.847, 0.866] | 0.386 [0.384, 0.532] |
+| random_n256_q1 | 319.1 ms | 20.225 [20.072, 20.802] | 0.121 [0.121, 0.125] | 0.053 [0.050, 0.056] |
+| random_n256_q8 | 351.4 ms | 18.024 [17.187, 18.468] | 0.154 [0.150, 0.173] | 0.047 [0.047, 0.047] |
+| random_n64_q1 | 80.6 ms | 19.368 [18.987, 20.002] | 0.359 [0.356, 0.364] | 0.135 [0.135, 0.138] |
+
+### G5 发布权限检查
+
+| 场景 | scan_guard | owner_table |
+|---|---|---|
+| guard_n10 | 0.1 ms | 0.362 [0.294, 0.363] |
+| guard_n100 | 6.3 ms | 0.061 [0.043, 0.061] |
+| guard_n1000 | 620.0 ms | 0.008 [0.007, 0.008] |
+
+### C3 身份比较
+
+| 场景 | typed_full | typed_tuple_intern |
+|---|---|---|
+| identity_n16 | 15.9 ms | 0.469 [0.463, 0.478] |
+| identity_n256 | 259.4 ms | 0.485 [0.467, 0.495] |
+| identity_n512 | 757.4 ms | 0.431 [0.429, 0.464] |
+| identity_n64 | 60.6 ms | 0.543 [0.531, 0.544] |
+
+### 宿主族（见 hosts_summary.json；由 summarize_hosts.py 生成）
+
+```
+[
+ {
+  "scenario": "s16_neighbor_relevant",
+  "candidate": "current",
+  "processes": 3,
+  "median_ms": 115.43156,
+  "range_ms": [
+   105.464645,
+   120.78523
+  ],
+  "ratio_vs_current_median": 1.0,
+  "ratio_vs_current_range": [
+   1.0,
+   1.0
+  ],
+  "ratio_vs_fix_median": 1.1337961126022795,
+  "ok": true,
+  "engine_runs": 43,
+  "memo_hits": 77,
+  "read_validations": 36,
+  "typed_reads_checked": 151
+ },
+ {
+  "scenario": "s16_neighbor_relevant",
+  "candidate": "x_fix_stamp",
+  "processes": 3,
+  "median_ms": 102.206625,
+  "range_ms": [
+   101.809804,
+   108.037627
+  ],
+  "ratio_vs_current_median": 0.8819927929588753,
+  "ratio_vs_current_range": [
+   0.8461847942832083,
+   1.0243966307381966
+  ],
+  "ratio_vs_fix_median": 1.0,
+  "ok": true,
+  "engine_runs": 75,
+  "memo_hits": 77,
+  "read_validations": 59,
+  "typed_reads_checked": 255
+ },
+ {
+  "scenario": "s16_neighbor_relevant",
+  "candidate": "x_union",
+  "processes": 3,
+  "median_ms": 101.249434,
+  "range_ms": [
+   100.063256,
+   121.167128
+  ],
+  "ratio_vs_current_median": 0.8668621995579026,
+  "ratio_vs_current_range": [
+   0.8382600587836775,
+   1.1488885967425386
+  ],
+  "ratio_vs_fix_median": 0.9906347460352986,
+  "ok": true,
+  "engine_runs": 75,
+  "memo_hits": 77,
+  "read_validations": 36,
+  "typed_reads_checked": 191
+ },
+ {
+  "scenario": "s16_neighbor_relevant",
+  "candidate": "x_posrev",
+  "processes": 3,
+  "median_ms": 83.328508,
+  "range_ms": [
+   82.327237,
+   88.787959
+  ],
+  "ratio_vs_current_median": 0.7350895386795223,
+  "ratio_vs_current_range": [
+   0.7218867006562156,
+   0.7806145557120113
+  ],
+  "ratio_vs_fix_median": 0.8184723349433027,
+  "ok": true,
+  "engine_runs": 75,
+  "memo_hits": 77,
+  "read_validations": 40,
+  "typed_reads_checked": 153
+ },
+ {
+  "scenario": "s16_neighbor_relevant",
+  "candidate": "x_log",
+  "processes": 3,
+  "median_ms": 83.050778,
+  "range_ms": [
+   81.289227,
+   83.131827
+  ],
+  "ratio_vs_current_median": 0.7201828252169511,
+  "ratio_vs_current_range": [
+   0.6875905108596473,
+   0.770772300044247
+  ],
+  "ratio_vs_fix_median": 0.8125772473164043,
+  "ok": true,
+  "engine_runs": 75,
+  "memo_hits": 77,
+  "read_validations": 40,
+  "typed_reads_checked": 153
+ },
+ {
+  "scenario": "s16_neighbor_relevant",
+  "candidate": "x_revdep",
+  "processes": 3,
+  "median_ms": 82.692457,
+  "range_ms": [
+   81.82124,
+   88.228386
+  ],
+  "ratio_vs_current_median": 0.7304567454149816,
+  "ratio_vs_current_range": [
+   0.7163765004995167,
+   0.7758167677898125
+  ],
+  "ratio_vs_fix_median": 0.812224891425977,
+  "ok": true,
+  "engine_runs": 75,
+  "memo_hits": 77,
+  "read_validations": 40,
+  "typed_reads_checked": 153
+ },
+ {
+  "scenario": "s16_neighbor_relevant",
+  "candidate": "x_bitmap",
+  "processes": 3,
+  "median_ms": 82.578272,
+  "range_ms": [
+   81.276622,
+   83.608739
+  ],
+  "ratio_vs_current_median": 0.7153872996258562,
+  "ratio_vs_current_range": [
+   0.6922099581215352,
+   0.7706527813183272
+  ],
+  "ratio_vs_fix_median": 0.8111033393208379,
+  "ok": true,
+  "engine_runs": 75,
+  "memo_hits": 77,
+  "read_validations": 40,
+  "typed_reads_checked": 153
+ },
+ {
+  "scenario": "s16_neighbor_relevant",
+  "candidate": "x_carry",
+  "processes": 3,
+  "median_ms": 101.490613,
+  "range_ms": [
+   100.249078,
+   124.878933
+  ],
+  "ratio_vs_current_median": 0.9505467732812262,
+  "ratio_vs_current_range": [
+   0.8792275959884801,
+   1.0338924138323866
+  ],
+  "ratio_vs_fix_median": 0.9968648304243862,
+  "ok": true,
+  "engine_runs": 75,
+  "memo_hits": 77,
+  "read_validations": 59,
+  "typed_reads_checked": 255
+ },
+ {
+  "scenario": "s16_neighbor_relevant",
+  "candidate": "x_interned",
+  "processes": 3,
+  "median_ms": 105.472432,
+  "range_ms": [
+   103.794141,
+   107.849998
+  ],
+  "ratio_vs_current_median": 0.8991833862420294,
+  "ratio_vs_current_range": [
+   0.8929071708519328,
+   1.0000738351700704
+  ],
+  "ratio_vs_fix_median": 1.019490627837767,
+  "ok": true,
+  "engine_runs": 75,
+  "memo_hits": 77,
+  "read_validations": 59,
+  "typed_reads_checked": 255
+ },
+ {
+  "scenario": "s16_neighbor_relevant",
+  "candidate": "x_gds",
+  "processes": 3,
+  "median_ms": 101.938074,
+  "range_ms": [
+   101.590026,
+   108.182417
+  ],
+  "ratio_vs_current_median": 0.8800888249279486,
+  "ratio_vs_current_range": [
+   0.8439614181303459,
+   1.0257695078763125
+  ],
+  "ratio_vs_fix_median": 0.9978412884480162,
+  "ok": true,
+  "engine_runs": 78,
+  "memo_hits": 75,
+  "read_validations": 56,
+  "typed_reads_checked": 246
+ },
+ {
+  "scenario": "s16_neighbor_relevant",
+  "candidate": "x_bytes200",
+  "processes": 3,
+  "median_ms": 104.406688,
+  "range_ms": [
+   101.58715,
+   106.830698
+  ],
+  "ratio_vs_current_median": 0.8800639097314461,
+  "ratio_vs_current_range": [
+   0.8643994634112134,
+   1.0129527103608986
+  ],
+  "ratio_vs_fix_median": 0.997813039695077,
+  "ok": true,
+  "engine_runs": 75,
+  "memo_hits": 77,
+  "read_validations": 58,
+  "typed_reads_checked": 251
+ },
+ {
+  "scenario": "s16_neighbor_relevant",
+  "candidate": "x_gdsbytes200",
+  "processes": 3,
+  "median_ms": 104.358414,
+  "range_ms": [
+   104.167826,
+   117.586538
+  ],
+  "ratio_vs_current_median": 0.9735175236243703,
+  "ratio_vs_current_range": [
+   0.9040717633894925,
+   0.9877037560786366
+  ],
+  "ratio_vs_fix_median": 1.0250330508444943,
+  "ok": true,
+  "engine_runs": 77,
+  "memo_hits": 76,
+  "read_validations": 57,
+  "typed_reads_checked": 248
+ },
+ {
+  "scenario": "s16_neighbor_relevant",
+  "candidate": "x_bytes",
+  "processes": 3,
+  "median_ms": 103.683236,
+  "range_ms": [
+   103.391681,
+   108.077625
+  ],
+  "ratio_vs_current_median": 0.8982226004742551,
+  "ratio_vs_current_range": [
+   0.8559960601143037,
+   1.0247758857956617
+  ],
+  "ratio_vs_fix_median": 1.0115947082686665,
+  "ok": true,
+  "engine_runs": 75,
+  "memo_hits": 77,
+  "read_validations": 60,
+  "typed_reads_checked": 258
+ },
+ {
+  "scenario": "s16_neighbor_relevant",
+  "candidate": "x_gdsbytes",
+  "processes": 3,
+  "median_ms": 104.608502,
+  "range_ms": [
+   102.771832,
+   116.409741
+  ],
+  "ratio_vs_current_median": 0.9637746353589756
+```

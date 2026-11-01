@@ -1,0 +1,33 @@
+# 工程移交表（R10 收口版）
+
+- **数值来源**：全部数值是模型单位、重建 Γ 上的计数，或包内历史数据，**没有一项是产品提速结论**。
+- **最小试验的共同规程**（REPORT §3）：同一 session 内 ABBA 交错，配置开关可随时撤回，终点定义不变，报告完整分母，组护栏与单条退化分开列，空闲容量和内存记为成本。
+- **主门槛声明前的裁定**：凡是声称某个候选能让主门槛（候选中位 ≤ 30 196 850 ns）通过的，必须先过三值裁定 `bench/joint_d.py::c30_classify`（见本表最后一行）：
+  - 有依据的 NO-GO：停止；
+  - 证据不足：先补观测，不批准主门槛工程试验；
+  - 有真实系统上界支持：才做主门槛试验。
+- **工程小试的依据**：下表的工程小试针对尾部与资源安全，不针对主门槛，凭各自的可执行证据进入最小可撤回试验，并按各自的停止条件撤回。它们的结果不能写成主门槛收益。目前没有任何候选的主门槛头寸得到真实上界支持。
+
+| 候选（裁定） | 机制与代码入口 | 适用条件 / 当前证明范围 | 新增资源·维护·失效成本 | 可移植回归 | 真实系统还缺的观测 | 建议的最小试验与停止条件 |
+|---|---|---|---|---|---|---|
+| **有界结果池，设计 I**（工程小试；C05、Q028） | 完成而没有活消费者的结果转入有界池；池满时结果留在工人上（HELD），占着工人与逻辑槽；腾出的位置先给等待中的完整 unit 成员，只合并独立结果。`lab/sched.py::Sim`（`_place_result`、`_refill_pool`、`accept`、`close`，`pool_policy="unit_first"`）；`bench/exp_mailbox.py`、`bench/joint_a.py::c05` | 4 个非抢占工人的合成模型：UI 停顿恢复时必需任务开始 40→10；独立结果先完成时容量 ≥ 3 才生效。每事件容量不变量；600 个随机交错 0 违例、0 双重释放、关闭后 0 残留。消费完成只在消费者恢复且已逐个接纳后计时（收口轮 F3） | 池常驻（峰值 4–6 个结果 × 结果大小）；HELD 结果占用的工人时间；停顿中完成的结果多于容量时仍然阻塞 | `tests/test_regressions.py::MailboxCapacity, MailboxFuzz, MailboxMutants`；`tests/test_final_fixes.py::ConsumerDone` | 真实 UI 停顿时长；停顿期间完成的结果数与结果大小 | 池容量取“停顿中完成数”的高分位。停止：池常驻超出内存预算；出现双重释放或关闭后残留；必需任务开始时间没有改善 |
+| **物理预留 / 投机预算**（工程小试；C03 设计 I、Q110） | 给必需工作保留 1 个物理工人，或投机预算 < 工人数。`lab/sched.py::Sim(reserve_physical=…, spec_budget=…)`；`bench/joint_a.py::c03`；`bench/exp_sched.py::s19_speculation` | 非抢占的共享工人：阻塞 55→0（C03）、497→0（Q110），与服务时长无关。同时到达的必需任务多于预留数时仍会阻塞（实例中为 10）；逻辑池预留不保护物理工人 | 预留工人的空闲时间（吞吐损失）；投机预算降低投机吞吐 | `tests/test_r10.py::ResourceModel`（`test_nonpreemptive_blocking_and_reserve`、`test_logical_reserve_does_not_protect_physical`、`test_cancel_is_not_exit`） | 必需工作的突发规模分布；投机作业的服务时长分布 | 预留 1 个工人或预算 = 工人数 − 1。停止：背景吞吐下降超过预算；必需任务阻塞不降 |
+| **需求集合 + 优先级继承 + 原位升级**（工程小试；C02 设计 II、C04 设计 I、Q027、Q029） | 去重作业持有需求集合，加入者把作业优先级提到最强需求者，放弃时显式转移；投机作业原位升级为必需；许可由唯一账户在真实退出时结算（关闭 context 不退款）。`lab/sched.py::Sim.upgrade_task`（`upgrade="in_place"`）；`bench/joint_a.py::c02, c04`；`bench/exp_sched.py::s9_upgrade, s9b_inheritance` | 相对引用计数设计，C2 拿到结果 35→15；物理工作 40→35（C02）。升级/关闭/时限/退出的 24 种顺序 0 违例（C04 I）。模型只有一层继承 | 可变作业优先级、需求集合维护、任务级唯一许可账户；链式继承不在模型内 | `tests/test_r10.py::BrokenWiringIsCaught`（`test_q057_to_q062`）、`ResourceModel.test_cancel_is_not_exit`；`raw/joint/C04.json` 的 24 种顺序可直接改成表驱动测试 | 同一物化被多消费者请求的频率与优先级组合；真实取消/退出/退款事件序列 | 只在共享物化路径上打开。停止：出现读取空洞、双重退款，或出现需要链式继承的请求 |
+| **最新有效意图 + 协作退出**（工程小试；C15 设计 I） | 丢弃排队中的旧意图；运行中的旧作业在下一个分段边界协作退出。`bench/joint_c.py::c15`；`lab/sched.py::Sim(segment_exit=True)` | 单工人、服务 10、意图间隔 3：末意图时延 45→11。前提：作业可分段 | 分段检查点；浪费工作（26 单位中 16 单位）；意图稀疏时无收益 | `raw/joint/C15.json` 的三个输入（快速流、反向重复、单意图）可直接改成表驱动测试（本包未单独成测） | 真实意图到达间隔分布；作业分段粒度 | 只对可分段作业打开。停止：意图间隔 ≥ 服务时长（无收益），或分段检查的开销超过节省 |
+| **数值近阈值守卫**（工程小试 / 测试义务；Q116、C26） | 快路 + 误差界；距方差阈值 100 小于 1e−6 时回到参考浮点序列。`lab/features.py::distance, distance_fast_with_fallback, search_float_flip` | 参考浮点序列就是契约；4420 次评估中 382 次回退，与参考序列 0 不一致；精确有理数快路会翻转（25 个灰度中 9 个） | 近阈值回退的额外计算 | `tests/test_r10.py::Features.test_float_variance_gate_flip`；灰度 37/51/107/114/128/149… 的两灰阶条带 | 不适用（契约内）：任何后端改动都要跑近阈值回归集 | 后端改动前后跑回归集。停止（回退）：出现任一翻转 |
+| **剪枝入口关系**（条件理论；Q053 路线 B） | 对每个 C08 入口做局部后向可达性检查，删去不可达入口。`lab/gamma.py::certify(prune=True)`；`lab/entry_witness.py`；`bench/exp_q053.py` | 300 个 G4 世界 0 次不可靠，32 个提前出证；部分知识下 991 次出证 0 次不可靠；剩余 459 个回溯位置全部有见证对（信息边界） | Python 模型计时 118–133 倍于 C09 认证 | `tests/test_revision.py::PrunedEntries` | 真实认证的回溯分布（逐轮 need 日志） | 先 shadow：与现行认证并行比对，不授权。停止：任一不一致，或计算成本超预算 |
+| **收割式游标 checkpoint**（先补观测；C08 设计 I） | 从认证过的配对之后收割精确游标 checkpoint，逐对象身份校验。`lab/summarytree.py::Checkpoints`；`bench/joint_b.py::c08` | 前进查询扫描 1688→849；早期更新被身份校验捕获，0 个错误 unit；多次更新随机检验 150 例 0 错误（收口轮） | 每个 checkpoint 的依赖身份快照；维护 333–594 | `tests/test_r10.py::GammaReconstruction.test_currency_identity`；`tests/test_final_fixes.py::OtherIncrementalStructuresMultiUpdate` | 相邻目标间距；跨会话重访比例 | 先记录命中率。停止：左侧替换频繁，命中率低于阈值 |
+| **分块惰性展开**（条件理论；C09 设计 II，收口轮 F2 修正） | 每块记录实际读集；更新时精确比对，读集含改动输入的块必须重展开；出口收敛只清传播来的脏块。`bench/joint_b.py::ChunkedLazy`（旧实现 `ChunkedLazyV1` 只保留作对照） | 单次更新后找目标 581→34 步（修复前后相同）；多次更新、跨块、手工链长依赖 0 错误（300 个随机序列 + 600 个世界） | 块常驻与读集；每次更新一次 O(n) 快照复制与 O(n) 精确比对（n=176 时 351 次比较）；随机位置单次更新扫描步数 +7.5%；设置/长度变化时全量回退 | `tests/test_final_fixes.py::ChunkedLazyUpdates` | 变化位置与导航目标的距离分布；连续更新之间的查询间隔；真实改动通知能否给出改动集合 | 先 shadow：与完整计划比对。停止：任一不一致；长相位传播（G7 链族，未测）使步数接近全量 |
+| **回跳倍增预取**（先补观测；C11） | 屏障轮次 + 倍增式向后投机。`bench/joint_c.py::c11` | 长链中位完成 41→30；有方向/稀疏世界变差 | 投机事实（148–276 个，浪费） | `raw/joint/C11.json`（本包未单独成测） | 真实事实服务时长与链长分布 | 只在长链触发。停止：有方向世界的完成时间变差 |
+| **分支证书**（条件理论；C19） | 情形分析证书，关闭“顺序/短路”缺口。`lab/certify_plus.py::branch_certify`；`bench/joint_c.py::c19` | 远跳省 2 个物化；冻结容量与前进阅读下 0 收益 | 每次证明调用约 100 倍 C09 认证 | `tests/test_r10.py::GammaReconstruction.test_branch_certificate_sound` | 真实跳转首访比例；物化服务时长 | 只在跳转首访时触发。停止：前进阅读为主时没有收益 |
+| **三值头寸裁定**（决策工具；C30，收口轮 F1） | NO-GO 只认逐样本下界中位 > T；GO 只认真实系统上界中位 ≤ T；其余证据不足，先补观测。`bench/joint_d.py::c30_classify` | 包内：主门槛授权前方向 = 证据不足；伙伴类、只作用于新开/重开的机制 = 有前提的 NO-GO；结果池、剪枝入口 = 证据不足（只有模型收益） | 零计算；需要每样本 s_i 或真实上界；负值输入报错，下界超过观测时延判为矛盾 | `tests/test_final_fixes.py::C30Decision` | C_i 与 B_i（或机会表）；受控授权延迟实验（检验尾部不变性） | 不是机制，用于任何主门槛声明之前。下界中位 > T 即停止；模型上界不能升级为 GO |
+
+## 一条可执行的验证命令序列
+
+在包根目录（与 `START_HERE.md` 同级）执行，任何一步失败都会使整条命令以非零状态退出：
+
+```
+python3 -X utf8 -B tests/test_lab.py && python3 -B research_out/tests/test_r10.py && python3 -B research_out/tests/test_regressions.py && python3 -B research_out/tests/test_revision.py && python3 -B research_out/tests/test_final_fixes.py && python3 -B research_out/records/build.py && python3 -B research_out/check_report_consistency.py && python3 -B research_out/check_integrity.py --verify
+```
+
+`records/build.py` 会重写 `coverage*.csv` 与 `sections/`，内容与交付的相同，所以随后的 `--verify` 仍然通过。
