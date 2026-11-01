@@ -1,21 +1,38 @@
 package eu.kanade.tachiyomi.ui.reader.viewer
 
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Rect
+import android.net.Uri
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.view.PixelCopy
 import android.view.View
+import android.view.ViewGroup
+import androidx.test.platform.app.InstrumentationRegistry
+import app.cash.sqldelight.db.SqlDriver
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
-import eu.kanade.tachiyomi.ui.reader.HostReaderArtFixture
+import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPagerPageHolder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import tachiyomi.domain.storage.service.StorageManager
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /** Real original decoder, SSIV tiles, production holder, and compositor pixels on the isolated AVD. */
 class ReaderDualPageTileSeamNativeTest {
     @Test
     fun originalEncodedTilesCoverSharedSpineAcrossOddSizesAndResizeBack() {
-        HostReaderArtFixture("copymanga").use { fixture ->
+        LocalSeamFixture().use { fixture ->
             val encoded = Bitmap.createBitmap(4501, 6401, Bitmap.Config.ARGB_8888).let { bitmap ->
                 try {
                     bitmap.eraseColor(Color.RED)
@@ -24,10 +41,7 @@ class ReaderDualPageTileSeamNativeTest {
                     bitmap.recycle()
                 }
             }
-            fixture.images.set(List(22) { encoded })
-            fixture.cold()
-            fixture.configure(mode = 6, matching = false)
-            fixture.launch(initialPage = 1)
+            fixture.launch(encoded)
             fixture.awaitStable("Both original encoded pages must paint") {
                 fixture.currentImages().size == 2 && fixture.containsColor(Color.RED)
             }
@@ -95,6 +109,162 @@ class ReaderDualPageTileSeamNativeTest {
                     }
                 }
             }
+        }
+    }
+
+    /** Self-contained fictional local pages through the actual loader, reader and native decoder. */
+    private class LocalSeamFixture : AutoCloseable {
+        private val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        private val preferences = context.getSharedPreferences("${context.packageName}_preferences", 0)
+        private val settings = mapOf<String, Any>(
+            "pref_default_reading_mode_key" to 6,
+            "reader_auto_spread_matching" to false,
+            "pref_dual_page_split" to false,
+            "pref_dual_page_invert" to false,
+            "crop_borders" to false,
+            "landscape_zoom" to false,
+            "pref_image_scale_type_key" to 1,
+            "pref_zoom_start_key" to 4,
+            "reader_navigation_overlay_new_user" to false,
+            "reader_navigation_overlay_on_start" to false,
+        )
+        private val previousSettings = (settings.keys + "__APP_STATE_storage_dir").associateWith { preferences.all[it] }
+        private val directory = File(context.filesDir, "tile-seam-native-${SystemClock.elapsedRealtimeNanos()}")
+        private var reader: ReaderActivity? = null
+
+        init {
+            check(Build.HARDWARE == "ranchu") { "Only the task-owned emulator is allowed" }
+            check(InstrumentationRegistry.getArguments().getString("tileSeamFixture") == "true")
+            check(
+                context.packageName == "app.mihon.desktop.fork" || context.packageName == "app.mihon.desktop.fork.dev",
+            )
+        }
+
+        fun launch(encoded: ByteArray) {
+            val title = "Tile seam synthetic"
+            val chapterDirectory = File(directory, "local/$title/Chapter")
+            check(chapterDirectory.mkdirs())
+            repeat(4) { File(chapterDirectory, "%03d.png".format(it)).writeBytes(encoded) }
+            // Instantiate the real observer before changing its preference. Its creation of these
+            // sibling directories confirms actual rebinding without assuming a Release-only getter ABI.
+            Injekt.get<StorageManager>()
+            preferences.edit().apply {
+                putString("__APP_STATE_storage_dir", Uri.fromFile(directory).toString())
+                settings.forEach { (key, value) ->
+                    when (value) {
+                        is Int -> putInt(key, value)
+                        is Boolean -> putBoolean(key, value)
+                    }
+                }
+            }.also { check(it.commit()) }
+            awaitStable("Production storage observer must bind the owned directory") {
+                File(directory, "autobackup").isDirectory && File(directory, "downloads").isDirectory
+            }
+            val manga = 7911101001L
+            val chapter = 7911101002L
+            val driver = Injekt.get<SqlDriver>()
+            // The production DI driver and its retained execute ABI, never a second SQLite connection.
+            driver.execute(
+                null,
+                "INSERT INTO mangas(_id,source,url,title,status,favorite,initialized,viewer," +
+                    "chapter_flags,cover_last_modified,date_added) VALUES(" +
+                    "$manga,0,'$title','$title',0,0,1,6,0,0,0) ON CONFLICT(_id) DO UPDATE SET viewer=6 " +
+                    "WHERE source=0 AND url='$title'",
+                0,
+            )
+            driver.execute(
+                null,
+                "INSERT INTO chapters(_id,manga_id,url,name,read,bookmark,last_page_read," +
+                    "chapter_number,source_order,date_fetch,date_upload) VALUES(" +
+                    "$chapter,$manga,'$title/Chapter','Chapter',0,0,1,1,0,0,0) " +
+                    "ON CONFLICT(_id) DO UPDATE SET read=0,last_page_read=1 " +
+                    "WHERE manga_id=$manga AND url='$title/Chapter'",
+                0,
+            )
+            reader = instrumentation.startActivitySync(
+                Intent().setClassName(context.packageName, "eu.kanade.tachiyomi.ui.reader.ReaderActivity")
+                    .putExtra("manga", manga)
+                    .putExtra("chapter", chapter)
+                    .putExtra("resume", false)
+                    .putExtra("resumeWithinChapter", false)
+                    .putExtra("page_index", 1)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            ) as ReaderActivity
+        }
+
+        fun onReaderMain(action: (ReaderActivity) -> Unit) =
+            instrumentation.runOnMainSync { action(requireNotNull(reader)) }
+
+        private fun views(view: View): List<View> = listOf(view) +
+            if (view is ViewGroup) (0 until view.childCount).flatMap { views(view.getChildAt(it)) } else emptyList()
+
+        fun currentImages(): List<View> {
+            var images = emptyList<View>()
+            onReaderMain { activity ->
+                images = views(activity.window.decorView).filter {
+                    it is ReaderPageImageView && it.isShown && it.getGlobalVisibleRect(Rect()) && it.width > 0
+                }
+            }
+            return images
+        }
+
+        fun frame(): Bitmap? {
+            var bitmap: Bitmap? = null
+            val latch = CountDownLatch(1)
+            var result = PixelCopy.ERROR_UNKNOWN
+            onReaderMain { activity ->
+                val decor = activity.window.decorView
+                if (decor.width > 0 && decor.height > 0) {
+                    bitmap = Bitmap.createBitmap(decor.width, decor.height, Bitmap.Config.ARGB_8888)
+                    PixelCopy.request(activity.window, requireNotNull(bitmap), { code ->
+                        result = code
+                        latch.countDown()
+                    }, Handler(Looper.getMainLooper()))
+                } else {
+                    latch.countDown()
+                }
+            }
+            check(latch.await(10, TimeUnit.SECONDS)) { "Native PixelCopy timed out" }
+            if (result == PixelCopy.SUCCESS) return bitmap
+            bitmap?.recycle()
+            return null
+        }
+
+        fun containsColor(color: Int): Boolean = frame()?.let { bitmap ->
+            try {
+                (0 until bitmap.width step 8).any { x -> bitmap.getPixel(x, bitmap.height / 2) == color }
+            } finally {
+                bitmap.recycle()
+            }
+        } ?: false
+
+        fun awaitStable(message: String, predicate: () -> Boolean) {
+            val deadline = SystemClock.uptimeMillis() + 30_000
+            var stable = 0
+            while (SystemClock.uptimeMillis() < deadline) {
+                stable = if (predicate()) stable + 1 else 0
+                if (stable >= 3) return
+                SystemClock.sleep(100)
+            }
+            assertTrue(message, predicate())
+        }
+
+        override fun close() {
+            reader?.let { activity -> instrumentation.runOnMainSync { activity.finish() } }
+            instrumentation.waitForIdleSync()
+            preferences.edit().apply {
+                previousSettings.forEach { (key, value) ->
+                    when (value) {
+                        null -> remove(key)
+                        is Int -> putInt(key, value)
+                        is Boolean -> putBoolean(key, value)
+                        is String -> putString(key, value)
+                    }
+                }
+            }.also { check(it.commit()) }
+            check(directory.canonicalFile.parentFile == context.filesDir.canonicalFile)
+            if (directory.exists()) check(directory.deleteRecursively())
         }
     }
 }
