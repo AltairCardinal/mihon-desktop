@@ -7,6 +7,34 @@ import org.junit.jupiter.api.Test
 
 class ReaderOriginalPageSamplingContractTest {
     @Test
+    fun `square EXIF and user rotations have no side or edge source reads`() {
+        var reads = 0
+        val results = ReaderImageOrientation.entries.flatMap { orientation ->
+            PageRotation.entries.map { rotation ->
+                val plan = requireNotNull(ReaderOriginalPageSampling.plan(13, 13, orientation, rotation))
+                val samples = plan.samples(
+                    plan.left.map {
+                        reads++
+                        0xff4080c0.toInt()
+                    },
+                    plan.right.map {
+                        reads++
+                        0xff4080c0.toInt()
+                    },
+                )
+                Triple(orientation, rotation, samples)
+            }
+        }
+        println("R10_SQUARE_PLAN cases=${results.size} sourcePixelCallbacks=$reads")
+        assertEquals(0, reads)
+        results.forEach { (orientation, rotation, samples) ->
+            assertEquals(ReaderPageSideHint.UNKNOWN, samples.sideHint, "$orientation/$rotation")
+            assertNull(samples.edges, "$orientation/$rotation")
+            assertNull(SharedSpreadMatching.plan(13, 13, orientation.rotatedAfter(rotation)))
+        }
+    }
+
+    @Test
     fun `original plan combines exactly the unchanged side and spine pixel coordinates`() {
         val plan = requireNotNull(ReaderOriginalPageSampling.plan(400, 600))
         assertEquals(194, plan.left.size)

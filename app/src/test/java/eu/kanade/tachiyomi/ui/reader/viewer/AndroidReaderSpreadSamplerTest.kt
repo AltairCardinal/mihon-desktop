@@ -13,6 +13,7 @@ import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderDualPageContentIdentity
 import mihon.domain.reader.ReaderDualPageIdentity
 import mihon.domain.reader.ReaderImageOrientation
+import mihon.domain.reader.ReaderPageAnalysisEvidence
 import mihon.domain.reader.ReaderPageFact
 import mihon.domain.reader.ReaderPageSideHint
 import mihon.domain.reader.ReaderPageSideHints
@@ -35,6 +36,115 @@ import java.io.InputStream
 @Config(sdk = [35], manifest = Config.NONE)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class AndroidReaderSpreadSamplerTest {
+    @Test
+    fun `square original stays Computed without stream or region work in every rotation`() = runBlocking<Unit> {
+        val bitmap = Bitmap.createBitmap(40, 40, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(0xff4080c0.toInt())
+        val encoded = try {
+            ByteArrayOutputStream().also {
+                assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
+            }.toByteArray()
+        } finally {
+            bitmap.recycle()
+        }
+        var opens = 0
+        var streamCloses = 0
+        var decoderCreations = 0
+        var decoderRecycles = 0
+        var regions = 0
+        var returnedValues = 0
+        var closedOwners = 0
+        val borrowedRegions = mutableListOf<Bitmap>()
+        var failure: Throwable? = null
+        fun record(error: Throwable) {
+            val first = failure
+            if (first == null) {
+                failure = error
+            } else if (error !== first) {
+                first.addSuppressed(error)
+            }
+        }
+        try {
+            for (rotation in PageRotation.entries) {
+                val page = ReaderPage(1, stream = {
+                    opens++
+                    object : java.io.ByteArrayInputStream(encoded) {
+                        override fun close() {
+                            streamCloses++
+                            super.close()
+                        }
+                    }
+                })
+                val owner = session(page, rotation = rotation, rawWidth = 40, rawHeight = 40)
+                var stepFailure: Throwable? = null
+                try {
+                    val request = requireNotNull(owner.requestOriginalAnalysis(id(1)))
+                    val samples = requireNotNull(
+                        AndroidReaderSpreadSampler.sampleOriginal(
+                            page,
+                            request,
+                            40,
+                            40,
+                            decoderFactory = { stream ->
+                                decoderCreations++
+                                val nativeStyle = decodedRegionFactory(stream)
+                                object : ReaderPageRegionDecoder {
+                                    override fun decode(region: Rect): Bitmap {
+                                        regions++
+                                        return nativeStyle.decode(region).also(borrowedRegions::add)
+                                    }
+                                    override fun recycle() {
+                                        nativeStyle.recycle()
+                                        decoderRecycles++
+                                    }
+                                }
+                            },
+                        ),
+                    )
+                    returnedValues += (samples.edges?.left?.size ?: 0) + (samples.edges?.right?.size ?: 0)
+                    assertEquals(ReaderPageSideHint.UNKNOWN, samples.sideHint)
+                    assertTrue(owner.acceptOriginalAnalysis(request, requireNotNull(owner.pageFact(id(1))), samples))
+                    assertTrue(owner.originalAnalysis(id(1)) is ReaderPageAnalysisEvidence.Computed)
+                } catch (error: Throwable) {
+                    stepFailure = error
+                    throw error
+                } finally {
+                    try {
+                        owner.close()
+                    } catch (cleanup: Throwable) {
+                        val original = stepFailure
+                        if (original == null) throw cleanup
+                        if (cleanup !== original) original.addSuppressed(cleanup)
+                    }
+                    if (owner.closed) closedOwners++
+                }
+            }
+            println(
+                "R10_SQUARE_ANDROID rotations=${PageRotation.entries.size} streamOpens=$opens " +
+                    "decoderCreations=$decoderCreations regionCalls=$regions returnedEdgeValues=$returnedValues",
+            )
+        } catch (error: Throwable) {
+            record(error)
+        }
+        failure?.let { throw it }
+        assertEquals(PageRotation.entries.size, closedOwners)
+        assertEquals(opens, streamCloses)
+        assertEquals(decoderCreations, decoderRecycles)
+        assertTrue(borrowedRegions.all { it.isRecycled })
+        assertEquals(0, AndroidReaderSpreadSampler.optionalWork.value)
+        assertTrue(requireNotNull(coroutineContext[kotlinx.coroutines.Job]).children.none { it.isActive })
+        println(
+            "R10_SQUARE_HEALTH case=android closedOwners=$closedOwners " +
+                "streamCloses=$streamCloses decoderRecycles=$decoderRecycles " +
+                "regionsRecycled=${borrowedRegions.count { it.isRecycled }} optionalWork=0 activeChildren=0",
+        )
+        // The synchronous sampler launches no background producer; intentional work RED is last.
+        assertEquals(0, opens)
+        assertEquals(0, decoderCreations)
+        assertEquals(0, regions)
+        assertEquals(0, returnedValues)
+    }
+
     @Test
     fun `native even crop boundary still returns exact original spine pixels`() = runBlocking {
         val bitmap = Bitmap.createBitmap(400, 600, Bitmap.Config.ARGB_8888)
@@ -491,6 +601,8 @@ class AndroidReaderSpreadSamplerTest {
         page: ReaderPage,
         orientation: ReaderImageOrientation = ReaderImageOrientation.NORMAL,
         rotation: PageRotation = PageRotation.NONE,
+        rawWidth: Int = 40,
+        rawHeight: Int = 60,
     ) =
         SharedDualPageSession(
             ReaderDualPageIdentity(
@@ -511,8 +623,8 @@ class AndroidReaderSpreadSamplerTest {
                 acceptFact(
                     requestFact(it),
                     ReaderPageFact.dimensions(
-                        40,
-                        60,
+                        rawWidth,
+                        rawHeight,
                         rotation = rotation,
                         sourceOrientation = orientation,
                     ),
