@@ -339,9 +339,10 @@ class LibraryRootScreen : Screen {
         var contextMenuPosition by remember { mutableStateOf(Offset.Zero) }
         var contextMenuAnchorOrigin by remember { mutableStateOf(Offset.Zero) }
         DisposableEffect(model) {
+            model.enterUpdateBannerHost()
             onDispose {
                 model.setContextMenuManga(null)
-                model.dismissUpdateBanner()
+                model.leaveUpdateBannerHost()
             }
         }
         val showBatchCategoryDialog = state.showBatchCategoryDialog

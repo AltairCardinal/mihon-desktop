@@ -168,6 +168,7 @@ class LibraryScreenModel(
     private var observedBackgroundUpdate: Job? = null
     private var observesBackgroundUpdate = false
     private var updateBannerDismissed = false
+    private var updateBannerHostVisible = true
     private val browsePositions = mutableMapOf<Long?, LibraryBrowsePosition>()
 
     internal fun browsePosition(categoryId: Long?) = browsePositions[categoryId]
@@ -195,11 +196,16 @@ class LibraryScreenModel(
                 observesBackgroundUpdate = true
                 screenModelScope.launch {
                     observations.collect { observed ->
+                        val completedWhileAway = !updateBannerHostVisible && observed.task?.status in
+                            setOf(TaskStatus.Completed, TaskStatus.Failed, TaskStatus.Cancelled)
+                        if (completedWhileAway) updateBannerDismissed = true
                         _state.update { current ->
                             current.copy(
                                 updateTask = observed.task,
-                                updateBannerVisible = current.updateBannerVisible ||
-                                    (!updateBannerDismissed && observed.task?.status == TaskStatus.Running),
+                                updateBannerVisible = !completedWhileAway && (
+                                    current.updateBannerVisible ||
+                                        (!updateBannerDismissed && observed.task?.status == TaskStatus.Running)
+                                    ),
                                 updateLaunchFailed = observed.launchFailure != null,
                                 isUpdating = observed.task?.status == TaskStatus.Running &&
                                     observed.task.libraryUpdate?.waitingForDevice.isNullOrEmpty(),
@@ -446,7 +452,17 @@ class LibraryScreenModel(
         if (!state.value.isLoading) pendingInitialCategoryIndex = null
     }
 
-    fun dismissUpdateBanner() {
+    fun enterUpdateBannerHost() {
+        updateBannerHostVisible = true
+    }
+
+    fun leaveUpdateBannerHost() {
+        updateBannerHostVisible = false
+        dismissUpdateBanner()
+    }
+
+    private fun dismissUpdateBanner() {
+        if (state.value.isUpdating || state.value.updateTask?.status in setOf(TaskStatus.Pending, TaskStatus.Running)) return
         updateBannerDismissed = true
         _state.update { it.copy(updateBannerVisible = false) }
     }

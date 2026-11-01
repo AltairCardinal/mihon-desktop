@@ -81,6 +81,37 @@ class LibraryScreenModelTest {
     lateinit var tempDir: Path
 
     @Test
+    fun `running banner survives category switch and completed banner is dismissed by the next switch`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val running = mihon.desktop.task.StoredTask(
+            task = mihon.domain.task.BackgroundTask("library-update", "visibility-test"),
+            status = TaskStatus.Running,
+            libraryUpdate = mihon.desktop.task.LibraryUpdateContext(
+                trigger = mihon.desktop.task.LibraryUpdateTrigger.MANUAL,
+                scope = mihon.desktop.task.LibraryUpdateScope.ALL,
+                units = emptyList(),
+            ),
+        )
+        val observations = MutableStateFlow(mihon.desktop.domain.LibraryUpdateObservation(running))
+        val model = LibraryScreenModel(backgroundUpdateObservations = observations)
+        try {
+            model.syncBackgroundUpdate()
+            runCurrent()
+            assertTrue(model.state.value.updateBannerVisible)
+            model.setSelectedCategoryIndex(1)
+            assertTrue(model.state.value.updateBannerVisible)
+            observations.value = mihon.desktop.domain.LibraryUpdateObservation(running.copy(status = TaskStatus.Completed))
+            runCurrent()
+            assertTrue(model.state.value.updateBannerVisible)
+            model.setSelectedCategoryIndex(0)
+            assertFalse(model.state.value.updateBannerVisible)
+        } finally {
+            model.onDispose()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun `library update UI delegates start and cancellation to persistent controller`() = runTest {
         var started = 0
         var cancelled = 0
