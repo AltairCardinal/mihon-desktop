@@ -86,7 +86,7 @@ Android 菜单实现复用并独立审阅了并行候选提交
 资源合并、主程序和 Java 编译分别准备，定向测试编译按堆消耗分配，并保留全部正常依赖检查。
 内存不足、前置失败、旧 XML 和截图测试夹具故障均如实保留，不计为产品通过。
 所有 Gradle 经原协调器、证据入口和资源保护串行运行；
-没有模块/仓库全量、正式发布构建、版本分配、自动安装或原生用户实例操作。
+上述功能验证阶段没有模块/仓库全量、正式发布构建、版本分配、自动安装或原生用户实例操作。
 
 ## 后续验收：Desktop 批量书签
 
@@ -114,3 +114,40 @@ Android 菜单实现复用并独立审阅了并行候选提交
 此前系统余量不足未启动编译、格式临时入口携带无关 XML 配置的前置失败均保留，未计作行为失败或通过。
 本次不复跑无关 Android 或整个模块测试，不打包、不分配版本；批写次数已有自动化证据，
 用户设备上的实际耗时及新版安装包体验仍待后续验收。
+
+## 后续用户要求的构建包
+
+用户随后明确要求提供构建包。本阶段只分配 Android 候选升级版本并记录产物，
+没有修改产品功能；复用上文 71 项针对性行为验证，不重跑模块或仓库全量。
+
+- Windows：通过 `main-preview` 从远端主干
+  `feaf073e1139f0ae4920afdf620deafdfa9ae60a` 的独立 detached worktree 构建，
+  同时要求包含原实现 `e38257ab357c57d069776154032918c479c37e1c` 与新增的批量书签优化。
+  版本 `0.11.24.6.feaf073`，最终产物在原交付工作树
+  `D:/Codex/worktrees/antigravity-restoration-delivery-20261101/` 的
+  `app-desktop/artifacts/preview/windows/main-c7b60e03382b4944b344cc9e7c6e36ca/`。
+  构建、源码完整性与 production runtime 扩展加载检查通过；原生交互仍为 NOT_RUN。
+  可选 CDS 缓存因命令行过长未生成；构建入口允许无该缓存启动，实际运行时检查通过。
+  初版 e38257a 包仍保留；最终交付更新为上述 feaf073 包，未据此宣称启动性能验收。
+- Android：通过统一 `build-android.py candidate --offline` 完成 Release、R8、资源压缩、
+  原证书签名和实际 APK 校验。版本 `0.19.4-aex.114`、versionCode `132`，
+  身份 `app.mihon.desktop.fork`，不可调试，universal 四种 ABI。
+  文件为 `app/artifacts/android/0.19.4-aex.114-vc132-e38257ab35-release/Mihon-Fork-0.19.4-aex.114-vc132-release-universal.apk`。
+  文件大小 70039738 字节，SHA-256
+  `b6800d8bb3abe60fb96b6d7d503365451b6e3738d14a2d00ca9a03f66a74b908`；
+  原证书 SHA-256 为 `bd8e3af75921fc4356deacabd44a3d491fda8439ffbc7d073c363974a648cae3`。
+- APK 冻结源码基底为原实现提交 e38257ab35，唯一生产输入差异为本次版本分配；
+  `artifact.json` 记录 `sourceDiffSha256=c85d5a2bc0b02123ee726c527eec7d20a1be84fd276654f1d1f8ae88e67988a4`。
+  本记录在构建完成后更新，不为改变文件名中的提交号重建相同候选。
+- 已交付候选 126 与本次基底的 `data/src/commonMain/sqldelight` 树相同，
+  本次没有 schema 降级。失败/中止候选占用的 127–131 目录与过程证据保留，未交付为成功包。
+
+构建期间先后触发提前停止与系统余量保护，另有 Serial GC 老年代满载的长时间回收。
+均保留原始失败/中止证据，未作为产品通过。用户随后明确要求直接构建、不要等待或关注系统余量，
+允许解除故障并取消 80% 提前停止；本次只使用任务专属 guard 副本，将提前停止比例设为 1.0、
+余量阈值设为 0，继续保留 Windows Job 的 3072 MiB 进程组/单进程硬限制。
+全局 skill/guard 未修改。最终使用 2 GiB 构建堆与 G1，Gradle 6 分 28 秒退出 0，
+guard PASSED，峰值组 2985.99 MiB、单进程 2758.15 MiB，均在硬上限内。
+
+最终 APK 已重算 SHA-256 并与清单一致；没有自动安装、清理应用数据、操作用户实例或执行真机验收。
+正式发布、上传和 APK 安装不属于本轮交付。
