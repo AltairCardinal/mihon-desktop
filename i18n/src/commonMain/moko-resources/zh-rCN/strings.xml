@@ -2386,6 +2386,6 @@
     <string name="source_error_authentication">需要登录（HTTP 401），请登录后重试。</string>
     <string name="source_error_forbidden">服务器拒绝访问（HTTP 403），请检查图源设置或访问限制。</string>
     <string name="desktop_library_download_added">已添加%1$d个章节到下载队列</string>
-    <string name="desktop_library_no_unread">没有未读章节</string>
+    <string name="desktop_library_no_unread">已添加0个章节到下载队列：没有未读章节</string>
     <string name="desktop_library_no_downloadable_unread">没有可添加的未读章节</string>
 </resources>

@@ -439,7 +439,7 @@ class LibraryPageCompositionTest {
                 pointerClick(scene, "Download all unread chapters")
                 val expected = when (outcome) {
                     "success" -> "Added 2 chapters to the download queue"
-                    "empty" -> "No unread chapters"
+                    "empty" -> "Added 0 chapters to the download queue: No unread chapters"
                     "queued" -> "No unread chapters available to add"
                     else -> MR.strings.desktop_ui_download_failed.localized()
                 }
