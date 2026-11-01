@@ -1421,7 +1421,7 @@
     <string name="desktop_ui_rename">重命名</string>
     <string name="desktop_ui_reset_zoom">重置缩放</string>
     <string name="desktop_ui_retry_failed">重试失败</string>
-    <string name="desktop_ui_scale_type">秤类型</string>
+    <string name="desktop_ui_scale_type">缩放模式</string>
     <string name="desktop_ui_search_all_sources">搜索所有来源...</string>
     <string name="desktop_ui_search_authors">搜索作者</string>
     <string name="desktop_ui_search_history">搜索历史记录...</string>
