@@ -4,6 +4,7 @@ import eu.kanade.tachiyomi.source.model.SManga
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
@@ -13,6 +14,7 @@ import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.download.DownloadStatus
 import mihon.desktop.reader.ReadingMode
+import mihon.desktop.tracking.DesktopManualTracking
 import mihon.desktop.reader.viewerFlagsWithReadingMode
 import mihon.domain.error.AppError
 import mihon.domain.task.TaskState
@@ -22,6 +24,7 @@ import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
@@ -31,6 +34,7 @@ import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.chapter.interactor.BatchUpdateChapters
+import tachiyomi.domain.chapter.interactor.BatchChapterResult
 import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
@@ -265,6 +269,115 @@ class MangaDetailScreenModelTest {
     }
 
     @Test
+    fun `selected read bulk writes 200 chapters once, de-duplicates IDs, and skips empty input`() = runTest {
+        val backing = FakeChapterRepository()
+        val chapters = (1L..200L).map(::createFakeChapter)
+        backing.addAll(chapters)
+        val manualTracking = mockk<DesktopManualTracking>(relaxed = true)
+        val bulkWrites = mutableListOf<List<ChapterUpdate>>()
+        val repository = object : tachiyomi.domain.chapter.repository.ChapterRepository by backing {
+            override suspend fun updateAll(chapterUpdates: List<ChapterUpdate>) {
+                bulkWrites += chapterUpdates
+                backing.updateAll(chapterUpdates)
+            }
+        }
+        val model = MangaDetailScreenModel(
+            mangaId = 1L,
+            setChapterReadStatus = SetChapterReadStatus(
+                tachiyomi.domain.chapter.interactor.GetChaptersByMangaId(repository),
+                UpdateChapter(repository),
+            ),
+            manualTracking = manualTracking,
+        )
+
+        val result = model.markSelectedRead(chapters + chapters.take(5), read = true)
+        val emptyResult = model.markSelectedRead(emptyList(), read = true)
+
+        assertEquals((1L..200L).toList(), result.succeededIds)
+        assertTrue(result.failures.isEmpty())
+        assertEquals((1L..200L).toList(), bulkWrites.single().map { it.id })
+        assertEquals(1, bulkWrites.size, "A normal 200-chapter selection uses one repository batch write")
+        assertTrue(bulkWrites.single().all { it.read == true })
+        assertTrue(bulkWrites.single().all { it.syncContext == mihon.domain.sync.SyncMutationContext.User })
+        coVerify(exactly = 1) { manualTracking.afterRead(1L, chapters) }
+        assertEquals(BatchChapterResult.Empty, emptyResult)
+        assertEquals(1, bulkWrites.size, "An empty selection must not reach the repository")
+    }
+
+    @Test
+    fun `selected read bulk cancellation is rethrown without per chapter fallback`() = runTest {
+        val backing = FakeChapterRepository()
+        val chapters = (1L..3L).map(::createFakeChapter)
+        backing.addAll(chapters)
+        val manualTracking = mockk<DesktopManualTracking>(relaxed = true)
+        val cancellation = CancellationException("batch cancelled")
+        val bulkWrites = mutableListOf<List<ChapterUpdate>>()
+        val individualWrites = mutableListOf<ChapterUpdate>()
+        val repository = object : tachiyomi.domain.chapter.repository.ChapterRepository by backing {
+            override suspend fun updateAll(chapterUpdates: List<ChapterUpdate>) {
+                bulkWrites += chapterUpdates
+                throw cancellation
+            }
+
+            override suspend fun update(chapterUpdate: ChapterUpdate) {
+                individualWrites += chapterUpdate
+                backing.update(chapterUpdate)
+            }
+        }
+        val model = MangaDetailScreenModel(
+            mangaId = 1L,
+            setChapterReadStatus = SetChapterReadStatus(
+                tachiyomi.domain.chapter.interactor.GetChaptersByMangaId(repository),
+                UpdateChapter(repository),
+            ),
+            manualTracking = manualTracking,
+        )
+
+        val caught = try {
+            model.markSelectedRead(chapters, read = true)
+            null
+        } catch (error: CancellationException) {
+            error
+        }
+
+        assertSame(cancellation, caught)
+        assertEquals(listOf(1L, 2L, 3L), bulkWrites.single().map { it.id })
+        assertTrue(individualWrites.isEmpty(), "Cancellation must not retry chapters one by one")
+        coVerify(exactly = 0) { manualTracking.afterRead(any(), any()) }
+    }
+
+    @Test
+    fun `selected read fallback tracks only chapters successfully written`() = runTest {
+        val backing = FakeChapterRepository()
+        val chapters = (1L..3L).map(::createFakeChapter)
+        backing.addAll(chapters)
+        val manualTracking = mockk<DesktopManualTracking>(relaxed = true)
+        val repository = object : tachiyomi.domain.chapter.repository.ChapterRepository by backing {
+            override suspend fun updateAll(chapterUpdates: List<ChapterUpdate>) {
+                if (chapterUpdates.size > 1) error("transaction failed")
+                if (chapterUpdates.single().id == 2L) error("write failed")
+                backing.updateAll(chapterUpdates)
+            }
+        }
+        val model = MangaDetailScreenModel(
+            mangaId = 1L,
+            setChapterReadStatus = SetChapterReadStatus(
+                tachiyomi.domain.chapter.interactor.GetChaptersByMangaId(repository),
+                UpdateChapter(repository),
+            ),
+            manualTracking = manualTracking,
+        )
+
+        val result = model.markSelectedRead(chapters + chapters.first(), read = true)
+
+        assertEquals(listOf(1L, 3L), result.succeededIds)
+        assertEquals(listOf(2L), result.failures.map { it.id })
+        assertEquals(listOf(1L, 3L), backing.updates.map { it.id })
+        coVerify(exactly = 1) { manualTracking.afterRead(1L, listOf(chapters[0], chapters[2])) }
+        coVerify(exactly = 0) { manualTracking.afterRead(1L, chapters) }
+    }
+
+    @Test
     fun `selected unread preserves same value user intent and exposes write failure`() = runTest {
         val backing = FakeChapterRepository()
         val chapters = listOf(
@@ -273,13 +386,18 @@ class MangaDetailScreenModelTest {
             createFakeChapter(3L).copy(read = false, lastPageRead = 2L),
         )
         backing.addAll(chapters)
+        val manualTracking = mockk<DesktopManualTracking>(relaxed = true)
         val repository = object : tachiyomi.domain.chapter.repository.ChapterRepository by backing {
+            val attemptedWrites = mutableListOf<List<ChapterUpdate>>()
+
             override suspend fun update(chapterUpdate: ChapterUpdate) {
                 if (chapterUpdate.id == 3L) error("write failed")
                 backing.update(chapterUpdate)
             }
 
             override suspend fun updateAll(chapterUpdates: List<ChapterUpdate>) {
+                attemptedWrites += chapterUpdates
+                if (chapterUpdates.any { it.id == 3L }) error("write failed")
                 chapterUpdates.forEach { update(it) }
             }
         }
@@ -289,14 +407,20 @@ class MangaDetailScreenModelTest {
                 tachiyomi.domain.chapter.interactor.GetChaptersByMangaId(repository),
                 UpdateChapter(repository),
             ),
+            manualTracking = manualTracking,
         )
 
-        model.markSelectedRead(chapters, read = false)
+        val result = model.markSelectedRead(chapters, read = false)
 
+        assertEquals(listOf(1L, 2L), result.succeededIds)
+        assertEquals(listOf(3L), result.failures.map { it.id })
+        assertEquals(listOf(1L, 2L, 3L), repository.attemptedWrites.first().map { it.id })
+        assertEquals(listOf(listOf(1L), listOf(2L), listOf(3L)), repository.attemptedWrites.drop(1).map { it.map(ChapterUpdate::id) })
         assertEquals(listOf(1L, 2L), backing.updates.map { it.id })
         assertTrue(backing.updates.all { it.lastPageRead == 0L })
         assertTrue(backing.updates.all { it.syncContext == mihon.domain.sync.SyncMutationContext.User })
         assertEquals("2 succeeded, 0 skipped, 1 failed", model.state.value.batchActionMessage)
+        coVerify(exactly = 0) { manualTracking.afterRead(any(), any()) }
     }
 
     @Test

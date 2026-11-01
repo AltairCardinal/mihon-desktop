@@ -1403,15 +1403,94 @@ class MangaDetailInteractionTest {
     }
 
     @Test
+    fun `chapter batch 200 read commands write once through the real repository`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val batchSizes = mutableListOf<Int>()
+        var capture = false
+        withDetail(root, chapterRepositoryOverride = { actual ->
+            object : ChapterRepository by actual {
+                override suspend fun updateAll(updates: List<ChapterUpdate>) {
+                    if (capture) batchSizes += updates.size
+                    actual.updateAll(updates)
+                }
+            }
+        }) { _, model, _, chapters ->
+            assertEquals(200, chapters.size)
+            capture = true
+            val result = model.markSelectedRead(chapters + chapters.take(3), read = true)
+            assertEquals(listOf(200), batchSizes, "one distinct batch reaches the real SQL repository")
+            assertEquals(chapters.map { it.id }, result.succeededIds)
+            assertTrue(result.failures.isEmpty())
+            assertTrue(chapters.all { Injekt.get<ChapterRepository>().getChapterById(it.id)!!.read })
+        }
+    }
+
+    @Test
+    fun `chapter batch failure retries real chapters without reporting rolled back successes`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val batchSizes = mutableListOf<Int>()
+        var capture = false
+        var firstId = -1L
+        var rollbackObserved = false
+        withDetail(root, chapterRepositoryOverride = { actual ->
+            object : ChapterRepository by actual {
+                override suspend fun updateAll(updates: List<ChapterUpdate>) {
+                    if (capture) batchSizes += updates.size
+                    try {
+                        actual.updateAll(updates)
+                    } catch (failure: Exception) {
+                        if (capture && updates.size > 1) {
+                            assertFalse(actual.getChapterById(firstId)!!.read, "the failed batch rolled back its first write")
+                            rollbackObserved = true
+                        }
+                        throw failure
+                    }
+                }
+            }
+        }) { _, model, _, chapters ->
+            val selected = chapters.take(3)
+            firstId = selected.first().id
+            val rejectedId = selected[1].id
+            val driver = Injekt.get<app.cash.sqldelight.db.SqlDriver>()
+            driver.execute(
+                null,
+                "CREATE TRIGGER reject_batch_read BEFORE UPDATE OF read ON chapters " +
+                    "WHEN NEW._id = $rejectedId AND NEW.read = 1 " +
+                    "BEGIN SELECT RAISE(ABORT, 'rejected chapter read'); END",
+                0,
+            )
+            try {
+                capture = true
+                val result = model.markSelectedRead(selected, read = true)
+                assertTrue(rollbackObserved, "the real bulk transaction must be attempted and rolled back")
+                assertEquals(listOf(3, 1, 1, 1), batchSizes)
+                assertEquals(listOf(selected[0].id, selected[2].id), result.succeededIds)
+                assertEquals(listOf(rejectedId), result.failures.map { it.id })
+                assertTrue(Injekt.get<ChapterRepository>().getChapterById(selected[0].id)!!.read)
+                assertFalse(Injekt.get<ChapterRepository>().getChapterById(rejectedId)!!.read)
+                assertTrue(Injekt.get<ChapterRepository>().getChapterById(selected[2].id)!!.read)
+            } finally {
+                driver.execute(null, "DROP TRIGGER reject_batch_read", 0)
+            }
+        }
+    }
+
+    @Test
     fun `chapter result explicit read preserves shared User intent for matching local state`(
         @TempDir root: File,
     ) = runBlocking {
         val written = mutableListOf<tachiyomi.domain.chapter.model.ChapterUpdate>()
+        var batchCalls = 0
         var capture = false
         withDetail(root, chapterRepositoryOverride = { actual ->
             object : ChapterRepository by actual {
                 override suspend fun updateAll(updates: List<tachiyomi.domain.chapter.model.ChapterUpdate>) {
-                    if (capture) written += updates
+                    if (capture) {
+                        batchCalls++
+                        written += updates
+                    }
                     actual.updateAll(updates)
                 }
             }
@@ -1425,6 +1504,7 @@ class MangaDetailInteractionTest {
             chapterMouse(scene, "Chapter 2", ctrl = true)
             click(scene, MR.strings.action_mark_as_read.localized())
             render(scene)
+            assertEquals(1, batchCalls, "one mounted UI event writes one batch")
             assertEquals(
                 setOf(chapters[0].id, chapters[1].id),
                 written.map { it.id }.toSet(),
