@@ -13,6 +13,11 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import tachiyomi.core.common.feedback.DiagnosticCategory
+import tachiyomi.core.common.feedback.DiagnosticEvent
+import tachiyomi.core.common.feedback.DiagnosticEvents
+import tachiyomi.core.common.feedback.DiagnosticOperation
+import tachiyomi.core.common.feedback.DiagnosticStage
 
 @kotlinx.serialization.Serializable
 enum class SyncTrigger { MANUAL, STARTUP, PERIODIC, RECOVERY }
@@ -90,13 +95,39 @@ class SyncCoordinator(private val port: SyncRunPort) {
         try {
             var next = trigger
             while (true) {
+                val started = System.nanoTime()
+                DiagnosticEvents.record(
+                    DiagnosticEvent(DiagnosticCategory.BACKUP_SYNC, DiagnosticOperation.SYNC, DiagnosticStage.START),
+                )
                 val result = try {
                     port.exchange(next)
                 } catch (cancelled: CancellationException) {
+                    DiagnosticEvents.record(
+                        DiagnosticEvent(
+                            DiagnosticCategory.BACKUP_SYNC,
+                            DiagnosticOperation.SYNC,
+                            DiagnosticStage.CANCELLED,
+                        ),
+                    )
                     throw cancelled
                 } catch (_: Exception) {
                     SyncRunResult(SyncRunStatus.FAILED, problem = SyncRunProblem.UNKNOWN)
                 }
+                DiagnosticEvents.record(
+                    DiagnosticEvent(
+                        DiagnosticCategory.BACKUP_SYNC,
+                        DiagnosticOperation.SYNC,
+                        if (result.status == SyncRunStatus.FAILED ||
+                            result.status == SyncRunStatus.PARTIAL
+                        ) {
+                            DiagnosticStage.FAILURE
+                        } else {
+                            DiagnosticStage.SUCCESS
+                        },
+                        statusCode = result.httpStatus?.takeIf { it in 100..599 },
+                        durationMs = ((System.nanoTime() - started) / 1_000_000).coerceIn(0, 86_400_000),
+                    ),
+                )
                 val pending = mutex.withLock {
                     val pending = current.pending.takeIf { result.status == SyncRunStatus.SUCCESS }
                     current.pending = null

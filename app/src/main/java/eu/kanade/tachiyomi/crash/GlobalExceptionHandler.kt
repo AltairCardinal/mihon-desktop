@@ -30,6 +30,11 @@ class GlobalExceptionHandler private constructor(
     }
 
     override fun uncaughtException(thread: Thread, exception: Throwable) {
+        try {
+            mihon.feedback.writeAndroidFeedbackCrash(applicationContext, exception)
+        } catch (
+            _: Exception,
+        ) { /* Crash recovery must continue. */ }
         logcat(priority = LogPriority.ERROR, throwable = exception)
         launchActivity(applicationContext, activityToBeLaunched, exception)
         defaultHandler.uncaughtException(thread, exception)

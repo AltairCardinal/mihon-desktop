@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.di
 import android.app.Application
 import android.os.Build
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import app.cash.sqldelight.db.AfterVersion
@@ -58,6 +59,13 @@ class AppModule(val app: Application) : InjektModule {
 
     override fun InjektRegistrar.registerInjectables() {
         addSingleton(app)
+        addSingleton(tachiyomi.domain.feedback.FeedbackDraftMemory())
+        addSingletonFactory<tachiyomi.core.common.feedback.DiagnosticStore> {
+            mihon.feedback.createAndroidDiagnosticStore(
+                app,
+                androidx.lifecycle.ProcessLifecycleOwner.get().lifecycleScope,
+            )
+        }
 
         addSingletonFactory<SqlDriver> {
             AndroidSqliteDriver(

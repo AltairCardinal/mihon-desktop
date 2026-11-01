@@ -1,7 +1,9 @@
 package tachiyomi.presentation.feedback
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,6 +15,8 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -45,6 +49,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import dev.icerock.moko.resources.StringResource
+import tachiyomi.domain.feedback.FeedbackCategory
+import tachiyomi.domain.feedback.FeedbackImageStage
+import tachiyomi.domain.feedback.FeedbackLanguage
+import tachiyomi.domain.feedback.FeedbackScreenshot
 import tachiyomi.domain.feedback.NativeFeedbackContent
 import tachiyomi.domain.feedback.NativeFeedbackController
 import tachiyomi.domain.feedback.NativeFeedbackFailure
@@ -58,18 +66,24 @@ fun NativeFeedbackDialog(
     onClose: () -> Unit,
     copySummary: () -> Unit,
     text: @Composable (StringResource) -> String,
+    language: FeedbackLanguage = FeedbackLanguage.ENGLISH,
+    onPickScreenshot: () -> Unit = {},
 ) {
     val state by controller.state.collectAsState()
     val draft = state.draft
+    val diagnosticState = controller.diagnostics?.state?.collectAsState()?.value
     val titleFocus = remember { FocusRequester() }
     val statusFocus = remember { FocusRequester() }
+    var categoryExpanded by remember { mutableStateOf(false) }
+    var preview by remember { mutableStateOf<FeedbackScreenshot?>(null) }
     var copyFailed by remember { mutableStateOf<Boolean?>(null) }
     val close = {
         controller.cancel()
         onClose()
     }
     DisposableEffect(controller) { onDispose { controller.cancel() } }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(controller) {
+        controller.refreshCapabilities()
         withFrameNanos { }
         titleFocus.requestFocus()
     }
@@ -102,15 +116,27 @@ fun NativeFeedbackDialog(
                 Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()).testTag("feedback-scroll"),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(text(MR.strings.feedback_native_privacy))
-                OutlinedTextField(
-                    value = draft.title,
-                    onValueChange = controller::title,
-                    enabled = !state.locked,
-                    label = { Text(text(MR.strings.feedback_native_title)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().focusRequester(titleFocus).testTag("feedback-title"),
-                )
+                Text(text(MR.strings.feedback_category_privacy), style = MaterialTheme.typography.bodySmall)
+                Box {
+                    TextButton(
+                        onClick = { categoryExpanded = true },
+                        enabled = !state.locked,
+                        modifier = Modifier.fillMaxWidth().focusRequester(titleFocus).testTag("feedback-category"),
+                    ) { Text(draft.category?.label(language) ?: text(MR.strings.feedback_category_choose)) }
+                    DropdownMenu(expanded = categoryExpanded, onDismissRequest = { categoryExpanded = false }) {
+                        FeedbackCategory.entries.forEach { category ->
+                            DropdownMenuItem(
+                                text = { Text(category.label(language)) },
+                                onClick = {
+                                    categoryExpanded = false
+                                    controller.category(category)
+                                },
+                                modifier = Modifier.testTag("feedback-category-${category.id}"),
+                            )
+                        }
+                    }
+                }
+                Text(text(MR.strings.feedback_template_hint), style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(
                     value = draft.description,
                     onValueChange = controller::description,
@@ -136,6 +162,90 @@ fun NativeFeedbackDialog(
                 copyFailed?.let {
                     Text(text(if (it) MR.strings.feedback_copy_failed else MR.strings.feedback_summary_copied))
                 }
+                controller.diagnostics?.let { diagnostics ->
+                    val logState by diagnostics.state.collectAsState()
+                    val recording by diagnostics.recording.collectAsState()
+                    if (logState.reading) Text(text(MR.strings.feedback_native_reading))
+                    if (logState.readFailed) Text(text(MR.strings.feedback_diagnostic_read_failed))
+                    if (logState.noToday) Text(text(MR.strings.feedback_diagnostic_no_today))
+                    if (recording.session != null) {
+                        val category = FeedbackCategory.entries.firstOrNull { it.id == recording.session?.category?.id }
+                        Text(text(MR.strings.feedback_diagnostic_active) + " " + category?.label(language).orEmpty())
+                        if (recording.session?.paused == true) {
+                            Text(text(MR.strings.feedback_diagnostic_paused), color = MaterialTheme.colorScheme.error)
+                        } else if (recording.error != null) {
+                            Text(
+                                text(MR.strings.feedback_diagnostic_storage_active),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                        TextButton(
+                            onClick = diagnostics::stop,
+                            modifier = Modifier.testTag("feedback-diagnostics-stop"),
+                        ) {
+                            Text(text(MR.strings.feedback_diagnostic_stop))
+                        }
+                    } else if (recording.error != null) {
+                        Text(
+                            text(MR.strings.feedback_diagnostic_storage_inactive),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    Text(text(MR.strings.feedback_diagnostic_notice), style = MaterialTheme.typography.bodySmall)
+                    TextButton(
+                        onClick = diagnostics::start,
+                        enabled = !state.locked && draft.category != null,
+                        modifier = Modifier.testTag("feedback-diagnostics-start"),
+                    ) {
+                        Text(text(MR.strings.feedback_diagnostic_start))
+                    }
+                    if (recording.session != null) {
+                        TextButton(
+                            onClick = close,
+                            enabled = !state.busy,
+                            modifier = Modifier.testTag("feedback-diagnostics-leave"),
+                        ) {
+                            Text(text(MR.strings.feedback_diagnostic_leave))
+                        }
+                    }
+                    logState.dates.forEach { date ->
+                        TextButton(
+                            onClick = { diagnostics.refresh(date, explicit = true) },
+                            enabled = !state.locked,
+                            modifier = Modifier.testTag("feedback-diagnostics-date-$date"),
+                        ) { Text(date) }
+                    }
+                    if (logState.pendingRecording != null) {
+                        AlertDialog(
+                            onDismissRequest = { diagnostics.confirmStart(false) },
+                            title = { Text(text(MR.strings.feedback_diagnostic_switch)) },
+                            text = { Text(text(MR.strings.feedback_diagnostic_switch_notice)) },
+                            confirmButton = {
+                                TextButton(
+                                    onClick = { diagnostics.confirmStart(true) },
+                                    modifier = Modifier.testTag("feedback-diagnostics-replace"),
+                                ) {
+                                    Text(text(MR.strings.action_ok))
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(
+                                    onClick = { diagnostics.confirmStart(false) },
+                                    modifier = Modifier.testTag("feedback-diagnostics-keep"),
+                                ) {
+                                    Text(text(MR.strings.action_cancel))
+                                }
+                            },
+                        )
+                    }
+                }
+                ConsentRow(
+                    draft.logConsent,
+                    !state.locked,
+                    controller::logConsent,
+                    text(MR.strings.feedback_attach_log),
+                    "feedback-log-consent",
+                )
                 Text(text(MR.strings.feedback_native_log_notice), style = MaterialTheme.typography.bodySmall)
                 TextButton(
                     onClick = controller::readLog,
@@ -173,13 +283,48 @@ fun NativeFeedbackDialog(
                     ) {
                         Text(text(MR.strings.feedback_native_remove_log))
                     }
-                    ConsentRow(
-                        draft.logConsent,
-                        !state.locked,
-                        controller::logConsent,
-                        text(MR.strings.feedback_native_log_consent),
-                        "feedback-log-consent",
+                }
+                Text("${text(MR.strings.feedback_screenshots)} (${draft.screenshots.size}/2)")
+                Text(text(MR.strings.feedback_screenshot_private), style = MaterialTheme.typography.bodySmall)
+                TextButton(
+                    onClick = onPickScreenshot,
+                    enabled = !state.locked && state.capabilities?.accepting == true &&
+                        state.capabilities?.screenshots == true && draft.screenshots.size < 2,
+                    modifier = Modifier.testTag("feedback-add-screenshot"),
+                ) { Text(text(MR.strings.feedback_screenshot_pick)) }
+                state.screenshotProgress?.let { progress ->
+                    val resource = when (progress.stage) {
+                        FeedbackImageStage.READ -> MR.strings.feedback_image_read
+                        FeedbackImageStage.DECODE -> MR.strings.feedback_image_decode
+                        FeedbackImageStage.SCALE -> MR.strings.feedback_image_scale
+                        FeedbackImageStage.ENCODE -> MR.strings.feedback_image_encode
+                        FeedbackImageStage.CHECK -> MR.strings.feedback_image_check
+                        FeedbackImageStage.COMPLETE -> MR.strings.feedback_image_complete
+                    }
+                    Text(
+                        "${progress.index}/${progress.total} · ${text(resource)}",
+                        modifier = Modifier.testTag("feedback-image-progress"),
                     )
+                }
+                draft.screenshots.forEachIndexed { index, image ->
+                    Column {
+                        FeedbackScreenshotPreview(
+                            image,
+                            Modifier.fillMaxWidth().heightIn(max = 180.dp).clickable(enabled = !state.busy) {
+                                preview =
+                                    image
+                            }
+                                .testTag("feedback-screenshot-${image.id}"),
+                        )
+                        Text("#${index + 1} · ${image.width} × ${image.height} · ${image.byteLength} B · JPEG")
+                        TextButton(
+                            onClick = { controller.removeScreenshot(image.id) },
+                            enabled = !state.locked,
+                            modifier = Modifier.testTag("feedback-remove-screenshot-${image.id}"),
+                        ) {
+                            Text(text(MR.strings.feedback_screenshot_remove))
+                        }
+                    }
                 }
                 ConsentRow(
                     draft.publicConsent,
@@ -189,7 +334,17 @@ fun NativeFeedbackDialog(
                     "feedback-public-consent",
                 )
                 if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                val status = state.failure?.resource() ?: when (state.phase) {
+                if (state.configLoading) Text(text(MR.strings.feedback_config_loading))
+                if (state.capabilityFailure != null) {
+                    TextButton(
+                        onClick = controller::refreshCapabilities,
+                        enabled = !state.locked,
+                        modifier = Modifier.testTag("feedback-config-retry"),
+                    ) {
+                        Text(text(MR.strings.feedback_config_retry))
+                    }
+                }
+                val status = (state.failure ?: state.capabilityFailure)?.resource() ?: when (state.phase) {
                     NativeFeedbackPhase.READING_LOG -> MR.strings.feedback_native_reading
                     NativeFeedbackPhase.CREATING_SESSION -> MR.strings.feedback_native_preparing
                     NativeFeedbackPhase.WAITING_VERIFICATION -> MR.strings.feedback_native_waiting
@@ -217,7 +372,9 @@ fun NativeFeedbackDialog(
         confirmButton = {
             TextButton(
                 onClick = controller::submit,
-                enabled = !state.locked,
+                enabled =
+                !state.locked && diagnosticState?.reading != true && state.capabilities?.accepting == true &&
+                    state.capabilities?.nativeV2 == true,
                 modifier = Modifier.testTag("feedback-submit"),
             ) {
                 Text(text(MR.strings.feedback_native_submit))
@@ -231,6 +388,45 @@ fun NativeFeedbackDialog(
             }
         },
     )
+    state.pendingCategory?.let {
+        AlertDialog(
+            onDismissRequest = { controller.confirmCategory(false) },
+            title = { Text(text(MR.strings.feedback_category_replace)) },
+            text = { Text(text(MR.strings.feedback_category_replace_help)) },
+            confirmButton = {
+                TextButton(
+                    onClick = { controller.confirmCategory(true) },
+                    modifier = Modifier.testTag("feedback-category-replace"),
+                ) {
+                    Text(text(MR.strings.feedback_category_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { controller.confirmCategory(false) },
+                    modifier = Modifier.testTag("feedback-category-keep"),
+                ) { Text(text(MR.strings.feedback_category_keep)) }
+            },
+        )
+    }
+    preview?.let { image ->
+        AlertDialog(
+            onDismissRequest = { preview = null },
+            title = { Text(text(MR.strings.feedback_screenshot_preview)) },
+            text = {
+                FeedbackScreenshotPreview(
+                    image,
+                    Modifier.fillMaxWidth().heightIn(max = 600.dp)
+                        .testTag("feedback-final-preview"),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    preview = null
+                }, modifier = Modifier.testTag("feedback-preview-close")) { Text(text(MR.strings.action_close)) }
+            },
+        )
+    }
 }
 
 @Composable
@@ -263,4 +459,10 @@ private fun NativeFeedbackFailure.resource(): StringResource = when (this) {
     NativeFeedbackFailure.CONFLICT -> MR.strings.feedback_native_conflict
     NativeFeedbackFailure.BROWSER -> MR.strings.feedback_native_browser
     NativeFeedbackFailure.CANCELLED -> MR.strings.feedback_native_cancelled
+    NativeFeedbackFailure.IMAGE_INVALID -> MR.strings.feedback_image_invalid
+    NativeFeedbackFailure.IMAGE_TOO_LARGE -> MR.strings.feedback_image_large
+    NativeFeedbackFailure.IMAGE_LIMIT -> MR.strings.feedback_image_limit
+    NativeFeedbackFailure.V2_UNAVAILABLE -> MR.strings.feedback_v2_unavailable
+    NativeFeedbackFailure.ATTACHMENT_CAPACITY -> MR.strings.feedback_attachment_capacity
+    NativeFeedbackFailure.SCREENSHOTS_UNAVAILABLE -> MR.strings.feedback_screenshots_unavailable
 }

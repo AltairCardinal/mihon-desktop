@@ -11,7 +11,7 @@ const serviceDirectory = fileURLToPath(new URL("../", import.meta.url));
 const repositoryDirectory = fileURLToPath(new URL("../../../", import.meta.url));
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-class ExportError extends Error {}
+export class ExportError extends Error {}
 
 async function repositoryWorktrees() {
   try {
@@ -56,7 +56,7 @@ async function checkedDestination(output, roots) {
   }
 }
 
-async function wranglerQuery(sql) {
+export async function wranglerQuery(sql) {
   const environment = { ...process.env, CI: "1", WRANGLER_SEND_METRICS: "false", NO_COLOR: "1" };
   // Use the maintainer's existing Wrangler OAuth session. Do not silently select
   // an unrelated API-token identity or launch an interactive login from export.
@@ -73,24 +73,13 @@ async function wranglerQuery(sql) {
   } catch { throw new ExportError("Cannot retrieve the log. Verify the maintainer's Wrangler authorization."); }
 }
 
-export async function exportCrashLog({ submissionId, output, runner = wranglerQuery, repositoryRoots } = {}) {
-  if (typeof submissionId !== "string" || !UUID.test(submissionId)) {
-    throw new ExportError("A strict UUIDv4 --submission-id is required.");
-  }
+export async function writePrivateExport({ output, repositoryRoots, load } = {}) {
   const roots = repositoryRoots ?? await repositoryWorktrees();
   if (!Array.isArray(roots) || roots.length === 0 || roots.some((root) => typeof root !== "string" || !root)) {
     throw new ExportError("Cannot verify repository boundaries; no log was exported.");
   }
   const destination = await checkedDestination(output, roots);
-  let result;
-  try {
-    result = await runner(`SELECT crash_log FROM reports WHERE submission_id = '${submissionId.toLowerCase()}' AND crash_log_consent = 1 LIMIT 1`);
-  } catch { throw new ExportError("Cannot retrieve the log. Verify the maintainer's Wrangler authorization."); }
-  const log = Array.isArray(result) && result.length === 1 && Array.isArray(result[0]?.results) && result[0].results.length === 1
-    ? result[0].results[0]?.crash_log : undefined;
-  if (typeof log !== "string" || log === "" || !validCrashLogText(log) || crashLogBytes(log) > MAX_LOG_BYTES) {
-    throw new ExportError("No valid authorized crash log is available for that submission.");
-  }
+  const data = await load();
   // The remote query can take up to a minute. Re-resolve the requested path
   // after that await: a parent might have become a junction into a repository.
   // Also reject replacement by a different directory at the same path.
@@ -104,7 +93,7 @@ export async function exportCrashLog({ submissionId, output, runner = wranglerQu
   try {
     file = await open(current.canonical, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0), 0o600);
     created = true;
-    await file.writeFile(log, { encoding: "utf8" });
+    await file.writeFile(data, typeof data === "string" ? { encoding: "utf8" } : undefined);
     await file.close();
     file = undefined;
   } catch {
@@ -113,6 +102,24 @@ export async function exportCrashLog({ submissionId, output, runner = wranglerQu
     throw new ExportError("Cannot write a new output file; no log was exported.");
   }
   return { filename: path.basename(current.canonical) };
+}
+
+export async function exportCrashLog({ submissionId, output, runner = wranglerQuery, repositoryRoots } = {}) {
+  if (typeof submissionId !== "string" || !UUID.test(submissionId)) {
+    throw new ExportError("A strict UUIDv4 --submission-id is required.");
+  }
+  return writePrivateExport({ output, repositoryRoots, load: async () => {
+    let result;
+    try {
+      result = await runner(`SELECT crash_log FROM reports WHERE submission_id = '${submissionId.toLowerCase()}' AND crash_log_consent = 1 LIMIT 1`);
+    } catch { throw new ExportError("Cannot retrieve the log. Verify the maintainer's Wrangler authorization."); }
+    const log = Array.isArray(result) && result.length === 1 && Array.isArray(result[0]?.results) && result[0].results.length === 1
+      ? result[0].results[0]?.crash_log : undefined;
+    if (typeof log !== "string" || log === "" || !validCrashLogText(log) || crashLogBytes(log) > MAX_LOG_BYTES) {
+      throw new ExportError("No valid authorized crash log is available for that submission.");
+    }
+    return log;
+  } });
 }
 
 async function main() {

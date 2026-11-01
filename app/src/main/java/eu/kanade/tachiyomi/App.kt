@@ -21,7 +21,6 @@ import coil3.memory.MemoryCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.allowRgb565
 import coil3.request.crossfade
-import coil3.util.DebugLogger
 import dev.mihon.injekt.patchInjekt
 import eu.kanade.domain.DomainModule
 import eu.kanade.domain.base.BasePreferences
@@ -150,6 +149,9 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         Injekt.importModule(DomainModule())
 
         val scope = ProcessLifecycleOwner.get().lifecycleScope
+        tachiyomi.core.common.feedback.DiagnosticEvents.install(
+            Injekt.get<tachiyomi.core.common.feedback.DiagnosticStore>(),
+        )
         startSync(scope)
 
         setupNotificationChannels()
@@ -209,14 +211,9 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         // Updates widget update
         WidgetManager(Injekt.get(), Injekt.get()).apply { init(scope) }
 
-        if (!LogcatLogger.isInstalled) {
-            val minLogPriority = when {
-                networkPreferences.verboseLogging().get() -> LogPriority.VERBOSE
-                BuildConfig.DEBUG -> LogPriority.DEBUG
-                else -> LogPriority.INFO
-            }
+        if (BuildConfig.DEBUG && !LogcatLogger.isInstalled) {
             LogcatLogger.install()
-            LogcatLogger.loggers += AndroidLogcatLogger(minLogPriority)
+            LogcatLogger.loggers += AndroidLogcatLogger(LogPriority.DEBUG)
         }
 
         initializeMigrator()
@@ -263,7 +260,6 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
 
             crossfade((300 * this@App.animatorDurationScale).toInt())
             allowRgb565(DeviceUtil.isLowRamDevice(this@App))
-            if (networkPreferences.verboseLogging().get()) logger(DebugLogger())
 
             // Coil spawns a new thread for every image load by default
             fetcherCoroutineContext(Dispatchers.IO.limitedParallelism(8))

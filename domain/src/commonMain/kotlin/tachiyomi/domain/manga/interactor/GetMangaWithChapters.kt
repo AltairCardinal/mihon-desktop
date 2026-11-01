@@ -2,6 +2,9 @@ package tachiyomi.domain.manga.interactor
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import tachiyomi.core.common.feedback.DiagnosticCategory
+import tachiyomi.core.common.feedback.DiagnosticOperation
+import tachiyomi.core.common.feedback.diagnosticOperation
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.manga.model.Manga
@@ -22,10 +25,14 @@ class GetMangaWithChapters(
     }
 
     suspend fun awaitManga(id: Long): Manga {
-        return mangaRepository.getMangaById(id)
+        return diagnosticOperation(DiagnosticCategory.BROWSE_DETAILS, DiagnosticOperation.DETAILS) {
+            mangaRepository.getMangaById(id)
+        }
     }
 
     suspend fun awaitChapters(id: Long, applyScanlatorFilter: Boolean = false): List<Chapter> {
-        return chapterRepository.getChapterByMangaId(id, applyScanlatorFilter)
+        return diagnosticOperation(DiagnosticCategory.BROWSE_DETAILS, DiagnosticOperation.DETAILS) {
+            chapterRepository.getChapterByMangaId(id, applyScanlatorFilter)
+        }
     }
 }

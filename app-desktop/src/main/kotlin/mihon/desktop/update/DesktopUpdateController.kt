@@ -1,5 +1,10 @@
 package mihon.desktop.update
 
+import tachiyomi.core.common.feedback.DiagnosticCategory
+import tachiyomi.core.common.feedback.DiagnosticEvent
+import tachiyomi.core.common.feedback.DiagnosticEvents
+import tachiyomi.core.common.feedback.DiagnosticOperation
+import tachiyomi.core.common.feedback.DiagnosticStage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -62,6 +67,7 @@ class DesktopUpdateController(
         true
     }
     private suspend fun checkNow(arguments: GetApplicationRelease.Arguments) {
+        record(DiagnosticOperation.UPDATE, DiagnosticStage.START)
         mutableState.value = DesktopUpdateState.Checking
         val result = try {
             checkRelease(arguments)
@@ -69,11 +75,13 @@ class DesktopUpdateController(
             cancel(null)
             throw error
         } catch (error: Exception) {
+            record(DiagnosticOperation.UPDATE, DiagnosticStage.FAILURE)
             retryAction = RetryAction.Check(arguments)
             mutableState.value = DesktopUpdateState.CheckFailed(CheckFailure.REQUEST_FAILED, true, error)
             return
         }
         retryAction = null
+        record(DiagnosticOperation.UPDATE, DiagnosticStage.SUCCESS)
         mutableState.value = when (result) {
             is GetApplicationRelease.Result.NewUpdate -> DesktopUpdateState.UpdateAvailable(result.release)
             GetApplicationRelease.Result.NoNewUpdate -> DesktopUpdateState.UpToDate
@@ -82,6 +90,7 @@ class DesktopUpdateController(
         }
     }
     private suspend fun downloadNow(release: Release) {
+        record(DiagnosticOperation.UPDATE, DiagnosticStage.START)
         val generation = downloadGeneration.incrementAndGet()
         activeDownload.set(generation)
         mutableState.value = DesktopUpdateState.Downloading(release)
@@ -109,6 +118,7 @@ class DesktopUpdateController(
     }
 
     private suspend fun verifyNow(release: Release, download: VerifiedDownload) {
+        record(DiagnosticOperation.INSTALL, DiagnosticStage.START)
         mutableState.value = DesktopUpdateState.Verifying(release, download)
         val result = try {
             val prepared = prepareInstall(download, release.version)
@@ -132,6 +142,7 @@ class DesktopUpdateController(
         }
     }
     private suspend fun handoffNow(releasePage: String, ready: ReadyToInstall, confirmed: Boolean) {
+        record(DiagnosticOperation.INSTALL, DiagnosticStage.START)
         mutableState.value = DesktopUpdateState.HandingOff(releasePage)
         val result = try {
             val handedOff = handoffInstall(ready, confirmed)
@@ -147,11 +158,13 @@ class DesktopUpdateController(
         }
         if (!confirmed || result == InstallCancelled) return cancel(releasePage)
         if (result == InstallHandedOff) {
+            record(DiagnosticOperation.INSTALL, DiagnosticStage.SUCCESS)
             retryAction = null
             mutableState.value = DesktopUpdateState.HandedOff(releasePage)
         } else installFailed(InstallStage.HANDOFF, releasePage, RetryAction.Handoff(releasePage, ready), (result as InstallHandoffFailed).reason)
     }
     private fun downloadFailed(release: Release, reason: DownloadFailure? = null, cause: Throwable? = null) {
+        record(DiagnosticOperation.UPDATE, DiagnosticStage.FAILURE)
         retryAction = RetryAction.Download(release)
         mutableState.value = DesktopUpdateState.RetryableFailure(UpdateOperation.DOWNLOAD, release.releaseLink, reason, cause)
     }
@@ -162,6 +175,7 @@ class DesktopUpdateController(
         reason: InstallFailure? = null,
         cause: Throwable? = null,
     ) {
+        record(DiagnosticOperation.INSTALL, DiagnosticStage.FAILURE)
         retryAction = retry
         mutableState.value = DesktopUpdateState.InstallFailed(stage, releasePage, reason, cause)
     }
@@ -170,6 +184,7 @@ class DesktopUpdateController(
         mutableState.value = DesktopUpdateState.ManualOnly(releasePage)
     }
     private fun cancel(releasePage: String?) {
+        record(DiagnosticOperation.UPDATE, DiagnosticStage.CANCELLED)
         retryAction = null
         mutableState.value = DesktopUpdateState.Cancelled(releasePage)
     }
@@ -188,6 +203,11 @@ class DesktopUpdateController(
         } finally {
             operationLock.unlock()
         }
+    }
+    private fun record(operation: DiagnosticOperation, stage: DiagnosticStage) {
+        DiagnosticEvents.record(DiagnosticEvent(
+            DiagnosticCategory.UPDATE_INSTALL, operation, stage,
+        ))
     }
     private sealed interface RetryAction {
         data class Check(val arguments: GetApplicationRelease.Arguments) : RetryAction

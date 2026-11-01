@@ -28,6 +28,13 @@ import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.tachiyomi.BuildConfig
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import mihon.feedback.createAndroidDiagnosticStore
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -39,6 +46,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowDialog
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.domain.feedback.FeedbackDraftMemory
 import tachiyomi.domain.release.service.ApplicationUpdatePreferences
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.InjektScope
@@ -89,13 +97,22 @@ class AboutFeedbackWiringTest {
         Injekt = InjektScope(DefaultRegistrar())
         Injekt.addSingleton(UiPreferences(InMemoryPreferenceStore()))
         Injekt.addSingleton(ApplicationUpdatePreferences(InMemoryPreferenceStore()))
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val server = MockWebServer().also {
+            it.start()
+            it.enqueue(MockResponse(body = """{"accepting":false}"""))
+        }
+        val client = okhttp3.OkHttpClient.Builder().addInterceptor { chain ->
+            chain.proceed(chain.request().newBuilder().url(server.url(chain.request().url.encodedPath)).build())
+        }.build()
         Injekt.addSingleton(
             mockk<eu.kanade.tachiyomi.network.NetworkHelper> {
-                every { nonCloudflareClient } returns
-                    okhttp3.OkHttpClient()
+                every { nonCloudflareClient } returns client
             },
         )
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        Injekt.addSingleton(FeedbackDraftMemory())
+        Injekt.addSingleton(createAndroidDiagnosticStore(activity.get().applicationContext, scope))
         val copied = mutableListOf<String>()
         val opened = mutableListOf<String>()
         var copyAllowed = false
@@ -136,10 +153,17 @@ class AboutFeedbackWiringTest {
             }
             compose.onNodeWithText(copied.single()).performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("App details copied").performScrollTo().assertIsDisplayed()
+            compose.waitUntil(5000) { server.requestCount == 1 }
             compose.onNodeWithText("Close").performClick()
             compose.onNodeWithText("Copy app details").assertDoesNotExist()
+            assertEquals(1, server.requestCount)
+            val request = server.takeRequest()
+            assertEquals("GET", request.method)
+            assertEquals("/api/config", request.url.encodedPath)
         } finally {
             activity.pause().stop().destroy()
+            scope.cancel()
+            server.close()
             Injekt = previous
         }
     }

@@ -2,6 +2,11 @@ package mihon.domain.reader.observability
 
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageId
+import tachiyomi.core.common.feedback.DiagnosticCategory
+import tachiyomi.core.common.feedback.DiagnosticEvent
+import tachiyomi.core.common.feedback.DiagnosticEvents
+import tachiyomi.core.common.feedback.DiagnosticOperation
+import tachiyomi.core.common.feedback.DiagnosticStage
 
 enum class ReaderIoEventType {
     OPEN_READER_INTENT,
@@ -73,7 +78,8 @@ class ReaderIoReporter(
     private val probe: ReaderIoProbe = ReaderIoProbe.None,
     private val clock: ReaderMonotonicClock,
 ) {
-    val enabled: Boolean get() = probe.enabled
+    val enabled: Boolean get() = probe.enabled || DiagnosticEvents.enabled(DiagnosticCategory.READER) ||
+        DiagnosticEvents.enabled(DiagnosticCategory.PERFORMANCE)
 
     fun report(
         type: ReaderIoEventType,
@@ -84,6 +90,20 @@ class ReaderIoReporter(
         byteLimit: Int? = null,
     ) {
         if (!enabled) return
+        val operation = when (type) {
+            ReaderIoEventType.OPEN_READER_INTENT -> DiagnosticOperation.APPLICATION
+            ReaderIoEventType.PAGE_LIST_READY, ReaderIoEventType.FIRST_PAGE_PRESENTED -> DiagnosticOperation.READER_PAGE
+            else -> DiagnosticOperation.READER_IMAGE
+        }
+        val stage = when (type) {
+            ReaderIoEventType.OPEN_READER_INTENT, ReaderIoEventType.OPEN_PAGE -> DiagnosticStage.START
+            ReaderIoEventType.DECODE -> DiagnosticStage.DECODE
+            else -> DiagnosticStage.SUCCESS
+        }
+        val pageNumber = pageId?.sourcePageIndex?.takeIf { it < 1_000_000_000 }?.plus(1)
+        DiagnosticEvents.record(DiagnosticEvent(DiagnosticCategory.READER, operation, stage, count = pageNumber))
+        DiagnosticEvents.record(DiagnosticEvent(DiagnosticCategory.PERFORMANCE, operation, stage, count = pageNumber))
+        if (!probe.enabled) return
         probe.record(
             ReaderIoEvent(
                 type = type,

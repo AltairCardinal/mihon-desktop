@@ -1,4 +1,5 @@
 import { MAX_LOG_BYTES, crashLogBytes, normalizeCrashLog, validCrashLogText } from "../public/crash-log.mjs";
+import { categoryTitle, validateScreenshots, SCREENSHOT_LIMITS, SCREENSHOT_POOL_BYTES } from "./screenshots.mjs";
 
 const encoder = new TextEncoder();
 const ISSUE_ENDPOINT = "https://api.github.com/repos/AltairCardinal/mihon-desktop/issues";
@@ -52,12 +53,21 @@ async function readBody(request, maxBytes = MAX_BODY) {
   const bytes = new Uint8Array(size);
   let offset = 0;
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-  return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  let value;
+  try { value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); }
+  catch (error) {
+    if (maxBytes === SCREENSHOT_LIMITS.maxBodyBytes && size > MAX_BODY) throw new RangeError("body_too_large");
+    throw error;
+  }
+  if (maxBytes === SCREENSHOT_LIMITS.maxBodyBytes && value?.protocolVersion !== 2 && size > MAX_BODY) throw new RangeError("body_too_large");
+  return value;
 }
 
-function validate(value) {
+async function validate(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const v2 = value.protocolVersion === 2;
   const allowed = ["submissionId", "title", "description", "summary", "consent", "turnstileToken", "crashLog", "crashLogConsent", "nativeSessionId", "nativeSessionSecret"];
+  if (v2) allowed.push("protocolVersion", "categoryId", "screenshots", "screenshotConsent");
   if (Object.keys(value).some((key) => !allowed.includes(key))) return null;
   if (typeof value.submissionId !== "string" ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.submissionId)) return null;
@@ -68,7 +78,10 @@ function validate(value) {
   const native = value.nativeSessionId !== undefined || value.nativeSessionSecret !== undefined;
   if (native ? (typeof value.nativeSessionId !== "string" || typeof value.nativeSessionSecret !== "string" || !UUID.test(value.nativeSessionId) || !SESSION_SECRET.test(value.nativeSessionSecret) || value.turnstileToken !== undefined)
     : typeof value.turnstileToken !== "string") return null;
-  const title = value.title.trim();
+  if (v2 && (!native || categoryTitle(value.categoryId) !== value.title)) return null;
+  const screenshots = v2 ? await validateScreenshots(value.screenshots, value.screenshotConsent) : [];
+  if (!screenshots) return null;
+  const title = v2 ? categoryTitle(value.categoryId) : value.title.trim();
   const description = value.description.trim();
   const summary = (value.summary ?? "").replace(/\r\n/g, "\n").trim();
   const crashLog = normalizeCrashLog(value.crashLog ?? "");
@@ -91,7 +104,9 @@ function validate(value) {
       fields.add(match[1]);
     }
   }
-  return { submissionId: value.submissionId.toLowerCase(), title, description, summary, crashLog, turnstileToken: value.turnstileToken, nativeSessionId: native ? value.nativeSessionId.toLowerCase() : undefined, nativeSessionSecret: value.nativeSessionSecret };
+  return { submissionId: value.submissionId.toLowerCase(), title, description, summary, crashLog, turnstileToken: value.turnstileToken,
+    nativeSessionId: native ? value.nativeSessionId.toLowerCase() : undefined, nativeSessionSecret: value.nativeSessionSecret,
+    protocolVersion: v2 ? 2 : 1, categoryId: v2 ? value.categoryId : null, screenshots };
 }
 
 async function hexDigest(value, secret) {
@@ -125,6 +140,12 @@ async function verifyChallenge(token, env) {
 
 export async function nativeContentsHash(value) {
   const values = [value.title.trim(), value.description.trim(), (value.summary ?? "").replace(/\r\n/g, "\n").trim(), (value.crashLog ?? "").replace(/\r\n/g, "\n")];
+  if (value.protocolVersion === 2) {
+    values.unshift("mihon-feedback-v2", value.categoryId);
+    values[2] = categoryTitle(value.categoryId);
+    values.push(String(value.screenshots.length));
+    for (const image of value.screenshots) values.push(image.id, image.mime, String(image.width), String(image.height), String(image.byteLength), image.sha256);
+  }
   return hexDigest(values.map((part) => `${encoder.encode(part).byteLength}:${part}`).join(""));
 }
 
@@ -210,7 +231,7 @@ async function submit(request, env) {
     return json({ error: "json_required" }, 415);
   }
   let value;
-  try { value = validate(await readBody(request)); }
+  try { value = await validate(await readBody(request, SCREENSHOT_LIMITS.maxBodyBytes)); }
   catch (error) { return json({ error: error instanceof RangeError ? "body_too_large" : "invalid_input" }, error instanceof RangeError ? 413 : 400); }
   if (!value) return json({ error: "invalid_input" }, 400);
   const ip = request.headers.get("CF-Connecting-IP");
@@ -233,7 +254,7 @@ async function submit(request, env) {
   // when present, is part of the immutable submission contents.
   const contents = [value.title, value.description, value.summary];
   if (value.crashLog !== "") contents.push(value.crashLog);
-  const contentHash = await hexDigest(JSON.stringify(contents));
+  const contentHash = value.protocolVersion === 2 ? nativeHash : await hexDigest(JSON.stringify(contents));
   const receipt = newReceipt();
   const now = Math.floor(Date.now() / 1000);
   const hour = Math.floor(now / 3600) * 3600;
@@ -245,18 +266,30 @@ async function submit(request, env) {
     SELECT 1 FROM native_sessions WHERE session_id = ? AND secret_hash = ? AND content_hash = ?
       AND verified = 1 AND expires_at > ? AND (used_submission_id IS NULL OR used_submission_id = ?)
   )` : "";
+  const screenshotBytes = value.screenshots.reduce((total, image) => total + image.byteLength, 0);
+  const capacityGuard = screenshotBytes ? " AND (SELECT bytes_used FROM screenshot_budget WHERE singleton=1) + ? <= ?" : "";
   const insert = env.DB.prepare(`
     INSERT OR IGNORE INTO reports
-      (submission_id, content_hash, receipt, title, description, summary, ip_key, created_at, crash_log, crash_log_consent)
-    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      (submission_id, content_hash, receipt, title, description, summary, ip_key, created_at, crash_log, crash_log_consent, protocol_version, category_id, screenshot_consent)
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     WHERE (SELECT count(*) FROM reports WHERE ip_key = ? AND created_at >= ?) < 3
-      AND (SELECT count(*) FROM reports WHERE created_at >= ?) < 50 ${nativeGuard}
-  `).bind(value.submissionId, contentHash, receipt, value.title, value.description, value.summary, ipKey, now, value.crashLog, value.crashLog !== "" ? 1 : 0, ipKey, hour, day,
-    ...(value.nativeSessionId ? [value.nativeSessionId, sessionSecretHash, nativeHash, now, value.submissionId] : []));
+      AND (SELECT count(*) FROM reports WHERE created_at >= ?) < 50 ${nativeGuard} ${capacityGuard}
+  `).bind(value.submissionId, contentHash, receipt, value.title, value.description, value.summary, ipKey, now, value.crashLog, value.crashLog !== "" ? 1 : 0,
+    value.protocolVersion, value.categoryId, value.screenshots.length ? 1 : 0, ipKey, hour, day,
+    ...(value.nativeSessionId ? [value.nativeSessionId, sessionSecretHash, nativeHash, now, value.submissionId] : []),
+    ...(screenshotBytes ? [screenshotBytes, SCREENSHOT_POOL_BYTES] : []));
   if (value.nativeSessionId) {
     // The guard and consumption share one D1 transaction. Two UUIDs cannot spend
     // the same verification, even if both preflight reads observed it as unused.
-    await env.DB.batch([insert, env.DB.prepare(`
+    const images = value.screenshots.map((image, ordinal) => env.DB.prepare(`
+      INSERT INTO report_screenshots
+        (submission_id, attachment_id, ordinal, mime, width, height, byte_length, sha256, created_at, data)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      WHERE EXISTS(SELECT 1 FROM reports WHERE submission_id=? AND content_hash=? AND screenshot_consent=1)
+      ON CONFLICT(submission_id, attachment_id) DO NOTHING
+    `).bind(value.submissionId, image.id, ordinal, image.mime, image.width, image.height, image.byteLength, image.sha256, now, image.bytes,
+      value.submissionId, contentHash));
+    await env.DB.batch([insert, ...images, env.DB.prepare(`
       UPDATE native_sessions SET used_submission_id = ? WHERE session_id = ? AND secret_hash = ?
         AND (used_submission_id IS NULL OR used_submission_id = ?)
         AND EXISTS (SELECT 1 FROM reports WHERE submission_id = ? AND content_hash = ?)
@@ -265,7 +298,13 @@ async function submit(request, env) {
     if (session?.used_submission_id && session.used_submission_id !== value.submissionId) return json({ error: "submission_conflict" }, 409);
   } else await insert.run();
   const row = await env.DB.prepare("SELECT content_hash, receipt FROM reports WHERE submission_id = ?").bind(value.submissionId).first();
-  if (!row) return json({ error: "rate_limited" }, 429, { "Retry-After": "3600" });
+  if (!row) {
+    if (screenshotBytes) {
+      const budget = await env.DB.prepare("SELECT bytes_used FROM screenshot_budget WHERE singleton=1").first();
+      if (budget.bytes_used + screenshotBytes > SCREENSHOT_POOL_BYTES) return json({ error: "attachment_capacity" }, 507);
+    }
+    return json({ error: "rate_limited" }, 429, { "Retry-After": "3600" });
+  }
   if (row.content_hash !== contentHash) return json({ error: "submission_conflict" }, 409);
   return json({ status: "received_pending", receipt: row.receipt }, 202);
 }
@@ -281,7 +320,7 @@ async function dispatch(env) {
   await env.DB.prepare("UPDATE reports SET status = 'REVIEW' WHERE status = 'CLAIMED' AND claimed_at < ?").bind(now - 900).run();
   const pending = await env.DB.prepare("SELECT submission_id FROM reports WHERE status = 'PENDING' AND next_attempt <= ? ORDER BY created_at LIMIT 5").bind(now).all();
   for (const candidate of pending.results) {
-    const row = await env.DB.prepare("UPDATE reports SET status = 'CLAIMED', claimed_at = ? WHERE submission_id = ? AND status = 'PENDING' RETURNING submission_id, title, description, summary, crash_log_consent")
+    const row = await env.DB.prepare("UPDATE reports SET status = 'CLAIMED', claimed_at = ? WHERE submission_id = ? AND status = 'PENDING' RETURNING submission_id, title, description, summary, crash_log_consent, screenshot_consent, protocol_version")
       .bind(now, candidate.submission_id).first();
     if (!row) continue;
     let status = "REVIEW";
@@ -299,7 +338,7 @@ async function dispatch(env) {
         },
         body: JSON.stringify({
           title: `[Feedback] ${row.title.replaceAll("@", "＠")}`,
-          body: `Anonymous feedback. The submitter explicitly consented to public GitHub publication.\n\n${row.description.replace(/\r\n?/g, "\n").split("\n").map((line) => `    ${line}`).join("\n")}\n\n${row.summary ? `Safe application summary:\n\n\`\`\`text\n${row.summary}\n\`\`\`\n\n` : ""}${row.crash_log_consent === 1 ? "A maintainer-only crash log is attached. It is not published to GitHub.\n\n" : ""}<!-- feedback-submission:${row.submission_id} -->`,
+          body: `Anonymous feedback. The submitter explicitly consented to public GitHub publication.\n\n${row.description.replace(/\r\n?/g, "\n").split("\n").map((line) => `    ${line}`).join("\n")}\n\n${row.summary ? `Safe application summary:\n\n\`\`\`text\n${row.summary}\n\`\`\`\n\n` : ""}${row.crash_log_consent === 1 ? `A maintainer-only ${row.protocol_version === 2 ? "diagnostic" : "crash"} log is attached. It is not published to GitHub.\n\n` : ""}${row.screenshot_consent === 1 ? "A maintainer-only screenshot attachment is available. It is not published to GitHub.\n\n" : ""}<!-- feedback-submission:${row.submission_id} -->`,
         }),
         signal: AbortSignal.timeout(15000),
       });
@@ -326,7 +365,10 @@ export default {
       const path = new URL(request.url).pathname;
       if (path === "/api/config" && request.method === "GET") {
         const accepting = ready(env);
-        return json(accepting ? { accepting, siteKey: env.TURNSTILE_SITE_KEY } : { accepting });
+        if (!accepting) return json({ accepting });
+        const budget = await env.DB.prepare("SELECT bytes_used FROM screenshot_budget WHERE singleton=1").first();
+        return json({ accepting, siteKey: env.TURNSTILE_SITE_KEY,
+          capabilities: { nativeV2: true, screenshots: budget.bytes_used < SCREENSHOT_POOL_BYTES }, limits: SCREENSHOT_LIMITS });
       }
       if (path === "/api/native-session" && request.method === "POST") return await createNativeSession(request, env);
       if (path.startsWith("/api/native-session/") && request.method === "GET") return await nativeSessionStatus(request, env, path.slice("/api/native-session/".length));

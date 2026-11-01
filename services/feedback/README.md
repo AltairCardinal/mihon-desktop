@@ -1,16 +1,16 @@
 # Anonymous feedback service
 
-Small, framework-free Cloudflare Worker, D1 database, Turnstile form and five-minute GitHub dispatch job. Both native applications open the same public webpage. **Users need no account**, and no credentials are shipped in either application or the webpage.
+Small, framework-free Cloudflare Worker, D1 database, Turnstile form and five-minute GitHub dispatch job. Native applications submit through a browser verification session; older clients can use the public web form. **Users need no account**, and no maintainer credentials are shipped in either application or the webpage.
 
-## Runtime contract
+## Legacy web form and shared runtime contract
 
 - `GET /` serves a mobile/desktop form with system dark/light theme and Chinese/English switch.
-- `GET /api/config` returns only `accepting` and, when configured, the public Turnstile site key. Missing credentials or known Cloudflare test keys disable submission.
-- `POST /api/feedback` accepts only `submissionId` (UUIDv4), `title` (5–120 Unicode code points), `description` (20–6000), optional `summary` (≤1000), `consent: true`, `turnstileToken` (≤2048), and optional `crashLog`/`crashLogConsent`. The body is bounded to **640 KiB** while streaming, independent of `Content-Length`, to accommodate JSON escaping of a 256 KiB text log.
+- `GET /api/config` returns `accepting`, the configured public Turnstile site key, native capabilities and exact v2 limits. Missing credentials or known Cloudflare test keys disable submission. Private data and credentials are never returned.
+- Legacy web `POST /api/feedback` accepts only `submissionId` (UUIDv4), `title` (5–120 Unicode code points), `description` (20–6000), optional `summary` (≤1000), `consent: true`, `turnstileToken` (≤2048), and optional `crashLog`/`crashLogConsent`. The v1 body is bounded to **640 KiB** while streaming, independent of `Content-Length`, to accommodate JSON escaping of a 256 KiB text log. Native v2 adds the strictly validated category/JPEG fields described below and a separate 2 MiB bound.
 - The optional manually pasted summary allows unique `Application`, `Version`, `OS`, `Architecture`, `Runtime` lines, with a restricted value alphabet. The native summary's literal `[redacted]` is accepted only as `Version: [redacted]`, an existing OS platform followed by `[redacted]`, or `Runtime: Java/Android SDK [redacted]`; arbitrary bracketed values remain rejected. No clipboard read, URL payload, local storage, email field or general attachment support.
 - Optional **private crash logs** accept UTF-8 `.txt`, `.log` and desktop `.log.1/.2/.3` files. Files over **4 MiB** are refused before reading. Strict local decoding removes a UTF-8 BOM, rejects invalid encoding and binary control characters, then presents an editable preview. Selecting a file only reads it locally; there is no upload until submission.
 - Log submissions are limited to **256 KiB of UTF-8 bytes**, with no silent truncation. CRLF is normalized to LF; leading/trailing spaces, tabs, lone CR and LF are not trimmed. NUL, binary control characters (except TAB/LF/CR), unpaired surrogates and replacement characters are rejected. A large preview can be edited smaller or removed.
-- Nonempty `crashLog` requires independent `crashLogConsent: true`. Its separate checkbox starts unchecked and resets after editing, file replacement or removal. This grants **project maintainers only** permission to view the log, with normal 30-day database retention; it does not authorize GitHub publication. Busy/received submissions lock all report and log inputs to preserve the captured snapshot.
+- Nonempty `crashLog` requires `crashLogConsent: true`. In the legacy web form, its separate checkbox starts unchecked and resets after editing, file replacement or removal. Native v2 obtains authorization through explicit submission of visible, selected private attachments. This grants **project maintainers only** permission to view the log, with normal 30-day database retention; it does not authorize GitHub publication. Busy/received submissions lock all report and log inputs to preserve the captured snapshot.
 - Consent to **public GitHub publication** starts unchecked and covers only the title, description and safe summary. A successful response is `202 {status:"received_pending",receipt:"..."}` after D1 persistence, not a claim that an Issue exists. The random 256-bit receipt is for the user's records; there is deliberately no report lookup/list/log-download API. Public responses never contain a private log, file name, local path or download link.
 - Same UUID and canonical contents return the original receipt only after a fresh valid Turnstile response. Different contents, including a changed/removed private log, with the same UUID return 409. The original no-log content hash is retained for pre-migration retries. Failed submissions retain the report, log draft and UUID only in the open page's memory. Reloading/closing loses the draft.
 - HMAC-SHA256 of the connecting IP is stored for limits; the raw IP and Turnstile token are never persisted or forwarded. Siteverify receives the token/secret without an IP parameter. Cloudflare still processes the network request and challenge under its own policies.
@@ -78,9 +78,11 @@ Store exports in an OS-protected maintainer directory, not a shared/public folde
 
 ## Native application submission
 
-The applications own the report form, optional application summary and editable local crash-log preview.
-Logs are only read after a user action. Public publication and private-log access require separate unchecked
-consents. Submit freezes that snapshot; cancellation stops waiting/submission, failure retains the in-memory
+The applications own the report form, optional application summary and editable local diagnostic preview.
+V2 category selection reads only matching local logs, with device summary and log inclusion enabled by default;
+users can uncheck either. Public publication consent remains unchecked. Final explicit submission authorizes
+the currently visible private attachments; legacy v1/browser log consent remains separate and unchecked.
+Submit freezes that snapshot; cancellation stops waiting/submission, failure retains the in-memory
 draft, and successful receipt means persisted/pending, not an already-created GitHub Issue. Cancellation
 before sending prevents the payload from being sent; once the HTTP request started, the server may have
 already accepted it. Cancellation is not withdrawal; same-UUID retries remain idempotent.
@@ -128,3 +130,75 @@ Run the same service focused suite/dry-run, plus native shared contract, MockWeb
 checks. The native-session and verification-page tests execute real SQLite transactions and DOM events.
 A deployment acceptance must use a human-completed production challenge and fictional app draft/log,
 verify the native receipt/private export and confirm the normal GitHub dispatch omits private data.
+
+
+## Native feedback v2: categories and private JPEG screenshots
+
+This checkout contains the local v2 candidate; it does not establish the currently deployed Worker or D1 schema.
+Apply migration `0004_private_screenshots.sql` before deploying the candidate Worker, then verify configuration
+and a fictional end-to-end report. No deployment is performed by the focused tests. Old v1/browser requests retain their title, four-part native hash,
+640 KiB body and explicit log consent behavior. New native requests set `protocolVersion: 2`, `categoryId`,
+`screenshots` (including an empty array) and boolean `screenshotConsent`; web Turnstile credentials cannot
+use v2. The server derives the fixed Chinese category title, rejects mismatched titles and unknown fields,
+and retains the private `crashLog` wire field for category diagnostic text. V2 dispatch calls it a diagnostic
+log; v1 dispatch retains its crash-log label. Public consent remains required.
+
+Before an existing-service update, read the active Worker version and `wrangler d1 migrations list mihon-feedback --remote`.
+If all migrations are already applied, skip migration application. Deploy the fixed candidate with `wrangler deploy --keep-vars`
+using this service's explicit configuration path; preserve existing OAuth, secrets and dashboard variables. Do not supply a secrets file.
+Keep the previous active Worker version as the rollback target. Roll back code only: do not drop the screenshot tables, columns,
+triggers, retained BLOBs or private logs. A legacy Worker can continue accepting v1; clients must retain v2 drafts when capabilities disappear.
+
+The approved prototype defaults safe device summary and log inclusion on; users can uncheck either.
+Selecting local images and the final explicit submit of visible private attachments supplies screenshot
+consent, without another checkbox. This does not authorize uploading files before submit, publishing
+attachments, or placing the native secret in the browser. Old web UI consent checkboxes stay unchanged.
+
+`GET /api/config` adds `capabilities: {nativeV2: true, screenshots: boolean}` and `limits`:
+`maxScreenshots=2`, `maxScreenshotBytes=524288`, `maxTotalScreenshotBytes=1048576`,
+`maxScreenshotSide=1920`, `maxBodyBytes=2097152`, `maxLogBytes=262144`.
+Screenshot capacity can become unavailable while no-image v2 remains available. Missing capabilities must
+not silently downgrade new drafts/images to v1. Config acceptance is not a capacity reservation.
+
+Each v2 screenshot has exactly `id` (lowercase UUIDv4), `mime: image/jpeg`, `width`, `height`, `byteLength`,
+`sha256` (lowercase), and `dataBase64` (canonical standard Base64, no data URL). Fresh native JPEG copies
+have a white transparency background, corrected orientation, sRGB pixels, no EXIF/GPS/comments and
+longest side at most1920. Each is at most512 KiB, total at most1 MiB. Client source PNG/JPEG can be up to
+10 MiB/16 million pixels; the original is never modified. Conversion progress describes actual stages,
+not a made-up codec percentage; previews decode the final JPEG bytes.
+
+The Worker independently checks bounded container structure, dimensions, forbidden metadata and trailing
+payload, canonical Base64, exact byte length and SHA-256. This is not full pixel decoding or malware
+scanning. JPEG SOF0/SOF2 with quantization/Huffman tables and scans is supported; arithmetic/unknown
+containers, metadata segments and thumbnails are rejected. No new server image codec or cloud transcoder
+is introduced. Local focused tests exercise real SQLite BLOB binding and public/private paths using fictional JPEGs.
+They do not establish deployed service support or production Free Worker CPU/memory budgets.
+
+V2 native hash uses the existing UTF-8 length-prefix encoding, with ordered segments:
+`mihon-feedback-v2`, category ID, derived title, canonical description, summary, private log, decimal image
+count, then each image's ID, MIME, decimal width/height/byteLength, SHA-256. Image order is significant.
+The creation/poll/verification endpoints remain unchanged and see only the hash or random session ID.
+Same-content retries go through atomic session consumption even if the report already exists; a fresh
+session used to retry report A cannot then create report B. Never add an early idempotent return that skips
+binding the current session. Image duplicate conflicts are targeted; unrelated SQL constraints must abort
+and roll back rather than being swallowed by `INSERT OR IGNORE`.
+
+A report, its JPEG BLOB rows and verified-session consumption commit as one D1 batch. Per-image insert/delete
+triggers atomically maintain the32 MiB encoded-byte pool. A full pool returns507 `attachment_capacity`,
+without a report or consumed session; the app retains its draft and allows explicit image removal.
+Idempotent retries do not spend the pool twice. Report quotas remain unchanged; free storage/CPU/read/write
+limits can still reject all feedback. No automatic paid upgrade. Cron deletion of30-day reports cascades to
+JPEGs and frees accounting, even without GitHub credentials; outages extend retention. Platform backups
+and maintainer local exports have separate lifetimes. Do not mistake SQLite reusable pages for failure to
+free live-byte accounting. Public dispatch reads only screenshot existence/consent, never BLOBs or hashes.
+
+Maintainer retrieval reuses the existing OAuth and checked private-export destination logic:
+
+```powershell
+node scripts/export-screenshot.mjs --submission-id <UUIDv4> --ordinal 0 --output <new-outside-file.jpg>
+```
+
+Ordinal0/1 selects the first/second attachment. The tool reads one authorized image, validates restored
+bytes/hash/structure and writes a new `.jpg` outside every repository worktree. It does not overwrite,
+follow changed/linked destination directories, output Base64, or add public download/list endpoints.
+`export-crash-log.mjs` remains compatible and shares the same destination recheck/writer.

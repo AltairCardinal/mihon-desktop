@@ -7,7 +7,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
@@ -22,6 +24,8 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.logging.HttpLoggingInterceptor
 import okio.Buffer
+import tachiyomi.core.common.feedback.DiagnosticNetworkInterceptor
+import tachiyomi.domain.feedback.NativeFeedbackCapabilities
 import tachiyomi.domain.feedback.NativeFeedbackContent
 import tachiyomi.domain.feedback.NativeFeedbackException
 import tachiyomi.domain.feedback.NativeFeedbackFailure
@@ -29,6 +33,7 @@ import tachiyomi.domain.feedback.NativeFeedbackPayload
 import tachiyomi.domain.feedback.NativeFeedbackService
 import tachiyomi.domain.feedback.NativeFeedbackSession
 import tachiyomi.domain.feedback.NativeFeedbackVerification
+import java.util.Base64
 
 class NativeFeedbackHttpService(
     private val productionClient: OkHttpClient,
@@ -39,9 +44,38 @@ class NativeFeedbackHttpService(
     // redirects are disabled; other application callers retain their settings.
     private val client = productionClient.newBuilder().followRedirects(false).followSslRedirects(false)
         .cookieJar(CookieJar.NO_COOKIES).cache(null).apply {
-            interceptors().removeAll { it is HttpLoggingInterceptor }
-            networkInterceptors().removeAll { it is HttpLoggingInterceptor }
+            interceptors().removeAll { it is HttpLoggingInterceptor || it is DiagnosticNetworkInterceptor }
+            networkInterceptors().removeAll { it is HttpLoggingInterceptor || it is DiagnosticNetworkInterceptor }
         }.build()
+
+    override suspend fun capabilities(): NativeFeedbackCapabilities {
+        val result = exchange("/api/config")
+        return guarded {
+            val accepting = result["accepting"]?.jsonPrimitive?.booleanOrNull == true
+            val capabilities = result["capabilities"] as? JsonObject
+                ?: return@guarded NativeFeedbackCapabilities(accepting, false, false)
+            val nativeV2 = capabilities["nativeV2"]?.jsonPrimitive?.booleanOrNull == true
+            val screenshots = capabilities["screenshots"]?.jsonPrimitive?.booleanOrNull == true
+            if (nativeV2) {
+                val limits = result["limits"] as? JsonObject
+                val expected = mapOf(
+                    "maxScreenshots" to 2L,
+                    "maxScreenshotBytes" to 524288L,
+                    "maxTotalScreenshotBytes" to 1048576L,
+                    "maxScreenshotSide" to 1920L,
+                    "maxBodyBytes" to 2097152L,
+                    "maxLogBytes" to 262144L,
+                )
+                if (limits == null || expected.any { (key, value) ->
+                        limits[key]?.jsonPrimitive?.longOrNull != value
+                    }
+                ) {
+                    return@guarded NativeFeedbackCapabilities(accepting, false, false)
+                }
+            }
+            NativeFeedbackCapabilities(accepting, nativeV2, nativeV2 && screenshots)
+        }
+    }
 
     override suspend fun createSession(contentHash: String): NativeFeedbackSession {
         if (!contentHash.matches(Regex("[0-9a-f]{64}"))) throw NativeFeedbackException(NativeFeedbackFailure.INVALID)
@@ -86,6 +120,29 @@ class NativeFeedbackHttpService(
         val result = exchange(
             "/api/feedback",
             buildJsonObject {
+                payload.category?.let { category ->
+                    put("protocolVersion", 2)
+                    put("categoryId", category.id)
+                    put(
+                        "screenshots",
+                        buildJsonArray {
+                            payload.screenshots.forEach { image ->
+                                add(
+                                    buildJsonObject {
+                                        put("id", image.id)
+                                        put("mime", image.mime)
+                                        put("width", image.width)
+                                        put("height", image.height)
+                                        put("byteLength", image.byteLength)
+                                        put("sha256", image.sha256)
+                                        put("dataBase64", Base64.getEncoder().encodeToString(image.bytes()))
+                                    },
+                                )
+                            }
+                        },
+                    )
+                    put("screenshotConsent", payload.screenshots.isNotEmpty())
+                }
                 put("submissionId", payload.submissionId)
                 put("title", payload.title)
                 put("description", payload.description)
@@ -131,6 +188,7 @@ class NativeFeedbackHttpService(
                             401, 403 -> NativeFeedbackFailure.EXPIRED
                             409 -> NativeFeedbackFailure.CONFLICT
                             429 -> NativeFeedbackFailure.RATE_LIMIT
+                            507 -> NativeFeedbackFailure.ATTACHMENT_CAPACITY
                             else -> NativeFeedbackFailure.NETWORK
                         },
                     )

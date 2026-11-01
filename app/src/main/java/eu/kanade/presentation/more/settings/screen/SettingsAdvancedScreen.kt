@@ -97,14 +97,9 @@ object SettingsAdvancedScreen : SearchableSettings {
                     }
                 },
             ),
-            Preference.PreferenceItem.SwitchPreference(
-                preference = networkPreferences.verboseLogging(),
+            Preference.PreferenceItem.TextPreference(
                 title = stringResource(MR.strings.pref_verbose_logging),
-                subtitle = stringResource(MR.strings.pref_verbose_logging_summary),
-                onValueChanged = {
-                    context.toast(MR.strings.requires_app_restart)
-                    true
-                },
+                subtitle = stringResource(MR.strings.feedback_diagnostic_settings),
             ),
             Preference.PreferenceItem.TextPreference(
                 title = stringResource(MR.strings.pref_debug_info),

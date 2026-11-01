@@ -3,29 +3,41 @@ package tachiyomi.domain.feedback
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import tachiyomi.core.common.feedback.DiagnosticCategory
+import tachiyomi.core.common.feedback.DiagnosticEvent
+import tachiyomi.core.common.feedback.DiagnosticEvents
+import tachiyomi.core.common.feedback.DiagnosticOperation
+import tachiyomi.core.common.feedback.DiagnosticStage
 import java.security.MessageDigest
 import java.util.UUID
 
 data class NativeFeedbackDraft(
     val title: String = "",
+    val category: FeedbackCategory? = null,
     val description: String = "",
-    val includeSummary: Boolean = false,
+    val includeSummary: Boolean = true,
     val publicConsent: Boolean = false,
     val crashLog: String = "",
-    val logConsent: Boolean = false,
+    val logConsent: Boolean = true,
+    val screenshots: List<FeedbackScreenshot> = emptyList(),
 )
 
 enum class NativeFeedbackPhase {
     EDITING,
     READING_LOG,
+    PROCESSING_SCREENSHOT,
+    PICKING_SCREENSHOT,
     CREATING_SESSION,
     WAITING_VERIFICATION,
     SENDING,
@@ -46,6 +58,12 @@ enum class NativeFeedbackFailure {
     CONFLICT,
     BROWSER,
     CANCELLED,
+    IMAGE_INVALID,
+    IMAGE_TOO_LARGE,
+    IMAGE_LIMIT,
+    V2_UNAVAILABLE,
+    ATTACHMENT_CAPACITY,
+    SCREENSHOTS_UNAVAILABLE,
 }
 
 data class NativeFeedbackState(
@@ -53,9 +71,16 @@ data class NativeFeedbackState(
     val phase: NativeFeedbackPhase = NativeFeedbackPhase.EDITING,
     val failure: NativeFeedbackFailure? = null,
     val receipt: String? = null,
+    val pendingCategory: FeedbackCategory? = null,
+    val screenshotProgress: FeedbackScreenshotProgress? = null,
+    val capabilities: NativeFeedbackCapabilities? = null,
+    val configLoading: Boolean = false,
+    val capabilityFailure: NativeFeedbackFailure? = null,
 ) {
     val busy: Boolean get() = phase in setOf(
         NativeFeedbackPhase.READING_LOG,
+        NativeFeedbackPhase.PROCESSING_SCREENSHOT,
+        NativeFeedbackPhase.PICKING_SCREENSHOT,
         NativeFeedbackPhase.CREATING_SESSION,
         NativeFeedbackPhase.WAITING_VERIFICATION,
         NativeFeedbackPhase.SENDING,
@@ -78,12 +103,17 @@ data class NativeFeedbackPayload(
     val description: String,
     val summary: String,
     val crashLog: String,
+    val category: FeedbackCategory? = null,
+    val screenshots: List<FeedbackScreenshot> = emptyList(),
 ) {
     override fun toString(): String = "NativeFeedbackPayload([private])"
 }
 class NativeFeedbackException(val failure: NativeFeedbackFailure) : Exception("Feedback request failed")
 
+data class NativeFeedbackCapabilities(val accepting: Boolean, val nativeV2: Boolean, val screenshots: Boolean)
+
 interface NativeFeedbackService {
+    suspend fun capabilities(): NativeFeedbackCapabilities = NativeFeedbackCapabilities(false, false, false)
     suspend fun createSession(contentHash: String): NativeFeedbackSession
     suspend fun pollSession(session: NativeFeedbackSession): NativeFeedbackVerification
     suspend fun submit(payload: NativeFeedbackPayload, session: NativeFeedbackSession): String
@@ -103,8 +133,37 @@ object NativeFeedbackContent {
             char == '\u205F' || char == '\u3000' || char == '\uFEFF'
     }
     fun logBytes(value: String): Int = normalizeLog(value).encodeToByteArray().size
+    fun hash(payload: NativeFeedbackPayload): String {
+        val category =
+            payload.category ?: return hash(payload.title, payload.description, payload.summary, payload.crashLog)
+        val fields = mutableListOf(
+            "mihon-feedback-v2",
+            category.id,
+            category.publicTitle,
+            trimText(payload.description),
+            trimText(normalizeLog(payload.summary)),
+            normalizeLog(payload.crashLog),
+            payload.screenshots.size.toString(),
+        )
+        payload.screenshots.forEach { image ->
+            fields += listOf(
+                image.id,
+                image.mime,
+                image.width.toString(),
+                image.height.toString(),
+                image.byteLength.toString(),
+                image.sha256,
+            )
+        }
+        return hashParts(fields)
+    }
+
     fun hash(title: String, description: String, summary: String, log: String): String {
         val parts = listOf(trimText(title), trimText(description), trimText(normalizeLog(summary)), normalizeLog(log))
+        return hashParts(parts)
+    }
+
+    private fun hashParts(parts: List<String>): String {
         require(parts.all(::validUnicode))
         val digest = MessageDigest.getInstance("SHA-256")
         parts.forEach { part ->
@@ -139,7 +198,25 @@ object NativeFeedbackContent {
             payload.title.none { Character.isISOControl(it) || Character.getType(it) == Character.FORMAT.toInt() } &&
             payload.description.codePointCount(0, payload.description.length) in 20..6000 &&
             payload.description.none { (it.code in 0..31 && it !in "\t\n\r") || it.code == 127 } &&
-            payload.summary.codePointCount(0, payload.summary.length) <= 1000
+            payload.summary.codePointCount(0, payload.summary.length) <= 1000 &&
+            (
+                (payload.category == null && payload.screenshots.isEmpty()) ||
+                    payload.category?.publicTitle == payload.title
+                ) &&
+            payload.screenshots.size <= 2 && payload.screenshots.sumOf { it.byteLength } <= 1048576 &&
+            payload.screenshots.map { it.id }.toSet().size == payload.screenshots.size
+}
+
+data class NativeFeedbackSnapshot(
+    val draft: NativeFeedbackDraft,
+    val submissionId: String,
+    val logEdited: Boolean = false,
+) {
+    override fun toString(): String = "NativeFeedbackSnapshot([private])"
+}
+
+class FeedbackDraftMemory {
+    var snapshot: NativeFeedbackSnapshot? = null
 }
 
 class NativeFeedbackController(
@@ -149,35 +226,225 @@ class NativeFeedbackController(
     private val scope: CoroutineScope,
     private val openVerification: (String) -> Unit,
     private val nowSeconds: () -> Long = { System.currentTimeMillis() / 1000 },
+    private val language: FeedbackLanguage = FeedbackLanguage.ENGLISH,
+    private val screenshotProcessor: FeedbackScreenshotProcessor? = null,
+    val diagnostics: FeedbackDiagnosticController? = null,
+    initialSnapshot: NativeFeedbackSnapshot? = null,
 ) {
-    private val mutableState = MutableStateFlow(NativeFeedbackState())
+    fun snapshot(): NativeFeedbackSnapshot? = if (state.value.phase == NativeFeedbackPhase.RECEIVED) {
+        null
+    } else {
+        NativeFeedbackSnapshot(
+            state.value.draft.copy(screenshots = state.value.draft.screenshots.toList()),
+            submissionId,
+            diagnostics?.manuallyEdited == true,
+        )
+    }
+    private val initialDraft = initialSnapshot?.draft ?: NativeFeedbackDraft()
+    private val mutableState = MutableStateFlow(NativeFeedbackState(draft = initialDraft))
     val state: StateFlow<NativeFeedbackState> = mutableState
-    private var submissionId = UUID.randomUUID().toString()
-    private var operation = 0
+    private var submissionId = initialSnapshot?.submissionId ?: UUID.randomUUID().toString()
+
+    @Volatile private var operation = 0
     private var job: Job? = null
+    private var configJob: Job? = null
+
+    init {
+        diagnostics?.onContent = { text ->
+            if (!state.value.locked) edit { it.copy(crashLog = NativeFeedbackContent.normalizeLog(text)) }
+        }
+        initialSnapshot?.draft?.category?.let { category ->
+            diagnostics?.select(category)
+            if (initialSnapshot.logEdited) diagnostics?.edited()
+        }
+    }
 
     private fun edit(contentChanged: Boolean = true, transform: (NativeFeedbackDraft) -> NativeFeedbackDraft) {
         if (state.value.locked) return
+        val draft = transform(state.value.draft)
+        if (draft == state.value.draft) return
         if (contentChanged) submissionId = UUID.randomUUID().toString()
-        mutableState.value = NativeFeedbackState(draft = transform(state.value.draft))
+        mutableState.update { current ->
+            current.copy(
+                draft = draft,
+                phase = NativeFeedbackPhase.EDITING,
+                failure = null,
+                receipt = null,
+                pendingCategory = null,
+                screenshotProgress = null,
+            )
+        }
+    }
+
+    fun refreshCapabilities() {
+        if (state.value.configLoading || state.value.locked) return
+        mutableState.update { it.copy(configLoading = true, capabilityFailure = null) }
+        configJob = scope.launch {
+            try {
+                val result = service.capabilities()
+                mutableState.update {
+                    it.copy(
+                        capabilities = result,
+                        configLoading = false,
+                        capabilityFailure = if (!result.accepting ||
+                            !result.nativeV2
+                        ) {
+                            NativeFeedbackFailure.V2_UNAVAILABLE
+                        } else {
+                            null
+                        },
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                mutableState.update {
+                    it.copy(configLoading = false, capabilityFailure = NativeFeedbackFailure.NETWORK)
+                }
+            }
+        }
+    }
+
+    fun category(value: FeedbackCategory) {
+        if (state.value.locked || value == state.value.draft.category) return
+        val draft = state.value.draft
+        val template = draft.category?.template(language).orEmpty()
+        if (draft.description.isNotBlank() && draft.description != template) {
+            mutableState.value = state.value.copy(pendingCategory = value)
+        } else {
+            applyCategory(value)
+        }
+    }
+
+    fun confirmCategory(replace: Boolean) {
+        if (state.value.locked) return
+        val category = state.value.pendingCategory ?: return
+        if (replace) applyCategory(category) else mutableState.value = state.value.copy(pendingCategory = null)
+    }
+
+    private fun applyCategory(category: FeedbackCategory) {
+        edit {
+            it.copy(
+                category = category,
+                title = category.publicTitle,
+                description = category.template(language),
+                crashLog = "",
+            )
+        }
+        diagnostics?.select(category)
+    }
+
+    fun beginScreenshotSelection(): Int? {
+        if (state.value.locked || state.value.draft.screenshots.size >= 2) return null
+        val token = ++operation
+        mutableState.value = state.value.copy(phase = NativeFeedbackPhase.PICKING_SCREENSHOT, failure = null)
+        return token
+    }
+
+    fun finishScreenshotSelection(token: Int, inputs: List<FeedbackScreenshotInput>, failed: Boolean = false) {
+        if (token != operation || state.value.phase != NativeFeedbackPhase.PICKING_SCREENSHOT) return
+        mutableState.value = state.value.copy(phase = NativeFeedbackPhase.EDITING)
+        if (failed) fail(NativeFeedbackFailure.IMAGE_INVALID) else addScreenshots(inputs)
+    }
+
+    fun addScreenshots(inputs: List<FeedbackScreenshotInput>) {
+        if (state.value.locked || inputs.isEmpty()) return
+        if (inputs.size + state.value.draft.screenshots.size > 2) {
+            fail(NativeFeedbackFailure.IMAGE_LIMIT)
+            return
+        }
+        val processor = screenshotProcessor ?: run {
+            fail(NativeFeedbackFailure.IMAGE_INVALID)
+            return
+        }
+        val token = ++operation
+        mutableState.value = state.value.copy(phase = NativeFeedbackPhase.PROCESSING_SCREENSHOT, failure = null)
+        job = scope.launch {
+            try {
+                val prepared = mutableListOf<FeedbackScreenshot>()
+                inputs.forEachIndexed { index, input ->
+                    prepared += processor.process(input) { stage ->
+                        mutableState.update { current ->
+                            if (token == operation && current.phase == NativeFeedbackPhase.PROCESSING_SCREENSHOT &&
+                                stage != FeedbackImageStage.COMPLETE
+                            ) {
+                                current.copy(
+                                    screenshotProgress = FeedbackScreenshotProgress(index + 1, inputs.size, stage),
+                                )
+                            } else {
+                                current
+                            }
+                        }
+                    }
+                    currentCoroutineContext().ensureActive()
+                }
+                if (token == operation) {
+                    submissionId = UUID.randomUUID().toString()
+                    mutableState.value = state.value.copy(
+                        phase = NativeFeedbackPhase.EDITING,
+                        failure = null,
+                        draft = state.value.draft.copy(screenshots = state.value.draft.screenshots + prepared),
+                        screenshotProgress = FeedbackScreenshotProgress(
+                            inputs.size,
+                            inputs.size,
+                            FeedbackImageStage.COMPLETE,
+                        ),
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (token ==
+                    operation
+                ) {
+                    fail((error as? NativeFeedbackException)?.failure ?: NativeFeedbackFailure.IMAGE_INVALID)
+                }
+            }
+        }
+    }
+
+    fun removeScreenshot(id: String) = edit {
+        it.copy(screenshots = it.screenshots.filterNot { image -> image.id == id })
     }
 
     fun title(value: String) = edit { it.copy(title = value) }
-    fun description(value: String) = edit { it.copy(description = value) }
+    fun description(value: String) {
+        if (state.value.locked || state.value.draft.description == value) return
+        edit { it.copy(description = value) }
+        for (category in FEEDBACK_ACTION_CATEGORIES) {
+            if (DiagnosticEvents.enabled(category)) {
+                DiagnosticEvents.record(
+                    DiagnosticEvent(category, DiagnosticOperation.FEEDBACK, DiagnosticStage.SUCCESS, count = 1),
+                )
+            }
+        }
+    }
     fun includeSummary(value: Boolean) = edit { it.copy(includeSummary = value) }
     fun publicConsent(value: Boolean) = edit(false) { it.copy(publicConsent = value) }
-    fun log(value: String) = edit { it.copy(crashLog = NativeFeedbackContent.normalizeLog(value), logConsent = false) }
-    fun logConsent(value: Boolean) = edit(false) { it.copy(logConsent = value && it.crashLog.isNotEmpty()) }
-    fun removeLog() = log("")
+    fun log(value: String) {
+        if (state.value.locked) return
+        diagnostics?.edited()
+        edit { it.copy(crashLog = NativeFeedbackContent.normalizeLog(value)) }
+    }
+    fun logConsent(value: Boolean) = edit { it.copy(logConsent = value) }
+    fun removeLog() {
+        if (state.value.locked) return
+        diagnostics?.remove()
+        edit { it.copy(crashLog = "") }
+    }
 
     fun readLog() {
         if (state.value.locked) return
+        if (diagnostics != null) {
+            diagnostics.refresh(explicit = true)
+            return
+        }
         val token = ++operation
         mutableState.value =
             state.value.copy(
                 phase = NativeFeedbackPhase.READING_LOG,
                 failure = null,
-                draft = state.value.draft.copy(logConsent = false),
+                draft = state.value.draft,
             )
         job = scope.launch {
             try {
@@ -197,7 +464,11 @@ class NativeFeedbackController(
                 if (token == operation) {
                     submissionId = UUID.randomUUID().toString()
                     mutableState.value =
-                        NativeFeedbackState(state.value.draft.copy(crashLog = text, logConsent = false))
+                        state.value.copy(
+                            draft = state.value.draft.copy(crashLog = text),
+                            phase = NativeFeedbackPhase.EDITING,
+                            failure = null,
+                        )
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -217,7 +488,7 @@ class NativeFeedbackController(
         val payload =
             NativeFeedbackPayload(
                 submissionId,
-                NativeFeedbackContent.trimText(draft.title),
+                draft.category?.publicTitle.orEmpty(),
                 NativeFeedbackContent.trimText(draft.description),
                 if (draft.includeSummary) {
                     NativeFeedbackContent.trimText(
@@ -226,9 +497,15 @@ class NativeFeedbackController(
                 } else {
                     ""
                 },
-                NativeFeedbackContent.normalizeLog(draft.crashLog),
+                if (draft.logConsent) NativeFeedbackContent.normalizeLog(draft.crashLog) else "",
+                draft.category,
+                draft.screenshots.toList(),
             )
         val validation = when {
+            draft.category == null -> NativeFeedbackFailure.INVALID
+            !FeedbackCategory.hasActualDescription(
+                draft.description,
+            ) -> NativeFeedbackFailure.INVALID
             !draft.publicConsent -> NativeFeedbackFailure.PUBLIC_CONSENT
             !NativeFeedbackContent.validPayload(payload) -> NativeFeedbackFailure.INVALID
             !NativeFeedbackContent.validLog(payload.crashLog) -> NativeFeedbackFailure.LOG_INVALID
@@ -247,13 +524,16 @@ class NativeFeedbackController(
         job = scope.launch {
             try {
                 withTimeout(600_000) {
+                    val capabilities = state.value.capabilities ?: service.capabilities()
+                    mutableState.update { it.copy(capabilities = capabilities) }
+                    if (!capabilities.accepting || !capabilities.nativeV2) {
+                        throw NativeFeedbackException(NativeFeedbackFailure.V2_UNAVAILABLE)
+                    }
+                    if (payload.screenshots.isNotEmpty() && !capabilities.screenshots) {
+                        throw NativeFeedbackException(NativeFeedbackFailure.SCREENSHOTS_UNAVAILABLE)
+                    }
                     val session = service.createSession(
-                        NativeFeedbackContent.hash(
-                            payload.title,
-                            payload.description,
-                            payload.summary,
-                            payload.crashLog,
-                        ),
+                        NativeFeedbackContent.hash(payload),
                     )
                     currentCoroutineContext().ensureActive()
                     try {
@@ -288,6 +568,7 @@ class NativeFeedbackController(
                     ) {
                         mutableState.value =
                             state.value.copy(phase = NativeFeedbackPhase.RECEIVED, receipt = receipt)
+                        withContext(NonCancellable) { diagnostics?.received() }
                     }
                 }
             } catch (expired: TimeoutCancellationException) {
@@ -309,7 +590,8 @@ class NativeFeedbackController(
     }
 
     private fun fail(failure: NativeFeedbackFailure) {
-        mutableState.value = state.value.copy(phase = NativeFeedbackPhase.FAILED, failure = failure)
+        mutableState.value =
+            state.value.copy(phase = NativeFeedbackPhase.FAILED, failure = failure, screenshotProgress = null)
     }
 
     fun cancel() {
@@ -319,3 +601,9 @@ class NativeFeedbackController(
         fail(NativeFeedbackFailure.CANCELLED)
     }
 }
+
+private val FEEDBACK_ACTION_CATEGORIES = listOf(
+    DiagnosticCategory.INTERFACE,
+    DiagnosticCategory.FEATURE_REQUEST,
+    DiagnosticCategory.OTHER,
+)

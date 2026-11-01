@@ -79,7 +79,18 @@ internal class AndroidReaderPageFetchPort(
     override suspend fun fetchEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef {
         val imageUrl = request.requireImageUrl()
         page.imageUrl = imageUrl
-        val originalResponse = sourceCall { source.getImage(page) }
+        val originalResponse = tachiyomi.core.common.feedback.diagnosticOperation(
+            tachiyomi.core.common.feedback.DiagnosticCategory.READER,
+            tachiyomi.core.common.feedback.DiagnosticOperation.READER_IMAGE,
+        ) { sourceCall { source.getImage(page) } }
+        tachiyomi.core.common.feedback.DiagnosticEvents.record(
+            tachiyomi.core.common.feedback.DiagnosticEvent(
+                tachiyomi.core.common.feedback.DiagnosticCategory.READER,
+                tachiyomi.core.common.feedback.DiagnosticOperation.READER_IMAGE,
+                tachiyomi.core.common.feedback.DiagnosticStage.HTTP,
+                statusCode = originalResponse.code,
+            ),
+        )
         originalResponse.use {
             val response = request.factReadPermit?.let { permit ->
                 val originalBody = originalResponse.body

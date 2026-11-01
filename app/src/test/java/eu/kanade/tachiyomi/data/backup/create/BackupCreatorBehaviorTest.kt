@@ -23,42 +23,48 @@ class BackupCreatorBehaviorTest {
 
     @Test
     fun `Android payload includes field 107 through shared contributor`() = runTest {
-        val section = BackupAuthorArchiveSection(
-            creators = listOf(BackupCreatorIdentity("creator-one", "ONE", "one")),
-        )
-        val getFavorites = mockk<GetFavorites>()
-        coEvery { getFavorites.await() } returns emptyList()
-        val mangaBackupCreator = mockk<MangaBackupCreator>()
-        coEvery { mangaBackupCreator(any(), any()) } returns emptyList()
-        val sourcesBackupCreator = mockk<SourcesBackupCreator>()
-        every { sourcesBackupCreator(any()) } returns emptyList()
-        val contributor = mockk<AuthorArchiveBackupContributor>()
-        coEvery { contributor.createSection() } returns section
-        val creator = BackupCreator(
-            context = mockk<Context>(relaxed = true),
-            isAutoBackup = false,
-            getFavorites = getFavorites,
-            backupPreferences = mockk<BackupPreferences>(relaxed = true),
-            mangaRepository = mockk<MangaRepository>(relaxed = true),
-            categoriesBackupCreator = mockk<CategoriesBackupCreator>(relaxed = true),
-            mangaBackupCreator = mangaBackupCreator,
-            preferenceBackupCreator = mockk<PreferenceBackupCreator>(relaxed = true),
-            extensionRepoBackupCreator = mockk<ExtensionRepoBackupCreator>(relaxed = true),
-            sourcesBackupCreator = sourcesBackupCreator,
-            authorArchiveBackupContributor = contributor,
-        )
+        val diagnosticLog = mihon.feedback.withDiagnosticRecording(
+            tachiyomi.core.common.feedback.DiagnosticCategory.BACKUP_SYNC,
+        ) {
+            val section = BackupAuthorArchiveSection(
+                creators = listOf(BackupCreatorIdentity("creator-one", "ONE", "one")),
+            )
+            val getFavorites = mockk<GetFavorites>()
+            coEvery { getFavorites.await() } returns emptyList()
+            val mangaBackupCreator = mockk<MangaBackupCreator>()
+            coEvery { mangaBackupCreator(any(), any()) } returns emptyList()
+            val sourcesBackupCreator = mockk<SourcesBackupCreator>()
+            every { sourcesBackupCreator(any()) } returns emptyList()
+            val contributor = mockk<AuthorArchiveBackupContributor>()
+            coEvery { contributor.createSection() } returns section
+            val creator = BackupCreator(
+                context = mockk<Context>(relaxed = true),
+                isAutoBackup = false,
+                getFavorites = getFavorites,
+                backupPreferences = mockk<BackupPreferences>(relaxed = true),
+                mangaRepository = mockk<MangaRepository>(relaxed = true),
+                categoriesBackupCreator = mockk<CategoriesBackupCreator>(relaxed = true),
+                mangaBackupCreator = mangaBackupCreator,
+                preferenceBackupCreator = mockk<PreferenceBackupCreator>(relaxed = true),
+                extensionRepoBackupCreator = mockk<ExtensionRepoBackupCreator>(relaxed = true),
+                sourcesBackupCreator = sourcesBackupCreator,
+                authorArchiveBackupContributor = contributor,
+            )
 
-        val backup = creator.createPayload(
-            BackupOptions(
-                libraryEntries = true,
-                categories = false,
-                readEntries = false,
-                appSettings = false,
-                extensionRepoSettings = false,
-                sourceSettings = false,
-            ),
-        )
+            val backup = creator.createPayload(
+                BackupOptions(
+                    libraryEntries = true,
+                    categories = false,
+                    readEntries = false,
+                    appSettings = false,
+                    extensionRepoSettings = false,
+                    sourceSettings = false,
+                ),
+            )
 
-        assertEquals(section, backup.backupAuthorArchive)
+            assertEquals(section, backup.backupAuthorArchive)
+        }
+        org.junit.Assert.assertTrue(diagnosticLog.contains("BACKUP"))
+        Unit
     }
 }

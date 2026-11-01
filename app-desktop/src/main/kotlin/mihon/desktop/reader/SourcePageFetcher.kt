@@ -16,6 +16,11 @@ import mihon.domain.reader.ReaderDualPageFactReadPermit
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okio.buffer
+import tachiyomi.core.common.feedback.DiagnosticCategory
+import tachiyomi.core.common.feedback.DiagnosticEvent
+import tachiyomi.core.common.feedback.DiagnosticEvents
+import tachiyomi.core.common.feedback.DiagnosticOperation
+import tachiyomi.core.common.feedback.DiagnosticStage
 import tachiyomi.domain.source.service.toSourceAppError
 import java.io.File
 import java.lang.reflect.InvocationTargetException
@@ -76,6 +81,19 @@ class SourcePageFetcher(
         if (destFile.exists()) destFile.delete()
 
         destFile.parentFile?.mkdirs()
+        val started = System.nanoTime()
+        fun record(stage: DiagnosticStage, code: Int? = null) {
+            DiagnosticEvents.record(
+                DiagnosticEvent(
+                    DiagnosticCategory.READER,
+                    DiagnosticOperation.READER_IMAGE,
+                    stage,
+                    code,
+                    ((System.nanoTime() - started) / 1_000_000).coerceIn(0, 86_400_000),
+                ),
+            )
+        }
+        record(DiagnosticStage.START)
         return try {
             withContext(Dispatchers.IO) {
                 val response = resolveSourceImageResponse(source, page) ?: run {
@@ -85,6 +103,7 @@ class SourcePageFetcher(
                     client.newCall(request).execute()
                 }
                 response.use {
+                    record(DiagnosticStage.HTTP, response.code)
                     if (!response.isSuccessful) throw HttpException(response.code)
                     destFile.outputStream().buffered().use { out ->
                         if (factReadPermit == null) {
@@ -104,11 +123,14 @@ class SourcePageFetcher(
                     }
                 }
             }
+            record(DiagnosticStage.SUCCESS)
             SourcePageFetchResult.Success(destFile.toURI().toString())
         } catch (error: CancellationException) {
+            record(DiagnosticStage.CANCELLED)
             destFile.delete()
             throw error
         } catch (error: Exception) {
+            record(DiagnosticStage.FAILURE)
             destFile.delete()
             val cause = (error as? InvocationTargetException)?.targetException ?: error
             SourcePageFetchResult.Failure(cause.toSourceAppError())

@@ -9,11 +9,12 @@ import mihon.desktop.platform.DesktopPlatformPaths
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
+import tachiyomi.core.common.feedback.DiagnosticNetworkInterceptor
 import tachiyomi.data.feedback.NativeFeedbackHttpService
 import tachiyomi.domain.feedback.NativeFeedbackController
 
 internal fun DesktopNetworkHelper.nativeFeedbackClient(): OkHttpClient = client.newBuilder().apply {
-    interceptors().removeAll { it is DesktopCloudflareInterceptor }
+    interceptors().removeAll { it is DesktopCloudflareInterceptor || it is DiagnosticNetworkInterceptor }
     networkInterceptors().removeAll { it is DesktopCloudflareCredentialInterceptor }
 }.build()
 
@@ -28,12 +29,25 @@ internal fun createDesktopNativeFeedbackController(
     scope: CoroutineScope,
     summary: String,
     openVerification: (String) -> Unit,
+    runtime: DesktopFeedbackRuntime,
 ): NativeFeedbackController = NativeFeedbackController(
     createDesktopNativeFeedbackService(helper),
-    DesktopFeedbackLogReader(paths.logsDir),
+    desktopFeedbackCrashReader(paths),
     summary,
     scope,
     openVerification,
+    language = if (java.util.Locale.getDefault().language == "zh") {
+        tachiyomi.domain.feedback.FeedbackLanguage.CHINESE
+    } else {
+        tachiyomi.domain.feedback.FeedbackLanguage.ENGLISH
+    },
+    screenshotProcessor = DesktopFeedbackScreenshotProcessor(),
+    diagnostics = tachiyomi.domain.feedback.FeedbackDiagnosticController(
+        runtime.store,
+        desktopFeedbackCrashReader(paths),
+        scope,
+    ),
+    initialSnapshot = runtime.memory.snapshot,
 )
 
 /**
@@ -52,4 +66,5 @@ internal fun DesktopUiDependencies.createNativeFeedbackController(
     scope,
     summary,
     openVerification,
+    requireNotNull(feedbackRuntime),
 )

@@ -31,6 +31,7 @@ import java.util.Locale
 @OptIn(ExperimentalComposeUiApi::class)
 class NativeFeedbackUiTest {
     private class Service : NativeFeedbackService {
+        override suspend fun capabilities() = tachiyomi.domain.feedback.NativeFeedbackCapabilities(true, true, true)
         var sessions = 0
         var verified = false
         val submissions = mutableListOf<NativeFeedbackPayload>()
@@ -40,7 +41,8 @@ class NativeFeedbackUiTest {
                 "123e4567-e89b-42d3-a456-426614174000",
                 "s".repeat(43),
                 System.currentTimeMillis() / 1000 + 600,
-                "https://mihon-feedback.mihon-altaircardinal.workers.dev/verify.html#123e4567-e89b-42d3-a456-426614174000",
+                "https://mihon-feedback.mihon-altaircardinal.workers.dev/verify.html#" +
+                    "123e4567-e89b-42d3-a456-426614174000",
             )
         }
         override suspend fun pollSession(
@@ -53,7 +55,7 @@ class NativeFeedbackUiTest {
     }
 
     @Test
-    fun `real Compose fields require independent consent and cancellation keeps private draft`() = runBlocking {
+    fun `real Compose public consent and optional logs preserve draft on cancellation`() = runBlocking {
         val previous = Locale.getDefault()
         Locale.setDefault(Locale.US)
         val service = Service()
@@ -78,7 +80,10 @@ class NativeFeedbackUiTest {
                 }
             }
             render(scene)
-            input(scene, "feedback-title", "Fictional report")
+            click(scene, "feedback-category")
+            render(scene)
+            click(scene, "feedback-category-other")
+            render(scene)
             input(scene, "feedback-description", "A fictional crash happened while opening this test page.")
             click(scene, "feedback-submit")
             render(scene)
@@ -88,9 +93,6 @@ class NativeFeedbackUiTest {
             click(scene, "feedback-read-log")
             render(scene)
             assertEquals(1, reads)
-            click(scene, "feedback-submit")
-            render(scene)
-            assertEquals(0, service.sessions)
             click(scene, "feedback-log-consent")
             input(scene, "feedback-log", "Edited fictional private crash\n")
             render(scene)
@@ -101,7 +103,7 @@ class NativeFeedbackUiTest {
             assertEquals(NativeFeedbackPhase.WAITING_VERIFICATION, controller.state.value.phase)
             assertEquals(1, opened.size)
             assertFalse("Fictional" in opened.single())
-            assertTrue(node(scene, "feedback-title").config.contains(SemanticsProperties.Disabled))
+            assertTrue(node(scene, "feedback-category").config.contains(SemanticsProperties.Disabled))
             click(scene, "feedback-cancel")
             render(scene)
             service.verified = true
@@ -140,7 +142,10 @@ class NativeFeedbackUiTest {
                 }
             }
             render(scene)
-            input(scene, "feedback-title", "Fictional report")
+            click(scene, "feedback-category")
+            render(scene)
+            click(scene, "feedback-category-other")
+            render(scene)
             input(scene, "feedback-description", "A fictional problem detailed only in this native UI test.")
             click(scene, "feedback-public-consent")
             click(scene, "feedback-submit")
@@ -150,8 +155,8 @@ class NativeFeedbackUiTest {
             assertEquals(NativeFeedbackPhase.RECEIVED, controller.state.value.phase)
             assertEquals(1, service.submissions.size)
             assertEquals("", service.submissions.single().crashLog)
-            assertEquals("", service.submissions.single().summary)
-            assertTrue(node(scene, "feedback-title").config.contains(SemanticsProperties.Disabled))
+            assertEquals("Application: Mihon Desktop", service.submissions.single().summary)
+            assertTrue(node(scene, "feedback-category").config.contains(SemanticsProperties.Disabled))
             assertTrue(
                 flatten(scene.semanticsOwners.last().unmergedRootSemanticsNode).any {
                     it.config.getOrElse(SemanticsProperties.Text) { emptyList() }.any { text ->
@@ -162,6 +167,103 @@ class NativeFeedbackUiTest {
             )
         } finally {
             controller.cancel()
+            scene.close()
+            Locale.setDefault(previous)
+        }
+    }
+
+    @Test
+    fun `received receipt survives failed durable logging stop and visible retry works`() = runBlocking {
+        val previous = Locale.getDefault()
+        Locale.setDefault(Locale.US)
+        val root = java.nio.file.Files.createTempDirectory("fictional-receipt-stop").toFile()
+        val storeScope = CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+        val failStop = java.util.concurrent.atomic.AtomicBoolean(false)
+        val persistence = object : tachiyomi.core.common.feedback.DiagnosticPersistence {
+            var saved: tachiyomi.core.common.feedback.DiagnosticSession? = null
+            override fun load() = saved
+            override fun save(session: tachiyomi.core.common.feedback.DiagnosticSession?) {
+                if (session == null && failStop.get()) throw java.io.IOException("Fictional persistence failure")
+                saved = session
+            }
+        }
+        val store = tachiyomi.core.common.feedback.DiagnosticStore(root, persistence, storeScope)
+        store.start(tachiyomi.core.common.feedback.DiagnosticCategory.READER)
+        val diagnostics = tachiyomi.domain.feedback.FeedbackDiagnosticController(store, FeedbackLogReader { "" }, this)
+        val service = Service().apply { verified = true }
+        val controller =
+            NativeFeedbackController(service, FeedbackLogReader { "" }, "", this, {}, diagnostics = diagnostics)
+        val scene = ImageComposeScene(720, 1600, coroutineContext = coroutineContext) {}
+        try {
+            scene.setContent {
+                MaterialTheme { NativeFeedbackDialog(controller, "", {}, {}, { it.localized() }) }
+            }
+            render(scene)
+            controller.category(tachiyomi.domain.feedback.FeedbackCategory.OTHER)
+            controller.description("A fictional feedback report with failed local logging persistence.")
+            controller.publicConsent(true)
+            failStop.set(true)
+            controller.submit()
+            kotlinx.coroutines.withTimeout(5000) {
+                while (store.state.value.error == null) delay(10)
+            }
+            render(scene)
+            assertEquals(NativeFeedbackPhase.RECEIVED, controller.state.value.phase)
+            assertEquals("r".repeat(43), controller.state.value.receipt)
+            assertTrue(store.state.value.session != null)
+            assertTrue(
+                allText(scene).contains("Could not save the logging mode. Logging is still on. Retry stopping it."),
+            )
+            failStop.set(false)
+            click(scene, "feedback-diagnostics-stop")
+            kotlinx.coroutines.withTimeout(5000) {
+                while (store.state.value.session != null) delay(10)
+            }
+            render(scene)
+            assertEquals(null, persistence.saved)
+            assertEquals(NativeFeedbackPhase.RECEIVED, controller.state.value.phase)
+            assertEquals("r".repeat(43), controller.state.value.receipt)
+            assertFalse(allText(scene).contains("Logging is still on"))
+        } finally {
+            scene.close()
+            storeScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+            root.deleteRecursively()
+            Locale.setDefault(previous)
+        }
+    }
+
+    private fun allText(scene: ImageComposeScene): String = scene.semanticsOwners.flatMap {
+        flatten(it.unmergedRootSemanticsNode)
+    }.flatMap { it.config.getOrElse(SemanticsProperties.Text) { emptyList() } }.joinToString("\n") { it.text }
+
+    @Test
+    fun `category choices replace title and real template edits survive cancelled replacement`() = runBlocking {
+        val previous = Locale.getDefault()
+        Locale.setDefault(Locale.US)
+        val controller = NativeFeedbackController(Service(), FeedbackLogReader { "" }, "Application: Mihon", this, {})
+        val scene = ImageComposeScene(720, 1200, coroutineContext = coroutineContext) {}
+        try {
+            scene.setContent {
+                MaterialTheme {
+                    NativeFeedbackDialog(controller, "Application: Mihon", {}, {}, { it.localized() })
+                }
+            }
+            render(scene)
+            click(scene, "feedback-category")
+            render(scene)
+            click(scene, "feedback-category-reader")
+            render(scene)
+            assertTrue("[Where it happened]" in controller.state.value.draft.description)
+            input(scene, "feedback-description", "A fictional reader problem that should remain in the draft.")
+            click(scene, "feedback-category")
+            render(scene)
+            click(scene, "feedback-category-feature_request")
+            render(scene)
+            click(scene, "feedback-category-keep")
+            render(scene)
+            assertTrue("fictional reader" in controller.state.value.draft.description)
+            assertEquals(tachiyomi.domain.feedback.FeedbackCategory.READER, controller.state.value.draft.category)
+        } finally {
             scene.close()
             Locale.setDefault(previous)
         }

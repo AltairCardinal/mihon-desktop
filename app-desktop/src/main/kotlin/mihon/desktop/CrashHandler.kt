@@ -2,10 +2,12 @@ package mihon.desktop
 
 import mihon.desktop.platform.DesktopPlatformPaths
 import java.io.File
-import java.io.PrintWriter
-import java.io.StringWriter
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.PosixFilePermissions
+import tachiyomi.core.common.feedback.SafeCrashReportCodec
 
 /**
  * Global crash handler that captures unhandled exceptions and writes them to a crash log file.
@@ -16,27 +18,19 @@ object CrashHandler : Thread.UncaughtExceptionHandler {
     private const val MAX_LOG_BYTES = 2L * 1024L * 1024L
     private const val MAX_ARCHIVES = 3
 
-    private val timestampFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS")
-
     override fun uncaughtException(thread: Thread, exception: Throwable) {
-        val crashReport = buildCrashReport(thread, exception)
+        val crashReport = SafeCrashReportCodec.format(exception)
         val logFile = crashLogFile()
 
         try {
             appendCrashReport(logFile, crashReport)
         } catch (writeFailure: Exception) {
-            System.err.println(
-                "Failed to persist crash report to ${logFile.path}: " +
-                    "${writeFailure::class.java.name}: ${writeFailure.message ?: "(no message)"}",
-            )
-            writeFailure.printStackTrace(System.err)
+            System.err.println("Failed to persist crash report")
         }
 
         // Also print to stderr for visibility
         System.err.println(crashReport)
 
-        // Print stack trace to stderr
-        exception.printStackTrace(System.err)
         System.err.flush()
 
         // Sleep briefly to ensure log is flushed before JVM exits
@@ -51,7 +45,7 @@ object CrashHandler : Thread.UncaughtExceptionHandler {
         return DesktopPlatformPaths.current().logsDir
     }
 
-    internal fun crashLogFile(directory: File = defaultCrashLogDir()): File = File(directory, "mihon_crash.log")
+    internal fun crashLogFile(directory: File = defaultCrashLogDir()): File = File(directory, "mihon_crash_safe.log")
 
     @Synchronized
     internal fun appendCrashReport(
@@ -60,11 +54,34 @@ object CrashHandler : Thread.UncaughtExceptionHandler {
         maxBytes: Long = MAX_LOG_BYTES,
         maxArchives: Int = MAX_ARCHIVES,
     ) {
+        val path = file.toPath().toAbsolutePath().normalize()
+        fun checkLocation() {
+            var ancestor: java.nio.file.Path? = path
+            while (ancestor != null) {
+                if (Files.isSymbolicLink(ancestor) ||
+                    (Files.exists(ancestor, LinkOption.NOFOLLOW_LINKS) &&
+                        ancestor.toRealPath() != ancestor.toAbsolutePath().normalize())) {
+                    throw IOException("Redirected crash log location")
+                }
+                ancestor = ancestor.parent
+            }
+        }
+        checkLocation()
         file.parentFile?.mkdirs()
         if (file.exists() && file.length() >= maxBytes) {
             rotateCrashLogs(file, maxArchives)
         }
-        file.appendText(report)
+        checkLocation()
+        val posix = Files.getFileStore(path.parent).supportsFileAttributeView("posix")
+        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+            if (posix) {
+                Files.createFile(path, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")))
+            } else Files.createFile(path)
+        }
+        if (posix) Files.setPosixFilePermissions(path, PosixFilePermissions.fromString("rw-------"))
+        Files.newOutputStream(path, StandardOpenOption.APPEND, LinkOption.NOFOLLOW_LINKS).use {
+            it.write(report.toByteArray(Charsets.UTF_8))
+        }
     }
 
     private fun rotateCrashLogs(file: File, maxArchives: Int) {
@@ -81,55 +98,6 @@ object CrashHandler : Thread.UncaughtExceptionHandler {
             }
         }
         file.renameTo(File("${file.path}.1"))
-    }
-
-    private fun buildCrashReport(thread: Thread, exception: Throwable): String {
-        val sw = StringWriter()
-        exception.printStackTrace(PrintWriter(sw))
-        val stackTrace = sw.toString()
-
-        // Limit stack trace length to avoid huge logs
-        val truncatedStack = if (stackTrace.length > 3000) {
-            stackTrace.take(3000) + "\n... (truncated, full trace in console)"
-        } else {
-            stackTrace
-        }
-
-        return buildString {
-            appendLine("=".repeat(80))
-            appendLine("MIHON DESKTOP CRASH REPORT")
-            appendLine("Timestamp: ${timestampFormat.format(Date())}")
-            appendLine("Java Version: ${System.getProperty("java.version")}")
-            appendLine("OS: ${System.getProperty("os.name")} ${System.getProperty("os.version")}")
-            appendLine("App Version: ${APP_VERSION}")
-            appendLine("Thread: ${thread.name}")
-            appendLine("Exception Type: ${exception::class.java.name}")
-            appendLine("Message: ${exception.message ?: "(no message)"}")
-            appendLine()
-            appendLine("Stack Trace:")
-            appendLine(truncatedStack)
-
-            // Add suppressed exceptions if any
-            if (exception.suppressed.isNotEmpty()) {
-                appendLine()
-                appendLine("Suppressed Exceptions:")
-                exception.suppressed.forEach { suppressed ->
-                    appendLine("  - ${suppressed::class.java.name}: ${suppressed.message}")
-                }
-            }
-
-            // Add cause if any
-            if (exception.cause != null && exception.cause != exception) {
-                appendLine()
-                appendLine("Caused by: ${exception.cause!!::class.java.name}: ${exception.cause!!.message}")
-                val causeSw = StringWriter()
-                exception.cause!!.printStackTrace(PrintWriter(causeSw))
-                appendLine(causeSw.toString().take(500))
-            }
-
-            appendLine("=".repeat(80))
-            appendLine()
-        }
     }
 
     /**

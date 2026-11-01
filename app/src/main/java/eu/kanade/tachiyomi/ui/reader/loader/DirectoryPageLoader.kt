@@ -5,6 +5,9 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import mihon.domain.reader.content.ReaderImageCandidatePolicy
 import mihon.domain.reader.content.ReaderImageSortMode
+import tachiyomi.core.common.feedback.DiagnosticCategory
+import tachiyomi.core.common.feedback.DiagnosticOperation
+import tachiyomi.core.common.feedback.diagnosticOperation
 import tachiyomi.core.common.util.system.ImageUtil
 
 /**
@@ -14,8 +17,11 @@ internal class DirectoryPageLoader(val file: UniFile) : PageLoader() {
 
     override var isLocal: Boolean = true
 
-    override suspend fun getPages(): List<ReaderPage> {
-        return file.listFiles()
+    override suspend fun getPages(): List<ReaderPage> = diagnosticOperation(
+        DiagnosticCategory.DOWNLOAD_LOCAL,
+        DiagnosticOperation.LOCAL_FILE,
+    ) {
+        file.listFiles()
             ?.filter {
                 val name = it.name ?: return@filter false
                 !it.isDirectory && ReaderImageCandidatePolicy.accepts(name) {

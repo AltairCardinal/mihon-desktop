@@ -18,6 +18,9 @@ import eu.kanade.tachiyomi.data.backup.models.BackupPreference
 import eu.kanade.tachiyomi.data.backup.models.BackupSource
 import eu.kanade.tachiyomi.data.backup.models.BackupSourcePreferences
 import logcat.LogPriority
+import tachiyomi.core.common.feedback.DiagnosticCategory
+import tachiyomi.core.common.feedback.DiagnosticOperation
+import tachiyomi.core.common.feedback.diagnosticOperation
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.data.backup.AuthorArchiveBackupContributor
@@ -105,10 +108,13 @@ class BackupCreator(
         }
     }
 
-    internal suspend fun createPayload(options: BackupOptions): Backup {
+    internal suspend fun createPayload(options: BackupOptions): Backup = diagnosticOperation(
+        DiagnosticCategory.BACKUP_SYNC,
+        DiagnosticOperation.BACKUP,
+    ) {
         val nonFavoriteManga = if (options.readEntries) mangaRepository.getReadMangaNotInLibrary() else emptyList()
         val backupManga = backupMangas(getFavorites.await() + nonFavoriteManga, options)
-        return Backup(
+        Backup(
             backupManga = backupManga,
             backupCategories = backupCategories(options),
             backupSources = backupSources(backupManga),

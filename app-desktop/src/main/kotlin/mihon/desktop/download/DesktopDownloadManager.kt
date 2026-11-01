@@ -1,5 +1,11 @@
 package mihon.desktop.download
 
+import tachiyomi.core.common.feedback.DiagnosticCategory
+import tachiyomi.core.common.feedback.DiagnosticEvent
+import tachiyomi.core.common.feedback.DiagnosticEvents
+import tachiyomi.core.common.feedback.DiagnosticOperation
+import tachiyomi.core.common.feedback.DiagnosticStage
+
 import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.CatalogueSource
@@ -354,6 +360,12 @@ class DesktopDownloadManager(
                 currentStatuses[item.chapterId] =
                     DownloadQueueStatus.valueOf(item.status.name.replace("DONE", "COMPLETED"))
                 _queue.value = next
+                DiagnosticEvents.record(DiagnosticEvent(
+                    DiagnosticCategory.DOWNLOAD_LOCAL,
+                    DiagnosticOperation.DOWNLOAD,
+                    DiagnosticStage.START,
+                    count = next.size,
+                ))
                 true
             }
         } finally {
@@ -638,6 +650,16 @@ class DesktopDownloadManager(
             }
             _queue.value = nextQueue
             currentStatuses[chapterId] = target
+            DiagnosticEvents.record(DiagnosticEvent(
+                DiagnosticCategory.DOWNLOAD_LOCAL,
+                DiagnosticOperation.DOWNLOAD,
+                when (target) {
+                    DownloadQueueStatus.COMPLETED -> DiagnosticStage.SUCCESS
+                    DownloadQueueStatus.ERROR -> DiagnosticStage.FAILURE
+                    DownloadQueueStatus.CANCELLED -> DiagnosticStage.CANCELLED
+                    else -> DiagnosticStage.START
+                },
+            ))
             if (target == DownloadQueueStatus.QUEUED) {
                 val oldKey = DownloadAttemptKey(chapterId, currentGeneration)
                 resolvedDownloadIdentities.remove(oldKey)

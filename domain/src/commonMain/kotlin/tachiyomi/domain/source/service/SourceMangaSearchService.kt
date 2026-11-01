@@ -6,6 +6,9 @@ import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.CancellationException
 import mihon.domain.error.AppError
+import tachiyomi.core.common.feedback.DiagnosticCategory
+import tachiyomi.core.common.feedback.DiagnosticOperation
+import tachiyomi.core.common.feedback.diagnosticOperation
 
 class SourceMangaSearchService {
 
@@ -37,10 +40,12 @@ class SourceMangaSearchService {
         page: Int,
         request: SourceMangaSearchRequest,
     ): MangasPage {
-        return when (request) {
-            is SourceMangaSearchRequest.Search -> source.getSearchManga(page, request.query, request.filters)
-            SourceMangaSearchRequest.Latest -> source.getLatestUpdates(page)
-            SourceMangaSearchRequest.Popular -> source.getPopularManga(page)
+        return diagnosticOperation(DiagnosticCategory.BROWSE_DETAILS, DiagnosticOperation.BROWSE) {
+            when (request) {
+                is SourceMangaSearchRequest.Search -> source.getSearchManga(page, request.query, request.filters)
+                SourceMangaSearchRequest.Latest -> source.getLatestUpdates(page)
+                SourceMangaSearchRequest.Popular -> source.getPopularManga(page)
+            }
         }
     }
 

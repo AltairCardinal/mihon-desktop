@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -11,12 +12,34 @@ import org.junit.jupiter.api.parallel.Isolated
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.PrintStream
+import java.io.IOException
+import java.nio.file.Files
 
 @Isolated
 class CrashHandlerTest {
 
     @TempDir
     lateinit var tempDir: File
+
+    @Test
+    fun `crash persistence refuses directory links instead of writing outside private location`() {
+        val target = tempDir.resolve("outside").apply { mkdirs() }.toPath()
+        val link = tempDir.resolve("redirected").toPath()
+        try {
+            if (System.getProperty("os.name").lowercase().contains("win")) {
+                fun quoted(value: String) = "'${value.replace("'", "''")}'"
+                val command = "New-Item -ItemType Junction -Path ${quoted(link.toString())} -Target ${quoted(target.toString())} | Out-Null"
+                val process = ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command)
+                    .redirectErrorStream(true).start()
+                val output = process.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                assertEquals(0, process.waitFor(), output)
+            } else Files.createSymbolicLink(link, target)
+            assertThrows(IOException::class.java) {
+                CrashHandler.appendCrashReport(link.resolve("private.log").toFile(), "fictional crash\n")
+            }
+            assertEquals(0, target.toFile().listFiles()!!.size)
+        } finally { Files.deleteIfExists(link) }
+    }
 
     @Test
     fun `default crash log directory uses user-visible mihon logs directory`() {
@@ -70,7 +93,7 @@ class CrashHandlerTest {
     }
 
     @Test
-    fun `uncaught handler reports original exception when crash log write fails`() {
+    fun `uncaught handler preserves safe exception type when crash log write fails`() {
         val blockingParent = File(tempDir, "not-a-directory").apply { writeText("blocking file") }
         val previousHome = System.getProperty("user.home")
         val previousOs = System.getProperty("os.name")
@@ -91,9 +114,11 @@ class CrashHandlerTest {
             }
 
             val stderr = stderrBytes.toString(Charsets.UTF_8)
-            assertTrue(stderr.contains("original crash remains visible"))
+            assertTrue(stderr.contains("IllegalStateException"))
+            assertFalse(stderr.contains("original crash remains visible"))
             assertTrue(stderr.contains("Failed to persist crash report"))
-            assertTrue(stderr.contains("truncated, full trace in console"))
+            assertFalse(stderr.contains(blockingParent.path))
+            assertFalse(stderr.contains("Example159"))
         } finally {
             System.setErr(previousErr)
             System.setProperty("user.home", previousHome)

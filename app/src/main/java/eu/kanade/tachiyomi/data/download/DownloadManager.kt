@@ -16,6 +16,9 @@ import kotlinx.coroutines.runBlocking
 import logcat.LogPriority
 import mihon.domain.reader.content.ReaderImageCandidatePolicy
 import mihon.domain.reader.content.ReaderImageSortMode
+import tachiyomi.core.common.feedback.DiagnosticCategory
+import tachiyomi.core.common.feedback.DiagnosticOperation
+import tachiyomi.core.common.feedback.diagnosticOperation
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.storage.extension
 import tachiyomi.core.common.util.lang.launchIO
@@ -166,7 +169,9 @@ class DownloadManager(
     fun downloadChapters(manga: Manga, chapters: List<Chapter>, autoStart: Boolean = true) {
         synchronized(directoryChangeLock) {
             check(chapters.none { it.id in directoryChangeReservations }) { "Chapter directory is being refreshed" }
-            downloader.queueChapters(manga, chapters, autoStart)
+            diagnosticOperation(DiagnosticCategory.DOWNLOAD_LOCAL, DiagnosticOperation.DOWNLOAD) {
+                downloader.queueChapters(manga, chapters, autoStart)
+            }
         }
     }
 
@@ -207,7 +212,11 @@ class DownloadManager(
      * @param chapter the downloaded chapter.
      * @return the list of pages from the chapter.
      */
-    fun buildPageList(source: Source, manga: Manga, chapter: Chapter): List<Page> {
+    fun buildPageList(
+        source: Source,
+        manga: Manga,
+        chapter: Chapter,
+    ): List<Page> = diagnosticOperation(DiagnosticCategory.DOWNLOAD_LOCAL, DiagnosticOperation.LOCAL_FILE) {
         val chapterDir = provider.findChapterDir(chapter.name, chapter.scanlator, chapter.url, manga.title, source)
         val files = chapterDir?.listFiles().orEmpty()
             .filter {
@@ -221,7 +230,7 @@ class DownloadManager(
             throw Exception(context.stringResource(MR.strings.page_list_empty_error))
         }
 
-        return files.sortedWith { first, second ->
+        files.sortedWith { first, second ->
             ReaderImageCandidatePolicy.compare(
                 ReaderImageSortMode.DOWNLOAD_LEXICAL_CASE_SENSITIVE,
                 first.name.orEmpty(),

@@ -1,6 +1,9 @@
 package tachiyomi.domain.chapter.interactor
 
 import mihon.domain.sync.SyncMutationContext
+import tachiyomi.core.common.feedback.DiagnosticCategory
+import tachiyomi.core.common.feedback.DiagnosticOperation
+import tachiyomi.core.common.feedback.diagnosticOperation
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 
@@ -26,7 +29,9 @@ class SetChapterReadStatus(
             )
         }
         if (updates.isNotEmpty()) {
-            updateChapter.awaitAllOrThrow(updates)
+            diagnosticOperation(DiagnosticCategory.LIBRARY_PROGRESS, DiagnosticOperation.PROGRESS) {
+                updateChapter.awaitAllOrThrow(updates)
+            }
         }
     }
 

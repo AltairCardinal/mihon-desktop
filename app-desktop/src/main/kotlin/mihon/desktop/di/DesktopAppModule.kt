@@ -1,5 +1,6 @@
 package mihon.desktop.di
 
+import tachiyomi.core.common.feedback.DiagnosticEvents
 import android.app.Application
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
@@ -1065,8 +1066,13 @@ internal suspend fun initUILayer(
         deviceConditionsOverride ?: mihon.desktop.platform.createDesktopDeviceConditions(),
     )
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val feedbackRuntime = mihon.desktop.feedback.DesktopFeedbackRuntime(
+        mihon.desktop.feedback.createDesktopDiagnosticStore(paths, preferenceStore, applicationScope),
+    )
     var initializedDownloadManager: mihon.desktop.download.DesktopDownloadManager? = null
     try {
+        Injekt.addSingleton(feedbackRuntime)
+        DiagnosticEvents.install(feedbackRuntime.store)
         val passphraseVerifier = DesktopPassphraseVerifier(
             DesktopCredentialStore(credentialBackendFactory(CredentialNamespace.APP_LOCK_V1)),
         )
@@ -1481,8 +1487,13 @@ internal suspend fun initUILayer(
             updateScreenModel = updateScreenModel,
         )
         runtime.attachCloseable(nativeSharePort)
+        runtime.attachCloseable(AutoCloseable {
+            feedbackRuntime.memory.snapshot = null
+            DiagnosticEvents.uninstall(feedbackRuntime.store)
+        })
         Injekt.addSingleton(runtime)
     } catch (failure: Throwable) {
+        DiagnosticEvents.uninstall(feedbackRuntime.store)
         kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
             applicationScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
             applicationScope.coroutineContext[kotlinx.coroutines.Job]?.join()

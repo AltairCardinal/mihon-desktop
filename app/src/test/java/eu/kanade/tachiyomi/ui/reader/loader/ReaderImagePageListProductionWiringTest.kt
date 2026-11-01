@@ -27,30 +27,35 @@ class ReaderImagePageListProductionWiringTest {
 
     @Test
     fun `directory loader uses upstream probe policy and local natural order`() = runTest {
-        withSuccessfulImageProbe {
-            val file10 = uniFile("10.jpg", marker = 10)
-            val file2 = uniFile("2.jpg", marker = 2)
-            val unknown3 = uniFile("3.bin", marker = 3)
-            val empty4 = uniFile("4.jpg", marker = null)
-            val jp2 = uniFile("5.jp2", marker = 5)
-            val jpx = uniFile("6.jpx", marker = 6)
-            val nullName = uniFile(null, marker = 99)
-            val directory = mockk<UniFile>()
-            every { directory.listFiles() } returns arrayOf(file10, jpx, nullName, empty4, unknown3, jp2, file2)
+        val diagnosticLog = mihon.feedback.withDiagnosticRecording(
+            tachiyomi.core.common.feedback.DiagnosticCategory.DOWNLOAD_LOCAL,
+        ) {
+            withSuccessfulImageProbe {
+                val file10 = uniFile("10.jpg", marker = 10)
+                val file2 = uniFile("2.jpg", marker = 2)
+                val unknown3 = uniFile("3.bin", marker = 3)
+                val empty4 = uniFile("4.jpg", marker = null)
+                val jp2 = uniFile("5.jp2", marker = 5)
+                val jpx = uniFile("6.jpx", marker = 6)
+                val nullName = uniFile(null, marker = 99)
+                val directory = mockk<UniFile>()
+                every { directory.listFiles() } returns arrayOf(file10, jpx, nullName, empty4, unknown3, jp2, file2)
 
-            val pages = DirectoryPageLoader(directory).getPages()
+                val pages = DirectoryPageLoader(directory).getPages()
 
-            assertEquals(6, pages.size)
-            assertTrue(pages.all { it.status == Page.State.Ready })
-            verify(exactly = 0) { file10.openInputStream() }
-            verify(exactly = 0) { file2.openInputStream() }
-            verify(exactly = 0) { empty4.openInputStream() }
-            verify(exactly = 0) { jp2.openInputStream() }
-            verify(exactly = 0) { jpx.openInputStream() }
-            verify(exactly = 1) { unknown3.openInputStream() }
-            verify(exactly = 0) { nullName.openInputStream() }
-            assertEquals(listOf(2, 3, null, 5, 6, 10), pages.map(::streamMarker))
+                assertEquals(6, pages.size)
+                assertTrue(pages.all { it.status == Page.State.Ready })
+                verify(exactly = 0) { file10.openInputStream() }
+                verify(exactly = 0) { file2.openInputStream() }
+                verify(exactly = 0) { empty4.openInputStream() }
+                verify(exactly = 0) { jp2.openInputStream() }
+                verify(exactly = 0) { jpx.openInputStream() }
+                verify(exactly = 1) { unknown3.openInputStream() }
+                verify(exactly = 0) { nullName.openInputStream() }
+                assertEquals(listOf(2, 3, null, 5, 6, 10), pages.map(::streamMarker))
+            }
         }
+        assertTrue(diagnosticLog.contains("LOCAL_FILE"))
     }
 
     @Test
