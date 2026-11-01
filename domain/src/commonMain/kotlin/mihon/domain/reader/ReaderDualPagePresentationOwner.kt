@@ -12,16 +12,25 @@ data class ReaderDualPageFrame(
     val drawnPageIds: Set<ReaderPageId>,
 )
 
+/** A not-yet-mounted proposal has no frame id; mounted frames never share identity. */
+data class ReaderDualPagePresentationFrame(val unit: ReaderDualPageUnit, val frameId: ReaderDualPageFrameId?)
+
 /** Research implementation: metadata determines pairs; visible leases never feed pairing history. */
 internal class ReaderDualPagePresentationOwner(
     private val identity: () -> ReaderDualPageIdentity,
     private val facts: Map<ReaderPageId, ReaderPageFact>,
     private val distance: (ReaderPageId, ReaderPageId) -> Double?,
     private var direction: ReaderDirection,
+    private val preferred: (ReaderPageId) -> ReaderDualPagePresentationSelection?,
+    private val currentPage: () -> ReaderPageId?,
 ) {
     private data class Record(
         val id: ReaderDualPageFrameId,
         var unit: ReaderDualPageUnit,
+        val selectionPage: ReaderPageId,
+        val promised: Set<ReaderPageId> = unit.pageIds.toSet(),
+        val source: ReaderDualPagePresentationSource,
+        val selectionRevision: Long,
         val locked: MutableSet<ReaderPageId> = mutableSetOf(),
         val drawn: MutableSet<ReaderPageId> = mutableSetOf(),
         var visible: Boolean = true,
@@ -38,6 +47,8 @@ internal class ReaderDualPagePresentationOwner(
     private val tickets = mutableMapOf<ReaderDualPageViewportTicket, Record>()
     private val inheritedReleases = mutableMapOf<ReaderDualPageViewportTicket, Record>()
     private val reported = mutableMapOf<Long, MutableSet<ReaderPageId>>()
+    var inputRevision = 0L
+        private set
     private var serial = 0L
     private var context = 0L
     private var currentLocationSequence = 0L
@@ -47,6 +58,10 @@ internal class ReaderDualPagePresentationOwner(
     private var automatic = false
     private var singleMode = false
     private var projection: List<ReaderDualPageUnit>? = null
+    private var defaultProjection: List<ReaderDualPageUnit>? = null
+    private var defaultByPage: Map<ReaderPageId, ReaderDualPageUnit> = emptyMap()
+    private var activeFrame: ReaderDualPageFrameId? = null
+    val targetFrameId: ReaderDualPageFrameId? get() = activeFrame?.takeIf { records[it]?.visible == true }
     private var presentedProjection: List<ReaderDualPageUnit>? = null
     private var byPage: Map<ReaderPageId, ReaderDualPageUnit> = emptyMap()
 
@@ -80,16 +95,69 @@ internal class ReaderDualPagePresentationOwner(
 
     fun canonicalUnits(): List<ReaderDualPageUnit> = plan()
 
-    /** Overlay current physical leases without changing the canonical proposal or retaining history claims. */
+    /** Missing evidence uses the chapter-start rule, retaining only known hard geometry/manual boundaries. */
+    private fun defaultPlan(): List<ReaderDualPageUnit> = defaultProjection ?: (
+        if (singleMode) {
+            plan()
+        } else {
+            SharedDualPageRules.canonicalPlan(
+                pages,
+                facts,
+                direction,
+                forced,
+                manualPairStarts,
+                openingMode,
+                automatic = false,
+            )
+        }
+        ).map { proposed ->
+        // A restored manual single keeps reliable own-page side geometry without allowing
+        // decoded side hints to choose the unknown chapter pairing phase.
+        val unit = if (proposed.singleReason == ReaderDualPageSingleReason.MANUAL_BOUNDARY) {
+            SharedDualPageRules.decide(
+                pages,
+                facts,
+                direction,
+                ordinals.getValue(proposed.anchor),
+                forcedSinglePages = forced,
+                usePageSideHints = automatic,
+            ).unit
+        } else {
+            proposed
+        }
+        defaultByPage[unit.anchor]?.takeIf { it == unit } ?: unit
+    }.also { units ->
+        defaultProjection = units
+        defaultByPage = units.flatMap { unit -> unit.pageIds.map { it to unit } }.toMap()
+    }
+
+    private fun candidate(page: ReaderPageId): ReaderDualPagePresentationSelection {
+        val reliable = preferred(page) ?: records.values.lastOrNull {
+            it.visible && it.selectionRevision == inputRevision &&
+                it.source == ReaderDualPagePresentationSource.CERTIFIED && page in it.unit.pageIds
+        }?.let { ReaderDualPagePresentationSelection(it.unit, it.source) }
+        defaultPlan()
+        return reliable?.takeIf { page in it.unit.pageIds } ?: ReaderDualPagePresentationSelection(
+            defaultByPage.getValue(page),
+            if (singleMode) ReaderDualPagePresentationSource.SINGLE else ReaderDualPagePresentationSource.DEFAULT,
+        )
+    }
+
+    /** Outgoing and incoming physical frames may share a boundary page until native release. */
     fun presentationFrameProjection(): List<ReaderDualPageUnit> {
         records.values.toList().filter { it.visible }.forEach(::refresh)
-        val claims = records.values.filter { it.visible && it.locked.isNotEmpty() }
-            .flatMap { record -> record.unit.pageIds.map { it to record.unit } }.toMap()
+        val active = records[activeFrame]?.takeIf { it.visible }?.unit ?: currentPage()?.let { candidate(it).unit }
+        defaultPlan()
+        // Explicitly prepared native candidates need their identity in the next publication before
+        // a mount may obtain its first ticket. They remain replaceable until a real pixel lock.
+        val retained = records.values.filter { it.visible }.map { it.unit }
+        val selected = listOfNotNull(active)
+        val claims = selected.flatMap { unit -> unit.pageIds.map { it to unit } }.toMap()
         val emitted = mutableSetOf<ReaderPageId>()
         val next = buildList {
             for (page in pages) {
                 if (page in emitted) continue
-                val proposed = claims[page] ?: unit(page)
+                val proposed = claims[page] ?: defaultByPage.getValue(page)
                 val slots = proposed.slots.filter { slot ->
                     slot.pageId !in emitted && (claims[slot.pageId] == null || claims[slot.pageId] == proposed)
                 }
@@ -97,12 +165,47 @@ internal class ReaderDualPagePresentationOwner(
                 add(if (slots == proposed.slots) proposed else proposed.copy(slots = slots))
                 emitted += slots.map { it.pageId }
             }
+        }.let { base ->
+            // Do not globally de-duplicate source pages: each retained frame owns its own lease.
+            val retainedPages = retained.flatMapTo(mutableSetOf()) { it.pageIds }
+            (
+                base.mapNotNull { proposed ->
+                    if (retained.any { it.id == proposed.id }) return@mapNotNull null
+                    if (selected.any { it.id == proposed.id }) return@mapNotNull proposed
+                    val slots = proposed.slots.filter { it.pageId !in retainedPages }
+                    if (slots.isEmpty()) {
+                        null
+                    } else if (slots == proposed.slots) {
+                        proposed
+                    } else {
+                        proposed.copy(slots = slots)
+                    }
+                } + retained
+                )
+                .sortedBy { ordinals.getValue(it.anchor) }
         }
         return presentedProjection?.takeIf { it == next } ?: next.also { presentedProjection = it }
     }
 
-    fun presentationUnit(page: ReaderPageId): ReaderDualPageUnit =
-        presentationFrameProjection().first { page in it.pageIds }
+    fun presentationUnit(page: ReaderPageId): ReaderDualPageUnit {
+        val active = records[activeFrame]?.takeIf { it.visible && containsLocation(it, page) }
+        if (active != null) {
+            refresh(active)
+            if (records[active.id] === active && containsLocation(active, page)) return active.unit
+        }
+        return candidate(page).unit
+    }
+
+    fun frameProjection(): List<ReaderDualPagePresentationFrame> = presentationFrameProjection().distinctBy {
+        it.id
+    }.flatMap { unit ->
+        val mounted = records.values.filter { it.visible && it.unit.id == unit.id }
+        if (mounted.isEmpty()) {
+            listOf(ReaderDualPagePresentationFrame(unit, null))
+        } else {
+            mounted.map { ReaderDualPagePresentationFrame(it.unit, it.id) }
+        }
+    }
 
     fun frame(ticket: ReaderDualPageViewportTicket): ReaderDualPageFrame? {
         val record = tickets[ticket] ?: return null
@@ -135,12 +238,16 @@ internal class ReaderDualPagePresentationOwner(
         context = previous.context
         serial = previous.serial
         for (old in previous.records.values) {
-            if (!unchanged.containsAll(old.unit.pageIds)) continue
-            // A complete unchanged active unit keeps its physical mount. Tickets are never transferred.
+            val wholeUnitUnchanged = unchanged.containsAll(old.unit.pageIds)
+            if (!wholeUnitUnchanged && (old.locked.isEmpty() || !unchanged.containsAll(old.locked))) continue
+            // Unchanged locked pixels retain their mount while an unprepared partner retries.
+            // Tickets are never transferred, and proof of replaced partner bytes is not inherited.
             val copy = old.copy(
                 locked = old.locked.toMutableSet(),
                 drawn = old.drawn.toMutableSet(),
                 visible = old.visible,
+                source = if (wholeUnitUnchanged) old.source else ReaderDualPagePresentationSource.DEFAULT,
+                selectionRevision = -1,
             )
             records[copy.id] = copy
             if (old.visible) {
@@ -149,6 +256,8 @@ internal class ReaderDualPagePresentationOwner(
                 }
             }
         }
+        activeFrame = previous.activeFrame?.takeIf { it in records }
+        currentLocationSequence = previous.currentLocationSequence
     }
 
     fun metadataChanged(page: ReaderPageId) {
@@ -171,19 +280,75 @@ internal class ReaderDualPagePresentationOwner(
     private fun ready(record: Record, page: ReaderPageId): Boolean =
         page in record.unit.pageIds && (singleMode || known(page))
 
+    private fun containsLocation(record: Record, page: ReaderPageId): Boolean = page in record.unit.pageIds ||
+        (record.id == activeFrame && page == currentPage() && page in record.promised && record.locked.isNotEmpty())
+
+    private fun resolveRecord(
+        page: ReaderPageId,
+        location: ReaderDualPageLocationIntent,
+        requestedUnit: ReaderDualPageUnitId?,
+        requestedFrame: ReaderDualPageFrameId?,
+    ): Record? {
+        records.values.filter { it.visible }.toList().forEach(::refresh)
+        val desired = candidate(page)
+        val exact = requestedFrame?.let { id ->
+            records[id]?.takeIf {
+                it.visible && it.activeSequence == location.sequence && containsLocation(it, page) &&
+                    (requestedUnit == null || it.unit.id == requestedUnit)
+            }
+                ?: return null
+        }
+        val active = records[activeFrame]?.takeIf {
+            it.visible && containsLocation(it, page) && (requestedUnit == null || it.unit.id == requestedUnit)
+        }
+        if (exact == null && active == null && requestedUnit != null && desired.unit.id != requestedUnit) return null
+        return exact ?: active
+            ?: records.values.firstOrNull {
+                it.visible && it.activeSequence == location.sequence && it.unit.id == desired.unit.id
+            }
+            ?: Record(
+                ReaderDualPageFrameId(identity().generation, context, serial++),
+                desired.unit,
+                page,
+                source = desired.source,
+                selectionRevision = inputRevision,
+            )
+                .also { records[it.id] = it }
+    }
+
+    private fun activateRecord(record: Record, location: ReaderDualPageLocationIntent, activate: Boolean) {
+        record.visible = true
+        record.appendable = !record.stale
+        record.activeSequence = location.sequence
+        if (activate) {
+            currentLocationSequence = location.sequence
+            activeFrame = record.id
+        }
+    }
+
+    fun prepareFrame(
+        page: ReaderPageId,
+        location: ReaderDualPageLocationIntent,
+        requestedUnit: ReaderDualPageUnitId?,
+        activate: Boolean,
+    ): ReaderDualPageFrameId? {
+        val record = resolveRecord(page, location, requestedUnit, null) ?: return null
+        activateRecord(record, location, activate)
+        return record.id
+    }
+
     fun prepare(
         page: ReaderPageId,
         location: ReaderDualPageLocationIntent,
         layoutRevision: Long,
         preparingPages: Set<ReaderPageId>,
         readingEligible: Boolean,
+        requestedUnit: ReaderDualPageUnitId? = null,
+        requestedFrame: ReaderDualPageFrameId? = null,
+        activate: Boolean = page == location.pageId,
+        leaseOwner: Any? = null,
     ): ReaderDualPageViewportTicket? {
-        currentLocationSequence = location.sequence
-        val desired = presentationUnit(page)
-        records.values.filter { it.visible }.toList().forEach(::refresh)
-        val record = records.values.firstOrNull { it.visible && it.unit.id == desired.id }
-            ?: Record(ReaderDualPageFrameId(identity().generation, context, serial++), desired)
-                .also { records[it.id] = it }
+        val record = resolveRecord(page, location, requestedUnit, requestedFrame) ?: return null
         // A page the platform declares as preparing may enter the viewport before its fact is
         // known: the decoded fact is what makes it known, and it can only arrive through a
         // ticket. It still becomes drawable only after that fact is known, because
@@ -191,13 +356,11 @@ internal class ReaderDualPagePresentationOwner(
         if (!preparingPages.all { it in record.unit.pageIds && (!record.stale || it in record.locked) }) {
             return null
         }
-        record.visible = true
-        record.appendable = !record.stale
-        record.activeSequence = location.sequence
+        activateRecord(record, location, activate)
         record.locked += preparingPages
         return tickets.entries.firstOrNull {
             it.value === record && it.key.locationSequence == location.sequence &&
-                it.key.readingEligible == readingEligible
+                it.key.readingEligible == readingEligible && it.key.leaseOwner === leaseOwner
         }?.key ?: ReaderDualPageViewportTicket(
             identity(),
             layoutRevision,
@@ -205,6 +368,8 @@ internal class ReaderDualPagePresentationOwner(
             record.unit.id,
             readingEligible,
             record.id,
+            record.source,
+            leaseOwner,
         ).also { tickets[it] = record }
     }
 
@@ -268,13 +433,16 @@ internal class ReaderDualPagePresentationOwner(
     }
 
     fun navigate(from: ReaderPageId, forward: Boolean): ReaderPageId? {
-        val current = presentationUnit(from)
+        val record = records[activeFrame]?.takeIf { it.visible }
+        val current = record?.promised ?: presentationUnit(from).pageIds.toSet()
+        val drawn = record?.drawn.orEmpty()
+        val anchor = ordinals.getValue(from)
+        val missing = (current - drawn).map(ordinals::getValue).filter { if (forward) it > anchor else it < anchor }
+        if (missing.isNotEmpty()) return pages[if (forward) missing.min() else missing.max()]
         val ordinal = if (forward) {
-            current.pageIds.maxOf(
-                ordinals::getValue,
-            )
+            maxOf(anchor, drawn.maxOfOrNull(ordinals::getValue) ?: anchor)
         } else {
-            current.pageIds.minOf(ordinals::getValue)
+            minOf(anchor, drawn.minOfOrNull(ordinals::getValue) ?: anchor)
         }
         return pages.getOrNull(ordinal + if (forward) 1 else -1)
     }
@@ -282,33 +450,44 @@ internal class ReaderDualPagePresentationOwner(
     @Suppress("UNUSED_PARAMETER")
     fun move(target: ReaderPageId, forward: Boolean?, from: ReaderPageId?, sequence: Long) {
         currentLocationSequence = sequence
-        val desired = presentationUnit(target)
+        val desired = candidate(target).unit
+        val current = records[activeFrame]
+        activeFrame = current?.takeIf { it.visible && it.unit.id == desired.id && target in it.unit.pageIds }?.id
+            ?: records.values.firstOrNull { it.visible && it.unit.id == desired.id && target in it.unit.pageIds }?.id
         records.values.filter { it.visible }.forEach {
-            it.appendable = !it.stale && it.unit.id == desired.id
+            it.appendable = !it.stale && it.id == activeFrame
             if (it.appendable) it.activeSequence = sequence
         }
+        records.values.filter { record ->
+            record.id != activeFrame && record.locked.isEmpty() &&
+                tickets.values.none { it === record } && inheritedReleases.values.none { it === record }
+        }.toList().forEach(::discard)
         reported.clear()
     }
 
     /** Lazy metadata rebuild: bulk fact ingestion performs no chapter scan until a consumer requests it. */
     @Suppress("UNUSED_PARAMETER")
     fun factsChanged(changedPage: ReaderPageId? = null) {
+        inputRevision++
         projection = null
+        defaultProjection = null
     }
 
     private fun refresh(record: Record) {
         if (!record.visible || record.stale) return
-        val desired = unit(record.unit.anchor)
+        val desired = candidate(record.selectionPage).unit
         if (desired.id == record.unit.id) {
             record.unit = desired
         } else if (record.locked.isEmpty()) {
             discard(record)
         } else {
-            // Unprepared partners have no geometry promise. A late wide partner must remain reachable.
-            record.unit = record.unit.copy(slots = record.unit.slots.filter { it.pageId in record.locked })
-            // Real prior draws may still settle. This old capability cannot authorize newly added slots.
-            record.stale = true
-            record.appendable = false
+            // Automatic regrouping cannot withdraw a compatible promised slot. Only actual wide
+            // geometry makes an unprepared half-slot incompatible; its navigation duty is retained.
+            record.unit = record.unit.copy(
+                slots = record.unit.slots.filter {
+                    it.pageId in record.locked || facts[it.pageId]?.state != ReaderPageFactState.SPREAD
+                },
+            )
         }
     }
 
@@ -351,6 +530,8 @@ internal class ReaderDualPagePresentationOwner(
     }
 
     fun invalidateViewport() {
+        inputRevision++
+        activeFrame = null
         tickets.clear()
         inheritedReleases.clear()
         records.values.forEach {
@@ -359,12 +540,14 @@ internal class ReaderDualPagePresentationOwner(
         }
         context++
         projection = null
+        defaultProjection = null
     }
 
     fun reloadContent(page: ReaderPageId): Boolean {
         val affected = records.values.filter { page in it.unit.pageIds }
-        val visible = affected.any { it.visible }
-        affected.forEach(::discard)
+        val invalidated = affected.filter { it.locked.isEmpty() || page in it.locked }
+        val visible = invalidated.any { it.visible && page in it.locked }
+        invalidated.forEach(::discard)
         projection = null
         return visible
     }

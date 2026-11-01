@@ -1,5 +1,6 @@
 package mihon.desktop.test.http
 
+import eu.kanade.tachiyomi.source.model.SChapter
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
 import kotlinx.coroutines.CoroutineScope
@@ -17,6 +18,9 @@ import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.download.DownloadFileOperations
 import mihon.desktop.reader.DesktopReaderPartialPageFileCopyPort
+import mihon.desktop.reader.SkiaImageDecoder
+import mihon.desktop.reader.SourcePageFetchResult
+import mihon.desktop.reader.SourcePageFetcher
 import mihon.domain.reader.observability.ReaderIoEvent
 import mihon.domain.reader.observability.ReaderIoEventType
 import mihon.domain.reader.observability.ReaderIoPurpose
@@ -27,6 +31,8 @@ import okhttp3.Protocol
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -34,12 +40,63 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import javax.imageio.ImageIO
 import okhttp3.Request as OkHttpRequest
 
 class ReaderTestModeHttpTest {
 
     @TempDir
     lateinit var directory: File
+
+    @Test
+    fun `online fixture source refresh resolves a cleared image URL and refetches real encoded pixels`() =
+        runBlocking {
+            val server = embeddedServer(CIO, host = "127.0.0.1", port = 0) { testHttpServer() }.start()
+            val port = server.resolvedConnectors().single().port
+            val controller = ReaderTestModeController(baseUrl = "http://127.0.0.1:$port")
+            ReaderIoTestModeBridge.install(controller)
+            try {
+                val fixture = controller.prepareFixture(
+                    ReaderTestFixtureSpec(
+                        source = ReaderTestFixtureSource.ONLINE,
+                        pageCount = 3,
+                        width = 16,
+                        height = 24,
+                        format = ReaderTestImageFormat.JPEG,
+                    ),
+                    mangaId = 101L,
+                    chapterId = 201L,
+                    chapterTitle = "Online retry",
+                )
+                val source = controller.onlineSource
+                val chapter = SChapter.create().apply { url = fixture.chapterUrl }
+                val page = source.getPageList(chapter)[1]
+                val fetcher = SourcePageFetcher(source, OkHttpClient())
+                assertInstanceOf(
+                    SourcePageFetchResult.Success::class.java,
+                    fetcher.fetchToDestination(page, directory.resolve("first.jpg")),
+                )
+                assertEquals(1, controller.rawOnlineImageRequestCount())
+                // Production Retry force-refresh clears this value and asks the same source to resolve it again.
+                page.imageUrl = null
+                val destination = directory.resolve("retried.jpg")
+                val retried = fetcher.fetchToDestination(page, destination)
+                assertInstanceOf(SourcePageFetchResult.Success::class.java, retried, "Actual source refresh: $retried")
+                assertEquals(2, controller.rawOnlineImageRequestCount(), "The retried content must perform real HTTP")
+                assertTrue(SkiaImageDecoder.canDecodePixels(destination.readBytes()))
+                val decoded = ImageIO.read(destination)
+                try {
+                    assertEquals(16, decoded.width)
+                    assertEquals(24, decoded.height)
+                } finally {
+                    decoded.flush()
+                }
+            } finally {
+                server.stop(0, 0)
+                ReaderIoTestModeBridge.clear(controller)
+                controller.close()
+            }
+        }
 
     @Test
     fun `reader state reports production partial route generation local copy network fallback and lock counts`() =

@@ -493,6 +493,9 @@ class ReaderScreenModel(
         certificationTargets.retainAll(owner.identity.pageIds.toSet())
         val validCertificationTargets = (certificationTargets + listOfNotNull(owner.location?.pageId))
             .filter { it in owner.identity.pageIds }
+        val certifications = validCertificationTargets.associateWith(owner::certifyPairing)
+        owner.preparePresentationFrame()
+        val frames = owner.presentationFrames
         _state.update { current ->
             val notice = when {
                 status == ReaderPairingPersistenceStatus.SAVE_FAILED ||
@@ -505,12 +508,14 @@ class ReaderScreenModel(
             }
             current.copy(
                 dualPageUnits = owner.units, dualPageIdentity = owner.identity,
+                dualPageFrames = frames,
+                dualPageTargetFrameId = owner.targetFrameId,
                 dualPageLayoutRevision = owner.layoutRevision,
                 dualFactWorkRevision = owner
                     .factWorkRevision,
                 dualPairingFailures = validCertificationTargets
                     .mapNotNull { page ->
-                        (owner.certifyPairing(page) as? ReaderPairingCertification.RetryableBlocked)
+                        (certifications[page] as? ReaderPairingCertification.RetryableBlocked)
                             ?.failures?.values?.firstOrNull()?.takeIf {
                                 it != ReaderAnalysisFailure
                                     .PAIRING_RESTORE
@@ -824,7 +829,8 @@ class ReaderScreenModel(
                             publisherBindingFailure = error
                             consecutivePublisherBindingFailures++
                             System.err.println(
-                                "ReaderScreenModel publisher binding caught error: $error (failures=$consecutivePublisherBindingFailures)",
+                                "ReaderScreenModel publisher binding caught error: $error " +
+                                    "(failures=$consecutivePublisherBindingFailures)",
                             )
                             val stuck = if (spreadPublisherJob?.isCompleted == false && !spreadPublisherStarted.get()) {
                                 val j = spreadPublisherJob
@@ -2452,6 +2458,7 @@ class ReaderScreenModel(
         logicalLocation: ReaderDualPageLocationIntent? = _state.value.dualPageLocation,
         selected: Boolean = true,
         demandToken: Any? = null,
+        canDraw: Boolean = true,
     ): ReaderDualPageViewportTicket? = synchronized(productionRuntimeLifecycleLock) {
         val owner = ensureDualSession() ?: return@synchronized null
         certificationNeedsLocked(owner)
@@ -2460,6 +2467,11 @@ class ReaderScreenModel(
                 it.content.map { content -> content.pageId }.toSet() == visiblePages.pageIds
         } == true
         if (logicalLocation != owner.location && !mounted) return@synchronized null
+        if (visiblePages.displayUnitId.sharedUnitId != null &&
+            logicalLocation != owner.location
+        ) {
+            return@synchronized null
+        }
         val currentUserNavigation = userNavigation && logicalLocation == owner.location
         if (visiblePages.transitionDirection != null) {
             // An outgoing native transition cannot replace a newer logical-page navigation.
@@ -2497,7 +2509,25 @@ class ReaderScreenModel(
         }
         if (!selected) {
             val anchor = visiblePages.activePageId ?: return@synchronized null
-            return@synchronized owner.captureCertifiedViewport(anchor)
+            val shared = visiblePages.displayUnitId
+            if (shared.sharedUnitId != null && shared.frameId == null) {
+                val proof = owner.certifyPairing(anchor) as? ReaderPairingCertification.Certified
+                owner.preparePresentationFrame(
+                    anchor,
+                    proof?.segment?.unit?.id ?: shared.sharedUnitId,
+                    activate = false,
+                )
+                publishDualSession(owner)
+                return@synchronized null
+            }
+            if (!canDraw) return@synchronized null
+            return@synchronized owner.capturePresentableViewport(
+                anchor,
+                shared.sharedUnitId,
+                shared.frameId,
+                activate = false,
+                leaseOwner = demandToken,
+            )
         }
         if (owner.targetUnit?.pageIds?.toSet() != visiblePages.pageIds) return@synchronized null
         _state.update {
@@ -2508,18 +2538,31 @@ class ReaderScreenModel(
             )
         }
         // Pixel readiness gates progress, while selected normal image work starts immediately.
+        val actualAnchor = owner.location!!.pageId.takeIf { it in visiblePages.pageIds }
+            ?: visiblePages.pageIds.minBy { it.sourcePageIndex }
         val scheduled = SettledViewportIdentity(
             owner.identity.generation,
             visiblePages.pageIds,
-            owner.location!!.pageId,
+            actualAnchor,
         )
         if (lastLayoutScheduledViewport != scheduled) {
             lastLayoutScheduledViewport = scheduled
-            onViewportLayoutSettled(visiblePages.pageIds, owner.location!!.pageId)
+            onViewportLayoutSettled(visiblePages.pageIds, actualAnchor)
         }
         owner.location?.pageId?.let { certificationTargets += it }
         optionalWorkRevision.update { it + 1 }
-        owner.captureCertifiedViewport(owner.location!!.pageId)
+        if (visiblePages.displayUnitId.sharedUnitId != null && visiblePages.displayUnitId.frameId == null) {
+            owner.preparePresentationFrame()
+            publishDualSession(owner)
+            return@synchronized null
+        }
+        if (!canDraw) return@synchronized null
+        owner.capturePresentableViewport(
+            owner.location!!.pageId,
+            visiblePages.displayUnitId.sharedUnitId,
+            visiblePages.displayUnitId.frameId,
+            leaseOwner = demandToken,
+        )
     }
 
     internal fun prepareDualViewportPage(ticket: ReaderDualPageViewportTicket, page: ReaderPageId) =
@@ -2585,8 +2628,10 @@ class ReaderScreenModel(
 
     internal fun releaseDualViewport(ticket: ReaderDualPageViewportTicket) {
         synchronized(productionRuntimeLifecycleLock) {
-            if (dualSession?.releaseViewport(ticket) == true) {
+            val owner = dualSession
+            if (owner?.releaseViewport(ticket) == true) {
                 deferredContentState?.let(::acceptSessionState)
+                if (dualSession === owner && !owner.closed) publishDualSession(owner)
             }
         }
     }
@@ -3044,17 +3089,10 @@ class ReaderScreenModel(
         prefs?.isAutoSpreadMatching = on
     }
 
-    private fun changeDualPresentation(transform: (ReaderState) -> ReaderState) {
-        if (_state.value.dualPageMode) {
-            changePresentation(transform = transform)
-        } else {
-            // Metadata updates outside dual mode retain the Webtoon restoration protection.
-            _state.update(transform)
-        }
-    }
-
     fun setSpreadPages(pages: Set<Int>) {
-        changeDualPresentation { it.copy(spreadPages = pages) }
+        // A decoded neighbor can publish metadata without changing the active physical frame.
+        // Keep its selected viewport and progress; shared original facts own any later regrouping.
+        _state.update { it.copy(spreadPages = pages) }
     }
 
     fun setVirtualPages(pages: List<VirtualPage>?) {

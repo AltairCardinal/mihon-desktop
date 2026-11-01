@@ -6,8 +6,16 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.input.pointer.PointerButton
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import cafe.adriel.voyager.navigator.Navigator
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -15,6 +23,8 @@ import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import io.ktor.server.cio.CIO
+import io.ktor.server.engine.embeddedServer
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
@@ -38,6 +48,11 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.ReaderProgressTracker
@@ -58,6 +73,10 @@ import mihon.desktop.reader.SkiaDesktopReaderPageImageDecoder
 import mihon.desktop.reader.gatePoint
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.FakeDesktopSourceManager
+import mihon.desktop.test.http.ReaderTestModeController
+import mihon.desktop.test.http.testHttpServer
+import mihon.desktop.test.state.applicationState
+import mihon.desktop.test.state.readerState
 import mihon.desktop.ui.reader.presentation.resolveDualVisiblePages
 import mihon.domain.reader.PageDecodePurpose
 import mihon.domain.reader.PageRotation
@@ -91,6 +110,7 @@ import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageLoadState
 import okhttp3.OkHttpClient
 import okio.Buffer
+import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
@@ -104,9 +124,14 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.i18n.MR
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -127,6 +152,432 @@ import javax.imageio.ImageIO
 )
 class SharedSpreadDesktopResourceWiringTest {
     @TempDir lateinit var temp: File
+
+    @Test
+    fun `reader state HTTP reports bounded real model and runtime attempts across retry and rebind`() = runBlocking {
+        val previousTestMode = applicationState.testMode
+        applicationState.testMode = true
+        val server = embeddedServer(CIO, host = "127.0.0.1", port = 0) { testHttpServer() }.start()
+        try {
+            val port = server.resolvedConnectors().single().port
+            val client = HttpClient.newHttpClient()
+            fun readState() = client.send(
+                HttpRequest.newBuilder(URI.create("http://127.0.0.1:$port/test/reader/state")).GET().build(),
+                HttpResponse.BodyHandlers.ofString(),
+            ).let { response ->
+                assertEquals(200, response.statusCode())
+                Json.parseToJsonElement(response.body()).jsonObject
+            }
+            assertEquals(JsonNull, readState().getValue("mountedReader"))
+            ReaderTestModeController().use { control ->
+                Fixture(
+                    pageCount = 5,
+                    initialPage = 1,
+                    online = true,
+                    matching = true,
+                    readControl = control,
+                ).use { f ->
+                    f.observePerformance(2)
+                    f.mountReader(fullViewport = true)
+                    val rule = requireNotNull(f.controlledRead)
+                    f.pump {
+                        f.actualPaint.containsKey(1) &&
+                            control.readControlSnapshot().single { it.id == rule }.status == "HOLDING"
+                    }
+                    assertTrue(f.actualPaint.containsKey(1))
+                    val mounted = readState().getValue("mountedReader").jsonObject
+                    assertTrue(mounted.containsKey("imageAttempts"), "Real HTTP must expose imageAttempts")
+                    val initial = mounted.getValue("imageAttempts").jsonArray.map { it.jsonObject }
+                    val current = f.model.state.value
+                    val expected = (
+                        current.currentDisplayUnitId?.slots.orEmpty().mapNotNull { it.pageId?.sourcePageIndex } +
+                            current.currentPage
+                        ).toSet()
+                    val observedIndices = initial.map {
+                        it.getValue("sourcePageIndex").jsonPrimitive.content.toInt()
+                    }.toSet()
+                    assertEquals(expected, observedIndices)
+                    assertTrue(initial.size <= 3)
+                    assertTrue(initial.size < current.session.activeChapter.pages.size)
+                    assertEquals(initial.size, expected.size, "The logical source must be deduplicated")
+                    initial.forEach { row ->
+                        val index = row.getValue("sourcePageIndex").jsonPrimitive.content.toInt()
+                        val modelPage = current.session.activeChapter.pages[index]
+                        val runtimePage = f.runtime.session.state.value.snapshot.activeChapter.pages[index]
+                        assertEquals(
+                            modelPage.attemptGeneration,
+                            row.getValue("modelAttemptGeneration").jsonPrimitive.content.toLong(),
+                        )
+                        assertEquals(
+                            runtimePage.attemptGeneration,
+                            row.getValue("runtimeAttemptGeneration").jsonPrimitive.content.toLong(),
+                        )
+                        assertEquals(
+                            modelPage.loadState.javaClass.simpleName,
+                            row.getValue("modelLoadState").jsonPrimitive.content,
+                        )
+                        assertEquals(
+                            runtimePage.loadState.javaClass.simpleName,
+                            row.getValue("runtimeLoadState").jsonPrimitive.content,
+                        )
+                    }
+                    assertTrue(control.resolveRead(rule, fail = true))
+                    f.pump { control.readControlSnapshot().single { it.id == rule }.status == "FAILED" }
+                    val target = f.model.state.value.session.activeChapter.pages[2]
+                    f.model.retryPage(target.id)
+                    f.pump {
+                        val attempt = f.model.state.value.session.activeChapter.pages[2].attemptGeneration
+                        attempt > target.attemptGeneration && f.actualPaint.containsKey(2)
+                    }
+                    val retried = readState().getValue("mountedReader").jsonObject.getValue("imageAttempts")
+                        .jsonArray.single {
+                            it.jsonObject.getValue("sourcePageIndex").jsonPrimitive.content == "2"
+                        }.jsonObject
+                    assertTrue(
+                        retried.getValue("modelAttemptGeneration").jsonPrimitive.content.toLong() >
+                            target.attemptGeneration,
+                    )
+                    assertEquals(
+                        f.runtime.session.state.value.snapshot.activeChapter.pages[2].attemptGeneration,
+                        retried.getValue("runtimeAttemptGeneration").jsonPrimitive.content.toLong(),
+                    )
+                    // Keep the genuine old model mounted while the real runtime activates another chapter.
+                    f.pauseModelCollection()
+                    f.runtime.session.activate(f.runtime.session.state.value.context.copy(chapterId = 9999))
+                    val rebound = readState().getValue("mountedReader").jsonObject.getValue("imageAttempts").jsonArray
+                    rebound.forEach { row ->
+                        assertEquals(JsonNull, row.jsonObject.getValue("runtimeAttemptGeneration"))
+                        assertEquals(JsonNull, row.jsonObject.getValue("runtimeLoadState"))
+                    }
+                    f.pump { f.runtime.session.state.value.snapshot.activeChapter.pages.isNotEmpty() }
+                    assertTrue(f.runtime.session.state.value.snapshot.activeChapter.pages.isNotEmpty())
+                    val noRuntime = ReaderScreenModel(
+                        prefs = f.prefs,
+                        initialSessionState = f.runtime.session.state.value,
+                    )
+                    try {
+                        readerState.mount(noRuntime)
+                        val rows = readState().getValue("mountedReader").jsonObject.getValue("imageAttempts").jsonArray
+                        assertTrue(rows.isNotEmpty())
+                        rows.forEach { row ->
+                            assertEquals(JsonNull, row.jsonObject.getValue("runtimeAttemptGeneration"))
+                            assertEquals(JsonNull, row.jsonObject.getValue("runtimeLoadState"))
+                        }
+                    } finally {
+                        readerState.unmount(noRuntime)
+                        noRuntime.onDispose()
+                    }
+                }
+            }
+            assertEquals(JsonNull, readState().getValue("mountedReader"))
+        } finally {
+            server.stop(0, 0)
+            readerState.reset()
+            applicationState.testMode = previousTestMode
+        }
+    }
+
+    @Test
+    fun `real retry button rereads failed encoded partner and restores pixels without replacing drawn buddy`() =
+        runBlocking {
+            Fixture(pageCount = 3, initialPage = 1, online = true, failedEncodedPage = 2).use { fixture ->
+                exerciseActualRetry(fixture, releaseFailure = { fixture.failEncoded.set(false) })
+            }
+        }
+
+    @Test
+    fun `matching retry button survives a frame and recovers actual encoded read failure`() = runBlocking {
+        ReaderTestModeController().use { control ->
+            Fixture(
+                pageCount = 3,
+                initialPage = 1,
+                online = true,
+                matching = true,
+                readControl = control,
+            ).use { fixture ->
+                exerciseActualRetry(
+                    fixture,
+                    fullViewport = true,
+                    makeError = {
+                        val rule = requireNotNull(fixture.controlledRead)
+                        fixture.pump {
+                            control.readControlSnapshot().single { it.id == rule }.status == "HOLDING" &&
+                                fixture.actualPaint.containsKey(1)
+                        }
+                        assertEquals("HOLDING", control.readControlSnapshot().single { it.id == rule }.status)
+                        assertTrue(
+                            fixture.actualPaint.containsKey(1),
+                            "The actual buddy must draw while the read is held",
+                        )
+                        assertTrue(control.resolveRead(rule, fail = true))
+                    },
+                    releaseFailure = {},
+                )
+            }
+        }
+    }
+
+    private suspend fun exerciseActualRetry(
+        fixture: Fixture,
+        fullViewport: Boolean = false,
+        makeError: suspend () -> Unit = {},
+        releaseFailure: () -> Unit,
+    ) {
+        fixture.observePerformance(2)
+        fixture.mountReader(fullViewport)
+        makeError()
+        val retryLabel = MR.strings.action_retry.localized()
+        fun retryButtons(): List<SemanticsNode> {
+            fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+            return fixture.scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.filter {
+                it.config.contains(SemanticsActions.OnClick) && !it.boundsInRoot.isEmpty &&
+                    it.boundsInRoot.center.x in 0f..350f &&
+                    flatten(it).any { child ->
+                        child.config.getOrNull(SemanticsProperties.Text).orEmpty().any { text ->
+                            text.text == retryLabel
+                        }
+                    }
+            }
+        }
+        fun pixelBounds(index: Int): Pair<Int, Int>? {
+            val color = (255 shl 24) or ((index * 35) shl 16) or (80 shl 8) or 120
+            val pixels = fixture.scene.render(fixture.dispatcher.scheduler.currentTime * 1_000_000L)
+                .toComposeImageBitmap().asSkiaBitmap()
+            return try {
+                val columns = (0 until 700).filter { pixels.getColor(it, 600) == color }
+                columns.takeIf { it.isNotEmpty() }?.let { it.first() to it.last() }
+            } finally {
+                pixels.close()
+            }
+        }
+        fixture.pump { fixture.actualPaint.containsKey(1) && retryButtons().isNotEmpty() }
+        assertTrue(fixture.actualPaint.containsKey(1), "The real buddy must draw before retry")
+        assertTrue(retryButtons().isNotEmpty(), "Malformed HTTP image must show the actual Retry button")
+        val position = retryButtons().first().boundsInRoot.center
+        val buddyBounds = requireNotNull(pixelBounds(1))
+        val target = fixture.model.state.value.session.activeChapter.pages[2]
+        val oldAttempt = target.attemptGeneration
+        val frame = requireNotNull(fixture.owner()).targetFrameId
+        val reads = fixture.ioEvents.count { it.type == ReaderIoEventType.OPEN_PAGE && it.pageId == target.id }
+        val decodes = fixture.decodeInvocations[2]?.get() ?: 0
+        val callbackCount = AtomicInteger()
+        var callbackTarget: ReaderPageId? = null
+        every { fixture.model.retryPage(any()) } answers {
+            callbackCount.incrementAndGet()
+            callbackTarget = firstArg()
+            releaseFailure()
+            callOriginal()
+        }
+        fixture.scene.sendPointerEvent(PointerEventType.Press, position, button = PointerButton.Primary)
+        // A real native click spans a Compose frame; keep the real Button mounted across it.
+        fixture.pump { true }
+        fixture.scene.sendPointerEvent(PointerEventType.Release, position, button = PointerButton.Primary)
+        fixture.pump {
+            fixture.model.state.value.session.activeChapter.pages[2].attemptGeneration > oldAttempt &&
+                fixture.actualPaint.containsKey(2) && pixelBounds(2) != null && retryButtons().isEmpty()
+        }
+        assertEquals(1, callbackCount.get(), "Exactly one real button click must reach the model")
+        assertEquals(target.id, callbackTarget, "Retry must address the actual failed source")
+        val retried = fixture.model.state.value.session.activeChapter.pages[2]
+        assertTrue(retried.attemptGeneration > oldAttempt, "The actual button must create a new attempt")
+        assertTrue(
+            fixture.ioEvents.count { it.type == ReaderIoEventType.OPEN_PAGE && it.pageId == target.id } > reads,
+            "Retry must execute the real encoded content reader",
+        )
+        assertTrue((fixture.decodeInvocations[2]?.get() ?: 0) > decodes, "Retry must invoke the real decoder")
+        assertTrue(fixture.actualPaint.containsKey(2), "Recovered partner must pass the production drawn gate")
+        assertNotNull(pixelBounds(2), "Recovered target pixels must replace error feedback")
+        assertTrue(retryButtons().isEmpty(), "Successful retry must remove the actual error button")
+        assertEquals(buddyBounds, pixelBounds(1), "Retry must preserve the drawn buddy geometry")
+        assertEquals(frame, requireNotNull(fixture.owner()).targetFrameId)
+    }
+
+    @Test
+    fun `real runtime schedules an actual retained partner while its wide logical target stays unchanged`() =
+        runBlocking {
+            val wide = BufferedImage(80, 60, BufferedImage.TYPE_INT_ARGB).apply {
+                for (y in 0 until height) for (x in 0 until width) setRGB(x, y, 0xffa05078.toInt())
+            }
+            val wideBytes = ByteArrayOutputStream().also { assertTrue(ImageIO.write(wide, "png", it)) }.toByteArray()
+            val encoded = List(200) { if (it == 125) wideBytes else image(it) }
+            Fixture(
+                pageCount = 200,
+                initialPage = 126,
+                online = true,
+                heldNetworkPage = 125,
+                encodedPages = encoded,
+            ).use { fixture ->
+                fixture.observePerformance(126)
+                fixture.mountReader()
+                fixture.pump { fixture.actualPaint.containsKey(126) }
+                assertTrue(fixture.actualPaint.containsKey(126))
+                fixture.model.goToPage(125)
+                fixture.pump { fixture.model.state.value.currentPage == 125 }
+                fixture.networkRelease.set(true)
+                fixture.pump {
+                    fixture.owner()?.pageFact(fixture.owner()!!.identity.pageIds[125])?.state ==
+                        ReaderPageFactState.SPREAD
+                }
+                val owner = fixture.owner()!!
+                assertEquals(ReaderPageFactState.SPREAD, owner.pageFact(owner.identity.pageIds[125])?.state)
+                assertEquals(listOf(126), owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
+                val snapshot = fixture.model.state.value.dualPresentationSnapshot()
+                val native = snapshot.displayUnits.single { it.id.frameId == owner.targetFrameId }
+                println(
+                    "NORMAL_WIDE_LAYOUT logical=${owner.location?.pageId?.sourcePageIndex} " +
+                        "actual=${native.id.slots.mapNotNull { it.pageId?.sourcePageIndex }}",
+                )
+                assertDoesNotThrow {
+                    fixture.model.beginPagerViewport(
+                        snapshot.resolveDualVisiblePages(native.id),
+                        false,
+                        owner.location,
+                        true,
+                        Any(),
+                    )
+                }
+                assertEquals(125, fixture.owner()!!.location!!.pageId.sourcePageIndex)
+                assertEquals(125, fixture.model.state.value.currentPage)
+                assertFalse(fixture.actualPaint.containsKey(125), "The wide target has not acquired a physical slot")
+            }
+        }
+
+    @Test
+    fun `online 200 page cold jump paints 126 while preceding analysis and partner remain suspended`() = runBlocking {
+        Fixture(pageCount = 200, online = true, matching = true).use { fixture ->
+            (5 until 200).filter { it != 125 }.forEach { fixture.pageGate[it] = CompletableDeferred() }
+            fixture.observePerformance(125)
+            fixture.mountReader()
+            fixture.pump { fixture.actualPaint.containsKey(0) }
+            assertTrue(fixture.actualPaint.containsKey(0), "Open through the normal online source first")
+            val expected = (255 shl 24) or ((125 * 35) shl 16) or (80 shl 8) or 120
+            fun targetPixelsVisible(): Boolean {
+                val image = fixture.scene.render(fixture.dispatcher.scheduler.currentTime * 1_000_000L)
+                val bitmap = image.toComposeImageBitmap().asSkiaBitmap()
+                return try {
+                    (1..9).any { y ->
+                        (6..9).any { x -> bitmap.getColor(bitmap.width * x / 10, bitmap.height * y / 10) == expected }
+                    }
+                } finally {
+                    bitmap.close()
+                    image.close()
+                }
+            }
+            val jumpStarted = System.nanoTime()
+            var firstPixelAt: Long? = null
+            fixture.model.goToPage(125)
+            fixture.pump {
+                (fixture.actualPaint.containsKey(125) && targetPixelsVisible()).also { visible ->
+                    if (visible && firstPixelAt == null) firstPixelAt = System.nanoTime()
+                }
+            }
+            assertEquals(125, fixture.model.state.value.currentPage)
+            assertTrue(fixture.paths.contains(125), "The exact target uses the production HTTP content chain")
+            assertTrue(fixture.decoderReady.containsKey(125), "The target decoder must finish without the prefix")
+            val pairing = fixture.owner()!!.certifyPairing()
+            println(
+                "NONBLOCKING_COLD_JUMP targetIndex=125 decoded=${fixture.decoderReady[125]} " +
+                    "paint=${fixture.actualPaint[125]} pairing=${pairing::class.simpleName} " +
+                    "firstPixelAt=$firstPixelAt intentToPixelMs=${firstPixelAt?.let {
+                        (it - jumpStarted) / 1_000_000
+                    }} " +
+                    "pendingGates=${fixture.pageGate.values.count { !it.isCompleted }}",
+            )
+            assertTrue(pairing is ReaderPairingCertification.NeedFacts)
+            assertTrue(fixture.actualPaint.containsKey(125), "A ready target must draw before matching completes")
+            assertEquals(listOf(125, 126), fixture.paintSlots[125])
+            assertFalse(fixture.actualPaint.containsKey(126), "A waiting partner is not reported as read")
+            assertTrue(fixture.pageGate.values.all { !it.isCompleted })
+            if (firstPixelAt == null) {
+                fixture.scene.render(fixture.dispatcher.scheduler.currentTime * 1_000_000L).use { image ->
+                    image.encodeToData()?.use { data ->
+                        val diagnostic = File(".gradle-coordinator/nb02-cold-pixels.png")
+                        diagnostic.parentFile.mkdirs()
+                        diagnostic.writeBytes(data.bytes)
+                        println("NONBLOCKING_COLD_PIXELS ${diagnostic.absolutePath}")
+                    }
+                }
+            }
+            assertTrue(targetPixelsVisible(), "The real Compose image draws target pixels in its physical half-slot")
+        }
+    }
+
+    @Test
+    fun `background spread metadata preserves the real painted current native frame`() = runBlocking {
+        val wide = BufferedImage(60, 40, BufferedImage.TYPE_INT_ARGB).apply {
+            createGraphics().let { graphics ->
+                try {
+                    graphics.color = java.awt.Color.BLUE
+                    graphics.fillRect(0, 0, width, height)
+                } finally {
+                    graphics.dispose()
+                }
+            }
+        }
+        val wideBytes = ByteArrayOutputStream().also { assertTrue(ImageIO.write(wide, "png", it)) }.toByteArray()
+        val encoded = List(200) { if (it == 123) wideBytes else image(it) }
+        Fixture(
+            pageCount = 200,
+            initialPage = 125,
+            online = true,
+            matching = true,
+            encodedPages = encoded,
+            heldNetworkPage = 123,
+        ).use { fixture ->
+            fixture.observePerformance(125)
+            fixture.mountReader()
+            fixture.pump(10_000) {
+                fixture.actualPaint.keys.containsAll(listOf(125, 126)) && 123 in fixture.paths
+            }
+            assertTrue(
+                fixture.actualPaint.keys.containsAll(listOf(125, 126)),
+                "paint=${fixture.actualPaint.keys} paths=${fixture.paths}",
+            )
+            assertTrue(123 in fixture.paths, "The real neighbor HTTP request must enter its gate")
+            val frame = fixture.model.state.value.dualPageTargetFrameId
+            val selected = requireNotNull(fixture.model.state.value.currentDisplayUnitId)
+            val visible = fixture.model.state.value.visiblePageIds
+            fun bounds(): List<Int> {
+                val image = fixture.scene.render(fixture.dispatcher.scheduler.currentTime * 1_000_000L)
+                val bitmap = image.toComposeImageBitmap().asSkiaBitmap()
+                return try {
+                    val color = (255 shl 24) or ((125 * 35) shl 16) or (80 shl 8) or 120
+                    val points = buildList {
+                        for (y in 0 until bitmap.height) {
+                            for (x in 0 until bitmap.width) {
+                                if (bitmap.getColor(x, y) == color) add(x to y)
+                            }
+                        }
+                    }
+                    assertTrue(points.isNotEmpty(), "The actual current image must remain painted")
+                    listOf(
+                        points.minOf { it.first },
+                        points.maxOf { it.first },
+                        points.minOf { it.second },
+                        points.maxOf { it.second },
+                    )
+                } finally {
+                    bitmap.close()
+                    image.close()
+                }
+            }
+            val before = bounds()
+            // Invoke the production metadata handler used by a decoded neighbor's spread callback.
+            // HTTP and Skia above establish the actual current pixels; the neighbor callback's
+            // complete asynchronous delivery requires separate native window validation.
+            fixture.model.setSpreadPages(fixture.model.state.value.spreadPages + 123)
+            repeat(120) { fixture.pump { true } }
+            assertEquals(125, fixture.model.state.value.currentPage)
+            assertEquals(frame, fixture.model.state.value.dualPageTargetFrameId)
+            assertEquals(before, bounds(), "Background neighbor regrouping cannot remove current pixels")
+            assertEquals(
+                selected,
+                fixture.model.state.value.currentDisplayUnitId,
+                "A background wide image cannot clear the selected native presentation",
+            )
+            assertEquals(visible, fixture.model.state.value.visiblePageIds)
+        }
+    }
 
     private fun lifecycleLock(model: ReaderScreenModel): Any =
         ReaderScreenModel::class.java.getDeclaredField("productionRuntimeLifecycleLock")
@@ -1582,7 +2033,7 @@ class SharedSpreadDesktopResourceWiringTest {
 
     @Test
     @Suppress("ktlint:standard:max-line-length")
-    fun `replay measurement distinguishes runtime identity and does not falsely report uncertified or blocked target as drawn`() =
+    fun `replay measurement distinguishes runtime identity and never reports an undrawn target as drawn`() =
         runBlocking {
             Fixture(pageCount = 8, matching = true).use { fixture ->
                 fixture.observeReplayDraws()
@@ -1607,11 +2058,12 @@ class SharedSpreadDesktopResourceWiringTest {
                     // Measure reopen with target = 2 blocked by gate
                     val reopenRecord = fixture.measureOnce(target = 2, repeat = 0, reopen = true, timeoutMillis = 1_000)
 
-                    // BEFORE FIX: reopenRecord.drawn was TRUE because of leftover (sequence to target) from cold measurement!
-                    // AFTER FIX: reopenRecord.drawn MUST BE FALSE because target 2 was never certified or drawn in new runtime!
+                    // BEFORE FIX: reopenRecord.drawn was TRUE because cold measurement left over (sequence to target).
+                    // AFTER FIX: target 2 was never certified or drawn in the new runtime, so reopenRecord.drawn is FALSE.
                     assertFalse(
                         reopenRecord.drawn,
-                        "Blocked target in new runtime must NOT be reported as drawn from prior runtime receipts: $reopenRecord",
+                        "Blocked target in new runtime must NOT be reported as drawn from prior runtime receipts: " +
+                            "$reopenRecord",
                     )
                     assertNull(reopenRecord.intentToTargetDrawnMs, "Undrawn target must not have drawn ms")
                     assertNull(reopenRecord.intentToCertifiedMs, "Blocked target must not have certified ms")
@@ -2662,7 +3114,8 @@ class SharedSpreadDesktopResourceWiringTest {
                         "The retry must execute the fixture source's real image request",
                     )
 
-                    // PART 3: Configuration change after failure removed recovers on same page and paints new presentation frame
+                    // PART 3: Changing configuration after the failure is removed recovers on the same page
+                    // and paints a new presentation frame.
                     shouldFail.set(true)
                     model.setAutoSpreadMatching(false, fixture.prefs)
                     model.setAutoSpreadMatching(true, fixture.prefs)
@@ -2752,7 +3205,8 @@ class SharedSpreadDesktopResourceWiringTest {
                     val heldRequests = prepared.filter { it.pageId.sourcePageIndex == 2 }
                     assertTrue(
                         heldRequests.isNotEmpty() && heldRequests.all { (it.factPermit?.ownerKey ?: 0L) > 0L },
-                        "Held page two must be physically prepared with a pairing permit, not ordinary prefetch: $heldRequests",
+                        "Held page two must be physically prepared with a pairing permit, not ordinary prefetch: " +
+                            "$heldRequests",
                     )
                     val oldKeys = heldRequests.map { requireNotNull(it.factPermit).ownerKey }.distinct()
                     assertEquals(1, oldKeys.size, "The held input must have an unambiguous real publisher")
@@ -2930,7 +3384,8 @@ class SharedSpreadDesktopResourceWiringTest {
                 }
 
                 // BEFORE any navigation: independently prove that page 2 is re-admitted by the new owner
-                // via real fact budget and produces new Computed analysis on the same position, while visible pixel state is stable
+                // through the real fact budget, producing Computed analysis at the same position
+                // while the visible pixel state stays stable.
                 fixture.pump(timeoutMillis = 10_000) {
                     newOwner.spreadSampleDependencies().isEmpty() &&
                         newOwner.originalAnalysis(page2Id) is ReaderPageAnalysisEvidence.Computed &&
@@ -3075,6 +3530,8 @@ class SharedSpreadDesktopResourceWiringTest {
         matching: Boolean = false,
         withoutCachedOriginalSamples: Boolean = false,
         private val manualSpreadPublisher: Boolean = false,
+        private val failedEncodedPage: Int? = null,
+        private val readControl: ReaderTestModeController? = null,
     ) : AutoCloseable {
         val dispatcher = StandardTestDispatcher()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -3131,7 +3588,12 @@ class SharedSpreadDesktopResourceWiringTest {
         private fun diagnose(label: String) {
             if (diagnostic) performanceEvents += "${System.nanoTime()}/render${frameNumber.get()}:$label"
         }
-        private fun payload(index: Int) = encodedPages?.let { it[index % it.size] } ?: image(index)
+        val failEncoded = AtomicBoolean(failedEncodedPage != null)
+        private fun payload(index: Int) = if (index == failedEncodedPage && failEncoded.get()) {
+            byteArrayOf(1, 2, 3, 4)
+        } else {
+            encodedPages?.let { it[index % it.size] } ?: image(index)
+        }
         val decodeInvocations = ConcurrentHashMap<Int, AtomicInteger>()
         val pageGate = ConcurrentHashMap<Int, CompletableDeferred<Unit>>()
         val pageEntered = ConcurrentHashMap<Int, CompletableDeferred<Unit>>()
@@ -3272,7 +3734,7 @@ class SharedSpreadDesktopResourceWiringTest {
             temp.resolve("cache-${System.nanoTime()}"),
             pageImageDecoder = decoder,
             readerIoProbe = ReaderIoProbe { ioEvents += it },
-            readerIoGate = ReaderIoGate { point ->
+            readerIoGate = readControl ?: ReaderIoGate { point ->
                 if (point == ReaderIoGatePoint.NON_CURRENT_PAGE && gateOldBackground.compareAndSet(true, false)) {
                     withContext(NonCancellable) {
                         oldBackgroundEntered.complete(Unit)
@@ -3286,6 +3748,14 @@ class SharedSpreadDesktopResourceWiringTest {
             localChapterPath = original.absolutePath.takeUnless { online },
         )
         var runtime = factory.createRuntime(context, scope)
+        val controlledRead = readControl?.armRead(
+            ownerId = runtime.pageContentOwner.controlOwnerId,
+            chapterId = runtime.session.state.value.snapshot.activeChapter.id.value,
+            pageIndex = 2,
+            generation = runtime.session.state.value.snapshot.generation,
+            maxBytes = null,
+            timeoutMillis = 30_000,
+        )
         private fun modelRuntime() =
             runtime.takeUnless { manualSpreadPublisher } ?: runtime.copy(presentationScope = null)
         var model = factory.createModel(modelRuntime(), false, 0, null)
@@ -3651,18 +4121,36 @@ class SharedSpreadDesktopResourceWiringTest {
             return requireNotNull(completed.getCompleted())
         }
 
-        fun mountReader() {
+        suspend fun pauseModelCollection() {
+            collector.cancel()
+            collector.join()
+        }
+
+        fun mountReader(fullViewport: Boolean = false) {
+            val focusRequester = FocusRequester()
+            val navigator = mockk<Navigator>(relaxed = true)
             val appPreferences = DesktopAppPreferences(InMemoryPreferenceStore())
             val dependencies =
                 mockk<DesktopUiDependencies> { every { this@mockk.appPreferences } returns appPreferences }
             scene.setContent {
-                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                CompositionLocalProvider(
+                    LocalDesktopUiDependencies provides dependencies,
+                    LocalReaderNativeWindow provides null,
+                ) {
                     MaterialTheme {
                         val state by model.state.collectAsState()
-                        ReaderContent(
-                            state, model, uiScope, "M", "C", runtime.presentationImageOwner,
-                            readerNav = null, onPrevChapter = {}, onNextChapter = {},
-                        )
+                        if (fullViewport) {
+                            ReaderViewport(
+                                state, model, navigator, focusRequester, uiScope,
+                                "M", "C", runtime.presentationImageOwner,
+                                readerNav = null, onPrevChapter = {}, onNextChapter = {},
+                            )
+                        } else {
+                            ReaderContent(
+                                state, model, uiScope, "M", "C", runtime.presentationImageOwner,
+                                readerNav = null, onPrevChapter = {}, onNextChapter = {},
+                            )
+                        }
                     }
                 }
             }

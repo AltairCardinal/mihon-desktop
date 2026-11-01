@@ -22,6 +22,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
@@ -36,6 +37,7 @@ import mihon.domain.reader.scheduler.ReaderPageMaterializeRunner
 import mihon.domain.reader.session.ReaderPageId
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
+import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody
 import okio.Buffer
@@ -43,7 +45,10 @@ import okio.ForwardingSource
 import okio.buffer
 import org.json.JSONArray
 import org.json.JSONObject
+import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.addFactory
+import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.get
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -89,6 +94,7 @@ internal class HostReaderArtFixture(
     private val kind: String,
     originalArchive: String? = null,
     private val performancePageCount: Int? = null,
+    private val syntheticOnlinePages: Int? = null,
 ) : AutoCloseable {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val cacheDiagnostic = InstrumentationRegistry.getArguments()
@@ -126,12 +132,29 @@ internal class HostReaderArtFixture(
     // AndroidPreferenceStore consumes this same default SharedPreferences file. Use its public Android
     // storage boundary rather than host interfaces that R8 has devirtualized into concrete classes.
     private val preferences = context.getSharedPreferences("${context.packageName}_preferences", 0)
-    private val input = JSONArray(staged("source-inputs.json").toString(Charsets.UTF_8)).let { rows ->
-        (0 until rows.length()).map(rows::getJSONObject).single {
-            it.getLong("chapterId") == if (kind == "copymanga") 15652L else 15640L
+    private val input = if (syntheticOnlinePages != null) {
+        check(syntheticOnlinePages == 200 && originalArchive == null && performancePageCount == null)
+        JSONObject().put("mangaId", SYNTHETIC_MANGA_ID).put("sourceId", SYNTHETIC_SOURCE_ID)
+            .put("mangaUrl", "/reader-nb/manga").put("mangaTitle", "Synthetic nonblocking reader")
+            .put("chapterId", SYNTHETIC_CHAPTER_ID).put("chapterUrl", "/reader-nb/pages")
+            .put("chapterName", "Synthetic chapter")
+    } else {
+        JSONArray(staged("source-inputs.json").toString(Charsets.UTF_8)).let { rows ->
+            (0 until rows.length()).map(rows::getJSONObject).single {
+                it.getLong("chapterId") == if (kind == "copymanga") 15652L else 15640L
+            }
         }
     }
-    val success = if (kind == "copymanga") {
+    val success = if (syntheticOnlinePages != null) {
+        JSONObject().put(
+            "pages",
+            JSONArray(
+                (0 until syntheticOnlinePages).map {
+                    "https://nonblocking.invalid/reader-nb/$it.png"
+                },
+            ),
+        ).toString().toByteArray(Charsets.UTF_8)
+    } else if (kind == "copymanga") {
         staged("copy/success.json").let { captured ->
             if (performancePageCount == null) {
                 captured
@@ -183,8 +206,13 @@ internal class HostReaderArtFixture(
         },
     )
     val beforeImageRequest = AtomicReference<(Int) -> Unit>({})
+
+    /** Optional cancellation-aware boundary; existing fixtures retain their original hook. */
+    val beforeCancellableImageRequest = AtomicReference<(Int, okhttp3.Call) -> Unit>({ _, _ -> })
     val imageStatuses = AtomicReference<Map<Int, Int>>(emptyMap())
-    private val imagePaths = if (kind == "copymanga") {
+    private val imagePaths = if (syntheticOnlinePages != null) {
+        (0 until syntheticOnlinePages).map { "/reader-nb/$it.png" }
+    } else if (kind == "copymanga") {
         JSONObject(success.toString(Charsets.UTF_8)).getJSONObject("results").getJSONObject("chapter").also { chapter ->
             val words = chapter.getJSONArray("words")
             check((0..3).map(words::getInt) == listOf(0, 1, 2, 3)) {
@@ -205,7 +233,15 @@ internal class HostReaderArtFixture(
         originalContent?.second?.map { "/comic/123/${it.first}" } ?: listOf("/comic/123/001.jpg")
     }
     val imagePageRequests = AtomicIntegerArray(maxOf(22, imagePaths.size))
-    private val chapterPath = if (kind == "copymanga") {
+    val imageClientRequests = AtomicIntegerArray(maxOf(22, imagePaths.size))
+
+    fun syntheticImageCached(index: Int): Boolean {
+        check(syntheticOnlinePages != null && index in imagePaths.indices)
+        return diagnosticCache.isImageInCache("https://nonblocking.invalid" + imagePaths[index])
+    }
+    private val chapterPath = if (syntheticOnlinePages != null) {
+        "/reader-nb/pages"
+    } else if (kind == "copymanga") {
         val parts = input.getString("chapterUrl").split('/')
         check(parts.size == 3 && parts[1] == "chapter")
         "/api/v3/comic/${parts[0]}/chapter2/${parts[2]}"
@@ -241,6 +277,7 @@ internal class HostReaderArtFixture(
     }
     private val originals = fields.map { it.get(network) }
     private var activity: Activity? = null
+    private var originalSourceManager: SourceManager? = null
     private val worker = Thread {
         try {
             while (!server.isClosed) {
@@ -291,7 +328,7 @@ internal class HostReaderArtFixture(
                         }
                     } else if (!isChapter) {
                         "text/plain"
-                    } else if (kind == "copymanga") {
+                    } else if (syntheticOnlinePages != null || kind == "copymanga") {
                         "application/json"
                     } else {
                         "text/html"
@@ -330,11 +367,21 @@ internal class HostReaderArtFixture(
     init {
         try {
             check(Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
+            if (syntheticOnlinePages != null) {
+                check(context.packageName.endsWith(".dev")) { "Synthetic fixture requires the isolated dev app" }
+            }
             check(fields.isNotEmpty())
             val route = Interceptor { chain ->
                 val request = chain.request()
+                if (syntheticOnlinePages != null) {
+                    check(request.url.host == "nonblocking.invalid") { "Synthetic fixture forbids external hosts" }
+                }
                 imagePaths.indexOf(request.url.encodedPath).takeIf { it >= 0 }
-                    ?.let { beforeImageRequest.get().invoke(it) }
+                    ?.let {
+                        imageClientRequests.incrementAndGet(it)
+                        beforeCancellableImageRequest.get().invoke(it, chain.call())
+                        beforeImageRequest.get().invoke(it)
+                    }
                 // Original Copy TextInterceptor consumes this virtual origin later in the same client chain.
                 // Changing its host would bypass the extension's real error/comment image renderer.
                 if (request.url.host == "tachiyomi-lib-textinterceptor") {
@@ -366,22 +413,40 @@ internal class HostReaderArtFixture(
                 )
             }
             check(clients().all { it.interceptors.any { interceptor -> interceptor === route } })
-            val packageName = "eu.kanade.tachiyomi.extension.zh.$kind"
-            install(kind)
-            val info = context.packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
-            val signer = requireNotNull(info.signingInfo).signingCertificateHistory.last().toByteArray()
-            val fingerprint = MessageDigest.getInstance("SHA-256").digest(signer).joinToString("") {
-                "%02x".format(it.toInt() and 255)
+            if (syntheticOnlinePages != null) {
+                val original = Injekt.get<SourceManager>()
+                check(original.get(SYNTHETIC_SOURCE_ID) == null) { "Synthetic source ID must be unused" }
+                val source = SyntheticOnlineSource()
+                val wrapper = object : SourceManager by original {
+                    override fun get(sourceKey: Long) = if (sourceKey == source.id) source else original.get(sourceKey)
+                    override fun getOrStub(sourceKey: Long) =
+                        if (sourceKey == source.id) source else original.getOrStub(sourceKey)
+                }
+                originalSourceManager = original
+                Injekt.addFactory<SourceManager> { wrapper }
+                check(Injekt.get<SourceManager>() === wrapper)
+                check(Injekt.get<SourceManager>().getOrStub(source.id) === source)
+            } else {
+                val packageName = "eu.kanade.tachiyomi.extension.zh.$kind"
+                install(kind)
+                val info = context.packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+                val signer = requireNotNull(info.signingInfo).signingCertificateHistory.last().toByteArray()
+                val fingerprint = MessageDigest.getInstance("SHA-256").digest(signer).joinToString("") {
+                    "%02x".format(it.toInt() and 255)
+                }
+                val trustKey = "__APP_STATE_trusted_extensions"
+                val trust = requireNotNull(preferences.getStringSet(trustKey, emptySet()))
+                check(
+                    preferences.edit().putStringSet(
+                        trustKey,
+                        trust + "$packageName:${info.longVersionCode}:$fingerprint",
+                    )
+                        .commit(),
+                )
+                // PackageManager emits the real replacement event. The normal host registry reloads the trusted
+                // artifact after routing, including original extensions that eagerly captured their HTTP client.
+                install(kind)
             }
-            val trustKey = "__APP_STATE_trusted_extensions"
-            val trust = requireNotNull(preferences.getStringSet(trustKey, emptySet()))
-            check(
-                preferences.edit().putStringSet(trustKey, trust + "$packageName:${info.longVersionCode}:$fingerprint")
-                    .commit(),
-            )
-            // PackageManager emits the real replacement event. The normal host registry reloads the trusted
-            // artifact after routing, including original extensions that eagerly captured their HTTP client.
-            install(kind)
             check(
                 preferences.edit().putInt("pref_default_reading_mode_key", 1)
                     .putBoolean("reader_auto_spread_matching", false)
@@ -989,7 +1054,7 @@ internal class HostReaderArtFixture(
     }
 
     /** Observes the original loader and actual shared adapter classification, without publishing facts. */
-    fun hasDecodedSpread(index: Int): Boolean {
+    fun hasDecodedSpread(index: Int, requirePageReady: Boolean = true): Boolean {
         var decoded = false
         instrumentation.runOnMainSync {
             val state = (activity as? ReaderActivity)?.let(::actualArtReaderState) ?: return@runOnMainSync
@@ -1002,7 +1067,7 @@ internal class HostReaderArtFixture(
             val identity = actualArtField<ReaderDualPageIdentity>(owner, "identity")
             val pageId = actualArtField<List<ReaderPageId>>(identity, "pageIds")[index]
             val fact = actualArtField<Map<ReaderPageId, ReaderPageFact>>(owner, "facts")[pageId]
-            decoded = page.status == Page.State.Ready &&
+            decoded = (!requirePageReady || page.status == Page.State.Ready) &&
                 fact?.let { actualArtField<ReaderPageFactState>(it, "state") } == ReaderPageFactState.SPREAD
         }
         return decoded
@@ -1188,20 +1253,46 @@ internal class HostReaderArtFixture(
     override fun close() {
         try {
             finish()
+            if (syntheticOnlinePages != null) {
+                val deadline = SystemClock.uptimeMillis() + 30_000
+                while (actualArtPhysicalCount(
+                        ReaderPageMaterializeRunner::class.java,
+                        "processPhysicalWorkCount",
+                    ) != 0 ||
+                    actualArtPhysicalCount(ReaderPageImageView::class.java, "foregroundWork") != 0 ||
+                    eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.optionalWork.value != 0
+                ) {
+                    check(SystemClock.uptimeMillis() < deadline) {
+                        "Synthetic reader work must stop before restoring DI"
+                    }
+                    SystemClock.sleep(20)
+                }
+            }
         } finally {
             try {
-                fields.zip(originals).forEach { (field, original) -> field.set(network, original) }
-                check(clients().zip(originalClients).all { (actual, original) -> actual === original })
-                val editor = preferences.edit()
-                previousPreferences.forEach { (key, value) ->
-                    when (value) {
-                        is Int -> editor.putInt(key, value)
-                        is Boolean -> editor.putBoolean(key, value)
-                        null -> editor.remove(key)
-                        else -> error("Unexpected reader preference type")
+                try {
+                    originalSourceManager?.let { original ->
+                        Injekt.addSingleton<SourceManager>(original)
+                        check(Injekt.get<SourceManager>() === original)
+                        originalSourceManager = null
+                    }
+                } finally {
+                    try {
+                        fields.zip(originals).forEach { (field, original) -> field.set(network, original) }
+                        check(clients().zip(originalClients).all { (actual, original) -> actual === original })
+                    } finally {
+                        val editor = preferences.edit()
+                        previousPreferences.forEach { (key, value) ->
+                            when (value) {
+                                is Int -> editor.putInt(key, value)
+                                is Boolean -> editor.putBoolean(key, value)
+                                null -> editor.remove(key)
+                                else -> error("Unexpected reader preference type")
+                            }
+                        }
+                        check(editor.commit())
                     }
                 }
-                check(editor.commit())
             } finally {
                 server.close()
                 worker.join(2_000)
@@ -1209,7 +1300,27 @@ internal class HostReaderArtFixture(
         }
     }
 
+    private class SyntheticOnlineSource : HttpSource() {
+        override val id = SYNTHETIC_SOURCE_ID
+        override val name = "Synthetic nonblocking reader"
+        override val lang = "en"
+        override val supportsLatest = false
+        override val baseUrl = "https://nonblocking.invalid"
+        override fun chapterPageParse(response: Response): eu.kanade.tachiyomi.source.model.SChapter =
+            error("Synthetic fixture does not request chapter metadata")
+
+        override fun pageListRequest(chapter: eu.kanade.tachiyomi.source.model.SChapter): Request =
+            Request.Builder().url(baseUrl + chapter.url).build()
+        override fun pageListParse(response: Response): List<Page> = response.use {
+            val pages = JSONObject(it.body.string()).getJSONArray("pages")
+            (0 until pages.length()).map { index -> Page(index, imageUrl = pages.getString(index)) }
+        }
+    }
+
     companion object {
+        private const val SYNTHETIC_SOURCE_ID = 881100001L
+        private const val SYNTHETIC_MANGA_ID = 881100002L
+        private const val SYNTHETIC_CHAPTER_ID = 881100003L
         fun closeColor(pixel: Int, expected: Int) = listOf(0, 8, 16).all {
             kotlin.math.abs((pixel ushr it and 255) - (expected ushr it and 255)) < 35
         }

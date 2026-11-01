@@ -4,6 +4,9 @@ import mihon.domain.reader.PageRotation
 import mihon.domain.reader.PageSplitHalf
 import mihon.domain.reader.PixelBounds
 import mihon.domain.reader.ReaderDirection
+import mihon.domain.reader.ReaderDualPageFrameId
+import mihon.domain.reader.ReaderDualPagePresentationFrame
+import mihon.domain.reader.ReaderDualPageUnitId
 import mihon.domain.reader.ReaderPageSize
 import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.session.ReaderChapterSession
@@ -36,6 +39,8 @@ internal enum class DisplayUnitContent {
 data class DisplayUnitId(
     val mode: ReaderPresentationMode,
     val slots: List<DisplaySlotId>,
+    val sharedUnitId: ReaderDualPageUnitId? = null,
+    val frameId: ReaderDualPageFrameId? = null,
 )
 
 internal data class DisplaySlot(
@@ -94,6 +99,9 @@ internal data class ReaderPresentationRequest(
     val pageRotations: Map<ReaderPageId, PageRotation> = emptyMap(),
     val dualPagedOptions: DualPagedPresentationOptions = DualPagedPresentationOptions(),
     val dualPageUnits: List<mihon.domain.reader.ReaderDualPageUnit>? = null,
+    val dualPageFrames: List<ReaderDualPagePresentationFrame>? = null,
+    val dualPageTargetFrameId: ReaderDualPageFrameId? = null,
+    val dualPageTargetPageId: ReaderPageId? = null,
 ) {
     init {
         require(splitPageIds.all { it.chapterId == chapter.id }) {
@@ -114,6 +122,8 @@ internal data class ReaderPresentationRequest(
 internal data class ReaderPresentationSnapshot(
     val mode: ReaderPresentationMode,
     val displayUnits: List<DisplayUnit>,
+    val targetFrameId: ReaderDualPageFrameId? = null,
+    val targetPageId: ReaderPageId? = null,
 ) {
     init {
         require(displayUnits.all { it.id.mode == mode }) { "Every display unit must belong to the snapshot mode" }
@@ -130,6 +140,10 @@ internal data class ReaderPresentationSnapshot(
         displayUnitId: DisplayUnitId?,
     ): Int {
         val exactIndex = displayUnitId?.let { id -> displayUnits.indexOfFirst { it.id == id } } ?: -1
+        if (displayUnitId?.slots?.any { it.transitionDirection != null } == true && exactIndex >= 0) return exactIndex
+        val desiredFrame = targetFrameId.takeIf { pageId == targetPageId } ?: displayUnitId?.frameId
+        val frameIndex = desiredFrame?.let { frame -> displayUnits.indexOfFirst { it.id.frameId == frame } } ?: -1
+        if (frameIndex >= 0) return frameIndex
         return exactIndex.takeIf { it >= 0 } ?: firstDisplayUnitIndex(pageId)
     }
 

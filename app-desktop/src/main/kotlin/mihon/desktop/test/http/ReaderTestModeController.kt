@@ -92,6 +92,7 @@ data class ReaderTestFixtureSpec(
     val format: ReaderTestImageFormat,
     val partialPageCount: Int? = null,
     val offline: Boolean = false,
+    val widePageIndex: Int? = null,
 ) {
     init {
         require(pageCount in 1..MAX_PAGE_COUNT) { "pageCount must be between 1 and $MAX_PAGE_COUNT" }
@@ -105,12 +106,17 @@ data class ReaderTestFixtureSpec(
             require(partialPageCount == null) { "partialPageCount is only valid for partial_download" }
             require(!offline) { "offline is only valid for partial_download" }
         }
+        if (widePageIndex != null) {
+            require(source == ReaderTestFixtureSource.ONLINE) { "widePageIndex is only valid for online" }
+            require(widePageIndex in 0 until pageCount) { "widePageIndex must identify an existing page" }
+            require(width < height) { "widePageIndex requires portrait base dimensions" }
+        }
     }
 
     fun resolvedPartialPageCount(): Int = partialPageCount ?: minOf(5, pageCount - 1)
 
     companion object {
-        const val MAX_PAGE_COUNT = 180
+        const val MAX_PAGE_COUNT = 200
         const val MAX_WIDTH = 2400
         const val MAX_HEIGHT = 3500
     }
@@ -658,11 +664,15 @@ class ReaderTestModeController(
 
     internal fun resolveOnlineImageUrl(pageUrl: String): String? {
         val fixture = currentFixture.get()
-            ?.takeIf { it.spec.source == ReaderTestFixtureSource.PARTIAL_DOWNLOAD }
+            ?.takeIf {
+                it.spec.source in setOf(ReaderTestFixtureSource.ONLINE, ReaderTestFixtureSource.PARTIAL_DOWNLOAD)
+            }
             ?: return null
         val pageIndex = pageUrl.substringAfterLast('/').toIntOrNull() ?: return null
-        if (pageIndex !in 0 until fixture.spec.pageCount) return null
+        val canonicalPageUrl = "${fixture.chapterUrl}/$pageIndex"
+        if (pageIndex !in 0 until fixture.spec.pageCount || pageUrl != canonicalPageUrl) return null
         if (
+            fixture.spec.source == ReaderTestFixtureSource.PARTIAL_DOWNLOAD &&
             partialFixtureStage.get() == PartialFixtureStage.PREPARING &&
             pageIndex >= fixture.spec.resolvedPartialPageCount()
         ) {
@@ -682,7 +692,7 @@ class ReaderTestModeController(
         onlineImageRequests.incrementAndGet()
         onlineImageRequestsByPage.computeIfAbsent(pageIndex) { AtomicInteger() }.incrementAndGet()
         if (fixture.spec.offline && partialFixtureStage.get() == PartialFixtureStage.ACTIVE) return null
-        return imageBytes(fixture.spec)
+        return imageBytes(fixture.spec, wide = pageIndex == fixture.spec.widePageIndex)
     }
 
     private fun ReaderTestFixtureDescriptor.imageUrl(pageIndex: Int): String =
@@ -752,8 +762,12 @@ class ReaderTestModeController(
         }
     }
 
-    private fun imageBytes(spec: ReaderTestFixtureSpec): ByteArray = imageBytes.computeIfAbsent(
-        ImageKey(spec.width, spec.height, spec.format),
+    private fun imageBytes(spec: ReaderTestFixtureSpec, wide: Boolean = false): ByteArray = imageBytes.computeIfAbsent(
+        ImageKey(
+            if (wide) spec.height else spec.width,
+            if (wide) spec.width else spec.height,
+            spec.format,
+        ),
     ) { key ->
         val image = BufferedImage(key.width, key.height, BufferedImage.TYPE_INT_RGB)
         image.createGraphics().run {

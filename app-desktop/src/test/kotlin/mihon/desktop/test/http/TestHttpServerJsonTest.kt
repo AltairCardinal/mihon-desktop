@@ -15,15 +15,173 @@ import mihon.domain.reader.observability.ReaderIoEventType
 import mihon.domain.reader.observability.ReaderIoPurpose
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageId
+import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
+import java.io.ByteArrayInputStream
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import javax.imageio.ImageIO
 
 class TestHttpServerJsonTest {
+
+    @Test
+    fun `online 200 page fixture serves one encoded wide reset and echoes its configuration`() = runBlocking {
+        withReaderFixtureServer { base, client, controller ->
+            val response = readerFixtureAction(
+                base,
+                client,
+                """
+                {"mangaId":42,"readerFixture":"online","pageCount":200,
+                 "width":1200,"height":1800,"widePageIndex":21}
+                """.trimIndent(),
+            )
+            assertEquals(200, response.statusCode(), response.body())
+            for ((page, dimensions) in listOf(21 to (1800 to 1200), 0 to (1200 to 1800), 125 to (1200 to 1800))) {
+                assertEquals(dimensions, fixtureImageDimensions(base, client, controller, page))
+            }
+            val state = client.send(
+                HttpRequest.newBuilder(URI.create("$base/test/reader/state")).GET().build(),
+                HttpResponse.BodyHandlers.ofString(),
+            )
+            val descriptor = Json.parseToJsonElement(state.body()).jsonObject.getValue("readerFixture").jsonObject
+            assertEquals(200, descriptor.getValue("pageCount").jsonPrimitive.content.toInt())
+            assertEquals(1200, descriptor.getValue("width").jsonPrimitive.content.toInt())
+            assertEquals(1800, descriptor.getValue("height").jsonPrimitive.content.toInt())
+            assertEquals(21, descriptor.getValue("widePageIndex").jsonPrimitive.content.toInt())
+        }
+    }
+
+    @Test
+    fun `online wide reset below the old cap changes only the requested encoded page`() = runBlocking {
+        withReaderFixtureServer { base, client, controller ->
+            val response = readerFixtureAction(
+                base,
+                client,
+                """{"mangaId":42,"readerFixture":"online","pageCount":24,"width":12,"height":18,"widePageIndex":21}""",
+            )
+            assertEquals(200, response.statusCode(), response.body())
+            assertEquals(18 to 12, fixtureImageDimensions(base, client, controller, 21))
+            assertEquals(12 to 18, fixtureImageDimensions(base, client, controller, 20))
+            assertEquals(12 to 18, fixtureImageDimensions(base, client, controller, 22))
+            val unchanged = readerFixtureAction(
+                base,
+                client,
+                """{"mangaId":42,"readerFixture":"online","pageCount":24,"width":12,"height":18}""",
+            )
+            assertEquals(200, unchanged.statusCode(), unchanged.body())
+            assertEquals(12 to 18, fixtureImageDimensions(base, client, controller, 21))
+            assertArrayEquals(
+                fixtureImageBytes(base, client, controller, 0),
+                fixtureImageBytes(base, client, controller, 21),
+                "Omitting the optional wide page preserves the original uniform encoded bytes",
+            )
+        }
+    }
+
+    @Test
+    fun `wide reset rejects bad indices sources and nonportrait bases while omission keeps defaults`() = runBlocking {
+        withReaderFixtureServer { base, client, controller ->
+            val default = readerFixtureAction(base, client, """{"mangaId":42}""")
+            assertEquals(200, default.statusCode(), default.body())
+            val original = requireNotNull(controller.fixtureDescriptor())
+            assertEquals(ReaderTestFixtureSource.DOWNLOADED_DIRECTORY, original.spec.source)
+            assertEquals(3, original.spec.pageCount)
+            assertEquals(16, original.spec.width)
+            assertEquals(24, original.spec.height)
+            val state = client.send(
+                HttpRequest.newBuilder(URI.create("$base/test/reader/state")).GET().build(),
+                HttpResponse.BodyHandlers.ofString(),
+            )
+            assertEquals(
+                false,
+                "widePageIndex" in Json.parseToJsonElement(state.body()).jsonObject
+                    .getValue("readerFixture").jsonObject,
+            )
+            val invalid = listOf(
+                """"readerFixture":"online","pageCount":201""",
+                *listOf("-1", "24", "21.5", "2147483648", "null", "true", "\"bad\"", "\"\"").map {
+                    """"readerFixture":"online","pageCount":24,"widePageIndex":$it"""
+                }.toTypedArray(),
+                *listOf("downloaded_directory", "downloaded_cbz", "local_archive", "partial_download").map {
+                    """"readerFixture":"$it","pageCount":24,"widePageIndex":21"""
+                }.toTypedArray(),
+                """"readerFixture":"online","pageCount":24,"width":24,"height":16,"widePageIndex":21""",
+                """"readerFixture":"online","pageCount":24,"width":16,"height":16,"widePageIndex":21""",
+            )
+            for (fields in invalid) {
+                val response = readerFixtureAction(base, client, """{"mangaId":42,$fields}""")
+                assertEquals(400, response.statusCode(), fields + ": " + response.body())
+                assertEquals(original, controller.fixtureDescriptor(), "Rejected input cannot replace the fixture")
+            }
+            for (page in listOf(0, 23)) {
+                val response = readerFixtureAction(
+                    base,
+                    client,
+                    """
+                    {"mangaId":42,"readerFixture":"online","pageCount":24,
+                     "width":12,"height":18,"widePageIndex":$page}
+                    """.trimIndent(),
+                )
+                assertEquals(200, response.statusCode(), response.body())
+                assertEquals(18 to 12, fixtureImageDimensions(base, client, controller, page))
+            }
+        }
+    }
+
+    private suspend fun withReaderFixtureServer(
+        block: suspend (String, HttpClient, ReaderTestModeController) -> Unit,
+    ) {
+        val controller = ReaderTestModeController()
+        ReaderIoTestModeBridge.install(controller)
+        val server = embeddedServer(CIO, host = "127.0.0.1", port = 0) { testHttpServer() }.start()
+        try {
+            val port = server.resolvedConnectors().single().port
+            block("http://127.0.0.1:$port", HttpClient.newHttpClient(), controller)
+        } finally {
+            server.stop(0, 0)
+            TestNavigationController.reset()
+            applicationState.reset()
+            ReaderIoTestModeBridge.clear(controller)
+            controller.close()
+        }
+    }
+
+    private fun readerFixtureAction(base: String, client: HttpClient, body: String): HttpResponse<String> = client.send(
+        HttpRequest.newBuilder(URI.create("$base/test/action/read_chapter"))
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(body)).build(),
+        HttpResponse.BodyHandlers.ofString(),
+    )
+
+    private fun fixtureImageDimensions(
+        base: String,
+        client: HttpClient,
+        controller: ReaderTestModeController,
+        page: Int,
+    ): Pair<Int, Int> {
+        val bytes = fixtureImageBytes(base, client, controller, page)
+        val image = requireNotNull(ImageIO.read(ByteArrayInputStream(bytes)))
+        return image.width to image.height
+    }
+
+    private fun fixtureImageBytes(
+        base: String,
+        client: HttpClient,
+        controller: ReaderTestModeController,
+        page: Int,
+    ): ByteArray {
+        val token = requireNotNull(controller.fixtureDescriptor()).token
+        val response = client.send(
+            HttpRequest.newBuilder(URI.create("$base/test/reader/fixture-content/$token/$page.jpg")).GET().build(),
+            HttpResponse.BodyHandlers.ofByteArray(),
+        )
+        assertEquals(200, response.statusCode())
+        return response.body()
+    }
 
     @Suppress("UNCHECKED_CAST")
     private fun parse(body: String): Map<String, String> {

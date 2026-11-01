@@ -15,6 +15,90 @@ import org.junit.jupiter.api.Test
 class ReaderRequestSchedulerTest {
 
     @Test
+    fun `exact current visible pair admits two ordinary requests including explicit retry but never a third`() {
+        for (retryKinds in listOf(false to false, true to false, true to true)) {
+            val scheduler = ReaderRequestScheduler(ReaderSchedulerPolicy.originalMihon())
+            var plan = scheduler.moveTo(TEST_CHAPTER_ID, listOf(2, 3), 2, 8)
+            val ids = setOf(ReaderPageId(TEST_CHAPTER_ID, 2), ReaderPageId(TEST_CHAPTER_ID, 3))
+            if (retryKinds.first) plan = scheduler.retry(ReaderPageId(TEST_CHAPTER_ID, 2), 8)
+            val first = requireNotNull(scheduler.pollNext())
+            if (retryKinds.second) {
+                scheduler.enqueue(
+                    ReaderPageId(TEST_CHAPTER_ID, 3),
+                    ReaderRequestKind.EXPLICIT_RETRY,
+                    forceRefresh = true,
+                )
+            }
+            val admission = ReaderVisiblePairAdmission(plan.generation, ids)
+            val second = scheduler.pollNext(admission)
+            org.junit.jupiter.api.Assertions.assertNotNull(
+                second,
+                "A held ordinary page cannot block its exact sibling",
+            )
+            assertEquals(ids, setOf(first.pageId, requireNotNull(second).pageId))
+            assertNull(scheduler.pollNext(admission), "Two current requests cannot admit any third work")
+            assertEquals(2, scheduler.snapshot().activeRequests.size)
+        }
+    }
+
+    @Test
+    fun `visible pair permission rejects stale foreign partial union fact and background requests`() {
+        fun pair(): Pair<ReaderRequestScheduler, ReaderSchedulePlan> {
+            val scheduler = ReaderRequestScheduler(ReaderSchedulerPolicy.originalMihon())
+            return scheduler to scheduler.moveTo(TEST_CHAPTER_ID, listOf(2, 3), 2, 8)
+        }
+        val ids = setOf(ReaderPageId(TEST_CHAPTER_ID, 2), ReaderPageId(TEST_CHAPTER_ID, 3))
+        val (scheduler, plan) = pair()
+        val first = requireNotNull(scheduler.pollNext())
+        val invalid = listOf(
+            ReaderVisiblePairAdmission(plan.generation - 1, ids),
+            ReaderVisiblePairAdmission(plan.generation + 1, ids),
+            ReaderVisiblePairAdmission(plan.generation, emptySet()),
+            ReaderVisiblePairAdmission(plan.generation, ids.take(1).toSet()),
+            ReaderVisiblePairAdmission(plan.generation, ids + ReaderPageId(TEST_CHAPTER_ID, 4)),
+            ReaderVisiblePairAdmission(plan.generation, setOf(first.pageId, ReaderPageId(TEST_CHAPTER_ID, 4))),
+            ReaderVisiblePairAdmission(plan.generation, setOf(first.pageId, ReaderPageId(ReaderChapterId(999), 3))),
+        )
+        invalid.forEach { admission ->
+            assertNull(scheduler.pollNext(admission))
+            assertEquals(listOf(first), scheduler.snapshot().activeRequests)
+        }
+        assertNull(scheduler.pollNext(), "An absent adapter capability keeps the original one-slot policy")
+        for (kind in listOf(
+            ReaderRequestKind.NEARBY,
+            ReaderRequestKind.CURRENT_BACKGROUND,
+            ReaderRequestKind.ADJACENT_METADATA,
+            ReaderRequestKind.ADJACENT_BACKGROUND,
+        )) {
+            val (subject, window) = pair()
+            subject.pollNext()
+            subject.cancelPending(window.requests.single { it.pageIndex == 3 }.jobKey)
+            subject.enqueue(ReaderPageId(TEST_CHAPTER_ID, 3), kind)
+            assertNull(subject.pollNext(ReaderVisiblePairAdmission(window.generation, ids)), kind.toString())
+        }
+        val budget = ReaderDualPageFactBudget()
+        budget.reserve(ids.toList(), 0, required = true)
+        try {
+            for (factIndex in listOf(2, 3)) {
+                val (subject, window) = pair()
+                window.requests.take(2).forEach { subject.cancelPending(it.jobKey) }
+                val factId = ReaderPageId(TEST_CHAPTER_ID, factIndex)
+                fun enqueue(index: Int) = subject.enqueue(
+                    ReaderPageId(TEST_CHAPTER_ID, index),
+                    ReaderRequestKind.INTERACTIVE_VISIBLE,
+                    factPermit = if (index == factIndex) ReaderDualPageFactReadPermit(budget, factId, { 0L }) else null,
+                )
+                enqueue(2)
+                subject.pollNext()
+                enqueue(3)
+                assertNull(subject.pollNext(ReaderVisiblePairAdmission(window.generation, ids)))
+            }
+        } finally {
+            budget.close()
+        }
+    }
+
+    @Test
     fun `original Mihon policy schedules visible page then four forward pages serially`() {
         val scheduler = ReaderRequestScheduler(ReaderSchedulerPolicy.originalMihon())
 

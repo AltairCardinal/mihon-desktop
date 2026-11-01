@@ -38,7 +38,7 @@ class SharedDualPageStablePresentationContractTest {
     }
 
     @Test
-    fun `group turns skip current unit regardless of drawable loading or failed partners`() {
+    fun `group turns activate an undrawn partner once before leaving loading or failed pages`() {
         for (painted in listOf(false, true)) {
             for (failed in listOf(false, true)) {
                 val owner = owner()
@@ -53,7 +53,9 @@ class SharedDualPageStablePresentationContractTest {
                 }
                 assertEquals(listOf(ids[1], ids[2]), owner.targetUnit!!.pageIds)
                 assertTrue(owner.navigate(true))
-                assertEquals(ids[3], owner.location!!.pageId, "Next screen must skip the complete C/D unit")
+                assertEquals(ids[2], owner.location!!.pageId, "An undrawn partner is activated before leaving the unit")
+                assertTrue(owner.navigate(true))
+                assertEquals(ids[3], owner.location!!.pageId)
                 assertEquals(listOf(ids[3], ids[4]), owner.targetUnit!!.pageIds)
                 assertTrue(owner.navigate(false))
                 assertEquals(ids[2], owner.location!!.pageId)
@@ -162,7 +164,7 @@ class SharedDualPageStablePresentationContractTest {
     }
 
     @Test
-    fun `confident decoded side selects either direction without waiting for an unknown earlier partner`() {
+    fun `decoded side updates canonical proposal without guessing the unproved presentation phase`() {
         val cases = listOf(
             Triple(ReaderDirection.RTL, ReaderPageSideHint.LEFT, listOf(2, 3)),
             Triple(ReaderDirection.RTL, ReaderPageSideHint.RIGHT, listOf(3, 4)),
@@ -175,14 +177,15 @@ class SharedDualPageStablePresentationContractTest {
             val ids = owner.identity.pageIds
             val placeholder = owner.captureViewport(preparingPageIds = emptySet())!!
             assertTrue(owner.acceptDecodedFact(placeholder, ids[3], 100, 150, side))
-            assertEquals(expected, owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
+            assertEquals(expected, owner.canonicalTargetUnit!!.pageIds.map { it.sourcePageIndex })
+            assertEquals(listOf(3, 4), owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
             val actual = owner.captureViewport(preparingPageIds = emptySet())!!
             assertTrue(owner.preparePage(actual, ids[3]))
             assertTrue(owner.reportDrawn(actual, setOf(ids[3])))
             val slot = owner.frame(actual)!!.unit.slots.single { it.pageId == ids[3] }
             assertEquals(
-                if (side ==
-                    ReaderPageSideHint.LEFT
+                if (direction ==
+                    ReaderDirection.LTR
                 ) {
                     ReaderPortraitSingleSlot.LEFT
                 } else {
@@ -190,11 +193,11 @@ class SharedDualPageStablePresentationContractTest {
                 },
                 slot.position,
             )
-            val partner = expected.single { it != 3 }
+            val partner = 4
             assertTrue(owner.acceptDecodedFact(actual, ids[partner], 100, 150, side))
-            assertEquals(listOf(ids[3]), owner.frame(actual)!!.unit.pageIds)
-            assertEquals(slot, owner.frame(actual)!!.unit.slots.single())
-            assertFalse(owner.preparePage(actual, ids[partner]))
+            assertEquals(listOf(ids[3], ids[4]), owner.frame(actual)!!.unit.pageIds)
+            assertEquals(slot, owner.frame(actual)!!.unit.slots.first())
+            assertTrue(owner.preparePage(actual, ids[partner]), "A compatible delayed portrait keeps its promised slot")
             fact(owner, 3)
             assertEquals(side, owner.pageFact(ids[3])!!.sideHint, "A late ordinary header must retain the decoded hint")
         }
@@ -208,11 +211,14 @@ class SharedDualPageStablePresentationContractTest {
         val earlyIds = earlyPartner.identity.pageIds
         val pending = earlyPartner.captureViewport(preparingPageIds = emptySet())!!
         assertTrue(earlyPartner.acceptDecodedFact(pending, earlyIds[4], 100, 150, ReaderPageSideHint.RIGHT))
-        assertEquals(listOf(earlyIds[3]), earlyPartner.targetUnit!!.pageIds)
-        assertFalse(
+        assertEquals(listOf(earlyIds[3]), earlyPartner.canonicalTargetUnit!!.pageIds)
+        assertEquals(listOf(earlyIds[3], earlyIds[4]), earlyPartner.targetUnit!!.pageIds)
+        assertTrue(
             earlyPartner.preparePage(pending, earlyIds[4]),
-            "A leading page cannot first paint in the trailing slot",
+            "An unproved side hint cannot block a compatible portrait in the default layout",
         )
+        assertTrue(earlyPartner.certifyPairing() is ReaderPairingCertification.NeedFacts)
+        assertNull(earlyPartner.captureCertifiedViewport(earlyIds[3]))
         val owner = owner(target = 3)
         val ids = owner.identity.pageIds
         val off = owner.captureViewport(preparingPageIds = emptySet())!!
@@ -223,7 +229,8 @@ class SharedDualPageStablePresentationContractTest {
         assertTrue(owner.goToPage(firstPages[1]))
         val opening = owner.captureViewport(preparingPageIds = emptySet())!!
         assertTrue(owner.acceptDecodedFact(opening, firstPages[1], 100, 150, ReaderPageSideHint.LEFT))
-        assertEquals(listOf(firstPages[1]), owner.targetUnit!!.pageIds)
+        assertEquals(listOf(firstPages[1]), owner.canonicalTargetUnit!!.pageIds)
+        assertEquals(listOf(firstPages[1], firstPages[2]), owner.targetUnit!!.pageIds)
         val manual = SharedDualPageRules.decide(
             firstPages,
             mapOf(
@@ -315,7 +322,7 @@ class SharedDualPageStablePresentationContractTest {
     }
 
     @Test
-    fun `reverse group turn leaves both earlier sources while retaining the committed later slot`() {
+    fun `reverse group turn activates undrawn earlier source before leaving the committed later slot`() {
         val owner = owner(target = 3)
         fact(owner, 1)
         fact(owner, 2)
@@ -325,10 +332,12 @@ class SharedDualPageStablePresentationContractTest {
         assertTrue(owner.reportDrawn(ticket, setOf(owner.identity.pageIds[2])))
         val slots = owner.targetUnit!!.slots
         assertTrue(owner.navigate(false))
+        assertEquals(owner.identity.pageIds[1], owner.location!!.pageId)
+        assertTrue(owner.navigate(false))
         assertEquals(
             owner.identity.pageIds[0],
             owner.location!!.pageId,
-            "The reverse turn skips the whole earlier group",
+            "The second reverse turn may leave the unpainted earlier page",
         )
         assertEquals(listOf(0), owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
         assertEquals(slots, owner.frame(ticket)!!.unit.slots)
@@ -626,13 +635,15 @@ class SharedDualPageStablePresentationContractTest {
     }
 
     @Test
-    fun `first drawn page turns past its unseen partner and retains the entered group`() {
+    fun `first drawn page activates its unseen partner once and retains the entered group`() {
         val owner = owner()
         fact(owner, 1)
         fact(owner, 2)
         val ticket = owner.captureViewport()!!
         assertTrue(owner.reportDrawn(ticket, setOf(owner.identity.pageIds[1])))
         assertNotNull(owner.settle(settled(owner, ticket, setOf(1), 1), false, "partial"))
+        assertTrue(owner.navigate(true))
+        assertEquals(owner.identity.pageIds[2], owner.location!!.pageId)
         assertTrue(owner.navigate(true))
         assertEquals(owner.identity.pageIds[3], owner.location!!.pageId)
         assertEquals(
@@ -731,16 +742,16 @@ class SharedDualPageStablePresentationContractTest {
     @Test
     fun `canonical orphan commits stronger later pair while outgoing slots ignore future competition`() {
         val owner = owner()
-        (1..4).forEach { fact(owner, it) }
+        (0..7).forEach { fact(owner, it) }
         owner.configure(ReaderDirection.RTL, automaticMatching = true)
         sample(owner, 1)
         sample(owner, 2, rightShift = 5)
         sample(owner, 3, rightShift = 1)
-        assertEquals(listOf(1), owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
+        assertEquals(listOf(1), owner.canonicalTargetUnit!!.pageIds.map { it.sourcePageIndex })
         val ticket = owner.captureViewport()!!
         assertEquals(
             listOf(2, 3),
-            owner.units.single { owner.identity.pageIds[2] in it.pageIds }
+            owner.canonicalUnits.single { owner.identity.pageIds[2] in it.pageIds }
                 .pageIds.map { it.sourcePageIndex },
         )
         assertTrue(owner.reportDrawn(ticket, setOf(owner.identity.pageIds[1])))
@@ -750,11 +761,13 @@ class SharedDualPageStablePresentationContractTest {
         assertEquals(fixed.unit.slots, owner.frame(ticket)!!.unit.slots)
         assertEquals(
             listOf(2, 3),
-            owner.units.single { owner.identity.pageIds[2] in it.pageIds }
+            owner.canonicalUnits.single { owner.identity.pageIds[2] in it.pageIds }
                 .pageIds.map { it.sourcePageIndex },
         )
+        listOf(0, 5, 6, 7).forEach { sample(owner, it) }
+        assertTrue(owner.certifyPairing(owner.identity.pageIds[2]) is ReaderPairingCertification.Certified)
         assertTrue(owner.navigate(true))
-        assertEquals(listOf(2, 3), owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
+        assertEquals(listOf(2, 3), owner.canonicalTargetUnit!!.pageIds.map { it.sourcePageIndex })
     }
 
     @Test
@@ -771,10 +784,10 @@ class SharedDualPageStablePresentationContractTest {
                 assertEquals(listOf(1, 2), owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
                 assertTrue(owner.originalAnalysis(owner.identity.pageIds[1]) is ReaderPageAnalysisEvidence.Computed)
             } else {
-                assertEquals(listOf(1), owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
+                assertEquals(listOf(1), owner.canonicalTargetUnit!!.pageIds.map { it.sourcePageIndex })
                 assertEquals(
                     listOf(2, 3),
-                    owner.units.single { owner.identity.pageIds[2] in it.pageIds }
+                    owner.canonicalUnits.single { owner.identity.pageIds[2] in it.pageIds }
                         .pageIds.map { it.sourcePageIndex },
                 )
                 if (competition == "unknown") {
@@ -797,10 +810,10 @@ class SharedDualPageStablePresentationContractTest {
     }
 
     @Test
-    fun `late competition may remove unexposed partner but cannot take a prepared left slot`() {
+    fun `late competition preserves compatible promised slots and corrects only on user navigation`() {
         for (partnerPrepared in listOf(false, true)) {
             val owner = owner()
-            (1..3).forEach { fact(owner, it) }
+            (0..7).forEach { fact(owner, it) }
             owner.configure(ReaderDirection.RTL, automaticMatching = true)
             val ids = owner.identity.pageIds
             val ticket = owner.captureViewport(preparingPageIds = setOf(ids[1]))!!
@@ -812,7 +825,7 @@ class SharedDualPageStablePresentationContractTest {
             assertEquals(original.id, owner.frame(ticket)!!.id)
             assertEquals(original.unit.slots.first(), owner.frame(ticket)!!.unit.slots.first())
             assertEquals(
-                if (partnerPrepared) listOf(1, 2) else listOf(1),
+                listOf(1, 2),
                 owner.targetUnit!!.pageIds.map {
                     it.sourcePageIndex
                 },
@@ -822,7 +835,7 @@ class SharedDualPageStablePresentationContractTest {
             } else {
                 assertEquals(
                     listOf(2, 3),
-                    owner.units.single { ids[2] in it.pageIds }
+                    owner.canonicalUnits.single { ids[2] in it.pageIds }
                         .pageIds.map { it.sourcePageIndex },
                 )
             }
@@ -831,17 +844,19 @@ class SharedDualPageStablePresentationContractTest {
                 owner.canonicalUnits.single { ids[2] in it.pageIds }
                     .pageIds.map { it.sourcePageIndex },
             )
+            listOf(0, 1, 4, 5, 6, 7).forEach { sample(owner, it, leftShift = if (it == 1) 20 else 0) }
+            assertTrue(owner.certifyPairing(ids[2]) is ReaderPairingCertification.Certified)
             assertTrue(owner.navigate(true))
             assertEquals(
-                if (partnerPrepared) listOf(3) else listOf(2, 3),
+                listOf(2, 3),
                 owner.targetUnit!!.pageIds.map { it.sourcePageIndex },
             )
             if (partnerPrepared) {
-                assertEquals(ids[3], owner.location!!.pageId)
+                assertEquals(ids[2], owner.location!!.pageId)
                 assertEquals(original.unit.slots, owner.frame(ticket)!!.unit.slots)
                 assertTrue(owner.releaseViewport(ticket))
                 assertEquals(listOf(2, 3), owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
-                assertEquals(ids[3], owner.location!!.pageId, "Lease release cannot manufacture a navigation")
+                assertEquals(ids[2], owner.location!!.pageId, "Lease release cannot manufacture a navigation")
                 val projection = owner.presentationFrameProjection.flatMap { it.pageIds }
                 assertEquals(ids, projection)
             }
@@ -1083,9 +1098,9 @@ class SharedDualPageStablePresentationContractTest {
         owner.reportDrawn(first, setOf(owner.identity.pageIds[1]))
         owner.navigate(true)
         val loading = owner.captureViewport(preparingPageIds = emptySet())!!
-        assertEquals(3, owner.location!!.pageId.sourcePageIndex)
+        assertEquals(2, owner.location!!.pageId.sourcePageIndex)
         assertTrue(owner.navigate(true))
-        assertEquals(5, owner.location!!.pageId.sourcePageIndex)
+        assertEquals(3, owner.location!!.pageId.sourcePageIndex)
         assertFalse(owner.reportDrawn(loading, setOf(owner.identity.pageIds[3])))
     }
 
@@ -1158,15 +1173,16 @@ class SharedDualPageStablePresentationContractTest {
     @Test
     fun `prepared canonical pair does not yield to stronger later score after its leading page draws`() {
         val owner = owner()
-        (1..4).forEach { fact(owner, it) }
+        (0..7).forEach { fact(owner, it) }
         owner.configure(ReaderDirection.RTL, automaticMatching = true)
         sample(owner, 2)
         sample(owner, 3, rightShift = 1)
-        val first = owner.captureViewport()!!
+        listOf(0, 1, 4, 5, 6, 7).forEach { sample(owner, it, leftShift = if (it in setOf(1, 4)) 20 else 0) }
+        val first = owner.capturePresentableViewport(owner.location!!.pageId)!!
         owner.reportDrawn(first, setOf(owner.identity.pageIds[1]))
         assertEquals(
             listOf(2, 3),
-            owner.units.single { owner.identity.pageIds[2] in it.pageIds }
+            owner.canonicalUnits.single { owner.identity.pageIds[2] in it.pageIds }
                 .pageIds.map { it.sourcePageIndex },
         )
         assertTrue(owner.navigate(true))
@@ -1281,9 +1297,15 @@ class SharedDualPageStablePresentationContractTest {
         )
         assertEquals(setOf(ids[1]), owner.frame(next)!!.drawnPageIds)
         assertTrue(owner.navigate(true))
-        assertEquals(ids[3], owner.location!!.pageId, "Navigation skips the whole entered group, not just drawn pages")
+        assertEquals(ids[2], owner.location!!.pageId, "Navigation activates the unpainted partner once")
+        assertTrue(owner.navigate(true))
+        assertEquals(ids[3], owner.location!!.pageId)
         assertEquals(ids[3], owner.targetUnit!!.anchor)
-        assertEquals(setOf(ids[1]), owner.frame(next)!!.drawnPageIds, "Skipping the partner does not mark it drawn")
+        assertEquals(
+            setOf(ids[1]),
+            owner.frame(next)!!.drawnPageIds,
+            "Actively leaving the partner does not mark it drawn",
+        )
     }
 
     @Test

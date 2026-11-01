@@ -45,6 +45,13 @@ enum class ReaderDualPageSettlementReason { USER_NAVIGATION, LAYOUT_ONLY }
 
 enum class ReaderPresentationMode { SINGLE, DUAL }
 
+enum class ReaderDualPagePresentationSource { DEFAULT, CERTIFIED, SINGLE }
+
+internal data class ReaderDualPagePresentationSelection(
+    val unit: ReaderDualPageUnit,
+    val source: ReaderDualPagePresentationSource,
+)
+
 /** Opaque owner-issued capability captured when a native viewport starts presenting this layout. */
 class ReaderDualPageViewportTicket internal constructor(
     val identity: ReaderDualPageIdentity,
@@ -53,6 +60,8 @@ class ReaderDualPageViewportTicket internal constructor(
     val unitId: ReaderDualPageUnitId,
     val readingEligible: Boolean,
     val frameId: ReaderDualPageFrameId,
+    val source: ReaderDualPagePresentationSource,
+    internal val leaseOwner: Any? = null,
 )
 
 data class ReaderDualPageSettlement(
@@ -109,6 +118,8 @@ class SharedDualPageSession(
         facts,
         { first, second -> spreadSamples.distance(first, second, this.direction, facts) },
         direction,
+        { currentPresentationSelection(it) },
+        { location?.pageId },
     )
     var sampleWorkRevision: Long = 0
         private set
@@ -116,6 +127,12 @@ class SharedDualPageSession(
         private set
     private var ownsFactBudget = true
     private val certificationMemo = ReaderPairingCertificationMemo(memoCapacity)
+
+    // At most the current destination and latest explicit candidate survive a memo bypass.
+    // These store only physical units, never the certifier's potentially large dependency graph.
+    private data class PresentationProposal(val page: ReaderPageId, val unit: ReaderDualPageUnit, val revision: Long)
+    private var currentPresentationProposal: PresentationProposal? = null
+    private var latestPresentationProposal: PresentationProposal? = null
 
     /**
      * Accounting for the certification reuse path. The counters are read-only;
@@ -138,9 +155,11 @@ class SharedDualPageSession(
     val canonicalUnits: List<ReaderDualPageUnit> get() = presentation.canonicalUnits()
     val canonicalTargetUnit: ReaderDualPageUnit? get() = location?.pageId?.let(presentation::unit)
     val presentationFrameProjection: List<ReaderDualPageUnit> get() = presentation.presentationFrameProjection()
+    val presentationFrames: List<ReaderDualPagePresentationFrame> get() = presentation.frameProjection()
     val units: List<ReaderDualPageUnit> get() = presentationFrameProjection
     val presentationUnits: List<ReaderDualPageUnit> get() = presentationFrameProjection
     val targetUnit: ReaderDualPageUnit? get() = location?.pageId?.let(presentation::presentationUnit)
+    val targetFrameId: ReaderDualPageFrameId? get() = presentation.targetFrameId
     val displayedHistory: List<ReaderDualPageFrame> get() = presentation.history
     val reservedPairs: Set<Pair<ReaderPageId, ReaderPageId>> get() = presentation.reservedPairs
     fun pageFact(pageId: ReaderPageId): ReaderPageFact? = facts[pageId]
@@ -156,18 +175,61 @@ class SharedDualPageSession(
     fun failOriginalAnalysis(request: ReaderSpreadSampleRequest, reason: ReaderAnalysisFailure): Boolean {
         if (closed || !spreadSamples.failOriginal(request, reason)) return false
         sampleWorkRevision++
+        presentation.factsChanged(request.content.pageId)
         return true
     }
 
     /** A platform requests a physical slot only after the same canonical reducer has proved it. */
     fun captureCertifiedViewport(pageId: ReaderPageId): ReaderDualPageViewportTicket? {
         if (closed) return null
-        if (presentationMode == ReaderPresentationMode.DUAL &&
-            certifyPairing(pageId) !is ReaderPairingCertification.Certified
-        ) {
-            return null
+        if (presentationMode == ReaderPresentationMode.DUAL) {
+            val proof = certifyPairing(pageId) as? ReaderPairingCertification.Certified ?: return null
+            if (presentation.presentationUnit(pageId).id != proof.segment.unit.id) return null
         }
         return captureViewport(pageId, preparingPageIds = emptySet())
+    }
+
+    /**
+     * Normal image loading owns geometry. Pairing evidence only improves the proposed grouping;
+     * it cannot withhold a viewport capability needed by the native before-draw callback.
+     * Each native mount supplies its own stable leaseOwner token; only that mount's repeated
+     * capture is idempotent. Null retains the legacy shared-capture contract for existing callers.
+     */
+    fun capturePresentableViewport(
+        pageId: ReaderPageId,
+        unitId: ReaderDualPageUnitId? = null,
+        frameId: ReaderDualPageFrameId? = null,
+        activate: Boolean = pageId == location?.pageId,
+        leaseOwner: Any? = null,
+    ): ReaderDualPageViewportTicket? {
+        if (closed || pageId !in identity.pageIds) return null
+        if (activate && pageId != location?.pageId) return null
+        if (presentationMode == ReaderPresentationMode.DUAL) certifyPairing(pageId)
+        return captureViewport(pageId, preparingPageIds = emptySet(), unitId, frameId, activate, leaseOwner)
+    }
+
+    /** Allocate identity before a native mount is published, without granting pixel or reading authority. */
+    fun preparePresentationFrame(
+        pageId: ReaderPageId? = location?.pageId,
+        unitId: ReaderDualPageUnitId? = null,
+        activate: Boolean = pageId == location?.pageId,
+    ): ReaderDualPageFrameId? {
+        if (closed || pageId == null || pageId !in identity.pageIds) return null
+        if (activate && pageId != location?.pageId) return null
+        return presentation.prepareFrame(pageId, location ?: return null, unitId, activate)
+    }
+
+    private fun currentPresentationSelection(page: ReaderPageId): ReaderDualPagePresentationSelection? {
+        if (closed || presentationMode == ReaderPresentationMode.SINGLE) return null
+        // Projection/refresh are reads, never implicit certification scans. Reuse the existing
+        // memo's proof only while its actual dependencies still validate, independent of location.
+        val certified = certificationMemo.entryFor(page)?.result as? ReaderPairingCertification.Certified
+        val unit = certified?.segment?.takeIf {
+            it.isCurrent(identity, currentPairingSettings(), spreadSamples, originalHeaders)
+        }?.unit ?: listOfNotNull(currentPresentationProposal, latestPresentationProposal).firstOrNull {
+            it.revision == presentation.inputRevision && page in it.unit.pageIds
+        }?.unit ?: return null
+        return ReaderDualPagePresentationSelection(unit, ReaderDualPagePresentationSource.CERTIFIED)
     }
 
     fun acceptOriginalAnalysis(
@@ -205,7 +267,12 @@ class SharedDualPageSession(
                 )
             else -> Unit
         }
-        return certifyWithMemo(pageId)
+        return certifyWithMemo(pageId).also { trace ->
+            val unit = (trace.certification as? ReaderPairingCertification.Certified)?.segment?.unit
+            val proposal = unit?.let { PresentationProposal(pageId, it, presentation.inputRevision) }
+            latestPresentationProposal = proposal
+            if (pageId == location?.pageId) currentPresentationProposal = proposal
+        }
     }
 
     /**
@@ -446,10 +513,13 @@ class SharedDualPageSession(
     /** A location is retained until a real navigation or identity disposal; pager settling never replaces it. */
     fun goToPage(pageId: ReaderPageId, forward: Boolean? = null): Boolean {
         if (closed || pageId !in identity.pageIds) return false
+        val from = location?.pageId
         val sequence = (location?.sequence ?: -1) + 1
         navigationForward = forward ?: true
-        presentation.move(pageId, forward, location?.pageId, sequence)
         location = ReaderDualPageLocationIntent(pageId, identity.generation, sequence)
+        certificationMemo.clear()
+        if (presentationMode == ReaderPresentationMode.DUAL) certifyPairing(pageId)
+        presentation.move(pageId, forward, from, sequence)
         requests.clear()
         accepted.clear()
         spreadSamples.cancelRequests()
@@ -458,7 +528,6 @@ class SharedDualPageSession(
         factBudget.close()
         factBudget = ReaderDualPageFactBudget()
         factWorkRevision++
-        certificationMemo.clear()
         return true
     }
 
@@ -484,8 +553,10 @@ class SharedDualPageSession(
         val next = presentation.navigate(from, forward) ?: return false
         val sequence = (location?.sequence ?: -1) + 1
         navigationForward = forward
-        presentation.move(next, forward, from, sequence)
         location = ReaderDualPageLocationIntent(next, identity.generation, sequence)
+        certificationMemo.clear()
+        if (presentationMode == ReaderPresentationMode.DUAL) certifyPairing(next)
+        presentation.move(next, forward, from, sequence)
         requests.clear()
         accepted.clear()
         spreadSamples.cancelRequests()
@@ -494,7 +565,6 @@ class SharedDualPageSession(
         factBudget = ReaderDualPageFactBudget()
         factWorkRevision++
         sampleWorkRevision++
-        certificationMemo.clear()
         return true
     }
 
@@ -639,6 +709,9 @@ class SharedDualPageSession(
     fun adjustPairing(): ReaderPairingPersistenceRequest.Save? {
         if (closed || presentationMode != ReaderPresentationMode.DUAL) return null
         val unit = targetUnit ?: return null
+        // A late wide anchor may retain only its already painted partner. That physical
+        // frame cannot author a manual rule for a different logical source page.
+        if (location?.pageId !in unit.pageIds) return null
         if (unit.singleReason in
             setOf(ReaderDualPageSingleReason.SPREAD, ReaderDualPageSingleReason.ONLY_PAGE)
         ) {
@@ -707,10 +780,15 @@ class SharedDualPageSession(
     fun captureViewport(
         pageId: ReaderPageId? = location?.pageId,
         preparingPageIds: Set<ReaderPageId>? = null,
+        unitId: ReaderDualPageUnitId? = null,
+        frameId: ReaderDualPageFrameId? = null,
+        activate: Boolean = pageId == location?.pageId,
+        leaseOwner: Any? = null,
     ): ReaderDualPageViewportTicket? {
         if (closed) return null
         val current = location ?: return null
         val page = pageId?.takeIf { it in identity.pageIds } ?: return null
+        if (activate && page != current.pageId) return null
         val unit = presentation.presentationUnit(page)
         val ready = preparingPageIds ?: unit.pageIds.filterTo(mutableSetOf()) {
             facts[it]?.state in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD)
@@ -720,8 +798,12 @@ class SharedDualPageSession(
             current,
             layoutRevision,
             ready,
-            page == current.pageId && lastReadLocationSequence != current.sequence &&
+            activate && page == current.pageId && lastReadLocationSequence != current.sequence &&
                 presentation.readingEligible(current.sequence, page),
+            unitId,
+            frameId,
+            activate,
+            leaseOwner,
         )
     }
 
@@ -846,6 +928,8 @@ class SharedDualPageSession(
         pairingPersistence.close()
         spreadSamples.close()
         certificationMemo.clear()
+        currentPresentationProposal = null
+        latestPresentationProposal = null
         requests.clear()
         accepted.clear()
     }

@@ -177,19 +177,25 @@ class DualPageViewerAdapter(
         return target
     }
 
-    /** Native slots stay frozen during dragging; only their logical source anchor advances. */
-    internal fun selectGesturePage(displayPage: DisplayPage, forward: Boolean) {
-        val entry = chapterPairings[displayPage.firstPage.chapter] ?: return
-        val indices = displayPage.visiblePages.map { it.index }
+    /** A drag submits the same source intent as keys/taps; native slots reconcile when idle. */
+    internal fun selectGesturePage(displayPage: DisplayPage, forward: Boolean, origin: DisplayPage?) {
+        val chapter = displayPage.firstPage.chapter
+        val entry = chapterPairings[chapter] ?: return
         if (displayPage.visiblePages.any { entry.pages.getOrNull(it.index) !== it }) return
         val owner = entry.session
-        // Only the selected native group was entered; skipped slots must not acquire shared ownership.
-        if (owner.location?.pageId?.sourcePageIndex !in indices) {
-            val anchor = if (forward) indices.min() else indices.max()
-            if (!owner.goToPage(owner.identity.pageIds[anchor], forward)) return
-            preparationTargets.remove(displayPage.firstPage.chapter)
-            if (matchingSession === owner) matchingJob?.cancel()
+        if (origin?.firstPage?.chapter === chapter) {
+            if (!owner.navigate(forward)) return
+        } else {
+            // Entering another chapter still uses its native boundary entry rather than turning
+            // again inside the newly selected chapter.
+            val indices = displayPage.visiblePages.map { it.index }
+            if (owner.location?.pageId?.sourcePageIndex !in indices) {
+                val anchor = if (forward) indices.min() else indices.max()
+                if (!owner.goToPage(owner.identity.pageIds[anchor], forward)) return
+            }
         }
+        preparationTargets.remove(chapter)
+        if (matchingSession === owner) matchingJob?.cancel()
         pendingPairing = true
         startMatching()
     }
@@ -420,6 +426,26 @@ class DualPageViewerAdapter(
         }
     }
 
+    /** A boundary page may belong to both outgoing and incoming frames. */
+    internal fun positionForPage(page: ReaderPage): Int {
+        val owner = session(page.chapter)
+        if (owner != null && owner.location?.pageId?.sourcePageIndex == page.index) {
+            owner.targetFrameId?.let { frame ->
+                return items.indexOfFirst {
+                    it is DisplayPage && it.frameId == frame &&
+                        it.firstPage.chapter === page.chapter
+                }
+            }
+            val target = owner.targetUnit?.id
+            return items.indexOfFirst {
+                it is DisplayPage && it.firstPage.chapter === page.chapter && it.sharedUnitId(owner) == target
+            }
+        }
+        return items.indexOfFirst { it is DisplayPage && it.containsPage(page) }
+    }
+
+    internal fun refreshPresentationFrames() = scheduleMatchingRefresh()
+
     override fun createView(container: ViewGroup, position: Int): View {
         return when (val item = items[position]) {
             is DisplayPage -> DualPagerPageHolder(readerThemedContext, viewer, item)
@@ -505,7 +531,8 @@ class DualPageViewerAdapter(
             viewer.refreshPresentation()
             return
         }
-        val layoutOnly = selected is DisplayPage && selected.firstPage.chapter === currentChapter
+        // Explicit jumps and source turns carry user reading intent through the rebuilt group.
+        val layoutOnly = targetPage == null && selected is DisplayPage && selected.firstPage.chapter === currentChapter
         viewer.replacePairing(anchor, layoutOnly, retainedTransition) {
             items = replacement
             notifyDataSetChanged()
@@ -950,9 +977,15 @@ class DualPageViewerAdapter(
         chapter?.state is ReaderChapter.State.Loaded
 
     private fun buildDisplayPages(pages: List<ReaderPage>, session: SharedDualPageSession): List<DisplayPage> {
-        return session.presentationFrameProjection.map { unit ->
+        session.preparePresentationFrame()
+        return session.presentationFrames.map { frame ->
+            val unit = frame.unit
             if (unit.pageIds.size == 1) {
-                DisplayPage.Single(pages[unit.pageIds.single().sourcePageIndex], unit.slots.single().position)
+                DisplayPage.Single(
+                    pages[unit.pageIds.single().sourcePageIndex],
+                    unit.slots.single().position,
+                    frame.frameId,
+                )
             } else {
                 DisplayPage.Double(
                     rightPage = pages[
@@ -965,6 +998,7 @@ class DualPageViewerAdapter(
                             it.position == mihon.domain.reader.ReaderPortraitSingleSlot.LEFT
                         }.pageId.sourcePageIndex,
                     ],
+                    frameId = frame.frameId,
                 )
             }
         }

@@ -450,7 +450,12 @@ internal fun ReaderState.dualPresentationSnapshot(
         hasNextChapter = hasNextChapter,
         spreadPageIndices = spreadPages,
         splitWidePages = autoSplitPages,
-    ).copy(dualPageUnits = dualPageUnits.takeIf { dualPageIdentity != null })
+    ).copy(
+        dualPageUnits = dualPageUnits.takeIf { dualPageIdentity != null },
+        dualPageFrames = dualPageFrames.takeIf { dualPageIdentity != null },
+        dualPageTargetFrameId = dualPageTargetFrameId,
+        dualPageTargetPageId = dualPageLocation?.pageId,
+    )
     return DesktopReaderPresentationRegistry.require(ReaderPresentationMode.DUAL_PAGED).present(request)
 }
 
@@ -643,6 +648,7 @@ internal fun ReaderViewport(
                         onPrevChapter,
                         onNextChapter,
                         adjustSpread,
+                        beforeFullscreenToggle = renderTrace?.let { trace -> trace::fullscreenRequest },
                     )
                 }
                 .onPointerEvent(PointerEventType.Move, PointerEventPass.Initial) { event ->
@@ -962,9 +968,12 @@ internal fun handleReaderKeyEvent(
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
     onAdjustSpread: () -> Unit = model::adjustSpread,
+    beforeFullscreenToggle: ((Boolean) -> Unit)? = null,
 ): Boolean {
     if (event.type != KeyEventType.KeyDown) return false
     if (event.key == Key.F11) {
+        // Capture the last completed picture before state-driven UI recomposition can replace it.
+        beforeFullscreenToggle?.invoke(!model.state.value.isFullscreen)
         model.toggleFullscreen()
         return true
     }
@@ -1191,6 +1200,8 @@ internal fun ReaderContent(
                     }
                     ZoomablePagerViewer(
                         dualPageUnits = state.dualPageUnits,
+                        dualPageFrames = state.dualPageFrames,
+                        dualPageTargetFrameId = state.dualPageTargetFrameId,
                         pagerPresentationBinding = pagerBinding,
                         pageTurnAnimation = pageTurnAnimation,
                         allowAdjacentViewport = firstPresentedGeneration == state.session.generation,

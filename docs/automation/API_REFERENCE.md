@@ -160,6 +160,18 @@ identity 仍匹配的队列项。
 `mangaId`、`chapterId` 的真实章节记录；fixture 本身只准备页面内容，不替测试创建数据库章节。
 `dualPage` 只接受 JSON 布尔值，其他值返回 400。
 
+普通 `online` 与 `partial_download` 测试源在强制刷新清空旧图片地址后，都通过同一 source 的图片地址解析入口重新获取当前页地址。解析只接受当前 fixture 的章节/token及规范页路径；旧fixture、其他章节、越界或无效路径返回不可用，不替换成当前章节的同序号页。partial 的准备阶段仍在已提交页边界停止，原离线响应语义保留。仅首次 page list 携带图片地址的成功不能替代重试回归，须覆盖清空地址后的真实 source/HTTP 取图。
+
+`pageCount` 的受限范围为 1–200。在线夹具可额外传零基 `widePageIndex`，仅该页使用交换后的实际编码宽高；其余页仍按 `width`／`height` 生成。该选项仅允许 `readerFixture: "online"`、`width < height` 且索引在本章范围内；非整数、越界或不适用的来源／尺寸返回400。省略时沿用全部同尺寸的旧夹具，descriptor也仅在实际配置时回显此字段。交换宽高不增加单图像素总数，不直接注入尺寸事实或分组。
+
+例如，原生非阻塞配对路径可使用200页竖图与单张迟到宽图：
+
+```json
+{"readerFixture":"online","mangaId":42,"chapterId":4201,"pageCount":200,"width":1200,"height":1800,"format":"JPEG","dualPage":true,"widePageIndex":21}
+```
+
+读取控制仍按下文原有 owner／generation／范围及最长30秒约束设置；必须观察实际HOLDING，只有ARMED不能证明匹配被挂起。自动配对开关通过真实界面启用并读回当前状态，夹具不代替用户导航或设置输入。
+
 ## Reader
 
 ### `GET /reader/state`
@@ -194,6 +206,8 @@ identity 仍匹配的队列项。
 
 `currentDisplayPageIndices` 表示当前呈现单元，可能包含尚未绘制的伙伴；`visiblePageIndices` 来自 model 的停稳状态快照，不能作为当前像素全集。在同一定位下，无新阅读进度的后续绘制可能不刷新该快照。证明当前实际绘制时，应绑定选中的原生 presenter、它的有效 ticket／frame 和实际绘制槽，并核对应画面；不能合并历史 frame 或将上述 HTTP 数组当作像素证据。
 
+`mountedReader.imageAttempts` 只读比较界面保留的图片尝试与底层 session 当前尝试。仅包含当前显示单元及当前逻辑目标，按源页去重，最多3项；每项为 `sourcePageIndex`、`modelAttemptGeneration`、`runtimeAttemptGeneration`、`modelLoadState`、`runtimeLoadState`。加载状态只使用短类型名，不包含异常、URL或文件路径。底层必须与当前 model 的 generation 及完整页身份一致；没有 runtime、页不存在或身份不一致时，对应底层字段为 `null`。未挂载仍保持 `mountedReader:null`。两层状态分别采样，瞬态差异不能单独证明缺陷；它也不证明解码或实际像素成功。诊断点击时先核尝试变化，再结合实际读取和窗口帧，不将这份状态当作按钮事件或图片恢复的替代证据。
+
 `nativeInput` 返回 `available`、`geometryAvailable`、`windowPresent`、`windowShowing`、
 `windowFocused`、`ownerFocused`、`reason` 和 `density`。`viewportPixels` 为 Compose 物理像素；
 `viewportScreenPoints` 和三行三列 `tapPoints` 从实际 AWT 内容区屏幕原点及 density 换算，
@@ -206,6 +220,8 @@ pager 因条漫/加载/错误卸载后，旧几何清除；无实际窗口、有
 `OPEN_PAGE`；有界头部读取单独记录 `HEADER_READ`，`byteLimit` 为实际请求上限（目前至多
 512 KiB）。其它事件的 `byteLimit` 可为 `null`；客户端应兼容缺失/未知字段，不能把
 头部读取当作完整编码命中或删去它来满足首帧成本断言。
+
+`DECODE` 的 `purpose: VISIBLE_DECODE` 未区分内部 `PageDecodePurpose`。当前 `DesktopReaderPageImagePipeline` 在调用 decoder 前即记录该事件，因此不能仅凭它认定 FULL_PAGE／REGION_TILE 类型或解码成功；须另核实际返回资产、可信事实或图片绘制命令。读取控制的 `range: full` 也只表示完整编码输入，不等于 FULL_PAGE 解码。
 
 `OPEN_PAGE`／`HEADER_READ` 在内容 owner 调用实际读取前发出，证明请求已发起，不表示读取完成或尺寸／匹配事实已经可用。验证“前组及时”须核实际共享会话事实、候选／预留或有效绘制状态；不能只比较 `HEADER_READ` 与 `FIRST_PAGE_PRESENTED` 的时间差。
 

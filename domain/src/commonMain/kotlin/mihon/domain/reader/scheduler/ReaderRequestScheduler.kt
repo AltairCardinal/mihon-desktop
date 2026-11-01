@@ -90,6 +90,12 @@ data class ReaderSchedulePlan(
     val evictPageIndices: Set<Int> get() = evictPageIds.mapTo(mutableSetOf(), ReaderPageId::sourcePageIndex)
 }
 
+/** An adapter's exact two-page ordinary viewport in the current scheduler window. */
+data class ReaderVisiblePairAdmission(
+    val generation: Long,
+    val pageIds: Set<ReaderPageId>,
+)
+
 data class ReaderEnqueueResult(
     val request: ReaderScheduledRequest?,
     val cancelRequests: Set<ReaderRequestKey> = emptySet(),
@@ -256,9 +262,31 @@ class ReaderRequestScheduler(
         return ReaderEnqueueResult(request, cancelled, replaced)
     }
 
-    fun pollNext(): ReaderScheduledRequest? {
-        if (active.size >= policy.maxConcurrentRequests) return null
-        val next = pending.values.minWithOrNull(entryComparator) ?: return null
+    fun pollNext(visiblePair: ReaderVisiblePairAdmission? = null): ReaderScheduledRequest? {
+        val next = if (active.size < policy.maxConcurrentRequests) {
+            pending.values.minWithOrNull(entryComparator)
+        } else {
+            val chapter = lastChapterId ?: return null
+            if (policy.maxConcurrentRequests != 1 || active.size != 1 || visiblePair == null ||
+                visiblePair.generation != generation || visiblePair.pageIds.size != 2 ||
+                visiblePair.pageIds != lastVisiblePages.mapTo(mutableSetOf()) { ReaderPageId(chapter, it) }
+            ) {
+                return null
+            }
+            fun ordinary(entry: Entry): Boolean {
+                val request = entry.request
+                return request.pageId in visiblePair.pageIds && request.generation == generation &&
+                    request.factPermit == null &&
+                    (
+                        (request.kind == ReaderRequestKind.INTERACTIVE_VISIBLE && !request.forceRefresh) ||
+                            request.kind == ReaderRequestKind.EXPLICIT_RETRY
+                        )
+            }
+            val first = active.values.single()
+            if (!ordinary(first)) return null
+            pending.values.filter { ordinary(it) && it.request.pageId != first.request.pageId }
+                .minWithOrNull(entryComparator)
+        } ?: return null
         pending.remove(next.request.jobKey)
         active[next.request.jobKey] = next
         return next.request
