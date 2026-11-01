@@ -481,12 +481,25 @@ class MangaDetailScreenModel(
     }
 
     suspend fun markSelectedBookmark(chapters: List<Chapter>): BatchChapterResult {
-        val shouldBookmark = chapters.any { !it.bookmark }
-        val applicable = chapters.filter { it.bookmark != shouldBookmark }
+        val selected = chapters.distinctBy { it.id }
+        val shouldBookmark = selected.any { !it.bookmark }
+        val applicable = selected.filter { it.bookmark != shouldBookmark }
+        val skippedIds = selected.filter { it.bookmark == shouldBookmark }.map { it.id }
         val updater = requireNotNull(updateChapter) { "UpdateChapter is required" }
-        return runChapterBatch(applicable, skippedIds = (chapters - applicable.toSet()).map { it.id }) {
-            updater.awaitOrThrow(ChapterUpdate(id = it.id, bookmark = shouldBookmark))
+        try {
+            if (applicable.isNotEmpty()) {
+                updater.awaitAllOrThrow(applicable.map { ChapterUpdate(id = it.id, bookmark = shouldBookmark) })
+            }
+        } catch (canceled: kotlinx.coroutines.CancellationException) {
+            throw canceled
+        } catch (_: Exception) {
+            return runChapterBatch(applicable, skippedIds = skippedIds) {
+                updater.awaitOrThrow(ChapterUpdate(id = it.id, bookmark = shouldBookmark))
+            }
         }
+        return publishChapterBatchResult(
+            BatchChapterResult(succeededIds = applicable.map { it.id }, failures = emptyList(), skippedIds = skippedIds),
+        )
     }
 
     suspend fun markAtOrBelowRead(displayedChapters: List<Chapter>, selectedIds: Set<Long>): BatchChapterResult {

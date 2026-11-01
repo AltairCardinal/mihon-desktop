@@ -1516,13 +1516,100 @@ class MangaDetailInteractionTest {
     }
 
     @Test
+    fun `bookmark batch 200 uses one real repository transaction in each direction`(@TempDir root: File) = runBlocking {
+        val batchSizes = mutableListOf<Int>()
+        var capture = false
+        var individualWrites = 0
+        withDetail(root, chapterRepositoryOverride = { actual ->
+            object : ChapterRepository by actual {
+                override suspend fun updateAll(updates: List<ChapterUpdate>) {
+                    if (capture) batchSizes += updates.size
+                    actual.updateAll(updates)
+                }
+
+                override suspend fun update(update: ChapterUpdate) {
+                    if (capture) individualWrites++
+                    actual.update(update)
+                }
+            }
+        }) { _, model, _, chapters ->
+            assertEquals(200, chapters.size)
+            capture = true
+            val added = model.markSelectedBookmark(chapters + chapters.take(3))
+            assertEquals(chapters.map { it.id }, added.succeededIds)
+            assertEquals(listOf(200), batchSizes)
+            assertTrue(chapters.all { Injekt.get<ChapterRepository>().getChapterById(it.id)!!.bookmark })
+            val removed = model.markSelectedBookmark(chapters.map { it.copy(bookmark = true) })
+            assertEquals(chapters.map { it.id }, removed.succeededIds)
+            assertEquals(listOf(200, 200), batchSizes)
+            assertEquals(0, individualWrites)
+            assertTrue(chapters.none { Injekt.get<ChapterRepository>().getChapterById(it.id)!!.bookmark })
+        }
+    }
+
+    @Test
+    fun `bookmark batch real rollback reports only successfully retried chapters`(@TempDir root: File) = runBlocking {
+        var capture = false
+        var firstId = -1L
+        var rollbackObserved = false
+        val batchSizes = mutableListOf<Int>()
+        withDetail(root, chapterRepositoryOverride = { actual ->
+            object : ChapterRepository by actual {
+                override suspend fun updateAll(updates: List<ChapterUpdate>) {
+                    if (capture) batchSizes += updates.size
+                    try {
+                        actual.updateAll(updates)
+                    } catch (failure: Exception) {
+                        if (capture && updates.size > 1) {
+                            assertFalse(actual.getChapterById(firstId)!!.bookmark)
+                            rollbackObserved = true
+                        }
+                        throw failure
+                    }
+                }
+            }
+        }) { _, model, _, chapters ->
+            val selected = chapters.take(3)
+            firstId = selected.first().id
+            val rejectedId = selected[1].id
+            val driver = Injekt.get<app.cash.sqldelight.db.SqlDriver>()
+            driver.execute(null, "CREATE TRIGGER reject_bookmark BEFORE UPDATE OF bookmark ON chapters " +
+                "WHEN NEW._id = $rejectedId AND NEW.bookmark = 1 " +
+                "BEGIN SELECT RAISE(ABORT, 'rejected bookmark'); END", 0)
+            try {
+                capture = true
+                val result = model.markSelectedBookmark(selected)
+                assertTrue(rollbackObserved)
+                assertEquals(listOf(3), batchSizes)
+                assertEquals(listOf(selected[0].id, selected[2].id), result.succeededIds)
+                assertEquals(listOf(rejectedId), result.failures.map { it.id })
+                val repository = Injekt.get<ChapterRepository>()
+                assertTrue(repository.getChapterById(selected[0].id)!!.bookmark)
+                assertFalse(repository.getChapterById(rejectedId)!!.bookmark)
+                assertTrue(repository.getChapterById(selected[2].id)!!.bookmark)
+            } finally {
+                driver.execute(null, "DROP TRIGGER reject_bookmark", 0)
+            }
+        }
+    }
+
+    @Test
     fun `chapter result bookmark processes applicable objects without success snackbar`(
         @TempDir root: File,
     ) = runBlocking {
         val written = mutableListOf<Long>()
+        var batchCalls = 0
         var capture = false
         withDetail(root, chapterRepositoryOverride = { actual ->
             object : ChapterRepository by actual {
+                override suspend fun updateAll(updates: List<ChapterUpdate>) {
+                    if (capture) {
+                        written += updates.map { it.id }
+                        batchCalls++
+                    }
+                    actual.updateAll(updates)
+                }
+
                 override suspend fun update(chapterUpdate: tachiyomi.domain.chapter.model.ChapterUpdate) {
                     if (capture) written += chapterUpdate.id
                     actual.update(chapterUpdate)
@@ -1543,6 +1630,7 @@ class MangaDetailInteractionTest {
                 written,
                 "already bookmarked objects are skipped rather than rewritten",
             )
+            assertEquals(1, batchCalls, "one mounted UI event writes one bookmark batch")
             assertFalse(activeNodes(scene).flatMap(::labels).any { "1 succeeded, 1 skipped, 0 failed" in it })
             assertTrue(
                 selectedChapterNames(scene).isEmpty(),
@@ -2036,6 +2124,13 @@ class MangaDetailInteractionTest {
         var reject = true
         withDetail(root, chapterRepositoryOverride = { actual ->
             object : ChapterRepository by actual {
+                override suspend fun updateAll(updates: List<ChapterUpdate>) {
+                    if (reject && updates.any { it.bookmark == true && actual.getChapterById(it.id)?.name == "Chapter 2" }) {
+                        error("actual bookmark batch rejected")
+                    }
+                    actual.updateAll(updates)
+                }
+
                 override suspend fun update(chapterUpdate: tachiyomi.domain.chapter.model.ChapterUpdate) {
                     if (reject && chapterUpdate.bookmark == true &&
                         actual.getChapterById(chapterUpdate.id)?.name == "Chapter 2"
@@ -2072,12 +2167,12 @@ class MangaDetailInteractionTest {
         val release = CompletableDeferred<Unit>()
         withDetail(root, chapterRepositoryOverride = { actual ->
             object : ChapterRepository by actual {
-                override suspend fun update(chapterUpdate: tachiyomi.domain.chapter.model.ChapterUpdate) {
-                    if (chapterUpdate.bookmark == true) {
+                override suspend fun updateAll(updates: List<ChapterUpdate>) {
+                    if (updates.any { it.bookmark == true }) {
                         started.complete(Unit)
                         release.await()
                     }
-                    actual.update(chapterUpdate)
+                    actual.updateAll(updates)
                 }
             }
         }) { scene, _, manga, _ ->
