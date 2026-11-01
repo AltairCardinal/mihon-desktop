@@ -1,11 +1,14 @@
 package eu.kanade.tachiyomi.ui.reader.viewer
 
+import android.app.Activity
+import android.app.Application
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -132,6 +135,8 @@ class ReaderDualPageTileSeamNativeTest {
         private val previousSettings = (settings.keys + "__APP_STATE_storage_dir").associateWith { preferences.all[it] }
         private val directory = File(context.filesDir, "tile-seam-native-${SystemClock.elapsedRealtimeNanos()}")
         private var reader: ReaderActivity? = null
+        private val destroyed = CountDownLatch(1)
+        private var lifecycle: Application.ActivityLifecycleCallbacks? = null
 
         init {
             check(Build.HARDWARE == "ranchu") { "Only the task-owned emulator is allowed" }
@@ -165,6 +170,7 @@ class ReaderDualPageTileSeamNativeTest {
             val chapter = 7911101002L
             val driver = Injekt.get<SqlDriver>()
             // The production DI driver and its retained execute ABI, never a second SQLite connection.
+            // Pass binders explicitly: Release R8 removes SqlDriver.DefaultImpls default-argument helpers.
             driver.execute(
                 null,
                 "INSERT INTO mangas(_id,source,url,title,status,favorite,initialized,viewer," +
@@ -172,6 +178,7 @@ class ReaderDualPageTileSeamNativeTest {
                     "$manga,0,'$title','$title',0,0,1,6,0,0,0) ON CONFLICT(_id) DO UPDATE SET viewer=6 " +
                     "WHERE source=0 AND url='$title'",
                 0,
+                null,
             )
             driver.execute(
                 null,
@@ -181,8 +188,30 @@ class ReaderDualPageTileSeamNativeTest {
                     "ON CONFLICT(_id) DO UPDATE SET read=0,last_page_read=1 " +
                     "WHERE manga_id=$manga AND url='$title/Chapter'",
                 0,
+                null,
             )
-            reader = instrumentation.startActivitySync(
+            val resumed = CountDownLatch(1)
+            val callbacks = object : Application.ActivityLifecycleCallbacks {
+                override fun onActivityCreated(activity: Activity, state: Bundle?) {
+                    if (activity is ReaderActivity) reader = activity
+                }
+                override fun onActivityResumed(activity: Activity) {
+                    if (activity === reader) resumed.countDown()
+                }
+                override fun onActivityDestroyed(activity: Activity) {
+                    if (activity === reader) destroyed.countDown()
+                }
+                override fun onActivityStarted(activity: Activity) = Unit
+                override fun onActivityPaused(activity: Activity) = Unit
+                override fun onActivityStopped(activity: Activity) = Unit
+                override fun onActivitySaveInstanceState(activity: Activity, state: Bundle) = Unit
+            }
+            lifecycle = callbacks
+            instrumentation.runOnMainSync {
+                (context.applicationContext as Application).registerActivityLifecycleCallbacks(callbacks)
+            }
+            // A reader can keep drawing; wait for its real lifecycle rather than global queue idleness.
+            context.startActivity(
                 Intent().setClassName(context.packageName, "eu.kanade.tachiyomi.ui.reader.ReaderActivity")
                     .putExtra("manga", manga)
                     .putExtra("chapter", chapter)
@@ -190,7 +219,8 @@ class ReaderDualPageTileSeamNativeTest {
                     .putExtra("resumeWithinChapter", false)
                     .putExtra("page_index", 1)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            ) as ReaderActivity
+            )
+            assertTrue("The actual ReaderActivity must resume", resumed.await(30, TimeUnit.SECONDS))
         }
 
         fun onReaderMain(action: (ReaderActivity) -> Unit) =
@@ -251,8 +281,15 @@ class ReaderDualPageTileSeamNativeTest {
         }
 
         override fun close() {
-            reader?.let { activity -> instrumentation.runOnMainSync { activity.finish() } }
-            instrumentation.waitForIdleSync()
+            reader?.let { activity ->
+                instrumentation.runOnMainSync { activity.finish() }
+                check(destroyed.await(10, TimeUnit.SECONDS)) { "The owned ReaderActivity must be destroyed" }
+            }
+            lifecycle?.let { callbacks ->
+                instrumentation.runOnMainSync {
+                    (context.applicationContext as Application).unregisterActivityLifecycleCallbacks(callbacks)
+                }
+            }
             preferences.edit().apply {
                 previousSettings.forEach { (key, value) ->
                     when (value) {
