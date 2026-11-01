@@ -59,6 +59,8 @@ Read adjacent pages side by side, display landscape pages, and adjust pairing ma
 
 **Windows pairing continuity:** in the accepted Windows reader case, reaching the same chapter position by forward or backward turns, jumping, or reopening keeps the same page pairing. The first displayed slots use the confirmed page layout, and background matching preserves the displayed page and its partner. Two-page reading, landscape pages, manual adjustment, zoom, and reading progress remain available. This Windows acceptance does not establish Android or macOS runtime acceptance.
 
+**Windows zoomed panning:** after zooming in, drag the comic to inspect its edges. In single-page and two-page reading, extra blank space on any side is limited to one third of the reading viewport's corresponding width or height. Two-page reading uses the whole spread's outer edges. Movement stops at the limit and responds immediately when reversed; changing the zoom or window size recalculates the limit. Unavoidable margins around small images are retained without allowing further outward movement. This acceptance covers Windows desktop reading only.
+
 **Android boundary:** this fork’s Android reader supports two-page reading and manual pairing. Automatic spread matching on Android remains a development direction.
 
 ## Multi-device favorites and reading progress {#multi-device-sync}
