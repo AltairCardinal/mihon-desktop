@@ -9,6 +9,17 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## November 1, 2026 — Windows batch chapter bookmarks
+
+**Accepted fix documentation · no public product release**
+
+- Adding or removing chapter bookmarks from manga details now uses one batch write on the normal path instead of a transaction for every chapter. Mixed selections preserve existing bookmarks and add only missing ones.
+- A failed batch falls back to individual retries with accurate results. Failed chapters remain selected; a late completion does not clear a newer selection, and successful operations retain quiet feedback.
+- Accepted Windows preview: `0.11.24.6.feaf073` (preview ID `main-fd653d0e21824628b5f731322e2ad3d3`); implementation and package source: `feaf073e1139f0ae4920afdf620deafdfa9ae60a`. Nine focused model/repository/UI checks and the packaged extension runtime check passed.
+- This acceptance covers Windows batch bookmarks only. No Android or macOS acceptance, fixed device timing, or new public product release is claimed.
+
+Acceptance basis: the project owner accepted this Windows preview in private chat on November 1, 2026 and authorized main integration and a push.
+
 ## November 1, 2026 — Consistent Windows two-page pairing
 
 **Accepted candidate documentation · no public product release**
