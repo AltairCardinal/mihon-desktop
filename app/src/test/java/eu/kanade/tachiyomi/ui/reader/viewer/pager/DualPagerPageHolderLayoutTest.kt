@@ -59,6 +59,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import logcat.LogPriority
 import logcat.LogcatLogger
+import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderPortraitSingleSlot
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -1547,6 +1548,7 @@ class DualPagerPageHolderLayoutTest {
                 "A source navigation must retain the prepared old viewport even if its adapter reuses the index",
                 viewer.pager.currentRippleBitmap != null,
             )
+            assertEquals(Pager.RippleDirection.LEFT_TO_RIGHT, viewer.pager.rippleDirection)
             preferences.pageTurnRippleMode().set(ReaderPreferences.PageTurnRippleMode.CLEAN)
             runCurrent()
             assertEquals(ReaderPreferences.PageTurnRippleMode.CLEAN, viewer.pager.rippleMode)
@@ -1560,6 +1562,68 @@ class DualPagerPageHolderLayoutTest {
             host.get().setContentView(View(host.get()))
             host.pause().stop().destroy()
         }
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `source ripple follows physical direction in RTL and LTR regrouping`() = runTest {
+        val preferences = Injekt.get<ReaderPreferences>()
+        preferences.pageTurnRipple().set(true)
+        preferences.pageTurnRippleMode().set(ReaderPreferences.PageTurnRippleMode.SMOOTH)
+        val actual = mutableListOf<Pager.RippleDirection>()
+        val expected = mutableListOf<Pager.RippleDirection>()
+        val visits = mutableListOf<String>()
+        for (direction in listOf(ReaderDirection.RTL, ReaderDirection.LTR)) {
+            for (initial in listOf(0, 3)) {
+                val subject = DualPageR2LPagerViewer(viewer.activity, direction = direction)
+                subject.config.navigationModeChangedListener = null
+                subject.adapter.spreadDecoderFactory = { input ->
+                    eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(input)
+                }
+                val host = Robolectric.buildActivity(ComponentActivity::class.java).setup().visible()
+                try {
+                    val chapter = loadedChapter(74200L + initial + if (direction == ReaderDirection.LTR) 10 else 0, 8)
+                    subject.setChapters(ViewerChapters(chapter, null, null))
+                    if (initial != 0) subject.moveToPage(requireNotNull(chapter.pages)[initial])
+                    host.get().setContentView(subject.pager)
+                    runCurrent()
+                    measure(subject.pager, 1400, 1000)
+                    val keys = if (initial == 0) {
+                        listOf(
+                            if (direction ==
+                                ReaderDirection.RTL
+                            ) {
+                                KeyEvent.KEYCODE_DPAD_LEFT
+                            } else {
+                                KeyEvent.KEYCODE_DPAD_RIGHT
+                            },
+                        )
+                    } else {
+                        listOf(KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT)
+                    }
+                    for (key in keys) {
+                        val oldIndex = subject.pager.currentItem
+                        subject.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, key))
+                        assertTrue(
+                            "A valid source turn retains its old viewport",
+                            subject.pager.currentRippleBitmap != null,
+                        )
+                        actual += subject.pager.rippleDirection
+                        expected += if (key == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                            Pager.RippleDirection.RIGHT_TO_LEFT
+                        } else {
+                            Pager.RippleDirection.LEFT_TO_RIGHT
+                        }
+                        visits += "$direction initial=$initial key=$key index=$oldIndex->${subject.pager.currentItem}"
+                    }
+                } finally {
+                    host.get().setContentView(View(host.get()))
+                    subject.destroy()
+                    host.pause().stop().destroy()
+                }
+            }
+        }
+        assertEquals("Physical direction must survive adapter reindexing: $visits", expected, actual)
     }
 
     @Test
