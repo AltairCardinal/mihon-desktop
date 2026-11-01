@@ -790,6 +790,99 @@ class MangaDetailScreenModelTest {
     }
 
     @Test
+    fun `bookmark batch writes 200 distinct chapters once in each direction and skips empty input`() = runTest {
+        val backing = FakeChapterRepository()
+        val chapters = (1L..200L).map(::createFakeChapter)
+        backing.addAll(chapters)
+        val batches = mutableListOf<List<ChapterUpdate>>()
+        var individualWrites = 0
+        val repository = object : tachiyomi.domain.chapter.repository.ChapterRepository by backing {
+            override suspend fun updateAll(chapterUpdates: List<ChapterUpdate>) {
+                batches += chapterUpdates
+                backing.updateAll(chapterUpdates)
+            }
+
+            override suspend fun update(chapterUpdate: ChapterUpdate) {
+                individualWrites++
+                backing.update(chapterUpdate)
+            }
+        }
+        val model = MangaDetailScreenModel(mangaId = 1L, updateChapter = UpdateChapter(repository))
+        val added = model.markSelectedBookmark(chapters + chapters.take(3))
+        assertEquals(chapters.map { it.id }, added.succeededIds)
+        assertEquals(listOf(200), batches.map { it.size })
+        assertTrue(batches.single().all { it.bookmark == true })
+        assertEquals(0, individualWrites)
+
+        val removed = model.markSelectedBookmark(chapters.map { it.copy(bookmark = true) })
+        assertEquals(chapters.map { it.id }, removed.succeededIds)
+        assertEquals(listOf(200, 200), batches.map { it.size })
+        assertTrue(batches.last().all { it.bookmark == false })
+        assertEquals(0, individualWrites)
+        assertEquals(BatchChapterResult.Empty, model.markSelectedBookmark(emptyList()))
+        assertEquals(2, batches.size)
+    }
+
+    @Test
+    fun `bookmark batch cancellation propagates without individual retries`() = runTest {
+        val backing = FakeChapterRepository()
+        val chapters = (1L..3L).map(::createFakeChapter)
+        backing.addAll(chapters)
+        val canceled = CancellationException("bookmark canceled")
+        val batches = mutableListOf<List<ChapterUpdate>>()
+        var individualWrites = 0
+        val repository = object : tachiyomi.domain.chapter.repository.ChapterRepository by backing {
+            override suspend fun updateAll(chapterUpdates: List<ChapterUpdate>) {
+                batches += chapterUpdates
+                throw canceled
+            }
+
+            override suspend fun update(chapterUpdate: ChapterUpdate) {
+                individualWrites++
+            }
+        }
+        val model = MangaDetailScreenModel(mangaId = 1L, updateChapter = UpdateChapter(repository))
+        val thrown = try {
+            model.markSelectedBookmark(chapters)
+            null
+        } catch (failure: CancellationException) {
+            failure
+        }
+        assertSame(canceled, thrown)
+        assertEquals(listOf(3), batches.map { it.size })
+        assertEquals(0, individualWrites)
+    }
+
+    @Test
+    fun `bookmark batch failure retries applicable chapters with accurate skipped and failed ids`() = runTest {
+        val backing = FakeChapterRepository()
+        val chapters = (1L..4L).map { createFakeChapter(it).copy(bookmark = it == 4L) }
+        backing.addAll(chapters)
+        val batches = mutableListOf<List<ChapterUpdate>>()
+        val individualIds = mutableListOf<Long>()
+        val repository = object : tachiyomi.domain.chapter.repository.ChapterRepository by backing {
+            override suspend fun updateAll(chapterUpdates: List<ChapterUpdate>) {
+                batches += chapterUpdates
+                error("rolled back batch")
+            }
+
+            override suspend fun update(chapterUpdate: ChapterUpdate) {
+                individualIds += chapterUpdate.id
+                if (chapterUpdate.id == 2L) error("rejected chapter")
+                backing.update(chapterUpdate)
+            }
+        }
+        val model = MangaDetailScreenModel(mangaId = 1L, updateChapter = UpdateChapter(repository))
+        val result = model.markSelectedBookmark(chapters + chapters.first())
+        assertEquals(listOf(listOf(1L, 2L, 3L)), batches.map { it.map(ChapterUpdate::id) })
+        assertEquals(listOf(1L, 2L, 3L), individualIds)
+        assertEquals(listOf(1L, 3L), result.succeededIds)
+        assertEquals(listOf(2L), result.failures.map { it.id })
+        assertEquals(listOf(4L), result.skippedIds)
+        assertEquals(listOf(1L, 3L), backing.updates.map { it.id })
+    }
+
+    @Test
     fun `toggleLibrary clears favorite date and categories when removing`() = runTest {
         val mangaRepository = FakeMangaRepository()
         mangaRepository.seed(createFakeManga(id = 1L).copy(favorite = true, dateAdded = 123L))
