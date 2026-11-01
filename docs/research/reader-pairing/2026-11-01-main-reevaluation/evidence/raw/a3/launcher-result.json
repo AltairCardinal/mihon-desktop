@@ -1,0 +1,28 @@
+{
+  "key": "reevaluation-cost-a3-attempt-01-20261101",
+  "variant": "a3",
+  "attempt": "01",
+  "startUtc": "2026-10-31T23:21:18.394210+00:00",
+  "elapsedSeconds": 26.451,
+  "exitCode": 0,
+  "stdoutSha256": "b3b9b520df56cd9d4fb44771b1de525b3ab19a47b57a25cd7c20607148deb4ad",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "rawDirectory": "D:\\Codex\\worktrees\\reader-r1-r10-reevaluation-20261101\\.gradle-coordinator\\reevaluation\\costs\\a3-attempt-01\\raw",
+  "testXmlCount": 3,
+  "testTotals": {
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "measuredRows": 930,
+  "measuredRowStatuses": {
+    "PASS": 930,
+    "FAIL": 0
+  },
+  "scenarioSummaryRows": 30,
+  "metricUnavailableRows": 0,
+  "invalidScenarios": 0,
+  "artifactsComplete": true,
+  "guardFinishedEventCaptured": true
+}

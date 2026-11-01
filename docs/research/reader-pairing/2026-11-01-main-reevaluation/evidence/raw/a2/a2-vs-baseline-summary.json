@@ -1,0 +1,3391 @@
+{
+  "variant": "a2",
+  "launcher": {
+    "key": "reevaluation-cost-a2-attempt-01-20261101",
+    "variant": "a2",
+    "attempt": "01",
+    "startUtc": "2026-10-31T22:57:55.371068+00:00",
+    "elapsedSeconds": 39.769,
+    "exitCode": 0,
+    "stdoutSha256": "520d50fbf0a11f7579b5fd26e5ec50a4c4e258f40b79524bfe0a9bc390a2b8a5",
+    "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "rawDirectory": "D:\\Codex\\worktrees\\reader-r1-r10-reevaluation-20261101\\.gradle-coordinator\\reevaluation\\costs\\a2-attempt-01\\raw",
+    "testXmlCount": 3,
+    "testTotals": {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "measuredRows": 930,
+    "measuredRowStatuses": {
+      "PASS": 930,
+      "FAIL": 0
+    },
+    "scenarioSummaryRows": 30,
+    "metricUnavailableRows": 0,
+    "invalidScenarios": 0,
+    "artifactsComplete": true,
+    "guardFinishedEventCaptured": true
+  },
+  "scenarios": [
+    {
+      "scenario": "A1.distant-edge-early-reject",
+      "processes": [
+        {
+          "process": 1,
+          "pid": 39684,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 153301,
+              "q1": 145899.5,
+              "q3": 183148.5,
+              "min": 136401,
+              "max": 2452100
+            },
+            "baseline": {
+              "median": 1324100,
+              "q1": 1191050.5,
+              "q3": 1492498.5,
+              "min": 843300,
+              "max": 3955800
+            },
+            "medianDeltaPercent": -88.42
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 448608,
+              "q1": 448608.0,
+              "q3": 448608.0,
+              "min": 448608,
+              "max": 448608
+            },
+            "baseline": {
+              "median": 2664608,
+              "q1": 2664608.0,
+              "q3": 2664608.0,
+              "min": 2664608,
+              "max": 2832608
+            },
+            "medianDeltaPercent": -83.16
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 132799,
+              "q1": 125700.5,
+              "q3": 145600.0,
+              "min": 120099,
+              "max": 2428500
+            },
+            "baseline": {
+              "median": 1296100,
+              "q1": 1179300.0,
+              "q3": 1476549.0,
+              "min": 827700,
+              "max": 3903700
+            },
+            "medianDeltaPercent": -89.75
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 445952,
+              "q1": 445952.0,
+              "q3": 445952.0,
+              "min": 445952,
+              "max": 445952
+            },
+            "baseline": {
+              "median": 2661952,
+              "q1": 2661952.0,
+              "q3": 2661952.0,
+              "min": 2661952,
+              "max": 2829952
+            },
+            "medianDeltaPercent": -83.25
+          }
+        },
+        {
+          "process": 2,
+          "pid": 4736,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 182302,
+              "q1": 164349.5,
+              "q3": 221800.0,
+              "min": 141998,
+              "max": 439200
+            },
+            "baseline": {
+              "median": 1543299,
+              "q1": 1198200.0,
+              "q3": 2464900.5,
+              "min": 1080400,
+              "max": 4107000
+            },
+            "medianDeltaPercent": -88.19
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 448608,
+              "q1": 448608.0,
+              "q3": 448608.0,
+              "min": 448608,
+              "max": 448608
+            },
+            "baseline": {
+              "median": 2736608,
+              "q1": 2736608.0,
+              "q3": 2832608.0,
+              "min": 2736608,
+              "max": 2832608
+            },
+            "medianDeltaPercent": -83.61
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 159401,
+              "q1": 145950.5,
+              "q3": 185750.5,
+              "min": 125199,
+              "max": 405900
+            },
+            "baseline": {
+              "median": 1524799,
+              "q1": 1187100.0,
+              "q3": 2443950.0,
+              "min": 1069400,
+              "max": 4090900
+            },
+            "medianDeltaPercent": -89.55
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 445952,
+              "q1": 445952.0,
+              "q3": 445952.0,
+              "min": 445952,
+              "max": 445952
+            },
+            "baseline": {
+              "median": 2733952,
+              "q1": 2733952.0,
+              "q3": 2829952.0,
+              "min": 2733952,
+              "max": 2829952
+            },
+            "medianDeltaPercent": -83.69
+          }
+        },
+        {
+          "process": 3,
+          "pid": 66876,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 160600,
+              "q1": 149700.0,
+              "q3": 170501.5,
+              "min": 138801,
+              "max": 389499
+            },
+            "baseline": {
+              "median": 1168700,
+              "q1": 1057850.0,
+              "q3": 1292950.0,
+              "min": 825101,
+              "max": 3734598
+            },
+            "medianDeltaPercent": -86.26
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 448608,
+              "q1": 448608.0,
+              "q3": 448608.0,
+              "min": 448608,
+              "max": 448608
+            },
+            "baseline": {
+              "median": 2664608,
+              "q1": 2664608.0,
+              "q3": 2664608.0,
+              "min": 2664608,
+              "max": 2832608
+            },
+            "medianDeltaPercent": -83.16
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 140801,
+              "q1": 129450.0,
+              "q3": 150749.0,
+              "min": 121101,
+              "max": 351700
+            },
+            "baseline": {
+              "median": 1157099,
+              "q1": 1046700.0,
+              "q3": 1279700.5,
+              "min": 813900,
+              "max": 3708299
+            },
+            "medianDeltaPercent": -87.83
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 445952,
+              "q1": 445952.0,
+              "q3": 445952.0,
+              "min": 445952,
+              "max": 445952
+            },
+            "baseline": {
+              "median": 2661952,
+              "q1": 2661952.0,
+              "q3": 2661952.0,
+              "min": 2661952,
+              "max": 2829952
+            },
+            "medianDeltaPercent": -83.25
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "A1.similar-edge-full-score",
+      "processes": [
+        {
+          "process": 1,
+          "pid": 39684,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 1640699,
+              "q1": 1375200.5,
+              "q3": 1958400.0,
+              "min": 1266599,
+              "max": 3328100
+            },
+            "baseline": {
+              "median": 1402801,
+              "q1": 1170299.5,
+              "q3": 3480549.5,
+              "min": 1039300,
+              "max": 5582098
+            },
+            "medianDeltaPercent": 16.96
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 887056,
+              "q1": 887056.0,
+              "q3": 887056.0,
+              "min": 887056,
+              "max": 887056
+            },
+            "baseline": {
+              "median": 4999056,
+              "q1": 4999056.0,
+              "q3": 5095056.0,
+              "min": 4999056,
+              "max": 5141136
+            },
+            "medianDeltaPercent": -82.26
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 1629600,
+              "q1": 1363150.5,
+              "q3": 1947000.0,
+              "min": 1257200,
+              "max": 3317500
+            },
+            "baseline": {
+              "median": 1393401,
+              "q1": 1164500.0,
+              "q3": 3473600.0,
+              "min": 1035000,
+              "max": 5575800
+            },
+            "medianDeltaPercent": 16.95
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 885952,
+              "q1": 885952.0,
+              "q3": 885952.0,
+              "min": 885952,
+              "max": 885952
+            },
+            "baseline": {
+              "median": 4997952,
+              "q1": 4997952.0,
+              "q3": 5093952.0,
+              "min": 4997952,
+              "max": 5140032
+            },
+            "medianDeltaPercent": -82.27
+          }
+        },
+        {
+          "process": 2,
+          "pid": 4736,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 1277201,
+              "q1": 1239499.5,
+              "q3": 1397950.0,
+              "min": 1117798,
+              "max": 2385800
+            },
+            "baseline": {
+              "median": 1213200,
+              "q1": 1113601.0,
+              "q3": 1901198.0,
+              "min": 1088600,
+              "max": 5581398
+            },
+            "medianDeltaPercent": 5.28
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 887056,
+              "q1": 887056.0,
+              "q3": 887056.0,
+              "min": 887056,
+              "max": 887056
+            },
+            "baseline": {
+              "median": 4999056,
+              "q1": 4999056.0,
+              "q3": 5026848.0,
+              "min": 4999056,
+              "max": 5150352
+            },
+            "medianDeltaPercent": -82.26
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 1263800,
+              "q1": 1228349.5,
+              "q3": 1384250.5,
+              "min": 1106900,
+              "max": 2373200
+            },
+            "baseline": {
+              "median": 1208200,
+              "q1": 1107850.5,
+              "q3": 1894899.0,
+              "min": 1084000,
+              "max": 5571099
+            },
+            "medianDeltaPercent": 4.6
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 885952,
+              "q1": 885952.0,
+              "q3": 885952.0,
+              "min": 885952,
+              "max": 885952
+            },
+            "baseline": {
+              "median": 4997952,
+              "q1": 4997952.0,
+              "q3": 5025744.0,
+              "min": 4997952,
+              "max": 5149248
+            },
+            "medianDeltaPercent": -82.27
+          }
+        },
+        {
+          "process": 3,
+          "pid": 66876,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 1294202,
+              "q1": 1235751.5,
+              "q3": 1425850.0,
+              "min": 1144699,
+              "max": 1702801
+            },
+            "baseline": {
+              "median": 3264801,
+              "q1": 1236601.0,
+              "q3": 4060499.0,
+              "min": 1109100,
+              "max": 4796699
+            },
+            "medianDeltaPercent": -60.36
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 887056,
+              "q1": 887056.0,
+              "q3": 887056.0,
+              "min": 887056,
+              "max": 887056
+            },
+            "baseline": {
+              "median": 5095056,
+              "q1": 4999056.0,
+              "q3": 5095056.0,
+              "min": 4999056,
+              "max": 5132112
+            },
+            "medianDeltaPercent": -82.59
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 1282500,
+              "q1": 1227350.5,
+              "q3": 1409449.5,
+              "min": 1134299,
+              "max": 1686600
+            },
+            "baseline": {
+              "median": 3258200,
+              "q1": 1229750.5,
+              "q3": 4054200.0,
+              "min": 1104600,
+              "max": 4790099
+            },
+            "medianDeltaPercent": -60.64
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 885952,
+              "q1": 885952.0,
+              "q3": 885952.0,
+              "min": 885952,
+              "max": 885952
+            },
+            "baseline": {
+              "median": 5093952,
+              "q1": 4997952.0,
+              "q3": 5093952.0,
+              "min": 4997952,
+              "max": 5131008
+            },
+            "medianDeltaPercent": -82.61
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "A2.owner-index-large-176",
+      "processes": [
+        {
+          "process": 1,
+          "pid": 39684,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 2432099,
+              "q1": 1541050.5,
+              "q3": 3696150.5,
+              "min": 880700,
+              "max": 9241799
+            },
+            "baseline": {
+              "median": 3252500,
+              "q1": 2946799.5,
+              "q3": 3902550.5,
+              "min": 2708501,
+              "max": 4906600
+            },
+            "medianDeltaPercent": -25.22
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 7812500.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 1625536,
+              "q1": 1497408.0,
+              "q3": 1625536.0,
+              "min": 1497408,
+              "max": 1672360
+            },
+            "baseline": {
+              "median": 9681584,
+              "q1": 9681584.0,
+              "q3": 9809712.0,
+              "min": 9681584,
+              "max": 9856312
+            },
+            "medianDeltaPercent": -83.21
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 1520500,
+              "q1": 799450.0,
+              "q3": 3281950.0,
+              "min": 577100,
+              "max": 8922499
+            },
+            "baseline": {
+              "median": 3068801,
+              "q1": 2724849.5,
+              "q3": 3663550.0,
+              "min": 2494500,
+              "max": 4705399
+            },
+            "medianDeltaPercent": -50.45
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 7812500.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 1557952,
+              "q1": 1429952.0,
+              "q3": 1557952.0,
+              "min": 1429952,
+              "max": 1604744
+            },
+            "baseline": {
+              "median": 9605952,
+              "q1": 9605952.0,
+              "q3": 9733952.0,
+              "min": 9605952,
+              "max": 9780520
+            },
+            "medianDeltaPercent": -83.78
+          }
+        },
+        {
+          "process": 2,
+          "pid": 4736,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 2128198,
+              "q1": 1690250.0,
+              "q3": 2540400.5,
+              "min": 1398199,
+              "max": 9876701
+            },
+            "baseline": {
+              "median": 3510599,
+              "q1": 3109299.5,
+              "q3": 4053748.5,
+              "min": 2767601,
+              "max": 5475300
+            },
+            "medianDeltaPercent": -39.38
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 1657568,
+              "q1": 1657568.0,
+              "q3": 1657568.0,
+              "min": 1657568,
+              "max": 1673016
+            },
+            "baseline": {
+              "median": 9745648,
+              "q1": 9745648.0,
+              "q3": 9809712.0,
+              "min": 9745648,
+              "max": 9856688
+            },
+            "medianDeltaPercent": -82.99
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 1729499,
+              "q1": 1352350.0,
+              "q3": 2102350.5,
+              "min": 1131300,
+              "max": 5768100
+            },
+            "baseline": {
+              "median": 3328099,
+              "q1": 2921400.5,
+              "q3": 3786749.5,
+              "min": 2579901,
+              "max": 5227000
+            },
+            "medianDeltaPercent": -48.03
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 1589952,
+              "q1": 1589952.0,
+              "q3": 1589952.0,
+              "min": 1589952,
+              "max": 1605400
+            },
+            "baseline": {
+              "median": 9669952,
+              "q1": 9669952.0,
+              "q3": 9733952.0,
+              "min": 9669952,
+              "max": 9780896
+            },
+            "medianDeltaPercent": -83.56
+          }
+        },
+        {
+          "process": 3,
+          "pid": 66876,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 2005501,
+              "q1": 1829450.0,
+              "q3": 2202399.5,
+              "min": 1560199,
+              "max": 6086501
+            },
+            "baseline": {
+              "median": 3812401,
+              "q1": 3219199.5,
+              "q3": 4418198.5,
+              "min": 2647200,
+              "max": 5482900
+            },
+            "medianDeltaPercent": -47.4
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 1657568,
+              "q1": 1657568.0,
+              "q3": 1657568.0,
+              "min": 1657568,
+              "max": 1676040
+            },
+            "baseline": {
+              "median": 9681584,
+              "q1": 9681584.0,
+              "q3": 9809712.0,
+              "min": 9681584,
+              "max": 9856360
+            },
+            "medianDeltaPercent": -82.88
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 1640600,
+              "q1": 1512151.0,
+              "q3": 1880699.0,
+              "min": 1280101,
+              "max": 5786800
+            },
+            "baseline": {
+              "median": 3622300,
+              "q1": 3011150.0,
+              "q3": 4135499.0,
+              "min": 2475501,
+              "max": 5293500
+            },
+            "medianDeltaPercent": -54.71
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 1589952,
+              "q1": 1589952.0,
+              "q3": 1589952.0,
+              "min": 1589952,
+              "max": 1608424
+            },
+            "baseline": {
+              "median": 9605952,
+              "q1": 9605952.0,
+              "q3": 9733952.0,
+              "min": 9605952,
+              "max": 9780568
+            },
+            "medianDeltaPercent": -83.45
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "A2.owner-index-small-8",
+      "processes": [
+        {
+          "process": 1,
+          "pid": 39684,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 1404002,
+              "q1": 1116799.5,
+              "q3": 2125601.0,
+              "min": 480900,
+              "max": 4443201
+            },
+            "baseline": {
+              "median": 484600,
+              "q1": 446550.0,
+              "q3": 710799.5,
+              "min": 411399,
+              "max": 818601
+            },
+            "medianDeltaPercent": 189.72
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 1436000,
+              "q1": 1436000.0,
+              "q3": 1436000.0,
+              "min": 1436000,
+              "max": 1436048
+            },
+            "baseline": {
+              "median": 1932496,
+              "q1": 1932496.0,
+              "q3": 1932496.0,
+              "min": 1932496,
+              "max": 1932632
+            },
+            "medianDeltaPercent": -25.69
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 1146000,
+              "q1": 910051.0,
+              "q3": 1600199.5,
+              "min": 395899,
+              "max": 4189400
+            },
+            "baseline": {
+              "median": 440699,
+              "q1": 406100.0,
+              "q3": 648349.5,
+              "min": 388000,
+              "max": 776501
+            },
+            "medianDeltaPercent": 160.04
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 1429952,
+              "q1": 1429952.0,
+              "q3": 1429952.0,
+              "min": 1429952,
+              "max": 1429952
+            },
+            "baseline": {
+              "median": 1925952,
+              "q1": 1925952.0,
+              "q3": 1925952.0,
+              "min": 1925952,
+              "max": 1925952
+            },
+            "medianDeltaPercent": -25.75
+          }
+        },
+        {
+          "process": 2,
+          "pid": 4736,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 861699,
+              "q1": 742601.0,
+              "q3": 1050849.0,
+              "min": 523900,
+              "max": 2852599
+            },
+            "baseline": {
+              "median": 490800,
+              "q1": 460100.0,
+              "q3": 575750.0,
+              "min": 427999,
+              "max": 948800
+            },
+            "medianDeltaPercent": 75.57
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 1564128,
+              "q1": 1564128.0,
+              "q3": 1564128.0,
+              "min": 1564128,
+              "max": 1596160
+            },
+            "baseline": {
+              "median": 1996560,
+              "q1": 1996560.0,
+              "q3": 1996560.0,
+              "min": 1996560,
+              "max": 1997128
+            },
+            "medianDeltaPercent": -21.66
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 799000,
+              "q1": 650350.0,
+              "q3": 929599.0,
+              "min": 482600,
+              "max": 2800499
+            },
+            "baseline": {
+              "median": 445000,
+              "q1": 431750.5,
+              "q3": 521349.5,
+              "min": 405300,
+              "max": 866401
+            },
+            "medianDeltaPercent": 79.55
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 1557952,
+              "q1": 1557952.0,
+              "q3": 1557952.0,
+              "min": 1557952,
+              "max": 1589952
+            },
+            "baseline": {
+              "median": 1989952,
+              "q1": 1989952.0,
+              "q3": 1989952.0,
+              "min": 1989952,
+              "max": 1989952
+            },
+            "medianDeltaPercent": -21.71
+          }
+        },
+        {
+          "process": 3,
+          "pid": 66876,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 867299,
+              "q1": 782850.0,
+              "q3": 981548.0,
+              "min": 563001,
+              "max": 2682599
+            },
+            "baseline": {
+              "median": 525800,
+              "q1": 458651.0,
+              "q3": 724000.0,
+              "min": 414901,
+              "max": 838598
+            },
+            "medianDeltaPercent": 64.95
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 1564128,
+              "q1": 1564128.0,
+              "q3": 1580144.0,
+              "min": 1564128,
+              "max": 1596160
+            },
+            "baseline": {
+              "median": 1932496,
+              "q1": 1932496.0,
+              "q3": 1932496.0,
+              "min": 1932496,
+              "max": 1932632
+            },
+            "medianDeltaPercent": -19.06
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 778700,
+              "q1": 696100.0,
+              "q3": 917699.5,
+              "min": 511000,
+              "max": 2576300
+            },
+            "baseline": {
+              "median": 476900,
+              "q1": 422500.0,
+              "q3": 647500.0,
+              "min": 394000,
+              "max": 795800
+            },
+            "medianDeltaPercent": 63.28
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 1557952,
+              "q1": 1557952.0,
+              "q3": 1573952.0,
+              "min": 1557952,
+              "max": 1589952
+            },
+            "baseline": {
+              "median": 1925952,
+              "q1": 1925952.0,
+              "q3": 1925952.0,
+              "min": 1925952,
+              "max": 1925952
+            },
+            "medianDeltaPercent": -19.11
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "A3.settings-exact-default-empty",
+      "processes": [
+        {
+          "process": 1,
+          "pid": 39684,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 223600,
+              "q1": 137999.5,
+              "q3": 473000.5,
+              "min": 57000,
+              "max": 4822399
+            },
+            "baseline": {
+              "median": 139399,
+              "q1": 133950.5,
+              "q3": 230700.0,
+              "min": 128600,
+              "max": 2420399
+            },
+            "medianDeltaPercent": 60.4
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 96408,
+              "q1": 96408.0,
+              "q3": 96408.0,
+              "min": 16408,
+              "max": 109960
+            },
+            "baseline": {
+              "median": 96408,
+              "q1": 96408.0,
+              "q3": 96408.0,
+              "min": 96408,
+              "max": 109960
+            },
+            "medianDeltaPercent": 0.0
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 185599,
+              "q1": 90200.0,
+              "q3": 418400.0,
+              "min": 30800,
+              "max": 4759700
+            },
+            "baseline": {
+              "median": 123000,
+              "q1": 120550.0,
+              "q3": 211500.5,
+              "min": 115300,
+              "max": 2396500
+            },
+            "medianDeltaPercent": 50.89
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 93992,
+              "q1": 93992.0,
+              "q3": 93992.0,
+              "min": 13992,
+              "max": 107544
+            },
+            "baseline": {
+              "median": 93992,
+              "q1": 93992.0,
+              "q3": 93992.0,
+              "min": 93992,
+              "max": 107544
+            },
+            "medianDeltaPercent": 0.0
+          }
+        },
+        {
+          "process": 2,
+          "pid": 4736,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 157199,
+              "q1": 139600.5,
+              "q3": 376651.5,
+              "min": 129100,
+              "max": 4558899
+            },
+            "baseline": {
+              "median": 154301,
+              "q1": 127800.0,
+              "q3": 201851.0,
+              "min": 76400,
+              "max": 2326400
+            },
+            "medianDeltaPercent": 1.88
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 96408,
+              "q1": 96408.0,
+              "q3": 96408.0,
+              "min": 96408,
+              "max": 109960
+            },
+            "baseline": {
+              "median": 96408,
+              "q1": 96408.0,
+              "q3": 96408.0,
+              "min": 96408,
+              "max": 109896
+            },
+            "medianDeltaPercent": 0.0
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 123900,
+              "q1": 110999.5,
+              "q3": 329900.0,
+              "min": 107800,
+              "max": 4523099
+            },
+            "baseline": {
+              "median": 136700,
+              "q1": 114000.0,
+              "q3": 185199.5,
+              "min": 63900,
+              "max": 2295300
+            },
+            "medianDeltaPercent": -9.36
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 93992,
+              "q1": 93992.0,
+              "q3": 93992.0,
+              "min": 93992,
+              "max": 107544
+            },
+            "baseline": {
+              "median": 93992,
+              "q1": 93992.0,
+              "q3": 93992.0,
+              "min": 93992,
+              "max": 107480
+            },
+            "medianDeltaPercent": 0.0
+          }
+        },
+        {
+          "process": 3,
+          "pid": 66876,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 242800,
+              "q1": 212451.5,
+              "q3": 490151.0,
+              "min": 203498,
+              "max": 3882400
+            },
+            "baseline": {
+              "median": 137398,
+              "q1": 131099.0,
+              "q3": 160749.0,
+              "min": 91601,
+              "max": 2625799
+            },
+            "medianDeltaPercent": 76.71
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 96408,
+              "q1": 96408.0,
+              "q3": 96408.0,
+              "min": 96408,
+              "max": 109960
+            },
+            "baseline": {
+              "median": 96408,
+              "q1": 96408.0,
+              "q3": 96408.0,
+              "min": 96408,
+              "max": 109960
+            },
+            "medianDeltaPercent": 0.0
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 211800,
+              "q1": 186550.5,
+              "q3": 448950.5,
+              "min": 180400,
+              "max": 3835700
+            },
+            "baseline": {
+              "median": 126300,
+              "q1": 116649.0,
+              "q3": 142349.0,
+              "min": 79200,
+              "max": 2599600
+            },
+            "medianDeltaPercent": 67.7
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 0
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 93992,
+              "q1": 93992.0,
+              "q3": 93992.0,
+              "min": 93992,
+              "max": 107544
+            },
+            "baseline": {
+              "median": 93992,
+              "q1": 93992.0,
+              "q3": 93992.0,
+              "min": 93992,
+              "max": 107544
+            },
+            "medianDeltaPercent": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "A3.settings-exact-large-64",
+      "processes": [
+        {
+          "process": 1,
+          "pid": 39684,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 1593700,
+              "q1": 1567401.0,
+              "q3": 1655999.0,
+              "min": 1542001,
+              "max": 1838501
+            },
+            "baseline": {
+              "median": 1344401,
+              "q1": 1127800.5,
+              "q3": 1671451.0,
+              "min": 741500,
+              "max": 2961100
+            },
+            "medianDeltaPercent": 18.54
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 3242792,
+              "q1": 3242792.0,
+              "q3": 3242792.0,
+              "min": 3242792,
+              "max": 3242792
+            },
+            "baseline": {
+              "median": 3322792,
+              "q1": 3322792.0,
+              "q3": 3322792.0,
+              "min": 3242792,
+              "max": 3322792
+            },
+            "medianDeltaPercent": -2.41
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 1524300,
+              "q1": 1511400.0,
+              "q3": 1579399.5,
+              "min": 1496401,
+              "max": 1752100
+            },
+            "baseline": {
+              "median": 1304701,
+              "q1": 1087050.0,
+              "q3": 1589850.5,
+              "min": 718000,
+              "max": 2919300
+            },
+            "medianDeltaPercent": 16.83
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 3214016,
+              "q1": 3214016.0,
+              "q3": 3214016.0,
+              "min": 3214016,
+              "max": 3214016
+            },
+            "baseline": {
+              "median": 3294016,
+              "q1": 3294016.0,
+              "q3": 3294016.0,
+              "min": 3214016,
+              "max": 3294016
+            },
+            "medianDeltaPercent": -2.43
+          }
+        },
+        {
+          "process": 2,
+          "pid": 4736,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 1891699,
+              "q1": 1722300.0,
+              "q3": 2454500.0,
+              "min": 1588700,
+              "max": 3402799
+            },
+            "baseline": {
+              "median": 908200,
+              "q1": 839300.5,
+              "q3": 1229900.0,
+              "min": 737600,
+              "max": 2541501
+            },
+            "medianDeltaPercent": 108.29
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 3242792,
+              "q1": 3242792.0,
+              "q3": 3322792.0,
+              "min": 3242792,
+              "max": 3354792
+            },
+            "baseline": {
+              "median": 3322792,
+              "q1": 3322792.0,
+              "q3": 3322792.0,
+              "min": 3242792,
+              "max": 3322792
+            },
+            "medianDeltaPercent": -2.41
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 1726299,
+              "q1": 1624200.0,
+              "q3": 2286700.0,
+              "min": 1544800,
+              "max": 3295500
+            },
+            "baseline": {
+              "median": 856800,
+              "q1": 801149.0,
+              "q3": 1156249.5,
+              "min": 722100,
+              "max": 2511100
+            },
+            "medianDeltaPercent": 101.48
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 3214016,
+              "q1": 3214016.0,
+              "q3": 3294016.0,
+              "min": 3214016,
+              "max": 3326016
+            },
+            "baseline": {
+              "median": 3294016,
+              "q1": 3294016.0,
+              "q3": 3294016.0,
+              "min": 3214016,
+              "max": 3294016
+            },
+            "medianDeltaPercent": -2.43
+          }
+        },
+        {
+          "process": 3,
+          "pid": 66876,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 2159900,
+              "q1": 1667249.5,
+              "q3": 3008499.5,
+              "min": 1562199,
+              "max": 8407999
+            },
+            "baseline": {
+              "median": 1022500,
+              "q1": 846451.0,
+              "q3": 1163149.0,
+              "min": 798400,
+              "max": 2325500
+            },
+            "medianDeltaPercent": 111.24
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 3322792,
+              "q1": 3242792.0,
+              "q3": 3322792.0,
+              "min": 3242792,
+              "max": 3354792
+            },
+            "baseline": {
+              "median": 3322792,
+              "q1": 3322792.0,
+              "q3": 3322792.0,
+              "min": 3322792,
+              "max": 3322792
+            },
+            "medianDeltaPercent": 0.0
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 2073901,
+              "q1": 1572450.0,
+              "q3": 2834250.0,
+              "min": 1504000,
+              "max": 8336300
+            },
+            "baseline": {
+              "median": 963600,
+              "q1": 806850.0,
+              "q3": 1098849.5,
+              "min": 762400,
+              "max": 2286100
+            },
+            "medianDeltaPercent": 115.22
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 3294016,
+              "q1": 3214016.0,
+              "q3": 3294016.0,
+              "min": 3214016,
+              "max": 3326016
+            },
+            "baseline": {
+              "median": 3294016,
+              "q1": 3294016.0,
+              "q3": 3294016.0,
+              "min": 3294016,
+              "max": 3294016
+            },
+            "medianDeltaPercent": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "A3.settings-exact-small-4",
+      "processes": [
+        {
+          "process": 1,
+          "pid": 39684,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 914899,
+              "q1": 413050.5,
+              "q3": 1537000.5,
+              "min": 160999,
+              "max": 4249100
+            },
+            "baseline": {
+              "median": 453801,
+              "q1": 416850.0,
+              "q3": 672850.0,
+              "min": 393701,
+              "max": 1661001
+            },
+            "medianDeltaPercent": 101.61
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 417944,
+              "q1": 337944.0,
+              "q3": 449944.0,
+              "min": 337944,
+              "max": 449944
+            },
+            "baseline": {
+              "median": 449944,
+              "q1": 449944.0,
+              "q3": 449944.0,
+              "min": 449944,
+              "max": 449944
+            },
+            "medianDeltaPercent": -7.11
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 841000,
+              "q1": 178050.0,
+              "q3": 1498600.0,
+              "min": 135099,
+              "max": 4172401
+            },
+            "baseline": {
+              "median": 433200,
+              "q1": 395400.0,
+              "q3": 647950.0,
+              "min": 376601,
+              "max": 1642400
+            },
+            "medianDeltaPercent": 94.14
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 414016,
+              "q1": 334016.0,
+              "q3": 446016.0,
+              "min": 334016,
+              "max": 446016
+            },
+            "baseline": {
+              "median": 446016,
+              "q1": 446016.0,
+              "q3": 446016.0,
+              "min": 446016,
+              "max": 446016
+            },
+            "medianDeltaPercent": -7.17
+          }
+        },
+        {
+          "process": 2,
+          "pid": 4736,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 788198,
+              "q1": 698399.5,
+              "q3": 928299.0,
+              "min": 576698,
+              "max": 1315200
+            },
+            "baseline": {
+              "median": 555200,
+              "q1": 514500.0,
+              "q3": 634950.0,
+              "min": 263801,
+              "max": 1008601
+            },
+            "medianDeltaPercent": 41.97
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 449944,
+              "q1": 449944.0,
+              "q3": 449944.0,
+              "min": 449944,
+              "max": 449944
+            },
+            "baseline": {
+              "median": 449944,
+              "q1": 449944.0,
+              "q3": 449944.0,
+              "min": 449944,
+              "max": 449944
+            },
+            "medianDeltaPercent": 0.0
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 726600,
+              "q1": 660200.0,
+              "q3": 847749.5,
+              "min": 549300,
+              "max": 1284800
+            },
+            "baseline": {
+              "median": 537800,
+              "q1": 499799.0,
+              "q3": 611200.0,
+              "min": 250699,
+              "max": 983301
+            },
+            "medianDeltaPercent": 35.11
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 446016,
+              "q1": 446016.0,
+              "q3": 446016.0,
+              "min": 446016,
+              "max": 446016
+            },
+            "baseline": {
+              "median": 446016,
+              "q1": 446016.0,
+              "q3": 446016.0,
+              "min": 446016,
+              "max": 446016
+            },
+            "medianDeltaPercent": 0.0
+          }
+        },
+        {
+          "process": 3,
+          "pid": 66876,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 588000,
+              "q1": 567950.0,
+              "q3": 604349.0,
+              "min": 552401,
+              "max": 826899
+            },
+            "baseline": {
+              "median": 545799,
+              "q1": 494400.0,
+              "q3": 713199.5,
+              "min": 273801,
+              "max": 1000702
+            },
+            "medianDeltaPercent": 7.73
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 449944,
+              "q1": 449944.0,
+              "q3": 449944.0,
+              "min": 449944,
+              "max": 449944
+            },
+            "baseline": {
+              "median": 449944,
+              "q1": 449944.0,
+              "q3": 449944.0,
+              "min": 449944,
+              "max": 449944
+            },
+            "medianDeltaPercent": 0.0
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 555901,
+              "q1": 540500.5,
+              "q3": 572900.0,
+              "min": 521501,
+              "max": 775900
+            },
+            "baseline": {
+              "median": 524499,
+              "q1": 477600.0,
+              "q3": 685650.0,
+              "min": 258400,
+              "max": 976101
+            },
+            "medianDeltaPercent": 5.99
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 446016,
+              "q1": 446016.0,
+              "q3": 446016.0,
+              "min": 446016,
+              "max": 446016
+            },
+            "baseline": {
+              "median": 446016,
+              "q1": 446016.0,
+              "q3": 446016.0,
+              "min": 446016,
+              "max": 446016
+            },
+            "medianDeltaPercent": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "A3.settings-exact-tail-change-64",
+      "processes": [
+        {
+          "process": 1,
+          "pid": 39684,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 1798900,
+              "q1": 1744000.5,
+              "q3": 1847498.5,
+              "min": 1702701,
+              "max": 3332500
+            },
+            "baseline": {
+              "median": 887500,
+              "q1": 811700.5,
+              "q3": 1065700.5,
+              "min": 760699,
+              "max": 1806799
+            },
+            "medianDeltaPercent": 102.69
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 3327568,
+              "q1": 3327568.0,
+              "q3": 3327568.0,
+              "min": 3327568,
+              "max": 3359568
+            },
+            "baseline": {
+              "median": 3287568,
+              "q1": 3287568.0,
+              "q3": 3287568.0,
+              "min": 3287568,
+              "max": 3356080
+            },
+            "medianDeltaPercent": 1.22
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 1715000,
+              "q1": 1673800.0,
+              "q3": 1757600.5,
+              "min": 1632600,
+              "max": 3217300
+            },
+            "baseline": {
+              "median": 841500,
+              "q1": 773050.0,
+              "q3": 1020350.0,
+              "min": 729600,
+              "max": 1783699
+            },
+            "medianDeltaPercent": 103.8
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 3294040,
+              "q1": 3294040.0,
+              "q3": 3294040.0,
+              "min": 3294040,
+              "max": 3326040
+            },
+            "baseline": {
+              "median": 3254040,
+              "q1": 3254040.0,
+              "q3": 3254040.0,
+              "min": 3254040,
+              "max": 3322552
+            },
+            "medianDeltaPercent": 1.23
+          }
+        },
+        {
+          "process": 2,
+          "pid": 4736,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 1833900,
+              "q1": 1737900.5,
+              "q3": 1941249.0,
+              "min": 1579300,
+              "max": 2666301
+            },
+            "baseline": {
+              "median": 919001,
+              "q1": 846251.0,
+              "q3": 1404251.5,
+              "min": 796399,
+              "max": 2781200
+            },
+            "medianDeltaPercent": 99.55
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 3247568,
+              "q1": 3247568.0,
+              "q3": 3327568.0,
+              "min": 3247568,
+              "max": 3359568
+            },
+            "baseline": {
+              "median": 3327568,
+              "q1": 3327568.0,
+              "q3": 3327568.0,
+              "min": 3327568,
+              "max": 3359568
+            },
+            "medianDeltaPercent": -2.4
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 1705100,
+              "q1": 1623350.5,
+              "q3": 1847950.0,
+              "min": 1527600,
+              "max": 2591101
+            },
+            "baseline": {
+              "median": 872700,
+              "q1": 809750.0,
+              "q3": 1347650.5,
+              "min": 772699,
+              "max": 2708600
+            },
+            "medianDeltaPercent": 95.38
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 3214040,
+              "q1": 3214040.0,
+              "q3": 3294040.0,
+              "min": 3214040,
+              "max": 3326040
+            },
+            "baseline": {
+              "median": 3294040,
+              "q1": 3294040.0,
+              "q3": 3294040.0,
+              "min": 3294040,
+              "max": 3326040
+            },
+            "medianDeltaPercent": -2.43
+          }
+        },
+        {
+          "process": 3,
+          "pid": 66876,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 1631999,
+              "q1": 1597000.5,
+              "q3": 1694951.0,
+              "min": 1551999,
+              "max": 2632798
+            },
+            "baseline": {
+              "median": 964501,
+              "q1": 842600.0,
+              "q3": 1231150.5,
+              "min": 796900,
+              "max": 2202199
+            },
+            "medianDeltaPercent": 69.21
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 3247568,
+              "q1": 3247568.0,
+              "q3": 3327568.0,
+              "min": 3247568,
+              "max": 3359568
+            },
+            "baseline": {
+              "median": 3327568,
+              "q1": 3327568.0,
+              "q3": 3327568.0,
+              "min": 3327568,
+              "max": 3359568
+            },
+            "medianDeltaPercent": -2.4
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 1553799,
+              "q1": 1529149.5,
+              "q3": 1630250.0,
+              "min": 1502300,
+              "max": 2571299
+            },
+            "baseline": {
+              "median": 895099,
+              "q1": 806450.0,
+              "q3": 1200900.0,
+              "min": 762200,
+              "max": 2178400
+            },
+            "medianDeltaPercent": 73.59
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 3214040,
+              "q1": 3214040.0,
+              "q3": 3294040.0,
+              "min": 3214040,
+              "max": 3326040
+            },
+            "baseline": {
+              "median": 3294040,
+              "q1": 3294040.0,
+              "q3": 3294040.0,
+              "min": 3294040,
+              "max": 3326040
+            },
+            "medianDeltaPercent": -2.43
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "A4.memo-frequent-header-writes",
+      "processes": [
+        {
+          "process": 1,
+          "pid": 39684,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 3119299,
+              "q1": 2850350.0,
+              "q3": 3395100.0,
+              "min": 2340799,
+              "max": 4827001
+            },
+            "baseline": {
+              "median": 1577501,
+              "q1": 960499.0,
+              "q3": 1781550.0,
+              "min": 675200,
+              "max": 2177199
+            },
+            "medianDeltaPercent": 97.74
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 1384920,
+              "q1": 1384920.0,
+              "q3": 1417176.0,
+              "min": 1352664,
+              "max": 1417304
+            },
+            "baseline": {
+              "median": 1385416,
+              "q1": 1383528.0,
+              "q3": 1417672.0,
+              "min": 1353160,
+              "max": 1417800
+            },
+            "medianDeltaPercent": -0.04
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 2735201,
+              "q1": 2481100.0,
+              "q3": 2894850.5,
+              "min": 2109600,
+              "max": 4578201
+            },
+            "baseline": {
+              "median": 1406100,
+              "q1": 770499.0,
+              "q3": 1592500.0,
+              "min": 590300,
+              "max": 1979000
+            },
+            "medianDeltaPercent": 94.52
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 1352584,
+              "q1": 1352584.0,
+              "q3": 1384584.0,
+              "min": 1320584,
+              "max": 1384712
+            },
+            "baseline": {
+              "median": 1352584,
+              "q1": 1350696.0,
+              "q3": 1384584.0,
+              "min": 1320584,
+              "max": 1384712
+            },
+            "medianDeltaPercent": 0.0
+          }
+        },
+        {
+          "process": 2,
+          "pid": 4736,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 2961499,
+              "q1": 2633550.0,
+              "q3": 3170850.0,
+              "min": 1589600,
+              "max": 6995299
+            },
+            "baseline": {
+              "median": 1718200,
+              "q1": 1583700.0,
+              "q3": 1913600.5,
+              "min": 1402999,
+              "max": 2507902
+            },
+            "medianDeltaPercent": 72.36
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 1370072,
+              "q1": 1312664.0,
+              "q3": 1377176.0,
+              "min": 1312664,
+              "max": 1377392
+            },
+            "baseline": {
+              "median": 1353160,
+              "q1": 1313160.0,
+              "q3": 1417672.0,
+              "min": 1313160,
+              "max": 1417800
+            },
+            "medianDeltaPercent": 1.25
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 2587599,
+              "q1": 2207399.5,
+              "q3": 2793800.5,
+              "min": 1055700,
+              "max": 6616600
+            },
+            "baseline": {
+              "median": 1532199,
+              "q1": 1428000.0,
+              "q3": 1694100.0,
+              "min": 1237100,
+              "max": 2229901
+            },
+            "medianDeltaPercent": 68.88
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 1337480,
+              "q1": 1280584.0,
+              "q3": 1344584.0,
+              "min": 1280584,
+              "max": 1344712
+            },
+            "baseline": {
+              "median": 1320584,
+              "q1": 1280584.0,
+              "q3": 1384584.0,
+              "min": 1280584,
+              "max": 1384712
+            },
+            "medianDeltaPercent": 1.28
+          }
+        },
+        {
+          "process": 3,
+          "pid": 66876,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 3057700,
+              "q1": 2396700.0,
+              "q3": 3327000.0,
+              "min": 2233202,
+              "max": 4207900
+            },
+            "baseline": {
+              "median": 1839799,
+              "q1": 1493900.5,
+              "q3": 2024250.0,
+              "min": 752701,
+              "max": 2742799
+            },
+            "medianDeltaPercent": 66.2
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 1344920,
+              "q1": 1312664.0,
+              "q3": 1377176.0,
+              "min": 1312664,
+              "max": 1377304
+            },
+            "baseline": {
+              "median": 1313160,
+              "q1": 1313160.0,
+              "q3": 1414936.0,
+              "min": 1313160,
+              "max": 1417800
+            },
+            "medianDeltaPercent": 2.42
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 2673801,
+              "q1": 2090999.0,
+              "q3": 2935000.0,
+              "min": 2034500,
+              "max": 3752200
+            },
+            "baseline": {
+              "median": 1640199,
+              "q1": 1269299.5,
+              "q3": 1780550.0,
+              "min": 629701,
+              "max": 2585499
+            },
+            "medianDeltaPercent": 63.02
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 1312584,
+              "q1": 1280584.0,
+              "q3": 1344584.0,
+              "min": 1280584,
+              "max": 1344712
+            },
+            "baseline": {
+              "median": 1280584,
+              "q1": 1280584.0,
+              "q3": 1381848.0,
+              "min": 1280584,
+              "max": 1384712
+            },
+            "medianDeltaPercent": 2.5
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "A4.memo-unchanged-repeated",
+      "processes": [
+        {
+          "process": 1,
+          "pid": 39684,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 2396399,
+              "q1": 2179501.0,
+              "q3": 2882948.0,
+              "min": 1945700,
+              "max": 3523800
+            },
+            "baseline": {
+              "median": 1570699,
+              "q1": 1300300.0,
+              "q3": 1746749.5,
+              "min": 1144200,
+              "max": 2699102
+            },
+            "medianDeltaPercent": 52.57
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 782608,
+              "q1": 742568.0,
+              "q3": 782608.0,
+              "min": 742568,
+              "max": 783064
+            },
+            "baseline": {
+              "median": 743064,
+              "q1": 743064.0,
+              "q3": 783104.0,
+              "min": 743064,
+              "max": 783672
+            },
+            "medianDeltaPercent": 5.32
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 1944601,
+              "q1": 1704300.0,
+              "q3": 2277650.0,
+              "min": 1639899,
+              "max": 2848200
+            },
+            "baseline": {
+              "median": 1269500,
+              "q1": 1074350.0,
+              "q3": 1476949.5,
+              "min": 973100,
+              "max": 1895201
+            },
+            "medianDeltaPercent": 53.18
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 749976,
+              "q1": 709976.0,
+              "q3": 749976.0,
+              "min": 709976,
+              "max": 750432
+            },
+            "baseline": {
+              "median": 709976,
+              "q1": 709976.0,
+              "q3": 749976.0,
+              "min": 709976,
+              "max": 750544
+            },
+            "medianDeltaPercent": 5.63
+          }
+        },
+        {
+          "process": 2,
+          "pid": 4736,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 2409200,
+              "q1": 2202498.0,
+              "q3": 2618099.0,
+              "min": 2018700,
+              "max": 3291199
+            },
+            "baseline": {
+              "median": 1495599,
+              "q1": 1388850.0,
+              "q3": 1669450.5,
+              "min": 1219600,
+              "max": 2035100
+            },
+            "medianDeltaPercent": 61.09
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 776168,
+              "q1": 742568.0,
+              "q3": 782608.0,
+              "min": 742568,
+              "max": 783064
+            },
+            "baseline": {
+              "median": 783104,
+              "q1": 743064.0,
+              "q3": 783104.0,
+              "min": 743064,
+              "max": 783560
+            },
+            "medianDeltaPercent": -0.89
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 1984099,
+              "q1": 1803900.0,
+              "q3": 2121349.0,
+              "min": 1680301,
+              "max": 2622499
+            },
+            "baseline": {
+              "median": 1233399,
+              "q1": 1191900.0,
+              "q3": 1420500.0,
+              "min": 990500,
+              "max": 1714000
+            },
+            "medianDeltaPercent": 60.86
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 743536,
+              "q1": 709976.0,
+              "q3": 749976.0,
+              "min": 709976,
+              "max": 750432
+            },
+            "baseline": {
+              "median": 749976,
+              "q1": 709976.0,
+              "q3": 749976.0,
+              "min": 709976,
+              "max": 750432
+            },
+            "medianDeltaPercent": -0.86
+          }
+        },
+        {
+          "process": 3,
+          "pid": 66876,
+          "n": 31,
+          "statusCounts": {
+            "PASS": 31
+          },
+          "serviceWallNsPerRow": {
+            "a2": {
+              "median": 2292700,
+              "q1": 2124049.5,
+              "q3": 2837350.0,
+              "min": 1994298,
+              "max": 3466299
+            },
+            "baseline": {
+              "median": 1673899,
+              "q1": 1589500.5,
+              "q3": 1853901.0,
+              "min": 1149201,
+              "max": 2347099
+            },
+            "medianDeltaPercent": 36.97
+          },
+          "serviceThreadCpuNsPerRow": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "serviceAllocatedBytesPerRow": {
+            "a2": {
+              "median": 742568,
+              "q1": 742568.0,
+              "q3": 782608.0,
+              "min": 742568,
+              "max": 783240
+            },
+            "baseline": {
+              "median": 763384,
+              "q1": 743064.0,
+              "q3": 783104.0,
+              "min": 743064,
+              "max": 783560
+            },
+            "medianDeltaPercent": -2.73
+          },
+          "queryWallNs": {
+            "a2": {
+              "median": 1858600,
+              "q1": 1702150.0,
+              "q3": 2255850.5,
+              "min": 1644699,
+              "max": 2893400
+            },
+            "baseline": {
+              "median": 1443701,
+              "q1": 1227349.5,
+              "q3": 1564250.0,
+              "min": 966001,
+              "max": 1965099
+            },
+            "medianDeltaPercent": 28.74
+          },
+          "queryThreadCpuNs": {
+            "a2": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "baseline": {
+              "median": 0,
+              "q1": 0.0,
+              "q3": 0.0,
+              "min": 0,
+              "max": 15625000
+            },
+            "medianDeltaPercent": null
+          },
+          "queryAllocatedBytes": {
+            "a2": {
+              "median": 709976,
+              "q1": 709976.0,
+              "q3": 749976.0,
+              "min": 709976,
+              "max": 750480
+            },
+            "baseline": {
+              "median": 730256,
+              "q1": 709976.0,
+              "q3": 749976.0,
+              "min": 709976,
+              "max": 750432
+            },
+            "medianDeltaPercent": -2.78
+          }
+        }
+      ]
+    }
+  ],
+  "a4FrequentHeaderValidationDeltaSet": [
+    [
+      0,
+      1000,
+      1000,
+      true
+    ]
+  ]
+}

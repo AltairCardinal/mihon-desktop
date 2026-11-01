@@ -1,0 +1,73 @@
+// CP1 reader-pairing test-scope init script.
+//
+// Scope (by default):
+//   * :app-desktop test tasks run only the CP1 reader-pairing test classes
+//   * :app-desktop compileTestKotlinJvm compiles only the CP1 test sources
+//   * :app-desktop spotless checks only the CP1 touched Kotlin files
+//   * every Test task uses a single fork and the profile test heap
+//
+// Pass -Pcp1.fullScope to disable every narrowing above, so the real project-wide
+// compile, test selection and spotless target apply unchanged.
+//
+// The test heap comes from -Pcp1.test.maxHeapSize (default 512m) so the runner can
+// calibrate it per resource profile without editing this file.
+
+allprojects {
+    tasks.withType(Test).configureEach {
+        maxHeapSize = (project.findProperty('cp1.test.maxHeapSize') ?: '512m').toString()
+        testLogging { showStandardStreams = true }
+        maxParallelForks = 1
+        if (project.path == ':app-desktop' && !project.hasProperty('cp1.fullScope')) {
+            include '**/DesktopReaderContentRoleRecoveryAcceptanceTest*',
+                '**/DesktopReaderPageContentOwnerTest*',
+                '**/DesktopReaderPageImagePipelineTest*',
+                '**/SharedSpreadDesktopResourceWiringTest*',
+                '**/SharedDualPageRuntimeProgressProductionTest*',
+                '**/SharedDualPageNativeStablePresentationTest*'
+        }
+    }
+}
+
+gradle.projectsEvaluated {
+    def desktop = gradle.rootProject.findProject(':app-desktop')
+    if (desktop == null || desktop.tasks.findByName('compileTestKotlinJvm') == null) return
+    if (desktop.hasProperty('cp1.fullScope')) return
+    desktop.tasks.named('compileTestKotlinJvm').configure {
+        setSource(desktop.files(
+            'src/test/kotlin/mihon/desktop/reader/DesktopReaderContentRoleRecoveryAcceptanceTest.kt',
+            'src/test/kotlin/mihon/desktop/reader/DesktopReaderPageContentOwnerTest.kt',
+            'src/test/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipelineTest.kt',
+            'src/test/kotlin/mihon/desktop/ui/reader/SharedSpreadDesktopResourceWiringTest.kt',
+            'src/test/kotlin/mihon/desktop/ui/reader/SharedDualPageNativeStablePresentationTest.kt',
+            'src/test/kotlin/mihon/desktop/ui/reader/SharedDualPageDesktopWiringTest.kt',
+            'src/test/kotlin/mihon/desktop/reader/SharedDualPageRuntimeProgressProductionTest.kt',
+            'src/test/kotlin/mihon/desktop/source/FakeSourceTestUtils.kt',
+            'src/test/kotlin/mihon/desktop/reader/MountedReaderPresentationFixture.kt',
+            'src/test/kotlin/mihon/desktop/reader/ReaderProductionTestFixture.kt',
+            'src/test/kotlin/mihon/desktop/reader/ReaderSessionTestFixtures.kt'
+        ))
+    }
+}
+
+gradle.projectsEvaluated {
+    def desktop = gradle.rootProject.findProject(':app-desktop')
+    if (desktop == null || desktop.tasks.findByName('compileKotlinJvm') == null) return
+    desktop.tasks.named('compileKotlinJvm').configure {
+        outputs.cacheIf { false }
+    }
+}
+
+gradle.afterProject { project ->
+    if (project.path == ':app-desktop' && !project.hasProperty('cp1.fullScope')) {
+        project.pluginManager.apply('mihon.code.lint')
+        project.extensions.getByName('spotless').kotlin {
+            target 'src/main/kotlin/mihon/desktop/AppVersion.kt',
+                'src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt',
+                'src/main/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipeline.kt',
+                'src/main/kotlin/mihon/desktop/reader/DesktopReaderSpreadSampler.kt',
+                'src/test/kotlin/mihon/desktop/ui/reader/SharedSpreadDesktopResourceWiringTest.kt',
+                'src/test/kotlin/mihon/desktop/reader/SharedDualPageRuntimeProgressProductionTest.kt',
+                'src/test/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipelineTest.kt'
+        }
+    }
+}

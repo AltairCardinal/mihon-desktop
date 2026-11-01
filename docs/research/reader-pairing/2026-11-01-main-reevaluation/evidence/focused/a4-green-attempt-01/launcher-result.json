@@ -1,0 +1,70 @@
+{
+  "key": "reevaluation-a4-green-attempt-01-20261101",
+  "attempt": "01",
+  "startUtc": "2026-10-31T23:26:19.298171+00:00",
+  "elapsedSeconds": 92.755,
+  "exitCode": 0,
+  "testTotals": {
+    "tests": 7,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "testcaseRows": [
+    {
+      "name": "header writes invalidate global stamp even when retained original fact does not change()[jvm]",
+      "classname": "mihon.domain.reader.ReaderPairingAdoptionCostTest",
+      "failureCount": 0,
+      "errorCount": 0,
+      "skipped": false
+    },
+    {
+      "name": "saturated owner or header revision always falls back to exact session validation()[jvm]",
+      "classname": "mihon.domain.reader.ReaderPairingAdoptionCostTest",
+      "failureCount": 0,
+      "errorCount": 0,
+      "skipped": false
+    },
+    {
+      "name": "failure writes and clearing invalidate unchanged session stamp without inventing scans()[jvm]",
+      "classname": "mihon.domain.reader.ReaderPairingAdoptionCostTest",
+      "failureCount": 0,
+      "errorCount": 0,
+      "skipped": false
+    },
+    {
+      "name": "owner stamp rejects visible evidence changes metadata close and replacement but not request bookkeeping()[jvm]",
+      "classname": "mihon.domain.reader.ReaderPairingAdoptionCostTest",
+      "failureCount": 0,
+      "errorCount": 0,
+      "skipped": false
+    },
+    {
+      "name": "unchanged session memo skips exact value rereads with global evidence stamp()[jvm]",
+      "classname": "mihon.domain.reader.ReaderPairingAdoptionCostTest",
+      "failureCount": 0,
+      "errorCount": 0,
+      "skipped": false
+    },
+    {
+      "name": "S3 real content rebind closes the old memo and rejects order and identity capabilities()[jvm]",
+      "classname": "mihon.domain.reader.ReaderPairingCertificationMemoTest",
+      "failureCount": 0,
+      "errorCount": 0,
+      "skipped": false
+    },
+    {
+      "name": "A03 a changed matching mode and a changed direction reject the stored result()[jvm]",
+      "classname": "mihon.domain.reader.ReaderPairingCertificationMemoTest",
+      "failureCount": 0,
+      "errorCount": 0,
+      "skipped": false
+    }
+  ],
+  "copiedXml": [
+    "TEST-mihon.domain.reader.ReaderPairingAdoptionCostTest.xml",
+    "TEST-mihon.domain.reader.ReaderPairingCertificationMemoTest.xml"
+  ],
+  "stdoutSha256": "7cbc91958047bd3441e4d1d59fd208a27808940b35eaba79c364829de42daff3",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

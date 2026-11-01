@@ -1,0 +1,69 @@
+{
+  "key": "reevaluation-a3-green-attempt-02-20261101",
+  "runnerSha256": "c5f3a388df85e9e5d8824d78207223321f1818c57a9360dc16be40a1c1cafbe8",
+  "frozenHead": "e8beb212a0ead306f6441b130c40d4b0a6c660f6",
+  "trackedProductionFiles": {
+    "domain/src/commonMain/kotlin/mihon/domain/reader/SharedSpreadMatching.kt": "568914c9f998fed0587aff0632a322fb2a6980783195707e183f5f0312a95a72",
+    "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertificationMemo.kt": "74f78b55173434e41ccfc6df87bf484ba039414abbd0cb730abb99214342646e",
+    "domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageSession.kt": "a60c96b0e4552d9f6b353de34fc984a766bc1e2c91c9b6cc0ef82b99019fd849"
+  },
+  "testSources": {
+    "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingAdoptionCostTest.kt": "5e5462908d2966ed63a9140c6460ef02f625860c26d7c75288b3e9eb6ba503f3",
+    "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingCertificationMemoTest.kt": "7a26607b7eb35b3ded8dc983ed6915c728f5f7a5c1d4c6a5bb5655847375c17f"
+  },
+  "methodSelectors": [
+    "mihon.domain.reader.ReaderPairingAdoptionCostTest.exact settings validation stays within bounded allocation after warmup",
+    "mihon.domain.reader.ReaderPairingAdoptionCostTest.compact dimension comparison keeps every geometry field and ignores only current side hint",
+    "mihon.domain.reader.ReaderPairingAdoptionCostTest.compact comparison treats absent or mismatched recorded values as changed without throwing",
+    "mihon.domain.reader.ReaderPairingCertificationMemoTest.A03 a changed matching mode and a changed direction reject the stored result"
+  ],
+  "guardSha256": "4c8ea1cc40a44ab48ac84af0dd15d0ba93a7bbc491039c9864e4bb4b1ab9caf2",
+  "retryInitSha256": "5a6192e7d3f16052e937b85fc119f5f24a5ea001d8d03307da61d48e24634503",
+  "benchmarkInitSha256": "a0dbc83a41f6e5d7bcc8bde0c28f5272ec89988d93f731833ce8221db9e1b181",
+  "benchmarkHarnessSha256": "a8c7fe9d35259dd7f4d14f2785e0d53867ffe7050f874860de073bc5cd3406df",
+  "baseResourceProfile": {
+    "profileName": "domain-focused-cp1-with-root-headroom",
+    "sourceProfile": "R10 local-cpu domain-focused profile; see cp1-profiles-original.json",
+    "gradleJvmargs": "-Xmx768m -XX:MaxMetaspaceSize=384m -Dfile.encoding=UTF-8",
+    "testMaxHeap": "256m",
+    "maxWorkers": 1,
+    "maxParallelForks": 1,
+    "forkEveryTestClasses": 1,
+    "jobMiB": 3072,
+    "processMiB": 2048,
+    "reservePhysicalMiB": 4096,
+    "reserveCommitMiB": 8192,
+    "startupPhysicalMiB": 7168,
+    "timeoutSeconds": 1800,
+    "gradleOffline": true,
+    "automaticRetries": 0,
+    "coordinatorStateDir": "D:/Codex/worktrees/reader-pairing-research-next-20261014/.gradle-coordinator"
+  },
+  "resourceAdjustment": {
+    "reason": "A3 attempt-01 hit process soft limit by 1.71 MiB; reduce only Gradle heap for source compilation",
+    "originalGradleJvmargs": "-Xmx768m -XX:MaxMetaspaceSize=384m -Dfile.encoding=UTF-8",
+    "effectiveGradleJvmargs": "-Xmx640m -XX:MaxMetaspaceSize=384m -Dfile.encoding=UTF-8",
+    "testHeapUnchanged": true,
+    "guardAndWorkersUnchanged": true
+  },
+  "resourceProfile": {
+    "profileName": "domain-focused-cp1-with-root-headroom",
+    "sourceProfile": "R10 local-cpu domain-focused profile; see cp1-profiles-original.json",
+    "gradleJvmargs": "-Xmx640m -XX:MaxMetaspaceSize=384m -Dfile.encoding=UTF-8",
+    "testMaxHeap": "256m",
+    "maxWorkers": 1,
+    "maxParallelForks": 1,
+    "forkEveryTestClasses": 1,
+    "jobMiB": 3072,
+    "processMiB": 2048,
+    "reservePhysicalMiB": 4096,
+    "reserveCommitMiB": 8192,
+    "startupPhysicalMiB": 7168,
+    "timeoutSeconds": 1800,
+    "gradleOffline": true,
+    "automaticRetries": 0,
+    "coordinatorStateDir": "D:/Codex/worktrees/reader-pairing-research-next-20261014/.gradle-coordinator"
+  },
+  "originalArgvSha256": "f9fb5a01485bd9d2dd1a534efd16cf7f9441d49d4a6fb7883aef0902219b2303",
+  "kind": "selected-frozen-metadata; argv and local process paths intentionally omitted"
+}

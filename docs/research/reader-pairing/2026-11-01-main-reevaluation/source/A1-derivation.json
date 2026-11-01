@@ -1,0 +1,10 @@
+{
+  "baseline": "e8beb212a0ead306f6441b130c40d4b0a6c660f6",
+  "accepted": "f04ec49bd06df934281886885f463b0028813071",
+  "path": "domain/src/commonMain/kotlin/mihon/domain/reader/SharedSpreadMatching.kt",
+  "restoredOnlyBComparison": ">= to >",
+  "derivedRawSha256": "568914c9f998fed0587aff0632a322fb2a6980783195707e183f5f0312a95a72",
+  "recordedA1RawSha256": "568914c9f998fed0587aff0632a322fb2a6980783195707e183f5f0312a95a72",
+  "exactRawMatch": true,
+  "rawStyle": "LF"
+}

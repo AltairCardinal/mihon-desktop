@@ -1,0 +1,8 @@
+{
+  "key": "reevaluation-red-a-20261101-02",
+  "startUtc": "2026-10-31T22:17:42.002919+00:00",
+  "elapsedSeconds": 67.934,
+  "exitCode": 1,
+  "stdoutSha256": "838e071d8df41362d2457ccba5fcee83fafa045b2aa4f633b5cc22437e9382a2",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

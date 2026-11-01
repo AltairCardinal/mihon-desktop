@@ -1,0 +1,119 @@
+{
+  "oldRoot": "D:\\Codex\\worktrees\\reader-r1-r10-reevaluation-20261101",
+  "newRoot": "D:\\Codex\\worktrees\\reader-stamp-reevaluation-20261101",
+  "base": "e8beb212a0ead306f6441b130c40d4b0a6c660f6",
+  "productionSet": "A1+A4 only; A2/A3/B/C absent",
+  "centralStateDir": "D:/Codex/worktrees/reader-pairing-research-next-20261014/.gradle-coordinator",
+  "files": [
+    {
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/SharedSpreadMatching.kt",
+      "oldSha256": "568914c9f998fed0587aff0632a322fb2a6980783195707e183f5f0312a95a72",
+      "newSha256": "568914c9f998fed0587aff0632a322fb2a6980783195707e183f5f0312a95a72",
+      "mapping": "byte identical",
+      "oldGitBlob": "a30afa303ad8abe99a4b3c7df099ee2caecf4dcc",
+      "newGitBlob": "a30afa303ad8abe99a4b3c7df099ee2caecf4dcc"
+    },
+    {
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertificationMemo.kt",
+      "oldSha256": "b42fe8552a5ee89959abcbcc8e17f8d3436ac35700861ed489c6ce1540b1e36a",
+      "newSha256": "b42fe8552a5ee89959abcbcc8e17f8d3436ac35700861ed489c6ce1540b1e36a",
+      "mapping": "byte identical",
+      "oldGitBlob": "b2ae91a8452289df3485199adec5732fbd07487f",
+      "newGitBlob": "b2ae91a8452289df3485199adec5732fbd07487f"
+    },
+    {
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderSpreadSamplesOwner.kt",
+      "oldSha256": "5705684f1295b032969f5929a4aa37315674904481b6ac2cabc7f8c00ba61317",
+      "newSha256": "5705684f1295b032969f5929a4aa37315674904481b6ac2cabc7f8c00ba61317",
+      "mapping": "byte identical",
+      "oldGitBlob": "3a9521b403ddfc4d628c8455257e506b3da98a06",
+      "newGitBlob": "3a9521b403ddfc4d628c8455257e506b3da98a06"
+    },
+    {
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageSession.kt",
+      "oldSha256": "9a44147312f072f12d9522cf1a18bcf8e086ee21b3cd4a622559330355fc881d",
+      "newSha256": "9a44147312f072f12d9522cf1a18bcf8e086ee21b3cd4a622559330355fc881d",
+      "mapping": "byte identical",
+      "oldGitBlob": "866e71e3f88b91f97f9d4b899aef1a5a6e30f861",
+      "newGitBlob": "866e71e3f88b91f97f9d4b899aef1a5a6e30f861"
+    },
+    {
+      "path": "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingAdoptionCostTest.kt",
+      "oldSha256": "2c9ee9ae0ac8788de3f795d294720fe80fcd5b60ec852f464465fa3aae9f4928",
+      "newSha256": "2c9ee9ae0ac8788de3f795d294720fe80fcd5b60ec852f464465fa3aae9f4928",
+      "mapping": "byte identical",
+      "oldGitBlob": "6c01d31470da20c34f2c36453046d1aeb48b55cd",
+      "newGitBlob": "6c01d31470da20c34f2c36453046d1aeb48b55cd"
+    },
+    {
+      "path": "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingCertificationMemoTest.kt",
+      "oldSha256": "7a26607b7eb35b3ded8dc983ed6915c728f5f7a5c1d4c6a5bb5655847375c17f",
+      "newSha256": "7a26607b7eb35b3ded8dc983ed6915c728f5f7a5c1d4c6a5bb5655847375c17f",
+      "mapping": "byte identical",
+      "oldGitBlob": "eb34a3a3242150f9295c1bfab45de2c8a1cec5f9",
+      "newGitBlob": "eb34a3a3242150f9295c1bfab45de2c8a1cec5f9"
+    },
+    {
+      "path": ".gradle-coordinator/reevaluation/inputs/ReaderPairingReevaluationBenchmark.kt",
+      "oldSha256": "a8c7fe9d35259dd7f4d14f2785e0d53867ffe7050f874860de073bc5cd3406df",
+      "newSha256": "a8c7fe9d35259dd7f4d14f2785e0d53867ffe7050f874860de073bc5cd3406df",
+      "mapping": "byte identical"
+    },
+    {
+      "path": ".gradle-coordinator/reevaluation/inputs/reevaluation-benchmark.init.gradle",
+      "oldSha256": "a0dbc83a41f6e5d7bcc8bde0c28f5272ec89988d93f731833ce8221db9e1b181",
+      "newSha256": "f4a2535069c8577a8c317f39731a0d4bed9a7bed52ab56660bd73749c7b2e400",
+      "mapping": "repo absolute path replacement only"
+    },
+    {
+      "path": ".gradle-coordinator/reevaluation/inputs/disable-retries.init.gradle",
+      "oldSha256": "5a6192e7d3f16052e937b85fc119f5f24a5ea001d8d03307da61d48e24634503",
+      "newSha256": "5a6192e7d3f16052e937b85fc119f5f24a5ea001d8d03307da61d48e24634503",
+      "mapping": "byte identical"
+    },
+    {
+      "path": ".gradle-coordinator/reevaluation/inputs/cp1-luna-p5.init.gradle",
+      "oldSha256": "c36007fce64497ac48e5ce9d2445860bb01aec7fcacab64180d5d03dab4dffbc",
+      "newSha256": "c36007fce64497ac48e5ce9d2445860bb01aec7fcacab64180d5d03dab4dffbc",
+      "mapping": "byte identical"
+    },
+    {
+      "path": ".gradle-coordinator/reevaluation/inputs/domain-focused-resource-profile.json",
+      "oldSha256": "99338cb248820f937aede241565645985243ce29c3e533b7faa13ea731cb4fa0",
+      "newSha256": "99338cb248820f937aede241565645985243ce29c3e533b7faa13ea731cb4fa0",
+      "mapping": "byte identical"
+    },
+    {
+      "path": ".gradle-coordinator/reevaluation/inputs/cp1-profiles-original.json",
+      "oldSha256": "312997026c6d18a7bb7d27dfb5cebd3f35744c1e1046c67b4a4c72162f30057b",
+      "newSha256": "312997026c6d18a7bb7d27dfb5cebd3f35744c1e1046c67b4a4c72162f30057b",
+      "mapping": "byte identical"
+    },
+    {
+      "path": ".gradle-coordinator/reevaluation/inputs/windows_memory_guard.py",
+      "oldSha256": "4c8ea1cc40a44ab48ac84af0dd15d0ba93a7bbc491039c9864e4bb4b1ab9caf2",
+      "newSha256": "4c8ea1cc40a44ab48ac84af0dd15d0ba93a7bbc491039c9864e4bb4b1ab9caf2",
+      "mapping": "byte identical"
+    },
+    {
+      "path": ".gradle-coordinator/reevaluation/inputs/run-cost.py",
+      "oldSha256": "6ea08cbea75c4dc4832f5086f93811a5f049d8489996b340367ea8bad953e29c",
+      "newSha256": "06ab3af3784df6bbfcf4f9d3f97f1ee01532d53c22506c4ab74fe86711cc05a3",
+      "mapping": "repo absolute path replacement only"
+    },
+    {
+      "path": "scripts/gradle-coordinator.py",
+      "oldGitBlob": "cdaa6869cf8698c389193d97405458c2f09d82d8",
+      "newGitBlob": "cdaa6869cf8698c389193d97405458c2f09d82d8",
+      "mapping": "same baseline Git blob"
+    },
+    {
+      "path": "gradlew.bat",
+      "oldGitBlob": "db3a6ac207e507b0bc1635a9f2c18d3b174e682e",
+      "newGitBlob": "db3a6ac207e507b0bc1635a9f2c18d3b174e682e",
+      "mapping": "same baseline Git blob"
+    }
+  ],
+  "noBuildDirectoriesCopied": true,
+  "noGradleLaunched": true
+}

@@ -1,0 +1,7 @@
+# Preserve original evidence bytes; allow original CRLF without weakening other whitespace checks.
+* -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+# Unified diff context lines and historical patch EOF are preserved as original syntax.
+2026-11-01-main-reevaluation/patches/*.patch whitespace=-blank-at-eol,-blank-at-eof,space-before-tab,cr-at-eol
+# The two original harness snapshots retain their historical final blank line.
+2026-11-01-main-reevaluation/harness/primary/ReaderPairingReevaluationBenchmark.kt.txt whitespace=blank-at-eol,-blank-at-eof,space-before-tab,cr-at-eol
+2026-11-01-main-reevaluation/harness/a4-path-adapted/ReaderPairingReevaluationBenchmark.kt.txt whitespace=blank-at-eol,-blank-at-eof,space-before-tab,cr-at-eol

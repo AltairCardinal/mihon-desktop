@@ -1,0 +1,73 @@
+{
+  "key": "reevaluation-a4-green-attempt-01-20261101",
+  "runnerSha256": "ed85ea32a6058b91cb2f2c5427df83d32d6c9205555dfd39867256cc2cde930a",
+  "frozenHead": "e8beb212a0ead306f6441b130c40d4b0a6c660f6",
+  "trackedProductionFiles": {
+    "domain/src/commonMain/kotlin/mihon/domain/reader/SharedSpreadMatching.kt": "568914c9f998fed0587aff0632a322fb2a6980783195707e183f5f0312a95a72",
+    "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertificationMemo.kt": "b42fe8552a5ee89959abcbcc8e17f8d3436ac35700861ed489c6ce1540b1e36a",
+    "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderSpreadSamplesOwner.kt": "5705684f1295b032969f5929a4aa37315674904481b6ac2cabc7f8c00ba61317",
+    "domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageSession.kt": "9a44147312f072f12d9522cf1a18bcf8e086ee21b3cd4a622559330355fc881d"
+  },
+  "testSources": {
+    "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingAdoptionCostTest.kt": "2c9ee9ae0ac8788de3f795d294720fe80fcd5b60ec852f464465fa3aae9f4928",
+    "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingCertificationMemoTest.kt": "7a26607b7eb35b3ded8dc983ed6915c728f5f7a5c1d4c6a5bb5655847375c17f"
+  },
+  "methodSelectors": [
+    "mihon.domain.reader.ReaderPairingAdoptionCostTest.unchanged session memo skips exact value rereads with global evidence stamp",
+    "mihon.domain.reader.ReaderPairingAdoptionCostTest.header writes invalidate global stamp even when retained original fact does not change",
+    "mihon.domain.reader.ReaderPairingAdoptionCostTest.failure writes and clearing invalidate unchanged session stamp without inventing scans",
+    "mihon.domain.reader.ReaderPairingAdoptionCostTest.saturated owner or header revision always falls back to exact session validation",
+    "mihon.domain.reader.ReaderPairingAdoptionCostTest.owner stamp rejects visible evidence changes metadata close and replacement but not request bookkeeping",
+    "mihon.domain.reader.ReaderPairingCertificationMemoTest.A03 a changed matching mode and a changed direction reject the stored result",
+    "mihon.domain.reader.ReaderPairingCertificationMemoTest.S3 real content rebind closes the old memo and rejects order and identity capabilities"
+  ],
+  "guardSha256": "4c8ea1cc40a44ab48ac84af0dd15d0ba93a7bbc491039c9864e4bb4b1ab9caf2",
+  "retryInitSha256": "5a6192e7d3f16052e937b85fc119f5f24a5ea001d8d03307da61d48e24634503",
+  "benchmarkInitSha256": "a0dbc83a41f6e5d7bcc8bde0c28f5272ec89988d93f731833ce8221db9e1b181",
+  "benchmarkHarnessSha256": "a8c7fe9d35259dd7f4d14f2785e0d53867ffe7050f874860de073bc5cd3406df",
+  "baseResourceProfile": {
+    "profileName": "domain-focused-cp1-with-root-headroom",
+    "sourceProfile": "R10 local-cpu domain-focused profile; see cp1-profiles-original.json",
+    "gradleJvmargs": "-Xmx768m -XX:MaxMetaspaceSize=384m -Dfile.encoding=UTF-8",
+    "testMaxHeap": "256m",
+    "maxWorkers": 1,
+    "maxParallelForks": 1,
+    "forkEveryTestClasses": 1,
+    "jobMiB": 3072,
+    "processMiB": 2048,
+    "reservePhysicalMiB": 4096,
+    "reserveCommitMiB": 8192,
+    "startupPhysicalMiB": 7168,
+    "timeoutSeconds": 1800,
+    "gradleOffline": true,
+    "automaticRetries": 0,
+    "coordinatorStateDir": "D:/Codex/worktrees/reader-pairing-research-next-20261014/.gradle-coordinator"
+  },
+  "resourceAdjustment": {
+    "reason": "Use the previously successful 640m Gradle heap after the 768m A3 focused attempt crossed process soft limit; no test scope, test heap, worker, or guard changes",
+    "originalGradleJvmargs": "-Xmx768m -XX:MaxMetaspaceSize=384m -Dfile.encoding=UTF-8",
+    "effectiveGradleJvmargs": "-Xmx640m -XX:MaxMetaspaceSize=384m -Dfile.encoding=UTF-8",
+    "testHeapUnchanged": true,
+    "guardAndWorkersUnchanged": true
+  },
+  "resourceProfile": {
+    "profileName": "domain-focused-cp1-with-root-headroom",
+    "sourceProfile": "R10 local-cpu domain-focused profile; see cp1-profiles-original.json",
+    "gradleJvmargs": "-Xmx640m -XX:MaxMetaspaceSize=384m -Dfile.encoding=UTF-8",
+    "testMaxHeap": "256m",
+    "maxWorkers": 1,
+    "maxParallelForks": 1,
+    "forkEveryTestClasses": 1,
+    "jobMiB": 3072,
+    "processMiB": 2048,
+    "reservePhysicalMiB": 4096,
+    "reserveCommitMiB": 8192,
+    "startupPhysicalMiB": 7168,
+    "timeoutSeconds": 1800,
+    "gradleOffline": true,
+    "automaticRetries": 0,
+    "coordinatorStateDir": "D:/Codex/worktrees/reader-pairing-research-next-20261014/.gradle-coordinator"
+  },
+  "originalArgvSha256": "18bdec7181745ccceae5aa389722aa60505c7dd37cee46c0b8b4c1a95462cc86",
+  "kind": "selected-frozen-metadata; argv and local process paths intentionally omitted"
+}

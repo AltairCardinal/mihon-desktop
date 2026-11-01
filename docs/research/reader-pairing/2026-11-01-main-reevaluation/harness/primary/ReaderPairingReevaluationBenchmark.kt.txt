@@ -1,0 +1,498 @@
+package mihon.domain.reader
+
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import mihon.domain.reader.session.ReaderChapterId
+import mihon.domain.reader.session.ReaderPageId
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assumptions.assumeTrue
+import org.junit.jupiter.api.Test
+import java.lang.management.ManagementFactory
+
+private data class ReevaluationCostFixture(
+    val operation: (Int) -> Any?,
+    val metrics: () -> Map<String, Long> = { emptyMap() },
+    val close: () -> Unit = {},
+)
+
+private data class ReevaluationPhaseMetrics(
+    val wallNs: Long?,
+    val cpuNs: Long?,
+    val allocatedBytes: Long?,
+    val counterError: String = "",
+)
+private data class ReevaluationPhaseResult(
+    val value: Any?,
+    val metrics: ReevaluationPhaseMetrics,
+    val error: Throwable?,
+)
+
+private object ReaderPairingReevaluationBenchmark {
+    private const val WARMUP_BATCHES = 5
+    private const val SAMPLES = 31
+    private const val OPERATIONS_PER_SAMPLE = 1_000
+    private const val INPUT_SEED = 739
+
+    @Volatile
+    private var resultSink: Any? = null
+
+    fun run(process: Int) {
+        val platformBean = ManagementFactory.getThreadMXBean()
+        val allocationBean = platformBean as? com.sun.management.ThreadMXBean
+        val cpuSupported = platformBean.isCurrentThreadCpuTimeSupported
+        var cpuEnabled = platformBean.isThreadCpuTimeEnabled
+        var cpuEnableError = ""
+        if (cpuSupported && !cpuEnabled) {
+            try {
+                platformBean.isThreadCpuTimeEnabled = true
+                cpuEnabled = platformBean.isThreadCpuTimeEnabled
+            } catch (error: SecurityException) {
+                cpuEnableError = error.message ?: error.javaClass.name
+            } catch (error: UnsupportedOperationException) {
+                cpuEnableError = error.message ?: error.javaClass.name
+            } catch (error: IllegalArgumentException) {
+                cpuEnableError = error.message ?: error.javaClass.name
+            }
+        }
+        val allocationSupported = allocationBean?.isThreadAllocatedMemorySupported == true
+        var allocationEnabled = allocationBean?.isThreadAllocatedMemoryEnabled == true
+        var allocationEnableError = ""
+        if (allocationSupported && !allocationEnabled) {
+            try {
+                allocationBean?.isThreadAllocatedMemoryEnabled = true
+                allocationEnabled = allocationBean?.isThreadAllocatedMemoryEnabled == true
+            } catch (error: SecurityException) {
+                allocationEnableError = error.message ?: error.javaClass.name
+            } catch (error: UnsupportedOperationException) {
+                allocationEnableError = error.message ?: error.javaClass.name
+            } catch (error: IllegalArgumentException) {
+                allocationEnableError = error.message ?: error.javaClass.name
+            }
+        }
+        val initialCpuNs = platformBean.currentThreadCpuTime
+        val initialAllocatedBytes = allocationBean?.getThreadAllocatedBytes(Thread.currentThread().id) ?: -1L
+        if (!cpuSupported || !cpuEnabled || initialCpuNs < 0L ||
+            !allocationSupported || !allocationEnabled || initialAllocatedBytes < 0L
+        ) {
+            println("REEVAL_METRIC_UNAVAILABLE " + buildJsonObject {
+                put("process", process)
+                put("pid", ProcessHandle.current().pid())
+                put("cpuSupported", cpuSupported)
+                put("cpuEnabled", cpuEnabled)
+                put("initialCpuNs", initialCpuNs)
+                put("cpuEnableError", cpuEnableError)
+                put("allocationSupported", allocationSupported)
+                put("allocationEnabled", allocationEnabled)
+                put("initialAllocatedBytes", initialAllocatedBytes)
+                put("allocationEnableError", allocationEnableError)
+                put("reason", "Thread CPU and allocation counters must be supported, enabled, and nonnegative")
+            })
+            assumeTrue(false, "Required ThreadMXBean metrics unavailable; mark this JVM skipped/uncertain")
+        }
+        val allocator = requireNotNull(allocationBean)
+        val variant = System.getenv("REEVAL_VARIANT") ?: "UNSET"
+        val pid = ProcessHandle.current().pid()
+        val scenarios = listOf(
+            "A1.distant-edge-early-reject" to { distantEdgeFixture() },
+            "A1.similar-edge-full-score" to { similarEdgeFixture() },
+            "A2.owner-index-large-176" to { ownerIndexFixture(176) },
+            "A2.owner-index-small-8" to { ownerIndexFixture(8) },
+            "A3.settings-exact-default-empty" to { settingsValidationFixture(0) },
+            "A3.settings-exact-small-4" to { settingsValidationFixture(4) },
+            "A3.settings-exact-large-64" to { settingsValidationFixture(64) },
+            "A3.settings-exact-tail-change-64" to { settingsValidationFixture(64, tailChange = true) },
+            "A4.memo-unchanged-repeated" to { sessionFixture(writeChurn = false) },
+            "A4.memo-frequent-header-writes" to { sessionFixture(writeChurn = true) },
+        )
+        var failedSamples = 0
+        scenarios.forEach { (name, factory) ->
+            failedSamples += measureScenario(name, process, pid, variant, factory, allocator, platformBean)
+        }
+        assertEquals(0, failedSamples, "Every requested raw sample must be accounted for; failures are not replacement samples")
+    }
+
+    private fun measureScenario(
+        name: String,
+        process: Int,
+        pid: Long,
+        variant: String,
+        factory: () -> ReevaluationCostFixture,
+        allocationBean: com.sun.management.ThreadMXBean,
+        cpuBean: java.lang.management.ThreadMXBean,
+    ): Int {
+        var warmupFailures = 0
+        repeat(WARMUP_BATCHES) { batch ->
+            var fixture: ReevaluationCostFixture? = null
+            try {
+                fixture = factory()
+                repeat(OPERATIONS_PER_SAMPLE) { iteration ->
+                    val result = fixture.operation(iteration)
+                    resultSink = result
+                }
+            } catch (error: Throwable) {
+                warmupFailures++
+                println("REEVAL_WARMUP_FAILURE " + buildJsonObject {
+                    put("scenario", name)
+                    put("process", process)
+                    put("pid", pid)
+                    put("batch", batch)
+                    put("errorClass", error.javaClass.name)
+                    put("error", error.message ?: "")
+                })
+            } finally {
+                try {
+                    fixture?.close?.invoke()
+                } catch (error: Throwable) {
+                    warmupFailures++
+                    println("REEVAL_WARMUP_CLOSE_FAILURE " + buildJsonObject {
+                        put("scenario", name)
+                        put("process", process)
+                        put("pid", pid)
+                        put("batch", batch)
+                        put("errorClass", error.javaClass.name)
+                        put("error", error.message ?: "")
+                    })
+                }
+            }
+        }
+        if (warmupFailures != 0) {
+            println("REEVAL_SCENARIO_INVALID " + buildJsonObject {
+                put("scenario", name)
+                put("variant", variant)
+                put("process", process)
+                put("pid", pid)
+                put("requestedSamples", SAMPLES)
+                put("validSamples", 0)
+                put("failedSamples", SAMPLES)
+                put("warmupFailures", warmupFailures)
+                put("status", "INVALID_WARMUP")
+            })
+            return SAMPLES
+        }
+
+        var failures = 0
+        val threadId = Thread.currentThread().id
+        repeat(SAMPLES) { sample ->
+            val lifecycleStart = System.nanoTime()
+            val prepare = measurePhase(threadId, allocationBean, cpuBean) { factory() }
+            val fixture = prepare.value as? ReevaluationCostFixture
+            var completedOperations = 0
+            var lastResult: Any? = null
+            val metricsBeforeQueryValues = linkedMapOf<String, Long>()
+            val metricsBeforeQuery = measurePhase(threadId, allocationBean, cpuBean) {
+                fixture?.metrics?.invoke()?.forEach { (key, value) -> metricsBeforeQueryValues[key] = value }
+                Unit
+            }
+            val query = if (fixture != null && prepare.error == null) {
+                measurePhase(threadId, allocationBean, cpuBean) {
+                    repeat(OPERATIONS_PER_SAMPLE) { iteration ->
+                        val result = fixture.operation(iteration)
+                        resultSink = result
+                        lastResult = result
+                        completedOperations++
+                    }
+                    lastResult
+                }
+            } else {
+                ReevaluationPhaseResult(
+                    null,
+                    ReevaluationPhaseMetrics(0L, null, null),
+                    prepare.error ?: IllegalStateException("Preparation did not return a cost fixture"),
+                )
+            }
+            val appMetrics = linkedMapOf<String, Long>()
+            val metricsRead = measurePhase(threadId, allocationBean, cpuBean) {
+                fixture?.metrics?.invoke()?.forEach { (key, value) -> appMetrics[key] = value }
+                Unit
+            }
+            var resultHash = 0
+            var resultClass = "null"
+            val resultRead = measurePhase(threadId, allocationBean, cpuBean) {
+                val consumed = resultSink
+                resultClass = consumed?.javaClass?.name ?: "null"
+                resultHash = consumed?.hashCode() ?: 0
+                Unit
+            }
+            val close = measurePhase(threadId, allocationBean, cpuBean) {
+                fixture?.close?.invoke()
+                Unit
+            }
+            val lifecycleWallNs = System.nanoTime() - lifecycleStart
+            val sampleError = sequenceOf(
+                prepare.error,
+                metricsBeforeQuery.error,
+                query.error,
+                metricsRead.error,
+                resultRead.error,
+                close.error,
+            )
+                .firstOrNull { it != null }
+            val serviceWallNs = sumIfAvailable(prepare.metrics.wallNs, query.metrics.wallNs, close.metrics.wallNs)
+            val serviceCpuNs = sumIfAvailable(prepare.metrics.cpuNs, query.metrics.cpuNs, close.metrics.cpuNs)
+            val serviceAllocatedBytes = sumIfAvailable(
+                prepare.metrics.allocatedBytes,
+                query.metrics.allocatedBytes,
+                close.metrics.allocatedBytes,
+            )
+            val harnessLifecycleOverheadNs = if (serviceWallNs >= 0L && lifecycleWallNs >= serviceWallNs) {
+                lifecycleWallNs - serviceWallNs
+            } else {
+                -1L
+            }
+            val harnessError = when {
+                lifecycleWallNs < 0L -> IllegalStateException("Lifecycle wall counter moved backwards")
+                harnessLifecycleOverheadNs < 0L -> IllegalStateException("Service wall sum exceeded lifecycle wall")
+                else -> null
+            }
+            val finalError = sampleError ?: harnessError
+            if (finalError != null) failures++
+            println("REEVAL_SAMPLE " + buildJsonObject {
+                put("schema", 2)
+                put("variant", variant)
+                put("scenario", name)
+                put("process", process)
+                put("pid", pid)
+                put("runtime", ManagementFactory.getRuntimeMXBean().name)
+                put("sample", sample)
+                put("inputSeed", INPUT_SEED)
+                put("warmupBatches", WARMUP_BATCHES)
+                put("warmupOperationsPerBatch", OPERATIONS_PER_SAMPLE)
+                put("requestedOperations", OPERATIONS_PER_SAMPLE)
+                put("completedOperations", completedOperations)
+                put("sampleStatus", if (finalError == null) "PASS" else "FAIL")
+                put("failureClass", finalError?.javaClass?.name ?: "")
+                put("failure", finalError?.message ?: "")
+                put("prepareWallNs", prepare.metrics.wallNs ?: -1L)
+                put("prepareThreadCpuNs", prepare.metrics.cpuNs ?: -1L)
+                put("prepareAllocatedBytes", prepare.metrics.allocatedBytes ?: -1L)
+                put("prepareCounterError", prepare.metrics.counterError)
+                put("queryWallNs", query.metrics.wallNs ?: -1L)
+                put("queryThreadCpuNs", query.metrics.cpuNs ?: -1L)
+                put("queryAllocatedBytes", query.metrics.allocatedBytes ?: -1L)
+                put("queryAllocatedBytesPerCompletedOperation", if (completedOperations == 0 || query.metrics.allocatedBytes == null) -1.0 else query.metrics.allocatedBytes.toDouble() / completedOperations)
+                put("queryCounterError", query.metrics.counterError)
+                put("closeWallNs", close.metrics.wallNs ?: -1L)
+                put("closeThreadCpuNs", close.metrics.cpuNs ?: -1L)
+                put("closeAllocatedBytes", close.metrics.allocatedBytes ?: -1L)
+                put("closeCounterError", close.metrics.counterError)
+                put("serviceWallNsPerRow", serviceWallNs)
+                put("serviceThreadCpuNsPerRow", serviceCpuNs)
+                put("serviceAllocatedBytesPerRow", serviceAllocatedBytes)
+                put("lifecycleWallNs", lifecycleWallNs)
+                put("lifecycleWallIncludesHarnessOverhead", true)
+                put("harnessLifecycleOverheadWallNs", harnessLifecycleOverheadNs)
+                put("harnessMetricsBeforeQueryWallNs", metricsBeforeQuery.metrics.wallNs ?: -1L)
+                put("harnessMetricsBeforeQueryCpuNs", metricsBeforeQuery.metrics.cpuNs ?: -1L)
+                put("harnessMetricsBeforeQueryAllocatedBytes", metricsBeforeQuery.metrics.allocatedBytes ?: -1L)
+                put("harnessMetricsBeforeQueryCounterError", metricsBeforeQuery.metrics.counterError)
+                put("harnessMetricsReadWallNs", metricsRead.metrics.wallNs ?: -1L)
+                put("harnessResultHashWallNs", resultRead.metrics.wallNs ?: -1L)
+                val validationBefore = metricsBeforeQueryValues["validationCalls"] ?: -1L
+                val validationAfter = appMetrics["validationCalls"] ?: -1L
+                val validationDelta = if (validationBefore >= 0L && validationAfter >= validationBefore) {
+                    validationAfter - validationBefore
+                } else {
+                    -1L
+                }
+                put("validationCallsBeforeQuery", validationBefore)
+                put("validationCallsAfterQuery", validationAfter)
+                put("validationCallsQueryDelta", validationDelta)
+                put("frequentHeaderWriteValidationCallsEqualOperations", name == "A4.memo-frequent-header-writes" && validationDelta == OPERATIONS_PER_SAMPLE.toLong())
+                put("harnessSinkWritesPerOperation", OPERATIONS_PER_SAMPLE)
+                put("harnessJsonOutputIncludedInLifecycle", false)
+                put("resultClass", resultClass)
+                put("resultHash", resultHash)
+                put("metricReadStatus", if (metricsRead.error == null) "PASS" else "FAIL")
+                put("metricReadError", metricsRead.error?.message ?: "")
+                put("resultConsumptionStatus", if (resultRead.error == null) "PASS" else "FAIL")
+                put("resultConsumptionError", resultRead.error?.message ?: "")
+                appMetrics.forEach { (key, value) -> put("metric_$key", value) }
+            })
+        }
+        println("REEVAL_SCENARIO_SUMMARY " + buildJsonObject {
+            put("variant", variant)
+            put("scenario", name)
+            put("process", process)
+            put("pid", pid)
+            put("requestedSamples", SAMPLES)
+            put("validSamples", SAMPLES - failures)
+            put("failedSamples", failures)
+            put("warmupBatches", WARMUP_BATCHES)
+            put("operationsPerSample", OPERATIONS_PER_SAMPLE)
+            put("status", if (failures == 0) "PASS" else "FAIL")
+        })
+        return failures
+    }
+
+    private fun measurePhase(
+        threadId: Long,
+        allocationBean: com.sun.management.ThreadMXBean,
+        cpuBean: java.lang.management.ThreadMXBean,
+        action: () -> Any?,
+    ): ReevaluationPhaseResult {
+        val cpuBefore = cpuBean.currentThreadCpuTime
+        val allocatedBefore = allocationBean.getThreadAllocatedBytes(threadId)
+        if (cpuBefore < 0L) {
+            val error = "Thread CPU counter before phase was $cpuBefore"
+            return ReevaluationPhaseResult(null, ReevaluationPhaseMetrics(0L, null, null, error), IllegalStateException(error))
+        }
+        if (allocatedBefore < 0L) {
+            val error = "Thread allocation counter before phase was $allocatedBefore"
+            return ReevaluationPhaseResult(null, ReevaluationPhaseMetrics(0L, null, null, error), IllegalStateException(error))
+        }
+        val wallBefore = System.nanoTime()
+        var value: Any? = null
+        var error: Throwable? = null
+        try {
+            value = action()
+        } catch (caught: Throwable) {
+            error = caught
+        }
+        val wallAfter = System.nanoTime()
+        val cpuAfter = cpuBean.currentThreadCpuTime
+        val allocatedAfter = allocationBean.getThreadAllocatedBytes(threadId)
+        val wallDelta = wallAfter - wallBefore
+        val cpuDelta = if (cpuAfter >= cpuBefore && cpuAfter >= 0L) cpuAfter - cpuBefore else null
+        val allocatedDelta = if (allocatedAfter >= allocatedBefore && allocatedAfter >= 0L) allocatedAfter - allocatedBefore else null
+        val counterErrors = mutableListOf<String>()
+        if (wallDelta < 0L) counterErrors += "Wall counter moved backwards: $wallDelta"
+        if (cpuAfter < 0L) counterErrors += "Thread CPU counter after phase was $cpuAfter"
+        else if (cpuAfter < cpuBefore) counterErrors += "Thread CPU counter moved backwards: before=$cpuBefore after=$cpuAfter"
+        if (allocatedAfter < 0L) counterErrors += "Thread allocation counter after phase was $allocatedAfter"
+        else if (allocatedAfter < allocatedBefore) counterErrors += "Thread allocation counter moved backwards: before=$allocatedBefore after=$allocatedAfter"
+        val counterError = counterErrors.joinToString("; ")
+        if (error == null && counterError.isNotEmpty()) error = IllegalStateException(counterError)
+        return ReevaluationPhaseResult(
+            value,
+            ReevaluationPhaseMetrics(
+                wallNs = wallDelta.takeIf { it >= 0L },
+                cpuNs = cpuDelta,
+                allocatedBytes = allocatedDelta,
+                counterError = counterError,
+            ),
+            error,
+        )
+    }
+    private fun sumIfAvailable(first: Long?, second: Long?, third: Long?): Long =
+        if (first == null || second == null || third == null) -1L else first + second + third
+
+    private fun distantEdgeFixture(): ReevaluationCostFixture {
+        val black = ReaderSpreadEdgeSamples(List(50) { 0xff000000.toInt() }, List(50) { 0xff000000.toInt() })
+        val white = ReaderSpreadEdgeSamples(List(50) { -1 }, List(50) { -1 })
+        return ReevaluationCostFixture(
+            operation = { SharedSpreadMatching.score(black, white, ReaderDirection.RTL) },
+        )
+    }
+
+    private fun similarEdgeFixture(): ReevaluationCostFixture {
+        val art = List(50) { if (it % 2 == 0) 0xffa0a0a0.toInt() else 0xff404080.toInt() }
+        val samples = ReaderSpreadEdgeSamples(art, art)
+        return ReevaluationCostFixture(
+            operation = { SharedSpreadMatching.score(samples, samples, ReaderDirection.LTR) },
+        )
+    }
+
+    private fun ownerIndexFixture(pageCount: Int): ReevaluationCostFixture {
+        val chapter = 739L + pageCount
+        val pages = List(pageCount) { ReaderPageId(ReaderChapterId(chapter), it) }
+        val identity = ReaderDualPageIdentity(
+            generation = 1,
+            pageListRevision = 1,
+            content = pages.map { ReaderDualPageContentIdentity(it, "content-${it.sourcePageIndex}") },
+        )
+        val owner = ReaderSpreadSamplesOwner(identity)
+        val settings = ReaderPairingSettings(ReaderDirection.RTL, automatic = true)
+        val target = pages[pageCount / 2]
+        ReaderPairingCertifier.certify(identity, emptyMap(), owner, settings, target)
+        return ReevaluationCostFixture(
+            operation = { ReaderPairingCertifier.certify(identity, emptyMap(), owner, settings, target) },
+            metrics = { mapOf("pageCount" to pageCount.toLong()) },
+            close = owner::close,
+        )
+    }
+
+    private fun settingsValidationFixture(pageCount: Int, tailChange: Boolean = false): ReevaluationCostFixture {
+        val identityPageCount = pageCount.coerceAtLeast(1)
+        val pages = List(identityPageCount) { ReaderPageId(ReaderChapterId(747L + identityPageCount), it) }
+        val identity = ReaderDualPageIdentity(1, 1, pages.map { ReaderDualPageContentIdentity(it, "v1") })
+        val owner = ReaderSpreadSamplesOwner(identity)
+        val settings = ReaderPairingSettings(ReaderDirection.RTL, true, forcedSinglePages = pages.take(pageCount).toSet())
+        val currentSettings = if (tailChange) {
+            val externalTail = ReaderPageId(ReaderChapterId(747L + identityPageCount), identityPageCount)
+            settings.copy(forcedSinglePages = (settings.forcedSinglePages.toList().dropLast(1) + externalTail).toSet())
+        } else {
+            settings
+        }
+        val reads: Map<ReaderPairingReadKey, ReaderPairingReadValue> = mapOf(
+            ReaderPairingReadKey.Settings to ReaderPairingReadValue.Settings(settings.snapshotCopy()),
+        )
+        return ReevaluationCostFixture(
+            operation = { firstChangedRead(reads, identity, emptyMap(), owner, currentSettings) },
+            metrics = {
+                mapOf(
+                    "identityPageCount" to identityPageCount.toLong(),
+                    "forcedSinglePageCount" to settings.forcedSinglePages.size.toLong(),
+                    "tailChange" to if (tailChange) 1L else 0L,
+                )
+            },
+            close = owner::close,
+        )
+    }
+
+    private fun sessionFixture(writeChurn: Boolean): ReevaluationCostFixture {
+        val chapter = if (writeChurn) 751L else 750L
+        val pages = List(8) { ReaderPageId(ReaderChapterId(chapter), it) }
+        val identity = ReaderDualPageIdentity(1, 1, pages.map { ReaderDualPageContentIdentity(it, "v1") })
+        val session = SharedDualPageSession(identity, ReaderDirection.RTL)
+        session.configure(ReaderDirection.RTL, automaticMatching = true)
+        val portrait = ReaderPageFact.dimensions(980, 1403)
+        pages.forEach { page -> check(session.acceptFact(checkNotNull(session.requestFact(page)), portrait)) }
+        val target = pages[3]
+        val original = checkNotNull(session.requestOriginalAnalysis(target))
+        check(
+            session.acceptOriginalAnalysis(
+                original,
+                portrait,
+                ReaderOriginalPageSamples(
+                    ReaderPageSideHint.UNKNOWN,
+                    ReaderSpreadEdgeSamples(List(50) { -1 }, List(50) { -1 }),
+                ),
+            ),
+        )
+        session.certifyPairing(target)
+        return ReevaluationCostFixture(
+            operation = {
+                if (writeChurn) {
+                    check(session.acceptFact(session.requestFact(target), portrait))
+                }
+                session.certifyPairing(target)
+            },
+            metrics = {
+                mapOf(
+                    "validationCalls" to session.certificationMetrics.validationCalls,
+                    "readValuesChecked" to session.certificationMetrics.readValuesChecked,
+                    "memoHits" to session.certificationMetrics.memoHits,
+                    "memoMisses" to session.certificationMetrics.memoMisses,
+                    "engineRuns" to session.certificationMetrics.engineRuns,
+                    "layoutRevision" to session.layoutRevision,
+                )
+            },
+            close = session::close,
+        )
+    }
+}
+
+class ReaderPairingReevaluationProcess1Test {
+    @Test fun measureRealProductionPaths() = ReaderPairingReevaluationBenchmark.run(1)
+}
+
+class ReaderPairingReevaluationProcess2Test {
+    @Test fun measureRealProductionPaths() = ReaderPairingReevaluationBenchmark.run(2)
+}
+
+class ReaderPairingReevaluationProcess3Test {
+    @Test fun measureRealProductionPaths() = ReaderPairingReevaluationBenchmark.run(3)
+}
+
+
+

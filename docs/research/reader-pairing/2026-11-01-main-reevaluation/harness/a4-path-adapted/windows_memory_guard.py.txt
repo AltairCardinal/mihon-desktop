@@ -1,0 +1,383 @@
+"""Bound a trusted command's Windows process family before it does heavy work.
+
+Task-local copy of the shared upstream guard
+``D:/Codex/home/skills/luna/scripts/windows_memory_guard.py``
+(SHA-256 d712011d24e0614781f018f85dd4fd3bdd3003767c32cb36754a2b0ed274fc91).
+
+The upstream guard is NOT modified. This copy applies two minimal extensions:
+``--startup-phys-mib`` sets the total free physical memory required at
+launch instead of the upstream ``reserve_phys_mib + job_mib`` rule. The value is
+rejected when it is below the runtime physical reserve, so the runtime protection
+cannot be weakened. With the option absent the upstream rule applies unchanged.
+The bootstrap command is created with CREATE_NO_WINDOW; limits and ownership stay unchanged.
+Regenerate with ``python scripts/reader-pairing-runner/prepare_guard.py``.
+"""
+from __future__ import annotations
+
+import argparse
+from collections import deque
+import ctypes as c
+from ctypes import wintypes as w
+import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+import uuid
+
+MIB = 1024 * 1024
+PREFIX = "RESOURCE_GUARD "
+FAULT_STATUSES = {"COMMIT_LIMIT", "MEMORY_SOFT_LIMIT", "SYSTEM_HEADROOM", "GUARD_ERROR"}
+
+
+class BasicLimits(c.Structure):
+    _fields_ = [("process_time", c.c_int64), ("job_time", c.c_int64),
+                ("flags", w.DWORD), ("min_working_set", c.c_size_t),
+                ("max_working_set", c.c_size_t), ("active_process_limit", w.DWORD),
+                ("affinity", c.c_size_t), ("priority", w.DWORD), ("scheduling", w.DWORD)]
+
+
+class IoCounters(c.Structure):
+    _fields_ = [(name, c.c_uint64) for name in
+                ("read_ops", "write_ops", "other_ops", "read_bytes", "write_bytes", "other_bytes")]
+
+
+class ExtendedLimits(c.Structure):
+    _fields_ = [("basic", BasicLimits), ("io", IoCounters),
+                ("process_memory", c.c_size_t), ("job_memory", c.c_size_t),
+                ("peak_process_memory", c.c_size_t), ("peak_job_memory", c.c_size_t)]
+
+
+class MemoryStatus(c.Structure):
+    _fields_ = [("length", w.DWORD), ("load", w.DWORD)] + [
+        (name, c.c_uint64) for name in ("total_phys", "avail_phys", "total_page",
+                                      "avail_page", "total_virtual", "avail_virtual", "avail_extended")]
+
+
+class CompletionPort(c.Structure):
+    _fields_ = [("key", c.c_void_p), ("port", w.HANDLE)]
+
+
+class JobProcessIds(c.Structure):
+    # The job's enforced active-process cap is 32. No global enumeration.
+    _fields_ = [("assigned", w.DWORD), ("count", w.DWORD), ("ids", c.c_size_t * 32)]
+
+
+class ProcessMemory(c.Structure):
+    _fields_ = [("size", w.DWORD), ("page_faults", w.DWORD)] + [
+        (name, c.c_size_t) for name in ("peak_working_set", "working_set",
+                                      "peak_paged_pool", "paged_pool", "peak_nonpaged_pool",
+                                      "nonpaged_pool", "pagefile", "peak_pagefile", "private")]
+
+
+def sample_job(k, job, elapsed):
+    ids = JobProcessIds()
+    require(k.QueryInformationJobObject(job, 3, c.byref(ids), c.sizeof(ids), None))
+    if ids.count > 32 or ids.assigned > 32:
+        raise ValueError("Job process sample exceeds bounded buffer")
+    rows = []
+    for pid in ids.ids[:ids.count]:
+        handle = k.OpenProcess(0x1010, False, pid)  # query-limited + VM_READ
+        if not handle:
+            rows.append({"pid": pid, "unavailable": "open_failed_or_exited"})
+            continue
+        try:
+            member = w.BOOL()
+            require(k.IsProcessInJob(handle, job, c.byref(member)))
+            if not member.value:  # An exited PID may already have been reused.
+                continue
+            times = [w.FILETIME() for _ in range(4)]
+            require(k.GetProcessTimes(handle, *(c.byref(t) for t in times)))
+            memory = ProcessMemory()
+            memory.size = c.sizeof(memory)
+            require(k.K32GetProcessMemoryInfo(handle, c.byref(memory), c.sizeof(memory)))
+            name = c.create_unicode_buffer(32768)
+            length = w.DWORD(len(name))
+            executable = None
+            if k.QueryFullProcessImageNameW(handle, 0, name, c.byref(length)):
+                executable = Path(name.value).name  # No argv, credentials or personal paths.
+            rows.append({"pid": pid, "created_filetime": str((times[0].dwHighDateTime << 32) | times[0].dwLowDateTime),
+                         "executable": executable, "private_mib": round(memory.private / MIB, 3),
+                         "working_set_mib": round(memory.working_set / MIB, 3)})
+        except OSError as error:
+            rows.append({"pid": pid, "unavailable": f"winerror:{error.winerror}"})
+        finally:
+            k.CloseHandle(handle)
+    return {"elapsed_seconds": round(elapsed, 3), "processes": rows,
+            "sampled_private_mib": round(sum(p.get("private_mib", 0) for p in rows), 3)}
+
+
+class Diagnostics:
+    """Bounded, best-effort diagnostics; never the source of enforcement decisions."""
+    def __init__(self):
+        self.samples = deque(maxlen=32)
+        self.peak = None
+        self.errors = 0
+
+    def append(self, sample):
+        self.samples.append(sample)
+        if self.peak is None or sample["sampled_private_mib"] > self.peak["sampled_private_mib"]:
+            self.peak = sample
+
+    def capture(self, k, job, elapsed):
+        try:
+            self.append(sample_job(k, job, elapsed))
+        except (OSError, ValueError):
+            self.errors += 1
+
+    def result(self):
+        return {"samples": list(self.samples), "peak_sample": self.peak, "sample_errors": self.errors,
+                "limit": "32 recent samples plus peak; instantaneous non-atomic private commit, not heap/native attribution"}
+
+
+def api():
+    if os.name != "nt":
+        raise RuntimeError("Windows Job Object protection unavailable; refusing unguarded execution")
+    k = c.WinDLL("kernel32", use_last_error=True)
+    definitions = {
+        "CreateJobObjectW": ([c.c_void_p, w.LPCWSTR], w.HANDLE),
+        "OpenJobObjectW": ([w.DWORD, w.BOOL, w.LPCWSTR], w.HANDLE),
+        "GetCurrentProcess": ([], w.HANDLE),
+        "AssignProcessToJobObject": ([w.HANDLE, w.HANDLE], w.BOOL),
+        "SetInformationJobObject": ([w.HANDLE, c.c_int, c.c_void_p, w.DWORD], w.BOOL),
+        "QueryInformationJobObject": ([w.HANDLE, c.c_int, c.c_void_p, w.DWORD, c.c_void_p], w.BOOL),
+        "TerminateJobObject": ([w.HANDLE, w.UINT], w.BOOL),
+        "CloseHandle": ([w.HANDLE], w.BOOL),
+        "GlobalMemoryStatusEx": ([c.POINTER(MemoryStatus)], w.BOOL),
+        "OpenProcess": ([w.DWORD, w.BOOL, w.DWORD], w.HANDLE),
+        "IsProcessInJob": ([w.HANDLE, w.HANDLE, c.POINTER(w.BOOL)], w.BOOL),
+        "GetProcessTimes": ([w.HANDLE, *([c.POINTER(w.FILETIME)] * 4)], w.BOOL),
+        "K32GetProcessMemoryInfo": ([w.HANDLE, c.POINTER(ProcessMemory), w.DWORD], w.BOOL),
+        "QueryFullProcessImageNameW": ([w.HANDLE, w.DWORD, w.LPWSTR, c.POINTER(w.DWORD)], w.BOOL),
+        "CreateIoCompletionPort": ([w.HANDLE, w.HANDLE, c.c_size_t, w.DWORD], w.HANDLE),
+        "GetQueuedCompletionStatus": ([w.HANDLE, c.POINTER(w.DWORD), c.POINTER(c.c_size_t),
+                                       c.POINTER(c.c_void_p), w.DWORD], w.BOOL),
+    }
+    for name, (args, result) in definitions.items():
+        fn = getattr(k, name)
+        fn.argtypes, fn.restype = args, result
+    return k
+
+
+def require(value):
+    if not value:
+        raise c.WinError(c.get_last_error())
+    return value
+
+
+def available(k) -> dict:
+    status = MemoryStatus()
+    status.length = c.sizeof(status)
+    require(k.GlobalMemoryStatusEx(c.byref(status)))
+    return {"physical_mib": status.avail_phys // MIB,
+            "commit_mib": status.avail_page // MIB}
+
+
+def gradle_command(command: list[str]) -> list[str]:
+    if not command:
+        raise ValueError("Empty command")
+    executable = command[0].replace("\\", "/").rsplit("/", 1)[-1].lower()
+    if executable not in {"gradle", "gradle.bat", "gradlew", "gradlew.bat"}:
+        return command
+    # Drop conflicting options, including split --max-workers N syntax. Keep the
+    # original argv in start evidence and log the effective argv separately.
+    result, i = [command[0]], 1
+    while i < len(command):
+        arg = command[i]
+        if arg == "--max-workers":
+            if i + 1 >= len(command):
+                raise ValueError("Missing --max-workers value")
+            i += 2
+            continue
+        if arg in {"--daemon", "--no-daemon", "--parallel", "--no-parallel"} or arg.startswith(
+            ("--max-workers=", "-Dorg.gradle.daemon=", "-Dorg.gradle.parallel=",
+             "-Dorg.gradle.workers.max=", "-Pkotlin.compiler.execution.strategy=",
+             "-Dkotlin.compiler.execution.strategy=")
+        ):
+            i += 1
+            continue
+        result.append(arg)
+        i += 1
+    result.extend(["--no-daemon", "--no-parallel", "--max-workers=1",
+                   "-Pkotlin.compiler.execution.strategy=in-process"])
+    return result
+
+
+def bootstrap(name: str) -> int:
+    k = api()
+    # Parent alone retains the job handle. If parent dies before this handshake,
+    # opening the job fails; no command starts. Closing the last job handle after
+    # assignment also kills this bootstrap if the parent has already died.
+    job = require(k.OpenJobObjectW(1, False, name))  # JOB_OBJECT_ASSIGN_PROCESS
+    try:
+        require(k.AssignProcessToJobObject(job, k.GetCurrentProcess()))
+    finally:
+        k.CloseHandle(job)
+    command = json.loads(sys.stdin.buffer.read().decode("utf-8"))["command"]
+    print(PREFIX + json.dumps({"event": "attached", "pid": os.getpid()}), flush=True)
+    return subprocess.call(command, stdin=subprocess.DEVNULL,
+                           creationflags=subprocess.CREATE_NO_WINDOW)
+
+
+def execute(command: list[str], *, job_mib=4096, process_mib=2048,
+            reserve_phys_mib=8192, reserve_commit_mib=12288, timeout_seconds=600,
+            startup_phys_mib=None) -> dict:
+    if not (64 <= process_mib <= job_mib <= 8192) or timeout_seconds <= 0:
+        raise ValueError("Require 64 <= process MiB <= job MiB <= 8192 and positive timeout")
+    if reserve_phys_mib < 0 or reserve_commit_mib < 0:
+        raise ValueError("Negative system reserve")
+    if startup_phys_mib is not None:
+        if startup_phys_mib < 0:
+            raise ValueError("Negative startup physical threshold")
+        if startup_phys_mib < reserve_phys_mib:
+            raise ValueError("Startup physical threshold must be >= runtime physical reserve")
+    k = api()
+    effective = gradle_command(command)
+    # The upstream rule reserves the full Job allowance on top of the runtime
+    # reserve. The explicit startup threshold replaces that sum, never the runtime
+    # reserve itself.
+    required_phys_mib = reserve_phys_mib + job_mib if startup_phys_mib is None else startup_phys_mib
+    limits = {"job_mib": job_mib, "process_mib": process_mib,
+              "reserve_phys_mib": reserve_phys_mib, "reserve_commit_mib": reserve_commit_mib,
+              "timeout_seconds": timeout_seconds, "soft_stop_ratio": 0.8,
+              "startup_phys_mib": startup_phys_mib,
+              "required_start_phys_mib": required_phys_mib}
+    result = {"event": "finished", "status": "NOT_STARTED", "limits": limits,
+              "effective_command": effective, "before": available(k),
+              "guard_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
+    # Reserve room for this entire job before launch; monitor the reserve during
+    # execution as other apps may allocate too. Never terminate those other apps.
+    if (result["before"]["physical_mib"] < required_phys_mib or
+            result["before"]["commit_mib"] < reserve_commit_mib + job_mib):
+        return {**result, "status": "INSUFFICIENT_HEADROOM", "exit_code": 125}
+    job, port, process = None, None, None
+    started = time.monotonic()
+    diagnostics = Diagnostics()
+    next_sample = 0.0
+    try:
+        name = "Local\\LunaGuard-" + uuid.uuid4().hex
+        job = require(k.CreateJobObjectW(None, name))
+        info = ExtendedLimits()
+        info.basic.flags = 0x100 | 0x200 | 0x2000 | 0x8  # process/job memory, kill-on-close, process count
+        info.basic.active_process_limit = 32
+        info.process_memory, info.job_memory = process_mib * MIB, job_mib * MIB
+        require(k.SetInformationJobObject(job, 9, c.byref(info), c.sizeof(info)))
+        port = require(k.CreateIoCompletionPort(w.HANDLE(-1), None, 0, 1))
+        association = CompletionPort(1, port)
+        require(k.SetInformationJobObject(job, 7, c.byref(association), c.sizeof(association)))
+        print(PREFIX + json.dumps({**result, "event": "starting"}, ensure_ascii=False), flush=True)
+        process = subprocess.Popen([sys.executable, str(Path(__file__).resolve()),
+                                    "--bootstrap", name],
+                                   stdin=subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW)
+        process.stdin.write(json.dumps({"command": effective}, ensure_ascii=False).encode("utf-8"))
+        process.stdin.close()
+        result["bootstrap_pid"] = process.pid
+        reason = None
+        while True:
+            # Hard caps already prevent excess commits. Notifications add a
+            # diagnostic; periodic peak/headroom/timeout checks do not rely on
+            # guaranteed delivery of every Windows completion-port message.
+            for _ in range(64):
+                message, key, overlapped = w.DWORD(), c.c_size_t(), c.c_void_p()
+                received = k.GetQueuedCompletionStatus(port, c.byref(message), c.byref(key),
+                                                       c.byref(overlapped), 0)
+                if not received:
+                    error = c.get_last_error()
+                    if error != 258:  # WAIT_TIMEOUT
+                        raise c.WinError(error)
+                    break
+                if message.value in (9, 10):
+                    reason = "COMMIT_LIMIT"
+                elif message.value == 3:
+                    reason = "PROCESS_COUNT_LIMIT"
+            peak = ExtendedLimits()
+            require(k.QueryInformationJobObject(job, 9, c.byref(peak), c.sizeof(peak), None))
+            result["peak_job_mib"] = round(peak.peak_job_memory / MIB, 2)
+            result["peak_process_mib"] = round(peak.peak_process_memory / MIB, 2)
+            result["after"] = available(k)
+            if peak.peak_job_memory >= job_mib * MIB * 0.8 or peak.peak_process_memory >= process_mib * MIB * 0.8:
+                reason = reason or "MEMORY_SOFT_LIMIT"
+            if (result["after"]["physical_mib"] < reserve_phys_mib or
+                    result["after"]["commit_mib"] < reserve_commit_mib):
+                reason = reason or "SYSTEM_HEADROOM"
+            if time.monotonic() - started >= timeout_seconds:
+                reason = reason or "TIMEOUT"
+            elapsed = time.monotonic() - started
+            if elapsed >= next_sample or reason:
+                diagnostics.capture(k, job, elapsed)
+                next_sample = elapsed + 1.0
+            if reason:
+                require(k.TerminateJobObject(job, 125))
+                result.update(status=reason, exit_code=125)
+                break
+            code = process.poll()
+            if code is not None:
+                result.update(status="PASSED" if code == 0 else "COMMAND_FAILED", exit_code=code)
+                break
+            time.sleep(0.1)
+    except BaseException as error:
+        result.update(status="GUARD_ERROR", exit_code=125, error=f"{type(error).__name__}: {error}")
+    finally:
+        if job:
+            # Ends only members of this unique job, including descendants which
+            # outlived the command. It never enumerates or kills global Java.
+            k.TerminateJobObject(job, 125)
+            k.CloseHandle(job)
+        if port:
+            k.CloseHandle(port)
+        if process:
+            if process.poll() is None:
+                process.terminate()  # owned bootstrap handle, including pre-join startup failure
+            process.wait(timeout=5)
+    result["elapsed_seconds"] = round(time.monotonic() - started, 3)
+    result["diagnostics"] = diagnostics.result()
+    return result
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--bootstrap")
+    parser.add_argument("--job-mib", type=int, default=4096)
+    parser.add_argument("--process-mib", type=int, default=2048)
+    parser.add_argument("--reserve-phys-mib", type=int, default=8192)
+    parser.add_argument("--reserve-commit-mib", type=int, default=12288)
+    parser.add_argument("--startup-phys-mib", type=int, default=None)
+    parser.add_argument("--timeout-seconds", type=float, default=600)
+    parser.add_argument("--state-dir", type=Path, default=Path(".gradle-coordinator"))
+    parser.add_argument("command", nargs=argparse.REMAINDER)
+    args = parser.parse_args()
+    if args.bootstrap:
+        return bootstrap(args.bootstrap)
+    fault = args.state_dir.resolve() / "luna-resource-fault.json"
+    if fault.exists():
+        print(PREFIX + json.dumps({"event": "finished", "status": "RESOURCE_FAULT_LATCHED",
+                                    "exit_code": 125, "fault_file": str(fault)}), flush=True)
+        return 125
+    command = args.command[1:] if args.command[:1] == ["--"] else args.command
+    try:
+        result = execute(command, job_mib=args.job_mib, process_mib=args.process_mib,
+                         reserve_phys_mib=args.reserve_phys_mib,
+                         reserve_commit_mib=args.reserve_commit_mib,
+                         startup_phys_mib=args.startup_phys_mib,
+                         timeout_seconds=args.timeout_seconds)
+    except (OSError, ValueError, RuntimeError) as error:
+        result = {"event": "finished", "status": "GUARD_ERROR", "exit_code": 125, "error": str(error)}
+    if result["status"] in FAULT_STATUSES:
+        fault.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with fault.open("x", encoding="utf-8") as stream:
+                json.dump({"status": "RESOURCE_FAULT", "reason": result["status"],
+                           "observed_at_unix": time.time(), "evidence": result}, stream,
+                          ensure_ascii=False, indent=2)
+                stream.write("\n")
+        except FileExistsError:
+            pass  # preserve the first fault; a new run ID is not recovery
+        result["fault_file"] = str(fault)
+    print(PREFIX + json.dumps(result, ensure_ascii=False), flush=True)
+    return 0 if result["exit_code"] == 0 else 125 if result["status"] != "COMMAND_FAILED" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

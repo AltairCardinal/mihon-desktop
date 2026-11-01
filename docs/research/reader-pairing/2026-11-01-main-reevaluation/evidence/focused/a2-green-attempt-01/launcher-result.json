@@ -1,0 +1,24 @@
+{
+  "key": "reevaluation-a2-green-attempt-01-20261101",
+  "attempt": "01",
+  "startUtc": "2026-10-31T22:55:35.251034+00:00",
+  "elapsedSeconds": 111.099,
+  "exitCode": 0,
+  "testTotals": {
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "testcaseRows": [
+    {
+      "name": "certification reuses owner content index without traversing chapter again()[jvm]",
+      "classname": "mihon.domain.reader.ReaderPairingAdoptionCostTest",
+      "failureCount": 0,
+      "errorCount": 0,
+      "skipped": false
+    }
+  ],
+  "stdoutSha256": "5f695694b00ed258f75294c49bf56645f86a4c3c57b00d7d3b49d6e461168a9e",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

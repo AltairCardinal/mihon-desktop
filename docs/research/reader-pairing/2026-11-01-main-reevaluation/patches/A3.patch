@@ -1,0 +1,69 @@
+diff --git a/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertificationMemo.kt b/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertificationMemo.kt
+index 757f419921..ca415eae20 100644
+--- a/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertificationMemo.kt
++++ b/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertificationMemo.kt
+@@ -184,21 +184,39 @@ internal fun firstChangedRead(
+     if (owner.isClosed) return ReaderPairingReadKey.Identity
+     if (owner.identity != identity) return ReaderPairingReadKey.Identity
+     for ((key, recorded) in reads) {
+-        val current: ReaderPairingReadValue = when (key) {
+-            ReaderPairingReadKey.Identity -> ReaderPairingReadValue.Identity(identity)
+-            ReaderPairingReadKey.Settings -> ReaderPairingReadValue.Settings(settings.snapshotCopy())
++        val matches = when (key) {
++            ReaderPairingReadKey.Identity ->
++                recorded is ReaderPairingReadValue.Identity &&
++                    recorded.identity == identity
++            ReaderPairingReadKey.Settings ->
++                recorded is ReaderPairingReadValue.Settings &&
++                    recorded.settings == settings
+             is ReaderPairingReadKey.Analysis ->
+-                ReaderPairingReadValue.Analysis(owner.pageAnalysis(key.pageId))
+-            is ReaderPairingReadKey.Header -> ReaderPairingReadValue.Header(headers[key.pageId])
+-            is ReaderPairingReadKey.Dimension -> ReaderPairingReadValue.Dimension(
+-                effectiveFact(owner, headers, key.pageId)?.copy(sideHint = ReaderPageSideHint.UNKNOWN),
+-            )
+-            is ReaderPairingReadKey.Edge -> ReaderPairingReadValue.Edge(
+-                owner.edgeAnalysis(key.first, key.second, key.direction),
+-            )
++                recorded is ReaderPairingReadValue.Analysis && recorded.evidence == owner.pageAnalysis(key.pageId)
++            is ReaderPairingReadKey.Header ->
++                recorded is ReaderPairingReadValue.Header &&
++                    recorded.fact == headers[key.pageId]
++            is ReaderPairingReadKey.Dimension -> {
++                val current = effectiveFact(owner, headers, key.pageId)
++                val dimension = recorded as? ReaderPairingReadValue.Dimension
++                val expected = dimension?.fact
++                if (dimension == null) {
++                    false
++                } else if (current == null || expected == null) {
++                    current == expected
++                } else {
++                    current.state == expected.state && current.width == expected.width &&
++                        current.height == expected.height && current.rotation == expected.rotation &&
++                        current.sourceOrientation == expected.sourceOrientation &&
++                        expected.sideHint == ReaderPageSideHint.UNKNOWN
++                }
++            }
++            is ReaderPairingReadKey.Edge ->
++                recorded is ReaderPairingReadValue.Edge && recorded.evidence ==
++                    owner.edgeAnalysis(key.first, key.second, key.direction)
+         }
+         metrics?.recordReadValueCheck()
+-        if (current != recorded) return key
++        if (!matches) return key
+     }
+     return null
+ }
+diff --git a/domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageSession.kt b/domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageSession.kt
+index 1173cfd129..c9a200b9fd 100644
+--- a/domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageSession.kt
++++ b/domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageSession.kt
+@@ -282,7 +282,7 @@ class SharedDualPageSession(
+         if (stored.locationSequence != (location?.sequence ?: -1L)) return false
+         if (stored.locationPageId != location?.pageId) return false
+         if (stored.pageOrder != identity.pageIds) return false
+-        if (stored.settings != settings.snapshotCopy()) return false
++        if (stored.settings != settings) return false
+         return true
+     }
+ 
