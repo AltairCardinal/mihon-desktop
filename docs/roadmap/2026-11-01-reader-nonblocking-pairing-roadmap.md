@@ -9,7 +9,7 @@ date: 2026-11-01
 
 唯一功能规格：[双页阅读非阻塞配对设计](../2026-11-01-reader-nonblocking-pairing-design.md)。目标是未下载长章冷跳时先显示，后台匹配在下一次主动翻页纠正，允许重复边界页而不自动漏页。
 
-**2026-11-01 已获用户明确实施授权。NB01 共享门禁、NB02 Desktop 及 NB03 Android 原定选定行为已完成 focused 红绿闭环；Android API36 隔离 ART 的 RTL／LTR 完整路径通过（attempt-09，2/0 failure/error/skip）。Windows 默认候选已取得在线200页冷跳首图、匹配迟到画面保持、主动双页相位纠正及回翻证据（attempt-12／13）；同时间段独立窗口帧完整，先前Sky黑区不能直接断言为产品黑屏。人工Retry已证实到达新attempt但仍Error；真实在线测试源的强刷地址缺陷现已由HTTP红绿修复，待新版人工复验，NB04未完成。** 复选框在本功能提交并满足各项退出条件后统一核对；代码、平台运行和用户验收分别报告。读取此文件本身不授予推送或发布授权。
+**2026-11-01 已获用户明确实施授权。NB01 共享门禁、NB02 Desktop 及 NB03 Android 原定选定行为已完成 focused 红绿闭环；Android API36 隔离 ART 的 RTL／LTR 完整路径通过（attempt-09，2/0 failure/error/skip）。Windows 默认候选已取得在线200页冷跳首图、匹配迟到画面保持、主动双页相位纠正及回翻证据（attempt-12／13）；同时间段独立窗口帧完整，先前Sky黑区不能直接断言为产品黑屏。人工Retry已证实到达新attempt但仍Error；真实在线测试源的强刷地址缺陷已在 `63cef8f1ccf891b28659e294555c8d1a296d57df` 由4项 focused 回归修复，但新版原生图片Retry尚未验收。用户截图确认另有配对恢复失败浮层，违反非阻塞要求；NB04保持未完成，剩余工作冻结为下文A／B。产品实施与持续goal暂停，本轮只做文档纠偏交接，后续由用户的新窄范围会话接手。** 复选框在本功能提交并满足各项退出条件后统一核对；代码、平台运行和用户验收分别报告。读取此文件本身不授予推送或发布授权。
 
 本文件是这次独立修复的执行计划，不启动旧双页 roadmap 的 DP02 完整发布矩阵，不重做已完成历史批次。与旧文档冲突时，采用设计第 3 节的有限替代；未列出的身份、资源、持久化、原生和验证约束继续遵守。按第一个未勾选项推导当前进度，不另建 `active-task` 状态或第二套 manifest。
 
@@ -19,7 +19,25 @@ date: 2026-11-01
 2. 核对 HEAD、工作区、构建协调器及任务进程。规划起点 `5e04aa34be6f64a6765e95a928c96588b9a6cb58`；因主目录发生并发提交／暂存，本次文档在基线 `e29dbd5946a42b48819137a346064b86fc1869fb` 的独立 worktree 完成。起点已有 `AppVersion.kt` 修改和 `.codex-remote-attachments/`，不是本任务内容，不回滚、不暂存。不能假定这些状态在新会话仍相同。
 3. 若相关源码变化，只检查受影响差异，不重做全仓库调查。原诊断 2 项测试只证明旧门禁，不是本次实现的通过证据。
 4. 确认源页编号：验收第 126 页等于 index 125。按设计处理“同组未绘伙伴一次精确激活后可主动离开”，不得为了防漏页引入无限重复。
-5. 将 NB01 首个任务簇交实施子代理，明确共享代码和测试所有权；主代理负责接口、独立审查和集成。平台任务依赖共享接口，串行接续，不能两端另写配对规则。
+5. NB01～NB03原定选定行为已有有效证据，不重新启动首个任务簇；下一会话只处理下述A／B及直接影响路径。会话切换不重置预算、不授权全量验证；代理与写入权按当时规则及明确范围分配，两端不能另写配对规则。
+
+### 2026-11-02 冻结的剩余工作与交接
+
+当前实现提交为 `63cef8f1ccf891b28659e294555c8d1a296d57df`，worktree 为 `D:/Codex/worktrees/reader-nonblocking-pairing-integration-20261101`，分支 `codex/reader-nonblocking-pairing-integration`。本次文档纠偏另作提交，不改写实现历史、不推送。NB04未完成，以下均为待实施／待验收契约，不是已修复承诺。
+
+- [ ] **A：双端恢复失败也必须非阻塞。** 正常打开、恢复、冷跳、翻页及后台配对／手动记录恢复失败时，自动保留可用画面并按临时规则继续；禁止自动中央浮层、模态弹窗或要求先选“本次默认”。不能只修改fixture掩盖production失败UI。保留未知／失败状态、已知手动约束及存储记录，不把失败当空记录或READY，不自动写默认覆盖旧数据。恢复操作仅在用户主动进入已有双页调整／阅读设置界面时可见；若已有入口不足，最小位置限定为该界面双页调整区域，不另造提示产品。晚到成功只影响之后主动翻页，保持当前帧且不漏页。
+
+  **先红后绿与最小范围：** Desktop执行真实恢复coordinator＋完整viewport，Android覆盖实际VM→Activity对话框接线；先证明现实现会自动弹层而违反契约，再最小修复，复验这些用例及直接影响的持久化安全契约。源码入口：Desktop `DesktopReaderScreen.kt` 的dual＋`PairingLoad.ERROR`→`PairingRestoreError`（旧 `dec006e7d37` 分支，本轮漏清理）；Android `ReaderViewModel.kt` 后台恢复失败→`Dialog.PairingRestoreError`，`ReaderActivity.kt`不可dismiss的AlertDialog。不能仅测共享helper或扫描符号。第二章节恢复失败原因尚未知，只沿当前fixture→真实持久化load路径有限追踪，不猜用户记录损坏。
+
+- [ ] **B：独立完成真实在线图片Retry闭环。** 配对恢复正常，准确同章／同owner；使用现有真实ONLINE source→SourcePageFetcher→完整ReaderViewport→准确失败页按钮，证明新attempt→新读取→真实解码／像素恢复、错误消失、正常伙伴和当前帧稳定。补真实源夹具的接线缺口，不复制另一种成功源，不用replacePage／强设Ready或只读计数代替。A的真实恢复失败场景独立验证，两个“重试”不得混入同一人工验收页。
+
+  **环境与停止条件：** 一次原生验证前完成离线准备。RESTORE_FAILED、错误按钮未实际确认、捕获失败或跨章节拼接任一出现，都标记准备未完成，不交付用户猜测。失败后记录准确链路停点及新增信息再决定下一步，不无新证据重复点击／重建；不再笼统归因鼠标没点中、泛查F11或重跑已绿矩阵。准备合格后遵守用户要求暂停，由用户人工验收后再启动。
+
+**证据纠偏与复用：** `manual-acceptance-01` 人工点击已使目标两层attempt达到7，证明重试触发；真实ONLINE地址强刷缺陷已修复，`.gradle-coordinator/nb04-testmode-online-refresh-artifacts/{red,http-green,controller-green}.xml`记录有效红绿及4项通过。`.gradle-coordinator/nb04-desktop-retry-artifacts/full-viewport-green.xml`证明既有完整viewport按钮链，但所用ReadyWindowSource不能覆盖真实ReaderTestModeOnlineSource，不能单独关闭B。Android `.gradle-coordinator/android-native/attempt-09/` 双向完整路径及Windows `attempt-12-stage-snapshots/`、`attempt-13-phase-retry/` 首绘／画面保持／纠正证据按未受影响差异复用；不重跑共享、双端纠正、进度等已绿范围。
+
+**不合格的第二次人工场景：** `.gradle-coordinator/windows-native/manual-acceptance-02/pre-human-state.json`为章节991200023、READY；`prepared-state.json`及`handoff-state.json`为另一个章节991200025、RESTORE_FAILED。不得拼成同章的一次状态转换。后者encoded/model/runtime Ready与配对RESTORE_FAILED属于不同状态域，可以并存，Ready也不证明解码／实际绘出成功。handoff已记录RESTORE_FAILED、最后捕获无帧仍交付用户，是准备失败；用户截图进一步确认中央恢复浮层，不能算B验收通过。具体恢复失败原因仍未知。
+
+**停止交接：** 本轮不启动应用、桌面操作、构建或产品测试，不改产品／测试代码，不创建报告体系或新会话。只修订设计与本roadmap，做一次文档只读核验及`git diff --check`，提交这两份文档后停止并归还写入权。后续先核对精确HEAD、dirty与任务进程；原manual02 launcher3920／runtime58328已由监督会话核实退出，不重新启动旧场景。产品实施／持续goal维持暂停；新会话不重置既有成本或验证授权。
 
 ## 2. 实施预算与边界
 
