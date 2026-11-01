@@ -116,7 +116,7 @@ class LibraryPageCompositionTest {
 
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
-    fun `category switch dismisses running banner and later completion cannot restore it`() = runTest {
+    fun `category switch preserves running banner and completion remains until the next switch`() = runTest {
         val observations = MutableStateFlow(mihon.desktop.domain.LibraryUpdateObservation(bannerTask(mihon.domain.task.TaskStatus.Running)))
         val categories = FakeCategoryRepository().apply {
             insert(Category(1, "First", 1, 0))
@@ -137,9 +137,10 @@ class LibraryPageCompositionTest {
             }
             pointerClick(scene, "Second")
             settleContextMenu(scene)
-            assertTrue(label !in semanticLabels(scene))
+            assertTrue(label in semanticLabels(scene))
             observations.value = mihon.desktop.domain.LibraryUpdateObservation(bannerTask(mihon.domain.task.TaskStatus.Completed))
             settleContextMenu(scene)
+            assertTrue(label in semanticLabels(scene))
             pointerClick(scene, "First")
             settleContextMenu(scene)
             assertTrue(label !in semanticLabels(scene))
@@ -150,16 +151,17 @@ class LibraryPageCompositionTest {
 
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
-    fun `leaving library for details hides banner on return until refresh is triggered`() = runTest {
+    fun `leaving library for details preserves running banner but hides off-page completion`() = runTest {
         val task = bannerTask(mihon.domain.task.TaskStatus.Running)
         val running = kotlinx.coroutines.Job()
+        val observations = MutableStateFlow(mihon.desktop.domain.LibraryUpdateObservation(task))
         var starts = 0
         val item = sampleLibraryManga(sampleManga(1L, "Banner work", 1L))
         val model = LibraryScreenModel(
             getLibraryManga = GetLibraryManga(FakeMangaRepository().apply { libraryManga = listOf(item) }),
             getCategories = GetCategories(FakeCategoryRepository()),
-            backgroundUpdateObservations = kotlinx.coroutines.flow.flowOf(mihon.desktop.domain.LibraryUpdateObservation(task)),
-            backgroundUpdateSnapshot = { task },
+            backgroundUpdateObservations = observations,
+            backgroundUpdateSnapshot = { observations.value.task },
             backgroundUpdateJob = { running },
             startBackgroundUpdate = { starts++; running },
         )
@@ -174,7 +176,14 @@ class LibraryPageCompositionTest {
             assertTrue(navigator!!.lastItem is MangaDetailScreen)
             navigator!!.pop()
             settleContextMenu(scene)
-            assertTrue(label !in semanticLabels(scene))
+            assertTrue(label in semanticLabels(scene), "A running update must stay visible on return")
+            pointerClick(scene, "Banner work")
+            settleContextMenu(scene)
+            observations.value = mihon.desktop.domain.LibraryUpdateObservation(bannerTask(mihon.domain.task.TaskStatus.Completed))
+            settleContextMenu(scene)
+            navigator!!.pop()
+            settleContextMenu(scene)
+            assertTrue(label !in semanticLabels(scene), "Completion while away must not restore the banner")
             model.refreshLibrary(listOf(item))
             settleContextMenu(scene)
             assertTrue(label in semanticLabels(scene))
@@ -193,12 +202,13 @@ class LibraryPageCompositionTest {
 
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
-    fun `main navigation tab switch hides banner without restoring it on return`() = runTest {
+    fun `main navigation preserves running banner on return and dismisses completed banner`() = runTest {
         val task = bannerTask(mihon.domain.task.TaskStatus.Running)
+        val observations = MutableStateFlow(mihon.desktop.domain.LibraryUpdateObservation(task))
         val model = LibraryScreenModel(
             getLibraryManga = GetLibraryManga(FakeMangaRepository()),
             getCategories = GetCategories(FakeCategoryRepository()),
-            backgroundUpdateObservations = kotlinx.coroutines.flow.flowOf(mihon.desktop.domain.LibraryUpdateObservation(task)),
+            backgroundUpdateObservations = observations,
         )
         val scene = ImageComposeScene(1200, 900, coroutineContext = kotlinx.coroutines.Dispatchers.Unconfined) {}
         try {
@@ -231,7 +241,15 @@ class LibraryPageCompositionTest {
             assertTrue("Other page" in semanticLabels(scene))
             pointerClick(scene, MR.strings.label_library.localized())
             settleContextMenu(scene)
-            assertTrue(label !in semanticLabels(scene))
+            assertTrue(label in semanticLabels(scene), "Switching tabs during an update must retain progress")
+            observations.value = mihon.desktop.domain.LibraryUpdateObservation(bannerTask(mihon.domain.task.TaskStatus.Completed))
+            settleContextMenu(scene)
+            assertTrue(label in semanticLabels(scene))
+            pointerClick(scene, "Other")
+            settleContextMenu(scene)
+            pointerClick(scene, MR.strings.label_library.localized())
+            settleContextMenu(scene)
+            assertTrue(label !in semanticLabels(scene), "Completed feedback is dismissed on the next navigation")
         } finally {
             scene.close()
         }
