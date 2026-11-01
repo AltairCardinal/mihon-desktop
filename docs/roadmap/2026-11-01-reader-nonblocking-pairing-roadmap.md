@@ -79,6 +79,14 @@ Android补充只在原ART方法添加实际Settings内旧错误标题／Retry／
 
 Windows准备全新manual-acceptance-04，源自干净隔离profile02的偏好与DB备份，绝不使用污染profile03。只读核导航无覆盖，预期RightAndLeft；B作品991200042／章节991200043已准确存在，A使用单独缺失章节991200045。当前仅离线准备，不提前称像素、按钮或人工窗口合格。后续候选和窗口结果沿本节补记，NB04继续未完成。
 
+Windows当前候选为干净提交 `5007f5a83da6d9a9896477e0e4285b612cbe9dbe` 的 `0.11.24.6.5007f5a`，目录 `app-desktop/artifacts/preview/windows/20261101T202020Z-c848eb9b/`；manifest构建／sourceIntegrity／productionRuntime均PASS，完整产物SHA256 `c1c6b2574c71583509388d89367355b05159392aedfeec6a7469bede3324ce77`，原生层仍按清单保持NOT_RUN，实际交互单列。初次预览运行时报告旧8288598版本；只读javap证实生成BuildInfo为5007f5a而AppVersionKt仍内联8288598。限定非增量重编译得到正确字节码，但下一次预览日志明确FROM-CACHE并恢复旧值；随后仅本次构建进程设置GRADLE_OPTS关闭构建缓存及增量编译，项目preview入口通过（`nb-ab-preview-without-stale-cache`，2m7s）。没有改永久配置、清仓库或扩大测试；失败候选保留，不交付。预检首次误传manifest被判形状无效，改传实际EXE后候选／正常输入桌面／显示路径元数据PASS；不是产品或显示故障。
+
+manual04 launcher75024→runtime65632，HTTP49213已核EXE／profile／父子链，原生工具选择到唯一当前候选窗口。A章节991200045实际RESTORE_FAILED同时双图可见，无自动恢复层；主动设置中只见“重新读取双页调整”，滚动后两次观察确认位置不再变化，再点击实际按钮(505,485)，不是导航区域。Escape后原双图／当前源页保持，状态仍真实失败。设置“左右”选中，随后只读偏好仍无导航覆盖；未操作日常配置。
+
+B单独打开真实在线章节991200043（manga991200042），配对恢复READY。owner2／generation1的pageIndex125 full规则从ARMED实际进入HOLDING后才fail；首次即时查询仍ARMED只补一次只读观察，未重复导航或重建。规则FAILED且attempt0，正常伙伴126实际绘出，右侧原图片失败按钮真实可见；既有一次性教学提示已按“知道了”关闭，最终截图无额外浮层。源级imageAttempts仍Ready，不代表实际解码／绘出；准备脚本曾错误要求源状态Error，按真实截图、完整读取失败及实际可见伙伴核对后保留该状态域差异，未伪造状态。当前B只准备人工点击，不据按钮存在声称像素恢复成功。证据在manual04的session.json、a-before-settings／a-after-reload及b-ready-for-user.json。
+
+已停止输入、截图及draw observer；保留唯一manual04窗口供用户点击右侧图片“重试”。预期右侧恢复真实图片、错误消失、左侧伙伴及当前页不动。等待一次人工结果，goal显式paused；B人工像素恢复及NB04仍未完成，未推送或发布。
+
 ## 2. 实施预算与边界
 
 以下是下一会话实施时的规划估算，不是本轮已消耗或自动批准的额外费用。
