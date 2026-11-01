@@ -1,6 +1,8 @@
 package eu.kanade.presentation.reader.settings
 
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -8,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import eu.kanade.domain.manga.model.readerOrientation
 import eu.kanade.domain.manga.model.readingMode
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
@@ -20,6 +23,7 @@ import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.CheckboxItem
 import tachiyomi.presentation.core.components.HeadingItem
 import tachiyomi.presentation.core.components.SettingsChipRow
+import tachiyomi.presentation.core.components.SettingsItemsPaddings
 import tachiyomi.presentation.core.components.SliderItem
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
@@ -48,8 +52,13 @@ internal fun ColumnScope.ReadingModePage(screenModel: ReaderSettingsScreenModel)
 
     if (readingMode == ReadingMode.DEFAULT) {
         Text(
-            stringResource(MR.strings.label_default) + " · " +
+            text = stringResource(MR.strings.label_default) + " · " +
                 stringResource(ReadingMode.fromPreference(globalMode).stringRes),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = SettingsItemsPaddings.Horizontal),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
         )
     }
     if (readingMode == ReadingMode.AUTO ||
@@ -60,8 +69,29 @@ internal fun ColumnScope.ReadingModePage(screenModel: ReaderSettingsScreenModel)
         } else {
             MR.strings.desktop_reader_default_single
         }
-        Text(stringResource(status))
-        Text(stringResource(MR.strings.desktop_reader_default_summary))
+        Text(
+            text = stringResource(status),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = SettingsItemsPaddings.Horizontal),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(
+            text = stringResource(MR.strings.desktop_reader_default_summary),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = SettingsItemsPaddings.Horizontal),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+
+    if (viewer is DualPageR2LPagerViewer) {
+        CheckboxItem(
+            label = stringResource(MR.strings.desktop_ui_auto_spread_matching),
+            pref = screenModel.preferences.automaticSpreadMatching(),
+        )
     }
 
     val orientation = remember(manga) { ReaderOrientation.fromPreference(manga?.readerOrientation?.toInt()) }
@@ -84,14 +114,9 @@ internal fun ColumnScope.ReadingModePage(screenModel: ReaderSettingsScreenModel)
 
 @Composable
 private fun ColumnScope.PagerViewerSettings(screenModel: ReaderSettingsScreenModel) {
-    HeadingItem(MR.strings.pager_viewer)
-
     val viewer by screenModel.viewerFlow.collectAsState()
-    if (viewer is DualPageR2LPagerViewer) {
-        CheckboxItem(
-            label = stringResource(MR.strings.desktop_ui_auto_spread_matching),
-            pref = screenModel.preferences.automaticSpreadMatching(),
-        )
+    if (viewer !is DualPageR2LPagerViewer) {
+        HeadingItem(MR.strings.pager_viewer)
     }
 
     val navigationModePager by screenModel.preferences.navigationModePager().collectAsState()

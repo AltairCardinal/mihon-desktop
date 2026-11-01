@@ -16,15 +16,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ZoomIn
-import androidx.compose.material.icons.filled.ZoomOut
-import androidx.compose.material.icons.outlined.FitScreen
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
@@ -188,6 +182,7 @@ fun ReaderSettingsPanel(
 // ── Tab content composables ───────────────────────────────────────────────────
 
 @Composable
+@Suppress("UNUSED_PARAMETER")
 internal fun GeneralTab(
     currentMode: ReadingMode,
     followsGlobal: Boolean = false,
@@ -342,39 +337,6 @@ internal fun GeneralTab(
         }
     }
 
-    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-    // Zoom quick-controls
-    SettingsSection(MR.strings.desktop_ui_zoom.localized()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { onZoomChange(zoomState.zoomOut()) }) {
-                Icon(
-                    Icons.Default.ZoomOut,
-                    contentDescription = MR.strings.desktop_ui_zoom_out.localized(),
-                    tint = Color.Unspecified,
-                )
-            }
-            Text(
-                text = "×${"%.1f".format(zoomState.scale)}",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(horizontal = 4.dp),
-            )
-            IconButton(onClick = { onZoomChange(zoomState.zoomIn()) }) {
-                Icon(
-                    Icons.Default.ZoomIn,
-                    contentDescription = MR.strings.desktop_ui_zoom_in.localized(),
-                    tint = Color.Unspecified,
-                )
-            }
-            IconButton(onClick = { onZoomChange(zoomState.reset()) }) {
-                Icon(
-                    Icons.Outlined.FitScreen,
-                    contentDescription = MR.strings.desktop_ui_reset_zoom.localized(),
-                    tint = Color.Unspecified,
-                )
-            }
-        }
-    }
 }
 
 @Composable

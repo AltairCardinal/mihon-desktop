@@ -438,9 +438,20 @@ class MangaDetailScreenModel(
 
     suspend fun markSelectedRead(chapters: List<Chapter>, read: Boolean): BatchChapterResult {
         val updater = requireNotNull(setChapterReadStatus) { "SetChapterReadStatus is required" }
-        val result = runChapterBatch(updater.filterToUpdate(chapters, read)) { updater.awaitOrThrow(it, read) }
-        if (read) manualTracking?.afterRead(mangaId, chapters.filter { it.id in result.succeededIds })
-        return result
+        val selected = updater.filterToUpdate(chapters, read)
+        val result = try {
+            updater.awaitOrThrow(selected, read)
+            BatchChapterResult(succeededIds = selected.map { it.id }, failures = emptyList())
+        } catch (canceled: kotlinx.coroutines.CancellationException) {
+            throw canceled
+        } catch (_: Exception) {
+            val fallback = runChapterBatch(selected) { updater.awaitOrThrow(it, read) }
+            if (read) manualTracking?.afterRead(mangaId, selected.filter { it.id in fallback.succeededIds })
+            return fallback
+        }
+        val published = publishChapterBatchResult(result)
+        if (read) manualTracking?.afterRead(mangaId, selected.filter { it.id in published.succeededIds })
+        return published
     }
 
     suspend fun runChapterBatch(
