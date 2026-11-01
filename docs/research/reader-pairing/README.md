@@ -8,7 +8,7 @@
 - [R1～R5与旧未提交源码](history/legacy-code/README.md)、[R6～R9逐项裁定](history/engineering/DECISIONS-R6-R9.md)、[R10工程处置](history/engineering/R10.md)及[150题对照](history/R10_QUESTIONS.md)。
 - [原包与版本关系](history/packages/README.md)、[工程来源及恢复限制](history/engineering/sources/SOURCE_INDEX.md)、[过程文件与遗漏扫描](history/PROCESS_DISPOSITION.md)。
 
-“已处理”表示来源已登记、去留明确并保全必要原件；不表示所有历史问题都已解决。100ms可达性、真实缓存上界等未知项继续保留研究价值，需新证据才重启。2026-11-02已清理17项核准的旧实验差异／副本，见[清理记录](history/CLEANUP-2026-11-02.md)。暂缓材料继续归档；实际采用保留原件的隔离迁移，其他工作区改动和输入缓存未动。
+“已处理”表示来源已登记、去留明确并保全必要原件；不表示所有历史问题都已解决。100ms可达性、真实缓存上界等未知项继续保留研究价值，需新证据才重启。2026-11-02已撤销5个旧研究工作树，必要输入和未公开证据去重后在Git外保全，见[退役与数据恢复记录](history/RETIREMENT-2026-11-02.md)。暂缓方案继续保留本目录。更早的[17项副本清理](history/CLEANUP-2026-11-02.md)是前一阶段；其中隔离备份和本次临时索引的额外删除被工具拒绝，具体残余已列明。
 
 ## 2026-11-01 当前主干复评
 
