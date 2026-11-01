@@ -27,6 +27,7 @@ import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.ui.input.pointer.PointerButton
@@ -417,8 +418,36 @@ internal fun DualPagePagerViewer(
             selected = selected,
             navigationLocation = navigationIntent.value?.logicalLocation ?: nativeLocation,
         )
+        val panGeometries = remember(unit.id) { mutableStateMapOf<DisplaySlotId, ReaderRegionDrawGeometry>() }
+        val panBounds = if (selected && unit.slots.size == 2) {
+            val viewport = panGeometries.values.firstOrNull()?.viewportSize
+            val pendingSlots = if (viewport == null) {
+                emptyList()
+            } else {
+                val halfWidth = (viewport.width * 0.5f).roundToInt().toFloat()
+                unit.slots.mapIndexedNotNull { index, slot ->
+                    if (slot.page == null || slot.id in panGeometries) {
+                        null
+                    } else {
+                        Rect(
+                            if (index == 0) 0f else viewport.width - halfWidth,
+                            0f,
+                            if (index == 0) halfWidth else viewport.width.toFloat(),
+                            viewport.height.toFloat(),
+                        )
+                    }
+                }
+            }
+            combineReaderPanBounds(panGeometries.values, pendingSlots)
+        } else {
+            null
+        }
+        val displayZoom = panBounds?.constrain(zoomState) ?: zoomState
+        LaunchedEffect(displayZoom, zoomState) {
+            if (displayZoom != zoomState) onZoomChange(displayZoom)
+        }
         val imageGestures = if (unit.slots.size == 2 && unit.transitionDirection == null) {
-            Modifier.readerZoomInput(zoomState, onZoomChange)
+            Modifier.readerZoomInput(displayZoom, onZoomChange, panBounds = panBounds)
         } else {
             Modifier
         }
@@ -503,7 +532,11 @@ internal fun DualPagePagerViewer(
                             Locale.getDefault(),
                             page.id.sourcePageIndex + 1,
                         ),
-                        zoomState = zoomState,
+                        zoomState = displayZoom,
+                        constrainZoom = selected,
+                        onPanGeometryChange = { geometry ->
+                            if (geometry == null) panGeometries.remove(slot.id) else panGeometries[slot.id] = geometry
+                        },
                         imageViewport = if (unit.slots.size == 2) {
                             ReaderImageViewport(
                                 viewportSize,

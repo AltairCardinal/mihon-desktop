@@ -86,6 +86,12 @@ Mihon 是由 Android 应用、Mihon Desktop 和共享 Kotlin 模块组成的多�
 
 依赖版本由 `gradle/*.versions.toml` 管理。
 
+### Desktop 阅读器放大平移边界
+
+Desktop 的 `ReaderPanBounds` 是阅读器视口交互策略：放大后，拖动产生的单侧留白最多为对应视口尺寸的三分之一；小图或偏置布局原本不可避免的留白保留，不能继续向该方向扩大。边界复用 `resolveReaderRegionDrawGeometry` 的实际绘制范围，包含适配比例、对齐、裁白边及分割后的图片尺寸，不能以图片容器空白代替漫画边缘。
+
+单页由 `ZoomablePageBox` 限位；双页由 `DualPagePagerViewer` 将已加载图片映射到整组视口后合并外框，共用一次手势和限位。未取得任何图片几何时不猜测边界；另一页待加载或失败时保留其加载/重试槽位范围，避免把整组误当成单张并丢失合法的双页焦点；就绪后替换为实际图片边缘并校正。仅当前阅读单元可回写缩放状态，预加载单元不能改动当前视图。手势内部也保存限位后的状态，避免持续越界拖动积累隐藏位移；缩放和视口变化后重新计算。长条模式沿用原有滚动，本策略不改变 Android 缩放语义或持久化设置。真实指针与像素回归位于 `SharedDualPageNativeStablePresentationTest`，几何策略回归位于 `ReaderPanBoundsTest`。
+
 ### 同步面板的打开时序
 
 同步工具栏的 `Open` 与面板的 `Close` 在 `SyncPanelController.dispatch()` 中立即更新可见状态，不能等待安全存储、数据库、诊断报告或其他串行命令。状态读取和关闭后的任务清理仍通过原命令队列执行；可见请求版本保证旧的打开、关闭或返回操作不覆盖用户后来的打开意图。同步图标转动只表示后台活动，不是允许打开面板的条件。初次读取尚未完成时，复用现有的连接检查状态；已停止的 controller 不再接收打开请求。回归入口是 `SyncPanelStorageContract` 中安全存储读取暂停期间的打开、关闭与重新打开测试。

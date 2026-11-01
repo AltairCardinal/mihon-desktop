@@ -19,6 +19,15 @@ Public product releases and documentation updates are different events. A date h
 - Accepted Windows preview: `0.11.24.6.b11e547`, source `b11e5471272dfa5f2f4d6fefc74a6115eed71a32`. Scoped main implementations: [context menu](https://github.com/AltairCardinal/mihon-desktop/commit/b26b599054) and [download feedback](https://github.com/AltairCardinal/mihon-desktop/commit/fbcdfe5530). The zero-chapter wording was clarified during acceptance. No Android or macOS acceptance or product release is implied.
 
 Acceptance basis: the project owner accepted this Windows library candidate in private chat on November 1, 2026 and requested main integration and a push.
+## November 1, 2026 — Bounded Windows comic panning
+
+**Accepted fix documentation · no public product release**
+
+- Zoomed single-page and two-page reading limits extra blank space on each side to one third of the reading viewport's corresponding dimension. Two-page reading uses the whole spread; small images retain unavoidable margins.
+- Panning stops at the boundary and follows reverse movement immediately. Zoom and window-size changes recalculate the boundary.
+- Accepted implementation: `0913d0cc67d91206dd9f68450c1bc84c909dc596`; scoped remote-main integration: `35664bd168e591b7aefac87df1c694959e6e9371`. The relevant reader implementation and 37 passing focused tests are unchanged from the verified pre-integration patch. This acceptance covers Windows only; no new product version or package was allocated.
+
+Acceptance basis: the project owner accepted the one-third blank-space limit in private chat on November 1, 2026 and authorized main integration, a commit, and a push.
 
 ## November 1, 2026 — Windows batch chapter bookmarks
 
