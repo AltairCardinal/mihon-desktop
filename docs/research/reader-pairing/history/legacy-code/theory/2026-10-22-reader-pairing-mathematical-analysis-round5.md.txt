@@ -1,0 +1,213 @@
+# 双页配对算法第五轮：更宽入口的独立合流认证
+
+日期：2026-10-22。路线A：完整事实canonicalPlan的成员、槽位、certainty、singleReason保持不变。
+
+**结论：局部入口的幽灵路径导致NeedFacts时，从更靠左的初始窗口独立认证可排除它；本域222项对照新增20项认证，代价是额外298个真实scan step。**
+
+## 1. 范围与结论分级
+
+本轮只研究一个候选E，不是新增通用符号求解器。
+交付为[真实夹具](../scripts/reader-pairing-math/PairingConfluenceExperiment.kt)、[独立入口](../scripts/reader-pairing-math/run_confluence.py)和本报告三个内聚文件。
+不修改共享run.py、产品源码、配置参数、持久化格式、Session、UI或公共功能说明。
+未运行Gradle、全量测试、网络、下载、应用构建或设备验收。
+
+| 层级 | 结论 | 限制 |
+|---|---|---|
+| 条件性论证 | 既有认证规则可靠且版本/setting稳定时，独立更宽窗口得到的证书可单独采用 | 未证明整个既有certifier或平台生命周期 |
+| 实验 | 222状态、222独立baseline/E比较，20 Need→Certified，其余原结果保留 | 不是全图像/全章节/全setting穷举 |
+| 同K正控制 | A、B各两个真实completion，未知edge0/12，目标完整unit相同且E认证 | 两completion不是所有completion枚举 |
+| 同K负控制 | N两个completion完整unit不同，baseline和E均保持NeedFacts | 不能拿临时UNKNOWN计划当稳定证书 |
+| 成本 | 42次重试，额外298 step；代表读集13→12、16→14 | 不等于总体CPU、IO或用户体验提速 |
+
+E在明确的R4-CD研究基线上比较，C/D不能计为本轮新收益；没有加入R3实现。
+目标pair已知距离为正6，不能用R3 near=0下界省略该处竞争edge。
+不宣称bug已修复、CP1完成、U1–U5全通过或用户验收。
+本轮一次独立只读审查已通过，无实质阻塞；审查后仅补充重试成本边界，复用现有focused证据。
+
+## 2. 固定研究基线与输入来源
+
+源commit为 `3d52489d944485835846bc1e5b3160aa71a8e7c3`。
+准备时外部TDD多次切换C/D源码，故没有把某次瞬时dirty描述为正式生产吸收。
+独立入口从该commit读取12个核心源和当时的run.py，写入ignored隔离副本。
+显式重放R4 C/D精确patch构成命名基线 **R4-CD**：C为已知later=null提示加权威重读，D为不可达入口剪枝。
+原commit还含R1 forced入口guard与R2 forced-target隔离；不重算这些既有收益。
+该基线不是当前production，也不是运行时找不到依赖时的静默fallback。
+
+随后只在隔离certifier上加一个研究hook：`initialLookbehind: Int = 2`，将原`targetIndex-2`参数化。
+默认2的hook同样存在于baseline和E共享的实验编译闭包中；baseline显式传2，重试显式传3。
+其他业务分支逐字不变，原公开入口保持默认2。
+R4-CD组合与该默认hook的验证仅限本次222域，不能作为全域或产品接线验证。
+
+执行12源位于 `.gradle/reader-pairing-math/confluence/sources/`：
+ReaderCanonicalPairingScan、SharedDualPageRules、ReaderPairingCertification、SharedSpreadMatching、ReaderSpreadSamplesOwner、ReaderOriginalPageSampling、ReaderPortraitSingleSlot、PageTransform、ReaderImageOrientation、ReaderDualPageFactLimits、ReaderPairingReadSet、ChapterPairingRepository。
+其真实执行指纹连同其余四项如下；对scan/certifier而言，这是R4-CD及hook之后的值，不冒充原commit blob：
+
+| 冻结执行输入 | SHA-256 |
+|---|---|
+| ReaderCanonicalPairingScan.kt | `4a51940554f3c9e75019e421af45cd958634286b5ce562086a9b1126d8ec15bf` |
+| SharedDualPageRules.kt | `252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755` |
+| ReaderPairingCertification.kt | `04f6d00d207fd415de15f5ba09a8bfbdee36b2d17958bd96b1d79c9ec588c85f` |
+| SharedSpreadMatching.kt | `7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af` |
+| ReaderSpreadSamplesOwner.kt | `d18bbb64887740ec442d63f121357b29dbec65c2a2ce42ca5581eb0a7e58c23a` |
+| ReaderOriginalPageSampling.kt | `05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0` |
+| ReaderPortraitSingleSlot.kt | `5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb` |
+| PageTransform.kt | `3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f` |
+| ReaderImageOrientation.kt | `77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb` |
+| ReaderDualPageFactLimits.kt | `bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5` |
+| ReaderPairingReadSet.kt | `da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb` |
+| ChapterPairingRepository.kt | `84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba` |
+| peripheral-domain.jar | `dc5beff6e078ec8eb84b378f54612734eb14814b73944df6c22abbb486de73e0` |
+| PairingConfluenceExperiment.kt | `33391e7bcb6765ffbe16e0cadaf4fad8808f5eacd75ecb43583a230b918a4673` |
+| run_confluence.py | `2a2abb5c552391379f3f2b5c4c4bfcf2e84ef8fd7b938920ffd56bd769fd26f9` |
+| frozen_run.py | `62d36f0dba391285c0a64d39806bdd8000b87708914cb7e394838b026ec67b2b` |
+
+共16项：12执行源、冻结外围jar、新Kotlin、新入口、冻结helper；compiler七个jar另记SHA并参与稳定检查。
+manifest还记录原commit12源SHA、实际命令、资源限制与复制jar时的原SHA。
+R4-CD与hook的精确diff保存在`baseline-R4-CD.patch`、`lookbehind-hook.patch`；manifest在运行后只读补充这两个证据文件的指纹。
+运行前后16项相同，收口时仍逐项匹配；编译期间compiler输入也核验不变。
+
+现有domain-jvm.jar复制到隔离目录前后及副本SHA必须一致，否则立即停止、不自动重试。
+本轮冻结jar SHA为 `dc5beff6e078ec8eb84b378f54612734eb14814b73944df6c22abbb486de73e0`。
+新classes优先，旧jar仅提供外围真实identity/页ID/enum等类型；12个算法源全部重新编译。
+未证明旧jar所有行为与对应commit源码一致，不据此背书完整domain或正式runtime。
+实验执行不读取、不修改、不执行共享dirty run.py；加载的是commit中的helper源码，module名称不是main，逻辑__file__仅用于正确解析ROOT。
+原worktree后续TDD变化只是来源状态，不改变本次冻结输入，也不触发无关重跑。
+
+在相应依赖齐备的本机上运行：
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$env:PYTHONUTF8 = '1'
+$env:PYTHONIOENCODING = 'utf-8'
+$env:PYTHONDONTWRITEBYTECODE = '1'
+python scripts/reader-pairing-math/run_confluence.py
+```
+
+这会重新从指定commit建立研究源，并冻结当时可用的本地外围jar；比较两次结果必须核对各自manifest，不能假定jar总是相同。
+只checkout研究commit不保证缓存工具、外围jar存在或得到相同结果；缺依赖fail-fast，不下载替代品。
+JDK21、缓存Kotlin compiler2.3.20；编译heap768MiB/metaspace256MiB，运行heap256MiB/metaspace128MiB，每进程60秒截止。
+ignored目录包含compile.log、run.log、manifest.json、result.json、冻结源/helper/jar、两个patch、临时classes。
+首次PASS为9.901秒，原result/manifest/run.log保留为`initial-pass-*`。
+针对N同K歧义的具体缺口，仅替换它的两个completion共同setting与后竞争边，复验同222域PASS，最终9.397秒。
+这是两次focused正确性验证，不是性能基准轮次；时间包含编译，不表示阅读延迟。
+
+## 3. E：重试独立证书，不合并失败路径依赖
+
+[研究wrapper](../scripts/reader-pairing-math/PairingConfluenceExperiment.kt#L89)先以lookbehind2调用真实certifyCapturing。
+只有baseline返回NeedFacts，才在相同串行owner、identity、headers与settings下新建readset并用lookbehind3独立重试。
+每次真实certify调用都会新建scan、manualCache、路径memo及事实收集器。
+lookbehind3仅将初始左边界多移一页；重试内部仍保留既有unit不一致时继续向左扩展的逻辑。因此预算是最多额外一次认证调用，不是固定只额外扫描一页或一个窗口。
+仅重试得到Certified才采用其trace和读集；否则返回baseline原对象、原trace和原readset。
+RetryableBlocked及已经Certified不重试，不新增对外需求/失败或改写continuation字段。
+
+```text
+baseline = certify(newReadSet(), initialLookbehind=2)
+if baseline is not NeedFacts: return baseline
+retry = certify(newReadSet(), initialLookbehind=3)
+if retry is Certified: return retry
+return baseline
+```
+
+设E_l为窗口左端l的保守入口集合，R_l为真实轨迹可能入口。
+此前有限入口认证可靠的前提是R_l⊆E_l，且每个被采用unit的事实/依赖读取正确。
+左移一页后使用既有扫描和认证机制重新求证，而不是只从旧候选里删除有Need的分支。
+新入口扫描可以在到达旧左端前合流，排除旧左端上无法由它产生的reservation或skip-left状态。
+若新尝试得到完整unit唯一的证书，它在既有认证机制前提下可单独使用，无需继承已弃尝试的pending需求。
+没有证明更宽窗口总会减少歧义或总能认证；N对照恰好展示重试仍不足。
+回退返回同一对象的断言覆盖需求、失败、continuation、scanSteps及读集的精确保留。
+采用retry时断言读集中没有非Computed edge，防止baseline pending edge泄漏；两者必要几何/side依赖可以不同。
+
+## 4. 正见证A：真实章首消除skip-left幽灵路径
+
+默认capacity16，22页，全portrait256×384，全部真实side分析Computed UNKNOWN，无force/manual。
+0-based target=p3；LTR/FIRST_SINGLE/automatic=true，记录真实isValidFor=true。
+灰页p0，纹理p1=A、p2=A+5、p3=A+7、p4=A、p5=A+5，其余灰页。
+A为纵向7像素条纹灰度70/180，各offset加到三个通道；sampling及SharedSpreadMatching真实计算15、6、15。
+事件序列 `p0,p1,p2,p3,p6,…,p21,p4,p5`。
+已算edge1,2=15、edge2,3=6；filler逐出p3原始样本，edge3,4从未computed，后竞争edge4,5=15。
+真实requiredSamples对窗口3,4只返回p3，p4仍驻留；逐页analysis完整且sample数等于capacity。
+
+baseline first1的skip-left入口2未预留，在near6与missing later间请求edge3,4。
+真实first0在FIRST_SINGLE下先singleton0，再于step1因6<15创建reservedStart2，step2原子输出pair2,3而无需读取edge3,4。
+retry first0得到 `[p2 LEFT,p3 RIGHT]`、certain=true、reason=null，与完整canonicalPlan相等。
+baseline3 step、13个读集键；retry3 step、12键；依赖页从[1,2,3,4]变为[0,1,2,3]。
+这体现增加左侧证据可以替代右侧证据，不是读集严格包含关系。
+AUTO也由真实规则检查side开篇门，不能仅凭edge0,1=null推出singleton0。
+FIRST_PAIR控制则真实pair0,1使index2未预留，重试仍Need，原样回退。
+
+## 5. 正见证B：早期manual构成同步边界
+
+默认capacity16，24页，唯一manualPairStart=1，target=p5，LTR/AUTO/automatic=true，无force。
+该持久record真实isValidFor(24)=true；p3=A、p4=A+5、p5=A+7、p6=A、p7=A+5，其余灰页。
+事件序列 `p0,…,p5,p8,…,p23,p6,p7`。
+edge3,4=15、edge4,5=6、edge6,7=15已computed；edge5,6缺失且p5 raw已逐出，side分析保留。
+
+baseline first3的ghost reserved3先pair3,4，随后未预留的index5请求missing edge5,6。
+retry first2时manual1令allowed2=false，正常及reserved2都只能singleton2，不会创建reserved3。
+skip-left3入口也未预留；各路径到3后都因6<15预留4，随后原子pair4,5。
+retry完整unit为 `[p4 LEFT,p5 RIGHT]`、certain=true、reason=null。
+baseline8 step、16键、依赖页[3,4,5,6,7]；retry8 step、14键、依赖页[1,2,3,4,5]。
+关键manual页1/2是新证书证据，不得把它们当成无关前缀删掉。
+FIRST_PAIR与manual1共存违反record.openingCompatible，单独列API控制，不能作为用户可达收益。
+
+## 6. 同K的物理completion：保留相关性
+
+六项completion为三族各两个世界，均使用默认capacity16、auto=true。
+A使用FIRST_SINGLE，B使用AUTO/manual1，N使用合法FIRST_PAIR且无显式manual。
+各对内部identity、setting、几何、所有pageAnalysis、双方向全相邻edgeEvidence相同。
+还以研究只读反射比较owner当前samples及originalSamples快照，确保缓存中可见raw样本也完全相同。
+反射只为验证该fixture的知识投影，不是新production API或新求解器。
+
+构造改变的是已经淘汰raw的目标页：目标前页固定A+5，目标为A+3或A+7，已知pair距离都为6。
+未知右页固定A+3，故missing edge在完整世界中分别为0或12，右页本身及其缓存样本没有变化。
+A/B后页固定A+8，已知后竞争15；N后页共同固定A+5，已知后竞争6。
+实际getter与完整owner的0/12、两world完整K相等均有明确assert。
+resource/v0是逻辑资源代次标签，不是已观测并可反查未见原图的精确字节hash。
+这是两个可能输入世界，不是在同一运行owner中覆盖immutable内容事实；若上层提供足以区分像素的持久hash，须重建Ω(K)。
+
+A/B两world均同目标pair，E均认证；这给出合流的代表性物理支持，不等于枚举所有completion。
+N的FIRST_PAIR真实轨迹为pair0,1→singleton2预留3→pair3,4→到达index5未预留。
+missing=0时完整oracle为pair5,6；missing=12且later6时为singleton5、RIGHT、MATCH_BOUNDARY。
+两world K相同却完整目标unit不同，baseline/E都保持NeedFacts，不能凭临时计划提前认证。
+初次N使用AUTO时两个oracle相同，未称其已证明歧义；按真实轨迹将仅这两个控制改为FIRST_PAIR/后竞争6后补验。
+
+## 7. 固定域、逐项检查与统计
+
+216主域 = 3族(A/B/N) × capacity2/16 × LTR/RTL ×3opening ×auto开关 × missing edge三态(MISSING/READ_FAILURE/COMPUTED)。
+N为target5且无manual，对照B缺少同步边界的情形；near目标pair固定正6，不新增near0轴。
+另加6个completion，总222状态；baseline/E每状态一项独立对比，不能把两个variant计为444比较。
+A页数capacity+6，B/N为capacity+8，最大24页；容量2只是owner支持的小状态，默认16主见证另列。
+READ_FAILURE通过真实failOriginal(READ)建立，Computed side不被误称为未分析；绝不把failure或NotAnalyzed当Computed(null)。
+COMPUTED控制真实重新接收目标页样本使缺边变为已计算，不注入scalar值。
+
+| 族 | 原Certified保留 | Need→Certified | 仍Need | 仍RetryableBlocked |
+|---|---:|---:|---:|---:|
+| A（含2补控） |48|10|4|12|
+| B（含2补控） |48|10|4|12|
+| N（含2补控） |48|0|14|12|
+
+20项新增包括216主域16项与completion4项；不是自然使用命中率。
+主域A/B新增均auto=true、MISSING、AUTO/FIRST_SINGLE，覆盖两方向和两容量。
+B/FIRST_PAIR共24主域输入为无效持久record，仅API对照；无manual/AUTO为合法默认配置，空record因没有manual选择而isValidFor=false不表示该配置非法。
+所有baseline和retry的Certified都与完整canonicalPlan比较完整unit，并真实isCurrent通过。
+逐依赖页改变contentVersion、改变manualRevision与manualPairStarts均使证书失效，共1410条代表失效断言。
+它们包含新证书早期manual证据页，不仅检查target/pair端点；没有覆盖并发事务或所有setting接线。
+42次实际重试：20次成功采用，22次失败回退；36个RetryableBlocked未重试，144个原Certified也未重试。
+
+## 8. 成本、被否证初稿与下一步
+
+222次baseline合计1606个真实scan step，42次retry额外298步，合计1904步。
+成功见证A为3+3步、B为8+8步；N/AUTO失败重试为8+10步，再回原结果。
+这些是算法路径计数，不含owner供数、完整oracle构造、readset分配、manual处理每步复杂度或平台调度成本。
+本轮没有CPU/IO/解码/用户延迟测量，不能用20个Need减少推导总提速；稳定全计划缓存仍有O(1)多目标查询优势。
+候选E可先作为受条件约束的production focused TDD对象，不能无门槛给每次Need增加成本。
+还需真实部分事实分布、重试成功率/额外查询成本、版本稳定性、Memo与曝光/进度接线证据。
+
+本轮两个早期初稿仅经源码/语义核对即否证，没有为它们运行矩阵：
+纯auto target5把targetPair距离设0的初稿，扩大入口仍存在到目标pair未预留的路径，需要missing竞争边；也可能与R3零下界收益重叠。
+改为manualStart4的初稿同样不成立：allowed3会因相邻manual4直接false，reserved3也不能绕过canPair，原baseline已排除所谓ghost pair3,4。
+最终采用章首同步和更早manual1，同目标正距离6及R4-CD基线明确分离。
+
+能推翻或缩窄推荐的证据包括：更宽入口遗漏真实轨迹；新证书仍带已弃pending依赖；fallback改变原失败/需求；同K歧义被错误认证；manual或内容改变后仍isCurrent；实际重试成本抵消少取证收益。
+支持驱动求值器是后续方向，必须保留同一未知量跨分支的相关性；不能把本轮独立重试称为已经求得最小支持集或全局最优取证。
+实验由GPT-6.1 Sol medium实施，主代理整合关键命题，GPT-6 Luna xhigh完成本轮一次独立只读审查并通过，未追加实验矩阵。

@@ -1,0 +1,39 @@
+# 复现
+
+前提：Python 3.11+（本轮用的是3.13.17），只需标准库，不联网。在包根目录（与 `START_HERE.md` 同级）执行。
+
+## 快速检查（约1分钟）
+
+```
+python3 -X utf8 -B tests/test_lab.py                 # 包内14项
+python3 -B research_out/tests/test_r10.py            # 研究24项（含“破坏接线”测试）
+python3 -B research_out/check_integrity.py           # 原包38个文件哈希 + 研究输出清单
+python3 -B research_out/records/build.py             # 由记录重建 coverage.csv 与逐题/组合详情
+```
+
+## 全部实验（约20–30分钟，2 CPU）
+
+```
+sh research_out/run_all.sh
+```
+
+按顺序生成 `research_out/raw/` 下的全部原始结果。单项脚本见 `research_out/bench/`：
+
+| 脚本 | 输出 |
+|---|---|
+| lab/reach.py, lab/n0_structure.py, lab/obsworlds.py | raw/pass1/*.json |
+| lab/gamma_xcheck.py 20000（需要上一包的reference.py，可用 R9_REFERENCE 指定；缺失时报告“未运行”） | raw/gamma/xcheck_r9.json |
+| bench/exp_certificates.py | raw/gamma/certificates.json |
+| bench/exp_evidence.py | raw/gamma/evidence.json |
+| bench/exp_gamma2.py | raw/gamma/gamma2.json |
+| bench/exp_q097.py, exp_q097b.py, exp_summarytree.py | raw/gamma/q097*.json, summarytree_exactness.json |
+| bench/exp_cache.py | raw/cache/cache.json |
+| bench/exp_sched.py | raw/sched/sched.json |
+| bench/exp_lifecycle.py | raw/lifecycle/lifecycle.json |
+| bench/exp_stats.py | raw/stats/stats.json |
+| bench/exp_misc.py | raw/misc/misc.json |
+| bench/exp_combos.py（读取前面的若干结果） | raw/combos/combos.json |
+| bench/exp_workloads.py | raw/workloads/workloads.json |
+| bench/bench_micro.py drive（3个独立串行进程） | raw/bench/micro_*.jsonl |
+
+所有随机过程都固定了种子。微基准的计时随机器变化，需要比较的是相对大小，而不是绝对值。

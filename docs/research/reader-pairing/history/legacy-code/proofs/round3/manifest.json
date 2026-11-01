@@ -1,0 +1,351 @@
+{
+  "scope": "round3 physical owner/scan/certifier algorithm experiment; no platform/performance claim",
+  "baselineHead": "9b2b808a97fe5bac8709edb3254ba27f25181fa4",
+  "hashesBefore": {
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderCanonicalPairingScan.kt": "37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\SharedDualPageRules.kt": "252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderPairingCertification.kt": "b1d79a8acd3f2b7d47721fbbb81f269883d3c8a45cad34f280ba41fb7acce1f0",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\SharedSpreadMatching.kt": "7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderSpreadSamplesOwner.kt": "d18bbb64887740ec442d63f121357b29dbec65c2a2ce42ca5581eb0a7e58c23a",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderOriginalPageSampling.kt": "05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderPortraitSingleSlot.kt": "5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\PageTransform.kt": "3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderImageOrientation.kt": "77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderDualPageFactLimits.kt": "bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderPairingReadSet.kt": "da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ChapterPairingRepository.kt": "84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\build\\libs\\domain-jvm.jar": "802a5307915951fc90e110722d11b682f712a782efa85a26f95fbffb0c2d1505",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\scripts\\reader-pairing-math\\PairingDemandExperiment.kt": "dd834f581b741b5baa17d3433e0efe72c63c706675b1aa26cb8833a9cc65bd2c",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\scripts\\reader-pairing-math\\run.py": "12db9948df7c008aa6d7a2f9762e752c2d872a8c32b225931367472ec590f0fb"
+  },
+  "compilerJars": {
+    "C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-compiler-embeddable\\2.3.20\\2fac4210c52c27b244305d60b0906e831f49be\\kotlin-compiler-embeddable-2.3.20.jar": "976f989d0b5f5d80e8e8a8ad4b73da0bfc27fdd965b9fa38362b2be79ecc1337",
+    "C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-stdlib\\2.3.20\\ed866de74ad3d49086a27bbd75952cd186479436\\kotlin-stdlib-2.3.20.jar": "0ae12504a5040ebaf37703908483420d1a5624dd1d93f357665f8c77c848a01e",
+    "C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-script-runtime\\2.3.20\\4831ca1fea87f25bf39891ff56327b23b18c9bfa\\kotlin-script-runtime-2.3.20.jar": "6fcdb7da6e65cf8cc43e5aabab94bdcc48825e7933686f8a1bf694eb88f8e00e",
+    "C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-reflect\\1.6.10\\1cbe9c92c12a94eea200d23c2bbaedaf3daf5132\\kotlin-reflect-1.6.10.jar": "3277ac102ae17aad10a55abec75ff5696c8d109790396434b496e75087854203",
+    "C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-daemon-embeddable\\2.3.20\\92a638246f2a388e2ccf43784623b1c685c93ab8\\kotlin-daemon-embeddable-2.3.20.jar": "8870bab840b8087c96c4ddc06088b4aedf5131c408af3674306304f1f96af3f4",
+    "C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlinx\\kotlinx-coroutines-core-jvm\\1.8.0\\ac1dc37a30a93150b704022f8d895ee1bd3a36b3\\kotlinx-coroutines-core-jvm-1.8.0.jar": "9860906a1937490bf5f3b06d2f0e10ef451e65b95b269f22daf68a3d1f5065c5",
+    "C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains\\annotations\\23.0.0\\8cc20c07506ec18e0834947b84a864bfc094484e\\annotations-23.0.0.jar": "7b0f19724082cbfcbc66e5abea2b9bc92cf08a1ea11e191933ed43801eb3cd05"
+  },
+  "commands": {
+    "baseline": {
+      "compile": [
+        "C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.11.10-hotspot\\bin\\java.EXE",
+        "-Xmx768m",
+        "-XX:MaxMetaspaceSize=256m",
+        "-Dfile.encoding=UTF-8",
+        "-cp",
+        "C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-compiler-embeddable\\2.3.20\\2fac4210c52c27b244305d60b0906e831f49be\\kotlin-compiler-embeddable-2.3.20.jar;C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-stdlib\\2.3.20\\ed866de74ad3d49086a27bbd75952cd186479436\\kotlin-stdlib-2.3.20.jar;C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-script-runtime\\2.3.20\\4831ca1fea87f25bf39891ff56327b23b18c9bfa\\kotlin-script-runtime-2.3.20.jar;C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-reflect\\1.6.10\\1cbe9c92c12a94eea200d23c2bbaedaf3daf5132\\kotlin-reflect-1.6.10.jar;C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-daemon-embeddable\\2.3.20\\92a638246f2a388e2ccf43784623b1c685c93ab8\\kotlin-daemon-embeddable-2.3.20.jar;C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlinx\\kotlinx-coroutines-core-jvm\\1.8.0\\ac1dc37a30a93150b704022f8d895ee1bd3a36b3\\kotlinx-coroutines-core-jvm-1.8.0.jar;C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains\\annotations\\23.0.0\\8cc20c07506ec18e0834947b84a864bfc094484e\\annotations-23.0.0.jar",
+        "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
+        "-no-stdlib",
+        "-no-reflect",
+        "-jvm-target",
+        "17",
+        "-classpath",
+        "C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-stdlib\\2.3.20\\ed866de74ad3d49086a27bbd75952cd186479436\\kotlin-stdlib-2.3.20.jar;D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\build\\libs\\domain-jvm.jar",
+        "-d",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\.gradle\\reader-pairing-math\\round3\\baseline\\classes",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderCanonicalPairingScan.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\SharedDualPageRules.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderPairingCertification.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\SharedSpreadMatching.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderSpreadSamplesOwner.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderOriginalPageSampling.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderPortraitSingleSlot.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\PageTransform.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderImageOrientation.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderDualPageFactLimits.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderPairingReadSet.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ChapterPairingRepository.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\scripts\\reader-pairing-math\\PairingDemandExperiment.kt"
+      ],
+      "run": [
+        "C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.11.10-hotspot\\bin\\java.EXE",
+        "-Xmx256m",
+        "-XX:MaxMetaspaceSize=128m",
+        "-Dfile.encoding=UTF-8",
+        "-cp",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\.gradle\\reader-pairing-math\\round3\\baseline\\classes;C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-stdlib\\2.3.20\\ed866de74ad3d49086a27bbd75952cd186479436\\kotlin-stdlib-2.3.20.jar;D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\build\\libs\\domain-jvm.jar",
+        "mihon.domain.reader.PairingDemandExperimentKt",
+        "baseline"
+      ],
+      "candidateHashes": {}
+    },
+    "A": {
+      "compile": [
+        "C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.11.10-hotspot\\bin\\java.EXE",
+        "-Xmx768m",
+        "-XX:MaxMetaspaceSize=256m",
+        "-Dfile.encoding=UTF-8",
+        "-cp",
+        "C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-compiler-embeddable\\2.3.20\\2fac4210c52c27b244305d60b0906e831f49be\\kotlin-compiler-embeddable-2.3.20.jar;C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-stdlib\\2.3.20\\ed866de74ad3d49086a27bbd75952cd186479436\\kotlin-stdlib-2.3.20.jar;C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-script-runtime\\2.3.20\\4831ca1fea87f25bf39891ff56327b23b18c9bfa\\kotlin-script-runtime-2.3.20.jar;C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-reflect\\1.6.10\\1cbe9c92c12a94eea200d23c2bbaedaf3daf5132\\kotlin-reflect-1.6.10.jar;C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-daemon-embeddable\\2.3.20\\92a638246f2a388e2ccf43784623b1c685c93ab8\\kotlin-daemon-embeddable-2.3.20.jar;C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlinx\\kotlinx-coroutines-core-jvm\\1.8.0\\ac1dc37a30a93150b704022f8d895ee1bd3a36b3\\kotlinx-coroutines-core-jvm-1.8.0.jar;C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains\\annotations\\23.0.0\\8cc20c07506ec18e0834947b84a864bfc094484e\\annotations-23.0.0.jar",
+        "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
+        "-no-stdlib",
+        "-no-reflect",
+        "-jvm-target",
+        "17",
+        "-classpath",
+        "C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-stdlib\\2.3.20\\ed866de74ad3d49086a27bbd75952cd186479436\\kotlin-stdlib-2.3.20.jar;D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\build\\libs\\domain-jvm.jar",
+        "-d",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\.gradle\\reader-pairing-math\\round3\\A\\classes",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\.gradle\\reader-pairing-math\\round3\\A\\ReaderCanonicalPairingScan.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\SharedDualPageRules.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\.gradle\\reader-pairing-math\\round3\\A\\ReaderPairingCertification.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\SharedSpreadMatching.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderSpreadSamplesOwner.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderOriginalPageSampling.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderPortraitSingleSlot.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\PageTransform.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderImageOrientation.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderDualPageFactLimits.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderPairingReadSet.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ChapterPairingRepository.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\scripts\\reader-pairing-math\\PairingDemandExperiment.kt"
+      ],
+      "run": [
+        "C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.11.10-hotspot\\bin\\java.EXE",
+        "-Xmx256m",
+        "-XX:MaxMetaspaceSize=128m",
+        "-Dfile.encoding=UTF-8",
+        "-cp",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\.gradle\\reader-pairing-math\\round3\\A\\classes;C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-stdlib\\2.3.20\\ed866de74ad3d49086a27bbd75952cd186479436\\kotlin-stdlib-2.3.20.jar;D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\build\\libs\\domain-jvm.jar",
+        "mihon.domain.reader.PairingDemandExperimentKt",
+        "A"
+      ],
+      "candidateHashes": {
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\.gradle\\reader-pairing-math\\round3\\A\\ReaderCanonicalPairingScan.kt": "dde1eb5a0d2ca60c9bb29dbe4412fa144e0b62eb85cb1b76b6a24a20e97d3440",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\.gradle\\reader-pairing-math\\round3\\A\\ReaderPairingCertification.kt": "5326c9e2f8078e842c53dfe2e066c594d6c464f9304a84cfaa396fe8b30fb3b7"
+      }
+    },
+    "B": {
+      "compile": [
+        "C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.11.10-hotspot\\bin\\java.EXE",
+        "-Xmx768m",
+        "-XX:MaxMetaspaceSize=256m",
+        "-Dfile.encoding=UTF-8",
+        "-cp",
+        "C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-compiler-embeddable\\2.3.20\\2fac4210c52c27b244305d60b0906e831f49be\\kotlin-compiler-embeddable-2.3.20.jar;C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-stdlib\\2.3.20\\ed866de74ad3d49086a27bbd75952cd186479436\\kotlin-stdlib-2.3.20.jar;C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-script-runtime\\2.3.20\\4831ca1fea87f25bf39891ff56327b23b18c9bfa\\kotlin-script-runtime-2.3.20.jar;C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-reflect\\1.6.10\\1cbe9c92c12a94eea200d23c2bbaedaf3daf5132\\kotlin-reflect-1.6.10.jar;C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-daemon-embeddable\\2.3.20\\92a638246f2a388e2ccf43784623b1c685c93ab8\\kotlin-daemon-embeddable-2.3.20.jar;C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlinx\\kotlinx-coroutines-core-jvm\\1.8.0\\ac1dc37a30a93150b704022f8d895ee1bd3a36b3\\kotlinx-coroutines-core-jvm-1.8.0.jar;C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains\\annotations\\23.0.0\\8cc20c07506ec18e0834947b84a864bfc094484e\\annotations-23.0.0.jar",
+        "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
+        "-no-stdlib",
+        "-no-reflect",
+        "-jvm-target",
+        "17",
+        "-classpath",
+        "C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-stdlib\\2.3.20\\ed866de74ad3d49086a27bbd75952cd186479436\\kotlin-stdlib-2.3.20.jar;D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\build\\libs\\domain-jvm.jar",
+        "-d",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\.gradle\\reader-pairing-math\\round3\\B\\classes",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderCanonicalPairingScan.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\SharedDualPageRules.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\.gradle\\reader-pairing-math\\round3\\B\\ReaderPairingCertification.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\SharedSpreadMatching.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderSpreadSamplesOwner.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderOriginalPageSampling.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderPortraitSingleSlot.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\PageTransform.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderImageOrientation.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderDualPageFactLimits.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderPairingReadSet.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ChapterPairingRepository.kt",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\scripts\\reader-pairing-math\\PairingDemandExperiment.kt"
+      ],
+      "run": [
+        "C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.11.10-hotspot\\bin\\java.EXE",
+        "-Xmx256m",
+        "-XX:MaxMetaspaceSize=128m",
+        "-Dfile.encoding=UTF-8",
+        "-cp",
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\.gradle\\reader-pairing-math\\round3\\B\\classes;C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-stdlib\\2.3.20\\ed866de74ad3d49086a27bbd75952cd186479436\\kotlin-stdlib-2.3.20.jar;D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\build\\libs\\domain-jvm.jar",
+        "mihon.domain.reader.PairingDemandExperimentKt",
+        "B"
+      ],
+      "candidateHashes": {
+        "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\.gradle\\reader-pairing-math\\round3\\B\\ReaderPairingCertification.kt": "f045fcb93e24628138a6c4815b158a4d431a7e3509ddeee610b2ec3057270c28"
+      }
+    }
+  },
+  "limits": {
+    "compilerHeapMiB": 768,
+    "compilerMetaspaceMiB": 256,
+    "runHeapMiB": 256,
+    "timeoutSeconds": 60
+  },
+  "priorFocusedPass": {
+    "baselineHead": "11ea6dc3ef7586e9710822e6620974c3d2f691dc",
+    "hashesBefore": {
+      "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderCanonicalPairingScan.kt": "37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf",
+      "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\SharedDualPageRules.kt": "252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755",
+      "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderPairingCertification.kt": "b1d79a8acd3f2b7d47721fbbb81f269883d3c8a45cad34f280ba41fb7acce1f0",
+      "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\SharedSpreadMatching.kt": "7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af",
+      "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderSpreadSamplesOwner.kt": "d18bbb64887740ec442d63f121357b29dbec65c2a2ce42ca5581eb0a7e58c23a",
+      "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderOriginalPageSampling.kt": "05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0",
+      "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderPortraitSingleSlot.kt": "5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb",
+      "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\PageTransform.kt": "3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f",
+      "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderImageOrientation.kt": "77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb",
+      "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderDualPageFactLimits.kt": "bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5",
+      "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderPairingReadSet.kt": "da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb",
+      "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ChapterPairingRepository.kt": "84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba",
+      "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\build\\libs\\domain-jvm.jar": "802a5307915951fc90e110722d11b682f712a782efa85a26f95fbffb0c2d1505",
+      "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\scripts\\reader-pairing-math\\PairingDemandExperiment.kt": "dd834f581b741b5baa17d3433e0efe72c63c706675b1aa26cb8833a9cc65bd2c",
+      "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\scripts\\reader-pairing-math\\run.py": "12db9948df7c008aa6d7a2f9762e752c2d872a8c32b225931367472ec590f0fb"
+    },
+    "result": {
+      "status": "PASS",
+      "casesPerVariant": 362,
+      "transitions": {
+        "A": {
+          "A:Certified->Certified": 48,
+          "A:NeedFacts->Certified": 8,
+          "A:NeedFacts->NeedFacts": 16,
+          "B:Certified->Certified": 256,
+          "B:NeedFacts->NeedFacts": 34
+        },
+        "B": {
+          "A:Certified->Certified": 48,
+          "A:NeedFacts->NeedFacts": 24,
+          "B:Certified->Certified": 256,
+          "B:NeedFacts->NeedFacts": 30,
+          "B:NeedFacts->Certified": 4
+        }
+      },
+      "witnesses": {
+        "A": {
+          "baseline": {
+            "key": "A-16-ZERO-RTL-AUTO-true",
+            "status": "NeedFacts",
+            "needs": [
+              {
+                "page": 2,
+                "kind": "EDGE_SAMPLES",
+                "second": 3
+              }
+            ],
+            "edgeReads": [
+              [
+                1,
+                2
+              ],
+              [
+                2,
+                3
+              ]
+            ],
+            "readCount": 12,
+            "oracle": {
+              "slots": [
+                {
+                  "page": 1,
+                  "slot": "RIGHT"
+                },
+                {
+                  "page": 2,
+                  "slot": "LEFT"
+                }
+              ],
+              "certain": true,
+              "reason": "null"
+            }
+          },
+          "A": {
+            "key": "A-16-ZERO-RTL-AUTO-true",
+            "status": "Certified",
+            "needs": [],
+            "edgeReads": [
+              [
+                1,
+                2
+              ]
+            ],
+            "readCount": 11,
+            "oracle": {
+              "slots": [
+                {
+                  "page": 1,
+                  "slot": "RIGHT"
+                },
+                {
+                  "page": 2,
+                  "slot": "LEFT"
+                }
+              ],
+              "certain": true,
+              "reason": "null"
+            }
+          }
+        },
+        "B": {
+          "baseline": {
+            "key": "B-2-LEADING-LTR-AUTO-true-NONE",
+            "status": "NeedFacts",
+            "needs": [
+              {
+                "page": 1,
+                "kind": "ORIGINAL_ANALYSIS",
+                "second": null
+              }
+            ],
+            "edgeReads": [],
+            "readCount": 12,
+            "oracle": {
+              "slots": [
+                {
+                  "page": 2,
+                  "slot": "LEFT"
+                },
+                {
+                  "page": 3,
+                  "slot": "RIGHT"
+                }
+              ],
+              "certain": true,
+              "reason": "null"
+            },
+            "recordValid": false
+          },
+          "B": {
+            "key": "B-2-LEADING-LTR-AUTO-true-NONE",
+            "status": "Certified",
+            "needs": [],
+            "edgeReads": [],
+            "readCount": 6,
+            "oracle": {
+              "slots": [
+                {
+                  "page": 2,
+                  "slot": "LEFT"
+                },
+                {
+                  "page": 3,
+                  "slot": "RIGHT"
+                }
+              ],
+              "certain": true,
+              "reason": "null"
+            },
+            "recordValid": false
+          }
+        }
+      },
+      "elapsedCompileAndResearchSeconds": 24.855,
+      "sourceStable": true
+    },
+    "scopeNote": "First focused pass; did not cover two-opening disagreement fallback"
+  },
+  "hashesAfter": {
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderCanonicalPairingScan.kt": "37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\SharedDualPageRules.kt": "252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderPairingCertification.kt": "b1d79a8acd3f2b7d47721fbbb81f269883d3c8a45cad34f280ba41fb7acce1f0",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\SharedSpreadMatching.kt": "7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderSpreadSamplesOwner.kt": "d18bbb64887740ec442d63f121357b29dbec65c2a2ce42ca5581eb0a7e58c23a",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderOriginalPageSampling.kt": "05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderPortraitSingleSlot.kt": "5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\PageTransform.kt": "3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderImageOrientation.kt": "77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderDualPageFactLimits.kt": "bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ReaderPairingReadSet.kt": "da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\src\\commonMain\\kotlin\\mihon\\domain\\reader\\ChapterPairingRepository.kt": "84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\domain\\build\\libs\\domain-jvm.jar": "802a5307915951fc90e110722d11b682f712a782efa85a26f95fbffb0c2d1505",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\scripts\\reader-pairing-math\\PairingDemandExperiment.kt": "dd834f581b741b5baa17d3433e0efe72c63c706675b1aa26cb8833a9cc65bd2c",
+    "D:\\Codex\\worktrees\\reader-pairing-research-next-20261014\\scripts\\reader-pairing-math\\run.py": "12db9948df7c008aa6d7a2f9762e752c2d872a8c32b225931367472ec590f0fb"
+  },
+  "sourceStable": true
+}

@@ -1,0 +1,225 @@
+package mihon.domain.reader
+
+import mihon.domain.reader.session.ReaderChapterId
+import mihon.domain.reader.session.ReaderPageId
+
+/** Algorithm research only: real sampling, owner, canonical scan and certification; no platform claims. */
+private data class Pixels(
+    val width: Int,
+    val height: Int,
+    val side: ReaderPageSideHint = ReaderPageSideHint.UNKNOWN,
+) {
+    fun argbAt(x: Int, y: Int): Int {
+        require(x in 0 until width && y in 0 until height)
+        return when {
+            side == ReaderPageSideHint.RIGHT && x < width / 20 -> -1
+            side == ReaderPageSideHint.LEFT && x >= width * 19 / 20 -> -1
+            else -> 0xff8c8c8c.toInt()
+        }
+    }
+
+    fun analysis(): Pair<ReaderPageFact, ReaderOriginalPageSamples> {
+        val plan = requireNotNull(ReaderOriginalPageSampling.plan(width, height))
+        val samples = plan.samples(
+            plan.left.map { (x, y) -> argbAt(x, y) },
+            plan.right.map { (x, y) -> argbAt(x, y) },
+        )
+        return ReaderPageFact.dimensions(width, height).copy(sideHint = samples.sideHint) to samples
+    }
+}
+
+private fun ReaderDualPageUnit.json(): String = slots.joinToString(prefix = "[", postfix = "]") {
+    "{\"page\":${it.pageId.sourcePageIndex},\"slot\":\"${it.position}\"}"
+}
+
+private fun ReaderPairingCertification.json(): String = when (this) {
+    is ReaderPairingCertification.Certified -> "{\"status\":\"Certified\",\"unit\":${segment.unit.json()}}"
+    is ReaderPairingCertification.NeedFacts -> facts.joinToString(
+        prefix = "{\"status\":\"NeedFacts\",\"needs\":[",
+        postfix = "]}",
+    ) {
+        "{\"page\":${it.pageId.sourcePageIndex},\"kind\":\"${it.kind}\"," +
+            "\"secondPage\":${it.secondPageId?.sourcePageIndex}}"
+    }
+    is ReaderPairingCertification.RetryableBlocked -> error("Unexpected failure in synthetic physical fixture: $this")
+}
+
+private fun pruningCases(candidate: Boolean): List<String> {
+    val records = mutableListOf<String>()
+    for (count in 5..8) {
+        val offset = count - 5
+        val pages = List(count) { ReaderPageId(ReaderChapterId(20261021), it) }
+        val identity = ReaderDualPageIdentity(
+            1, 1, pages.map { ReaderDualPageContentIdentity(it, "fixed-${it.sourcePageIndex}") },
+        )
+        for (direction in listOf(ReaderDirection.LTR, ReaderDirection.RTL)) {
+            val leading = if (direction == ReaderDirection.LTR) ReaderPageSideHint.LEFT else ReaderPageSideHint.RIGHT
+            val originals = pages.associateWith { page ->
+                Pixels(256, 384, if (page == pages[offset + 1]) leading else ReaderPageSideHint.UNKNOWN).analysis()
+            }
+            check(originals.getValue(pages[offset + 1]).first.sideHint == leading)
+            val facts = originals.mapValues { it.value.first }
+            val full = ReaderSpreadSamplesOwner(identity)
+            try {
+                originals.forEach { (page, analysis) ->
+                    check(full.acceptOriginal(full.request(page), analysis.first, analysis.second.edges))
+                }
+                for (capacity in listOf(2, 16)) {
+                    val partial = ReaderSpreadSamplesOwner(identity, sampleCapacity = capacity)
+                    try {
+                        val order = (0 until offset).toList() + listOf(2, 3, 1, 0, 4).map { it + offset }
+                        order.forEach { index ->
+                            val (fact, samples) = originals.getValue(pages[index])
+                            check(partial.acceptOriginal(partial.request(pages[index]), fact, samples.edges))
+                        }
+                        check(pages.all { partial.pageAnalysis(it) is ReaderPageAnalysisEvidence.Computed })
+                        val edge23 = partial.edgeAnalysis(pages[offset + 2], pages[offset + 3], direction)
+                        check(edge23 is ReaderEdgeAnalysisEvidence.Computed && edge23.score == null)
+                        val edge34 = partial.edgeAnalysis(pages[offset + 3], pages[offset + 4], direction)
+                        check(if (capacity == 2) edge34 is ReaderEdgeAnalysisEvidence.NotAnalyzed else
+                            edge34 is ReaderEdgeAnalysisEvidence.Computed && edge34.score == null)
+                        for (opening in ReaderChapterOpeningMode.entries) {
+                            for (mask in 0 until 32) {
+                                val forced = (0 until 5).filter { mask and (1 shl it) != 0 }
+                                    .map { pages[offset + it] }.toSet()
+                                val settings = ReaderPairingSettings(
+                                    direction, automatic = true, forcedSinglePages = forced, openingMode = opening,
+                                )
+                                val recordValid = ChapterPairingRecord(
+                                    ChapterPairingRecord.FORMAT_VERSION, count,
+                                    forced.map { it.sourcePageIndex }.toSet(), openingMode = opening,
+                                ).isValidFor(count)
+                                val target = pages[offset + 3]
+                                val oracle = SharedDualPageRules.canonicalPlan(
+                                    pages, facts, direction, forcedSinglePages = forced, openingMode = opening,
+                                    automatic = true,
+                                    distance = { a, b ->
+                                        (full.edgeAnalysis(a, b, direction) as ReaderEdgeAnalysisEvidence.Computed).score
+                                    },
+                                ).single { target in it.pageIds }
+                                val result = ReaderPairingCertifier.certify(identity, facts, partial, settings, target)
+                                if (result is ReaderPairingCertification.Certified) {
+                                    // Data-class equality includes certainty, structural reason, members and physical slots.
+                                    check(result.segment.unit == oracle) {
+                                        "Wrong certificate: n=$count direction=$direction capacity=$capacity opening=$opening mask=$mask"
+                                    }
+                                    check(result.segment.isCurrent(identity, settings, partial, facts))
+                                }
+                                if (count == 5 && direction == ReaderDirection.LTR && capacity == 2 &&
+                                    opening == ReaderChapterOpeningMode.AUTO && mask == 1
+                                ) {
+                                    check(!recordValid) // The cover is not a persistable forced-single choice.
+                                    check(oracle.pageIds == listOf(pages[3], pages[4]))
+                                    if (candidate) {
+                                        check(result is ReaderPairingCertification.Certified) { "Candidate: $result" }
+                                    } else {
+                                        check(result is ReaderPairingCertification.NeedFacts && result.facts == setOf(
+                                            ReaderPairingFactNeed(pages[3], ReaderPairingFactKind.EDGE_SAMPLES, pages[4]),
+                                        )) { "Baseline: $result" }
+                                    }
+                                }
+                                if (count == 6 && direction == ReaderDirection.LTR && capacity == 2 &&
+                                    opening == ReaderChapterOpeningMode.AUTO && mask == 1
+                                ) {
+                                    check(recordValid)
+                                    check(oracle.pageIds == listOf(pages[4], pages[5]))
+                                    if (candidate) {
+                                        check(result is ReaderPairingCertification.Certified)
+                                    } else {
+                                        check(result is ReaderPairingCertification.NeedFacts && result.facts == setOf(
+                                            ReaderPairingFactNeed(pages[4], ReaderPairingFactKind.EDGE_SAMPLES, pages[5]),
+                                        )) { "Six-page baseline: $result" }
+                                    }
+                                }
+                                records += "{\"key\":\"$count-$direction-$capacity-$opening-$mask\"," +
+                                    "\"persistedRecordValid\":$recordValid," +
+                                    "\"oracle\":${oracle.json()},\"result\":${result.json()}}"
+                            }
+                        }
+                    } finally {
+                        partial.close()
+                    }
+                }
+            } finally {
+                full.close()
+            }
+        }
+    }
+    check(records.size == 1536)
+    return records
+}
+
+fun main(args: Array<String>) {
+    val candidate = args.singleOrNull() == "candidate"
+    val pages = List(5) { ReaderPageId(ReaderChapterId(20261020), it) }
+    val identity = ReaderDualPageIdentity(
+        1,
+        1,
+        pages.map { ReaderDualPageContentIdentity(it, "opaque-source-${it.sourcePageIndex}") },
+    )
+    val target = pages[2]
+    val portrait = Pixels(256, 384)
+    val spread = Pixels(512, 384)
+    val records = mutableListOf<String>()
+    for (direction in listOf(ReaderDirection.RTL, ReaderDirection.LTR)) {
+        val results = mutableListOf<ReaderDualPageUnit>()
+        val observations = mutableListOf<Map<ReaderPageId, Pair<ReaderPageFact, ReaderOriginalPageSamples>>>()
+        for ((name, a) in listOf("portraitA" to portrait, "spreadA" to spread)) {
+            val originals = pages.associateWith { if (it == pages[1]) a.analysis() else portrait.analysis() }
+            check(originals.values.all { it.second.sideHint == ReaderPageSideHint.UNKNOWN })
+            val facts = originals.mapValues { it.value.first }
+            val full = ReaderSpreadSamplesOwner(identity)
+            val partial = ReaderSpreadSamplesOwner(identity)
+            try {
+                originals.forEach { (page, analysis) ->
+                    check(full.acceptOriginal(full.request(page), analysis.first, analysis.second.edges))
+                    if (page != pages[1]) {
+                        check(partial.acceptOriginal(partial.request(page), analysis.first, analysis.second.edges))
+                    }
+                }
+                for (i in 0 until pages.lastIndex) {
+                    val edge = full.edgeAnalysis(pages[i], pages[i + 1], direction)
+                    check(edge is ReaderEdgeAnalysisEvidence.Computed && edge.score == null)
+                }
+                val plan = SharedDualPageRules.canonicalPlan(
+                    pages,
+                    facts,
+                    direction,
+                    automatic = true,
+                    distance = { first, second ->
+                        (full.edgeAnalysis(first, second, direction) as ReaderEdgeAnalysisEvidence.Computed).score
+                    },
+                )
+                val unit = plan.single { target in it.pageIds }
+                val settings = ReaderPairingSettings(direction, automatic = true)
+                val certified = ReaderPairingCertifier.certify(identity, facts, full, settings, target)
+                check(certified is ReaderPairingCertification.Certified && certified.segment.unit == unit)
+                check(certified.segment.isCurrent(identity, settings, full, facts))
+                val knownHeaders = facts - pages[1]
+                val pending = ReaderPairingCertifier.certify(identity, knownHeaders, partial, settings, target)
+                check(pending is ReaderPairingCertification.NeedFacts)
+                check(pending.facts.any { it.pageId == pages[1] })
+                results += unit
+                // Both physical worlds expose exactly the same observed scalar facts and samples.
+                observations += originals - pages[1]
+                records += "{\"world\":\"$name\",\"direction\":\"$direction\"," +
+                    "\"plan\":${plan.joinToString(prefix = "[", postfix = "]") { it.json() }}," +
+                    "\"target\":${unit.json()},\"full\":${certified.json()},\"partial\":${pending.json()}}"
+            } finally {
+                full.close()
+                partial.close()
+            }
+        }
+        check(observations[0] == observations[1])
+        check(results[0].pageIds == listOf(pages[1], pages[2]))
+        check(results[1].pageIds == listOf(pages[2], pages[3]))
+        check(results[0].slots.single { it.pageId == target }.position !=
+            results[1].slots.single { it.pageId == target }.position)
+    }
+    val pruning = pruningCases(candidate)
+    println("{\"scope\":\"production algorithm experiment; no UI, release-runtime or performance claim\"," +
+        "\"variant\":\"${if (candidate) "candidate" else "baseline"}\"," +
+        "\"cases\":${records.size + pruning.size},\"lowerBound\":[${records.joinToString(",")}]," +
+        "\"pruning\":[${pruning.joinToString(",")}]}"
+    )
+}

@@ -1,0 +1,160 @@
+{
+  "status": "PASS",
+  "sourceStable": true,
+  "baselineHead": "05dd84c95d27df89ded79d229d9b00d809603722",
+  "casesPerVariant": 1540,
+  "pairedPruningCases": 1536,
+  "transitions": {
+    "NeedFacts->NeedFacts": 72,
+    "NeedFacts->Certified": 24,
+    "Certified->Certified": 1440
+  },
+  "strictFixture": {
+    "baseline": {
+      "key": "5-LTR-2-AUTO-1",
+      "persistedRecordValid": false,
+      "oracle": [
+        {
+          "page": 3,
+          "slot": "LEFT"
+        },
+        {
+          "page": 4,
+          "slot": "RIGHT"
+        }
+      ],
+      "result": {
+        "status": "NeedFacts",
+        "needs": [
+          {
+            "page": 3,
+            "kind": "EDGE_SAMPLES",
+            "secondPage": 4
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "key": "5-LTR-2-AUTO-1",
+      "persistedRecordValid": false,
+      "oracle": [
+        {
+          "page": 3,
+          "slot": "LEFT"
+        },
+        {
+          "page": 4,
+          "slot": "RIGHT"
+        }
+      ],
+      "result": {
+        "status": "Certified",
+        "unit": [
+          {
+            "page": 3,
+            "slot": "LEFT"
+          },
+          {
+            "page": 4,
+            "slot": "RIGHT"
+          }
+        ]
+      }
+    }
+  },
+  "validPersistedFixture": {
+    "baseline": {
+      "key": "6-LTR-2-AUTO-1",
+      "persistedRecordValid": true,
+      "oracle": [
+        {
+          "page": 4,
+          "slot": "LEFT"
+        },
+        {
+          "page": 5,
+          "slot": "RIGHT"
+        }
+      ],
+      "result": {
+        "status": "NeedFacts",
+        "needs": [
+          {
+            "page": 4,
+            "kind": "EDGE_SAMPLES",
+            "secondPage": 5
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "key": "6-LTR-2-AUTO-1",
+      "persistedRecordValid": true,
+      "oracle": [
+        {
+          "page": 4,
+          "slot": "LEFT"
+        },
+        {
+          "page": 5,
+          "slot": "RIGHT"
+        }
+      ],
+      "result": {
+        "status": "Certified",
+        "unit": [
+          {
+            "page": 4,
+            "slot": "LEFT"
+          },
+          {
+            "page": 5,
+            "slot": "RIGHT"
+          }
+        ]
+      }
+    },
+    "zeroBasedAnalysisOrder": [
+      0,
+      3,
+      4,
+      2,
+      1,
+      5
+    ],
+    "forcedSinglePage": 1,
+    "target": 4,
+    "ownerCapacity": 2
+  },
+  "persistedValidPruningCases": 1232,
+  "domain": {
+    "pageCounts": [
+      5,
+      6,
+      7,
+      8
+    ],
+    "directions": [
+      "LTR",
+      "RTL"
+    ],
+    "capacities": [
+      2,
+      16
+    ],
+    "openingModes": [
+      "AUTO",
+      "FIRST_SINGLE",
+      "FIRST_PAIR"
+    ],
+    "forceMasks": "all 32 subsets of last five pages; earlier pages unforced",
+    "sides": "leading side at page n-4; all others UNKNOWN; all from physical pixel functions",
+    "geometry": "all portraits in pruning family; 4 separate lower-bound portrait/spread cases",
+    "target": "n-2",
+    "analysisOrder": "earlier prefix, then local indices 2,3,1,0,4",
+    "manualPairStarts": [],
+    "automatic": true,
+    "capacityCaveat": "capacity 2 is supported owner state; not evidence of default-16 five-page eviction"
+  },
+  "elapsedSeconds": 29.074
+}

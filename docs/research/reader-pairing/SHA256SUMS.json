@@ -659,9 +659,1939 @@
       "sha256": "7a26607b7eb35b3ded8dc983ed6915c728f5f7a5c1d4c6a5bb5655847375c17f"
     },
     {
+      "path": "history/engineering/DECISIONS-R6-R9.md",
+      "bytes": 24962,
+      "sha256": "f99caa87e75396e59e699a6d0a214b7e1f8d32fdabe64a47970b73d8497ba68a"
+    },
+    {
+      "path": "history/engineering/engineering-decisions.json",
+      "bytes": 801895,
+      "sha256": "b986928e08c688da13fa259800042dc69a84b14df7d080e35dc21777842d881f"
+    },
+    {
+      "path": "history/engineering/r10-question-disposition.json",
+      "bytes": 117591,
+      "sha256": "3a878175148995d4c930bc701ff0e33f49bbff216077591db33df771e9cb0112"
+    },
+    {
+      "path": "history/engineering/R10.md",
+      "bytes": 9719,
+      "sha256": "0f6bf88423ed0354c59fbc396fe8cfd617a0dacb8f62fe0989d2274afae3cc54"
+    },
+    {
+      "path": "history/engineering/source-notes/.gitattributes",
+      "bytes": 161,
+      "sha256": "2a4acc7f96683f3d3472a4dcd2c0279e88da48b86df0e158c7c4c884f778f4ca"
+    },
+    {
+      "path": "history/engineering/source-notes/reader-pairing-perf-README.md.txt",
+      "bytes": 8120,
+      "sha256": "ee3466ef8138ed5ddd50803444d58fa0e51610a5b70e29a50d7db1b3d37178ce"
+    },
+    {
+      "path": "history/engineering/sources/cp1-s4-unique-followup-native-measurements-20261027.zip",
+      "bytes": 35406,
+      "sha256": "2d6c4469773f372da62fd654d014d4a6e0b48f2f41aea4eddc546b418cebc869"
+    },
+    {
+      "path": "history/engineering/sources/cp1-s4-unique-native-text-measurements-20261027.zip",
+      "bytes": 27623,
+      "sha256": "e90c872b16c5a77aefcf2806fba13a7c4e06a5237e8739ebad438db27fbb698c"
+    },
+    {
+      "path": "history/engineering/sources/cp1-s4-unique-source-snapshots-20261027.zip",
+      "bytes": 542189,
+      "sha256": "d1aca80f09c0e361b31691c68ab8416f2436ae62af19e4975e898a30825b2a48"
+    },
+    {
+      "path": "history/engineering/sources/reader-r10-filtered-engineering-source-24cd1d11.zip",
+      "bytes": 24279414,
+      "sha256": "f541473dd006b4d6a2fdeaab2285aa876d5ee4fb1f7d306f0d221ed5596f69e2"
+    },
+    {
+      "path": "history/engineering/sources/reader-r6-r9-engineering-materials.json",
+      "bytes": 73395,
+      "sha256": "27ef085a73701638a679828852a1c2cb77d1ed06a2d726b3df2e718b915c00c9"
+    },
+    {
+      "path": "history/engineering/sources/reader-r6-r9-engineering-materials.zip",
+      "bytes": 656622,
+      "sha256": "52d089216d30b246618466414fb3e07ef67978acf94b812afe2483a3b7a5eb7f"
+    },
+    {
+      "path": "history/engineering/sources/reader-r6-r9-history-e323-to-bb78.bundle",
+      "bytes": 2724196,
+      "sha256": "687b16182f838faa71c0710fd9da2ceec60a28efc093d42983d8009178576d9f"
+    },
+    {
+      "path": "history/engineering/sources/SOURCE_INDEX.md",
+      "bytes": 7341,
+      "sha256": "05890b695bc74c079ca58f804e804484ea7cc64d2893247004adfd65fccbb386"
+    },
+    {
+      "path": "history/legacy-code/.gitattributes",
+      "bytes": 415,
+      "sha256": "f8431a78de8996ed1037d0ca36b217670cdd4cc89dd2944527bf753aeaffd300"
+    },
+    {
+      "path": "history/legacy-code/baseline-3d524/ChapterPairingRepository.kt.txt",
+      "bytes": 2894,
+      "sha256": "84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba"
+    },
+    {
+      "path": "history/legacy-code/baseline-3d524/PageTransform.kt.txt",
+      "bytes": 5477,
+      "sha256": "3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f"
+    },
+    {
+      "path": "history/legacy-code/baseline-3d524/ReaderCanonicalPairingScan.kt.txt",
+      "bytes": 7595,
+      "sha256": "37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf"
+    },
+    {
+      "path": "history/legacy-code/baseline-3d524/ReaderDualPageFactLimits.kt.txt",
+      "bytes": 582,
+      "sha256": "bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5"
+    },
+    {
+      "path": "history/legacy-code/baseline-3d524/ReaderImageOrientation.kt.txt",
+      "bytes": 8504,
+      "sha256": "77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb"
+    },
+    {
+      "path": "history/legacy-code/baseline-3d524/ReaderOriginalPageSampling.kt.txt",
+      "bytes": 2613,
+      "sha256": "05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0"
+    },
+    {
+      "path": "history/legacy-code/baseline-3d524/ReaderPairingCertification.kt.txt",
+      "bytes": 19355,
+      "sha256": "b1d79a8acd3f2b7d47721fbbb81f269883d3c8a45cad34f280ba41fb7acce1f0"
+    },
+    {
+      "path": "history/legacy-code/baseline-3d524/ReaderPairingReadSet.kt.txt",
+      "bytes": 2463,
+      "sha256": "da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb"
+    },
+    {
+      "path": "history/legacy-code/baseline-3d524/ReaderPortraitSingleSlot.kt.txt",
+      "bytes": 1227,
+      "sha256": "5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb"
+    },
+    {
+      "path": "history/legacy-code/baseline-3d524/ReaderSpreadSamplesOwner.kt.txt",
+      "bytes": 13149,
+      "sha256": "d18bbb64887740ec442d63f121357b29dbec65c2a2ce42ca5581eb0a7e58c23a"
+    },
+    {
+      "path": "history/legacy-code/baseline-3d524/SharedDualPageRules.kt.txt",
+      "bytes": 16067,
+      "sha256": "252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755"
+    },
+    {
+      "path": "history/legacy-code/baseline-3d524/SharedSpreadMatching.kt.txt",
+      "bytes": 5420,
+      "sha256": "7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af"
+    },
+    {
+      "path": "history/legacy-code/current-main/ReaderCanonicalPairingScan.kt.txt",
+      "bytes": 7595,
+      "sha256": "37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf"
+    },
+    {
+      "path": "history/legacy-code/current-main/ReaderDualPagePresentationOwner.kt.txt",
+      "bytes": 15592,
+      "sha256": "c476943c17537c3943696d7a35b20b33ea39f934ac659b7594ab99359ca06050"
+    },
+    {
+      "path": "history/legacy-code/current-main/ReaderPairingCertification.kt.txt",
+      "bytes": 20504,
+      "sha256": "f94eb4afde8e9f61c85d0308df95d247966a6b5f47e964d9177882c2c1a9242d"
+    },
+    {
+      "path": "history/legacy-code/current-main/ReaderPairingReachableEntryPruneTest.kt.txt",
+      "bytes": 8211,
+      "sha256": "9bcd70b4c48d8511d29162928bda384788015fd5de601f6209262be070cf9960"
+    },
+    {
+      "path": "history/legacy-code/desktop-maintenance/base/app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt.txt",
+      "bytes": 84928,
+      "sha256": "f70df83a6bb4cf106e6346475dd8659535090619165c7f98802518057738ce37"
+    },
+    {
+      "path": "history/legacy-code/desktop-maintenance/base/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/AdaptiveReaderViewportTest.kt.txt",
+      "bytes": 12088,
+      "sha256": "25ba312eb9dca68fb1c1abc5b4f7d701ae82f0ce1cb671fd9d0e9b176432e2c9"
+    },
+    {
+      "path": "history/legacy-code/desktop-maintenance/base/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DefaultReaderModeTest.kt.txt",
+      "bytes": 11554,
+      "sha256": "527484895b3ef3d3200fd857220b92322019b212bac3de46bdbe22cfe236119e"
+    },
+    {
+      "path": "history/legacy-code/desktop-maintenance/base/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/SharedDualPageDesktopWiringTest.kt.txt",
+      "bytes": 11441,
+      "sha256": "e9c119595029f76c45b0f44ea11a28cdfbbd10f6c347cca33381e351f2cabdbf"
+    },
+    {
+      "path": "history/legacy-code/desktop-maintenance/base/docs/evidence/reader-pairing-research-2026-10-12.md.txt",
+      "bytes": 147246,
+      "sha256": "2e45070ff2a21c7bde6b9c0d624b2f137a97ed4f1292c03c1a133adacfa3e10b"
+    },
+    {
+      "path": "history/legacy-code/desktop-maintenance/comparison/AdaptiveReaderViewportTest.kt.diff.txt",
+      "bytes": 4586,
+      "sha256": "1e3493080a7c8f511b6f984c27af40f1e4df631f064ce51de550901c92f823db"
+    },
+    {
+      "path": "history/legacy-code/desktop-maintenance/comparison/DefaultReaderModeTest.kt.diff.txt",
+      "bytes": 2394,
+      "sha256": "f1e6c95b495e50f48b4189f50e49162e9dec12395fe6f0f55cce70625161a0bf"
+    },
+    {
+      "path": "history/legacy-code/desktop-maintenance/comparison/DesktopReaderSessionIntegrationTest.kt.diff.txt",
+      "bytes": 4674,
+      "sha256": "8949f651bdeaa751c9774356fbcc40d1cd735c0ab49020f6b42bcec598ce5449"
+    },
+    {
+      "path": "history/legacy-code/desktop-maintenance/comparison/SharedDualPageDesktopWiringTest.kt.diff.txt",
+      "bytes": 5133,
+      "sha256": "9bb1ddd43f46d6307e0ecef1eceb2e12a2a34a92e9ecc1ee7faad1dd2b8ce9d7"
+    },
+    {
+      "path": "history/legacy-code/desktop-maintenance/current-main/app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt.txt",
+      "bytes": 85924,
+      "sha256": "e87afef87a404edf213dbc7c30c6c804ae9d7a890ae0d8f876f7172dfe2536de"
+    },
+    {
+      "path": "history/legacy-code/desktop-maintenance/current-main/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/AdaptiveReaderViewportTest.kt.txt",
+      "bytes": 12563,
+      "sha256": "aa10f05013d3feb50df97a41c58e0cf3e9ba1bafddbe2fe1160c82731a41b0a7"
+    },
+    {
+      "path": "history/legacy-code/desktop-maintenance/current-main/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DefaultReaderModeTest.kt.txt",
+      "bytes": 11554,
+      "sha256": "527484895b3ef3d3200fd857220b92322019b212bac3de46bdbe22cfe236119e"
+    },
+    {
+      "path": "history/legacy-code/desktop-maintenance/current-main/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/SharedDualPageDesktopWiringTest.kt.txt",
+      "bytes": 14274,
+      "sha256": "75894a171c85f324fd83749f691352ef6aa1c58fda19934b75ecb39587affcdc"
+    },
+    {
+      "path": "history/legacy-code/desktop-maintenance/uncommitted.patch",
+      "bytes": 11676,
+      "sha256": "aab34edb92b00821b32ef9727cdf06a591a1977868026b6b7e47864adf553de7"
+    },
+    {
+      "path": "history/legacy-code/desktop-maintenance/working/app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt.txt",
+      "bytes": 84940,
+      "sha256": "e65b022dcdbb472ba692831b7a7c76e1b38b3a575867971a038244f4801625b0"
+    },
+    {
+      "path": "history/legacy-code/desktop-maintenance/working/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/AdaptiveReaderViewportTest.kt.txt",
+      "bytes": 12663,
+      "sha256": "89903625aeba5198891a8ace307ae20a5dc6918ca0a3755d6c36d4648d9070f0"
+    },
+    {
+      "path": "history/legacy-code/desktop-maintenance/working/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DefaultReaderModeTest.kt.txt",
+      "bytes": 11542,
+      "sha256": "8897e7e46da6f672807e68cad3f3a7f62110775d7bd1a78a735ad3b827601a6f"
+    },
+    {
+      "path": "history/legacy-code/desktop-maintenance/working/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/SharedDualPageDesktopWiringTest.kt.txt",
+      "bytes": 12032,
+      "sha256": "92181cb85c3e7de05cd92df1fc2cb6de5e2bd582eaed4f2155bfddd0e9939646"
+    },
+    {
+      "path": "history/legacy-code/desktop-maintenance/working/docs/evidence/reader-pairing-research-2026-10-12.md.txt",
+      "bytes": 150437,
+      "sha256": "c2990f4f394d3d5364a340b179b94828427c28033fcf93ecbaf1d3580b5429f2"
+    },
+    {
+      "path": "history/legacy-code/desktop-test-maintenance.md",
+      "bytes": 4411,
+      "sha256": "7bb38d960adbfa56c7f18943d00c377ffa9f90012537a8cdff77b900dc95bbd0"
+    },
+    {
+      "path": "history/legacy-code/execution-source/confluence-R4-CD-hook/ChapterPairingRepository.kt.txt",
+      "bytes": 2894,
+      "sha256": "84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba"
+    },
+    {
+      "path": "history/legacy-code/execution-source/confluence-R4-CD-hook/PageTransform.kt.txt",
+      "bytes": 5477,
+      "sha256": "3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f"
+    },
+    {
+      "path": "history/legacy-code/execution-source/confluence-R4-CD-hook/ReaderCanonicalPairingScan.kt.txt",
+      "bytes": 7943,
+      "sha256": "4a51940554f3c9e75019e421af45cd958634286b5ce562086a9b1126d8ec15bf"
+    },
+    {
+      "path": "history/legacy-code/execution-source/confluence-R4-CD-hook/ReaderDualPageFactLimits.kt.txt",
+      "bytes": 582,
+      "sha256": "bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5"
+    },
+    {
+      "path": "history/legacy-code/execution-source/confluence-R4-CD-hook/ReaderImageOrientation.kt.txt",
+      "bytes": 8504,
+      "sha256": "77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb"
+    },
+    {
+      "path": "history/legacy-code/execution-source/confluence-R4-CD-hook/ReaderOriginalPageSampling.kt.txt",
+      "bytes": 2613,
+      "sha256": "05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0"
+    },
+    {
+      "path": "history/legacy-code/execution-source/confluence-R4-CD-hook/ReaderPairingCertification.kt.txt",
+      "bytes": 19914,
+      "sha256": "04f6d00d207fd415de15f5ba09a8bfbdee36b2d17958bd96b1d79c9ec588c85f"
+    },
+    {
+      "path": "history/legacy-code/execution-source/confluence-R4-CD-hook/ReaderPairingReadSet.kt.txt",
+      "bytes": 2463,
+      "sha256": "da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb"
+    },
+    {
+      "path": "history/legacy-code/execution-source/confluence-R4-CD-hook/ReaderPortraitSingleSlot.kt.txt",
+      "bytes": 1227,
+      "sha256": "5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb"
+    },
+    {
+      "path": "history/legacy-code/execution-source/confluence-R4-CD-hook/ReaderSpreadSamplesOwner.kt.txt",
+      "bytes": 13149,
+      "sha256": "d18bbb64887740ec442d63f121357b29dbec65c2a2ce42ca5581eb0a7e58c23a"
+    },
+    {
+      "path": "history/legacy-code/execution-source/confluence-R4-CD-hook/SharedDualPageRules.kt.txt",
+      "bytes": 16067,
+      "sha256": "252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755"
+    },
+    {
+      "path": "history/legacy-code/execution-source/confluence-R4-CD-hook/SharedSpreadMatching.kt.txt",
+      "bytes": 5420,
+      "sha256": "7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R1-candidate/ReaderPairingCertification.kt.txt",
+      "bytes": 18304,
+      "sha256": "1c7cc64062c36eef92df92dba0a1762ded9cdbac805377450dccdca9894b34c1"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R1-exact/ChapterPairingRepository.kt.txt",
+      "bytes": 2894,
+      "sha256": "84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R1-exact/PageTransform.kt.txt",
+      "bytes": 5477,
+      "sha256": "3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R1-exact/ReaderCanonicalPairingScan.kt.txt",
+      "bytes": 7595,
+      "sha256": "37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R1-exact/ReaderDualPageFactLimits.kt.txt",
+      "bytes": 582,
+      "sha256": "bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R1-exact/ReaderImageOrientation.kt.txt",
+      "bytes": 8504,
+      "sha256": "77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R1-exact/ReaderOriginalPageSampling.kt.txt",
+      "bytes": 2613,
+      "sha256": "05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R1-exact/ReaderPairingCertification.kt.txt",
+      "bytes": 18111,
+      "sha256": "8cfd9fef0c992c479ffc448b10574c2b6c24da82602b696b0a2a95ed82ffd95b"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R1-exact/ReaderPairingReadSet.kt.txt",
+      "bytes": 2463,
+      "sha256": "da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R1-exact/ReaderPortraitSingleSlot.kt.txt",
+      "bytes": 1227,
+      "sha256": "5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R1-exact/ReaderSpreadSamplesOwner.kt.txt",
+      "bytes": 13149,
+      "sha256": "d18bbb64887740ec442d63f121357b29dbec65c2a2ce42ca5581eb0a7e58c23a"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R1-exact/SharedDualPageRules.kt.txt",
+      "bytes": 16067,
+      "sha256": "252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R1-exact/SharedSpreadMatching.kt.txt",
+      "bytes": 5420,
+      "sha256": "7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R2-exact/ChapterPairingRepository.kt.txt",
+      "bytes": 2894,
+      "sha256": "84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R2-exact/PageTransform.kt.txt",
+      "bytes": 5477,
+      "sha256": "3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R2-exact/ReaderCanonicalPairingScan.kt.txt",
+      "bytes": 7595,
+      "sha256": "37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R2-exact/ReaderDualPageFactLimits.kt.txt",
+      "bytes": 582,
+      "sha256": "bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R2-exact/ReaderImageOrientation.kt.txt",
+      "bytes": 8504,
+      "sha256": "77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R2-exact/ReaderOriginalPageSampling.kt.txt",
+      "bytes": 2613,
+      "sha256": "05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R2-exact/ReaderPairingCertification.kt.txt",
+      "bytes": 18828,
+      "sha256": "6f5aa3d7c9352db4c7679929344b97cbb5e1f2b8b44c6ada964ae248e1b1c761"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R2-exact/ReaderPairingReadSet.kt.txt",
+      "bytes": 2463,
+      "sha256": "da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R2-exact/ReaderPortraitSingleSlot.kt.txt",
+      "bytes": 1227,
+      "sha256": "5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R2-exact/ReaderSpreadSamplesOwner.kt.txt",
+      "bytes": 13149,
+      "sha256": "d18bbb64887740ec442d63f121357b29dbec65c2a2ce42ca5581eb0a7e58c23a"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R2-exact/SharedDualPageRules.kt.txt",
+      "bytes": 16067,
+      "sha256": "252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R2-exact/SharedSpreadMatching.kt.txt",
+      "bytes": 5420,
+      "sha256": "7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R3-exact/ChapterPairingRepository.kt.txt",
+      "bytes": 2894,
+      "sha256": "84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R3-exact/PageTransform.kt.txt",
+      "bytes": 5477,
+      "sha256": "3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R3-exact/ReaderCanonicalPairingScan.kt.txt",
+      "bytes": 7595,
+      "sha256": "37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R3-exact/ReaderDualPageFactLimits.kt.txt",
+      "bytes": 582,
+      "sha256": "bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R3-exact/ReaderImageOrientation.kt.txt",
+      "bytes": 8504,
+      "sha256": "77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R3-exact/ReaderOriginalPageSampling.kt.txt",
+      "bytes": 2613,
+      "sha256": "05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R3-exact/ReaderPairingCertification.kt.txt",
+      "bytes": 19355,
+      "sha256": "b1d79a8acd3f2b7d47721fbbb81f269883d3c8a45cad34f280ba41fb7acce1f0"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R3-exact/ReaderPairingReadSet.kt.txt",
+      "bytes": 2463,
+      "sha256": "da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R3-exact/ReaderPortraitSingleSlot.kt.txt",
+      "bytes": 1227,
+      "sha256": "5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R3-exact/ReaderSpreadSamplesOwner.kt.txt",
+      "bytes": 13149,
+      "sha256": "d18bbb64887740ec442d63f121357b29dbec65c2a2ce42ca5581eb0a7e58c23a"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R3-exact/SharedDualPageRules.kt.txt",
+      "bytes": 16067,
+      "sha256": "252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755"
+    },
+    {
+      "path": "history/legacy-code/execution-source/R3-exact/SharedSpreadMatching.kt.txt",
+      "bytes": 5420,
+      "sha256": "7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af"
+    },
+    {
+      "path": "history/legacy-code/execution-source/round5-instrumented-before/ChapterPairingRepository.kt.txt",
+      "bytes": 2894,
+      "sha256": "84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba"
+    },
+    {
+      "path": "history/legacy-code/execution-source/round5-instrumented-before/PageTransform.kt.txt",
+      "bytes": 5477,
+      "sha256": "3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f"
+    },
+    {
+      "path": "history/legacy-code/execution-source/round5-instrumented-before/ReaderCanonicalPairingScan.kt.txt",
+      "bytes": 7595,
+      "sha256": "37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf"
+    },
+    {
+      "path": "history/legacy-code/execution-source/round5-instrumented-before/ReaderDualPageFactLimits.kt.txt",
+      "bytes": 582,
+      "sha256": "bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5"
+    },
+    {
+      "path": "history/legacy-code/execution-source/round5-instrumented-before/ReaderImageOrientation.kt.txt",
+      "bytes": 8504,
+      "sha256": "77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb"
+    },
+    {
+      "path": "history/legacy-code/execution-source/round5-instrumented-before/ReaderOriginalPageSampling.kt.txt",
+      "bytes": 2613,
+      "sha256": "05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0"
+    },
+    {
+      "path": "history/legacy-code/execution-source/round5-instrumented-before/ReaderPairingCertification.kt.txt",
+      "bytes": 19355,
+      "sha256": "b1d79a8acd3f2b7d47721fbbb81f269883d3c8a45cad34f280ba41fb7acce1f0"
+    },
+    {
+      "path": "history/legacy-code/execution-source/round5-instrumented-before/ReaderPairingReadSet.kt.txt",
+      "bytes": 2463,
+      "sha256": "da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb"
+    },
+    {
+      "path": "history/legacy-code/execution-source/round5-instrumented-before/ReaderPortraitSingleSlot.kt.txt",
+      "bytes": 1227,
+      "sha256": "5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb"
+    },
+    {
+      "path": "history/legacy-code/execution-source/round5-instrumented-before/ReaderSpreadSamplesOwner.kt.txt",
+      "bytes": 13197,
+      "sha256": "a0250db213362b2fa3935e4c870d1bcefccd1faf30c180e0f49003bdac4531a8"
+    },
+    {
+      "path": "history/legacy-code/execution-source/round5-instrumented-before/SharedDualPageRules.kt.txt",
+      "bytes": 16067,
+      "sha256": "252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755"
+    },
+    {
+      "path": "history/legacy-code/execution-source/round5-instrumented-before/SharedSpreadMatching.kt.txt",
+      "bytes": 5420,
+      "sha256": "7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af"
+    },
+    {
+      "path": "history/legacy-code/manifest.json",
+      "bytes": 29286,
+      "sha256": "ce54ef02061e3f28b8881fb51daed328db9131d46172508afe84b1e850e06bed"
+    },
+    {
+      "path": "history/legacy-code/math-tools/PairingConfluenceExperiment.kt.txt",
+      "bytes": 14353,
+      "sha256": "33391e7bcb6765ffbe16e0cadaf4fad8808f5eacd75ecb43583a230b918a4673"
+    },
+    {
+      "path": "history/legacy-code/math-tools/PairingDemandExperiment.kt.txt",
+      "bytes": 15349,
+      "sha256": "dd834f581b741b5baa17d3433e0efe72c63c706675b1aa26cb8833a9cc65bd2c"
+    },
+    {
+      "path": "history/legacy-code/math-tools/PairingEvidenceExperiment.kt.txt",
+      "bytes": 17556,
+      "sha256": "f124109c99d17339e63dda118a7fab14c4a13c41e63c9d973148b2aff4fac9f0"
+    },
+    {
+      "path": "history/legacy-code/math-tools/PairingFunctionExperiment.kt.txt",
+      "bytes": 22698,
+      "sha256": "00d21a762e1ed71de06c53dc04585f99046242f07efe7db255c6c8071e555a13"
+    },
+    {
+      "path": "history/legacy-code/math-tools/PairingImplementationExperiment.kt.txt",
+      "bytes": 13689,
+      "sha256": "74d5ee76b8fe394121ba8cba57c867b2f67913e9ba43cbaefbc4fbb13ec9c69d"
+    },
+    {
+      "path": "history/legacy-code/math-tools/PairingMathExperiment.kt.txt",
+      "bytes": 13173,
+      "sha256": "d7fb440c1481c6a1504f02834745d75fd4bd8d0ee73d0306b8ca95375e98ebbe"
+    },
+    {
+      "path": "history/legacy-code/math-tools/PairingQueryCounters.kt.txt",
+      "bytes": 494,
+      "sha256": "32c7c4ae21a1c58a64560a3accd3c1698e3911221d692eb52c8bb4d77e0f3bfe"
+    },
+    {
+      "path": "history/legacy-code/math-tools/run.py.txt",
+      "bytes": 51809,
+      "sha256": "533ce384b02b9e1b7c61f0e06e3852f0194391fb85cdff6f5459da21f2d5043a"
+    },
+    {
+      "path": "history/legacy-code/math-tools/run_confluence.py.txt",
+      "bytes": 9156,
+      "sha256": "2a2abb5c552391379f3f2b5c4c4bfcf2e84ef8fd7b938920ffd56bd769fd26f9"
+    },
+    {
+      "path": "history/legacy-code/math-tools/summarize.py.txt",
+      "bytes": 5470,
+      "sha256": "c05dd6bb364f79308f12477d27c668296add59ed14b57f6be5106a041bf7716f"
+    },
+    {
+      "path": "history/legacy-code/proofs/candidate.patch",
+      "bytes": 727,
+      "sha256": "b7c6bc680249389139aeaa4c3cad7ef05ae0dc2e675f3d523e6713cd4c701da5"
+    },
+    {
+      "path": "history/legacy-code/proofs/confluence/baseline-R4-CD.patch",
+      "bytes": 3330,
+      "sha256": "c924a4ca52362062a0903cdbcc9fb84b3711e558708cf0a4de3c195f6076aff5"
+    },
+    {
+      "path": "history/legacy-code/proofs/confluence/frozen_run.py.txt",
+      "bytes": 37233,
+      "sha256": "62d36f0dba391285c0a64d39806bdd8000b87708914cb7e394838b026ec67b2b"
+    },
+    {
+      "path": "history/legacy-code/proofs/confluence/lookbehind-hook.patch",
+      "bytes": 1146,
+      "sha256": "2cf3af0e393646f0d6883fe4be0f4ba9ff29f9b9dda2fc37585912d014df0f08"
+    },
+    {
+      "path": "history/legacy-code/proofs/confluence/manifest.json",
+      "bytes": 16753,
+      "sha256": "129f9d651faae0d17897c3d01de2468eb00a6414179f0747a08f3b3e94e9b928"
+    },
+    {
+      "path": "history/legacy-code/proofs/confluence/result.json",
+      "bytes": 1202611,
+      "sha256": "606a2fc5b050245d3b78cf8e7faba0ae86a8f7c45d6f32537cb8202fe82a626b"
+    },
+    {
+      "path": "history/legacy-code/proofs/manifest.json",
+      "bytes": 12107,
+      "sha256": "e273d85f4dd966103f914751ee1f90f0ae67fbee192c24b8898cfbf0c064cd34"
+    },
+    {
+      "path": "history/legacy-code/proofs/result.json",
+      "bytes": 3391,
+      "sha256": "bb6302d9d14a6715f442a97e193d42729995eb1b92df67d8c623456bf1ecdb2e"
+    },
+    {
+      "path": "history/legacy-code/proofs/round2/forced-baseline.json",
+      "bytes": 33016,
+      "sha256": "13e4fda46172b5995b01a15c646441e936e9941a00cc57c691908d4985750914"
+    },
+    {
+      "path": "history/legacy-code/proofs/round2/forced-candidate.json",
+      "bytes": 31965,
+      "sha256": "48996c838d44f542a9421f06251ca2300a11f6e9dedb849047c426ed9a6809ae"
+    },
+    {
+      "path": "history/legacy-code/proofs/round2/forced-candidate.patch",
+      "bytes": 726,
+      "sha256": "a089e4ea074e89fcfc9e9fa0210749cd5988a141c87ea63a33c8570e344b58b4"
+    },
+    {
+      "path": "history/legacy-code/proofs/round2/manifest.json",
+      "bytes": 14024,
+      "sha256": "ddf613468950fdd4e8a7ab17ad36089244d7addc345fc0aa0acccfb23440d568"
+    },
+    {
+      "path": "history/legacy-code/proofs/round2/result.json",
+      "bytes": 20793,
+      "sha256": "838d887ee9a30b76ec2cc57925e408ea35c3108547273e26cc24586da377cbab"
+    },
+    {
+      "path": "history/legacy-code/proofs/round3/A/candidate.patch",
+      "bytes": 1811,
+      "sha256": "84c3138f49cbb2bc80f47b91b17e6cb0b4de9255188423138b74b4877bc1b011"
+    },
+    {
+      "path": "history/legacy-code/proofs/round3/B/candidate.patch",
+      "bytes": 1704,
+      "sha256": "308eb806f2e64689aaaf5bb6f5ef41c793042d04092270ec31916ee6330d7469"
+    },
+    {
+      "path": "history/legacy-code/proofs/round3/manifest.json",
+      "bytes": 30635,
+      "sha256": "8a1314ec1fd658228778b197fb59215db4b603c180e33533a6830f6c2ec826ae"
+    },
+    {
+      "path": "history/legacy-code/proofs/round3/result.json",
+      "bytes": 3034,
+      "sha256": "d1726f58d63fbc7dc9b35f653554ab5b55feedeafbe5ef49ceb2c4ad0873c72c"
+    },
+    {
+      "path": "history/legacy-code/proofs/round4/C/candidate.patch",
+      "bytes": 2340,
+      "sha256": "6134dacd35fb702c0dbbe85da14818b34072db7998ab6808c7f2d2a5c8d54c94"
+    },
+    {
+      "path": "history/legacy-code/proofs/round4/D/candidate.patch",
+      "bytes": 1073,
+      "sha256": "7843b24f061814f0b13df6525451e2b58cd0f14da7ae6baf970f83667b433ebe"
+    },
+    {
+      "path": "history/legacy-code/proofs/round4/manifest.json",
+      "bytes": 23604,
+      "sha256": "17be69125025617b126983885d7e6bcb29c8fb84b37323a97764aab436be7deb"
+    },
+    {
+      "path": "history/legacy-code/proofs/round4/result.json",
+      "bytes": 8630,
+      "sha256": "9c9c00d097b9f6b56609884f72d81d8e8f50158d2e9dab1f7815200358583e31"
+    },
+    {
+      "path": "history/legacy-code/proofs/round5/manifest.json",
+      "bytes": 32931,
+      "sha256": "89442469ff949dd8bdc04394baccc919c219b475a3fb07e192c926ec7d7e80a7"
+    },
+    {
+      "path": "history/legacy-code/proofs/round5/result.json",
+      "bytes": 5230,
+      "sha256": "c68f14fcfcca09a1ebf2d5cd1bd1613360e8dca83a3ca2ab54789975157ef3b9"
+    },
+    {
+      "path": "history/legacy-code/provenance.json",
+      "bytes": 51746,
+      "sha256": "ca892cb6268c40a51cc60cfc851f63782fa683177b2a0556e2c5d2a2d6e5bcee"
+    },
+    {
+      "path": "history/legacy-code/README.md",
+      "bytes": 2248,
+      "sha256": "22105743ddd05c846175758110a08b4fd37820c6840d46b3e9d71e25fee7d612"
+    },
+    {
+      "path": "history/legacy-code/research-next/base/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt.txt",
+      "bytes": 19355,
+      "sha256": "b1d79a8acd3f2b7d47721fbbb81f269883d3c8a45cad34f280ba41fb7acce1f0"
+    },
+    {
+      "path": "history/legacy-code/research-next/base/scripts/reader-pairing-math/run.py.txt",
+      "bytes": 37233,
+      "sha256": "62d36f0dba391285c0a64d39806bdd8000b87708914cb7e394838b026ec67b2b"
+    },
+    {
+      "path": "history/legacy-code/research-next/uncommitted.patch",
+      "bytes": 17738,
+      "sha256": "d99f724f30f76981734ca3872187bfde29d63b828474498d44efaffd8200ed37"
+    },
+    {
+      "path": "history/legacy-code/research-next/working/docs/2026-10-22-reader-pairing-implementation-and-measurement.md.txt",
+      "bytes": 18173,
+      "sha256": "0835cce47565ba8af5fdff1fd928bdc9b6750f0a9d48271a6b84c731b6104208"
+    },
+    {
+      "path": "history/legacy-code/research-next/working/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt.txt",
+      "bytes": 20504,
+      "sha256": "f94eb4afde8e9f61c85d0308df95d247966a6b5f47e964d9177882c2c1a9242d"
+    },
+    {
+      "path": "history/legacy-code/research-next/working/domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingReachableEntryPruneTest.kt.txt",
+      "bytes": 7980,
+      "sha256": "494b9dd08a942a5fdcb21ca883d11c717b12ef62b7daf5e7ba20fe1a9392e4cd"
+    },
+    {
+      "path": "history/legacy-code/research-next/working/domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingTestPixels.kt.txt",
+      "bytes": 1430,
+      "sha256": "7154f949ff753f57ca50ed6dda04195ddd64f10b32092df065b9facc5c71601a"
+    },
+    {
+      "path": "history/legacy-code/research-next/working/scripts/reader-pairing-math/PairingImplementationExperiment.kt.txt",
+      "bytes": 13689,
+      "sha256": "74d5ee76b8fe394121ba8cba57c867b2f67913e9ba43cbaefbc4fbb13ec9c69d"
+    },
+    {
+      "path": "history/legacy-code/research-next/working/scripts/reader-pairing-math/PairingQueryCounters.kt.txt",
+      "bytes": 494,
+      "sha256": "32c7c4ae21a1c58a64560a3accd3c1698e3911221d692eb52c8bb4d77e0f3bfe"
+    },
+    {
+      "path": "history/legacy-code/research-next/working/scripts/reader-pairing-math/run.py.txt",
+      "bytes": 51809,
+      "sha256": "533ce384b02b9e1b7c61f0e06e3852f0194391fb85cdff6f5459da21f2d5043a"
+    },
+    {
+      "path": "history/legacy-code/research-next-dirty.md",
+      "bytes": 4976,
+      "sha256": "dde7052a95d9f83a8818fb732947265952e3834dbb42f662d0c546e169071380"
+    },
+    {
+      "path": "history/legacy-code/rounds-r1-r5.md",
+      "bytes": 6172,
+      "sha256": "81377076f5019a9ed63f8b881dee79958506fdceabcab7178e61c87c6d1f3a27"
+    },
+    {
+      "path": "history/legacy-code/theory/2026-10-20-reader-pairing-full-algorithm-mathematical-model.md.txt",
+      "bytes": 27221,
+      "sha256": "88444cd472e1a83bc92e111ca9a08eab20d8e44d0a51511b755987174e7d2b75"
+    },
+    {
+      "path": "history/legacy-code/theory/2026-10-20-reader-pairing-mathematical-analysis.md.txt",
+      "bytes": 20564,
+      "sha256": "75e428e889dfde99cac3a97ad16aa112b3cfe360731111c80f6473219329fda8"
+    },
+    {
+      "path": "history/legacy-code/theory/2026-10-21-reader-pairing-mathematical-analysis-round2.md.txt",
+      "bytes": 18802,
+      "sha256": "2aebc04b741fea6db438200cc195acf7f8730880471f96ec9803733ac1d35161"
+    },
+    {
+      "path": "history/legacy-code/theory/2026-10-21-reader-pairing-mathematical-analysis-round3.md.txt",
+      "bytes": 19053,
+      "sha256": "20bf13626f912662bce55f80116d8db909c8b442838192f0859f5f7e92b50748"
+    },
+    {
+      "path": "history/legacy-code/theory/2026-10-22-reader-pairing-mathematical-analysis-round4.md.txt",
+      "bytes": 16722,
+      "sha256": "61fc52411b96da7cd6c2de2bf91e0e5a8cc2c8dba2ded1c1a0d8407d598547ef"
+    },
+    {
+      "path": "history/legacy-code/theory/2026-10-22-reader-pairing-mathematical-analysis-round5.md.txt",
+      "bytes": 17311,
+      "sha256": "2edf3f585353469a69a51790aff14c95f860ecccdcd7c1967e262be482c1b96f"
+    },
+    {
+      "path": "history/package-inventory.json",
+      "bytes": 3202279,
+      "sha256": "8457ded1c76bf09bd845fc47227054eb45bd881e84cd5773c8fbf5900c91075f"
+    },
+    {
+      "path": "history/packages/.gitattributes",
+      "bytes": 188,
+      "sha256": "a640b7b195a9015c7c29c37965ae824bd2b9b4f09cec1e81df9931365022ab6c"
+    },
+    {
+      "path": "history/packages/ordered-latency-r10-final-results.zip",
+      "bytes": 725896,
+      "sha256": "f3661a8a2cd1414a5ae8d607aeb8a5d49033895f72d5fb20123efed437ef77c8"
+    },
+    {
+      "path": "history/packages/ordered-latency-r10-results.zip",
+      "bytes": 403827,
+      "sha256": "74895ac629636975865ab1d2427ea099c1c4138c1b0730b9f1940fad4ebcdd23"
+    },
+    {
+      "path": "history/packages/ordered-latency-r10-revision-results.zip",
+      "bytes": 627371,
+      "sha256": "f1dacacbf7f40f13604594477b268321daa94de24e3f940b44166895e844ff1a"
+    },
+    {
+      "path": "history/packages/ordered-system-engineering/docs/ordered-system/CONTRACTS.md.txt",
+      "bytes": 6217,
+      "sha256": "f9d956ab8dae56168154eba3c016e479949aa0599fabb019cb01386109bab1e3"
+    },
+    {
+      "path": "history/packages/ordered-system-engineering/docs/ordered-system/COST_MODEL.md.txt",
+      "bytes": 4109,
+      "sha256": "99aef9de36fa7cda122e1ae0e40345dd3f03e7be1739746802aab00bbac27062"
+    },
+    {
+      "path": "history/packages/ordered-system-engineering/docs/ordered-system/ENGINEERING.md.txt",
+      "bytes": 8243,
+      "sha256": "dd9cece9415269610da2a7c61d263ea9de6c15ddcd83146f79c5af15c8d8f673"
+    },
+    {
+      "path": "history/packages/ordered-system-engineering/docs/ordered-system/lowcost/results/TABLES.md.txt",
+      "bytes": 40540,
+      "sha256": "341b5bf1fceb08738f84542319ce8a66eb4e3a3a11b841890d7bfc82df61f533"
+    },
+    {
+      "path": "history/packages/ordered-system-engineering/docs/ordered-system/prior/NOTES.md.txt",
+      "bytes": 1828,
+      "sha256": "8605f1680c47a1aad89bc44b4758b8e9ada4afafbaac7f95ce8f272e422eba3c"
+    },
+    {
+      "path": "history/packages/ordered-system-engineering/docs/ordered-system/PROBLEM.md.txt",
+      "bytes": 9407,
+      "sha256": "6638c37743b1ea30af3f62619d9c40473084251f00ce60c4234a46404a8c7365"
+    },
+    {
+      "path": "history/packages/ordered-system-engineering/docs/ordered-system/README.md.txt",
+      "bytes": 12609,
+      "sha256": "2195677a3d0b579c1018b2623945dc5d783d11cef428c8cf9aa42f9ae2112e59"
+    },
+    {
+      "path": "history/packages/ordered-system-engineering/docs/ordered-system/RESEARCH_HISTORY.md.txt",
+      "bytes": 8855,
+      "sha256": "b8bea769a869d7183da030cd1e4f302ec7145ea548db8e91e77aaf22388dcd32"
+    },
+    {
+      "path": "history/packages/ordered-system-engineering/docs/ordered-system/RESEARCH_REPORT.md.txt",
+      "bytes": 36074,
+      "sha256": "740539216adb701e52b528d05066bba7ca634c3f7cb6c9bd9882c5660c332be2"
+    },
+    {
+      "path": "history/packages/ordered-system-engineering/docs/ordered-system/RESEARCH_TASK.md.txt",
+      "bytes": 8314,
+      "sha256": "3e2b91d7da0bf4723f5bf4d0a8213727b71912406780c08c17297fa0113f99e1"
+    },
+    {
+      "path": "history/packages/ordered-system-engineering-results.zip",
+      "bytes": 207243,
+      "sha256": "10583f909a6e9223252b6478f346e2e801cf4a1bfe8c3cc15eedf35237259d60"
+    },
+    {
+      "path": "history/packages/ordered-system-initial/docs/ordered-system/CONTRACTS.md.txt",
+      "bytes": 6217,
+      "sha256": "f9d956ab8dae56168154eba3c016e479949aa0599fabb019cb01386109bab1e3"
+    },
+    {
+      "path": "history/packages/ordered-system-initial/docs/ordered-system/PROBLEM.md.txt",
+      "bytes": 9407,
+      "sha256": "6638c37743b1ea30af3f62619d9c40473084251f00ce60c4234a46404a8c7365"
+    },
+    {
+      "path": "history/packages/ordered-system-initial/docs/ordered-system/README.md.txt",
+      "bytes": 9325,
+      "sha256": "8990bbc76ca9ffa005b849771fb4420162ae7429b95026d4d299808bcb40e8ea"
+    },
+    {
+      "path": "history/packages/ordered-system-initial/docs/ordered-system/research/README.md.txt",
+      "bytes": 1545,
+      "sha256": "02da2a96c18fa34e2814831ac85d073fe7494ebc6ea038e8eb11a54b671026c5"
+    },
+    {
+      "path": "history/packages/ordered-system-initial/docs/ordered-system/RESEARCH_HISTORY.md.txt",
+      "bytes": 5857,
+      "sha256": "756a7771b140c7190b5aa25b2f57fd378438b4d4c55a1f9e75e276548bc6c68a"
+    },
+    {
+      "path": "history/packages/ordered-system-initial/docs/ordered-system/RESEARCH_REPORT.md.txt",
+      "bytes": 47850,
+      "sha256": "08ef3f08d79bfd2cd88ce3b0cc582ac52f916a279c02f39db83dfadcc3679662"
+    },
+    {
+      "path": "history/packages/ordered-system-initial/docs/ordered-system/RESEARCH_TASK.md.txt",
+      "bytes": 4720,
+      "sha256": "f4886c63878ace3debf75e701877a7b07a5576f0d8bb6457b67ae0079d919861"
+    },
+    {
+      "path": "history/packages/ordered-system-r8-research-results.zip",
+      "bytes": 614193,
+      "sha256": "34b71d9f5ba6ddb28e0fab7eb2bad6290c2dc8aee2ebe02f8eb31edb8984ad04"
+    },
+    {
+      "path": "history/packages/ordered-system-r9-final-results.zip",
+      "bytes": 2570232,
+      "sha256": "ff362ad0e0de4a591a413e5533580abb48aa3bb64475c5c466c8a3c68888600d"
+    },
+    {
+      "path": "history/packages/ordered-system-r9-fix-attachment9.zip",
+      "bytes": 2434833,
+      "sha256": "7fc4b9b3f17ef0f929c4bab9494dd5bde0272aa1cbeff78499c65595244beafd"
+    },
+    {
+      "path": "history/packages/ordered-system-r9-research-results.zip",
+      "bytes": 1502062,
+      "sha256": "60ab026646679cd20dcee3df86086876dc7e89b183a6522d78abefea1c0c3b08"
+    },
+    {
+      "path": "history/packages/ordered-system-research.zip",
+      "bytes": 88438,
+      "sha256": "04761cb3cc5092016331027e8921b6dcac691e99851f6dbf7a116134716972a1"
+    },
+    {
+      "path": "history/packages/r10-latency-final/docs/research_out/ACCEPTANCE.md.txt",
+      "bytes": 20808,
+      "sha256": "359e850d25af71cbb946c2d63e3db0a4ba11d2e254b896d3e3a4893aa0adc736"
+    },
+    {
+      "path": "history/packages/r10-latency-final/docs/research_out/CHANGELOG.md.txt",
+      "bytes": 25396,
+      "sha256": "ff3be57954f0d5e674f4ae8b8b5996f047061ab6ef71f8129b858693bc0cdbe1"
+    },
+    {
+      "path": "history/packages/r10-latency-final/docs/research_out/FAILURES.md.txt",
+      "bytes": 14423,
+      "sha256": "cf04b3b7cc55f283fcd8cdd9d387bc45eab73eeff71e9d538fc7e67b89992519"
+    },
+    {
+      "path": "history/packages/r10-latency-final/docs/research_out/HANDOFF.md.txt",
+      "bytes": 10679,
+      "sha256": "af6b38860e20945533f78e1e84595fd21b8fdb0f79f433f498e755d0eb893f92"
+    },
+    {
+      "path": "history/packages/r10-latency-final/docs/research_out/INPUT_ERRATA.md.txt",
+      "bytes": 4143,
+      "sha256": "59609dfd8225958548e1d4177096cac8c17fcdde2ba08a79bba7a90e4c854b43"
+    },
+    {
+      "path": "history/packages/r10-latency-final/docs/research_out/REPORT.md.txt",
+      "bytes": 25441,
+      "sha256": "240c1f6fa536fbef8c963e1491cdf70bb6b1a99cd4918ad7d6a1230d6cab37f0"
+    },
+    {
+      "path": "history/packages/r10-latency-final/docs/research_out/REPRODUCE.md.txt",
+      "bytes": 5267,
+      "sha256": "6a246990974ad1bfd20c203ce373772e43faa6df99b8f47150ee17e9a3e9c932"
+    },
+    {
+      "path": "history/packages/r10-latency-final/docs/research_out/sections/COMBINATIONS_DETAIL.md.txt",
+      "bytes": 74288,
+      "sha256": "79752079ff2f90af8edd78db4078a7e8bed7d8b2d90dbb889acba446b91064c6"
+    },
+    {
+      "path": "history/packages/r10-latency-final/docs/research_out/sections/QUESTIONS_DETAIL.md.txt",
+      "bytes": 154383,
+      "sha256": "0b84486c998edf4ca7febbd23fbdfe93515b777011142030a1605f13e23f48f7"
+    },
+    {
+      "path": "history/packages/r10-latency-final/docs/research_out/START_R10.md.txt",
+      "bytes": 2462,
+      "sha256": "b4c51b4a46d0406fee8ef5a5dba8e9b46d160252b13dddd18de46f6374fc8a6f"
+    },
+    {
+      "path": "history/packages/r10-latency-final/docs/research_out/summary/WORKLOADS.md.txt",
+      "bytes": 5526,
+      "sha256": "55618821d3c4187c9dc62e5a17cd15f616a1c39a0445a853ac2382d8991a1df0"
+    },
+    {
+      "path": "history/packages/r10-latency-initial/docs/research_out/FAILURES.md.txt",
+      "bytes": 8169,
+      "sha256": "477c6a644e3373542cbd0a8466c13fa4bc6aa9d1eedc38819bf230c21a910e48"
+    },
+    {
+      "path": "history/packages/r10-latency-initial/docs/research_out/REPORT.md.txt",
+      "bytes": 17664,
+      "sha256": "0aedefb8da92da1e5fa872ab72db04b27cca3f67fd26c864017b268fe41892ec"
+    },
+    {
+      "path": "history/packages/r10-latency-initial/docs/research_out/REPRODUCE.md.txt",
+      "bytes": 1876,
+      "sha256": "f504939c766bb2dab9449cfeb556612d970292ff281ca23c7ad35a0981c016e7"
+    },
+    {
+      "path": "history/packages/r10-latency-initial/docs/research_out/sections/COMBINATIONS_DETAIL.md.txt",
+      "bytes": 27770,
+      "sha256": "be3e148598da10563077b9950a58987926d8e132ffe4eb8e95fa213f10009807"
+    },
+    {
+      "path": "history/packages/r10-latency-initial/docs/research_out/sections/QUESTIONS_DETAIL.md.txt",
+      "bytes": 129941,
+      "sha256": "23e46c7c2e6a16a5e7ce6a55f9bc48d1debd811cac12af456a21db454b1910f3"
+    },
+    {
+      "path": "history/packages/r10-latency-initial/docs/research_out/START_R10.md.txt",
+      "bytes": 1450,
+      "sha256": "1ac2648b147475f6bab4141ca0d629b01395e9109bac46492602a4e8547f69b8"
+    },
+    {
+      "path": "history/packages/r10-latency-initial/docs/research_out/summary/WORKLOADS.md.txt",
+      "bytes": 4953,
+      "sha256": "a38f6897bbe81925e833eefd0054862ebc7263a2d2b0416cbd6fc8f55dd0c039"
+    },
+    {
+      "path": "history/packages/r10-latency-revision/docs/research_out/ACCEPTANCE.md.txt",
+      "bytes": 11397,
+      "sha256": "c1d03ec4cd7f3d704e270e8af07b425b722088e11de2603f8c8043809e84c9fc"
+    },
+    {
+      "path": "history/packages/r10-latency-revision/docs/research_out/CHANGELOG.md.txt",
+      "bytes": 15057,
+      "sha256": "180edc5099423447a241e1d390e1c30901fdce35014e5edd27b454efff9a3e61"
+    },
+    {
+      "path": "history/packages/r10-latency-revision/docs/research_out/FAILURES.md.txt",
+      "bytes": 12080,
+      "sha256": "3336600c0c95b9709de86adf2ccc47e5ece877405bea2977f781372d222f58bd"
+    },
+    {
+      "path": "history/packages/r10-latency-revision/docs/research_out/INPUT_ERRATA.md.txt",
+      "bytes": 4143,
+      "sha256": "59609dfd8225958548e1d4177096cac8c17fcdde2ba08a79bba7a90e4c854b43"
+    },
+    {
+      "path": "history/packages/r10-latency-revision/docs/research_out/REPORT.md.txt",
+      "bytes": 20208,
+      "sha256": "981beb01451e5d8e06d56a9cc3d179c356608a2ec7006a63cb5ab38be859b262"
+    },
+    {
+      "path": "history/packages/r10-latency-revision/docs/research_out/REPRODUCE.md.txt",
+      "bytes": 3297,
+      "sha256": "a30066b4852687030fd724f26b9e9b119584f16261b719bf99881ad5fb0aa46f"
+    },
+    {
+      "path": "history/packages/r10-latency-revision/docs/research_out/sections/COMBINATIONS_DETAIL.md.txt",
+      "bytes": 68497,
+      "sha256": "b2110ea0e3625b84e6e121418300a60338ad23dae657af1a7e0df99389c865f7"
+    },
+    {
+      "path": "history/packages/r10-latency-revision/docs/research_out/sections/QUESTIONS_DETAIL.md.txt",
+      "bytes": 154267,
+      "sha256": "f7245c1560a37a19851db3b05ada75f66978bdee1b5385873e11d89db418b3e9"
+    },
+    {
+      "path": "history/packages/r10-latency-revision/docs/research_out/START_R10.md.txt",
+      "bytes": 1843,
+      "sha256": "ab2f4140c6fc1856f67429f53879434422d2b09cc392426ccbb3a6476e56eb8e"
+    },
+    {
+      "path": "history/packages/r10-latency-revision/docs/research_out/summary/WORKLOADS.md.txt",
+      "bytes": 5526,
+      "sha256": "55618821d3c4187c9dc62e5a17cd15f616a1c39a0445a853ac2382d8991a1df0"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/ADVERSARIAL_SUITE.md.txt",
+      "bytes": 5014,
+      "sha256": "f92ff34fbc07d48d113a618fc73fd5c581f81a9fa1ffebca2b6178c161d011a3"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/BASELINE_EVIDENCE.md.txt",
+      "bytes": 3516,
+      "sha256": "81a22a17a3d38edd56ed9ba614578f1fa4a128b8dffeec3f0f7865ea7b8591f8"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/COMBINATION_CHALLENGES.md.txt",
+      "bytes": 5197,
+      "sha256": "77deee4cb3c33e37ab1e057b7630be1a510cfde94fd3159ed3376c4947717162"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/CONTRACTS.md.txt",
+      "bytes": 7590,
+      "sha256": "2cc73e233387d5d5b2c5a62a88af94a4c032b67ebb5e800c8dce3cef47a89589"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/COST_PROFILES.md.txt",
+      "bytes": 2769,
+      "sha256": "1659cfb889a458b88fb05002597b8248b2d8f19090635a531d49a2bb50226c5b"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/DELIVERY_TEMPLATE.md.txt",
+      "bytes": 3628,
+      "sha256": "6fab823978e644f629acacc3062921214e3f48e438c4281da14778d79c071997"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/EXPERIMENT_PROTOCOL.md.txt",
+      "bytes": 5888,
+      "sha256": "bea6452e164fbe67f3c9e1fe241d95109777fe7c4004151adcd3ca85c8c03865"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/FORMAL_PROBLEM.md.txt",
+      "bytes": 9672,
+      "sha256": "b8ecadc330919b854e1c229ee50a11371632ce71310b4c0e732d22ab3cd422c0"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/GENERATIVE_DOMAIN.md.txt",
+      "bytes": 4002,
+      "sha256": "3de3d7dabe62582ac11369b35ab1b163c01ec6c287803f81fbd6dec2cc4dbe3e"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/MODEL_API.md.txt",
+      "bytes": 9829,
+      "sha256": "680b2809d1dc6497ab0d5d20c622586faf4e9fb362149737356b6f1043c35c36"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/NEGATIVE_RESULTS.md.txt",
+      "bytes": 4807,
+      "sha256": "498add6255f41d6db9792a5979906108d1096abd3b6a652926b7fb97989becc0"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/OPUS_PROMPT.md.txt",
+      "bytes": 3844,
+      "sha256": "fcac28bf56064ab87382b18f2749736cf6880996b7eccc2996c493ffaa2bfeae"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/PACKAGE_VALIDATION.md.txt",
+      "bytes": 2558,
+      "sha256": "f371d4fec04e9513768fad4b239132bf64f32e0a2b3ec3f7fa0a20d3faff200b"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/README.md.txt",
+      "bytes": 637,
+      "sha256": "901e54a025d6bc33c822c6c3afacce33c9f5a8a5fe36b5443cb85697941a127b"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/RESEARCH_BRIEF.md.txt",
+      "bytes": 3475,
+      "sha256": "4c6fc5080944c0e1a265fb85a7db9746ec3cbf3c5f817d64c315e144428e448f"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/research_out/CONVENTIONS.md.txt",
+      "bytes": 2615,
+      "sha256": "fe81d23f1ed975a42fed79e3eb613f8840b48f37bf164ec0a3a6787d469fab60"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/research_out/proofs/hosts.md.txt",
+      "bytes": 8765,
+      "sha256": "ccde1cdc478fab704c2045d75fea73ba1cc2a6cd6f541d91ff39bdea65924f48"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/research_out/proofs/PROOFS.md.txt",
+      "bytes": 15972,
+      "sha256": "56a904d0081f692048be382d1e9b7640e03572fb3657f3801e432e21e0184253"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/research_out/proofs/protocol.md.txt",
+      "bytes": 13355,
+      "sha256": "4bf84b5cb1768bfbcf192cdfac548f7a9c5f1c7bdb2c2ec3efefd72562caac44"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/research_out/README.md.txt",
+      "bytes": 782,
+      "sha256": "e16b594c9d0ca2ac1875053943ac1cf71ae6982ef2f36f0434e889fa36605e84"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/research_out/REPORT.md.txt",
+      "bytes": 29424,
+      "sha256": "21b794b9eda2898167a27b6e23052b4f1b89b1c91fc524727ba4e083baeceec1"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/research_out/REPRODUCE.md.txt",
+      "bytes": 3058,
+      "sha256": "e58a77b64b74f0a864a6c47035d1ef615ec1d3134419612dc6e56ab917e44c67"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/research_out/results/formal/TABLES.md.txt",
+      "bytes": 11973,
+      "sha256": "139cf3f145d24e8e66e9a743da895dbcaf94d56979b9f4a2ae95e0df2f274763"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/research_out/sections/core.md.txt",
+      "bytes": 15191,
+      "sha256": "44ce91b71727974e185a7178c04c73c66a2927d41036b4a7ff915314a39c0616"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/research_out/sections/hosts.md.txt",
+      "bytes": 14369,
+      "sha256": "9fc30d11becc5c8367303603177b94c10d5ef31cb0af61560733a8fb57d7ae39"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/research_out/sections/new_hypotheses.md.txt",
+      "bytes": 3574,
+      "sha256": "0ea8cd291fe9e6428a8376cd27a9d76236d995e62ed614bdce2f556af18f47ac"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/research_out/sections/protocol.md.txt",
+      "bytes": 12597,
+      "sha256": "b71efb74089e97ea05d3b60b394ce23f6732d323b650d210e453d7cab8730c6c"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/RESEARCH_QUESTIONS.md.txt",
+      "bytes": 27566,
+      "sha256": "d195456019e9778e21839dab8bef18454badb26601a593ae3e5c806dfbe9f1d6"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/ROADMAP.md.txt",
+      "bytes": 3937,
+      "sha256": "8590942d099f0b3a2b70450c1551466d5e39e165a72100c3bea2ebc52047d0da"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/RUNNING.md.txt",
+      "bytes": 2313,
+      "sha256": "0401ec8620bc649bdf907f82f793fe1460e599bd3587587e85b03c0e940b1ada"
+    },
+    {
+      "path": "history/packages/r8-research/docs/ordered-system-r8/START_HERE.md.txt",
+      "bytes": 1937,
+      "sha256": "fcefd6127cdb95b0db562ba6513b7c1674ffb3f166da10390a01ae23774d82da"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/candidates/r8/PROVENANCE.md.txt",
+      "bytes": 757,
+      "sha256": "5d4bde50777c01a5603d090e45b5130ac4fab68b27db2b1bd9a9d604499bab0a"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/CONVENTIONS.md.txt",
+      "bytes": 2724,
+      "sha256": "c6c5ab2263d3456863ce252130c542f5064c9c62f40e7571acd42683895332d4"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/FIX_ROUND.md.txt",
+      "bytes": 2507,
+      "sha256": "1e020764e7d2899b7a7fd760e2713db1d2f5b3e01cda6010940c222db097e8e9"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/NEXT_IMPLEMENTER.md.txt",
+      "bytes": 6450,
+      "sha256": "b75be4363cdd238735374fbecea52001a12e9d0ac8aa7aa38d63944ff5fd3aa1"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/NEXT_IMPLEMENTER_R9.md.txt",
+      "bytes": 2586,
+      "sha256": "aacfbfea547382e1bca6aa10848476e5c225a67af2b29b2d02af6ced970b4f9c"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/proofs/fix_budget.md.txt",
+      "bytes": 6974,
+      "sha256": "f93520bea2e42a553230085d397a30b4f1a9d98d7e7a2a729808f148448038ed"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/proofs/fix_LC.md.txt",
+      "bytes": 7284,
+      "sha256": "c6e02534ddf9e2b17a571a1fb251879715f83dc13f83443b57531b5d4b43f75e"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/proofs/fix_PH.md.txt",
+      "bytes": 10614,
+      "sha256": "1d17576e4a4336f34542169b550a7a20ff0e2608c07d7579f01795b2e34774f6"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/proofs/fix_Q1.md.txt",
+      "bytes": 7713,
+      "sha256": "d7c2a302cb15d74665aea5a3c2668f34724ca6fc490a7ce4b1ccfa0f3c59933d"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/proofs/fix_Q2.md.txt",
+      "bytes": 5286,
+      "sha256": "de71ba0b7d44b218e9aebb527f9cf03e5c0daac75da0f00efdb8c9bb8001510e"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/proofs/wpA.md.txt",
+      "bytes": 10774,
+      "sha256": "cc2c04b3cf929588e8da66781957f21d699207de0366793bf08dc745b7262374"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/proofs/wpB.md.txt",
+      "bytes": 12257,
+      "sha256": "a71a3fe92628172d297871e273a976761d16f8c28c5d934652bb14a37532a3b7"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/proofs/wpC.md.txt",
+      "bytes": 14469,
+      "sha256": "7d5de6fa7af4443ded2767e54e992614d72ffe5d59611f64c764a056678a190c"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/proofs/wpG.md.txt",
+      "bytes": 9654,
+      "sha256": "37d50f16265116fe2e6e269ae7f63ac3f02260e5eb47d8c47cd04ba69fa1337d"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/proofs/wpH.md.txt",
+      "bytes": 8057,
+      "sha256": "744c302f1e3632e5e04dade9ff6ded9bfa298ecbbbfa6dbdba2e53488d8558d3"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/REPORT.md.txt",
+      "bytes": 10469,
+      "sha256": "f9b2f80281a5c52c73bcb39c9bfa66850dfa1a2c4186b98ec57318f7da63bb42"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/REPORT_R9.md.txt",
+      "bytes": 14233,
+      "sha256": "35d94f40329dd0b0fad6dc9f3ed6aabc1e5fd88eaa46dc871ce315962559304b"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/REPRODUCE.md.txt",
+      "bytes": 8468,
+      "sha256": "8e903f28ea937acdeba368a776e5ec3eb705f3bb851ed3936350118c7c5cae00"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/REPRODUCE_R9.md.txt",
+      "bytes": 3638,
+      "sha256": "dafa1989344bcc9eae64e4e1fcab4516e4d01e164bdf8c0825397990e8f6818d"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/results/raw/final/fix_main_before_final.md.txt",
+      "bytes": 17965,
+      "sha256": "011ac2866dd0996a08ddeb012c684c292337f0e0ddda89a0d413bc084dd0bf22"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/results/raw/final/NEXT_IMPLEMENTER_fixround_before_final.md.txt",
+      "bytes": 7181,
+      "sha256": "a7eda7734bf6448ff79e78e88c33047aa6857cb05585a18961750db0225ffb80"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/results/raw/final/REPORT_fixround_before_final.md.txt",
+      "bytes": 17859,
+      "sha256": "b00006e12cd9c5b1d0da7f949f97e819b4d5adeab60b95301726289d8782f63f"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/results/summary/fix/D3_INDEX.md.txt",
+      "bytes": 9850,
+      "sha256": "bed502ff2b8b6853ef6ccbfc94fdeabfafef24ec8fe6e777f39c511aaf2d8610"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/results/summary/fix/DATA_VALIDITY.md.txt",
+      "bytes": 5811,
+      "sha256": "9f971ea53f1441fed9ce0d5f0def9e2136b8deb3159ce891c4ca4a2ad4b630f5"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/results/summary/fix/FINAL_CHECKLIST.md.txt",
+      "bytes": 4512,
+      "sha256": "d62555dd3c78858e48e23136f6bc57292c1390240d00d65330da80110a1b230f"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/results/summary/fix/heldout_predeclared.md.txt",
+      "bytes": 1980,
+      "sha256": "48a4bae7fd2beb90810626c182f4af5ac201cc20b33d5ac6882b2fab7fe43460"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/results/summary/fix/LC/TABLES.md.txt",
+      "bytes": 12629,
+      "sha256": "399f008d6583d129cab12e204deb07b855329e9d03a5005b82993ed50b825e74"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/results/summary/fix/PH/workload_tables.md.txt",
+      "bytes": 8703,
+      "sha256": "fbd2bed40cab747ca05e29008cf007b365831faba1b7f98d1f30bad4ce985662"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/results/summary/fix/postfreeze_changes.md.txt",
+      "bytes": 2220,
+      "sha256": "af66581af50e5f7f0bcc94a5b982d767aae837d1701b09b92c22916b169ebc24"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/results/summary/fix/QUESTION_STATUS.md.txt",
+      "bytes": 18537,
+      "sha256": "fc09e21e6da62df885e5df21a599d2f74b1f52582a500a7f2f0f85c0f17df15f"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/results/summary/formal/FORMAL_TABLES.md.txt",
+      "bytes": 4644,
+      "sha256": "1f347154a23d896a07e8dce40cdf8dc83203bcad63d2f958f76b3d16f8e0640b"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/results/summary/formal_final/FORMAL_TABLES.md.txt",
+      "bytes": 588,
+      "sha256": "5ffcb1221738c9043591360308b877ecf95aac9d2178663b12e39b8042b61fdf"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/results/summary/formal_fix/FORMAL_TABLES.md.txt",
+      "bytes": 4187,
+      "sha256": "9f3bd4f06c7e8a7b83ac4581b3a955796efc3ae1141724139b00409addbf48cd"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/results/summary/FORMAL_TABLES.md.txt",
+      "bytes": 4644,
+      "sha256": "1f347154a23d896a07e8dce40cdf8dc83203bcad63d2f958f76b3d16f8e0640b"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/results/summary/wpC/summary.md.txt",
+      "bytes": 45297,
+      "sha256": "20016626445ed81b3919d8f3693e1ebdb69c1850dd8d18ad43a63aeebd730080"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/sections/fix_LC.md.txt",
+      "bytes": 18234,
+      "sha256": "09c655e249a5c2b54f6a6114c013bc61c57804ec0db5f98478566a38beb8221d"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/sections/fix_main.md.txt",
+      "bytes": 20994,
+      "sha256": "bcdb2c79d083ddc7fa73d7669b363545c9ced198dd4574f7df77406fd09089a9"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/sections/fix_PH.md.txt",
+      "bytes": 9048,
+      "sha256": "ee036a6d92fc9a6690a62aaf74a9b263d5db80f1290547c4b3bfa1c4bc9925e7"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/sections/fix_Q1.md.txt",
+      "bytes": 10154,
+      "sha256": "06de4b28216e530280f846426e2e5e9640437e0cbd2d5f50ff870a10a22e76a9"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/sections/fix_Q2.md.txt",
+      "bytes": 13602,
+      "sha256": "4ba9598483b8e36361977f6e9fb1b90a8ce9de9fcc5a23943a86531d72233def"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/sections/wpA.md.txt",
+      "bytes": 5204,
+      "sha256": "44d678781d5b27d51ab7ac75d1c33255952ab74869c1200f06c92c99b6db9684"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/sections/wpB.md.txt",
+      "bytes": 7190,
+      "sha256": "74e10b77f97a176eedc082b6b7222fa86b4a0d0aaf95831be2ed6aeba8334498"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/sections/wpC.md.txt",
+      "bytes": 5234,
+      "sha256": "55c5fbe7ba7173d8a0825b0b6496c1d819505a1f884e281285bf19f90dd3731b"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/sections/wpG.md.txt",
+      "bytes": 4405,
+      "sha256": "acd55f3e0c9379b3bbc9dd1e1971578604f0b5b800e724d9bbf8904b7302cc5b"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/sections/wpH.md.txt",
+      "bytes": 6611,
+      "sha256": "b70ea8de58893693438523bfbcf5edcadc9d4235ad6509cb42bc4356e727b4b7"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/sections/wpS_T.md.txt",
+      "bytes": 9482,
+      "sha256": "f0d3a008ba3f8e3c45feb6cdd80574090d8b9da7a117084663af42eb2daa2dbe"
+    },
+    {
+      "path": "history/packages/r9-final/docs/research_out/START_FIX.md.txt",
+      "bytes": 2459,
+      "sha256": "5d632f918c24e37fbcba68177181f34d2bde5f79a571b5191dabefe4c6c5fddc"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/candidates/r8/PROVENANCE.md.txt",
+      "bytes": 757,
+      "sha256": "5d4bde50777c01a5603d090e45b5130ac4fab68b27db2b1bd9a9d604499bab0a"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/CONVENTIONS.md.txt",
+      "bytes": 2724,
+      "sha256": "c6c5ab2263d3456863ce252130c542f5064c9c62f40e7571acd42683895332d4"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/FIX_ROUND.md.txt",
+      "bytes": 2507,
+      "sha256": "1e020764e7d2899b7a7fd760e2713db1d2f5b3e01cda6010940c222db097e8e9"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/NEXT_IMPLEMENTER.md.txt",
+      "bytes": 7181,
+      "sha256": "a7eda7734bf6448ff79e78e88c33047aa6857cb05585a18961750db0225ffb80"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/NEXT_IMPLEMENTER_R9.md.txt",
+      "bytes": 2586,
+      "sha256": "aacfbfea547382e1bca6aa10848476e5c225a67af2b29b2d02af6ced970b4f9c"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/proofs/fix_budget.md.txt",
+      "bytes": 6974,
+      "sha256": "f93520bea2e42a553230085d397a30b4f1a9d98d7e7a2a729808f148448038ed"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/proofs/fix_LC.md.txt",
+      "bytes": 4688,
+      "sha256": "ab66d0db5e9bb7e2fc77f38e8701eb8ad7c290dd1bd471eae9a5f5bf36b1910e"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/proofs/fix_PH.md.txt",
+      "bytes": 10614,
+      "sha256": "1d17576e4a4336f34542169b550a7a20ff0e2608c07d7579f01795b2e34774f6"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/proofs/fix_Q1.md.txt",
+      "bytes": 7713,
+      "sha256": "d7c2a302cb15d74665aea5a3c2668f34724ca6fc490a7ce4b1ccfa0f3c59933d"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/proofs/fix_Q2.md.txt",
+      "bytes": 5286,
+      "sha256": "de71ba0b7d44b218e9aebb527f9cf03e5c0daac75da0f00efdb8c9bb8001510e"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/proofs/wpA.md.txt",
+      "bytes": 10774,
+      "sha256": "cc2c04b3cf929588e8da66781957f21d699207de0366793bf08dc745b7262374"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/proofs/wpB.md.txt",
+      "bytes": 12257,
+      "sha256": "a71a3fe92628172d297871e273a976761d16f8c28c5d934652bb14a37532a3b7"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/proofs/wpC.md.txt",
+      "bytes": 14469,
+      "sha256": "7d5de6fa7af4443ded2767e54e992614d72ffe5d59611f64c764a056678a190c"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/proofs/wpG.md.txt",
+      "bytes": 9654,
+      "sha256": "37d50f16265116fe2e6e269ae7f63ac3f02260e5eb47d8c47cd04ba69fa1337d"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/proofs/wpH.md.txt",
+      "bytes": 8057,
+      "sha256": "744c302f1e3632e5e04dade9ff6ded9bfa298ecbbbfa6dbdba2e53488d8558d3"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/REPORT.md.txt",
+      "bytes": 17859,
+      "sha256": "b00006e12cd9c5b1d0da7f949f97e819b4d5adeab60b95301726289d8782f63f"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/REPORT_R9.md.txt",
+      "bytes": 14233,
+      "sha256": "35d94f40329dd0b0fad6dc9f3ed6aabc1e5fd88eaa46dc871ce315962559304b"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/REPRODUCE.md.txt",
+      "bytes": 7182,
+      "sha256": "e65ad3d2b7568b0842e67dd1f291e821fb70f5d72af84be5c8c75d81b76cf62b"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/REPRODUCE_R9.md.txt",
+      "bytes": 3638,
+      "sha256": "dafa1989344bcc9eae64e4e1fcab4516e4d01e164bdf8c0825397990e8f6818d"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/results/summary/fix/D3_INDEX.md.txt",
+      "bytes": 9688,
+      "sha256": "e77e107f2c3e766591cc3ee9cc6cb6c1dc78fa1da3fbd4f7c0b435c248fd5c0c"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/results/summary/fix/DATA_VALIDITY.md.txt",
+      "bytes": 4416,
+      "sha256": "3048882f04f373b725bb9c1824956401ed84998fc6d4c66f0aae3e5d2cd7eabf"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/results/summary/fix/heldout_predeclared.md.txt",
+      "bytes": 1980,
+      "sha256": "48a4bae7fd2beb90810626c182f4af5ac201cc20b33d5ac6882b2fab7fe43460"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/results/summary/fix/LC/TABLES.md.txt",
+      "bytes": 12629,
+      "sha256": "399f008d6583d129cab12e204deb07b855329e9d03a5005b82993ed50b825e74"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/results/summary/fix/PH/workload_tables.md.txt",
+      "bytes": 8703,
+      "sha256": "fbd2bed40cab747ca05e29008cf007b365831faba1b7f98d1f30bad4ce985662"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/results/summary/fix/postfreeze_changes.md.txt",
+      "bytes": 1214,
+      "sha256": "fe3ee9931760402c984feaaf30b31c5a0afb6664887791053f43b636eabfe95b"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/results/summary/fix/QUESTION_STATUS.md.txt",
+      "bytes": 18336,
+      "sha256": "c62208c9292b923f3f0299c132eea1de0d6c0ebc35855c35a09a356a0bc0e024"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/results/summary/formal/FORMAL_TABLES.md.txt",
+      "bytes": 4644,
+      "sha256": "1f347154a23d896a07e8dce40cdf8dc83203bcad63d2f958f76b3d16f8e0640b"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/results/summary/formal_fix/FORMAL_TABLES.md.txt",
+      "bytes": 4187,
+      "sha256": "9f3bd4f06c7e8a7b83ac4581b3a955796efc3ae1141724139b00409addbf48cd"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/results/summary/FORMAL_TABLES.md.txt",
+      "bytes": 4644,
+      "sha256": "1f347154a23d896a07e8dce40cdf8dc83203bcad63d2f958f76b3d16f8e0640b"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/results/summary/wpC/summary.md.txt",
+      "bytes": 45297,
+      "sha256": "20016626445ed81b3919d8f3693e1ebdb69c1850dd8d18ad43a63aeebd730080"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/sections/fix_LC.md.txt",
+      "bytes": 18234,
+      "sha256": "09c655e249a5c2b54f6a6114c013bc61c57804ec0db5f98478566a38beb8221d"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/sections/fix_main.md.txt",
+      "bytes": 17965,
+      "sha256": "011ac2866dd0996a08ddeb012c684c292337f0e0ddda89a0d413bc084dd0bf22"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/sections/fix_PH.md.txt",
+      "bytes": 8017,
+      "sha256": "ed8a2ec061e0e212802b8b230cd04c0e1576a46f53715086ab833758653b199c"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/sections/fix_Q1.md.txt",
+      "bytes": 10154,
+      "sha256": "06de4b28216e530280f846426e2e5e9640437e0cbd2d5f50ff870a10a22e76a9"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/sections/fix_Q2.md.txt",
+      "bytes": 12908,
+      "sha256": "ec83b7234bb3cd9e06a93272043febadbb803f7ad60a5c726c9c6b93ebd322aa"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/sections/wpA.md.txt",
+      "bytes": 5204,
+      "sha256": "44d678781d5b27d51ab7ac75d1c33255952ab74869c1200f06c92c99b6db9684"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/sections/wpB.md.txt",
+      "bytes": 7190,
+      "sha256": "74e10b77f97a176eedc082b6b7222fa86b4a0d0aaf95831be2ed6aeba8334498"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/sections/wpC.md.txt",
+      "bytes": 5234,
+      "sha256": "55c5fbe7ba7173d8a0825b0b6496c1d819505a1f884e281285bf19f90dd3731b"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/sections/wpG.md.txt",
+      "bytes": 4405,
+      "sha256": "acd55f3e0c9379b3bbc9dd1e1971578604f0b5b800e724d9bbf8904b7302cc5b"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/sections/wpH.md.txt",
+      "bytes": 6611,
+      "sha256": "b70ea8de58893693438523bfbcf5edcadc9d4235ad6509cb42bc4356e727b4b7"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/sections/wpS_T.md.txt",
+      "bytes": 9482,
+      "sha256": "f0d3a008ba3f8e3c45feb6cdd80574090d8b9da7a117084663af42eb2daa2dbe"
+    },
+    {
+      "path": "history/packages/r9-fix-attachment9/docs/research_out/START_FIX.md.txt",
+      "bytes": 1998,
+      "sha256": "adbd3e128faabff44ea8b826910a0393dcb73dd1bfb07306b3d1a357ea2620f9"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/ADVERSARIAL_WORKLOADS.md.txt",
+      "bytes": 4220,
+      "sha256": "4e61c298f390d1cb1ac0917bf68f47e41decd686de708cf7d171ba3c63db82fd"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/ALGORITHM_FRONTIER.md.txt",
+      "bytes": 12534,
+      "sha256": "a35fd5ebe2ff9958dc1dd7d4c1ea83222a116a34856e01fcf9b2a49051e62e54"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/CASE_STUDIES.md.txt",
+      "bytes": 2632,
+      "sha256": "efa65226a4e6c7670f5551bce6b9881ed41db6638cb74f6f48ff62727a919ec5"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/COMBINATIONS.md.txt",
+      "bytes": 6927,
+      "sha256": "1dc2f5ddb19178e88381d10854f93559b22b50d069478ae6897c111cdf410f02"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/COST_EVIDENCE.md.txt",
+      "bytes": 4779,
+      "sha256": "215788fd97cf36d1d1f4e2ed3a7e6699f88dc00c35d82760f4432c63d369dcf6"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/data/README.md.txt",
+      "bytes": 2363,
+      "sha256": "b2ed490a7e0cb914f8a44b48945a55966df5afd9c8a465ecbf49f82c4069bfa3"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/DELIVERY_TEMPLATE.md.txt",
+      "bytes": 2604,
+      "sha256": "dd0b73e0de98e3c2d99373dfe94f01f18f3541a5b613ab8e46d4663fdc9ac4cf"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/EXECUTABLE_LIMITS.md.txt",
+      "bytes": 5150,
+      "sha256": "4459b94f34ecdb03b44b13a6f67594fc5d0c542bb5f9971ec4c3a3f626160e3c"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/EXPERIMENT_CONTRACT.md.txt",
+      "bytes": 6014,
+      "sha256": "7b2d52a7167730f45c12f22037487a772997c4cfde0f56f05868f96b2652a5d6"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/FORMAL_EXTENSIONS.md.txt",
+      "bytes": 4411,
+      "sha256": "6e2f6bc60fb5a20f1917733b7a2dbdc47249407fbe32c3a36b8de82743dc0d3c"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/MODEL_API.md.txt",
+      "bytes": 8339,
+      "sha256": "8528b825cfd943303511d80e69b7c4913d83d6682aec6d6bbacc96f27e035b5d"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/NATIVE_CONSTRAINTS.md.txt",
+      "bytes": 4640,
+      "sha256": "4fee20c9f604afa6684d7ad132ef9dcaebe71449337631fc4a49968d81a92daa"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/OPUS_PROMPT.md.txt",
+      "bytes": 4814,
+      "sha256": "9a248b456a29d1ad2c3da239b22d1ce2d201727a4e5c5daa9015ed0d6df821f7"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/PACKAGE_VALIDATION.md.txt",
+      "bytes": 1911,
+      "sha256": "eac58d2429176241809b42a3a689659e0763baa43f0dff2cc1ff243f75ccadfc"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/PRIOR_EVIDENCE_MAP.md.txt",
+      "bytes": 3079,
+      "sha256": "a068cdb7327154492e2c538c6fcff2c91e490096cc060b070d5b4609cfce2b16"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/QUESTIONS.md.txt",
+      "bytes": 28946,
+      "sha256": "4a82835a6c4f9e1fd9869acf5d4b935c97530aac9d58ed998ef17eb62492f2fc"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/README.md.txt",
+      "bytes": 439,
+      "sha256": "d4b31ff7cced7b8a9a24d41e1a73fd82314eb760d9b9f18f27afa8d7259ebce9"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/RESEARCH_BRIEF.md.txt",
+      "bytes": 3087,
+      "sha256": "52e16c8a7c53d96f2ead73e79f3cd59ab7958ccd6e3439bd1059d41e29344c1f"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/research_out/candidates/r8/PROVENANCE.md.txt",
+      "bytes": 757,
+      "sha256": "5d4bde50777c01a5603d090e45b5130ac4fab68b27db2b1bd9a9d604499bab0a"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/research_out/CONVENTIONS.md.txt",
+      "bytes": 2724,
+      "sha256": "c6c5ab2263d3456863ce252130c542f5064c9c62f40e7571acd42683895332d4"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/research_out/NEXT_IMPLEMENTER.md.txt",
+      "bytes": 2586,
+      "sha256": "aacfbfea547382e1bca6aa10848476e5c225a67af2b29b2d02af6ced970b4f9c"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/research_out/proofs/wpA.md.txt",
+      "bytes": 10774,
+      "sha256": "cc2c04b3cf929588e8da66781957f21d699207de0366793bf08dc745b7262374"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/research_out/proofs/wpB.md.txt",
+      "bytes": 12257,
+      "sha256": "a71a3fe92628172d297871e273a976761d16f8c28c5d934652bb14a37532a3b7"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/research_out/proofs/wpC.md.txt",
+      "bytes": 14469,
+      "sha256": "7d5de6fa7af4443ded2767e54e992614d72ffe5d59611f64c764a056678a190c"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/research_out/proofs/wpG.md.txt",
+      "bytes": 9654,
+      "sha256": "37d50f16265116fe2e6e269ae7f63ac3f02260e5eb47d8c47cd04ba69fa1337d"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/research_out/proofs/wpH.md.txt",
+      "bytes": 8057,
+      "sha256": "744c302f1e3632e5e04dade9ff6ded9bfa298ecbbbfa6dbdba2e53488d8558d3"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/research_out/REPORT.md.txt",
+      "bytes": 14233,
+      "sha256": "35d94f40329dd0b0fad6dc9f3ed6aabc1e5fd88eaa46dc871ce315962559304b"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/research_out/REPRODUCE.md.txt",
+      "bytes": 3638,
+      "sha256": "dafa1989344bcc9eae64e4e1fcab4516e4d01e164bdf8c0825397990e8f6818d"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/research_out/results/summary/formal/FORMAL_TABLES.md.txt",
+      "bytes": 4644,
+      "sha256": "1f347154a23d896a07e8dce40cdf8dc83203bcad63d2f958f76b3d16f8e0640b"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/research_out/results/summary/FORMAL_TABLES.md.txt",
+      "bytes": 4644,
+      "sha256": "1f347154a23d896a07e8dce40cdf8dc83203bcad63d2f958f76b3d16f8e0640b"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/research_out/results/summary/wpC/summary.md.txt",
+      "bytes": 45297,
+      "sha256": "20016626445ed81b3919d8f3693e1ebdb69c1850dd8d18ad43a63aeebd730080"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/research_out/sections/wpA.md.txt",
+      "bytes": 5204,
+      "sha256": "44d678781d5b27d51ab7ac75d1c33255952ab74869c1200f06c92c99b6db9684"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/research_out/sections/wpB.md.txt",
+      "bytes": 7190,
+      "sha256": "74e10b77f97a176eedc082b6b7222fa86b4a0d0aaf95831be2ed6aeba8334498"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/research_out/sections/wpC.md.txt",
+      "bytes": 5234,
+      "sha256": "55c5fbe7ba7173d8a0825b0b6496c1d819505a1f884e281285bf19f90dd3731b"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/research_out/sections/wpG.md.txt",
+      "bytes": 4405,
+      "sha256": "acd55f3e0c9379b3bbc9dd1e1971578604f0b5b800e724d9bbf8904b7302cc5b"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/research_out/sections/wpH.md.txt",
+      "bytes": 6611,
+      "sha256": "b70ea8de58893693438523bfbcf5edcadc9d4235ad6509cb42bc4356e727b4b7"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/research_out/sections/wpS_T.md.txt",
+      "bytes": 9482,
+      "sha256": "f0d3a008ba3f8e3c45feb6cdd80574090d8b9da7a117084663af42eb2daa2dbe"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/ROADMAP.md.txt",
+      "bytes": 3050,
+      "sha256": "b7a86963983d491f38fb542749247587757f56bba6da42f1b4e8699818a9f2fb"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/RUNNING.md.txt",
+      "bytes": 2390,
+      "sha256": "c91cc0ed4eaec5d4326a84dccddd8ffd77c009464e7608c1d83b5caea97b3372"
+    },
+    {
+      "path": "history/packages/r9-research/docs/ordered-system-r9/START_HERE.md.txt",
+      "bytes": 2191,
+      "sha256": "f681fc16f925ab3552138fe1b23f7f381d90884a826fd335d513f1e9dade8f7b"
+    },
+    {
+      "path": "history/packages/README.md",
+      "bytes": 2840,
+      "sha256": "e4a980ccf081976a30c08b02bbaeed7fcb10d7e3d81f76ddd4abbbc5a488a335"
+    },
+    {
+      "path": "history/PROCESS_DISPOSITION.md",
+      "bytes": 11557,
+      "sha256": "26639bdd82f0be88b2260b6fbf9e4f7448f83cb4d6d91411f6966b43e3d67598"
+    },
+    {
+      "path": "history/R10_QUESTIONS.md",
+      "bytes": 11080,
+      "sha256": "0a267450943bb8d6fe98062dd8dc207d1a532a362182dcb3ee5d616ad0ec78ec"
+    },
+    {
+      "path": "HISTORY_INDEX.md",
+      "bytes": 9662,
+      "sha256": "504708871d5b80334dab904afa2690a12320469d3cc08b5dfc3be1994cd71422"
+    },
+    {
       "path": "README.md",
-      "bytes": 6827,
-      "sha256": "3a37744ced39321e1b5c30a0199f329d895d238901bc403fce07dd676e5c0d3a"
+      "bytes": 7724,
+      "sha256": "9ebf6d7f35d5068a478cbbd6a6496569b608cff3f167ebf29f979ce5981d56fd"
     }
   ]
 }

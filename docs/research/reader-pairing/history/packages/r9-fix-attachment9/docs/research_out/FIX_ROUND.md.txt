@@ -1,0 +1,28 @@
+# 修复轮（R9 定点补交）工作约定
+
+委托：在现有 R9 研究上做一次定点补交，使结果能被下一实现者可靠采用。修改限于 `research_out/`；
+R9 原始数据、原始输入和有效成果保留不动；新实验结果另存，不覆盖旧记录。
+
+## 目录与命名
+- 新代码：`candidates/fix<TAG>_*.py`；新测试：`tests/test_fix<TAG>*.py`；新 bench：`bench/bench_fix<TAG>.py`
+  （formal 接口同 `drive_formal.py`：SCENARIOS、CANDIDATES 或 FAMILY_CANDIDATES（[0]=incumbent）、run_one）。
+- 新原始数据：`results/raw/fix/<TAG>/...`；汇总：`results/summary/fix/<TAG>/...`；正文：`sections/fix_<TAG>.md`；
+  证明/反例：`proofs/fix_<TAG>.md`；覆盖片段：`coverage_parts/fix_<TAG>.csv`（列 = coverage.csv 全部列，含 audit_note）；
+  采用片段：`adoption_parts/fix_<TAG>.csv`；假设片段：`hypotheses_parts/fix_<TAG>.csv`。
+- 修复前被改动的 4 个文件原样保存在 `candidates/_r9_prefix/`（只读）。
+- 标签：LC（生命周期 D4 + 采用分类）、Q1（A04/B01/B05/D04/D05）、Q2（T04/X05/X30）、PH（证明审计 + 假设去重 + 对手负载）、
+  主会话（预算修复、D3 索引、正式计时、冻结与新留出、整合）。
+
+## 证据规则
+- 预算合同 BC-2（`candidates/budget.py`、`proofs/fix_budget.md`）对所有强路线生效；不得绕过。
+- 任何数字都必须能由已提交脚本从已保存原始文件复算；不得编造测量、PID、读数。
+- 未运行的项不得写成完成；概览不是完成。
+- D3 需要主会话三进程串行正式计时；分支只能写"D3 候选（待正式计时）"并提供 bench 模块。
+- D4 需要逐事件生命周期证据（发布确认、证明中事实变化、取消占槽到真实退出、rebind 与迟到结果/回调、
+  关闭后退出与释放、失效后拒绝旧证书并重新取得合法结果），并检查应完成的请求确实完成。
+- 两条研究路线必须是实质不同的算法/机制；测试方法、消融或与基线比较不能充当第二条路线。
+- 留出负载：冻结候选代码、参数与指纹之后由主会话生成新种子；此前查看过的留出结果一律降为开发证据。
+- 虚拟服务单位 u 不换算毫秒，不与本机 ns 相加；结构条目 ≠ 实际字节 ≠ 累计分配 ≠ 墙钟。
+
+## 资源
+2 vCPU。分支每次运行加 `timeout`（≤300 s），同一时刻至多一个重计算进程，不做正式计时，不 sleep。

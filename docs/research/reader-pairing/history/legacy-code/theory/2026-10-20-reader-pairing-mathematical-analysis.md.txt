@@ -1,0 +1,251 @@
+# 双页配对算法：信息下界、入口精化与有界实验
+
+日期：2026-10-20。范围：保持现有完整事实 `canonicalPlan` 输出的路线 A。
+
+**结论：存在可验证的保守认证冗余；先精化已知强制单页边界处的不可达入口，比直接重写配对规则或实现摘要树更有依据。它不能消除真正的信息缺口，也尚未证明端上体验收益。**
+
+## 1. 结论等级与本轮边界
+
+| 等级 | 本轮结论 | 限制 |
+|---|---|---|
+| 源码推导 | 强制单页的 hard veto 禁止跨越该页的配对；可排除对应的左侧已占用入口 | 不排除从正常入口自然产生的单页后继 |
+| 数学论证 | 相同已观察事实可能对应不同目标成员与槽位；完整扫描可用五个控制态表示 | 物理可能世界、manual 预处理和标签成本必须计入 |
+| 真实规则实验 | 6 页有效持久手动边界下，现认证器请求一个不影响目标的缺失 edge；隔离候选无需它即可认证 | 容量 2 的真实 owner 状态；不是默认容量 16 的 6 页运行证据 |
+| 有界实验 | 1,232 个持久记录合法的配对状态中 16 个由待事实变为认证，原 1,162 个认证均保持正确 | 完整规则 API 域为 1,536；不是所有像素、所有手动记录或所有章节的穷举 |
+| 未证 | 默认运行时收益、端上失效接线、无可感知新增等待、完整 UI 生命周期 | 不宣布修复、CP1 完成、发布就绪或用户验收 |
+
+本轮只新增本报告与两份研究源，没有修改产品源码、配对参数或持久格式。
+三个文件共数百行构成一个内聚研究实验：报告解释命题，runner 隔离调用真实源码，夹具固定可执行断言；不按机械行数拆包。
+未运行 Gradle、完整模块测试、全量测试、应用打包、设备、网络下载或性能验收。
+已完成一轮只读独立核验，范围为入口覆盖、实验一致性与 19 页 owner 状态推导；不把有界实验冒充一般正确性证明。
+实验由 GPT-6.1 Sol medium 完成，GPT-6 Luna xhigh 独立核验，主代理整合关键论证；未扩展为 UI 或完整 certifier 审查。
+
+## 2. 基线、隔离与可复现证据
+
+最终实验基线 HEAD：`05dd84c95d27df89ded79d229d9b00d809603722`。
+该工作树同时存在其他未提交改动；HEAD 不能单独标识本次实际输入。
+先前 4 例实验使用了旧认证器；本报告数字来自当前源码全部重跑，未复用旧通过结果。
+
+环境为 Windows、JDK 21、本地缓存 Kotlin compiler 2.3.20。
+编译进程：heap 768 MiB、metaspace 256 MiB、60 秒截止；研究 JVM：heap 256 MiB、metaspace 128 MiB、60 秒截止。
+baseline 与 candidate 串行运行，没有应用 runtime、UI 或 IO 吞吐量测量。
+
+运行入口：[研究 runner](../scripts/reader-pairing-math/run.py)；夹具与断言：[Kotlin main](../scripts/reader-pairing-math/PairingMathExperiment.kt)。以下是在记录基线上复跑：
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$env:PYTHONUTF8 = '1'
+$env:PYTHONIOENCODING = 'utf-8'
+$env:PYTHONDONTWRITEBYTECODE = '1'
+python scripts/reader-pairing-math/run.py
+```
+
+仅使用已有 compiler cache 与已有 `domain/build/libs/domain-jvm.jar`，缺失即失败，不下载、不补建应用。
+12-source 基线含受保护未提交内容，尤其 `ReaderPairingReadSet.kt` 尚未提交；本轮只提交三个研究文件。
+仅 checkout 本研究提交不保证能运行或得到相同结果；复跑须核对下表源 SHA、已有 jar 与缓存工具。
+runner 对缺失依赖 fail-fast，不自动下载、不用 HEAD 中的旧源替代；源 SHA 不匹配时不能引用本轮通过结果。
+新 classes 在运行 classpath 中排在旧 jar 前；以下 12 份真实 production 源重新编译：
+
+| 文件（位于 `domain/src/commonMain/kotlin/mihon/domain/reader/`） | SHA-256 |
+|---|---|
+| ReaderCanonicalPairingScan.kt | `37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf` |
+| SharedDualPageRules.kt | `252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755` |
+| ReaderPairingCertification.kt | `8cfd9fef0c992c479ffc448b10574c2b6c24da82602b696b0a2a95ed82ffd95b` |
+| SharedSpreadMatching.kt | `7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af` |
+| ReaderSpreadSamplesOwner.kt | `d18bbb64887740ec442d63f121357b29dbec65c2a2ce42ca5581eb0a7e58c23a` |
+| ReaderOriginalPageSampling.kt | `05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0` |
+| ReaderPortraitSingleSlot.kt | `5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb` |
+| PageTransform.kt | `3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f` |
+| ReaderImageOrientation.kt | `77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb` |
+| ReaderDualPageFactLimits.kt | `bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5` |
+| ReaderPairingReadSet.kt | `da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb` |
+| ChapterPairingRepository.kt | `84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba` |
+
+旧外围 jar SHA-256：`7685510f51bffb5bd9ceb41d7c42fb224e4e01e9002657d949a64d877434db3d`。
+它仅提供 `ReaderChapterId`、`ReaderPageId`、内容/章节 identity、`ReaderDirection`、`ReaderPageSize` 等外围生产类型。
+`ReaderPairingAdjustment` 只为重新编译 repository 的未调用接口提供类型；不调用 Session、repository 持久化或平台逻辑。
+已用 `javap` 读取外围签名并与定义核对；没有证明旧 jar 全部实现与当前源码一致。
+因此结论限定为上述新编译算法路径，不能作为产品 integration/runtime 通过证据。
+
+ignored 过程产物统一位于 `.gradle/reader-pairing-math/`：
+
+- `manifest.json`：HEAD、核心源与外围源指纹、jar/工具指纹、资源上限、隔离 patch。
+- `baseline/candidate-compile.log`、`baseline/candidate-run.log`：实际编译和运行输出。
+- `baseline.json`、`candidate.json`：全部状态结果；`result.json`：对照摘要与关键夹具。
+- `candidate.patch`、`candidate-source/`、两套 classes：可检查的隔离变体；不提交这些产物。
+
+编译前后、每次运行前后均核对核心源及外围 jar；漂移写 `SOURCE_CHANGED` 并中止归纳。
+最终这 12 源与旧 jar 前后稳定；两次编译日志无诊断；总编译与研究运行耗时 29.074 秒。
+该秒数只是研究工具耗时，不能用来评价阅读延迟。
+
+## 3. 用户要求的形式化
+
+令版本 `v` 包括源页清单、实际内容身份、分析版本、方向/旋转、自动开关、开篇与有效手动意图。
+完整输入为 `X_v`；全章确定分区为 `Γ(X_v)`，输出包含相邻成员、物理槽位与结构性单页原因。
+目标源页 `t` 的投影 `π_t Γ` 不能只记录是否双页；同成员不同左右仍是不同结果。
+
+- **U1 一致性**：同一 `X_v`，顺读、倒读、跳页和重开得到同一目标投影，含首次真实呈现。
+- **U2 体验**：新增必要分析计入意图到正确像素/完整单元的总耗时；以冷/热及尾延迟分布实测，没有本轮自定的统一毫秒阈值。
+- **U3 曝光稳定**：ticket 与 `v`、源页身份、成员/槽位关联；后台事实迟到不能移动当前页、邻屏露出页或已画单侧。
+- **U4 能力保持**：宽图完整可达、普通双页、自动识别、手动恢复、逐页状态/重试/缩放及真实进度均保留。
+- **U5 生命周期**：新内容、清单、方向/旋转、手动设置令相关事实/证书/权限失效；不能把同输入下的迟到分析伪称新版本。
+
+知识 `K` 区分未分析、Computed UNKNOWN、Computed edge(null)、失败与样本已淘汰。
+令 `Ω(K)` 为满足已知事实且物理上可实现的完整输入；可靠显示要求：
+
+```text
+{ π_t Γ(X) | X ∈ Ω(K) } 只有一个元素。
+Progress(event) ⊆ Drawn(event.ticket)。
+```
+
+显示邻屏也需对应证书。预取完成、同对伙伴或手势瞬间曝光，不自动产生已读。
+独立枚举互不兼容的 side/edge 值会制造假世界；过近似可安全但保守，不能当精确的信息下界。
+现有源码入口：[完整计划](../domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageRules.kt#L118)、[认证与依赖校验](../domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt#L88)。
+
+## 4. 完整扫描的五态表示与条件性组合
+
+以源位置 `i` 为外部索引，正规控制态是 `(opening, reservedNow)` 的四种布尔组合。
+第五态 `S` 表示当前页已作为前一个 pair 的第二页被消费；在该位置不重复输出，下一位置为 `(false,false)`。
+正规态调用真实 `scan.step(cursor(i, opening, reservedNow ? i : -1))`：
+
+1. 输出 pair(i,i+1)：下一源位置置 `S`；该 pair 的物理槽由 direction 决定。
+2. 输出 singleton(i)：下一状态取 `next.opening` 与 `next.reservedStart == i+1`。
+3. 旧 reservation 小于新 index 时不再生效，归一为 false。
+
+初始扫描态是位置 0 的 `(true,false)`；终止边界附加处理。
+完整输入上的 `step` 只比较 reservation 是否等于当前 index，故可归一旧整数值；不丢弃真实原子预留。
+参见 [cursor/step](../domain/src/commonMain/kotlin/mihon/domain/reader/ReaderCanonicalPairingScan.kt#L5)。
+
+固定完整且一致的标签时，每个位置是确定转移，分段函数复合具有结合律。
+标签需含邻接几何、页侧、竞争 edge、forced、有效 manual、方向/开篇/自动设置；几何单页原因还读取前邻宽图。
+**manual 不是天然局部标签**：[manual()](../domain/src/commonMain/kotlin/mihon/domain/reader/ReaderCanonicalPairingScan.kt#L32) 会沿连续 starts 链回溯。
+必须先处理有效性/重叠与该链的前置上下文，再把它视为已知标签。
+
+可选分段结构只存五态的入口→出口函数，不把长输出列表复制到每个树节点。
+查询目标前态后，再从相应前一位置调用真实 step 重建目标 unit；若遇 `S`，恢复其左侧 pair。
+令一次标签求值成本为 `T_label`，一次事实或上下文变化影响 `M` 个标签。
+在标签求值可控且影响集合可确定的前提下，建表成本为 `O(n*T_label+5n)`，更新为 `O(M*T_label+5M log n)`，前态查询为 `O(log n)`。
+只有 `M=O(1)` 且标签已知或求值足够便宜时，才能收窄为局部更新的对数界；长 manual 链、页清单、方向或开篇变化可能使 `M=Ω(n)`。
+五态是充分表示候选，没有证明它是最小状态数。
+显式输出 `K` 个变化单元至少需要 `Ω(K)`，不能把惰性查询界限用作整章 pager 更新界限。
+未知标签的关系 union 必须保持跨页相关性；本轮未实现状态树，也未证明部分信息关系是精确的 `Ω(K)`。
+
+## 5. 真实信息缺口：两个世界与远距离相位
+
+下界夹具为 `[O,A,B,C,D]`，目标 B；已观察其余页，A 的几何和原始分析都未知。
+所有图像采用实际可实现的常灰像素平面：纵图 256×384，宽图 512×384；真实 sampling 产生 UNKNOWN side 与无匹配 edge。
+使用同一页面序列与设置，完整世界只改变 A 的内容几何：
+
+| 世界 | 完整分区 | RTL 的目标 B | LTR 的目标 B |
+|---|---|---|---|
+| A 为纵图 | `[O] [A,B] [C,D]` | LEFT，伙伴 A | RIGHT，伙伴 A |
+| A 为宽图 | `[O] [A] [B,C] [D]` | RIGHT，伙伴 C | LEFT，伙伴 C |
+
+四例均运行真实 canonical 与 certifier：全事实认证等于 oracle，partial 都返回 A 的事实需求。
+代码比较排除 A 后的实际观察 map 完全相等；不把内容标识的字符串当成已读取的图像信息。
+本实验 `contentVersion` 是逻辑资源/代次标签，不是已观察且可反查像素的字节 hash；该下界限定此知识状态。
+若未来持久 hash、header 或索引已向决策器暴露相关事实，应重建 `Ω(K)`，不能套用本例的初始知识状态。
+在不能区分这两个世界时，无论计算多快，都不能普遍正确地立即锁定 B 的成员/槽位。
+该结论只适用 A 的决定性几何确实未知的知识状态；header 已可用时需重新分析剩余像素歧义。
+
+还可从源码归纳长普通串的相位下界，以下为论证，未运行任意长枚举：
+固定 `FIRST_PAIR`，除 p0 外全纵页、side UNKNOWN、edge Computed(null)，无显式 manual/forced。
+世界 A 的 p0 纵向，隐式 start0 有效，输出 `(0,1),(2,3),(4,5)…`；世界 B 的 p0 是宽图，输出 `[0],(1,2),(3,4)…`。
+geometry hard veto 优先于开篇 pair；普通平局保持 near，因此两条相位可延伸到任意远处。
+对足够远的偶数目标 t，两世界任意固定半径内的局部图像标签可相同，目标成员/槽位仍不同。
+这否定“无前态摘要、无前缀信息也总能用固定邻窗求解”，不否定缓存前态、必要取证或正常加载期间的分析。
+
+## 6. 推荐候选：只剪已知 hard boundary 的不可达入口
+
+当前有限入口枚举包含 `(first+1,false)`，表示 first 已被左邻配走。
+[入口枚举](../domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt#L350) 在检查左边界前先汇总候选事实需求。
+故一个不可能的入口也可能使现实现提前返回 NeedFacts，尚未走到后面的边界证明。
+
+隔离候选只改变该入口的加入条件：
+
+```kotlin
+if (pages[first - 1] !in settings.forcedSinglePages &&
+    pages[first] !in settings.forcedSinglePages
+) {
+    add(ReaderPairingScanCursor(first + 1, false))
+}
+```
+
+它位于 `first>0` 分支，索引有效；其余 certifier 源码逐字不变，精确 diff 写入 ignored `candidate.patch`。
+不调用 `scan.allowed`，所以不会为了剪枝增加 header/analysis/edge 查询。
+[allowed()](../domain/src/commonMain/kotlin/mihon/domain/reader/ReaderCanonicalPairingScan.kt#L59) 在 manual 与 side/edge 前直接检查两端 forced。
+因此 hard boundary 下，真实全章扫描不可能由 pair(first−1,first) 把 first 消费。
+记真实可达入口为 `R`，剪枝后保留入口为 `E′`。固定页序、setting 与版本 v，step 的 index 只增加 1 或 2。
+任一 forced 端点使 edge(first−1) 硬禁止，真实轨迹不能用该 pair 跨过 first，因此必到达 first。
+到达时的 opening/reservedNow 由保留的四个正规态覆盖，故 `R⊆E′`；这里只需覆盖，不要求四态都实际可达。
+保留正常 `(first,opening)` 路径输出 singleton 后自然到 first+1 的后继；沿确定且单调的 step 归纳，真实目标路径不会因删独立入口丢失。
+其余入口与向左扩展不变。沿用现 scan、缺失事实与依赖判定可靠的前提，缩小入口集合不新增不可靠认证。
+入口覆盖与实验一致性已完成一轮只读独立核验；这不背书整个 certifier、readset 或 UI 生命周期，不能仅凭 1,536 例宣布全部完成。
+
+## 7. 核心 6 页反例与精确实验域
+
+以下全部使用 **0-based** 页号；6 页均纵图，LTR/AUTO/automatic=true。
+有效持久记录 forced={p1}；p2 由“右侧白、左侧灰”的实际像素得 LEFT，其余灰像素得 Computed UNKNOWN。
+新编译的 `ChapterPairingRecord.isValidFor(6)` 实际返回 true。
+真实 owner 容量 2，按 `0,3,4,2,1,5` 接受原始样本；不反射改字段、不删除已有 score。
+接受 p3,p4 时生成 edge(3,4)=Computed(null)；随后 p4 样本被逐出；接受 p5 时 p4 不驻留，edge(4,5)从未计算。
+各页 Computed side 均保留；[样本淘汰](../domain/src/commonMain/kotlin/mihon/domain/reader/ReaderSpreadSamplesOwner.kt#L142) 本身不会删除既有 score。
+
+| 对照 | 目标 p4 的结果 |
+|---|---|
+| 完整 canonical | `[0] [1] [2,3] [4,5]`；p4 LEFT，p5 RIGHT |
+| 当前 certifier | 唯一缺口 `NeedFacts: EDGE_SAMPLES(p4,p5)` |
+| 隔离 force 剪枝 | `Certified: [p4 LEFT,p5 RIGHT]`；完整 unit 等于 oracle，isCurrent 通过 |
+
+原因：first=2，真实在 p2 因 LEFT 的强度选择 p2,p3，尾对 p4,p5 无需竞争 edge。
+假入口 first+1=3 却比较 edge(3,4) 与缺失 edge(4,5)；p1 强制单页已经排除了“p2 被 p1 配走”。
+5 页同型例 forced={p0} 是更小规则 API 例，但真实 `isValidFor(5)` 返回 false；不宣称用户可将封面强制单页持久化。
+容量 2 是真实 owner 支持的状态；默认 16 在本轮短章节不会出现这一淘汰缺口。
+默认容量 16 可作如下 owner 状态嵌入论证；这是源码推导，未越过 8 页上限运行：
+19 页全纵图、forced={p14}、LTR，p15 为 LEFT，其他页 UNKNOWN；target=p17，first=15。
+先接受 p16,p17 的真实灰色原始样本，生成 edge(16,17)=Computed(null)；再接受互异新页 p0…p15。
+按当前 owner 的插入与 capacity 策略，这 16 个新页使 p17 样本逐出；其 Computed side 和已存 edge(16,17)保留。
+最后首次接受 p18；p17/p18 从未样本共驻，故 edge(17,18) 未计算，而全部 side 标量已知。
+真实入口先 pair(15,16)，再尾 pair(17,18)，缺失 edge 不影响目标；假入口 16 仍会请求它。
+此 owner 状态推导已完成一轮只读独立核验；不要求任意 LRU 都相同，也不代表端上导航/调度已经执行了这个事件串。
+
+精确枚举域是 `4×2×2×3×32 = 1,536` 个状态：
+
+- 页数 5/6/7/8；LTR/RTL；样本容量 2/16；三种开篇模式。
+- 最后五页的全部 32 个 forced 子集；更早前缀不 forced；无显式 manualPairStarts。
+- 最后五页中 local1 为方向对应 leading，其他页 UNKNOWN；全纵图；target=n−2。
+- 原始接收顺序为更早前缀，随后 local `2,3,1,0,4`；完整 oracle owner 保留全部样本。
+
+baseline/candidate 各运行该域及 4 个信息下界例，共各 1,540 例；配对比较分母为 1,536。
+任一 Certified 均断言完整 data-class unit 等于 oracle（含 certainty/reason/成员/槽位），并检查 isCurrent。
+所有 baseline 已认证项在 candidate 中仍为同一认证输出。
+
+| baseline→candidate | 全域 | 其中持久记录合法域（1,232） |
+|---|---:|---:|
+| NeedFacts→Certified | 24 | 16 |
+| NeedFacts→NeedFacts | 72 | 54 |
+| Certified→Certified | 1,440 | 1,162 |
+
+未覆盖：任意像素、真实匹配 edge、畸形/失败事实、显式重叠 manual、宽图与剪枝交互、内容/方向变更、UI 与平台接线。
+
+## 8. 成本、替代候选与后续门槛
+
+已证实收益是上述状态少一个不影响目标的 edge 需求；没有测出减少多少真实读取、字节、decode、毫秒或内存。
+默认 16 短章节对照也全部保留；这不是收益为零或所有实际章节均有收益的证据。
+
+| 方案 | 依据与成本 | 本轮选择 |
+|---|---|---|
+| forced-only 入口剪枝 | 零额外事实查询，固定集合检查，已找到严格冗余 | 推荐下一步最小工程候选 |
+| 同输入认证复用 | 必须保留实际读取值及负向/缺失事实，验证成本按 readset 计 | 与剪枝互补；本轮不实现 memo |
+| 可组合区间摘要 | 减少重复扫描，需计首次构建、manual 传播和显式输出 | 五态表示有依据，收益未实测；不先建树 |
+| 按分歧查询事实 | 只取能改变目标投影的事实，可能更少 IO | 成本/分布/可能世界相关性未证明；不宣称贪心最优 |
+
+失效必须检查内容身份、清单、方向/旋转、开篇/手动版本、side/edge/缺失值与 owner 生命周期。
+已有 [readset](../domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingReadSet.kt) 是并行工作，本轮仅因当前 certifier 类型依赖重新编译，不给其新增正确性背书。
+剪枝用到的 forced 集合是 settings 依赖；不能在复用时只比较正向 edge，漏掉边界或曾经缺失的事实。
+认证结果还必须进入真实呈现 ticket/邻屏曝光/导航/进度链路，算法实验没有覆盖这些 integration 点。
+
+下一步尚未执行的最小工作是生产 focused 红绿测试，以及对应 settings/失效/wiring 回归。
+之后按实际受影响路径测同内容冷/热和迟到样本，记录 intent→正确首像素、完整 unit、尾延迟及总 IO/CPU；这些真实体验测量尚未执行。
+若发现 hard boundary 下 first 仍能被左 pair 消费、baseline 认证退化、side/edge 相关性反例、负向依赖遗漏或测得收益被新成本抵消，应撤回或收窄推荐。
+当前结果不批准新配对语义，不改变 U1–U5，不代替用户验收。

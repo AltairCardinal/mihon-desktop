@@ -1,0 +1,914 @@
+{
+  "comparedMain": "6b5831c64dd9f09a7d79c93fac9a75a548c740fa",
+  "oldTreeHeads": {
+    "reader-pairing-research-next-20261014": "68a5575932d9cf9579e21ceebd7c0a5ed71cb5fc",
+    "reader-pairing-main-20261013": "f38e0f9f9854daa8f09f6b52c22a2cb6476d45f6"
+  },
+  "excludedUserChange": "research-next AppVersion.kt intentionally untouched and not archived",
+  "originalObjects": {
+    "research-next/working/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt",
+      "sha256": "f94eb4afde8e9f61c85d0308df95d247966a6b5f47e964d9177882c2c1a9242d"
+    },
+    "research-next/base/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt.txt": {
+      "kind": "git-blob",
+      "tree": "reader-pairing-research-next-20261014",
+      "commit": "68a5575932d9cf9579e21ceebd7c0a5ed71cb5fc",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt"
+    },
+    "research-next/working/scripts/reader-pairing-math/run.py.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": "scripts/reader-pairing-math/run.py",
+      "sha256": "533ce384b02b9e1b7c61f0e06e3852f0194391fb85cdff6f5459da21f2d5043a"
+    },
+    "research-next/base/scripts/reader-pairing-math/run.py.txt": {
+      "kind": "git-blob",
+      "tree": "reader-pairing-research-next-20261014",
+      "commit": "68a5575932d9cf9579e21ceebd7c0a5ed71cb5fc",
+      "path": "scripts/reader-pairing-math/run.py"
+    },
+    "research-next/working/docs/2026-10-22-reader-pairing-implementation-and-measurement.md.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": "docs/2026-10-22-reader-pairing-implementation-and-measurement.md",
+      "sha256": "0835cce47565ba8af5fdff1fd928bdc9b6750f0a9d48271a6b84c731b6104208"
+    },
+    "research-next/working/domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingReachableEntryPruneTest.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingReachableEntryPruneTest.kt",
+      "sha256": "494b9dd08a942a5fdcb21ca883d11c717b12ef62b7daf5e7ba20fe1a9392e4cd"
+    },
+    "research-next/working/domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingTestPixels.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingTestPixels.kt",
+      "sha256": "7154f949ff753f57ca50ed6dda04195ddd64f10b32092df065b9facc5c71601a"
+    },
+    "research-next/working/scripts/reader-pairing-math/PairingImplementationExperiment.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": "scripts/reader-pairing-math/PairingImplementationExperiment.kt",
+      "sha256": "74d5ee76b8fe394121ba8cba57c867b2f67913e9ba43cbaefbc4fbb13ec9c69d"
+    },
+    "research-next/working/scripts/reader-pairing-math/PairingQueryCounters.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": "scripts/reader-pairing-math/PairingQueryCounters.kt",
+      "sha256": "32c7c4ae21a1c58a64560a3accd3c1698e3911221d692eb52c8bb4d77e0f3bfe"
+    },
+    "research-next/uncommitted.patch": {
+      "kind": "tracked-dirty-diff",
+      "tree": "reader-pairing-research-next-20261014",
+      "baseHead": "68a5575932d9cf9579e21ceebd7c0a5ed71cb5fc",
+      "untrackedFiles": "preserved separately as working snapshots"
+    },
+    "desktop-maintenance/working/app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-main-20261013",
+      "path": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt",
+      "sha256": "e65b022dcdbb472ba692831b7a7c76e1b38b3a575867971a038244f4801625b0"
+    },
+    "desktop-maintenance/base/app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt.txt": {
+      "kind": "git-blob",
+      "tree": "reader-pairing-main-20261013",
+      "commit": "f38e0f9f9854daa8f09f6b52c22a2cb6476d45f6",
+      "path": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt"
+    },
+    "desktop-maintenance/working/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/AdaptiveReaderViewportTest.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-main-20261013",
+      "path": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/AdaptiveReaderViewportTest.kt",
+      "sha256": "89903625aeba5198891a8ace307ae20a5dc6918ca0a3755d6c36d4648d9070f0"
+    },
+    "desktop-maintenance/base/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/AdaptiveReaderViewportTest.kt.txt": {
+      "kind": "git-blob",
+      "tree": "reader-pairing-main-20261013",
+      "commit": "f38e0f9f9854daa8f09f6b52c22a2cb6476d45f6",
+      "path": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/AdaptiveReaderViewportTest.kt"
+    },
+    "desktop-maintenance/working/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DefaultReaderModeTest.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-main-20261013",
+      "path": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DefaultReaderModeTest.kt",
+      "sha256": "8897e7e46da6f672807e68cad3f3a7f62110775d7bd1a78a735ad3b827601a6f"
+    },
+    "desktop-maintenance/base/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DefaultReaderModeTest.kt.txt": {
+      "kind": "git-blob",
+      "tree": "reader-pairing-main-20261013",
+      "commit": "f38e0f9f9854daa8f09f6b52c22a2cb6476d45f6",
+      "path": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DefaultReaderModeTest.kt"
+    },
+    "desktop-maintenance/working/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/SharedDualPageDesktopWiringTest.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-main-20261013",
+      "path": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/SharedDualPageDesktopWiringTest.kt",
+      "sha256": "92181cb85c3e7de05cd92df1fc2cb6de5e2bd582eaed4f2155bfddd0e9939646"
+    },
+    "desktop-maintenance/base/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/SharedDualPageDesktopWiringTest.kt.txt": {
+      "kind": "git-blob",
+      "tree": "reader-pairing-main-20261013",
+      "commit": "f38e0f9f9854daa8f09f6b52c22a2cb6476d45f6",
+      "path": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/SharedDualPageDesktopWiringTest.kt"
+    },
+    "desktop-maintenance/working/docs/evidence/reader-pairing-research-2026-10-12.md.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-main-20261013",
+      "path": "docs/evidence/reader-pairing-research-2026-10-12.md",
+      "sha256": "c2990f4f394d3d5364a340b179b94828427c28033fcf93ecbaf1d3580b5429f2"
+    },
+    "desktop-maintenance/base/docs/evidence/reader-pairing-research-2026-10-12.md.txt": {
+      "kind": "git-blob",
+      "tree": "reader-pairing-main-20261013",
+      "commit": "f38e0f9f9854daa8f09f6b52c22a2cb6476d45f6",
+      "path": "docs/evidence/reader-pairing-research-2026-10-12.md"
+    },
+    "desktop-maintenance/uncommitted.patch": {
+      "kind": "tracked-dirty-diff",
+      "tree": "reader-pairing-main-20261013",
+      "baseHead": "f38e0f9f9854daa8f09f6b52c22a2cb6476d45f6",
+      "untrackedFiles": "preserved separately as working snapshots"
+    },
+    "desktop-maintenance/current-main/app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-r1-r10-reevaluation-20261101",
+      "path": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt",
+      "sha256": "e87afef87a404edf213dbc7c30c6c804ae9d7a890ae0d8f876f7172dfe2536de"
+    },
+    "desktop-maintenance/comparison/DesktopReaderSessionIntegrationTest.kt.diff.txt": {
+      "kind": "read-only-working-to-current-main-diff",
+      "comparedMain": "6b5831c64dd9f09a7d79c93fac9a75a548c740fa"
+    },
+    "desktop-maintenance/current-main/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/AdaptiveReaderViewportTest.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-r1-r10-reevaluation-20261101",
+      "path": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/AdaptiveReaderViewportTest.kt",
+      "sha256": "aa10f05013d3feb50df97a41c58e0cf3e9ba1bafddbe2fe1160c82731a41b0a7"
+    },
+    "desktop-maintenance/comparison/AdaptiveReaderViewportTest.kt.diff.txt": {
+      "kind": "read-only-working-to-current-main-diff",
+      "comparedMain": "6b5831c64dd9f09a7d79c93fac9a75a548c740fa"
+    },
+    "desktop-maintenance/current-main/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DefaultReaderModeTest.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-r1-r10-reevaluation-20261101",
+      "path": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DefaultReaderModeTest.kt",
+      "sha256": "527484895b3ef3d3200fd857220b92322019b212bac3de46bdbe22cfe236119e"
+    },
+    "desktop-maintenance/comparison/DefaultReaderModeTest.kt.diff.txt": {
+      "kind": "read-only-working-to-current-main-diff",
+      "comparedMain": "6b5831c64dd9f09a7d79c93fac9a75a548c740fa"
+    },
+    "desktop-maintenance/current-main/app-desktop/src/test/kotlin/mihon/desktop/ui/reader/SharedDualPageDesktopWiringTest.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-r1-r10-reevaluation-20261101",
+      "path": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/SharedDualPageDesktopWiringTest.kt",
+      "sha256": "75894a171c85f324fd83749f691352ef6aa1c58fda19934b75ecb39587affcdc"
+    },
+    "desktop-maintenance/comparison/SharedDualPageDesktopWiringTest.kt.diff.txt": {
+      "kind": "read-only-working-to-current-main-diff",
+      "comparedMain": "6b5831c64dd9f09a7d79c93fac9a75a548c740fa"
+    },
+    "theory/2026-10-20-reader-pairing-full-algorithm-mathematical-model.md.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": "docs/2026-10-20-reader-pairing-full-algorithm-mathematical-model.md",
+      "sha256": "88444cd472e1a83bc92e111ca9a08eab20d8e44d0a51511b755987174e7d2b75"
+    },
+    "theory/2026-10-20-reader-pairing-mathematical-analysis.md.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": "docs/2026-10-20-reader-pairing-mathematical-analysis.md",
+      "sha256": "75e428e889dfde99cac3a97ad16aa112b3cfe360731111c80f6473219329fda8"
+    },
+    "theory/2026-10-21-reader-pairing-mathematical-analysis-round2.md.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": "docs/2026-10-21-reader-pairing-mathematical-analysis-round2.md",
+      "sha256": "2aebc04b741fea6db438200cc195acf7f8730880471f96ec9803733ac1d35161"
+    },
+    "theory/2026-10-21-reader-pairing-mathematical-analysis-round3.md.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": "docs/2026-10-21-reader-pairing-mathematical-analysis-round3.md",
+      "sha256": "20bf13626f912662bce55f80116d8db909c8b442838192f0859f5f7e92b50748"
+    },
+    "theory/2026-10-22-reader-pairing-mathematical-analysis-round4.md.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": "docs/2026-10-22-reader-pairing-mathematical-analysis-round4.md",
+      "sha256": "61fc52411b96da7cd6c2de2bf91e0e5a8cc2c8dba2ded1c1a0d8407d598547ef"
+    },
+    "theory/2026-10-22-reader-pairing-mathematical-analysis-round5.md.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": "docs/2026-10-22-reader-pairing-mathematical-analysis-round5.md",
+      "sha256": "2edf3f585353469a69a51790aff14c95f860ecccdcd7c1967e262be482c1b96f"
+    },
+    "math-tools/PairingConfluenceExperiment.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": "scripts/reader-pairing-math/PairingConfluenceExperiment.kt",
+      "sha256": "33391e7bcb6765ffbe16e0cadaf4fad8808f5eacd75ecb43583a230b918a4673"
+    },
+    "math-tools/PairingDemandExperiment.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": "scripts/reader-pairing-math/PairingDemandExperiment.kt",
+      "sha256": "dd834f581b741b5baa17d3433e0efe72c63c706675b1aa26cb8833a9cc65bd2c"
+    },
+    "math-tools/PairingEvidenceExperiment.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": "scripts/reader-pairing-math/PairingEvidenceExperiment.kt",
+      "sha256": "f124109c99d17339e63dda118a7fab14c4a13c41e63c9d973148b2aff4fac9f0"
+    },
+    "math-tools/PairingFunctionExperiment.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": "scripts/reader-pairing-math/PairingFunctionExperiment.kt",
+      "sha256": "00d21a762e1ed71de06c53dc04585f99046242f07efe7db255c6c8071e555a13"
+    },
+    "math-tools/PairingImplementationExperiment.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": "scripts/reader-pairing-math/PairingImplementationExperiment.kt",
+      "sha256": "74d5ee76b8fe394121ba8cba57c867b2f67913e9ba43cbaefbc4fbb13ec9c69d"
+    },
+    "math-tools/PairingMathExperiment.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": "scripts/reader-pairing-math/PairingMathExperiment.kt",
+      "sha256": "d7fb440c1481c6a1504f02834745d75fd4bd8d0ee73d0306b8ca95375e98ebbe"
+    },
+    "math-tools/PairingQueryCounters.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": "scripts/reader-pairing-math/PairingQueryCounters.kt",
+      "sha256": "32c7c4ae21a1c58a64560a3accd3c1698e3911221d692eb52c8bb4d77e0f3bfe"
+    },
+    "math-tools/run.py.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": "scripts/reader-pairing-math/run.py",
+      "sha256": "533ce384b02b9e1b7c61f0e06e3852f0194391fb85cdff6f5459da21f2d5043a"
+    },
+    "math-tools/run_confluence.py.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": "scripts/reader-pairing-math/run_confluence.py",
+      "sha256": "2a2abb5c552391379f3f2b5c4c4bfcf2e84ef8fd7b938920ffd56bd769fd26f9"
+    },
+    "math-tools/summarize.py.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": "scripts/reader-pairing-math/summarize.py",
+      "sha256": "c05dd6bb364f79308f12477d27c668296add59ed14b57f6be5106a041bf7716f"
+    },
+    "baseline-3d524/ReaderCanonicalPairingScan.kt.txt": {
+      "kind": "git-blob",
+      "commit": "3d52489d944485835846bc1e5b3160aa71a8e7c3",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderCanonicalPairingScan.kt"
+    },
+    "baseline-3d524/SharedDualPageRules.kt.txt": {
+      "kind": "git-blob",
+      "commit": "3d52489d944485835846bc1e5b3160aa71a8e7c3",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageRules.kt"
+    },
+    "baseline-3d524/ReaderPairingCertification.kt.txt": {
+      "kind": "git-blob",
+      "commit": "3d52489d944485835846bc1e5b3160aa71a8e7c3",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt"
+    },
+    "baseline-3d524/SharedSpreadMatching.kt.txt": {
+      "kind": "git-blob",
+      "commit": "3d52489d944485835846bc1e5b3160aa71a8e7c3",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/SharedSpreadMatching.kt"
+    },
+    "baseline-3d524/ReaderSpreadSamplesOwner.kt.txt": {
+      "kind": "git-blob",
+      "commit": "3d52489d944485835846bc1e5b3160aa71a8e7c3",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderSpreadSamplesOwner.kt"
+    },
+    "baseline-3d524/ReaderOriginalPageSampling.kt.txt": {
+      "kind": "git-blob",
+      "commit": "3d52489d944485835846bc1e5b3160aa71a8e7c3",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderOriginalPageSampling.kt"
+    },
+    "baseline-3d524/ReaderPortraitSingleSlot.kt.txt": {
+      "kind": "git-blob",
+      "commit": "3d52489d944485835846bc1e5b3160aa71a8e7c3",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPortraitSingleSlot.kt"
+    },
+    "baseline-3d524/PageTransform.kt.txt": {
+      "kind": "git-blob",
+      "commit": "3d52489d944485835846bc1e5b3160aa71a8e7c3",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt"
+    },
+    "baseline-3d524/ReaderImageOrientation.kt.txt": {
+      "kind": "git-blob",
+      "commit": "3d52489d944485835846bc1e5b3160aa71a8e7c3",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderImageOrientation.kt"
+    },
+    "baseline-3d524/ReaderDualPageFactLimits.kt.txt": {
+      "kind": "git-blob",
+      "commit": "3d52489d944485835846bc1e5b3160aa71a8e7c3",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderDualPageFactLimits.kt"
+    },
+    "baseline-3d524/ReaderPairingReadSet.kt.txt": {
+      "kind": "git-blob",
+      "commit": "3d52489d944485835846bc1e5b3160aa71a8e7c3",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingReadSet.kt"
+    },
+    "baseline-3d524/ChapterPairingRepository.kt.txt": {
+      "kind": "git-blob",
+      "commit": "3d52489d944485835846bc1e5b3160aa71a8e7c3",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ChapterPairingRepository.kt"
+    },
+    "execution-source/round5-instrumented-before/ChapterPairingRepository.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round5/before/ChapterPairingRepository.kt",
+      "sha256": "84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba"
+    },
+    "execution-source/round5-instrumented-before/PageTransform.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round5/before/PageTransform.kt",
+      "sha256": "3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f"
+    },
+    "execution-source/round5-instrumented-before/ReaderCanonicalPairingScan.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round5/before/ReaderCanonicalPairingScan.kt",
+      "sha256": "37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf"
+    },
+    "execution-source/round5-instrumented-before/ReaderDualPageFactLimits.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round5/before/ReaderDualPageFactLimits.kt",
+      "sha256": "bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5"
+    },
+    "execution-source/round5-instrumented-before/ReaderImageOrientation.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round5/before/ReaderImageOrientation.kt",
+      "sha256": "77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb"
+    },
+    "execution-source/round5-instrumented-before/ReaderOriginalPageSampling.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round5/before/ReaderOriginalPageSampling.kt",
+      "sha256": "05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0"
+    },
+    "execution-source/round5-instrumented-before/ReaderPairingCertification.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round5/before/ReaderPairingCertification.kt",
+      "sha256": "b1d79a8acd3f2b7d47721fbbb81f269883d3c8a45cad34f280ba41fb7acce1f0"
+    },
+    "execution-source/round5-instrumented-before/ReaderPairingReadSet.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round5/before/ReaderPairingReadSet.kt",
+      "sha256": "da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb"
+    },
+    "execution-source/round5-instrumented-before/ReaderPortraitSingleSlot.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round5/before/ReaderPortraitSingleSlot.kt",
+      "sha256": "5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb"
+    },
+    "execution-source/round5-instrumented-before/ReaderSpreadSamplesOwner.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round5/before/ReaderSpreadSamplesOwner.kt",
+      "sha256": "a0250db213362b2fa3935e4c870d1bcefccd1faf30c180e0f49003bdac4531a8"
+    },
+    "execution-source/round5-instrumented-before/SharedDualPageRules.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round5/before/SharedDualPageRules.kt",
+      "sha256": "252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755"
+    },
+    "execution-source/round5-instrumented-before/SharedSpreadMatching.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round5/before/SharedSpreadMatching.kt",
+      "sha256": "7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af"
+    },
+    "execution-source/confluence-R4-CD-hook/ChapterPairingRepository.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/confluence/sources/ChapterPairingRepository.kt",
+      "sha256": "84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba"
+    },
+    "execution-source/confluence-R4-CD-hook/PageTransform.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/confluence/sources/PageTransform.kt",
+      "sha256": "3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f"
+    },
+    "execution-source/confluence-R4-CD-hook/ReaderCanonicalPairingScan.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/confluence/sources/ReaderCanonicalPairingScan.kt",
+      "sha256": "4a51940554f3c9e75019e421af45cd958634286b5ce562086a9b1126d8ec15bf"
+    },
+    "execution-source/confluence-R4-CD-hook/ReaderDualPageFactLimits.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/confluence/sources/ReaderDualPageFactLimits.kt",
+      "sha256": "bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5"
+    },
+    "execution-source/confluence-R4-CD-hook/ReaderImageOrientation.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/confluence/sources/ReaderImageOrientation.kt",
+      "sha256": "77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb"
+    },
+    "execution-source/confluence-R4-CD-hook/ReaderOriginalPageSampling.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/confluence/sources/ReaderOriginalPageSampling.kt",
+      "sha256": "05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0"
+    },
+    "execution-source/confluence-R4-CD-hook/ReaderPairingCertification.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/confluence/sources/ReaderPairingCertification.kt",
+      "sha256": "04f6d00d207fd415de15f5ba09a8bfbdee36b2d17958bd96b1d79c9ec588c85f"
+    },
+    "execution-source/confluence-R4-CD-hook/ReaderPairingReadSet.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/confluence/sources/ReaderPairingReadSet.kt",
+      "sha256": "da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb"
+    },
+    "execution-source/confluence-R4-CD-hook/ReaderPortraitSingleSlot.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/confluence/sources/ReaderPortraitSingleSlot.kt",
+      "sha256": "5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb"
+    },
+    "execution-source/confluence-R4-CD-hook/ReaderSpreadSamplesOwner.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/confluence/sources/ReaderSpreadSamplesOwner.kt",
+      "sha256": "d18bbb64887740ec442d63f121357b29dbec65c2a2ce42ca5581eb0a7e58c23a"
+    },
+    "execution-source/confluence-R4-CD-hook/SharedDualPageRules.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/confluence/sources/SharedDualPageRules.kt",
+      "sha256": "252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755"
+    },
+    "execution-source/confluence-R4-CD-hook/SharedSpreadMatching.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/confluence/sources/SharedSpreadMatching.kt",
+      "sha256": "7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af"
+    },
+    "proofs/manifest.json": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/manifest.json",
+      "sha256": "e273d85f4dd966103f914751ee1f90f0ae67fbee192c24b8898cfbf0c064cd34"
+    },
+    "proofs/result.json": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/result.json",
+      "sha256": "bb6302d9d14a6715f442a97e193d42729995eb1b92df67d8c623456bf1ecdb2e"
+    },
+    "proofs/candidate.patch": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/candidate.patch",
+      "sha256": "b7c6bc680249389139aeaa4c3cad7ef05ae0dc2e675f3d523e6713cd4c701da5"
+    },
+    "proofs/round2/manifest.json": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round2/manifest.json",
+      "sha256": "ddf613468950fdd4e8a7ab17ad36089244d7addc345fc0aa0acccfb23440d568"
+    },
+    "proofs/round2/result.json": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round2/result.json",
+      "sha256": "838d887ee9a30b76ec2cc57925e408ea35c3108547273e26cc24586da377cbab"
+    },
+    "proofs/round2/forced-baseline.json": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round2/forced-baseline.json",
+      "sha256": "13e4fda46172b5995b01a15c646441e936e9941a00cc57c691908d4985750914"
+    },
+    "proofs/round2/forced-candidate.json": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round2/forced-candidate.json",
+      "sha256": "48996c838d44f542a9421f06251ca2300a11f6e9dedb849047c426ed9a6809ae"
+    },
+    "proofs/round2/forced-candidate.patch": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round2/forced-candidate.patch",
+      "sha256": "a089e4ea074e89fcfc9e9fa0210749cd5988a141c87ea63a33c8570e344b58b4"
+    },
+    "proofs/round3/manifest.json": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round3/manifest.json",
+      "sha256": "8a1314ec1fd658228778b197fb59215db4b603c180e33533a6830f6c2ec826ae"
+    },
+    "proofs/round3/result.json": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round3/result.json",
+      "sha256": "d1726f58d63fbc7dc9b35f653554ab5b55feedeafbe5ef49ceb2c4ad0873c72c"
+    },
+    "proofs/round3/A/candidate.patch": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round3/A/candidate.patch",
+      "sha256": "84c3138f49cbb2bc80f47b91b17e6cb0b4de9255188423138b74b4877bc1b011"
+    },
+    "proofs/round3/B/candidate.patch": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round3/B/candidate.patch",
+      "sha256": "308eb806f2e64689aaaf5bb6f5ef41c793042d04092270ec31916ee6330d7469"
+    },
+    "proofs/round4/manifest.json": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round4/manifest.json",
+      "sha256": "17be69125025617b126983885d7e6bcb29c8fb84b37323a97764aab436be7deb"
+    },
+    "proofs/round4/result.json": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round4/result.json",
+      "sha256": "9c9c00d097b9f6b56609884f72d81d8e8f50158d2e9dab1f7815200358583e31"
+    },
+    "proofs/round4/C/candidate.patch": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round4/C/candidate.patch",
+      "sha256": "6134dacd35fb702c0dbbe85da14818b34072db7998ab6808c7f2d2a5c8d54c94"
+    },
+    "proofs/round4/D/candidate.patch": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round4/D/candidate.patch",
+      "sha256": "7843b24f061814f0b13df6525451e2b58cd0f14da7ae6baf970f83667b433ebe"
+    },
+    "proofs/round5/manifest.json": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round5/manifest.json",
+      "sha256": "89442469ff949dd8bdc04394baccc919c219b475a3fb07e192c926ec7d7e80a7"
+    },
+    "proofs/round5/result.json": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/round5/result.json",
+      "sha256": "c68f14fcfcca09a1ebf2d5cd1bd1613360e8dca83a3ca2ab54789975157ef3b9"
+    },
+    "proofs/confluence/manifest.json": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/confluence/manifest.json",
+      "sha256": "129f9d651faae0d17897c3d01de2468eb00a6414179f0747a08f3b3e94e9b928"
+    },
+    "proofs/confluence/result.json": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/confluence/result.json",
+      "sha256": "606a2fc5b050245d3b78cf8e7faba0ae86a8f7c45d6f32537cb8202fe82a626b"
+    },
+    "proofs/confluence/baseline-R4-CD.patch": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/confluence/baseline-R4-CD.patch",
+      "sha256": "c924a4ca52362062a0903cdbcc9fb84b3711e558708cf0a4de3c195f6076aff5"
+    },
+    "proofs/confluence/lookbehind-hook.patch": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/confluence/lookbehind-hook.patch",
+      "sha256": "2cf3af0e393646f0d6883fe4be0f4ba9ff29f9b9dda2fc37585912d014df0f08"
+    },
+    "proofs/confluence/frozen_run.py.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-pairing-research-next-20261014",
+      "path": ".gradle/reader-pairing-math/confluence/frozen_run.py",
+      "sha256": "62d36f0dba391285c0a64d39806bdd8000b87708914cb7e394838b026ec67b2b"
+    },
+    "current-main/ReaderPairingCertification.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-r1-r10-reevaluation-20261101",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt",
+      "sha256": "f94eb4afde8e9f61c85d0308df95d247966a6b5f47e964d9177882c2c1a9242d"
+    },
+    "current-main/ReaderCanonicalPairingScan.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-r1-r10-reevaluation-20261101",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderCanonicalPairingScan.kt",
+      "sha256": "37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf"
+    },
+    "current-main/ReaderDualPagePresentationOwner.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-r1-r10-reevaluation-20261101",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderDualPagePresentationOwner.kt",
+      "sha256": "c476943c17537c3943696d7a35b20b33ea39f934ac659b7594ab99359ca06050"
+    },
+    "current-main/ReaderPairingReachableEntryPruneTest.kt.txt": {
+      "kind": "original-working-bytes",
+      "tree": "reader-r1-r10-reevaluation-20261101",
+      "path": "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingReachableEntryPruneTest.kt",
+      "sha256": "9bcd70b4c48d8511d29162928bda384788015fd5de601f6209262be070cf9960"
+    },
+    "execution-source/R1-exact/ReaderCanonicalPairingScan.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderCanonicalPairingScan.kt",
+      "source": "Git 05dd84c95d27df89ded79d229d9b00d809603722; LF",
+      "verifiedRawSha256": "37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf",
+      "manifest": "proofs/manifest.json"
+    },
+    "execution-source/R1-exact/SharedDualPageRules.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageRules.kt",
+      "source": "Git 05dd84c95d27df89ded79d229d9b00d809603722; LF",
+      "verifiedRawSha256": "252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755",
+      "manifest": "proofs/manifest.json"
+    },
+    "execution-source/R1-exact/SharedSpreadMatching.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/SharedSpreadMatching.kt",
+      "source": "Git 05dd84c95d27df89ded79d229d9b00d809603722; LF",
+      "verifiedRawSha256": "7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af",
+      "manifest": "proofs/manifest.json"
+    },
+    "execution-source/R1-exact/ReaderSpreadSamplesOwner.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderSpreadSamplesOwner.kt",
+      "source": "Git 05dd84c95d27df89ded79d229d9b00d809603722; LF",
+      "verifiedRawSha256": "d18bbb64887740ec442d63f121357b29dbec65c2a2ce42ca5581eb0a7e58c23a",
+      "manifest": "proofs/manifest.json"
+    },
+    "execution-source/R1-exact/ReaderOriginalPageSampling.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderOriginalPageSampling.kt",
+      "source": "Git 05dd84c95d27df89ded79d229d9b00d809603722; LF",
+      "verifiedRawSha256": "05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0",
+      "manifest": "proofs/manifest.json"
+    },
+    "execution-source/R1-exact/ReaderPortraitSingleSlot.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPortraitSingleSlot.kt",
+      "source": "Git 05dd84c95d27df89ded79d229d9b00d809603722; LF",
+      "verifiedRawSha256": "5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb",
+      "manifest": "proofs/manifest.json"
+    },
+    "execution-source/R1-exact/PageTransform.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt",
+      "source": "Git 05dd84c95d27df89ded79d229d9b00d809603722; LF",
+      "verifiedRawSha256": "3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f",
+      "manifest": "proofs/manifest.json"
+    },
+    "execution-source/R1-exact/ReaderImageOrientation.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderImageOrientation.kt",
+      "source": "Git 05dd84c95d27df89ded79d229d9b00d809603722; LF",
+      "verifiedRawSha256": "77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb",
+      "manifest": "proofs/manifest.json"
+    },
+    "execution-source/R1-exact/ReaderDualPageFactLimits.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderDualPageFactLimits.kt",
+      "source": "Git 05dd84c95d27df89ded79d229d9b00d809603722; LF",
+      "verifiedRawSha256": "bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5",
+      "manifest": "proofs/manifest.json"
+    },
+    "execution-source/R1-exact/ReaderPairingReadSet.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingReadSet.kt",
+      "source": "3d524 baseline snapshot; LF",
+      "verifiedRawSha256": "da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb",
+      "manifest": "proofs/manifest.json"
+    },
+    "execution-source/R1-exact/ChapterPairingRepository.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ChapterPairingRepository.kt",
+      "source": "Git 05dd84c95d27df89ded79d229d9b00d809603722; LF",
+      "verifiedRawSha256": "84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba",
+      "manifest": "proofs/manifest.json"
+    },
+    "execution-source/R1-exact/ReaderPairingCertification.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "source": "original frozen candidate reversed using LF-normalized copy of original CRLF patch; original patch itself unchanged",
+      "verifiedRawSha256": "8cfd9fef0c992c479ffc448b10574c2b6c24da82602b696b0a2a95ed82ffd95b"
+    },
+    "execution-source/R1-candidate/ReaderPairingCertification.kt.txt": {
+      "kind": "original-frozen-candidate-bytes",
+      "source": ".gradle\\reader-pairing-math\\candidate-source\\ReaderPairingCertification.kt",
+      "sha256": "1c7cc64062c36eef92df92dba0a1762ded9cdbac805377450dccdca9894b34c1"
+    },
+    "execution-source/R2-exact/ChapterPairingRepository.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "ChapterPairingRepository.kt",
+      "verifiedRawSha256": "84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    },
+    "execution-source/R2-exact/PageTransform.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "PageTransform.kt",
+      "verifiedRawSha256": "3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    },
+    "execution-source/R2-exact/ReaderCanonicalPairingScan.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "ReaderCanonicalPairingScan.kt",
+      "verifiedRawSha256": "37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    },
+    "execution-source/R2-exact/ReaderDualPageFactLimits.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "ReaderDualPageFactLimits.kt",
+      "verifiedRawSha256": "bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    },
+    "execution-source/R2-exact/ReaderImageOrientation.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "ReaderImageOrientation.kt",
+      "verifiedRawSha256": "77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    },
+    "execution-source/R2-exact/ReaderOriginalPageSampling.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "ReaderOriginalPageSampling.kt",
+      "verifiedRawSha256": "05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    },
+    "execution-source/R2-exact/ReaderPairingCertification.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "ReaderPairingCertification.kt",
+      "verifiedRawSha256": "6f5aa3d7c9352db4c7679929344b97cbb5e1f2b8b44c6ada964ae248e1b1c761",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    },
+    "execution-source/R2-exact/ReaderPairingReadSet.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "ReaderPairingReadSet.kt",
+      "verifiedRawSha256": "da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    },
+    "execution-source/R2-exact/ReaderPortraitSingleSlot.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "ReaderPortraitSingleSlot.kt",
+      "verifiedRawSha256": "5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    },
+    "execution-source/R2-exact/ReaderSpreadSamplesOwner.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "ReaderSpreadSamplesOwner.kt",
+      "verifiedRawSha256": "d18bbb64887740ec442d63f121357b29dbec65c2a2ce42ca5581eb0a7e58c23a",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    },
+    "execution-source/R2-exact/SharedDualPageRules.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "SharedDualPageRules.kt",
+      "verifiedRawSha256": "252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    },
+    "execution-source/R2-exact/SharedSpreadMatching.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "SharedSpreadMatching.kt",
+      "verifiedRawSha256": "7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    },
+    "execution-source/R3-exact/ChapterPairingRepository.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "ChapterPairingRepository.kt",
+      "verifiedRawSha256": "84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    },
+    "execution-source/R3-exact/PageTransform.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "PageTransform.kt",
+      "verifiedRawSha256": "3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    },
+    "execution-source/R3-exact/ReaderCanonicalPairingScan.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "ReaderCanonicalPairingScan.kt",
+      "verifiedRawSha256": "37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    },
+    "execution-source/R3-exact/ReaderDualPageFactLimits.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "ReaderDualPageFactLimits.kt",
+      "verifiedRawSha256": "bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    },
+    "execution-source/R3-exact/ReaderImageOrientation.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "ReaderImageOrientation.kt",
+      "verifiedRawSha256": "77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    },
+    "execution-source/R3-exact/ReaderOriginalPageSampling.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "ReaderOriginalPageSampling.kt",
+      "verifiedRawSha256": "05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    },
+    "execution-source/R3-exact/ReaderPairingCertification.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "ReaderPairingCertification.kt",
+      "verifiedRawSha256": "b1d79a8acd3f2b7d47721fbbb81f269883d3c8a45cad34f280ba41fb7acce1f0",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    },
+    "execution-source/R3-exact/ReaderPairingReadSet.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "ReaderPairingReadSet.kt",
+      "verifiedRawSha256": "da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    },
+    "execution-source/R3-exact/ReaderPortraitSingleSlot.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "ReaderPortraitSingleSlot.kt",
+      "verifiedRawSha256": "5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    },
+    "execution-source/R3-exact/ReaderSpreadSamplesOwner.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "ReaderSpreadSamplesOwner.kt",
+      "verifiedRawSha256": "d18bbb64887740ec442d63f121357b29dbec65c2a2ce42ca5581eb0a7e58c23a",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    },
+    "execution-source/R3-exact/SharedDualPageRules.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "SharedDualPageRules.kt",
+      "verifiedRawSha256": "252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    },
+    "execution-source/R3-exact/SharedSpreadMatching.kt.txt": {
+      "kind": "hash-verified-frozen-source-reconstruction",
+      "path": "SharedSpreadMatching.kt",
+      "verifiedRawSha256": "7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af",
+      "source": "recorded baseline Git blob or 3d524 snapshot, selected only by exact original manifest hash"
+    }
+  },
+  "noProductTestsRun": true,
+  "historyReachability": "Referenced old heads/research SHAs are not assumed reachable from current remote or e8beb bundle. Critical source is snapshotted here; full raw packages are archived separately by the history task.",
+  "exactEarlyBaselineRestoration": {
+    "R1": {
+      "verifiedSources": 12,
+      "missing": []
+    },
+    "R2": {
+      "verifiedSources": 12,
+      "missing": []
+    },
+    "R3": {
+      "verifiedSources": 12,
+      "missing": []
+    }
+  },
+  "semanticComparisons": {
+    "comparedMain": "6b5831c64dd9f09a7d79c93fac9a75a548c740fa",
+    "DProductionEqualAfterLfNormalization": true,
+    "TestPixelsRawEqual": true,
+    "DTestOnlyAdditionalCertifiedGuard": true,
+    "R1MainLocus": "ReaderPairingCertification entries skip-left forced endpoints guard",
+    "R2MainLocus": "isolatedSpread includes SPREAD or target forced; first targetIndex",
+    "R3R4CMainLocus": "ReaderCanonicalPairingScan.laterWins reads nearDistance and laterDistance with no nonnegative or knownLaterNoMatch option",
+    "R5MainLocus": "NeedFacts returns before existing candidate-unit disagreement left expansion; no independent retry hook",
+    "desktopCurrentLocus": "ReaderDualPagePresentationOwner.readingEligible/progressPages plus current ReaderPagerNativePresentation helper; old assertions not claimed executed"
+  },
+  "archiveSelfCheck": {
+    "originalSnapshotsHashVerified": true,
+    "oldTreeOriginalsUnchanged": true,
+    "patchChecks": [
+      "research-next tracked diff: PASS, LF-normalized disposable copies; exact working bytes separately preserved",
+      "desktop-maintenance tracked diff: PASS, LF-normalized disposable copies; exact working bytes separately preserved",
+      "R1: PASS, original patch kept; LF-normalized copy checked at archived baseline",
+      "R2: PASS, original patch kept; LF-normalized copy checked at archived baseline",
+      "R3-A: PASS, original patch kept; LF-normalized copy checked at archived baseline",
+      "R3-B: PASS, original patch kept; LF-normalized copy checked at archived baseline",
+      "R4-C: PASS, original patch kept; LF-normalized copy checked at archived baseline",
+      "R4-D: PASS, original patch kept; LF-normalized copy checked at archived baseline",
+      "R5-R4-CD-hook: PASS, original patch kept; LF-normalized copy checked at archived baseline"
+    ],
+    "localMarkdownLinks": 57,
+    "jsonFilesParsed": 15,
+    "productOrBenchmarkRun": false
+  }
+}

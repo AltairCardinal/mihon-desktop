@@ -1,0 +1,218 @@
+# 双页配对算法第四轮：证据导向的比较与可达入口压缩
+
+日期：2026-10-22。路线A：保持完整事实 canonicalPlan 的成员、槽位、certainty 与 singleReason。
+
+**结论：已有 later 无匹配证据可消除 near 取证；结构不可达入口可从认证枚举中删除。两者是保持结果不变、减少必须知道的信息的局部改进。**
+
+## 1. 交付、结果与边界
+
+本轮只有三个任务文件：[研究夹具](../scripts/reader-pairing-math/PairingEvidenceExperiment.kt)、[runner](../scripts/reader-pairing-math/run.py) 的独立 round4 模式，以及本报告。
+它们构成一个内聚研究实验，没有改变产品源码、参数、持久化格式或UI。
+候选源只写入 ignored `.gradle/reader-pairing-math/round4/`，由真实生产源作精确小patch。
+没有复制配对业务分支；真实 sampling、owner、scan、certifier、canonicalPlan 与 isCurrent 均直接执行。
+旧 main/round2/round3 函数保持不变，未重跑前三轮。
+
+| 项目 | 本轮实际结果 | 不能推出 |
+|---|---|---|
+| C：已有 later=null 调整比较顺序 | 新增64项 Certified，包含C族16项与D族48项 | 任意输入都有收益或总I/O更少 |
+| D：删除不可达入口 | D族新增48项 Certified | 改变目标函数或求出最小入口集合 |
+| 有界正确性 | 338状态，676独立比较，5项直接scan契约PASS | 全像素/全setting穷举或平台验收 |
+| 代表读集 | C见证12→11键；D见证16→10键 | 毫秒、CPU倍率或用户体验收益 |
+
+C和D的48项收益重叠，不能相加；没有编译或运行组合候选。
+上述总数包含FORCE0的API输入；它不是有效持久记录，合法收益另见第6节。
+没有运行Gradle、全量测试、应用构建、下载或设备验收。
+不宣称bug已修复、CP1完成、U1–U5全部通过或用户已验收。
+一次独立只读审查已通过，无实质阻塞；审查后仅补充入口适用分支与未直接实验子情形的说明，复用现有focused证据。
+
+## 2. 实际基线、指纹与复跑
+
+最终执行HEAD：`8e743135c5edb3f02f789590f658ca7ee02fdcb4`。
+算法基线由下表实际文件决定，不以HEAD代替源码指纹。
+certifier为`b1d79a8a…`：已含R1 forced边界skip-left剪枝与R2 forced-target隔离认证；R3 A/B尚未进入本轮生产基线。
+因此本轮没有把R3 near=0成果重算为新优化，也没有叠加R3候选。
+并行产品/测试及其他文档dirty均受保护，未被本任务读写或暂存。
+
+每个阶段前后检查12个核心源、外围jar、研究源与runner，共15项：
+
+| 输入文件 | SHA-256 |
+|---|---|
+| ReaderCanonicalPairingScan.kt | `37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf` |
+| SharedDualPageRules.kt | `252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755` |
+| ReaderPairingCertification.kt | `b1d79a8acd3f2b7d47721fbbb81f269883d3c8a45cad34f280ba41fb7acce1f0` |
+| SharedSpreadMatching.kt | `7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af` |
+| ReaderSpreadSamplesOwner.kt | `d18bbb64887740ec442d63f121357b29dbec65c2a2ce42ca5581eb0a7e58c23a` |
+| ReaderOriginalPageSampling.kt | `05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0` |
+| ReaderPortraitSingleSlot.kt | `5010bfd27e0c0809ce2c97d5e3677e3530ac327dc9f08f8476be91ebe0a173fb` |
+| PageTransform.kt | `3f4beb40b17184beaf7c2ca31c067397ea0a1b1815932d21c82fc6cde2c5aa3f` |
+| ReaderImageOrientation.kt | `77337ac7bb58bd3f953c2bb4bd5b8f48ec0177b30d7b1f2c38967f03eb867bdb` |
+| ReaderDualPageFactLimits.kt | `bdcae8f08c1b27bc1b3fd69ad60e55c38ebd561fdc9449c73a5bc936f50e70c5` |
+| ReaderPairingReadSet.kt | `da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb` |
+| ChapterPairingRepository.kt | `84d6015026c4de566f7e0ff3ddb719c3b4d1fe63e081127bcc92b6c2be4a1aba` |
+| domain-jvm.jar | `802a5307915951fc90e110722d11b682f712a782efa85a26f95fbffb0c2d1505` |
+| PairingEvidenceExperiment.kt | `f124109c99d17339e63dda118a7fab14c4a13c41e63c9d973148b2aff4fac9f0` |
+| run.py | `62d36f0dba391285c0a64d39806bdd8000b87708914cb7e394838b026ec67b2b` |
+
+核心源位于 `domain/src/commonMain/kotlin/mihon/domain/reader/`，全部重新编译。
+新classes在classpath中优先；既有`domain/build/libs/domain-jvm.jar`仅提供外围真实identity、页ID、enum等类型。
+未证明整个旧jar与当前源码一致；本轮不能充当正式runtime、production wiring或Session/Memo验收。
+manifest记录缓存compiler各jar指纹、每个编译/运行命令、候选patch及候选源指纹。
+最终`hashesBefore == hashesAfter`，当前15项仍匹配；源码漂移时runner输出SOURCE_CHANGED并停止归纳。
+
+在记录基线上复跑：
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$env:PYTHONUTF8 = '1'
+$env:PYTHONIOENCODING = 'utf-8'
+$env:PYTHONDONTWRITEBYTECODE = '1'
+python scripts/reader-pairing-math/run.py round4
+```
+
+要求本地JDK21、缓存Kotlin compiler2.3.20、上述源码和既有jar；仅checkout研究commit不保证环境齐备或同结果。
+缺失依赖fail-fast，不下载、不读取旧HEAD替代当前源；比较历史结果前须核对manifest指纹。
+编译heap768MiB/metaspace256MiB，研究JVM heap256MiB/metaspace128MiB，每个子进程60秒截止。
+baseline、C、D串行独立编译运行；每个研究JVM运行338项。
+最终26.461秒是编译和研究工具总耗时，不是阅读响应时间或性能基准。
+
+ignored目录保存：
+
+- `manifest.json`与`result.json`：最终实际输入、聚合、代表见证与稳定检查。
+- `baseline/`、`C/`、`D/`：真实compile/run日志、338项结果、候选精确patch和classes。
+- `initial-fixture-failure-excerpt.log`：首次工具输出的失败摘录；原日志被复跑覆盖，明确不是完整原日志。
+- `initial-hint-contract-failure.log`：第二次失败的原始C运行日志。
+- `prior-focused-pass.json`及`prior-focused-manifest.json`：负值公开接口控制补验前的PASS及指纹。
+
+共四次同域focused尝试，没有另开随机或性能轮次：
+首次在baseline夹具前提失败，尚未验证候选；宽图不占raw edge样本LRU槽，原filler未真正逐出预期页。
+修正后baseline338项通过，C最后的直接合同断言失败：真实step生成单页reason时会再次求laterWins，测试误以为只读一轮。
+第三次338+5通过，25.360秒；随后按明确缺口替换第5项为公开canonicalPlan负值兼容控制，并明确断言p3依赖。
+第四次同域338+5通过，26.461秒；最后两次物理状态与转移统计相同。
+只在5项直接比较合同中关闭single unit构造以观察一次决策；338项物理状态始终检查完整unit。
+不能据合同控制声称生产每次仅读取一轮getter。
+
+## 3. 统一数学解释：充分支持集
+
+固定事实版本v、setting与已观察知识K，令Ω(K)为一致完整输入集合，完整计划为Γ(X)。
+稳定目标认证要求 `S_t(K)={π_t Γ(X): X∈Ω(K)}` 是单元素集合。
+本轮用已知条件证明某些信息不能改变完整target unit，再删除其取证需求。
+得到的是充分支持集，不是已经求出的最小或必要支持集。
+临时计划Γ_now(K)依UNKNOWN/null默认值产生，不能替代全completion稳定证书或授权slot曝光。
+
+## 4. C：已有无匹配证据决定比较顺序
+
+[真实laterWins](../domain/src/commonMain/kotlin/mihon/domain/reader/ReaderCanonicalPairingScan.kt#L88)先比较强度，仅等强自动情形读取near和later距离。
+其最终条件为 `later != null && (near == null || later < near)`。
+若已知later是Computed(null)，结果恒false，near未知、负数或NaN都不影响此布尔值。
+这不依赖真实score非负；与R3 near=0的数值下界命题不同。
+它也不省略强度判断所需的几何、side或manual事实。
+
+隔离scan添加默认关闭的可选`knownLaterNoMatch` hint；只有隔离certifier的owner-backed实例接入。
+owner.edgeAnalysis纯查询返回Computed且score==null才提示true；NotAnalyzed和RetryableFailure均不命中。
+hint本身不登记Unknown或failure读集键，避免提示探测制造额外取证。
+命中后仍通过原distance getter重读later：
+
+```kotlin
+val hintedLater = if (knownLaterNoMatch?.invoke(laterA, laterB) == true) {
+    val observed = distance(laterA, laterB)
+    if (observed == null) return false
+    observed
+} else null
+val nearDistance = distance(nearA, nearB)
+val laterDistance = hintedLater ?: distance(laterA, laterB)
+return laterDistance != null && (nearDistance == null || laterDistance < nearDistance)
+```
+
+真正getter负责记录edge证据、缺失需求或失败；hint不是证据。
+若hint过时而getter给有限值，就按该值继续原比较；getter缺失/失败的null伴随Need/RetryableBlocked，不能提前认证。
+公开canonicalPlan未打开hint，任意callback的原行为保留，near=0/later=-1仍选择later。
+5项直接合同覆盖真/假hint、getter给有限值/负值/null/NaN组合与默认公开负值接口。
+它们不模拟线程交错；owner没有新锁或原子快照保证，调用侧串行及既有版本检查仍是前提。
+额外hint带来一次owner查询，即使不命中也有CPU成本；不能说所有输入更快或所有读集都更小。
+
+C主见证：19页、默认capacity16、RTL/AUTO/automatic=true、target=p1，索引均从0开始。
+portrait 256×384，纵向7像素条纹灰度70/180；SHIFTED加5，INVERTED反转条纹，均经真实sampling和评分。
+p1=SHIFTED，p2=TEXTURE，p3=INVERTED，其余GRAY；所有side分析Computed UNKNOWN。
+接受序列 `p2,p3,p0,p4,…,p18,p1`，先保留edge(2,3)=Computed(null)，再逐出raw p2/p3；edge(1,2)从未计算。
+baseline NeedFacts(edge1,2)，C Certified `[p1 RIGHT,p2 LEFT]`、certain=true、reason=null，与完整oracle相同。
+读集12→11，决定性edge(2,3)仍保留；明确断言dependentPageIds含非目标端点p3。
+每个依赖页逐一改变contentVersion均使isCurrent=false，因此包括p3；setting.manualRevision改变也拒旧。
+
+## 5. D：压缩结构不可达入口
+
+[认证入口枚举](../domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt#L355)保守覆盖可能的opening/reservation与skip-left。
+D不改变scan、距离比较或目标函数，只收紧入口集合：
+
+- generic、非isolatedSpread分支的first==1：保留正规`(1,true,-1)`，原skip-left`(2,false,-1)`仍按既有forced guard决定保留。
+- first>1且forced包含first前页或当前页：保留正规opening=true/false，删除reservedStart=first两个入口。
+- 其余入口、first==0、isolated target、向左扩大与R1既有guard原样保留。
+
+证明：真实step0只能singleton0→index1/openingtrue，或pair0,1→index2/openingfalse；index0不能新建reservation。
+故到达index1的真实正规状态只能是openingtrue且未预留；skip-left代表另一种真实可能，不能直接删除。
+一般first>1时，新reservation=first只能由前一步index=first−1的canPair=true且未输出pair创建。
+forced任一端点使该canPair硬禁止，因此相应reserved入口不可达；真实未预留openingfalse仍可能到达，必须保留。
+在现有scan及缺失事实/依赖机制可靠前提下，真实入口R仍包含于剪枝后枚举E′；沿单调step归纳不遗漏目标轨迹。
+first单页后自然产生的后继入口仍在，D不删除这些真实路径。
+这只支持入口局部可靠性，不背书整个certifier、readset、并发或UI生命周期。
+本矩阵的first==1均有FORCE0/WIDE0边界，未直接实验无边界first==1子情形；其skip-left保留依据源码核对与可达性推导，不列为直接实验覆盖。
+
+D关键见证：20页、默认capacity16、force p2、target=p5→first=3、RTL/FIRST_PAIR/automatic=true。
+ChapterPairingRecord真实isValidFor(20)=true；p3=TEXTURE，p4/p5=SHIFTED，其余GRAY，全portrait。
+接受序列 `p3,p4,p5,p0,p1,p2,p7,…,p19,p6`。
+edge(3,4)=15、edge(4,5)=0保留，p5 raw已逐出，edge(5,6)=NotAnalyzed。
+真实requiredSamples只返回p5，p6样本已在；所有相关scalar分析仍Computed。
+完整真实step0输出pair0,1并置opening=false，forced p2单页后到first3仍opening=false，夹具直接断言这条轨迹。
+实际step3因15>0选择later并原子预留4，随后输出pair4,5；幽灵reserved3入口才会走到缺edge5,6的路径。
+baseline需edge5,6；D Certified `[p4 RIGHT,p5 LEFT]`、certain=true、reason=null，读集16→10。
+C也独立解决该见证：其幽灵路径可使用已有更后later=null；这解释两项收益重叠，不代表组合运行。
+
+## 6. 固定域、分母与结果
+
+338是配置化真实owner状态域，不是338张独立图片或全输入穷举。
+
+| 族 | 固定轴 | 数量 |
+|---|---|---:|
+| C | capacity2/16 × near物理POSITIVE/NONE × later NO_MATCH/FINITE/MISSING/FAILURE × RTL/LTR ×3opening ×auto开关 |192|
+| D | capacity2/16 × FORCE0/WIDE0/FORCE2 × near POSITIVE/NONE ×RTL/LTR ×3opening ×auto开关 |144|
+| R3兼容控制 | capacity2/16，near=0但later未知，未叠加R3实现 |2|
+
+C族页数capacity+3；D族页数max(capacity+4,first+5)，最大20页。
+C族FINITE实测later=15；NO_MATCH为有方差纹理不匹配null；MISSING与FAILURE分别使用真实NotAnalyzed及failOriginal(READ)。
+FAILURE保留已有Computed side，edge仍为RetryableFailure，绝不当成已知无匹配。
+D族FORCE0共48项，其记录isValidFor=false，属于API域；FORCE2共48项记录有效；WIDE0无force共48项。
+WIDE0不占edge sample容量，补接收已逐出portrait first后再接收ghost右页，真实证明左页raw缺失、既有15/0 scalar保留。
+它仍保留skip-left可能性，本轮没有新增Certified；零收益如实保留。
+
+| 独立候选 | C族192项 | D族144项 | R3控制2项 |
+|---|---|---|---|
+| C |128原Certified保留；16 Need→Certified；32仍Need；16仍RetryableBlocked|72原Certified保留；48 Need→Certified；24仍Need|2仍Need，读集键相同|
+| D |128原Certified保留；48仍Need；16仍RetryableBlocked|72原Certified保留；48 Need→Certified；24仍Need|2仍Need，读集键相同|
+
+新增C族16项均为later=NO_MATCH、auto=true、AUTO/FIRST_SINGLE，覆盖两容量、near两类与两方向。
+D族新增48项均auto=true、FORCE0或FORCE2，覆盖两容量、near两类、两方向和全部opening。
+其中24项是合法FORCE2、24项是无效持久记录FORCE0；不能只用总48宣传用户可达收益。
+C新增64中也包含这24项FORCE0；去掉这类输入后的新增数是40，D为24，仍不是自然使用分布。
+每个Certified完整unit等于完整owner的canonicalPlan oracle；所有baseline已Certified不能退化，需求集合不得新增，失败集合保持。
+每项新证书真实isCurrent通过后，再逐依赖页改contentVersion与改manualRevision验证拒旧。
+两个R3控制只证明Unknown hint未新增独立读集键，不声称组合收益或R3零距离优化已启用。
+
+## 7. 推荐、代价与可推翻条件
+
+优先考虑D作为生产focused TDD候选：不增加owner查询，证明依赖真实可达状态，仍须覆盖回退入口和合法record接线。
+C是按已有证据选择比较顺序，可作为独立后续候选；必须保留默认关闭接口和权威getter重读，测量hint命中率及额外查询成本。
+本轮保持原输出并缩小需求，没有更换配对质量目标或测量用户收益。
+尚未验证真实调度、IO字节、解码次数、CPU分布、Session/Memo、平台wiring及曝光/进度链路。
+充分支持集可以指导通用求值器，但不是已经求得最优取证策略。
+同一未知事实在不同分支的相关性必须保留，否则会产生假歧义；精确表达可能增加分支、CPU与读集维护成本。
+稳定完整plan缓存已有多目标O(1)查询，不能强迫baseline反复扫描制造收益。
+因此不据此宣称整体替换扫描更优，本轮没有实现新的符号求解器。
+
+下列任一反例会推翻或缩窄推荐：
+
+- D删除的入口在真实完整scan轨迹中可达，或改变target完整reason/slot/certainty。
+- C仅凭hint认证、权威getter缺失/失败仍Certified，或later有限/负数控制被null提示覆盖。
+- 决定性edge端点内容改变后仍isCurrent，或默认公开callback负值行为变化。
+- 实际owner并发调用破坏串行前提，或额外hint成本抵消少取证收益。
+
+下一步应先选择一个候选进入真实production红绿TDD与集成接线，而不是直接以本研究patch交付用户。
+实验由GPT-6.1 Sol medium实施，主代理整合关键命题；GPT-6 Luna xhigh完成一次独立只读审查并通过，未追加实验矩阵。

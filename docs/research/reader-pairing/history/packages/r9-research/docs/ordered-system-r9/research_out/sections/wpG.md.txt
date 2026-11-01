@@ -1,0 +1,54 @@
+# WP-G — support compression, write barriers, retention, representation, measurement
+
+Incumbent: `corrected_owner.Owner` (owner layer) and frozen `coupling.Session` (coupled layer).
+All verdict-level claims are L0: outputs equal `reference.certify_strategy` (owner) or no wrong
+publication (coupled). Proofs: `proofs/wpG.md`. Aggregates: `results/summary/wpG/summary.json`
+(`python3 research_out/candidates/wpG_summarize.py`). Raw: `results/raw/wpG/`.
+
+## Main findings
+1. **K01 — evict-before-derive livelock (model infidelity).** Frozen `Session.consume` evicts to raw
+   capacity before deriving ranks; `NATIVE_OWNER.pseudo` derives first. At raw capacity 1 no rank is
+   ever derived (L-K1a) and L0 policies re-acquire forever: W06 11,967 admissions / 4 of 64 published;
+   held-out W01 11,836 / 23 of 78, W05 1,930 / 131 of 144, RPjump48 2,178 / 145 of 165.
+   `derive_first` serves all (33, 12, 191 admissions) and is never worse on 288 held-out rows
+   (`d4_k01_heldout.json`, D4). Honest cost: one transient raw slot inside the atomic step;
+   derive@r ≈ evict@(r+1). Dependency-closure eviction inside the frozen order does not fix it (X11 org 2).
+2. **G01 — projection support.** 42% of union-support keys are derived `dimension` keys (L-G1).
+   Decision-relevant projection (L-G2) keeps every public field and cuts engine runs 40–66% on
+   version-refresh traces; in the coupled world the effect is tiny (RPjump48 295→291).
+3. **X20 — R_policy→R_publish leak (found, fixed).** Composing the projection owner with
+   `Session.certify` stored projections as certificate support → reissued certificates stale at birth;
+   wrong stayed 0, so only a liveness metric (`published_at_end` 123 vs 165) revealed it. Fix: L-G3 exact
+   support refresh. Rule: compressed policy support must never be publication support.
+4. **G05/G06 — reissue and certificate GC (D4).** Eager atomic reissue keeps all publications current
+   in versioned worlds (RPjump48 held-out 165/165 vs 123) at +130% publication read checks; lazy
+   reissue gives identical publications at +12% more checks than eager. Confirmation is never carried
+   over. GC bounds live certificates to live publications; ABA reverts become `unsigned` (documented).
+5. **Retention (K02/K03/X26).** Measured 1,185.9 B/key; structural weight model error median 15.5%
+   (max 54%). Byte-GDS gains on tuning seeds vanish on held-out seeds (1,557 vs LRU 1,556); count-GDS
+   1,465 — byte sizes cancel the cost signal (NH-G5).
+6. **Representation (L01/L03/L05/X27).** Straight-line compose 5.0 ms vs tuple 19.7 ms / 20k;
+   LUT-fused operator 27 vs 79 ms / 600 pairs with 0 mismatches over 3,000; clone-free versioned view
+   µs vs ms; reused buffers alias earlier certificates (X27 counterexample). Python-layer only.
+7. **Measurement (M03–M06, X28, T03).** Shared RNG manufactures false winners (108/300; screening
+   0.82, holdout alone 0.38, keyed 0.00). Dropping censored runs flips a comparison (mean with penalty
+   61.3 vs 49.8). Naive best-of-screen false-winner rate 0.33–0.79 vs 0.010–0.035 with all-process
+   margin. Logical wakeup counts anti-discriminate (NH-G4). Python ablation ratios predict native
+   anchor ratios poorly (median |log err| 0.41, max 1.18): no single-ratio extrapolation.
+
+## Negative / limit results
+G02/L02 flat or interned support not smaller than dict copies in CPython; G03 posrev helps only on
+unrelated writes and does nothing in the coupled world (X19); G04 producer hints are unsafe when wrong;
+K03 sampled clock no held-out gain; K04 target-keyed negative caches wrong 98/98; K05 memo capacity
+irrelevant ≥ 1 once K01 is fixed; K06 competitive ratio ≥ k without access commitments; L06
+instrumentation cost below noise; M01 latency not identifiable from counts.
+
+## Bench (D3)
+`bench/bench_wpG.py`: 22 scenarios, 128 candidate runs per pass, all ok=True in a smoke pass
+(families owner/coupled/retention/operator/compose/view). Formal timing only via
+`python3 research_out/bench/drive_formal.py bench_wpG --out results/raw/formal/wpG.jsonl` (main session).
+
+## Reproduce
+`python3 -m unittest discover -s research_out/tests -t research_out -p 'test_wpG*.py'` (24 tests);
+`cd research_out/candidates && python3 -c "import wpG_d4 as D; D.d4_k01(); D.d4_proj_reissue()"`;
+`python3 wpG_combos.py` (X11…X28); experiment functions in `wpG_experiments.py` (each capped ≤ 300 s).

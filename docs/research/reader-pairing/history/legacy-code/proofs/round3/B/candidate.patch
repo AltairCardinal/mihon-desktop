@@ -1,0 +1,25 @@
+--- production/ReaderPairingCertification.kt
++++ B/ReaderPairingCertification.kt
+@@ -328,7 +328,12 @@
+         // scan starts there and the certificate depends on the target's own facts
+         // instead of the left neighbour, whose analysis cannot change the unit.
+         val isolatedSpread = targetFact.state == ReaderPageFactState.SPREAD || target in settings.forcedSinglePages
+-        var first = if (isolatedSpread) targetIndex else maxOf(0, targetIndex - 2)
++        val leadingTarget = !isolatedSpread && settings.automatic && targetIndex > 0 &&
++            targetIndex - 1 !in settings.manualPairStarts &&
++            !(targetIndex == 1 && settings.openingMode == ReaderChapterOpeningMode.FIRST_PAIR) &&
++            resolvedSide(targetIndex) == if (settings.direction == ReaderDirection.RTL) ReaderPageSideHint.RIGHT else ReaderPageSideHint.LEFT
++        val directEntry = isolatedSpread || leadingTarget
++        var first = if (directEntry) targetIndex else maxOf(0, targetIndex - 2)
+         fun certified(unit: ReaderDualPageUnit): ReaderPairingCertificationTrace {
+             val used = dimensions.keys + analyses.keys + edges.keys.flatMap { listOf(it.first, it.second) }
+             val segment = ReaderCertifiedPairingSegment(
+@@ -355,7 +360,7 @@
+         while (true) {
+             val entries = if (first == 0) {
+                 listOf(ReaderPairingScanCursor(0, true))
+-            } else if (isolatedSpread) {
++            } else if (isolatedSpread || (leadingTarget && first == targetIndex)) {
+                 listOf(ReaderPairingScanCursor(first, true), ReaderPairingScanCursor(first, false))
+             } else {
+                 buildList {

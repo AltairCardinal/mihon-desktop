@@ -1,0 +1,292 @@
+diff --git a/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt b/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt
+index e0215db7ae..96749106c6 100644
+--- a/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt
++++ b/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt
+@@ -359,9 +359,24 @@ object ReaderPairingCertifier {
+                 listOf(ReaderPairingScanCursor(first, true), ReaderPairingScanCursor(first, false))
+             } else {
+                 buildList {
+-                    for (opening in listOf(true, false)) {
++                    // A real scan reaches page 1 only through a single page 0, which
++                    // keeps the opening flag, so the "opening = false" state at page 1
++                    // is unreachable and does not belong in the proof.
++                    for (opening in if (first == 1) listOf(true) else listOf(true, false)) {
+                         add(ReaderPairingScanCursor(first, opening))
+-                        add(ReaderPairingScanCursor(first, opening, first))
++                        // A reserved entry means "the left neighbour already emitted a
++                        // single page and reserved this index". Only the step at
++                        // "first - 1" can create that reservation, and only when it may
++                        // pair away a page. A forced single page is a hard boundary,
++                        // so the reservation cannot exist and the entry is unreachable.
++                        // Keeping it would let an entry that no real scan needs request
++                        // an edge and hold the target pending for a fact that cannot
++                        // change it.
++                        if (first > 1 && pages[first - 1] !in settings.forcedSinglePages &&
++                            pages[first] !in settings.forcedSinglePages
++                        ) {
++                            add(ReaderPairingScanCursor(first, opening, first))
++                        }
+                     }
+                     // The "(first + 1)" entry means "first was already paired away by
+                     // its left neighbour". A forced single page is a hard boundary:
+diff --git a/scripts/reader-pairing-math/run.py b/scripts/reader-pairing-math/run.py
+index 405f0ee52e..3c1457df31 100644
+--- a/scripts/reader-pairing-math/run.py
++++ b/scripts/reader-pairing-math/run.py
+@@ -593,6 +593,247 @@ def round4() -> None:
+     print(json.dumps(result), flush=True)
+ 
+ 
++def round5() -> None:
++    """Measure the implemented production candidates against the recorded baseline.
++
++    The baseline is the committed production source, the candidates are the
++    working tree. Two extra builds apply one candidate at a time, so the
++    independent contribution of each candidate is visible, and one build applies
++    both research patches to prove that the implementation equals them.
++    """
++    output = OUT / "round5"
++    output.mkdir(parents=True, exist_ok=True)
++    java = shutil.which("java")
++    if not java:
++        raise RuntimeError("Java not available")
++    compiler = [
++        jar("org.jetbrains.kotlin", "kotlin-compiler-embeddable", "2.3.20"),
++        jar("org.jetbrains.kotlin", "kotlin-stdlib", "2.3.20"),
++        jar("org.jetbrains.kotlin", "kotlin-script-runtime", "2.3.20"),
++        jar("org.jetbrains.kotlin", "kotlin-reflect", "1.6.10"),
++        jar("org.jetbrains.kotlin", "kotlin-daemon-embeddable", "2.3.20"),
++        jar("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm", "1.8.0"),
++        jar("org.jetbrains", "annotations", "23.0.0"),
++    ]
++    peripheral = ROOT / "domain/build/libs/domain-jvm.jar"
++    if not peripheral.is_file():
++        raise RuntimeError("Existing peripheral production jar missing; no Gradle or download attempted")
++    research = ROOT / "scripts/reader-pairing-math/PairingImplementationExperiment.kt"
++    counters = ROOT / "scripts/reader-pairing-math/PairingQueryCounters.kt"
++    watched = [*[ROOT / name for name in SOURCES], peripheral, research, counters, Path(__file__).resolve()]
++    hashes = {str(path): digest(path) for path in watched}
++
++    def stable() -> None:
++        if any(digest(Path(path)) != value for path, value in hashes.items()):
++            (output / "result.json").write_text('{"status":"SOURCE_CHANGED"}', encoding="utf-8")
++            raise RuntimeError("SOURCE_CHANGED: round5 inputs changed")
++
++    scan_name = READER + "ReaderCanonicalPairingScan.kt"
++    cert_name = READER + "ReaderPairingCertification.kt"
++    owner_name = READER + "ReaderSpreadSamplesOwner.kt"
++
++    def once(source: str, old: str, new: str) -> str:
++        if source.count(old) != 1:
++            raise RuntimeError("Unsupported round5 patch anchor: " + old[:90])
++        return source.replace(old, new)
++
++    def committed() -> dict[str, str]:
++        return {
++            name: subprocess.check_output(["git", "show", f"HEAD:{name}"], cwd=ROOT).decode("utf-8")
++            for name in SOURCES
++        }
++
++    def working() -> dict[str, str]:
++        return {name: (ROOT / name).read_text(encoding="utf-8") for name in SOURCES}
++
++    # The research candidate patches, unchanged, applied to the committed source.
++    def candidate_c(sources: dict[str, str]) -> dict[str, str]:
++        scan = once(sources[scan_name], "    private val distance: (ReaderPageId, ReaderPageId) -> Double?,\n",
++                    "    private val distance: (ReaderPageId, ReaderPageId) -> Double?,\n"
++                    "    private val knownLaterNoMatch: ((ReaderPageId, ReaderPageId) -> Boolean)? = null,\n")
++        scan = once(scan,
++                    "        val nearDistance = distance(pages[i], pages[i + 1])\n"
++                    "        val laterDistance = distance(pages[i + 1], pages[i + 2])",
++                    "        val hintedLater = if (knownLaterNoMatch?.invoke(pages[i + 1], pages[i + 2]) == true) {\n"
++                    "            val observed = distance(pages[i + 1], pages[i + 2])\n"
++                    "            if (observed == null) return false\n            observed\n        } else null\n"
++                    "        val nearDistance = distance(pages[i], pages[i + 1])\n"
++                    "        val laterDistance = hintedLater ?: distance(pages[i + 1], pages[i + 2])")
++        cert = once(sources[cert_name], "            ::resolvedSide,\n        ) { a, b ->",
++                    "            ::resolvedSide,\n            distance = { a, b ->")
++        cert = once(cert,
++                    "        }\n        data class State(val index: Int, val opening: Boolean, val reserved: Boolean)",
++                    "            },\n            knownLaterNoMatch = { a, b ->\n"
++                    "                val evidence = owner.edgeAnalysis(a, b, settings.direction)\n"
++                    "                evidence is ReaderEdgeAnalysisEvidence.Computed && evidence.score == null\n"
++                    "            },\n        )\n        data class State(val index: Int, val opening: Boolean, val reserved: Boolean)")
++        return {**sources, scan_name: scan, cert_name: cert}
++
++    def candidate_d(sources: dict[str, str]) -> dict[str, str]:
++        old_entries = """                    for (opening in listOf(true, false)) {
++                        add(ReaderPairingScanCursor(first, opening))
++                        add(ReaderPairingScanCursor(first, opening, first))
++                    }"""
++        new_entries = """                    for (opening in if (first == 1) listOf(true) else listOf(true, false)) {
++                        add(ReaderPairingScanCursor(first, opening))
++                        if (first > 1 && pages[first - 1] !in settings.forcedSinglePages &&
++                            pages[first] !in settings.forcedSinglePages
++                        ) {
++                            add(ReaderPairingScanCursor(first, opening, first))
++                        }
++                    }"""
++        return {**sources, cert_name: once(sources[cert_name], old_entries, new_entries)}
++
++    # Research-only instrumentation: it counts owner queries and hint hits.
++    def instrument(sources: dict[str, str]) -> dict[str, str]:
++        owner = once(sources[owner_name],
++                     "    fun edgeAnalysis(\n        first: ReaderPageId,\n        second: ReaderPageId,\n"
++                     "        direction: ReaderDirection,\n    ): ReaderEdgeAnalysisEvidence {\n",
++                     "    fun edgeAnalysis(\n        first: ReaderPageId,\n        second: ReaderPageId,\n"
++                     "        direction: ReaderDirection,\n    ): ReaderEdgeAnalysisEvidence {\n"
++                     "        PairingQueryCounters.ownerEdgeQueries++\n")
++        cert = sources[cert_name]
++        hint_anchor = ("            knownLaterNoMatch = { a, b ->\n"
++                       "                val evidence = owner.edgeAnalysis(a, b, settings.direction)\n"
++                       "                evidence is ReaderEdgeAnalysisEvidence.Computed && evidence.score == null\n"
++                       "            },")
++        if hint_anchor in cert:
++            cert = once(cert, hint_anchor,
++                        "            knownLaterNoMatch = { a, b ->\n"
++                        "                PairingQueryCounters.hintQueries++\n"
++                        "                val evidence = owner.edgeAnalysis(a, b, settings.direction)\n"
++                        "                val hit = evidence is ReaderEdgeAnalysisEvidence.Computed && evidence.score == null\n"
++                        "                if (hit) PairingQueryCounters.hintHits++\n"
++                        "                hit\n            },")
++        return {**sources, owner_name: owner, cert_name: cert}
++
++    base = committed()
++    variants = {
++        "before": instrument(base),
++        "afterC": instrument(candidate_c(base)),
++        "afterD": instrument(candidate_d(base)),
++        "afterCD": instrument(candidate_d(candidate_c(base))),
++        "after": instrument(working()),
++    }
++    manifest = {
++        "scope": "round5 implementation measurement; no product/performance claim",
++        "baselineHead": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True,
++                                                encoding="utf-8").strip(),
++        "hashesBefore": hashes, "compilerJars": {str(path): digest(path) for path in compiler}, "commands": {},
++        "limits": {"compilerHeapMiB": 768, "compilerMetaspaceSizeMiB": 256, "runHeapMiB": 256, "timeoutSeconds": 60},
++    }
++    (output / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
++    (output / "result.json").write_text('{"status":"RUNNING"}', encoding="utf-8")
++    results = {}
++    started = time.monotonic()
++    for variant, sources in variants.items():
++        stable()
++        directory = output / variant
++        directory.mkdir(exist_ok=True)
++        paths = {}
++        for name, source in sources.items():
++            destination = directory / Path(name).name
++            destination.write_text(source, encoding="utf-8", newline="\n")
++            paths[name] = destination
++        classes = directory / "classes"
++        classes.mkdir(exist_ok=True)
++        compile_command = [java, "-Xmx768m", "-XX:MaxMetaspaceSize=256m", "-Dfile.encoding=UTF-8", "-cp",
++                           os.pathsep.join(map(str, compiler)), "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler", "-no-stdlib",
++                           "-no-reflect", "-jvm-target", "17", "-classpath",
++                           os.pathsep.join(map(str, [compiler[1], peripheral])), "-d", str(classes),
++                           *[str(paths[name]) for name in SOURCES], str(research), str(counters)]
++        run_command = [java, "-Xmx256m", "-XX:MaxMetaspaceSize=128m", "-Dfile.encoding=UTF-8", "-cp",
++                       os.pathsep.join(map(str, [classes, compiler[1], peripheral])),
++                       "mihon.domain.reader.PairingImplementationExperimentKt"]
++        manifest["commands"][variant] = {"compile": compile_command, "run": run_command}
++        print(f"Compile round5 {variant}; timeout=60s; log={directory / 'compile.log'}", flush=True)
++        run(compile_command, directory / "compile.log", 60)
++        stable()
++        print(f"Run round5 {variant}; timeout=60s; log={directory / 'run.log'}", flush=True)
++        results[variant] = json.loads(run(run_command, directory / "run.log", 60))
++        stable()
++        (directory / "result.json").write_text(json.dumps(results[variant], indent=2), encoding="utf-8")
++
++    def index(variant: str) -> dict[str, dict]:
++        return {row["key"]: row for row in results[variant]["records"]}
++
++    before = index("before")
++    report = {"status": "PASS", "casesPerVariant": len(before), "variants": {}, "witnesses": {}}
++    for variant in ("afterC", "afterD", "afterCD", "after"):
++        rows = index(variant)
++        assert before.keys() == rows.keys()
++        transitions: dict[str, int] = {}
++        read_delta: dict[str, int] = {}
++        needs_delta: dict[str, int] = {}
++        query_delta = 0
++        hint_queries = 0
++        hint_hits = 0
++        for key, old in before.items():
++            new = rows[key]
++            assert new["oracle"] == old["oracle"], key
++            if old["status"] == "Certified":
++                assert new["status"] == "Certified", key
++            assert new["failures"] == old["failures"], key
++            assert {json.dumps(x, sort_keys=True) for x in new["needs"]} <= {
++                json.dumps(x, sort_keys=True) for x in old["needs"]}, key
++            if key.startswith("R3-"):
++                assert new["readKeys"] == old["readKeys"], key
++            transition = old["status"] + "->" + new["status"]
++            transitions[transition] = transitions.get(transition, 0) + 1
++            read_delta[str(new["readCount"] - old["readCount"])] = read_delta.get(
++                str(new["readCount"] - old["readCount"]), 0) + 1
++            needs_delta[str(len(new["needs"]) - len(old["needs"]))] = needs_delta.get(
++                str(len(new["needs"]) - len(old["needs"])), 0) + 1
++            query_delta += new["ownerQueries"] - old["ownerQueries"]
++            hint_queries += new["hintQueries"]
++            hint_hits += new["hintHits"]
++        report["variants"][variant] = {
++            "transitions": transitions,
++            "readCountDeltaHistogram": read_delta,
++            "needsCountDeltaHistogram": needs_delta,
++            "ownerQueryDelta": query_delta,
++            "hintQueries": hint_queries,
++            "hintHits": hint_hits,
++            "hintHitRate": round(hint_hits / hint_queries, 4) if hint_queries else None,
++            "readCountTotal": sum(row["readCount"] for row in rows.values()),
++            "needsTotal": sum(len(row["needs"]) for row in rows.values()),
++            "ownerQueriesTotal": sum(row["ownerQueries"] for row in rows.values()),
++        }
++    # The shipped production must equal the research D patch. C stays a measured
++    # candidate: its research patch is built here, but it is not in production.
++    implemented = index("after")
++    patched = index("afterD")
++    equivalent = True
++    for key, row in implemented.items():
++        other = patched[key]
++        if (row["status"], row["needs"], row["failures"], row["readKeys"], row["ownerQueries"], row["hintQueries"],
++                row["hintHits"]) != (other["status"], other["needs"], other["failures"], other["readKeys"],
++                                     other["ownerQueries"], other["hintQueries"], other["hintHits"]):
++            equivalent = False
++            print(f"NOT EQUIVALENT: {key}", flush=True)
++    report["implementationEqualsResearchDPatch"] = equivalent
++    report["candidateCIsNotShipped"] = True
++    for name, key in (("C", "C-16-POSITIVE-NO_MATCH-RTL-AUTO-true"),
++                      ("D", "D-16-FORCE2-POSITIVE-RTL-FIRST_PAIR-true")):
++        report["witnesses"][name] = {
++            "key": key,
++            "before": {k: before[key][k] for k in ("status", "needs", "readCount", "ownerQueries", "hintQueries",
++                                                   "hintHits", "oracle")},
++            "after": {k: implemented[key][k] for k in ("status", "needs", "readCount", "ownerQueries", "hintQueries",
++                                                      "hintHits", "oracle")},
++        }
++    report["baselineReadCountTotal"] = sum(row["readCount"] for row in before.values())
++    report["baselineNeedsTotal"] = sum(len(row["needs"]) for row in before.values())
++    report["baselineOwnerQueriesTotal"] = sum(row["ownerQueries"] for row in before.values())
++    report["elapsedCompileAndResearchSeconds"] = round(time.monotonic() - started, 3)
++    report["sourceStable"] = True
++    manifest["hashesAfter"] = {str(path): digest(path) for path in watched}
++    manifest["sourceStable"] = True
++    (output / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
++    (output / "result.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
++    print(json.dumps(report), flush=True)
++
++
+ if __name__ == "__main__":
+     if len(sys.argv) == 1:
+         main()
+@@ -602,5 +843,7 @@ if __name__ == "__main__":
+         round3()
+     elif sys.argv[1:] == ["round4"]:
+         round4()
++    elif sys.argv[1:] == ["round5"]:
++        round5()
+     else:
+-        raise SystemExit("Usage: run.py [round2|round3|round4]")
++        raise SystemExit("Usage: run.py [round2|round3|round4|round5]")

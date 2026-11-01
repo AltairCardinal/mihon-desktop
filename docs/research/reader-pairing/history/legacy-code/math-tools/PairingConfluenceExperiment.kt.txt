@@ -1,0 +1,246 @@
+package mihon.domain.reader
+
+import mihon.domain.reader.session.ReaderChapterId
+import mihon.domain.reader.session.ReaderPageId
+
+private data class ConfluenceOriginal(val fact: ReaderPageFact, val samples: ReaderOriginalPageSamples)
+
+/** Negative value is a flat gray page; nonnegative values offset one shared, varying texture. */
+private fun confluenceOriginal(offset: Int): ConfluenceOriginal {
+    val plan = checkNotNull(ReaderOriginalPageSampling.plan(256, 384))
+    fun pixel(y: Int): Int {
+        val value = if (offset < 0) 140 else (if ((y / 7) % 2 == 0) 70 else 180) + offset
+        return 0xff000000.toInt() or (value shl 16) or (value shl 8) or value
+    }
+    val samples = plan.samples(plan.left.map { (_, y) -> pixel(y) }, plan.right.map { (_, y) -> pixel(y) })
+    check(samples.sideHint == ReaderPageSideHint.UNKNOWN)
+    return ConfluenceOriginal(ReaderPageFact.dimensions(256, 384), samples)
+}
+
+private class ConfluenceFixture(val family: String, val capacity: Int, targetOffset: Int = 7, completion: Boolean = false) {
+    val start = if (family == "A") 1 else 3
+    val target = start + 2
+    val count = capacity + start + 5
+    val pages = (0 until count).map { ReaderPageId(ReaderChapterId(2026102200 + start.toLong()), it) }
+    // Resource/generation labels, not a claimed hash of unseen pixel bytes.
+    val identity = ReaderDualPageIdentity(1, 1, pages.map { ReaderDualPageContentIdentity(it, "resource-${it.sourcePageIndex}/v0") })
+    val originals = pages.indices.map { index -> confluenceOriginal(when (index) {
+        start -> 0
+        start + 1 -> 5
+        target -> targetOffset
+        target + 1 -> if (completion) 3 else 0
+        target + 2 -> if (completion && family != "N") 8 else 5
+        else -> -1
+    }) }
+    val facts = pages.associateWith { originals[it.sourcePageIndex].fact }
+    val events = (0..target).toList() + (target + 3 until count).toList() + listOf(target + 1, target + 2)
+
+    fun accept(owner: ReaderSpreadSamplesOwner, index: Int) {
+        val original = originals[index]
+        check(owner.acceptOriginal(owner.request(pages[index]), original.fact, original.samples.edges))
+    }
+
+    fun partial(edgeState: String): ReaderSpreadSamplesOwner = ReaderSpreadSamplesOwner(identity, capacity).also { owner ->
+        events.forEach { accept(owner, it) }
+        check(owner.cachedSampleCount == capacity)
+        check(owner.requiredSamples(facts, pages.slice(target..target + 1)) == listOf(pages[target]))
+        check(pages.all { owner.pageAnalysis(it) is ReaderPageAnalysisEvidence.Computed })
+        if (edgeState == "FAILURE") check(owner.failOriginal(owner.request(pages[target]), ReaderAnalysisFailure.READ))
+        if (edgeState == "COMPUTED") accept(owner, target)
+    }
+
+    fun full(): ReaderSpreadSamplesOwner = ReaderSpreadSamplesOwner(identity).also { owner ->
+        pages.indices.forEach { accept(owner, it) }
+    }
+
+    fun oracle(settings: ReaderPairingSettings): ReaderDualPageUnit {
+        val owner = full()
+        try {
+            return SharedDualPageRules.canonicalPlan(pages, facts, settings.direction, settings.forcedSinglePages,
+                settings.manualPairStarts, settings.openingMode, settings.automatic,
+                distance = { a, b -> (owner.edgeAnalysis(a, b, settings.direction) as ReaderEdgeAnalysisEvidence.Computed).score },
+            ).single { pages[target] in it.pageIds }
+        } finally { owner.close() }
+    }
+
+    /** Checks the entire publicly queryable fact projection and the retained raw sample maps. */
+    fun knowledge(owner: ReaderSpreadSamplesOwner, settings: ReaderPairingSettings): List<Any?> {
+        fun raw(field: String): Any? = ReaderSpreadSamplesOwner::class.java.getDeclaredField(field).let {
+            it.isAccessible = true
+            when (val value = it.get(owner)) {
+                is Map<*, *> -> value.toMap()
+                is Set<*> -> value.toSet()
+                else -> error("Unexpected owner field")
+            }
+        }
+        return listOf(identity, settings, facts, pages.map(owner::pageAnalysis),
+            pages.zipWithNext().map { (a, b) -> listOf(owner.edgeAnalysis(a, b, ReaderDirection.LTR),
+                owner.edgeAnalysis(a, b, ReaderDirection.RTL)) }, raw("samples"), raw("originalSamples"))
+    }
+}
+
+private data class Attempt(
+    val trace: ReaderPairingCertificationTrace,
+    val reads: Map<ReaderPairingReadKey, ReaderPairingReadValue>,
+)
+
+private data class Selection(val baseline: Attempt, val retry: Attempt?, val selected: Attempt)
+
+private fun evaluate(fixture: ConfluenceFixture, owner: ReaderSpreadSamplesOwner, settings: ReaderPairingSettings): Selection {
+    fun attempt(lookbehind: Int): Attempt {
+        val reads = ReaderPairingReadSet()
+        val trace = ReaderPairingCertifier.certifyCapturing(fixture.identity, fixture.facts, owner, settings,
+            fixture.pages[fixture.target], reads, initialLookbehind = lookbehind)
+        return Attempt(trace, reads.snapshot())
+    }
+    val baseline = attempt(2)
+    val retry = if (baseline.trace.certification is ReaderPairingCertification.NeedFacts) attempt(3) else null
+    val selected = if (retry?.trace?.certification is ReaderPairingCertification.Certified) retry else baseline
+    if (selected !== retry) {
+        check(selected === baseline)
+        check(selected.trace === baseline.trace && selected.reads === baseline.reads)
+    } else {
+        check(retry !== baseline)
+        // The retry owns its complete read set; pending reads from the first attempt are not merged.
+        check(selected.reads.values.none { value -> value is ReaderPairingReadValue.Edge &&
+            value.evidence !is ReaderEdgeAnalysisEvidence.Computed })
+    }
+    return Selection(baseline, retry, selected)
+}
+
+private fun status(attempt: Attempt): String = when (attempt.trace.certification) {
+    is ReaderPairingCertification.Certified -> "Certified"
+    is ReaderPairingCertification.NeedFacts -> "NeedFacts"
+    is ReaderPairingCertification.RetryableBlocked -> "RetryableBlocked"
+}
+
+private fun stepCount(attempt: Attempt): Int = when (val result = attempt.trace.certification) {
+    is ReaderPairingCertification.Certified -> result.segment.scanSteps
+    is ReaderPairingCertification.NeedFacts -> result.scanSteps
+    is ReaderPairingCertification.RetryableBlocked -> result.scanSteps
+}
+
+private fun quoted(value: Any?): String = "\"${value.toString().replace("\\", "\\\\").replace("\"", "\\\"")}\""
+
+private fun attemptJson(attempt: Attempt): String {
+    val result = attempt.trace.certification
+    val needs = when (result) {
+        is ReaderPairingCertification.NeedFacts -> result.facts
+        is ReaderPairingCertification.RetryableBlocked -> result.facts
+        else -> emptySet()
+    }
+    val first = when (result) {
+        is ReaderPairingCertification.NeedFacts -> result.continuationFirstIndex
+        is ReaderPairingCertification.RetryableBlocked -> result.continuationFirstIndex
+        is ReaderPairingCertification.Certified -> result.segment.firstIndex
+    }
+    return "{\"status\":${quoted(status(attempt))},\"first\":$first,\"scanSteps\":${stepCount(attempt)}," +
+        "\"needs\":[${needs.joinToString { quoted(it) }}],\"readCount\":${attempt.reads.size}," +
+        "\"readKeys\":[${attempt.reads.keys.map { it.toString() }.sorted().joinToString { quoted(it) }}]," +
+        "\"dependentPages\":[${attempt.trace.dependentPageIds.map { it.sourcePageIndex }.sorted().joinToString()}]}"
+}
+
+fun main() {
+    val records = mutableListOf<String>()
+    val transitions = linkedMapOf<String, Int>()
+    var retryCount = 0
+    var baselineSteps = 0
+    var retrySteps = 0
+    var invalidations = 0
+    val completions = linkedMapOf<String, MutableList<Pair<List<Any?>, ReaderDualPageUnit>>>()
+
+    fun runCase(family: String, capacity: Int, direction: ReaderDirection, opening: ReaderChapterOpeningMode,
+        automatic: Boolean, edgeState: String, completionOffset: Int? = null) {
+        val fixture = ConfluenceFixture(family, capacity, completionOffset ?: 7, completionOffset != null)
+        val manual = if (family == "B") setOf(1) else emptySet()
+        val settings = ReaderPairingSettings(direction, automatic, manualPairStarts = manual, openingMode = opening)
+        val recordValid = ChapterPairingRecord(2, fixture.count, emptySet(), openingMode = opening,
+            manualPairStarts = manual).isValidFor(fixture.count)
+        if (family == "B") check(recordValid == (opening != ReaderChapterOpeningMode.FIRST_PAIR))
+        val owner = fixture.partial(edgeState)
+        try {
+            fun evidence(index: Int) = owner.edgeAnalysis(fixture.pages[index], fixture.pages[index + 1], direction)
+            check((evidence(fixture.start) as ReaderEdgeAnalysisEvidence.Computed).score == 15.0)
+            check((evidence(fixture.start + 1) as ReaderEdgeAnalysisEvidence.Computed).score == 6.0)
+            check((evidence(fixture.target + 1) as ReaderEdgeAnalysisEvidence.Computed).score ==
+                if (completionOffset != null && family == "N") 6.0 else 15.0)
+            when (edgeState) {
+                "MISSING" -> check(evidence(fixture.target) is ReaderEdgeAnalysisEvidence.NotAnalyzed)
+                "FAILURE" -> check(evidence(fixture.target) is ReaderEdgeAnalysisEvidence.RetryableFailure)
+                else -> check(evidence(fixture.target) is ReaderEdgeAnalysisEvidence.Computed)
+            }
+            val knowledge = if (completionOffset != null) fixture.knowledge(owner, settings) else null
+            val selection = evaluate(fixture, owner, settings)
+            val oracle = fixture.oracle(settings)
+            for (attempt in listOfNotNull(selection.baseline, selection.retry)) {
+                val result = attempt.trace.certification
+                if (result is ReaderPairingCertification.Certified) {
+                    check(result.segment.unit == oracle)
+                    check(result.segment.isCurrent(fixture.identity, settings, owner, fixture.facts))
+                    for (page in result.segment.dependentPageIds) {
+                        val changed = fixture.identity.copy(content = fixture.identity.content.map {
+                            if (it.pageId == page) it.copy(contentVersion = "new-content/v1") else it
+                        })
+                        check(!result.segment.isCurrent(changed, settings, owner, fixture.facts))
+                        invalidations++
+                    }
+                    check(!result.segment.isCurrent(fixture.identity, settings.copy(manualRevision = 1), owner, fixture.facts))
+                    check(!result.segment.isCurrent(fixture.identity, settings.copy(manualPairStarts = setOf(2)), owner, fixture.facts))
+                    invalidations += 2
+                }
+            }
+            if (selection.retry != null) retryCount++
+            baselineSteps += stepCount(selection.baseline)
+            retrySteps += selection.retry?.let(::stepCount) ?: 0
+            val transition = "$family:${status(selection.baseline)}->${status(selection.selected)}"
+            transitions[transition] = transitions.getOrDefault(transition, 0) + 1
+            if (completionOffset != null) completions.getOrPut(family) { mutableListOf() }.add(knowledge!! to oracle)
+            val key = "$family-$capacity-$direction-$opening-$automatic-$edgeState-${completionOffset ?: "main"}"
+            val actualMissing = if (completionOffset == null) null else {
+                val full = fixture.full()
+                try { (full.edgeAnalysis(fixture.pages[fixture.target], fixture.pages[fixture.target + 1], direction)
+                    as ReaderEdgeAnalysisEvidence.Computed).score } finally { full.close() }
+            }
+            if (completionOffset != null) {
+                check(actualMissing == if (completionOffset == 3) 0.0 else 12.0)
+                if (family == "N") {
+                    check(status(selection.baseline) == "NeedFacts" && status(selection.selected) == "NeedFacts")
+                } else {
+                    check(status(selection.baseline) == "NeedFacts" && status(selection.selected) == "Certified")
+                }
+            }
+            records += "{\"key\":${quoted(key)},\"recordValid\":$recordValid,\"events\":[${fixture.events.joinToString()}]," +
+                "\"baseline\":${attemptJson(selection.baseline)},\"retry\":${selection.retry?.let(::attemptJson)}," +
+                "\"selected\":${attemptJson(selection.selected)},\"oracle\":${quoted(oracle)}," +
+                "\"completionEdgeScore\":$actualMissing}"
+        } finally { owner.close() }
+    }
+
+    for (family in listOf("A", "B", "N")) for (capacity in listOf(2, 16))
+        for (direction in listOf(ReaderDirection.LTR, ReaderDirection.RTL))
+            for (opening in ReaderChapterOpeningMode.entries) for (automatic in listOf(false, true))
+                for (edge in listOf("MISSING", "FAILURE", "COMPUTED"))
+                    runCase(family, capacity, direction, opening, automatic, edge)
+    check(records.size == 216)
+    for (family in listOf("A", "B", "N")) for (offset in listOf(3, 7))
+        runCase(family, 16, ReaderDirection.LTR,
+            when (family) {
+                "A" -> ReaderChapterOpeningMode.FIRST_SINGLE
+                "B" -> ReaderChapterOpeningMode.AUTO
+                else -> ReaderChapterOpeningMode.FIRST_PAIR
+            },
+            true, "MISSING", offset)
+    check(records.size == 222)
+    for ((family, pair) in completions) {
+        check(pair.size == 2)
+        check(pair[0].first == pair[1].first) { "Completion pair does not preserve K" }
+        check((pair[0].second == pair[1].second) == (family != "N"))
+    }
+    val completionEqual = completions.map { (family, pair) -> quoted(family) + ":" + (pair[0].second == pair[1].second) }
+    println("{\"status\":\"PASS\",\"states\":${records.size},\"independentComparisons\":${records.size}," +
+        "\"retryCount\":$retryCount,\"baselineSteps\":$baselineSteps,\"retrySteps\":$retrySteps," +
+        "\"invalidationAssertions\":$invalidations,\"sameKCompletionPairs\":3," +
+        "\"completionOracleEqual\":{${completionEqual.joinToString()}}," +
+        "\"transitions\":{${transitions.entries.joinToString { quoted(it.key) + ":" + it.value }}}," +
+        "\"records\":[${records.joinToString()}]}")
+}

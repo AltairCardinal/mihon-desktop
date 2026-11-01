@@ -1,0 +1,40 @@
+--- production/ReaderCanonicalPairingScan.kt
++++ A/ReaderCanonicalPairingScan.kt
+@@ -17,6 +17,7 @@
+     private val automatic: Boolean,
+     private val resolvedSideHint: (Int) -> ReaderPageSideHint?,
+     private val distance: (ReaderPageId, ReaderPageId) -> Double?,
++    private val distancesNonNegative: Boolean = false,
+ ) {
+     private val leading = if (direction == ReaderDirection.RTL) ReaderPageSideHint.RIGHT else ReaderPageSideHint.LEFT
+     private val trailing = if (direction == ReaderDirection.RTL) ReaderPageSideHint.LEFT else ReaderPageSideHint.RIGHT
+@@ -91,6 +92,7 @@
+         if (later != near) return later > near
+         if (!automatic || later < 0 || i + 2 > pages.lastIndex) return false
+         val nearDistance = distance(pages[i], pages[i + 1])
++        if (distancesNonNegative && nearDistance == 0.0) return false
+         val laterDistance = distance(pages[i + 1], pages[i + 2])
+         return laterDistance != null && (nearDistance == null || laterDistance < nearDistance)
+     }
+--- production/ReaderPairingCertification.kt
++++ A/ReaderPairingCertification.kt
+@@ -261,7 +261,7 @@
+             settings.openingMode,
+             settings.automatic,
+             ::resolvedSide,
+-        ) { a, b ->
++            distance = { a, b ->
+             val evidence = owner.edgeAnalysis(a, b, settings.direction)
+             reads?.record(
+                 ReaderPairingReadKey.Edge(a, b, settings.direction),
+@@ -282,7 +282,9 @@
+                     null
+                 }
+             }
+-        }
++            },
++            distancesNonNegative = true,
++        )
+         data class State(val index: Int, val opening: Boolean, val reserved: Boolean)
+         val memo = mutableMapOf<State, ReaderDualPageUnit?>()
+         var steps = 0

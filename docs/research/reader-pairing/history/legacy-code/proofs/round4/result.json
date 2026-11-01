@@ -1,0 +1,189 @@
+{
+  "status": "PASS",
+  "casesPerVariant": 338,
+  "transitions": {
+    "C": {
+      "C:Certified->Certified": 128,
+      "C:NeedFacts->Certified": 16,
+      "C:NeedFacts->NeedFacts": 32,
+      "C:RetryableBlocked->RetryableBlocked": 16,
+      "D:Certified->Certified": 72,
+      "D:NeedFacts->Certified": 48,
+      "D:NeedFacts->NeedFacts": 24,
+      "R:NeedFacts->NeedFacts": 2
+    },
+    "D": {
+      "C:Certified->Certified": 128,
+      "C:NeedFacts->NeedFacts": 48,
+      "C:RetryableBlocked->RetryableBlocked": 16,
+      "D:Certified->Certified": 72,
+      "D:NeedFacts->Certified": 48,
+      "D:NeedFacts->NeedFacts": 24,
+      "R:NeedFacts->NeedFacts": 2
+    }
+  },
+  "witnesses": {
+    "C": {
+      "baseline": {
+        "key": "C-16-POSITIVE-NO_MATCH-RTL-AUTO-true",
+        "status": "NeedFacts",
+        "needs": [
+          {
+            "page": 1,
+            "kind": "EDGE_SAMPLES",
+            "second": 2
+          }
+        ],
+        "failures": [],
+        "readKeys": [
+          "Analysis(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261028), sourcePageIndex=0))",
+          "Analysis(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261028), sourcePageIndex=1))",
+          "Analysis(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261028), sourcePageIndex=2))",
+          "Analysis(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261028), sourcePageIndex=3))",
+          "Dimension(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261028), sourcePageIndex=0))",
+          "Dimension(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261028), sourcePageIndex=1))",
+          "Dimension(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261028), sourcePageIndex=2))",
+          "Dimension(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261028), sourcePageIndex=3))",
+          "Edge(first=ReaderPageId(chapterId=ReaderChapterId(value=20261028), sourcePageIndex=1), second=ReaderPageId(chapterId=ReaderChapterId(value=20261028), sourcePageIndex=2), direction=RTL)",
+          "Edge(first=ReaderPageId(chapterId=ReaderChapterId(value=20261028), sourcePageIndex=2), second=ReaderPageId(chapterId=ReaderChapterId(value=20261028), sourcePageIndex=3), direction=RTL)",
+          "Identity",
+          "Settings"
+        ],
+        "readCount": 12,
+        "oracle": {
+          "slots": [
+            {
+              "page": 1,
+              "slot": "RIGHT"
+            },
+            {
+              "page": 2,
+              "slot": "LEFT"
+            }
+          ],
+          "reason": "null",
+          "certain": true
+        }
+      },
+      "C": {
+        "key": "C-16-POSITIVE-NO_MATCH-RTL-AUTO-true",
+        "status": "Certified",
+        "needs": [],
+        "failures": [],
+        "readKeys": [
+          "Analysis(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261028), sourcePageIndex=0))",
+          "Analysis(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261028), sourcePageIndex=1))",
+          "Analysis(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261028), sourcePageIndex=2))",
+          "Analysis(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261028), sourcePageIndex=3))",
+          "Dimension(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261028), sourcePageIndex=0))",
+          "Dimension(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261028), sourcePageIndex=1))",
+          "Dimension(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261028), sourcePageIndex=2))",
+          "Dimension(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261028), sourcePageIndex=3))",
+          "Edge(first=ReaderPageId(chapterId=ReaderChapterId(value=20261028), sourcePageIndex=2), second=ReaderPageId(chapterId=ReaderChapterId(value=20261028), sourcePageIndex=3), direction=RTL)",
+          "Identity",
+          "Settings"
+        ],
+        "readCount": 11,
+        "oracle": {
+          "slots": [
+            {
+              "page": 1,
+              "slot": "RIGHT"
+            },
+            {
+              "page": 2,
+              "slot": "LEFT"
+            }
+          ],
+          "reason": "null",
+          "certain": true
+        }
+      }
+    },
+    "D": {
+      "baseline": {
+        "key": "D-16-FORCE2-POSITIVE-RTL-FIRST_PAIR-true",
+        "status": "NeedFacts",
+        "needs": [
+          {
+            "page": 5,
+            "kind": "EDGE_SAMPLES",
+            "second": 6
+          }
+        ],
+        "failures": [],
+        "readKeys": [
+          "Analysis(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=3))",
+          "Analysis(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=4))",
+          "Analysis(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=5))",
+          "Analysis(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=6))",
+          "Analysis(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=7))",
+          "Dimension(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=3))",
+          "Dimension(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=4))",
+          "Dimension(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=5))",
+          "Dimension(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=6))",
+          "Dimension(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=7))",
+          "Edge(first=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=3), second=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=4), direction=RTL)",
+          "Edge(first=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=4), second=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=5), direction=RTL)",
+          "Edge(first=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=5), second=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=6), direction=RTL)",
+          "Edge(first=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=6), second=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=7), direction=RTL)",
+          "Identity",
+          "Settings"
+        ],
+        "readCount": 16,
+        "oracle": {
+          "slots": [
+            {
+              "page": 4,
+              "slot": "RIGHT"
+            },
+            {
+              "page": 5,
+              "slot": "LEFT"
+            }
+          ],
+          "reason": "null",
+          "certain": true
+        },
+        "recordValid": true
+      },
+      "D": {
+        "key": "D-16-FORCE2-POSITIVE-RTL-FIRST_PAIR-true",
+        "status": "Certified",
+        "needs": [],
+        "failures": [],
+        "readKeys": [
+          "Analysis(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=3))",
+          "Analysis(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=4))",
+          "Analysis(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=5))",
+          "Dimension(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=3))",
+          "Dimension(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=4))",
+          "Dimension(pageId=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=5))",
+          "Edge(first=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=3), second=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=4), direction=RTL)",
+          "Edge(first=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=4), second=ReaderPageId(chapterId=ReaderChapterId(value=20261029), sourcePageIndex=5), direction=RTL)",
+          "Identity",
+          "Settings"
+        ],
+        "readCount": 10,
+        "oracle": {
+          "slots": [
+            {
+              "page": 4,
+              "slot": "RIGHT"
+            },
+            {
+              "page": 5,
+              "slot": "LEFT"
+            }
+          ],
+          "reason": "null",
+          "certain": true
+        },
+        "recordValid": true
+      }
+    }
+  },
+  "hintContracts": 5,
+  "sourceStable": true,
+  "elapsedCompileAndResearchSeconds": 28.401
+}

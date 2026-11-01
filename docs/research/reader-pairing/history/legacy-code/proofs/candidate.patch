@@ -1,0 +1,15 @@
+--- production/ReaderPairingCertification.kt
++++ isolated-candidate/ReaderPairingCertification.kt
+@@ -357,7 +357,11 @@
+                         add(ReaderPairingScanCursor(first, opening))
+                         add(ReaderPairingScanCursor(first, opening, first))
+                     }
+-                    add(ReaderPairingScanCursor(first + 1, false))
++                    if (pages[first - 1] !in settings.forcedSinglePages &&
++                        pages[first] !in settings.forcedSinglePages
++                    ) {
++                        add(ReaderPairingScanCursor(first + 1, false))
++                    }
+                 }
+             }
+             val candidates = entries.map(::targetUnit)

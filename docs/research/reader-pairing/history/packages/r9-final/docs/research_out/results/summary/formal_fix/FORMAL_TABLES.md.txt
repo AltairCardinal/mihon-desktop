@@ -1,0 +1,90 @@
+# 正式计时汇总（由 bench/summarize_formal.py 从 results/raw/formal_fix/*.jsonl 生成）
+
+每个候选：各场景"逐进程配对墙钟比值的中位"的中位 [最小, 最大]（相对该场景族的 incumbent）；墙钟为整段 run_one 的本机测量。
+
+## bench_wpA（原始行 3528，子进程错误 0，ok=False 行 0）
+
+| incumbent | 候选 | 场景数 | 比值中位 | 最小 | 最大 |
+|---|---|---|---|---|---|
+| incumbent | gated_shadow | 98 | 1.024 | 0.962 | 1.412 |
+| incumbent | persistent_gated_shadow | 98 | 1.03 | 0.956 | 1.415 |
+
+## bench_wpB（原始行 240，子进程错误 0，ok=False 行 0）
+
+| incumbent | 候选 | 场景数 | 比值中位 | 最小 | 最大 |
+|---|---|---|---|---|---|
+| incumbent | gated_blocks | 5 | 1.037 | 1.022 | 1.262 |
+| incumbent | gated_exact | 5 | 1.011 | 0.996 | 1.393 |
+| incumbent | gated_tree | 5 | 1.037 | 0.99 | 2.243 |
+
+## bench_wpC（原始行 192，子进程错误 0，ok=False 行 0）
+
+| incumbent | 候选 | 场景数 | 比值中位 | 最小 | 最大 |
+|---|---|---|---|---|---|
+| incumbent | gated | 4 | 1.049 | 0.925 | 2.415 |
+| incumbent | indexed | 4 | 1.115 | 0.96 | 1.896 |
+| incumbent | selector | 4 | 1.514 | 1.019 | 2.462 |
+
+## bench_wpG（原始行 360，子进程错误 0，ok=False 行 0）
+
+| incumbent | 候选 | 场景数 | 比值中位 | 最小 | 最大 |
+|---|---|---|---|---|---|
+| lru | both | 5 | 0.994 | 0.052 | 1.035 |
+| lru | derive | 5 | 1.005 | 0.051 | 1.047 |
+| lru | proj_reissue | 5 | 1.551 | 1.144 | 1.746 |
+| lru | reissue | 5 | 1.58 | 1.141 | 1.718 |
+| lru | useless | 5 | 1.004 | 0.977 | 1.022 |
+
+## bench_fix_main（原始行 5880，子进程错误 0，ok=False 行 0）
+
+| incumbent | 候选 | 场景数 | 比值中位 | 最小 | 最大 |
+|---|---|---|---|---|---|
+| incumbent_fixed | gated_shadow_exact_fixed | 98 | 1.037 | 0.925 | 1.879 |
+| incumbent_fixed | gated_shadow_fixed | 98 | 1.063 | 0.952 | 1.894 |
+| incumbent_fixed | gated_shadow_r9 | 98 | 0.962 | 0.833 | 1.278 |
+| incumbent_fixed | persistent_gated_shadow_fixed | 98 | 1.062 | 0.939 | 1.833 |
+
+## bench_fixQ1（原始行 336，子进程错误 0，ok=False 行 0）
+
+| incumbent | 候选 | 场景数 | 比值中位 | 最小 | 最大 |
+|---|---|---|---|---|---|
+| owner | interval | 6 | 1.0 | 0.84 | 1.077 |
+| owner | sig | 6 | 1.013 | 0.831 | 1.084 |
+| table | zdd | 5 | 1.125 | 1.045 | 1.303 |
+
+## bench_fixQ2（原始行 672，子进程错误 0，ok=False 行 0）
+
+| incumbent | 候选 | 场景数 | 比值中位 | 最小 | 最大 |
+|---|---|---|---|---|---|
+| 0 | A | 9 | 0.883 | 0.441 | 1.114 |
+| 0 | AB1 | 6 | 0.613 | 0.389 | 0.778 |
+| 0 | AB2 | 6 | 0.853 | 0.475 | 1.206 |
+| 0 | AB_perunit | 3 | 2.065 | 1.103 | 2.224 |
+| 0 | AB_switch | 3 | 2.01 | 1.038 | 2.14 |
+| 0 | B | 6 | 1.329 | 1.075 | 1.358 |
+| 0 | B_perunit | 3 | 2.07 | 1.003 | 2.193 |
+| 0 | B_switch | 3 | 2.033 | 0.939 | 2.147 |
+| route1 | route2 | 4 | 0.522 | 0.017 | 1.0 |
+
+## bench_fixLC（原始行 588，子进程错误 0，ok=False 行 0）
+
+| incumbent | 候选 | 场景数 | 比值中位 | 最小 | 最大 |
+|---|---|---|---|---|---|
+| incumbent_runner | gated_shadow_fixed | 1 | 1.308 | 1.308 | 1.308 |
+| incumbent_runner | gated_shadow_r9 | 1 | 1.218 | 1.218 | 1.218 |
+| incumbent_runner | persistent_gated_shadow_fixed | 1 | 1.272 | 1.272 | 1.272 |
+| package_session | block_session | 3 | 1.12 | 1.031 | 1.537 |
+| package_session | bound_confirm | 3 | 0.981 | 0.977 | 0.992 |
+| package_session | derive_first | 3 | 1.006 | 0.99 | 1.007 |
+| package_session | fresh_strong | 3 | 1.149 | 1.018 | 1.607 |
+| package_session | gated_index_I | 3 | 1.291 | 0.978 | 1.32 |
+| package_session | gated_index_SEL | 3 | 1.308 | 0.978 | 1.94 |
+| package_session | inc_revoke | 3 | 0.176 | 0.163 | 0.176 |
+| package_session | migrate_resign | 3 | 1.01 | 0.968 | 1.012 |
+| package_session | persistent_tree | 3 | 1.054 | 1.043 | 1.588 |
+| package_session | proj_support | 3 | 1.002 | 0.95 | 1.013 |
+| package_session | reissue_eager | 3 | 1.03 | 1.008 | 1.089 |
+| package_session | reissue_lazy | 3 | 1.9 | 1.885 | 1.902 |
+| package_session | reserve1 | 3 | 1.002 | 0.983 | 1.011 |
+| package_session | value_cache | 3 | 0.996 | 0.99 | 0.997 |
+

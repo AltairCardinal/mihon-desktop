@@ -1,0 +1,43 @@
+# research_out conventions (internal working agreement)
+
+All new work lives under `research_out/`. Frozen package files are never edited.
+
+```
+research_out/
+  candidates/        importable modules (add `research_out/candidates` to sys.path; common.py puts the package root on sys.path)
+  tests/             unittest files test_<family>.py; run: python -m unittest discover -s research_out/tests -t research_out
+  fixtures/          frozen counterexamples / exogenous traces (JSON, strict, allow_nan=False)
+  results/           raw JSON/JSONL records + small aggregates; never hand-edited
+  proofs/            PROOFS.md (definitions, lemmas, counterexamples) + per-family notes
+  sections/          <family>.md: per-question evidence text (D-level, routes, verdict, gaps)
+  coverage_parts/    <family>.csv rows with the DELIVERY_TEMPLATE header
+  bench/             serial benchmark drivers; formal timing is run ONLY by the main
+                     session, serially, 3 independent processes (see bench/README)
+```
+
+## Coverage row header (DELIVERY_TEMPLATE)
+
+`question_id,route,status,depth,hypotheses,implementation,proof_or_counterexample,test_command,raw_evidence,cost_scope,assumptions,remaining,decision`
+
+status vocabulary: `implemented_verified` | `limit_proved` | `refuted_by_counterexample` | `conditional` | `unresolved_in_budget` | `not_executed`.
+decision vocabulary: `keep` | `conditional_keep` | `drop` | `infeasible` | `unfinished`.
+depth: D1..D4. One row per question (routes separated by ` || `).
+
+## Evidence layers (always say which)
+
+`core` (reference/compact scan), `virtual_host` (current_baseline.Host style), `protocol` (synthetic state machine),
+`simulated` (unit-less parametric cost model, label time as `u`), `local_measured` (this machine, Python 3.13,
+2 vCPU), `historical` (BASELINE_EVIDENCE.md numbers; never re-entered as our data).
+
+## Benchmark registration
+
+A family exposes `bench/bench_<family>.py` with
+`SCENARIOS: list[dict]` (each has `name`) and `run_one(scenario, candidate, rep) -> dict` returning at least
+`{wall_ns, verdict_sha256, work:{...}, ok:bool}` computed on the SAME exogenous events for every candidate,
+plus `CANDIDATES: list[str]` whose first entry is the strong baseline (`Config.current()` host or the
+reference behaviour the candidate must match). Correctness failures are rows with `ok=false`, never dropped.
+
+## CPU discipline
+
+2 vCPU machine. At most 2 CPU-heavy processes at once across all sessions; any exploratory run is capped
+(`timeout`, explicit state/world caps). No sleeps to manufacture waiting. Protocol / cost-model clocks are synthetic.

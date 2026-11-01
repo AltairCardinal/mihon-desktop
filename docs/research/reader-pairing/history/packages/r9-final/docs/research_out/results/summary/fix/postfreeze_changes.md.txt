@@ -1,0 +1,17 @@
+# 冻结后的改动记录（冻结清单 ac7dd03d…，留出种子基 5926461）
+
+冻结之后只做了下列改动；每项都说明为什么不影响已经运行的留出结论。
+
+| 文件 | 改动 | 对留出结论的影响 |
+|---|---|---|
+| candidates/fix_main_shadow.py | FixedShadowRunner 增加 `residency()`/`close()`；LifeFixedShadowRunner 的 `residency()` 计入 L0 证书镜像，`_close()` 先清空镜像。原因：D3 驻留测量发现镜像（每个已首发目标一个句柄）在关闭后仍保留，LC 的 residency 不计它（改前关闭后残留 7 项，`results/raw/fix/main/shadow_mirror_residual_before_release.json`）。 | 只在关闭时生效，关闭前的行为逐字不变；HO-1 不执行关闭；修改后运行器生命周期脚本全部组仍通过，关闭后残留 0（`results/raw/fix/main/shadow_mainfix_lifecycle_postfreeze_release.json`）。 |
+| tests/test_fix_main.py | 增加"关闭后镜像为 0"的断言 | 测试，不影响结果 |
+| bench/*（非冻结范围） | bench_fix_main 增加 fresh exact 强基线候选；summarize_formal 支持 --fix；新增 costprobe、residency、D3 索引、交付表构建脚本 | 测量与汇总脚本，不改变候选 |
+
+## 最终收尾轮（2026-10-27）的候选代码改动
+
+| 文件 | 改动 | 对已有结论的影响 |
+|---|---|---|
+| candidates/fixLC_shadow.py | 关闭改为异步三段（请求/逻辑关闭/物理排空），排空只在最后一个任务真实退出时完成；关闭期间 probe 由运行器拒绝；重复关闭只应答；评估器比较 close_end 的释放子集 | 只影响关闭之后；HO-1/HO-2 不经过这段代码；运行器生命周期脚本复跑结论不变（`results/raw/final/shadow_lifecycle_after_close_fix.json`）。修改前版本 `candidates/_final_prefix/fixLC_shadow.py` |
+| candidates/fix_main_shadow.py | 修正版影子运行器拒绝 q_u ≤ 0；两个修正版运行器增加 `bound=True` 选项（组合 bound 确认会话，只改 confirm） | 已有实验从未用 q_u=0；`bound` 默认关闭，开启后判定哈希 196/196 相同。修改前版本 `candidates/_final_prefix/fix_main_shadow.py` |
+| tests/test_final_boundaries.py | 新增 8 项回归 | 测试 |

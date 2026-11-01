@@ -1,0 +1,78 @@
+# 验收矩阵（R10 修订）
+
+流程：作者完成修订后，一个**只读**验收代理（独立上下文，只拿到修订要求与文件路径，不拿作者结论）逐项对照原始结果与代码，给出 PASS/FAIL/PARTIAL 与证据，并列出全部问题。作者按问题清单改正（见 `CHANGELOG.md`“独立验收后的改正”），随后在独立目录做全量干净重跑（`summary/clean_run.json`）。最后由同一代理复核改正与干净重跑（本文末“复核”一节）。
+
+列说明：第一轮 = 验收代理第一轮的判定；改正 = 作者据问题清单做的修改；最终证据 = 现在可以复核的文件/测试/命令。
+
+| 项 | 要求（摘要） | 第一轮 | 改正 | 最终证据 |
+|---|---|---|---|---|
+| T01 | 撤回 C_i 一般命题；可执行反例（4/130.19685 ms 机会、C 5→3、50 样本、中位 125.19685 vs 4）；同 (C,U) 不可移除服务世界；加 C_i 后仍不可识别的部分；等待 vs 必需服务下界；TI 前提与检验；区间路线限模型类；H2/H3 冻结前提 | PARTIAL（核心正确，残留撤回措辞） | obsworlds 文档串/注释/键名；Q010 改引 C21；v1 c21 常量撤回；全局替换误伤修复 | `raw/pass1/obsworlds.json#T01`、`route_A_interval_model_class_M_TI`；`tests/test_revision.py::T01`；记录 Q007/Q010/Q023/Q090/Q095/Q096；`raw/joint/C21.json` |
+| T02 | proof_work 只计额外强证明；N0 无 C_i；物化≠授权；R0 原因在发布/历史层；23 支持对象≠23 任务；“至少 6 轮”需三前提；4 路并发≠每轮 4 事实；摘要树限已测范围；INPUT_ERRATA | PARTIAL（Q091 正例无条件；两句撤回句被误伤） | Q091 正例改条件陈述；替换顺序修复 | `INPUT_ERRATA.md` E1–E6；`raw/pass1/n0_structure.json`、`reach.json`；记录 Q088/Q091/Q094/Q095/Q099 |
+| T03 | 预取上界修复；失败回归测试先行；向前/向后/尾部/unit 大小/对象≠unit；重算 prefetch=True 实验并逐项列前后；C07/C19 确认 | PASS（小项） | Q043 括注改正 | `tests/test_regressions.py::PrefetchBound`；`raw/regressions/before_fix.txt`（v1 上 3 项 FAIL）、`after_fix.txt`；`raw/regressions/t03_cache_before_after.txt`；`raw/joint/C07.json`、`C19.json`（prefetch=False） |
+| T04 | 容量在所有交错中受约束；池满时结果占工人与槽；三类资源区分；消费/关闭/取消/晚完成/异常各释放一次；常驻含池+HELD 且去重；回归先行；Q028/C05 在可执行模型上重建；C05 两设计机制不同、同容量 | PARTIAL（变异测试未提交、去重未测、before/after 用旧文件） | 提交 `MailboxMutants`、`ResidencyDedupe`；before/after 用最终 13 项文件重生成并标明行为证据 | `lab/sched.py::_invariants`；`tests/test_regressions.py`（13 项）；`raw/sched/mailbox.json`；`raw/joint/C05.json`（POOL=3 两设计相同，另有容量 2 输入） |
+| T05 | 每个完成记录：域、两机制、判别、正/退化/最小反例、成本、失败边界、所需观测（或“不适用：原因”） | PARTIAL（占位词、limit 列“；—”、route 截断、与新结果矛盾的记录、引用 v1 combos） | 全部改写；`build.py` 拒绝占位词与过短字段，修正 route/limit；矛盾记录改写并改引 `raw/joint` | `records/build.py`（严格检查）；`coverage_detail.csv`；`records/revision.py::F5/F6` |
+| T06 | Q053 第二路线实现并验证；Q119 可执行门控实验；Q012/C22 真实运行 NOT_RUN；其余组合两设计各 0/A/B/AB、机制不同、同输入/oracle/资源/账本、区分实验或如实合并 | PARTIAL（C22 伪交互与写死识别数；C23 A_II 调错设计；C21 推界组件不触发；C09 反例未构造；C19 数取错格；C29/C30 为算术/决策计算） | C22 固定抽样、识别数计算、观测等价世界与阈值扫描已算；C23 修正；C21 加混合 U 族；C09 标“未构造”；C19 改用 AB_I；C29/C30 标注证据等级 | `raw/gamma/q053.json`、`raw/gamma/q119.json`、`raw/joint/C01..C30.json`、`sections/COMBINATIONS_DETAIL.md` |
+| T07 | POSIX 相对路径；真实错误必须失败；负例测试；区分路径规则单测与原生 Windows；xcheck 标历史；自带中性检查且不调用候选核心函数 | PASS（小项） | 重复行检测；Windows 分隔符断言改为可失败的形式；xcheck 加历史标注；新增自动开启的黄金例 | `research_out/check_integrity.py`；`tests/test_revision.py::Integrity`（11 项）、`NeutralPlanChecker`（AST 检查无 import）；原生 Windows：NOT_RUN |
+| T08 | 独立目录离线干净复现；包测试、研究测试、新回归；完整性不变；重算覆盖/详情/统计；新计时比较≥3 个独立串行进程；PASS/FAIL/SKIP/NOT_RUN 分列 | PARTIAL（当时干净重跑尚未完成；clean_run.json 是 v1 的） | 全量干净重跑（见下）；剪枝计时改为 3 个独立串行进程 | `summary/clean_run.json`；`raw/bench/prune_summary.json` |
+| SF-1 | 8 个“入口过近似”缺口是 oracle 分数域取窄的伪缺口 | PARTIAL（两条记录残留；可靠性只在窄域检验） | 记录改正；新增可实现分数格点上的可靠性复核域 | `raw/gamma/certificates.json`（domains[1] 分类、domains[5] 可实现域）；`tests/test_revision.py::SelfFound` |
+| SF-2 | 投影表缓存以 id(dom) 为键 | PASS | — | `lab/omega.py::dom_signature`；`SelfFound.test_sf2_*` |
+| SF-3…SF-7 | 活锁边界、v1 combos 文字、W09、组合记录严格检查、S10 指向 | 部分在第一轮被指出仍未生效（原始结果未重算） | 干净重跑后整体替换原始结果 | `summary/clean_run.json` 的逐文件比较 |
+| 报告 §0 | 六问 | PASS（结构）；内容问题：C02 表述、C05 “饿死”、引用不存在的文件 | 改正 | `REPORT.md` §0、§3 |
+| CHANGELOG | 每个旧问题：修改/复验/结论变化 | PARTIAL（部分复验无文件支撑） | 变异测试提交、复验表述改正、新增第二轮改正表 | `CHANGELOG.md` |
+| 真实收益 | 不把模型收益转为产品收益；不捏造计时/命中率/CPU/毫秒 | 未发现违例 | — | 全部计时标为 Python 模型 |
+
+## 干净重跑摘要（T08）
+
+独立目录 `/tmp/claude-0/-home-claude/6bc4a616-0031-50e1-8e5f-2b01272ff7cd/scratchpad/clean/ordered-latency-r10`；删除 `raw/` 后逐步执行；`R9_REFERENCE` 指向不存在的路径（历史差分应报告 NOT_RUN 而非失败）。Python 3.13.17，总计 4035.7 s。
+
+计数：PASS 30、FAIL 0、SKIP 0、NOT_RUN 1。
+
+| 步骤 | 状态 | 秒 |
+|---|---|---|
+| utf8 -B tests/test_lab.py | PASS | 0.1 |
+| research_out/lab/reach.py | PASS | 0.4 |
+| research_out/lab/n0_structure.py | PASS | 0.0 |
+| research_out/lab/obsworlds.py | PASS | 0.1 |
+| research_out/lab/gamma_xcheck.py 20000 | NOT_RUN | 0.0 |
+| research_out/bench/exp_certificates.py | PASS | 321.5 |
+| research_out/bench/exp_evidence.py | PASS | 49.4 |
+| research_out/bench/exp_gamma2.py | PASS | 108.8 |
+| research_out/bench/exp_q097.py | PASS | 31.4 |
+| research_out/bench/exp_q097b.py | PASS | 3.3 |
+| research_out/bench/exp_summarytree.py | PASS | 4.4 |
+| research_out/bench/exp_cache.py | PASS | 441.9 |
+| research_out/bench/exp_sched.py | PASS | 0.7 |
+| research_out/bench/exp_mailbox.py | PASS | 0.1 |
+| research_out/bench/exp_lifecycle.py | PASS | 0.1 |
+| research_out/bench/exp_stats.py | PASS | 0.7 |
+| research_out/bench/exp_misc.py | PASS | 1.6 |
+| research_out/bench/exp_combos.py | PASS | 32.8 |
+| research_out/bench/exp_workloads.py | PASS | 3.1 |
+| research_out/bench/exp_q053.py | PASS | 470.0 |
+| research_out/bench/exp_q119.py | PASS | 1720.3 |
+| research_out/bench/exp_joint.py | PASS | 653.5 |
+| research_out/bench/bench_micro.py drive | PASS | 102.7 |
+| research_out/bench/bench_prune.py drive | PASS | 70.0 |
+| research_out/records/build.py | PASS | 0.1 |
+| research_out/tests/test_r10.py | PASS | 5.9 |
+| research_out/tests/test_regressions.py | PASS | 0.3 |
+| research_out/tests/test_revision.py | PASS | 12.4 |
+| research_out/check_report_consistency.py | PASS | 0.0 |
+| research_out/check_integrity.py | PASS | 0.0 |
+| research_out/check_integrity.py --verify | PASS | 0.0 |
+
+与交付前原始结果逐文件比较（忽略易变字段）：相同 45 个；不同 5 个（cache/cache.json, gamma/certificates.json, gamma/q119.json, pass1/obsworlds.json, workloads/workloads.json），原因见 `summary/clean_run.json#explanation_of_differences`，所有计数值不变。交付的 `raw/` 即本次重跑输出。新计时比较（剪枝 vs C09）用 3 个独立串行进程：118–133 倍（`raw/bench/prune_summary.json`）；全部微基准的相对顺序与上一次运行相同。
+
+## 复核（验收代理第二轮，原文）
+
+验收代理对第二轮改正与独立目录干净重跑做了只读复核：第一轮 13 个问题中 11 个已改正，2 个部分改正；干净重跑 31 步中 30 PASS、1 NOT_RUN（历史差分），交付的原始结果即该次重跑输出，源码与重跑副本一致（仅记录文字不同，重建结果逐字节相同），全部测试、报告一致性检查与 `check_integrity.py --verify` 均通过。T01 反例与修订判据、T03 预取上界、T04 结果池容量与一次释放、SF-1/SF-2 均已由可执行证据支持。交付前仍须改正的文字问题：Q087 仍写“先只加 C_i、C_i 未判 NO-GO 再加时间戳”（与 T01 撤回矛盾，所需观测应为 C_i + B_i 或机会时刻表）；Q118 把 20 000 例差分写成“已覆盖”而未标历史；报告与 CHANGELOG 的黄金例数应为 5；另有 8 条记录仍引用 v1 组合结果（其中 Q100、Q046 与新 C09、C18 不一致）。现有材料下仍然开放的部分：原生 Windows 上未运行完整性检查；与上一包参照的历史差分不能在本包内复现；可实现分数格点上的可靠性复核只做了 n=3，n=4 未做；C21、C22、C23 的部分组件在模型中较弱（如实写明）；授权后不可移除服务下界 s_i（B_i 或机会时刻表）、m_miss、真实观察器阈值、跳转首访比例等真实产品观测全部缺失，因此主门槛仍不能裁定，所有收益都只在模型层面，不构成产品毫秒结论。
+
+### 作者对复核中列出问题的处理
+
+- Q087：改为“C_i 单独不能判 NO-GO；第一阶段加 {C_i, B_i} 或 {C_i, 机会时刻表}，条件满足后才加逐轮时间戳”，所需观测改为 C_i + B_i（或机会时刻表），成本不再写交叉引用。
+- Q118：20 000 例差分标为历史证据，改写为以自带中性检查与 5 个黄金例为模型层覆盖；所需观测写出七项工程侧记录。
+- 黄金例数：REPORT §0、§5 与 CHANGELOG 改为 5 个（其中 1 个在自动开启域）。
+- 8 条引用 v1 组合结果的记录（Q024、Q034、Q045、Q046、Q077、Q083、Q100、Q106）改引 `raw/joint`；Q100 写明 C09 设计 II 在收敛世界中 581→34 步、在不收敛链族上未构造；Q046 改用 C18 的 1736 步。Q101 路线列不再被截断。`build.py` 现在也拒绝“见XX。”式的纯交叉引用字段。
+- `clean_run.json` 第 1 步标签改为完整命令。
+- 以上修改只涉及记录文字与文档，不涉及代码或原始结果；改后重建记录、报告一致性检查、全部测试与完整性检查再次通过（见 `SHA256SUMS.txt` 生成后的 `--verify`）。
+

@@ -1,0 +1,79 @@
+# WP-H — commit protocol, admission/scheduling, speculation, robustness (H, I, J, R, N03 + 8 combinations)
+
+Evidence layers: **coupled** (coupling.Session / StrongSession through `RunnerH`, virtual u), **simulated**
+(`wpH_sched.Sim`: discrete-event physical model, capacity C, nonpreemptible cancel, service latents keyed by
+SHA-256 of (seed, identity, attempt), fixed before any policy runs), **owner** (corrected_owner), and
+**local_measured** wall time only as unrepeated indications (formal timing: `bench/bench_wpH.py`, main session).
+Raw: `results/raw/wpH/{commit,sched,robust,combos,d4,extra}.json`; summary `results/summary/wpH/summary.json`.
+Proofs: `proofs/wpH.md` (L1–L10). Tests: `tests/test_wpH.py` (19 tests, ~9 s).
+
+## 1. Commit protocol (H)
+* **H01 linearisation (D3).** The commit check (guard + epoch + typed support equality) is the linearisation
+  point (L1). 1590 exhaustive certify→write→publish interleavings: 0 violations (1153 published, 437 stale);
+  guard-only mutant 122 wrong, own-items-only 46. Proof work stays outside the critical section.
+* **H02/H03 local composition and incremental revocation (D3/D4).** A cross-world pair exists (t1 (0,1) then
+  t2 [0] WIDE); revalidation of exactly {h : S_h ∩ dirty ≠ ∅} ∪ (all, on guard change) is minimal and safe (L2).
+  `IncSession` (reverse support index) = full revalidation on 1800 random steps and on 10 held-out coupled runs
+  with churn/rebind/confirm/cancel; publication read checks 128 092 → 18 936; identical latency.
+* **H04 confirmation (D4).** The package `confirm(target)` is not bound to the publication instance: a late
+  callback for an expired publication confirms an equal re-issued one (16 of 35 late callbacks, 7/10 held-out
+  runs). `confirm(target, handle)` rejects them (0) and never rejects the current handle.
+* **H05 value vs identity (D4).** Value-keyed witness reuse across owner incarnations: held-out D4 with two
+  knowledge-losing rebinds/run: admissions 417 → 115, latency 937 → 138 u, 0 wrong, 0 old-epoch certificates.
+  Precondition (counterexample): label reuse with different content serves a stale value. Carry-over rebinds:
+  no latency gain (3 vs 3 u).
+* **H06 liveness (D2, limit).** Joint multi-target commits starve under churn (0/8 in 400 u) where per-target
+  commits finish (8/8); liveness window is per support, not per union (L5).
+
+## 2. Admission and scheduling (I)
+* **I01 (D2, conditional):** bound-aware Smith ordering wins at C=1 (3104 → 2805 required-u) but not at C=2;
+  counterexample fifo/critical 31 vs Smith 23.
+* **I02 (D4, conditional):** fixed reservation bounds required delay but starves optional work (0/36 served);
+  dynamic borrowing iff declared bound ≤ B keeps required ≤ fixed + B (L6) and serves 7–15. Cancel-releases mutant
+  over-commits (2 > C=1). In the coupled chain (prefetch events, service 3 u) reservation gives **no gain**
+  (113 vs 112 u, 1 run better, 1 worse) → not adopted at coupled parameters.
+* **I03/X16 (D2):** bounded bypass (B=8) equals wait at small slowness and always_both at large; under a failing
+  shared task wait 456 vs bypass 98 u. Bypass never saves work.
+* **I04 (D3):** analytic split saves (1−p)·d work; queueing DES shows latency gains only under overload:
+  in all 72 configs split wins needed-job latency iff p<1 and ρ_joint ≥ 1.25 (`gate_split`).
+* **I05 (D3):** per-item micro-batching 1926 → 940; barrier 1144; max_wait only adds latency.
+* **I06 (D2):** a 2-slot result buffer helps at consume delay 1 (407 → 160); at saturation an unbounded buffer
+  gives no throughput and loses the memory bound (21).
+
+## 3. Speculation (J)
+* **J01 (D3):** accuracy-gated speculation: forward 1378 → 923, zigzag 1220 → 828, drift 1045 → 808; never speculates
+  on jumps (1112 = none); idle-only speculation is worse on jumps (1154).
+* **J02 (D2):** cooperative exit at phase boundaries: required 3/4/9 u vs 29 (nonpreemptible); found and fixed a
+  phantom completion (revive of an exiting instance) — regression test.
+* **J03 (D2):** aging trades required max (28 → 82–91) for optional max (125 → 86–117).
+* **J04 (D2):** global debounce windows are starved by unrelated churn (final wait 63/43 vs 15 relevant-only);
+  debounce is harmful when changes are slower than service (15 vs 8 u, 32 wasted).
+* **J05 (D2, limit):** with required load ≥ 1 no policy bounds required latency (60 → 130 u with horizon);
+  rejecting optional work bounds the queue (90) but not required latency.
+* **J06 (D3):** a global credit is drained by an always-wrong hotspot (5 of 6); per-requester credit with refund
+  on use cuts G's latency 59–76 → 5–9 u and caps waste.
+
+## 4. Robustness (R) and protocol bounds (N03)
+R01 split identity/evidence yields a wrong intermediate certificate, atomic batch does not; R02 detectors;
+R03 2800 sequences 0 violations; R04 144 configs 0 mismatches (n=0 rejected); R05 wrap counters give stale hits
+(15 / 255), saturate+exact and incarnation switch 0 (L9); R06 364 injected faults, 0 violations; N03 BFS depth 6,
+C ≤ 2: 0 violations, generalisation limits stated (L10).
+
+## 5. Combinations (interaction I = m(AB) − m(A) − m(B) + m(0))
+X07 reorder × revocation: B adds nothing (global guard change), I = 0. X08 batch × atomic: per-item commits give
+69/450 certificates differing from final, atomic 0. X16 above. X22 value reuse × migration: fresh rebinds steps
+I = −503 (reinforcing), carry I = 0 — complementary by rebind kind. X23 reservation × speculation: antagonistic
+(3-step forward I = +96 / +57 u). X24 batch × aging: I = −941 required-u, aging still raises p95 117 → 189.
+X25 debounce × negative cache: caching transient failure as permanent never completes; I = −2 / −11.
+X29 induction × saturation: wrap 855 stale hits, saturate/incarnation 0.
+
+## 6. D3/D4 candidates and adoption
+D3 bench (`bench_wpH.py`, incumbent first per family): inc_revoke, value_cache, bound_confirm, reserve1,
+dyn_b10, batch_peritem, refund_isolated. D4 (held-out RP/W01/W02/W06 seeds 100+, lifecycle audited:
+admission, publication, confirmation, cancellation 6/run, rebind/invalidation, release = 0 occupied at end,
+peak ≤ capacity, raw ≤ cap): inc_revoke, bound_confirm, value_cache (positive); reserve1 (no gain).
+Executable gates: `candidates/wpH_adopt.py`; boundaries: `adoption_parts/wpH.csv`.
+
+## 7. Gaps
+No native concurrency/timing claims; I/J/X mechanisms other than reservation are simulated, not coupled;
+J04 route B is analytic; N03 bounded to C ≤ 2, depth 6; value-cache producer contract is unverifiable by the cache.

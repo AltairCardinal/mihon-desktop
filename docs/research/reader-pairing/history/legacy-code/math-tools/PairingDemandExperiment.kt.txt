@@ -1,0 +1,260 @@
+package mihon.domain.reader
+
+import mihon.domain.reader.session.ReaderChapterId
+import mihon.domain.reader.session.ReaderPageId
+
+private enum class DemandPixels { GRAY, TEXTURE, SHIFTED, LEFT, RIGHT, WIDE }
+
+private data class DemandOriginal(val fact: ReaderPageFact, val samples: ReaderOriginalPageSamples)
+
+private fun original(kind: DemandPixels): DemandOriginal {
+    val width = if (kind == DemandPixels.WIDE) 512 else 256
+    val height = 384
+    fun argb(x: Int, y: Int): Int = when {
+        kind == DemandPixels.LEFT && x >= width * 19 / 20 -> -1
+        kind == DemandPixels.RIGHT && x < width / 20 -> -1
+        kind == DemandPixels.TEXTURE || kind == DemandPixels.SHIFTED -> {
+            val c = (if ((y / 7) % 2 == 0) 180 else 70) + if (kind == DemandPixels.SHIFTED) 5 else 0
+            0xff000000.toInt() or (c shl 16) or (c shl 8) or c
+        }
+        else -> 0xff8c8c8c.toInt()
+    }
+    val plan = requireNotNull(ReaderOriginalPageSampling.plan(width, height))
+    val samples = plan.samples(plan.left.map { (x, y) -> argb(x, y) }, plan.right.map { (x, y) -> argb(x, y) })
+    val expected = when (kind) {
+        DemandPixels.LEFT -> ReaderPageSideHint.LEFT
+        DemandPixels.RIGHT -> ReaderPageSideHint.RIGHT
+        else -> ReaderPageSideHint.UNKNOWN
+    }
+    check(samples.sideHint == expected)
+    return DemandOriginal(ReaderPageFact.dimensions(width, height).copy(sideHint = samples.sideHint), samples)
+}
+
+private class DemandFixture(val kinds: List<DemandPixels>, val chapter: Long) {
+    val pages = kinds.indices.map { ReaderPageId(ReaderChapterId(chapter), it) }
+    val identity = ReaderDualPageIdentity(1, 1, pages.map { ReaderDualPageContentIdentity(it, "resource-$it/v0") })
+    val originals = kinds.map(::original)
+    val facts = pages.associateWith { originals[it.sourcePageIndex].fact }
+    val headers = facts.mapValues { it.value.copy(sideHint = ReaderPageSideHint.UNKNOWN) }
+
+    fun accept(owner: ReaderSpreadSamplesOwner, index: Int) {
+        val value = originals[index]
+        check(owner.acceptOriginal(owner.request(pages[index]), value.fact, value.samples.edges))
+    }
+
+    fun oracle(settings: ReaderPairingSettings, target: Int): ReaderDualPageUnit {
+        val owner = ReaderSpreadSamplesOwner(identity)
+        try {
+            pages.indices.forEach { accept(owner, it) }
+            return SharedDualPageRules.canonicalPlan(
+                pages, facts, settings.direction, settings.forcedSinglePages, settings.manualPairStarts,
+                settings.openingMode, settings.automatic,
+                distance = { a, b -> (owner.edgeAnalysis(a, b, settings.direction) as ReaderEdgeAnalysisEvidence.Computed).score },
+            ).single { pages[target] in it.pageIds }
+        } finally {
+            owner.close()
+        }
+    }
+
+    fun observe(owner: ReaderSpreadSamplesOwner, settings: ReaderPairingSettings, target: Int): DemandObservation {
+        val reads = ReaderPairingReadSet()
+        val result = ReaderPairingCertifier.certifyCapturing(identity, headers, owner, settings, pages[target], reads).certification
+        val expected = oracle(settings, target)
+        if (result is ReaderPairingCertification.Certified) {
+            check(result.segment.unit == expected)
+            check(result.segment.isCurrent(identity, settings, owner, headers))
+            val changed = identity.copy(content = identity.content.map {
+                if (it.pageId == pages[target]) it.copy(contentVersion = "different-content/v1") else it
+            })
+            check(!result.segment.isCurrent(changed, settings, owner, headers))
+            check(!result.segment.isCurrent(identity, settings.copy(manualRevision = 1), owner, headers))
+            if (target > 0) {
+                val changedManual = if (target - 1 in settings.manualPairStarts) settings.manualPairStarts - (target - 1)
+                    else settings.manualPairStarts + (target - 1)
+                check(!result.segment.isCurrent(identity,
+                    settings.copy(manualPairStarts = changedManual), owner, headers))
+            }
+            expected.pageIds.firstOrNull { it != pages[target] }?.let { partner ->
+                val changedPartner = identity.copy(content = identity.content.map {
+                    if (it.pageId == partner) it.copy(contentVersion = "changed-partner-or-near-edge/v1") else it
+                })
+                check(!result.segment.isCurrent(changedPartner, settings, owner, headers))
+            }
+        }
+        check(result !is ReaderPairingCertification.RetryableBlocked)
+        return DemandObservation(result, expected, reads.snapshot())
+    }
+}
+
+private data class DemandObservation(
+    val result: ReaderPairingCertification,
+    val oracle: ReaderDualPageUnit,
+    val reads: Map<ReaderPairingReadKey, ReaderPairingReadValue>,
+) {
+    fun json(key: String): String {
+        val status: String
+        val needs: String
+        when (result) {
+            is ReaderPairingCertification.Certified -> { status = "Certified"; needs = "[]" }
+            is ReaderPairingCertification.NeedFacts -> {
+                status = "NeedFacts"
+                needs = result.facts.joinToString(prefix = "[", postfix = "]") {
+                    "{\"page\":${it.pageId.sourcePageIndex},\"kind\":\"${it.kind}\",\"second\":${it.secondPageId?.sourcePageIndex}}"
+                }
+            }
+            else -> error("Unexpected result")
+        }
+        val slots = oracle.slots.joinToString(prefix = "[", postfix = "]") {
+            "{\"page\":${it.pageId.sourcePageIndex},\"slot\":\"${it.position}\"}"
+        }
+        val edgeReads = reads.keys.filterIsInstance<ReaderPairingReadKey.Edge>().joinToString(prefix = "[", postfix = "]") {
+            "[${it.first.sourcePageIndex},${it.second.sourcePageIndex}]"
+        }
+        return "{\"key\":\"$key\",\"status\":\"$status\",\"needs\":$needs,\"edgeReads\":$edgeReads," +
+            "\"readCount\":${reads.size},\"oracle\":{\"slots\":$slots,\"certain\":${oracle.certain}," +
+            "\"reason\":\"${oracle.singleReason}\"}}"
+    }
+}
+
+fun main(args: Array<String>) {
+    val variant = args.single()
+    require(variant in setOf("baseline", "A", "B"))
+    val records = mutableListOf<String>()
+    for (capacity in listOf(2, 16)) for (near in listOf("ZERO", "POSITIVE", "NONE")) {
+        val count = capacity + 3
+        val kinds = List(count) { index ->
+            when {
+                index == 1 -> if (near == "NONE") DemandPixels.GRAY else DemandPixels.TEXTURE
+                index == 2 -> if (near == "POSITIVE") DemandPixels.SHIFTED else DemandPixels.TEXTURE
+                index == 3 -> if (near == "POSITIVE") DemandPixels.SHIFTED else DemandPixels.TEXTURE
+                else -> DemandPixels.GRAY
+            }
+        }
+        val fixture = DemandFixture(kinds, 20261024)
+        for (direction in listOf(ReaderDirection.RTL, ReaderDirection.LTR)) {
+            for (opening in ReaderChapterOpeningMode.entries) for (automatic in listOf(false, true)) {
+                val owner = ReaderSpreadSamplesOwner(fixture.identity, sampleCapacity = capacity)
+                try {
+                    val order = listOf(1, 2, 0) + (4 until count).toList() + 3
+                    check(order.distinct().size == count)
+                    order.forEach { fixture.accept(owner, it) }
+                    check(fixture.pages.all { owner.pageAnalysis(it) is ReaderPageAnalysisEvidence.Computed })
+                    val nearEvidence = owner.edgeAnalysis(fixture.pages[1], fixture.pages[2], direction)
+                    check(nearEvidence is ReaderEdgeAnalysisEvidence.Computed)
+                    check(nearEvidence.score == when (near) { "ZERO" -> 0.0; "POSITIVE" -> 15.0; else -> null })
+                    check(owner.edgeAnalysis(fixture.pages[2], fixture.pages[3], direction) is ReaderEdgeAnalysisEvidence.NotAnalyzed)
+                    if (opening != ReaderChapterOpeningMode.FIRST_PAIR) {
+                        val trace = ReaderCanonicalPairingScan(
+                            fixture.pages, { fixture.facts[fixture.pages[it]] },
+                            { fixture.facts.getValue(fixture.pages[it]).sideHint }, direction, emptySet(), emptySet(),
+                            opening, automatic, { fixture.facts.getValue(fixture.pages[it]).sideHint },
+                            { a, b -> (owner.edgeAnalysis(a, b, direction) as ReaderEdgeAnalysisEvidence.Computed).score },
+                        ).step(ReaderPairingScanCursor(0, true))
+                        check(trace.next.index == 1 && trace.next.reservedStart != 1)
+                    }
+                    val settings = ReaderPairingSettings(direction, automatic, openingMode = opening)
+                    val observation = fixture.observe(owner, settings, 1)
+                    if (automatic && opening != ReaderChapterOpeningMode.FIRST_PAIR) {
+                        if (variant == "A" && near == "ZERO") {
+                            check(observation.result is ReaderPairingCertification.Certified)
+                            check(observation.reads.keys.none { it is ReaderPairingReadKey.Edge && it.first == fixture.pages[2] })
+                        } else {
+                            check(observation.result is ReaderPairingCertification.NeedFacts)
+                        }
+                    }
+                    records += observation.json("A-$capacity-$near-$direction-$opening-$automatic")
+                } finally {
+                    owner.close()
+                }
+            }
+        }
+    }
+    check(records.size == 72)
+    for (target in listOf(1, 2)) for (side in listOf("LEADING", "TRAILING", "UNKNOWN", "MISSING")) {
+        for (direction in listOf(ReaderDirection.RTL, ReaderDirection.LTR)) {
+            for (opening in ReaderChapterOpeningMode.entries) for (automatic in listOf(false, true)) {
+                for (manualKind in listOf("NONE", "INCOMING", "OWN")) {
+                    val leading = if (direction == ReaderDirection.LTR) DemandPixels.LEFT else DemandPixels.RIGHT
+                    val trailing = if (direction == ReaderDirection.LTR) DemandPixels.RIGHT else DemandPixels.LEFT
+                    val kinds = List(4) { index -> when {
+                        index == target -> when (side) {
+                            "TRAILING" -> trailing
+                            "UNKNOWN" -> DemandPixels.GRAY
+                            else -> leading
+                        }
+                        index == target + 1 -> trailing
+                        else -> DemandPixels.GRAY
+                    } }
+                    val fixture = DemandFixture(kinds, 20261025)
+                    val manual = when (manualKind) { "INCOMING" -> setOf(target - 1); "OWN" -> setOf(target); else -> emptySet() }
+                    val record = ChapterPairingRecord(2, 4, emptySet(), openingMode = opening, manualPairStarts = manual)
+                    val recordValid = record.isValidFor(4)
+                    if (manualKind == "OWN" && !(target == 1 && opening == ReaderChapterOpeningMode.FIRST_PAIR)) check(recordValid)
+                    val owner = ReaderSpreadSamplesOwner(fixture.identity)
+                    try {
+                        fixture.accept(owner, target + 1)
+                        if (side != "MISSING") fixture.accept(owner, target)
+                        val settings = ReaderPairingSettings(direction, automatic, manualPairStarts = manual, openingMode = opening)
+                        val observation = fixture.observe(owner, settings, target)
+                        val eligible = automatic && side == "LEADING" && manualKind != "INCOMING" &&
+                            !(target == 1 && opening == ReaderChapterOpeningMode.FIRST_PAIR)
+                        if (variant == "B" && eligible) {
+                            check(observation.result is ReaderPairingCertification.Certified)
+                            check(observation.oracle.pageIds == listOf(fixture.pages[target], fixture.pages[target + 1]))
+                        }
+                        if (target == 1 && manualKind == "OWN" && side == "MISSING") {
+                            check(observation.result is ReaderPairingCertification.Certified)
+                        }
+                        records += observation.json("B-$target-$side-$direction-$opening-$automatic-$manualKind")
+                            .dropLast(1) + ",\"recordValid\":$recordValid}"
+                    } finally {
+                        owner.close()
+                    }
+                }
+            }
+        }
+    }
+    check(records.size == 360)
+    for (direction in listOf(ReaderDirection.LTR, ReaderDirection.RTL)) {
+        val leading = if (direction == ReaderDirection.LTR) DemandPixels.LEFT else DemandPixels.RIGHT
+        val fixture = DemandFixture(listOf(DemandPixels.GRAY, DemandPixels.GRAY, leading, DemandPixels.WIDE), 20261027)
+        val owner = ReaderSpreadSamplesOwner(fixture.identity)
+        try {
+            fixture.accept(owner, 2)
+            fixture.accept(owner, 3)
+            val settings = ReaderPairingSettings(direction, true)
+            val scan = ReaderCanonicalPairingScan(
+                fixture.pages, { fixture.facts[fixture.pages[it]] },
+                { fixture.facts.getValue(fixture.pages[it]).sideHint }, direction, emptySet(), emptySet(),
+                ReaderChapterOpeningMode.AUTO, true, { fixture.facts.getValue(fixture.pages[it]).sideHint },
+                { _, _ -> error("The target followed by a wide page needs no edge query") },
+            )
+            val openingUnit = checkNotNull(scan.step(ReaderPairingScanCursor(2, true)).unit)
+            val closedUnit = checkNotNull(scan.step(ReaderPairingScanCursor(2, false)).unit)
+            check(openingUnit != closedUnit)
+            check(openingUnit.singleReason == ReaderDualPageSingleReason.OPENING)
+            check(closedUnit.singleReason == ReaderDualPageSingleReason.REMAINDER_BEFORE_SPREAD)
+            val observation = fixture.observe(owner, settings, 2)
+            val result = observation.result
+            check(result is ReaderPairingCertification.NeedFacts)
+            check(result.facts.any { it.pageId == fixture.pages[1] && it.kind == ReaderPairingFactKind.ORIGINAL_ANALYSIS })
+            if (variant == "B") check(result.continuationFirstIndex < 2)
+            records += observation.json("B-fallback-WIDE-$direction").dropLast(1) +
+                ",\"openingUnitsDiffer\":true,\"fallbackFirstIndex\":${result.continuationFirstIndex}}"
+        } finally {
+            owner.close()
+        }
+    }
+    check(records.size == 362)
+    val negativeFixture = DemandFixture(List(4) { DemandPixels.GRAY }, 20261026)
+    val negativePlan = SharedDualPageRules.canonicalPlan(
+        negativeFixture.pages, negativeFixture.facts, ReaderDirection.LTR,
+        openingMode = ReaderChapterOpeningMode.FIRST_SINGLE, automatic = true,
+        distance = { a, _ -> when (a.sourcePageIndex) { 1 -> 0.0; 2 -> -1.0; else -> null } },
+    )
+    check(negativePlan.any { it.pageIds == listOf(negativeFixture.pages[2], negativeFixture.pages[3]) })
+    println("{\"status\":\"PASS\",\"variant\":\"$variant\",\"cases\":${records.size}," +
+        "\"negativeDistanceApiPreserved\":true," +
+        "\"records\":[${records.joinToString(",")}]}"
+    )
+}

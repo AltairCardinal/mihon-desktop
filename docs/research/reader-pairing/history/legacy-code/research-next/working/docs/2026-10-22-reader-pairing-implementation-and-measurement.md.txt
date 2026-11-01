@@ -1,0 +1,283 @@
+# 双页配对第四轮候选的生产实现与实现前后量化
+
+日期：2026-10-22。承接[第四轮数学分析](2026-10-22-reader-pairing-mathematical-analysis-round4.md)的两个候选：
+D（压缩结构不可达入口）与 C（已有 later 无匹配证据决定比较顺序）。
+本轮按该报告第 7 节的建议「先选择一个候选进入真实 production 红绿 TDD」，把 **D 落地生产代码**，
+用真实 owner/扫描/认证做红绿 TDD，并在同一固定域上量化实现前后的差异；
+C 同样被实现、测量并逐项比较，但**没有进入生产**，原因见第 5 节（发现了一个既有产品契约被破坏的问题）。
+
+## 1. 交付、结果与边界
+
+| 项目 | 本轮实际结果 | 不能推出 |
+|---|---|---|
+| D：删除不可达入口（已进生产） | D族48项 NeedFacts→Certified；无forced边界时仍保留可达入口 | 改变目标函数或求出最小入口集合 |
+| C：已有无匹配证据（未进生产） | 候选本身：64项 NeedFacts→Certified，但会隐藏near边的可重试失败 | C不可实现；C的收益可在真实输入分布上兑现 |
+| 合并实现的收益上限 | 338状态中 Certified 200→264（+64）；owner边查询644→590 | 任意输入都有收益或用户体验收益 |
+| 已交付的生产收益（仅D） | Certified 200→248（+48）；需求条目170→122（-48）；读集键4024→3664（-360，-8.9%）；owner边查询644→404（-240，-37.3%） | 毫秒、CPU倍率或解码次数收益 |
+| 有界正确性 | 338状态、676独立比较、2项新增生产级TDD、既有919项domain测试全绿 | 全像素/全setting穷举或平台验收 |
+| 等价性 | 生产实现 ≡ 研究D补丁（338项逐项一致） | 覆盖研究轮之外的所有输入 |
+
+本轮改动只在 `domain/`（1个生产文件、2个测试文件）与 `scripts/reader-pairing-math/`（新增测量夹具与计数器、runner新增round5模式）。
+研究轮已归档的 `PairingEvidenceExperiment.kt` 与 `run.py` 的 round2/round3/round4 模式行为不变；
+round5 是新增模式。round4 的候选补丁锚点在D进入生产后不再匹配，属预期。
+没有改变配对质量目标、持久化格式、公开 canonicalPlan 行为或UI。
+没有复制配对业务分支：真实 sampling、owner、scan、certifier、canonicalPlan 与 isCurrent 均直接执行。
+不宣称bug已修复、CP1完成、U1–U5全部通过或用户已验收。
+
+## 2. 实际基线、指纹与复跑
+
+基线为实现前的已提交生产源码：`3d52489d944485835846bc1e5b3160aa71a8e7c3`（与第四轮报告的 HEAD 相同）。
+第四轮报告记录的核心源指纹在本轮开始时逐项复现：
+`ReaderCanonicalPairingScan.kt=37267330382638a1…`、`ReaderPairingCertification.kt=b1d79a8acd3f2b7d…`、
+`ReaderPairingReadSet.kt=da6e520a6a1cdfa2…`、`ReaderSpreadSamplesOwner.kt=d18bbb64887740ec…` 等。
+
+本轮实现后的指纹：
+
+| 文件 | SHA-256 |
+|---|---|
+| ReaderPairingCertification.kt（生产，仅D） | `f94eb4afde8e9f61c85d0308df95d247966a6b5f47e964d9177882c2c1a9242d` |
+| ReaderCanonicalPairingScan.kt（未改动，仍为基线） | `37267330382638a10676047bdc8d1a2eb4a38efe5ce2ddfc175ca1112ff3b8bf` |
+| ReaderPairingReachableEntryPruneTest.kt | `225d642a03557fbb43350294d35996147ecae27f74197cb83a1918d7a3d427aa` |
+| ReaderPairingTestPixels.kt | `7154f949ff753f57ca50ed6dda04195ddd64f10b32092df065b9facc5c71601a` |
+| PairingImplementationExperiment.kt | `74d5ee76b8fe394121ba8cba57c867b2f67913e9ba43cbaefbc4fbb13ec9c69d` |
+| PairingQueryCounters.kt | `32c7c4ae21a1c58a64560a3accd3c1698e3911221d692eb52c8bb4d77e0f3bfe` |
+| run.py | `533ce384b02b9e1b7c61f0e06e3852f0194391fb85cdff6f5459da21f2d5043a` |
+
+复跑实现前后量化（需要本地JDK21、缓存Kotlin compiler2.3.20、既有 `domain/build/libs/domain-jvm.jar`）：
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$env:PYTHONUTF8 = '1'
+$env:PYTHONIOENCODING = 'utf-8'
+$env:PYTHONDONTWRITEBYTECODE = '1'
+python scripts/reader-pairing-math/run.py round5
+```
+
+round5 编译五个真实生产构建并各跑一次338项研究JVM：before（已提交基线）、afterC（基线+研究C补丁）、
+afterD（基线+研究D补丁）、afterCD（基线+两个研究补丁）、after（当前工作树＝本轮交付的生产代码）。
+每个子进程60秒截止；编译heap768MiB/metaspace256MiB，研究JVM heap256MiB/metaspace128MiB。
+本次总耗时36.9秒，是编译与研究工具耗时，不是阅读响应时间或性能基准。
+ignored目录 `.gradle/reader-pairing-math/round5/` 保存 manifest、result、每变体真实compile/run日志与结果。
+
+## 3. 统一数学解释：充分支持集
+
+固定事实版本v、setting与已观察知识K，令Ω(K)为一致完整输入集合，完整计划为Γ(X)。
+稳定目标认证要求 `S_t(K)={π_t Γ(X): X∈Ω(K)}` 是单元素集合。
+两个候选都只用已知条件证明某些信息不能改变完整target unit，再删除其取证需求，
+因此得到的是充分支持集，不是已经求出的最小或必要支持集。
+
+## 4. D 的生产实现：只枚举真实可达的入口
+
+认证入口枚举位于 `ReaderPairingCertification.kt`。通用分支（first≠0且非isolated target）改为：
+
+```kotlin
+for (opening in if (first == 1) listOf(true) else listOf(true, false)) {
+    add(ReaderPairingScanCursor(first, opening))
+    if (first > 1 && pages[first - 1] !in settings.forcedSinglePages &&
+        pages[first] !in settings.forcedSinglePages
+    ) {
+        add(ReaderPairingScanCursor(first, opening, first))
+    }
+}
+```
+
+证明（与第四轮一致，落到代码级）：
+
+- 真实step0只能是单页0→index1/openingtrue，或pair0,1→index2/openingfalse；index0不新建reservation。
+  故到达index1的真实正规状态只能是openingtrue且未预留，openingfalse的index1入口不可达，删除。
+- 预留入口 `(first, opening, first)` 表示“前一页已输出单页并为first预留”。
+  预留只能由index=first−1那一步创建，而那一步只有在`allowed(first−1)`为真时才输出单页并预留first。
+  forced任一端点使`allowed()`硬禁止，first=1时index0不新建预留，故这些预留入口不可达，删除。
+- 未被forced夹住的first>1仍保留预留入口；其余入口、first==0、isolated target、向左扩大与既有R1 guard原样保留。
+
+生产级TDD（`ReaderPairingReachableEntryPruneTest`）：
+
+- 红：实现前，20页/默认容量16/force p2/target p5 的见证为 NeedFacts(edge5,6)，强转 Certified 抛 ClassCastException。
+- 绿：实现后为 Certified `[p4 RIGHT,p5 LEFT]`、certain=true、reason=null，与完整oracle逐槽相等，
+  且 `isCurrent` 为真；见证本身断言 edge(3,4)=15、edge(4,5)=0、edge(5,6)=NotAnalyzed，
+  并断言 `ChapterPairingRecord.isValidFor(20)` 为真（合法持久记录）。
+- 反向守卫：无forced边界时同一状态仍请求 edge(5,6)，证明没有过度剪枝。
+
+D 不改变任何既有契约：`:domain:jvmTest` 全部919项（含 `ReaderPairingCertificationResearchTest` 34项）在只有D时全绿。
+
+## 5. C 的候选实现与本轮新发现的缺陷（未进生产）
+
+C 按第四轮的设计实现为隔离候选（`run.py` 的 `candidate_c` 补丁，与研究轮完全一致）：
+扫描层新增默认关闭的 `knownLaterNoMatch` 提示，认证层用 owner 的纯查询接入：
+
+```kotlin
+val hintedLater = if (knownLaterNoMatch?.invoke(pages[i + 1], pages[i + 2]) == true) {
+    val observed = distance(pages[i + 1], pages[i + 2])
+    if (observed == null) return false
+    observed
+} else {
+    null
+}
+val nearDistance = distance(pages[i], pages[i + 1])
+val laterDistance = hintedLater ?: distance(pages[i + 1], pages[i + 2])
+```
+
+提示命中时跳过 near 边读取，于是 near 边的两种事实都不再进入认证：
+
+- near 边**缺失**（NotAnalyzed）→ 不再产生 NeedFact：这是收益（目标不再等待一个不能改变答案的事实）。
+- near 边**可重试失败**（RetryableFailure）→ 不再产生 failure：这是缺陷。
+
+实测证据（把研究C补丁接入生产后，既有契约测试 `ReaderPairingCertificationResearchTest` 有3项失败）：
+
+| 既有契约测试 | 期望 | C候选下的实际 |
+|---|---|---|
+| new locations renew only resource failures and retain original scalar authority | RetryableBlocked(RESOURCE)，失败页在 `failures` 中 | Certified（失败被隐藏） |
+| evicted sample recovery failure blocks a missing edge while retaining confirmed side | 目标因缺失边停在 NeedFacts | 目标直接认证（不再等待） |
+| sixteen observed control pages cannot certify an unseen prefix reset | 待取事实含 EDGE_SAMPLES(113,114) | 该near边需求消失，仍因 ORIGINAL_ANALYSIS(113) 停在 NeedFacts |
+
+第1、2项是真实的契约破坏：一条可重试的读取失败被静默忽略，认证在既有产品语义要求“阻断”的地方给出了证书。
+第3项只是取证需求变小，认证仍然拒绝签发，核心性质（未见前缀不得被认证）未被破坏。
+
+**为什么研究轮没看到**：338状态矩阵里C族的失败用例把失败注入 later 边（page3），
+later 边是 RetryableFailure 时提示根本不会命中，所以矩阵里 near 边的失败从未被触发。
+缺陷只在“near 边自身失败、later 边已算出且无匹配”的组合下出现，而这不在固定域内。
+
+**修复方案（本轮未落地，规格已确定）**：提示必须同时保证被跳过的 near 边没有可重试失败。
+扫描层的提示回调需要同时拿到 near 与 later 两对页（例如改为四参数回调），
+认证层实现为：later 边为 Computed(score==null) **且** near 边不是 RetryableFailure 时才允许跳过。
+这样失败记账完全保留，near 边“只是缺失”时的收益不受影响；
+由于固定域不含 near 边失败，修复不改变本报告的任何测量数字。
+
+**C 的代价（已测量）**：单独立时 owner 边查询 644→878（+234，+36%），提示查询322次、命中88次（27.3%）；
+与D合并时提示查询降为202次、命中16次（7.9%），净查询644→590（-54）。
+即：在D之后，C 的边际收益只有16项新增认证与16项需求减少，却要付出186次额外owner查询。
+本报告不把C计入交付收益。
+
+## 6. 固定域、分母与结果
+
+338是配置化真实owner状态域，不是338张独立图片或全输入穷举；域与第四轮完全一致（C族192、D族144、R3控制2）。
+
+| 独立候选 | Certified→Certified | NeedFacts→Certified | NeedFacts→NeedFacts | RetryableBlocked→RetryableBlocked |
+|---|---|---|---|---|
+| C（候选，未交付） | 200 | 64 | 58 | 16 |
+| D（已交付） | 200 | 48 | 74 | 16 |
+| C+D（组合上限） | 200 | 64 | 58 | 16 |
+
+分族（已交付的D，before→after）：
+
+| 族 | 结果 | 数量 |
+|---|---|---:|
+| C | Certified→Certified | 128 |
+| C | NeedFacts→NeedFacts | 48（未变） |
+| C | RetryableBlocked→RetryableBlocked | 16 |
+| D | Certified→Certified | 72 |
+| D | NeedFacts→Certified | 48 |
+| D | NeedFacts→NeedFacts | 24 |
+| R3控制 | NeedFacts→NeedFacts | 2（读集键逐项相同） |
+
+D族48项新增按持久记录合法性拆分：`recordValid=true` 24项（FORCE2，合法记录），`recordValid=false` 24项（FORCE0，API域）。
+C族64项新增中同样包含24项FORCE0；剔除这类输入后，C为40项、D为24项。
+这两个数仍不是自然使用分布。
+
+不变式（逐项断言）：每个Certified完整unit等于完整owner的canonicalPlan oracle；
+所有baseline已Certified保持Certified；需求集合不得新增（子集）；失败集合保持；R3控制读集键相同。
+
+## 7. 收益量化
+
+| 指标 | before | afterD（已交付） | afterC（候选） | afterCD（组合上限） |
+|---|---:|---:|---:|---:|
+| Certified 项数 | 200 | 248（+48） | 264（+64） | 264 |
+| 需求条目合计 | 170 | 122（-48，-28.2%） | 106（-64，-37.6%） | 106 |
+| 读集键合计 | 4024 | 3664（-360，-8.9%） | 3960（-64） | 3648（-376，-9.3%） |
+| owner边查询合计 | 644 | 404（-240，-37.3%） | 878（+234） | 590（-54） |
+| 提示查询 / 命中 | — | — | 322 / 88（27.3%） | 202 / 16（7.9%） |
+
+已交付的D，逐案读集变化：48项-6键、24项-3键、266项不变。
+代表见证：D见证读集16→10，owner查询6→4，NeedFacts(edge5,6)→Certified `[p4 RIGHT,p5 LEFT]`（与第四轮一致）。
+C见证在已交付版本中保持不变（NeedFacts、12键），因为C未进生产。
+
+关键解释：
+
+- D不仅减少需求条目，还直接减少owner边查询（-240，-37.3%）：被删入口本来要读取真实存在的边。
+  24项“仍需事实但少读3键”的用例是WIDE0族：预留入口删除后少读3条边，但skip-left入口仍然可达，目标依旧待取。
+- C单独会让owner边查询增加234（+36%）。在D之后C的边际收益只有16项新增认证，却要多186次owner查询；
+  提示命中率从27.3%降到7.9%，说明多数提示机会正是被D删掉的入口提供的。
+- 因此C与D的收益重叠且不可相加：组合实现的新增仍是64项，而不是64+48。
+
+## 8. 等价性与回归
+
+- 生产实现（after）与研究D补丁（afterD）在338项上逐项一致
+  （status、needs、failures、readKeys、ownerQueries、hintQueries、hintHits），即交付的生产代码与第四轮研究的D候选语义等价。
+- `:domain:jvmTest` 全量919项、145个测试类全绿（含 `ReaderPairingCertificationResearchTest` 34项），
+  新增2项D的生产级TDD在实现前红、实现后绿。
+- 本轮未改动 app-desktop 生产接线：certifier的公开入口签名不变，桌面侧 `certifyPairingWithDependencies`
+  自动获得更小的读集与更多可直接认证的目标。
+- 没有运行下载、设备验收或真实会话观察；没有测量真实调度、IO字节、解码次数、CPU分布、Session/Memo与曝光链路。
+
+### 桌面构建
+
+用仓库构建脚本产出未打包应用（`scripts/build-windows.ps1`，即 `scripts/build-desktop.sh` 在 Windows 的实现）：
+
+- 版本：`0.11.19.92.3d52489`（BUILD 由 91 递增到 92，STAGE/FEATURE 未变）
+- 未打包 EXE：`app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.92.3d52489-unpacked/Mihon Desktop.exe`（已确认存在，472576 字节）
+- 打包产物：`app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.92.3d52489-windows.zip`
+  （SHA-256 `dc1ce2c849dff7c4d1117592b66c01683722954db4505d654d9db21f8e7001cc`）
+
+构建时 `:app-desktop:compileTestKotlinJvm` 失败，失败点在本工作树中并行进行的产品/测试改动上，
+与本轮改动无关：本轮只改 `domain/src/commonMain/.../ReaderPairingCertification.kt`，
+而报错位于 `app-desktop/src/test/.../SharedSpreadDesktopResourceWiringTest.kt:468`，
+它使用的 `ReaderSpreadPublisherRoundObserver` 由并行改动过的 `app-desktop/src/main/.../ReaderScreenModel.kt` 定义，
+两者的回调参数个数不一致（测试传2参、生产期望1参），属于并行改动的在飞状态。
+`:app-desktop:compileJvmMainKotlin` 与 `jvmJar` 均通过，本轮改动已进入打包产物。
+
+### 桌面集成对照
+
+把并行在飞且编译不通过的那个测试文件临时移开后，整类对照 `SharedDualPageRuntimeProgressProductionTest`（13项，含配对认证断言）：
+
+| 构建 | 结果 |
+|---|---|
+| 基线（不含D） | 13项：2失败、1跳过 |
+| 含D | 13项：2失败、1跳过（同样的2项、同样跳过1项） |
+
+失败的两项（`accepted prior page replacement rejects later completion before delayed binding()`、
+`real core replacement rejects original batch before delayed UI binding()`）都来自并行工作者新增的
+`SharedDualPageRuntimeProgressProductionTest.kt`（+372行，在飞），在含D与不含D两种构建下完全相同。
+另有一项 `reported but unconsumed completions keep occupying the logical pairing capacity()`
+用 `assumeTrue` 判定：凑不出并发批次时按“跳过”处理，因此它在整类运行时被跳过而非失败。
+结论：本轮D没有给桌面集成带来新的失败；桌面测试全类当前无法在本工作树整体通过，原因是并行在飞改动的编译错误。
+
+## 9. 推荐、代价与可推翻条件
+
+D 已交付：不增加owner查询，证明依赖真实可达状态，收益在合法持久记录上真实存在，
+且既有契约测试全部保持通过。
+C 暂不交付：需要先按第5节的规格补上“被跳过的near边不得带可重试失败”的约束，
+再决定是否开启；开启前应在线测量命中率与其额外查询成本是否值得。
+两者重叠部分不可相加。
+
+下列任一反例会推翻或缩窄结论：
+
+- D删除的入口在真实完整scan轨迹中可达，或改变target完整reason/slot/certainty。
+- C仅凭提示认证、权威getter缺失/失败仍Certified，或later有限/负数控制被null提示覆盖。
+- 决定性edge端点内容改变后仍isCurrent，或默认公开callback负值行为变化。
+- 实际owner并发调用破坏串行前提，或额外提示成本抵消少取证收益。
+
+## 10. 交付物与复核
+
+生产代码：
+
+- `domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt`（入口剪枝，唯一生产改动）
+
+测试：
+
+- `domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingReachableEntryPruneTest.kt`
+- `domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingTestPixels.kt`（共享物理像素夹具）
+
+研究装置：
+
+- `scripts/reader-pairing-math/PairingImplementationExperiment.kt`（338项测量夹具）
+- `scripts/reader-pairing-math/PairingQueryCounters.kt`（owner查询与提示命中计数器）
+- `scripts/reader-pairing-math/run.py`（新增round5模式；round2/round3/round4不变）
+
+复核命令：
+
+```powershell
+cd D:\Codex\worktrees\reader-pairing-research-next-20261014
+git diff -- domain/src/commonMain
+Get-FileHash domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt -Algorithm SHA256
+python scripts/reader-pairing-math/run.py round5
+```

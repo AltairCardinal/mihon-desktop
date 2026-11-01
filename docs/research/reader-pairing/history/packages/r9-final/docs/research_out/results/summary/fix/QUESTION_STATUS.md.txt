@@ -1,0 +1,156 @@
+# 逐题真实状态（修复轮后；由 bench/build_fix_status.py 从 coverage.csv 生成）
+
+深度规则见 coverage.csv 的 audit_note：D3/D4 必须由 `results/summary/fix/D3_INDEX.csv` 中达到相应深度的已登记机制支撑；修复轮重做的题目以其新片段为准。"变化"列只列与 R9 不同之处。
+
+| 题 | 标题 | 状态 | 深度 R9→修复 | 结论（摘要） | 来源 |
+|---|---|---|---|---|---|
+| A01 | 证明先做还是取证先做 | implemented_verified | D4 | adopt only the lifecycle-complete runner (F1 attempt identity, F2 re-intent with physical mirroring) with boun | fix_LC+main |
+| A02 | 哪类 NeedFacts 最值得升级 | implemented_verified | D4 | rule gate kept with the fixed runner (same evidence as A01); adaptive gates rejected | fix_LC+main |
+| A03 | 更早证明却没省工作 | conditional | D3 | never cancel shared evidence; physical saving only via rent-or-buy per identity | R9 |
+| A04 | proof 与服务重复完成竞争 | implemented_verified | D2 | keep FL; drop FP (latency 1436u vs FL 1140u over 192 cells, worse in 85, better in 0; equal admissions) | fix_Q1 |
+| A05 | 最小采用参数集合 | conditional | D2 | adopt: needs only q_u and a lower bound on residual service | R9 |
+| A06 | 采用失败的安全退路 | implemented_verified | D2 | safe fallback = the shadow form itself: proof failure or budget stop has no physical effect and the L0 path co | R9+main |
+| B01 | 带边界赋值的精确区间摘要 | conditional（R9 implemented_verified） | D4→D3 | tables default for block summaries (one mechanism: core + session wiring); not in the priority list; ZDD condi | fix_Q1+main |
+| B02 | 序型而非具体秩的摘要 | implemented_verified | D2 | keep order type | R9 |
+| B03 | 分层精度摘要 | refuted | D3 | reject as speed-up | R9 |
+| B04 | 按需共享赋值前沿 | conditional | D3 | use for long orders (n>=128); keep FrontierCache for short | R9 |
+| B05 | 反向目标约束传播 | refuted | D3→D2 | reject both backward routes; keep target-independent forward frontier cache (maintenance stream 2530-5290 vs e | fix_Q1 |
+| B06 | 精度与空间的 Pareto 极限 | conditional | D2 | exact DP with budget doubling | R9 |
+| C01 | 懒建查询前缀 | conditional | D3 | adopt only for sparse-query regimes | R9 |
+| C02 | 稀疏变更与稀疏查询 | conditional | D3 | lazy/prefix below ~0.05 q/update; dirtylog cap>=64 only | R9 |
+| C03 | 真正廉价的重同步/树混合 | conditional | D3 | robust default candidate; not dominant | R9 |
+| C04 | 顺序变化的动态摘要 | conditional | D3 | adopt under precondition | R9 |
+| C05 | 多次更新的原子合并 | refuted | D2 | reject as performance mechanism; merge only if declared | R9 |
+| C06 | 多种查询消费者共存 | implemented_verified | D3 | adopt Shared view design | R9 |
+| D01 | 量化秩位集的精确推理 | implemented_verified | D3 | use only for holed masks; keep symbolic on G0 | R9 |
+| D02 | binary64 序型代表的完备性 | implemented_verified | D2 | keep | R9 |
+| D03 | 不同域的自动安全切换 | implemented_verified | D2 | tag-driven only; never shape | R9 |
+| D04 | 比较结果缓存与原值缓存 | implemented_verified | D3 | replace SIG by INTERVAL (engine runs chain_lift 392->245, chain_drop 393->241, chain_shuffle 515->399; equal o | fix_Q1 |
+| D05 | 约束稀疏性的通用化 | limit_proved（R9 implemented_verified） | D2 | premise holds (proved); keep path decomposition; generic solver only as early ambiguity probe | fix_Q1 |
+| D06 | 算术/序列化一致性 | implemented_verified | D2 | reject non-round-trip literals | R9 |
+| E01 | 最小可复用充分特征 | implemented_verified | D2 | keep both normalised sides | R9 |
+| E02 | 低维或重复坐标的联合可实现性 | implemented_verified | D2 | use exclusions only | R9 |
+| E03 | 分类与秩的共同来源 | implemented_verified | D2 | use as illegal-input checks | R9 |
+| E04 | 渐进见证服务 | conditional | D2 | only for far/early-null pairs | R9 |
+| E05 | 变换之间的等变复用 | implemented_verified | D2 | reuse normalised vectors, never ranks across directions | R9 |
+| E06 | 见证派生流水线的融合 | implemented_verified | D3 | adopt prefix cache | R9 |
+| F01 | 按反事实分歧挑选事实 | conditional | D2 | do not serialise single facts on the critical path | R9 |
+| F02 | 见证级联合信息价值 | conditional | D2 | keep 'all' for latency; one_witness only when admissions dominate cost | R9 |
+| F03 | “先分析后秩”的自适应阶段 | conditional | D2 | conditional: physical-weighted objectives only | R9 |
+| F04 | 服务已在途时的信息策略 | implemented_verified | D3 | adopt wait+parallel proof (subsumed by gated_shadow) | R9 |
+| F05 | 取证顺序与证明难度联动 | conditional | D2 | not adopted (no coupled gain shown) | R9 |
+| F06 | 无自然先验的稳健主动策略 | implemented_verified | D2 | adopt shadow (regret 0 by S1 vs incumbent); drop learner | R9 |
+| G01 | 反事实选择稳定区 | conditional | D4→D3 | equivalent optimisation at owner level (certification_steps counter not maintained on the projection path) | fix_LC |
+| G02 | 分支路径的支撑有向图 | refuted | D2 | no adoption at Python layer; native layout question open | R9 |
+| G03 | 位置戳的更廉价写屏障 | conditional | D3 | adopt only for unrelated-write-heavy owners; no coupled benefit | R9 |
+| G04 | 不变值写入的判定 | conditional | D3→D2 | keep typed detection; noop=none costs +4-7% typed reads at same-rate 0.3 and +220% at 0.9 | R9 |
+| G05 | 相同结果但不同支撑的更新 | conditional | D4→D3 | conditional candidate; requires bound confirmation | fix_LC |
+| G06 | 证据垃圾回收 | conditional | D2 | adopt with reissue; document ABA | R9 |
+| H01 | 证书提交的线性化点 | implemented_verified | D2 | keep commit check as linearisation point; proof outside critical section | R9 |
+| H02 | 多目标证书的局部合成 | implemented_verified | D2 | local composition is safe only with L2 revalidation | R9 |
+| H03 | 发布占用表的增量撤销 | implemented_verified | D4 | equivalent optimisation (bounded search + proof sketch) | fix_LC |
+| H04 | 候选、承诺与确认 | implemented_verified | D4 | interface hardening; caller wiring + migration in sections/fix_LC.md §5 | fix_LC |
+| H05 | 按值复用与按身份授权 | implemented_verified | D4→D3 | conditional candidate (producer label-uniqueness premise) | fix_LC |
+| H06 | 局部正确与全局活性 | limit_proved | D2 | keep per-target commits | R9 |
+| I01 | 关键路径感知准入 | conditional | D2 | conditional: only with declared bounds and C=1 | R9 |
+| I02 | 预留槽的动态分配 | conditional | D4→D3 | no gain (R9); lifecycle-complete | fix_LC |
+| I03 | 多消费者共享的负外部性 | implemented_verified | D2 | bounded bypass (B=8) | R9 |
+| I04 | 服务阶段的最优切分 | implemented_verified | D2 | gate_split | R9 |
+| I05 | 动态微批与首结果 | implemented_verified | D3→D2 | per-item completion, no max_wait | R9 |
+| I06 | 完成未消费的背压 | implemented_verified | D2 | small bounded buffer (2) | R9 |
+| J01 | 低置信预测的投机准入 | implemented_verified | D2 | gate on recent accuracy | R9 |
+| J02 | 不可抢占投机的停止规则 | implemented_verified | D2 | coop exit at phase boundary | R9 |
+| J03 | aging 的服务曲线 | implemented_verified | D2 | aging bound only from an optional-latency SLO | R9 |
+| J04 | 只对相关变化防抖 | implemented_verified | D2 | relevant-only, only when changes are faster than service | R9 |
+| J05 | 持续过载下的可达保证 | limit_proved | D2 | no guarantee without rho_req<1 | R9 |
+| J06 | 跨目标投机预算借用 | implemented_verified | D3→D2 | per-requester credit with refund on use | R9 |
+| K01 | 证据与证明的联合留存 | implemented_verified | D4→D3 | specification alignment (model-fidelity correction to NATIVE_OWNER.pseudo order), not a candidate and not a ga | fix_LC+main |
+| K02 | 真正等空间的淘汰比较 | conditional | D3→D2 | do not adopt byte-GDS; gain vanished on held-out | R9 |
+| K03 | 重建成本的在线估计 | refuted | D3→D2 | reject | R9 |
+| K04 | 不确定事实与负结果缓存 | refuted | D2 | reject target-keyed negative cache; incumbent already a nogood store | R9 |
+| K05 | 跨层容量重分配 | limit_proved | D2 | no dynamic reallocation needed after K01 | R9 |
+| K06 | 留存优化的对手界 | limit_proved | D2 | cost-aware retention needs an access commitment | R9 |
+| L01 | 五态转移的无分配实现 | conditional | D3→D2 | straight-line for time, packed for space (Python only) | R9 |
+| L02 | proof 的结构化存储 | refuted | D2 | reject in Python | R9 |
+| L03 | 源秩算子的进一步优化 | implemented_verified | D3→D2 | adopt at Python layer; native unknown | R9 |
+| L04 | 索引局部性与真实工作 | conditional | D2 | layout matters less than avoiding construction (shared_index already) | R9 |
+| L05 | 无需克隆的安全快照 | conditional | D3→D2 | adopt for read-only consumers (interface change) | R9 |
+| L06 | 仪器本身的分配 | refuted | D2 | no evidence instrumentation cost matters here | R9 |
+| M01 | 真实关键路径观测合同 | limit_proved | D2 | require span start/finish timestamps per intent | R9 |
+| M02 | 最少而充分的校准实验 | conditional | D2 | use as measurement request | R9 |
+| M03 | 因果配对的服务故障 | implemented_verified | D2 | use keyed draws in all simulators | R9 |
+| M04 | 带删失和触顶的比较 | implemented_verified | D2 | never drop censored samples; report both | R9 |
+| M05 | 小收益的可信门槛 | implemented_verified | D2 | adopt only if every process ratio < 0.95 and screen size reported | R9 |
+| M06 | 计数 oracle 的判别力 | conditional | D2 | use physical event counts as oracle; historical 4 failures untouched | R9 |
+| N01 | 部分证据的证书复杂度 | limit_proved | D2 | keep linear support; long dependence is an information limit, not algorithmic redundancy | fix_PH |
+| N02 | 精确摘要的状态下界 | limit_proved | D2 | summaries must carry assignment | R9 |
+| N03 | 异步协议的有界到一般 | conditional | D2 | per-identity invariants generalise; capacity/liveness do not | R9 |
+| N04 | 自动缩减性能反例 | implemented_verified | D2 | adopt as tooling | R9 |
+| N05 | 变异测试的独立性 | implemented_verified | D2 | require independent oracle | R9 |
+| N06 | 不可能三角与最小放宽 | limit_proved（R9 implemented_verified） | D2 | narrow the triangle: exact => not fixed-radius and not front-insertion-stable; online append stability is comp | fix_PH |
+| O01 | 批量目标的联合认证 | conditional | D2 | independent certification; a shared persistent tree is dominated by fresh exact (see P03) | R9+main |
+| O02 | 规划结果的差分消费 | limit_proved | D3 | adopt for local-change consumers only | R9 |
+| O03 | 邻近目标的可预测复用 | refuted | D2 | reject | R9 |
+| O04 | 交互临界路径外的索引 | conditional | D2 | conditional on idle availability | R9 |
+| O05 | 稀疏已知岛与桥接 | conditional | D2 | use conditional summaries only | R9 |
+| O06 | 消费者适配的真实门槛 | conditional | D2 | adapter only behind gate; no new API needed | R9 |
+| P01 | 线性/重同步/树的在线选择 | limit_proved | D3 | no competitive claim; regime-conditional | R9 |
+| P02 | proof预算的自适应分配 | refuted | D2 | drop doubling; run proofs unbounded off critical path (shadow) | R9 |
+| P03 | 两个求解器的组合价值 | implemented_verified | D4→D3 | do not adopt the persistent tree as default: dominated by the fresh exact route on the A grid (13 433 vs 1 895 | fix_LC+main |
+| P04 | 跨负载泛化 | refuted | D2 | do not tune once | R9 |
+| P05 | 漂移检测的代价 | implemented_verified | D2 | cap rule suffices | R9 |
+| P06 | 可靠性与性能分离 | implemented_verified | D2 | adopt advice only with switch-rate limit | R9 |
+| Q01 | 内容值缓存的最小身份 | implemented_verified | D2 | strict keys only | R9 |
+| Q02 | 持久派生索引的盈亏 | conditional | D2 | persist scalars when direction/recipe stable; witnesses only if direction changes and reacquisition is expensi | R9 |
+| Q03 | 跨owner的proof迁移 | implemented_verified | D2 | re-validate route | R9 |
+| Q04 | 取消与进程终止后的恢复 | implemented_verified | D2 | either route | R9 |
+| Q05 | 算法升级的多版本共存 | implemented_verified | D2 | refuse mixing | R9 |
+| Q06 | 复用带来的可观测泄漏 | implemented_verified | D2 | isolate | R9 |
+| R01 | 原子多事实接纳 | implemented_verified | D2 | admit identity+evidence in one apply | R9 |
+| R02 | 矛盾知识与空补全集 | implemented_verified | D2 | detect then refuse | R9 |
+| R03 | 顺序、重复与幂等 | implemented_verified | D2 | no change | R9 |
+| R04 | 极端长度与配置 | implemented_verified | D2 | no change | R9 |
+| R05 | 计数饱和与长期运行 | implemented_verified | D2 | keep saturate+exact | R9 |
+| R06 | 压力与异常回收 | implemented_verified | D2 | no change | R9 |
+| S01 | 替代规则的支配关系 | limit_proved | D2 | L2 pending adjudication | R9 |
+| S02 | 数据无关的质量保证 | limit_proved | D2 | no data-free superiority claim possible | R9 |
+| S03 | 语义迁移的版本边界 | conditional | D2 | per-unit migration if L2 ever adopted (36.7% republish) | R9 |
+| S04 | 局部性可调规则族 | refuted | D2 | drop restart rules; cut rules only with adjudication | R9 |
+| S05 | 用户约束的最小表达 | conditional | D2 | minimal adjudication 2..453 depending on locality premise | R9 |
+| S06 | L2 是否值得继续 | conditional | D2 | stop L2 now; stop condition stated | R9 |
+| T01 | 自动发现隐藏前提 | implemented_verified | D2 | report to model owners; adopt derive_first, bound confirm, refresh | R9 |
+| T02 | 证据驱动的题目优先级 | implemented_verified | D2 | method kept | R9 |
+| T03 | 原型到原生的差距模型 | refuted | D2 | no Python->native extrapolation; anchors not re-entered | R9 |
+| T04 | 最小可交接证明包 | implemented_verified | D2 | keep both routes (route 2 proof-carrying certificate for cross-trust hand-off, route 1 re-derivation checker); | fix_Q2+main |
+| T05 | 剩余收益上界 | implemented_verified | D2 | residual gain is concentrated in shared-variable ambiguity | R9 |
+| T06 | 自选新范式与最终反驳 | implemented_verified | D2 | see REPORT | R9 |
+| X01 | 证明竞速 × 关键路径准入（A01/I01） | conditional | D3 | adopt A in shadow form; drop staged gate | R9 |
+| X02 | 精确边界摘要 × 懒建索引（B01/C01） | implemented_verified | D2 | lazy default | R9 |
+| X03 | 序型约束 × 源域位集（B02/D01） | implemented_verified | D2 | symbolic | R9 |
+| X04 | 精度升级 × 自适应预算（B03/P02） | implemented_verified | D2 | exact doubling | R9 |
+| X05 | 前沿复用 × 支撑 DAG（B04/G02） | conditional | D2→D3 | organisation 1 (shared graph carrying support, AB1) conditional; organisation 2 dropped; formal 0.613 vs group | fix_Q2+main |
+| X06 | 重同步/树混合 × 在线选择（C03/P01） | conditional | D3 | regime-conditional | R9 |
+| X07 | 动态顺序 × 发布撤销（C04/H03） | implemented_verified | D2 | authority re-signed after moves | R9 |
+| X08 | 批量更新 × 原子接纳（C05/R01） | implemented_verified | D2 | atomic batch when intermediates non-observable | R9 |
+| X09 | 多查询结构 × 差分输出（C06/O02） | implemented_verified | D3→D2 | adopt shared views | R9 |
+| X10 | 域切换 × 共同生成约束（D03/E03） | implemented_verified | D2 | do not adopt masks | R9 |
+| X11 | 充分特征 × 证据联合留存（E01/K01） | conditional | D2 | order is the effective factor; feature-based eviction adds little | R9 |
+| X12 | 渐进服务 × 分阶段取证（E04/F03） | conditional | D2 | combine (staged first open + in-stream early null) when p<=0.5 | R9 |
+| X13 | 变换复用 × 内容值身份（E05/Q01） | implemented_verified | D2 | label mandatory | R9 |
+| X14 | 融合派生 × 服务切分（E06/I04） | implemented_verified | D3 | adopt prefix/lazy | R9 |
+| X15 | 单事实价值 × 见证联合价值（F01/F02） | conditional | D2 | conditional | R9 |
+| X16 | 在途等待 × 共享负外部性（F04/I03） | implemented_verified | D2 | bypass bounded | R9 |
+| X17 | 计算感知取证 × 反向剪枝（F05/B05） | conditional | D2 | not adopted | R9 |
+| X18 | 选择稳定证书 × 共享前沿（G01/B04） | conditional | D2 | keep shared union (attempt-local costs more, cannot drop rejected attempts) | R9 |
+| X19 | 廉价脏标 × 跨层预算（G03/K05） | refuted | D2 | reject posrev in coupled; fact drop is the only effect | R9 |
+| X20 | 支撑替换 × 证书提交（G05/H01） | conditional | D4→D3 | conditional candidate; requires bound confirmation | fix_LC |
+| X21 | 多目标证明 × 跨版本合成（O01/H02） | implemented_verified | D2 | combination not adopted: its A arm (shared persistent tree) is dominated by the fresh exact route; per-publica | R9+main |
+| X22 | 按值工作复用 × 跨owner重签（H05/Q03） | implemented_verified | D2 | unchanged depth (no formal timing); lifecycle evidence added | fix_LC |
+| X23 | 动态预留 × 低置信投机（I02/J01） | refuted | D2 | do not combine for short speculative work | R9 |
+| X24 | 微批 × aging（I05/J03） | implemented_verified | D2 | batch per-item; aging only for optional SLO | R9 |
+| X25 | 防抖 × 负证据缓存（J04/K04） | implemented_verified | D2 | reason-keyed cache, no debounce on retries | R9 |
+| X26 | 等空间淘汰 × 重建成本估计（K02/K03） | refuted | D3→D2 | reject combination; cost-aware count GDS conditional (seed-dependent) | R9 |
+| X27 | 五态无分配 × 结构化proof（L01/L02） | conditional | D2 | unified buffer only with per-request ownership | R9 |
+| X28 | 因果故障配对 × 跨负载泛化（M03/P04） | implemented_verified | D2 | keyed draws mandatory; holdout alone insufficient | R9 |
+| X29 | 协议归纳 × 修订饱和（N03/R05） | implemented_verified | D2 | keep | R9 |
+| X30 | 语义迁移 × 剩余收益界（S03/T05） | conditional | D2 | do A first; do not introduce L2; if ever introduced use per-unit migration. R9 negative-interaction statement  | fix_Q2 |

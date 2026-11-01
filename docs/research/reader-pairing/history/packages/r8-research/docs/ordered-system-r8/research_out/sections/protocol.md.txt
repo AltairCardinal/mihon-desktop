@@ -1,0 +1,143 @@
+# Protocol / identity family (G1–G5, A6, C3, D4, D5; X3, X7, X8, X12)
+
+Evidence layers: `protocol` (synthetic `candidates/protocol2.py` + bounded exhaustive checker
+`candidates/proto_check.py`), `simulated` (`candidates/proto_sim.py`, unit `u`, uncalibrated, exogenous inputs
+frozen before policies run, failures keyed by identity+attempt), `core` (units from frozen `reference.py`),
+`local_measured` (short exploratory timeit / single-run bench; formal 3-process timing is left to the main
+session via `bench/bench_protocol.py`). Proofs and counterexamples: `proofs/protocol.md` (§ numbers below).
+Tests: `python3 -m unittest discover -s research_out/tests -t research_out -p 'test_protocol2*.py'` (19 tests).
+Raw: `results/protocol/{checker,sim,identity,publication}.json` ← `python3 research_out/candidates/proto_experiments.py`.
+
+Frozen `protocol.py` is reproduced outcome-for-outcome by `protocol2` in `compat` mode (23 000 random traces,
+0 mismatches), so every extension below is measured against the frozen behaviour, not a re-interpretation.
+
+## G1 — linearization points and stale completion rejection — D2, keep
+Routes: (1) caller-supplied monotone epoch (protocol.py); (2) owner-issued incarnation ticket; (3) exact content
+value identity; plus finite-counter variants (wrap vs saturate→exact fallback) and a lossy-hash variant.
+Linearization points made explicit: `finish` (notice) / `exit` (resource) / `consume` (fact admission, checked
+against the current identity) / `certify` (certificate bound to identity) / `publish` (entitlement) / `confirm`.
+Results: epoch route unsafe when the precondition is broken (4-event H5 trace, N12 reproduced and kept as a
+regression); owner tickets clean in the bounded space; 1-bit wrapping counter publishes a wrong unit from stale
+knowledge; saturating counter safe; lossy hash unsafe (§5). Remaining: no real environment provides tickets; the
+model assumes the owner observes every content change (a write barrier — same obligation as N08).
+
+## G2 — nonpreemptible cancellation and capacity — D2, keep (slot rule) / conditional (bounds)
+Routes: (1) lease = cancel intent separated from exit, slot held until exit ∧ resolved; (2) reservation (r slots
+for required work) and service-bound gating for speculative work. Two simplifications refuted in 3 events
+(`cancel_releases`, `finish_releases`). T-G2a: no unconditional foreground bound with nonpreemptible speculative
+work (latency grows S+1.5 u for S = 1…1000 u; cancel does not release the slot). T-G2b: reserve ≥ 1 slot ⇒
+required latency independent of S; known bound B ⇒ extra delay ≤ B (§6). Gap: service-time bounds are
+assumptions; C = 1 cannot combine reservation with speculation.
+
+## G3 — ready admission without barriers, fairness — D2, conditional
+Routes: (1) per-completion admission with strict required priority; (2) FIFO / aging (20 u). H8 enforced in the
+model (barrier mutant killed in 4 events). Fairness impossibility at ρ ≥ 1 (strict priority optional wait grows
+linearly with horizon: 103→403 u, 127→503 u); aging bounded (25 / 29 u) but raises required p95 2→7 u; ρ = 0.9
+strict priority bounded (41 u). Decision: per-completion admission keep; aging only if optional work has a
+deadline obligation; tail bounds need bounded service and ρ < 1 (stated precondition).
+
+## G4 — progress under continuous change — D2, conditional
+Routes: (1) global invalidation vs per-identity invalidation; (2) debounce window; retry is keyed per identity.
+T-G4a impossibility (relevant period < S ⇒ no current result while churn lasts); T-G4b conditional progress.
+Irrelevant churn: per-identity 6 u vs global 36 u, wasted 0 vs 30 u ⇒ keep per-identity invalidation (it needs
+complete dependency tracking — C1/C2's obligation). Debounce: 27→3 u wasted when relevant churn is frequent, but
+9→33 u latency when the period exceeds S ⇒ conditional (no dominant setting; needs an observed change-rate
+estimate, which is outside package data).
+
+## G5 — entitlement vs proof validity — D2, keep (owner table + membership check)
+Routes: (1) versioned certificate → publish (scan all publications); (2) item→unit occupancy table; (3) staged
+prepare/commit bound to the incarnation. L-P1: with "target ∈ unit" the cross-target check implies same-target
+stability; without it N11 is accepted (kept as regression). ScanGuard ≡ OwnerTable on 1 200 random sequences;
+check cost 2.3 µs vs 529 µs at 1 000 publications (exploratory timeit); bench `guard_n10/100/1000` single runs
+46 µs vs 212 µs, 0.40 ms vs 14.7 ms, 5.8 ms vs 958 ms with identical decisions. Staged commit aborts across a
+new incarnation. Publication never writes confirmations (`publish_confirms` killed, H9). D3-ready (bench below).
+
+## A6 — local certificates → consistent global publication — D2, limit proved + keep
+Routes: (1) common-complete-plan projection lemma (A6-1); (2) publication graph / occupancy table enforcement
+(G5). With sound certificates of one context and one domain assumption, certificates are pairwise equal-or-
+disjoint and stay valid under refinement — 0 violations over 765 certified units and 5 968 refinement-time
+publications. Necessary extra conditions shown by counterexample: same context (stale_cert), same domain
+assumption (β: frozen certify unsound in 89/240 cases), sound certifier (local-start: order-dependent
+publication in 27 cases). A guard yields stability, not correctness.
+
+## C3 — context identity decomposition and normalization — D2, conditional keep
+Routes: (1) interning / structural sharing of a type-tagged identity tuple; (2) typed multi-layer revision with
+owner incarnation (and counter overflow handling). Costs (exploratory timeit): `typed()` of the identity dict
+129 µs (n=16) … 22.6 ms (n=2048) per compare pair; type-tagged tuple build 9.8 µs … 1.28 ms; counter compare
+≈ 55 ns. Bench `identity_n16/n512` (200 replaces, 30 % real identity changes, 10 % type-only changes, identical
+decisions): 28.7 ms vs 8.7 ms, 832 ms vs 332 ms (single run). Pitfalls with counterexamples: untagged tuples
+conflate 0 and 0.0 (breaks the Host's typed contract); hash equality is not identity; wrapping counters re-open
+ABA; interning tables grow without bound (2 000 entries after 2 000 distinct replaces) unless bounded. Counter
+route needs owner-issued freshness. D3-ready for the identity comparison only; does not change the Host's other
+whole-case `typed(case)` comparison.
+
+## D4 — batching and pipelining boundaries — D2, conditional keep (dynamic batches), drop (barrier)
+Routes: (1) fixed batches with whole-batch barrier; (2) dynamic bounded batches with per-item admission (and a
+τ-close variant); per-item baseline. Event-time pipeline model: barrier first result 104.5 u vs 2.5 u with one
+slow item; dynamic batching keeps the shared setup saving (56→26 u work at setup 5 u) and per-item first-result
+latency. τ variant not better here. Condition: setup cost must dominate per-item cost for batching to pay.
+
+## D5 — in-flight promotion and consumer reuse — D2, keep
+Routes: (1) stable task handle with consumer set (lease) + revive of a cancelling instance of the same
+incarnation; (2) protocol.py refuse-then-restart, and duplicate start. Mutants `dup_on_promote` (H6) and
+`cancel_kills_all` (D5) killed in 2 events. Revive saves one start and ~7 u p95 at 10 u service (designed case)
+and 30 u busy / 30 u wasted on a mixed zigzag workload; duplicate needs a free slot and wastes the same.
+
+## X3 — prefetch × nonpreemptible cancellation — D2, conditional
+Groups (36 workload cells: forward/reversal/zigzag/jump × C 1/2/4 × slow 0 / 15 %×10 / 15 %×100, gap 4 u):
+p95 better / equal / worse than baseline: A prefetch 26/6/4; B cancel only 0/36/0 (nothing to cancel);
+A+B prefetch + cancel-running 22/9/5; A+B+R (prefetch + cancel only queued + 1 reserved slot) 17/19/0.
+Reinforcing: zigzag C=4 slow ×100 — prefetch p95 100→84 u, A+B+R keeps 84 u and halves waste 202→102 u.
+Conflict: cancelling running nonpreemptible speculation holds slots anyway (cancel occupancy 192 u in that cell)
+and discards results — jump C=2 slow ×100: A+B p95 708 vs baseline 651 u. Admitting results of cancelled but
+finished speculative work (still current facts) is the best variant there (627 u). C = 1: reservation forbids
+prefetch (no gain). Keep: prefetch only with reservation + queued-only cancellation; drop: cancel-running.
+
+## X7 — incremental propagation × published entitlement — D2, radius refuted / diff conditional
+Radius-based revocation refuted (chain counterexample: change at item 1 changes n/2 units up to distance n−2);
+random changes: radius r = 8 still keeps 2 wrong units. Exact diff keeps 94.8 % but needs complete information;
+under partial knowledge only 64 % of diff-kept units are immediately re-certifiable ⇒ retention must be re-issued
+from new-version certificates (the diff is a candidate list). Stale completions after the change are discarded
+before they can touch retained entitlements (protocol2 + checker H5/H10).
+
+## X8 — context normalization × asynchronous identity — D2, conditional
+Groups: epoch (baseline), ticket (A), content value identity (B), ticket for entitlement + value for facts (A+B).
+Reinforcing: value identity reuses A→B→A in-flight work (completion accepted and correct; ticket discards it).
+Conflict: value-keyed confirmation history makes an old confirmation count as current after A→B→A (1 vs 0).
+Deliberate precondition violation (caller reuses label with new content): epoch accepts stale work; ticket and
+exact-value identity reject; lossy-hash value identity accepts. Resolution: facts by exact value, entitlement and
+confirmation by owner incarnation.
+
+## X12 — local certificate consistency × fair admission — D2, keep (fine-grained certificates + per-completion)
+Four predicates kept separate: known (certificate) / resource returned (exit ∧ resolved) / publishable
+(entitlement for the current context) / confirmed (explicit event); each conflation is a killed mutant.
+Groups (§10): only A+B is both live (publishes target 0 in 4 events while an unrelated task never finishes) and
+safe; coarse certificates (support = all keys) re-create the barrier. Fairness condition: liveness of t needs only
+supp(cert_t); if the slow task is in the support, earlier safe publication is impossible.
+
+## Adversarial-suite coverage (protocol layer)
+Mutants #3 (missing incarnation guard → `stale_cert`), #4 (same-number new instance → epoch relabel, 1-bit wrap,
+lossy hash), #9 (`cancel_releases`, `finish_releases`), #10 (same-target-only / overlap-only, plus L-P1), #11
+(`publish_confirms`), #12 protocol side (failure decided by identity+attempt vs shared RNG stream:
+`test_failure_keyed_by_identity_not_rng_order`; simulator policies never read future requests). W08 (C=1/2/4,
+promotion, cancel-not-exited, completed-unconsumed, stale/duplicate completion), W12 (same-target disjoint,
+cross-target conflict, late facts, real new version), W16 (exhaustive interleavings) covered at bounded size.
+
+## D3-ready candidates (formal timing not run here)
+* `bench/bench_protocol.py` family `guard_*`: baseline `scan_guard`, candidate `owner_table`.
+* `bench/bench_protocol.py` family `identity_*`: baseline `typed_full`, candidate `typed_tuple_intern`.
+  Command per cell: `python3 research_out/bench/bench_protocol.py --scenario <name> --candidate <c> --rep <k>`
+  (`--list` prints scenarios). Each row carries `ok` (decisions equal to the baseline's) and `verdict_sha256`.
+
+## Known gaps
+No native scheduler, no real service-time distribution (all latency in `u`); checker bounds are small (2 keys,
+2 consumers, depth ≤ 7); the protocol model is not coupled to `current_baseline.Host` (certificates come from a
+synthetic certifier in the checker and from `reference.certify` only in the A6/X7 studies); fairness and G4
+results are single deterministic workloads per cell (no seed sweep); identity microbench is exploratory.
+
+## Formal serial 3-process results (main session, `results/formal/protocol.jsonl`)
+
+1 warmup + 3 reps × 3 independent processes, rotated order; decisions identical to the baseline in every row.
+G5 publication guard (scan_guard ms → owner_table ratio): n=10 0.11 ms → 0.362 [0.294, 0.363]; n=100 6.35 ms → 0.061 [0.043, 0.061];
+n=1000 620.0 ms → 0.008 [0.007, 0.008]. C3 identity compare (typed_full ms → typed_tuple_intern ratio): n=16 15.9 → 0.469; n=64 60.6 → 0.543;
+n=256 259.4 → 0.485; n=512 757.4 → 0.431. Both are now D3.

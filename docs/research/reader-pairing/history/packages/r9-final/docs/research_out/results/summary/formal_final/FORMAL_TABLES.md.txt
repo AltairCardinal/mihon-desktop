@@ -1,0 +1,11 @@
+# 正式计时汇总（由 bench/summarize_formal.py 从 results/raw/formal_final/*.jsonl 生成）
+
+每个候选：各场景"逐进程配对墙钟比值的中位"的中位 [最小, 最大]（相对该场景族的 incumbent）；墙钟为整段 run_one 的本机测量。
+
+## bench_final（原始行 2424，子进程错误 0，ok=False 行 0）
+
+| incumbent | 候选 | 场景数 | 比值中位 | 最小 | 最大 |
+|---|---|---|---|---|---|
+| incumbent_fixed_bound | gated_shadow_fixed_bound | 98 | 1.067 | 0.979 | 1.856 |
+| package_bound | inc_revoke_bound | 3 | 0.157 | 0.146 | 0.159 |
+

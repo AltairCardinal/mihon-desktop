@@ -1,0 +1,124 @@
+# Host caching / invalidation family — definitions, lemmas, counterexamples
+
+Layer: `virtual_host` (re-implementation `candidates/hosts.py:XHost` of the frozen
+`current_baseline.Host` contract). Nothing here is a statement about another runtime.
+
+## 0. Notation
+
+* `R_w = compact_core.certify(case, t, w)`; the strategy verdict is
+  `V = sel(R_2, R_3)` with `R_3` computed iff `R_2.status = need_facts` and
+  `V = R_3` iff `R_3.status = certified`, else `V = R_2` (reference.certify_strategy).
+* `reads(R)` = the ordered typed fingerprints recorded by `certify` (proof[2]).
+* guard `G = (binding, identity, settings, location)`, plus `closed`.
+* dependency atoms: `('i', p)` (whole item record p: id, versions, rotation, orientation, analysis, header)
+  and `('e', a)` (the effective record of edge (a, a+1), last record wins as in `Index._edge_index`).
+
+## L-H1 (determinism of an attempt from its reads)
+
+`certify` touches the case only through `Index.ident` (identity, part of G), settings (part of G),
+`closed` (checked) and the recorded reads `analysis:i`, `header:i`, `dimension:i`, `rank:a:b`.
+By induction over the access sequence: if G is equal and every recorded read returns a typed-equal
+value, every branch taken is the same, so the same accesses happen in the same order and `R_w` is
+identical (including `needs` order, `failures`, `first`, `steps`, `dependent_items`).
+Hence *exact typed validation of reads(R_w) is a sufficient validity test for R_w*.
+(The frozen Host relies on the same fact; we only make it explicit.)
+
+## T-C5 (support of a strategy verdict) — and the counterexample to the frozen Host
+
+`V` is a function of `reads(R_2)` and, when `R_2.status = need_facts`, of `reads(R_3)`.
+Proof: apply L-H1 to each attempt; `sel` only inspects the two statuses. ∎
+
+**The frozen Host stores only `reads(V)`.** Two minimal witnesses (fixtures, verified by tests):
+
+1. `fixtures/host_traces/c5_retry_support_cex.json` — `R_2, R_3` both `need_facts`, `V = R_2`.
+   A fact read only by the discarded `R_3` becomes known; `reads(R_2)` unchanged
+   (`reference.reads_current(V, changed) == True`) but `certify_strategy(changed)` adopts a certified
+   retry. `Host(Config.current())` and `Host(Config.strict())` return the stale `need_facts`;
+   `Config.cold()` is right. Test: `test_frozen_host_is_stale_and_fix_is_not`.
+2. `fixtures/host_traces/c5_adopted_variant_cex.json` — `V = R_3` (adopted). The rank that made
+   `R_2` wait becomes `computed null`; `reads(R_3)` unchanged; now `R_2` is certified and the
+   strategy selects it (different `first`, `steps`, `dependent_items`). Frozen Host stale.
+   Test: `test_adopted_variant`.
+
+Both are L0 violations of the virtual host (public verdict ≠ certify_strategy minus reads), invisible
+to the package's differential tests because their generated traces only toggle complete facts.
+Frequency on our generated traces: 0 / 17 280 requests (`results/hosts/c5_frequency.json`) — the defect
+needs a fact read only by the retry window to change while the window-2 reads stay fixed; it is a
+correctness defect, not a performance one.
+
+Two sufficient fixes (both implemented, both pass all tests):
+* **attempts** (route A, also B4 route A): cache `R_2` and `R_3` as separate entries, validate
+  `R_2`; if it is (still) `need_facts`, validate `R_3`; recompute only the invalid attempt.
+* **union** (route B): cache `V` with support `reads(R_2) ∪ reads(R_3)`.
+`attempts` additionally makes partial work safely cacheable (see C5 table, budget abort).
+
+## L-H2 (write barrier completeness, C1)
+
+Owned state is written only by `replace`, `set_analysis`, `set_header`, `set_edge`, `rebind`,
+`close`, `locate` (location is part of G). Every write calls `_bump(I, E, global)` with
+* `replace`: `I = {p : typed(item_p) changed}`, `E = {a : typed(effective edge record (a,a+1)) changed}`,
+  global if settings, closed, identity or any other top-level key changed (identity change resets).
+* `set_analysis/set_header(i)`: `I = {i}`; `set_edge(a,b)`: `E = {a}` iff `b = a+1` and in range.
+
+Read → atoms: `analysis:i, header:i, dimension:i → ('i',i)`;
+`rank:a:b → ('i',a), ('i',b)` and `('e',a)` iff `b = a+1`.
+**Lemma H-E:** for `b ≠ a+1`, `Index.edge` returns `('unknown',)` before consulting any record, so
+non-adjacent records are never read (barrier may ignore them). Every read value is a function of its
+atoms (and G) — by inspection of `compact_core.Index`. Therefore: if no atom of `reads(A)` was
+bumped since A's snapshot and G is unchanged, A is valid (L-H1). The exact-fallback path is used
+after any atom bump, so hits are preserved when values return to equal.
+Saturation (W14): counters saturate at 2^63−1; once any counter saturates the fast path is disabled
+and exact validation is used (`test_posrev_saturation_falls_back_to_exact`).
+Mutants killed: header-only change skipped, adjacent edge change skipped (`Mutants` tests).
+
+Log variant: valid iff the log is complete for revisions `> r0`; truncation sets a floor and any
+entry with `r0 < floor` falls back to exact validation (`test_log_truncation_falls_back`).
+
+## L-H3 (reverse dependency invariant, C2)
+
+Invariant I: for every cached attempt A of target t and every atom d ∈ deps(A):
+`(t, ai) ∈ revdep[d]` or `A.dirty`.
+* insert registers every atom of every attempt of the new entry (including a *reused* attempt whose
+  previous registration was removed when the old entry was replaced);
+* evict removes exactly the evicted entry's registrations (no stale growth);
+* `_bump` marks dirty every registered attempt of every bumped atom;
+* `close/rebind/global` clear both cache and index.
+Clean attempts are therefore valid (L-H2). Mutant `revdep_no_reregister` breaks I after a sub-problem
+reuse and is killed by `mutant_revdep_no_reregister.json`; mutant `revdep_no_deregister` keeps I but
+violates the space bound (`test_unbounded_variants_grow`).
+Bitmap variant: each write sweeps all entries and ORs intersecting masks into `dirty` (cost O(entries)
+per write, O(1) per clean hit).
+
+## C4 (exact interning / identity fast path)
+
+Interner keys are `(read key, typed(value))`; Python dict lookup compares with `==` after hashing, so
+equal ids ⇔ typed-equal values; a hash collision can never merge values. The *hash-only* mutant is
+killed using the CPython collision `hash(-1) == hash(-2)` (`mutant_hash_only.json`).
+Identity fast path: `old is now ⇒ old == now` (sound). The `carry` view keeps the parsed tuples of
+positions outside `I` across a write, so unchanged positions validate by identity; it is only as
+sound as the barrier (a header-skipping barrier would carry a stale tuple — same mutant kills it).
+
+## C5 negative-result semantics (what may be cached, when retry is mandatory)
+
+| result kind | cacheable? | invalidated by | note |
+|---|---|---|---|
+| computed-null rank (`score: null`) | yes, positive evidence | edge record or endpoint item change | ≠ unknown (mutant `unknown_eq_null` killed) |
+| `blocked` (failure read) | yes | any change of a failure record/reason or recovery | retry is mandatory exactly when a recorded failure read changes; no time-based retry policy exists in this model (missing parameter) |
+| `need_facts` strategy verdict | only with support of **every attempt run** (T-C5) | change of any read of R_2, or of R_3 while R_2 is need_facts | frozen Host violates this |
+| budget-aborted preparation (B6) | completed attempts only, never as a strategy verdict | — | with `attempts` representation an aborted `R_2` is harmless (missing `R_3` forces computation); with `selected` representation it is wrong (mutant `budget_abort_cached`) |
+| oversized proof | not cached (bypass) | — | no truncated proofs |
+
+## G6 space bounds (structural units; Python bytes are reported separately)
+
+* entries ≤ capacity (`fifo`, `gds`); with a byte budget B: Σ size ≤ B + max single entry size
+  (one entry is always admitted); `size = Σ_attempts (|reads| + 16)`.
+* per-entry reads ≤ 2·max_reads (bypass above).
+* revdep edges = Σ_entries |deps| (no stale registrations, L-H3).
+* log length ≤ log_cap (bounded); **uncapped log grows linearly with writes between rebinds**
+  (570 entries after 200 rounds of churn, `results/hosts/g6_space.json`).
+* interner ≤ 2·max(16, live ids) + live after a prune; **without pruning it grows with every distinct
+  value seen** (420 vs 59 values in the same run).
+* item revisions = n; edge revisions ≤ n−1; identity structure = n; one owned snapshot; ≤ 1 view.
+* Not bounded by this model: transient deep copies inside `replace` (peak), caller-side snapshots.
+The `attempts` fix costs ≈1.6× stored read keys vs the frozen selected-only support
+(max 74 vs 45 in the churn run) — the price of a sound negative cache.

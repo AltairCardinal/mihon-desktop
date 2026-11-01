@@ -1,0 +1,772 @@
+{
+  "status": "PASS",
+  "scope": "complete-input algorithm experiment; no partial certificate or platform claim",
+  "subjectPairs": 384,
+  "subjectVersions": 768,
+  "subjectQueries": 3456,
+  "subjectWork": {
+    "labelSteps": 12240,
+    "composeEntries": 15390,
+    "prefixApplications": 4983,
+    "querySteps": 3456,
+    "labelsRebuilt": 3060,
+    "cachedPlanLookups": 3456
+  },
+  "subjectOracleSteps": 2382,
+  "coverage": {
+    "nonNullEdges": 390,
+    "positiveEdges": 114,
+    "actualReservationEvents": 24,
+    "edgeReservationWitnesses": 1
+  },
+  "updateModes": {
+    "halo": 264,
+    "full-geometry": 48,
+    "full-manual": 72
+  },
+  "contextRebuildChecks": 6,
+  "probeQueries": 288,
+  "sampleProfiles": 7,
+  "snapshotBookkeeping": "O(n) fixture copies/maps; only one page resampled and adjacent edge scores rebuilt per update",
+  "sampleRetention": "all page samples retained; not production default-16 memory evidence",
+  "probes": [
+    {
+      "pages": 32,
+      "cold": {
+        "labelSteps": 128,
+        "composeEntries": 155,
+        "prefixApplications": 0,
+        "querySteps": 0,
+        "labelsRebuilt": 32,
+        "cachedPlanLookups": 0
+      },
+      "treeIntegerCells": 320,
+      "initialCanonicalStepsAndOutputUnits": 19,
+      "unchangedQueries": {
+        "labelSteps": 0,
+        "composeEntries": 0,
+        "prefixApplications": 192,
+        "querySteps": 48,
+        "labelsRebuilt": 0,
+        "cachedPlanLookups": 48
+      },
+      "updates": [
+        {
+          "iteration": 0,
+          "page": 15,
+          "oracleStepsAndOutputUnits": 19,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 50,
+            "prefixApplications": 14,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 1,
+          "page": 16,
+          "oracleStepsAndOutputUnits": 19,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 45,
+            "prefixApplications": 12,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 2,
+          "page": 17,
+          "oracleStepsAndOutputUnits": 19,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 50,
+            "prefixApplications": 9,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 3,
+          "page": 15,
+          "oracleStepsAndOutputUnits": 19,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 50,
+            "prefixApplications": 14,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 4,
+          "page": 16,
+          "oracleStepsAndOutputUnits": 19,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 45,
+            "prefixApplications": 12,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 5,
+          "page": 17,
+          "oracleStepsAndOutputUnits": 19,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 50,
+            "prefixApplications": 11,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 6,
+          "page": 15,
+          "oracleStepsAndOutputUnits": 19,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 50,
+            "prefixApplications": 14,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 7,
+          "page": 16,
+          "oracleStepsAndOutputUnits": 19,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 45,
+            "prefixApplications": 12,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 8,
+          "page": 17,
+          "oracleStepsAndOutputUnits": 19,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 50,
+            "prefixApplications": 9,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 9,
+          "page": 15,
+          "oracleStepsAndOutputUnits": 19,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 50,
+            "prefixApplications": 14,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 10,
+          "page": 16,
+          "oracleStepsAndOutputUnits": 19,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 45,
+            "prefixApplications": 12,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 11,
+          "page": 17,
+          "oracleStepsAndOutputUnits": 19,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 50,
+            "prefixApplications": 11,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 12,
+          "page": 15,
+          "oracleStepsAndOutputUnits": 19,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 50,
+            "prefixApplications": 14,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 13,
+          "page": 16,
+          "oracleStepsAndOutputUnits": 19,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 45,
+            "prefixApplications": 12,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 14,
+          "page": 17,
+          "oracleStepsAndOutputUnits": 19,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 50,
+            "prefixApplications": 9,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 15,
+          "page": 15,
+          "oracleStepsAndOutputUnits": 19,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 50,
+            "prefixApplications": 14,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        }
+      ]
+    },
+    {
+      "pages": 128,
+      "cold": {
+        "labelSteps": 512,
+        "composeEntries": 635,
+        "prefixApplications": 0,
+        "querySteps": 0,
+        "labelsRebuilt": 128,
+        "cachedPlanLookups": 0
+      },
+      "treeIntegerCells": 1280,
+      "initialCanonicalStepsAndOutputUnits": 73,
+      "unchangedQueries": {
+        "labelSteps": 0,
+        "composeEntries": 0,
+        "prefixApplications": 272,
+        "querySteps": 48,
+        "labelsRebuilt": 0,
+        "cachedPlanLookups": 48
+      },
+      "updates": [
+        {
+          "iteration": 0,
+          "page": 63,
+          "oracleStepsAndOutputUnits": 72,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 70,
+            "prefixApplications": 26,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 1,
+          "page": 64,
+          "oracleStepsAndOutputUnits": 72,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 65,
+            "prefixApplications": 22,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 2,
+          "page": 65,
+          "oracleStepsAndOutputUnits": 73,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 70,
+            "prefixApplications": 18,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 3,
+          "page": 63,
+          "oracleStepsAndOutputUnits": 73,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 70,
+            "prefixApplications": 26,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 4,
+          "page": 64,
+          "oracleStepsAndOutputUnits": 73,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 65,
+            "prefixApplications": 22,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 5,
+          "page": 65,
+          "oracleStepsAndOutputUnits": 73,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 70,
+            "prefixApplications": 18,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 6,
+          "page": 63,
+          "oracleStepsAndOutputUnits": 72,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 70,
+            "prefixApplications": 26,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 7,
+          "page": 64,
+          "oracleStepsAndOutputUnits": 72,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 65,
+            "prefixApplications": 22,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 8,
+          "page": 65,
+          "oracleStepsAndOutputUnits": 73,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 70,
+            "prefixApplications": 18,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 9,
+          "page": 63,
+          "oracleStepsAndOutputUnits": 73,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 70,
+            "prefixApplications": 26,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 10,
+          "page": 64,
+          "oracleStepsAndOutputUnits": 73,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 65,
+            "prefixApplications": 22,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 11,
+          "page": 65,
+          "oracleStepsAndOutputUnits": 73,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 70,
+            "prefixApplications": 18,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 12,
+          "page": 63,
+          "oracleStepsAndOutputUnits": 72,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 70,
+            "prefixApplications": 26,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 13,
+          "page": 64,
+          "oracleStepsAndOutputUnits": 72,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 65,
+            "prefixApplications": 22,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 14,
+          "page": 65,
+          "oracleStepsAndOutputUnits": 73,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 70,
+            "prefixApplications": 18,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 15,
+          "page": 63,
+          "oracleStepsAndOutputUnits": 73,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 70,
+            "prefixApplications": 26,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        }
+      ]
+    },
+    {
+      "pages": 512,
+      "cold": {
+        "labelSteps": 2048,
+        "composeEntries": 2555,
+        "prefixApplications": 0,
+        "querySteps": 0,
+        "labelsRebuilt": 512,
+        "cachedPlanLookups": 0
+      },
+      "treeIntegerCells": 5120,
+      "initialCanonicalStepsAndOutputUnits": 293,
+      "unchangedQueries": {
+        "labelSteps": 0,
+        "composeEntries": 0,
+        "prefixApplications": 320,
+        "querySteps": 48,
+        "labelsRebuilt": 0,
+        "cachedPlanLookups": 48
+      },
+      "updates": [
+        {
+          "iteration": 0,
+          "page": 255,
+          "oracleStepsAndOutputUnits": 293,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 90,
+            "prefixApplications": 18,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 1,
+          "page": 256,
+          "oracleStepsAndOutputUnits": 293,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 85,
+            "prefixApplications": 20,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 2,
+          "page": 257,
+          "oracleStepsAndOutputUnits": 293,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 90,
+            "prefixApplications": 15,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 3,
+          "page": 255,
+          "oracleStepsAndOutputUnits": 293,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 90,
+            "prefixApplications": 18,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 4,
+          "page": 256,
+          "oracleStepsAndOutputUnits": 293,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 85,
+            "prefixApplications": 20,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 5,
+          "page": 257,
+          "oracleStepsAndOutputUnits": 293,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 90,
+            "prefixApplications": 15,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 6,
+          "page": 255,
+          "oracleStepsAndOutputUnits": 293,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 90,
+            "prefixApplications": 18,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 7,
+          "page": 256,
+          "oracleStepsAndOutputUnits": 293,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 85,
+            "prefixApplications": 20,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 8,
+          "page": 257,
+          "oracleStepsAndOutputUnits": 293,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 90,
+            "prefixApplications": 15,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 9,
+          "page": 255,
+          "oracleStepsAndOutputUnits": 293,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 90,
+            "prefixApplications": 18,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 10,
+          "page": 256,
+          "oracleStepsAndOutputUnits": 293,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 85,
+            "prefixApplications": 20,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 11,
+          "page": 257,
+          "oracleStepsAndOutputUnits": 293,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 90,
+            "prefixApplications": 15,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 12,
+          "page": 255,
+          "oracleStepsAndOutputUnits": 293,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 90,
+            "prefixApplications": 18,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 13,
+          "page": 256,
+          "oracleStepsAndOutputUnits": 293,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 85,
+            "prefixApplications": 20,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 14,
+          "page": 257,
+          "oracleStepsAndOutputUnits": 293,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 90,
+            "prefixApplications": 15,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        },
+        {
+          "iteration": 15,
+          "page": 255,
+          "oracleStepsAndOutputUnits": 293,
+          "work": {
+            "labelSteps": 16,
+            "composeEntries": 90,
+            "prefixApplications": 18,
+            "querySteps": 3,
+            "labelsRebuilt": 4,
+            "cachedPlanLookups": 3
+          }
+        }
+      ]
+    }
+  ],
+  "forcedCasesPerVariant": 96,
+  "forcedTransitions": {
+    "Certified->Certified": 72,
+    "NeedFacts->NeedFacts": 18,
+    "NeedFacts->Certified": 6
+  },
+  "forcedCore": {
+    "baseline": {
+      "key": "GRAY-LTR-AUTO-true-true",
+      "status": "NeedFacts",
+      "needs": [
+        {
+          "page": 1,
+          "kind": "ORIGINAL_ANALYSIS"
+        }
+      ],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    },
+    "candidate": {
+      "key": "GRAY-LTR-AUTO-true-true",
+      "status": "Certified",
+      "needs": [],
+      "oracle": {
+        "slots": [
+          {
+            "page": 2,
+            "position": "LEFT"
+          }
+        ],
+        "reason": "MANUAL_BOUNDARY",
+        "certain": true
+      }
+    }
+  },
+  "elapsedCompileAndResearchSeconds": 19.114,
+  "sourceStable": true
+}

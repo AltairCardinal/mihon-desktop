@@ -1,0 +1,68 @@
+# WP-A — proof/service adoption on the coupled chain (A01–A06, F01–F06, O01, O05, O06, P02, P03, X01, X15, X17, X21)
+
+Layer: coupled (coupling.Session / StrongSession, virtual u). Local ns appears only in bench rows and the
+solver/adapter studies and is never added to u. All controllers read public Session state only; the world is
+harness-only. Proofs: proofs/wpA.md. Coverage: coverage_parts/wpA.csv.
+
+## Main result: proofs may touch only the publication channel
+
+* **Counterexample K1** (results/raw/wpA/race_keep_counterexample.json). The earlier conjecture "race without
+  cancellation (race_keep / gated_keep) is never worse than the incumbent" is false: chain n=6, capacity 1,
+  service 3 u, q 1 u — incumbent total latency 6 u, race_keep 7 u. An early proof publication removed a target
+  from the physical queue; a refused acquisition was never re-issued and two later targets paid for it.
+  4445 random adversarial runs missed this; a constructive search found it.
+* **Lemma S1 / gated_shadow** (candidates/wpA_lib.py `ShadowRunner`). The physical controller is the incumbent,
+  verbatim, at the incumbent's drive instants, including for targets already published by a proof; a proof only
+  publishes; expired proof publications are refreshed from L0. Proven: same physical schedule, every first
+  publication ≤ incumbent, current-publication set ⊇ incumbent's. Checked on 2592 cells (108 traces incl. 60
+  random attack traces with raw eviction, capacity 1 and 3): 0 violations, 472 strictly better.
+* **Executable boundary** `shadow_boundary(q_u, service_u) = q_u < service_u`; gain = wins × (service_u − q_u).
+  Exact on 28/28 (service, q) cells over 48 tuning + held-out traces (results/summary/wpA/boundary.json).
+  Outside the boundary the cost is lane time only.
+* **Bench** (bench/bench_wpA.py; 98 scenarios incl. a rebind+evict lifecycle scenario and K1; one-rep smoke,
+  not formal timing, results/summary/wpA/bench_smoke.json): gated_shadow latency 1497 → 1370 u with 411 = 411
+  physical admissions, identical final verdict hash on 98/98; ungated shadow same latency with 6.1× the strong
+  evaluations; gated_proof_first 344 admissions but 2622 u; race_cancel 1333 admissions.
+
+## What does not work (and why)
+
+* **Physical-saving route.** Proofs are per target, evidence is shared. proof_first saves admissions only for
+  missing identities with few later consumers (break-even c·q_u < service_u, a rent-or-buy on the physical
+  identity). Measured families have many consumers per hole, so physical saving costs 3.9–16.8 u latency per
+  saved admission; ski (rent-or-buy per need signature) saves 4/411 at +21 % latency. No cheap legal L1 scope
+  removes physical critical-path work without a latency loss on these families; the removable critical-path
+  quantity is the *wait*, which shadow removes with zero physical change.
+* **Race with cancellation** destroys reusable evidence; waste is linear in later consumers (Prop R).
+* **Keep-variants lose current publications**: proof publications expire under later evidence; dropping the
+  target leaves no current publication (35/98 scenarios) while wrong = 0 — a liveness defect invisible to the
+  correctness oracle (NH-A5).
+* **Online learning / budget doubling / portfolio**: adaptive Beta-LCB regret up to 196 u; budgets below
+  ~300 evaluations give 0 certificates; portfolio returns identical certificates at 2.3 ms vs 0.45 ms
+  (persistent tree) per attempt.
+* **Natural held-out families** (heldout seeds 100–103): gate admits 8 of 90 need_facts events, 0 successes —
+  the adoption domain is empty there; shadow then costs only lane time and is exactly the incumbent.
+
+## Secondary results
+
+* A04: exhaustive 5040 interleavings on the real Session: 0 violations; publish-without-support and
+  cancel-frees-slot mutants caught; clearing certificates on rebind turns out to be redundant (binding guard).
+* Capacity-1 livelock in the package controller (re-serving a resident rank endpoint); resident-aware
+  acquisition fixes it (NH-A1).
+* PersistentStrongSession: incremental relation tree from owner deltas; 1280 differential checks; identical
+  virtual metrics; 3–13× less strong compute (local ns).
+* F02/F03/X15: witness-cover / analysis-first acquisition saves 6–10 % admissions at 1.1–2× latency; no
+  dominance. F05/X17: identifiability vs complexity-aware fact choice disagree on 8/30 small cases (≤3.04×
+  evaluations); coupled study not run. O05: island-only summaries are unsound (bridge counterexample).
+
+## Reproduce
+
+```
+cd research_out
+python3 -m unittest discover -s tests -t . -p 'test_wpA*.py'      # ~20 s
+timeout 290 python3 bench/run_wpA_shadow.py                         # Lemma S1 check (~130 s)
+timeout 290 python3 bench/run_wpA_boundary.py                       # boundary
+timeout 290 python3 bench/run_wpA_cex.py                            # K1
+timeout 295 python3 bench/run_wpA_benchsmoke.py                     # bench smoke
+python3 bench/run_wpA_grid.py tuning|heldout|heldout2 ; python3 bench/run_wpA_studies.py <section>
+# formal timing (main session only): python3 research_out/bench/drive_formal.py bench_wpA --out results/raw/formal/wpA.jsonl
+```

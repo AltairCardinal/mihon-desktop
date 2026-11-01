@@ -1,0 +1,181 @@
+# WP-C proofs, limits and counterexamples
+
+Scope: C01-C06, E04-E06, O02-O04, P01/P04-P06, Q01-Q06, N04, combinations X06/X09/X12/X13/X14.
+Code: `candidates/wpC_*.py`; tests: `tests/test_wpC.py` (16 tests); raw evidence: `results/raw/wpC/*.json`.
+Status words follow CONVENTIONS.md. "Proved" means a written argument plus executable differential check;
+"checked" means executable evidence only.
+
+## 0. Shared facts (reproduced from r8, used as lemmas)
+
+**L-T (transducer).** The frozen scan of `reference.complete_plan` is a deterministic 10-state transducer over
+positions; leaf function `f_i: Q -> Q x out` depends only on items `[i-1, i+3]` and the adjacent rank records among
+them (r8 reproduction, `transducer.py`). The boundary state `s_{i+1} = f_i(s_i)`.
+
+**L-W (window).** A change to item `p` or edge `(p,p+1)` changes at most the leaf functions `f_{p-3} .. f_{p+1}`;
+hence all boundary states `s_j` with `j <= p-3` are unchanged, and states `j >= p-2` may change.
+Corollary used everywhere below: *if after a change the recomputed state equals the old stored state at some
+boundary `j > p+2`, every later state is unchanged* (determinism + unchanged leaves after `p+1`).
+
+## 1. C01/C02 lazy structures
+
+**Lemma C01-1 (LazyTree invariant).** Invariant I: (a) every built node stores the composition of the current
+leaf functions under it; (b) a built internal node has both children built.
+*Proof.* Build is recursive bottom-up, so (b) holds at build time and (a) holds by composition associativity.
+`_invalidate(i)` unbuilds leaf `i` and walks to the root, unbuilding every node until it meets an unbuilt node `u`.
+By (b), no ancestor of `u` can be built (a built ancestor would force `u` built), so every built ancestor of the
+changed leaf has been unbuilt; (a) is restored. Queries compose the canonical decomposition of `[0,t)` and build
+only missing nodes, preserving (a),(b). By L-W, invalidating leaves `[p-3,p+1]` per change suffices. []
+Executable: `Structures.test_all_structures_exact` (all 9 structures vs `ref.complete_plan` after every event).
+
+**Cost facts (C01/C02, measured work units, deterministic).** Work = scan steps + resync steps + 5*leaf evals;
+node compositions are **not** included (this favours tree structures; noted as a limitation).
+- Sparse queries: `W03` (400 updates, one far query) costs `n-1` for lazy/prefix/hybrid versus 8910/12845 (r8 eager
+  tree, n=256/1024) and 1999/2015 (r8 resync). The eager tree pays its full build; a lazy structure pays only the
+  queried prefix (`results/raw/wpC/C01.json`).
+- Break-even (C02, n=2048, 200 updates): lazy tree beats prefix rescan at 0.1 queries/update (17460 vs 31975) and
+  loses at 0.02 (12355 vs 4427); with zero queries every lazy structure costs 0 vs 17990 for the eager tree.
+- Dirty-log overflow counterexample: cap 8 at 0.1 q/update overflows and drops the tree: 101105 vs 17460.
+- Dense random queries: lazy tree does **not** beat the eager r8 tree (n=256 jump 5760 vs 4975) and the r8 resync
+  incumbent (1008) dominates both on local random data. **Verdict: lazy build is a sparse-query mechanism only.**
+
+## 2. C03 / X06 / P01 resync-tree hybrid and selection
+
+**Lemma C03-1 (Hybrid exactness).** Hybrid keeps a valid prefix of boundary states. On a change at `p` it recomputes
+from `lo = max(0,p-2)` and stops at the first boundary `j > p+2` with new state = old state (L-W corollary), or after
+`cap` steps; on overflow it promotes to a LazyTree sharing the same facts, truncating the valid prefix to `lo-3`.
+While promoted it probes `tree.state(hi+2)` before/after each change; `D` consecutive equal probes demote.
+Answers are computed either from a valid prefix state + scan or from the tree, both exact by L-W and C01-1. []
+Demotion/promotion change only cost, never answers (test `test_hybrid_never_prebuilds_and_promotes_on_flip`).
+
+**Measured (C03, X06).** Phase flip, n=1024: r8 resync 307200, hybrid 10598, lazy tree 9580, r8 eager tree 8120.
+Local, n=1024: r8 resync 1500, hybrid 2478, r8 tree 8120. Hybrid is never the best fixed choice but stays within
+1.2-1.65x of the better incumbent in both regimes, except short alternation where quiet-probe demotion thrashes
+(n=1024 alternating: hybrid 28067 vs eager tree 8720; X06 n=512 short alternation: hybrid 62101).
+
+**Limit P01-L (no competitive claim).** The selector `SkiRental` (promote when excess resync >= alpha*n; demote when
+tree surplus >= n) was written as a ski-rental scheme, but **no competitive bound is proved, and the naive
+`(2+1/alpha)` bound is refuted** by our adaptive adversary (`P01.json`, `chasing_vs_skirental`): 3.49-3.76x the
+offline model OPT (DP over {resync, tree} per-event costs with switch costs S_RT=5n, S_TR=n). The adversary vs the
+hybrid gets 4.25-4.49x. Reason: the switch cost is not a fixed "buy" price - after demotion the resync cost of the
+*next* flip depends on how far the transducer state diverges, which the adversary controls. Model OPT itself is a
+DP over our own two cost streams, so ratios < 1 occur (it is not a lower bound on all algorithms).
+
+**X06 combination (work, n=512, `X06.json`).** zero / A=hybrid / B=skirental / A+B org1 (ski promote + quiet demote)
+/ org2 (ski promote, never demote): short alternation 80444 / 62101 / 9777 / 78839 / 9542; flip-then-local
+51045 / 6485 / 7382 / 7015 / 11942; chasing-vs-hybrid 3777 / 15873 / 4988 / 9126 / 4963 (here plain resync wins:
+the adversary is built against promotion). Interaction term (zero - A - B + AB, work) = +87405 on short
+alternation (A+B org1 is worse than B alone: the quiet-probe demotion is the conflicting component).
+Org2 ("long-lived layered index") wins on alternation/adversary and loses on flip-then-local (it keeps paying tree
+leaf work in a local phase). No single organisation dominates: **conditional**.
+
+**P06 (advice separation), proved.** `Advised` only selects which exact structure answers; by C01-1/C03-1 every mode
+answers `complete_plan` exactly, so correctness is advice-independent (test `test_wrong_advice_only_changes_cost`).
+Cost bound: with minimum switch gap `g`, at most `ceil(U/g)` switches, each costing at most a tree build (`<= 5n` leaf
+work) or a rescan (`<= n` steps), so `cost(advised) <= cost(mode sequence) + ceil(U/g)*5n`. Measured: alternating
+advice with g=1 costs 110020 vs 8535 for always-tree; g=16 caps it at 29965 (`P06.json`).
+
+**P04 (generalisation), refutation of "tune once".** Grid-tuned hybrid (best on n=128 mix A) on held-out seeds
+has model-OPT ratio 0.96-1.80; skirental 1.16-1.85; fixed tree 0.91-1.50. Neither selector generalises uniformly.
+
+**P05 (drift detection).** A regime change at update 200 is detected at update 201 (cap rule) or 202 (ski rule), with
+no false promotion on 400 noisy-local updates; the probe overhead is 396-398 probes. Detection is cheap because
+the cap rule is itself a one-update change-point test on the observed propagation length.
+
+## 3. C04 order changes (rope)
+
+**Lemma C04-1 (translation).** If settings contain no absolute ordinals (no `pinned_links` or other position-indexed
+fields), the leaf function at a position depends only on the window content (L-T), not on the ordinal. After
+inserting at `p`, new leaf `i' = i` for `i < p-4` and `i' = i+1` for `i > p+4` (old index `i`), with edges remapped;
+recomputing leaves in `[p-4, p+4]` plus the global leaves `{0,1}` and the last 4 (end effects) restores the
+complete leaf sequence; chunk compositions are recomposed only for touched chunks. Deletion is symmetric. []
+`RopePlan` rejects settings with ordinals (ValueError). Executable: `test_rope_exact_and_preconditions`
+(25,098 random rope checks in the initial differential, 0 mismatches).
+
+Counterexamples (`C04.json`): (1) reusing ordinal-indexed leaves after insertion gives wrong units for targets
+[11,12]; (2) pinned ordinals: remapping pins changes the plan vs not remapping -> precondition is necessary;
+(3) a coupling.Session certificate issued before `replace` publishes as `stale`.
+Cost (40 ops, local single trial): n=1024 rope 1614 leaf evals vs 40980 for rebuild, but the rope pays an O(n)
+fact parse (42004 slots) at construction - amortised only after several order changes.
+
+## 4. C05 batching
+
+Batching is exact (merged deltas; L-W applies to the union window). No leaf-work saving was found (identical work);
+invalidations drop 14% at burst 64. **Counterexample:** v0->v1->v2 where `unit(4)` in v1 differs from both v0 and v2;
+merged application never exposes v1. Merging is legal only if the consumer declares intermediate versions
+unobservable.
+
+## 5. O02 / C06 / X09 differential output
+
+**Lemma O02-1 (DiffPlan exactness).** DiffPlan keeps dense states and the per-item cover; per change it recomputes
+from `p-2` until convergence (L-W corollary) and emits exactly the items whose cover unit changed. []
+`test_diffplan_cover_exact`; `O02.json` final cover mismatch 0.
+
+**Limit O02-L (output lower bound).** On the decreasing chain with an edge-(1,2) flip, every flip changes the cover
+unit of Theta(n) items (measured 1023 changed items per update at n=1024). Any consumer interface that reports the
+changed per-item cover must emit Omega(n) per flip; the diff interface (102300 entries / 100 updates) is then worse
+than full output (68300 units) by a constant factor. Diff output pays off only when changes are local
+(random local n=1024: 71 entries vs 76555).
+
+C06/X09: one DiffPlan serving point/full/prefix views (`Shared`) dominates dedicated structures in work on every
+mix measured (switching n=512: 1225 vs 6960 dedicated vs 72195 scan-only). Work excludes emitting output; the full
+output lower bound (19329 units on the switching mix) dominates both and is identical for all designs.
+
+## 6. O03 / O04
+
+O03 (negative): precompiling a window around the last target on an O(1)-query structure adds work (roundtrip w=2:
+428 hits but 551 evicted unused precomputations; jump w=8: 17 hits / 7849 wasted). Only useful where a query costs
+more than the precompile, i.e. never for an already-indexed complete plan.
+O04: an idle-time budget of 64 leaf evals per update cuts foreground leaf work 1984 -> 697 (update every 2) and
+total work rises only by the background part (1316); with infinite idle budget the foreground cost is 0.
+
+## 7. E04 / E05 / E06 / X12 / X13 / X14 witness derivation
+
+**E06-1 (exactness of fused/prefix derivation).** `fused_ranks` and `prefix_ranks` normalise each witness once and
+evaluate `OPTIMIZED_OPERATOR.score` on cached normalised vectors; outputs equal per-pair `score` (test
+`test_fused_variants_identical_and_symmetric`; E.json `agree` true in every scenario). The prefix cache normalises
+only the prefix needed before the operator's early-null exit (total >= 1500), so it never reads more than separate.
+Counts (60 batches x 6 witnesses): near fan-2 separate 30000 normalisations vs fused 18000; far (early null)
+separate 3584 / fused 18000 / prefix 2279; fan-0 eager 18000 vs lazy/prefix 0; mixed prefix 6361 (best).
+**E04:** progressive segmented reading is exact only when it stops on a proven null; with spread >= 120 it reads
+7-10 of 50 elements (segment 5); near pairs read all 50 (no saving).
+**E05:** score is symmetric (0/2000 mismatches) and reversal-invariant (0/2000); AB and BA ranks use different
+vectors (R_i,L_j vs L_i,R_j), so ranks are not reusable across directions; normalised vectors are.
+**One-pass variance:** no threshold disagreement between the operator's E[x^2]-mean^2 and a two-pass variance in
+~350k structured vectors (negative search; equivalence remains an obligation, not proved).
+**X13 counterexample:** a value cache keyed without the transform label returns the AB rank for a BA request
+(199/200 wrong).
+**X12** is a synthetic-u model only (`E.json/X12_model`), labelled uncalibrated.
+
+## 8. Q01-Q06 persistence (hypothesis branch, never default)
+
+Q01: strict key = canonical full content + transform label + operator version; equal key => equal output by
+determinism, so hits are exact (0 false hits / 3000). Short hashes: 8-bit 2744 false hits, 16-bit 70.
+Capability references: in-place replacement returns the stale value (counterexample).
+Q03 (proved): `migrate_certificate` re-reads every support key and the identity tuple in the new owner and issues a
+new handle only if all match; soundness therefore reduces to the soundness of the original support set (the same
+argument as the corrected owner's union-support memo). Old handle in new owner -> `unsigned`; changed content ->
+`identity_mismatch`; migration produces 0 confirmations (publication != confirmation).
+Q04: crash matrix over marker/idempotent routes, crash points, late old completions: all invariants hold.
+Q05: certificate combination across operator versions is refused. Q06: a shared cross-domain cache gives a
+distinguishing advantage of 1.0 for membership (reuse rate 0.256); isolated caches 0.0.
+
+## 9. C-I1 coupled index gate (D4 mechanism)
+
+**Lemma C-I1.** Let the admitted evidence contain computed, geometry-valid analyses for every position in `[0,t+3]`
+and a computed rank record for every adjacent pair `(a,a+1)`, `a <= t+2`, whose endpoints are both NARROW (a WIDE
+endpoint makes the pair a structural null). Then `unit(t)` is identical in every completion.
+*Argument.* By L-T, leaves `f_0..f_{t}` read only positions `<= t+3` and pairs `a <= t+2`, all fixed by the gate;
+so `s_0..s_{t+1}` and the outputs of leaves `<= t` are fixed; the unit containing `t` is determined by these
+(r8 window lemma). Hence the index's complete-semantics answer is a sound certificate; its support is the strong
+certificate key range `support_keys(n,t)`, validated by the owner at publication. []
+Executable: `Coupled.test_index_gate_completion_invariance` (240 random completions), `test_indexed_runner_sound`,
+`test_index_certificate_lifecycle` (far update keeps the certificate valid, an update inside the support makes it
+`stale`, rebind -> `unsigned`).
+**Radius evidence (`C_I1_radius.json`).** Fixing only `[0,t+r]`: r=0 313/900 completions disagree, r=1 72/900,
+r=2 0/900, r=3 0/900. So radius >= 2 is necessary; whether r=2 is sufficient is open (hypothesis NH-C4).
+
+## 10. N04 reducer
+
+ddmin over events (route A) shrinks a 120-event cost-reversal trace (ratio 4.7) to 16 events (ratio 3.2) in 118
+tests; structural shrink (route B) reduces n 128 -> 10 with 16 events in 79 tests. The work ratio of the reduced
+trace is 3.152 in three independent processes (deterministic); its wall ratio is 1.87-2.19 (noisy, local).

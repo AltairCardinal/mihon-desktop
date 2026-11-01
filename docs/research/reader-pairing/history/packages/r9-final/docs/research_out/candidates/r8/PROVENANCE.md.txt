@@ -1,0 +1,10 @@
+These modules are the round-8 research reproduction of the frontier candidates
+(transducer/relation tree, shared-assignment frontier DP, incremental plan
+structures, generative G0 realiser, acquisition simulator).  They were written
+in an earlier research round against byte-identical frozen `reference.py` and
+`compact_core.py` (SHA-256 prefixes d998c3c9590c1b9c / 60750a293180eb65) and are
+reused here as the *independent reproduction* of ALGORITHM_FRONTIER candidates
+required by EXPERIMENT_CONTRACT §2.  Only change: `common.ROOT` path depth.
+They use a 10-state encoding (5 cursor modes x manual bit); lemma L-M2 of the
+round-8 proofs shows the manual bit is redundant at reachable at-states, which
+matches the 5-state encoding of ALGORITHM_FRONTIER.

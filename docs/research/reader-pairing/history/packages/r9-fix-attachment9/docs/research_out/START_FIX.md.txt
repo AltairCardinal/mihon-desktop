@@ -1,0 +1,26 @@
+# 修复轮交付：从这里开始
+
+把本目录放回研究包根目录（与 `START_HERE.md` 同级，目录名 `research_out/`），所有命令在包根目录执行。
+
+| 要看什么 | 文件 |
+|---|---|
+| 修订报告（取代 R9 被更正的结论） | `REPORT.md`（R9 原文 `REPORT_R9.md`） |
+| 逐题真实状态（150 题） | `results/summary/fix/QUESTION_STATUS.md`；机器可读 `coverage.csv`（R9 版 `coverage_R9.csv`） |
+| 逐机制 D3/D4 证据索引（46 个机制） | `results/summary/fix/D3_INDEX.md`、`D3_INDEX.csv`、`D3_COUNTS.json` |
+| 修复测试 | `tests/test_budget_contract.py`、`tests/test_fix_main.py`、`tests/test_fixLC.py`、`tests/test_fixQ1.py`、`tests/test_fixQ2.py`、`tests/test_fixPH.py` |
+| 证明或反例 | `proofs/fix_budget.md`、`proofs/fix_LC.md`、`proofs/fix_Q1.md`、`proofs/fix_Q2.md`、`proofs/fix_PH.md` |
+| 正文 | `sections/fix_main.md`、`sections/fix_LC.md`、`sections/fix_Q1.md`、`sections/fix_Q2.md`、`sections/fix_PH.md` |
+| 原始数据（有效与无效） | `results/raw/fix/`、`results/raw/formal_fix/`；清单与判定 `results/summary/fix/DATA_VALIDITY.md` |
+| 冻结与新留出 | `results/summary/fix/freeze_manifest.json`、`heldout_predeclared.md`、`results/raw/fix/heldout/`、`postfreeze_changes.md` |
+| 采用矩阵 | `ADOPTION_MATRIX.csv`（新增 `fix_class` 列；R9 版 `ADOPTION_MATRIX_R9.csv`） |
+| 最小复现命令 | `REPRODUCE.md` §6；干净目录复现记录 `results/summary/fix/clean_run.json` |
+| 下一实现者指令 | `NEXT_IMPLEMENTER.md`（R9 版 `NEXT_IMPLEMENTER_R9.md`） |
+| 头条数字的独立复算 | `bench/check_fix_claims.py` → `results/summary/fix/claims_check.json` |
+| 新假设去重 | `hypotheses.csv`（`fix_*` 列；R9 版 `hypotheses_R9.csv`） |
+| 工作约定 | `FIX_ROUND.md` |
+
+最小检查（约 3 分钟）：
+```
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s research_out/tests -t research_out
+python3 research_out/bench/check_fix_claims.py
+```

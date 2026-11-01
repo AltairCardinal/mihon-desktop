@@ -1,0 +1,2492 @@
+{
+  "schemaVersion": 1,
+  "mainComparisonHead": "6b5831c64dd9f09a7d79c93fac9a75a548c740fa",
+  "scope": "历史题目处置，不是150项产品实现或150个问题已在真实系统解决",
+  "canonical": "r10-latency-final/coverage-detail",
+  "sourceInventory": "../package-inventory.json",
+  "olderVersions": "initial和revision同ID仅保留版本差异；最终修复/T01/C30覆盖旧规则，旧原件不改写",
+  "families": {
+    "F01": {
+      "disposition": "协议/计量合同",
+      "boundary": "当前binding、尝试授权、原子unit及稳定已曝光能力有对应生产合同；模型最小性论证保留，不等于每条最小代数已完整实现。真实端点必须按ticket/成员/完整draw核验。"
+    },
+    "F02": {
+      "disposition": "保留的观测/识别问题",
+      "boundary": "同轨迹不能识别服务与机会等待；所需因果令牌、C_i/B_i或机会表及扰动校准并未因本次归档获得。保留可辨识性反例与最小探针，不宣布100ms无解。"
+    },
+    "F03": {
+      "disposition": "因果图与资源模型",
+      "boundary": "现有共享/物理退出合同可作实际约束；模型DAG和资源重放不能补出未记录的真实边。保留重建方法和反常排程反例，不把先后顺序当依赖。"
+    },
+    "F04": {
+      "disposition": "收益上界/条件研究",
+      "boundary": "减少工作不必缩短完整端点；尾部不变性必须独立确立。当前没有逐样本不可移除服务向量或可部署共同策略，保留条件界而不冒充真实上界。"
+    },
+    "F05": {
+      "disposition": "现有调度合同与条件候选",
+      "boundary": "现有优先级、同绑定提升、latest-intent与实际物理退出不是新增模型收益；完成池、旁路等先核实真实阻塞及资源许可，不能增加第五逻辑项或取消即放许可。"
+    },
+    "F06": {
+      "disposition": "IO/复用条件研究",
+      "boundary": "Android同绑定普通请求提升C已有当前实测采用；其他重复IO、流水化/高层共享需用途、尺寸、内容身份和物理consumer一致，旧模型次数不等于当前完整draw收益。"
+    },
+    "F07": {
+      "disposition": "资源与取证合同",
+      "boundary": "当前PrefetchPlan及FactBudget已有需求分类和容量/字节/截止约束；模型4/2槽、optional16等不是当前所有consumer常量的等价证明。自适应取证历史未省轮次，保留受约束候选。"
+    },
+    "F08": {
+      "disposition": "缓存条件研究",
+      "boundary": "当前身份键和先派生后驱逐已有对应实现；SLRU自然page5回退、弱索引自然无收益、pin复用无活租约反例保留。离线47不是生产在线最优，不能直接启用新淘汰策略。"
+    },
+    "F09": {
+      "disposition": "证明/失效条件研究",
+      "boundary": "当前一次certify collector覆盖全部尝试，exact-read memo保留；checkpoint/Strong/投影支持/保守stamp不是该合同的自动推论。A4暂缓，强证书旧域CPU回退和128资格保留。"
+    },
+    "F10": {
+      "disposition": "UI发布与正确性合同",
+      "boundary": "首次正确slot、成员原子性、导航与布局分离、已曝光稳定及真实完整draw是当前约束；最小协议模型不授予改变输出或提前错误发布的许可。历史caller/帧入口没有通过净收益与16ms门槛。"
+    },
+    "F11": {
+      "disposition": "生命周期合同",
+      "boundary": "当前Runner/Scheduler保留逻辑取消与实际退出、内容/尝试授权及关闭边界。模型释放顺序非native退出上界；GPU/管理移除时间不等于已物理释放。"
+    },
+    "F12": {
+      "disposition": "可达性/意图条件研究",
+      "boundary": "当前latest-intent及rebind授权已有；Strong的自然可达性与触发率仍是特定研究域问题，不能用直接注入事实或清缓存正例代替。"
+    },
+    "F13": {
+      "disposition": "消费阶段条件研究",
+      "boundary": "现有完整draw与稳定画面合同保留；phase58/68版本不同且入口调整NoGo，单next三次未重现778ms。状态/帧/物理显示的因果差距仍需真实证据。"
+    },
+    "F14": {
+      "disposition": "统计与有效性工具",
+      "boundary": "保留原50中位差、偶数中位条件、16ms分组护栏、P95/失败全分母及非相邻对照限制；不是独立产品算法。不得混算各场景中位数。"
+    },
+    "F15": {
+      "disposition": "研究裁定工具",
+      "boundary": "保留冻结对照、探索/heldout隔离、冷热与顺序漂移、观察扰动及停止规则；没有在本归档新运行统计试验，也不把模型微基准当原生收益。"
+    },
+    "F16": {
+      "disposition": "条件下界与未解问题",
+      "boundary": "有界模型信息链/资源/排序下界有价值，但当前100ms不可达未获证明；逐样本各自最优不等于一个共同可部署策略。固定无证窗口反例保留。"
+    },
+    "F17": {
+      "disposition": "算法替代/条件研究",
+      "boundary": "完整信息摘要树、checkpoint及惰性表示均保留；单目标已便宜、建表税与48/48变慢是历史否定采用证据。当前局部认证不是完整前缀索引。Γ′改变输出单列。"
+    },
+    "F18": {
+      "disposition": "信息获取条件研究",
+      "boundary": "当前真实NeedFacts+bounded lookahead不等于反事实最小动作或自适应信息增益最优控制器；昂贵物化、失败可见性与并行轮次需共同计费。保留模型和oracle。"
+    },
+    "F19": {
+      "disposition": "预测/联合策略条件研究",
+      "boundary": "当前角色预算/预留和固定lookahead并非准确度门控、学习或联合最优缓存。保留对手退化与额外工作约束，真实导航分布/服务上界未知，不启用新默认。"
+    },
+    "F20": {
+      "disposition": "精化/数值/迁移研究",
+      "boundary": "A1数值公式与早拒已采用；精确有理数、重排浮点、LUT/PREFIX及其他后端不自动等价。保留近阈值反例、精化义务和可逆边界；不把参考浮点换为另一Gamma。"
+    }
+  },
+  "questions": [
+    {
+      "id": "Q001",
+      "title": "完整消费端点的最小充分判据",
+      "family": "F01",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/lifecycle.py::q001 → raw/lifecycle/lifecycle.json#Q001（有界穷举：90个线性扩展）",
+      "disposition": "协议/计量合同",
+      "currentRelationAndValue": "当前binding、尝试授权、原子unit及稳定已曝光能力有对应生产合同；模型最小性论证保留，不等于每条最小代数已完整实现。真实端点必须按ticket/成员/完整draw核验。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q001"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q002",
+      "title": "版本和尝试的最小身份代数",
+      "family": "F01",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/lifecycle.py::q002（两个场景）→ raw/lifecycle/lifecycle.json#Q002",
+      "disposition": "协议/计量合同",
+      "currentRelationAndValue": "当前binding、尝试授权、原子unit及稳定已曝光能力有对应生产合同；模型最小性论证保留，不等于每条最小代数已完整实现。真实端点必须按ticket/成员/完整draw核验。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q002"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q003",
+      "title": "跨时钟观测的合法连接",
+      "family": "F01",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_lifecycle.py::q003 → raw/lifecycle/lifecycle.json#Q003；code/causal.py::elapsed",
+      "disposition": "协议/计量合同",
+      "currentRelationAndValue": "当前binding、尝试授权、原子unit及稳定已曝光能力有对应生产合同；模型最小性论证保留，不等于每条最小代数已完整实现。真实端点必须按ticket/成员/完整draw核验。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q003"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q004",
+      "title": "重开与初始化成本归属",
+      "family": "F01",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_lifecycle.py::q004 → raw/lifecycle/lifecycle.json#Q004（正式数据重算）",
+      "disposition": "历史无收益/不采用",
+      "currentRelationAndValue": "重开四格完整unit未比新runtime快，预热另1.24–1.89s且非随机对照；保留负结果，不能用预建隐藏成本。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q004"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q005",
+      "title": "局部接纳与原子接纳",
+      "family": "F01",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/lifecycle.py::q005 → raw/lifecycle/lifecycle.json#Q005",
+      "disposition": "协议/计量合同",
+      "currentRelationAndValue": "当前binding、尝试授权、原子unit及稳定已曝光能力有对应生产合同；模型最小性论证保留，不等于每条最小代数已完整实现。真实端点必须按ticket/成员/完整draw核验。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q005"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q006",
+      "title": "已显示能力与新证书并存",
+      "family": "F01",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/lifecycle.py::q006 → raw/lifecycle/lifecycle.json#Q006；组合C14",
+      "disposition": "协议/计量合同",
+      "currentRelationAndValue": "当前binding、尝试授权、原子unit及稳定已曝光能力有对应生产合同；模型最小性论证保留，不等于每条最小代数已完整实现。真实端点必须按ticket/成员/完整draw核验。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q006"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q007",
+      "title": "同轨迹不同瓶颈的构造",
+      "family": "F02",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "lab/obsworlds.py（interval_route[M_TI]、三世界、t01_counterexample、revised_rule、t01_check）→ raw/pass1/obsworlds.json（route_A_interval_model_class_M_TI, worlds, T01）；tests/test_revision.py::T01",
+      "disposition": "保留的观测/识别问题",
+      "currentRelationAndValue": "同轨迹不能识别服务与机会等待；所需因果令牌、C_i/B_i或机会表及扰动校准并未因本次归档获得。保留可辨识性反例与最小探针，不宣布100ms无解。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q007"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q008",
+      "title": "单端缺失的服务区间",
+      "family": "F02",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_misc.py::q008 → raw/misc/misc.json#Q008",
+      "disposition": "保留的观测/识别问题",
+      "currentRelationAndValue": "同轨迹不能识别服务与机会等待；所需因果令牌、C_i/B_i或机会表及扰动校准并未因本次归档获得。保留可辨识性反例与最小探针，不宣布100ms无解。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q008"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q009",
+      "title": "关联歧义和重复事件",
+      "family": "F02",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/exp_misc.py::q009；bench/exp_workloads.py::w18_sparse_wrong → raw/misc/misc.json#Q009, raw/workloads/workloads.json",
+      "disposition": "保留的观测/识别问题",
+      "currentRelationAndValue": "同轨迹不能识别服务与机会等待；所需因果令牌、C_i/B_i或机会表及扰动校准并未因本次归档获得。保留可辨识性反例与最小探针，不宣布100ms无解。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q009"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q010",
+      "title": "最小新增观测集合",
+      "family": "F02",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/exp_misc.py::q010（v1三世界）; bench/joint_d.py::c21（T01世界族，含B_i与机会表探针）→ raw/misc/misc.json#Q010_Q087, raw/joint/C21.json",
+      "disposition": "保留的观测/识别问题",
+      "currentRelationAndValue": "同轨迹不能识别服务与机会等待；所需因果令牌、C_i/B_i或机会表及扰动校准并未因本次归档获得。保留可辨识性反例与最小探针，不宣布100ms无解。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q010"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q011",
+      "title": "非随机缺失的敏感性",
+      "family": "F02",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_misc.py::q011, bench/exp_stats.py::q083 → raw/misc/misc.json#Q011, raw/stats/stats.json#Q083",
+      "disposition": "保留的观测/识别问题",
+      "currentRelationAndValue": "同轨迹不能识别服务与机会等待；所需因果令牌、C_i/B_i或机会表及扰动校准并未因本次归档获得。保留可辨识性反例与最小探针，不宣布100ms无解。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q011"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q012",
+      "title": "观察器对被测系统的扰动",
+      "family": "F02",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/joint_d.py::c22 → raw/joint/C22.json",
+      "disposition": "保留的观测/识别问题",
+      "currentRelationAndValue": "同轨迹不能识别服务与机会等待；所需因果令牌、C_i/B_i或机会表及扰动校准并未因本次归档获得。保留可辨识性反例与最小探针，不宣布100ms无解。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q012"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q013",
+      "title": "偏序不等于依赖",
+      "family": "F03",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_sched.py::s1_order_vs_dependency → raw/sched/sched.json#S1",
+      "disposition": "因果图与资源模型",
+      "currentRelationAndValue": "现有共享/物理退出合同可作实际约束；模型DAG和资源重放不能补出未记录的真实边。保留重建方法和反常排程反例，不把先后顺序当依赖。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q013"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q014",
+      "title": "并行与join的真实临界路径",
+      "family": "F03",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_sched.py::s2_anomaly → raw/sched/sched.json#S2（seeded随机搜索，trial 226）",
+      "disposition": "因果图与资源模型",
+      "currentRelationAndValue": "现有共享/物理退出合同可作实际约束；模型DAG和资源重放不能补出未记录的真实边。保留重建方法和反常排程反例，不把先后顺序当依赖。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q014"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q015",
+      "title": "共享工作节点与多消费者",
+      "family": "F03",
+      "originalFinalDecision": "engineering_trial",
+      "originalEvidence": "bench/joint_a.py::c01,c02; bench/exp_sched.py::s9_upgrade → raw/joint/C01.json, raw/joint/C02.json, raw/sched/sched.json#S9",
+      "disposition": "已有共享合同/模型收益待实证",
+      "currentRelationAndValue": "现有共享输出/物化消费者以及C改善保留；模型共享节点收益不能重复计每consumer服务或认定所有层均可共享。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q015"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q016",
+      "title": "批量commit对因果图的影响",
+      "family": "F03",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/lifecycle.py::q073_q075 → raw/lifecycle/lifecycle.json#Q073_Q075",
+      "disposition": "因果图与资源模型",
+      "currentRelationAndValue": "现有共享/物理退出合同可作实际约束；模型DAG和资源重放不能补出未记录的真实边。保留重建方法和反常排程反例，不把先后顺序当依赖。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q016"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q017",
+      "title": "图中的隐式资源边",
+      "family": "F03",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_sched.py::s1_order_vs_dependency → raw/sched/sched.json#S1",
+      "disposition": "因果图与资源模型",
+      "currentRelationAndValue": "现有共享/物理退出合同可作实际约束；模型DAG和资源重放不能补出未记录的真实边。保留重建方法和反常排程反例，不把先后顺序当依赖。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q017"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q018",
+      "title": "观测端点与重建图的残差",
+      "family": "F03",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_misc.py::q018, bench/exp_workloads.py::w18_sparse_wrong → raw/misc/misc.json#Q018",
+      "disposition": "因果图与资源模型",
+      "currentRelationAndValue": "现有共享/物理退出合同可作实际约束；模型DAG和资源重放不能补出未记录的真实边。保留重建方法和反常排程反例，不把先后顺序当依赖。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q018"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q019",
+      "title": "减少工作与缩短端点的差别",
+      "family": "F04",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_sched.py::s2_anomaly,s5_envelope,s6_logical_physical → raw/sched/sched.json",
+      "disposition": "收益上界/条件研究",
+      "currentRelationAndValue": "减少工作不必缩短完整端点；尾部不变性必须独立确立。当前没有逐样本不可移除服务向量或可部署共同策略，保留条件界而不冒充真实上界。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q019"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q020",
+      "title": "服务加速后的排队反馈",
+      "family": "F04",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_sched.py::s2_anomaly, lab/sched.py::optimal_target_completion → raw/sched/sched.json#S2,S17",
+      "disposition": "收益上界/条件研究",
+      "currentRelationAndValue": "减少工作不必缩短完整端点；尾部不变性必须独立确立。当前没有逐样本不可移除服务向量或可部署共同策略，保留条件界而不冒充真实上界。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q020"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q021",
+      "title": "多瓶颈与饱和收益",
+      "family": "F04",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_sched.py::s5_envelope; lab/reach.py::first_member_bound → raw/sched/sched.json#S5, raw/pass1/reach.json",
+      "disposition": "收益上界/条件研究",
+      "currentRelationAndValue": "减少工作不必缩短完整端点；尾部不变性必须独立确立。当前没有逐样本不可移除服务向量或可部署共同策略，保留条件界而不冒充真实上界。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q021"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q022",
+      "title": "逻辑请求下降的可兑现条件",
+      "family": "F04",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_sched.py::s6_logical_physical, bench/exp_misc.py::q031_q036 → raw/sched/sched.json#S6, raw/misc/misc.json#Q031_Q036",
+      "disposition": "收益上界/条件研究",
+      "currentRelationAndValue": "减少工作不必缩短完整端点；尾部不变性必须独立确立。当前没有逐样本不可移除服务向量或可部署共同策略，保留条件界而不冒充真实上界。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q022"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q023",
+      "title": "可优化部分的反事实上界",
+      "family": "F04",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_misc.py::q023_q024; lab/reach.py → raw/misc/misc.json#Q023_Q024, raw/pass1/reach.json",
+      "disposition": "收益上界/条件研究",
+      "currentRelationAndValue": "减少工作不必缩短完整端点；尾部不变性必须独立确立。当前没有逐样本不可移除服务向量或可部署共同策略，保留条件界而不冒充真实上界。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q023"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q024",
+      "title": "多目标前沿与最小可逆机制",
+      "family": "F04",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/exp_misc.py::q023_q024；联合研究C03/C05/C11/C15 → raw/misc/misc.json, raw/joint/C03.json, raw/joint/C05.json, raw/joint/C11.json, raw/joint/C15.json",
+      "disposition": "收益上界/条件研究",
+      "currentRelationAndValue": "减少工作不必缩短完整端点；尾部不变性必须独立确立。当前没有逐样本不可移除服务向量或可部署共同策略，保留条件界而不冒充真实上界。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q024"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q025",
+      "title": "已优先前台时还有何新增调度空间",
+      "family": "F05",
+      "originalFinalDecision": "engineering_trial",
+      "originalEvidence": "bench/exp_sched.py::s7_policy_vs_optimum → raw/sched/sched.json#S7",
+      "disposition": "现有调度/旧候选前提核销",
+      "currentRelationAndValue": "当前已前台优先、最新意图与预留；仍需真实阻塞才有新增空间，不复制FIFO弱基线收益。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q025"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q026",
+      "title": "非抢占服务下的阻塞下界",
+      "family": "F05",
+      "originalFinalDecision": "engineering_trial",
+      "originalEvidence": "bench/exp_sched.py::s8_blocking → raw/sched/sched.json#S8",
+      "disposition": "现有调度合同与条件候选",
+      "currentRelationAndValue": "现有优先级、同绑定提升、latest-intent与实际物理退出不是新增模型收益；完成池、旁路等先核实真实阻塞及资源许可，不能增加第五逻辑项或取消即放许可。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q026"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q027",
+      "title": "投机升级为真实需要",
+      "family": "F05",
+      "originalFinalDecision": "engineering_trial",
+      "originalEvidence": "bench/exp_sched.py::s9_upgrade; bench/joint_a.py::c04 → raw/sched/sched.json#S9, raw/joint/C04.json",
+      "disposition": "当前C已采用",
+      "currentRelationAndValue": "同绑定普通请求原位提升经过真实HTTP及物理退出focused验证；force/retry/身份切换不在可提升域。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q027"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q028",
+      "title": "完成待消费的有界背压",
+      "family": "F05",
+      "originalFinalDecision": "engineering_trial",
+      "originalEvidence": "lab/sched.py（结果池/HELD/每事件不变量）; bench/exp_mailbox.py::q028 → raw/sched/mailbox.json#Q028；tests/test_regressions.py::MailboxCapacity, MailboxFuzz",
+      "disposition": "结果池前提不成立",
+      "currentRelationAndValue": "当前逻辑槽与真实退出边界不得越过；历史事实在token前可见，需新实证才能引入新结果池。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q028"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q029",
+      "title": "多消费者共享的取消权",
+      "family": "F05",
+      "originalFinalDecision": "engineering_trial",
+      "originalEvidence": "bench/joint_a.py::c02; bench/exp_sched.py::s9b_inheritance → raw/joint/C02.json, raw/sched/sched.json#S9b",
+      "disposition": "现有调度合同与条件候选",
+      "currentRelationAndValue": "现有优先级、同绑定提升、latest-intent与实际物理退出不是新增模型收益；完成池、旁路等先核实真实阻塞及资源许可，不能增加第五逻辑项或取消即放许可。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q029"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q030",
+      "title": "公平与快速连续意图",
+      "family": "F05",
+      "originalFinalDecision": "engineering_trial",
+      "originalEvidence": "bench/exp_sched.py::s11_fast_intents; 组合C15 → raw/sched/sched.json#S11",
+      "disposition": "现有调度合同与条件候选",
+      "currentRelationAndValue": "现有优先级、同绑定提升、latest-intent与实际物理退出不是新增模型收益；完成池、旁路等先核实真实阻塞及资源许可，不能增加第五逻辑项或取消即放许可。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q030"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q031",
+      "title": "物理IO、逻辑读取和缓存层次",
+      "family": "F06",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/exp_misc.py::q031_q036 → raw/misc/misc.json#Q031_Q036.Q031",
+      "disposition": "IO/复用条件研究",
+      "currentRelationAndValue": "Android同绑定普通请求提升C已有当前实测采用；其他重复IO、流水化/高层共享需用途、尺寸、内容身份和物理consumer一致，旧模型次数不等于当前完整draw收益。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q031"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q032",
+      "title": "固定成本与按体积成本",
+      "family": "F06",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_misc.py::q031_q036 → raw/misc/misc.json#Q031_Q036.Q032",
+      "disposition": "IO/复用条件研究",
+      "currentRelationAndValue": "Android同绑定普通请求提升C已有当前实测采用；其他重复IO、流水化/高层共享需用途、尺寸、内容身份和物理consumer一致，旧模型次数不等于当前完整draw收益。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q032"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q033",
+      "title": "普通物化与额外取证重复",
+      "family": "F06",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/exp_evidence.py → raw/gamma/evidence.json（need4 vs need4_unshared）；bench/exp_combos.py::c01",
+      "disposition": "IO/复用条件研究",
+      "currentRelationAndValue": "Android同绑定普通请求提升C已有当前实测采用；其他重复IO、流水化/高层共享需用途、尺寸、内容身份和物理consumer一致，旧模型次数不等于当前完整draw收益。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q033"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q034",
+      "title": "部分取用与完整取用",
+      "family": "F06",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_gamma2.py::g10_cheap; bench/joint_d.py::c12 → raw/gamma/gamma2.json#G10, raw/joint/C12.json（v1：raw/combos/combos.json#C12）",
+      "disposition": "IO/复用条件研究",
+      "currentRelationAndValue": "Android同绑定普通请求提升C已有当前实测采用；其他重复IO、流水化/高层共享需用途、尺寸、内容身份和物理consumer一致，旧模型次数不等于当前完整draw收益。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q034"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q035",
+      "title": "流水化建立与关闭反转",
+      "family": "F06",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/lifecycle.py::q061_062_063; bench/exp_misc.py::q031_q036 → raw/lifecycle/lifecycle.json#Q061_Q063",
+      "disposition": "IO/复用条件研究",
+      "currentRelationAndValue": "Android同绑定普通请求提升C已有当前实测采用；其他重复IO、流水化/高层共享需用途、尺寸、内容身份和物理consumer一致，旧模型次数不等于当前完整draw收益。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q035"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q036",
+      "title": "消除重复转换还是复用高层结果",
+      "family": "F06",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/joint_d.py::c29; bench/exp_misc.py::q031_q036 → raw/joint/C29.json, raw/misc/misc.json",
+      "disposition": "IO/复用条件研究",
+      "currentRelationAndValue": "Android同绑定普通请求提升C已有当前实测采用；其他重复IO、流水化/高层共享需用途、尺寸、内容身份和物理consumer一致，旧模型次数不等于当前完整draw收益。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q036"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q037",
+      "title": "分类必须由真实证明需求导出",
+      "family": "F07",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_misc.py::q037 → raw/misc/misc.json#Q037",
+      "disposition": "资源与取证合同",
+      "currentRelationAndValue": "当前PrefetchPlan及FactBudget已有需求分类和容量/字节/截止约束；模型4/2槽、optional16等不是当前所有consumer常量的等价证明。自适应取证历史未省轮次，保留受约束候选。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q037"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q038",
+      "title": "4槽与2槽的资源耦合",
+      "family": "F07",
+      "originalFinalDecision": "engineering_trial",
+      "originalEvidence": "bench/exp_sched.py::s12_coupling; bench/joint_a.py::c03 → raw/sched/sched.json#S12, raw/joint/C03.json",
+      "disposition": "资源与取证合同",
+      "currentRelationAndValue": "当前PrefetchPlan及FactBudget已有需求分类和容量/字节/截止约束；模型4/2槽、optional16等不是当前所有consumer常量的等价证明。自适应取证历史未省轮次，保留受约束候选。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q038"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q039",
+      "title": "单作用域累计16可选限制与工作守恒",
+      "family": "F07",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/exp_sched.py::s13_optional_cap（调用code/protocol.py）→ raw/sched/sched.json#S13",
+      "disposition": "资源与取证合同",
+      "currentRelationAndValue": "当前PrefetchPlan及FactBudget已有需求分类和容量/字节/截止约束；模型4/2槽、optional16等不是当前所有consumer常量的等价证明。自适应取证历史未省轮次，保留受约束候选。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q039"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q040",
+      "title": "截止、字节与运行任务的关系",
+      "family": "F07",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_sched.py::s14_bytes; lab/lifecycle.py::q064 → raw/sched/sched.json#S14, raw/lifecycle/lifecycle.json#Q064",
+      "disposition": "资源与取证合同",
+      "currentRelationAndValue": "当前PrefetchPlan及FactBudget已有需求分类和容量/字节/截止约束；模型4/2槽、optional16等不是当前所有consumer常量的等价证明。自适应取证历史未省轮次，保留受约束候选。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q040"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q041",
+      "title": "optional暂停与恢复的状态机",
+      "family": "F07",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/exp_misc.py::q041 → raw/misc/misc.json#Q041",
+      "disposition": "资源与取证合同",
+      "currentRelationAndValue": "当前PrefetchPlan及FactBudget已有需求分类和容量/字节/截止约束；模型4/2槽、optional16等不是当前所有consumer常量的等价证明。自适应取证历史未省轮次，保留受约束候选。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q041"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q042",
+      "title": "窗口扩张是否只是多做无关工作",
+      "family": "F07",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/exp_evidence.py → raw/gamma/evidence.json",
+      "disposition": "资源与取证合同",
+      "currentRelationAndValue": "当前PrefetchPlan及FactBudget已有需求分类和容量/字节/截止约束；模型4/2槽、optional16等不是当前所有consumer常量的等价证明。自适应取证历史未省轮次，保留受约束候选。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q042"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q043",
+      "title": "真实容量下的收益窗口",
+      "family": "F08",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_cache.py → raw/cache/cache.json（histories、shortest_gain_*）",
+      "disposition": "缓存条件研究",
+      "currentRelationAndValue": "当前身份键和先派生后驱逐已有对应实现；SLRU自然page5回退、弱索引自然无收益、pin复用无活租约反例保留。离线47不是生产在线最优，不能直接启用新淘汰策略。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q043"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q044",
+      "title": "相同值与相同内容的缓存键",
+      "family": "F08",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_gamma2.py::g6_identity; lab/lifecycle.py::q002 → raw/gamma/gamma2.json#G6",
+      "disposition": "现有身份合同",
+      "currentRelationAndValue": "值相同不等于内容/尝试/recipe相同，Owner及binding守卫已有；没有新增缓存放宽。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q044"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q045",
+      "title": "标量保留与原始样本淘汰",
+      "family": "F08",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_combos.py::c07（v1，预取关）; bench/joint_b.py::c07 → raw/combos/combos.json#C07, raw/joint/C07.json",
+      "disposition": "当前已有先派生后驱逐",
+      "currentRelationAndValue": "ReaderSpreadSamplesOwner.acceptSamples先生成相邻scores再while超容量删除raw；闭包额外留存并未据此采用。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q045"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q046",
+      "title": "预建和自然重访的盈亏",
+      "family": "F08",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/joint_c.py::c18; bench/bench_micro.py → raw/joint/C18.json, raw/bench/micro_*.jsonl",
+      "disposition": "缓存条件研究",
+      "currentRelationAndValue": "当前身份键和先派生后驱逐已有对应实现；SLRU自然page5回退、弱索引自然无收益、pin复用无活租约反例保留。离线47不是生产在线最优，不能直接启用新淘汰策略。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q046"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q047",
+      "title": "逐出策略对证书机会的反馈",
+      "family": "F08",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_cache.py → raw/cache/cache.json",
+      "disposition": "缓存条件研究",
+      "currentRelationAndValue": "当前身份键和先派生后驱逐已有对应实现；SLRU自然page5回退、弱索引自然无收益、pin复用无活租约反例保留。离线47不是生产在线最优，不能直接启用新淘汰策略。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q047"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q048",
+      "title": "负例如何指导而非终结搜索",
+      "family": "F08",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_cache.py::shortest → raw/cache/cache.json",
+      "disposition": "缓存条件研究",
+      "currentRelationAndValue": "当前身份键和先派生后驱逐已有对应实现；SLRU自然page5回退、弱索引自然无收益、pin复用无活租约反例保留。离线47不是生产在线最优，不能直接启用新淘汰策略。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q048"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q049",
+      "title": "实际读集与足够支持的差别",
+      "family": "F09",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/exp_certificates.py（remaining_oracle_domain_narrower分类）→ raw/gamma/certificates.json; lab/omega.py::dom_signature",
+      "disposition": "证明/失效条件研究",
+      "currentRelationAndValue": "当前一次certify collector覆盖全部尝试，exact-read memo保留；checkpoint/Strong/投影支持/保守stamp不是该合同的自动推论。A4暂缓，强证书旧域CPU回退和128资格保留。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q049"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q050",
+      "title": "全部失败尝试的选择依赖",
+      "family": "F09",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_gamma2.py::g1_dependencies → raw/gamma/gamma2.json#G1；组合C10",
+      "disposition": "当前已有完整尝试支撑",
+      "currentRelationAndValue": "Session certifyCapturing共享read collector，入口/左扩不清理失败尝试reads，结果后才snapshot。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q050"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q051",
+      "title": "缺失和否定事实的失效",
+      "family": "F09",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_gamma2.py::g2_negative → raw/gamma/gamma2.json#G2",
+      "disposition": "证明/失效条件研究",
+      "currentRelationAndValue": "当前一次certify collector覆盖全部尝试，exact-read memo保留；checkpoint/Strong/投影支持/保守stamp不是该合同的自动推论。A4暂缓，强证书旧域CPU回退和128资格保留。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q051"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q052",
+      "title": "时间戳饱和与精确回退",
+      "family": "F09",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_gamma2.py::g3_stamps → raw/gamma/gamma2.json#G3",
+      "disposition": "A4当前暂缓",
+      "currentRelationAndValue": "旧保守变更戳合法频写回退与实际占比未知；时间戳饱和精确回退是正确性约束，不足以证明净收益。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q052"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q053",
+      "title": "有限入口过近似的假歧义",
+      "family": "F09",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "lab/gamma.py::certify(prune=True), lab/entry_witness.py; bench/exp_q053.py → raw/gamma/q053.json",
+      "disposition": "精确入口剪枝/条件研究",
+      "currentRelationAndValue": "当前Certifier已有forced、opening/reserved等入口剪枝；不等于原Q053对first左侧两对象进行全赋值后向可达性检查的全部机制。该模型不得消除真实失败/未知信息；其额外可靠剪枝、checkpoint及成本证据分别保留。当前没有Strong系统，不能将全部有限入口剪枝归为Strong已采用或漏合。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q053"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q054",
+      "title": "强证明何时会被普通证明先截获",
+      "family": "F09",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_cache.py → raw/cache/cache.json",
+      "disposition": "Strong已试暂缓",
+      "currentRelationAndValue": "普通证书会先截获有利状态，18case省轮次伴随CPU回退；自然触发率/128门槛未由理论回答替代。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q054"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q055",
+      "title": "精确计划与可用资源的两阶段发布",
+      "family": "F10",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/lifecycle.py::q055 → raw/lifecycle/lifecycle.json#Q055",
+      "disposition": "UI发布与正确性合同",
+      "currentRelationAndValue": "首次正确slot、成员原子性、导航与布局分离、已曝光稳定及真实完整draw是当前约束；最小协议模型不授予改变输出或提前错误发布的许可。历史caller/帧入口没有通过净收益与16ms门槛。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q055"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q056",
+      "title": "成员与slot一起原子化",
+      "family": "F10",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/lifecycle.py::q056 → raw/lifecycle/lifecycle.json#Q056",
+      "disposition": "UI发布与正确性合同",
+      "currentRelationAndValue": "首次正确slot、成员原子性、导航与布局分离、已曝光稳定及真实完整draw是当前约束；最小协议模型不授予改变输出或提前错误发布的许可。历史caller/帧入口没有通过净收益与16ms门槛。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q056"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q057",
+      "title": "导航索引与布局索引分离",
+      "family": "F10",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/lifecycle.py::q057 → raw/lifecycle/lifecycle.json#Q057",
+      "disposition": "UI发布与正确性合同",
+      "currentRelationAndValue": "首次正确slot、成员原子性、导航与布局分离、已曝光稳定及真实完整draw是当前约束；最小协议模型不授予改变输出或提前错误发布的许可。历史caller/帧入口没有通过净收益与16ms门槛。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q057"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q058",
+      "title": "合法新输入与后台更新的边界",
+      "family": "F10",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/lifecycle.py::q058 → raw/lifecycle/lifecycle.json#Q058",
+      "disposition": "UI发布与正确性合同",
+      "currentRelationAndValue": "首次正确slot、成员原子性、导航与布局分离、已曝光稳定及真实完整draw是当前约束；最小协议模型不授予改变输出或提前错误发布的许可。历史caller/帧入口没有通过净收益与16ms门槛。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q058"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q059",
+      "title": "授权轻量化是否值得",
+      "family": "F10",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/lifecycle.py::q059 → raw/lifecycle/lifecycle.json#Q059",
+      "disposition": "UI发布与正确性合同",
+      "currentRelationAndValue": "首次正确slot、成员原子性、导航与布局分离、已曝光稳定及真实完整draw是当前约束；最小协议模型不授予改变输出或提前错误发布的许可。历史caller/帧入口没有通过净收益与16ms门槛。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q059"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q060",
+      "title": "进度真实性与低延迟发布",
+      "family": "F10",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/lifecycle.py::q060 → raw/lifecycle/lifecycle.json#Q060",
+      "disposition": "UI发布与正确性合同",
+      "currentRelationAndValue": "首次正确slot、成员原子性、导航与布局分离、已曝光稳定及真实完整draw是当前约束；最小协议模型不授予改变输出或提前错误发布的许可。历史caller/帧入口没有通过净收益与16ms门槛。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q060"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q061",
+      "title": "取消令牌与真实退出分离",
+      "family": "F11",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/lifecycle.py::q061_062_063; bench/exp_sched.py::s8_blocking → raw/lifecycle/lifecycle.json#Q061_Q063, raw/sched/sched.json#S8",
+      "disposition": "生命周期合同",
+      "currentRelationAndValue": "当前Runner/Scheduler保留逻辑取消与实际退出、内容/尝试授权及关闭边界。模型释放顺序非native退出上界；GPU/管理移除时间不等于已物理释放。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q061"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q062",
+      "title": "旧任务晚完成与新上下文恢复",
+      "family": "F11",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/lifecycle.py::q062 → raw/lifecycle/lifecycle.json#Q062",
+      "disposition": "生命周期合同",
+      "currentRelationAndValue": "当前Runner/Scheduler保留逻辑取消与实际退出、内容/尝试授权及关闭边界。模型释放顺序非native退出上界；GPU/管理移除时间不等于已物理释放。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q062"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q063",
+      "title": "关闭屏障是否过宽",
+      "family": "F11",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/lifecycle.py::q061_062_063 → raw/lifecycle/lifecycle.json#Q061_Q063；组合C17",
+      "disposition": "生命周期合同",
+      "currentRelationAndValue": "当前Runner/Scheduler保留逻辑取消与实际退出、内容/尝试授权及关闭边界。模型释放顺序非native退出上界；GPU/管理移除时间不等于已物理释放。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q063"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q064",
+      "title": "字节许可与读取中取消",
+      "family": "F11",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/lifecycle.py::q064; bench/exp_sched.py::s14_bytes → raw/lifecycle/lifecycle.json#Q064",
+      "disposition": "生命周期合同",
+      "currentRelationAndValue": "当前Runner/Scheduler保留逻辑取消与实际退出、内容/尝试授权及关闭边界。模型释放顺序非native退出上界；GPU/管理移除时间不等于已物理释放。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q064"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q065",
+      "title": "释放顺序与最早恢复",
+      "family": "F11",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "lab/lifecycle.py::q065 → raw/lifecycle/lifecycle.json#Q065",
+      "disposition": "生命周期合同",
+      "currentRelationAndValue": "当前Runner/Scheduler保留逻辑取消与实际退出、内容/尝试授权及关闭边界。模型释放顺序非native退出上界；GPU/管理移除时间不等于已物理释放。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q065"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q066",
+      "title": "退出成本的可观测上界",
+      "family": "F11",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "lab/lifecycle.py::q066 → raw/lifecycle/lifecycle.json#Q066",
+      "disposition": "生命周期合同",
+      "currentRelationAndValue": "当前Runner/Scheduler保留逻辑取消与实际退出、内容/尝试授权及关闭边界。模型释放顺序非native退出上界；GPU/管理移除时间不等于已物理释放。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q066"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q067",
+      "title": "同输入不同导航的可交换性",
+      "family": "F12",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_gamma2.py::g5_commutativity; bench/exp_certificates.py → raw/gamma/gamma2.json#G5, raw/gamma/certificates.json",
+      "disposition": "可达性/意图条件研究",
+      "currentRelationAndValue": "当前latest-intent及rebind授权已有；Strong的自然可达性与触发率仍是特定研究域问题，不能用直接注入事实或清缓存正例代替。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q067"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q068",
+      "title": "快速意图覆盖的安全压缩",
+      "family": "F12",
+      "originalFinalDecision": "engineering_trial",
+      "originalEvidence": "lab/lifecycle.py::q068; bench/exp_sched.py::s11_fast_intents → raw/lifecycle/lifecycle.json#Q068",
+      "disposition": "可达性/意图条件研究",
+      "currentRelationAndValue": "当前latest-intent及rebind授权已有；Strong的自然可达性与触发率仍是特定研究域问题，不能用直接注入事实或清缓存正例代替。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q068"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q069",
+      "title": "正常消费历史的生成器",
+      "family": "F12",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/cachemodel.py::Nav.go（断言）; bench/exp_cache.py → raw/cache/cache.json",
+      "disposition": "可达性/意图条件研究",
+      "currentRelationAndValue": "当前latest-intent及rebind授权已有；Strong的自然可达性与触发率仍是特定研究域问题，不能用直接注入事实或清缓存正例代替。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q069"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q070",
+      "title": "内容替换与同位置重用",
+      "family": "F12",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_gamma2.py::g6_identity; lab/lifecycle.py::q002 → raw/gamma/gamma2.json#G6",
+      "disposition": "可达性/意图条件研究",
+      "currentRelationAndValue": "当前latest-intent及rebind授权已有；Strong的自然可达性与触发率仍是特定研究域问题，不能用直接注入事实或清缓存正例代替。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q070"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q071",
+      "title": "重绑定是新授权还是旧能力复活",
+      "family": "F12",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_gamma2.py::g6_identity,g12_checker; bench/bench_micro.py (W_d) → raw/gamma/gamma2.json, raw/bench/micro_*.jsonl",
+      "disposition": "可达性/意图条件研究",
+      "currentRelationAndValue": "当前latest-intent及rebind授权已有；Strong的自然可达性与触发率仍是特定研究域问题，不能用直接注入事实或清缓存正例代替。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q071"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q072",
+      "title": "最短收益轨迹和自然频率分离",
+      "family": "F12",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/exp_cache.py → raw/cache/cache.json",
+      "disposition": "可达性/意图条件研究",
+      "currentRelationAndValue": "当前latest-intent及rebind授权已有；Strong的自然可达性与触发率仍是特定研究域问题，不能用直接注入事实或清缓存正例代替。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q072"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q073",
+      "title": "完整unit是否必须多次提交",
+      "family": "F13",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/lifecycle.py::q073_q075; lab/reach.py::partner_gap → raw/lifecycle/lifecycle.json#Q073_Q075, raw/pass1/reach.json",
+      "disposition": "消费阶段条件研究",
+      "currentRelationAndValue": "现有完整draw与稳定画面合同保留；phase58/68版本不同且入口调整NoGo，单next三次未重现778ms。状态/帧/物理显示的因果差距仍需真实证据。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q073"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q074",
+      "title": "帧等待与状态等待的识别",
+      "family": "F13",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/exp_misc.py::q074 → raw/misc/misc.json#Q074",
+      "disposition": "消费阶段条件研究",
+      "currentRelationAndValue": "现有完整draw与稳定画面合同保留；phase58/68版本不同且入口调整NoGo，单next三次未重现778ms。状态/帧/物理显示的因果差距仍需真实证据。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q074"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q075",
+      "title": "批处理的等待税",
+      "family": "F13",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/lifecycle.py::q073_q075 → raw/lifecycle/lifecycle.json#Q073_Q075",
+      "disposition": "消费阶段条件研究",
+      "currentRelationAndValue": "现有完整draw与稳定画面合同保留；phase58/68版本不同且入口调整NoGo，单next三次未重现778ms。状态/帧/物理显示的因果差距仍需真实证据。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q075"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q076",
+      "title": "邻近预览的证明与资源优先",
+      "family": "F13",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/lifecycle.py::q076 → raw/lifecycle/lifecycle.json#Q076",
+      "disposition": "消费阶段条件研究",
+      "currentRelationAndValue": "现有完整draw与稳定画面合同保留；phase58/68版本不同且入口调整NoGo，单next三次未重现778ms。状态/帧/物理显示的因果差距仍需真实证据。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q076"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q077",
+      "title": "差量布局是否导致重复消费",
+      "family": "F13",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/joint_c.py::c14; lab/lifecycle.py::q006,q057 → raw/joint/C14.json, raw/lifecycle/lifecycle.json",
+      "disposition": "消费阶段条件研究",
+      "currentRelationAndValue": "现有完整draw与稳定画面合同保留；phase58/68版本不同且入口调整NoGo，单next三次未重现778ms。状态/帧/物理显示的因果差距仍需真实证据。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q077"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q078",
+      "title": "消费确认与物理显示的差距",
+      "family": "F13",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/exp_misc.py::q076_q078（推导）",
+      "disposition": "消费阶段条件研究",
+      "currentRelationAndValue": "现有完整draw与稳定画面合同保留；phase58/68版本不同且入口调整NoGo，单next三次未重现778ms。状态/帧/物理显示的因果差距仍需真实证据。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q078"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q079",
+      "title": "整体中位差和同ID差中位",
+      "family": "F14",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_stats.py::q079 → raw/stats/stats.json#Q079",
+      "disposition": "统计与有效性工具",
+      "currentRelationAndValue": "保留原50中位差、偶数中位条件、16ms分组护栏、P95/失败全分母及非相邻对照限制；不是独立产品算法。不得混算各场景中位数。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q079"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q080",
+      "title": "偶数中位目标的精确必要条件",
+      "family": "F14",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/reach.py → raw/pass1/reach.json（lemma_r1, F0_min_reduction, F0_restricted）",
+      "disposition": "统计与有效性工具",
+      "currentRelationAndValue": "保留原50中位差、偶数中位条件、16ms分组护栏、P95/失败全分母及非相邻对照限制；不是独立产品算法。不得混算各场景中位数。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q080"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q081",
+      "title": "16毫秒组护栏和单条退化",
+      "family": "F14",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_stats.py::q081 → raw/stats/stats.json#Q081",
+      "disposition": "统计与有效性工具",
+      "currentRelationAndValue": "保留原50中位差、偶数中位条件、16ms分组护栏、P95/失败全分母及非相邻对照限制；不是独立产品算法。不得混算各场景中位数。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q081"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q082",
+      "title": "最近秩P95和极端尾部",
+      "family": "F14",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_stats.py::q082 → raw/stats/stats.json#Q082",
+      "disposition": "统计与有效性工具",
+      "currentRelationAndValue": "保留原50中位差、偶数中位条件、16ms分组护栏、P95/失败全分母及非相邻对照限制；不是独立产品算法。不得混算各场景中位数。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q082"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q083",
+      "title": "失败、超时与关闭异常",
+      "family": "F14",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_stats.py::q083; bench/joint_d.py::c25 → raw/stats/stats.json#Q083, raw/joint/C25.json",
+      "disposition": "统计与有效性工具",
+      "currentRelationAndValue": "保留原50中位差、偶数中位条件、16ms分组护栏、P95/失败全分母及非相邻对照限制；不是独立产品算法。不得混算各场景中位数。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q083"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q084",
+      "title": "非相邻历史对照的因果限制",
+      "family": "F14",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/exp_stats.py::q084,q085_q089 → raw/stats/stats.json#Q084,Q085_Q089",
+      "disposition": "统计与有效性工具",
+      "currentRelationAndValue": "保留原50中位差、偶数中位条件、16ms分组护栏、P95/失败全分母及非相邻对照限制；不是独立产品算法。不得混算各场景中位数。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q084"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q085",
+      "title": "探索集与裁定集的隔离",
+      "family": "F15",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_stats.py::q085_q089 → raw/stats/stats.json#Q085_Q089；组合C24",
+      "disposition": "研究裁定工具",
+      "currentRelationAndValue": "保留冻结对照、探索/heldout隔离、冷热与顺序漂移、观察扰动及停止规则；没有在本归档新运行统计试验，也不把模型微基准当原生收益。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q085"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q086",
+      "title": "固定顺序、交错与冷热污染",
+      "family": "F15",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_stats.py::q086 → raw/stats/stats.json#Q086",
+      "disposition": "研究裁定工具",
+      "currentRelationAndValue": "保留冻结对照、探索/heldout隔离、冷热与顺序漂移、观察扰动及停止规则；没有在本归档新运行统计试验，也不把模型微基准当原生收益。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q086"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q087",
+      "title": "新增探针数量与信息收益",
+      "family": "F15",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/exp_misc.py::q010（v1三世界）; bench/joint_d.py::c21 → raw/misc/misc.json#Q010_Q087, raw/joint/C21.json",
+      "disposition": "研究裁定工具",
+      "currentRelationAndValue": "保留冻结对照、探索/heldout隔离、冷热与顺序漂移、观察扰动及停止规则；没有在本归档新运行统计试验，也不把模型微基准当原生收益。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q087"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q088",
+      "title": "模型微基准何时能指导实现",
+      "family": "F15",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/bench_micro.py → raw/bench/micro_20261027T145403Z.jsonl, *_meta.json（PID 786/797/801）",
+      "disposition": "研究裁定工具",
+      "currentRelationAndValue": "保留冻结对照、探索/heldout隔离、冷热与顺序漂移、观察扰动及停止规则；没有在本归档新运行统计试验，也不把模型微基准当原生收益。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q088"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q089",
+      "title": "一次冻结后的收益裁定",
+      "family": "F15",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_stats.py::q085_q089 → raw/stats/stats.json#Q085_Q089",
+      "disposition": "研究裁定工具",
+      "currentRelationAndValue": "保留冻结对照、探索/heldout隔离、冷热与顺序漂移、观察扰动及停止规则；没有在本归档新运行统计试验，也不把模型微基准当原生收益。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q089"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q090",
+      "title": "预算内的自主研究优先级",
+      "family": "F15",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/reach.py; lab/obsworlds.py::t01_check → raw/pass1/*.json",
+      "disposition": "研究裁定工具",
+      "currentRelationAndValue": "保留冻结对照、探索/heldout隔离、冷热与顺序漂移、观察扰动及停止规则；没有在本归档新运行统计试验，也不把模型微基准当原生收益。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q090"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q091",
+      "title": "必要信息链的串行下界",
+      "family": "F16",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/exp_misc.py::q091（含route_B_exact_schedules）; bench/exp_gamma2.py::g7_long_output; lab/reach.py::rounds_vs_latency → raw/misc/misc.json#Q091, raw/gamma/gamma2.json#G7, raw/pass1/reach.json",
+      "disposition": "条件下界与未解问题",
+      "currentRelationAndValue": "有界模型信息链/资源/排序下界有价值，但当前100ms不可达未获证明；逐样本各自最优不等于一个共同可部署策略。固定无证窗口反例保留。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q091"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q092",
+      "title": "资源容量下的最早完成界",
+      "family": "F16",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_sched.py::s17_bounds,s7_policy_vs_optimum; lab/sched.py::optimal_target_completion → raw/sched/sched.json#S17,S7",
+      "disposition": "条件下界与未解问题",
+      "currentRelationAndValue": "有界模型信息链/资源/排序下界有价值，但当前100ms不可达未获证明；逐样本各自最优不等于一个共同可部署策略。固定无证窗口反例保留。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q092"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q093",
+      "title": "逐样本下界如何变成中位下界",
+      "family": "F16",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_stats.py::q093; lab/reach.py::lemma_r1_bruteforce → raw/stats/stats.json#Q093, raw/pass1/reach.json",
+      "disposition": "条件下界与未解问题",
+      "currentRelationAndValue": "有界模型信息链/资源/排序下界有价值，但当前100ms不可达未获证明；逐样本各自最优不等于一个共同可部署策略。固定无证窗口反例保留。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q093"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q094",
+      "title": "长依赖与局部固定窗口的不可能性",
+      "family": "F16",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/transducer.py; bench/exp_evidence.py; lab/reach.py::rejected_first_slot → raw/gamma/q097.json, raw/gamma/evidence.json, raw/pass1/reach.json#rejected_R0",
+      "disposition": "精确算法反例保留",
+      "currentRelationAndValue": "无证明reset的固定local窗口不正确；保留按需左扩，不混同R9 prefix右lookahead2未证猜想。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q094"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q095",
+      "title": "目标不可达的条件证书",
+      "family": "F16",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "lab/reach.py; lab/obsworlds.py::t01_check → raw/pass1/reach.json, raw/pass1/obsworlds.json#T01",
+      "disposition": "条件下界与未解问题",
+      "currentRelationAndValue": "有界模型信息链/资源/排序下界有价值，但当前100ms不可达未获证明；逐样本各自最优不等于一个共同可部署策略。固定无证窗口反例保留。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q095"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q096",
+      "title": "继续研究的最小信息价值",
+      "family": "F16",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/exp_misc.py::q010（集合覆盖）; lab/obsworlds.py → raw/misc/misc.json#Q010_Q087",
+      "disposition": "条件下界与未解问题",
+      "currentRelationAndValue": "有界模型信息链/资源/排序下界有价值，但当前100ms不可达未获证明；逐样本各自最优不等于一个共同可部署策略。固定无证窗口反例保留。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q096"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q097",
+      "title": "扫描的最小充分状态",
+      "family": "F17",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_q097.py, exp_q097b.py; lab/transducer.py → raw/gamma/q097.json, q097b.json",
+      "disposition": "算法替代/条件研究",
+      "currentRelationAndValue": "完整信息摘要树、checkpoint及惰性表示均保留；单目标已便宜、建表税与48/48变慢是历史否定采用证据。当前局部认证不是完整前缀索引。Γ′改变输出单列。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q097"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q098",
+      "title": "区间摘要是否真正可结合",
+      "family": "F17",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "lab/transducer.py::composition_test; lab/summarytree.py; bench/exp_summarytree.py → raw/gamma/q097.json（composition_*）, raw/gamma/summarytree_exactness.json",
+      "disposition": "算法替代/条件研究",
+      "currentRelationAndValue": "完整信息摘要树、checkpoint及惰性表示均保留；单目标已便宜、建表税与48/48变慢是历史否定采用证据。当前局部认证不是完整前缀索引。Γ′改变输出单列。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q098"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q099",
+      "title": "增量树与checkpoint何时胜出",
+      "family": "F17",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/bench_micro.py → raw/bench/micro_20261027T145403Z.jsonl；bench/exp_combos.py::c18",
+      "disposition": "已试暂缓",
+      "currentRelationAndValue": "checkpoint扫描341→109不省32decode且176未过；全树建表税不回本，当前无同形consumer。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q099"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q100",
+      "title": "显式输出下界与惰性表示",
+      "family": "F17",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_gamma2.py::g7_long_output; bench/joint_b.py::c09 → raw/gamma/gamma2.json#G7, raw/joint/C09.json",
+      "disposition": "已试负结果",
+      "currentRelationAndValue": "显式输出有输出下界；lazy chunk在当前cached-flat形状48/48更慢，不据抽象渐进复杂度采用。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q100"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q101",
+      "title": "目标投影查询能否绕过全局计划",
+      "family": "F17",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "lab/certify_plus.py; bench/exp_certificates.py; bench/bench_micro.py(W_b) → raw/gamma/certificates.json, raw/bench/micro_*.jsonl",
+      "disposition": "算法替代/条件研究",
+      "currentRelationAndValue": "完整信息摘要树、checkpoint及惰性表示均保留；单目标已便宜、建表税与48/48变慢是历史否定采用证据。当前局部认证不是完整前缀索引。Γ′改变输出单列。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q101"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q102",
+      "title": "替代Γ′：全局优化、词典序与局部可认证性",
+      "family": "F17",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_gamma2.py::g8_alternatives → raw/gamma/gamma2.json#G8",
+      "disposition": "规则改变独立研究",
+      "currentRelationAndValue": "Gamma-prime改变输出，没有质量裁决；性能/可局部认证不能取代用户输出规则授权。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q102"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q103",
+      "title": "物理可实现的可能世界",
+      "family": "F18",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "lab/features.py::witness, realizable_pairs; bench/exp_workloads.py::w03_realizability → raw/workloads/workloads.json#W03_realizability；tests/test_r10.py::Features",
+      "disposition": "信息获取条件研究",
+      "currentRelationAndValue": "当前真实NeedFacts+bounded lookahead不等于反事实最小动作或自适应信息增益最优控制器；昂贵物化、失败可见性与并行轮次需共同计费。保留模型和oracle。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q103"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q104",
+      "title": "最小区分动作集",
+      "family": "F18",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_gamma2.py::g9_minimax → raw/gamma/gamma2.json#G9",
+      "disposition": "信息获取条件研究",
+      "currentRelationAndValue": "当前真实NeedFacts+bounded lookahead不等于反事实最小动作或自适应信息增益最优控制器；昂贵物化、失败可见性与并行轮次需共同计费。保留模型和oracle。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q104"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q105",
+      "title": "信息增益贪心何时失效",
+      "family": "F18",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_gamma2.py::g9_minimax → raw/gamma/gamma2.json#G9",
+      "disposition": "信息获取条件研究",
+      "currentRelationAndValue": "当前真实NeedFacts+bounded lookahead不等于反事实最小动作或自适应信息增益最优控制器；昂贵物化、失败可见性与并行轮次需共同计费。保留模型和oracle。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q105"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q106",
+      "title": "批量查询与自适应查询的权衡",
+      "family": "F18",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/exp_evidence.py; bench/joint_c.py::c11 → raw/gamma/evidence.json, raw/joint/C11.json",
+      "disposition": "信息获取条件研究",
+      "currentRelationAndValue": "当前真实NeedFacts+bounded lookahead不等于反事实最小动作或自适应信息增益最优控制器；昂贵物化、失败可见性与并行轮次需共同计费。保留模型和oracle。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q106"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q107",
+      "title": "便宜信息是否足以替代昂贵事实",
+      "family": "F18",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_gamma2.py::g10_cheap; bench/joint_d.py::c12 → raw/gamma/gamma2.json#G10, raw/joint/C12.json",
+      "disposition": "信息获取条件研究",
+      "currentRelationAndValue": "当前真实NeedFacts+bounded lookahead不等于反事实最小动作或自适应信息增益最优控制器；昂贵物化、失败可见性与并行轮次需共同计费。保留模型和oracle。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q107"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q108",
+      "title": "证明复用与数据复用能否分开最优",
+      "family": "F18",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/bench_micro.py(W_d); bench/exp_gamma2.py::g6_identity → raw/bench/micro_*.jsonl, raw/gamma/gamma2.json#G6",
+      "disposition": "信息获取条件研究",
+      "currentRelationAndValue": "当前真实NeedFacts+bounded lookahead不等于反事实最小动作或自适应信息增益最优控制器；昂贵物化、失败可见性与并行轮次需共同计费。保留模型和oracle。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q108"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q109",
+      "title": "缓存和调度联合而非各自最优",
+      "family": "F19",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_sched.py::s18_joint; bench/exp_combos.py::c06 → raw/sched/sched.json#S18",
+      "disposition": "预测/联合策略条件研究",
+      "currentRelationAndValue": "当前角色预算/预留和固定lookahead并非准确度门控、学习或联合最优缓存。保留对手退化与额外工作约束，真实导航分布/服务上界未知，不启用新默认。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q109"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q110",
+      "title": "预测错误下的安全投机",
+      "family": "F19",
+      "originalFinalDecision": "engineering_trial",
+      "originalEvidence": "bench/exp_sched.py::s19_speculation; bench/joint_a.py::c03 → raw/sched/sched.json#S19, raw/joint/C03.json",
+      "disposition": "预测/联合策略条件研究",
+      "currentRelationAndValue": "当前角色预算/预留和固定lookahead并非准确度门控、学习或联合最优缓存。保留对手退化与额外工作约束，真实导航分布/服务上界未知，不启用新默认。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q110"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q111",
+      "title": "分布漂移与不依赖先验的策略",
+      "family": "F19",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_misc.py::q111 → raw/misc/misc.json#Q111",
+      "disposition": "预测/联合策略条件研究",
+      "currentRelationAndValue": "当前角色预算/预留和固定lookahead并非准确度门控、学习或联合最优缓存。保留对手退化与额外工作约束，真实导航分布/服务上界未知，不启用新默认。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q111"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q112",
+      "title": "内存时间双预算的分配",
+      "family": "F19",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_sched.py::s21_dual_budget; bench/exp_combos.py::c17 → raw/sched/sched.json#S21",
+      "disposition": "预测/联合策略条件研究",
+      "currentRelationAndValue": "当前角色预算/预留和固定lookahead并非准确度门控、学习或联合最优缓存。保留对手退化与额外工作约束，真实导航分布/服务上界未知，不启用新默认。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q112"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q113",
+      "title": "在线学习策略能否无害旁路",
+      "family": "F19",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_misc.py::q113_q114 → raw/misc/misc.json#Q113_Q114",
+      "disposition": "预测/联合策略条件研究",
+      "currentRelationAndValue": "当前角色预算/预留和固定lookahead并非准确度门控、学习或联合最优缓存。保留对手退化与额外工作约束，真实导航分布/服务上界未知，不启用新默认。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q113"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q114",
+      "title": "自动降级与可逆启用",
+      "family": "F19",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_misc.py::q113_q114 → raw/misc/misc.json#Q113_Q114",
+      "disposition": "预测/联合策略条件研究",
+      "currentRelationAndValue": "当前角色预算/预留和固定lookahead并非准确度门控、学习或联合最优缓存。保留对手退化与额外工作约束，真实导航分布/服务上界未知，不启用新默认。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q114"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q115",
+      "title": "紧凑表示和批量计算是否有真实头寸",
+      "family": "F20",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_gamma2.py::g11_numeric; bench/bench_micro.py(W_c) → raw/gamma/gamma2.json#G11, raw/bench/micro_*.jsonl",
+      "disposition": "A1采用/A2-A4暂缓",
+      "currentRelationAndValue": "当前A1数组与早拒已采用；owner索引/compact/stamp由最新各自A1控制复评暂缓，保留分配与wall冲突数据。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q115"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q116",
+      "title": "数值等价与跨执行后端",
+      "family": "F20",
+      "originalFinalDecision": "engineering_trial",
+      "originalEvidence": "lab/features.py::distance, distance_fast_with_fallback, search_float_flip; bench/exp_gamma2.py::g11_numeric → raw/gamma/gamma2.json#G11（route_B_fast_path_with_reference_fallback）",
+      "disposition": "数值后端条件研究",
+      "currentRelationAndValue": "保留78/97 null与78/98、99零等JVM边界，不以Python期望或有理数替换参考浮点。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q116"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q117",
+      "title": "证书携带证明还是重复验证",
+      "family": "F20",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/exp_gamma2.py::g12_checker; bench/bench_micro.py(W_d) → raw/gamma/gamma2.json#G12",
+      "disposition": "精化/数值/迁移研究",
+      "currentRelationAndValue": "A1数值公式与早拒已采用；精确有理数、重排浮点、LUT/PREFIX及其他后端不自动等价。保留近阈值反例、精化义务和可逆边界；不把参考浮点换为另一Gamma。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q117"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q118",
+      "title": "从抽象模型到真实消费者的精化义务",
+      "family": "F20",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "tests/test_r10.py; tests/test_revision.py::NeutralPlanChecker; tests/test_regressions.py; lab/gamma_xcheck.py（历史）→ raw/gamma/xcheck_r9.json（HISTORICAL）",
+      "disposition": "精化/数值/迁移研究",
+      "currentRelationAndValue": "A1数值公式与早拒已采用；精确有理数、重排浮点、LUT/PREFIX及其他后端不自动等价。保留近阈值反例、精化义务和可逆边界；不把参考浮点换为另一Gamma。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q118"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q119",
+      "title": "替代算法迁移的最小风险边界",
+      "family": "F20",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/exp_q119.py → raw/gamma/q119.json",
+      "disposition": "精化/数值/迁移研究",
+      "currentRelationAndValue": "A1数值公式与早拒已采用；精确有理数、重排浮点、LUT/PREFIX及其他后端不自动等价。保留近阈值反例、精化义务和可逆边界；不把参考浮点换为另一Gamma。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q119"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "Q120",
+      "title": "统一前沿与研究结论自我攻击",
+      "family": "F20",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/exp_workloads.py::w20_frontier_attack → raw/workloads/workloads.json#W20_frontier_attack",
+      "disposition": "精化/数值/迁移研究",
+      "currentRelationAndValue": "A1数值公式与早拒已采用；精确有理数、重排浮点、LUT/PREFIX及其他后端不自动等价。保留近阈值反例、精化义务和可逆边界；不把参考浮点换为另一Gamma。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "Q120"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C01",
+      "title": "共享物化 × 证据旁路",
+      "family": "F06",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/joint_*.py::c01 → raw/joint/C01.json（每设计四格+区分输入）",
+      "disposition": "已有C/其余待实证",
+      "currentRelationAndValue": "同绑定普通物化共享已由当前C覆盖；额外证据旁路必须遵守jobKey/permit与真实读取，不把模型共享次数当UI收益。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C01"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C02",
+      "title": "共享工作 × 多消费者取消",
+      "family": "F05",
+      "originalFinalDecision": "engineering_trial",
+      "originalEvidence": "bench/joint_*.py::c02 → raw/joint/C02.json（每设计四格+区分输入）",
+      "disposition": "现有合同/条件模型",
+      "currentRelationAndValue": "共享取消权由真实consumer及物理退出决定，旧任务无权取消其他有效consumer；模型正确性保留，非新增共享架构。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C02"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C03",
+      "title": "非抢占保护 × 可选准入",
+      "family": "F05",
+      "originalFinalDecision": "engineering_trial",
+      "originalEvidence": "bench/joint_*.py::c03 → raw/joint/C03.json（每设计四格+区分输入）",
+      "disposition": "条件候选",
+      "currentRelationAndValue": "非抢占预留的模型收益需可信剩余服务界和真实准入路径；不可在已占物理资源时凭逻辑暂停新开工作。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C03"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C04",
+      "title": "升级协议 × 字节/时限许可",
+      "family": "F07",
+      "originalFinalDecision": "engineering_trial",
+      "originalEvidence": "bench/joint_*.py::c04 → raw/joint/C04.json（每设计四格+区分输入）",
+      "disposition": "已有C及预算合同",
+      "currentRelationAndValue": "普通请求提升C已采用并保留原执行与许可；不能把提升重当一次新fact permit或绕过字节/截止。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C04"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C05",
+      "title": "完成邮箱 × 状态合批",
+      "family": "F05",
+      "originalFinalDecision": "engineering_trial",
+      "originalEvidence": "bench/joint_*.py::c05 → raw/joint/C05.json（每设计四格+区分输入）",
+      "disposition": "原前提不成立",
+      "currentRelationAndValue": "历史完成结果已先发布事实且物理许可释放；待消费仍占4逻辑槽。合成邮箱收益不证明当前应另加结果池/第五项。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C05"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C06",
+      "title": "缓存策略 × 调度顺序",
+      "family": "F19",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/joint_*.py::c06 → raw/joint/C06.json（每设计四格+区分输入）",
+      "disposition": "条件候选",
+      "currentRelationAndValue": "缓存与服务顺序联合模型保留；未校准真实驻留、身份与服务时长，不声称已有在线最优策略。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C06"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C07",
+      "title": "样本保留 × 证明支持",
+      "family": "F08",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/joint_*.py::c07 → raw/joint/C07.json（每设计四格+区分输入）",
+      "disposition": "部分已有/其余暂缓",
+      "currentRelationAndValue": "Owner已先推导邻接分数再逐出raw；closure额外留存需容量及livelock反例约束，不等于全部策略已采用。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C07"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C08",
+      "title": "checkpoint × 精确有限入口",
+      "family": "F09",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/joint_*.py::c08 → raw/joint/C08.json（每设计四格+区分输入）",
+      "disposition": "已试暂缓",
+      "currentRelationAndValue": "旧checkpoint顺读CPU有利而组合成本/176screen无净收益；现主干无checkpoint/evidenceStamp同前提，恢复旧默认true不可行。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C08"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C09",
+      "title": "摘要树 × 惰性消费",
+      "family": "F17",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/joint_*.py::c09 → raw/joint/C09.json（每设计四格+区分输入）",
+      "disposition": "已试暂缓",
+      "currentRelationAndValue": "摘要树全信息consumer缺乏，惰性chunk在cached-flat对照48/48更慢；保留研究源码/反例。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C09"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C10",
+      "title": "小memo × 全尝试依赖",
+      "family": "F09",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/joint_*.py::c10 → raw/joint/C10.json（每设计四格+区分输入）",
+      "disposition": "已有等价合同",
+      "currentRelationAndValue": "当前Session一次collector跨所有入口/左扩尝试并返回后snapshot，保留失败尝试支撑；不是旧union类名必须存留。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C10"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C11",
+      "title": "最少取证 × 非抢占队列",
+      "family": "F18",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/joint_*.py::c11 → raw/joint/C11.json（每设计四格+区分输入）",
+      "disposition": "条件候选",
+      "currentRelationAndValue": "最少事实数可多串行轮次，非抢占队列反馈需真实服务界；当前聚合NeedFacts非模型最小询问器。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C11"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C12",
+      "title": "便宜信息 × 精确回退",
+      "family": "F18",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/joint_*.py::c12 → raw/joint/C12.json（每设计四格+区分输入）",
+      "disposition": "条件候选",
+      "currentRelationAndValue": "便宜信息仅可在精确权威/可回退合同内用；header不得被当原图真值，R6/D3纠错与真实失败可见性保留。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C12"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C13",
+      "title": "首次授权 × 分段资源准备",
+      "family": "F10",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/joint_*.py::c13 → raw/joint/C13.json（每设计四格+区分输入）",
+      "disposition": "正确性合同/无新收益",
+      "currentRelationAndValue": "原子首次正确unit与分段准备共存但不能先错slot；历史caller调整破16ms门槛，不据模型启用。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C13"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C14",
+      "title": "frame租约 × 惰性布局更新",
+      "family": "F10",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/joint_*.py::c14 → raw/joint/C14.json（每设计四格+区分输入）",
+      "disposition": "现有稳定画面合同",
+      "currentRelationAndValue": "保留旧frame capability直到合法退休；两个布局版本算术成本不等于当前GPU峰值或渲染实现已最小。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C14"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C15",
+      "title": "快速意图合并 × 物理退出",
+      "family": "F12",
+      "originalFinalDecision": "engineering_trial",
+      "originalEvidence": "bench/joint_*.py::c15 → raw/joint/C15.json（每设计四格+区分输入）",
+      "disposition": "现有原则/条件优化",
+      "currentRelationAndValue": "当前latest-intent及真实退出不允许任意压缩已授权/已曝光意图，快速合并收益仍依赖合法事件轨迹。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C15"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C16",
+      "title": "跨重开复用 × 身份键",
+      "family": "F08",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/joint_*.py::c16 → raw/joint/C16.json（每设计四格+区分输入）",
+      "disposition": "身份合同/未有收益",
+      "currentRelationAndValue": "跨重开只能复用严格内容/recipe身份；历史重开四格均看不到可摊销收益，不主动预热新runtime。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C16"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C17",
+      "title": "关闭协议 × 内存双资源账",
+      "family": "F11",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/joint_*.py::c17 → raw/joint/C17.json（每设计四格+区分输入）",
+      "disposition": "现有合同",
+      "currentRelationAndValue": "关闭不等于物理排空；内存/字节/工人许可由实际生命周期核算，不把管理移除当GPU退出。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C17"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C18",
+      "title": "预建索引 × 自适应晋升",
+      "family": "F17",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/joint_*.py::c18 → raw/joint/C18.json（每设计四格+区分输入）",
+      "disposition": "已试停止当前形状",
+      "currentRelationAndValue": "单目标原20步，树1736、checkpoint66，频繁替换5761/358；当前无获利消费者，不再同负载盲扫参数。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C18"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C19",
+      "title": "证书增强 × 触发可达性",
+      "family": "F09",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/joint_*.py::c19 → raw/joint/C19.json（每设计四格+区分输入）",
+      "disposition": "已试暂缓",
+      "currentRelationAndValue": "Strong 18case省公布需更多扫描CPU，原176>128，AUTO64只阶段转移；20次采纳≠少20次物化，自然资格/总收益未知。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C19"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C20",
+      "title": "固定窗口 × 精确reset摘要",
+      "family": "F17",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/joint_*.py::c20 → raw/joint/C20.json（每设计四格+区分输入）",
+      "disposition": "部分已有/反例保留",
+      "currentRelationAndValue": "已有forced/reset入口与按需左扩；无证固定t-3窗口有错，跨全前缀摘要维护昂贵，不能放宽当前预算制造正例。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C20"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C21",
+      "title": "最小探针 × 关键路径界",
+      "family": "F02",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/joint_*.py::c21 → raw/joint/C21.json（每设计四格+区分输入）",
+      "disposition": "保留未解观测问题",
+      "currentRelationAndValue": "T01修订后仅C_i不足，需要同ticket的B_i/消费机会表及TI检验；尚未由真实系统闭环，不是无解证明。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C21"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C22",
+      "title": "观测采样 × 排程扰动",
+      "family": "F15",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/joint_*.py::c22 → raw/joint/C22.json（每设计四格+区分输入）",
+      "disposition": "观测方法/真实未运行",
+      "currentRelationAndValue": "稀疏记录模型扰动小，跨运行边际不能拼逐样本DAG；真实flush阈值/扰动NOT_RUN，保留方法待明确观测需求。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C22"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C23",
+      "title": "逐样本可达界 × 整体中位门槛",
+      "family": "F16",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/joint_*.py::c23 → raw/joint/C23.json（每设计四格+区分输入）",
+      "disposition": "数学条件/非收益",
+      "currentRelationAndValue": "参数R=100或90非实测可省工作；逐样本挑最优策略可能任何共同策略都不可行，保留精确中位门槛。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C23"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C24",
+      "title": "冷热区组 × 参数选择",
+      "family": "F15",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/joint_*.py::c24 → raw/joint/C24.json（每设计四格+区分输入）",
+      "disposition": "统计工具",
+      "currentRelationAndValue": "ABBA/heldout/序贯阈值只在声明噪声分布成立；零效应模拟非产品收益，本次不新增29–59次运行。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C24"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C25",
+      "title": "尾部护栏 × 全分母失败",
+      "family": "F14",
+      "originalFinalDecision": "stop",
+      "originalEvidence": "bench/joint_*.py::c25 → raw/joint/C25.json（每设计四格+区分输入）",
+      "disposition": "有效性工具",
+      "currentRelationAndValue": "首槽错误/失败剔除可虚构改善；保留全分母硬门槛和删失边界，不能修饰R0为有效基线。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C25"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C26",
+      "title": "数值快路 × 证书支持",
+      "family": "F20",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/joint_*.py::c26 → raw/joint/C26.json（每设计四格+区分输入）",
+      "disposition": "已有A1/其余条件研究",
+      "currentRelationAndValue": "A1遵守参考求值序列；有理数近阈值41翻转，其他快路需验证或精确fallback，不能从模型无错推所有数值域。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C26"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C27",
+      "title": "缓存价值 × 预测安全保护",
+      "family": "F19",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/joint_*.py::c27 → raw/joint/C27.json（每设计四格+区分输入）",
+      "disposition": "条件候选",
+      "currentRelationAndValue": "稳定预测模型有利但未知服务时长会造成720退化/额外浪费；已有预算预留非预测准确度策略，需真实轨迹与物理界。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C27"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C28",
+      "title": "固定替代规则内的证书 × 取证",
+      "family": "F17",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/joint_*.py::c28 → raw/joint/C28.json（每设计四格+区分输入）",
+      "disposition": "改变规则的独立研究",
+      "currentRelationAndValue": "固定Gamma-prime与Gamma在292/300计划不同；其窗口/并行收益不得算保持当前输出的优化，未有质量标注不能采用。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C28"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C29",
+      "title": "共享转换 × 多版本快照",
+      "family": "F06",
+      "originalFinalDecision": "conditional_theory",
+      "originalEvidence": "bench/joint_*.py::c29 → raw/joint/C29.json（每设计四格+区分输入）",
+      "disposition": "条件共享设计",
+      "currentRelationAndValue": "相同适配参数可共享高层结果，方向改变常驻反转；当前租约/快照为约束而非全部多版本共享布局已实现，需真实频率和峰值。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C29"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    },
+    {
+      "id": "C30",
+      "title": "最小可逆实现 × 研究停止证据",
+      "family": "F16",
+      "originalFinalDecision": "probe_first",
+      "originalEvidence": "bench/joint_*.py::c30 → raw/joint/C30.json（每设计四格+区分输入）",
+      "disposition": "三值研究裁定/未解保留",
+      "currentRelationAndValue": "最终修复撤回minred<=0旧停止规则；D1/D2/D3主门槛证据不足，D1p/D1s仅在指定不变前提NO-GO。归档不等于继续盲试，也不等于100ms无解。",
+      "sourceRecord": {
+        "packageId": "r10-latency-final",
+        "matrix": "coverage-detail",
+        "id": "C30"
+      },
+      "engineeringReference": "R10.md",
+      "productAdoptionClaim": false
+    }
+  ]
+}

@@ -1,0 +1,444 @@
+package mihon.domain.reader
+
+import mihon.domain.reader.session.ReaderChapterId
+import mihon.domain.reader.session.ReaderPageId
+
+private const val SKIP = 4
+private const val INITIAL = 2 // opening=true, reservedNow=false
+
+private enum class PixelKind { GRAY, LEFT, RIGHT, WIDE, TEXTURE_A, TEXTURE_B, INVERTED }
+
+private data class SampledPage(val fact: ReaderPageFact, val original: ReaderOriginalPageSamples)
+
+private fun sample(kind: PixelKind): SampledPage {
+    val width = if (kind == PixelKind.WIDE) 512 else 256
+    val height = 384
+    fun pixel(x: Int, y: Int): Int = when {
+        kind == PixelKind.LEFT && x >= width * 19 / 20 -> -1
+        kind == PixelKind.RIGHT && x < width / 20 -> -1
+        kind in setOf(PixelKind.TEXTURE_A, PixelKind.TEXTURE_B, PixelKind.INVERTED) -> {
+            val light = (y / 7) % 2 == if (kind == PixelKind.INVERTED) 1 else 0
+            val value = (if (light) 180 else 70) + if (kind == PixelKind.TEXTURE_B) 5 else 0
+            0xff000000.toInt() or (value shl 16) or (value shl 8) or value
+        }
+        else -> 0xff8c8c8c.toInt()
+    }
+    val plan = requireNotNull(ReaderOriginalPageSampling.plan(width, height))
+    val original = plan.samples(plan.left.map { (x, y) -> pixel(x, y) }, plan.right.map { (x, y) -> pixel(x, y) })
+    val expected = when (kind) {
+        PixelKind.LEFT -> ReaderPageSideHint.LEFT
+        PixelKind.RIGHT -> ReaderPageSideHint.RIGHT
+        else -> ReaderPageSideHint.UNKNOWN
+    }
+    check(original.sideHint == expected)
+    return SampledPage(ReaderPageFact.dimensions(width, height).copy(sideHint = original.sideHint), original)
+}
+
+/** All facts are complete and immutable. This deliberately retains all sampled pages, unlike the production LRU. */
+private class CompleteInput(
+    val kinds: List<PixelKind>,
+    val direction: ReaderDirection,
+    val opening: ReaderChapterOpeningMode,
+    val forced: Set<Int> = emptySet(),
+    val manual: Set<Int> = emptySet(),
+    val version: Int = 0,
+    val contentVersions: List<Int> = List(kinds.size) { 0 },
+    private val analyses: List<SampledPage> = kinds.map(::sample),
+    private val previousScores: Map<Int, Double?>? = null,
+    private val changedPage: Int? = null,
+) {
+    val pages = kinds.indices.map { ReaderPageId(ReaderChapterId(20261022), it) }
+    val facts = pages.associateWith { analyses[it.sourcePageIndex].fact }
+    val forcedPages = forced.map(pages::get).toSet()
+    val scores = (0 until pages.lastIndex).associateWith { index ->
+        if (previousScores != null && index != changedPage && index + 1 != changedPage) {
+            previousScores[index]
+        } else {
+            val a = analyses[index].original.edges
+            val b = analyses[index + 1].original.edges
+            if (a == null || b == null) null else SharedSpreadMatching.score(a, b, direction)
+        }
+    }
+
+    fun scan() = ReaderCanonicalPairingScan(
+        pages, { facts[pages[it]] }, { facts.getValue(pages[it]).sideHint },
+        direction, forcedPages, manual, opening, true,
+        { facts.getValue(pages[it]).sideHint }, { a, _ -> scores[a.sourcePageIndex] },
+    )
+
+    fun oracle(): List<ReaderDualPageUnit> = SharedDualPageRules.canonicalPlan(
+        pages, facts, direction, forcedPages, manual, opening, automatic = true,
+        distance = { a, _ -> scores[a.sourcePageIndex] },
+    )
+
+    fun replaced(index: Int, kind: PixelKind) = CompleteInput(
+        kinds.toMutableList().also { it[index] = kind }, direction, opening, forced, manual, version + 1,
+        contentVersions.toMutableList().also { it[index]++ },
+        analyses.toMutableList().also { it[index] = sample(kind) }, scores, index,
+    )
+
+    fun sameContext(other: CompleteInput): Boolean = pages == other.pages && direction == other.direction &&
+        opening == other.opening && forced == other.forced && manual == other.manual
+}
+
+private data class Work(
+    var labelSteps: Long = 0,
+    var composeEntries: Long = 0,
+    var prefixApplications: Long = 0,
+    var querySteps: Long = 0,
+    var labelsRebuilt: Long = 0,
+    var cachedPlanLookups: Long = 0,
+) {
+    fun json(): String = "{\"labelSteps\":$labelSteps,\"composeEntries\":$composeEntries," +
+        "\"prefixApplications\":$prefixApplications,\"querySteps\":$querySteps," +
+        "\"labelsRebuilt\":$labelsRebuilt,\"cachedPlanLookups\":$cachedPlanLookups}"
+}
+
+/** Stores only Q→Q functions. All pairing decisions and recovered output come from production step. */
+private class FunctionTree(input: CompleteInput, work: Work) {
+    private var current = input
+    private var queryScan = input.scan()
+    private val size = Integer.highestOneBit(input.pages.size - 1).let { if (it == 0) 1 else it * 2 }
+    private val nodes = Array(size * 2) { IntArray(5) { it } }
+    val cells: Int get() = nodes.size * 5
+
+    init {
+        rebuildAll(work)
+    }
+
+    private fun leaf(index: Int, scan: ReaderCanonicalPairingScan, work: Work): IntArray = IntArray(5) { state ->
+        if (state == SKIP) {
+            0
+        } else {
+            work.labelSteps++
+            val step = scan.step(ReaderPairingScanCursor(index, state and 2 != 0, if (state and 1 != 0) index else -1))
+            if (checkNotNull(step.unit).pageIds.size == 2) SKIP else
+                (if (step.next.opening) 2 else 0) + (if (step.next.reservedStart == index + 1) 1 else 0)
+        }
+    }.also { work.labelsRebuilt++ }
+
+    private fun merge(node: Int, work: Work) {
+        val left = nodes[node * 2]
+        val right = nodes[node * 2 + 1]
+        nodes[node] = IntArray(5) { state ->
+            work.composeEntries++
+            right[left[state]]
+        }
+    }
+
+    private fun rebuildAll(work: Work) {
+        val scan = current.scan()
+        current.pages.indices.forEach { nodes[size + it] = leaf(it, scan, work) }
+        for (node in size - 1 downTo 1) merge(node, work)
+        queryScan = current.scan()
+    }
+
+    fun updatePixel(next: CompleteInput, page: Int, work: Work): String {
+        require(current.sameContext(next)) { "Context changed: full rebuild required" }
+        require(current.kinds.indices.all { it == page || current.kinds[it] == next.kinds[it] })
+        require(next.version == current.version + 1)
+        require(current.contentVersions.indices.all {
+            next.contentVersions[it] == current.contentVersions[it] + if (it == page) 1 else 0
+        }) { "Exactly the replaced source page must acquire a new content version" }
+        val oldFact = current.facts.getValue(current.pages[page])
+        val newFact = next.facts.getValue(next.pages[page])
+        val geometryChanged = oldFact.copy(sideHint = ReaderPageSideHint.UNKNOWN) !=
+            newFact.copy(sideHint = ReaderPageSideHint.UNKNOWN)
+        current = next
+        if (geometryChanged || next.manual.isNotEmpty()) {
+            rebuildAll(work)
+            return if (geometryChanged) "full-geometry" else "full-manual"
+        }
+        val scan = next.scan() // Its manual cache belongs only to this immutable complete input.
+        val touched = ((page - 2).coerceAtLeast(0)..(page + 1).coerceAtMost(next.pages.lastIndex))
+        val parents = sortedSetOf<Int>(reverseOrder())
+        for (index in touched) {
+            nodes[size + index] = leaf(index, scan, work)
+            var node = (size + index) / 2
+            while (node > 0) {
+                parents += node
+                node /= 2
+            }
+        }
+        parents.forEach { merge(it, work) }
+        queryScan = next.scan()
+        return "halo"
+    }
+
+    private fun prefix(end: Int, work: Work): Int {
+        var left = size
+        var right = size + end
+        val leftNodes = mutableListOf<Int>()
+        val rightNodes = mutableListOf<Int>()
+        while (left < right) {
+            if (left and 1 != 0) leftNodes += left++
+            if (right and 1 != 0) rightNodes += --right
+            left /= 2
+            right /= 2
+        }
+        var state = INITIAL
+        for (node in leftNodes + rightNodes.asReversed()) {
+            state = nodes[node][state]
+            work.prefixApplications++
+        }
+        return state
+    }
+
+    fun target(input: CompleteInput, page: Int, work: Work): ReaderDualPageUnit {
+        require(input === current) { "Stale input/version: rebuild or update required" }
+        var index = page
+        var state = prefix(page, work)
+        if (state == SKIP) {
+            check(page > 0)
+            index--
+            state = prefix(index, work)
+            check(state != SKIP)
+        }
+        work.querySteps++
+        val unit = checkNotNull(queryScan.step(
+            ReaderPairingScanCursor(index, state and 2 != 0, if (state and 1 != 0) index else -1),
+        ).unit)
+        check(input.pages[page] in unit.pageIds)
+        return unit
+    }
+
+    /** Rebuild all five-state leaf labels independently; used only to validate the chosen update halo. */
+    fun verifyLabels(input: CompleteInput) {
+        require(input === current)
+        val scan = input.scan()
+        val verification = Work()
+        input.pages.indices.forEach { check(nodes[size + it].contentEquals(leaf(it, scan, verification))) }
+    }
+}
+
+private fun checkCachedQueries(
+    input: CompleteInput,
+    tree: FunctionTree,
+    targets: List<Int>,
+    work: Work,
+    cached: Map<Int, ReaderDualPageUnit>,
+) {
+    targets.forEach { target ->
+        work.cachedPlanLookups++
+        check(tree.target(input, target, work) == cached.getValue(target))
+    }
+}
+
+private fun checkQueries(input: CompleteInput, tree: FunctionTree, targets: List<Int>, work: Work): Int {
+    val plan = input.oracle()
+    val cached = plan.flatMap { unit -> unit.pageIds.map { it.sourcePageIndex to unit } }.toMap()
+    checkCachedQueries(input, tree, targets, work, cached)
+    return plan.size // canonicalPlan invokes one real scan step per emitted unit, visible in its production loop.
+}
+
+private fun initial(count: Int, template: Int, direction: ReaderDirection, opening: ReaderChapterOpeningMode): CompleteInput {
+    val kinds = List(count) { index ->
+        when (template) {
+            0 -> PixelKind.GRAY
+            1 -> if (index % 2 == 0) PixelKind.LEFT else PixelKind.RIGHT
+            2 -> if (index % 3 == 1) PixelKind.WIDE else PixelKind.GRAY
+            3 -> if (index % 3 == 0) PixelKind.GRAY else PixelKind.TEXTURE_A
+            4 -> if (index % 3 == 0) PixelKind.TEXTURE_B else PixelKind.TEXTURE_A
+            5 -> if (index % 2 == 0) PixelKind.INVERTED else PixelKind.TEXTURE_A
+            6 -> PixelKind.TEXTURE_A
+            else -> if (index % 4 == 1) PixelKind.LEFT else PixelKind.GRAY
+        }
+    }
+    val forced = if (template == 7 && count > 2) setOf(count / 2) else emptySet()
+    val manual = when (template) {
+        5 -> (1 until count - 1 step 2).toSet()
+        6 -> (1 until count - 1).toSet() // Overlapping API-domain chain, not asserted to be a persistable record.
+        else -> emptySet()
+    }
+    return CompleteInput(kinds, direction, opening, forced, manual)
+}
+
+private fun forcedExperiment(candidate: Boolean) {
+    val records = mutableListOf<String>()
+    val pages = List(4) { ReaderPageId(ReaderChapterId(20261023), it) }
+    val identity = ReaderDualPageIdentity(1, 1, pages.map { ReaderDualPageContentIdentity(it, "resource-$it/v0") })
+    val target = pages[2]
+    fun unitJson(unit: ReaderDualPageUnit): String = "{\"slots\":[" + unit.slots.joinToString(",") {
+        "{\"page\":${it.pageId.sourcePageIndex},\"position\":\"${it.position}\"}"
+    } + "],\"reason\":\"${unit.singleReason}\",\"certain\":${unit.certain}}"
+    for (kind in listOf(PixelKind.GRAY, PixelKind.LEFT, PixelKind.RIGHT, PixelKind.WIDE)) {
+        for (direction in listOf(ReaderDirection.LTR, ReaderDirection.RTL)) {
+            for (opening in ReaderChapterOpeningMode.entries) for (automatic in listOf(false, true)) {
+                for (available in listOf(false, true)) {
+                    val originals = pages.associateWith { sample(if (it == target) kind else PixelKind.GRAY) }
+                    val facts = originals.mapValues { it.value.fact }
+                    val headers = facts.mapValues { it.value.copy(sideHint = ReaderPageSideHint.UNKNOWN) }
+                    val full = ReaderSpreadSamplesOwner(identity)
+                    val partial = ReaderSpreadSamplesOwner(identity)
+                    try {
+                        originals.forEach { (page, value) ->
+                            check(full.acceptOriginal(full.request(page), value.fact, value.original.edges))
+                            if (page == target && available) {
+                                check(partial.acceptOriginal(partial.request(page), value.fact, value.original.edges))
+                            }
+                        }
+                        val settings = ReaderPairingSettings(direction, automatic, setOf(target), openingMode = opening)
+                        check(ChapterPairingRecord(2, 4, setOf(2), openingMode = opening).isValidFor(4))
+                        val oracle = SharedDualPageRules.canonicalPlan(
+                            pages, facts, direction, setOf(target), openingMode = opening, automatic = automatic,
+                            distance = { a, b -> (full.edgeAnalysis(a, b, direction) as ReaderEdgeAnalysisEvidence.Computed).score },
+                        ).single { target in it.pageIds }
+                        val result = ReaderPairingCertifier.certify(identity, headers, partial, settings, target)
+                        val status: String
+                        val needs: String
+                        when (result) {
+                            is ReaderPairingCertification.Certified -> {
+                                check(result.segment.unit == oracle)
+                                check(result.segment.isCurrent(identity, settings, partial, headers))
+                                val replacedIdentity = identity.copy(content = identity.content.map {
+                                    if (it.pageId == target) it.copy(contentVersion = "new-pixels/v1") else it
+                                })
+                                check(!result.segment.isCurrent(replacedIdentity, settings, partial, headers))
+                                status = "Certified"
+                                needs = "[]"
+                            }
+                            is ReaderPairingCertification.NeedFacts -> {
+                                status = "NeedFacts"
+                                needs = result.facts.joinToString(prefix = "[", postfix = "]") {
+                                    "{\"page\":${it.pageId.sourcePageIndex},\"kind\":\"${it.kind}\"}"
+                                }
+                            }
+                            else -> error("Unexpected failure: $result")
+                        }
+                        if (candidate && available) check(result is ReaderPairingCertification.Certified)
+                        if (kind != PixelKind.WIDE && automatic && !available) {
+                            check(result is ReaderPairingCertification.NeedFacts && result.facts.any { it.pageId == target })
+                        }
+                        records += "{\"key\":\"$kind-$direction-$opening-$automatic-$available\"," +
+                            "\"status\":\"$status\",\"needs\":$needs,\"oracle\":${unitJson(oracle)}}"
+                    } finally {
+                        full.close()
+                        partial.close()
+                    }
+                }
+            }
+        }
+    }
+    check(records.size == 96)
+    println("{\"status\":\"PASS\",\"candidate\":$candidate,\"cases\":${records.size}," +
+        "\"records\":[${records.joinToString(",")}]}"
+    )
+}
+
+fun main(args: Array<String>) {
+    if (args.isNotEmpty()) {
+        require(args.size == 1 && args[0] in setOf("forced-baseline", "forced-candidate"))
+        forcedExperiment(args[0] == "forced-candidate")
+        return
+    }
+    val totals = Work()
+    var pairs = 0
+    var queries = 0
+    var oracleSteps = 0L
+    var nonNullEdges = 0
+    var positiveEdges = 0
+    var reservationEvents = 0
+    var edgeReservationWitnesses = 0
+    val modes = linkedMapOf<String, Int>()
+    val rows = mutableListOf<String>()
+    for (count in 1..8) for (template in 0..7) {
+        for (direction in listOf(ReaderDirection.LTR, ReaderDirection.RTL)) for (opening in ReaderChapterOpeningMode.entries) {
+            val before = initial(count, template, direction, opening)
+            nonNullEdges += before.scores.values.count { it != null }
+            positiveEdges += before.scores.values.count { it != null && it > 0.0 }
+            val witnessScan = before.scan()
+            var witnessCursor = ReaderPairingScanCursor(0, true)
+            while (witnessCursor.index < count) {
+                val step = witnessScan.step(witnessCursor)
+                if (step.unit!!.pageIds.size == 1 && step.next.reservedStart == step.next.index) reservationEvents++
+                if (count == 6 && template == 3 && direction == ReaderDirection.LTR &&
+                    opening == ReaderChapterOpeningMode.AUTO && witnessCursor.index == 3
+                ) {
+                    check(before.scores[3] == null && before.scores[4] == 0.0)
+                    check(step.unit.singleReason == ReaderDualPageSingleReason.MATCH_BOUNDARY)
+                    check(step.next.index == 4 && step.next.reservedStart == 4)
+                    val reservedPair = witnessScan.step(step.next)
+                    check(reservedPair.unit!!.pageIds == listOf(before.pages[4], before.pages[5]))
+                    edgeReservationWitnesses++
+                }
+                witnessCursor = step.next
+            }
+            val tree = FunctionTree(before, totals)
+            oracleSteps += checkQueries(before, tree, before.kinds.indices.toList(), totals)
+            val page = (template + count / 2) % count
+            val replacement = when (before.kinds[page]) {
+                PixelKind.WIDE -> PixelKind.GRAY
+                PixelKind.LEFT -> PixelKind.RIGHT
+                PixelKind.RIGHT -> PixelKind.LEFT
+                PixelKind.TEXTURE_A -> PixelKind.TEXTURE_B
+                else -> if (template == 2) PixelKind.WIDE else PixelKind.TEXTURE_A
+            }
+            val after = before.replaced(page, replacement)
+            val mode = tree.updatePixel(after, page, totals)
+            modes[mode] = (modes[mode] ?: 0) + 1
+            check(runCatching { tree.target(before, page, Work()) }.isFailure)
+            tree.verifyLabels(after)
+            oracleSteps += checkQueries(after, tree, after.kinds.indices.toList(), totals)
+            queries += count * 2
+            pairs++
+        }
+    }
+    check(pairs == 384 && queries == 3456)
+    check(nonNullEdges > 0 && positiveEdges > 0 && reservationEvents > 0 && edgeReservationWitnesses == 1)
+    val contextBase = initial(6, 3, ReaderDirection.LTR, ReaderChapterOpeningMode.AUTO)
+    val contextTree = FunctionTree(contextBase, Work())
+    val contexts = listOf(
+        CompleteInput(contextBase.kinds, ReaderDirection.RTL, contextBase.opening),
+        CompleteInput(contextBase.kinds, contextBase.direction, ReaderChapterOpeningMode.FIRST_PAIR),
+        CompleteInput(contextBase.kinds, contextBase.direction, contextBase.opening, forced = setOf(1)),
+        CompleteInput(contextBase.kinds, contextBase.direction, contextBase.opening, manual = setOf(1)),
+        CompleteInput(contextBase.kinds + PixelKind.GRAY, contextBase.direction, contextBase.opening),
+        CompleteInput(contextBase.kinds, contextBase.direction, contextBase.opening, version = 1),
+    )
+    contexts.forEach { changed ->
+        check(runCatching { contextTree.target(changed, 2, Work()) }.isFailure)
+        val rebuilt = FunctionTree(changed, Work())
+        checkQueries(changed, rebuilt, listOf(2), Work())
+    }
+    var probeQueries = 0
+    for (count in listOf(32, 128, 512)) {
+        var input = CompleteInput(List(count) { if (it % 7 == 0) PixelKind.GRAY else PixelKind.TEXTURE_A },
+            ReaderDirection.LTR, ReaderChapterOpeningMode.AUTO)
+        val cold = Work()
+        val tree = FunctionTree(input, cold)
+        val initialOracle = input.oracle()
+        val cachedPlan = initialOracle.flatMap { unit -> unit.pageIds.map { it.sourcePageIndex to unit } }.toMap()
+        val lookup = Work()
+        val fixedTargets = listOf(count / 2, count / 2 + 1, count - 1)
+        repeat(16) { checkCachedQueries(input, tree, fixedTargets, lookup, cachedPlan); probeQueries += 3 }
+        val updates = mutableListOf<String>()
+        repeat(16) { iteration ->
+            val page = count / 2 + iteration % 3 - 1
+            input = input.replaced(page, if (input.kinds[page] == PixelKind.TEXTURE_A) PixelKind.TEXTURE_B else PixelKind.TEXTURE_A)
+            val work = Work()
+            check(tree.updatePixel(input, page, work) == "halo")
+            tree.verifyLabels(input)
+            val targets = listOf(page, (page + 1).coerceAtMost(count - 1), count - 1)
+            val outputUnits = checkQueries(input, tree, targets, work)
+            probeQueries += targets.size
+            updates += "{\"iteration\":$iteration,\"page\":$page,\"oracleStepsAndOutputUnits\":$outputUnits," +
+                "\"work\":${work.json()}}"
+        }
+        rows += "{\"pages\":$count,\"cold\":${cold.json()},\"treeIntegerCells\":${tree.cells}," +
+            "\"initialCanonicalStepsAndOutputUnits\":${initialOracle.size},\"unchangedQueries\":${lookup.json()}," +
+            "\"updates\":[${updates.joinToString(",")}]}"
+    }
+    check(queries + probeQueries + contexts.size < 10000)
+    println("{\"status\":\"PASS\",\"scope\":\"complete-input algorithm experiment; no partial certificate or platform claim\"," +
+        "\"subjectPairs\":$pairs,\"subjectVersions\":${pairs * 2},\"subjectQueries\":$queries," +
+        "\"subjectWork\":${totals.json()},\"subjectOracleSteps\":$oracleSteps," +
+        "\"coverage\":{\"nonNullEdges\":$nonNullEdges,\"positiveEdges\":$positiveEdges," +
+        "\"actualReservationEvents\":$reservationEvents,\"edgeReservationWitnesses\":$edgeReservationWitnesses}," +
+        "\"updateModes\":{${modes.entries.joinToString(",") { "\"${it.key}\":${it.value}" }}}," +
+        "\"contextRebuildChecks\":${contexts.size},\"probeQueries\":$probeQueries," +
+        "\"sampleProfiles\":${PixelKind.entries.size}," +
+        "\"snapshotBookkeeping\":\"O(n) fixture copies/maps; only one page resampled and adjacent edge scores rebuilt per update\"," +
+        "\"sampleRetention\":\"all page samples retained; not production default-16 memory evidence\"," +
+        "\"probes\":[${rows.joinToString(",")}]}"
+    )
+}

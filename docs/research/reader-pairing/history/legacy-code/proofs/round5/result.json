@@ -1,0 +1,223 @@
+{
+  "status": "PASS",
+  "casesPerVariant": 338,
+  "variants": {
+    "afterC": {
+      "transitions": {
+        "Certified->Certified": 200,
+        "NeedFacts->Certified": 64,
+        "NeedFacts->NeedFacts": 58,
+        "RetryableBlocked->RetryableBlocked": 16
+      },
+      "readCountDeltaHistogram": {
+        "0": 274,
+        "-1": 64
+      },
+      "needsCountDeltaHistogram": {
+        "0": 274,
+        "-1": 64
+      },
+      "ownerQueryDelta": 234,
+      "hintQueries": 322,
+      "hintHits": 88,
+      "hintHitRate": 0.2733,
+      "readCountTotal": 3960,
+      "needsTotal": 106,
+      "ownerQueriesTotal": 878
+    },
+    "afterD": {
+      "transitions": {
+        "Certified->Certified": 200,
+        "NeedFacts->NeedFacts": 74,
+        "RetryableBlocked->RetryableBlocked": 16,
+        "NeedFacts->Certified": 48
+      },
+      "readCountDeltaHistogram": {
+        "0": 266,
+        "-6": 48,
+        "-3": 24
+      },
+      "needsCountDeltaHistogram": {
+        "0": 290,
+        "-1": 48
+      },
+      "ownerQueryDelta": -240,
+      "hintQueries": 0,
+      "hintHits": 0,
+      "hintHitRate": null,
+      "readCountTotal": 3664,
+      "needsTotal": 122,
+      "ownerQueriesTotal": 404
+    },
+    "afterCD": {
+      "transitions": {
+        "Certified->Certified": 200,
+        "NeedFacts->Certified": 64,
+        "NeedFacts->NeedFacts": 58,
+        "RetryableBlocked->RetryableBlocked": 16
+      },
+      "readCountDeltaHistogram": {
+        "0": 250,
+        "-1": 16,
+        "-6": 48,
+        "-3": 24
+      },
+      "needsCountDeltaHistogram": {
+        "0": 274,
+        "-1": 64
+      },
+      "ownerQueryDelta": -54,
+      "hintQueries": 202,
+      "hintHits": 16,
+      "hintHitRate": 0.0792,
+      "readCountTotal": 3648,
+      "needsTotal": 106,
+      "ownerQueriesTotal": 590
+    },
+    "after": {
+      "transitions": {
+        "Certified->Certified": 200,
+        "NeedFacts->NeedFacts": 74,
+        "RetryableBlocked->RetryableBlocked": 16,
+        "NeedFacts->Certified": 48
+      },
+      "readCountDeltaHistogram": {
+        "0": 266,
+        "-6": 48,
+        "-3": 24
+      },
+      "needsCountDeltaHistogram": {
+        "0": 290,
+        "-1": 48
+      },
+      "ownerQueryDelta": -240,
+      "hintQueries": 0,
+      "hintHits": 0,
+      "hintHitRate": null,
+      "readCountTotal": 3664,
+      "needsTotal": 122,
+      "ownerQueriesTotal": 404
+    }
+  },
+  "witnesses": {
+    "C": {
+      "key": "C-16-POSITIVE-NO_MATCH-RTL-AUTO-true",
+      "before": {
+        "status": "NeedFacts",
+        "needs": [
+          {
+            "page": 1,
+            "kind": "EDGE_SAMPLES",
+            "second": 2
+          }
+        ],
+        "readCount": 12,
+        "ownerQueries": 2,
+        "hintQueries": 0,
+        "hintHits": 0,
+        "oracle": {
+          "slots": [
+            {
+              "page": 1,
+              "slot": "RIGHT"
+            },
+            {
+              "page": 2,
+              "slot": "LEFT"
+            }
+          ],
+          "reason": "null",
+          "certain": true
+        }
+      },
+      "after": {
+        "status": "NeedFacts",
+        "needs": [
+          {
+            "page": 1,
+            "kind": "EDGE_SAMPLES",
+            "second": 2
+          }
+        ],
+        "readCount": 12,
+        "ownerQueries": 2,
+        "hintQueries": 0,
+        "hintHits": 0,
+        "oracle": {
+          "slots": [
+            {
+              "page": 1,
+              "slot": "RIGHT"
+            },
+            {
+              "page": 2,
+              "slot": "LEFT"
+            }
+          ],
+          "reason": "null",
+          "certain": true
+        }
+      }
+    },
+    "D": {
+      "key": "D-16-FORCE2-POSITIVE-RTL-FIRST_PAIR-true",
+      "before": {
+        "status": "NeedFacts",
+        "needs": [
+          {
+            "page": 5,
+            "kind": "EDGE_SAMPLES",
+            "second": 6
+          }
+        ],
+        "readCount": 16,
+        "ownerQueries": 6,
+        "hintQueries": 0,
+        "hintHits": 0,
+        "oracle": {
+          "slots": [
+            {
+              "page": 4,
+              "slot": "RIGHT"
+            },
+            {
+              "page": 5,
+              "slot": "LEFT"
+            }
+          ],
+          "reason": "null",
+          "certain": true
+        }
+      },
+      "after": {
+        "status": "Certified",
+        "needs": [],
+        "readCount": 10,
+        "ownerQueries": 4,
+        "hintQueries": 0,
+        "hintHits": 0,
+        "oracle": {
+          "slots": [
+            {
+              "page": 4,
+              "slot": "RIGHT"
+            },
+            {
+              "page": 5,
+              "slot": "LEFT"
+            }
+          ],
+          "reason": "null",
+          "certain": true
+        }
+      }
+    }
+  },
+  "implementationEqualsResearchDPatch": true,
+  "candidateCIsNotShipped": true,
+  "baselineReadCountTotal": 4024,
+  "baselineNeedsTotal": 170,
+  "baselineOwnerQueriesTotal": 644,
+  "elapsedCompileAndResearchSeconds": 49.696,
+  "sourceStable": true
+}

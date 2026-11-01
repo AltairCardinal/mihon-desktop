@@ -1,0 +1,38 @@
+# 有效与无效原始数据清单（修复轮）
+
+原则：原始文件一律保留，不删除、不覆盖 R9 记录；无效或被取代的数据在这里登记，并说明它在哪些结论中不再使用。
+
+## A. R9 数据中被本轮判为无效或降级的部分
+
+| 数据 | 问题 | 处理 |
+|---|---|---|
+| R9 中持久树（PersistentStrongSession）的 `strong_evaluations`（所有 wpA 运行与正式格子） | 修复前记 0 次评估（预算绕过的一部分）；虚拟指标与判定有效 | 记账字段作废；按 BC-2 重算：A 网格 13 433（`results/raw/fix/differential_after.json`）。"强证明计算减少 3–13×"撤回 |
+| R9 中门控索引的 `strong_certificates` / 评估数 | 修复前不计入强路线 | 作废；修复后 29 个证书（同样的证书） |
+| R9 GSession 投影路径的 `certification_steps` | 恒为 0（计数遗漏） | 作废；冻结前已修复（`candidates/wpG_session.py`） |
+| R9 `results/raw/wpA/grid_heldout*.jsonl`、`heldout2` 相关结果、WP-G/WP-H 的"留出"行 | 被反复查看并参与过决策 | 降为**开发证据**；新留出见 `results/raw/fix/heldout/` |
+| R9 X30 正文中的交互结论 | 拼接了两项不同研究的数字（T05 与 S06） | 撤回；以 `results/raw/fix/Q2/x30.json` 的共同输入实验取代 |
+| R9 N01 的 Θ(t)、N06 的"不可能三角" | 由 4 个有限长度 / 一条固定 64 链推出 | 由 `proofs/fix_PH.md` 的任意规模证明取代（N06 结论收窄） |
+| R9 中 5 条"严格支配/iff/精确公式"表述（B03/B05、I04、NH04 等） | 只有抽样或网格证据 | 降级，见 `results/summary/fix/PH/claims_audit.csv` |
+| R9 BlockSession 关闭后的可达字节 | 修复轮引入的 `_cur_snap` 残留（66 262 B），只存在于修复轮冻结前的中间版本 | 修复后为 98 880 B（与其他机制同级，主要是驱动器日志）；残留数据保留为缺陷证据 |
+| R9 已登记的无效数据（`d4_proj_reissue_INVALID_policy_support_leak.json`、Q02 首次运行） | R9 已排除 | 维持排除 |
+
+## B. 修复轮中的无效、中断或被取代的运行
+
+| 数据 | 情况 | 处理 |
+|---|---|---|
+| `results/raw/fix/heldout/ho1_partial_killed_by_tool_timeout.jsonl` | 第一次 HO-1 运行被工具 10 分钟上限终止（W14 格子很慢）；随后两次重启因 `sh` 中没有 `time` 命令立即失败，没有写出数据 | 保留；完整运行为 `ho1.jsonl`（同一冻结代码、同一种子），结论只用完整运行 |
+| `results/raw/fix/heldout/ho2_stdout.txt` 末尾的 FileNotFoundError | HO-2 跑完并写出原始 `ho2.json` 后，写汇总时目录尚不存在 | 原始数据完整；汇总由同一原始文件重算（`results/summary/fix/heldout/ho2.json`）。原始日志含沙箱绝对路径，未改动 |
+| `results/raw/fix/LC/costs.json`（BlockSession 行） | 冻结前、释放修复前测量 | 被 `results/raw/fix/main/costs_postfreeze.json` 取代；D3 索引只用后者 |
+| Q2 的一次 X05 运行 | 预处理在原地更新边后读取了旧值，把真实变化当成空操作 | 分支已修复并重跑；该次输出已被覆盖，过程记录在 `sections/fix_Q2.md`，并有测试防止复发（这是唯一一处输出未保留的无效运行） |
+| Q1 的 A04 运行 | 一次因 CPU 争用超时、一次手动终止，均未写出文件 | 重跑完成；日志保留 |
+| PH `results/raw/fix/PH/w18_stress_n256_aborted*` | n=256 的长寿命 W18 两个配置触顶后中止 | 原样保留；结论只用完成的 n=192 运行，触顶记为结果行 |
+| `results/raw/fix/regression_before.txt` | 修复前回归失败 8/10 | 有效：这是缺陷证据 |
+| `results/raw/fix/main/shadow_mirror_residual_before_release.json` | 冻结后发现的镜像残留（7 项） | 有效：缺陷证据；改动见 `results/summary/fix/postfreeze_changes.md` |
+
+## C. 本轮有效数据的层次
+
+- core / owner：证明、穷举、差分（判定逐格相同）。
+- coupled（虚拟 u）：获取、延迟、发布、确认、生命周期组。
+- local_measured：正式计时墙钟（`results/raw/formal_fix/`，3 个串行独立进程，真实 PID/UTC）、tracemalloc 字节（`results/raw/fix/costprobe/`，与计时分开）。
+- 累计分配：Python 层不可测，所有表格中标"不可用"；LC 的"正增量和"只是下界。
+- 原生锚点（`data/`）：只作语境，没有混入任何结论。

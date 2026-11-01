@@ -1,0 +1,143 @@
+# WP-A proofs, counterexamples and negative results
+
+Cost layer: coupled (coupling.Session / StrongSession, virtual u). A physical service costs
+`service_u`; a proof attempt occupies one serial compute lane for `q_u` (or `ceil(q_eval*evals)`).
+u is never converted to ns; local wall (ns) appears only in bench rows and is a separate layer.
+
+Notation. Trace = fixed exogenous events (targets, rebind, evict_raw). A *drive instant* is any
+service completion or external event (the incumbent controller acts only there). L0 = frozen scan
+certifier through `Session.certify(mode='L0')`; S = `StrongSession.certify(mode='S')` (tree,
+nonneg domain, raw gate, support_keys = conservative window [0, t+3]).
+
+## Lemma G (observable gate is necessary; zero missed opportunities)
+
+`gate_rank_only(session, t, verdict)` admits a proof attempt only if every L0 need is a RANK and
+every item in [0, t+3] has a computed analysis. StrongSession's own raw gate refuses to emit a
+strong certificate unless every item in [0, t+3] has a computed analysis, and the strong tree on
+the nonneg domain cannot decide an ANALYSIS/DIMENSIONS need (the unknown fact is an input of the
+scan window, so at least two completions differ). Hence `gate=False => S cannot certify`, i.e. the
+gate is a necessary condition of success, evaluated on public state only. Consequence: gating never
+loses a proof win (missed = 0), it only removes wasted attempts.
+Evidence: results/summary/wpA/gate.json — missed 0 on tuning/heldout/heldout2; precision
+0.172 -> 0.50 (tuning), wasted 48 -> 10; heldout2 precision 0.75 (24/32); heldout 0/90 successes
+(natural families where the adoption domain is empty). Bench: gated_shadow vs shadow have equal
+latency on all 98 scenarios with 6.1x fewer strong evaluations (bench_smoke.json).
+
+## Counterexample K1 (race_keep / gated_keep are NOT latency-dominant)
+
+results/raw/wpA/race_keep_counterexample.json (constructive search, bench/run_wpA_cex.py):
+chain n=6, one missing rank (hole 1), capacity 1, service_u=3, q_u=1. Target 4 at t=0, targets
+1 and 2 at t=20. Incumbent latencies {4:6, 1:0, 2:0} (total 6). race_keep {4:1, 1:3, 2:3}
+(total 7). Mechanism: the proof publishes target 4 at u=1; race_keep removes 4 from the physical
+queue, so the second endpoint acquisition (refused at capacity 1 while the first ran) is never
+re-issued; targets 1 and 2, which the incumbent would have served from the evidence bought for 4,
+must buy it later. 4445 random adversarial runs (attack_1/2.json) did not find this: the
+counterexample needs capacity refusal + delayed reuse, which the random generator rarely produced.
+This refutes the conjectured Pareto claim of the earlier grids (which ran at capacity 3).
+
+## Lemma S1 (shadow adoption: proof may only touch the publication channel)
+
+ShadowRunner (candidates/wpA_lib.py): at exactly the incumbent's drive instants it L0-certifies
+every target not yet L0-certified, in the incumbent's FIFO order, and issues the incumbent's
+acquisitions — including for targets a proof already published. Proof completions never call
+`acquire`, `cancel` or `consume`. A target leaves the physical queue only when L0 certifies it;
+at that point, if the proof publication has expired, the L0 certificate is republished.
+
+Claim: for every trace, (i) the sequence of (acquire, finish, consume) calls, the admitted
+evidence, the raw store, physical admissions, discards and rank computations are identical to the
+incumbent's; (ii) every target's first publication time is min(incumbent time, proof time) and
+hence <= incumbent; (iii) at every drive instant the set of currently published targets is a
+superset of the incumbent's.
+
+Proof. Induction over drive instants. Hypothesis: owner evidence, raw store contents/insertion
+order, task table and L0 queue are equal before instant k. Proof events are not drive instants
+for the physical path (`_proof_event` returns before the loop) and change only the publication
+map. `StrongSession.certify(mode='S')` and `Session.certify(mode='L0')` do not mutate evidence,
+task table or raw store (raw reads in `_raw_current` only delete entries that are already invalid,
+and the identical invalidation happens on the incumbent's identical L0 reads at the same instant
+because both runs perform the same L0 reads in the same order; S reads happen after them and see
+only already-validated entries). Publication state is not an input of `_acquire`. Therefore the
+L0 verdicts at instant k are equal, the same `acquire` calls are made in the same order, the same
+admissions/refusals occur, service completions are scheduled at the same times, and the hypothesis
+holds at k+1. (ii): the incumbent publishes t at the first instant L0 certifies it; shadow
+publishes at that instant at the latest (if not already published by a proof that S certified on
+a snapshot; a stale proof certificate is refused by `Session.publish`). (iii): the incumbent's
+current publications are L0 certificates whose support is unchanged; shadow holds a valid
+publication for each such target because it republishes from L0 whenever its proof publication
+expired. Correctness (no wrong unit) is inherited from Session.publish revalidation (H01/H02).
+
+Executable check (bench/run_wpA_shadow.py, results/summary/wpA/shadow.json): 108 traces
+(tuning, heldout, heldout2, 60 random attack traces with evict_raw) x capacity {1,3} x service
+{2,4,8} x q {1,4} x {gated_shadow, shadow} = 2592 cells: 0 physical/correctness violations,
+0 per-target latency violations, 0 current-set violations, 472 cells strictly better.
+Tests: tests/test_wpA.py::TestShadowLemma (includes capacity 1, rebind+evict lifecycle, K1).
+
+## Lemma B (executable break-even, u only)
+
+A shadow proof for target t starts at the drive instant at which t's acquisition round is issued
+(or later, queued on the lane). It can publish strictly earlier than the incumbent only if
+lane_wait + q_u < residual service time <= service_u. With one lane and gated attempts the first
+attempt starts with lane_wait = 0, so proof wins exist only if q_u < service_u, and each win saves
+at most service_u - q_u. Boundary = `shadow_boundary(q_u, service_u)` = q_u < service_u.
+Executable verification (bench/run_wpA_boundary.py, boundary.json): 48 traces (tuning + both
+held-out sets) x service {2,3,4,8} x q {1,2,3,4,6,8,9}: the rule predicts wins>0 exactly in all
+28 cells; measured gain = wins x (service_u - q_u) (e.g. su8: 124/106/87/68/34 u for q 1/2/3/4/6
+with 17-18 wins; su4 q1..3: 51/34/17). Outside the boundary shadow costs only lane time (no
+virtual latency, no physical work): the safe fallback (A06) is "do nothing".
+Minimal calibration (A05): q_u and a lower bound of residual service time; no service
+distribution is needed because shadow cannot be worse than the incumbent in u.
+
+## Proposition R (race-with-cancel waste is unbounded in the number of later consumers)
+
+`race` cancels running tasks that no pending target's current L0 still needs once a proof
+publishes. Evidence is shared across targets, proofs are per target. Construct m targets arriving
+after each proof publication whose L0 needs the cancelled identity: every arrival re-acquires it
+and, if the proof again wins first, cancels it again; discards grow linearly in m while the
+incumbent buys once. Observed: heldout2 su8 q1 388 admissions / 380 discarded vs 32 (grid);
+bench_smoke 1333 vs 411 admissions over 98 scenarios; inflight study su8: 50 admissions / 48
+discarded vs 8. Corollary (A03): a proof saves physical work only for identities with no consumer
+before their next need; certificate counts are irrelevant to the saving.
+
+## Proposition P (physical-saving route: proof_first costs q per consumer)
+
+proof_first (blocking, gated) never acquires for a target whose proof succeeds, so physical
+admissions fall (bench_smoke 411 -> 344; heldout2 32 -> 8), but the missing evidence is never
+bought, so every later consumer of the same hole re-proves (one lane, serial). With c consumers of
+one missing identity, proof_first pays ~c*q_u on the lane (plus queueing) while the incumbent pays
+one service round. Break-even c*q_u < service_u (rent-or-buy on the physical identity; the
+deterministic ski rule rent-until-paid>=service_u is the classical 2-competitive answer for one
+identity). Measured families have c >> service_u/q_u (heldout2: ~49 proofs per trace), so the
+physical saving costs latency: heldout2 su8 q1 227 vs 134 u (incumbent) vs 45 u (shadow);
+ski saves 4 admissions of 411 at +21% latency. Verdict: no cheap legal L1 scope removes physical
+critical-path work without a latency loss on these families; the removable critical-path quantity
+is the *wait*, which shadow removes with zero physical change.
+
+## A04 interleavings (real Session API)
+
+Case n=6 (target 4, hole 1). All 5040 orders of {P, L, Fa, Fb, X, R, C} on StrongSession:
+0 violations of I1-I7. Mutants: publish_no_support 252 orders (I7), cancel_frees_slot 3360
+(I3), both 2772, rebind_keeps_certs 0 — honest negative: keeping old certificates across rebind
+is unobservable because the binding counter in the publish guard already rejects them (clearing is
+defence in depth, not a necessary invariant). results/raw/wpA/a04_interleavings.json.
+
+## Proposition L (capacity-1 controller livelock; resident-aware fix)
+
+The package controller/`run_trace` re-acquires both endpoints of a missing rank. At capacity 1
+with raw_capacity >= 2: acquiring endpoint a admits a's witness; the next drive re-requests a
+(resident) and b; a is re-served, replacing its own raw entry, and the slot is busy when b is
+requested; the cycle repeats and the rank is never derived (package run_trace: 97 admissions,
+no publication; capacity 2 publishes). Skipping rank endpoints whose raw witness is resident and
+current breaks the cycle: each round admits a non-resident endpoint, so after at most 2 rounds
+both are resident and the rank derives (raw_capacity >= 2). tests: test_capacity1_livelock_and_resident_fix.
+All WP-A grids use resident_aware=True.
+
+## Other negative results (bounded claims)
+
+* Adaptive Beta-LCB per observable class: max latency regret 136/196/84 u (minimax.json); the
+  rule-based gate has 0 misses and needs no learning (F06/A02: minimax over online learning).
+* Budget doubling (P02): budgets < ~300 evaluations yield 0 certificates (all stops); the
+  threshold is ~the tree's own evaluation size, so interruption only adds attempts (budget.json).
+* Portfolio (P03): identical certificates, 2.3 ms vs exact 0.7 ms vs persistent tree 0.45 ms
+  per attempt (tuning proof_first); persistent tree 12x cheaper than fresh tree on heldout2.
+* O05: island-only summaries are unsound: counterexample in islands.json (target 2's unit takes 3
+  distinct values depending on the unknown bridge item 1 / edges (0,1),(1,2)).

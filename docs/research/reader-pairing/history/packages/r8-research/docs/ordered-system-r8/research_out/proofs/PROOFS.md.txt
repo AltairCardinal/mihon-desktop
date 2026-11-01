@@ -1,0 +1,180 @@
+# 证明、引理与反例（主会话族：A1–A5、B1–B3、D、E、F、H、新假设）
+
+协议族见 `proofs/protocol.md`，宿主缓存族见 `proofs/hosts.md`。本文件的每条结论都标注适用域：
+**R** = 冻结 `reference.py` 的可执行语义；**Ω_α(K)** = 当前知识 K 的全部补全，头部权威假设 α（见 §8）；
+**G2** = 冻结参考的有限标量扩展域；**G0** = `GENERATIVE_DOMAIN.md` 已核实的见证派生子过程。
+有限测试只证明被测范围；其余为人工推导，依赖的代码行均在 `reference.py` 的 `_Scan` 中可逐行核对。
+
+---
+
+## 1. 扫描规则的转换器表示（F1/A1/A2/B2 的共同基础）
+
+**定义 1（边界状态）。** 位置 i 之前的边界状态取值于
+`mode ∈ {at(opening, reserved==i) ×4, skip}`，`skip` 表示 i 已作为相邻对 (i−1,i) 的第二成员被消费；
+另带一位 `m = manual(i−1)`。共 10 个状态，初始状态 `S0 = at(True, False), m=0`。
+
+**引理 L-M（手动链的前向递推）。** 令
+`B(o) = o∈starts ∧ 0≤o<n−1 ∧ o∉forced ∧ o+1∉forced ∧ ¬wide(o) ∧ ¬wide(o+1)`，则
+`manual(o) = B(o) ∧ ¬manual(o−1)`，`manual(−1)=False`。
+
+证明：`_Scan.manual(i)` 从 i 向左走过 starts 中的连续段；遇到无效序号（valid 为假）时把它记为 False 并以
+previous=False 停止，遇到非 start 或越界亦以 previous=False 停止，然后沿 pending 逆序翻转。于是对 o∈starts 且有效：
+若 o−1 是有效 start，则 manual(o)=¬manual(o−1)；否则（o−1 非 start、或 start 但无效，二者都使 manual(o−1)=False）
+manual(o)=True=¬manual(o−1)。o 无效或非 start 时 manual(o)=False=B(o)∧…。缓存只是同一递归的记忆化。∎
+（`tests/test_core_research.py::test_manual_alternation_mutant` 杀死去掉交替的变异。）
+
+**引理 L-W（窗口引理）。** 给定 manual(i−1)，`step` 在位置 i 只读取位置 `[i−1, i+3]` 的事实
+与边 `(i,i+1)`、`(i+1,i+2)`。
+
+证明：逐个谓词展开。`allowed(i)` 读 wide(i), wide(i+1), manual(i−1..i+1), resolved(i), resolved(i+1)，
+i=0 时还读 known(0), known(1), side(0), side(1)；`later_wins(i)` 读 strength(i), strength(i+1)（后者经 allowed(i+1)
+读 wide(i+2), manual(i+2), side/resolved(i+2)）及两条边；manual(i+2) 经 L-M 只需 B(i+2)，即 wide(i+2), wide(i+3)；
+单元原因链读 wide(i−1), wide(i+1)。没有其他读取。∎
+推论：位置 p 的事实变化只影响叶 `i ∈ [p−3, p+1]`；边 (a,a+1) 只影响叶 a−1, a（`transducer.affected_leaves`）。
+变异 `affected_leaves = [p−1, p]` 被 `test_window_lemma_mutant` 抓到。
+
+**定理 T-1（转换器等价）。** 对任意输入（包括无效/未知事实的临时单元语义），
+从 S0 依次施加叶函数并在 at 状态输出 `step` 的单元，所得序列等于 `reference.complete_plan`。
+
+证明：对游标归纳。complete_plan 的游标 `(i, opening, reserved)` 只在 `i == reserved` 处使用 reserved（`step` 第一行），
+且 reserved 只可能等于当前或过去位置，故 `reserved==i` 一位足够；相邻对使游标跳到 i+2，此时 i+1 处的边界状态记为 skip，
+skip 的后继为 `at(False, False)`（对后 opening=False，旧 reserved ≤ i 不可能等于 i+2）。manual 由 L-M 前向携带。∎
+证据：`complete_plan_tree` 与 RelTree 单点查询在 3 000 个随机输入（含 pinned、isolates、PAIR/SINGLE 开局、扩展域秩、无效事实）
+上与 R 完全一致（`/home` 测试脚本迁入 `tests/test_core_research.py::test_complete_plan_equivalence`，600 例）。
+
+**引理 L-M2（状态合并：m 位冗余）。** 任何可达的 at 状态在位置 i 都满足 manual(i−1)=False。
+
+证明：设 manual(i−1)=True。则 manual(i−2)=False（交替），allowed(i−2) 不能经手动分支为真，且其
+`manual(i−1)` 检查使 allowed(i−2)=False，所以游标不能以相邻对 (i−2,i−1) 跳过 i−1，游标必以 at 状态到达 i−1；
+此时 allowed(i−1)=True（手动），strength(i−1)=3；而 allowed(i) 因 manual(i−1) 为假，strength(i)=−1，later_wins(i−1)=False，
+于是取对 (i−1,i)，i 处为 skip。∎ 结论：10 状态可安全合并为 5 状态（A1 的一条严格合并）。
+`test_manual_bit_merge_lemma` 在 500 个含 pinned 链的随机输入上验证"把携带位强制为 0"与 R 完全相同；
+NH-5 把不可达行从节点合成中删掉：仍精确，速度约 +8%（单进程试测，`results/combos_new.json`）。
+
+---
+
+## 2. A1：入口状态等价类与无固定半径
+
+**表 A1（最短区分后缀）**（`results/theory_a.json`，随机完整输入搜索）：5 种 mode 两两都可区分，
+最短区分后缀 1–3 个位置；没有可在所有后缀上合并的 mode 对（只有 L-M2 的 m 位可并）。
+
+**定理 A1（无固定半径）。** 对任意 r，存在长度 n>r+3 的合法完整输入使 `at(closed,free)` 与 `skip`
+两个入口在距离 ≥ r 的位置仍输出不同单元。
+
+构造：全部 NARROW、automatic、无侧向标签、边秩严格递减（`theory_a.decreasing_chain`）。在 at 状态 i（reserved≠i）
+allowed(i) 为真、强度相同、later_wins(i) 为真（后一条边秩更小），故 i 单独、i+1 被预留、(i+1,i+2) 成对；
+从 skip（i 已消费）则在 i+1 单独、(i+2,i+3) 成对。两相位相差一位并永远不重合。实测 n=8…128：最后一个不同位置 = n−1 或 n−3。∎
+运输到 G0：E1 的构造（§6）在 G0 中实现了这样的递减秩链（`E1_transport_example`：两个只在边 (1,2) 不同的 G0 世界，最后
+一个对象的单元不同），所以这一信息依赖不只是扩展域伪象。
+后果：参考证书在该族上 `first=1`，步数 ≈ 4n（n=256 时 1 013 步、766 个读键）；任何固定窗口方案（N02）都必须在此回退。
+
+---
+
+## 3. 部分信息认证
+
+**定义（α 世界集）。** Ω_α(K) = 把 K 中未知/失败/几何无效的分析补成有效 computed 事实、把两端均为 NARROW
+且无 computed 记录的边补成 `null` 或域内数值后得到的全部完整输入；若头部有效，补全的 state 必须等于头部 state（α）。
+秩域：`ext`（有限 double，含 Python int 精确比较）、`nonneg`、`G0`（m/50 网格）。
+
+**引理 L-R0（比较的可实现性精确判定）。** 对约束集 {(x<y)=o}，`transducer.feasible` 在候选集
+{已知值, 相邻 double ×3（nextafter）, int±1, 域端点, 若干内点}上穷举；这对 ≤3 个链式关联变量是完备的：
+任何满足的实数赋值可在保持所有严格序关系与相等关系的前提下移到候选值（相邻 double 覆盖紧贴已知值的严格侧，
+域端点覆盖"比所有已知值都小/大"）。−DBL_MAX 以下、DBL_MAX 以上、nonneg 中 0 以下均判为不可实现。
+**反例（N03 回归）**：旧代表方案用 `v−1/v+1`；对 v=1e17 有 v−1==v，"x<v" 被判不可实现，
+于是在 `E2_concrete`（n=5，边(1,2)=1e17，边(2,3) 未知）上错签单元 (3,4)，而世界 oracle 有 2 个不同单元。
+`test_old_representatives_mutant_is_unsound` 固定该反例。
+
+**引理 L-R（比较只用不相交边对）。** 沿一条扫描路径，秩比较发生在 at 状态 i 且 allowed(i) 时，比较 (i,i+1) 与 (i+1,i+2)；
+结果为真且 i>0 时 i+1 被预留并不再比较；结果为假时下一次比较在 i+2。唯一例外是 i=0（不预留），
+此时 i=1 的比较与 i=0 共享边 (1,2)。故每条路径上至多一个长度为 3 的约束链，其余比较两两不相交。
+
+**定理 L-R1（独立叶关系树的可靠性）。** RelTree 的叶 i 把每个输入状态映射到"窗口内未知事实的某个赋值下可达的后继集合"，
+各叶独立分支。对任意 X∈Ω_α(K)，X 的真实运行 s_{i+1}=T_i^X(s_i) 满足 s_{i+1}∈R_i(s_i)，
+因而 X 的目标单元属于树算出的单元集合；集合为单点 ⇒ F_t 在 Ω_α(K) 上恒定。∎（独立分支只会多加状态，过近似唯一可签，
+过近似歧义不能宣称真实歧义 —— N05。）
+
+**定理 L-R2（共享赋值 DP 的精确性）。** `omega.certify_exact(first=0)` 的前沿状态
+(mode, 被保留的未知事实赋值, 仍与未来边相连的比较约束分量) 对未来步骤是充分的：
+第 i+1 步只读 [i, i+4] 与边 ≥ i+1（L-W），被丢弃的约束分量不含任何未来边（L-R 使分量至多 3 条边），
+而丢弃前它们已联合可实现。因而 DP 恰好枚举 Ω_α(K) 在扫描可区分意义下的全部运行：认证 ⇔ 世界集上 F_t 唯一（在抽象域内）。
+first>0 时以全部 10 个入口状态起步是可靠过近似。∎
+证据：3 589 个 n≤6 的随机部分知识案例 × 三个秩域，DP 与世界 oracle 完全一致（无 UNSOUND、无 INCOMPLETE）；
+冻结参考在同一 α 世界上也从未错签。`FrontierCache` 与逐目标 DP 在 2 483 个查询上一致。
+
+**E6 最小例（树过宽而 DP 可签）**：`results/relational.json:E6_tree_too_wide.smallest`（n=7）：树同时给出
+OPENING 与 BEFORE_WIDE 两个原因，因为独立叶没有共享 i0 的 state（开局标志相关性丢失）。频率：6 000 例中 2 例。
+
+---
+
+## 4. 增量维护（B1–B3）
+
+**引理 L-S（重同步停止规则）。** ResyncPlan 在位置 p 变化后，从边界 p−3 开始重扫；在第一个 i ≥ p+1 处，若新的
+边界状态 s_{i+1} 等于旧值，则其后全部单元不变。证明：叶 i+1… 的窗口不含任何变化位置（L-W），输入状态相同，
+由确定性得输出相同。∎ 在 i < p+1 处停止是错误的：变异 `stop_after = start` 被 `test_resync_stop_rule_mutant` 抓到。
+最坏情况：相位翻转一直传播到序列末尾（`chainfront`：每次更新 n 步），这是 A1 定理的直接推论。
+
+**TreePlan 代价界。** 更新：≤5 个叶 × ≤10 个状态的 step 评估 + O(log n) 次 10 元函数合成；
+查询：O(log n) 次函数施加 + 1–2 次局部 step。与相位链长度无关。
+
+---
+
+## 5. A5：秩只通过严格序与 null 起作用
+
+**定理 A5。** 固定非秩事实，若两组秩具有相同的 null 标志与相同的"相邻比较位"
+`c_i = [r_{i+1}≠null ∧ (r_i=null ∨ r_{i+1}<r_i)]`，则 complete_plan 相同。
+证明：`_Scan` 只在 `later_wins` 中读秩，且只用上式；其余谓词不读秩。∎
+推论：全局保序重编码（等值共享编码）保持计划（4 000 例 0 差异）；随机重抽数值后签名相同者 1 433 例 0 差异。
+注意：编码必须使用 Python 的精确比较（int 与 float 混合），不能先转 double（见 E4/NH-6）。
+
+## 6. E 族
+
+**E1（构造性可实现性）。** 在 rotation 0、h ≥ 50（行不重复）、w ≤ h 的 NARROW 链上，任意序列
+`r_i ∈ {m/50 : 0≤m≤1499} ∪ {null}` 都可由 G0 管线精确实现（`generative.realise_chain`；null 用 d ≥ 30 实现）。
+证明要点：AB 边 (i,i+1) 用 (R_i, L_{i+1})，相邻边使用不同向量对；即使 w∈{1,5} 使 L_i=R_i，两个共享端点的距离
+也可独立设定（每条边只移动另一个端点，150 个坐标、每坐标余量 ≥ 40 远大于所需 L1 总量 ≤ 1600），且基向量方差 >> 100、
+所有通道保持在 [20,235]，任何过滤器都不触发。全部 300 次随机构造经独立的采样→规范化→距离→过滤管线重派生，0 误差。
+**未刻画**：h<50（行重复造成元素重复约束）、旋转/坐标逆映射、侧向标签的产生过程（未公开）。因此涉及侧向标签或状态的
+下界/歧义只在扩展域成立，不能运输到 G0（N05）。
+**必要条件（第二路线）**：G0 秩非负、量化、<30；WIDE 端点 ⇒ 结构 null；同一对象对的 AB 与 BA 秩来自不同向量对，互相独立
+（E3 实验 50/50）。在 G0/nonneg 域中，已知秩 0 旁的未知秩不能更小 —— X10 给出 ext 歧义而 G0 可签的具体例子。
+
+**E3（标签互换等变性）。** `swap_sides`（A↔B、方向 AB↔BA）后计划等于原计划的槽标签互换（秩数值不变时）。
+证明：`_Scan` 中 leading/trailing 随方向互换，所有侧向比较都以 leading/trailing 表达，单元槽来自 side 或 leading/trailing。
+3 000 例 0 差异。但方向变化在真实系统中意味着秩来自不同向量对（新证据），故只在 `automatic=False`（秩与侧向均不被读取）
+时可以免重算复用：1 000 例 0 差异。反转顺序不等变（给出反例）。
+
+**E4（数值接口）。** 同一 JSON（边秩 2**53+1 为 int、2**53 为 double）在 Python 参考与只接受 double 的读者处产生不同计划
+（`results/theory_a.json:E4_boundaries`，int_vs_double 与 1e17+2 两例）；±0、次正规数、有限极值只要用精确比较就不改变计划。
+
+**E5（渐进特征）。** 部分和界 `S_k ≤ m ≤ S_k + 765(50−k)` 可靠，但对非 null 秩毫无作用：要在 k 个元素后断定
+d(X,Y) < d(Z,W) 需要 `S_k^{XY} + 765(50−k) < S_k^{ZW}`，而 m < 1500 ≪ 765·(50−k)（k<48）——2 000 次比较全部需要 50 个元素。
+有用的是"早判 null"：部分和 ≥ 1500 即知 d ≥ 30（单调），m=3000 时中位 27 个元素、m=9000 时 9 个。
+子采样估计（第二路线）不可靠：2 000 次比较错 770 次。
+
+## 7. H 族
+
+**H3（缓存竞争性）。** 容量 k 的 FIFO/LRU 对 k+1 个目标的循环序列每次都缺失，而 Belady（离线）每 k 次只缺 1 次：
+`cyclic5` 200/200 对 OPT 53；对手序列 250/250 对 103。这是经典的 k 竞争比下界；在线策略无法超越而不读未来（禁止）。
+漂移序列 FIFO 186 / LRU 182 / OPT 115。
+
+**H5（L2 局部极大规则 LMP）。** 键 (strength, 秩偏好, 偶数优先, −i) 构成严格全序 ⇒ 第一遍的局部极大不相邻；
+第二/三遍只在两侧都未选时按奇偶补选 ⇒ 结果是合法划分且对候选边集合极大。依赖半径：第一遍读 i±1 的键，第二遍读第一遍的 i±1，
+第三遍读第二遍的 i±1 ⇒ 至多 ±4 条边的键（每个键经 allowed 读 ±2 位置），**另加 pinned 段长度**（manual 递推）。
+这是 L2：1 500 个随机输入中 7.4% 的位置单元不同；递减链上一次秩编辑影响的最远距离：参考 92、LMP 2。
+
+**H4（验证投影的判别力）。** 见 `results/theory_h.json`：宿主投影字段（状态+槽+确定性+失败）对"只改原因"的变异 0/15 命中、
+对需求顺序 0/85、对 steps 0/1200；同分规则变异在通用随机生成器中只激活 1/1200 次，用 {1,2,null} 强制同分后激活 188/800。
+`certain` 在任何已认证判决中恒为真（认证要求所有读到的尺寸有效 ⇒ known 为真），因此"certain 恒真"变异不可观测。
+
+## 8. 新发现的隐含前提与缺陷
+
+**NH-1（头部权威 α 是冻结认证器未声明的前提）。** 反例：automatic=False，目标分析未知、头部有效 NARROW；
+参考凭头部认证；而一个分析结果为 WIDE 的补全给出不同单元（`test_header_authority_assumption`）。
+391 个随机小案例：参考认证 278 个，其中 106 个在 β 世界集（不假设 α）下不唯一；β 安全的关系树认证 179 个且 0 错签。
+
+**NH-2（无条件版本推进）。** 冻结 `Host.replace` 为决定"是否推进全局修订"要构造新旧两个整案 `typed()`；
+无条件推进只会把可能的戳命中变成精确读值校验（反之不会），故判决不变。代价：n=256 时 typed 比较占 replace 的约 62%
+（`results/theory_h.json:H1_factor_ledger_n256`）；在 4 条冻结轨迹上 325 次更新中只有 10 次是 no-op。
+
+**C5（宿主族发现，见 proofs/hosts.md T-C5）。** 冻结宿主的记忆只保存被采纳尝试的读集，
+need_facts/采纳重试的策略判决因此可能陈旧；两个最小夹具使 `Config.current()` 返回与 `certify_strategy` 不同的公开判决。
