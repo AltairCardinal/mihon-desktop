@@ -9,6 +9,17 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## November 1, 2026 — Reader settings and batch read status
+
+**Accepted candidate documentation · no public product release**
+
+- Android Default/Automatic reading descriptions use consistent horizontal spacing and theme colors. The two-page Auto Spread Matching setting sits before Rotation without the extra Pager heading, preserves its saved state, and stays hidden in single-page and Webtoon modes.
+- Windows reader settings use the corrected Simplified/Traditional Chinese scaling labels and omit the zoom shortcut bar while retaining existing viewport zoom controls. Normal selected/below-position read-status changes use one batch write, preserving sync intent and accurate failure handling.
+- Accepted candidates: Windows `0.11.24.6.feaf073` and Android `0.19.4-aex.114` (versionCode `132`). [Reader implementation](https://github.com/AltairCardinal/mihon-desktop/commit/e38257ab357c57d069776154032918c479c37e1c); [candidate version and build record](https://github.com/AltairCardinal/mihon-desktop/commit/60fd190521cbe1097e2721725e0f7d2ec26d01d1). The Windows candidate also includes the separately documented batch-bookmark fix.
+- The Android candidate was installed on the owner's tablet with the existing application identity and certificate. This acceptance covers the delivered reader-setting and chapter-action scope; it does not establish macOS acceptance, a fixed performance target, or a public release.
+
+Acceptance basis: the project owner accepted these candidates in private chat on November 1, 2026 and requested main integration, a commit, and a push.
+
 ## November 1, 2026 — Bounded Windows comic panning
 
 **Accepted fix documentation · no public product release**
