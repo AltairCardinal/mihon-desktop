@@ -12,16 +12,22 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.platform.app.InstrumentationRegistry
+import eu.kanade.tachiyomi.ui.reader.AndroidChapterPairingCoordinator
 import eu.kanade.tachiyomi.ui.reader.HostReaderArtFixture
+import eu.kanade.tachiyomi.ui.reader.ReaderViewModel
 import eu.kanade.tachiyomi.ui.reader.actualArtField
 import eu.kanade.tachiyomi.ui.reader.actualArtReaderState
 import eu.kanade.tachiyomi.ui.reader.loader.HttpPageLoader
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DisplayPage
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPagerPageHolder
+import kotlinx.coroutines.runBlocking
+import mihon.domain.reader.ChapterPairingRepository
+import mihon.domain.reader.ChapterPairingSnapshot
 import mihon.domain.reader.ReaderDualPageFrame
 import mihon.domain.reader.ReaderPageAnalysisEvidence
 import mihon.domain.reader.ReaderPairingCertification
+import mihon.domain.reader.ReaderPairingPersistenceStatus
 import okhttp3.Call
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -31,8 +37,14 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
+import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.i18n.MR
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.addFactory
+import uy.kohesive.injekt.api.get
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -48,6 +60,166 @@ class SharedDualPageNonblockingNativeTest(private val mode: Int, private val nex
         @JvmStatic
         @Parameterized.Parameters(name = "mode-{0}")
         fun vectors() = listOf(arrayOf(6, KeyEvent.KEYCODE_DPAD_LEFT), arrayOf(8, KeyEvent.KEYCODE_DPAD_RIGHT))
+    }
+
+    @Test
+    fun failedRestoreKeepsPixelsUntilUserOpensSettingsAndRetries() {
+        exerciseRestoreFailure(mode)
+        if (mode == 6) exerciseRestoreFailure(7)
+    }
+
+    private fun exerciseRestoreFailure(restoreMode: Int) {
+        val originalCoordinator = Injekt.get<AndroidChapterPairingCoordinator>()
+        val repository = Injekt.get<ChapterPairingRepository>()
+        val failRead = AtomicBoolean(true)
+        val loads = ConcurrentLinkedQueue<Pair<Long, Long>>()
+        val coordinator = AndroidChapterPairingCoordinator(object : ChapterPairingRepository by repository {
+            override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot {
+                loads.add(chapterId to mangaId)
+                if (failRead.get()) throw IOException("Owned native fixture restore failure")
+                return repository.load(chapterId, mangaId)
+            }
+        })
+        runBlocking { originalCoordinator.awaitAcceptedOperations() }
+        Injekt.addFactory<AndroidChapterPairingCoordinator> { coordinator }
+        try {
+            assertSame(coordinator, Injekt.get<AndroidChapterPairingCoordinator>())
+            HostReaderArtFixture("synthetic", syntheticOnlinePages = 200).use { fixture ->
+                fixture.images.set(
+                    List(200) { index ->
+                        HostReaderArtFixture.png(
+                            400,
+                            600,
+                            when (index) {
+                                125 -> Color.RED
+                                127 -> Color.YELLOW
+                                else -> Color.GREEN
+                            },
+                        )
+                    },
+                )
+                fixture.configure(mode = restoreMode, matching = false)
+                fixture.cold()
+                val saved = runBlocking {
+                    val current = repository.load(fixture.chapterId, fixture.mangaId)
+                    repository.replace(fixture.chapterId, fixture.mangaId, current.revision, 200, setOf(125))
+                }
+                fixture.launch(initialPage = 125)
+                fixture.onReaderMain { activity ->
+                    assertSame(
+                        "Actual ViewModel must consume the installed restore coordinator",
+                        coordinator,
+                        actualArtField<AndroidChapterPairingCoordinator>(activity.viewModel, "pairingCoordinator"),
+                    )
+                }
+                feedbackSnapshot()
+                fixture.await("Transparent repository wrapper must receive the original chapter read") {
+                    loads.isNotEmpty()
+                }
+                assertEquals(listOf(fixture.chapterId to fixture.mangaId), loads.toList())
+                fixture.awaitStable("Restore failure must allow real native target pixels") {
+                    fixture.logicalPageIndex() == 125 && fixture.containsColor(Color.RED)
+                }
+                fixture.await("The original repository failure must reach its actual owner") {
+                    var failed = false
+                    fixture.onReaderMain { activity ->
+                        val chapter = actualArtReaderState(activity).currentChapter
+                        failed = activity.viewModel.dualPagePairings.chapters[chapter]?.session?.pairingState?.status ==
+                            ReaderPairingPersistenceStatus.RESTORE_FAILED
+                    }
+                    failed
+                }
+                fixture.onReaderMain { activity ->
+                    val state = actualArtReaderState(activity)
+                    assertEquals(null, state.dialog)
+                    if (restoreMode == 7) {
+                        assertEquals(true, activity.viewModel.automaticDualPage)
+                        assertTrue(state.viewer is DualPageR2LPagerViewer)
+                    }
+                    val chapter = requireNotNull(state.currentChapter)
+                    val owner = requireNotNull(activity.viewModel.dualPagePairings.chapters[chapter]).session
+                    assertEquals(ReaderPairingPersistenceStatus.RESTORE_FAILED, owner.pairingState.status)
+                    assertEquals(null, owner.pairingState.revision)
+                }
+                val before = selectedFrame(fixture, 125)
+                assertTrue(before.drawnPageIds.any { it.sourcePageIndex == 125 })
+                val pixels = fixture.observeSlot(Color.RED)
+                assertEquals(saved, runBlocking { repository.load(fixture.chapterId, fixture.mangaId) })
+                var settingsLabel = ""
+                var retryLabel = ""
+                fixture.onReaderMain {
+                    it.showMenu()
+                    assertTrue(
+                        "Existing showMenu must actually publish menuVisible",
+                        actualArtReaderState(it).menuVisible,
+                    )
+                    settingsLabel = it.stringResource(MR.strings.action_settings)
+                    retryLabel = it.stringResource(MR.strings.action_reload_page_pairing)
+                }
+                feedbackSnapshot()
+                fixture.clickUi(
+                    settingsLabel,
+                    requireVisible = true,
+                    diagnosticStage = "restore-mode-$restoreMode-settings",
+                )
+                feedbackSnapshot()
+                fixture.onReaderMain { assertTrue(actualArtReaderState(it).dialog is ReaderViewModel.Dialog.Settings) }
+                val beforeRetryLoads = loads.size
+                failRead.set(false)
+                fixture.clickUi(
+                    retryLabel,
+                    scroll = true,
+                    requireVisible = true,
+                    diagnosticStage = "restore-mode-$restoreMode-retry",
+                )
+                fixture.await("Visible settings retry must enter a new original repository read") {
+                    loads.size > beforeRetryLoads
+                }
+                assertEquals(beforeRetryLoads + 1, loads.size)
+                assertTrue(loads.all { it == (fixture.chapterId to fixture.mangaId) })
+                fixture.await("Explicit settings retry must restore the real saved record") {
+                    var restored = false
+                    fixture.onReaderMain { activity ->
+                        val chapter = requireNotNull(actualArtReaderState(activity).currentChapter)
+                        restored =
+                            activity.viewModel.dualPagePairings.chapters[chapter]?.session?.pairingState?.status ==
+                            ReaderPairingPersistenceStatus.READY
+                    }
+                    restored
+                }
+                feedbackSnapshot()
+                fixture.key(KeyEvent.KEYCODE_BACK)
+                feedbackSnapshot()
+                fixture.onReaderMain { it.hideMenu() }
+                feedbackSnapshot()
+                fixture.awaitStable("Closing explicit settings must reveal the original target frame") {
+                    fixture.containsColor(Color.RED)
+                }
+                assertEquals(before.id, selectedFrame(fixture, 125).id)
+                assertEquals(pixels, fixture.observeSlot(Color.RED))
+                val outgoing = selectedFrame(fixture, 125)
+                val nextCandidate = outgoing.unit.pageIds.filter {
+                    it.sourcePageIndex > 125 && it !in outgoing.drawnPageIds
+                }.minOfOrNull { it.sourcePageIndex } ?: (
+                    maxOf(125, outgoing.drawnPageIds.maxOf { it.sourcePageIndex }) + 1
+                    )
+                fixture.key(if (restoreMode == 8) KeyEvent.KEYCODE_DPAD_RIGHT else KeyEvent.KEYCODE_DPAD_LEFT)
+                feedbackSnapshot()
+                fixture.awaitStable("Only the next actual turn applies restored pairing without skipping a source") {
+                    fixture.logicalPageIndex() == nextCandidate &&
+                        runCatching {
+                            selectedFrame(fixture, nextCandidate).drawnPageIds.any {
+                                it.sourcePageIndex == nextCandidate
+                            }
+                        }.getOrDefault(false)
+                }
+                assertEquals(saved, runBlocking { repository.load(fixture.chapterId, fixture.mangaId) })
+            }
+        } finally {
+            runBlocking { coordinator.awaitAcceptedOperations() }
+            Injekt.addFactory<AndroidChapterPairingCoordinator> { originalCoordinator }
+            assertSame(originalCoordinator, Injekt.get<AndroidChapterPairingCoordinator>())
+        }
     }
 
     @Test

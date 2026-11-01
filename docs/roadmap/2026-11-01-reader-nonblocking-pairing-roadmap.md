@@ -25,7 +25,7 @@ date: 2026-11-01
 
 当前实现提交为 `63cef8f1ccf891b28659e294555c8d1a296d57df`，worktree 为 `D:/Codex/worktrees/reader-nonblocking-pairing-integration-20261101`，分支 `codex/reader-nonblocking-pairing-integration`。本次文档纠偏另作提交，不改写实现历史、不推送。NB04未完成，以下均为待实施／待验收契约，不是已修复承诺。
 
-- [ ] **A：双端恢复失败也必须非阻塞。** 正常打开、恢复、冷跳、翻页及后台配对／手动记录恢复失败时，自动保留可用画面并按临时规则继续；禁止自动中央浮层、模态弹窗或要求先选“本次默认”。不能只修改fixture掩盖production失败UI。保留未知／失败状态、已知手动约束及存储记录，不把失败当空记录或READY，不自动写默认覆盖旧数据。恢复操作仅在用户主动进入已有双页调整／阅读设置界面时可见；若已有入口不足，最小位置限定为该界面双页调整区域，不另造提示产品。晚到成功只影响之后主动翻页，保持当前帧且不漏页。
+- [ ] **A：双端恢复失败也必须非阻塞。** 正常打开、恢复、冷跳、翻页及后台配对／手动记录恢复失败时，自动保留可用画面并按临时规则继续；禁止自动中央浮层、模态弹窗或要求先选“本次默认”。不能只修改fixture掩盖production失败UI。保留未知／失败状态、已知手动约束及存储记录，不把失败当空记录或READY，不自动写默认覆盖旧数据。恢复操作仅在用户主动进入已有双页调整／阅读设置界面时可见，且仅保留一个可选的“重新读取双页调整”操作。正常阅读及主动打开设置都不得出现旧错误标题和“重试／本次默认”二选一错误块，不触发 useDefault，不另造提示产品。晚到成功只影响之后主动翻页，保持当前帧且不漏页。
 
   **先红后绿与最小范围：** Desktop执行真实恢复coordinator＋完整viewport，Android覆盖实际VM→Activity对话框接线；先证明现实现会自动弹层而违反契约，再最小修复，复验这些用例及直接影响的持久化安全契约。源码入口：Desktop `DesktopReaderScreen.kt` 的dual＋`PairingLoad.ERROR`→`PairingRestoreError`（旧 `dec006e7d37` 分支，本轮漏清理）；Android `ReaderViewModel.kt` 后台恢复失败→`Dialog.PairingRestoreError`，`ReaderActivity.kt`不可dismiss的AlertDialog。不能仅测共享helper或扫描符号。第二章节恢复失败原因尚未知，只沿当前fixture→真实持久化load路径有限追踪，不猜用户记录损坏。
 
@@ -38,6 +38,36 @@ date: 2026-11-01
 **不合格的第二次人工场景：** `.gradle-coordinator/windows-native/manual-acceptance-02/pre-human-state.json`为章节991200023、READY；`prepared-state.json`及`handoff-state.json`为另一个章节991200025、RESTORE_FAILED。不得拼成同章的一次状态转换。后者encoded/model/runtime Ready与配对RESTORE_FAILED属于不同状态域，可以并存，Ready也不证明解码／实际绘出成功。handoff已记录RESTORE_FAILED、最后捕获无帧仍交付用户，是准备失败；用户截图进一步确认中央恢复浮层，不能算B验收通过。具体恢复失败原因仍未知。
 
 **停止交接：** 本轮不启动应用、桌面操作、构建或产品测试，不改产品／测试代码，不创建报告体系或新会话。只修订设计与本roadmap，做一次文档只读核验及`git diff --check`，提交这两份文档后停止并归还写入权。后续先核对精确HEAD、dirty与任务进程；原manual02 launcher3920／runtime58328已由监督会话核实退出，不重新启动旧场景。产品实施／持续goal维持暂停；新会话不重置既有成本或验证授权。
+
+### 2026-11-02 A／B 授权续作
+
+用户已明确创建并执行新的持久 goal，接续上述冻结工作；上一轮停止只描述历史，不禁止本次实施。起点 HEAD `8288598486d3eaf53de64759c68d2f7b8711d62f`，分支及 worktree 与冻结交接一致，工作区干净，未发现遗留 Gradle／应用／任务脚本进程。主代理负责 B、整合及独立审查，1 个实施代理负责 A 双端和定向 ART 用例；Gradle 执行权串行移交。仅 focused 红绿、直接集成、改动文件格式及本次候选预检，不运行完整模块／全量／发布矩阵。NB04与 A／B 复选框继续等待全部必需证据及人工结果。
+
+有界原因核对：只读打开原 manual02 的 `profile/home/AppData/Roaming/Mihon/mihon.db`，查询章节 `991200023`／`991200025`，仅存在 `(991200023, manga_id=991200022)`；后者不存在。`read_chapter` 的 fixture 只准备内容、不创建章节，真实 `ChapterPairingStorage.loadChapterPairing` 首先校验章节归属，否则抛出 `MissingChapterPairingIdentityException`。因此原第二场景缺少其准确数据库章节身份；没有用户手动记录损坏的证据。修复 A 仍覆盖真实恢复失败，不以补齐 B 夹具替代 production 修复。
+
+首批离线证据：`nb-ab-desktop-red-and-online` 实际执行2个方法。Desktop真实SQL/coordinator→完整screen的 A 方法准确红于自动出现恢复控件；B真实ONLINE源→新attempt→HTTP读取→实际解码/恢复像素→错误消失及伙伴几何/物理frame均已经过，最后过严的共享session对象恒等断言失败。共享内容rebind会合法替换session，该断言已改为保持同一真实内容owner；此项是测试契约校正，不能宣称新增产品红或 B 通过。Android `nb-a-android-modal-red` 的1个方法实际执行3次（含项目失败重试），均红于后台恢复失败自动设置 `Dialog.PairingRestoreError`。两个平台的产品红均已取得；编译/命令准备失败不计产品红。日志与 XML 仍保存在现有 `.gradle-coordinator`，不建立新报告体系。
+
+`nb-ab-desktop-focused-green-import-fixed` 的4个方法全部通过，0 failure/error/skip：真实SQL完整screen的失败→无自动层→主动Settings→Retry／session-only Default（历史二选一实现，已被用户拒绝，不能计作当前入口验收），held晚成功稳定frame／mount／像素及下一次真实tap不漏页，原未知revision持久安全，以及 B 的真实ONLINE source→完整viewport→实际Press跨帧Release→新attempt／读取／Skia像素恢复。B同时核对正常配对恢复、准确章节、同一内容owner、错误消失、伙伴bounds及物理frame保持。最终XML归档于 `.gradle-coordinator/nb-a-artifacts/`；此为自动化接线证据，不能替代候选窗口的人工结果。首轮修复验证因缺少 `fillMaxWidth` import 停在编译，未执行测试，之后仅修正该导入并运行同一范围。
+
+本批11个 Kotlin 文件共同覆盖双端设置入口／Activity接线、恢复调度与真实SQL／HTTP／像素回归，超过8文件的原因是同一跨端用户行为的必要接线；没有修改共享算法、schema、普通图片重试实现或资源预算。原生测试只补恢复失败用户路径，既有首绘／纠正矩阵按影响复用。初次格式 `nb-ab-format` 的11目标正常Apply／Check通过；后续窄修正仍须最终限定格式。独立审查已要求复用Android原设置ScreenModel，并撤回无关的single弹窗dismiss变化。
+
+Android focused 收口为7个独立方法的组合证据，不称一次最终7项全绿。原single读取失败和取消恢复2项通过；随后held读取与已知手动边界→CAS冲突→恢复读取失败2项通过，后者验证旧约束、外部SQL记录及继续导航；Settings剩余3项在 `nb-a-android-settings-three-scope-fixed` 通过。Robolectric原触屏／滚动动作停在Compose等待空闲或未触发恢复，不据此推断产品按钮无响应；改用真实按钮语义动作，同时断言真实load次数递增且命中准确章节，原生可见操作另验。两个后续设置模型未发布viewer的夹具问题通过复用既有 `ScreenModelTestHost` 修正，未改产品。`nb-a-android-settings-default-focused` 又仅复验其中1项，真实Settings内Default→DEFAULT_UNVERIFIED／revision未知／viewerChapters同引用／源页不变／零新增读取／SQL不写／调整disabled→同界面Retry恢复全部通过，1 unique／1 execution，0 failure/error/skip。XML在 `.gradle-coordinator/nb-a-artifacts/`。
+
+本轮最终Kotlin格式为初次11文件，以及后续实际变化的2个androidTest文件、1个单元测试文件与最后1个原生方法文件的正常限定Apply／Check；最后原生构建 key `nb-a-native-compose-clock-fixed` 通过5m21s。只编译测试APK，不因夹具修正重复构建未变化的宿主。Debug宿主由项目入口生成于 `app/artifacts/android/0.19.4-aex.115-vc133-8288598486-debug-f249bef1965d/`，APK SHA256 `b598fece4af28fc75b6c6edfbfbf7398964edf2d9130b276b8d272c1ff208260`；源码 `8288598` 加本任务差异，productionInputs SHA256 `daec7916d7a557dac311ad65a70fd3dcef7ff42595d009e9f6b72cc6f9539be6`。主代理核当前4个Android产品差异文件与宿主清单一致、模拟器安装APK哈希一致。最终测试APK SHA256 `43ebb066510d968b86040c96f99ad6a70d344c8757ccde7277b4b887dd9acf3e`；双方dev包／runner／签名一致，不冒称Release、真机或发布验收。
+
+Android新增原生路径已经通过：API36任务专属 `mihon-nonblocking-20261101`／`emulator-5580`，仅运行 `failedRestoreKeepsPixelsUntilUserOpensSettingsAndRetries[mode-6]`、`[mode-8]` 两个参数实例，前者另含独立AUTO7场景；2 tests／0 failure/error/skip，共3场景。实际VM coordinator恒等及真实SQL load身份、失败状态与unknown revision、JNI／PixelCopy真实目标、用户主动打开设置、6次可见Accessibility Settings／Retry操作及有效bounds、恢复后物理frame／原View挂载／像素几何保持、下一次真实按键后首个未绘候选获得真实绘出回执、原存储记录不变均经过。这里的点击明确为可见原生Accessibility动作，不称触屏或人工观察。AUTO未强设automaticDualPage，实际AdaptiveReaderViewport选择双页的断言已通过。
+
+原生过程停点与纠正保留在 `.gradle-coordinator/android-native/restore-20261102/`：初次base方法名返回0 tests，核本机runner/JUnit字节码后改为带自定义参数后缀的精确过滤；attempt-01没有把故障送到真实owner，改为已验证的addFactory并核实际VM身份，未改生产读取；attempt-02未确认Settings节点，不推断翻译／输入未命中；attempt-03的有限诊断和自有截图证明menuVisible、locale、焦点、root身份均正确但Compose菜单未绘出，对照既有feedbackSnapshot发现新增路径漏推进受测试规则控制的Compose时钟。复用原waitForIdle／clearCache／root.refresh后，attempt-05-green在38.15s完成上述3场景。attempt-04-startup在执行测试前出现Chrome通知身份SecurityException，0 tests；只读发现App包名伪装读取主线程栈的相关路径，但未证实唯一原因，不归因配对、不扩大修复；保留后仅一次独立进程再启动取得有效原生结果。启动期短暂offline／keyguard过渡待自然结束再验，未输入凭证或改变屏幕超时。一次AVD与编译重叠导致可用内存下降后，精确关闭自有AVD并严格串行构建与设备运行；本轮实际AVD已正常关停，后续Windows预览不与其争用。没有重复旧coldSeek矩阵、完整模块、全量或发布矩阵。
+
+### 单一可选恢复入口纠偏及限定收尾
+
+用户先暂停原 goal，随后明确本轮只收尾已开始的局部源码纠偏，接续已有 focused 复验／格式并提交，汇报后停止；虽将 goal 状态重新设为 active，也不授权恢复整个 A／B、候选、桌面操作或完整验收推进。此前将旧错误标题与 Retry／Default 二选一移入设置的实现被用户明确拒绝；上述旧 focused／Android 原生证据只按未受影响的数据保护、帧及导航行为复用，不代表新的单一入口已验收。源码要求以本节及设计第4.5节为准。
+
+Windows旧 preview `0.11.24.6.8288598`（目录 `20261101T184547Z-2caf09ed`）含被拒绝的二选一界面，不作为修正后的候选交付。manual-acceptance-03 曾实际显示 A 场景章节 `991200035` 的双图及 RESTORE_FAILED，无自动中央框；后续未确认恢复按钮，也未开始 B 图片重试场景。最后一次标题为“验证主动恢复失败仍留在用户打开的设置中”的点击使用滚动未停稳前的坐标 `(505,591)`，实际误改导航布局；该点击不是需求测试或恢复操作成功证据。
+
+只读核对隔离 profile03 的 `reader_navigation_mode=L` 已持久化；干净 profile02 无该键，production 默认及误点前截图均为“左右”。不改回证据 profile、不复用其偏好；之后如获候选授权，使用新隔离 profile 并确认导航仍为“左右”。未操作日常配置。核实 profile、EXE、PID及端口归属后仅向本任务实例发出一次正常 shutdown：launcher29976／runtime24020 已退出，49211／49212 已释放；session.json 记录 `INVALIDATED_BY_MISCLICK_AND_REJECTED_RECOVERY_UI`。暂停后未再发送原生输入或采集。
+
+本轮复用唯一实施代理和串行 Gradle 权，只运行 Desktop 真实 coordinator／完整 Settings 与 Android VM→Activity Settings 两个 selector 的 RED→最小实现→GREEN，以及受影响文件格式。B 的真实 ONLINE→完整 viewport 自动化绿与未受影响的数据保护证据复用，不重跑已绿范围。`reader-optional-reload-ui-red` 双端各1项执行／1 failure／0 error／0 skip，分别准确停在完整 Settings 仍存在旧标题／二选一的断言。最小实现只把双端 Settings 控件换为单一资源按钮，沿用原同章恢复方法，不调用 useDefault。`reader-optional-reload-ui-green` 的 Android 同一方法1项执行／0 failure／0 error／0 skip；Desktop 首次复验停在测试节点查找的 NoSuchElementException；字节码行号及谓词确认缺的是 Reload 节点，不能据此认定工具栏隐藏。测试只等待 showSettings 模型状态，尚未等待真实 Settings 重组；恢复等待实际 Reload 控件后，`reader-optional-reload-desktop-ui-sync-green-format-fixed` 同一方法1项执行／0 failure／0 error／0 skip，通过7.078秒（含编译任务4m9s）。日志明确记录重组前只有阅读器节点，重组后出现完整设置及 Reload；不是产品恢复控制器修复。途中一次新增诊断行超过120字符，仅格式失败、测试未执行；拆行后只复验该 Desktop selector 和文件格式，未重跑已绿 Android。单一入口的新候选和原生／人工验收均未运行；Android 原生测试标签仅机械同步，未重新编译／运行，不能称新入口原生通过。本次6个受影响 Kotlin 文件的限定 Spotless Apply／Check 通过，之后仅变更的 Desktop 测试文件也通过限定格式；base／简中 XML 解析及资源唯一性通过，最终 diff 空白检查通过。双端新入口的源码纠偏与 focused 验证已收口；B 真实 ONLINE 自动化及其他未受影响数据保护绿继续复用。以上是组合定向证据，不称完整模块或全量重验。按用户本轮要求提交后停止，不构建候选、不操作桌面或导航偏好、不推送／发布；A／B及NB04保持未完成，原 goal 在收尾后暂停，B人工环境仍为 NOT_PREPARED。
 
 ## 2. 实施预算与边界
 

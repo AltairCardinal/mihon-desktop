@@ -228,7 +228,7 @@ class ReaderViewModel @JvmOverloads constructor(
                         canActivate = { isCurrentPairingRequest(request, mangaId, sequence) },
                         onFailure = {
                             pairingRetryChapter = request.chapter
-                            mutableState.update { it.copy(dialog = Dialog.PairingRestoreError(request.chapter)) }
+                            showPairingRestoreFailure(request.chapter)
                         },
                     )
                 ) {
@@ -586,7 +586,7 @@ class ReaderViewModel @JvmOverloads constructor(
             !restoreChapterPairing(chapter, useDefaultPairing, canActivate, explicitPairingRestore) {
                 if (canActivate()) {
                     pairingRetryChapter = chapter
-                    mutableState.update { it.copy(dialog = Dialog.PairingRestoreError(chapter)) }
+                    showPairingRestoreFailure(chapter)
                 }
             }
         ) {
@@ -811,7 +811,7 @@ class ReaderViewModel @JvmOverloads constructor(
                     chapter in listOfNotNull(window?.prevChapter, window?.nextChapter)
                 ) {
                     pairingRetryChapter = chapter
-                    mutableState.update { it.copy(dialog = Dialog.PairingRestoreError(chapter)) }
+                    showPairingRestoreFailure(chapter)
                 }
             }
         ) {
@@ -848,10 +848,22 @@ class ReaderViewModel @JvmOverloads constructor(
             owner.pairingState.status != mihon.domain.reader.ReaderPairingPersistenceStatus.DEFAULT_UNVERIFIED
     }
 
+    private fun showPairingRestoreFailure(chapter: ReaderChapter) {
+        // Normal dual reading retains the failure without taking focus from usable pixels.
+        if (!usesDualPageViewer()) {
+            mutableState.update { it.copy(dialog = Dialog.PairingRestoreError(chapter)) }
+        }
+    }
+
     /** Re-read the current owner; an old or adjacent operation cannot unlock a pending current read. */
     private fun publishPairingRecordAvailability() {
         mutableState.update { current ->
-            current.copy(pairingRecordReady = current.currentChapter?.let(::isPairingRecordReady) == true)
+            val status = dualPagePairings.chapters[current.currentChapter]?.session?.pairingState?.status
+            current.copy(
+                pairingRecordReady = current.currentChapter?.let(::isPairingRecordReady) == true,
+                pairingReadUnavailable = status == mihon.domain.reader.ReaderPairingPersistenceStatus.RESTORE_FAILED ||
+                    status == mihon.domain.reader.ReaderPairingPersistenceStatus.DEFAULT_UNVERIFIED,
+            )
         }
     }
 
@@ -871,7 +883,7 @@ class ReaderViewModel @JvmOverloads constructor(
             if (!restoreChapterPairing(chapter, canActivate = isCurrentContent) {
                     if (shouldPromptPairingError()) {
                         pairingRetryChapter = chapter
-                        mutableState.update { it.copy(dialog = Dialog.PairingRestoreError(chapter)) }
+                        showPairingRestoreFailure(chapter)
                     }
                 }
             ) {
@@ -1508,6 +1520,11 @@ class ReaderViewModel @JvmOverloads constructor(
 
     fun retryPairingRestore() {
         val chapter = (state.value.dialog as? Dialog.PairingRestoreError)?.chapter ?: pairingRetryChapter ?: return
+        if (usesDualPageViewer() && state.value.currentChapter === chapter) {
+            // User requested a reread, not a layout reload: preserve already painted physical frames.
+            restoreChapterPairingInBackground(chapter) { state.value.currentChapter === chapter }
+            return
+        }
         val chapterLoader = loader ?: return
         viewModelScope.launchIO {
             mutableState.update { it.copy(dialog = Dialog.Loading) }
@@ -1529,7 +1546,16 @@ class ReaderViewModel @JvmOverloads constructor(
     }
 
     fun useDefaultPairingThisSession() {
-        val chapter = (state.value.dialog as? Dialog.PairingRestoreError)?.chapter ?: return
+        val chapter = (state.value.dialog as? Dialog.PairingRestoreError)?.chapter ?: pairingRetryChapter ?: return
+        if (usesDualPageViewer() && state.value.currentChapter === chapter) {
+            chapter.pages?.let { pages ->
+                if (dualPagePairings.useDefault(chapter, pages)) {
+                    publishPairingRecordAvailability()
+                    eventChannel.trySend(Event.ReloadViewerChapters)
+                }
+            }
+            return
+        }
         val chapterLoader = loader ?: return
         viewModelScope.launchIO {
             mutableState.update { it.copy(dialog = Dialog.Loading) }

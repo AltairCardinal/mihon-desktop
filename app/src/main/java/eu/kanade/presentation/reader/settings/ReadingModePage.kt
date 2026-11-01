@@ -30,7 +30,10 @@ import tachiyomi.presentation.core.util.collectAsState
 import java.text.NumberFormat
 
 @Composable
-internal fun ColumnScope.ReadingModePage(screenModel: ReaderSettingsScreenModel) {
+internal fun ColumnScope.ReadingModePage(
+    screenModel: ReaderSettingsScreenModel,
+    pairingRecovery: @Composable () -> Unit = {},
+) {
     HeadingItem(MR.strings.pref_category_for_this_series)
     val manga by screenModel.mangaFlow.collectAsState()
 
@@ -92,6 +95,7 @@ internal fun ColumnScope.ReadingModePage(screenModel: ReaderSettingsScreenModel)
             label = stringResource(MR.strings.desktop_ui_auto_spread_matching),
             pref = screenModel.preferences.automaticSpreadMatching(),
         )
+        pairingRecovery()
     }
 
     val orientation = remember(manga) { ReaderOrientation.fromPreference(manga?.readerOrientation?.toInt()) }

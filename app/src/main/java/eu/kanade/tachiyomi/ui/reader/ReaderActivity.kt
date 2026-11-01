@@ -406,12 +406,7 @@ open class ReaderActivity : BaseActivity() {
                 PairingRestoreControls()
             }
             is ReaderViewModel.Dialog.Settings -> {
-                ReaderSettingsDialog(
-                    onDismissRequest = onDismissRequest,
-                    onShowMenus = { setMenuVisibility(true) },
-                    onHideMenus = { setMenuVisibility(false) },
-                    screenModel = settingsScreenModel,
-                )
+                ReaderSettingsControls(settingsScreenModel)
             }
             is ReaderViewModel.Dialog.ReadingModeSelect -> {
                 ReadingModeSelectDialog(
@@ -445,6 +440,24 @@ open class ReaderActivity : BaseActivity() {
             }
             null -> {}
         }
+    }
+
+    @Composable
+    internal fun ReaderSettingsControls(screenModel: ReaderSettingsScreenModel) {
+        val state by viewModel.state.collectAsState()
+        ReaderSettingsDialog(
+            onDismissRequest = viewModel::closeDialog,
+            onShowMenus = { setMenuVisibility(true) },
+            onHideMenus = { setMenuVisibility(false) },
+            screenModel = screenModel,
+            pairingRecovery = {
+                if (state.pairingReadUnavailable) {
+                    TextButton(onClick = viewModel::retryPairingRestore) {
+                        Text(composeStringResource(MR.strings.action_reload_page_pairing))
+                    }
+                }
+            },
+        )
     }
 
     @Composable
@@ -670,9 +683,7 @@ open class ReaderActivity : BaseActivity() {
             isDualPageMode = state.viewer is DualPageR2LPagerViewer,
             isAutomaticMode = viewModel.getMangaReadingMode() == ReadingMode.AUTO.flagValue,
             isPairingSaving = state.pairingSaving,
-            isPairingUnavailable = state.pairingReadUnavailable,
             isPairingRecordReady = state.pairingRecordReady,
-            onRetryPairing = viewModel::retryPairingRestore,
             onClickAdjustPairing = {
                 (state.viewer as? DualPageR2LPagerViewer)?.let(viewModel::adjustChapterPairing)
             },

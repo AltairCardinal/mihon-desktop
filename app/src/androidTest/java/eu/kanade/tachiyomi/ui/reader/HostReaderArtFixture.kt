@@ -45,7 +45,9 @@ import okio.ForwardingSource
 import okio.buffer
 import org.json.JSONArray
 import org.json.JSONObject
+import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addFactory
 import uy.kohesive.injekt.api.addSingleton
@@ -192,6 +194,9 @@ internal class HostReaderArtFixture(
             } ?: packed
         }
     }
+    val chapterId: Long get() = input.getLong("chapterId")
+    val mangaId: Long get() = input.getLong("mangaId")
+
     val response = AtomicReference(200 to success)
     val imageRequests = AtomicInteger()
     val responsePayloadBytes = AtomicLong()
@@ -638,23 +643,162 @@ internal class HostReaderArtFixture(
         }
     }
 
-    private fun clickUi(label: String, scroll: Boolean = false) {
-        await("Actual settings UI must expose $label") {
-            val root = instrumentation.uiAutomation.rootInActiveWindow ?: return@await false
-            val all = nodes(root)
-            var node = all.firstOrNull { it.text?.toString() == label || it.contentDescription?.toString() == label }
-            if (node == null) {
-                if (scroll) {
-                    all.firstOrNull {
-                        it.isScrollable
-                    }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+    fun clickUi(
+        label: String,
+        scroll: Boolean = false,
+        requireVisible: Boolean = false,
+        diagnosticStage: String = "reader-ui",
+    ) {
+        var diagnostics = 0
+        var nextDiagnosticAt = 0L
+        try {
+            await("Actual settings UI must expose $label") {
+                val root = instrumentation.uiAutomation.rootInActiveWindow
+                val now = SystemClock.uptimeMillis()
+                if (requireVisible && diagnostics < 3 && now >= nextDiagnosticAt) {
+                    reportReaderUi(diagnosticStage, label, root)
+                    diagnostics++
+                    nextDiagnosticAt = now + 3_000
                 }
-                false
-            } else {
+                if (root == null) return@await false
+                val all = nodes(root)
+                var node = all.firstOrNull {
+                    it.text?.toString() == label || it.contentDescription?.toString() == label
+                }
+                if (!requireVisible) {
+                    if (node == null) {
+                        if (scroll) {
+                            all.firstOrNull { it.isScrollable }
+                                ?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                        }
+                        return@await false
+                    }
+                    while (node != null && !node.isClickable) node = node.parent
+                    return@await node?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+                }
+                if (root.packageName?.toString() != context.packageName) return@await false
                 while (node != null && !node.isClickable) node = node.parent
-                node?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+                val targetBounds = Rect().also { node?.getBoundsInScreen(it) }
+                val rootBounds = Rect().also(root::getBoundsInScreen)
+                val windowBounds = Rect().also { root.window?.getBoundsInScreen(it) }
+                val boundsSource = if (windowBounds.isEmpty) {
+                    onReaderMain { it.window.decorView.getGlobalVisibleRect(windowBounds) }
+                    "ReaderDecor"
+                } else {
+                    "AccessibilityWindowInfo"
+                }
+                val visible = node?.isVisibleToUser == true && !targetBounds.isEmpty &&
+                    windowBounds.contains(targetBounds.centerX(), targetBounds.centerY())
+                if (node == null || !visible) {
+                    if (scroll) {
+                        all.firstOrNull { it.isScrollable && it.isVisibleToUser }
+                            ?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                    }
+                    false
+                } else {
+                    check(node.isVisibleToUser && node.isEnabled && node.isClickable) {
+                        "Visible target $label must be enabled and clickable: $targetBounds/$windowBounds"
+                    }
+                    uiStatus(
+                        "Visible accessibility action $label bounds=$targetBounds " +
+                            "window=$windowBounds boundsSource=$boundsSource root=$rootBounds",
+                    )
+                    node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                }
             }
+        } catch (failure: AssertionError) {
+            if (!requireVisible) throw failure
+            val root = instrumentation.uiAutomation.rootInActiveWindow
+            reportReaderUi("$diagnosticStage-failure", label, root)
+            saveOwnedReaderUiFailure(diagnosticStage, root)
+            throw AssertionError(
+                "Reader UI stage=$diagnosticStage label=$label: " +
+                    failure.message?.substringBefore("; chapterRequests=")?.take(250),
+            )
         }
+    }
+
+    private fun uiStatus(message: String) {
+        instrumentation.sendStatus(0, android.os.Bundle().apply { putString("stream", "$message\n") })
+    }
+
+    private fun uiNode(node: AccessibilityNodeInfo): JSONObject = JSONObject().apply {
+        put("text", node.text?.toString()?.replace('\n', ' ')?.take(64))
+        put("desc", node.contentDescription?.toString()?.replace('\n', ' ')?.take(64))
+        put("class", node.className?.toString())
+        put("visible", node.isVisibleToUser)
+        put("clickable", node.isClickable)
+        put("enabled", node.isEnabled)
+        put("bounds", Rect().also(node::getBoundsInScreen).toShortString())
+    }
+
+    private fun reportReaderUi(stage: String, label: String, root: AccessibilityNodeInfo?) {
+        val report = JSONObject().put("stage", stage).put("label", label)
+        onReaderMain { reader ->
+            val state = actualArtReaderState(reader)
+            report.put("menuVisible", state.menuVisible).put("dialog", state.dialog?.javaClass?.simpleName)
+                .put("chapter", state.currentChapter?.chapter?.id).put("page", state.currentPage)
+                .put("locale", reader.resources.configuration.locales.toLanguageTags())
+                .put("settingsLabel", reader.stringResource(MR.strings.action_settings))
+                .put("retryLabel", reader.stringResource(MR.strings.action_reload_page_pairing))
+                .put("readerFocus", reader.hasWindowFocus())
+        }
+        report.put(
+            "rootPresent",
+            root != null,
+        ).put("rootPackage", root?.packageName?.toString()).put("rootClass", root?.className?.toString())
+            .put("rootWindowId", root?.windowId)
+            .put("rootBounds", root?.let { Rect().also(it::getBoundsInScreen).toShortString() })
+            .put("windowBounds", root?.window?.let { Rect().also(it::getBoundsInScreen).toShortString() })
+        if (root != null && root.packageName?.toString() == context.packageName) {
+            val all = nodes(root)
+            report.put(
+                "nodes",
+                JSONArray(
+                    all.asSequence().filter {
+                        !it.text.isNullOrBlank() || !it.contentDescription.isNullOrBlank() || it.isClickable
+                    }.take(24).map(::uiNode).toList(),
+                ),
+            )
+            val chain = JSONArray()
+            var current = all.firstOrNull { it.text?.toString() == label || it.contentDescription?.toString() == label }
+            repeat(4) {
+                current?.let { node ->
+                    chain.put(uiNode(node))
+                    current = node.parent
+                }
+            }
+            report.put("matchParentChain", chain)
+        }
+        uiStatus("ReaderUiDiagnostic $report")
+    }
+
+    private fun saveOwnedReaderUiFailure(stage: String, root: AccessibilityNodeInfo?) {
+        if (root == null || root.packageName?.toString() != context.packageName) return
+        var owned = false
+        onReaderMain { reader ->
+            val state = actualArtReaderState(reader)
+            owned = !reader.isFinishing && !reader.isDestroyed && state.currentChapter?.chapter?.id == chapterId &&
+                (reader.hasWindowFocus() || state.dialog is ReaderViewModel.Dialog.Settings)
+        }
+        if (!owned || !readerUiFailureScreenshotTaken.compareAndSet(false, true)) return
+        runCatching {
+            val bitmap = instrumentation.uiAutomation.takeScreenshot() ?: return@runCatching
+            try {
+                val current = instrumentation.uiAutomation.rootInActiveWindow
+                if (current == null || current.packageName?.toString() != context.packageName ||
+                    current.windowId != root.windowId
+                ) {
+                    return@runCatching
+                }
+                val directory = context.cacheDir.resolve("reader-restore-artifacts").apply { mkdirs() }
+                val file = directory.resolve("visible-ui-failure.png")
+                file.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+                uiStatus("Owned Reader UI screenshot stage=$stage path=${file.absolutePath}")
+            } finally {
+                bitmap.recycle()
+            }
+        }.onFailure { uiStatus("Owned screenshot unavailable: ${it.javaClass.simpleName}") }
     }
 
     /** Recovery uses the same visible cache clearing action offered to users by the extension's error image. */
@@ -1318,6 +1462,7 @@ internal class HostReaderArtFixture(
     }
 
     companion object {
+        private val readerUiFailureScreenshotTaken = AtomicBoolean()
         private const val SYNTHETIC_SOURCE_ID = 881100001L
         private const val SYNTHETIC_MANGA_ID = 881100002L
         private const val SYNTHETIC_CHAPTER_ID = 881100003L

@@ -6,13 +6,16 @@ import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -28,6 +31,7 @@ import eu.kanade.tachiyomi.databinding.ReaderActivityBinding
 import eu.kanade.tachiyomi.di.AppModule
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.test.ScreenModelTestHost
 import eu.kanade.tachiyomi.ui.reader.AndroidChapterPairingCoordinator
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.ReaderViewModel
@@ -37,6 +41,7 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.publishLoadedPageListForTest
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
+import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -1101,6 +1106,139 @@ class AndroidChapterPairingPersistenceWiringTest {
     }
 
     @Test
+    fun `failed conflict restore retains known manual boundary and stored record without a modal`() = runBlocking {
+        val file = temporaryFolder.newFile("known-boundary-restore-failure.db")
+        openDatabase(file, create = true).use { fixture ->
+            seed(fixture.driver)
+            val saved = fixture.repository.replace(2, 1, 0, 8, setOf(3))
+            val loads = AtomicInteger()
+            val repository = object : ChapterPairingRepository by fixture.repository {
+                override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot {
+                    if (loads.incrementAndGet() > 1) throw IOException("known record refresh failed")
+                    return fixture.repository.load(chapterId, mangaId)
+                }
+            }
+            session(fixture, repository, readingMode = 6).use { reader ->
+                val chapter = requireNotNull(reader.model.state.value.currentChapter)
+                awaitPairingStatus(reader, chapter, mihon.domain.reader.ReaderPairingPersistenceStatus.READY)
+                reader.viewer.setChapters(requireNotNull(reader.model.state.value.viewerChapters))
+                reader.viewer.moveToPage(requireNotNull(chapter.pages)[5])
+                val owner = requireNotNull(reader.model.dualPagePairings.chapters[chapter]).session
+                val external = fixture.repository.replace(2, 1, saved.revision, 8, setOf(7))
+                reader.host.setContent {
+                    val state by reader.model.state.collectAsState()
+                    MaterialTheme { reader.activity.AppBars(state.copy(menuVisible = true)) }
+                }
+                compose.mainClock.advanceTimeBy(500)
+                val feedback = async(start = CoroutineStart.UNDISPATCHED) {
+                    withTimeout(5_000) {
+                        reader.model.eventFlow.first { it == ReaderViewModel.Event.ChapterPairingSaveFailed }
+                    }
+                }
+                compose.onNodeWithContentDescription(
+                    reader.host.stringResource(MR.strings.action_adjust_page_pairing),
+                ).performClick()
+                feedback.await()
+                awaitPairingStatus(reader, chapter, mihon.domain.reader.ReaderPairingPersistenceStatus.RESTORE_FAILED)
+                assertNull(reader.model.state.value.dialog)
+                assertEquals(setOf(3), owner.pairingState.committedForcedSinglePages)
+                assertEquals(saved.revision, owner.pairingState.revision)
+                assertEquals(external, fixture.repository.load(2, 1))
+                reader.viewer.moveToPage(requireNotNull(chapter.pages)[3])
+                assertEquals(setOf(3), visiblePair(reader.viewer))
+            }
+        }
+    }
+
+    @Test
+    fun `dual restore failure stays nonmodal until existing settings are opened`() = runBlocking {
+        val file = temporaryFolder.newFile("nonmodal-restore.db")
+        openDatabase(file, create = true).use { fixture ->
+            seed(fixture.driver)
+            val saved = fixture.repository.replace(2, 1, 0, 8, setOf(3))
+            val failRead = AtomicBoolean(true)
+            val restoreLoads = AtomicInteger()
+            val lastRestoreChapter = AtomicReference<Long>()
+            val unreadable = object : ChapterPairingRepository by fixture.repository {
+                override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot {
+                    restoreLoads.incrementAndGet()
+                    lastRestoreChapter.set(chapterId)
+                    if (failRead.get()) throw IOException("pairing database unavailable")
+                    return fixture.repository.load(chapterId, mangaId)
+                }
+            }
+            session(fixture, unreadable, readingMode = 6).use { reader ->
+                val chapter = requireNotNull(reader.model.state.value.currentChapter)
+                awaitPairingStatus(reader, chapter, mihon.domain.reader.ReaderPairingPersistenceStatus.RESTORE_FAILED)
+                assertNull(
+                    "Background restore failure must not automatically open Activity dialog",
+                    reader.model.state.value.dialog,
+                )
+                assertTrue(reader.model.state.value.viewerChapters != null)
+                assertNull(reader.model.dualPagePairings.chapters[chapter]?.session?.pairingState?.revision)
+                assertEquals(saved, fixture.repository.load(2, 1))
+                val originalWindow = requireNotNull(reader.model.state.value.viewerChapters)
+                reader.viewer.setChapters(originalWindow)
+                reader.viewer.moveToPage(requireNotNull(chapter.pages)[1])
+                val originalPage = reader.model.state.value.currentPage
+                val originalSource = requireNotNull(
+                    reader.model.dualPagePairings.chapters[chapter]?.session?.location,
+                ).pageId
+                reader.host.setContent {
+                    val state by reader.model.state.collectAsState()
+                    MaterialTheme {
+                        reader.activity.AppBars(state.copy(menuVisible = true))
+                        if (state.dialog is ReaderViewModel.Dialog.Settings) {
+                            reader.activity.ReaderSettingsControls(
+                                reader.settingsScreenModel,
+                            )
+                        }
+                    }
+                }
+                compose.mainClock.advanceTimeBy(500)
+                compose.onNodeWithContentDescription(
+                    reader.host.stringResource(MR.strings.action_settings),
+                ).performClick()
+                assertTrue(reader.model.state.value.dialog is ReaderViewModel.Dialog.Settings)
+                compose.onNodeWithText(
+                    reader.host.stringResource(MR.strings.desktop_reader_pairing_load_failed),
+                ).assertDoesNotExist()
+                compose.onNodeWithText(reader.host.stringResource(MR.strings.action_retry)).assertDoesNotExist()
+                compose.onNodeWithText(
+                    reader.host.stringResource(MR.strings.desktop_reader_pairing_use_default),
+                ).assertDoesNotExist()
+                compose.onAllNodesWithText(
+                    reader.host.stringResource(MR.strings.action_reload_page_pairing),
+                ).assertCountEquals(1)
+                invokeSettingsReload(reader, restoreLoads, lastRestoreChapter)
+                awaitPairingStatus(reader, chapter, mihon.domain.reader.ReaderPairingPersistenceStatus.RESTORE_FAILED)
+                assertTrue(reader.model.state.value.dialog is ReaderViewModel.Dialog.Settings)
+                assertNull(reader.model.dualPagePairings.chapters[chapter]?.session?.pairingState?.revision)
+                assertTrue(
+                    "Reload failure must retain the activated window",
+                    originalWindow === reader.model.state.value.viewerChapters,
+                )
+                assertEquals(originalPage, reader.model.state.value.currentPage)
+                assertEquals(originalSource, reader.model.dualPagePairings.chapters[chapter]?.session?.location?.pageId)
+                assertEquals(saved, fixture.repository.load(2, 1))
+                assertFalse(reader.model.state.value.pairingRecordReady)
+                compose.onNodeWithContentDescription(
+                    reader.host.stringResource(MR.strings.action_adjust_page_pairing),
+                ).assertIsNotEnabled()
+                failRead.set(false)
+                invokeSettingsReload(reader, restoreLoads, lastRestoreChapter)
+                awaitPairingStatus(reader, chapter, mihon.domain.reader.ReaderPairingPersistenceStatus.READY)
+                assertTrue(reader.model.state.value.dialog is ReaderViewModel.Dialog.Settings)
+                assertEquals(saved, fixture.repository.load(2, 1))
+                assertEquals(
+                    setOf(3),
+                    reader.model.dualPagePairings.chapters[chapter]?.session?.pairingState?.committedForcedSinglePages,
+                )
+            }
+        }
+    }
+
+    @Test
     fun `pairing read failure keeps the reader container available for a recovery choice`() = runBlocking {
         val file = temporaryFolder.newFile("read-failure.db")
         openDatabase(file, create = true).use { fixture ->
@@ -1124,18 +1262,21 @@ class AndroidChapterPairingPersistenceWiringTest {
             seed(fixture.driver)
             fixture.repository.replace(2, 1, 0, 8, setOf(3))
             val failRead = AtomicBoolean(true)
+            val restoreLoads = AtomicInteger()
+            val lastRestoreChapter = AtomicReference<Long>()
             val repository = object : ChapterPairingRepository by fixture.repository {
                 override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot {
+                    restoreLoads.incrementAndGet()
+                    lastRestoreChapter.set(chapterId)
                     if (failRead.get()) throw IOException("pairing database unavailable")
                     return fixture.repository.load(chapterId, mangaId)
                 }
             }
             session(fixture, repository, readingMode = 6).use { reader ->
                 assertTrue(reader.model.state.value.viewerChapters != null)
-                withTimeout(5_000) {
-                    while (reader.model.state.value.dialog !is ReaderViewModel.Dialog.PairingRestoreError) yield()
-                }
                 val chapter = requireNotNull(reader.model.state.value.currentChapter)
+                awaitPairingStatus(reader, chapter, mihon.domain.reader.ReaderPairingPersistenceStatus.RESTORE_FAILED)
+                assertNull(reader.model.state.value.dialog)
                 assertNull(
                     reader.model.dualPagePairings.ensure(chapter, requireNotNull(chapter.pages))
                         .session.pairingState.revision,
@@ -1143,9 +1284,12 @@ class AndroidChapterPairingPersistenceWiringTest {
                 assertNull(reader.viewer.pairingAdjustmentRequest())
                 reader.viewer.setChapters(requireNotNull(reader.model.state.value.viewerChapters))
                 reader.viewer.moveToPage(requireNotNull(chapter.pages)[1])
-                reader.host.setContent { MaterialTheme { reader.activity.PairingRestoreControls() } }
+                reader.model.openSettingsDialog()
+                reader.host.setContent {
+                    MaterialTheme { reader.activity.ReaderSettingsControls(reader.settingsScreenModel) }
+                }
                 failRead.set(false)
-                compose.onNodeWithText(reader.host.stringResource(MR.strings.action_retry)).performClick()
+                invokeSettingsReload(reader, restoreLoads, lastRestoreChapter)
                 withTimeout(5_000) {
                     while (reader.model.dualPagePairings.chapters[chapter]?.session?.pairingState?.status !=
                         mihon.domain.reader.ReaderPairingPersistenceStatus.READY
@@ -1169,8 +1313,12 @@ class AndroidChapterPairingPersistenceWiringTest {
             seed(fixture.driver)
             fixture.repository.replace(2, 1, 0, 8, setOf(3))
             val failRead = AtomicBoolean(true)
+            val restoreLoads = AtomicInteger()
+            val lastRestoreChapter = AtomicReference<Long>()
             val repository = object : ChapterPairingRepository by fixture.repository {
                 override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot {
+                    restoreLoads.incrementAndGet()
+                    lastRestoreChapter.set(chapterId)
                     if (failRead.get()) throw IOException("pairing database unavailable")
                     return fixture.repository.load(chapterId, mangaId)
                 }
@@ -1199,7 +1347,11 @@ class AndroidChapterPairingPersistenceWiringTest {
                     reader.host.stringResource(MR.strings.action_adjust_page_pairing),
                 ).assertIsNotEnabled()
                 failRead.set(false)
-                compose.onNodeWithContentDescription(reader.host.stringResource(MR.strings.action_retry)).performClick()
+                reader.model.openSettingsDialog()
+                reader.host.setContent {
+                    MaterialTheme { reader.activity.ReaderSettingsControls(reader.settingsScreenModel) }
+                }
+                invokeSettingsReload(reader, restoreLoads, lastRestoreChapter)
                 withTimeout(5_000) {
                     while (reader.model.state.value.pairingReadUnavailable ||
                         reader.model.dualPagePairings.chapters[reader.model.state.value.currentChapter]
@@ -1592,6 +1744,33 @@ class AndroidChapterPairingPersistenceWiringTest {
         )
     }
 
+    private suspend fun invokeSettingsReload(
+        reader: ReaderSession,
+        loads: AtomicInteger,
+        lastChapter: AtomicReference<Long>,
+    ) {
+        val expectedChapter = requireNotNull(reader.model.state.value.currentChapter?.chapter?.id)
+        val before = loads.get()
+        val label = reader.host.stringResource(MR.strings.action_reload_page_pairing)
+        var action: (() -> Boolean)? = null
+        compose.waitUntil(5_000) {
+            action = compose.onAllNodesWithText(label).fetchSemanticsNodes().firstNotNullOfOrNull { node ->
+                if (node.config.contains(
+                        SemanticsActions.OnClick,
+                    )
+                ) {
+                    node.config[SemanticsActions.OnClick].action
+                } else {
+                    null
+                }
+            }
+            action != null
+        }
+        assertTrue(requireNotNull(action).invoke())
+        withTimeout(5_000) { while (loads.get() <= before) yield() }
+        assertEquals(expectedChapter, lastChapter.get())
+    }
+
     private suspend fun awaitPairingStatus(
         reader: ReaderSession,
         chapter: ReaderChapter,
@@ -1689,7 +1868,15 @@ class AndroidChapterPairingPersistenceWiringTest {
         val host: ComponentActivity,
         val callbackScheduler: TestCoroutineScheduler?,
     ) : AutoCloseable {
+        private val settingsHost = ScreenModelTestHost()
+        val settingsScreenModel by lazy {
+            settingsHost.create {
+                ReaderSettingsScreenModel(model.state, model::setMangaReadingMode, model::setMangaOrientationType)
+            }
+        }
+
         override fun close() {
+            settingsHost.close()
             viewer.destroy()
             model.viewModelScope.cancel()
             callbackScheduler?.runCurrent()

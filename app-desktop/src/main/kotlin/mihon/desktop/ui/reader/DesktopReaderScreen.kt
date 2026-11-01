@@ -5,6 +5,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -19,6 +20,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -269,6 +271,13 @@ data class DesktopReaderScreen(
             ReaderSettingsPanel(
                 currentMode = if (state.automaticLayout) ReadingMode.AUTO else state.readingMode,
                 feedback = state.settingsFeedback,
+                pairingRecovery = {
+                    if (state.pairingLoad == PairingLoad.ERROR || state.pairingLoad == PairingLoad.DEFAULT_UNVERIFIED) {
+                        TextButton(onClick = model::retryPairingRestore, modifier = Modifier.fillMaxWidth()) {
+                            Text(MR.strings.action_reload_page_pairing.localized())
+                        }
+                    }
+                },
                 followsGlobal = state.followsGlobalReadingMode,
                 onFollowGlobal = {
                     model.followGlobalReadingMode(runtime.prefs)
@@ -711,14 +720,6 @@ internal fun ReaderViewport(
                         )
                     }
                     ColorFilterOverlay(state.colorFilter)
-                    if (state.dualPageMode && state.pairingLoad == PairingLoad.ERROR) {
-                        PairingRestoreError(
-                            onRetry = model::retryPairingRestore,
-                            onUseDefault = model::useDefaultPairingThisSession,
-                            modifier = Modifier.align(Alignment.Center)
-                                .background(Color.Black.copy(alpha = 0.7f)).padding(16.dp),
-                        )
-                    }
                     if (showBottomBar) {
                         ReaderBottomBar(
                             currentPage = state.currentPage, totalPages = state.session.activeChapter.pages.size,
@@ -894,10 +895,11 @@ private fun PairingRestoreError(
     onRetry: () -> Unit,
     onUseDefault: () -> Unit,
     modifier: Modifier = Modifier.fillMaxSize(),
+    textColor: Color = Color.White,
 ) {
     Box(modifier, contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(MR.strings.desktop_reader_pairing_load_failed.localized(), color = Color.White)
+            Text(MR.strings.desktop_reader_pairing_load_failed.localized(), color = textColor)
             Button(onClick = onRetry) { Text(MR.strings.action_retry.localized()) }
             Button(onClick = onUseDefault) { Text(MR.strings.desktop_reader_pairing_use_default.localized()) }
         }

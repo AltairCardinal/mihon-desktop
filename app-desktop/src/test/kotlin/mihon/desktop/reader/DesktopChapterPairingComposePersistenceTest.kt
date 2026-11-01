@@ -107,6 +107,12 @@ class DesktopChapterPairingComposePersistenceTest {
                 assertEquals(saved, repository.load(7, 10))
                 awaitAdjustButton(fixture)
                 assertTrue(!adjustButton(fixture).config.contains(SemanticsProperties.Disabled))
+                tap(fixture, Offset(600f, 240f))
+                pump(fixture, "Next explicit navigation applies the restored boundary without skipping a source") {
+                    fixture.visiblePagesAtViewportCenter() == setOf(4, 5) &&
+                        fixture.renderContainsFixturePixels(System.nanoTime())
+                }
+                assertEquals(saved, repository.load(7, 10))
             } finally {
                 release.complete(Unit)
                 fixture.close()
@@ -118,83 +124,101 @@ class DesktopChapterPairingComposePersistenceTest {
     }
 
     @Test
-    fun failedRecordKeepsNativeContentAndOriginalRetryAndDefaultButtons() = runBlocking {
-        for (useDefault in listOf(false, true)) {
-            openDatabase(tempDir.resolve("failed-$useDefault.sqlite"), create = true).use { (handler, driver) ->
-                seed(driver)
-                val repository = ChapterPairingRepositoryImpl(handler)
-                val saved = repository.replace(7, 10, 0, 8, setOf(3))
-                val reads = AtomicInteger()
-                val release = CompletableDeferred<Unit>()
-                val coordinator = DesktopChapterPairingCoordinator(object : ChapterPairingRepository by repository {
-                    override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot {
-                        if (reads.incrementAndGet() == 1) error("Original record read failed")
-                        release.await()
-                        return repository.load(chapterId, mangaId)
+    fun failedRecordKeepsNativeContentWithOptionalReloadInSettings() = runBlocking {
+        openDatabase(tempDir.resolve("optional-reload.sqlite"), create = true).use { (handler, driver) ->
+            seed(driver)
+            val repository = ChapterPairingRepositoryImpl(handler)
+            val saved = repository.replace(7, 10, 0, 8, setOf(3))
+            val reads = AtomicInteger()
+            val failRead = java.util.concurrent.atomic.AtomicBoolean(true)
+            val release = CompletableDeferred<Unit>()
+            val coordinator = DesktopChapterPairingCoordinator(object : ChapterPairingRepository by repository {
+                override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot {
+                    reads.incrementAndGet()
+                    assertEquals(7L, chapterId)
+                    assertEquals(10L, mangaId)
+                    if (failRead.get()) error("Original record read failed")
+                    release.await()
+                    return repository.load(chapterId, mangaId)
+                }
+            })
+            mihon.desktop.test.state.readerState.open(7, 1, 8, false, "M", "C", false, false)
+            val fixture = mounted(tempDir.resolve("optional-reload"), coordinator, 1, ConcurrentHashMap.newKeySet())
+            try {
+                fixture.releaseBackgroundGates()
+                pump(fixture, "The failed record must still permit native pixels") {
+                    mihon.desktop.test.state.readerState.mountedSnapshot()?.pairingLoad == PairingLoad.ERROR &&
+                        fixture.renderContainsFixturePixels(System.nanoTime())
+                }
+                awaitAdjustButton(fixture, Offset(320f, 400f))
+                assertTrue(adjustButton(fixture).config.contains(SemanticsProperties.Disabled))
+                val before = nativeSnapshot(fixture)
+                for (succeeds in listOf(false, true)) {
+                    val settings = requireReaderAction(fixture, "Reader Settings", description = true)
+                    assertTrue(requireNotNull(settings.config[SemanticsActions.OnClick].action).invoke())
+                    pump(fixture, "The existing settings must open") {
+                        mihon.desktop.test.state.readerState.mountedSnapshot()?.showSettings == true
                     }
-                })
-                mihon.desktop.test.state.readerState.open(7, 1, 8, false, "M", "C", false, false)
-                val fixture = mounted(
-                    tempDir.resolve("failed-$useDefault"),
-                    coordinator,
-                    1,
-                    ConcurrentHashMap.newKeySet(),
-                )
-                try {
-                    fixture.releaseBackgroundGates()
-                    pump(fixture, "The actual failed record must still permit native pixels") {
-                        mihon.desktop.test.state.readerState.mountedSnapshot()?.pairingLoad == PairingLoad.ERROR &&
-                            fixture.renderContainsFixturePixels(System.nanoTime())
+                    println(
+                        "Optional reload before UI readiness succeeds=$succeeds reads=${reads.get()}; " +
+                            readerActionSummary(fixture),
+                    )
+                    pump(fixture, "The actual optional Reload action must be composed before selecting it") {
+                        readerActionNodes(fixture, "Reload page pairing").isNotEmpty()
                     }
-                    awaitAdjustButton(fixture, Offset(320f, 400f))
-                    assertTrue(adjustButton(fixture).config.contains(SemanticsProperties.Disabled))
-                    val before = nativeSnapshot(fixture)
-                    val action = if (useDefault) "Use default pairing this time" else "Retry"
-                    val button = nodes(fixture).single { node ->
-                        node.config.contains(SemanticsActions.OnClick) &&
-                            textsFrom(node).any { it.equals(action, ignoreCase = true) }
+                    println(
+                        "Optional reload after UI readiness succeeds=$succeeds reads=${reads.get()}; " +
+                            readerActionSummary(fixture),
+                    )
+                    assertTrue(
+                        texts(fixture).none {
+                            it == "Could not load the saved page pairing." || it == "Retry" ||
+                                it == "Use default pairing this time"
+                        },
+                        "Dual settings must not present the obsolete error or Retry and Default choice",
+                    )
+                    val reload = requireReaderAction(fixture, "Reload page pairing")
+                    val count = reads.get()
+                    failRead.set(!succeeds)
+                    assertTrue(requireNotNull(reload.config[SemanticsActions.OnClick].action).invoke())
+                    pump(fixture, "Only the optional same-chapter reload performs a new read") {
+                        reads.get() ==
+                            count + 1
                     }
-                    assertTrue(requireNotNull(button.config[SemanticsActions.OnClick].action).invoke())
-                    if (useDefault) {
-                        pump(fixture, "The original default action must retain unknown revision") {
-                            mihon.desktop.test.state.readerState.mountedSnapshot()?.pairingLoad ==
-                                PairingLoad.DEFAULT_UNVERIFIED
-                        }
-                        assertEquals(
-                            null,
-                            mihon.desktop.test.state.readerState.mountedSnapshot()?.dualPairingState?.revision,
-                        )
-                        assertEquals(1, reads.get())
-                        assertTrue(adjustButton(fixture).config.contains(SemanticsProperties.Disabled))
-                    } else {
-                        pump(fixture, "Original Retry must reopen the original held record read") { reads.get() == 2 }
-                        assertTrue(fixture.renderContainsFixturePixels(System.nanoTime()))
-                        assertEquals(
-                            PairingLoad.LOADING,
-                            mihon.desktop.test.state.readerState.mountedSnapshot()?.pairingLoad,
-                        )
+                    if (succeeds) {
                         release.complete(Unit)
-                        pump(fixture, "Original Retry completes against the real repository") {
-                            mihon.desktop.test.state.readerState.mountedSnapshot()?.pairingLoad == PairingLoad.READY &&
-                                !adjustButton(fixture).config.contains(SemanticsProperties.Disabled)
+                        pump(fixture, "Optional reload restores the original record") {
+                            mihon.desktop.test.state.readerState.mountedSnapshot()?.pairingLoad == PairingLoad.READY
                         }
                         assertEquals(
                             saved.revision,
                             mihon.desktop.test.state.readerState.mountedSnapshot()?.pairingRevision,
                         )
-                        assertTrue(!adjustButton(fixture).config.contains(SemanticsProperties.Disabled))
+                    } else {
+                        pump(fixture, "A failed optional reload retains the true failure") {
+                            mihon.desktop.test.state.readerState.mountedSnapshot()?.pairingLoad == PairingLoad.ERROR
+                        }
+                        assertEquals(
+                            null,
+                            mihon.desktop.test.state.readerState.mountedSnapshot()?.dualPairingState?.revision,
+                        )
+                    }
+                    val close = requireReaderAction(fixture, "Close")
+                    assertTrue(requireNotNull(close.config[SemanticsActions.OnClick].action).invoke())
+                    pump(fixture, "Closing settings returns to the unchanged reader") {
+                        mihon.desktop.test.state.readerState.mountedSnapshot()?.showSettings == false
                     }
                     assertEquals(before, nativeSnapshot(fixture))
                     assertTrue(fixture.renderContainsFixturePixels(System.nanoTime()))
                     assertEquals(saved, repository.load(7, 10))
                     assertEquals(5L, queryLong(driver, "SELECT last_page_read FROM chapters WHERE _id=7"))
-                } finally {
-                    release.complete(Unit)
-                    fixture.close()
-                    coordinator.stop()
-                    coordinator.awaitStopped()
-                    mihon.desktop.test.state.readerState.reset()
                 }
+            } finally {
+                release.complete(Unit)
+                fixture.close()
+                coordinator.stop()
+                coordinator.awaitStopped()
+                mihon.desktop.test.state.readerState.reset()
             }
         }
     }
@@ -612,6 +636,38 @@ class DesktopChapterPairingComposePersistenceTest {
                 )}; events=${fixture.events()}",
             )
         }
+    }
+
+    private fun readerActionNodes(
+        fixture: MountedReaderPresentationFixture,
+        label: String,
+        description: Boolean = false,
+    ): List<SemanticsNode> = nodes(fixture).filter { node ->
+        node.config.contains(SemanticsActions.OnClick) && if (description) {
+            node.config.contains(SemanticsProperties.ContentDescription) &&
+                node.config[SemanticsProperties.ContentDescription].contains(label)
+        } else {
+            textsFrom(node).contains(label)
+        }
+    }
+
+    private fun readerActionSummary(fixture: MountedReaderPresentationFixture): String {
+        val state = mihon.desktop.test.state.readerState.mountedSnapshot()
+        val descriptions = nodes(fixture).asSequence().filter {
+            it.config.contains(SemanticsProperties.ContentDescription)
+        }.flatMap { it.config[SemanticsProperties.ContentDescription].asSequence() }.take(16).toList()
+        return "showSettings=${state?.showSettings} pairing=${state?.pairingLoad} " +
+            "text=${texts(fixture).take(24)} descriptions=$descriptions"
+    }
+
+    private fun requireReaderAction(
+        fixture: MountedReaderPresentationFixture,
+        label: String,
+        description: Boolean = false,
+    ): SemanticsNode {
+        val matches = readerActionNodes(fixture, label, description)
+        assertEquals(1, matches.size, "Expected exactly one reader action '$label'; ${readerActionSummary(fixture)}")
+        return matches.single()
     }
 
     private fun adjustButton(fixture: MountedReaderPresentationFixture): SemanticsNode =

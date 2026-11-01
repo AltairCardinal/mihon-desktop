@@ -15,6 +15,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import cafe.adriel.voyager.navigator.Navigator
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.CatalogueSource
@@ -57,6 +58,7 @@ import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadProvider
+import mihon.desktop.reader.DesktopChapterPairingCoordinator
 import mihon.desktop.reader.DesktopReaderChapterContext
 import mihon.desktop.reader.DesktopReaderImageAsset
 import mihon.desktop.reader.DesktopReaderPageImageDecoder
@@ -73,6 +75,9 @@ import mihon.desktop.reader.SkiaDesktopReaderPageImageDecoder
 import mihon.desktop.reader.gatePoint
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.FakeDesktopSourceManager
+import mihon.desktop.test.http.ReaderTestFixtureSource
+import mihon.desktop.test.http.ReaderTestFixtureSpec
+import mihon.desktop.test.http.ReaderTestImageFormat
 import mihon.desktop.test.http.ReaderTestModeController
 import mihon.desktop.test.http.testHttpServer
 import mihon.desktop.test.state.applicationState
@@ -123,6 +128,14 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.data.Database
+import tachiyomi.data.DateColumnAdapter
+import tachiyomi.data.History
+import tachiyomi.data.JvmDatabaseHandler
+import tachiyomi.data.Mangas
+import tachiyomi.data.StringListColumnAdapter
+import tachiyomi.data.UpdateStrategyColumnAdapter
+import tachiyomi.data.chapter.ChapterPairingRepositoryImpl
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
 import java.awt.image.BufferedImage
@@ -286,6 +299,31 @@ class SharedSpreadDesktopResourceWiringTest {
         }
 
     @Test
+    fun `real online test source retry restores pixels through the full viewport in the same owner`() = runBlocking {
+        Fixture(pageCount = 3, initialPage = 1, online = true, matching = true, onlineTestMode = true).use { f ->
+            val control = requireNotNull(f.onlineControl)
+            exerciseActualRetry(
+                f,
+                fullViewport = true,
+                makeError = {
+                    val rule = requireNotNull(f.controlledRead)
+                    f.pump {
+                        control.readControlSnapshot().single { it.id == rule }.status == "HOLDING" &&
+                            f.actualPaint.containsKey(1) && f.model.state.value.pairingLoad == PairingLoad.READY
+                    }
+                    assertEquals(PairingLoad.READY, f.model.state.value.pairingLoad)
+                    assertTrue(f.actualPaint.containsKey(1))
+                    assertEquals("HOLDING", control.readControlSnapshot().single { it.id == rule }.status)
+                    assertTrue(control.resolveRead(rule, fail = true))
+                },
+                releaseFailure = {},
+            )
+            assertEquals(PairingLoad.READY, f.model.state.value.pairingLoad)
+            assertEquals(f.runtime.pageContentOwner.controlOwnerId, control.readControlSnapshot().single().ownerId)
+        }
+    }
+
+    @Test
     fun `matching retry button survives a frame and recovers actual encoded read failure`() = runBlocking {
         ReaderTestModeController().use { control ->
             Fixture(
@@ -340,11 +378,18 @@ class SharedSpreadDesktopResourceWiringTest {
             }
         }
         fun pixelBounds(index: Int): Pair<Int, Int>? {
-            val color = (255 shl 24) or ((index * 35) shl 16) or (80 shl 8) or 120
+            val color = if (fixture.onlineControl != null) {
+                0xfff4f4f4.toInt()
+            } else {
+                (255 shl 24) or ((index * 35) shl 16) or (80 shl 8) or 120
+            }
             val pixels = fixture.scene.render(fixture.dispatcher.scheduler.currentTime * 1_000_000L)
                 .toComposeImageBitmap().asSkiaBitmap()
             return try {
-                val columns = (0 until 700).filter { pixels.getColor(it, 600) == color }
+                val columns = (0 until 700).filter {
+                    (fixture.onlineControl == null || if (index == 2) it < 350 else it >= 350) &&
+                        pixels.getColor(it, 600) == color
+                }
                 columns.takeIf { it.isNotEmpty() }?.let { it.first() to it.last() }
             } finally {
                 pixels.close()
@@ -358,6 +403,8 @@ class SharedSpreadDesktopResourceWiringTest {
         val target = fixture.model.state.value.session.activeChapter.pages[2]
         val oldAttempt = target.attemptGeneration
         val frame = requireNotNull(fixture.owner()).targetFrameId
+        val originalOwner = fixture.runtime.pageContentOwner
+        val chapter = fixture.model.state.value.session.activeChapter.id
         val reads = fixture.ioEvents.count { it.type == ReaderIoEventType.OPEN_PAGE && it.pageId == target.id }
         val decodes = fixture.decodeInvocations[2]?.get() ?: 0
         val callbackCount = AtomicInteger()
@@ -390,6 +437,8 @@ class SharedSpreadDesktopResourceWiringTest {
         assertTrue(retryButtons().isEmpty(), "Successful retry must remove the actual error button")
         assertEquals(buddyBounds, pixelBounds(1), "Retry must preserve the drawn buddy geometry")
         assertEquals(frame, requireNotNull(fixture.owner()).targetFrameId)
+        assertSame(originalOwner, fixture.runtime.pageContentOwner, "Image retry must retain the same content owner")
+        assertEquals(chapter, fixture.model.state.value.session.activeChapter.id)
     }
 
     @Test
@@ -3532,6 +3581,7 @@ class SharedSpreadDesktopResourceWiringTest {
         private val manualSpreadPublisher: Boolean = false,
         private val failedEncodedPage: Int? = null,
         private val readControl: ReaderTestModeController? = null,
+        onlineTestMode: Boolean = false,
     ) : AutoCloseable {
         val dispatcher = StandardTestDispatcher()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -3694,11 +3744,11 @@ class SharedSpreadDesktopResourceWiringTest {
             }
         val paths = CopyOnWriteArrayList<Int>()
         val heldNetworkConsumed = AtomicBoolean(false)
-        val server = if (online) {
+        val server: mockwebserver3.MockWebServer? = if (online) {
             mockwebserver3.MockWebServer().apply {
                 this.dispatcher = object : mockwebserver3.Dispatcher() {
                     override fun dispatch(request: mockwebserver3.RecordedRequest): mockwebserver3.MockResponse {
-                        val index = request.url.encodedPath.substringAfterLast('/').toInt()
+                        val index = request.url.encodedPath.substringAfterLast('/').substringBefore('.').toInt()
                         paths += index
                         diagnose("normalHttp:$index")
                         if (index == heldNetworkPage &&
@@ -3707,11 +3757,15 @@ class SharedSpreadDesktopResourceWiringTest {
                             val until = System.nanoTime() + 30_000_000_000L
                             while (!networkRelease.get() && System.nanoTime() < until) Thread.sleep(2)
                         }
-                        val body = payload(index)
+                        val body = onlineControl?.let { control ->
+                            requireNotNull(
+                                control.onlineImage(requireNotNull(control.fixtureDescriptor()).token, index),
+                            )
+                        } ?: payload(index)
                         networkBytes.addAndGet(body.size.toLong())
                         return mockwebserver3.MockResponse.Builder().addHeader(
                             "Content-Type",
-                            if (encodedPages == null) "image/png" else "image/jpeg",
+                            if (onlineTestMode || encodedPages != null) "image/jpeg" else "image/png",
                         ).body(Buffer().write(body)).build()
                     }
                 }
@@ -3720,13 +3774,69 @@ class SharedSpreadDesktopResourceWiringTest {
         } else {
             null
         }
+        val onlineControl: ReaderTestModeController? = if (onlineTestMode) {
+            ReaderTestModeController(baseUrl = requireNotNull(server).url("/").toString()).also {
+                it.prepareFixture(
+                    ReaderTestFixtureSpec(
+                        source = ReaderTestFixtureSource.ONLINE,
+                        pageCount = pageCount,
+                        width = 60,
+                        height = 90,
+                        format = ReaderTestImageFormat.JPEG,
+                    ),
+                    mangaId = 1,
+                    chapterId = 87,
+                    chapterTitle = "C",
+                )
+            }
+        } else {
+            null
+        }
+        private val onlineDatabase = if (onlineTestMode) {
+            val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+            Database.Schema.create(driver)
+            driver.execute(null, "PRAGMA foreign_keys=ON", 0)
+            driver.execute(
+                null,
+                "INSERT INTO mangas(_id, source, url, title, status, favorite, initialized, viewer, " +
+                    "chapter_flags, cover_last_modified, date_added) " +
+                    "VALUES (1, -7070707070707, '/', 'M', 0, 0, 0, 0, 0, 0, 0)",
+                0,
+            )
+            driver.execute(
+                null,
+                "INSERT INTO chapters(_id, manga_id, url, name, read, bookmark, last_page_read, " +
+                    "chapter_number, source_order, date_fetch, date_upload) " +
+                    "VALUES (87, 1, '/current', 'C', 0, 0, 0, 1, 0, 0, 0)",
+                0,
+            )
+            JvmDatabaseHandler(
+                Database(
+                    driver,
+                    historyAdapter = History.Adapter(DateColumnAdapter),
+                    mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+                ),
+                driver,
+            )
+        } else {
+            null
+        }
+        private val onlinePairing = onlineDatabase?.let {
+            DesktopChapterPairingCoordinator(ChapterPairingRepositoryImpl(it))
+        }
         val factory = DesktopReaderRuntimeFactory(
             prefs,
             DesktopDownloadProvider(temp.resolve("downloads")),
             if (server == null) {
                 mockk<SourceManager>(relaxed = true)
             } else {
-                FakeDesktopSourceManager(listOf(ReadyWindowSource(pageCount) { server.url("/page/$it").toString() }))
+                FakeDesktopSourceManager(
+                    listOf(
+                        onlineControl?.onlineSource ?: ReadyWindowSource(pageCount) {
+                            server.url("/page/$it").toString()
+                        },
+                    ),
+                )
             },
             NetworkHelper(OkHttpClient()),
             mockk<ReaderProgressTracker>(relaxed = true),
@@ -3734,7 +3844,7 @@ class SharedSpreadDesktopResourceWiringTest {
             temp.resolve("cache-${System.nanoTime()}"),
             pageImageDecoder = decoder,
             readerIoProbe = ReaderIoProbe { ioEvents += it },
-            readerIoGate = readControl ?: ReaderIoGate { point ->
+            readerIoGate = readControl ?: onlineControl ?: ReaderIoGate { point ->
                 if (point == ReaderIoGatePoint.NON_CURRENT_PAGE && gateOldBackground.compareAndSet(true, false)) {
                     withContext(NonCancellable) {
                         oldBackgroundEntered.complete(Unit)
@@ -3742,13 +3852,17 @@ class SharedSpreadDesktopResourceWiringTest {
                     }
                 }
             },
+            pairingCoordinator = onlinePairing,
         )
         private val context = DesktopReaderChapterContext(
-            87, 42, if (online) "/chapter" else original.absolutePath, "M", "C", 1.0, 0, initialPage, false,
+            87, onlineControl?.onlineSource?.id ?: 42,
+            onlineControl?.fixtureDescriptor()?.chapterUrl ?: if (online) "/chapter" else original.absolutePath,
+            "M", "C", 1.0, 0, initialPage, false,
             localChapterPath = original.absolutePath.takeUnless { online },
+            mangaId = if (onlineTestMode) 1 else 0,
         )
         var runtime = factory.createRuntime(context, scope)
-        val controlledRead = readControl?.armRead(
+        val controlledRead = (readControl ?: onlineControl)?.armRead(
             ownerId = runtime.pageContentOwner.controlOwnerId,
             chapterId = runtime.session.state.value.snapshot.activeChapter.id.value,
             pageIndex = 2,
@@ -4095,6 +4209,11 @@ class SharedSpreadDesktopResourceWiringTest {
             }
             model.onDispose()
             runtime.close()
+            onlinePairing?.let { pairing ->
+                pairing.stop()
+                runBlocking { pairing.awaitStopped() }
+            }
+            onlineDatabase?.close()
             currentRuntimeEpoch = runtimeEpochCounter.incrementAndGet()
             runtime = factory.createRuntime(context, scope)
             model = factory.createModel(runtime, false, 0, null)
@@ -4306,6 +4425,7 @@ class SharedSpreadDesktopResourceWiringTest {
             scope.cancel()
             uiScope.cancel()
             server?.close()
+            onlineControl?.close()
             legacy.removeNode()
         }
     }
