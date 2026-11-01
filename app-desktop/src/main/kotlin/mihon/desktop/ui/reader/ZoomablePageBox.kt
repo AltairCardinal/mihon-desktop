@@ -8,11 +8,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,6 +35,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.isActive
@@ -64,10 +69,12 @@ internal fun Modifier.readerZoomInput(
     zoomState: ZoomState,
     onZoomChange: (ZoomState) -> Unit,
     onTap: ((Offset, Float, Float) -> Unit)? = null,
+    panBounds: ReaderPanBounds? = null,
 ): Modifier {
     val latestZoom by rememberUpdatedState(zoomState)
     val latestChange by rememberUpdatedState(onZoomChange)
     val latestTap by rememberUpdatedState(onTap)
+    val latestBounds by rememberUpdatedState(panBounds)
     return pointerInput(Unit) {
         var lastTapTime = 0L
         var lastTapPosition = Offset.Zero
@@ -115,6 +122,7 @@ internal fun Modifier.readerZoomInput(
                             gestureZoom.offsetY * factor + focalOffset.y * (1f - factor) + pan.y,
                         )
                     }
+                    gestureZoom = latestBounds?.constrain(gestureZoom) ?: gestureZoom
                     latestChange(gestureZoom)
                     event.changes.forEach { it.consume() }
                     lastPanPosition = pressed.first().position
@@ -130,7 +138,8 @@ internal fun Modifier.readerZoomInput(
                     if ((change.position - requireNotNull(downPosition)).getDistance() > 15f) moved = true
                     if (moved && gestureZoom.scale > 1f) {
                         val delta = change.position - lastPanPosition
-                        gestureZoom = gestureZoom.pan(delta.x, delta.y)
+                        gestureZoom = (latestBounds?.constrain(gestureZoom) ?: gestureZoom).pan(delta.x, delta.y)
+                        gestureZoom = latestBounds?.constrain(gestureZoom) ?: gestureZoom
                         latestChange(gestureZoom)
                         event.changes.forEach { it.consume() }
                     }
@@ -244,6 +253,8 @@ internal fun ZoomablePageBox(
     onTapCenter: (() -> Unit)? = null,
     renderedImage: ReaderPresentationRenderedImage? =
         rememberReaderPresentationRenderedImage(presentationImage, cropBorders),
+    constrainZoom: Boolean = true,
+    onPanGeometryChange: ((ReaderRegionDrawGeometry?) -> Unit)? = null,
 ) {
     val gestureCapabilities = zoomableGestureCapabilities(
         handlesTapNavigation = handlesTapNavigation,
@@ -256,6 +267,39 @@ internal fun ZoomablePageBox(
     val presentationState = presentationImage.state
     val readyState = presentationState as? DesktopReaderPresentationImageState.Ready
     val asset = readyState?.asset
+    var layoutSize by remember { mutableStateOf(IntSize.Zero) }
+    val resolvedScale = when (scaleType) {
+        ScaleType.FIT_SCREEN -> ContentScale.Fit
+        ScaleType.FIT_WIDTH -> ContentScale.FillWidth
+        ScaleType.FIT_HEIGHT -> ContentScale.FillHeight
+        ScaleType.ORIGINAL_SIZE -> ContentScale.None
+        ScaleType.SMART_FIT -> if (asset != null && asset.sourceHeight > asset.sourceWidth) {
+            ContentScale.FillWidth
+        } else {
+            ContentScale.Fit
+        }
+    }
+    val panGeometry = if (renderedImage != null && layoutSize.width > 0 && layoutSize.height > 0) {
+        resolveReaderRegionDrawGeometry(
+            layoutSize,
+            IntSize(renderedImage.bitmap.width, renderedImage.bitmap.height),
+            renderedImage.renderedSourceBounds,
+            resolvedScale,
+            imageAlignment,
+        ).let { imageViewport?.mapGeometry(it) ?: it }
+    } else {
+        null
+    }
+    val panBounds = panGeometry?.panBounds().takeIf { constrainZoom && imageViewport == null }
+    val displayZoom = panBounds?.constrain(zoomState) ?: zoomState
+    LaunchedEffect(displayZoom, zoomState) {
+        if (displayZoom != zoomState) onZoomChange(displayZoom)
+    }
+    SideEffect { onPanGeometryChange?.invoke(panGeometry) }
+    val latestGeometryChange by rememberUpdatedState(onPanGeometryChange)
+    DisposableEffect(Unit) {
+        onDispose { latestGeometryChange?.invoke(null) }
+    }
     val mountedCoordinates = remember { arrayOfNulls<LayoutCoordinates>(1) }
     val renderTrace = LocalReaderRenderTrace.current
     val traceRevision = if (renderTrace != null) renderTrace.captureRevision.collectAsState().value else 0L
@@ -276,8 +320,9 @@ internal fun ZoomablePageBox(
     val innerContent: @Composable () -> Unit = {
         val gestureModifier = if (imageViewport == null) {
             Modifier.readerZoomInput(
-                zoomState = zoomState,
+                zoomState = displayZoom,
                 onZoomChange = onZoomChange,
+                panBounds = panBounds,
                 onTap = if (gestureCapabilities.tapNavigationEnabled) {
                     { point, width, height ->
                         when (tapNavRegion(point.x, point.y, width, height, navigationMode, isRtl)) {
@@ -296,6 +341,7 @@ internal fun ZoomablePageBox(
 
         Box(
             modifier = modifier
+                .onSizeChanged { layoutSize = it }
                 .then(gestureModifier),
             contentAlignment = imageAlignment,
         ) {
@@ -322,22 +368,7 @@ internal fun ZoomablePageBox(
                 )
             }
 
-            // Resolve ContentScale from ScaleType.
-            // SmartFit: FillWidth for portrait images, Fit for landscape.
-            val resolvedScale = when (scaleType) {
-                ScaleType.FIT_SCREEN -> ContentScale.Fit
-                ScaleType.FIT_WIDTH -> ContentScale.FillWidth
-                ScaleType.FIT_HEIGHT -> ContentScale.FillHeight
-                ScaleType.ORIGINAL_SIZE -> ContentScale.None
-                ScaleType.SMART_FIT ->
-                    if (asset != null && asset.sourceHeight > asset.sourceWidth) {
-                        ContentScale.FillWidth
-                    } else {
-                        ContentScale.Fit
-                    }
-            }
-
-            val imageModifier = Modifier.fillMaxSize().readerImageTransform(zoomState, imageViewport)
+            val imageModifier = Modifier.fillMaxSize().readerImageTransform(displayZoom, imageViewport)
             if (renderedImage != null && !fullDecodeFailed && !presentationClosed) {
                 val observedMount = if (onObservedImageDraw != null) {
                     remember { mihon.desktop.test.state.readerState.nextDrawMountId() }
@@ -425,7 +456,7 @@ internal fun ZoomablePageBox(
                                     resolveReaderVisibleSourceBounds(
                                         geometry,
                                         ReaderRegionViewport.Full,
-                                        zoomState,
+                                        displayZoom,
                                     ) != null &&
                                     (
                                         onPagePrepared == null ||
@@ -459,7 +490,7 @@ internal fun ZoomablePageBox(
                             renderedImage = renderedImage,
                             contentScale = resolvedScale,
                             alignment = imageAlignment,
-                            zoomState = zoomState,
+                            zoomState = displayZoom,
                             imageViewport = imageViewport,
                             transformedByParent = true,
                         )

@@ -258,6 +258,7 @@ internal fun SinglePagePagerViewer(
                             readyPage.id.sourcePageIndex + 1,
                         ),
                         zoomState = zoomState,
+                        constrainZoom = unit.id == selectedUnit.id,
                         onZoomChange = onZoomChange,
                         cropBorders = cropBorders,
                         contextMenuScope = contextMenuScope,

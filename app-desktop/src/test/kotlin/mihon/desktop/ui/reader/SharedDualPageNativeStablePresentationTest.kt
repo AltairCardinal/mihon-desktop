@@ -97,6 +97,88 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class SharedDualPageNativeStablePresentationTest {
     @Test
+    fun `zoom pan limits blank space and immediately follows reverse movement`() = runTest {
+        for (dual in listOf(false, true)) {
+            for (type in listOf(PointerType.Mouse, PointerType.Touch)) {
+                Fixture(this, dual = dual, originalHeadersBeforeImages = true).use { fixture ->
+                    fixture.partner.complete(Unit)
+                    fixture.pump()
+                    assertTrue(fixture.hasRedPixels(), "The comic must draw before zoom and pan")
+                    if (dual) assertTrue(fixture.greenBounds() != null, "The complete spread must draw before pan")
+                    fixture.setZoom(ZoomState(scale = 2f))
+                    fixture.settle()
+                    fixture.dragTo(Offset(10_000f, 10_000f), type, release = false)
+                    val limited = fixture.zoomState
+                    assertTrue(limited.offsetX < 1_000f && limited.offsetY < 1_000f, "$dual $type: $limited")
+                    fixture.settle()
+                    val bounds = fixture.comicRectangle()
+                    assertTrue(bounds[0] in 132..134 && bounds[1] in 132..134, "$dual $type: $bounds")
+                    fixture.movePointer(Offset(9_970f, 9_970f), type)
+                    assertEquals(limited.offsetX - 30f, fixture.zoomState.offsetX, 0.01f)
+                    assertEquals(limited.offsetY - 30f, fixture.zoomState.offsetY, 0.01f)
+                    fixture.releasePointer(Offset(9_970f, 9_970f), type)
+                    fixture.dragTo(Offset(-10_000f, -10_000f), type)
+                    val opposite = fixture.zoomState
+                    assertTrue(opposite.offsetX > -1_000f && opposite.offsetY > -1_000f)
+                    fixture.settle()
+                    val oppositeBounds = fixture.comicRectangle()
+                    assertTrue(oppositeBounds[2] in 265..267 && oppositeBounds[3] in 265..267)
+                    assertEquals(1, fixture.page, "A bounded drag must not turn the page")
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `zoom pan preserves legal spread focus while a partner is loading`() = runTest {
+        for (offset in listOf(-200f, 200f)) {
+            Fixture(this, originalHeadersBeforeImages = true).use { fixture ->
+                fixture.pump()
+                val zoom = ZoomState(scale = 2f, offsetX = offset)
+                fixture.setZoom(zoom)
+                fixture.settle()
+                assertEquals(zoom, fixture.zoomState)
+                fixture.partner.complete(Unit)
+                fixture.settle(60)
+                assertEquals(zoom, fixture.zoomState)
+            }
+        }
+    }
+
+    @Test
+    fun `zoom pan preserves small image margins and reclamps after scale and viewport changes`() = runTest {
+        Fixture(this, dual = false, imageWidth = 2, originalHeadersBeforeImages = true).use { fixture ->
+            fixture.pump()
+            fixture.setZoom(ZoomState(scale = 2f))
+            fixture.settle()
+            val before = fixture.redRectangle()
+            fixture.dragTo(Offset(10_000f, 200f), PointerType.Mouse)
+            assertEquals(0f, fixture.zoomState.offsetX)
+            assertEquals(before, fixture.redRectangle())
+        }
+        for (dual in listOf(false, true)) {
+            Fixture(this, dual = dual, originalHeadersBeforeImages = true).use { fixture ->
+                fixture.partner.complete(Unit)
+                fixture.pump()
+                fixture.setZoom(ZoomState(scale = 4f))
+                fixture.settle()
+                fixture.dragTo(Offset(10_000f, 10_000f), PointerType.Mouse)
+                val old = fixture.zoomState
+                fixture.setZoom(old.copy(scale = 2f))
+                fixture.settle()
+                assertTrue(fixture.zoomState.offsetX < old.offsetX)
+                assertTrue(fixture.zoomState.offsetY < old.offsetY)
+                fixture.resize(300)
+                fixture.settle()
+                val resized = fixture.comicRectangle()
+                assertTrue(resized[0] <= 101, "$dual: $resized")
+                fixture.doubleTap()
+                assertEquals(ZoomState(), fixture.zoomState)
+            }
+        }
+    }
+
+    @Test
     fun `zoomed dual reader clicks turn whole groups in both directions without dragging`() = runTest {
         for (mode in listOf(ReadingMode.RTL, ReadingMode.LTR)) {
             for (initialPage in listOf(0, 1)) {
@@ -266,7 +348,7 @@ class SharedDualPageNativeStablePresentationTest {
     @Test
     fun `hardening zoomed resize preserves images and input in ordinary and dual readers`() = runTest {
         for (dual in listOf(false, true)) {
-            Fixture(this, dual = dual).use { fixture ->
+            Fixture(this, dual = dual, originalHeadersBeforeImages = true).use { fixture ->
                 fixture.partner.complete(Unit)
                 fixture.pump()
                 fixture.setZoom(ZoomState(scale = 2f, offsetX = -100f))
@@ -282,7 +364,9 @@ class SharedDualPageNativeStablePresentationTest {
                 fixture.resize(400)
                 fixture.settle()
                 assertEquals(bounds, fixture.redRectangle())
-                assertEquals(listOf(-130f, -160f, -190f, -220f), fixture.mousePan())
+                val offsets = fixture.mousePan()
+                assertEquals(listOf(-130f, -160f, -190f), offsets.take(3))
+                assertEquals(if (dual) -220f else -201.33333f, offsets.last(), 0.01f)
                 assertEquals(1, fixture.page)
                 fixture.doubleTap()
                 assertEquals(ZoomState(), fixture.zoomState)
@@ -320,7 +404,7 @@ class SharedDualPageNativeStablePresentationTest {
     }
 
     @Test
-    fun `dual zoom does not report an offscreen portrait when only its slot whitespace intersects the viewport`() =
+    fun `dual zoom corrects a stale offscreen portrait before reporting visible pixels`() =
         runTest {
             Fixture(
                 this,
@@ -328,12 +412,13 @@ class SharedDualPageNativeStablePresentationTest {
                 canvasHeight = 1_000,
                 imageWidth = 1_600,
                 imageHeight = 3_200,
+                originalHeadersBeforeImages = true,
             ).use { fixture ->
                 fixture.setZoom(ZoomState(scale = 2f, offsetX = -2_000f))
                 fixture.settle(60)
                 fixture.imageOwners(1)
-                assertTrue(!fixture.hasRedPixels())
-                assertTrue(1 !in fixture.presented, "Intersecting empty slot space cannot acknowledge image pixels")
+                assertTrue(fixture.hasRedPixels())
+                assertTrue(1 in fixture.presented, "The corrected portrait must present real image pixels")
             }
         }
 
@@ -938,7 +1023,8 @@ class SharedDualPageNativeStablePresentationTest {
                     advanceTimeBy(16)
                     assertTrue(
                         fixture.hasRedPixels(),
-                        "The current comic disappeared during automatic layout: width=$width frame=$frame dual=${fixture.dualPageMode}",
+                        "The current comic disappeared during automatic layout: " +
+                            "width=$width frame=$frame dual=${fixture.dualPageMode}",
                     )
                     runCurrent()
                     fixture.frame()
@@ -1205,6 +1291,33 @@ class SharedDualPageNativeStablePresentationTest {
                 } else {
                     null
                 },
+            )
+            settle(2)
+        }
+
+        fun dragTo(position: Offset, type: PointerType, release: Boolean = true) {
+            scene.sendPointerEvent(
+                PointerEventType.Press,
+                Offset(200f, 200f),
+                type = type,
+                button = if (type == PointerType.Mouse) PointerButton.Primary else null,
+            )
+            settle(2)
+            movePointer(position, type)
+            if (release) releasePointer(position, type)
+        }
+
+        fun movePointer(position: Offset, type: PointerType) {
+            scene.sendPointerEvent(PointerEventType.Move, position, type = type)
+            settle(2)
+        }
+
+        fun releasePointer(position: Offset, type: PointerType) {
+            scene.sendPointerEvent(
+                PointerEventType.Release,
+                position,
+                type = type,
+                button = if (type == PointerType.Mouse) PointerButton.Primary else null,
             )
             settle(2)
         }
@@ -1495,7 +1608,8 @@ class SharedDualPageNativeStablePresentationTest {
             assertTrue(handleReaderWheelEvent(event, model.state.value, model, {}, {}))
         }
         fun redRectangle(): List<Int> = colorRectangle(RED)
-        fun colorRectangle(color: Int): List<Int> {
+        fun comicRectangle(): List<Int> = colorRectangle(RED, GREEN)
+        fun colorRectangle(color: Int, additionalColor: Int? = null): List<Int> {
             time += 16_000_000L
             val bitmap = scene.render(time).toComposeImageBitmap().asSkiaBitmap()
             return try {
@@ -1505,7 +1619,7 @@ class SharedDualPageNativeStablePresentationTest {
                 var bottom = -1
                 for (y in 0 until canvasHeight) {
                     for (x in 0 until canvasWidth) {
-                        if (bitmap.getColor(x, y) == color) {
+                        if (bitmap.getColor(x, y) == color || bitmap.getColor(x, y) == additionalColor) {
                             left = minOf(left, x)
                             right = maxOf(right, x)
                             top = minOf(top, y)
@@ -1513,7 +1627,10 @@ class SharedDualPageNativeStablePresentationTest {
                         }
                     }
                 }
-                assertTrue(right >= left && bottom >= top)
+                assertTrue(
+                    right >= left && bottom >= top,
+                    "No comic pixels: zoom=$zoomState page=$page ${slotDiagnostic()}",
+                )
                 listOf(left, top, right, bottom)
             } finally {
                 bitmap.close()
