@@ -2589,14 +2589,19 @@
       "sha256": "0a267450943bb8d6fe98062dd8dc207d1a532a362182dcb3ee5d616ad0ec78ec"
     },
     {
+      "path": "history/RETIREMENT-2026-11-02.md",
+      "bytes": 5173,
+      "sha256": "0e8892384a775501e4bafaa95b4fe74041ef6ebec648e2fa38ed356f1ab64624"
+    },
+    {
       "path": "HISTORY_INDEX.md",
-      "bytes": 9939,
-      "sha256": "8368b72a192aaf5a9fde428751d403d42d8fb27a2b0439f7be1337669827f2aa"
+      "bytes": 10319,
+      "sha256": "0c1ca5ca39f96c9deae795b1a45b4c4fc01d8cface717c8c3b61a151b9f3e73b"
     },
     {
       "path": "README.md",
-      "bytes": 7874,
-      "sha256": "1ac6adeb17c09852c15f8425136b15e5210a635d04b03c49dd4b7e8c13ae4226"
+      "bytes": 8028,
+      "sha256": "2c5031fe5f1db6b33dc1060c34728336159769d5fb5bee9579e3c33ec6769a5e"
     }
   ]
 }
