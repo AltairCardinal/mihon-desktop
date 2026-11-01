@@ -167,6 +167,7 @@ class LibraryScreenModel(
     private var pendingInitialCategoryIndex: Int? = null
     private var observedBackgroundUpdate: Job? = null
     private var observesBackgroundUpdate = false
+    private var updateBannerDismissed = false
     private val browsePositions = mutableMapOf<Long?, LibraryBrowsePosition>()
 
     internal fun browsePosition(categoryId: Long?) = browsePositions[categoryId]
@@ -197,6 +198,8 @@ class LibraryScreenModel(
                         _state.update { current ->
                             current.copy(
                                 updateTask = observed.task,
+                                updateBannerVisible = current.updateBannerVisible ||
+                                    (!updateBannerDismissed && observed.task?.status == TaskStatus.Running),
                                 updateLaunchFailed = observed.launchFailure != null,
                                 isUpdating = observed.task?.status == TaskStatus.Running &&
                                     observed.task.libraryUpdate?.waitingForDevice.isNullOrEmpty(),
@@ -441,6 +444,16 @@ class LibraryScreenModel(
         }
         browsePositions.keys.retainAll(categories.map { it.id }.toSet() + setOf(0L, null))
         if (!state.value.isLoading) pendingInitialCategoryIndex = null
+    }
+
+    fun dismissUpdateBanner() {
+        updateBannerDismissed = true
+        _state.update { it.copy(updateBannerVisible = false) }
+    }
+
+    private fun revealUpdateBanner() {
+        updateBannerDismissed = false
+        _state.update { it.copy(updateBannerVisible = true) }
     }
 
     // ── Update status ─────────────────────────────────────────────────────────
@@ -746,6 +759,7 @@ class LibraryScreenModel(
     // ── Category selection ────────────────────────────────────────────────────
 
     fun setSelectedCategoryIndex(index: Int) {
+        if (index != state.value.selectedCategoryIndex) dismissUpdateBanner()
         pendingInitialCategoryIndex = null
         _state.update {
             it.copy(
@@ -833,19 +847,26 @@ class LibraryScreenModel(
     }
 
     suspend fun refreshLibrary(items: List<LibraryManga>, categoryId: Long? = null): Boolean {
+        revealUpdateBanner()
         if (
             !backgroundIsWaitingForDevice() && (
                 _state.value.isUpdating || backgroundUpdateJob?.invoke()?.isActive == true
                 )
         ) {
             syncBackgroundUpdate()
-            setUpdateStatusText(MR.strings.update_already_running.localized())
+            setUpdateStatusText(
+                backgroundUpdateSnapshot?.invoke()?.let(::libraryUpdateSummary)
+                    ?: MR.strings.update_already_running.localized(),
+            )
             return false
         }
         acceptScopedBackgroundUpdate?.let { accept ->
             val accepted = accept(categoryId)
             if (accepted == null) {
-                setUpdateStatusText(MR.strings.update_already_running.localized())
+                setUpdateStatusText(
+                    backgroundUpdateSnapshot?.invoke()?.let(::libraryUpdateSummary)
+                        ?: MR.strings.update_already_running.localized(),
+                )
                 return false
             }
             setIsUpdating(true)
@@ -961,6 +982,7 @@ class LibraryScreenModel(
         } == true
 
     private fun runRecoveryUpdate(start: (() -> Job)?) {
+        if (start != null) revealUpdateBanner()
         if ((_state.value.isUpdating && !backgroundIsWaitingForDevice()) || start == null) return
         screenModelScope.launch {
             setIsUpdating(!backgroundIsWaitingForDevice())
@@ -1427,15 +1449,30 @@ private fun SharedLibraryDisplayMode.toDesktopDisplayMode() = when (this) {
 }
 
 internal fun libraryUpdateSummary(task: mihon.desktop.task.StoredTask): String? {
-    val units = task.libraryUpdate?.units ?: return null
-    val counts = MR.strings.desktop_library_update_results_count.localized(
-        Locale.getDefault(),
-        units.count { it.status == mihon.desktop.task.LibraryUnitStatus.SUCCESS },
-        units.count { it.status == mihon.desktop.task.LibraryUnitStatus.SKIPPED },
-        units.count { it.status == mihon.desktop.task.LibraryUnitStatus.FAILED },
-        units.count { it.status == mihon.desktop.task.LibraryUnitStatus.UNPROCESSED },
-    )
-    return libraryDeviceWaitingSummary(task)?.let { "$counts\n$it" } ?: counts
+    val units = task.libraryUpdate?.units?.distinctBy { it.mangaId } ?: return null
+    val status = when {
+        libraryDeviceWaitingSummary(task) != null -> requireNotNull(libraryDeviceWaitingSummary(task))
+        task.status == TaskStatus.Cancelled -> MR.strings.desktop_ui_library_update_cancelled.localized()
+        task.status == TaskStatus.Running || task.status == TaskStatus.Pending -> {
+            val progress = if (units.isEmpty()) 0 else units.count {
+                it.status != mihon.desktop.task.LibraryUnitStatus.UNPROCESSED
+            } * 100 / units.size
+            MR.strings.desktop_library_update_banner_running.localized(Locale.getDefault(), progress)
+        }
+        else -> MR.strings.desktop_library_update_banner_completed.localized()
+    }
+    val updated = units.filter { it.newChapterCount > 0 }
+    val chapters = updated.sumOf { it.newChapterCount }
+    val failures = units.count { it.status == mihon.desktop.task.LibraryUnitStatus.FAILED }
+    return listOfNotNull(
+        status,
+        if (chapters > 0) MR.strings.desktop_library_update_banner_chapters.localized(
+            Locale.getDefault(), updated.size, chapters,
+        ) else null,
+        if (failures > 0) MR.strings.desktop_library_update_banner_failures.localized(
+            Locale.getDefault(), failures,
+        ) else null,
+    ).joinToString(" | ")
 }
 
 internal fun libraryDeviceWaitingSummary(task: mihon.desktop.task.StoredTask): String? {

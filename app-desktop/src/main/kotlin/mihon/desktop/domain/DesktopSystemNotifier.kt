@@ -7,6 +7,8 @@ class DesktopSystemNotifier(
     private val fallback: DesktopNotificationService,
 ) {
     fun notify(event: NotificationEvent) {
+        // Library updates have one feedback owner: the session-scoped library banner.
+        if (event.taskId == LibraryUpdateScheduler.LIBRARY_UPDATE_TASK.id) return
         val notification = DesktopNotification(
             title = event.title,
             message = when (event) {

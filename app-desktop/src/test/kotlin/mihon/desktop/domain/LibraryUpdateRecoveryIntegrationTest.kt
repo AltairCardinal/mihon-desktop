@@ -729,14 +729,14 @@ class LibraryUpdateRecoveryIntegrationTest {
     }
 
     @Test
-    fun `real update emits progress and one terminal success event`() = runTest {
+    fun `real update retains its result without duplicate system notifications`() = runTest {
         val delivered = mutableListOf<DesktopNotification>()
         val scheduler = scheduler(directory.resolve("tasks.json"), mutableListOf(), this, delivered) { UpdateResult(0) }
 
         scheduler.runNow().join()
 
-        assertTrue(delivered.any { it.title == "Updating library" })
-        assertEquals(1, delivered.count { it.title == "Library updated" })
+        assertTrue(delivered.isEmpty())
+        assertEquals(mihon.domain.task.TaskStatus.Completed, scheduler.taskSnapshot()?.status)
     }
 
     @Test

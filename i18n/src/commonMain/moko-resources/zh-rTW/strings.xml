@@ -1628,4 +1628,8 @@
     <string name="desktop_library_download_added">已新增%1$d個章節至下載佇列</string>
     <string name="desktop_library_no_unread">已新增0個章節至下載佇列：沒有未讀章節</string>
     <string name="desktop_library_no_downloadable_unread">沒有可新增的未讀章節</string>
+    <string name="desktop_library_update_banner_running">更新書架中 · %1$d%%</string>
+    <string name="desktop_library_update_banner_completed">更新完成</string>
+    <string name="desktop_library_update_banner_chapters">%1$d個作品有更新，合計%2$d個新章節</string>
+    <string name="desktop_library_update_banner_failures">%1$d個作品更新失敗</string>
 </resources>
