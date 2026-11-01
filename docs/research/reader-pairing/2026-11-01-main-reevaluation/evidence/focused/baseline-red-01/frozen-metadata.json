@@ -1,0 +1,10 @@
+{
+  "key": "reevaluation-red-a-20261101-02",
+  "frozenHead": "e8beb212a0ead306f6441b130c40d4b0a6c660f6",
+  "testSourceSha256": "5e5462908d2966ed63a9140c6460ef02f625860c26d7c75288b3e9eb6ba503f3",
+  "guardSha256": "4c8ea1cc40a44ab48ac84af0dd15d0ba93a7bbc491039c9864e4bb4b1ab9caf2",
+  "cp1InitSha256": "c36007fce64497ac48e5ce9d2445860bb01aec7fcacab64180d5d03dab4dffbc",
+  "retryInitSha256": "5a6192e7d3f16052e937b85fc119f5f24a5ea001d8d03307da61d48e24634503",
+  "originalArgvSha256": "fc1cf9c15ba731bc1d82a92b185385d3dbd02336364724a0e4169c88e4d1e9ab",
+  "kind": "selected-frozen-metadata; argv and local process paths intentionally omitted"
+}

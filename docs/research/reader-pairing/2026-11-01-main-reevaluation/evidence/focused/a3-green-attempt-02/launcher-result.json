@@ -1,0 +1,49 @@
+{
+  "key": "reevaluation-a3-green-attempt-02-20261101",
+  "attempt": "02",
+  "startUtc": "2026-10-31T23:17:59.707696+00:00",
+  "elapsedSeconds": 91.747,
+  "exitCode": 0,
+  "testTotals": {
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "testcaseRows": [
+    {
+      "name": "compact comparison treats absent or mismatched recorded values as changed without throwing()[jvm]",
+      "classname": "mihon.domain.reader.ReaderPairingAdoptionCostTest",
+      "failureCount": 0,
+      "errorCount": 0,
+      "skipped": false
+    },
+    {
+      "name": "exact settings validation stays within bounded allocation after warmup()[jvm]",
+      "classname": "mihon.domain.reader.ReaderPairingAdoptionCostTest",
+      "failureCount": 0,
+      "errorCount": 0,
+      "skipped": false
+    },
+    {
+      "name": "compact dimension comparison keeps every geometry field and ignores only current side hint()[jvm]",
+      "classname": "mihon.domain.reader.ReaderPairingAdoptionCostTest",
+      "failureCount": 0,
+      "errorCount": 0,
+      "skipped": false
+    },
+    {
+      "name": "A03 a changed matching mode and a changed direction reject the stored result()[jvm]",
+      "classname": "mihon.domain.reader.ReaderPairingCertificationMemoTest",
+      "failureCount": 0,
+      "errorCount": 0,
+      "skipped": false
+    }
+  ],
+  "copiedXml": [
+    "TEST-mihon.domain.reader.ReaderPairingAdoptionCostTest.xml",
+    "TEST-mihon.domain.reader.ReaderPairingCertificationMemoTest.xml"
+  ],
+  "stdoutSha256": "d4974c30ddc24c2f68293222a8cc05a9b46a4795893058a39d56b67bed4d31aa",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

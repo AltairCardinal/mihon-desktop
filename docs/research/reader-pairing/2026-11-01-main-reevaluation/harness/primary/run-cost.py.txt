@@ -1,0 +1,288 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from xml.etree import ElementTree as ET
+
+repo = Path(r"D:/Codex/worktrees/reader-r1-r10-reevaluation-20261101")
+central = Path(r"D:/Codex/worktrees/reader-pairing-research-next-20261014/.gradle-coordinator")
+inputs = repo / ".gradle-coordinator/reevaluation/inputs"
+profile_path = inputs / "domain-focused-resource-profile.json"
+profile = json.loads(profile_path.read_text(encoding="utf-8-sig"))
+if len(sys.argv) != 2 or sys.argv[1] not in {"baseline", "a1", "a2", "a3", "a4"}:
+    raise SystemExit("usage: run-cost.py baseline|a1|a2|a3|a4")
+variant = sys.argv[1]
+attempt = os.environ.get("REEVAL_ATTEMPT", "01")
+if not re.fullmatch(r"[A-Za-z0-9_.-]{1,20}", attempt):
+    raise SystemExit("REEVAL_ATTEMPT must be a short fixed alphanumeric identifier")
+key = f"reevaluation-cost-{variant}-attempt-{attempt}-20261101"
+out = repo / ".gradle-coordinator/reevaluation/costs" / f"{variant}-attempt-{attempt}"
+raw = out / "raw"
+if out.exists() and any(out.iterdir()):
+    raise SystemExit(f"Refusing to overwrite existing run artifacts: {out}")
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def tree_manifest(label: str, relative_root: str) -> dict[str, str]:
+    root = repo / relative_root
+    if not root.exists():
+        return {}
+    return {
+        f"{label}/{path.relative_to(root).as_posix()}": sha256(path)
+        for path in sorted(root.rglob("*.kt"))
+        if path.is_file()
+    }
+
+
+def git_text(*args: str) -> str:
+    completed = subprocess.run(
+        ["git", *args], cwd=repo, check=True, capture_output=True,
+        text=True, encoding="utf-8", creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+    return completed.stdout.strip()
+
+active = []
+coordinator_json_count = 0
+for state_path in central.glob("*.json"):
+    coordinator_json_count += 1
+    if state_path.stat().st_size > 8 * 1024 * 1024:
+        raise SystemExit(f"Refusing coordinator scan with oversized state JSON: {state_path.name}")
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    if isinstance(state, dict) and state.get("status") in {"STARTING", "RUNNING"}:
+        active.append({"key": state_path.stem, "status": state.get("status"),
+                       "workerPid": state.get("workerPid"), "processPid": state.get("processPid")})
+if active:
+    raise SystemExit(f"Coordinator has active work; no launch: {active}")
+if (central / "luna-resource-fault.json").exists():
+    raise SystemExit("Resource fault latch exists in the shared coordinator state; no launch")
+
+tracked_roots = [
+    "domain/src/commonMain/kotlin/mihon/domain/reader",
+    "app/src/main/java/eu/kanade/tachiyomi/ui/reader",
+    "domain/src/commonTest/kotlin",
+    "domain/src/jvmTest/kotlin",
+    "app/src/test/java/eu/kanade/tachiyomi/ui/reader",
+]
+source_manifest: dict[str, str] = {}
+for root in tracked_roots:
+    source_manifest.update(tree_manifest(root, root))
+source_manifest.update({
+    "ignored/ReaderPairingReevaluationBenchmark.kt": sha256(inputs / "ReaderPairingReevaluationBenchmark.kt"),
+    "ignored/reevaluation-benchmark.init.gradle": sha256(inputs / "reevaluation-benchmark.init.gradle"),
+    "ignored/disable-retries.init.gradle": sha256(inputs / "disable-retries.init.gradle"),
+    "ignored/cp1-luna-p5.init.gradle": sha256(inputs / "cp1-luna-p5.init.gradle"),
+    "ignored/domain-focused-resource-profile.json": sha256(profile_path),
+    "ignored/cp1-profiles-original.json": sha256(inputs / "cp1-profiles-original.json"),
+    "ignored/windows_memory_guard.py": sha256(inputs / "windows_memory_guard.py"),
+    "ignored/run-cost.py": sha256(Path(__file__)),
+    "tool/scripts/gradle-coordinator.py": sha256(repo / "scripts/gradle-coordinator.py"),
+})
+manifest_bytes = "".join(f"{name}\0{digest}\n" for name, digest in sorted(source_manifest.items())).encode("utf-8")
+source_digest = hashlib.sha256(manifest_bytes).hexdigest()
+revision = git_text("rev-parse", "HEAD")
+status = git_text("status", "--short", "--branch")
+out.mkdir(parents=True, exist_ok=True)
+raw.mkdir(parents=True, exist_ok=True)
+(out / "source-manifest.json").write_text(json.dumps({
+    "variant": variant,
+    "head": revision,
+    "trackedStatus": status,
+    "productionAndTestTreeDigest": source_digest,
+    "files": source_manifest,
+}, indent=2) + "\n", encoding="utf-8")
+
+
+def path(name: str) -> Path:
+    return inputs / name
+
+coordinator = repo / "scripts/gradle-coordinator.py"
+guard = path("windows_memory_guard.py")
+cp1 = path("cp1-luna-p5.init.gradle")
+no_retry = path("disable-retries.init.gradle")
+bench_init = path("reevaluation-benchmark.init.gradle")
+cmd = [
+    sys.executable, str(coordinator), "run", "--state-dir", str(central), "--key", key,
+    "--timeout-seconds", str(profile["timeoutSeconds"]), "--",
+    sys.executable, str(guard), "--job-mib", str(profile["jobMiB"]),
+    "--process-mib", str(profile["processMiB"]),
+    "--reserve-phys-mib", str(profile["reservePhysicalMiB"]),
+    "--reserve-commit-mib", str(profile["reserveCommitMiB"]),
+    "--startup-phys-mib", str(profile["startupPhysicalMiB"]),
+    "--timeout-seconds", str(profile["timeoutSeconds"]), "--state-dir", str(central), "--",
+    str(repo / "gradlew.bat"), "--offline", "--console=plain", "--no-daemon",
+    "--no-parallel", "--max-workers=1",
+    f"-Dorg.gradle.jvmargs={profile['gradleJvmargs']}",
+    "-I", str(cp1), "-I", str(no_retry), "-I", str(bench_init),
+    f"-Pcp1.test.maxHeapSize={profile['testMaxHeap']}", f"-Preeval.variant={variant}",
+    ":domain:jvmTest", "--tests", "mihon.domain.reader.ReaderPairingReevaluationProcess*Test",
+]
+if re.search(r"[^A-Za-z0-9_.-]", key):
+    raise SystemExit("Unexpected coordinator key")
+record = {
+    "key": key,
+    "variant": variant,
+    "attempt": attempt,
+    "head": revision,
+    "productionAndTestTreeDigest": source_digest,
+    "sourceManifestPath": str(out / "source-manifest.json"),
+    "trackedStatus": status,
+    "coordinatorJsonCountBeforeLaunch": coordinator_json_count,
+    "activeCoordinatorStatesBeforeLaunch": active,
+    "cwd": str(repo),
+    "argv": cmd,
+    "profile": profile,
+    "guardSha256": sha256(guard),
+    "harnessSha256": sha256(inputs / "ReaderPairingReevaluationBenchmark.kt"),
+    "initSha256": sha256(bench_init),
+    "testFilter": "mihon.domain.reader.ReaderPairingReevaluationProcess*Test",
+    "workerJvmProtocol": "three test classes; forkEvery=1; maxParallelForks=1; sequential distinct JVM pids",
+    "comparisonLimit": "No same-process A/B. Thirty-one repetitions within each JVM; variant medians compared across separate Gradle runs in recorded version order.",
+    "fixedWorkload": {
+        "inputSeed": 739,
+        "scenarioCount": 10,
+        "scenarios": [
+            "A1.distant-edge-early-reject", "A1.similar-edge-full-score",
+            "A2.owner-index-large-176", "A2.owner-index-small-8",
+            "A3.settings-exact-default-empty", "A3.settings-exact-small-4",
+            "A3.settings-exact-large-64", "A3.settings-exact-tail-change-64",
+            "A4.memo-unchanged-repeated", "A4.memo-frequent-header-writes",
+        ],
+        "distinctWorkerJvms": 3,
+        "warmupBatchesPerScenarioPerJvm": 5,
+        "warmupOperationsPerBatch": 1000,
+        "measuredSamplesPerScenarioPerJvm": 31,
+        "operationsPerSample": 1000,
+        "expectedMeasuredRows": 930,
+    },
+    "runnerSha256": sha256(Path(__file__)),
+}
+(out / "argv.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+env = os.environ.copy()
+env.update({"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", "PYTHONDONTWRITEBYTECODE": "1"})
+started = time.monotonic()
+start_utc = datetime.now(timezone.utc).isoformat()
+result = subprocess.run(
+    cmd, cwd=repo, env=env, stdin=subprocess.DEVNULL, capture_output=True,
+    text=True, encoding="utf-8", creationflags=subprocess.CREATE_NO_WINDOW,
+)
+(out / "coordinator.stdout.txt").write_text(result.stdout, encoding="utf-8")
+(out / "coordinator.stderr.txt").write_text(result.stderr, encoding="utf-8")
+for suffix in ("json", "log"):
+    original = central / f"{key}.{suffix}"
+    if original.exists():
+        shutil.copy2(original, raw / original.name)
+results_dir = repo / "domain/build/test-results/jvmTest"
+xml_files = []
+if results_dir.exists():
+    for item in results_dir.iterdir():
+        if item.is_file() and item.name.startswith("TEST-mihon.domain.reader.ReaderPairingReevaluationProcess"):
+            copied = raw / item.name
+            shutil.copy2(item, copied)
+            xml_files.append(copied)
+
+sample_rows = []
+scenario_rows = []
+metric_unavailable_rows = []
+scenario_invalid_rows = []
+test_totals = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
+for xml_path in xml_files:
+    for _, element in ET.iterparse(xml_path, events=("end",)):
+        local_name = element.tag.rsplit("}", 1)[-1]
+        if local_name == "testsuite":
+            for key_name in test_totals:
+                test_totals[key_name] += int(element.attrib.get(key_name, "0"))
+        elif local_name == "system-out":
+            for line in (element.text or "").splitlines():
+                for marker, target in (
+                    ("REEVAL_SAMPLE ", sample_rows),
+                    ("REEVAL_SCENARIO_SUMMARY ", scenario_rows),
+                    ("REEVAL_METRIC_UNAVAILABLE ", metric_unavailable_rows),
+                    ("REEVAL_SCENARIO_INVALID ", scenario_invalid_rows),
+                ):
+                    if line.startswith(marker):
+                        target.append(json.loads(line[len(marker):]))
+                        break
+        if local_name in {"testcase", "testsuite", "system-out", "system-err"}:
+            element.clear()
+
+(raw / "samples.jsonl").write_text(
+    "".join(json.dumps(row, separators=(",", ":"), ensure_ascii=False) + "\n" for row in sample_rows),
+    encoding="utf-8",
+)
+(raw / "scenario-summaries.jsonl").write_text(
+    "".join(json.dumps(row, separators=(",", ":"), ensure_ascii=False) + "\n" for row in scenario_rows),
+    encoding="utf-8",
+)
+(raw / "metric-unavailable.json").write_text(json.dumps(metric_unavailable_rows, indent=2) + "\n", encoding="utf-8")
+(raw / "scenario-invalid.json").write_text(json.dumps(scenario_invalid_rows, indent=2) + "\n", encoding="utf-8")
+
+# Preserve only the guard's final event separately; the full coordinator log remains an immutable raw artifact.
+guard_result = None
+coordinator_log = raw / f"{key}.log"
+if coordinator_log.exists():
+    with coordinator_log.open("r", encoding="utf-8", errors="replace") as stream:
+        for line in stream:
+            if line.startswith("RESOURCE_GUARD "):
+                try:
+                    event = json.loads(line[len("RESOURCE_GUARD "):])
+                except json.JSONDecodeError:
+                    continue
+                if event.get("event") == "finished":
+                    guard_result = event
+if guard_result is not None:
+    (raw / "resource-guard-finished.json").write_text(json.dumps(guard_result, indent=2) + "\n", encoding="utf-8")
+
+expected_rows = 3 * 10 * 31
+row_status_counts = {"PASS": 0, "FAIL": 0}
+for row in sample_rows:
+    status_name = str(row.get("sampleStatus", "UNKNOWN"))
+    row_status_counts[status_name] = row_status_counts.get(status_name, 0) + 1
+scenario_denominators_ok = len(scenario_rows) == 30 and all(
+    int(row.get("requestedSamples", -1)) == 31 and
+    int(row.get("validSamples", 0)) + int(row.get("failedSamples", 0)) == 31
+    for row in scenario_rows
+)
+artifacts_complete = (
+    len(xml_files) == 3 and len(sample_rows) == expected_rows and len(scenario_rows) == 30 and
+    scenario_denominators_ok and not metric_unavailable_rows and not scenario_invalid_rows
+)
+summary = {
+    "key": key,
+    "variant": variant,
+    "attempt": attempt,
+    "startUtc": start_utc,
+    "elapsedSeconds": round(time.monotonic() - started, 3),
+    "exitCode": result.returncode,
+    "stdoutSha256": hashlib.sha256(result.stdout.encode("utf-8")).hexdigest(),
+    "stderrSha256": hashlib.sha256(result.stderr.encode("utf-8")).hexdigest(),
+    "rawDirectory": str(raw),
+    "testXmlCount": len(xml_files),
+    "testTotals": test_totals,
+    "measuredRows": len(sample_rows),
+    "measuredRowStatuses": row_status_counts,
+    "scenarioSummaryRows": len(scenario_rows),
+    "metricUnavailableRows": len(metric_unavailable_rows),
+    "invalidScenarios": len(scenario_invalid_rows),
+    "artifactsComplete": artifacts_complete,
+    "guardFinishedEventCaptured": guard_result is not None,
+}
+(out / "launcher-result.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+print(json.dumps(summary, ensure_ascii=False))
+if not artifacts_complete and result.returncode == 0:
+    raise SystemExit("Gradle passed but the fixed benchmark evidence set is incomplete")
+raise SystemExit(result.returncode)

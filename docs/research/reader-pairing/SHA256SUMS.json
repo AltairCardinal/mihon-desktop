@@ -1,0 +1,657 @@
+{
+  "algorithm": "SHA-256",
+  "pathBase": "directory containing this manifest",
+  "manifestSelfExcluded": true,
+  "files": [
+    {
+      "path": ".gitattributes",
+      "bytes": 761,
+      "sha256": "6245e01f5c98598657a2365243de7460b351a8d94b276ea016110aa15c40efd3"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/A2.md",
+      "bytes": 3943,
+      "sha256": "6d0e17753f6a79dd4b5a1b6a3774f946abf0c48903953c8a1cb10ab17d3b4fa2"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/A3.md",
+      "bytes": 4652,
+      "sha256": "c17378df0ab3026744513f959603d5072bae7ee390dfb1c50fcc525776cbc28f"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/A4.md",
+      "bytes": 4560,
+      "sha256": "68fdf9d1a06a05cdb78ccb12e40de2410f63c7a4b9f300131e08bd9c6e64531c"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/focused/a1-green-attempt-02/frozen-metadata.json",
+      "bytes": 1737,
+      "sha256": "40c02a5f7c320e24d321dcc2d10a9c22af23a66d72696532f5bd85189f40682f"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/focused/a1-green-attempt-02/launcher-result.json",
+      "bytes": 1006,
+      "sha256": "b56d2add438a65e2bd32f30897bab001bae63495e11ee12893110759763af1b2"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/focused/a1-green-attempt-02/TEST-mihon.domain.reader.ReaderPairingAdoptionCostTest.xml",
+      "bytes": 702,
+      "sha256": "b121567da23d7211f61001f3f9aba30f1d0592926396df4f42f5277aedabdf95"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/focused/a2-green-attempt-01/frozen-metadata.json",
+      "bytes": 2178,
+      "sha256": "3fb8346538b60c5cd3284ca66ec1b57d57db4cd572a995bd9fc2b9f05e9ee32a"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/focused/a2-green-attempt-01/launcher-result.json",
+      "bytes": 738,
+      "sha256": "4a44e715eae33e6dcc4f77a6a005cea9758d795560650c2ac0d39c997b9a8a91"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/focused/a2-green-attempt-01/TEST-mihon.domain.reader.ReaderPairingAdoptionCostTest.xml",
+      "bytes": 516,
+      "sha256": "0aba56321c542ae1025515ca47abaeb0bdffc41cc288a28ec8901a7151a9a5bc"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/focused/a3-green-attempt-02/frozen-metadata.json",
+      "bytes": 3953,
+      "sha256": "66483e8d75e45d50950a0bb32eb4d31337ad06003a164067d03f4748e9ad7ef3"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/focused/a3-green-attempt-02/launcher-result.json",
+      "bytes": 1721,
+      "sha256": "23a70ec6350631b21977f06d183a012f6d9f7d1355c511839d61e1bd7b9287c9"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/focused/a3-green-attempt-02/TEST-mihon.domain.reader.ReaderPairingAdoptionCostTest.xml",
+      "bytes": 988,
+      "sha256": "a83e8414c063665ba9002f8b299f6f34f5baab74b734e05f5364afbe1e55c727"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/focused/a3-green-attempt-02/TEST-mihon.domain.reader.ReaderPairingCertificationMemoTest.xml",
+      "bytes": 529,
+      "sha256": "cc5b58606c9985f0151fa714415b803822038f6ffa2b8ab7e49a376ec74b900b"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/focused/a4-green-attempt-01/frozen-metadata.json",
+      "bytes": 4613,
+      "sha256": "eefbe6ace7a52e25393b02db4dce009fc504dd7bc1584e8fdd5b0e56402e81d8"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/focused/a4-green-attempt-01/launcher-result.json",
+      "bytes": 2556,
+      "sha256": "b8b0de445a9164c6c851b52816659872afb18d3a22c7c2f90e93cb8e6ecd3672"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/focused/a4-green-attempt-01/TEST-mihon.domain.reader.ReaderPairingAdoptionCostTest.xml",
+      "bytes": 1293,
+      "sha256": "88cd228f961224138caee29532ab623abfa0cbae58b888e722a32ef44a119b67"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/focused/a4-green-attempt-01/TEST-mihon.domain.reader.ReaderPairingCertificationMemoTest.xml",
+      "bytes": 723,
+      "sha256": "798e9588c23bd16b00e7c7a96b37a94cfbd39619b03fa5c0c674ec99d5d1fbf1"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/focused/baseline-red-01/frozen-metadata.json",
+      "bytes": 639,
+      "sha256": "d0ee6ef4ce472f7c4a9cafd775f145ff6e1b03e6645237990bd4fd6465567bb6"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/focused/baseline-red-01/launcher-result.json",
+      "bytes": 321,
+      "sha256": "83fd1cc0b9de9c28f62657dbaf42685923af659040830ea733d65127cd8313ee"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/focused/baseline-red-01/TEST-mihon.domain.reader.ReaderPairingAdoptionCostTest.xml",
+      "bytes": 6032,
+      "sha256": "4a8b8ca02581e322bdfa1bf3e460fb93bc68694cc4c65e2cae3637c5f67b0aee"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a1/a1-vs-baseline-summary.json",
+      "bytes": 68783,
+      "sha256": "858077d344b29553080d969e313a9aab49872a06477feb62f206b36975dd7c1c"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a1/launcher-result.json",
+      "bytes": 880,
+      "sha256": "1e8b427823a32dba6147c5ca1bf7e41a962871e3fc037270ce1cca61f16dd64e"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a1/metric-unavailable.json",
+      "bytes": 4,
+      "sha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a1/samples.jsonl",
+      "bytes": 1438104,
+      "sha256": "bf39cfa0dd7ba0ad195a988f9e09c269585b2552f39ca6c2041b1dfc057699d1"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a1/scenario-invalid.json",
+      "bytes": 4,
+      "sha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a1/scenario-summaries.jsonl",
+      "bytes": 6060,
+      "sha256": "7617d2de6c4aca5a6d71c8d438120d6f3c1c01432b205784bcd4a7cc7e89301c"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a1/source-manifest.json",
+      "bytes": 53930,
+      "sha256": "bbf82cd822c075a7b5fd5d3e8c9d477bb74d6b1a1095aedd028a5ab59c68f456"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a1/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess1Test.xml.gz",
+      "bytes": 16332,
+      "sha256": "625b11f90a8a6907750061aebd637b1756fe5ce9c25b3a1c2d94268d6b26cf2a",
+      "uncompressedOriginal": {
+        "bytes": 486397,
+        "sha256": "1f64d557d7233950ac8c629e1eeddc1f77685ffd49e3630ac03c7b75de9097d3",
+        "gzipMtime": 0
+      }
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a1/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess2Test.xml.gz",
+      "bytes": 16288,
+      "sha256": "885f4f3b8aef60760ac644d9b27eb857fe930c77a5314947d8ac307097aedb76",
+      "uncompressedOriginal": {
+        "bytes": 486406,
+        "sha256": "bca04b6a544584121f95e308a6d67100a1b07c3e00fdcb894a3655cf2769f15f",
+        "gzipMtime": 0
+      }
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a1/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess3Test.xml.gz",
+      "bytes": 16528,
+      "sha256": "8a0b9d80f936de750c8ab3aa0da044714fb88a00d53a556183c00ae6c9abb656",
+      "uncompressedOriginal": {
+        "bytes": 486552,
+        "sha256": "4bb3ec587fb72bba34903441e9ee395bacc76ade59351005c2692df96ac34d5b",
+        "gzipMtime": 0
+      }
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a2/a2-vs-baseline-summary.json",
+      "bytes": 91503,
+      "sha256": "973c59ee3e112371d55ce3148a29a1eac2c64c84dbea7ccccfab699e5925b302"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a2/launcher-result.json",
+      "bytes": 880,
+      "sha256": "42d3b44a848c8e4087d9b076e28d57e98785bb874e994aac953a63128523bf43"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a2/metric-unavailable.json",
+      "bytes": 4,
+      "sha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a2/samples.jsonl",
+      "bytes": 1440222,
+      "sha256": "99babcb1b508a412fc6885047a782e16c7509030d3ec50c3e198b3e83b546f29"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a2/scenario-invalid.json",
+      "bytes": 4,
+      "sha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a2/scenario-summaries.jsonl",
+      "bytes": 6050,
+      "sha256": "1847d4586ac3fd2ca3d7d40054a466a77dcef88fcbd943035ba2f1130dd0c63d"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a2/source-manifest.json",
+      "bytes": 54094,
+      "sha256": "b0b1674e5f6a2f0cc880fddf555cfc50432c7a5937c052d0c6b5ad4c60b5f591"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a2/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess1Test.xml.gz",
+      "bytes": 17579,
+      "sha256": "a46be89cda76af354ce8bd76f67a3f7a50d0b74f897fb92a64c9bfc04d6558a3",
+      "uncompressedOriginal": {
+        "bytes": 487485,
+        "sha256": "eaa8344a1024f4179b6189df8d1c239e1cd115072d5dde4f281af64cc4dce0aa",
+        "gzipMtime": 0
+      }
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a2/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess2Test.xml.gz",
+      "bytes": 17339,
+      "sha256": "78dae3ae6f04a4f19f86d68a3c1200d21238ca4dfb807dfb22195289c521d341",
+      "uncompressedOriginal": {
+        "bytes": 486758,
+        "sha256": "fc9aab764b9aae881ecc5a27af5f02769f76f11a17d74882163c9151034559d5",
+        "gzipMtime": 0
+      }
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a2/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess3Test.xml.gz",
+      "bytes": 16986,
+      "sha256": "46b5444315961beda9c6c179cbacdbb1b6c7894d150d18b697f2ea30e89b1dbe",
+      "uncompressedOriginal": {
+        "bytes": 487224,
+        "sha256": "486890f4fb832a4be21e9b8cd554742d09135d445afe3b27dd24f9f046eb2ade",
+        "gzipMtime": 0
+      }
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a3/a1-vs-a3-summary.json",
+      "bytes": 36893,
+      "sha256": "5ebab5145304db6fd15618de47aa0831fba04996eb4b40013cd2671a3c85dbbc"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a3/launcher-result.json",
+      "bytes": 880,
+      "sha256": "60f36cedcd05e373a025f58a407167ce579606cacb359d65ed4e2c7a395f9ebd"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a3/metric-unavailable.json",
+      "bytes": 4,
+      "sha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a3/samples.jsonl",
+      "bytes": 1435982,
+      "sha256": "f7c396bc475b2aeea8ab9347583c4715ff0dc104f631a529bd73ef4aa24ed55c"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a3/scenario-invalid.json",
+      "bytes": 4,
+      "sha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a3/scenario-summaries.jsonl",
+      "bytes": 6050,
+      "sha256": "ada1c193b841c8e906d9d74d0d145ccc9d74b176627ca1f7502b5549ca225054"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a3/source-manifest.json",
+      "bytes": 54095,
+      "sha256": "b2a40a5a833407230c11218be144aaa6832f197e623b4df1bd84fb32ee3350a7"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a3/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess1Test.xml.gz",
+      "bytes": 16451,
+      "sha256": "1c0c4afd8bcb380ce8ecd4e8ff9e927311f9bf92861fbb51717be90673570ff7",
+      "uncompressedOriginal": {
+        "bytes": 485784,
+        "sha256": "0d99520fbf80d7b6842ecfcf1887a8a66c33561ff6405b53261708a34f069c01",
+        "gzipMtime": 0
+      }
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a3/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess2Test.xml.gz",
+      "bytes": 16787,
+      "sha256": "d4116c4cbb98874485d8e3385d5ae71ca7a037f3ef5b4eceb0d6445f43268401",
+      "uncompressedOriginal": {
+        "bytes": 485995,
+        "sha256": "2db619a9fedfb6e15ddc9cf9b15b68e5ac9e3f3a1615d33912aca8a6c44c3bf8",
+        "gzipMtime": 0
+      }
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a3/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess3Test.xml.gz",
+      "bytes": 16833,
+      "sha256": "7e9ce81cb63fd8140cd36cc486ab88e4c144fa1e3bd1ead9c306df345ba76226",
+      "uncompressedOriginal": {
+        "bytes": 485448,
+        "sha256": "5e8bd63e8dc07ddd01905c8e8ee2dd64712f85c46fb894c45db805a8581d6c4e",
+        "gzipMtime": 0
+      }
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a4/a4-vs-a1-recalc.json",
+      "bytes": 102514,
+      "sha256": "e48c5baf03d0d310f415797b6e9d8139477836a2eec884b7e3772bd95172e03d"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a4/launcher-result.json",
+      "bytes": 879,
+      "sha256": "8fa674cd89ebf7481d5280175f2f9db9bdfc41bcfde13bb11f72bf694a15ae95"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a4/metric-unavailable.json",
+      "bytes": 4,
+      "sha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a4/samples.jsonl",
+      "bytes": 1437423,
+      "sha256": "37eb3460140637080bf216e22a21d29bb48802c7d2e949936109bad53502de51"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a4/scenario-invalid.json",
+      "bytes": 4,
+      "sha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a4/scenario-summaries.jsonl",
+      "bytes": 6050,
+      "sha256": "3239c4496152c697d8a7e26eb3bdcb2389e106e4c73f6c1ca5e7bf9c40b04c1d"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a4/source-manifest.json",
+      "bytes": 53747,
+      "sha256": "6e4bee566520af4e0d6589de6d0ffb81638c71bae4cdb3a7f00a452488606d45"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a4/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess1Test.xml.gz",
+      "bytes": 16645,
+      "sha256": "c622dde35ab11065c18d479dbe38ac472d8a00d20e11b375382a4cc3eb404a36",
+      "uncompressedOriginal": {
+        "bytes": 486165,
+        "sha256": "f274bc614aa494657a0098ac8a13afb517258fd18b7e96926bb6bc9bdf6cf932",
+        "gzipMtime": 0
+      }
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a4/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess2Test.xml.gz",
+      "bytes": 17329,
+      "sha256": "a2729f429439373bbfb2b3178dbb357bb02e1c4f3f9d219955957a1bb55d7b7c",
+      "uncompressedOriginal": {
+        "bytes": 485946,
+        "sha256": "9b69bb2effdeb61a8f7f4f80db166733901eb9e2f846b7de9c73d520d4748f30",
+        "gzipMtime": 0
+      }
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/a4/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess3Test.xml.gz",
+      "bytes": 17061,
+      "sha256": "6c753d017bbbab7604737716cadc712efc0cd2d584d194df9ed6d41a2ad63c23",
+      "uncompressedOriginal": {
+        "bytes": 486557,
+        "sha256": "282e44adb7f9d2d534703184d6bf03511dcc27c4a2c4e6de6583c49708bfe77a",
+        "gzipMtime": 0
+      }
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/baseline/baseline-summary.json",
+      "bytes": 60041,
+      "sha256": "5a4d3423890198fa2d896c36454697a92d14ae565bff033f357e0c362c47c705"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/baseline/launcher-result.json",
+      "bytes": 898,
+      "sha256": "0e3b8806f131c8c7bbdbb2e9a5b10a01b84eee2f336c6842837d05f4bd35fab1"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/baseline/metric-unavailable.json",
+      "bytes": 4,
+      "sha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/baseline/samples.jsonl",
+      "bytes": 1445679,
+      "sha256": "349591d666b6016df6d34b77cbf73917fcba9de55fbe98d0204263407c7f4d44"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/baseline/scenario-invalid.json",
+      "bytes": 4,
+      "sha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/baseline/scenario-summaries.jsonl",
+      "bytes": 6240,
+      "sha256": "8aef76aaabfc8cd1c5c4222a697ab6476837e1c96785fc71e0c7429a8c1341ca"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/baseline/source-manifest.json",
+      "bytes": 53859,
+      "sha256": "812abeb13f67ae5c45cadb1959da01eec67a0bdffff4f4396590d04cd1b263a0"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/baseline/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess1Test.xml.gz",
+      "bytes": 17003,
+      "sha256": "da9447d241e8fd7ee70965dfc54899ca5349b1041186ce2fedd4e16e1c10f612",
+      "uncompressedOriginal": {
+        "bytes": 488993,
+        "sha256": "c1499b3c25f82a4ea5fde62445b84ed7cc2009d5aef0e4593ead94479941f350",
+        "gzipMtime": 0
+      }
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/baseline/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess2Test.xml.gz",
+      "bytes": 17086,
+      "sha256": "673fd85913f457f54ca7bccb207a9dca37ec0e4c3730cb86ba7e6c20c4947c95",
+      "uncompressedOriginal": {
+        "bytes": 489074,
+        "sha256": "63a9feeda0a73e38de0aebfaa5eba665bb8fa09ebbddcda949d1d74d5b4e2a3c",
+        "gzipMtime": 0
+      }
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/evidence/raw/baseline/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess3Test.xml.gz",
+      "bytes": 16994,
+      "sha256": "a5e3dd0af96aa31b9bf1c609488928bceee2f0a03bebaa3890e46d098a1c94e0",
+      "uncompressedOriginal": {
+        "bytes": 489045,
+        "sha256": "6cabcda96bbc4cc52c50ca6c08bbec2abfa10e7fc8af9cf7fab001ff37b96e1f",
+        "gzipMtime": 0
+      }
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/harness/a4-path-adapted/cp1-luna-p5.init.gradle.txt",
+      "bytes": 3864,
+      "sha256": "c36007fce64497ac48e5ce9d2445860bb01aec7fcacab64180d5d03dab4dffbc"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/harness/a4-path-adapted/cp1-profiles-original.json",
+      "bytes": 5256,
+      "sha256": "312997026c6d18a7bb7d27dfb5cebd3f35744c1e1046c67b4a4c72162f30057b"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/harness/a4-path-adapted/disable-retries.init.gradle.txt",
+      "bytes": 667,
+      "sha256": "5a6192e7d3f16052e937b85fc119f5f24a5ea001d8d03307da61d48e24634503"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/harness/a4-path-adapted/domain-focused-resource-profile.json",
+      "bytes": 639,
+      "sha256": "99338cb248820f937aede241565645985243ce29c3e533b7faa13ea731cb4fa0"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/harness/a4-path-adapted/ReaderPairingReevaluationBenchmark.kt.txt",
+      "bytes": 24784,
+      "sha256": "a8c7fe9d35259dd7f4d14f2785e0d53867ffe7050f874860de073bc5cd3406df"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/harness/a4-path-adapted/recalc-a4-vs-a1.py.txt",
+      "bytes": 5983,
+      "sha256": "896ea48c5a45ab86483de7b58526221521fd0e6f3432610976e2df70bb23aaa8"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/harness/a4-path-adapted/reevaluation-benchmark.init.gradle.txt",
+      "bytes": 2296,
+      "sha256": "f4a2535069c8577a8c317f39731a0d4bed9a7bed52ab56660bd73749c7b2e400"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/harness/a4-path-adapted/run-cost.py.txt",
+      "bytes": 13081,
+      "sha256": "06ab3af3784df6bbfcf4f9d3f97f1ee01532d53c22506c4ab74fe86711cc05a3"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/harness/a4-path-adapted/windows_memory_guard.py.txt",
+      "bytes": 18715,
+      "sha256": "4c8ea1cc40a44ab48ac84af0dd15d0ba93a7bbc491039c9864e4bb4b1ab9caf2"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/harness/primary/cp1-luna-p5.init.gradle.txt",
+      "bytes": 3864,
+      "sha256": "c36007fce64497ac48e5ce9d2445860bb01aec7fcacab64180d5d03dab4dffbc"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/harness/primary/cp1-profiles-original.json",
+      "bytes": 5256,
+      "sha256": "312997026c6d18a7bb7d27dfb5cebd3f35744c1e1046c67b4a4c72162f30057b"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/harness/primary/disable-retries.init.gradle.txt",
+      "bytes": 667,
+      "sha256": "5a6192e7d3f16052e937b85fc119f5f24a5ea001d8d03307da61d48e24634503"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/harness/primary/domain-focused-resource-profile.json",
+      "bytes": 639,
+      "sha256": "99338cb248820f937aede241565645985243ce29c3e533b7faa13ea731cb4fa0"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/harness/primary/ReaderPairingReevaluationBenchmark.kt.txt",
+      "bytes": 24784,
+      "sha256": "a8c7fe9d35259dd7f4d14f2785e0d53867ffe7050f874860de073bc5cd3406df"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/harness/primary/reevaluation-benchmark.init.gradle.txt",
+      "bytes": 2297,
+      "sha256": "a0dbc83a41f6e5d7bcc8bde0c28f5272ec89988d93f731833ce8221db9e1b181"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/harness/primary/run-cost.py.txt",
+      "bytes": 13082,
+      "sha256": "6ea08cbea75c4dc4832f5086f93811a5f049d8489996b340367ea8bad953e29c"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/harness/primary/run-focused-a1.py.txt",
+      "bytes": 6280,
+      "sha256": "164d0755d70052a11143bdb0f815330a91664140c7383b043b656fd0c5b2ec30"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/harness/primary/run-focused-a2.py.txt",
+      "bytes": 6753,
+      "sha256": "bce91f58f6d3a0f24efad878cc6bc4cea836355a6c4c1f87cff97b23037839d3"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/harness/primary/run-focused-a3.py.txt",
+      "bytes": 8211,
+      "sha256": "c5f3a388df85e9e5d8824d78207223321f1818c57a9360dc16be40a1c1cafbe8"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/harness/primary/run-focused-a4.py.txt",
+      "bytes": 8930,
+      "sha256": "ed85ea32a6058b91cb2f2c5427df83d32d6c9205555dfd39867256cc2cde930a"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/harness/primary/run-red-a.py.txt",
+      "bytes": 3638,
+      "sha256": "29fac19c033c355d98ce12d02e25fedcd88a3c28030e9c7bb0a6e3c76633038e"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/harness/primary/windows_memory_guard.py.txt",
+      "bytes": 18715,
+      "sha256": "4c8ea1cc40a44ab48ac84af0dd15d0ba93a7bbc491039c9864e4bb4b1ab9caf2"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/patches/A1-control.patch",
+      "bytes": 2953,
+      "sha256": "6a18c7ad8064c9734418c2390c5d4c4ca487588a2919d3045e924f4c9e86d846"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/patches/A2.patch",
+      "bytes": 2818,
+      "sha256": "3f0d9dc3b8e1a8a106a173a48ffdd99ee9634f64c8563a290314235a67174949"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/patches/A3.patch",
+      "bytes": 4090,
+      "sha256": "0602936a3167b28d29a55e642f3c7a9e01918c974d7e750b3bf3f559e4162807"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/patches/A4.patch",
+      "bytes": 10013,
+      "sha256": "a0c5fbad67e0efa0577634fd93b488939491719a66b8a9e8ef45837219320a16"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/provenance.json",
+      "bytes": 41283,
+      "sha256": "23e3910941e28b508933161a257485c2ad77796f4e3118f58c79c6f304bb2931"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/source/A1-derivation.json",
+      "bytes": 473,
+      "sha256": "7b8efbdad2c6df592d554846f1fe4b66177bb7a80142174194f495b42ab95b47"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/source/a4-worktree-equivalence.json",
+      "bytes": 6042,
+      "sha256": "389c48069b1a01d59669bcff6db124e929b897add394fb6bcee108f65efde90b"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/source/baseline-e8beb/ReaderOriginalPageSampling.kt.txt",
+      "bytes": 2613,
+      "sha256": "05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/source/baseline-e8beb/ReaderPairingCertification.kt.txt",
+      "bytes": 20504,
+      "sha256": "f94eb4afde8e9f61c85d0308df95d247966a6b5f47e964d9177882c2c1a9242d"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/source/baseline-e8beb/ReaderPairingCertificationMemo.kt.txt",
+      "bytes": 6789,
+      "sha256": "7125b4209e084ad438d23f910039a40154979810b70200055091ed0dfa180ba0"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/source/baseline-e8beb/ReaderPairingReadSet.kt.txt",
+      "bytes": 2463,
+      "sha256": "da6e520a6a1cdfa2c0a5b5437bcb19e65872896fc5cda3cb6106aaadaaa35fbb"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/source/baseline-e8beb/ReaderSpreadSamplesOwner.kt.txt",
+      "bytes": 13635,
+      "sha256": "72b4e8c77a69a8d5aa7d75032be6009b5ac4c5f4a840228728b7a5d4009a56ed"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/source/baseline-e8beb/SharedDualPageRules.kt.txt",
+      "bytes": 16067,
+      "sha256": "252167c3d482185878f8de54f8051ebd93eb195334d325dbf6fd94dfbee38755"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/source/baseline-e8beb/SharedDualPageSession.kt.txt",
+      "bytes": 40023,
+      "sha256": "83790e1d3e8aae24f783b4c04ed6a91eb973a846e122a9c0e5fea93bc16eafb3"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/source/baseline-e8beb/SharedSpreadMatching.kt.txt",
+      "bytes": 5420,
+      "sha256": "7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/source/controls/SharedSpreadMatching.a1-only.kt.txt",
+      "bytes": 5825,
+      "sha256": "568914c9f998fed0587aff0632a322fb2a6980783195707e183f5f0312a95a72"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/source/tests/original-candidate-source-manifest.json",
+      "bytes": 589,
+      "sha256": "c323f21f5be7d38999f907b456de1ec1748855e14c2ac98891dec8fb4af6a10d"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/source/tests/ReaderPairingAdoptionCostTest.a1-only.kt.txt",
+      "bytes": 3809,
+      "sha256": "d6f0afaa558ebf69114ab6848b920b62239aa6e2c62e5c5fe391eaa44f5182ac"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/source/tests/ReaderPairingAdoptionCostTest.a4-full-11.kt.txt",
+      "bytes": 17044,
+      "sha256": "2c9ee9ae0ac8788de3f795d294720fe80fcd5b60ec852f464465fa3aae9f4928"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/source/tests/ReaderPairingAdoptionCostTest.early-9.kt.txt",
+      "bytes": 14550,
+      "sha256": "5e5462908d2966ed63a9140c6460ef02f625860c26d7c75288b3e9eb6ba503f3"
+    },
+    {
+      "path": "2026-11-01-main-reevaluation/source/tests/ReaderPairingCertificationMemoTest.kt.txt",
+      "bytes": 34257,
+      "sha256": "7a26607b7eb35b3ded8dc983ed6915c728f5f7a5c1d4c6a5bb5655847375c17f"
+    },
+    {
+      "path": "README.md",
+      "bytes": 6129,
+      "sha256": "fe308b4e597f803045db7f8f113cf91a757f27a9d918d48f2c3fbe0f838ab5c2"
+    }
+  ]
+}

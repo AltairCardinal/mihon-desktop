@@ -1,0 +1,373 @@
+package mihon.domain.reader
+
+import mihon.domain.reader.session.ReaderChapterId
+import mihon.domain.reader.session.ReaderPageId
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Assumptions.assumeTrue
+import java.lang.management.ManagementFactory
+import kotlin.math.abs
+import kotlin.random.Random
+
+class ReaderPairingAdoptionCostTest {
+    private class Reads<T>(private val values: List<T>) : AbstractList<T>() {
+        var reads = 0
+        override val size: Int get() = values.size
+        override fun get(index: Int): T {
+            reads++
+            return values[index]
+        }
+    }
+
+    private fun session(pages: List<ReaderPageId>) = SharedDualPageSession(
+        ReaderDualPageIdentity(1, 1, pages.map { ReaderDualPageContentIdentity(it, "v1") }),
+        ReaderDirection.RTL,
+    )
+
+    private fun owner(session: SharedDualPageSession) =
+        SharedDualPageSession::class.java.getDeclaredField("spreadSamples")
+            .apply { isAccessible = true }.get(session) as ReaderSpreadSamplesOwner
+
+    @Test
+    fun `score stops reading acquired samples once nonnegative distance rejects`() {
+        for (direction in listOf(ReaderDirection.RTL, ReaderDirection.LTR)) {
+            val black = Reads(List(50) { 0xff000000.toInt() })
+            val white = Reads(List(50) { -1 })
+            assertNull(
+                SharedSpreadMatching.score(
+                    ReaderSpreadEdgeSamples(black, black),
+                    ReaderSpreadEdgeSamples(white, white),
+                    direction,
+                ),
+            )
+            assertEquals(2, black.reads)
+            assertEquals(2, white.reads)
+        }
+    }
+
+    @Test
+    fun `real score stays exactly equal to original formula across alpha direction and guards`() {
+        val random = Random(739)
+        val edges = buildList {
+            for (color in listOf(0, -1, 0xff101010.toInt(), 0xff808080.toInt())) add(List(50) { color })
+            val art = List(50) { if (it % 2 == 0) 0xffa0a0a0.toInt() else 0xff404080.toInt() }
+            add(art)
+            for (shift in listOf(5, 9, 10, 11)) add(art.map { it + shift * 0x010101 })
+            repeat(100) { add(List(50) { random.nextInt() }) }
+            repeat(20) { add(List(50) { random.nextInt(256).let { a -> (a shl 24) or 0x4080a0 } }) }
+        }
+        for (index in edges.indices) {
+            for (direction in listOf(ReaderDirection.RTL, ReaderDirection.LTR)) {
+                val first = ReaderSpreadEdgeSamples(edges[index], edges[(index + 1) % edges.size])
+                val second = ReaderSpreadEdgeSamples(edges[(index + 2) % edges.size], edges[index])
+                assertEquals(
+                    originalScore(first, second, direction),
+                    SharedSpreadMatching.score(first, second, direction),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `certification reuses owner content index without traversing chapter again`() {
+        val pages = List(80) { ReaderPageId(ReaderChapterId(739), it) }
+        val content = Reads(pages.map { ReaderDualPageContentIdentity(it, "v1") })
+        val identity = ReaderDualPageIdentity(1, 1, content)
+        val owner = ReaderSpreadSamplesOwner(identity)
+        content.reads = 0
+        repeat(2) {
+            ReaderPairingCertifier.certify(
+                identity,
+                emptyMap(),
+                owner,
+                ReaderPairingSettings(ReaderDirection.RTL, true),
+                pages[4],
+            )
+        }
+        assertEquals(0, content.reads, "An existing owner already owns the immutable content index")
+    }
+
+    @Test
+    fun `unchanged session memo skips exact value rereads with global evidence stamp`() {
+        val pages = List(8) { ReaderPageId(ReaderChapterId(740), it) }
+        val session = session(pages)
+        try {
+            session.configure(ReaderDirection.RTL, automaticMatching = true)
+            pages.forEach {
+                assertTrue(session.acceptFact(session.requestFact(it), ReaderPageFact.dimensions(980, 1403)))
+            }
+            val first = session.certifyPairing(pages[3])
+            val checked = session.certificationMetrics.readValuesChecked
+            val validations = session.certificationMetrics.validationCalls
+            assertEquals(first, session.certifyPairing(pages[3]))
+            assertEquals(checked, session.certificationMetrics.readValuesChecked)
+            assertEquals(validations, session.certificationMetrics.validationCalls)
+            assertTrue(session.certificationMetrics.memoHits > 0)
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
+    fun `header writes invalidate global stamp even when retained original fact does not change`() {
+        val pages = List(8) { ReaderPageId(ReaderChapterId(741), it) }
+        val session = session(pages)
+        try {
+            session.configure(ReaderDirection.RTL, automaticMatching = true)
+            val page = pages[3]
+            val portrait = ReaderPageFact.dimensions(980, 1403)
+            val original = checkNotNull(session.requestOriginalAnalysis(page))
+            assertTrue(
+                session.acceptOriginalAnalysis(
+                    original,
+                    portrait,
+                    ReaderOriginalPageSamples(
+                        ReaderPageSideHint.UNKNOWN,
+                        ReaderSpreadEdgeSamples(List(50) { -1 }, List(50) { -1 }),
+                    ),
+                ),
+            )
+            session.certifyPairing(page)
+            val validations = session.certificationMetrics.validationCalls
+            val layoutRevision = session.layoutRevision
+            assertTrue(session.acceptFact(session.requestFact(page), ReaderPageFact.dimensions(500, 800)))
+            assertEquals(layoutRevision, session.layoutRevision, "Computed original remains the displayed fact")
+            session.certifyPairing(page)
+            assertEquals(
+                validations + 1,
+                session.certificationMetrics.validationCalls,
+                "Header mutation must force exact read comparison",
+            )
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
+    fun `failure writes and clearing invalidate unchanged session stamp without inventing scans`() {
+        val pages = List(8) { ReaderPageId(ReaderChapterId(742), it) }
+        val session = session(pages)
+        try {
+            session.configure(ReaderDirection.RTL, automaticMatching = true)
+            session.certifyPairing(pages[3])
+            val owner = owner(session)
+            val scans = session.certificationMetrics.engineRuns
+            val mutations = listOf<() -> Unit>(
+                { assertTrue(owner.failOriginal(owner.request(pages[7]), ReaderAnalysisFailure.RESOURCE)) },
+                { owner.clearResourceFailures() },
+                { assertTrue(owner.failOriginal(owner.request(pages[7]), ReaderAnalysisFailure.READ)) },
+                { owner.retryFailures() },
+            )
+            mutations.forEach { mutate ->
+                val validations = session.certificationMetrics.validationCalls
+                mutate()
+                session.certifyPairing(pages[3])
+                assertEquals(validations + 1, session.certificationMetrics.validationCalls)
+                assertEquals(
+                    scans,
+                    session.certificationMetrics.engineRuns,
+                    "Unobserved page mutation only requires exact comparison",
+                )
+            }
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
+    fun `exact settings validation stays within bounded allocation after warmup`() {
+        val bean = ManagementFactory.getThreadMXBean() as? com.sun.management.ThreadMXBean
+        assumeTrue(bean != null && bean.isThreadAllocatedMemorySupported)
+        val allocation = requireNotNull(bean)
+        allocation.isThreadAllocatedMemoryEnabled = true
+        val pages = List(64) { ReaderPageId(ReaderChapterId(747), it) }
+        val identity = ReaderDualPageIdentity(1, 1, pages.map { ReaderDualPageContentIdentity(it, "v1") })
+        val owner = ReaderSpreadSamplesOwner(identity)
+        val settings = ReaderPairingSettings(ReaderDirection.RTL, true, forcedSinglePages = pages.toSet())
+        val reads: Map<ReaderPairingReadKey, ReaderPairingReadValue> = mapOf(
+            ReaderPairingReadKey.Settings to ReaderPairingReadValue.Settings(settings.snapshotCopy()),
+        )
+        var changed = 0
+        fun validate() {
+            if (firstChangedRead(reads, identity, emptyMap(), owner, settings) != null) changed++
+        }
+        repeat(20_000) { validate() }
+        val threadId = Thread.currentThread().id
+        val bytesPerValidation = List(3) {
+            val before = allocation.getThreadAllocatedBytes(threadId)
+            repeat(10_000) { validate() }
+            (allocation.getThreadAllocatedBytes(threadId) - before) / 10_000.0
+        }
+        println("PAIRING_EXACT_ALLOCATION bytesPerValidation=$bytesPerValidation warmup=20000 batch=10000")
+        assertEquals(0, changed)
+        assertTrue(
+            bytesPerValidation.all { it < 512.0 },
+            "Exact validation must not copy the 64-page settings sets on every lookup: $bytesPerValidation",
+        )
+    }
+
+    @Test
+    fun `compact dimension comparison keeps every geometry field and ignores only current side hint`() {
+        val page = ReaderPageId(ReaderChapterId(744), 0)
+        val identity = ReaderDualPageIdentity(1, 1, listOf(ReaderDualPageContentIdentity(page, "v1")))
+        val owner = ReaderSpreadSamplesOwner(identity)
+        val settings = ReaderPairingSettings(ReaderDirection.RTL, true)
+        val expected = ReaderPageFact.dimensions(980, 1403)
+        val key = ReaderPairingReadKey.Dimension(page)
+        val reads: Map<ReaderPairingReadKey, ReaderPairingReadValue> =
+            mapOf(key to ReaderPairingReadValue.Dimension(expected))
+        assertNull(
+            firstChangedRead(
+                reads,
+                identity,
+                mapOf(page to expected.copy(sideHint = ReaderPageSideHint.LEFT)),
+                owner,
+                settings,
+            ),
+        )
+        for (changed in listOf(
+            null,
+            expected.copy(state = ReaderPageFactState.UNKNOWN),
+            expected.copy(width = 981),
+            expected.copy(height = 1404),
+            expected.copy(rotation = PageRotation.CLOCKWISE_90),
+            expected.copy(sourceOrientation = ReaderImageOrientation.MIRROR_HORIZONTAL),
+        )) {
+            val headers = changed?.let { mapOf(page to it) }.orEmpty()
+            assertEquals(key, firstChangedRead(reads, identity, headers, owner, settings))
+        }
+        assertEquals(
+            key,
+            firstChangedRead(
+                mapOf(key to ReaderPairingReadValue.Dimension(expected.copy(sideHint = ReaderPageSideHint.RIGHT))),
+                identity,
+                mapOf(page to expected),
+                owner,
+                settings,
+            ),
+        )
+        assertNull(
+            firstChangedRead(
+                mapOf(key to ReaderPairingReadValue.Dimension(null)),
+                identity,
+                emptyMap(),
+                owner,
+                settings,
+            ),
+        )
+    }
+
+    @Test
+    fun `compact comparison treats absent or mismatched recorded values as changed without throwing`() {
+        val page = ReaderPageId(ReaderChapterId(746), 0)
+        val second = ReaderPageId(ReaderChapterId(746), 1)
+        val identity = ReaderDualPageIdentity(
+            1,
+            1,
+            listOf(page, second).map { ReaderDualPageContentIdentity(it, "v1") },
+        )
+        val owner = ReaderSpreadSamplesOwner(identity)
+        val settings = ReaderPairingSettings(ReaderDirection.RTL, true)
+        val keys = listOf(
+            ReaderPairingReadKey.Identity,
+            ReaderPairingReadKey.Settings,
+            ReaderPairingReadKey.Analysis(page),
+            ReaderPairingReadKey.Header(page),
+            ReaderPairingReadKey.Dimension(page),
+            ReaderPairingReadKey.Edge(page, second, ReaderDirection.RTL),
+        )
+        for (key in keys) {
+            for (recorded in listOf(ReaderPairingReadValue.Absent, ReaderPairingReadValue.Header(null))) {
+                if (key is ReaderPairingReadKey.Header && recorded is ReaderPairingReadValue.Header) continue
+                assertEquals(key, firstChangedRead(mapOf(key to recorded), identity, emptyMap(), owner, settings))
+            }
+        }
+    }
+
+    @Test
+    fun `saturated owner or header revision always falls back to exact session validation`() {
+        for (ownerSaturated in listOf(false, true)) {
+            val pages = List(8) { ReaderPageId(ReaderChapterId(743), it) }
+            val session = session(pages)
+            try {
+                session.configure(ReaderDirection.RTL, automaticMatching = true)
+                session.certifyPairing(pages[3])
+                val owner = owner(session)
+                val receiver: Any = if (ownerSaturated) owner else session
+                val field = if (ownerSaturated) "evidenceRevision" else "headerEvidenceRevision"
+                receiver.javaClass.getDeclaredField(field).apply { isAccessible = true }
+                    .setLong(receiver, Long.MAX_VALUE)
+                val validations = session.certificationMetrics.validationCalls
+                val scans = session.certificationMetrics.engineRuns
+                repeat(2) { session.certifyPairing(pages[3]) }
+                assertEquals(validations + 2, session.certificationMetrics.validationCalls)
+                assertEquals(scans, session.certificationMetrics.engineRuns)
+            } finally {
+                session.close()
+            }
+        }
+    }
+
+    @Test
+    fun `owner stamp rejects visible evidence changes metadata close and replacement but not request bookkeeping`() {
+        val page = ReaderPageId(ReaderChapterId(745), 0)
+        val identity = ReaderDualPageIdentity(1, 1, listOf(ReaderDualPageContentIdentity(page, "v1")))
+        val owner = ReaderSpreadSamplesOwner(identity)
+        fun stamp() = ReaderPairingEvidenceStamp(owner, owner.identity, owner.evidenceRevision, 0)
+        var stamp = stamp()
+        owner.request(page)
+        owner.cancelRequests()
+        assertTrue(stamp.matches(owner, owner.identity, 0))
+        val edges = ReaderSpreadEdgeSamples(List(50) { -1 }, List(50) { -1 })
+        assertTrue(owner.accept(owner.request(page), edges))
+        assertTrue(!stamp.matches(owner, owner.identity, 0))
+        stamp = stamp()
+        assertTrue(owner.acceptOriginal(owner.request(page), ReaderPageFact.dimensions(980, 1403), edges))
+        assertTrue(!stamp.matches(owner, owner.identity, 0))
+        stamp = stamp()
+        owner.updateMetadata(
+            identity.copy(
+                content = listOf(
+                    identity.content.single().copy(sourceOrientation = ReaderImageOrientation.MIRROR_HORIZONTAL),
+                ),
+            ),
+        )
+        assertTrue(!stamp.matches(owner, owner.identity, 0))
+        stamp = stamp()
+        val replacement = owner.rebind(owner.identity)
+        assertTrue(!stamp.matches(owner, owner.identity, 0))
+        assertTrue(!stamp.matches(replacement, replacement.identity, 0))
+        replacement.close()
+    }
+
+    // Independent pre-adoption oracle; production always goes through SharedSpreadMatching.score.
+    private fun originalScore(
+        first: ReaderSpreadEdgeSamples,
+        second: ReaderSpreadEdgeSamples,
+        direction: ReaderDirection,
+    ): Double? {
+        val a = (if (direction == ReaderDirection.RTL) first.left else first.right)
+            .map(SharedSpreadMatching::normalizeSample)
+        val b = (if (direction == ReaderDirection.RTL) second.right else second.left)
+            .map(SharedSpreadMatching::normalizeSample)
+        fun red(c: Int) = (c ushr 16) and 255
+        fun green(c: Int) = (c ushr 8) and 255
+        fun blue(c: Int) = c and 255
+        val distance = a.zip(b).sumOf { (x, y) ->
+            abs(red(x) - red(y)) + abs(green(x) - green(y)) + abs(blue(x) - blue(y))
+        }.toDouble() / 50
+        if (distance >= 30) return null
+        fun bright(e: List<Int>) = e.count { minOf(red(it), green(it), blue(it)) > 220 } >= 40
+        fun dark(e: List<Int>) = e.count { maxOf(red(it), green(it), blue(it)) < 50 } >= 40
+        fun variance(e: List<Int>): Double {
+            val l = e.map { 0.299 * red(it) + 0.587 * green(it) + 0.114 * blue(it) }
+            val mean = l.average()
+            return l.sumOf { it * it } / 50 - mean * mean
+        }
+        if ((bright(a) && bright(b)) || (dark(a) && dark(b))) return null
+        if (variance(a) < 100 && variance(b) < 100) return null
+        return distance
+    }
+}

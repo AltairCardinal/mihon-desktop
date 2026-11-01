@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="mihon.domain.reader.ReaderPairingCertificationMemoTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-10-31T23:19:28.769Z" hostname="G-BURST" time="0.173">
+  <properties/>
+  <testcase name="A03 a changed matching mode and a changed direction reject the stored result()[jvm]" classname="mihon.domain.reader.ReaderPairingCertificationMemoTest" time="0.173"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

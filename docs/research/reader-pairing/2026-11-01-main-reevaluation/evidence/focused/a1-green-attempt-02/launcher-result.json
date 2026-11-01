@@ -1,0 +1,31 @@
+{
+  "key": "reevaluation-a1-green-attempt-02-20261101",
+  "attempt": "02",
+  "startUtc": "2026-10-31T22:49:57.363171+00:00",
+  "elapsedSeconds": 53.826,
+  "exitCode": 0,
+  "testTotals": {
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "testcaseRows": [
+    {
+      "name": "real score stays exactly equal to original formula across alpha direction and guards()[jvm]",
+      "classname": "mihon.domain.reader.ReaderPairingAdoptionCostTest",
+      "failureCount": 0,
+      "errorCount": 0,
+      "skipped": false
+    },
+    {
+      "name": "score stops reading acquired samples once nonnegative distance rejects()[jvm]",
+      "classname": "mihon.domain.reader.ReaderPairingAdoptionCostTest",
+      "failureCount": 0,
+      "errorCount": 0,
+      "skipped": false
+    }
+  ],
+  "stdoutSha256": "cc4b610a8aa1ebd12878d8422b0bec26019f45cf922714595117c6e34f5290f6",
+  "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

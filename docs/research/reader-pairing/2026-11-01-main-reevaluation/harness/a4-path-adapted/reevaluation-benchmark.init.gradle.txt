@@ -1,0 +1,38 @@
+// Narrow reader reevaluation cost source and force three independent sequential JVM workers.
+gradle.projectsEvaluated {
+    def root = gradle.rootProject
+    def expected = new File('D:/Codex/worktrees/reader-stamp-reevaluation-20261101').canonicalFile
+    def actualRoot = root.projectDir.canonicalFile
+    def buildSrcRoot = new File(expected, 'buildSrc').canonicalFile
+    if (actualRoot == buildSrcRoot) {
+        println('REEVAL_BENCH_INIT skipping legal buildSrc included build root=' + actualRoot)
+        return
+    }
+    if (actualRoot != expected) {
+        throw new GradleException('Reevaluation init requires the frozen reevaluation worktree: ' + actualRoot)
+    }
+    def domain = root.allprojects.find { it.path == ':domain' }
+    if (domain == null) throw new GradleException('The frozen build must contain :domain')
+    def source = new File(root.projectDir, '.gradle-coordinator/reevaluation/inputs/ReaderPairingReevaluationBenchmark.kt').canonicalFile
+    if (!source.isFile()) throw new GradleException('Frozen cost harness source is missing: ' + source)
+    def kotlin = domain.extensions.findByName('kotlin')
+    if (kotlin == null) throw new GradleException(':domain Kotlin Multiplatform extension is missing')
+    def commonTest = kotlin.sourceSets.findByName('commonTest')
+    if (commonTest == null) throw new GradleException(':domain commonTest source set is missing')
+    commonTest.kotlin.srcDir(source.parentFile)
+    def variant = root.findProperty('reeval.variant')?.toString()
+    if (!(variant in ['baseline', 'a1', 'a2', 'a3', 'a4'])) {
+        throw new GradleException('Provide one frozen reevaluation variant: baseline/a1/a2/a3/a4')
+    }
+    domain.tasks.named('jvmTest').configure { task ->
+        task.forkEvery = 1L
+        task.maxParallelForks = 1
+        task.environment('REEVAL_VARIANT', variant)
+        task.inputs.file(source)
+        task.inputs.property('reevaluationVariant', variant)
+        task.outputs.upToDateWhen { false }
+        def retry = task.extensions.findByName('retry')
+        if (retry != null) retry.maxRetries.set(0)
+        println('REEVAL_BENCH_INIT task=' + task.path + ' variant=' + variant + ' source=' + source + ' forkEvery=1 maxParallelForks=1 retries=' + (retry == null ? 'absent-default-zero' : 'zero'))
+    }
+}

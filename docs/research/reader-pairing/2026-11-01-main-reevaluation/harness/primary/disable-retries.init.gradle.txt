@@ -1,0 +1,15 @@
+// Reader reevaluation focused tests: prevent retries from turning a first failure into a pass.
+allprojects {
+    tasks.withType(Test).configureEach { task ->
+        def retry = task.extensions.findByName('retry')
+        if (retry != null) {
+            retry.maxRetries.set(0)
+            println('REEVAL_RETRY_DISABLED task=' + task.path + ' extension=maxRetries:0')
+        } else {
+            println('REEVAL_RETRY_DISABLED task=' + task.path + ' extension=absent-default-no-retries')
+        }
+        task.inputs.property('reevaluationRetryCap', 0)
+        task.outputs.upToDateWhen { false }
+        task.testLogging { showStandardStreams = true }
+    }
+}

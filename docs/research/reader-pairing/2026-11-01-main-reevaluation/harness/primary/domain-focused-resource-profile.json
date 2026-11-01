@@ -1,0 +1,18 @@
+{
+  "profileName": "domain-focused-cp1-with-root-headroom",
+  "sourceProfile": "R10 local-cpu domain-focused profile; see cp1-profiles-original.json",
+  "gradleJvmargs": "-Xmx768m -XX:MaxMetaspaceSize=384m -Dfile.encoding=UTF-8",
+  "testMaxHeap": "256m",
+  "maxWorkers": 1,
+  "maxParallelForks": 1,
+  "forkEveryTestClasses": 1,
+  "jobMiB": 3072,
+  "processMiB": 2048,
+  "reservePhysicalMiB": 4096,
+  "reserveCommitMiB": 8192,
+  "startupPhysicalMiB": 7168,
+  "timeoutSeconds": 1800,
+  "gradleOffline": true,
+  "automaticRetries": 0,
+  "coordinatorStateDir": "D:/Codex/worktrees/reader-pairing-research-next-20261014/.gradle-coordinator"
+}

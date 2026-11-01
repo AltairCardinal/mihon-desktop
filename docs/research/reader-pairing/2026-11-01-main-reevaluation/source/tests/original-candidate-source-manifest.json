@@ -1,0 +1,13 @@
+{
+  "originalPath": "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingAdoptionCostTest.kt",
+  "archivedPath": ".gradle-coordinator/reevaluation/rejected-candidate-tests/ReaderPairingAdoptionCostTest.kt",
+  "archivedSha256": "2c9ee9ae0ac8788de3f795d294720fe80fcd5b60ec852f464465fa3aae9f4928",
+  "retainedSha256": "d6f0afaa558ebf69114ab6848b920b62239aa6e2c62e5c5fe391eaa44f5182ac",
+  "retainedMechanism": "A1 scoring only: bounded sample reads + independent pre-adoption formula parity",
+  "removedMechanisms": [
+    "A2",
+    "A3",
+    "A4"
+  ],
+  "productionChanged": false
+}

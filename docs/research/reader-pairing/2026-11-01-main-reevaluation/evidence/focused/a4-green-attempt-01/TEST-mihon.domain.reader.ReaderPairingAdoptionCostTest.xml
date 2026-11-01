@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="mihon.domain.reader.ReaderPairingAdoptionCostTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-10-31T23:27:49.987Z" hostname="G-BURST" time="0.096">
+  <properties/>
+  <testcase name="header writes invalidate global stamp even when retained original fact does not change()[jvm]" classname="mihon.domain.reader.ReaderPairingAdoptionCostTest" time="0.084"/>
+  <testcase name="saturated owner or header revision always falls back to exact session validation()[jvm]" classname="mihon.domain.reader.ReaderPairingAdoptionCostTest" time="0.004"/>
+  <testcase name="failure writes and clearing invalidate unchanged session stamp without inventing scans()[jvm]" classname="mihon.domain.reader.ReaderPairingAdoptionCostTest" time="0.002"/>
+  <testcase name="owner stamp rejects visible evidence changes metadata close and replacement but not request bookkeeping()[jvm]" classname="mihon.domain.reader.ReaderPairingAdoptionCostTest" time="0.001"/>
+  <testcase name="unchanged session memo skips exact value rereads with global evidence stamp()[jvm]" classname="mihon.domain.reader.ReaderPairingAdoptionCostTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

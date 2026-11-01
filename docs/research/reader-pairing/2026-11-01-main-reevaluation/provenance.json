@@ -1,0 +1,712 @@
+{
+  "archiveBaseline": "e8beb212a0ead306f6441b130c40d4b0a6c660f6",
+  "acceptedImplementation": "f04ec49bd06df934281886885f463b0028813071",
+  "archivePreparedAtHead": "b59e851498ee507618ec1dcf947e98bd2c53fa6f",
+  "origins": {
+    "2026-11-01-main-reevaluation/evidence/raw/baseline/samples.jsonl": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\baseline-attempt-02\\raw\\samples.jsonl",
+      "originalSha256": "349591d666b6016df6d34b77cbf73917fcba9de55fbe98d0204263407c7f4d44"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/baseline/scenario-summaries.jsonl": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\baseline-attempt-02\\raw\\scenario-summaries.jsonl",
+      "originalSha256": "8aef76aaabfc8cd1c5c4222a697ab6476837e1c96785fc71e0c7429a8c1341ca"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/baseline/metric-unavailable.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\baseline-attempt-02\\raw\\metric-unavailable.json",
+      "originalSha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/baseline/scenario-invalid.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\baseline-attempt-02\\raw\\scenario-invalid.json",
+      "originalSha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/baseline/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess1Test.xml.gz": {
+      "kind": "lossless-gzip-original",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\baseline-attempt-02\\raw\\TEST-mihon.domain.reader.ReaderPairingReevaluationProcess1Test.xml",
+      "originalBytes": 488993,
+      "originalSha256": "c1499b3c25f82a4ea5fde62445b84ed7cc2009d5aef0e4593ead94479941f350",
+      "gzipMtime": 0
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/baseline/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess2Test.xml.gz": {
+      "kind": "lossless-gzip-original",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\baseline-attempt-02\\raw\\TEST-mihon.domain.reader.ReaderPairingReevaluationProcess2Test.xml",
+      "originalBytes": 489074,
+      "originalSha256": "63a9feeda0a73e38de0aebfaa5eba665bb8fa09ebbddcda949d1d74d5b4e2a3c",
+      "gzipMtime": 0
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/baseline/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess3Test.xml.gz": {
+      "kind": "lossless-gzip-original",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\baseline-attempt-02\\raw\\TEST-mihon.domain.reader.ReaderPairingReevaluationProcess3Test.xml",
+      "originalBytes": 489045,
+      "originalSha256": "6cabcda96bbc4cc52c50ca6c08bbec2abfa10e7fc8af9cf7fab001ff37b96e1f",
+      "gzipMtime": 0
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/baseline/source-manifest.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\baseline-attempt-02\\source-manifest.json",
+      "originalSha256": "812abeb13f67ae5c45cadb1959da01eec67a0bdffff4f4396590d04cd1b263a0"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/baseline/launcher-result.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\baseline-attempt-02\\launcher-result.json",
+      "originalSha256": "0e3b8806f131c8c7bbdbb2e9a5b10a01b84eee2f336c6842837d05f4bd35fab1"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/baseline/baseline-summary.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\baseline-attempt-02\\raw\\baseline-summary.json",
+      "originalSha256": "5a4d3423890198fa2d896c36454697a92d14ae565bff033f357e0c362c47c705"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a1/samples.jsonl": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a1-attempt-01\\raw\\samples.jsonl",
+      "originalSha256": "bf39cfa0dd7ba0ad195a988f9e09c269585b2552f39ca6c2041b1dfc057699d1"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a1/scenario-summaries.jsonl": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a1-attempt-01\\raw\\scenario-summaries.jsonl",
+      "originalSha256": "7617d2de6c4aca5a6d71c8d438120d6f3c1c01432b205784bcd4a7cc7e89301c"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a1/metric-unavailable.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a1-attempt-01\\raw\\metric-unavailable.json",
+      "originalSha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a1/scenario-invalid.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a1-attempt-01\\raw\\scenario-invalid.json",
+      "originalSha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a1/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess1Test.xml.gz": {
+      "kind": "lossless-gzip-original",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a1-attempt-01\\raw\\TEST-mihon.domain.reader.ReaderPairingReevaluationProcess1Test.xml",
+      "originalBytes": 486397,
+      "originalSha256": "1f64d557d7233950ac8c629e1eeddc1f77685ffd49e3630ac03c7b75de9097d3",
+      "gzipMtime": 0
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a1/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess2Test.xml.gz": {
+      "kind": "lossless-gzip-original",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a1-attempt-01\\raw\\TEST-mihon.domain.reader.ReaderPairingReevaluationProcess2Test.xml",
+      "originalBytes": 486406,
+      "originalSha256": "bca04b6a544584121f95e308a6d67100a1b07c3e00fdcb894a3655cf2769f15f",
+      "gzipMtime": 0
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a1/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess3Test.xml.gz": {
+      "kind": "lossless-gzip-original",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a1-attempt-01\\raw\\TEST-mihon.domain.reader.ReaderPairingReevaluationProcess3Test.xml",
+      "originalBytes": 486552,
+      "originalSha256": "4bb3ec587fb72bba34903441e9ee395bacc76ade59351005c2692df96ac34d5b",
+      "gzipMtime": 0
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a1/source-manifest.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a1-attempt-01\\source-manifest.json",
+      "originalSha256": "bbf82cd822c075a7b5fd5d3e8c9d477bb74d6b1a1095aedd028a5ab59c68f456"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a1/launcher-result.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a1-attempt-01\\launcher-result.json",
+      "originalSha256": "1e8b427823a32dba6147c5ca1bf7e41a962871e3fc037270ce1cca61f16dd64e"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a1/a1-vs-baseline-summary.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a1-attempt-01\\raw\\a1-vs-baseline-summary.json",
+      "originalSha256": "858077d344b29553080d969e313a9aab49872a06477feb62f206b36975dd7c1c"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a2/samples.jsonl": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a2-attempt-01\\raw\\samples.jsonl",
+      "originalSha256": "99babcb1b508a412fc6885047a782e16c7509030d3ec50c3e198b3e83b546f29"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a2/scenario-summaries.jsonl": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a2-attempt-01\\raw\\scenario-summaries.jsonl",
+      "originalSha256": "1847d4586ac3fd2ca3d7d40054a466a77dcef88fcbd943035ba2f1130dd0c63d"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a2/metric-unavailable.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a2-attempt-01\\raw\\metric-unavailable.json",
+      "originalSha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a2/scenario-invalid.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a2-attempt-01\\raw\\scenario-invalid.json",
+      "originalSha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a2/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess1Test.xml.gz": {
+      "kind": "lossless-gzip-original",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a2-attempt-01\\raw\\TEST-mihon.domain.reader.ReaderPairingReevaluationProcess1Test.xml",
+      "originalBytes": 487485,
+      "originalSha256": "eaa8344a1024f4179b6189df8d1c239e1cd115072d5dde4f281af64cc4dce0aa",
+      "gzipMtime": 0
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a2/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess2Test.xml.gz": {
+      "kind": "lossless-gzip-original",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a2-attempt-01\\raw\\TEST-mihon.domain.reader.ReaderPairingReevaluationProcess2Test.xml",
+      "originalBytes": 486758,
+      "originalSha256": "fc9aab764b9aae881ecc5a27af5f02769f76f11a17d74882163c9151034559d5",
+      "gzipMtime": 0
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a2/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess3Test.xml.gz": {
+      "kind": "lossless-gzip-original",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a2-attempt-01\\raw\\TEST-mihon.domain.reader.ReaderPairingReevaluationProcess3Test.xml",
+      "originalBytes": 487224,
+      "originalSha256": "486890f4fb832a4be21e9b8cd554742d09135d445afe3b27dd24f9f046eb2ade",
+      "gzipMtime": 0
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a2/source-manifest.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a2-attempt-01\\source-manifest.json",
+      "originalSha256": "b0b1674e5f6a2f0cc880fddf555cfc50432c7a5937c052d0c6b5ad4c60b5f591"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a2/launcher-result.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a2-attempt-01\\launcher-result.json",
+      "originalSha256": "42d3b44a848c8e4087d9b076e28d57e98785bb874e994aac953a63128523bf43"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a2/a2-vs-baseline-summary.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a2-attempt-01\\raw\\a2-vs-baseline-summary.json",
+      "originalSha256": "973c59ee3e112371d55ce3148a29a1eac2c64c84dbea7ccccfab699e5925b302"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a3/samples.jsonl": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a3-attempt-01\\raw\\samples.jsonl",
+      "originalSha256": "f7c396bc475b2aeea8ab9347583c4715ff0dc104f631a529bd73ef4aa24ed55c"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a3/scenario-summaries.jsonl": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a3-attempt-01\\raw\\scenario-summaries.jsonl",
+      "originalSha256": "ada1c193b841c8e906d9d74d0d145ccc9d74b176627ca1f7502b5549ca225054"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a3/metric-unavailable.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a3-attempt-01\\raw\\metric-unavailable.json",
+      "originalSha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a3/scenario-invalid.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a3-attempt-01\\raw\\scenario-invalid.json",
+      "originalSha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a3/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess1Test.xml.gz": {
+      "kind": "lossless-gzip-original",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a3-attempt-01\\raw\\TEST-mihon.domain.reader.ReaderPairingReevaluationProcess1Test.xml",
+      "originalBytes": 485784,
+      "originalSha256": "0d99520fbf80d7b6842ecfcf1887a8a66c33561ff6405b53261708a34f069c01",
+      "gzipMtime": 0
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a3/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess2Test.xml.gz": {
+      "kind": "lossless-gzip-original",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a3-attempt-01\\raw\\TEST-mihon.domain.reader.ReaderPairingReevaluationProcess2Test.xml",
+      "originalBytes": 485995,
+      "originalSha256": "2db619a9fedfb6e15ddc9cf9b15b68e5ac9e3f3a1615d33912aca8a6c44c3bf8",
+      "gzipMtime": 0
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a3/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess3Test.xml.gz": {
+      "kind": "lossless-gzip-original",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a3-attempt-01\\raw\\TEST-mihon.domain.reader.ReaderPairingReevaluationProcess3Test.xml",
+      "originalBytes": 485448,
+      "originalSha256": "5e8bd63e8dc07ddd01905c8e8ee2dd64712f85c46fb894c45db805a8581d6c4e",
+      "gzipMtime": 0
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a3/source-manifest.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a3-attempt-01\\source-manifest.json",
+      "originalSha256": "b2a40a5a833407230c11218be144aaa6832f197e623b4df1bd84fb32ee3350a7"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a3/launcher-result.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a3-attempt-01\\launcher-result.json",
+      "originalSha256": "60f36cedcd05e373a025f58a407167ce579606cacb359d65ed4e2c7a395f9ebd"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a3/a1-vs-a3-summary.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a3-attempt-01\\raw\\a1-vs-a3-summary.json",
+      "originalSha256": "5ebab5145304db6fd15618de47aa0831fba04996eb4b40013cd2671a3c85dbbc"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a4/samples.jsonl": {
+      "kind": "original-byte-copy",
+      "source": "stamp-worktree/costs\\a4-attempt-01\\raw\\samples.jsonl",
+      "originalSha256": "37eb3460140637080bf216e22a21d29bb48802c7d2e949936109bad53502de51"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a4/scenario-summaries.jsonl": {
+      "kind": "original-byte-copy",
+      "source": "stamp-worktree/costs\\a4-attempt-01\\raw\\scenario-summaries.jsonl",
+      "originalSha256": "3239c4496152c697d8a7e26eb3bdcb2389e106e4c73f6c1ca5e7bf9c40b04c1d"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a4/metric-unavailable.json": {
+      "kind": "original-byte-copy",
+      "source": "stamp-worktree/costs\\a4-attempt-01\\raw\\metric-unavailable.json",
+      "originalSha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a4/scenario-invalid.json": {
+      "kind": "original-byte-copy",
+      "source": "stamp-worktree/costs\\a4-attempt-01\\raw\\scenario-invalid.json",
+      "originalSha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a4/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess1Test.xml.gz": {
+      "kind": "lossless-gzip-original",
+      "source": "stamp-worktree/costs\\a4-attempt-01\\raw\\TEST-mihon.domain.reader.ReaderPairingReevaluationProcess1Test.xml",
+      "originalBytes": 486165,
+      "originalSha256": "f274bc614aa494657a0098ac8a13afb517258fd18b7e96926bb6bc9bdf6cf932",
+      "gzipMtime": 0
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a4/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess2Test.xml.gz": {
+      "kind": "lossless-gzip-original",
+      "source": "stamp-worktree/costs\\a4-attempt-01\\raw\\TEST-mihon.domain.reader.ReaderPairingReevaluationProcess2Test.xml",
+      "originalBytes": 485946,
+      "originalSha256": "9b69bb2effdeb61a8f7f4f80db166733901eb9e2f846b7de9c73d520d4748f30",
+      "gzipMtime": 0
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a4/TEST-mihon.domain.reader.ReaderPairingReevaluationProcess3Test.xml.gz": {
+      "kind": "lossless-gzip-original",
+      "source": "stamp-worktree/costs\\a4-attempt-01\\raw\\TEST-mihon.domain.reader.ReaderPairingReevaluationProcess3Test.xml",
+      "originalBytes": 486557,
+      "originalSha256": "282e44adb7f9d2d534703184d6bf03511dcc27c4a2c4e6de6583c49708bfe77a",
+      "gzipMtime": 0
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a4/source-manifest.json": {
+      "kind": "original-byte-copy",
+      "source": "stamp-worktree/costs\\a4-attempt-01\\source-manifest.json",
+      "originalSha256": "6e4bee566520af4e0d6589de6d0ffb81638c71bae4cdb3a7f00a452488606d45"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a4/launcher-result.json": {
+      "kind": "original-byte-copy",
+      "source": "stamp-worktree/costs\\a4-attempt-01\\launcher-result.json",
+      "originalSha256": "8fa674cd89ebf7481d5280175f2f9db9bdfc41bcfde13bb11f72bf694a15ae95"
+    },
+    "2026-11-01-main-reevaluation/evidence/raw/a4/a4-vs-a1-recalc.json": {
+      "kind": "original-byte-copy",
+      "source": "stamp-worktree/costs\\a4-attempt-01\\a4-vs-a1-recalc.json",
+      "originalSha256": "e48c5baf03d0d310f415797b6e9d8139477836a2eec884b7e3772bd95172e03d"
+    },
+    "2026-11-01-main-reevaluation/evidence/focused/baseline-red-01/TEST-mihon.domain.reader.ReaderPairingAdoptionCostTest.xml": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\baseline-red-01\\raw\\TEST-mihon.domain.reader.ReaderPairingAdoptionCostTest.xml",
+      "originalSha256": "4a8b8ca02581e322bdfa1bf3e460fb93bc68694cc4c65e2cae3637c5f67b0aee"
+    },
+    "2026-11-01-main-reevaluation/evidence/focused/baseline-red-01/launcher-result.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\baseline-red-01\\launcher-result.json",
+      "originalSha256": "83fd1cc0b9de9c28f62657dbaf42685923af659040830ea733d65127cd8313ee"
+    },
+    "2026-11-01-main-reevaluation/evidence/focused/baseline-red-01/frozen-metadata.json": {
+      "kind": "selected-original-metadata",
+      "source": ".gradle-coordinator\\reevaluation\\baseline-red-01\\argv.json",
+      "originalSha256": "fc1cf9c15ba731bc1d82a92b185385d3dbd02336364724a0e4169c88e4d1e9ab"
+    },
+    "2026-11-01-main-reevaluation/evidence/focused/a1-green-attempt-02/TEST-mihon.domain.reader.ReaderPairingAdoptionCostTest.xml": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\a1-green-attempt-02\\raw\\TEST-mihon.domain.reader.ReaderPairingAdoptionCostTest.xml",
+      "originalSha256": "b121567da23d7211f61001f3f9aba30f1d0592926396df4f42f5277aedabdf95"
+    },
+    "2026-11-01-main-reevaluation/evidence/focused/a1-green-attempt-02/launcher-result.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\a1-green-attempt-02\\launcher-result.json",
+      "originalSha256": "b56d2add438a65e2bd32f30897bab001bae63495e11ee12893110759763af1b2"
+    },
+    "2026-11-01-main-reevaluation/evidence/focused/a1-green-attempt-02/frozen-metadata.json": {
+      "kind": "selected-original-metadata",
+      "source": ".gradle-coordinator\\reevaluation\\a1-green-attempt-02\\argv.json",
+      "originalSha256": "590a0cd77fec480cb703aec10b5a9367ad6b9ae76cede56709e10036dfc1a258"
+    },
+    "2026-11-01-main-reevaluation/evidence/focused/a2-green-attempt-01/TEST-mihon.domain.reader.ReaderPairingAdoptionCostTest.xml": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\a2-green-attempt-01\\raw\\TEST-mihon.domain.reader.ReaderPairingAdoptionCostTest.xml",
+      "originalSha256": "0aba56321c542ae1025515ca47abaeb0bdffc41cc288a28ec8901a7151a9a5bc"
+    },
+    "2026-11-01-main-reevaluation/evidence/focused/a2-green-attempt-01/launcher-result.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\a2-green-attempt-01\\launcher-result.json",
+      "originalSha256": "4a44e715eae33e6dcc4f77a6a005cea9758d795560650c2ac0d39c997b9a8a91"
+    },
+    "2026-11-01-main-reevaluation/evidence/focused/a2-green-attempt-01/frozen-metadata.json": {
+      "kind": "selected-original-metadata",
+      "source": ".gradle-coordinator\\reevaluation\\a2-green-attempt-01\\argv.json",
+      "originalSha256": "44c3df6be1e5a424fc651df08972ed367b2a23c401b59be808c39cebcf89b04e"
+    },
+    "2026-11-01-main-reevaluation/evidence/focused/a3-green-attempt-02/TEST-mihon.domain.reader.ReaderPairingAdoptionCostTest.xml": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\a3-green-attempt-02\\raw\\TEST-mihon.domain.reader.ReaderPairingAdoptionCostTest.xml",
+      "originalSha256": "a83e8414c063665ba9002f8b299f6f34f5baab74b734e05f5364afbe1e55c727"
+    },
+    "2026-11-01-main-reevaluation/evidence/focused/a3-green-attempt-02/TEST-mihon.domain.reader.ReaderPairingCertificationMemoTest.xml": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\a3-green-attempt-02\\raw\\TEST-mihon.domain.reader.ReaderPairingCertificationMemoTest.xml",
+      "originalSha256": "cc5b58606c9985f0151fa714415b803822038f6ffa2b8ab7e49a376ec74b900b"
+    },
+    "2026-11-01-main-reevaluation/evidence/focused/a3-green-attempt-02/launcher-result.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\a3-green-attempt-02\\launcher-result.json",
+      "originalSha256": "23a70ec6350631b21977f06d183a012f6d9f7d1355c511839d61e1bd7b9287c9"
+    },
+    "2026-11-01-main-reevaluation/evidence/focused/a3-green-attempt-02/frozen-metadata.json": {
+      "kind": "selected-original-metadata",
+      "source": ".gradle-coordinator\\reevaluation\\a3-green-attempt-02\\argv.json",
+      "originalSha256": "f9fb5a01485bd9d2dd1a534efd16cf7f9441d49d4a6fb7883aef0902219b2303"
+    },
+    "2026-11-01-main-reevaluation/evidence/focused/a4-green-attempt-01/TEST-mihon.domain.reader.ReaderPairingAdoptionCostTest.xml": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\a4-green-attempt-01\\raw\\TEST-mihon.domain.reader.ReaderPairingAdoptionCostTest.xml",
+      "originalSha256": "88cd228f961224138caee29532ab623abfa0cbae58b888e722a32ef44a119b67"
+    },
+    "2026-11-01-main-reevaluation/evidence/focused/a4-green-attempt-01/TEST-mihon.domain.reader.ReaderPairingCertificationMemoTest.xml": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\a4-green-attempt-01\\raw\\TEST-mihon.domain.reader.ReaderPairingCertificationMemoTest.xml",
+      "originalSha256": "798e9588c23bd16b00e7c7a96b37a94cfbd39619b03fa5c0c674ec99d5d1fbf1"
+    },
+    "2026-11-01-main-reevaluation/evidence/focused/a4-green-attempt-01/launcher-result.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\a4-green-attempt-01\\launcher-result.json",
+      "originalSha256": "b8b0de445a9164c6c851b52816659872afb18d3a22c7c2f90e93cb8e6ecd3672"
+    },
+    "2026-11-01-main-reevaluation/evidence/focused/a4-green-attempt-01/frozen-metadata.json": {
+      "kind": "selected-original-metadata",
+      "source": ".gradle-coordinator\\reevaluation\\a4-green-attempt-01\\argv.json",
+      "originalSha256": "18bdec7181745ccceae5aa389722aa60505c7dd37cee46c0b8b4c1a95462cc86"
+    },
+    "2026-11-01-main-reevaluation/harness/primary/cp1-luna-p5.init.gradle.txt": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\inputs\\cp1-luna-p5.init.gradle",
+      "originalSha256": "c36007fce64497ac48e5ce9d2445860bb01aec7fcacab64180d5d03dab4dffbc"
+    },
+    "2026-11-01-main-reevaluation/harness/primary/cp1-profiles-original.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\inputs\\cp1-profiles-original.json",
+      "originalSha256": "312997026c6d18a7bb7d27dfb5cebd3f35744c1e1046c67b4a4c72162f30057b"
+    },
+    "2026-11-01-main-reevaluation/harness/primary/disable-retries.init.gradle.txt": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\inputs\\disable-retries.init.gradle",
+      "originalSha256": "5a6192e7d3f16052e937b85fc119f5f24a5ea001d8d03307da61d48e24634503"
+    },
+    "2026-11-01-main-reevaluation/harness/primary/domain-focused-resource-profile.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\inputs\\domain-focused-resource-profile.json",
+      "originalSha256": "99338cb248820f937aede241565645985243ce29c3e533b7faa13ea731cb4fa0"
+    },
+    "2026-11-01-main-reevaluation/harness/primary/ReaderPairingReevaluationBenchmark.kt.txt": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\inputs\\ReaderPairingReevaluationBenchmark.kt",
+      "originalSha256": "a8c7fe9d35259dd7f4d14f2785e0d53867ffe7050f874860de073bc5cd3406df"
+    },
+    "2026-11-01-main-reevaluation/harness/primary/reevaluation-benchmark.init.gradle.txt": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\inputs\\reevaluation-benchmark.init.gradle",
+      "originalSha256": "a0dbc83a41f6e5d7bcc8bde0c28f5272ec89988d93f731833ce8221db9e1b181"
+    },
+    "2026-11-01-main-reevaluation/harness/primary/run-cost.py.txt": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\inputs\\run-cost.py",
+      "originalSha256": "6ea08cbea75c4dc4832f5086f93811a5f049d8489996b340367ea8bad953e29c"
+    },
+    "2026-11-01-main-reevaluation/harness/primary/run-focused-a1.py.txt": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\inputs\\run-focused-a1.py",
+      "originalSha256": "164d0755d70052a11143bdb0f815330a91664140c7383b043b656fd0c5b2ec30"
+    },
+    "2026-11-01-main-reevaluation/harness/primary/run-focused-a2.py.txt": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\inputs\\run-focused-a2.py",
+      "originalSha256": "bce91f58f6d3a0f24efad878cc6bc4cea836355a6c4c1f87cff97b23037839d3"
+    },
+    "2026-11-01-main-reevaluation/harness/primary/run-focused-a3.py.txt": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\inputs\\run-focused-a3.py",
+      "originalSha256": "c5f3a388df85e9e5d8824d78207223321f1818c57a9360dc16be40a1c1cafbe8"
+    },
+    "2026-11-01-main-reevaluation/harness/primary/run-focused-a4.py.txt": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\inputs\\run-focused-a4.py",
+      "originalSha256": "ed85ea32a6058b91cb2f2c5427df83d32d6c9205555dfd39867256cc2cde930a"
+    },
+    "2026-11-01-main-reevaluation/harness/primary/run-red-a.py.txt": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\inputs\\run-red-a.py",
+      "originalSha256": "29fac19c033c355d98ce12d02e25fedcd88a3c28030e9c7bb0a6e3c76633038e"
+    },
+    "2026-11-01-main-reevaluation/harness/primary/windows_memory_guard.py.txt": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\inputs\\windows_memory_guard.py",
+      "originalSha256": "4c8ea1cc40a44ab48ac84af0dd15d0ba93a7bbc491039c9864e4bb4b1ab9caf2"
+    },
+    "2026-11-01-main-reevaluation/harness/a4-path-adapted/cp1-luna-p5.init.gradle.txt": {
+      "kind": "original-byte-copy",
+      "source": "stamp-worktree/inputs\\cp1-luna-p5.init.gradle",
+      "originalSha256": "c36007fce64497ac48e5ce9d2445860bb01aec7fcacab64180d5d03dab4dffbc"
+    },
+    "2026-11-01-main-reevaluation/harness/a4-path-adapted/cp1-profiles-original.json": {
+      "kind": "original-byte-copy",
+      "source": "stamp-worktree/inputs\\cp1-profiles-original.json",
+      "originalSha256": "312997026c6d18a7bb7d27dfb5cebd3f35744c1e1046c67b4a4c72162f30057b"
+    },
+    "2026-11-01-main-reevaluation/harness/a4-path-adapted/disable-retries.init.gradle.txt": {
+      "kind": "original-byte-copy",
+      "source": "stamp-worktree/inputs\\disable-retries.init.gradle",
+      "originalSha256": "5a6192e7d3f16052e937b85fc119f5f24a5ea001d8d03307da61d48e24634503"
+    },
+    "2026-11-01-main-reevaluation/harness/a4-path-adapted/domain-focused-resource-profile.json": {
+      "kind": "original-byte-copy",
+      "source": "stamp-worktree/inputs\\domain-focused-resource-profile.json",
+      "originalSha256": "99338cb248820f937aede241565645985243ce29c3e533b7faa13ea731cb4fa0"
+    },
+    "2026-11-01-main-reevaluation/harness/a4-path-adapted/ReaderPairingReevaluationBenchmark.kt.txt": {
+      "kind": "original-byte-copy",
+      "source": "stamp-worktree/inputs\\ReaderPairingReevaluationBenchmark.kt",
+      "originalSha256": "a8c7fe9d35259dd7f4d14f2785e0d53867ffe7050f874860de073bc5cd3406df"
+    },
+    "2026-11-01-main-reevaluation/harness/a4-path-adapted/reevaluation-benchmark.init.gradle.txt": {
+      "kind": "original-byte-copy",
+      "source": "stamp-worktree/inputs\\reevaluation-benchmark.init.gradle",
+      "originalSha256": "f4a2535069c8577a8c317f39731a0d4bed9a7bed52ab56660bd73749c7b2e400"
+    },
+    "2026-11-01-main-reevaluation/harness/a4-path-adapted/run-cost.py.txt": {
+      "kind": "original-byte-copy",
+      "source": "stamp-worktree/inputs\\run-cost.py",
+      "originalSha256": "06ab3af3784df6bbfcf4f9d3f97f1ee01532d53c22506c4ab74fe86711cc05a3"
+    },
+    "2026-11-01-main-reevaluation/harness/a4-path-adapted/windows_memory_guard.py.txt": {
+      "kind": "original-byte-copy",
+      "source": "stamp-worktree/inputs\\windows_memory_guard.py",
+      "originalSha256": "4c8ea1cc40a44ab48ac84af0dd15d0ba93a7bbc491039c9864e4bb4b1ab9caf2"
+    },
+    "2026-11-01-main-reevaluation/harness/a4-path-adapted/recalc-a4-vs-a1.py.txt": {
+      "kind": "original-byte-copy",
+      "source": "stamp-worktree/costs\\a4-attempt-01\\recalc-a4-vs-a1.py",
+      "originalSha256": "896ea48c5a45ab86483de7b58526221521fd0e6f3432610976e2df70bb23aaa8"
+    },
+    "2026-11-01-main-reevaluation/patches/A2.patch": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a2-attempt-01\\raw\\a2-production.patch",
+      "originalSha256": "3f0d9dc3b8e1a8a106a173a48ffdd99ee9634f64c8563a290314235a67174949"
+    },
+    "2026-11-01-main-reevaluation/patches/A3.patch": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\costs\\a3-attempt-01\\raw\\a3-production.patch",
+      "originalSha256": "0602936a3167b28d29a55e642f3c7a9e01918c974d7e750b3bf3f559e4162807"
+    },
+    "2026-11-01-main-reevaluation/patches/A4.patch": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\a4-isolation-production.patch",
+      "originalSha256": "a0c5fbad67e0efa0577634fd93b488939491719a66b8a9e8ef45837219320a16"
+    },
+    "2026-11-01-main-reevaluation/source/a4-worktree-equivalence.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\a4-worktree-equivalence.json",
+      "originalSha256": "389c48069b1a01d59669bcff6db124e929b897add394fb6bcee108f65efde90b"
+    },
+    "2026-11-01-main-reevaluation/source/tests/ReaderPairingAdoptionCostTest.a4-full-11.kt.txt": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\rejected-candidate-tests\\ReaderPairingAdoptionCostTest.kt",
+      "originalSha256": "2c9ee9ae0ac8788de3f795d294720fe80fcd5b60ec852f464465fa3aae9f4928"
+    },
+    "2026-11-01-main-reevaluation/source/tests/original-candidate-source-manifest.json": {
+      "kind": "original-byte-copy",
+      "source": ".gradle-coordinator\\reevaluation\\rejected-candidate-tests\\source-manifest.json",
+      "originalSha256": "c323f21f5be7d38999f907b456de1ec1748855e14c2ac98891dec8fb4af6a10d"
+    },
+    "2026-11-01-main-reevaluation/source/tests/ReaderPairingAdoptionCostTest.early-9.kt.txt": {
+      "kind": "byte-exact-reconstruction",
+      "steps": "remove two appended A4 internal stamp safety methods from original full-11 snapshot; restore CRLF",
+      "verifiedAgainst": "baseline RED, A1/A2 GREEN, A3 GREEN original frozen testSourceSha256",
+      "originalSha256": "5e5462908d2966ed63a9140c6460ef02f625860c26d7c75288b3e9eb6ba503f3"
+    },
+    "2026-11-01-main-reevaluation/source/baseline-e8beb/ReaderPairingCertification.kt.txt": {
+      "kind": "git-blob-snapshot",
+      "commit": "e8beb212a0ead306f6441b130c40d4b0a6c660f6",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt",
+      "gitBlob": "96749106c61a411cfb98cc9d16a4042208fa186e"
+    },
+    "2026-11-01-main-reevaluation/source/baseline-e8beb/ReaderPairingCertificationMemo.kt.txt": {
+      "kind": "git-blob-snapshot",
+      "commit": "e8beb212a0ead306f6441b130c40d4b0a6c660f6",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertificationMemo.kt",
+      "gitBlob": "757f41992123aed661ba8faff0fde3de148ee691"
+    },
+    "2026-11-01-main-reevaluation/source/baseline-e8beb/ReaderSpreadSamplesOwner.kt.txt": {
+      "kind": "git-blob-snapshot",
+      "commit": "e8beb212a0ead306f6441b130c40d4b0a6c660f6",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderSpreadSamplesOwner.kt",
+      "gitBlob": "41b81e6bd5b707680a29f96e79a583837da22875"
+    },
+    "2026-11-01-main-reevaluation/source/baseline-e8beb/SharedDualPageSession.kt.txt": {
+      "kind": "git-blob-snapshot",
+      "commit": "e8beb212a0ead306f6441b130c40d4b0a6c660f6",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageSession.kt",
+      "gitBlob": "1173cfd12984360fd64cc18d073c71953d5e8b5d"
+    },
+    "2026-11-01-main-reevaluation/source/baseline-e8beb/SharedSpreadMatching.kt.txt": {
+      "kind": "git-blob-snapshot",
+      "commit": "e8beb212a0ead306f6441b130c40d4b0a6c660f6",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/SharedSpreadMatching.kt",
+      "gitBlob": "6571cc6b73e1ab6655e77dff020591203c922c2f"
+    },
+    "2026-11-01-main-reevaluation/source/baseline-e8beb/ReaderPairingReadSet.kt.txt": {
+      "kind": "git-blob-snapshot",
+      "commit": "e8beb212a0ead306f6441b130c40d4b0a6c660f6",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingReadSet.kt",
+      "gitBlob": "440e50f95379b3107573e3fba83eb9de8898d6ca"
+    },
+    "2026-11-01-main-reevaluation/source/baseline-e8beb/SharedDualPageRules.kt.txt": {
+      "kind": "git-blob-snapshot",
+      "commit": "e8beb212a0ead306f6441b130c40d4b0a6c660f6",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageRules.kt",
+      "gitBlob": "6db2d7dd28ddf76ad4ebf9618b8943a0852f582f"
+    },
+    "2026-11-01-main-reevaluation/source/baseline-e8beb/ReaderOriginalPageSampling.kt.txt": {
+      "kind": "git-blob-snapshot",
+      "commit": "e8beb212a0ead306f6441b130c40d4b0a6c660f6",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderOriginalPageSampling.kt",
+      "gitBlob": "bbf786257679193aa5802df96ab02954259bf0b0"
+    },
+    "2026-11-01-main-reevaluation/source/tests/ReaderPairingAdoptionCostTest.a1-only.kt.txt": {
+      "kind": "git-blob-snapshot",
+      "commit": "f04ec49bd06df934281886885f463b0028813071",
+      "path": "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingAdoptionCostTest.kt",
+      "gitBlob": "da8cd0e7a12e92585f1791dc8f768b0ad509d3aa"
+    },
+    "2026-11-01-main-reevaluation/source/tests/ReaderPairingCertificationMemoTest.kt.txt": {
+      "kind": "git-blob-snapshot",
+      "commit": "e8beb212a0ead306f6441b130c40d4b0a6c660f6",
+      "path": "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderPairingCertificationMemoTest.kt",
+      "gitBlob": "eb34a3a3242150f9295c1bfab45de2c8a1cec5f9"
+    },
+    "2026-11-01-main-reevaluation/source/controls/SharedSpreadMatching.a1-only.kt.txt": {
+      "kind": "accepted-git-blob-minus-B",
+      "commit": "f04ec49bd06df934281886885f463b0028813071",
+      "path": "domain/src/commonMain/kotlin/mihon/domain/reader/SharedSpreadMatching.kt",
+      "onlyRemovedChange": "plan width >= height restored to >",
+      "rawStyle": "LF",
+      "originalCostManifestSha256": "568914c9f998fed0587aff0632a322fb2a6980783195707e183f5f0312a95a72"
+    },
+    "2026-11-01-main-reevaluation/patches/A1-control.patch": {
+      "kind": "derived-minimal-A1-control",
+      "baselineCommit": "e8beb212a0ead306f6441b130c40d4b0a6c660f6",
+      "acceptedCommit": "f04ec49bd06df934281886885f463b0028813071",
+      "proof": "source/controls/SharedSpreadMatching.a1-only.kt.txt exactly matches original A1 cost source-manifest raw SHA256"
+    },
+    "2026-11-01-main-reevaluation/source/A1-derivation.json": {
+      "kind": "derivation-record"
+    }
+  },
+  "readOnlyPatchChecks": [
+    {
+      "candidate": "A1-control",
+      "base": "e8beb",
+      "gitApplyCheck": "PASS in disposable source copy; actual repository untouched",
+      "costSourceHashMatches": {
+        "domain/src/commonMain/kotlin/mihon/domain/reader/SharedSpreadMatching.kt": {
+          "recordedCostRawSha256": "568914c9f998fed0587aff0632a322fb2a6980783195707e183f5f0312a95a72",
+          "reconstructedRawStyle": "LF"
+        }
+      }
+    },
+    {
+      "candidate": "A2",
+      "base": "e8beb+A1",
+      "gitApplyCheck": "PASS in disposable source copy; actual repository untouched",
+      "costSourceHashMatches": {
+        "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertification.kt": {
+          "recordedCostRawSha256": "be0e9cab11145e15711c2d4f9a790b5dd489e5489e4773566251248a7f9ca594",
+          "reconstructedRawStyle": "CRLF"
+        },
+        "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderSpreadSamplesOwner.kt": {
+          "recordedCostRawSha256": "8ef4449265dc9cdf0bfa80d8b83ff17c8298d2f470476f531e09be0efc0eac11",
+          "reconstructedRawStyle": "CRLF"
+        }
+      }
+    },
+    {
+      "candidate": "A3",
+      "base": "e8beb+A1",
+      "gitApplyCheck": "PASS in disposable source copy; actual repository untouched",
+      "costSourceHashMatches": {
+        "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertificationMemo.kt": {
+          "recordedCostRawSha256": "74f78b55173434e41ccfc6df87bf484ba039414abbd0cb730abb99214342646e",
+          "reconstructedRawStyle": "LF"
+        },
+        "domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageSession.kt": {
+          "recordedCostRawSha256": "a60c96b0e4552d9f6b353de34fc984a766bc1e2c91c9b6cc0ef82b99019fd849",
+          "reconstructedRawStyle": "LF"
+        }
+      }
+    },
+    {
+      "candidate": "A4",
+      "base": "e8beb+A1",
+      "gitApplyCheck": "PASS in disposable source copy; actual repository untouched",
+      "costSourceHashMatches": {
+        "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertificationMemo.kt": {
+          "recordedCostRawSha256": "b42fe8552a5ee89959abcbcc8e17f8d3436ac35700861ed489c6ce1540b1e36a",
+          "reconstructedRawStyle": "LF"
+        },
+        "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderSpreadSamplesOwner.kt": {
+          "recordedCostRawSha256": "5705684f1295b032969f5929a4aa37315674904481b6ac2cabc7f8c00ba61317",
+          "reconstructedRawStyle": "LF"
+        },
+        "domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageSession.kt": {
+          "recordedCostRawSha256": "9a44147312f072f12d9522cf1a18bcf8e086ee21b3cd4a622559330355fc881d",
+          "reconstructedRawStyle": "LF"
+        }
+      }
+    }
+  ],
+  "archiveVerification": {
+    "productTestsRun": false,
+    "jsonlCounts": {
+      "baseline": {
+        "samples": 930,
+        "scenarioSummaries": 30,
+        "xmlSampleRows": 930
+      },
+      "a1": {
+        "samples": 930,
+        "scenarioSummaries": 30,
+        "xmlSampleRows": 930
+      },
+      "a2": {
+        "samples": 930,
+        "scenarioSummaries": 30,
+        "xmlSampleRows": 930
+      },
+      "a3": {
+        "samples": 930,
+        "scenarioSummaries": 30,
+        "xmlSampleRows": 930
+      },
+      "a4": {
+        "samples": 930,
+        "scenarioSummaries": 30,
+        "xmlSampleRows": 930
+      }
+    },
+    "costXmlCount": 15,
+    "focusedTestsAndFailures": {
+      "baseline-red-01": [
+        9,
+        4
+      ],
+      "a1-green-attempt-02": [
+        2,
+        0
+      ],
+      "a2-green-attempt-01": [
+        1,
+        0
+      ],
+      "a3-green-attempt-02": [
+        4,
+        0
+      ],
+      "a4-green-attempt-01": [
+        7,
+        0
+      ]
+    },
+    "relativeMarkdownLinksChecked": 41,
+    "scope": "hash, JSONL/XML, relative links, and disposable-copy patch applicability only; no Gradle/benchmark rerun"
+  }
+}

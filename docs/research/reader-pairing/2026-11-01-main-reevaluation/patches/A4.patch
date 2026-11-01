@@ -1,0 +1,211 @@
+diff --git a/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertificationMemo.kt b/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertificationMemo.kt
+index 757f419921..b2ae91a845 100644
+--- a/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertificationMemo.kt
++++ b/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPairingCertificationMemo.kt
+@@ -19,6 +19,7 @@ internal class ReaderPairingMemoEntry(
+     val result: ReaderPairingCertification,
+     val dependentPageIds: Set<ReaderPageId>,
+     val scanSteps: Int,
++    var stamp: ReaderPairingEvidenceStamp? = null,
+ )
+ 
+ /** Why a reuse attempt did not return the stored result. */
+@@ -202,3 +203,20 @@ internal fun firstChangedRead(
+     }
+     return null
+ }
++
++/** Only the same live owner and immutable identity with unsaturated unchanged evidence may bypass comparison. */
++internal class ReaderPairingEvidenceStamp(
++    private val owner: ReaderSpreadSamplesOwner,
++    private val identity: ReaderDualPageIdentity,
++    private val ownerRevision: Long,
++    private val headerRevision: Long,
++) {
++    fun matches(
++        currentOwner: ReaderSpreadSamplesOwner,
++        currentIdentity: ReaderDualPageIdentity,
++        headers: Long,
++    ): Boolean =
++        currentOwner === owner && currentIdentity === identity && !currentOwner.isClosed &&
++            ownerRevision != Long.MAX_VALUE && headerRevision != Long.MAX_VALUE &&
++            currentOwner.evidenceRevision == ownerRevision && headers == headerRevision
++}
+diff --git a/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderSpreadSamplesOwner.kt b/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderSpreadSamplesOwner.kt
+index 41b81e6bd5..3a9521b403 100644
+--- a/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderSpreadSamplesOwner.kt
++++ b/domain/src/commonMain/kotlin/mihon/domain/reader/ReaderSpreadSamplesOwner.kt
+@@ -21,6 +21,15 @@ class ReaderSpreadSamplesOwner(
+         private set
+     private var contentByPage = identity.content.associateBy { it.pageId }
+     private val ordinalByPage = identity.pageIds.withIndex().associate { it.value to it.index }
++
++    /** Every evidence-visible mutation advances this stamp; saturation disables the shortcut. */
++    internal var evidenceRevision: Long = 0
++        private set
++
++    private fun evidenceChanged() {
++        if (evidenceRevision < Long.MAX_VALUE) evidenceRevision++
++    }
++
+     private var closed = false
+     val isClosed: Boolean get() = closed
+     private val requests = mutableMapOf<ReaderPageId, ReaderSpreadSampleRequest>()
+@@ -105,6 +114,7 @@ class ReaderSpreadSamplesOwner(
+         value: ReaderSpreadEdgeSamples?,
+     ): Boolean {
+         if (!canAcceptOriginal(request, fact, value)) return false
++        evidenceChanged()
+         if (value != null && !acceptSamples(request, value, includeOpening = true)) return false
+         analyses[request.content.pageId] = ReaderPageAnalysisEvidence.Computed(request.content, fact)
+         sampleFailures.remove(request.content.pageId)
+@@ -113,6 +123,7 @@ class ReaderSpreadSamplesOwner(
+ 
+     fun failOriginal(request: ReaderSpreadSampleRequest, reason: ReaderAnalysisFailure): Boolean {
+         if (!owns(request)) return false
++        evidenceChanged()
+         sampleFailures[request.content.pageId] = reason
+         if (pageAnalysis(request.content.pageId) !is ReaderPageAnalysisEvidence.Computed) {
+             analyses[request.content.pageId] = ReaderPageAnalysisEvidence.RetryableFailure(request.content, reason)
+@@ -145,6 +156,7 @@ class ReaderSpreadSamplesOwner(
+         includeOpening: Boolean,
+     ): Boolean {
+         if (!owns(request)) return false
++        evidenceChanged()
+         val pageId = request.content.pageId
+         samples.remove(pageId)
+         samples[pageId] = ReaderSpreadEdgeSamples(value.left.toList(), value.right.toList())
+@@ -180,6 +192,7 @@ class ReaderSpreadSamplesOwner(
+                 a.pageId == b.pageId && a.contentVersion == b.contentVersion && a.rotation == b.rotation
+             },
+         )
++        evidenceChanged()
+         val changed = next.content.zip(identity.content).filter { (a, b) -> a != b }.map { it.first.pageId }.toSet()
+         changed.forEach {
+             requests.remove(it)
+@@ -279,6 +292,7 @@ class ReaderSpreadSamplesOwner(
+ 
+     /** Resource failures belong to the preceding location budget; confirmed facts and read failures remain. */
+     fun clearResourceFailures() {
++        evidenceChanged()
+         analyses.entries.removeAll {
+             (it.value as? ReaderPageAnalysisEvidence.RetryableFailure)?.reason == ReaderAnalysisFailure.RESOURCE
+         }
+@@ -286,12 +300,14 @@ class ReaderSpreadSamplesOwner(
+     }
+ 
+     fun retryFailures() {
++        evidenceChanged()
+         cancelRequests()
+         analyses.entries.removeAll { it.value is ReaderPageAnalysisEvidence.RetryableFailure }
+         sampleFailures.clear()
+     }
+ 
+     fun close() {
++        evidenceChanged()
+         closed = true
+         requests.clear()
+         samples.clear()
+diff --git a/domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageSession.kt b/domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageSession.kt
+index 1173cfd129..866e71e3f8 100644
+--- a/domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageSession.kt
++++ b/domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageSession.kt
+@@ -91,6 +91,12 @@ class SharedDualPageSession(
+     private var navigationForward = true
+     private val facts = mutableMapOf<ReaderPageId, ReaderPageFact>()
+     private val originalHeaders = mutableMapOf<ReaderPageId, ReaderPageFact>()
++    private var headerEvidenceRevision = 0L
++
++    private fun headersChanged() {
++        if (headerEvidenceRevision < Long.MAX_VALUE) headerEvidenceRevision++
++    }
++
+     private val requests = mutableMapOf<ReaderPageId, ReaderDualPageFactRequest>()
+     private val accepted = mutableMapOf<Long, ReaderPageFact>()
+     private var nextRequestId = 0L
+@@ -227,14 +233,7 @@ class SharedDualPageSession(
+             )
+             !storedGuardsMatch(stored, settings) ->
+                 certificationMetrics.recordMiss(ReaderPairingMemoMissReason.DEPENDENCY_CHANGED)
+-            firstChangedRead(
+-                stored.reads,
+-                identity,
+-                originalHeaders,
+-                spreadSamples,
+-                settings,
+-                certificationMetrics,
+-            ) != null ->
++            changedRead(stored, settings) != null ->
+                 certificationMetrics.recordMiss(ReaderPairingMemoMissReason.DEPENDENCY_CHANGED)
+             else -> {
+                 certificationMetrics.recordHit()
+@@ -271,6 +270,7 @@ class SharedDualPageSession(
+                     result = trace.certification,
+                     dependentPageIds = trace.dependentPageIds,
+                     scanSteps = scanSteps,
++                    stamp = evidenceStamp(),
+                 ),
+             )
+             certificationMetrics.recordEviction(certificationMemo.evictions)
+@@ -278,6 +278,29 @@ class SharedDualPageSession(
+         return trace
+     }
+ 
++    private fun evidenceStamp() = ReaderPairingEvidenceStamp(
++        spreadSamples,
++        identity,
++        spreadSamples.evidenceRevision,
++        headerEvidenceRevision,
++    )
++
++    private fun changedRead(stored: ReaderPairingMemoEntry, settings: ReaderPairingSettings): ReaderPairingReadKey? {
++        if (stored.stamp?.matches(spreadSamples, identity, headerEvidenceRevision) == true) {
++            return null
++        }
++        val changed = firstChangedRead(
++            stored.reads,
++            identity,
++            originalHeaders,
++            spreadSamples,
++            settings,
++            certificationMetrics,
++        )
++        if (changed == null) stored.stamp = evidenceStamp()
++        return changed
++    }
++
+     private fun storedGuardsMatch(stored: ReaderPairingMemoEntry, settings: ReaderPairingSettings): Boolean {
+         if (stored.locationSequence != (location?.sequence ?: -1L)) return false
+         if (stored.locationPageId != location?.pageId) return false
+@@ -322,6 +345,7 @@ class SharedDualPageSession(
+         publications.forEachIndexed { index, publication ->
+             check(spreadSamples.acceptOriginal(publication.request, originals[index], publication.samples.edges))
+             facts[publication.request.content.pageId] = originals[index]
++            headersChanged()
+             originalHeaders[publication.request.content.pageId] =
+                 originals[index].copy(sideHint = ReaderPageSideHint.UNKNOWN)
+         }
+@@ -426,6 +450,7 @@ class SharedDualPageSession(
+         next.ownsFactBudget = true
+         ownsFactBudget = false
+         next.facts.putAll(facts.filterKeys { it in unchanged })
++        next.headersChanged()
+         next.originalHeaders.putAll(originalHeaders.filterKeys { it in unchanged })
+         next.layoutRevision = layoutRevision + 1
+         next.presentation.configure(direction, automaticMatching, presentationMode == ReaderPresentationMode.SINGLE)
+@@ -468,6 +493,7 @@ class SharedDualPageSession(
+         requests.clear()
+         accepted.clear()
+         facts.entries.removeAll { it.value.state == ReaderPageFactState.FAILED }
++        headersChanged()
+         originalHeaders.entries.removeAll { it.value.state == ReaderPageFactState.FAILED }
+         spreadSamples.retryFailures()
+         factBudget.close()
+@@ -539,6 +565,7 @@ class SharedDualPageSession(
+         if (fact.state in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD) ||
+             previousHeader?.state !in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD)
+         ) {
++            headersChanged()
+             originalHeaders[request.content.pageId] = fact.copy(sideHint = ReaderPageSideHint.UNKNOWN)
+         }
+         val original = spreadSamples.pageAnalysis(request.content.pageId) as? ReaderPageAnalysisEvidence.Computed
