@@ -69,6 +69,16 @@ Windows旧 preview `0.11.24.6.8288598`（目录 `20261101T184547Z-2caf09ed`）�
 
 本轮复用唯一实施代理和串行 Gradle 权，只运行 Desktop 真实 coordinator／完整 Settings 与 Android VM→Activity Settings 两个 selector 的 RED→最小实现→GREEN，以及受影响文件格式。B 的真实 ONLINE→完整 viewport 自动化绿与未受影响的数据保护证据复用，不重跑已绿范围。`reader-optional-reload-ui-red` 双端各1项执行／1 failure／0 error／0 skip，分别准确停在完整 Settings 仍存在旧标题／二选一的断言。最小实现只把双端 Settings 控件换为单一资源按钮，沿用原同章恢复方法，不调用 useDefault。`reader-optional-reload-ui-green` 的 Android 同一方法1项执行／0 failure／0 error／0 skip；Desktop 首次复验停在测试节点查找的 NoSuchElementException；字节码行号及谓词确认缺的是 Reload 节点，不能据此认定工具栏隐藏。测试只等待 showSettings 模型状态，尚未等待真实 Settings 重组；恢复等待实际 Reload 控件后，`reader-optional-reload-desktop-ui-sync-green-format-fixed` 同一方法1项执行／0 failure／0 error／0 skip，通过7.078秒（含编译任务4m9s）。日志明确记录重组前只有阅读器节点，重组后出现完整设置及 Reload；不是产品恢复控制器修复。途中一次新增诊断行超过120字符，仅格式失败、测试未执行；拆行后只复验该 Desktop selector 和文件格式，未重跑已绿 Android。单一入口的新候选和原生／人工验收均未运行；Android 原生测试标签仅机械同步，未重新编译／运行，不能称新入口原生通过。本次6个受影响 Kotlin 文件的限定 Spotless Apply／Check 通过，之后仅变更的 Desktop 测试文件也通过限定格式；base／简中 XML 解析及资源唯一性通过，最终 diff 空白检查通过。双端新入口的源码纠偏与 focused 验证已收口；B 真实 ONLINE 自动化及其他未受影响数据保护绿继续复用。以上是组合定向证据，不称完整模块或全量重验。按用户本轮要求提交后停止，不构建候选、不操作桌面或导航偏好、不推送／发布；A／B及NB04保持未完成，原 goal 在收尾后暂停，B人工环境仍为 NOT_PREPARED。
 
+### 2026-11-02 再授权后的当前候选验收
+
+用户已一次性恢复原 A／B 续作并撤销上轮局部收尾停止限制；此前暂停及不构建候选均为历史停点，不阻止本轮已授权工作。复用 `a623b488800e867707949b66643294c3664e8c0c` 的双端 focused GREEN、B真实ONLINE像素闭环及未受影响数据保护，不重跑已绿矩阵／全量／发布。仍只保留单一可选重读，A恢复失败与B图片重试分场景；最终人工窗口就绪后停止自动输入并暂停等待用户一次验收。
+
+Android补充只在原ART方法添加实际Settings内旧错误标题／Retry／Default不存在及Reload唯一的断言；production未再修改。限定测试APK格式及编译通过（`nb-a-optional-reload-native-apk-import-fixed`）；初次失败是多余的assertDoesNotExist导入无法解析，未执行产品测试，去掉导入后同范围编译通过，不计产品RED。当前Debug宿主经项目入口生成于 `app/artifacts/android/0.19.4-aex.115-vc133-a623b48880-debug-a20f68967f25/`，APK SHA256 `6a2bf68454b6519e96f0435a25f58eae762a230a7bc69efc0b11a5fafdb802d3`；测试APK SHA256 `327f93f410992d4969bb85219c6f009e3a6eb1c2e074a50e28c24b9da0debf46`，双方dev目标与证书一致。宿主生产实现与a623b488一致，未提交差异为新增原生断言。
+
+原无窗口专属AVD/API36上仅执行原精确mode6与mode8两实例一次，`optional-reload-20261102/instrumentation-result.json`为PASSED：2 started／2 passed／0 failed，38.4秒，包含实际AUTO7共3场景。六次可见Accessibility Settings／Reload实际bounds、新单一入口断言、真实VM/DI与同章load、SQL／JNI像素／当前物理frame及View挂载保持、真实后翻不漏页均通过。实际Reader前台guard PASS，未改屏幕超时；不是用户人工验收。设备按准确AVD身份正常关闭，Windows构建在释放后串行进行。
+
+Windows准备全新manual-acceptance-04，源自干净隔离profile02的偏好与DB备份，绝不使用污染profile03。只读核导航无覆盖，预期RightAndLeft；B作品991200042／章节991200043已准确存在，A使用单独缺失章节991200045。当前仅离线准备，不提前称像素、按钮或人工窗口合格。后续候选和窗口结果沿本节补记，NB04继续未完成。
+
 ## 2. 实施预算与边界
 
 以下是下一会话实施时的规划估算，不是本轮已消耗或自动批准的额外费用。

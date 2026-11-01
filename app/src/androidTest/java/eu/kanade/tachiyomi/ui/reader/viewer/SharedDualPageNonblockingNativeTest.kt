@@ -8,8 +8,10 @@ import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.platform.app.InstrumentationRegistry
 import eu.kanade.tachiyomi.ui.reader.AndroidChapterPairingCoordinator
@@ -164,6 +166,13 @@ class SharedDualPageNonblockingNativeTest(private val mode: Int, private val nex
                 )
                 feedbackSnapshot()
                 fixture.onReaderMain { assertTrue(actualArtReaderState(it).dialog is ReaderViewModel.Dialog.Settings) }
+                val context = InstrumentationRegistry.getInstrumentation().targetContext
+                compose.onNodeWithText(context.stringResource(MR.strings.desktop_reader_pairing_load_failed))
+                    .assertDoesNotExist()
+                compose.onNodeWithText(context.stringResource(MR.strings.action_retry)).assertDoesNotExist()
+                compose.onNodeWithText(context.stringResource(MR.strings.desktop_reader_pairing_use_default))
+                    .assertDoesNotExist()
+                compose.onAllNodesWithText(retryLabel).assertCountEquals(1)
                 val beforeRetryLoads = loads.size
                 failRead.set(false)
                 fixture.clickUi(
