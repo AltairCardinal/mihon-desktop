@@ -659,6 +659,11 @@
       "sha256": "7a26607b7eb35b3ded8dc983ed6915c728f5f7a5c1d4c6a5bb5655847375c17f"
     },
     {
+      "path": "history/CLEANUP-2026-11-02.md",
+      "bytes": 7998,
+      "sha256": "ccd7d3258536b0737ed517fd56a6f814002afca6a319ca12f32c2c0402762aea"
+    },
+    {
       "path": "history/engineering/DECISIONS-R6-R9.md",
       "bytes": 24962,
       "sha256": "f99caa87e75396e59e699a6d0a214b7e1f8d32fdabe64a47970b73d8497ba68a"
@@ -2585,13 +2590,13 @@
     },
     {
       "path": "HISTORY_INDEX.md",
-      "bytes": 9662,
-      "sha256": "504708871d5b80334dab904afa2690a12320469d3cc08b5dfc3be1994cd71422"
+      "bytes": 9939,
+      "sha256": "8368b72a192aaf5a9fde428751d403d42d8fb27a2b0439f7be1337669827f2aa"
     },
     {
       "path": "README.md",
-      "bytes": 7724,
-      "sha256": "9ebf6d7f35d5068a478cbbd6a6496569b608cff3f167ebf29f979ce5981d56fd"
+      "bytes": 7874,
+      "sha256": "1ac6adeb17c09852c15f8425136b15e5210a635d04b03c49dd4b7e8c13ae4226"
     }
   ]
 }
