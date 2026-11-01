@@ -582,20 +582,21 @@ class ReaderViewModel @JvmOverloads constructor(
 
         val restoreInBackground =
             withUIContext { !useDefaultPairing && !explicitPairingRestore && usesDualPageViewer() }
-        if (!restoreInBackground &&
-            !restoreChapterPairing(chapter, useDefaultPairing, canActivate, explicitPairingRestore) {
+        val pairingRestored = restoreInBackground ||
+            restoreChapterPairing(chapter, useDefaultPairing, canActivate, explicitPairingRestore) {
                 if (canActivate()) {
                     pairingRetryChapter = chapter
                     showPairingRestoreFailure(chapter)
                 }
             }
-        ) {
-            return null
-        }
 
         val activation = withUIContext {
             val expectedWindow = chapterWindowOwner.snapshot
-            if (!canActivate()) return@withUIContext null
+            // AUTO may have changed viewers while the foreground read was suspended.
+            val canReadPairing = {
+                pairingRestored || (usesDualPageViewer() && hasPairingOwner(chapter))
+            }
+            if (!canActivate() || !canReadPairing()) return@withUIContext null
             if (
                 activationIntent != null &&
                 ReaderChapterWindowReducer.reduce(expectedWindow, activationIntent).effects
@@ -610,7 +611,9 @@ class ReaderViewModel @JvmOverloads constructor(
             } else {
                 recordReadingProgress.openSession(chapter.sharedChapterId().value, resume?.snapshot)
             }
-            if (chapterWindowOwner.snapshot != expectedWindow || !canActivate()) return@withUIContext null
+            if (chapterWindowOwner.snapshot != expectedWindow || !canActivate() || !canReadPairing()) {
+                return@withUIContext null
+            }
             val windowReduction = if (activationIntent == null) {
                 chapterWindowOwner.replace(requestedChapters)
             } else {
@@ -643,7 +646,7 @@ class ReaderViewModel @JvmOverloads constructor(
                     viewerChapters = newChapters,
                     chapterWindow = window,
                     bookmarked = newChapters.currChapter.chapter.bookmark,
-                    pairingReadUnavailable = useDefaultPairing,
+                    pairingReadUnavailable = useDefaultPairing || isPairingRecordUnavailable(newChapters.currChapter),
                     pairingRecordReady = isPairingRecordReady(newChapters.currChapter),
                     pairingSaving = false,
                     dialog = if (it.dialog is Dialog.PairingRestoreError ||
@@ -858,13 +861,24 @@ class ReaderViewModel @JvmOverloads constructor(
     /** Re-read the current owner; an old or adjacent operation cannot unlock a pending current read. */
     private fun publishPairingRecordAvailability() {
         mutableState.update { current ->
-            val status = dualPagePairings.chapters[current.currentChapter]?.session?.pairingState?.status
             current.copy(
                 pairingRecordReady = current.currentChapter?.let(::isPairingRecordReady) == true,
-                pairingReadUnavailable = status == mihon.domain.reader.ReaderPairingPersistenceStatus.RESTORE_FAILED ||
-                    status == mihon.domain.reader.ReaderPairingPersistenceStatus.DEFAULT_UNVERIFIED,
+                pairingReadUnavailable = current.currentChapter?.let(::isPairingRecordUnavailable) == true,
             )
         }
+    }
+
+    private fun hasPairingOwner(chapter: ReaderChapter): Boolean {
+        val pages = chapter.pages ?: return false
+        return dualPagePairings.chapters[chapter]?.takeIf { it.pages === pages }?.session?.isClosed == false
+    }
+
+    private fun isPairingRecordUnavailable(chapter: ReaderChapter): Boolean {
+        val pages = chapter.pages ?: return false
+        val owner = dualPagePairings.chapters[chapter]
+            ?.takeIf { it.pages === pages && !it.session.isClosed }?.session ?: return false
+        return owner.pairingState.status == mihon.domain.reader.ReaderPairingPersistenceStatus.RESTORE_FAILED ||
+            owner.pairingState.status == mihon.domain.reader.ReaderPairingPersistenceStatus.DEFAULT_UNVERIFIED
     }
 
     /** Normal dual reading does not wait for the original record request or invent a known revision. */
@@ -1519,12 +1533,14 @@ class ReaderViewModel @JvmOverloads constructor(
     }
 
     fun retryPairingRestore() {
-        val chapter = (state.value.dialog as? Dialog.PairingRestoreError)?.chapter ?: pairingRetryChapter ?: return
-        if (usesDualPageViewer() && state.value.currentChapter === chapter) {
-            // User requested a reread, not a layout reload: preserve already painted physical frames.
+        if (usesDualPageViewer()) {
+            val chapter = state.value.currentChapter ?: return
+            if (!isPairingRecordUnavailable(chapter)) return
+            // Settings always addresses the current retained owner, never an old prompt target.
             restoreChapterPairingInBackground(chapter) { state.value.currentChapter === chapter }
             return
         }
+        val chapter = (state.value.dialog as? Dialog.PairingRestoreError)?.chapter ?: pairingRetryChapter ?: return
         val chapterLoader = loader ?: return
         viewModelScope.launchIO {
             mutableState.update { it.copy(dialog = Dialog.Loading) }

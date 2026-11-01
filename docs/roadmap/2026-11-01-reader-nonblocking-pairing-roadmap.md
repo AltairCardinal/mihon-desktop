@@ -95,6 +95,22 @@ B单独打开真实在线章节991200043（manga991200042），配对恢复READY
 
 本轮只同步Windows图片重试的中英文功能说明与changelog，撤回当前功能页中“首次槽位必须已确认布局”的过时表述；不宣传Android/macOS人工通过。README摘要和开始使用步骤未变，不发布站点或产品。网站VitePress构建2.23秒通过，保留内置断链检查；四个中英文目标页面的实际构建HTML、UTF-8及git diff空白检查通过，未改导航／布局或新增外部链接。产品验收按前述组合focused／原生／人工证据收口，不称最终代码完整模块或全量重验。A／B与NB01～NB04复选框依有效证据完成；推送、正式发布、Android真机及macOS不属本次必需门禁。
 
+### 2026-11-02 后续 Android 时序审查修复（独立限定 Goal）
+
+审查基线 `f8a97a340812523b20472741ed55536492fd4023`，起始工作区干净。本轮只核实并修复两个此前稳定模式验收未覆盖的 Android 时序：AUTO 实际单页开始恢复、挂起时切实际双页后失败仍须激活可读；邻章配对预读挂起期间激活该章、原预读失败后，设置内可选重读必须命中当前失败章及有效 owner。审查线索不是既有产品红；先用实际 VM／Activity Settings、真实 SQL 和可控请求顺序取得失败证据，再最小修复。
+
+复用一个实施代理和既有夹具，主代理负责独立审查及文档。限定两个新方法的红绿、直接相关单页／持久化／迟到回调集成回归和改动文件格式；不打包、不开设备／桌面、不重验 Windows、不运行完整模块或全量。成功后消费 Activity 相同 viewer 重绑接线再检查当前位置／页组；不伪造 READY／空记录、不授权未知记录写入，不引入新提示或决策步骤。公共说明不随本轮未经用户验收的修复扩大。
+
+真实红证据为 `android-restore-races-red-fixture-fixed`，XML `restore-races-red.xml`：2 tests／2 failures／0 errors／0 skipped。AUTO 方法准确停于实际单页→双页后 currentChapter 未激活；邻章方法已调用真实 Settings 按钮动作，但当前B章3的读取次数仍2，未发出有效重读。首轮未计产品红：A在DI注册前创建Activity缺ReaderPreferences，B在失败状态发布后过早检查availability；修正夹具生命周期与等待实际可用性发布，再取得上述有效红。
+
+根因与最小实现：初始 `restoreInBackground` 冻结了激活前等待策略，而失败提示按当前 viewer 判断，AUTO时序可同时隐藏错误并拒绝激活。现保留恢复结果，在UI实际激活及进度会话挂起返回后，用当下双页模式和同pages、未closed的有效owner判断可读；不要求owner必须持续失败，不自动重读、不伪造READY或默认记录。激活及后续availability发布从当前有效owner派生，未知revision仍不允许保存。双页Settings重读直接解析当前章节／有效失败owner，不依赖dialog／pairingRetryChapter；单页继续原目标链。旧请求的pages／owner／章节窗口保护不变。
+
+`android-restore-races-green` 7个精确方法均通过，0 failure/error/skip，无失败重试；涵盖新2场景、原单页失败流程、原默认读取禁写后恢复、实际CAS冲突、失败后已知手动边界与记录保留、A→B→A旧保存失败回调隔离。该批为34.237秒测试／3m11s任务，非完整class或全量。独立审查后仅调整同一激活predicate，将读取许可与持久化状态分离，并强化原2方法为边界会影响的source3：成功后按Activity相同接线对真实viewer重绑，核owner／当前位置，再真实DPAD_LEFT到source4；其余5项按未受此差异影响复用。两新方法检查实际VM、Activity设置动作、SQL、adapter与按键接线；未新增paint夹具，不将adapter断言写成新像素证据，未改的共享绘制／已绘帧锁契约沿前述有效证据复用。
+
+最终补验 `android-restore-races-current-owner-format-fixed` 为2 tests／0 failure／0 error／0 skip，任务2m43s；XML为 `restore-races-current-owner-green.xml`。最初同范围仅新增断言超120字符导致Spotless失败，未运行测试；机械拆行后同范围通过。两项均保持真实Settings读取目标、原SQL记录及未知revision保存禁用，恢复后保留当前owner／source3，再通过真实viewer下一键到source4；邻章场景还释放旧A章迟到失败，确认当前B的window／位置与重读目标不变。2个代码文件限定Spotless Apply／Check通过，内部文档UTF-8／本地链接和最终diff空白核验通过。主代理独立审查已关闭模式判定时机、激活availability覆盖、状态不应限制双页可读、当前owner身份及真实viewer重绑的检查项。
+
+本轮两个缺陷按真实红绿及直接相关组合证据收口；本轮任务进程均退出，起始已有JVM未触碰。未重跑无关已绿测试、未执行完整模块／全量、未打包／启动原生或Windows窗口、未推送／发布。新2为确定性JVM/Robolectric状态管理／Settings／adapter／按键接线证据，不冒称新APK、像素或用户设备验收；既有未改绘制契约按影响复用。内部设计与架构已同步，公共说明保持原有验收范围。
+
 ## 2. 实施预算与边界
 
 以下是下一会话实施时的规划估算，不是本轮已消耗或自动批准的额外费用。
