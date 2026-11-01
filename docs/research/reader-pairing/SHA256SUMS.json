@@ -579,6 +579,11 @@
       "sha256": "389c48069b1a01d59669bcff6db124e929b897add394fb6bcee108f65efde90b"
     },
     {
+      "path": "2026-11-01-main-reevaluation/source/baseline-bundle.json",
+      "bytes": 470,
+      "sha256": "ae7ae192229c2447b967b7c2dab21ac09699e76c16c1d02f3297efee76c4c480"
+    },
+    {
       "path": "2026-11-01-main-reevaluation/source/baseline-e8beb/ReaderOriginalPageSampling.kt.txt",
       "bytes": 2613,
       "sha256": "05ec3f6fa437892a04adcb25c49b19ce179931d385957aad22a3ff2b405482e0"
@@ -619,6 +624,11 @@
       "sha256": "7cee836f64bb3c5c4dc7b4628133178d06bc5ce86571d083f2f6f4f5d9b109af"
     },
     {
+      "path": "2026-11-01-main-reevaluation/source/baseline-e8beb.bundle",
+      "bytes": 130973,
+      "sha256": "7ce78731595c8680ef659a86b356542b5f7ae61e53d04536a8381687c9349372"
+    },
+    {
       "path": "2026-11-01-main-reevaluation/source/controls/SharedSpreadMatching.a1-only.kt.txt",
       "bytes": 5825,
       "sha256": "568914c9f998fed0587aff0632a322fb2a6980783195707e183f5f0312a95a72"
@@ -650,8 +660,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 6129,
-      "sha256": "fe308b4e597f803045db7f8f113cf91a757f27a9d918d48f2c3fbe0f838ab5c2"
+      "bytes": 6827,
+      "sha256": "3a37744ced39321e1b5c30a0199f329d895d238901bc403fce07dd676e5c0d3a"
     }
   ]
 }
