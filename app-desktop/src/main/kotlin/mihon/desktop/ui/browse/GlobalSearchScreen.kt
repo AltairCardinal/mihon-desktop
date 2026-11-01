@@ -53,8 +53,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
@@ -370,6 +372,7 @@ class GlobalSearchScreen(
         val coordinatorFactory = LocalGlobalSearchCoordinatorFactory.current
         val materializerFactory = LocalSourceResultMaterializerFactory.current
         val session = this.session
+        val searchFocusRequester = remember { FocusRequester() }
         // Search state, retained across navigation like the Android screen model.
         var query by session.query
         var searchMode by session.searchMode
@@ -596,6 +599,7 @@ class GlobalSearchScreen(
                             singleLine = true,
                             modifier = Modifier
                                 .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable)
+                                .focusRequester(searchFocusRequester)
                                 .fillMaxWidth()
                                 .onFocusChanged { focusState ->
                                     if (focusState.isFocused) historyExpanded = true
@@ -610,6 +614,13 @@ class GlobalSearchScreen(
                                     }
                                 },
                         )
+                        // Scaffold subcomposes this input; request focus only after it is attached.
+                        LaunchedEffect(session) {
+                            if (!session.initialFocusRequested) {
+                                searchFocusRequester.requestFocus()
+                                session.initialFocusRequested = true
+                            }
+                        }
                         ExposedDropdownMenu(
                             expanded = historyExpanded && recentSearches.isNotEmpty(),
                             onDismissRequest = { historyExpanded = false },

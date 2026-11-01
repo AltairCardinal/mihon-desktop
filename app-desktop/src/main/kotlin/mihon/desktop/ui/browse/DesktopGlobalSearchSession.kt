@@ -35,6 +35,9 @@ internal class DesktopGlobalSearchSession(
     /** Text of the search field. */
     val query = mutableStateOf(initialQuery)
 
+    /** Entry focus belongs to this screen instance, so returning from details cannot steal it. */
+    var initialFocusRequested: Boolean = false
+
     /** Whether the screen searches manga or authors. */
     val searchMode = mutableStateOf(initialSearchMode)
 

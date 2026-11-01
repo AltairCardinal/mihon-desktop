@@ -10,6 +10,7 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -22,6 +23,7 @@ import eu.kanade.tachiyomi.source.model.SManga
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
@@ -37,6 +39,7 @@ import mihon.desktop.ui.library.LocalMangaDetailScreenModelFactory
 import mihon.desktop.ui.library.MangaDetailScreenModel
 import mihon.domain.manga.model.toDomainManga
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.Preference
@@ -47,6 +50,42 @@ import kotlin.coroutines.CoroutineContext
 
 @OptIn(ExperimentalComposeUiApi::class)
 class GlobalSearchSessionRetentionTest {
+
+    @Test
+    fun `search result arrival does not reclaim input focus`() = runBlocking {
+        val response = CompletableDeferred<Unit>()
+        val fixture = Fixture(response)
+        val scene = fixture.mount(GlobalSearchScreen("retained"), coroutineContext)
+        try {
+            withTimeout(2_000) {
+                while (fixture.searchCalls.get() == 0) {
+                    scene.render()
+                    yield()
+                }
+            }
+            repeat(3) {
+                scene.render()
+                yield()
+            }
+            fun tagged(tag: String) = nodes(scene).single {
+                it.config.contains(SemanticsProperties.TestTag) && it.config[SemanticsProperties.TestTag] == tag
+            }
+            assertTrue(tagged("global-search-input").config[SemanticsProperties.Focused])
+            assertTrue(
+                requireNotNull(tagged("global-search-submit").config[SemanticsActions.RequestFocus].action).invoke(),
+            )
+            scene.render()
+            assertFalse(tagged("global-search-input").config[SemanticsProperties.Focused])
+
+            response.complete(Unit)
+            awaitText(scene, "Retained source (1)")
+            assertFalse(tagged("global-search-input").config[SemanticsProperties.Focused])
+            assertEquals(1, fixture.searchCalls.get())
+        } finally {
+            response.complete(Unit)
+            scene.close()
+        }
+    }
 
     private class DetailScreen : Screen {
         @Composable
@@ -115,7 +154,7 @@ class GlobalSearchSessionRetentionTest {
         assertTrue(session.sourcesByGeneration.value.isEmpty())
     }
 
-    private class Fixture {
+    private class Fixture(private val searchResponse: CompletableDeferred<Unit>? = null) {
         val searchCalls = AtomicInteger()
         val preparedCalls = AtomicInteger()
         val source: Source = mockk {
@@ -124,8 +163,9 @@ class GlobalSearchSessionRetentionTest {
             every { lang } returns "en"
             every { supportsLatest } returns false
             every { getFilterList() } returns FilterList()
-            coEvery { getSearchManga(any(), any(), any()) } answers {
+            coEvery { getSearchManga(any(), any(), any()) } coAnswers {
                 searchCalls.incrementAndGet()
+                searchResponse?.await()
                 MangasPage(listOf(manga()), false)
             }
         }

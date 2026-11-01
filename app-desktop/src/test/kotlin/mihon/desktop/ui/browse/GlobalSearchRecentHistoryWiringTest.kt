@@ -1,12 +1,16 @@
 package mihon.desktop.ui.browse
 
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.AnnotatedString
+import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import io.mockk.every
@@ -32,6 +36,97 @@ import kotlin.coroutines.CoroutineContext
 
 @OptIn(ExperimentalComposeUiApi::class)
 class GlobalSearchRecentHistoryWiringTest {
+
+    private class DetailScreen : Screen {
+        @Composable
+        override fun Content() {
+            Text("detail")
+        }
+    }
+
+    @Test
+    fun `entering global search accepts keyboard input without clicking with and without history`() = runBlocking {
+        for (history in listOf("[]", "[\"previous\"]")) {
+            val fixture = Fixture(coroutineContext)
+            fixture.seedHistory(history)
+            val scene = fixture.mount()
+            try {
+                settle(scene)
+                assertTrue(inputFocused(scene), "new search must focus its input, history=$history")
+                typeCharacter(scene, 'a')
+                settle(scene)
+                assertEquals(
+                    AnnotatedString("a"),
+                    nodeByTag(scene, SEARCH_INPUT_TAG).config[SemanticsProperties.EditableText],
+                )
+                if (history != "[]") awaitTag(scene, HISTORY_MENU_TAG)
+            } finally {
+                fixture.close(scene)
+            }
+        }
+    }
+
+    @Test
+    fun `initial query is preserved and focus is not requested again after navigation or updates`() = runBlocking {
+        val fixture = Fixture(coroutineContext)
+        val scene = fixture.mount("original")
+        try {
+            settle(scene)
+            assertTrue(inputFocused(scene))
+            assertEquals(
+                AnnotatedString("original"),
+                nodeByTag(scene, SEARCH_INPUT_TAG).config[SemanticsProperties.EditableText],
+            )
+
+            requestFocus(scene, SEARCH_SUBMIT_TAG)
+            settle(scene)
+            assertFalse(inputFocused(scene))
+            fixture.updateHistory(listOf("new history"))
+            settle(scene)
+            assertFalse(inputFocused(scene), "history updates must not steal focus")
+
+            requireNotNull(fixture.navigator).push(DetailScreen())
+            settle(scene)
+            requireNotNull(fixture.navigator).pop()
+            settle(scene)
+            assertFalse(inputFocused(scene), "returning to the same search must not request input focus again")
+            assertEquals(
+                AnnotatedString("original"),
+                nodeByTag(scene, SEARCH_INPUT_TAG).config[SemanticsProperties.EditableText],
+            )
+
+            requireNotNull(fixture.navigator).replace(GlobalSearchScreen())
+            settle(scene)
+            assertTrue(inputFocused(scene), "a new search screen must focus independently")
+        } finally {
+            fixture.close(scene)
+        }
+    }
+
+    private suspend fun settle(scene: ImageComposeScene) {
+        repeat(5) {
+            scene.render()
+            yield()
+        }
+    }
+
+    private fun inputFocused(scene: ImageComposeScene) =
+        nodeByTag(scene, SEARCH_INPUT_TAG).config[SemanticsProperties.Focused]
+
+    private fun typeCharacter(scene: ImageComposeScene, character: Char) {
+        val nativeEvent = java.awt.event.KeyEvent(
+            java.awt.Canvas(),
+            java.awt.event.KeyEvent.KEY_TYPED,
+            0L,
+            0,
+            java.awt.event.KeyEvent.VK_UNDEFINED,
+            character,
+        )
+        val composeEvent = Class.forName("androidx.compose.ui.input.key.KeyEvent_desktopKt")
+            .getMethod("toComposeEvent", java.awt.event.KeyEvent::class.java)
+            .invoke(null, nativeEvent)
+        scene.sendKeyEvent(KeyEvent(composeEvent))
+    }
 
     @Test
     fun `focusing search shows persisted history and delete removes only that record`() = runBlocking {
@@ -74,6 +169,8 @@ class GlobalSearchRecentHistoryWiringTest {
                 scene.render()
             }
 
+            // Semantics OnClick does not move focus like keyboard navigation to the button.
+            requestFocus(scene, SEARCH_SUBMIT_TAG)
             requestFocus(scene, SEARCH_INPUT_TAG)
             awaitTag(scene, HISTORY_MENU_TAG)
 
@@ -134,10 +231,20 @@ class GlobalSearchRecentHistoryWiringTest {
 
         fun persistedHistory(): String? = storeNode.get(RECENT_SEARCHES_KEY, null)
 
-        fun mount() = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}.also { scene ->
+        fun updateHistory(queries: List<String>) {
+            preferences.browseRecentSearches.set(queries)
+        }
+
+        var navigator: Navigator? = null
+
+        fun mount(initialQuery: String = "") = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {
+        }.also { scene ->
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
-                    Navigator(GlobalSearchScreen()) { CurrentScreen() }
+                    Navigator(GlobalSearchScreen(initialQuery)) {
+                        navigator = it
+                        CurrentScreen()
+                    }
                 }
             }
         }
