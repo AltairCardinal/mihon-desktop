@@ -69,7 +69,12 @@ Read adjacent pages side by side, display landscape pages, and adjust pairing ma
 
 **Windows zoomed panning:** after zooming in, drag the comic to inspect its edges. In single-page and two-page reading, extra blank space on any side is limited to one third of the reading viewport's corresponding width or height. Two-page reading uses the whole spread's outer edges. Movement stops at the limit and responds immediately when reversed; changing the zoom or window size recalculates the limit. Unavoidable margins around small images are retained without allowing further outward movement. This acceptance covers Windows desktop reading only.
 
-**Android boundary:** this fork’s Android reader supports two-page reading and manual pairing. Automatic spread matching on Android remains a development direction.
+**Android boundary:** this fork’s Android reader supports two-page reading and manual pairing. Android automatic matching is available in the accepted reader settings and continuity scope; complete recognition of all layouts is not guaranteed.
+
+
+**Accepted Android reader improvements:** Settings → Reader → **Ripple on page change** offers **Classic (stepped)**, **Scheme A (smooth)** and the retained **Clean (no shadow)** option for single-page and two-page reading. Existing explicit preferences are preserved. Original tiled two-page images stay joined across the tested odd viewport sizes and resize-back cases; the delivered Android candidate passed emulator pixel checks. Physical e-ink refresh behavior depends on the device.
+
+**Windows immediate page turns:** prepared incoming pages redraw when exposed, avoiding the confirmed blank frame during instant single-page and two-page turns. Switching automatic matching preserves reading continuity; a valid regrouping is not itself an error. This does not extend acceptance to macOS or guarantee every scan is matched correctly.
 
 ## Multi-device favorites and reading progress {#multi-device-sync}
 
@@ -122,6 +127,15 @@ These smaller additions are documented in the repository’s existing guides.
 | Desktop Webtoon auto-scroll | Enable auto-scroll and choose its speed in reader settings for Webtoon reading. This guide does not claim matching Android support. | [Documented desktop differences](https://github.com/AltairCardinal/mihon-desktop/blob/main/docs/MIHON_ANDROID_DESKTOP_FEATURE_IMPLEMENTATION_COMPARISON.md#desktop-产品差异) |
 | Desktop extension compatibility | The APK-to-JAR compatibility layer adapts supported Android extension behavior for desktop. It does not guarantee that every Android extension can run. | [Documented desktop differences](https://github.com/AltairCardinal/mihon-desktop/blob/main/docs/MIHON_ANDROID_DESKTOP_FEATURE_IMPLEMENTATION_COMPARISON.md#desktop-产品差异) |
 | Desktop input and system integration | Keyboard and mouse interaction, wide layouts, and desktop file/directory and clipboard integration adapt the app to desktop workflows. Platform support varies by operation. | [Platform comparison](https://github.com/AltairCardinal/mihon-desktop/blob/main/docs/MIHON_ANDROID_DESKTOP_FEATURE_IMPLEMENTATION_COMPARISON.md) |
+
+
+### In-app feedback, private screenshots and temporary diagnostics {#feedback}
+
+On the accepted Android and Windows candidates, open Settings/About → Report a problem. Choose a category to get an editable template; only the reader category adds source/work/chapter/page fields. Switching categories asks before replacing an edited draft. Device information is selected by default and can be removed; the category, description and selected device summary are public, while attached logs and screenshots are private to maintainers.
+
+Select up to two local PNG/JPEG images. Processing, final JPEG preview and removal are visible; encoded images are at most 1920 pixels on the long edge and 512 KiB each. Images are prepared locally and are sent only with final submission. There is no built-in redaction editor; check private information before submitting.
+
+Temporary diagnostics explicitly record one selected category. Leave the form to reproduce, return to the current-process draft, switch categories with confirmation, or stop recording immediately. Canceling or a failed submission leaves recording enabled; the next accepted report stops it. Storage problems are shown rather than reported as successful capture. These changes are documented for Android and Windows, not macOS.
 
 ## Where the project is heading {#direction}
 
