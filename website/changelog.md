@@ -9,6 +9,16 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## November 1, 2026 — Windows global search focus and caret
+
+**Accepted behavior documentation · Not a public product release**
+
+- Global search focuses its input on entry. Prefilled keywords keep history closed and place the caret at the end; typing appends to the original text.
+- Explicit clicks can open history, empty-query entry shows existing history, and manual caret positions and selections survive refocusing and returning from details. Result updates do not steal focus; history replacements position the caret at the end.
+- Accepted Windows preview: `0.11.24.6.928f3fe`. Scoped main implementations: [entry focus](https://github.com/AltairCardinal/mihon-desktop/commit/5ac48de9f5fdb9b3b7e681e7925be92a73369800), [prefilled history behavior](https://github.com/AltairCardinal/mihon-desktop/commit/468aa18776a0fab37e722ab60769bd3495469056), and [caret and selection retention](https://github.com/AltairCardinal/mihon-desktop/commit/daf18c82430c7b72be05ba8f3bcc9ac2f0d3c7e2). This acceptance does not cover Android or macOS and does not publish a product release.
+
+Acceptance basis: the project owner confirmed the Windows global-search behavior on November 1, 2026, in a private conversation and authorized main integration and push.
+
 ## November 1, 2026 — Accepted reader fixes, ripple choices and private feedback attachments
 
 **Accepted candidate documentation · no public product release**
