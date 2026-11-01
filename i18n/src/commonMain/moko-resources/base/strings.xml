@@ -1534,7 +1534,8 @@
     <string name="desktop_ui_done">Done</string>
     <string name="desktop_ui_download_queue">Download Queue</string>
     <string name="desktop_ui_download_chapters">Download chapters</string>
-    <string name="desktop_ui_download_next_unread">Download next unread</string>
+    <string name="desktop_ui_download_next_unread">Download next unread chapter</string>
+    <string name="desktop_ui_download_all_unread">Download all unread chapters</string>
     <string name="desktop_ui_download_selected">Download selected</string>
     <string name="desktop_ui_drag_to_reorder">Drag to reorder</string>
     <string name="desktop_ui_dual_page_side_by_side">Dual Page (side-by-side)</string>

@@ -744,6 +744,7 @@ class LibraryScreenModel(
         pendingInitialCategoryIndex = null
         _state.update {
             it.copy(
+                contextMenuManga = null,
                 selectedCategoryIndex = if (it.categories.isEmpty()) {
                     index.coerceAtLeast(0)
                 } else {

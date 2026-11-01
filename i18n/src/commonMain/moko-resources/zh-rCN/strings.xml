@@ -1348,7 +1348,8 @@
     <string name="desktop_ui_done">完毕</string>
     <string name="desktop_ui_download_queue">下载队列</string>
     <string name="desktop_ui_download_chapters">下载章节</string>
-    <string name="desktop_ui_download_next_unread">下载下一个未读</string>
+    <string name="desktop_ui_download_next_unread">下载下一未读章节</string>
+    <string name="desktop_ui_download_all_unread">下载全部未读章节</string>
     <string name="desktop_ui_download_selected">下载选定的</string>
     <string name="desktop_ui_drag_to_reorder">拖动以重新排序</string>
     <string name="desktop_ui_dual_page_side_by_side">双页（并排）</string>
