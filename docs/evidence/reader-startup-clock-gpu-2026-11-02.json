@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "rawDirectory": ".test-tmp/slime-clock-gpu-20261102",
+  "rawManifestSha256": "a6be02f64a7ef138f36f9f8d4bb4d24e6c075cae40ffbc417c29b9118fcf6391",
+  "fixture": {
+  "format": "original CBZ, 187 WebP",
+  "bytes": 41380343,
+  "sha256": "b3d7c4e56e58dfee6d9da7d5afafe12b267ccc6d50dd48cd3660456b8d2b4677"
+},
+  "apkSha256": {
+  "officialX86_64": "3eb31a91d4ff24bbb0ce5007e757d83a22b5ba96bc9ef89a1eaac07e7d66ad0b",
+  "officialTabletArm64": "7a7969564a604bf74608758b540730e53dfe63e11782a718d32380dc9febed58",
+  "benchmarkX86_64": "dbc167b4215a2e5d84faa9d177b6b82ab618c8b36fd2b1c7d1a3f329e0f6bd74",
+  "benchmarkArm64": "6fb930c22b3afe8cf4876d26905e803d0abc3f27612effe80677d2efbe3d3cf9"
+},
+  "clock": {
+  "source": "MONOTONIC microseconds via stock scrcpy/MediaCodec surface timestamp chain",
+  "trace": "BOOTTIME nanoseconds",
+  "mapping": "same-boot before/after helper offset envelope; no offset fitted from latency",
+  "ptsUnitAllowanceNs": 1000,
+  "pipelineBias": "UNKNOWN",
+  "physicalPresentationProven": false
+},
+  "videoColumns": [
+  "sample",
+  "frameIndex",
+  "sourcePtsUs",
+  "downBootNs",
+  "offsetBoundsNs",
+  "capturedComicMs",
+  "capturedComicBoundsMs",
+  "nearBlackBoundsMs"
+],
+  "videos": [
+    ["tablet-official-first",28,20542484871,176149166149275,[155606965553453,155606965555016],284.275959,[267.502178,284.277741],[16.601437,49.831563]],
+    ["tablet-official-warm",37,20597830102,176204506309683,[155606965553454,155606965555016],289.346552,[273.076771,289.348333],[34.154438,68.667562]],
+    ["tablet-shared-off-first",31,20275226065,175881853758170,[155606965553453,155606965555016],337.861064,[319.504283,337.862846],[0,35.189563]],
+    ["tablet-shared-off-warm",41,20297921218,175904570120667,[155606965553453,155606965555016],316.651567,[300.077786,316.653349],[15.867437,52.663563]],
+    ["tablet-shared-on-first",30,20345755891,175952355198263,[155606965553453,155606965555016],366.246971,[332.02619,366.248753],[36.705437,87.960563]],
+    ["tablet-shared-on-warm",41,20369297415,175975954393572,[155606965553453,155606965555016],308.575662,[289.688881,308.577444],[17.632437,53.280563]],
+    ["gpu-a1-swiftshader-first",38,1212563916,1211567729238,[-451,82],996.186577,[859.929311,996.187844],[215.986467,516.675533]],
+    ["gpu-a1-swiftshader-warm",41,1284244802,1283578809386,[-390,56],665.992447,[631.746224,665.99367],[276.158554,328.620446]],
+    ["gpu-b-host-first",39,79284899,76832381827,[-600,69],2452.516907,[2431.100573,2452.518242],[1296.978331,1349.069669]],
+    ["gpu-b-host-warm",45,102307650,100174947723,[-224,49],2132.702189,[2065.090053,2132.703326],[1130.372727,1266.526273]],
+    ["gpu-a2-swiftshader-first",42,90141330,88698659393,[-248,58],1442.670512,[1376.798359,1442.671665],[561.451694,764.973306]],
+    ["gpu-a2-swiftshader-warm",40,110206519,109461339539,[-175,48],745.179397,[695.679286,745.180509],[360.255777,445.645223]],
+    ["transition-zero-first",43,304941507,304276304840,[-399,50],665.201985,[636.313761,665.20321],[486.572551,535.270449]],
+    ["transition-zero-warm",44,325626498,324922048225,[-226,56],704.44969,[685.233549,704.450831],[463.965718,499.953282]],
+    ["overhead-joint-first",48,174724830,173704507123,[-390,56],1020.32271,[987.179487,1020.323933],[491.886554,546.101446]],
+    ["overhead-joint-warm",38,195040680,194416725737,[-350,56],623.954116,[573.506913,623.955319],[261.501594,327.959406]]
+  ],
+  "probeEventOrder": [
+  "MAIN_TOUCH_UP",
+  "ACTIVITY_CREATE",
+  "OPEN_READER_INTENT",
+  "PAGE_LIST_READY",
+  "OPEN_PAGE",
+  "ENCODED_READ_COMPLETE",
+  "DECODE_SUBMIT",
+  "FIRST_DRAW",
+  "FRAME_COMMIT"
+],
+  "fourStageBoundaries": [
+  "OPEN_READER_INTENT",
+  "PAGE_LIST_READY",
+  "OPEN_PAGE",
+  "DECODE_SUBMIT",
+  "FIRST_DRAW"
+],
+  "probeColumns": [
+  "sample",
+  "downBootNs",
+  "monotonicEventNs_in_eventOrder",
+  "fourStagesMs",
+  "downToFirstDrawMs",
+  "downToFrameCommitMs",
+  "initToFirstDrawMs"
+],
+  "probes": [
+    ["tablet-shared-on-first",175952355198263,[20345394650539,20345434359393,20345444946373,20345565530748,20345611652623,20345615956268,20345623909914,20345717246893,20345734955748],[120.584375,46.121875,12.257291,93.336979],327.602864,345.311719,272.30052],
+    ["tablet-shared-on-warm",175975954393572,[20368994479182,20369027982827,20369035092723,20369150629182,20369185089598,20369190089077,20369191151057,20369276795848,20369295432827],[115.536459,34.460416,6.061459,85.644791],287.95651,306.593489,241.703125],
+    ["overhead-joint-first",173704507123,[173706747238,173790624120,173797292060,174493834514,174525102844,174527620661,174530020889,174669145336,174711129369],[696.542454,31.26833,4.918045,139.124447],964.638046,1006.622079,871.853276],
+    ["overhead-joint-warm",194416725737,[194418413837,194434718160,194451913809,194484671555,194758539660,194759330460,194765909035,195020687180,195528053449],[32.757746,273.868105,7.369375,254.778145],603.961296,1111.327565,568.773371],
+    ["overhead-trace-only-first",242988525140,[242990844349,243026983289,243037316213,243051917140,243209473586,243213644543,243277006810,243390269265,243457452136],[14.600927,157.556446,67.533224,113.262455],401.74406,468.926931,352.953052],
+    ["overhead-trace-only-warm",262146126975,[262147548377,262166285828,262169885925,262177784894,262261098674,262264170149,262344250961,262456925622,262481261398],[7.898969,83.31378,83.152287,112.674661],310.798349,335.134125,287.039697]
+  ],
+  "notes": {
+  "firstVisibleMayBePartial": [
+    "tablet-shared-on-warm",
+    "gpu-a2-swiftshader-warm"
+  ],
+  "tabletSharedOnWarmFullViewMs": 323.548662,
+  "correctContactSheets": "contact-aligned-<sample>/transition-native-source-pts.png; shared four use their previously verified sheets",
+  "gpuFirstInputBootUptimeSec": [
+    1211.55,
+    76.81,
+    88.68
+  ],
+  "gpuGroupsUseDifferentBoots": true,
+  "gpuA1FirstRecovered": "Wrapper timeout at tail; raw collector OK. Original error retained, trace recovered, late after-clock endpoint. No sample discarded.",
+  "oldPackageMismatchDerivedFiles": "Obsolete originals retained; corrected contact-aligned-* sheets are authoritative",
+  "officialInternalFourStages": "NOT_MEASURED: official APK unmodified",
+  "budgetsChanged": false
+},
+  "checks": {
+  "focusedTests": 8,
+  "canonicalRawPacketReplays": 22,
+  "codecChecks": "nonconfig packets equal decoded frames, no B frames, strictly increasing source PTS",
+  "probeIdentity": "same pid, chapter2/page0/request1 or2; Main UP inside second of exactly two main deliverInputEvent slices",
+  "gradle": "NOT_RUN",
+  "productBehaviorChanged": false
+}
+}
