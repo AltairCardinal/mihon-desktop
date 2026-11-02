@@ -1,0 +1,2524 @@
+{
+  "date": "2026-11-02",
+  "scope": "Physical PCE-W30/API31, upstream v0.19.9 diagnostic benchmark; no fork/Desktop performance acceptance",
+  "sourceCommit": "ccb733763184ef01e4c7120f4b5941f7783c2b54",
+  "sourceWorktree": "D:\\Codex\\worktrees\\mihon-upstream-open-latency-20261102",
+  "buildSnapshot": {
+    "status": "BUILT_NOT_INSTALLED",
+    "physicalDevice": "192.168.50.51:5555",
+    "upstreamBase": "7a917968e3bf71c4a665e6655a550877d81ead1d",
+    "probeHeadBeforeWorkingChanges": "79ea4f455644cc1ab98e35ad176e4e34b150fa38",
+    "probeSources": {
+      "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt": "d1c074310e747b6adeedb9e7ef96b30ba34aa131018560839ff06eac28906248",
+      "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderOpenLatencyProbe.kt": "2619f72813b64bdd7bb24484c10def2590a77b8cd559de5655e00693cc703f78",
+      "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt": "7c52363dc147fe0ef4b0418f1a1b130c58bc331b55502da98c19cc3407e92f05",
+      "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoader.kt": "8ea0217f8616b52099f233b450dc0ff7d21b6e846b3a57e1694bd2806f6b56d1",
+      "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/DownloadPageLoader.kt": "1d8fb68269f3007b01698f1ba985a34e6524efea0aebc4db0604c62be0b85d6b",
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderOpenLatencyProbeTest.kt": "f5b6a622d066fb264afafa4c0f985c6d0ff57540f2ea5814720da6c863f4b9bd"
+    },
+    "apks": {
+      "pristine-base-arm64.apk": {
+        "sha256": "b520f24c7e3797b95a31649dd586367a7e93347219eee550c5c96bb933316bdb",
+        "bytes": 25213345
+      },
+      "sparse-25-arm64.apk": {
+        "sha256": "52be41958a884e24fac9ef05a46cd06d59a1e44344581e604569f879b90d813b",
+        "bytes": 25229729
+      }
+    },
+    "identity": {
+      "package": "app.mihon.benchmark",
+      "versionCode": 22,
+      "versionName": "0.19.9-benchmark",
+      "certificateSha256": "fb141e4e749dc634a3d5d79e179a1057ab81fa1fd7cb5077b6dfeccfe11f3079",
+      "profileable": true,
+      "debuggable": false
+    },
+    "builds": {
+      "probe": "D:/Codex/worktrees/mihon-upstream-open-latency-20261102/.gradle-coordinator/tablet-sparse-probe-green.json",
+      "pristine": "D:/Codex/worktrees/mihon-upstream-no-probe-20261102/.gradle-coordinator/tablet-no-probe-base-build.json"
+    },
+    "validation": {
+      "focusedTests": 5,
+      "failures": 0,
+      "diffCheck": "PASS",
+      "red": "bounded session test fails old implementation, other4 PASS"
+    },
+    "deviceState": "No device exposed by adb devices; mdns empty; no installation/input in this round yet"
+  },
+  "postBuildChanges": [
+    {
+      "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt",
+      "kind": "KDoc only, no executable change",
+      "buildSha256": "d1c074310e747b6adeedb9e7ef96b30ba34aa131018560839ff06eac28906248",
+      "finalSha256": "5489ab040c0276349aaba795cd660b0fcb0ca32c0701631481218c8eb6a0c1f9"
+    }
+  ],
+  "content": {
+    "bytes": 41380343,
+    "sha256": "b3d7c4e56e58dfee6d9da7d5afafe12b267ccc6d50dd48cd3660456b8d2b4677",
+    "images": 187,
+    "targetPage": 0
+  },
+  "compileInterventions": [
+    {
+      "label": "causal-art-v1",
+      "requestedFilter": "verify",
+      "command": [
+        "cmd",
+        "package",
+        "compile",
+        "-m",
+        "verify",
+        "-f",
+        "app.mihon.benchmark"
+      ],
+      "stdout": "Success\n",
+      "durationSeconds": 0.6393849000160117,
+      "actualFilterReadback": "UNAVAILABLE on this OEM; success is command acknowledgement, downgrade inferred only if performance reverses",
+      "officialStateChanged": false,
+      "captureExit": 0
+    },
+    {
+      "label": "causal-art-s1",
+      "requestedFilter": "speed",
+      "command": [
+        "cmd",
+        "package",
+        "compile",
+        "-m",
+        "speed",
+        "-f",
+        "app.mihon.benchmark"
+      ],
+      "stdout": "Success\n",
+      "durationSeconds": 21.72319580000476,
+      "actualFilterReadback": "UNAVAILABLE on this OEM; success is command acknowledgement, downgrade inferred only if performance reverses",
+      "officialStateChanged": false,
+      "captureExit": 0
+    },
+    {
+      "label": "causal-art-v2",
+      "requestedFilter": "verify",
+      "command": [
+        "cmd",
+        "package",
+        "compile",
+        "-m",
+        "verify",
+        "-f",
+        "app.mihon.benchmark"
+      ],
+      "stdout": "Success\n",
+      "durationSeconds": 0.6320543000183534,
+      "actualFilterReadback": "UNAVAILABLE on this OEM; success is command acknowledgement, downgrade inferred only if performance reverses",
+      "officialStateChanged": false,
+      "captureExit": 0
+    }
+  ],
+  "finalSpeedRequest": {
+    "command": [
+      "cmd",
+      "package",
+      "compile",
+      "-m",
+      "speed",
+      "-f",
+      "app.mihon.benchmark"
+    ],
+    "stdout": "Success\n",
+    "durationSeconds": 22.003362099989317,
+    "readback": "UNAVAILABLE; requested policy only"
+  },
+  "humanKeyEndpointsMs": {
+    "official-n2-first": {
+      "firstPartial": 324.668,
+      "completeHorizontalCover": 344.21,
+      "frames": [
+        31,
+        32
+      ]
+    },
+    "official-n3-first": {
+      "firstPartial": 307.302,
+      "completeHorizontalCover": 326.938,
+      "frames": [
+        29,
+        30
+      ]
+    },
+    "art-v1-first": {
+      "firstPartial": 340.794
+    },
+    "art-s1-first": {
+      "firstPartial": 306.069,
+      "completeHorizontalCover": 324.044
+    },
+    "art-v2-first": {
+      "firstPartial": 341.789
+    },
+    "control-p2-warm": {
+      "firstPartial": 323.341,
+      "previousFrameNoComic": 306.658,
+      "frames": [
+        40,
+        41
+      ]
+    }
+  },
+  "boundaryCorrections": [
+    "Official n3 first is 307.302 partial, 326.938 complete, not a correction replacing one by the other.",
+    "Details cover after DOWN is old-view content, not reader target.",
+    "Final 182.322/177.575 are sparse-on init-to-draw; UP totals 219.688/211.164 include the prefix before init.",
+    "Automatic ROI null is a detection limitation, not a rejected slow sample."
+  ],
+  "threadEvidence": "system input/performCreate retain PID/TID. IO marker dispatch is unchanged production withIOContext; recorder does not store per-marker TID.",
+  "invalidRuns": [
+    {
+      "label": "causal-old-stop-red",
+      "reason": "Launch focus guard failed before chapter input; not a behavior RED"
+    },
+    {
+      "label": "causal-old-stop-red2",
+      "reason": "Expected behavior RED: session ABSENT before tap, PRESENT before onStop under stop config"
+    },
+    {
+      "label": "causal-official-n1",
+      "reason": "Chapter04 not visible; stopped before reader input/capture"
+    }
+  ],
+  "validation": {
+    "focusedTests": 5,
+    "red": "Old implementation fails fixed session-budget test; actual tablet old export fails stop contract",
+    "green": "New APK 4 no-video normal UI opens; full target/page/request/phase assertions on later sparse samples",
+    "format": "tablet-probe-focused-format PASSED",
+    "wholeModuleTests": false,
+    "fullTests": false,
+    "push": false
+  },
+  "cleanup": {
+    "officialApkSha256": "7a7969564a604bf74608758b540730e53dfe63e11782a718d32380dc9febed58",
+    "officialReturnedTo": "target manga detail, Chapter04 visible; no chapter opened during cleanup",
+    "benchmarkPidAfterStop": "",
+    "ownedHelperProcesses": "",
+    "lastBenchmarkRequestedCompiler": "speed; ACK only, OEM filter unreadable",
+    "benchmarkFinalReaderPreferences": {
+      "landscapeZoom": false,
+      "showReadingMode": false
+    },
+    "officialPreferencesChanged": false
+  },
+  "samples": [
+    {
+      "label": "causal-control-s1",
+      "apkSha256": "52be41958a884e24fac9ef05a46cd06d59a1e44344581e604569f879b90d813b",
+      "configuration": {
+        "enabled": false,
+        "mangaId": 2,
+        "chapterId": 2,
+        "label": "causal-control-s1",
+        "recorder": "off",
+        "export": "stop"
+      },
+      "samples": [
+        {
+          "request": 1,
+          "pid": "7414",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "external": {
+            "downBootNs": 208821303549363,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917943,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 31,
+              "sourcePtsUs": 26180001600,
+              "traceBoundsNs": [
+                208821702516943,
+                208821702519985
+              ],
+              "downToCandidateNs": 398969101
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-control-s1-1",
+            "readerPerformCreate": {
+              "startBootNs": 208821376529571,
+              "durNs": 23097396,
+              "pid": "7414",
+              "tid": "7414",
+              "downToEndNs": 96077604
+            },
+            "packetFrameValidation": {
+              "frames": 128,
+              "nonConfigPackets": 128,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187"
+        },
+        {
+          "request": 2,
+          "pid": "7414",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "external": {
+            "downBootNs": 208842141707693,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700916380,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 43,
+              "sourcePtsUs": 26200769830,
+              "traceBoundsNs": [
+                208842470745380,
+                208842470749985
+              ],
+              "downToCandidateNs": 329039989
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-control-s1-2",
+            "readerPerformCreate": {
+              "startBootNs": 208842185669672,
+              "durNs": 18450000,
+              "pid": "7414",
+              "tid": "7414",
+              "downToEndNs": 62411979
+            },
+            "packetFrameValidation": {
+              "frames": 141,
+              "nonConfigPackets": 141,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187"
+        }
+      ]
+    },
+    {
+      "label": "causal-control-p1",
+      "apkSha256": "b520f24c7e3797b95a31649dd586367a7e93347219eee550c5c96bb933316bdb",
+      "configuration": {
+        "enabled": false,
+        "mangaId": 2,
+        "chapterId": 2,
+        "label": "causal-control-p1",
+        "recorder": "off",
+        "export": "stop"
+      },
+      "samples": [
+        {
+          "request": 1,
+          "pid": "23174",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "external": {
+            "downBootNs": 208879883260292,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917943,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 36,
+              "sourcePtsUs": 26238599520,
+              "traceBoundsNs": [
+                208880300436943,
+                208880300439985
+              ],
+              "downToCandidateNs": 417178172
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-control-p1-1",
+            "readerPerformCreate": {
+              "startBootNs": 208879955974875,
+              "durNs": 23794271,
+              "pid": "23174",
+              "tid": "23174",
+              "downToEndNs": 96508854
+            },
+            "packetFrameValidation": {
+              "frames": 129,
+              "nonConfigPackets": 129,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187"
+        },
+        {
+          "request": 2,
+          "pid": "23174",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "external": {
+            "downBootNs": 208900999111330,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700916901,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 41,
+              "sourcePtsUs": 26259616949,
+              "traceBoundsNs": [
+                208901317864901,
+                208901317868985
+              ],
+              "downToCandidateNs": 318755613
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-control-p1-2",
+            "readerPerformCreate": {
+              "startBootNs": 208901041180080,
+              "durNs": 18501563,
+              "pid": "23174",
+              "tid": "23174",
+              "downToEndNs": 60570313
+            },
+            "packetFrameValidation": {
+              "frames": 145,
+              "nonConfigPackets": 145,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187"
+        }
+      ]
+    },
+    {
+      "label": "causal-control-p2",
+      "apkSha256": "b520f24c7e3797b95a31649dd586367a7e93347219eee550c5c96bb933316bdb",
+      "configuration": {
+        "enabled": false,
+        "mangaId": 2,
+        "chapterId": 2,
+        "label": "causal-control-p2",
+        "recorder": "off",
+        "export": "stop"
+      },
+      "samples": [
+        {
+          "request": 1,
+          "pid": "23175",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "external": {
+            "downBootNs": 208937408963408,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917422,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 31,
+              "sourcePtsUs": 26296068442,
+              "traceBoundsNs": [
+                208937769358422,
+                208937769361985
+              ],
+              "downToCandidateNs": 360396795
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-control-p2-1",
+            "readerPerformCreate": {
+              "startBootNs": 208937482458720,
+              "durNs": 25395834,
+              "pid": "23175",
+              "tid": "23175",
+              "downToEndNs": 98891146
+            },
+            "packetFrameValidation": {
+              "frames": 129,
+              "nonConfigPackets": 129,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187"
+        },
+        {
+          "request": 2,
+          "pid": "23175",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "external": {
+            "downBootNs": 208958031539446,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917422,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": null,
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-control-p2-2",
+            "readerPerformCreate": {
+              "startBootNs": 208958070438926,
+              "durNs": 21388541,
+              "pid": "23175",
+              "tid": "23175",
+              "downToEndNs": 60288021
+            },
+            "packetFrameValidation": {
+              "frames": 136,
+              "nonConfigPackets": 136,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187"
+        }
+      ]
+    },
+    {
+      "label": "causal-control-s2",
+      "apkSha256": "52be41958a884e24fac9ef05a46cd06d59a1e44344581e604569f879b90d813b",
+      "configuration": {
+        "enabled": false,
+        "mangaId": 2,
+        "chapterId": 2,
+        "label": "causal-control-s2",
+        "recorder": "off",
+        "export": "stop"
+      },
+      "samples": [
+        {
+          "request": 1,
+          "pid": "23176",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "external": {
+            "downBootNs": 208992610809233,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917423,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 33,
+              "sourcePtsUs": 26351284783,
+              "traceBoundsNs": [
+                208992985699423,
+                208992985702985
+              ],
+              "downToCandidateNs": 374891971
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-control-s2-1",
+            "readerPerformCreate": {
+              "startBootNs": 208992661348816,
+              "durNs": 31122396,
+              "pid": "23176",
+              "tid": "23176",
+              "downToEndNs": 81661979
+            },
+            "packetFrameValidation": {
+              "frames": 135,
+              "nonConfigPackets": 135,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187"
+        },
+        {
+          "request": 2,
+          "pid": "23176",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "external": {
+            "downBootNs": 209012823005584,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700916901,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 40,
+              "sourcePtsUs": 26371426613,
+              "traceBoundsNs": [
+                209013127528901,
+                209013127532985
+              ],
+              "downToCandidateNs": 304525359
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-control-s2-2",
+            "readerPerformCreate": {
+              "startBootNs": 209012860892563,
+              "durNs": 18875521,
+              "pid": "23176",
+              "tid": "23176",
+              "downToEndNs": 56762500
+            },
+            "packetFrameValidation": {
+              "frames": 145,
+              "nonConfigPackets": 145,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187"
+        }
+      ]
+    },
+    {
+      "label": "causal-control-s3",
+      "apkSha256": "52be41958a884e24fac9ef05a46cd06d59a1e44344581e604569f879b90d813b",
+      "configuration": {
+        "enabled": false,
+        "mangaId": 2,
+        "chapterId": 2,
+        "label": "causal-control-s3",
+        "recorder": "off",
+        "export": "stop"
+      },
+      "samples": [
+        {
+          "request": 1,
+          "pid": "23177",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "external": {
+            "downBootNs": 209048462038391,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917423,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 36,
+              "sourcePtsUs": 26407151151,
+              "traceBoundsNs": [
+                209048852067423,
+                209048852070985
+              ],
+              "downToCandidateNs": 390030813
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-control-s3-1",
+            "readerPerformCreate": {
+              "startBootNs": 209048519011308,
+              "durNs": 29636458,
+              "pid": "23177",
+              "tid": "23177",
+              "downToEndNs": 86609375
+            },
+            "packetFrameValidation": {
+              "frames": 138,
+              "nonConfigPackets": 138,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187"
+        },
+        {
+          "request": 2,
+          "pid": "23177",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "external": {
+            "downBootNs": 209068471696721,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700916901,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 41,
+              "sourcePtsUs": 26427126061,
+              "traceBoundsNs": [
+                209068826976901,
+                209068826980985
+              ],
+              "downToCandidateNs": 355282222
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-control-s3-2",
+            "readerPerformCreate": {
+              "startBootNs": 209068512860263,
+              "durNs": 20147396,
+              "pid": "23177",
+              "tid": "23177",
+              "downToEndNs": 61310938
+            },
+            "packetFrameValidation": {
+              "frames": 142,
+              "nonConfigPackets": 142,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187"
+        }
+      ]
+    },
+    {
+      "label": "causal-control-p3",
+      "apkSha256": "b520f24c7e3797b95a31649dd586367a7e93347219eee550c5c96bb933316bdb",
+      "configuration": {
+        "enabled": false,
+        "mangaId": 2,
+        "chapterId": 2,
+        "label": "causal-control-p3",
+        "recorder": "off",
+        "export": "stop"
+      },
+      "samples": [
+        {
+          "request": 1,
+          "pid": "26246",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "external": {
+            "downBootNs": 209103430468070,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700916901,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 38,
+              "sourcePtsUs": 26462112321,
+              "traceBoundsNs": [
+                209103813236901,
+                209103813240985
+              ],
+              "downToCandidateNs": 382770873
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-control-p3-1",
+            "readerPerformCreate": {
+              "startBootNs": 209103500402445,
+              "durNs": 24019271,
+              "pid": "26246",
+              "tid": "26246",
+              "downToEndNs": 93953646
+            },
+            "packetFrameValidation": {
+              "frames": 138,
+              "nonConfigPackets": 138,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187"
+        },
+        {
+          "request": 2,
+          "pid": "26246",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "external": {
+            "downBootNs": 209123438434213,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917422,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 43,
+              "sourcePtsUs": 26482088577,
+              "traceBoundsNs": [
+                209123789493422,
+                209123789496985
+              ],
+              "downToCandidateNs": 351060990
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-control-p3-2",
+            "readerPerformCreate": {
+              "startBootNs": 209123480390984,
+              "durNs": 18571354,
+              "pid": "26246",
+              "tid": "26246",
+              "downToEndNs": 60528125
+            },
+            "packetFrameValidation": {
+              "frames": 144,
+              "nonConfigPackets": 144,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187"
+        }
+      ]
+    },
+    {
+      "label": "causal-calibrate-a1",
+      "apkSha256": "52be41958a884e24fac9ef05a46cd06d59a1e44344581e604569f879b90d813b",
+      "configuration": {
+        "enabled": true,
+        "mangaId": 2,
+        "chapterId": 2,
+        "label": "causal-calibrate-a1",
+        "recorder": "sparse",
+        "export": "stop"
+      },
+      "samples": [
+        {
+          "request": 1,
+          "pid": "26247",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "phasesNs": {
+            "initToList": 113830730,
+            "listToStreamCall": 56727083,
+            "streamCallToDecodeSubmit": 13213542,
+            "decodeSubmitToDraw": 88680208,
+            "initToDraw": 272451563,
+            "touchUpToDraw": 336653125
+          },
+          "chapterId": 2,
+          "page": 0,
+          "external": {
+            "downBootNs": 209405951527920,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917943,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 31,
+              "sourcePtsUs": 26764627073,
+              "traceBoundsNs": [
+                209406327989943,
+                209406327992985
+              ],
+              "downToCandidateNs": 376463544
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-calibrate-a1-1",
+            "readerPerformCreate": {
+              "startBootNs": 209406002777920,
+              "durNs": 32346354,
+              "pid": "26247",
+              "tid": "26247",
+              "downToEndNs": 83596354
+            },
+            "packetFrameValidation": {
+              "frames": 125,
+              "nonConfigPackets": 125,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187",
+          "createToInitNs": 18167708
+        },
+        {
+          "request": 2,
+          "pid": "26247",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "phasesNs": {
+            "initToList": 128358855,
+            "listToStreamCall": 38242187,
+            "streamCallToDecodeSubmit": 8516146,
+            "decodeSubmitToDraw": 95315104,
+            "initToDraw": 270432292,
+            "touchUpToDraw": 317917187
+          },
+          "chapterId": 2,
+          "page": 0,
+          "external": {
+            "downBootNs": 209426744550312,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917943,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 41,
+              "sourcePtsUs": 26785385454,
+              "traceBoundsNs": [
+                209427086370943,
+                209427086373985
+              ],
+              "downToCandidateNs": 341822152
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-calibrate-a1-2",
+            "readerPerformCreate": {
+              "startBootNs": 209426781586771,
+              "durNs": 23236458,
+              "pid": "26247",
+              "tid": "26247",
+              "downToEndNs": 60272917
+            },
+            "packetFrameValidation": {
+              "frames": 140,
+              "nonConfigPackets": 140,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187",
+          "createToInitNs": 13440625
+        }
+      ]
+    },
+    {
+      "label": "causal-calibrate-b1",
+      "apkSha256": "52be41958a884e24fac9ef05a46cd06d59a1e44344581e604569f879b90d813b",
+      "configuration": {
+        "enabled": false,
+        "mangaId": 2,
+        "chapterId": 2,
+        "label": "causal-calibrate-b1",
+        "recorder": "off",
+        "export": "stop"
+      },
+      "samples": [
+        {
+          "request": 1,
+          "pid": "26248",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "external": {
+            "downBootNs": 209461085200307,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917422,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 37,
+              "sourcePtsUs": 26819757121,
+              "traceBoundsNs": [
+                209461458037422,
+                209461458040985
+              ],
+              "downToCandidateNs": 372838896
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-calibrate-b1-1",
+            "readerPerformCreate": {
+              "startBootNs": 209461137369057,
+              "durNs": 29330729,
+              "pid": "26248",
+              "tid": "26248",
+              "downToEndNs": 81499479
+            },
+            "packetFrameValidation": {
+              "frames": 140,
+              "nonConfigPackets": 140,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187"
+        },
+        {
+          "request": 2,
+          "pid": "26248",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "external": {
+            "downBootNs": 209481311045617,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917422,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 36,
+              "sourcePtsUs": 26839946567,
+              "traceBoundsNs": [
+                209481647483422,
+                209481647486985
+              ],
+              "downToCandidateNs": 336439586
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-calibrate-b1-2",
+            "readerPerformCreate": {
+              "startBootNs": 209481346989887,
+              "durNs": 17927084,
+              "pid": "26248",
+              "tid": "26248",
+              "downToEndNs": 53871354
+            },
+            "packetFrameValidation": {
+              "frames": 138,
+              "nonConfigPackets": 138,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187"
+        }
+      ]
+    },
+    {
+      "label": "causal-calibrate-b2",
+      "apkSha256": "52be41958a884e24fac9ef05a46cd06d59a1e44344581e604569f879b90d813b",
+      "configuration": {
+        "enabled": false,
+        "mangaId": 2,
+        "chapterId": 2,
+        "label": "causal-calibrate-b2",
+        "recorder": "off",
+        "export": "stop"
+      },
+      "samples": [
+        {
+          "request": 1,
+          "pid": "26249",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "external": {
+            "downBootNs": 209517931445090,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917943,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 33,
+              "sourcePtsUs": 26876622246,
+              "traceBoundsNs": [
+                209518323162943,
+                209518323165985
+              ],
+              "downToCandidateNs": 391719374
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-calibrate-b2-1",
+            "readerPerformCreate": {
+              "startBootNs": 209517992600819,
+              "durNs": 27344792,
+              "pid": "26249",
+              "tid": "26249",
+              "downToEndNs": 88500521
+            },
+            "packetFrameValidation": {
+              "frames": 133,
+              "nonConfigPackets": 133,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187"
+        },
+        {
+          "request": 2,
+          "pid": "26249",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "external": {
+            "downBootNs": 209538309327900,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917422,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": null,
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-calibrate-b2-2",
+            "readerPerformCreate": {
+              "startBootNs": 209538351672691,
+              "durNs": 17244271,
+              "pid": "26249",
+              "tid": "26249",
+              "downToEndNs": 59589062
+            },
+            "packetFrameValidation": {
+              "frames": 137,
+              "nonConfigPackets": 137,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187"
+        }
+      ]
+    },
+    {
+      "label": "causal-calibrate-a2",
+      "apkSha256": "52be41958a884e24fac9ef05a46cd06d59a1e44344581e604569f879b90d813b",
+      "configuration": {
+        "enabled": true,
+        "mangaId": 2,
+        "chapterId": 2,
+        "label": "causal-calibrate-a2",
+        "recorder": "sparse",
+        "export": "stop"
+      },
+      "samples": [
+        {
+          "request": 1,
+          "pid": "30193",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "phasesNs": {
+            "initToList": 122377604,
+            "listToStreamCall": 41038542,
+            "streamCallToDecodeSubmit": 7291666,
+            "decodeSubmitToDraw": 83143750,
+            "initToDraw": 253851562,
+            "touchUpToDraw": 335718229
+          },
+          "chapterId": 2,
+          "page": 0,
+          "external": {
+            "downBootNs": 209574128589352,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917943,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 32,
+              "sourcePtsUs": 26932803022,
+              "traceBoundsNs": [
+                209574503938943,
+                209574503941985
+              ],
+              "downToCandidateNs": 375351112
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-calibrate-a2-1",
+            "readerPerformCreate": {
+              "startBootNs": 209574201714873,
+              "durNs": 24908854,
+              "pid": "30193",
+              "tid": "30193",
+              "downToEndNs": 98034375
+            },
+            "packetFrameValidation": {
+              "frames": 137,
+              "nonConfigPackets": 137,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187",
+          "createToInitNs": 12710417
+        },
+        {
+          "request": 2,
+          "pid": "30193",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "phasesNs": {
+            "initToList": 111690625,
+            "listToStreamCall": 32814583,
+            "streamCallToDecodeSubmit": 7342188,
+            "decodeSubmitToDraw": 94123437,
+            "initToDraw": 245970833,
+            "touchUpToDraw": 297919270
+          },
+          "chapterId": 2,
+          "page": 0,
+          "external": {
+            "downBootNs": 209594588770078,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917422,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 41,
+              "sourcePtsUs": 26953209238,
+              "traceBoundsNs": [
+                209594910154422,
+                209594910157985
+              ],
+              "downToCandidateNs": 321386125
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-calibrate-a2-2",
+            "readerPerformCreate": {
+              "startBootNs": 209594634706537,
+              "durNs": 12292187,
+              "pid": "30193",
+              "tid": "30193",
+              "downToEndNs": 58228646
+            },
+            "packetFrameValidation": {
+              "frames": 145,
+              "nonConfigPackets": 145,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187",
+          "createToInitNs": 9772917
+        }
+      ]
+    },
+    {
+      "label": "causal-zoom-off1",
+      "apkSha256": "52be41958a884e24fac9ef05a46cd06d59a1e44344581e604569f879b90d813b",
+      "configuration": {
+        "enabled": true,
+        "mangaId": 2,
+        "chapterId": 2,
+        "label": "causal-zoom-off1",
+        "recorder": "sparse",
+        "export": "stop"
+      },
+      "samples": [
+        {
+          "request": 1,
+          "pid": "3370",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "phasesNs": {
+            "initToList": 118868229,
+            "listToStreamCall": 44685937,
+            "streamCallToDecodeSubmit": 8445834,
+            "decodeSubmitToDraw": 69345312,
+            "initToDraw": 241345312,
+            "touchUpToDraw": 296952083
+          },
+          "chapterId": 2,
+          "page": 0,
+          "external": {
+            "downBootNs": 210391261197040,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917422,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 30,
+              "sourcePtsUs": 27749896945,
+              "traceBoundsNs": [
+                210391597861422,
+                210391597864985
+              ],
+              "downToCandidateNs": 336666163
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-zoom-off1-1",
+            "readerPerformCreate": {
+              "startBootNs": 210391308074124,
+              "durNs": 25136979,
+              "pid": "3370",
+              "tid": "3370",
+              "downToEndNs": 72014063
+            },
+            "packetFrameValidation": {
+              "frames": 109,
+              "nonConfigPackets": 109,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187",
+          "createToInitNs": 13115625
+        },
+        {
+          "request": 2,
+          "pid": "3370",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "phasesNs": {
+            "initToList": 111970834,
+            "listToStreamCall": 40214583,
+            "streamCallToDecodeSubmit": 9172917,
+            "decodeSubmitToDraw": 78522916,
+            "initToDraw": 239881250,
+            "touchUpToDraw": 289852083
+          },
+          "chapterId": 2,
+          "page": 0,
+          "external": {
+            "downBootNs": 210411508166829,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700916901,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 40,
+              "sourcePtsUs": 27770120057,
+              "traceBoundsNs": [
+                210411820972901,
+                210411820976985
+              ],
+              "downToCandidateNs": 312808114
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-zoom-off1-2",
+            "readerPerformCreate": {
+              "startBootNs": 210411549627245,
+              "durNs": 20281250,
+              "pid": "3370",
+              "tid": "3370",
+              "downToEndNs": 61741666
+            },
+            "packetFrameValidation": {
+              "frames": 120,
+              "nonConfigPackets": 120,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187",
+          "createToInitNs": 12203646
+        }
+      ]
+    },
+    {
+      "label": "causal-zoom-off2",
+      "apkSha256": "52be41958a884e24fac9ef05a46cd06d59a1e44344581e604569f879b90d813b",
+      "configuration": {
+        "enabled": true,
+        "mangaId": 2,
+        "chapterId": 2,
+        "label": "causal-zoom-off2",
+        "recorder": "sparse",
+        "export": "stop"
+      },
+      "samples": [
+        {
+          "request": 1,
+          "pid": "3371",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "phasesNs": {
+            "initToList": 127163542,
+            "listToStreamCall": 42752083,
+            "streamCallToDecodeSubmit": 6885417,
+            "decodeSubmitToDraw": 89650000,
+            "initToDraw": 266451042,
+            "touchUpToDraw": 351554688
+          },
+          "chapterId": 2,
+          "page": 0,
+          "external": {
+            "downBootNs": 210579713453782,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917422,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 34,
+              "sourcePtsUs": 27938405361,
+              "traceBoundsNs": [
+                210580106277422,
+                210580106280985
+              ],
+              "downToCandidateNs": 392825421
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-zoom-off2-1",
+            "readerPerformCreate": {
+              "startBootNs": 210579791874616,
+              "durNs": 24030208,
+              "pid": "3371",
+              "tid": "3371",
+              "downToEndNs": 102451042
+            },
+            "packetFrameValidation": {
+              "frames": 113,
+              "nonConfigPackets": 113,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187",
+          "createToInitNs": 11949479
+        },
+        {
+          "request": 2,
+          "pid": "3371",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "phasesNs": {
+            "initToList": 111517708,
+            "listToStreamCall": 35879167,
+            "streamCallToDecodeSubmit": 5995312,
+            "decodeSubmitToDraw": 95744271,
+            "initToDraw": 249136458,
+            "touchUpToDraw": 295295833
+          },
+          "chapterId": 2,
+          "page": 0,
+          "external": {
+            "downBootNs": 210600143486071,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917423,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 42,
+              "sourcePtsUs": 27958777476,
+              "traceBoundsNs": [
+                210600478392423,
+                210600478395985
+              ],
+              "downToCandidateNs": 334908133
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-zoom-off2-2",
+            "readerPerformCreate": {
+              "startBootNs": 210600183623571,
+              "durNs": 18644791,
+              "pid": "3371",
+              "tid": "3371",
+              "downToEndNs": 58782291
+            },
+            "packetFrameValidation": {
+              "frames": 117,
+              "nonConfigPackets": 117,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187",
+          "createToInitNs": 9416667
+        }
+      ]
+    },
+    {
+      "label": "causal-zoom-on-restore",
+      "apkSha256": "52be41958a884e24fac9ef05a46cd06d59a1e44344581e604569f879b90d813b",
+      "configuration": {
+        "enabled": true,
+        "mangaId": 2,
+        "chapterId": 2,
+        "label": "causal-zoom-on-restore",
+        "recorder": "sparse",
+        "export": "stop"
+      },
+      "samples": [
+        {
+          "request": 1,
+          "pid": "8393",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "phasesNs": {
+            "initToList": 131957292,
+            "listToStreamCall": 51722396,
+            "streamCallToDecodeSubmit": 18884895,
+            "decodeSubmitToDraw": 88868750,
+            "initToDraw": 291433333,
+            "touchUpToDraw": 373385416
+          },
+          "chapterId": 2,
+          "page": 0,
+          "external": {
+            "downBootNs": 210870268826655,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917943,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 39,
+              "sourcePtsUs": 28228984809,
+              "traceBoundsNs": [
+                210870685725943,
+                210870685728985
+              ],
+              "downToCandidateNs": 416900809
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-zoom-on-restore-1",
+            "readerPerformCreate": {
+              "startBootNs": 210870342902696,
+              "durNs": 23550000,
+              "pid": "8393",
+              "tid": "8393",
+              "downToEndNs": 97626041
+            },
+            "packetFrameValidation": {
+              "frames": 140,
+              "nonConfigPackets": 140,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187",
+          "createToInitNs": 12497917
+        },
+        {
+          "request": 2,
+          "pid": "8393",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "phasesNs": {
+            "initToList": 125436980,
+            "listToStreamCall": 38789583,
+            "streamCallToDecodeSubmit": 10334896,
+            "decodeSubmitToDraw": 93769791,
+            "initToDraw": 268331250,
+            "touchUpToDraw": 314454687
+          },
+          "chapterId": 2,
+          "page": 0,
+          "external": {
+            "downBootNs": 210891432008943,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917423,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 39,
+              "sourcePtsUs": 28250067775,
+              "traceBoundsNs": [
+                210891768691423,
+                210891768694985
+              ],
+              "downToCandidateNs": 336684261
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-zoom-on-restore-2",
+            "readerPerformCreate": {
+              "startBootNs": 210891471693318,
+              "durNs": 18425000,
+              "pid": "8393",
+              "tid": "8393",
+              "downToEndNs": 58109375
+            },
+            "packetFrameValidation": {
+              "frames": 137,
+              "nonConfigPackets": 137,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187",
+          "createToInitNs": 9982812
+        }
+      ]
+    },
+    {
+      "label": "causal-art-v1",
+      "apkSha256": "52be41958a884e24fac9ef05a46cd06d59a1e44344581e604569f879b90d813b",
+      "configuration": {
+        "enabled": true,
+        "mangaId": 2,
+        "chapterId": 2,
+        "label": "causal-art-v1",
+        "recorder": "sparse",
+        "export": "stop"
+      },
+      "samples": [
+        {
+          "request": 1,
+          "pid": "8394",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "phasesNs": {
+            "initToList": 133831250,
+            "listToStreamCall": 38257292,
+            "streamCallToDecodeSubmit": 8009375,
+            "decodeSubmitToDraw": 89383333,
+            "initToDraw": 269481250,
+            "touchUpToDraw": 316228125
+          },
+          "chapterId": 2,
+          "page": 0,
+          "external": {
+            "downBootNs": 210923000732376,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917422,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 31,
+              "sourcePtsUs": 28281640608,
+              "traceBoundsNs": [
+                210923341524422,
+                210923341527985
+              ],
+              "downToCandidateNs": 340793827
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-art-v1-1",
+            "readerPerformCreate": {
+              "startBootNs": 210923041674042,
+              "durNs": 21587500,
+              "pid": "8394",
+              "tid": "8394",
+              "downToEndNs": 62529166
+            },
+            "packetFrameValidation": {
+              "frames": 132,
+              "nonConfigPackets": 132,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187",
+          "createToInitNs": 10569271
+        },
+        {
+          "request": 2,
+          "pid": "8394",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "phasesNs": {
+            "initToList": 104760416,
+            "listToStreamCall": 36545313,
+            "streamCallToDecodeSubmit": 13137500,
+            "decodeSubmitToDraw": 72771354,
+            "initToDraw": 227214583,
+            "touchUpToDraw": 270498958
+          },
+          "chapterId": 2,
+          "page": 0,
+          "external": {
+            "downBootNs": 210943767338623,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917943,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": null,
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-art-v1-2",
+            "readerPerformCreate": {
+              "startBootNs": 210943807656331,
+              "durNs": 14058854,
+              "pid": "8394",
+              "tid": "8394",
+              "downToEndNs": 54376562
+            },
+            "packetFrameValidation": {
+              "frames": 141,
+              "nonConfigPackets": 141,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187",
+          "createToInitNs": 7340105
+        }
+      ]
+    },
+    {
+      "label": "causal-art-s1",
+      "apkSha256": "52be41958a884e24fac9ef05a46cd06d59a1e44344581e604569f879b90d813b",
+      "configuration": {
+        "enabled": true,
+        "mangaId": 2,
+        "chapterId": 2,
+        "label": "causal-art-s1",
+        "recorder": "sparse",
+        "export": "stop"
+      },
+      "samples": [
+        {
+          "request": 1,
+          "pid": "8395",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "phasesNs": {
+            "initToList": 120297917,
+            "listToStreamCall": 15337500,
+            "streamCallToDecodeSubmit": 9081771,
+            "decodeSubmitToDraw": 94095312,
+            "initToDraw": 238812500,
+            "touchUpToDraw": 280156250
+          },
+          "chapterId": 2,
+          "page": 0,
+          "external": {
+            "downBootNs": 210996247843823,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917943,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 29,
+              "sourcePtsUs": 28354852994,
+              "traceBoundsNs": [
+                210996553910943,
+                210996553913985
+              ],
+              "downToCandidateNs": 306068641
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-art-s1-1",
+            "readerPerformCreate": {
+              "startBootNs": 210996287685490,
+              "durNs": 15157812,
+              "pid": "8395",
+              "tid": "8395",
+              "downToEndNs": 54999479
+            },
+            "packetFrameValidation": {
+              "frames": 133,
+              "nonConfigPackets": 133,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187",
+          "createToInitNs": 7693229
+        },
+        {
+          "request": 2,
+          "pid": "8395",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "phasesNs": {
+            "initToList": 98294791,
+            "listToStreamCall": 20510417,
+            "streamCallToDecodeSubmit": 4916146,
+            "decodeSubmitToDraw": 68019271,
+            "initToDraw": 191740625,
+            "touchUpToDraw": 227882813
+          },
+          "chapterId": 2,
+          "page": 0,
+          "external": {
+            "downBootNs": 211016458531320,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917943,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": null,
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-art-s1-2",
+            "readerPerformCreate": {
+              "startBootNs": 211016493432882,
+              "durNs": 5635938,
+              "pid": "8395",
+              "tid": "8395",
+              "downToEndNs": 40537500
+            },
+            "packetFrameValidation": {
+              "frames": 140,
+              "nonConfigPackets": 140,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187",
+          "createToInitNs": 5152605
+        }
+      ]
+    },
+    {
+      "label": "causal-art-v2",
+      "apkSha256": "52be41958a884e24fac9ef05a46cd06d59a1e44344581e604569f879b90d813b",
+      "configuration": {
+        "enabled": true,
+        "mangaId": 2,
+        "chapterId": 2,
+        "label": "causal-art-v2",
+        "recorder": "sparse",
+        "export": "stop"
+      },
+      "samples": [
+        {
+          "request": 1,
+          "pid": "13117",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "phasesNs": {
+            "initToList": 124118750,
+            "listToStreamCall": 42046355,
+            "streamCallToDecodeSubmit": 10826562,
+            "decodeSubmitToDraw": 91379167,
+            "initToDraw": 268370834,
+            "touchUpToDraw": 317375000
+          },
+          "chapterId": 2,
+          "page": 0,
+          "external": {
+            "downBootNs": 211047708042253,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700916901,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 30,
+              "sourcePtsUs": 28406348913,
+              "traceBoundsNs": [
+                211048049828901,
+                211048049832985
+              ],
+              "downToCandidateNs": 341788690
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-art-v2-1",
+            "readerPerformCreate": {
+              "startBootNs": 211047750415169,
+              "durNs": 21156250,
+              "pid": "13117",
+              "tid": "13117",
+              "downToEndNs": 63529166
+            },
+            "packetFrameValidation": {
+              "frames": 130,
+              "nonConfigPackets": 130,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187",
+          "createToInitNs": 10637500
+        },
+        {
+          "request": 2,
+          "pid": "13117",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "phasesNs": {
+            "initToList": 112898437,
+            "listToStreamCall": 61434896,
+            "streamCallToDecodeSubmit": 19459896,
+            "decodeSubmitToDraw": 85995312,
+            "initToDraw": 279788541,
+            "touchUpToDraw": 319213020
+          },
+          "chapterId": 2,
+          "page": 0,
+          "external": {
+            "downBootNs": 211067595352666,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917422,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 42,
+              "sourcePtsUs": 28426238226,
+              "traceBoundsNs": [
+                211067939142422,
+                211067939145985
+              ],
+              "downToCandidateNs": 343791537
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-art-v2-2",
+            "readerPerformCreate": {
+              "startBootNs": 211067632333395,
+              "durNs": 13636459,
+              "pid": "13117",
+              "tid": "13117",
+              "downToEndNs": 50617188
+            },
+            "packetFrameValidation": {
+              "frames": 142,
+              "nonConfigPackets": 142,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187",
+          "createToInitNs": 7022396
+        }
+      ]
+    },
+    {
+      "label": "causal-speed-off-match",
+      "apkSha256": "52be41958a884e24fac9ef05a46cd06d59a1e44344581e604569f879b90d813b",
+      "configuration": {
+        "enabled": false,
+        "mangaId": 2,
+        "chapterId": 2,
+        "label": "causal-speed-off-match",
+        "recorder": "off",
+        "export": "stop"
+      },
+      "samples": [
+        {
+          "request": 1,
+          "pid": "13118",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "external": {
+            "downBootNs": 211260400134928,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917422,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 26,
+              "sourcePtsUs": 28618979833,
+              "traceBoundsNs": [
+                211260680749422,
+                211260680752985
+              ],
+              "downToCandidateNs": 280616275
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-speed-off-match-1",
+            "readerPerformCreate": {
+              "startBootNs": 211260440100553,
+              "durNs": 15730730,
+              "pid": "13118",
+              "tid": "13118",
+              "downToEndNs": 55696355
+            },
+            "packetFrameValidation": {
+              "frames": 122,
+              "nonConfigPackets": 122,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187"
+        },
+        {
+          "request": 2,
+          "pid": "13118",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "external": {
+            "downBootNs": 211280163846905,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917422,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 36,
+              "sourcePtsUs": 28638722218,
+              "traceBoundsNs": [
+                211280423134422,
+                211280423137985
+              ],
+              "downToCandidateNs": 259289298
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-speed-off-match-2",
+            "readerPerformCreate": {
+              "startBootNs": 211280199883363,
+              "durNs": 6892187,
+              "pid": "13118",
+              "tid": "13118",
+              "downToEndNs": 42928645
+            },
+            "packetFrameValidation": {
+              "frames": 140,
+              "nonConfigPackets": 140,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187"
+        }
+      ]
+    },
+    {
+      "label": "causal-legacy-draw",
+      "apkSha256": "52be41958a884e24fac9ef05a46cd06d59a1e44344581e604569f879b90d813b",
+      "configuration": {
+        "enabled": true,
+        "mangaId": 2,
+        "chapterId": 2,
+        "label": "causal-legacy-draw",
+        "recorder": "legacy",
+        "export": "draw"
+      },
+      "samples": [
+        {
+          "request": 1,
+          "pid": "13121",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "PRESENT",
+          "phasesNs": {
+            "initToList": 131953125,
+            "listToStreamCall": 15247396,
+            "streamCallToDecodeSubmit": 5253646,
+            "decodeSubmitToDraw": 67861979,
+            "initToDraw": 220316146,
+            "touchUpToDraw": 262901042
+          },
+          "chapterId": 2,
+          "page": 0,
+          "external": {
+            "downBootNs": 211310044175546,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917943,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 28,
+              "sourcePtsUs": 28668628775,
+              "traceBoundsNs": [
+                211310329691943,
+                211310329694985
+              ],
+              "downToCandidateNs": 285517918
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-legacy-draw-1",
+            "readerPerformCreate": {
+              "startBootNs": 211310082679192,
+              "durNs": 17694791,
+              "pid": "13121",
+              "tid": "13121",
+              "downToEndNs": 56198437
+            },
+            "packetFrameValidation": {
+              "frames": 131,
+              "nonConfigPackets": 131,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187",
+          "createToInitNs": 8156250
+        },
+        {
+          "request": 2,
+          "pid": "13121",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "PRESENT",
+          "phasesNs": {
+            "initToList": 105232813,
+            "listToStreamCall": 22177604,
+            "streamCallToDecodeSubmit": 4023437,
+            "decodeSubmitToDraw": 87725521,
+            "initToDraw": 219159375,
+            "touchUpToDraw": 255875000
+          },
+          "chapterId": 2,
+          "page": 0,
+          "external": {
+            "downBootNs": 211329975716689,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917943,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 39,
+              "sourcePtsUs": 28688552286,
+              "traceBoundsNs": [
+                211330253202943,
+                211330253205985
+              ],
+              "downToCandidateNs": 277487775
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-legacy-draw-2",
+            "readerPerformCreate": {
+              "startBootNs": 211330010704709,
+              "durNs": 5130209,
+              "pid": "13121",
+              "tid": "13121",
+              "downToEndNs": 40118229
+            },
+            "packetFrameValidation": {
+              "frames": 140,
+              "nonConfigPackets": 140,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187",
+          "createToInitNs": 4539583
+        }
+      ]
+    },
+    {
+      "label": "causal-legacy-stop",
+      "apkSha256": "52be41958a884e24fac9ef05a46cd06d59a1e44344581e604569f879b90d813b",
+      "configuration": {
+        "enabled": true,
+        "mangaId": 2,
+        "chapterId": 2,
+        "label": "causal-legacy-stop",
+        "recorder": "legacy",
+        "export": "stop"
+      },
+      "samples": [
+        {
+          "request": 1,
+          "pid": "13124",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "phasesNs": {
+            "initToList": 126720833,
+            "listToStreamCall": 23968750,
+            "streamCallToDecodeSubmit": 10797917,
+            "decodeSubmitToDraw": 93670833,
+            "initToDraw": 255158333,
+            "touchUpToDraw": 298384896
+          },
+          "chapterId": 2,
+          "page": 0,
+          "external": {
+            "downBootNs": 211360239382830,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700917423,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 28,
+              "sourcePtsUs": 28718860571,
+              "traceBoundsNs": [
+                211360561487423,
+                211360561490985
+              ],
+              "downToCandidateNs": 322106374
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-legacy-stop-1",
+            "readerPerformCreate": {
+              "startBootNs": 211360279227622,
+              "durNs": 16976562,
+              "pid": "13124",
+              "tid": "13124",
+              "downToEndNs": 56821354
+            },
+            "packetFrameValidation": {
+              "frames": 129,
+              "nonConfigPackets": 129,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187",
+          "createToInitNs": 7979167
+        },
+        {
+          "request": 2,
+          "pid": "13124",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "phasesNs": {
+            "initToList": 99997917,
+            "listToStreamCall": 25358854,
+            "streamCallToDecodeSubmit": 10974479,
+            "decodeSubmitToDraw": 79367188,
+            "initToDraw": 215698438,
+            "touchUpToDraw": 250964584
+          },
+          "chapterId": 2,
+          "page": 0,
+          "external": {
+            "downBootNs": 211380428426577,
+            "helperBracketsVideo": true,
+            "helperOffsetBoundsNs": [
+              182641700916901,
+              182641700918985
+            ],
+            "physicalPresentationProven": false,
+            "automaticCandidate": {
+              "frame": 37,
+              "sourcePtsUs": 28739003362,
+              "traceBoundsNs": [
+                211380704277901,
+                211380704281985
+              ],
+              "downToCandidateNs": 275853366
+            },
+            "candidateStatus": "automatic ROI only; human key-endpoint review below; null retained",
+            "rawDirectoryName": "causal-legacy-stop-2",
+            "readerPerformCreate": {
+              "startBootNs": 211380461334389,
+              "durNs": 9783334,
+              "pid": "13124",
+              "tid": "13124",
+              "downToEndNs": 42691146
+            },
+            "packetFrameValidation": {
+              "frames": 139,
+              "nonConfigPackets": 139,
+              "noBFrames": true,
+              "strictPts": true,
+              "snapshotAloneCoversVideo": false
+            }
+          },
+          "pageLabel": "1 / 187",
+          "createToInitNs": 4873958
+        }
+      ]
+    },
+    {
+      "label": "causal-final-speed-internal",
+      "apkSha256": "52be41958a884e24fac9ef05a46cd06d59a1e44344581e604569f879b90d813b",
+      "configuration": {
+        "enabled": true,
+        "mangaId": 2,
+        "chapterId": 2,
+        "label": "causal-final-speed-internal",
+        "recorder": "sparse",
+        "export": "stop"
+      },
+      "samples": [
+        {
+          "request": 1,
+          "pid": "17118",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "eventsMonotonicNs": {
+            "MAIN_TOUCH_UP": 29008201274217,
+            "ACTIVITY_CREATE": 29008231959113,
+            "OPEN_READER_INTENT": 29008238639842,
+            "INIT_IO_ENTER": 29008238703905,
+            "MANGA_READY": 29008239066405,
+            "SOURCE_READY": 29008239154426,
+            "CHAPTER_LIST_BEGIN": 29008239440363,
+            "CHAPTER_LIST_READY": 29008240596092,
+            "CHAPTER_LOAD_BEGIN": 29008240627342,
+            "CHAPTER_IO_ENTER": 29008240702342,
+            "DOWNLOAD_CHECK_BEGIN": 29008240729947,
+            "DOWNLOAD_CHECK_END": 29008269744530,
+            "GET_PAGES_BEGIN": 29008269756509,
+            "CHAPTER_PATH_BEGIN": 29008269759113,
+            "CHAPTER_PATH_END": 29008292092967,
+            "ARCHIVE_OPEN_BEGIN": 29008294067447,
+            "ARCHIVE_OPEN_END": 29008313097655,
+            "ARCHIVE_LIST_BEGIN": 29008313112759,
+            "ARCHIVE_LIST_END": 29008328587238,
+            "PAGE_LIST_READY": 29008328600259,
+            "OPEN_PAGE": 29008347034634,
+            "ENCODED_READ_COMPLETE": 29008351665884,
+            "DECODE_SUBMIT": 29008353566926,
+            "FIRST_DRAW": 29008420961717,
+            "FRAME_COMMIT": 29008446300780
+          },
+          "phasesNs": {
+            "initToList": 89960417,
+            "listToStreamCall": 18434375,
+            "streamCallToDecodeSubmit": 6532292,
+            "decodeSubmitToDraw": 67394791,
+            "initToDraw": 182321875,
+            "touchUpToDraw": 219687500
+          },
+          "chapterId": 2,
+          "page": 0,
+          "pageLabel": "1 / 187"
+        },
+        {
+          "request": 2,
+          "pid": "17118",
+          "sessionBeforeTap": "ABSENT",
+          "sessionBeforeStop": "ABSENT",
+          "eventsMonotonicNs": {
+            "MAIN_TOUCH_UP": 29017880678904,
+            "ACTIVITY_CREATE": 29017908855987,
+            "OPEN_READER_INTENT": 29017914267445,
+            "INIT_IO_ENTER": 29017914279945,
+            "MANGA_READY": 29017914444008,
+            "SOURCE_READY": 29017914492966,
+            "CHAPTER_LIST_BEGIN": 29017914555466,
+            "CHAPTER_LIST_READY": 29017914992445,
+            "CHAPTER_LOAD_BEGIN": 29017914995570,
+            "CHAPTER_IO_ENTER": 29017915023695,
+            "DOWNLOAD_CHECK_BEGIN": 29017915030987,
+            "DOWNLOAD_CHECK_END": 29017946737758,
+            "GET_PAGES_BEGIN": 29017946742445,
+            "CHAPTER_PATH_BEGIN": 29017946743487,
+            "CHAPTER_PATH_END": 29017971341403,
+            "ARCHIVE_OPEN_BEGIN": 29017972844528,
+            "ARCHIVE_OPEN_END": 29017989386716,
+            "ARCHIVE_LIST_BEGIN": 29017989392445,
+            "ARCHIVE_LIST_END": 29018000236195,
+            "PAGE_LIST_READY": 29018000252862,
+            "OPEN_PAGE": 29018017122653,
+            "ENCODED_READ_COMPLETE": 29018023784633,
+            "DECODE_SUBMIT": 29018024450258,
+            "FIRST_DRAW": 29018091842445,
+            "FRAME_COMMIT": 29018110493487
+          },
+          "phasesNs": {
+            "initToList": 85985417,
+            "listToStreamCall": 16869791,
+            "streamCallToDecodeSubmit": 7327605,
+            "decodeSubmitToDraw": 67392187,
+            "initToDraw": 177575000,
+            "touchUpToDraw": 211163541
+          },
+          "chapterId": 2,
+          "page": 0,
+          "pageLabel": "1 / 187"
+        }
+      ]
+    },
+    {
+      "label": "causal-official-n2",
+      "apkSha256": "7a7969564a604bf74608758b540730e53dfe63e11782a718d32380dc9febed58",
+      "officialPreferencesChanged": false,
+      "samples": [
+        {
+          "label": "causal-official-n2-first",
+          "pid": "30197",
+          "downBootNs": 209789451259632,
+          "helperOffsetBoundsNs": [
+            182641700917423,
+            182641700918985
+          ],
+          "helperBracketsVideo": true,
+          "automaticCandidate": {
+            "frame": 31,
+            "sourcePtsUs": 27148075009,
+            "traceBoundsNs": [
+              209789775925423,
+              209789775928985
+            ],
+            "downToCandidateNs": 324667572
+          },
+          "pageLabel": "1 / 187",
+          "readerPerformCreate": {
+            "startBootNs": 209789490841924,
+            "durNs": 7476562,
+            "pid": "30197",
+            "tid": "30197",
+            "downToEndNs": 47058854
+          },
+          "packetFrameValidation": {
+            "frames": 150,
+            "nonConfigPackets": 150,
+            "noBFrames": true,
+            "strictPts": true,
+            "snapshotAloneCoversVideo": false
+          }
+        },
+        {
+          "label": "causal-official-n2-warm",
+          "pid": "30197",
+          "downBootNs": 209811462962233,
+          "helperOffsetBoundsNs": [
+            182641700917943,
+            182641700918985
+          ],
+          "helperBracketsVideo": true,
+          "automaticCandidate": {
+            "frame": 40,
+            "sourcePtsUs": 27170058821,
+            "traceBoundsNs": [
+              209811759737943,
+              209811759740985
+            ],
+            "downToCandidateNs": 296777231
+          },
+          "pageLabel": "1 / 187",
+          "readerPerformCreate": {
+            "startBootNs": 209811500144004,
+            "durNs": 7823958,
+            "pid": "30197",
+            "tid": "30197",
+            "downToEndNs": 45005729
+          },
+          "packetFrameValidation": {
+            "frames": 170,
+            "nonConfigPackets": 170,
+            "noBFrames": true,
+            "strictPts": true,
+            "snapshotAloneCoversVideo": false
+          }
+        }
+      ]
+    },
+    {
+      "label": "causal-official-n3",
+      "apkSha256": "7a7969564a604bf74608758b540730e53dfe63e11782a718d32380dc9febed58",
+      "officialPreferencesChanged": false,
+      "samples": [
+        {
+          "label": "causal-official-n3-first",
+          "pid": "30199",
+          "downBootNs": 209864441050766,
+          "helperOffsetBoundsNs": [
+            182641700917423,
+            182641700918985
+          ],
+          "helperBracketsVideo": true,
+          "automaticCandidate": {
+            "frame": 29,
+            "sourcePtsUs": 27223047435,
+            "traceBoundsNs": [
+              209864748351423,
+              209864748354985
+            ],
+            "downToCandidateNs": 307302438
+          },
+          "pageLabel": "1 / 187",
+          "readerPerformCreate": {
+            "startBootNs": 209864478480975,
+            "durNs": 11634896,
+            "pid": "30199",
+            "tid": "30199",
+            "downToEndNs": 49065105
+          },
+          "packetFrameValidation": {
+            "frames": 155,
+            "nonConfigPackets": 155,
+            "noBFrames": true,
+            "strictPts": true,
+            "snapshotAloneCoversVideo": false
+          }
+        },
+        {
+          "label": "causal-official-n3-warm",
+          "pid": "30199",
+          "downBootNs": 209886664386180,
+          "helperOffsetBoundsNs": [
+            182641700917943,
+            182641700918985
+          ],
+          "helperBracketsVideo": true,
+          "automaticCandidate": {
+            "frame": 38,
+            "sourcePtsUs": 27245268143,
+            "traceBoundsNs": [
+              209886969059943,
+              209886969062985
+            ],
+            "downToCandidateNs": 304675284
+          },
+          "pageLabel": "1 / 187",
+          "readerPerformCreate": {
+            "startBootNs": 209886699363263,
+            "durNs": 7544792,
+            "pid": "30199",
+            "tid": "30199",
+            "downToEndNs": 42521875
+          },
+          "packetFrameValidation": {
+            "frames": 165,
+            "nonConfigPackets": 165,
+            "noBFrames": true,
+            "strictPts": true,
+            "snapshotAloneCoversVideo": false
+          }
+        }
+      ]
+    }
+  ],
+  "harnessFinalHashes": {
+    "tablet_run.py": "7806fd0c5f7ed484254b30c6d5d26481235b1308e20fbce6533380d6e18f68d9",
+    "capture-raw.py": "0dcf3a16b034b4e93b5422ceabc1bef7faa1cf99562c88f1326d2fc07cc83028",
+    "raw_video.py": "40dd8686ae82fef8815176ddf39b08fdc43842958ba644db84d88fabf5a484c7",
+    "packet_clock.py": "f6626d30d62806ec7ac12b490b3feb23dba0c103fd78c7cb4d1313abf8c79c2a",
+    "analyze_raw.py": "81526cb93a4467671dfa9d4c9828e3ca7c1c0937f0e59eb768e4f0dae78aece7",
+    "official_pair.py": "b53201824da1e09669704f03be5b77e39468547235281b5ad78698f38fc8edf3",
+    "run_art.py": "129be2e7e50ead9da289532c7c76c895991ef5dce1bb305f28a0ef796d45acae"
+  },
+  "initialNoCapturePhase1Ns": [
+    {
+      "file": "probe-1.json",
+      "initToList": 113140104,
+      "initToChapterList": 3010938,
+      "downloadCheck": 31988021,
+      "secondPath": 24272396,
+      "archiveOpen": 22920312,
+      "archiveList": 25015625
+    },
+    {
+      "file": "probe-2.json",
+      "initToList": 96882292,
+      "initToChapterList": 2284896,
+      "downloadCheck": 30984896,
+      "secondPath": 32291667,
+      "archiveOpen": 18314063,
+      "archiveList": 10027083
+    },
+    {
+      "file": "probe-3.json",
+      "initToList": 95593229,
+      "initToChapterList": 1893229,
+      "downloadCheck": 30439063,
+      "secondPath": 27177083,
+      "archiveOpen": 23109895,
+      "archiveList": 10606771
+    },
+    {
+      "file": "probe-4.json",
+      "initToList": 98990625,
+      "initToChapterList": 1584375,
+      "downloadCheck": 35173958,
+      "secondPath": 27702604,
+      "archiveOpen": 20649479,
+      "archiveList": 11795834
+    }
+  ]
+}
