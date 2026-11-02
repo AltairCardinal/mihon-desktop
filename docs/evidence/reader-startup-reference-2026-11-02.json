@@ -1,0 +1,206 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-02",
+  "kind": "historical_reference_not_candidate_acceptance",
+  "application": "app.mihon",
+  "versionName": "0.19.9",
+  "versionCode": 22,
+  "apkSha256": "7a7969564a604bf74608758b540730e53dfe63e11782a718d32380dc9febed58",
+  "device": "PCE-W30",
+  "androidApi": 31,
+  "chapterPageCount": 187,
+  "openedPage": 1,
+  "videoSystemClockAligned": false,
+  "captureOverheadCalibrated": false,
+  "sourceSummarySha256": "a86637387ac4470baa7c3ae2f91ef7b403cf94c3bf2d57a33f3ce26a32bb95de",
+  "samples": [
+    {
+      "label": "cold1_verified",
+      "inputDeliverEvents": [
+        {
+          "ts": "165070297996777",
+          "dur": "2479167",
+          "name": "deliverInputEvent src=0x1002 eventTimeNano=16894226000000 id=0xd4aef40e",
+          "tid": "25230",
+          "process_name": "app.mihon"
+        },
+        {
+          "ts": "165070301694173",
+          "dur": "17963542",
+          "name": "deliverInputEvent src=0x1002 eventTimeNano=16894226000000 id=0xf643d3f2",
+          "tid": "25230",
+          "process_name": "app.mihon"
+        }
+      ],
+      "activityStart": {
+        "ts": "165070319153027",
+        "dur": "432639584",
+        "name": "StartActivity:app.mihon/eu.kanade.tachiyomi.ui.reader.ReaderActivity",
+        "tid": "[NULL]",
+        "process_name": "[NULL]"
+      },
+      "performCreate": {
+        "ts": "165070336219694",
+        "dur": "12348438",
+        "name": "performCreate:eu.kanade.tachiyomi.ui.reader.ReaderActivity",
+        "tid": "25230",
+        "process_name": "app.mihon"
+      },
+      "firstReaderTxSurfaceFrame": {
+        "ts": "165070335803299",
+        "dur": "41863270",
+        "layer_name": "TX - app.mihon/eu.kanade.tachiyomi.ui.reader.ReaderActivity#2970",
+        "present_type": "Late Present",
+        "jank_type": "App Deadline Missed"
+      },
+      "derivedMillis": {
+        "inputDeliverToActivityStart": 21.15625,
+        "inputDeliverToPerformCreate": 38.222917,
+        "activitySystemSpan": 432.639584,
+        "inputDeliverToActivitySpanEnd": 453.795834,
+        "inputDeliverToFirstReaderTxFrameEnd": 79.669792
+      },
+      "videoPtsSeconds": {
+        "lastResidualDetails": 1.591,
+        "nearBlackFrames": [
+          1.607,
+          1.623
+        ],
+        "firstComic": 1.642
+      },
+      "nearBlackBoundsMs": [
+        16,
+        51
+      ],
+      "sourceSha256": {
+        "systemTrace": "f0395014df00ef22fc1751e6206f4b1c3a513b50f67a50c3686f478091ff55c2",
+        "video": "932118cebc13ed5dec5ecef179ade3fa4a091ab1b3147d24328e485afc3de982"
+      }
+    },
+    {
+      "label": "warm1",
+      "inputDeliverEvents": [
+        {
+          "ts": "165120916897811",
+          "dur": "1471875",
+          "name": "deliverInputEvent src=0x1002 eventTimeNano=16944845000000 id=0xc6161868",
+          "tid": "25230",
+          "process_name": "app.mihon"
+        },
+        {
+          "ts": "165120920543124",
+          "dur": "17579687",
+          "name": "deliverInputEvent src=0x1002 eventTimeNano=16944845000000 id=0xd788b956",
+          "tid": "25230",
+          "process_name": "app.mihon"
+        }
+      ],
+      "activityStart": {
+        "ts": "165120937671770",
+        "dur": "421138541",
+        "name": "StartActivity:app.mihon/eu.kanade.tachiyomi.ui.reader.ReaderActivity",
+        "tid": "[NULL]",
+        "process_name": "[NULL]"
+      },
+      "performCreate": {
+        "ts": "165120951887916",
+        "dur": "7039062",
+        "name": "performCreate:eu.kanade.tachiyomi.ui.reader.ReaderActivity",
+        "tid": "25230",
+        "process_name": "app.mihon"
+      },
+      "firstReaderTxSurfaceFrame": {
+        "ts": "165120959328540",
+        "dur": "31030730",
+        "layer_name": "TX - app.mihon/eu.kanade.tachiyomi.ui.reader.ReaderActivity#2988",
+        "present_type": "Late Present",
+        "jank_type": "App Deadline Missed"
+      },
+      "derivedMillis": {
+        "inputDeliverToActivityStart": 20.773959,
+        "inputDeliverToPerformCreate": 34.990105,
+        "activitySystemSpan": 421.138541,
+        "inputDeliverToActivitySpanEnd": 441.9125,
+        "inputDeliverToFirstReaderTxFrameEnd": 73.461459
+      },
+      "videoPtsSeconds": {
+        "lastResidualDetails": 1.614,
+        "nearBlackFrames": [
+          1.631,
+          1.649
+        ],
+        "firstComic": 1.668
+      },
+      "nearBlackBoundsMs": [
+        18,
+        54
+      ],
+      "sourceSha256": {
+        "systemTrace": "07245d3c54b728d98d96d62b4b37ee4e9b1b4c022b63a91e4dafc0bd6563a49b",
+        "video": "0f89e8f7edc92890c4673278eccfb1052d691a3cc80c340a3b0558a4cfc990dc"
+      }
+    },
+    {
+      "label": "cold2",
+      "inputDeliverEvents": [
+        {
+          "ts": "165206304633736",
+          "dur": "2886979",
+          "name": "deliverInputEvent src=0x1002 eventTimeNano=17030234000000 id=0xfd9aefa2",
+          "tid": "17996",
+          "process_name": "app.mihon"
+        },
+        {
+          "ts": "165206308656653",
+          "dur": "18515104",
+          "name": "deliverInputEvent src=0x1002 eventTimeNano=17030234000000 id=0xf49d193f",
+          "tid": "17996",
+          "process_name": "app.mihon"
+        }
+      ],
+      "activityStart": {
+        "ts": "165206326445194",
+        "dur": "428455208",
+        "name": "StartActivity:app.mihon/eu.kanade.tachiyomi.ui.reader.ReaderActivity",
+        "tid": "[NULL]",
+        "process_name": "[NULL]"
+      },
+      "performCreate": {
+        "ts": "165206341795194",
+        "dur": "12047396",
+        "name": "performCreate:eu.kanade.tachiyomi.ui.reader.ReaderActivity",
+        "tid": "17996",
+        "process_name": "app.mihon"
+      },
+      "firstReaderTxSurfaceFrame": {
+        "ts": "165206342956081",
+        "dur": "43959946",
+        "layer_name": "TX - app.mihon/eu.kanade.tachiyomi.ui.reader.ReaderActivity#3030",
+        "present_type": "Late Present",
+        "jank_type": "App Deadline Missed"
+      },
+      "derivedMillis": {
+        "inputDeliverToActivityStart": 21.811458,
+        "inputDeliverToPerformCreate": 37.161458,
+        "activitySystemSpan": 428.455208,
+        "inputDeliverToActivitySpanEnd": 450.266666,
+        "inputDeliverToFirstReaderTxFrameEnd": 82.282291
+      },
+      "videoPtsSeconds": {
+        "lastResidualDetails": 1.57,
+        "nearBlackFrames": [
+          1.586
+        ],
+        "firstComic": 1.603
+      },
+      "nearBlackBoundsMs": [
+        0,
+        33
+      ],
+      "sourceSha256": {
+        "systemTrace": "a8b9fdf642d5474f41bbeb2c6e96f75b1c206ac8c1c1a9ba37d44dfd09ee32e0",
+        "video": "978c4aa943cab4ef8d723426431e8df29b15bd73eb2c4e922aee5c24dc749a2d"
+      }
+    }
+  ]
+}
