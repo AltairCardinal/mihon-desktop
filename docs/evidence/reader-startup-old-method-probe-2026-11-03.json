@@ -1,0 +1,348 @@
+{
+  "date": "2026-11-03",
+  "protocol": "Original 2026-11-02 MKV + Perfetto independent clocks; original four requested table metrics",
+  "device": {
+    "serial": "192.168.50.51:5555",
+    "model": "PCE-W30",
+    "android": "12",
+    "api": 31,
+    "display": [
+      1920,
+      2880
+    ]
+  },
+  "benchmark": {
+    "package": "app.mihon.benchmark",
+    "versionCode": 22,
+    "apkSha256": "52be41958a884e24fac9ef05a46cd06d59a1e44344581e604569f879b90d813b",
+    "sourceCommit": "ccb733763184ef01e4c7120f4b5941f7783c2b54",
+    "sourceEvidenceCommit": "46d83bba23080dcff3077b534d81a9e0aa135f52",
+    "recorder": "sparse",
+    "export": "stop",
+    "landscapeZoom": false,
+    "showReadingMode": false,
+    "currentActualCompilerFilter": "UNKNOWN",
+    "historicalLastCompilerRequest": "speed Success in previous task; not repeated here"
+  },
+  "content": {
+    "bytes": 41380343,
+    "images": 187,
+    "sha256": "b3d7c4e56e58dfee6d9da7d5afafe12b267ccc6d50dd48cd3660456b8d2b4677",
+    "page": 0
+  },
+  "capture": {
+    "scrcpy": "5.0.1 original official portable tool",
+    "codec": "hardware AVC",
+    "maxFps": 60,
+    "bitrate": 12000000,
+    "mkvRecordingSeconds": 10,
+    "perfettoDurationMs": 12000,
+    "perfettoBufferKiB": 32768,
+    "videoSystemAbsoluteClockMapping": "NOT ESTABLISHED",
+    "newRawPtsHelperProtocolUsed": false
+  },
+  "oldOfficialReference": {
+    "package": "app.mihon",
+    "apkSha256": "7a7969564a604bf74608758b540730e53dfe63e11782a718d32380dc9febed58",
+    "historicalNotContemporaneous": true,
+    "order": [
+      "first1",
+      "warm",
+      "first2"
+    ],
+    "inputToStartActivityMs": [
+      21.156,
+      20.774,
+      21.811
+    ],
+    "inputToPerformCreateMs": [
+      38.223,
+      34.99,
+      37.161
+    ],
+    "inputToFirstReaderTXEndMs": [
+      79.67,
+      73.461,
+      82.282
+    ],
+    "nearBlackBoundsMs": [
+      [
+        16,
+        51
+      ],
+      [
+        18,
+        54
+      ],
+      [
+        0,
+        33
+      ]
+    ]
+  },
+  "samples": [
+    {
+      "label": "old-table-p1-1",
+      "kind": "first1",
+      "pid": 20518,
+      "mainTid": 20518,
+      "request": 1,
+      "mangaId": 2,
+      "chapterId": 2,
+      "page": 0,
+      "uiPageLabel": "1 / 187",
+      "probeEnabled": true,
+      "rawSystemNs": {
+        "input": {
+          "ts": 239115426503045,
+          "dur": 4996875
+        },
+        "startActivity": {
+          "ts": 239115453123358,
+          "dur": 436465625
+        },
+        "performCreate": {
+          "ts": 239115469831170,
+          "dur": 15688021
+        },
+        "firstReaderTX": {
+          "ts": 239115473751483,
+          "dur": 41566667,
+          "layer": "TX - app.mihon.benchmark/eu.kanade.tachiyomi.ui.reader.ReaderActivity#6056"
+        }
+      },
+      "systemMs": {
+        "inputToStartActivity": 26.620313,
+        "inputToPerformCreate": 43.328125,
+        "inputToFirstReaderTXEnd": 88.815105
+      },
+      "video": {
+        "ptsTimeBase": "1/1000",
+        "frames": 160,
+        "resampled": false,
+        "bounds": {
+          "lastResidualDetail": {
+            "frame": 26,
+            "pts": "1.656000",
+            "ptsMs": 1656
+          },
+          "firstNearBlack": {
+            "frame": 27,
+            "pts": "1.674000",
+            "ptsMs": 1674
+          },
+          "lastNearBlack": {
+            "frame": 28,
+            "pts": "1.693000",
+            "ptsMs": 1693
+          },
+          "firstTargetComic": {
+            "frame": 29,
+            "pts": "1.710000",
+            "ptsMs": 1710
+          }
+        },
+        "nearBlackBoundsMs": [
+          19,
+          54
+        ],
+        "lowerFormula": "lastNearBlackPTS-firstNearBlackPTS",
+        "upperFormula": "firstTargetComicPTS-lastResidualDetailPTS",
+        "classification": "Manual old-report near-black semantics; faint residual/codec noise allowed; no fixed numerical ROI threshold claimed"
+      },
+      "captureMetadataSha256": "6fc0c9cbfc3db0f1ecbd90b09ba57e7cd15de7980ab46adf50f7604cb8e64e27",
+      "systemRawOutputSha256": "9909c4539d10b594e6ca01f1ae53e51490408cbb099ff5db1eaf8bdcb0eec4db",
+      "videoSha256": "ceae673730adcc7321bc3b591c6d113a8157e93f460dd2e42eb83ab2b60bfc49",
+      "framePtsSha256": "5f511e4fe35a7cdb35724b05179dc07b4d2e88bcaaae756a9bb408a7964f6769"
+    },
+    {
+      "label": "old-table-p1-2",
+      "kind": "warm",
+      "pid": 20518,
+      "mainTid": 20518,
+      "request": 2,
+      "mangaId": 2,
+      "chapterId": 2,
+      "page": 0,
+      "uiPageLabel": "1 / 187",
+      "probeEnabled": true,
+      "rawSystemNs": {
+        "input": {
+          "ts": 239136783293146,
+          "dur": 2310938
+        },
+        "startActivity": {
+          "ts": 239136805995230,
+          "dur": 417391666
+        },
+        "performCreate": {
+          "ts": 239136821894709,
+          "dur": 5885937
+        },
+        "firstReaderTX": {
+          "ts": 239136824071270,
+          "dur": 32118751,
+          "layer": "TX - app.mihon.benchmark/eu.kanade.tachiyomi.ui.reader.ReaderActivity#6074"
+        }
+      },
+      "systemMs": {
+        "inputToStartActivity": 22.702084,
+        "inputToPerformCreate": 38.601563,
+        "inputToFirstReaderTXEnd": 72.896875
+      },
+      "video": {
+        "ptsTimeBase": "1/1000",
+        "frames": 166,
+        "resampled": false,
+        "bounds": {
+          "lastResidualDetail": {
+            "frame": 33,
+            "pts": "1.631000",
+            "ptsMs": 1631
+          },
+          "firstNearBlack": {
+            "frame": 34,
+            "pts": "1.648000",
+            "ptsMs": 1648
+          },
+          "lastNearBlack": {
+            "frame": 34,
+            "pts": "1.648000",
+            "ptsMs": 1648
+          },
+          "firstTargetComic": {
+            "frame": 35,
+            "pts": "1.667000",
+            "ptsMs": 1667
+          }
+        },
+        "nearBlackBoundsMs": [
+          0,
+          36
+        ],
+        "lowerFormula": "lastNearBlackPTS-firstNearBlackPTS",
+        "upperFormula": "firstTargetComicPTS-lastResidualDetailPTS",
+        "classification": "Manual old-report near-black semantics; faint residual/codec noise allowed; no fixed numerical ROI threshold claimed"
+      },
+      "captureMetadataSha256": "a4106d6a61d8efacd471700e30ecf81cbf9738f07a67d00ae96b2486b306b52f",
+      "systemRawOutputSha256": "52aa3b94db7f97ce83055ac3ac6512dcfab001dd1a9fb1c34b1868f49f9ee961",
+      "videoSha256": "c4184e86efe3fae9d661f4fdb74361a1a63404690aa2a673fd7853c7d41a7d19",
+      "framePtsSha256": "2433114c550538fd35d00e1a0997cc99bf2c8f912d39eeb6fc06ad16d069d738"
+    },
+    {
+      "label": "old-table-p2-1",
+      "kind": "first2",
+      "pid": 20522,
+      "mainTid": 20522,
+      "request": 1,
+      "mangaId": 2,
+      "chapterId": 2,
+      "page": 0,
+      "uiPageLabel": "1 / 187",
+      "probeEnabled": true,
+      "rawSystemNs": {
+        "input": {
+          "ts": 239168029984287,
+          "dur": 3757292
+        },
+        "startActivity": {
+          "ts": 239168053998871,
+          "dur": 430468229
+        },
+        "performCreate": {
+          "ts": 239168069885329,
+          "dur": 15155729
+        },
+        "firstReaderTX": {
+          "ts": 239168068537044,
+          "dur": 48786306,
+          "layer": "TX - app.mihon.benchmark/eu.kanade.tachiyomi.ui.reader.ReaderActivity#6114"
+        }
+      },
+      "systemMs": {
+        "inputToStartActivity": 24.014584,
+        "inputToPerformCreate": 39.901042,
+        "inputToFirstReaderTXEnd": 87.339063
+      },
+      "video": {
+        "ptsTimeBase": "1/1000",
+        "frames": 162,
+        "resampled": false,
+        "bounds": {
+          "lastResidualDetail": {
+            "frame": 30,
+            "pts": "1.656000",
+            "ptsMs": 1656
+          },
+          "firstNearBlack": {
+            "frame": 31,
+            "pts": "1.677000",
+            "ptsMs": 1677
+          },
+          "lastNearBlack": {
+            "frame": 31,
+            "pts": "1.677000",
+            "ptsMs": 1677
+          },
+          "firstTargetComic": {
+            "frame": 32,
+            "pts": "1.692000",
+            "ptsMs": 1692
+          }
+        },
+        "nearBlackBoundsMs": [
+          0,
+          36
+        ],
+        "lowerFormula": "lastNearBlackPTS-firstNearBlackPTS",
+        "upperFormula": "firstTargetComicPTS-lastResidualDetailPTS",
+        "classification": "Manual old-report near-black semantics; faint residual/codec noise allowed; no fixed numerical ROI threshold claimed"
+      },
+      "captureMetadataSha256": "532ad6637c2ec697c7cd2167aa201a012af8b5dd30e9ea4657a52f206043066d",
+      "systemRawOutputSha256": "7731d33a5978800fc9bed4e8d9aca2d409914ee4cca72b063d9b52b0ef3d36e2",
+      "videoSha256": "7e12e167eed6c70b29d43d2e1668dd4365219544e70c90ff4c17b3f61c0245a4",
+      "framePtsSha256": "21aa98f0a5e07b18ef44fee477537d19c2ad547526442e5af2a968c543d18829"
+    }
+  ],
+  "localRawRoot": "D:\\Shell\\Github\\mihon\\.test-tmp\\reader-old-table-probe-20261103",
+  "scriptHashes": {
+    "oldCollector": "e300c75a0eb9a2f11b32af317e2df05623132117b16a6fc2cf99715c438c3f18",
+    "adaptedCollector": "d22816a468dee4873df649c32541f503b02cf18c8bf220b430fc6b279a9a1840",
+    "normalUiHarness": "8db4b2a00572991c5a709107e706b1926dd950260e49cf6af954606a1c367dc9"
+  },
+  "validation": {
+    "syntax": "PASS",
+    "captures": "3/3 OK",
+    "nativePts": "Strictly increasing, original MKV frames, no resampling",
+    "systemMetrics": "independent selected-package/PID/TX check",
+    "nearBlack": "native keyframes and contact sheet independently reviewed",
+    "productTestsRun": false,
+    "buildInstallCompileThisRound": false,
+    "officialApkOrPreferencesChanged": false,
+    "gitDiffCheck": "PASS"
+  },
+  "cleanup": {
+    "benchmarkPid": "",
+    "helperProcesses": "",
+    "remoteFileCleanup": [
+      {
+        "id": "mihon-original-fa15fb774b21",
+        "output": ""
+      },
+      {
+        "id": "mihon-original-116c48b4c395",
+        "output": ""
+      },
+      {
+        "id": "mihon-original-076c4c163060",
+        "output": ""
+      }
+    ]
+  },
+  "limitations": [
+    "Reader TX transaction frame is not first comic or FIRST_DRAW.",
+    "Near-black bounds are sampled bounds, not exact pure-black duration.",
+    "Old official and new benchmark are not contemporaneous or identical app data/runtime.",
+    "No input-to-comic absolute time is formed from unaligned MKV/trace clocks."
+  ]
+}
