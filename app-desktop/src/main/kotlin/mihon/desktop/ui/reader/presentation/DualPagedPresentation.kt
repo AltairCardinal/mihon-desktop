@@ -5,6 +5,8 @@ import mihon.domain.reader.PageSplitHalf
 import mihon.domain.reader.PixelBounds
 import mihon.domain.reader.ReaderChapterBoundary
 import mihon.domain.reader.ReaderDirection
+import mihon.domain.reader.ReaderDualPageFrameId
+import mihon.domain.reader.ReaderDualPagePresentationFrame
 import mihon.domain.reader.ReaderDualPageUnit
 import mihon.domain.reader.ReaderPortraitSingleSlot
 import mihon.domain.reader.ReaderTransitionDirection
@@ -28,7 +30,9 @@ internal object DualPagedPresentation : ReaderPresentationStrategy {
             "Dual-page presentation requires a horizontal direction"
         }
         val pages = request.chapter.pages
-        val groups = requireNotNull(request.dualPageUnits) { "Dual presentation requires shared owner units" }
+        val groups = request.dualPageFrames ?: requireNotNull(request.dualPageUnits) {
+            "Dual presentation requires shared owner units"
+        }.map { ReaderDualPagePresentationFrame(it, null) }
         return ReaderPresentationSnapshot(
             mode = mode,
             displayUnits = buildList {
@@ -38,19 +42,22 @@ internal object DualPagedPresentation : ReaderPresentationStrategy {
                 val pagesById = pages.associateBy(ReaderPageSession::id)
                 addAll(
                     groups.map { group ->
-                        request.toDisplayUnit(group, pagesById)
+                        request.toDisplayUnit(group.unit, pagesById, group.frameId)
                     },
                 )
                 if (readerChapterBoundary(request.hasNextChapter) == ReaderChapterBoundary.TERMINAL) {
                     add(chapterTransitionDisplayUnit(mode, ReaderTransitionDirection.NEXT))
                 }
             },
+            targetFrameId = request.dualPageTargetFrameId,
+            targetPageId = request.dualPageTargetPageId,
         )
     }
 
     private fun ReaderPresentationRequest.toDisplayUnit(
         unit: ReaderDualPageUnit,
         pagesById: Map<ReaderPageId, ReaderPageSession>,
+        frameId: ReaderDualPageFrameId?,
     ): DisplayUnit {
         val pages = unit.pageIds.map(pagesById::getValue)
         val slots = when {
@@ -63,7 +70,7 @@ internal object DualPagedPresentation : ReaderPresentationStrategy {
             else -> singlePageSlots(pages.single(), unit.slots.single().position)
         }
         return DisplayUnit(
-            id = DisplayUnitId(mode, slots.map(DisplaySlot::id)),
+            id = DisplayUnitId(mode, slots.map(DisplaySlot::id), unit.id.takeIf { dualPageFrames != null }, frameId),
             slots = slots,
         )
     }
@@ -140,4 +147,5 @@ internal fun ReaderPresentationSnapshot.firstDualPageIndex(displayUnitIndex: Int
         ?: error("Dual display unit $displayUnitIndex has no logical page")
 
 internal fun ReaderPresentationSnapshot.dualDisplayUnitIndexForSourcePage(sourcePageIndex: Int): Int =
-    displayUnits.indexOfFirst { unit -> unit.slots.any { it.page?.id?.sourcePageIndex == sourcePageIndex } }
+    targetPageId?.takeIf { it.sourcePageIndex == sourcePageIndex }?.let { restoreDisplayUnitIndex(it, null) }
+        ?: displayUnits.indexOfFirst { unit -> unit.slots.any { it.page?.id?.sourcePageIndex == sourcePageIndex } }

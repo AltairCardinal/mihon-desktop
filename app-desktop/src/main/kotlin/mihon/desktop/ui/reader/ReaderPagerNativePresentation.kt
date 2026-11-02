@@ -13,6 +13,7 @@ import androidx.compose.ui.semantics.SemanticsPropertyKey
 import mihon.desktop.ui.reader.presentation.DisplaySlotId
 import mihon.desktop.ui.reader.presentation.DisplayUnit
 import mihon.desktop.ui.reader.presentation.DisplayUnitId
+import mihon.desktop.ui.reader.presentation.ReaderPresentationMode
 import mihon.desktop.ui.reader.presentation.VisiblePageSet
 import mihon.domain.reader.ReaderDualPageLocationIntent
 import mihon.domain.reader.ReaderDualPageViewportTicket
@@ -67,9 +68,19 @@ internal data class ReaderPagerNavigationIntent(
         index: Int,
         unit: DisplayUnitId,
         currentLocation: ReaderDualPageLocationIntent? = null,
-    ): Boolean =
-        logicalLocation == currentLocation &&
-            units.getOrNull(index) == unit && (target?.let { it == index } ?: (index != origin))
+    ): Boolean {
+        val captured = units.getOrNull(index) ?: return false
+        val sameUnit = if (captured.frameId != null) {
+            captured.frameId == unit.frameId
+        } else {
+            captured == unit || (
+                captured.sharedUnitId != null && captured.sharedUnitId == unit.sharedUnitId &&
+                    captured.slots == unit.slots
+                )
+        }
+        return logicalLocation == currentLocation && sameUnit &&
+            (target?.let { it == index } ?: (dragReleased && index != origin))
+    }
 
     fun finished(index: Int): Boolean = target?.let { it == index } ?: dragReleased
 }
@@ -91,7 +102,7 @@ internal class ReaderPagerNativePresentation(
     private var selected = true
     private var userNavigation = false
     private var navigationLocation: ReaderDualPageLocationIntent? = binding?.logicalLocation
-    private var exposed = true
+    private var exposed = unit.id.sharedUnitId == null
     private var reportedPages: Set<mihon.domain.reader.session.ReaderPageId> = emptySet()
     val frameId get() = ticket?.frameId
     private val observationMountId = if (mihon.desktop.test.state.applicationState.testMode) {
@@ -165,6 +176,7 @@ internal class ReaderPagerNativePresentation(
         this.visible = visible
         this.binding = binding
         rendered.retainAll(expected)
+        releaseHiddenOutgoing()
     }
 
     fun select(
@@ -203,7 +215,14 @@ internal class ReaderPagerNativePresentation(
         val previous = ticket
         val next = binding?.takeIf { it.currentGeometry }?.let {
             if (it.model.registerPagerViewportDemand(demandToken, visible, logicalLocation)) demandModel = it.model
-            it.model.beginPagerViewport(visible, userNavigation, logicalLocation, selected, demandToken)
+            it.model.beginPagerViewport(
+                visible,
+                userNavigation,
+                logicalLocation,
+                selected,
+                demandToken,
+                canDraw = exposed,
+            )
         }
         if (next == null && previous?.let { binding?.model?.isCurrentDualViewport(it) } == true) return
         ticket = next
@@ -225,10 +244,23 @@ internal class ReaderPagerNativePresentation(
         if (!value) {
             demandModel?.releasePagerViewportDemand(demandToken)
             demandModel = null
-            ticket?.let { binding?.model?.releaseDualViewport(it) }
-            ticket = null
-            rendered.clear()
+            releaseHiddenOutgoing()
+        } else if (active) {
+            begin(userNavigation, selected, navigationLocation)
         }
+    }
+
+    private fun releaseHiddenOutgoing() {
+        if (exposed) return
+        val previous = ticket ?: return
+        if (binding?.currentGeometry == true &&
+            previous.frameId == binding?.model?.state?.value?.dualPageTargetFrameId
+        ) {
+            return
+        }
+        ticket = null
+        binding?.model?.releaseDualViewport(previous)
+        rendered.clear()
     }
 
     fun setIdle(value: Boolean) {
@@ -281,7 +313,7 @@ internal class ReaderPagerNativePresentation(
     }
 
     private fun reportIfReady() {
-        if (!active || !selected || !idle || rendered.isEmpty()) return
+        if (!active || !exposed || !selected || !idle || rendered.isEmpty()) return
         if (binding != null) {
             val original = ticket ?: return
             val actual = rendered.mapNotNullTo(linkedSetOf()) { it.pageId }
@@ -310,7 +342,14 @@ internal fun rememberPagerNativePresentation(
     // A pending partner's replacement must retain the mounted frame. Each preparation validates
     // its actual content identity, while binding changes revoke previous viewport capabilities.
     val anchor = unit.slots.mapNotNull { it.page?.id }.minByOrNull { it.sourcePageIndex }
-    val presenter = remember(unit.id.mode, anchor ?: unit.id, binding?.epoch) {
+    val mountKey = if (unit.id.mode ==
+        ReaderPresentationMode.DUAL_PAGED
+    ) {
+        unit.id.frameId ?: unit.id
+    } else {
+        anchor ?: unit.id
+    }
+    val presenter = remember(unit.id.mode, mountKey, binding?.epoch) {
         ReaderPagerNativePresentation(unit, visible, binding, onVisiblePagesChanged)
     }
     DisposableEffect(presenter) {

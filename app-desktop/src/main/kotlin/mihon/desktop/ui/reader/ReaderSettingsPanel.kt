@@ -95,6 +95,7 @@ fun ReaderSettingsPanel(
     onZoomChange: (ZoomState) -> Unit,
     onDismiss: () -> Unit,
     feedback: String? = null,
+    pairingRecovery: @Composable () -> Unit = {},
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf(
@@ -150,6 +151,7 @@ fun ReaderSettingsPanel(
                             onSkipFilteredChaptersChange = onSkipFilteredChaptersChange,
                             onSkipDuplicateChaptersChange = onSkipDuplicateChaptersChange,
                             onZoomChange = onZoomChange,
+                            pairingRecovery = pairingRecovery,
                         )
                         1 -> DisplayTab(
                             cropBordersPager = cropBordersPager,
@@ -206,6 +208,7 @@ internal fun GeneralTab(
     onSkipFilteredChaptersChange: (Boolean) -> Unit = {},
     onSkipDuplicateChaptersChange: (Boolean) -> Unit = {},
     onZoomChange: (ZoomState) -> Unit,
+    pairingRecovery: @Composable () -> Unit = {},
 ) {
     // Reading mode
     SettingsSection(MR.strings.desktop_ui_reading_mode.localized()) {
@@ -234,6 +237,7 @@ internal fun GeneralTab(
             )
             Text(MR.strings.desktop_reader_default_summary.localized(), style = MaterialTheme.typography.bodySmall)
         }
+        pairingRecovery()
     }
 
     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -336,7 +340,6 @@ internal fun GeneralTab(
             }
         }
     }
-
 }
 
 @Composable

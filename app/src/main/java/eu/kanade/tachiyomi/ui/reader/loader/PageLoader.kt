@@ -8,6 +8,12 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 import mihon.domain.reader.ReaderDualPageFactReadPermit
 
+/** The current viewer owns one bounded ordinary viewport, independently of pixel/reading leases. */
+internal class ReaderNormalViewportLease internal constructor(
+    internal val loader: PageLoader,
+    internal val sequence: Long,
+)
+
 /**
  * A loader used to load pages into the reader. Any open resources must be cleaned up when the
  * method [recycle] is called.
@@ -51,6 +57,18 @@ abstract class PageLoader {
      * Holder binding must not be used as a substitute for this position event.
      */
     open fun onPageSelected(page: ReaderPage) {}
+
+    internal open fun acquireNormalViewport(): ReaderNormalViewportLease? = null
+
+    internal open fun updateNormalViewport(
+        lease: ReaderNormalViewportLease,
+        frameId: mihon.domain.reader.ReaderDualPageFrameId,
+        updateSequence: Long,
+        anchor: ReaderPage,
+        pages: List<ReaderPage>,
+    ): Boolean = false
+
+    internal open fun releaseNormalViewport(lease: ReaderNormalViewportLease) {}
 
     /**
      * Retries the given [page] in case it failed to load. This method only makes sense when an

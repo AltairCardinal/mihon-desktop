@@ -1,7 +1,11 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.pager
 
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
+import mihon.domain.reader.ReaderDualPageFrameId
+import mihon.domain.reader.ReaderDualPageSlot
+import mihon.domain.reader.ReaderDualPageUnitId
 import mihon.domain.reader.ReaderPortraitSingleSlot
+import mihon.domain.reader.SharedDualPageSession
 
 /**
  * A display unit in dual-page mode — represents what is shown for a single ViewPager position.
@@ -12,15 +16,18 @@ import mihon.domain.reader.ReaderPortraitSingleSlot
  *   Logical navigation remains in source order independently of physical direction.
  */
 sealed class DisplayPage {
+    abstract val frameId: ReaderDualPageFrameId?
 
     data class Single(
         val page: ReaderPage,
         val slot: ReaderPortraitSingleSlot = ReaderPortraitSingleSlot.FULL,
+        override val frameId: ReaderDualPageFrameId? = null,
     ) : DisplayPage()
 
     data class Double(
         val rightPage: ReaderPage,
         val leftPage: ReaderPage,
+        override val frameId: ReaderDualPageFrameId? = null,
     ) : DisplayPage()
 
     /** The page used for navigation, preloading, and restoring this display unit. */
@@ -41,4 +48,23 @@ sealed class DisplayPage {
 internal fun DisplayPage.containsPage(page: ReaderPage?): Boolean = when (this) {
     is DisplayPage.Single -> this.page === page
     is DisplayPage.Double -> rightPage === page || leftPage === page
+}
+
+/** Physical adapter identity only; all grouping and navigation remain with the shared owner. */
+internal fun DisplayPage.sharedUnitId(owner: SharedDualPageSession): ReaderDualPageUnitId? {
+    val slots = visiblePages.map { page ->
+        val id = owner.identity.pageIds.getOrNull(page.index) ?: return null
+        val position = when (this) {
+            is DisplayPage.Single -> slot
+            is DisplayPage.Double -> if (page ===
+                rightPage
+            ) {
+                ReaderPortraitSingleSlot.RIGHT
+            } else {
+                ReaderPortraitSingleSlot.LEFT
+            }
+        }
+        ReaderDualPageSlot(id, position)
+    }
+    return ReaderDualPageUnitId(slots)
 }

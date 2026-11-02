@@ -9,6 +9,15 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## November 2, 2026 — Windows page-image retry
+
+**Accepted candidate documentation · no public product release**
+
+- Retrying the failed image in the accepted online two-page case restores its pixels and clears the error, preserving the normal partner and current page. Image retry is separate from saved-pairing recovery.
+- Accepted Windows preview: `0.11.24.6.5007f5a`; source `5007f5a83d`, reader fix `a623b48880`, and online test-source address-refresh fix `63cef8f1cc`. This does not extend manual acceptance to Android or macOS, guarantee unavailable sources will recover, or publish a product release.
+
+Acceptance basis: the project owner confirmed image recovery, error removal, partner stability and unchanged page on November 2, 2026, in a private conversation.
+
 ## November 1, 2026 — Windows global search focus and caret
 
 **Accepted behavior documentation · Not a public product release**

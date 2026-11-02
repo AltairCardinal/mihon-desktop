@@ -402,16 +402,8 @@ open class ReaderActivity : BaseActivity() {
                     },
                 )
             }
-            is ReaderViewModel.Dialog.PairingRestoreError -> {
-                PairingRestoreControls()
-            }
             is ReaderViewModel.Dialog.Settings -> {
-                ReaderSettingsDialog(
-                    onDismissRequest = onDismissRequest,
-                    onShowMenus = { setMenuVisibility(true) },
-                    onHideMenus = { setMenuVisibility(false) },
-                    screenModel = settingsScreenModel,
-                )
+                ReaderSettingsControls(settingsScreenModel)
             }
             is ReaderViewModel.Dialog.ReadingModeSelect -> {
                 ReadingModeSelectDialog(
@@ -448,10 +440,20 @@ open class ReaderActivity : BaseActivity() {
     }
 
     @Composable
-    internal fun PairingRestoreControls() {
-        PairingRestoreDialog(
-            onRetry = viewModel::retryPairingRestore,
-            onUseDefault = viewModel::useDefaultPairingThisSession,
+    internal fun ReaderSettingsControls(screenModel: ReaderSettingsScreenModel) {
+        val state by viewModel.state.collectAsState()
+        ReaderSettingsDialog(
+            onDismissRequest = viewModel::closeDialog,
+            onShowMenus = { setMenuVisibility(true) },
+            onHideMenus = { setMenuVisibility(false) },
+            screenModel = screenModel,
+            pairingRecovery = {
+                if (state.pairingReadUnavailable) {
+                    TextButton(onClick = viewModel::retryPairingRestore, enabled = !state.pairingRestoring) {
+                        Text(composeStringResource(MR.strings.action_reload_page_pairing))
+                    }
+                }
+            },
         )
     }
 
@@ -670,9 +672,7 @@ open class ReaderActivity : BaseActivity() {
             isDualPageMode = state.viewer is DualPageR2LPagerViewer,
             isAutomaticMode = viewModel.getMangaReadingMode() == ReadingMode.AUTO.flagValue,
             isPairingSaving = state.pairingSaving,
-            isPairingUnavailable = state.pairingReadUnavailable,
             isPairingRecordReady = state.pairingRecordReady,
-            onRetryPairing = viewModel::retryPairingRestore,
             onClickAdjustPairing = {
                 (state.viewer as? DualPageR2LPagerViewer)?.let(viewModel::adjustChapterPairing)
             },
@@ -1285,20 +1285,4 @@ internal class ReaderChapterErrorRetryHandler(
     fun retry(dialog: ReaderViewModel.Dialog.ChapterError) {
         retryChapter(dialog.state.retryCommand())
     }
-}
-
-@Composable
-internal fun PairingRestoreDialog(onRetry: () -> Unit, onUseDefault: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = {},
-        confirmButton = {
-            TextButton(onClick = onRetry) { Text(composeStringResource(MR.strings.action_retry)) }
-        },
-        dismissButton = {
-            TextButton(onClick = onUseDefault) {
-                Text(composeStringResource(MR.strings.desktop_reader_pairing_use_default))
-            }
-        },
-        text = { Text(composeStringResource(MR.strings.desktop_reader_pairing_load_failed)) },
-    )
 }

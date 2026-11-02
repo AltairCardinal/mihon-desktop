@@ -148,6 +148,14 @@ class HistoryState {
  */
 val historyState = HistoryState()
 
+internal data class ReaderImageAttemptSnapshot(
+    val sourcePageIndex: Int,
+    val modelAttemptGeneration: Long?,
+    val runtimeAttemptGeneration: Long?,
+    val modelLoadState: String?,
+    val runtimeLoadState: String?,
+)
+
 /**
  * Reader state for testing.
  */
@@ -249,6 +257,28 @@ class ReaderState {
     }
 
     internal fun mountedSnapshot() = mounted?.state?.value
+
+    /** Independently samples the mounted model and runtime; it does not settle or modify either. */
+    internal fun mountedImageAttempts(): List<ReaderImageAttemptSnapshot>? {
+        val model = mounted ?: return null
+        val current = model.state.value
+        val runtime = model.runtime?.session?.state?.value?.snapshot?.takeIf {
+            it.generation == current.session.generation && it.activeChapter.id == current.session.activeChapter.id
+        }
+        val displayed = current.currentDisplayUnitId?.slots.orEmpty().take(2).mapNotNull { it.pageId }
+        val logical = current.session.activeChapter.pages.getOrNull(current.currentPage)?.id
+        return (displayed + listOfNotNull(logical)).distinct().map { id ->
+            val modelPage = current.session.activeChapter.pages.firstOrNull { it.id == id }
+            val runtimePage = runtime?.activeChapter?.pages?.firstOrNull { it.id == id }
+            ReaderImageAttemptSnapshot(
+                sourcePageIndex = id.sourcePageIndex,
+                modelAttemptGeneration = modelPage?.attemptGeneration,
+                runtimeAttemptGeneration = runtimePage?.attemptGeneration,
+                modelLoadState = modelPage?.loadState?.javaClass?.simpleName,
+                runtimeLoadState = runtimePage?.loadState?.javaClass?.simpleName,
+            )
+        }
+    }
 
     /** Observe the existing product model in Test Mode without replacing its runtime or tracker. */
     @Synchronized

@@ -133,6 +133,8 @@ internal fun ZoomablePagerViewer(
     chapterTitle: String = "",
     zoomState: ZoomState,
     dualPageUnits: List<mihon.domain.reader.ReaderDualPageUnit>? = null,
+    dualPageFrames: List<mihon.domain.reader.ReaderDualPagePresentationFrame>? = null,
+    dualPageTargetFrameId: mihon.domain.reader.ReaderDualPageFrameId? = null,
     pagerPresentationBinding: ReaderPagerPresentationBinding? = null,
     splitPageIndices: Set<Int> = emptySet(),
     presentationImageOwner: DesktopReaderPresentationImageOwner,
@@ -163,6 +165,9 @@ internal fun ZoomablePagerViewer(
             splitPageIndices,
             autoSplitPages,
             dualPageUnits,
+            dualPageFrames,
+            dualPageTargetFrameId,
+            currentPage,
         ) {
             desktopReaderPresentationRequest(
                 chapter = chapter,
@@ -171,7 +176,12 @@ internal fun ZoomablePagerViewer(
                 hasNextChapter = hasNextChapter,
                 spreadPageIndices = splitPageIndices,
                 splitWidePages = autoSplitPages,
-            ).copy(dualPageUnits = dualPageUnits)
+            ).copy(
+                dualPageUnits = dualPageUnits,
+                dualPageFrames = dualPageFrames,
+                dualPageTargetFrameId = dualPageTargetFrameId,
+                dualPageTargetPageId = chapter.pages.getOrNull(currentPage)?.id,
+            )
         }
         val presentation = remember(request) {
             DesktopReaderPresentationRegistry

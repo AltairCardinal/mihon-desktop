@@ -109,6 +109,9 @@ private fun parseReaderFixtureSpec(params: Map<String, String>): ReaderTestFixtu
         format = format,
         partialPageCount = partialPageCount,
         offline = offline,
+        widePageIndex = params["widePageIndex"]?.let {
+            it.toIntOrNull() ?: throw IllegalArgumentException("widePageIndex must be an integer")
+        },
     )
 }
 
@@ -120,6 +123,7 @@ private fun ReaderTestFixtureDescriptor.toJson(): JsonObject = buildJsonObject {
     put("format", JsonPrimitive(spec.format.wireName))
     put("partialPageCount", spec.partialPageCount?.let(::JsonPrimitive) ?: JsonNull)
     put("offline", JsonPrimitive(spec.offline))
+    spec.widePageIndex?.let { put("widePageIndex", JsonPrimitive(it)) }
 }
 
 internal fun actionHistoryParams(
@@ -1161,14 +1165,25 @@ internal fun Application.testHttpServer(
                 val events = ReaderIoTestModeBridge.controller?.snapshot().orEmpty()
                 val fixtureController = ReaderIoTestModeBridge.controller
                 val mounted = readerState.mountedSnapshot()
+                val imageAttempts = readerState.mountedImageAttempts()
                 buildJsonObject {
                     put("production", JsonPrimitive(production != null))
                     put("activeChapterId", production?.activeChapterId?.let(::JsonPrimitive) ?: JsonNull)
                     put("loadState", production?.loadState?.let(::JsonPrimitive) ?: JsonNull)
-                    put("chapterIds", kotlinx.serialization.json.buildJsonArray { production?.chapterIds?.forEach { add(JsonPrimitive(it)) } })
+                    put(
+                        "chapterIds",
+                        kotlinx.serialization.json.buildJsonArray {
+                            production?.chapterIds?.forEach { add(JsonPrimitive(it)) }
+                        },
+                    )
                     put("currentChapterIndex", production?.currentChapterIndex?.let(::JsonPrimitive) ?: JsonNull)
                     put("initialPage", production?.initialPage?.let(::JsonPrimitive) ?: JsonNull)
-                    put("resumeHeadIds", kotlinx.serialization.json.buildJsonArray { production?.resumeHeadIds?.forEach { add(JsonPrimitive(it)) } })
+                    put(
+                        "resumeHeadIds",
+                        kotlinx.serialization.json.buildJsonArray {
+                            production?.resumeHeadIds?.forEach { add(JsonPrimitive(it)) }
+                        },
+                    )
                     put(
                         "mountedReader",
                         mounted?.let { actual ->
@@ -1183,6 +1198,40 @@ internal fun Application.testHttpServer(
                                 put(
                                     "pairingStatus",
                                     actual.dualPairingState?.status?.name?.let(::JsonPrimitive) ?: JsonNull,
+                                )
+                                put(
+                                    "imageAttempts",
+                                    imageAttempts?.let { attempts ->
+                                        kotlinx.serialization.json.buildJsonArray {
+                                            attempts.forEach { attempt ->
+                                                add(
+                                                    buildJsonObject {
+                                                        val modelAttempt = attempt.modelAttemptGeneration
+                                                        val runtimeAttempt = attempt.runtimeAttemptGeneration
+                                                        val modelLoad = attempt.modelLoadState
+                                                        val runtimeLoad = attempt.runtimeLoadState
+                                                        put("sourcePageIndex", JsonPrimitive(attempt.sourcePageIndex))
+                                                        put(
+                                                            "modelAttemptGeneration",
+                                                            modelAttempt?.let(::JsonPrimitive) ?: JsonNull,
+                                                        )
+                                                        put(
+                                                            "runtimeAttemptGeneration",
+                                                            runtimeAttempt?.let(::JsonPrimitive) ?: JsonNull,
+                                                        )
+                                                        put(
+                                                            "modelLoadState",
+                                                            modelLoad?.let(::JsonPrimitive) ?: JsonNull,
+                                                        )
+                                                        put(
+                                                            "runtimeLoadState",
+                                                            runtimeLoad?.let(::JsonPrimitive) ?: JsonNull,
+                                                        )
+                                                    },
+                                                )
+                                            }
+                                        }
+                                    } ?: JsonNull,
                                 )
                                 put("readingMode", JsonPrimitive(actual.readingMode.name))
                                 put("dualPageMode", JsonPrimitive(actual.dualPageMode))

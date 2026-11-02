@@ -23,6 +23,7 @@ import kotlinx.coroutines.withContext
 import mihon.domain.error.AppError
 import mihon.domain.network.AppErrorException
 import mihon.domain.reader.ReaderDualPageFactReadPermit
+import mihon.domain.reader.ReaderDualPageFrameId
 import mihon.domain.reader.materialize.CanonicalReaderMaterializeExecutor
 import mihon.domain.reader.materialize.ReaderMaterializeExecutor
 import mihon.domain.reader.materialize.ReaderPageFetchRequest
@@ -38,6 +39,7 @@ import mihon.domain.reader.scheduler.ReaderRequestKind
 import mihon.domain.reader.scheduler.ReaderRequestScheduler
 import mihon.domain.reader.scheduler.ReaderScheduledRequest
 import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
+import mihon.domain.reader.scheduler.ReaderVisiblePairAdmission
 import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageId
@@ -70,6 +72,20 @@ internal class HttpPageLoader(
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
 
     private val preloadJobLock = Any()
+
+    private data class NormalWindow(val anchor: ReaderPage, val pages: List<ReaderPage>)
+    private data class NormalViewport(
+        val lease: ReaderNormalViewportLease,
+        val frameId: ReaderDualPageFrameId,
+        val updateSequence: Long,
+        val window: NormalWindow,
+        val scheduledGeneration: Long? = null,
+    )
+    private var nextViewportSequence = 0L
+    private var viewportLease: ReaderNormalViewportLease? = null
+    private var normalViewport: NormalViewport? = null
+    private var plannedNormalWindow: NormalWindow? = null
+    private var plannedNormalGeneration: Long? = null
     private val foregroundRevision = MutableStateFlow(0L)
     private val scheduledPages = mutableMapOf<ReaderRequestKey, ReaderPage>()
     private val pageRunner = ReaderPageMaterializeRunner(
@@ -131,7 +147,8 @@ internal class HttpPageLoader(
     /**
      * Loads a page through the queue. Handles re-enqueueing pages if they were evicted from the cache.
      */
-    override suspend fun loadPage(page: ReaderPage) = withContext(dispatcher) {
+    override suspend fun loadPage(page: ReaderPage): Unit = withContext(dispatcher) {
+        if (isRecycled || !isCurrentPage(page)) return@withContext
         val imageUrl = page.imageUrl
 
         // Check if the image has been deleted
@@ -144,7 +161,15 @@ internal class HttpPageLoader(
             page.status = Page.State.Queue
         }
 
+        val viewportCancellations = mutableSetOf<ReaderRequestKey>()
         val enqueueResult = synchronized(preloadJobLock) {
+            currentViewportLocked()?.takeIf { page in it.window.pages }?.let { viewport ->
+                if (plannedNormalWindow != viewport.window ||
+                    viewport.scheduledGeneration != plannedNormalGeneration
+                ) {
+                    viewportCancellations += planNormalWindowLocked(viewport.window).cancelRequests
+                }
+            }
             if (promoteBoundOrdinaryPageLocked(page)) {
                 foregroundRevision.update { it + 1 }
                 return@synchronized mihon.domain.reader.scheduler.ReaderEnqueueResult(request = null)
@@ -156,7 +181,7 @@ internal class HttpPageLoader(
             registerEnqueueResultLocked(result, page.chapter.pages.orEmpty())
             result
         }
-        pageRunner.cancel(enqueueResult.cancelRequests)
+        pageRunner.cancel(viewportCancellations + enqueueResult.cancelRequests)
         pageRunner.pump()
 
         suspendCancellableCoroutine<Nothing> { continuation ->
@@ -204,26 +229,113 @@ internal class HttpPageLoader(
     }
 
     override fun onPageSelected(page: ReaderPage) {
-        val pages = page.chapter.pages.orEmpty()
         val preloadPlan = synchronized(preloadJobLock) {
-            val preloadPlan = requestScheduler.moveTo(readerChapterId(), page.index, pages.size)
-
-            // Register replacements before cancellation can restore an overlapping page to Queue.
-            preloadPlan.requests.forEach { request ->
-                val candidate = pages[request.pageIndex]
-                if (preloadPlan.cancelRequests.any { it.pageIndex == request.pageIndex } &&
-                    candidate.status != Page.State.Ready
-                ) {
-                    candidate.status = Page.State.Queue
-                }
-                scheduledPages[request.jobKey] = candidate
+            if (isRecycled || !isCurrentPage(page)) return
+            val viewport = currentViewportLocked()?.takeIf { it.window.anchor === page }
+            if (viewport == null) {
+                viewportLease = null
+                normalViewport = null
             }
-            preloadPlan.discardRequests.forEach(scheduledPages::remove)
-            foregroundRevision.update { it + 1 }
-            preloadPlan
+            planNormalWindowLocked(viewport?.window ?: NormalWindow(page, listOf(page)))
         }
         pageRunner.cancel(preloadPlan.cancelRequests)
         pageRunner.pump()
+    }
+
+    private fun planNormalWindowLocked(window: NormalWindow): mihon.domain.reader.scheduler.ReaderSchedulePlan {
+        val pages = window.anchor.chapter.pages.orEmpty()
+        val plan = requestScheduler.moveTo(
+            readerChapterId(),
+            window.pages.map { it.index },
+            window.anchor.index,
+            pages.size,
+        )
+        // Register replacements before cancellation can restore an overlapping page to Queue.
+        plan.requests.forEach { request ->
+            val candidate = pages[request.pageIndex]
+            if (plan.cancelRequests.any { it.pageIndex == request.pageIndex } && candidate.status != Page.State.Ready) {
+                candidate.status = Page.State.Queue
+            }
+            scheduledPages[request.jobKey] = candidate
+        }
+        plan.discardRequests.forEach(scheduledPages::remove)
+        foregroundRevision.update { it + 1 }
+        plannedNormalWindow = window
+        plannedNormalGeneration = plan.generation
+        normalViewport?.takeIf { it.lease === viewportLease && it.window == window }?.let {
+            normalViewport = it.copy(scheduledGeneration = plan.generation)
+        }
+        return plan
+    }
+
+    internal override fun acquireNormalViewport(): ReaderNormalViewportLease? = synchronized(preloadJobLock) {
+        if (isRecycled) return@synchronized null
+        ReaderNormalViewportLease(this, ++nextViewportSequence).also {
+            viewportLease = it
+            normalViewport = null
+        }
+    }
+
+    internal override fun updateNormalViewport(
+        lease: ReaderNormalViewportLease,
+        frameId: ReaderDualPageFrameId,
+        updateSequence: Long,
+        anchor: ReaderPage,
+        pages: List<ReaderPage>,
+    ): Boolean = synchronized(preloadJobLock) {
+        if (isRecycled || lease.loader !== this || lease !== viewportLease || pages.size !in 1..2 ||
+            pages.distinct().size != pages.size || anchor.chapter !== chapter || updateSequence <= 0 ||
+            chapter.pages?.getOrNull(anchor.index) !== anchor ||
+            pages.any { it.chapter !== chapter || chapter.pages?.getOrNull(it.index) !== it } ||
+            (pages.size == 2 && anchor !in pages)
+        ) {
+            return@synchronized false
+        }
+        val previous = normalViewport
+        if (previous != null && updateSequence <= previous.updateSequence) return@synchronized false
+        val window = NormalWindow(anchor, pages.toList())
+        // Frame IDs are opaque. A successfully fenced current-viewer notification may restore any prepared frame.
+        val generation = plannedNormalGeneration.takeIf {
+            plannedNormalWindow == window && it == requestScheduler.snapshot().generation
+        }
+        normalViewport = NormalViewport(lease, frameId, updateSequence, window, generation)
+        true
+    }
+
+    internal override fun releaseNormalViewport(lease: ReaderNormalViewportLease) = synchronized(preloadJobLock) {
+        if (viewportLease === lease) {
+            viewportLease = null
+            normalViewport = null
+        }
+    }
+
+    private fun isCurrentPage(page: ReaderPage): Boolean =
+        page.chapter === chapter && chapter.pages?.getOrNull(page.index) === page
+
+    private fun currentViewportLocked(): NormalViewport? {
+        val viewport = normalViewport ?: return null
+        if (viewport.lease !== viewportLease || !isCurrentPage(viewport.window.anchor) ||
+            viewport.window.pages.any { !isCurrentPage(it) }
+        ) {
+            viewportLease = null
+            normalViewport = null
+            return null
+        }
+        return viewport
+    }
+
+    private fun visiblePairAdmissionLocked(): ReaderVisiblePairAdmission? {
+        val viewport = currentViewportLocked()?.takeIf { it.window == plannedNormalWindow } ?: return null
+        val generation = viewport.scheduledGeneration ?: return null
+        if (viewport.window.pages.size != 2 || generation != plannedNormalGeneration ||
+            generation != requestScheduler.snapshot().generation
+        ) {
+            return null
+        }
+        return ReaderVisiblePairAdmission(
+            generation,
+            viewport.window.pages.mapTo(mutableSetOf()) { readerPageId(it.index) },
+        )
     }
 
     /**
@@ -237,6 +349,14 @@ internal class HttpPageLoader(
         val pages = page.chapter.pages.orEmpty()
         val retryPlan = synchronized(preloadJobLock) {
             val retryPlan = requestScheduler.retry(readerPageId(page.index), pages.size)
+            val viewport = currentViewportLocked()
+            if (viewport != null && page in viewport.window.pages && viewport.window == plannedNormalWindow) {
+                plannedNormalGeneration = retryPlan.generation
+                normalViewport = viewport.copy(scheduledGeneration = retryPlan.generation)
+            } else if (viewport != null) {
+                viewportLease = null
+                normalViewport = null
+            }
             retryPlan.requests.forEach { request ->
                 val candidate = pages.getOrNull(request.pageIndex) ?: page.takeIf { it.index == request.pageIndex }
                 if (candidate != null) {
@@ -259,6 +379,10 @@ internal class HttpPageLoader(
     override fun recycle() {
         super.recycle()
         val closePlan = synchronized(preloadJobLock) {
+            viewportLease = null
+            normalViewport = null
+            plannedNormalWindow = null
+            plannedNormalGeneration = null
             requestScheduler.moveTo(chapterId = readerChapterId(), currentPage = 0, pageCount = 0).also {
                 scheduledPages.clear()
                 foregroundRevision.update { revision -> revision + 1 }
@@ -291,7 +415,7 @@ internal class HttpPageLoader(
         override fun pollNext(): ReaderPageMaterializeWork<AndroidReaderPageBinding>? =
             synchronized(preloadJobLock) {
                 while (true) {
-                    val request = requestScheduler.pollNext() ?: return@synchronized null
+                    val request = requestScheduler.pollNext(visiblePairAdmissionLocked()) ?: return@synchronized null
                     foregroundRevision.update { it + 1 }
                     val page = scheduledPages[request.jobKey]
                     if (page == null || page.status != Page.State.Queue) {

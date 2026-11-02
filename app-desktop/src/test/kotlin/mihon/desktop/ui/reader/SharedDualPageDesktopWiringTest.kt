@@ -295,6 +295,8 @@ internal fun ReaderScreenModel.presentReadyPagerViewport(): mihon.desktop.ui.rea
     )
     try {
         native.begin(userNavigation = false)
+        // The fixture is the actual visible viewport, matching the production before-draw order.
+        native.setExposed(true)
         unit.slots.filter { it.page?.loadState is mihon.domain.reader.session.ReaderPageLoadState.Ready }.forEach {
             if (native.prepare(it.id, it.page, 40, 60)) native.drawn(it.id)
         }

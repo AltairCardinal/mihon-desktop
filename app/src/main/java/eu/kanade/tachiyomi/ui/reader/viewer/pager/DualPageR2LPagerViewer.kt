@@ -13,6 +13,8 @@ import androidx.viewpager.widget.ViewPager
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
+import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
+import eu.kanade.tachiyomi.ui.reader.loader.ReaderNormalViewportLease
 import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
@@ -62,6 +64,8 @@ class DualPageR2LPagerViewer(
     val adapter = DualPageViewerAdapter(this, pairingStore)
 
     private var currentPage: Any? = null
+    private var normalViewport: Pair<PageLoader, ReaderNormalViewportLease>? = null
+    private var normalViewportUpdateSequence = 0L
     private var replacingPairing = false
     private var awaitingReplacementIdle = false
     private var destroyed = false
@@ -124,6 +128,7 @@ class DualPageR2LPagerViewer(
                     adapter.selectGesturePage(
                         selected,
                         forward = if (isRtl) position < previousPosition else position > previousPosition,
+                        origin = currentPage as? DisplayPage,
                     )
                 }
             }
@@ -144,8 +149,16 @@ class DualPageR2LPagerViewer(
             }
             if (state == ViewPager.SCROLL_STATE_DRAGGING) gestureInProgress = true
             if (state == ViewPager.SCROLL_STATE_IDLE) {
+                val completedGesture = gestureInProgress
                 gestureInProgress = false
-                // Reconcile the final native slot before deferred chapter/fact publication can move it.
+                if (completedGesture) {
+                    val chapter = (currentPage as? DisplayPage)?.firstPage?.chapter
+                    val anchor = chapter?.let { adapter.session(it)?.location?.pageId?.sourcePageIndex }
+                        ?.let { chapter?.pages?.getOrNull(it) }
+                    // A native drag can physically select the next group while the shared source
+                    // intent must first activate a missing partner in the outgoing group.
+                    replacePairing(anchor, layoutOnly = false) { adapter.publishPendingPairing() }
+                }
                 onPageChange(pager.currentItem)
                 isIdle = true
                 pendingZoomResets.forEach(DualPagerPageHolder::resetViewportZoom)
@@ -236,6 +249,8 @@ class DualPageR2LPagerViewer(
     }
 
     override fun destroy() {
+        normalViewport?.let { (loader, lease) -> loader.releaseNormalViewport(lease) }
+        normalViewport = null
         pendingZoomResets.clear()
         destroyed = true
         presentedViewports.toMap().forEach { (owner, tickets) -> tickets.forEach(owner::releaseViewport) }
@@ -283,9 +298,7 @@ class DualPageR2LPagerViewer(
 
     private fun positionPage(page: ReaderPage, notifyIfUnchanged: Boolean = true) {
         // Find the ViewPager position of the display unit containing this page
-        val position = adapter.items.indexOfFirst { item ->
-            item is DisplayPage && item.containsPage(page)
-        }
+        val position = adapter.positionForPage(page)
         if (position != -1) {
             val currentPosition = pager.currentItem
             pager.setCurrentItem(position, true)
@@ -404,13 +417,13 @@ class DualPageR2LPagerViewer(
                 pager.cancelRipple()
                 return false
             }
-            val position = adapter.items.indexOfFirst { it is DisplayPage && it.containsPage(target) }
+            val position = adapter.positionForPage(target)
             if (position < 0) {
                 pager.cancelRipple()
                 return false
             }
             if (config.pageTurnRipple) {
-                val rippleDirection = if (position > pager.currentItem) {
+                val rippleDirection = if (forward != isRtl) {
                     Pager.RippleDirection.RIGHT_TO_LEFT
                 } else {
                     Pager.RippleDirection.LEFT_TO_RIGHT
@@ -465,9 +478,9 @@ class DualPageR2LPagerViewer(
         val page = displayPage.firstPage
         val pages = page.chapter.pages ?: return
         logcat { "onDisplayPageSelected: ${page.number}/${pages.size}" }
-        if (!layoutOnly) {
+        if (!layoutOnly && !gestureInProgress) {
             val session = adapter.session(page.chapter)
-            if (session?.location?.pageId !in
+            if (displayPage.frameId != session?.targetFrameId && session?.location?.pageId !in
                 displayPage.visiblePages.map { session?.identity?.pageIds?.get(it.index) }
             ) {
                 adapter.selectPage(page)
@@ -476,6 +489,7 @@ class DualPageR2LPagerViewer(
         refreshPresentation()
         val logicalPage =
             pages.getOrNull(adapter.session(page.chapter)?.location?.pageId?.sourcePageIndex ?: page.index) ?: page
+        updateNormalViewport(displayPage, logicalPage)
         activity.onViewerPageAnchorSelected(this, logicalPage, layoutOnly)
         if (layoutOnly) return
 
@@ -484,6 +498,36 @@ class DualPageR2LPagerViewer(
         if (adjacentEffect != null && page.chapter == adapter.currentChapter) {
             adapter.nextTransition?.to?.let { target ->
                 activity.requestPreloadChapter(target, adjacentEffect)
+            }
+        }
+    }
+
+    private fun updateNormalViewport(displayPage: DisplayPage, anchor: ReaderPage) {
+        if (destroyed || activity.viewModel.state.value.viewer !== this) return
+        val owner = adapter.session(anchor.chapter) ?: return
+        val frame = displayPage.frameId ?: return
+        if (owner.location == null || frame != owner.targetFrameId ||
+            displayPage.sharedUnitId(owner) != owner.targetUnit?.id ||
+            anchor.chapter.pages?.getOrNull(anchor.index) !== anchor ||
+            displayPage.visiblePages.any {
+                it.chapter !== anchor.chapter || it.chapter.pages?.getOrNull(it.index) !== it
+            }
+        ) {
+            return
+        }
+        val loader = anchor.chapter.pageLoader ?: return
+        if (normalViewport?.first !== loader) {
+            normalViewport?.let { (previous, lease) -> previous.releaseNormalViewport(lease) }
+            normalViewport = loader.acquireNormalViewport()?.let { loader to it }
+        }
+        normalViewport?.let { (_, lease) ->
+            val update = ++normalViewportUpdateSequence
+            if (!loader.updateNormalViewport(lease, frame, update, anchor, displayPage.visiblePages)) {
+                // An intervening single/rebound window retired this token. Only this still-current viewer may renew it.
+                normalViewport = loader.acquireNormalViewport()?.let { loader to it }
+                normalViewport?.second?.let {
+                    loader.updateNormalViewport(it, frame, update, anchor, displayPage.visiblePages)
+                }
             }
         }
     }
@@ -538,27 +582,50 @@ class DualPageR2LPagerViewer(
         if (destroyed) return
         presentedViewports.keys.toList().forEach { it.invalidateViewport() }
         presentedViewports.clear()
+        adapter.refreshPairing()
         pager.children.filterIsInstance<DualPagerPageHolder>().forEach { it.beginPresentation() }
     }
 
     internal fun capturePresentation(
         displayPage: DisplayPage,
+        leaseOwner: Any? = null,
     ): Pair<SharedDualPageSession, ReaderDualPageViewportTicket>? {
         if (destroyed) return null
         discardObsoletePresentations()
         val owner = adapter.session(displayPage.firstPage.chapter) ?: return null
-        if (adapter.requirePairing(
-                displayPage,
-            ) !is mihon.domain.reader.ReaderPairingCertification.Certified
-        ) {
-            return null
+        // Keep required original preparation running, independently of basic pixel permission.
+        adapter.requirePairing(displayPage)
+        val unitId = displayPage.sharedUnitId(owner) ?: return null
+        val selected = if (displayPage.frameId != null) {
+            displayPage.frameId == owner.targetFrameId
+        } else {
+            unitId == owner.targetUnit?.id
         }
-        val visible = displayPage.visiblePages.map { owner.identity.pageIds[it.index] }
-        val pageId = owner.location?.pageId?.takeIf { it in visible } ?: visible.firstOrNull() ?: return null
-        return owner.captureCertifiedViewport(pageId)?.let { ticket ->
-            // Native neighbours may expose pixels during a drag; only the logical scope can read.
-            presentedViewports.getOrPut(owner) { mutableSetOf() } += ticket
-            owner to ticket
+        val pageId = if (selected) {
+            owner.location?.pageId
+        } else {
+            displayPage.visiblePages.firstOrNull()
+                ?.let { owner.identity.pageIds.getOrNull(it.index) }
+        }
+        if (pageId == null) return null
+        val frame = displayPage.frameId ?: owner.preparePresentationFrame(pageId, unitId, activate = selected)
+            ?: return null
+        val ticket = owner.capturePresentableViewport(
+            pageId,
+            unitId,
+            frame,
+            activate = selected,
+            leaseOwner = leaseOwner,
+        )
+        if (displayPage.frameId == null ||
+            (ticket == null && owner.presentationFrames.none { it.frameId == displayPage.frameId })
+        ) {
+            adapter.refreshPresentationFrames()
+        }
+        return ticket?.let {
+            // Overlapping native holders have separate releases, even when they share a frame.
+            presentedViewports.getOrPut(owner) { mutableSetOf() } += it
+            owner to it
         }
     }
 
@@ -680,7 +747,7 @@ class DualPageR2LPagerViewer(
             replace()
             if ((anchor != null || transition != null) && !wasReplacing) {
                 val position = if (anchor != null) {
-                    adapter.items.indexOfFirst { it is DisplayPage && it.containsPage(anchor) }
+                    adapter.positionForPage(anchor)
                 } else {
                     adapter.positionOf(transition)
                 }

@@ -172,6 +172,12 @@ Windows 输入桌面、显示拓扑和 Computer Use 是独立检查。WTS 会话
 
 真实 Computer Use 同时报 `CreateForMonitor 0x80070057` / 无法激活时，结合本次显示拓扑、候选和会话证据诊断，不仅凭 `WinDisc` 名称、历史崩溃日志或某一个标志推断原因。已授权验收可做一次短时 `SetThreadExecutionState(ES_DISPLAY_REQUIRED)` 亮屏请求并释放，再复核显示拓扑；这是[临时电源请求](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-setthreadexecutionstate)，不会替用户解锁或修复物理断开。未恢复时停止相同条件的捕获/激活重试，记录需要恢复有效显示输出的具体前置；不反复重建应用、换 renderer、全量测试或擅自安装驱动/修改安全设置。条件恢复后重新选择真实窗口，再补原生路径和关停，不复用陈旧坐标或旧窗口对象。
 
+### 阅读器内部画面诊断
+
+阅读器可通过独立、可选的 `--reader-render-trace=<绝对目录>` 记录最近完成的 SkiaLayer Picture，输出内部 PNG 和事件；它不读取桌面，也不证明 GPU／窗口最终呈现。真实 F11 按键在改变阅读器全屏状态前请求捕获最近完成的 Picture，状态驱动的 placement 采集随后保留。分析按键前黑图时，必须核对事件时间与 reader-state，不能把重组后的 placement 前画面当作按键前基线；若没有新的 completed Picture、超出预算或记录缺失，则没有对应基线证据。采集仍受每次捕获窗口 1.8 秒、每阅读器会话 900 帧、排队像素 256 MiB 及 PNG 文件 512 MiB 的既有上限约束；明确记录 gap／丢弃，诊断重绘恢复不能替代稳定性验收。
+
+排查内部 Picture 与外部截图不一致时，可先构建 `scripts/build-reader-compositor.ps1` 的既有窗口诊断工具，再定向运行 `ReaderRenderTraceNativeTest` 的 `real reader bitmap and title survive idle and metadata in window capture` 方法。它通过真实阅读器、解码图片和标题文字检查 Windows Graphics Capture 窗口帧；窗口位于屏幕外、不聚焦，不发送系统输入。证据必须包含静置后元数据更新产生的新时间戳及真实像素，不能用首次截图替代后续观察。该三页诊断向量不代替在线长章、实际输入或物理显示扫描输出的验收。
+
 ### Computer Use 集中操作与归还桌面
 
 目标是减少用户桌面被占用的次数和时长。需要原生交互的验收项仍在原有最小充分范围内执行；只读 API、无界面测试和构建不因此改为 Computer Use。Windows、通过本机窗口操作的远程 Mac、模拟器等共享桌面操作遵守同一安排；直接在远端运行的原生验收也应及时释放对应桌面。

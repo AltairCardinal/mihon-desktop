@@ -5,13 +5,21 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.reader.DesktopChapterPairingCoordinator
+import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.desktopReaderSessionState
-import mihon.domain.reader.ReaderPairingAdjustment
+import mihon.desktop.ui.reader.presentation.DisplaySlotId
+import mihon.desktop.ui.reader.presentation.DisplayUnitId
+import mihon.desktop.ui.reader.presentation.ReaderPresentationMode
+import mihon.desktop.ui.reader.presentation.VisiblePageSet
+import mihon.desktop.ui.reader.presentation.WebtoonScrollAnchor
+import mihon.desktop.ui.reader.presentation.WebtoonViewportUpdate
 import mihon.domain.reader.ChapterPairingRecord
 import mihon.domain.reader.ChapterPairingRepository
 import mihon.domain.reader.ChapterPairingSnapshot
 import mihon.domain.reader.MissingChapterPairingIdentityException
+import mihon.domain.reader.ReaderPairingAdjustment
 import mihon.domain.reader.StaleChapterPairingException
+import mihon.domain.reader.session.ReaderPageId
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -56,6 +64,174 @@ class DesktopChapterPairingModelIntegrationTest {
         )
         assertEquals(setOf(3), model.state.value.dualPairingState?.committedForcedSinglePages)
         assertEquals(1, reads)
+        model.onDispose()
+    }
+
+    @Test
+    fun `webtoon settled pages advance anchor and receipts while pairing restore is held or failed`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        var reads = 0
+        val repository = object : CompleteLayoutRepository() {
+            override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot {
+                reads++
+                gate.await()
+                error("Original record unavailable")
+            }
+
+            override suspend fun replaceLayout(
+                chapterId: Long,
+                mangaId: Long,
+                expectedRevision: Long,
+                pageCount: Int,
+                adjustment: ReaderPairingAdjustment,
+            ): ChapterPairingSnapshot = error("Reading must not write an unknown pairing")
+        }
+        val reader = loaded(11, generation = 1)
+        val receipts = mutableListOf<Pair<Set<ReaderPageId>, ReaderPageId>>()
+        val model = ReaderScreenModel(
+            initialSessionState = reader,
+            dualPageOverride = false,
+            onViewportSettled = { pages, active -> receipts += pages to active },
+            pairingCoordinator = DesktopChapterPairingCoordinator(repository, backgroundScope),
+        )
+        model.setReadingMode(ReadingMode.WEBTOON)
+        runCurrent()
+        assertEquals(1, reads)
+        assertEquals(PairingLoad.LOADING, model.state.value.pairingLoad)
+        val pages = reader.snapshot.activeChapter.pages.map { it.id }
+        fun settle(index: Int, offset: Int) {
+            val page = pages[index]
+            val unit = DisplayUnitId(ReaderPresentationMode.WEBTOON, listOf(DisplaySlotId(page)))
+            val anchor = WebtoonScrollAnchor(unit, scrollOffset = offset)
+            model.settleWebtoon(WebtoonViewportUpdate(VisiblePageSet(unit, setOf(page), page), anchor))
+            assertEquals(index, model.state.value.currentPage)
+            assertEquals(anchor, model.state.value.webtoonScrollAnchor)
+            assertEquals(setOf(page), model.state.value.visiblePageIds)
+            assertEquals(setOf(page) to page, receipts.lastOrNull())
+        }
+        settle(1, 43)
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(PairingLoad.ERROR, model.state.value.pairingLoad)
+        settle(2, 91)
+        assertEquals(2, receipts.size)
+        assertEquals(null, model.state.value.dualPairingState?.revision)
+        model.setReadingMode(ReadingMode.LTR)
+        model.setDualPageMode(true)
+        assertEquals(2, model.state.value.currentPage)
+        model.onDispose()
+    }
+
+    @Test
+    fun `ordinary current owner publication does not retry a failed pairing read`() = runTest {
+        var reads = 0
+        var failRead = true
+        val repository = object : CompleteLayoutRepository() {
+            override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot {
+                reads++
+                if (failRead) error("Original record unavailable")
+                return ChapterPairingSnapshot(ChapterPairingRecord(1, 8, setOf(2)), 7)
+            }
+
+            override suspend fun replaceLayout(
+                chapterId: Long,
+                mangaId: Long,
+                expectedRevision: Long,
+                pageCount: Int,
+                adjustment: ReaderPairingAdjustment,
+            ): ChapterPairingSnapshot = error("Ordinary publication must not save")
+        }
+        val reader = loaded(11, generation = 1)
+        val model = ReaderScreenModel(
+            initialSessionState = reader,
+            dualPageOverride = false,
+            pairingCoordinator = DesktopChapterPairingCoordinator(repository, backgroundScope),
+        )
+        runCurrent()
+        assertEquals(1, reads)
+        assertEquals(PairingLoad.ERROR, model.state.value.pairingLoad)
+        model.acceptSessionState(reader)
+        runCurrent()
+        assertEquals(1, reads, "A normal current-owner publication must retain failure without automatic retry")
+        assertEquals(PairingLoad.ERROR, model.state.value.pairingLoad)
+        assertEquals(null, model.state.value.dualPairingState?.revision)
+        failRead = false
+        model.retryPairingRestore()
+        runCurrent()
+        assertEquals(2, reads)
+        assertEquals(PairingLoad.READY, model.state.value.pairingLoad)
+        assertEquals(7L, model.state.value.pairingRevision)
+        model.onDispose()
+    }
+
+    @Test
+    fun `current owner reload deduplicates and rejected old pages cannot restore a replacement`() = runTest {
+        val oldReload = CompletableDeferred<Unit>()
+        val newRead = CompletableDeferred<Unit>()
+        var reads = 0
+        var writes = 0
+        var activations = 0
+        val repository = object : CompleteLayoutRepository() {
+            override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot {
+                assertEquals(11L, chapterId)
+                assertEquals(10L, mangaId)
+                when (++reads) {
+                    1 -> error("Original record unavailable")
+                    2 -> oldReload.await()
+                    else -> newRead.await()
+                }
+                return ChapterPairingSnapshot(ChapterPairingRecord(1, 8, setOf(2)), 7)
+            }
+
+            override suspend fun replaceLayout(
+                chapterId: Long,
+                mangaId: Long,
+                expectedRevision: Long,
+                pageCount: Int,
+                adjustment: ReaderPairingAdjustment,
+            ): ChapterPairingSnapshot {
+                writes++
+                error("Unknown revision must never write")
+            }
+        }
+        val model = ReaderScreenModel(
+            initialSessionState = loaded(11, generation = 1),
+            dualPageOverride = false,
+            onChapterActivated = {
+                activations++
+                null
+            },
+            pairingCoordinator = DesktopChapterPairingCoordinator(repository, backgroundScope),
+        )
+        runCurrent()
+        assertEquals(PairingLoad.ERROR, model.state.value.pairingLoad)
+        model.adjustSpread()
+        runCurrent()
+        assertEquals(0, writes)
+        model.retryPairingRestore()
+        runCurrent()
+        model.retryPairingRestore()
+        runCurrent()
+        assertEquals(2, reads)
+        assertEquals(PairingLoad.LOADING, model.state.value.pairingLoad)
+        model.setReadingMode(ReadingMode.WEBTOON)
+        model.acceptSessionState(loaded(11, generation = 1, pageCount = 9))
+        runCurrent()
+        oldReload.complete(Unit)
+        runCurrent()
+        assertEquals(3, reads)
+        assertEquals(9, model.state.value.session.activeChapter.pages.size)
+        assertEquals(PairingLoad.LOADING, model.state.value.pairingLoad)
+        assertEquals(null, model.state.value.dualPairingState?.revision)
+        assertEquals(emptySet<Int>(), model.state.value.forcedSinglePages)
+        assertEquals(0, activations)
+        assertEquals(0, writes)
+        newRead.complete(Unit)
+        runCurrent()
+        assertEquals(PairingLoad.READY, model.state.value.pairingLoad)
+        assertEquals(PairingNotice.INVALID, model.state.value.pairingNotice)
+        assertEquals(0, activations)
+        assertEquals(0, writes)
         model.onDispose()
     }
 
@@ -356,7 +532,7 @@ class DesktopChapterPairingModelIntegrationTest {
     }
 
     @Test
-    fun `read failure default session cannot overwrite unknown record until retry succeeds`() = runTest {
+    fun `read failure cannot overwrite unknown record until current owner reload succeeds`() = runTest {
         var failRead = true
         var writes = 0
         val repository = object : CompleteLayoutRepository() {
@@ -383,13 +559,12 @@ class DesktopChapterPairingModelIntegrationTest {
         )
         runCurrent()
         assertEquals(ReaderViewportBody.CONTENT, readerViewportBody(model.state.value))
-        model.useDefaultPairingThisSession()
-        assertEquals(ReaderViewportBody.CONTENT, readerViewportBody(model.state.value))
+        assertEquals(PairingLoad.ERROR, model.state.value.pairingLoad)
         model.goToPage(1)
         confirmPortraits(model)
         model.adjustSpread()
         assertEquals(0, writes)
-        assertEquals(setOf(1), model.state.value.forcedSinglePages)
+        assertEquals(emptySet<Int>(), model.state.value.forcedSinglePages)
         assertEquals(null, model.state.value.dualPairingState?.revision)
 
         failRead = false
@@ -461,7 +636,9 @@ class DesktopChapterPairingModelIntegrationTest {
 }
 
 private fun layoutRecord(pageCount: Int, adjustment: ReaderPairingAdjustment) = ChapterPairingRecord(
-    2, pageCount, adjustment.forcedSinglePages,
+    2,
+    pageCount,
+    adjustment.forcedSinglePages,
     openingMode = adjustment.openingMode,
     manualPairStarts = adjustment.manualPairStarts,
 )
@@ -474,7 +651,10 @@ private abstract class CompleteLayoutRepository : ChapterPairingRepository {
         pageCount: Int,
         forcedSinglePages: Set<Int>,
     ): ChapterPairingSnapshot = replaceLayout(
-        chapterId, mangaId, expectedRevision, pageCount,
+        chapterId,
+        mangaId,
+        expectedRevision,
+        pageCount,
         ReaderPairingAdjustment(forcedSinglePages, 0),
     )
 }

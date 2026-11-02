@@ -37,6 +37,136 @@ import java.io.IOException
 class HttpPageLoaderIntegrationTest {
 
     @Test
+    fun `two held viewport operations retain the physical budget until an actual source exit`() = runTest {
+        val fixture = Fixture(testScheduler, nonCancellablePages = setOf(0, 1))
+        val loader = fixture.loader
+        val lease = requireNotNull(loader.acquireNormalViewport())
+        assertTrue(
+            loader.updateNormalViewport(
+                lease,
+                mihon.domain.reader.ReaderDualPageFrameId(1, 0, 1),
+                1,
+                fixture.pages[0],
+                fixture.pages.take(2),
+            ),
+        )
+        try {
+            loader.onPageSelected(fixture.pages[0])
+            runCurrent()
+            assertEquals(listOf(0, 1), fixture.started)
+            loader.onPageSelected(fixture.pages[3])
+            runCurrent()
+            assertEquals(listOf(0, 1), fixture.started, "Logical cancellation cannot free either physical operation")
+            assertEquals(2, fixture.peakInFlight)
+            fixture.release(0)
+            runCurrent()
+            assertEquals(listOf(0, 1, 3), fixture.started, "The current source starts only after a real old exit")
+            assertEquals(2, fixture.peakInFlight)
+            assertFalse(fixture.pages[0].status == Page.State.Ready)
+            fixture.release(3)
+            fixture.release(1)
+            runCurrent()
+            assertEquals(Page.State.Ready, fixture.pages[3].status)
+            assertFalse(fixture.pages[1].status == Page.State.Ready)
+        } finally {
+            fixture.release(0)
+            fixture.release(1)
+            loader.recycle()
+            runCurrent()
+        }
+    }
+
+    @Test
+    fun `late ordinary holder cannot restore a previous viewport after the selected window changed`() = runTest {
+        val fixture = Fixture(testScheduler)
+        val loader = fixture.loader
+        val lease = requireNotNull(loader.acquireNormalViewport())
+        val frame = mihon.domain.reader.ReaderDualPageFrameId(1, 0, 1)
+        assertTrue(loader.updateNormalViewport(lease, frame, 1, fixture.pages[0], fixture.pages.take(2)))
+        loader.onPageSelected(fixture.pages[0])
+        runCurrent()
+        var oldHolder: kotlinx.coroutines.Job? = null
+        try {
+            loader.onPageSelected(fixture.pages[3])
+            runCurrent()
+            oldHolder = launch { loader.loadPage(fixture.pages[0]) }
+            runCurrent()
+            assertEquals(setOf(3), loader.pageRunnerSnapshot().activeRequestKeys.mapTo(mutableSetOf()) { it.pageIndex })
+            assertFalse(loader.updateNormalViewport(lease, frame, 2, fixture.pages[0], fixture.pages.take(2)))
+        } finally {
+            oldHolder?.cancel()
+            loader.recycle()
+            runCurrent()
+        }
+    }
+
+    @Test
+    fun `rebound page objects cannot receive an old viewport grant with a new scheduler generation`() = runTest {
+        val fixture = Fixture(testScheduler)
+        val loader = fixture.loader
+        val lease = requireNotNull(loader.acquireNormalViewport())
+        assertTrue(
+            loader.updateNormalViewport(
+                lease,
+                mihon.domain.reader.ReaderDualPageFrameId(1, 0, 1),
+                1,
+                fixture.pages[0],
+                fixture.pages.take(2),
+            ),
+        )
+        loader.onPageSelected(fixture.pages[0])
+        runCurrent()
+        val chapter = fixture.pages[0].chapter
+        val replacement = ReaderPage(1, imageUrl = "https://example/rebound").apply { this.chapter = chapter }
+        chapter.publishLoadedPageListForTest(fixture.pages.map { if (it.index == 1) replacement else it })
+        var newHolder: kotlinx.coroutines.Job? = null
+        try {
+            loader.onPageSelected(fixture.pages[0])
+            newHolder = launch { loader.loadPage(replacement) }
+            runCurrent()
+            assertEquals(setOf(0), loader.pageRunnerSnapshot().activeRequestKeys.mapTo(mutableSetOf()) { it.pageIndex })
+        } finally {
+            newHolder?.cancel()
+            loader.recycle()
+            runCurrent()
+        }
+    }
+
+    @Test
+    fun `current viewport restores older prepared frames while retired leases stay closed`() = runTest {
+        val fixture = Fixture(testScheduler)
+        val loader = fixture.loader
+        val oldLease = requireNotNull(loader.acquireNormalViewport())
+        val newerFrame = mihon.domain.reader.ReaderDualPageFrameId(2, 2, 20)
+        val olderFrame = mihon.domain.reader.ReaderDualPageFrameId(1, 0, 2)
+        try {
+            assertTrue(loader.updateNormalViewport(oldLease, newerFrame, 1, fixture.pages[0], fixture.pages.take(2)))
+            assertTrue(
+                loader.updateNormalViewport(oldLease, olderFrame, 2, fixture.pages[0], fixture.pages.take(2)),
+                "A frame identity is not a notification clock",
+            )
+            assertFalse(loader.updateNormalViewport(oldLease, newerFrame, 1, fixture.pages[0], fixture.pages.take(2)))
+            val current = requireNotNull(loader.acquireNormalViewport())
+            assertTrue(loader.updateNormalViewport(current, newerFrame, 1, fixture.pages[0], fixture.pages.take(2)))
+            loader.releaseNormalViewport(oldLease)
+            assertFalse(loader.updateNormalViewport(oldLease, newerFrame, 3, fixture.pages[0], fixture.pages.take(2)))
+            loader.onPageSelected(fixture.pages[0])
+            runCurrent()
+            assertEquals(
+                setOf(0, 1),
+                loader.pageRunnerSnapshot().activeRequestKeys.mapTo(mutableSetOf()) {
+                    it.pageIndex
+                },
+            )
+            loader.releaseNormalViewport(current)
+            assertFalse(loader.updateNormalViewport(current, newerFrame, 2, fixture.pages[0], fixture.pages.take(2)))
+        } finally {
+            loader.recycle()
+            runCurrent()
+        }
+    }
+
+    @Test
     fun `visible holder replaces an ordinary request when its URL content attempt or page object changed`() = runTest {
         for (change in listOf("url", "retry", "encoded", "page")) {
             val scheduler = ReaderRequestScheduler(ReaderSchedulerPolicy(nearbyForward = 1, maxConcurrentRequests = 1))

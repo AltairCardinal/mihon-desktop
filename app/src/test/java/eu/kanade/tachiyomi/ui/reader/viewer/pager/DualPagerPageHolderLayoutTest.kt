@@ -756,6 +756,13 @@ class DualPagerPageHolderLayoutTest {
                 measure(ordinary.pager, 720, 1280)
                 val holder = ordinary.pager.children.filterIsInstance<PagerPageHolder>().first { it.page === page }
                 bindOrdinary(holder)
+                val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5)
+                while (ReflectionHelpers.getField<NativeImageView?>(holder, "pageView") == null) {
+                    check(System.nanoTime() < deadline) { "The original single-page child must finish binding" }
+                    runCurrent()
+                    shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+                    Thread.sleep(1)
+                }
                 measure(holder, 720, 1280)
                 holder.onImageLoaded()
                 io.mockk.verify(exactly = 0) { model.onDualViewportSettled(page, any()) }

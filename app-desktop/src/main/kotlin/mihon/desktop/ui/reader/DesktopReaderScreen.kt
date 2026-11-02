@@ -3,8 +3,8 @@ package mihon.desktop.ui.reader
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -12,13 +12,13 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -174,6 +174,12 @@ data class DesktopReaderScreen(
             onDispose { binding?.let(mihon.desktop.test.http.ProductionReaderTestModeBridge::clear) }
         }
         val state by model.state.collectAsState()
+        var pairingReloadRequested by remember(state.context.mangaId, state.dualPageIdentity) {
+            mutableStateOf(false)
+        }
+        LaunchedEffect(state.pairingLoad) {
+            if (state.pairingLoad == PairingLoad.READY) pairingReloadRequested = false
+        }
         var resumeNoticeDismissed by remember(state.context.chapterId) { mutableStateOf(false) }
         if (state.resumePageUnavailable && !resumeNoticeDismissed) {
             mihon.presentation.sync.SyncReadingPositionRecovery(
@@ -269,6 +275,25 @@ data class DesktopReaderScreen(
             ReaderSettingsPanel(
                 currentMode = if (state.automaticLayout) ReadingMode.AUTO else state.readingMode,
                 feedback = state.settingsFeedback,
+                pairingRecovery = {
+                    val canReload = state.pairingLoad == PairingLoad.ERROR ||
+                        state.pairingLoad == PairingLoad.DEFAULT_UNVERIFIED
+                    val pending = pairingReloadRequested && state.pairingLoad == PairingLoad.LOADING
+                    if (state.context.chapterId > 0 && state.context.mangaId > 0 &&
+                        state.session.activeChapter.pages.isNotEmpty() && (canReload || pending)
+                    ) {
+                        TextButton(
+                            onClick = {
+                                pairingReloadRequested = true
+                                model.retryPairingRestore()
+                            },
+                            enabled = canReload,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(MR.strings.action_reload_page_pairing.localized())
+                        }
+                    }
+                },
                 followsGlobal = state.followsGlobalReadingMode,
                 onFollowGlobal = {
                     model.followGlobalReadingMode(runtime.prefs)
@@ -450,7 +475,12 @@ internal fun ReaderState.dualPresentationSnapshot(
         hasNextChapter = hasNextChapter,
         spreadPageIndices = spreadPages,
         splitWidePages = autoSplitPages,
-    ).copy(dualPageUnits = dualPageUnits.takeIf { dualPageIdentity != null })
+    ).copy(
+        dualPageUnits = dualPageUnits.takeIf { dualPageIdentity != null },
+        dualPageFrames = dualPageFrames.takeIf { dualPageIdentity != null },
+        dualPageTargetFrameId = dualPageTargetFrameId,
+        dualPageTargetPageId = dualPageLocation?.pageId,
+    )
     return DesktopReaderPresentationRegistry.require(ReaderPresentationMode.DUAL_PAGED).present(request)
 }
 
@@ -643,6 +673,7 @@ internal fun ReaderViewport(
                         onPrevChapter,
                         onNextChapter,
                         adjustSpread,
+                        beforeFullscreenToggle = renderTrace?.let { trace -> trace::fullscreenRequest },
                     )
                 }
                 .onPointerEvent(PointerEventType.Move, PointerEventPass.Initial) { event ->
@@ -677,10 +708,6 @@ internal fun ReaderViewport(
         ) {
             when (readerViewportBody(state)) {
                 ReaderViewportBody.LOADING -> LoadingState()
-                ReaderViewportBody.PAIRING_ERROR -> PairingRestoreError(
-                    onRetry = model::retryPairingRestore,
-                    onUseDefault = model::useDefaultPairingThisSession,
-                )
                 ReaderViewportBody.ERROR -> ErrorState(
                     desktopSourceErrorMessage(
                         (state.session.activeChapter.loadState as ReaderChapterLoadState.Error).error,
@@ -705,14 +732,6 @@ internal fun ReaderViewport(
                         )
                     }
                     ColorFilterOverlay(state.colorFilter)
-                    if (state.dualPageMode && state.pairingLoad == PairingLoad.ERROR) {
-                        PairingRestoreError(
-                            onRetry = model::retryPairingRestore,
-                            onUseDefault = model::useDefaultPairingThisSession,
-                            modifier = Modifier.align(Alignment.Center)
-                                .background(Color.Black.copy(alpha = 0.7f)).padding(16.dp),
-                        )
-                    }
                     if (showBottomBar) {
                         ReaderBottomBar(
                             currentPage = state.currentPage, totalPages = state.session.activeChapter.pages.size,
@@ -861,7 +880,6 @@ internal fun readerWheelIntent(
 internal enum class ReaderViewportBody {
     CONTENT,
     LOADING,
-    PAIRING_ERROR,
     ERROR,
     EMPTY,
 }
@@ -875,27 +893,7 @@ internal fun readerViewportBody(state: ReaderState): ReaderViewportBody {
             else -> ReaderViewportBody.EMPTY
         }
     }
-    if (state.dualPageMode) return ReaderViewportBody.CONTENT
-    return when {
-        state.pairingLoad == PairingLoad.ERROR -> ReaderViewportBody.PAIRING_ERROR
-        state.pairingLoad == PairingLoad.LOADING -> ReaderViewportBody.LOADING
-        else -> ReaderViewportBody.CONTENT
-    }
-}
-
-@Composable
-private fun PairingRestoreError(
-    onRetry: () -> Unit,
-    onUseDefault: () -> Unit,
-    modifier: Modifier = Modifier.fillMaxSize(),
-) {
-    Box(modifier, contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(MR.strings.desktop_reader_pairing_load_failed.localized(), color = Color.White)
-            Button(onClick = onRetry) { Text(MR.strings.action_retry.localized()) }
-            Button(onClick = onUseDefault) { Text(MR.strings.desktop_reader_pairing_use_default.localized()) }
-        }
-    }
+    return ReaderViewportBody.CONTENT
 }
 
 @Composable
@@ -962,9 +960,12 @@ internal fun handleReaderKeyEvent(
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
     onAdjustSpread: () -> Unit = model::adjustSpread,
+    beforeFullscreenToggle: ((Boolean) -> Unit)? = null,
 ): Boolean {
     if (event.type != KeyEventType.KeyDown) return false
     if (event.key == Key.F11) {
+        // Capture the last completed picture before state-driven UI recomposition can replace it.
+        beforeFullscreenToggle?.invoke(!model.state.value.isFullscreen)
         model.toggleFullscreen()
         return true
     }
@@ -1191,6 +1192,8 @@ internal fun ReaderContent(
                     }
                     ZoomablePagerViewer(
                         dualPageUnits = state.dualPageUnits,
+                        dualPageFrames = state.dualPageFrames,
+                        dualPageTargetFrameId = state.dualPageTargetFrameId,
                         pagerPresentationBinding = pagerBinding,
                         pageTurnAnimation = pageTurnAnimation,
                         allowAdjacentViewport = firstPresentedGeneration == state.session.generation,

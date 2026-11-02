@@ -255,11 +255,11 @@ internal fun DualPagePagerViewer(
     fun unitToPager(unitIndex: Int): Int = if (isRtl) maxPagerIndex - unitIndex else unitIndex
     fun pagerToUnit(pagerIndex: Int): Int = if (isRtl) maxPagerIndex - pagerIndex else pagerIndex
     fun pageToPager(pageId: ReaderPageId): Int? =
-        displayUnits.indexOfFirst { unit -> unit.slots.any { it.page?.id == pageId } }
+        presentation.restoreDisplayUnitIndex(pageId, null)
             .takeIf { it >= 0 }?.let(::unitToPager)
 
     fun unitKey(unit: DisplayUnit): Any =
-        unit.slots.mapNotNull { it.page?.id }.minByOrNull { it.sourcePageIndex } ?: unit.id
+        unit.id.frameId ?: unit.id
 
     val initialUnitIndex = presentation.restoreDisplayUnitIndex(currentPageId, currentDisplayUnitId)
         .coerceAtLeast(0)
@@ -286,7 +286,9 @@ internal fun DualPagePagerViewer(
             } else if (interaction is DragInteraction.Stop) {
                 navigationIntent.value = navigationIntent.value?.copy(dragReleased = true)
             } else if (interaction is DragInteraction.Cancel) {
+                val origin = navigationIntent.value?.origin
                 navigationIntent.value = null
+                if (origin != null) pagerState.scrollToPage(origin.coerceIn(nativeUnits.indices))
             }
         }
     }
@@ -294,8 +296,9 @@ internal fun DualPagePagerViewer(
     LaunchedEffect(
         currentPageId,
         nativeLocation,
-        displayUnits[initialUnitIndex].id,
-        displayUnits.map(DisplayUnit::id),
+        displayUnits[initialUnitIndex].id.frameId ?: displayUnits[initialUnitIndex].id,
+        initialUnitIndex,
+        displayUnits.size,
         isRtl,
         pageTurnAnimation,
     ) {
@@ -418,8 +421,10 @@ internal fun DualPagePagerViewer(
             selected = selected,
             navigationLocation = navigationIntent.value?.logicalLocation ?: nativeLocation,
         )
-        val panGeometries = remember(unit.id) { mutableStateMapOf<DisplaySlotId, ReaderRegionDrawGeometry>() }
-        val panBounds = if (selected && unit.slots.size == 2) {
+        val panFrameIdentity = unit.id.frameId ?: unit.id
+        val panGeometries = remember(panFrameIdentity) { mutableStateMapOf<DisplaySlotId, ReaderRegionDrawGeometry>() }
+        val panBoundsState = remember(panFrameIdentity) { ReaderPanBoundsState() }
+        val measuredPanBounds = if (selected && unit.slots.size == 2) {
             val viewport = panGeometries.values.firstOrNull()?.viewportSize
             val pendingSlots = if (viewport == null) {
                 emptyList()
@@ -442,6 +447,7 @@ internal fun DualPagePagerViewer(
         } else {
             null
         }
+        val panBounds = measuredPanBounds?.let { panBoundsState.update(it, zoomState) }
         val displayZoom = panBounds?.constrain(zoomState) ?: zoomState
         LaunchedEffect(displayZoom, zoomState) {
             if (displayZoom != zoomState) onZoomChange(displayZoom)

@@ -159,7 +159,7 @@ class DefaultReaderModeTest {
     }
 
     @Test
-    fun `layout settles preserve logical anchor while newly painted companion and next page report`() = runTest {
+    fun `adaptive layout retains restored manual singles and reports only new painted pages`() = runTest {
         val initial = desktopReaderSessionState(chapterId = 7L, pageCount = 6, initialPage = 2)
         val reader = initial.copy(context = initial.context.copy(mangaId = 1))
         val repository = object : mihon.domain.reader.ChapterPairingRepository {
@@ -192,6 +192,11 @@ class DefaultReaderModeTest {
             },
         )
         runCurrent()
+        assertEquals(PairingLoad.READY, model.state.value.pairingLoad)
+        assertEquals(1L, model.state.value.pairingRevision)
+        assertEquals(setOf(4), model.state.value.forcedSinglePages)
+        assertTrue(requireNotNull(model.state.value.dualPairingState).manualPairStarts.isEmpty())
+        assertFalse(model.state.value.autoSpreadMatching)
         reader.snapshot.activeChapter.pages.forEach {
             model.acceptDualFact(
                 requireNotNull(model.captureDualFact(it.id)),
@@ -206,9 +211,30 @@ class DefaultReaderModeTest {
         advanceTimeBy(150)
         runCurrent()
         val dual = model.presentReadyPagerViewport()
-        assertEquals(setOf(2, 3), dual.pageIds.mapTo(linkedSetOf()) { it.sourcePageIndex })
+        val shared = ReaderScreenModel::class.java.getDeclaredField("dualSession")
+            .apply { isAccessible = true }.get(model) as mihon.domain.reader.SharedDualPageSession
+        val certification = shared.certifyPairing()
+        assertTrue(certification is mihon.domain.reader.ReaderPairingCertification.Certified)
+        val certified = certification as mihon.domain.reader.ReaderPairingCertification.Certified
+        assertEquals(listOf(1, 2), certified.segment.unit.pageIds.map { it.sourcePageIndex })
+        assertEquals(
+            mihon.domain.reader.ReaderPageAnalysisEvidence.NotAnalyzed,
+            shared.originalAnalysis(reader.snapshot.activeChapter.pages[2].id),
+        )
+        val manual = shared.units.single { reader.snapshot.activeChapter.pages[4].id in it.pageIds }
+        assertEquals(listOf(reader.snapshot.activeChapter.pages[4].id), manual.pageIds)
+        assertEquals(mihon.domain.reader.ReaderDualPageSingleReason.MANUAL_BOUNDARY, manual.singleReason)
+        // A forced single at 4 does not request a manual pair at 2. With automatic matching off,
+        // original geometry certifies the chapter-start phase 0 / (1, 2), retaining logical 2.
+        assertEquals(setOf(1, 2), dual.pageIds.mapTo(linkedSetOf()) { it.sourcePageIndex })
         assertEquals(2, model.state.value.currentPage)
+        assertEquals(1, reports, "A layout-only companion cannot revive the consumed reading cause")
+        model.goToPage(2)
+        val selected = model.presentReadyPagerViewport()
+        assertEquals(dual.pageIds, selected.pageIds)
         assertEquals(2, reports)
+        model.presentReadyPagerViewport()
+        assertEquals(2, reports, "The newly selected physical viewport is deduplicated")
         model.updateViewportSize(900, 1000, this)
         runCurrent()
         advanceTimeBy(150)

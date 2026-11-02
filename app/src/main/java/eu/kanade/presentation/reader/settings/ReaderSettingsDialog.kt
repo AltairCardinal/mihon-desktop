@@ -25,6 +25,7 @@ fun ReaderSettingsDialog(
     onShowMenus: () -> Unit,
     onHideMenus: () -> Unit,
     screenModel: ReaderSettingsScreenModel,
+    pairingRecovery: @Composable () -> Unit = {},
 ) {
     val tabTitles = persistentListOf(
         stringResource(MR.strings.pref_category_reading_mode),
@@ -61,7 +62,7 @@ fun ReaderSettingsDialog(
                     .verticalScroll(rememberScrollState()),
             ) {
                 when (page) {
-                    0 -> ReadingModePage(screenModel)
+                    0 -> ReadingModePage(screenModel, pairingRecovery)
                     1 -> GeneralPage(screenModel)
                     2 -> ColorFilterPage(screenModel)
                 }

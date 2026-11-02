@@ -97,7 +97,6 @@ class DualPagerPageHolder(
     private var errorPage: ReaderPage? = null
     private val errorLayouts = mutableMapOf<Side, ReaderErrorBinding>()
     private val errorPages = mutableMapOf<Side, ReaderPage>()
-    private val certificationErrorSides = mutableSetOf<Side>()
     private val renderedPages = mutableMapOf<ReaderPage, String>()
     private val boundContents = mutableMapOf<ReaderPage, String>()
     private val boundEncodedContents = mutableMapOf<ReaderPage, String>()
@@ -128,40 +127,17 @@ class DualPagerPageHolder(
             *fields,
         )
     }
+    private val presentationLeaseOwner = Any()
     internal var presentationScope: Pair<SharedDualPageSession, ReaderDualPageViewportTicket>? =
-        viewer.capturePresentation(displayPage)
+        viewer.capturePresentation(displayPage, presentationLeaseOwner)
         private set
     private var attachmentGeneration = 0L
 
     internal fun beginPresentation() {
-        val next = viewer.capturePresentation(displayPage)
-        if (next == null) {
-            val blocked = viewer.adapter.requirePairing(
-                displayPage,
-            ) as? mihon.domain.reader.ReaderPairingCertification.RetryableBlocked
-            if (blocked != null) {
-                displayPage.pageSides().forEach { (page, side) ->
-                    if (renderedPages[page] == null && errorPages[side] !== page) {
-                        setError(java.io.IOException("Unable to load this page. Retry to continue."), page, side)
-                        certificationErrorSides += side
-                    }
-                }
-            }
-        }
-        if (next != null) {
-            certificationErrorSides.toList().forEach { side ->
-                if (errorPages[side]?.status == Page.State.Ready) {
-                    errorLayouts[side]?.root?.isVisible = false
-                    errorPages.remove(side)
-                    certificationErrorSides.remove(side)
-                }
-            }
-            errorPage = errorPages.values.firstOrNull()
-        }
+        val next = viewer.capturePresentation(displayPage, presentationLeaseOwner)
         if (presentationScope?.second === next?.second) return
         if (presentationScope?.first !== next?.first ||
-            presentationScope?.second?.locationSequence != next?.second?.locationSequence ||
-            presentationScope?.second?.frameId?.context != next?.second?.frameId?.context
+            presentationScope?.second?.frameId != next?.second?.frameId
         ) {
             renderedPages.clear()
         }
@@ -181,7 +157,9 @@ class DualPagerPageHolder(
     }
 
     internal fun onViewportMoved() {
-        if (isAttachedToWindow && !getGlobalVisibleRect(Rect())) {
+        if (isAttachedToWindow && !getGlobalVisibleRect(Rect()) &&
+            presentationScope?.let { (owner, ticket) -> ticket.frameId == owner.targetFrameId } != true
+        ) {
             presentationScope?.let(viewer::releasePresentation)
             presentationScope = null
             visibleContentLeases.clear()
@@ -444,6 +422,11 @@ class DualPagerPageHolder(
     /** A candidate partner can leave or enter without replacing an unchanged physical image slot. */
     internal fun updateDisplayPage(replacement: DisplayPage): Boolean {
         if (displayPage == replacement) return true
+        if (displayPage.frameId != replacement.frameId &&
+            replacement.frameId != presentationScope?.second?.frameId
+        ) {
+            return false
+        }
         val previous = displayPage.pageSides()
         val next = replacement.pageSides()
         val common = previous.keys.intersect(next.keys)
@@ -467,7 +450,6 @@ class DualPagerPageHolder(
             progressIndicators[side]?.hide()
             errorLayouts[side]?.root?.isVisible = false
             errorPages.remove(side)
-            certificationErrorSides.remove(side)
         }
         displayPage = replacement
         presentationDiagnostics.retainSources(replacement.visiblePages.map { it.index })
@@ -671,7 +653,7 @@ class DualPagerPageHolder(
                         "elapsedMs" to (System.nanoTime() - started) / 1_000_000,
                     )
                     if (callbackIsCurrent()) {
-                        if (errorPages[side] === page && side !in certificationErrorSides) {
+                        if (errorPages[side] === page) {
                             errorLayouts[side]?.root?.isVisible = false
                             errorPages.remove(side)
                             if (errorPage === page) errorPage = errorPages.values.firstOrNull()
@@ -939,7 +921,6 @@ class DualPagerPageHolder(
     }
 
     private fun setError(error: Throwable?, page: ReaderPage, side: Side) {
-        certificationErrorSides.remove(side)
         clearRendered(page)
         removeProgressIndicator(side)
         val binding = errorLayouts.getOrPut(side) {

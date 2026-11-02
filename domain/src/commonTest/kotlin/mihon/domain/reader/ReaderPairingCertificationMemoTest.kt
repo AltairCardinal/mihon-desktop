@@ -456,9 +456,15 @@ class ReaderPairingCertificationMemoTest {
             val engineRuns = session.certificationMetrics.engineRuns
 
             assertTrue(session.goToPage(pages[7]))
-            session.certifyPairingWithDependencies(pages[3])
             assertEquals(
                 engineRuns + 1,
+                session.certificationMetrics.engineRuns,
+                "Navigation prepares its own target proof",
+            )
+            val afterNavigation = session.certificationMetrics.engineRuns
+            session.certifyPairingWithDependencies(pages[3])
+            assertEquals(
+                afterNavigation + 1,
                 session.certificationMetrics.engineRuns,
                 "A new location must not reuse the previous location's result",
             )

@@ -1,24 +1,22 @@
 package mihon.desktop.test.http
 
-import java.io.File
-import java.nio.file.Path
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.SChapter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import kotlin.io.path.createDirectories
-import kotlin.io.path.writeText
 import mihon.desktop.download.CbzCreator
-import mihon.desktop.download.DesktopDownloadProvider
-import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DefaultDownloadFileOperations
+import mihon.desktop.download.DesktopDownloadManager
+import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.download.DownloadFileOperations
 import mihon.desktop.download.DownloadIoEvent
-import mihon.desktop.download.DownloadIoPageIdentity
 import mihon.desktop.download.DownloadIoOperation
-import mihon.desktop.download.DownloadLockState
+import mihon.desktop.download.DownloadIoPageIdentity
 import mihon.desktop.download.DownloadItem
+import mihon.desktop.download.DownloadLockState
 import mihon.desktop.source.LocalChapterEntry
 import mihon.desktop.source.LocalSourceReader
 import mihon.domain.reader.content.DownloadChapterIdentity
@@ -27,22 +25,75 @@ import mihon.domain.reader.observability.ReaderIoEventType
 import mihon.domain.reader.observability.ReaderIoPurpose
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageId
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
-import okhttp3.OkHttpClient
-import okhttp3.Protocol
-import okhttp3.Request
-import okhttp3.Response
-import okhttp3.ResponseBody.Companion.toResponseBody
+import java.io.File
+import java.nio.file.Path
+import kotlin.io.path.createDirectories
+import kotlin.io.path.writeText
 
 class ReaderTestModeControllerTest {
 
     @TempDir
     lateinit var tempDirectory: Path
+
+    @Test
+    fun `online image resolution accepts only current canonical pages and online fixture sources`() = runBlocking {
+        ReaderTestModeController().use { controller ->
+            fun prepare(source: ReaderTestFixtureSource, chapterId: Long) = controller.prepareFixture(
+                standardSpec(source).copy(pageCount = 3),
+                mangaId = 401L,
+                chapterId = chapterId,
+                chapterTitle = "Resolution identity",
+            )
+            suspend fun pageFor(fixture: ReaderTestFixtureDescriptor) = controller.onlineSource.getPageList(
+                SChapter.create().apply { url = fixture.chapterUrl },
+            )[1]
+            val old = prepare(ReaderTestFixtureSource.ONLINE, 501L)
+            val stalePage = pageFor(old).apply { imageUrl = null }
+            val fresh = prepare(ReaderTestFixtureSource.ONLINE, 502L)
+            val current = pageFor(fresh)
+            assertEquals(current.imageUrl, controller.onlineSource.getImageUrl(current))
+            assertEquals(
+                null,
+                controller.onlineSource.getImageUrl(stalePage),
+                "Retired fixture tokens must be rejected",
+            )
+            for (url in listOf(
+                "/foreign/1",
+                "${fresh.chapterUrl}/-1",
+                "${fresh.chapterUrl}/${fresh.spec.pageCount}",
+                "${fresh.chapterUrl}/one",
+                "${fresh.chapterUrl}/01",
+                "${fresh.chapterUrl}/1?old=true",
+                "${fresh.chapterUrl}/extra/1",
+                requireNotNull(current.imageUrl),
+            )) {
+                assertEquals(null, controller.onlineSource.getImageUrl(Page(1, url = url)), url)
+            }
+            for ((index, source) in listOf(
+                ReaderTestFixtureSource.DOWNLOADED_DIRECTORY,
+                ReaderTestFixtureSource.DOWNLOADED_CBZ,
+                ReaderTestFixtureSource.LOCAL_ARCHIVE,
+            ).withIndex()) {
+                val offline = prepare(source, 503L + index)
+                assertEquals(
+                    null,
+                    controller.onlineSource.getImageUrl(Page(1, url = "${offline.chapterUrl}/1")),
+                    "Offline fixture sources must not resolve an online image",
+                )
+            }
+        }
+    }
 
     @Test
     fun `test mode fixtures are real readable directories and CBZ archives`() {
@@ -98,11 +149,13 @@ class ReaderTestModeControllerTest {
             controller.beginScenario(currentPageIndex = 0)
             listOf(0, 1).forEach { ordinal ->
                 DownloadIoOperation.entries
-                    .filter { it in setOf(
-                        DownloadIoOperation.PARTIAL_PAGE_PROBE,
-                        DownloadIoOperation.PARTIAL_PAGE_OPEN,
-                        DownloadIoOperation.PARTIAL_PAGE_COPY,
-                    ) }
+                    .filter {
+                        it in setOf(
+                            DownloadIoOperation.PARTIAL_PAGE_PROBE,
+                            DownloadIoOperation.PARTIAL_PAGE_OPEN,
+                            DownloadIoOperation.PARTIAL_PAGE_COPY,
+                        )
+                    }
                     .forEach { operation ->
                         controller.onIo(
                             DownloadIoEvent(
@@ -250,7 +303,11 @@ class ReaderTestModeControllerTest {
             }
 
             assertEquals(2, checkNotNull(manager.snapshot(fixture.chapterId, fixture.identity())).committedPages.size)
-            assertEquals(null, controller.onlineImage(fixture.token, 0), "ACTIVE offline fixture must reject image network")
+            assertEquals(
+                null,
+                controller.onlineImage(fixture.token, 0),
+                "ACTIVE offline fixture must reject image network",
+            )
         } finally {
             controller.close()
             manager.stopAndJoin()
@@ -346,7 +403,9 @@ class ReaderTestModeControllerTest {
                     chapterTitle = "CBZ chapter",
                 )
                 val directoryArtifact = provider.canonicalChapterDownloadDir(directoryFixture.identity())
-                val cbzArtifact = CbzCreator.defaultOutputFile(provider.canonicalChapterDownloadDir(cbzFixture.identity()))
+                val cbzArtifact = CbzCreator.defaultOutputFile(
+                    provider.canonicalChapterDownloadDir(cbzFixture.identity()),
+                )
 
                 assertTrue(directoryArtifact.isDirectory)
                 assertTrue(cbzArtifact.isFile)

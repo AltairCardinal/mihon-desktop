@@ -14,6 +14,22 @@ import org.junit.jupiter.api.Test
 
 class ReaderPanBoundsTest {
     @Test
+    fun `background geometry and pointer input in one frame preserve the accepted focus`() {
+        val wide = ReaderPanBounds(IntSize(400, 400), Rect(0f, 0f, 400f, 400f))
+        val narrow = ReaderPanBounds(IntSize(400, 400), Rect(180f, 0f, 300f, 400f))
+        val accepted = ZoomState(2f, 100f, 0f)
+        for (delta in listOf(1f, -1f)) {
+            val state = ReaderPanBoundsState()
+            assertEquals(accepted, state.update(wide, accepted).constrain(accepted))
+            val moved = accepted.copy(offsetX = accepted.offsetX + delta)
+            val expected = accepted.copy(offsetX = minOf(100f, moved.offsetX))
+            assertEquals(expected, state.update(narrow, moved).constrain(moved))
+            val reversed = accepted.copy(offsetX = 99f)
+            assertEquals(reversed, state.update(narrow, reversed).constrain(reversed))
+        }
+    }
+
+    @Test
     fun `offscreen portrait cannot report pixels when only slot whitespace intersects`() {
         val local = resolveReaderRegionDrawGeometry(
             IntSize(700, 1000),

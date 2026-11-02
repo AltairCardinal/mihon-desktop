@@ -48,6 +48,8 @@ data class ReaderState(
     val visiblePageIds: Set<ReaderPageId> = emptySet(),
     val webtoonScrollAnchor: WebtoonScrollAnchor? = null,
     val dualPageUnits: List<mihon.domain.reader.ReaderDualPageUnit> = emptyList(),
+    val dualPageFrames: List<mihon.domain.reader.ReaderDualPagePresentationFrame> = emptyList(),
+    val dualPageTargetFrameId: mihon.domain.reader.ReaderDualPageFrameId? = null,
     val dualPageIdentity: mihon.domain.reader.ReaderDualPageIdentity? = null,
     val dualFactWorkRevision: Long = 0,
     val dualPairingFailures: Map<ReaderPageId, mihon.domain.reader.ReaderAnalysisFailure> = emptyMap(),
