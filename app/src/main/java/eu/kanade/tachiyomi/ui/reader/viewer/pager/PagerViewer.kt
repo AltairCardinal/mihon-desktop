@@ -113,7 +113,15 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
 
         override fun onPageScrollStateChanged(state: Int) {
             isIdle = state == ViewPager.SCROLL_STATE_IDLE
-            if (isIdle) reportSettledViewport()
+            if (isIdle) {
+                // A ready offscreen child can have cached a draw rejected by its viewport guard.
+                // Request its native draw again only once the selected page has settled onscreen.
+                (currentPage as? ReaderPage)
+                    ?.takeIf { it !is InsertPage && adapter.items.getOrNull(pager.currentItem) === it }
+                    ?.let(::getPageHolder)
+                    ?.invalidateImageDraw()
+                reportSettledViewport()
+            }
         }
     }
 
@@ -388,23 +396,31 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
         }
     }
 
-    private fun ensureSingleOwner(page: ReaderPage): SharedDualPageSession? {
-        if (destroyed || page is InsertPage) return null
-        val pages = page.chapter.pages ?: return null
-        if (pages.getOrNull(page.index) !== page) return null
-        val previous = pairingStore.chapters[page.chapter]?.session
-        if (previous != null &&
-            previous.identity.content.getOrNull(page.index)?.contentVersion != page.encodedContentIdentity()
-        ) {
-            // Ordinary Single already replaces its decoded image on a normal content snapshot.
-            // End that old presentation before rebinding, rather than assigning new bytes to its frame.
-            presentedViewports.remove(previous)?.let(previous::releaseViewport)
-        }
-        return pairingStore.ensure(page.chapter, pages).session.also {
-            it.configure(if (this is L2RPagerViewer) ReaderDirection.LTR else ReaderDirection.RTL)
-            it.configurePresentationMode(ReaderPresentationMode.SINGLE)
-        }
+    internal inline fun <T> traceStartup(name: String, page: ReaderPage, block: () -> T): T {
+        val probe = eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe
+        if (!probe.enabled) return block()
+        val first = page.chapter.pages?.firstOrNull() ?: return block()
+        return probe.traceStartup(name, activity.latencyRequestFor(first), page.chapter.chapter.id ?: -1, block)
     }
+
+    private fun ensureSingleOwner(page: ReaderPage): SharedDualPageSession? =
+        traceStartup("ReaderP3.ensureSingleOwner", page) {
+            if (destroyed || page is InsertPage) return@traceStartup null
+            val pages = page.chapter.pages ?: return@traceStartup null
+            if (pages.getOrNull(page.index) !== page) return@traceStartup null
+            val previous = pairingStore.chapters[page.chapter]?.session
+            if (previous != null &&
+                previous.identity.content.getOrNull(page.index)?.contentVersion != page.encodedContentIdentity()
+            ) {
+                // Ordinary Single already replaces its decoded image on a normal content snapshot.
+                // End that old presentation before rebinding, rather than assigning new bytes to its frame.
+                presentedViewports.remove(previous)?.let(previous::releaseViewport)
+            }
+            pairingStore.ensure(page.chapter, pages).session.also {
+                it.configure(if (this is L2RPagerViewer) ReaderDirection.LTR else ReaderDirection.RTL)
+                it.configurePresentationMode(ReaderPresentationMode.SINGLE)
+            }
+        }
 
     private fun bindSingleFacts(chapters: ViewerChapters) {
         val window = listOfNotNull(chapters.prevChapter, chapters.currChapter, chapters.nextChapter)
@@ -413,24 +429,42 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
         window.forEach { chapter ->
             val pages = chapter.pages ?: return@forEach
             pages.firstOrNull()?.let(::ensureSingleOwner)
+            val admitted = pairingStore.chapters[chapter]
             pages.filter { it !in factCollectors }.forEach { page ->
+                val admittedSnapshot = admitted?.cachedFacts?.get(page)
                 factCollectors[page] = scope.launch {
+                    var firstEmission = true
                     page.contentFact.collect { captured ->
-                        if (chapter.pages !== pages || destroyed) return@collect
-                        val owner = ensureSingleOwner(page) ?: return@collect
-                        if (page.contentFact.value != captured) return@collect
-                        val entry = pairingStore.chapters[chapter] ?: return@collect
-                        val previous = entry.factRetrySequences[page] ?: captured.retrySequence
-                        if (captured.retrySequence > previous) {
-                            entry.factRetrySequences[page] = captured.retrySequence
-                            owner.retryFacts()
+                        traceStartup("ReaderP3.singleFact", page) {
+                            val initial = firstEmission
+                            firstEmission = false
+                            if (chapter.pages !== pages || destroyed) return@traceStartup
+                            // Only reuse the fixed snapshot consumed before this subscription was launched.
+                            // Later emissions still owe retry and presentation work even if ensure() saw them first.
+                            if (initial && admittedSnapshot == captured && admitted?.pages === pages &&
+                                pairingStore.chapters[chapter] === admitted && pages.getOrNull(page.index) === page &&
+                                admitted.cachedFacts[page] == captured && page.contentFact.value == captured &&
+                                admitted.factRetrySequences[page] == captured.retrySequence &&
+                                admitted.session.identity.content.getOrNull(page.index)?.contentVersion ==
+                                page.encodedContentIdentity()
+                            ) {
+                                return@traceStartup
+                            }
+                            val owner = ensureSingleOwner(page) ?: return@traceStartup
+                            if (page.contentFact.value != captured) return@traceStartup
+                            val entry = pairingStore.chapters[chapter] ?: return@traceStartup
+                            val previous = entry.factRetrySequences[page] ?: captured.retrySequence
+                            if (captured.retrySequence > previous) {
+                                entry.factRetrySequences[page] = captured.retrySequence
+                                owner.retryFacts()
+                            }
+                            if (owner.identity.content[page.index].contentVersion != page.encodedContentIdentity()) {
+                                return@traceStartup
+                            }
+                            owner.acceptFact(owner.requestFact(owner.identity.pageIds[page.index]), captured.fact)
+                            (currentPage as? ReaderPage)?.takeIf { it.chapter === chapter }
+                                ?.let { getPageHolder(it)?.beginPresentation() }
                         }
-                        if (owner.identity.content[page.index].contentVersion != page.encodedContentIdentity()) {
-                            return@collect
-                        }
-                        owner.acceptFact(owner.requestFact(owner.identity.pageIds[page.index]), captured.fact)
-                        (currentPage as? ReaderPage)?.takeIf { it.chapter === chapter }
-                            ?.let { getPageHolder(it)?.beginPresentation() }
                     }
                 }
             }
@@ -440,20 +474,21 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
         }.forEach { owner -> presentedViewports.remove(owner)?.let(owner::releaseViewport) }
     }
 
-    internal fun capturePresentation(page: ReaderPage): Pair<SharedDualPageSession, ReaderDualPageViewportTicket>? {
-        // A split's offscreen second half must never issue or release the selected first half's scope.
-        if (page is InsertPage || currentPage !== page ||
-            adapter.items.getOrNull(pager.currentItem) !== page
-        ) {
-            return null
+    internal fun capturePresentation(page: ReaderPage): Pair<SharedDualPageSession, ReaderDualPageViewportTicket>? =
+        traceStartup("ReaderP3.capturePresentation", page) {
+            // A split's offscreen second half must never issue or release the selected first half's scope.
+            if (page is InsertPage || currentPage !== page ||
+                adapter.items.getOrNull(pager.currentItem) !== page
+            ) {
+                return@traceStartup null
+            }
+            val owner = ensureSingleOwner(page) ?: return@traceStartup null
+            if (owner.location?.pageId != owner.identity.pageIds[page.index]) return@traceStartup null
+            owner.captureViewport(preparingPageIds = emptySet())?.let {
+                presentedViewports[owner] = it
+                owner to it
+            }
         }
-        val owner = ensureSingleOwner(page) ?: return null
-        if (owner.location?.pageId != owner.identity.pageIds[page.index]) return null
-        return owner.captureViewport(preparingPageIds = emptySet())?.let {
-            presentedViewports[owner] = it
-            owner to it
-        }
-    }
 
     internal fun releasePresentation(presentation: Pair<SharedDualPageSession, ReaderDualPageViewportTicket>) {
         val (owner, ticket) = presentation

@@ -35,6 +35,7 @@
 | ACTIVITY_CHAPTERS_RECEIVED | Activity setChapters 入口，必须匹配本次注册的具体 viewerChapters／chapter／pages对象及Activity捕获request |
 | TARGET_IMAGE_ENTER / TARGET_HEADER_DISPATCH | 目标单页 holder setImage 入口／原header withIOContext之前，呈现准备和身份快照之后 |
 | VIEWER_CHAPTERS_APPLY_ENTER / PAGER_ADAPTER_READY / TARGET_HOLDER_CREATED | P2二级仅细分Activity收到章节到图片链入口：真实setChaptersInternal入口／adapter.setChapters返回／目标holder init绑定request后、启动loadJob前。调用若重入有重叠，应按真实顺序报告，不按名字重排 |
+| TARGET_LOAD_ENTER / TARGET_STATUS_COLLECT / TARGET_READY_ENTER | P3目标holder原load协程body入口／原statusFlow.collectLatest调用前／首次Ready分支入口；保持原调度、supervisorScope和状态收集顺序 |
 | PAGE_LIST_READY | ChapterLoader 将 materialize 页表结果接受并发布完成；已绑定章节与编码引用，不以前置全章 header 齐备为条件 |
 | OPEN_PAGE / ENCODED_READ_COMPLETE | 首页 holder 真实读取编码内容；本页 header 仍由既有按需链生产，可能位于 PAGE_LIST_READY→OPEN_PAGE 段，不能只看第一段缩短 |
 | DECODE_SUBMIT | ReaderPageImageView 提交当前首页图像到原有解码链路 |
@@ -45,11 +46,12 @@
 
 ## 开销、隔离与失败边界
 
-- 启用时在主线程预分配 32 个 session，每个 session 有固定 41 个 AtomicLong 时间槽（保留历史槽位，P1两点及P2一级七点、二级三点均追加于末尾）；超出预算拒绝继续采样，不增长集合。
+- 启用时在主线程预分配 32 个 session，每个 session 有固定 44 个 AtomicLong 时间槽（保留历史槽位，P1两点及P2一级七点、二级三点及P3三个协程边界均追加于末尾）；超出预算拒绝继续采样，不增长集合。
 - 热路径只校验目标 chapter/page/request 并对固定槽执行首次写入 CAS；不加旧版持锁日志、不做快照、文件写入或后台导出调度。capturedEvents/contains 只供测试和导出使用。
 - P2跨层关联只在既有32个session中保存章节、页表、首页和待发布viewerChapters的弱身份；未启用时不建立绑定，不写业务／持久状态，重配置和导出后失效，弱引用失效即拒收。VM只传初始init已捕获request；Activity用自身已捕获request及具体发布对象核验，单页holder从该Activity和同对象绑定捕获request，禁止迟到时回退全局active request。绑定setup仅在诊断生命周期执行，事件仍走原CAS槽。
 - P2一级仅对全链身份有效且非递减的样本相减，PAGE_LIST_READY→ACTIVATION_UI_ENTER→PAIRING_OWNER_READY→READING_GATE_READY→CHAPTER_STATE_PUBLISH_BEGIN→ACTIVITY_CHAPTERS_RECEIVED→TARGET_IMAGE_ENTER→TARGET_HEADER_DISPATCH→TARGET_HEADER_BEGIN的八个相邻wall区间之和应精确等于P；不重排名字、不跨尝试补洞，也不把区间全部当CPU。
 - P2二级另外导出 `pagerAwaitedIdle`（非时间点）：只在首次合法viewer apply被认领时保存其实际调用来源；原idle回调为true，直接调用为false，未命中则字段缺席。相同弱身份和request验证、首次CAS保护及session重配置边界仍适用；不能仅凭viewer时间间隔猜测idle路径。
+- P3另有四种固定名同步Perfetto section：`ReaderP3.singleFact`、`ReaderP3.ensureSingleOwner`、`ReaderP3.capturePresentation`、`ReaderP3.holderAttach`。只在已绑定当前目标request且TARGET_HEADER_BEGIN尚未记录时启用；viewer通过当前Activity及目标首页弱身份解析request，章节内其它页仅计该请求窗口的回调。每次begin在同线程finally配对end，不跨suspend或创建任务；关闭时直接执行原body。用于调用次数、嵌套与调度归属；父子section不能相加，开启时trace自身开销不为零，不以新旧仪器差值校正成本。
 - page 固定为 0。单页与双页 holder 在绑定时捕获 chapter/page/request，迟到的旧请求与其他章节/页不能写入当前 session。异步提交回调捕获同一身份。
 - ReaderActivity.onStop 用该 Activity 的 request 导出；快照、label 与目录在调度前绑定，后续活跃请求不能改写其归属。强停前未离开阅读器会丢失该样本；必要端点缺失或不完整导出必须判无效，不能补造时间点；HEADER_FACTS 等可选事件缺席不使样本无效，也不证明真机图像读取字节为零。
 - 默认关闭的探针仍保留轻量入口判断；既有 ReaderDiagnostics 的产品开销保持原样，不能把这些开销归因于新增稀疏探针，也不能声称测量时它被禁用。

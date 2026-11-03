@@ -166,10 +166,12 @@ class PagerPageHolder(
     }
 
     override fun onAttachedToWindow() {
-        super.onAttachedToWindow()
-        beginPresentation()
-        if (loadJob == null) loadJob = scope.launch { loadPageAndProcessStatus() }
-        observeContent()
+        viewer.traceStartup("ReaderP3.holderAttach", page) {
+            super.onAttachedToWindow()
+            beginPresentation()
+            if (loadJob == null) loadJob = scope.launch { loadPageAndProcessStatus() }
+            observeContent()
+        }
     }
 
     private fun observeContent() {
@@ -202,12 +204,24 @@ class PagerPageHolder(
      * the Job is cancelled.
      */
     private suspend fun loadPageAndProcessStatus() {
+        eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+            "TARGET_LOAD_ENTER",
+            latencyPage,
+            latencyChapter,
+            latencyRequest,
+        )
         val loader = page.chapter.pageLoader ?: return
 
         supervisorScope {
             launchIO {
                 loader.loadPage(page)
             }
+            eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+                "TARGET_STATUS_COLLECT",
+                latencyPage,
+                latencyChapter,
+                latencyRequest,
+            )
             page.statusFlow.collectLatest { state ->
                 when (state) {
                     Page.State.Queue -> setQueued()
@@ -218,7 +232,15 @@ class PagerPageHolder(
                             progressIndicator?.setProgress(value)
                         }
                     }
-                    Page.State.Ready -> setImage()
+                    Page.State.Ready -> {
+                        eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+                            "TARGET_READY_ENTER",
+                            latencyPage,
+                            latencyChapter,
+                            latencyRequest,
+                        )
+                        setImage()
+                    }
                     is Page.State.Error -> setError(state.error)
                 }
             }

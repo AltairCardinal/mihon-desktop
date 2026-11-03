@@ -28,6 +28,7 @@ object ReaderOpenLatencyProbe {
         "ACTIVATION_UI_ENTER", "PAIRING_OWNER_READY", "READING_GATE_READY", "CHAPTER_STATE_PUBLISH_BEGIN",
         "ACTIVITY_CHAPTERS_RECEIVED", "TARGET_IMAGE_ENTER", "TARGET_HEADER_DISPATCH",
         "VIEWER_CHAPTERS_APPLY_ENTER", "PAGER_ADAPTER_READY", "TARGET_HOLDER_CREATED",
+        "TARGET_LOAD_ENTER", "TARGET_STATUS_COLLECT", "TARGET_READY_ENTER",
     )
     private class TargetBinding(chapter: Any, pages: Any, page0: Any) {
         val chapter = WeakReference(chapter)
@@ -228,6 +229,23 @@ object ReaderOpenLatencyProbe {
             1 -> false
             2 -> true
             else -> null
+        }
+    }
+
+    /** Bounded attribution only: the captured request must still own the pre-header startup window. */
+    internal fun isStartupWindow(request: Long, chapter: Long): Boolean {
+        val session = activeSession(request, chapter) ?: return false
+        return session.target != null && session.times.get(names.indexOf("TARGET_HEADER_BEGIN")) == 0L
+    }
+
+    /** Synchronous sections only; callers resolve the registered target identity before entering. */
+    internal inline fun <T> traceStartup(name: String, request: Long, chapter: Long, block: () -> T): T {
+        if (!isStartupWindow(request, chapter)) return block()
+        android.os.Trace.beginSection(name)
+        try {
+            return block()
+        } finally {
+            android.os.Trace.endSection()
         }
     }
 

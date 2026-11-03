@@ -115,11 +115,19 @@ class ReaderOpenLatencyProbeTest {
             "VIEWER_CHAPTERS_APPLY_ENTER",
             "PAGER_ADAPTER_READY",
             "TARGET_HOLDER_CREATED",
+            "TARGET_LOAD_ENTER",
+            "TARGET_STATUS_COLLECT",
+            "TARGET_READY_ENTER",
         ).forEach { event ->
             assertFalse(ReaderOpenLatencyProbe.record(event, 1, 20, next), event)
             assertTrue(ReaderOpenLatencyProbe.recordForPageList(event, next, 20, chapter, pages), event)
             assertFalse(ReaderOpenLatencyProbe.recordForPageList(event, next, 20, chapter, pages), event)
         }
+        assertTrue(ReaderOpenLatencyProbe.isStartupWindow(next, 20))
+        assertFalse(ReaderOpenLatencyProbe.isStartupWindow(request, 20))
+        assertFalse(ReaderOpenLatencyProbe.isStartupWindow(next, 21))
+        assertTrue(ReaderOpenLatencyProbe.record("TARGET_HEADER_BEGIN", 0, 20, next))
+        assertFalse(ReaderOpenLatencyProbe.isStartupWindow(next, 20))
         assertFalse(ReaderOpenLatencyProbe.notePagerDispatch(next, 20, chapter, pages, viewerChapters, true))
         assertTrue(ReaderOpenLatencyProbe.notePagerDispatch(next, 20, chapter, pages, nextViewerChapters, false))
         assertEquals(false, ReaderOpenLatencyProbe.capturedPagerAwaitedIdle(next))

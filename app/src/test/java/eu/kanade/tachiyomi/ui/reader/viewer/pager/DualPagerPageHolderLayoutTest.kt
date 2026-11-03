@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.ui.reader.viewer.pager
 import android.app.Activity
 import android.app.Application
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Rect
 import android.os.Looper
 import android.os.SystemClock
@@ -63,6 +64,7 @@ import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderPortraitSingleSlot
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -728,6 +730,286 @@ class DualPagerPageHolderLayoutTest {
         suspendCoroutineUninterceptedOrReturn<Unit> { continuation ->
             val result = method.invoke(holder, continuation)
             if (result === COROUTINE_SUSPENDED) COROUTINE_SUSPENDED else Unit
+        }
+    }
+
+    @Test
+    fun `single fact collectors reuse admitted snapshots but process metadata retry and replacement`() = runTest {
+        val activity = viewer.activity
+        val store = io.mockk.spyk(DualPagePairingStore())
+        val model = mockk<ReaderViewModel>(relaxed = true)
+        every { model.dualPagePairings } returns store
+        every { model.state } returns MutableStateFlow(ReaderViewModel.State())
+        ReflectionHelpers.setField(activity, "viewModel\$delegate", lazyOf(model))
+        val ordinary = R2LPagerViewer(activity)
+        ordinary.config.navigationModeChangedListener = null
+        val chapter = loadedChapter(62032, 12)
+        val pages = requireNotNull(chapter.pages)
+        var destroyed = false
+        try {
+            runCurrent()
+            ordinary.setChapters(ViewerChapters(chapter, null, null))
+            val admitted = requireNotNull(store.chapters[chapter])
+            assertTrue(pages.all { admitted.cachedFacts[it] == it.contentFact.value })
+            io.mockk.clearMocks(store, answers = false)
+            runCurrent()
+            io.mockk.verify(exactly = 0) { store.ensure(chapter, pages) }
+
+            val changed = pages[3]
+            changed.publishHeaderFact()
+            runCurrent()
+            io.mockk.verify(atLeast = 1) { store.ensure(chapter, pages) }
+            val withMetadata = requireNotNull(store.chapters[chapter])
+            assertEquals(
+                changed.pageFact.value,
+                withMetadata.session.pageFact(withMetadata.session.identity.pageIds[3]),
+            )
+            val budget = withMetadata.session.factBudget
+            io.mockk.clearMocks(store, answers = false)
+            changed.retryHeaderFact()
+            runCurrent()
+            io.mockk.verify(atLeast = 1) { store.ensure(chapter, pages) }
+            assertTrue(budget !== requireNotNull(store.chapters[chapter]).session.factBudget)
+
+            // Another real consumer may refresh the store before the retry emission is drained.
+            changed.retryHeaderFact()
+            store.ensure(chapter, pages)
+            val beforeRetryDrain = requireNotNull(store.chapters[chapter]).session.factBudget
+            runCurrent()
+            assertEquals(
+                changed.contentFact.value.retrySequence,
+                store.chapters[chapter]?.factRetrySequences?.get(changed),
+            )
+            assertTrue(beforeRetryDrain !== requireNotNull(store.chapters[chapter]).session.factBudget)
+
+            val original = requireNotNull(store.chapters[chapter]).session.identity.content[3].contentVersion
+            changed.stream = { readerTestPng(60, 90).inputStream() }
+            runCurrent()
+            assertTrue(original != requireNotNull(store.chapters[chapter]).session.identity.content[3].contentVersion)
+            assertEquals(
+                changed.encodedContentIdentity(),
+                requireNotNull(store.chapters[chapter]).session.identity.content[3].contentVersion,
+            )
+
+            val next = loadedChapter(62033, 4)
+            val nextPages = requireNotNull(next.pages)
+            ordinary.setChapters(ViewerChapters(next, null, null))
+            // Replace bytes after binding but before the first Flow callback; drop(1) would miss this.
+            val nextChanged = nextPages[2]
+            nextChanged.stream = { readerTestPng(70, 100).inputStream() }
+            io.mockk.clearMocks(store, answers = false)
+            runCurrent()
+            io.mockk.verify(atLeast = 1) { store.ensure(next, nextPages) }
+            assertEquals(
+                nextChanged.encodedContentIdentity(),
+                requireNotNull(store.chapters[next]).session.identity.content[2].contentVersion,
+            )
+            io.mockk.clearMocks(store, answers = false)
+            changed.retryHeaderFact()
+            runCurrent()
+            io.mockk.verify(exactly = 0) { store.ensure(chapter, pages) }
+
+            ordinary.destroy()
+            destroyed = true
+            io.mockk.clearMocks(store, answers = false)
+            nextChanged.retryHeaderFact()
+            runCurrent()
+            io.mockk.verify(exactly = 0) { store.ensure(next, nextPages) }
+        } finally {
+            if (!destroyed) ordinary.destroy()
+        }
+    }
+
+    @Test
+    fun `ordinary pager invalidates a ready native child after the selected viewport settles`() = runTest {
+        val activity = viewer.activity
+        val model = mockk<ReaderViewModel>(relaxed = true)
+        every { model.dualPagePairings } returns DualPagePairingStore()
+        every { model.state } returns MutableStateFlow(ReaderViewModel.State())
+        ReflectionHelpers.setField(activity, "viewModel\$delegate", lazyOf(model))
+        val ordinary = R2LPagerViewer(activity)
+        ordinary.config.navigationModeChangedListener = null
+        ordinary.config.usePageTransitions = true
+        val chapter = loadedChapter(62035, 3)
+        val pages = requireNotNull(chapter.pages)
+        val pixels = Bitmap.createBitmap(100, 200, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(android.graphics.Color.GREEN)
+        }
+        val encoded = ByteArrayOutputStream().also { pixels.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+        pixels.recycle()
+        pages.forEach {
+            it.stream = { encoded.inputStream() }
+            it.status = Page.State.Ready
+        }
+        chapter.pageLoader = object : PageLoader() {
+            override var isLocal = true
+            override suspend fun getPages() = pages
+        }
+        val canvasPixels = Bitmap.createBitmap(720, 1280, Bitmap.Config.ARGB_8888)
+        try {
+            ordinary.setChapters(ViewerChapters(chapter, null, null))
+            measure(ordinary.pager, 720, 1280)
+            val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5)
+            var holder: PagerPageHolder? = null
+            var native: NativeImageView? = null
+            do {
+                runCurrent()
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+                measure(ordinary.pager, 720, 1280)
+                holder =
+                    ordinary.pager.children.filterIsInstance<PagerPageHolder>().firstOrNull { it.page === pages[1] }
+                native = holder?.let { ReflectionHelpers.getField<NativeImageView?>(it, "pageView") }
+                if (native != null) break
+                Thread.sleep(1)
+            } while (System.nanoTime() < deadline)
+            val current = requireNotNull(holder) { "Real offscreen holder was never attached" }
+            val image = requireNotNull(native) { "Real Ready/statusFlow did not create its native child" }
+            check(ReflectionHelpers.getField<String?>(current, "boundContent") == pages[1].contentIdentity())
+            // Substitute only Windows' unavailable JNI decoder output; preserve the real holder,
+            // callbacks, generations and viewport. A ready offscreen native draw must reject pixels.
+            image.setImage(
+                com.davemorrissey.labs.subscaleview.ImageSource.bitmap(
+                    requireNotNull(android.graphics.BitmapFactory.decodeByteArray(encoded, 0, encoded.size)),
+                ),
+            )
+            image.draw(Canvas(canvasPixels))
+            check(image.isReady && image.isImageLoaded)
+            ordinary.handleKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT))
+            ordinary.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_LEFT))
+            check(!image.getGlobalVisibleRect(Rect())) { "The selected callback must precede physical scrolling" }
+            assertFalse(
+                ReflectionHelpers.callInstanceMethod<Boolean>(
+                    current,
+                    "prepareNativeImageDraw",
+                    ReflectionHelpers.ClassParameter.from(Int::class.javaPrimitiveType, image.width),
+                    ReflectionHelpers.ClassParameter.from(Int::class.javaPrimitiveType, image.height),
+                ),
+            )
+            canvasPixels.eraseColor(android.graphics.Color.TRANSPARENT)
+            image.draw(Canvas(canvasPixels))
+            assertEquals(
+                "The real visibility guard must reject this ready offscreen draw",
+                0,
+                canvasPixels.getPixel(360, 640),
+            )
+            val currentCallback = ReflectionHelpers.getField<() -> Boolean>(current, "imageCallbackCurrent")
+            check(currentCallback()) { "The failure must not be manufactured by a stale image callback" }
+            shadowOf(image).clearWasInvalidated()
+            repeat(40) {
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+                ordinary.pager.computeScroll()
+                runCurrent()
+            }
+            check(ReflectionHelpers.getField<Boolean>(ordinary, "isIdle")) { "The real pager did not dispatch IDLE" }
+            check(image.getGlobalVisibleRect(Rect())) { "The selected native child did not enter the viewport" }
+            assertTrue(
+                "A native display list rejected outside the viewport must be invalidated after real scrolling settles",
+                shadowOf(image).wasInvalidated(),
+            )
+        } finally {
+            canvasPixels.recycle()
+            ordinary.destroy()
+            chapter.pageLoader?.recycle()
+        }
+    }
+
+    @Test
+    fun `ordinary ready status lifecycle keeps drawable tickets through forward and return navigation`() = runTest {
+        val activity = viewer.activity
+        val store = DualPagePairingStore()
+        val model = mockk<ReaderViewModel>(relaxed = true)
+        every { model.dualPagePairings } returns store
+        every { model.state } returns MutableStateFlow(ReaderViewModel.State())
+        ReflectionHelpers.setField(activity, "viewModel\$delegate", lazyOf(model))
+        val ordinary = R2LPagerViewer(activity)
+        ordinary.config.navigationModeChangedListener = null
+        val chapter = loadedChapter(62034, 3)
+        val pages = requireNotNull(chapter.pages)
+        pages.forEachIndexed { index, page ->
+            val bitmap = Bitmap.createBitmap(
+                if (index ==
+                    0
+                ) {
+                    200
+                } else {
+                    100
+                },
+                if (index == 0) 100 else 200,
+                Bitmap.Config.ARGB_8888,
+            )
+            bitmap.eraseColor(if (index == 0) android.graphics.Color.BLUE else android.graphics.Color.GREEN)
+            val bytes = ByteArrayOutputStream().also {
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+            }.toByteArray()
+            bitmap.recycle()
+            page.stream = { bytes.inputStream() }
+            page.status = Page.State.Ready
+        }
+        chapter.pageLoader = object : PageLoader() {
+            override var isLocal = true
+            override suspend fun getPages() = pages
+        }
+        fun state(holder: PagerPageHolder): String {
+            val callback = ReflectionHelpers.getField<() -> Boolean>(holder, "imageCallbackCurrent")
+            val bound = ReflectionHelpers.getField<String?>(holder, "boundContent")
+            val scope = holder.presentationScope
+            return "page=${holder.page.index} attached=${holder.isAttachedToWindow} " +
+                "callback=${callback()} content=${bound == holder.page.contentIdentity()} " +
+                "scope=${scope != null} location=${scope?.first?.location} " +
+                "ticketSequence=${scope?.second?.locationSequence} " +
+                "layout=${scope?.first?.layoutRevision}/${scope?.second?.layoutRevision}"
+        }
+        fun selected(index: Int): PagerPageHolder {
+            val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5)
+            var holder: PagerPageHolder? = null
+            do {
+                runCurrent()
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+                ordinary.pager.computeScroll()
+                measure(ordinary.pager, 720, 1280)
+                holder =
+                    ordinary.pager.children.filterIsInstance<PagerPageHolder>().firstOrNull { it.page === pages[index] }
+                val visible = android.graphics.Rect()
+                if (holder != null && ReflectionHelpers.getField<View?>(holder, "pageView") != null &&
+                    holder.getGlobalVisibleRect(visible) && visible.width() == holder.width
+                ) {
+                    break
+                }
+                Thread.sleep(1)
+            } while (System.nanoTime() < deadline)
+            val current = requireNotNull(holder) { "Selected production holder was never attached for $index" }
+            check(ReflectionHelpers.getField<View?>(current, "pageView") != null) {
+                "Real Ready/statusFlow never bound a native child: ${state(current)}"
+            }
+            val callback = ReflectionHelpers.getField<() -> Boolean>(current, "imageCallbackCurrent")
+            check(callback()) { "Bound production callback was invalidated: ${state(current)}" }
+            check(ReflectionHelpers.getField<String?>(current, "boundContent") == pages[index].contentIdentity()) {
+                "Bound content no longer matches: ${state(current)}"
+            }
+            val (owner, ticket) = requireNotNull(current.presentationScope) {
+                "No selected viewport: ${state(current)}"
+            }
+            check(owner.frame(ticket) != null) { "Selected ticket is no longer owned: ${state(current)}" }
+            // Only the unavailable Windows JNI bitmap boundary is substituted. The real status chain
+            // has already bound this child; no holder setImage/onImageLoaded or viewport prepare is invoked.
+            paintReaderImage(current, requireNotNull(pages[index].stream).invoke().use { it.readBytes() })
+            check(current.hasRenderedPage()) { "Actual bitmap draw did not report current pixels: ${state(current)}" }
+            return current
+        }
+        try {
+            ordinary.setChapters(ViewerChapters(chapter, null, null))
+            measure(ordinary.pager, 720, 1280)
+            val first = selected(0)
+            ordinary.handleKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT))
+            ordinary.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_LEFT))
+            selected(1)
+            ordinary.handleKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT))
+            ordinary.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_RIGHT))
+            val returned = selected(0)
+            assertTrue("The real pager must return to its retained original holder", first === returned)
+        } finally {
+            ordinary.destroy()
+            chapter.pageLoader?.recycle()
         }
     }
 
