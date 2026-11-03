@@ -1,0 +1,48 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
+const candidates = [process.env.PLAYWRIGHT_CORE_PATH,path.join(__dirname,'node_modules/playwright-core')].filter(Boolean);
+const runtime = candidates.find(p=>fs.existsSync(p));
+if (!runtime) throw new Error('请设置 PLAYWRIGHT_CORE_PATH 指向已安装的 playwright-core');
+const { chromium } = require(runtime);
+test('file://真实点击、内部阶段改变首图、独立重置、恢复、同时慢放与资源解码', async()=>{
+  const browser=await chromium.launch({headless:true,channel:'chrome'});
+  try {
+    const page=await browser.newPage({viewport:{width:1440,height:1100}});
+    const errors=[];page.on('pageerror',e=>errors.push(e.message));
+    await page.goto(pathToFileURL(path.join(__dirname,'index.html')).href);
+    await page.waitForFunction(()=>!document.querySelector('#play-both').disabled);
+    assert.equal(await page.locator('.screen img').evaluateAll(imgs=>imgs.every(i=>i.complete&&i.naturalWidth>0)),true);
+    const a=page.locator('[data-card="A"]'),b=page.locator('[data-card="B"]');
+    await b.locator('input[type=number]').first().fill('1055.302344');
+    assert.ok(Math.abs(Number(await b.getAttribute('data-first-pixel'))-1366.246971)<.001);
+    await b.locator('.screen').click();
+    await page.waitForFunction(()=>Number(document.querySelector('[data-card="B"]').dataset.elapsed)>400);
+    assert.equal(await b.locator('.comic').evaluate(e=>Number(e.style.opacity)),0);
+    await page.waitForFunction(()=>document.querySelector('[data-card="B"]').dataset.playing==='false');
+    assert.equal(await b.locator('.comic').evaluate(e=>Number(e.style.opacity)),1);
+    await b.locator('.restore').click();
+    assert.ok(Math.abs(Number(await b.getAttribute('data-first-pixel'))-366.246971)<.001);
+    await page.selectOption('#speed','5');
+    await page.click('#play-both');
+    assert.equal(await a.getAttribute('data-playing'),'true');
+    assert.equal(await b.getAttribute('data-playing'),'true');
+    await a.locator('.reset').click();
+    assert.equal(await a.getAttribute('data-playing'),'false');
+    assert.equal(await b.getAttribute('data-playing'),'true');
+    await a.locator('.preset').selectOption('overhead-joint-first');
+    await a.locator('.screen').click();
+    await a.locator('.preset').selectOption('tablet-official-warm');
+    assert.equal(await a.getAttribute('data-playing'),'false');
+    assert.equal(await a.locator('.comic').evaluate(e=>Number(e.style.opacity)),0);
+    assert.equal(await a.locator('.internal input[type=number]').count(),1);
+    assert.ok((await a.locator('.unknown').textContent()).includes('未测得'));
+    await page.click('#reset-both');
+    assert.equal(await b.getAttribute('data-playing'),'false');
+    await page.setViewportSize({width:390,height:844});
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+    assert.deepEqual(errors,[]);
+  } finally {await browser.close();}
+});
