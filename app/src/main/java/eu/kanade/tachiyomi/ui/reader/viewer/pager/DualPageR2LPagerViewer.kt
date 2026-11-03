@@ -271,11 +271,13 @@ class DualPageR2LPagerViewer(
     }
 
     private fun setChaptersInternal(chapters: ViewerChapters) {
+        activity.recordLatencyChapters("VIEWER_CHAPTERS_APPLY_ENTER", chapters)
         pager.removeOnPageChangeListener(pagerListener)
 
         val forceTransition = config.alwaysShowChapterTransition ||
             adapter.items.getOrNull(pager.currentItem) is ChapterTransition
         adapter.setChapters(chapters, forceTransition)
+        activity.recordLatencyChapters("PAGER_ADAPTER_READY", chapters)
 
         if (pager.isGone) {
             logcat { "Pager first layout" }
@@ -576,6 +578,23 @@ class DualPageR2LPagerViewer(
         val selected = currentPage as? DisplayPage ?: return
         pager.children.filterIsInstance<DualPagerPageHolder>()
             .filter { it.displayPage == selected }.forEach { it.beginPresentation() }
+    }
+
+    internal fun isCurrentPresentation(
+        holder: DualPagerPageHolder,
+        owner: SharedDualPageSession,
+        ticket: ReaderDualPageViewportTicket,
+    ): Boolean = !destroyed && holder.parent === pager && currentPage == holder.displayPage &&
+        adapter.items.getOrNull(pager.currentItem) == holder.displayPage &&
+        holder.presentationScope?.first === owner && holder.presentationScope?.second === ticket &&
+        owner.targetFrameId == ticket.frameId
+
+    internal inline fun <T> traceStartup(name: String, chapter: ReaderChapter, block: () -> T): T {
+        val probe = eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe
+        if (!probe.enabled) return block()
+        val index = probe.targetPageFor(probe.requestFor(chapter.chapter.id ?: -1)) ?: return block()
+        val target = chapter.pages?.firstOrNull { it.index == index } ?: return block()
+        return probe.traceStartup(name, activity.latencyRequestFor(target), chapter.chapter.id ?: -1, block)
     }
 
     private fun invalidateGeometry() {

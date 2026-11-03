@@ -598,8 +598,10 @@ class ReaderViewModel @JvmOverloads constructor(
         val pages = chapter.pages?.takeIf { it.isNotEmpty() } ?: return null
         val latencyChapter = chapter.chapter.id ?: -1
         if (latencyRequest != 0L) {
-            pages.firstOrNull { it.index == 0 }?.let { page0 ->
-                ReaderOpenLatencyProbe.bindPageList(latencyRequest, latencyChapter, chapter, pages, page0)
+            pages.firstOrNull {
+                it.index == ReaderOpenLatencyProbe.targetPageFor(latencyRequest)
+            }?.let { targetPageObject ->
+                ReaderOpenLatencyProbe.bindPageList(latencyRequest, latencyChapter, chapter, pages, targetPageObject)
             }
         }
         val activation = withUIContext {

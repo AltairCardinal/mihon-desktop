@@ -18,6 +18,7 @@ import androidx.core.view.isVisible
 import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.databinding.ReaderErrorBinding
 import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
@@ -71,6 +72,39 @@ class DualPagerPageHolder(
         private set
 
     override val item: Any get() = displayPage
+
+    private val latencyTarget = if (ReaderOpenLatencyProbe.enabled) {
+        displayPage.visiblePages.firstOrNull { viewer.activity.latencyRequestFor(it) != 0L }
+    } else {
+        null
+    }
+    private val latencyRequest = latencyTarget?.let(viewer.activity::latencyRequestFor) ?: 0L
+
+    private fun recordLatency(event: String, page: ReaderPage): Boolean = ReaderOpenLatencyProbe.record(
+        event,
+        page.index,
+        page.chapter.chapter.id ?: -1,
+        latencyRequest,
+    )
+
+    private fun recordUnitDrawn(owner: SharedDualPageSession, ticket: ReaderDualPageViewportTicket) {
+        if (!ReaderOpenLatencyProbe.enabled || latencyRequest == 0L) return
+        val target = latencyTarget ?: return
+        if (viewer.activity.latencyRequestFor(target) != latencyRequest ||
+            !viewer.isCurrentPresentation(this, owner, ticket) || !hasRenderedVisiblePages()
+        ) {
+            return
+        }
+        val frame = owner.frame(ticket) ?: return
+        val required = frame.unit.slots.mapTo(mutableSetOf()) { it.pageId }
+        val targetId = owner.identity.pageIds.getOrNull(target.index) ?: return
+        if (targetId !in required || !renderedPageIds(owner).containsAll(required) ||
+            !frame.drawnPageIds.containsAll(required)
+        ) {
+            return
+        }
+        recordLatency("UNIT_DRAWN", target)
+    }
 
     // ── Child views ─────────────────────────────────────────────────────────
 
@@ -308,6 +342,7 @@ class DualPagerPageHolder(
     )
 
     init {
+        latencyTarget?.let { recordLatency("TARGET_HOLDER_CREATED", it) }
         if (containerGestures) {
             leftSlot = PageSlot(readerThemedContext, alignRight = true).also {
                 pageContainer.addView(it, LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
@@ -461,6 +496,7 @@ class DualPagerPageHolder(
     }
 
     private suspend fun loadSinglePage(page: ReaderPage, side: Side) {
+        recordLatency("TARGET_LOAD_ENTER", page)
         val loader = page.chapter.pageLoader ?: return
         val loaderType = when (loader) {
             is eu.kanade.tachiyomi.ui.reader.loader.DownloadPageLoader -> "DOWNLOAD"
@@ -490,6 +526,7 @@ class DualPagerPageHolder(
                     }
                 }
             }
+            recordLatency("TARGET_STATUS_COLLECT", page)
             page.statusFlow.collectLatest { state ->
                 val diagnosticState = when (state) {
                     Page.State.Queue -> "QUEUE"
@@ -520,7 +557,10 @@ class DualPagerPageHolder(
                             progressIndicators[side]?.setProgress(value)
                         }
                     }
-                    Page.State.Ready -> setImage(page, side)
+                    Page.State.Ready -> {
+                        recordLatency("TARGET_READY_ENTER", page)
+                        setImage(page, side)
+                    }
                     is Page.State.Error -> setError(state.error, page, side)
                 }
             }
@@ -553,13 +593,19 @@ class DualPagerPageHolder(
     }
 
     private suspend fun setImage(page: ReaderPage, side: Side) {
+        recordLatency("TARGET_IMAGE_ENTER", page)
         if (retainsVisibleContent(page)) return
         val generation = clearRendered(page)
         val started = System.nanoTime()
         diagnose("header_start", page, "generation" to generation)
         val attachment = attachmentGeneration
         val encodedContent = page.encodedContentIdentity()
-        withIOContext { page.publishHeaderFact() }
+        recordLatency("TARGET_HEADER_DISPATCH", page)
+        withIOContext {
+            val claimed = recordLatency("TARGET_HEADER_BEGIN", page)
+            page.publishHeaderFact()
+            if (claimed) recordLatency("TARGET_HEADER_END", page)
+        }
         diagnose(
             "header_complete",
             page,
@@ -578,7 +624,7 @@ class DualPagerPageHolder(
         val dimensionsRequest = viewer.adapter.captureDimensions(page)
         val streamFn = page.stream ?: return
         val latencyChapter = page.chapter.chapter.id ?: -1
-        val latencyRequest = eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.requestFor(latencyChapter, page.index)
+        val latencyRequest = this.latencyRequest
         try {
             diagnose("read_start", page, "generation" to generation)
             val (source, isAnimated, background) = withIOContext {
@@ -781,6 +827,7 @@ class DualPagerPageHolder(
                             ) {
                                 renderedPages[page] = content
                                 visibleContentLeases[page] = content
+                                recordUnitDrawn(owner, ticket)
                                 removeProgressIndicator(side)
                                 diagnose(
                                     "drawn",
@@ -1057,7 +1104,20 @@ class DualPagerPageHolder(
         val page: ReaderPage,
     ) : ReaderPageImageView(context) {
         init {
-            bindLatencyPage(page)
+            val request = if (page === latencyTarget) this@DualPagerPageHolder.latencyRequest else 0L
+            bindLatencyPage(
+                page,
+                request,
+                if (request != 0L) {
+                    {
+                        presentationScope?.let { (owner, ticket) ->
+                            viewer.isCurrentPresentation(this@DualPagerPageHolder, owner, ticket)
+                        } == true
+                    }
+                } else {
+                    null
+                },
+            )
         }
     }
 }

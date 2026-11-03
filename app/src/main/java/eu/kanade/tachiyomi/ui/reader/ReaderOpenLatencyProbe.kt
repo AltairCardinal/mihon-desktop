@@ -17,6 +17,7 @@ object ReaderOpenLatencyProbe {
     @Volatile var enabled = false
     private var targetManga = -1L
     private var targetChapter = -1L
+    private var configuredPage = 0
     private val names = arrayOf(
         "MAIN_TOUCH_UP", "ACTIVITY_CREATE", "OPEN_READER_INTENT", "INIT_IO_ENTER", "MANGA_READY",
         "SOURCE_READY", "CHAPTER_LIST_BEGIN", "CHAPTER_LIST_READY", "CHAPTER_LOAD_BEGIN", "CHAPTER_IO_ENTER",
@@ -29,18 +30,19 @@ object ReaderOpenLatencyProbe {
         "ACTIVITY_CHAPTERS_RECEIVED", "TARGET_IMAGE_ENTER", "TARGET_HEADER_DISPATCH",
         "VIEWER_CHAPTERS_APPLY_ENTER", "PAGER_ADAPTER_READY", "TARGET_HOLDER_CREATED",
         "TARGET_LOAD_ENTER", "TARGET_STATUS_COLLECT", "TARGET_READY_ENTER",
+        "UNIT_DRAWN",
     )
-    private class TargetBinding(chapter: Any, pages: Any, page0: Any) {
+    private class TargetBinding(chapter: Any, pages: Any, targetPageObject: Any) {
         val chapter = WeakReference(chapter)
         val pages = WeakReference(pages)
-        val page0 = WeakReference(page0)
+        val targetPageObject = WeakReference(targetPageObject)
 
         @Volatile var viewerChapters: WeakReference<Any>? = null
 
         fun matches(chapter: Any, pages: Any?): Boolean = pages != null &&
-            this.chapter.get() === chapter && this.pages.get() === pages && page0.get() != null
+            this.chapter.get() === chapter && this.pages.get() === pages && targetPageObject.get() != null
     }
-    private class Session(val request: Long, val chapter: Long) {
+    private class Session(val request: Long, val chapter: Long, val page: Int) {
         val times = AtomicLongArray(names.size)
         val pagerDispatch = AtomicInteger()
 
@@ -72,23 +74,27 @@ object ReaderOpenLatencyProbe {
                 config.getLong("mangaId"),
                 config.getLong("chapterId"),
                 config.getString("label"),
+                config.optInt("targetPage", 0),
             )
             output = File(root, "sessions").apply { mkdirs() }
         }.onFailure { configure(false, -1, -1, "missing") }
     }
 
     /** Only called on main before navigation; allocates the entire bounded measurement budget. */
-    fun configure(on: Boolean, manga: Long, chapter: Long, runLabel: String) {
+    fun configure(on: Boolean, manga: Long, chapter: Long, runLabel: String, targetPage: Int = 0) {
+        require(targetPage >= 0)
         enabled = false
         active = null
         targetManga = manga
         targetChapter = chapter
+        configuredPage = targetPage
         nextSession = 0
         lastTouch = 0
         lastDown = 0
         label = runLabel
         output = null
-        sessions = if (on) Array(32) { Session(requestSequence.incrementAndGet(), chapter) } else emptyArray()
+        sessions =
+            if (on) Array(32) { Session(requestSequence.incrementAndGet(), chapter, configuredPage) } else emptyArray()
         enabled = on
     }
 
@@ -119,20 +125,35 @@ object ReaderOpenLatencyProbe {
         return session.request
     }
 
-    fun requestFor(chapter: Long, page: Int = 0): Long {
-        if (!enabled || page != 0) return 0
+    fun requestFor(chapter: Long, page: Int = -1): Long {
+        if (!enabled) return 0
         val session = active ?: return 0
+        if (page != -1 && page != session.page) return 0
         return if (chapter == session.chapter) session.request else 0
     }
 
+    internal fun targetPageFor(request: Long): Int? =
+        if (enabled) active?.takeIf { it.request == request && !it.exported }?.page else null
+
     /** Initial-load sidecar only; weak identities never retain loader or image resources. */
-    internal fun bindPageList(request: Long, chapterId: Long, chapter: Any, pages: Any, page0: Any): Boolean {
+    internal fun bindPageList(
+        request: Long,
+        chapterId: Long,
+        chapter: Any,
+        pages: Any,
+        targetPageObject: Any,
+    ): Boolean {
         val session = activeSession(request, chapterId) ?: return false
         return synchronized(session) {
             if (activeSession(request, chapterId) !== session) return@synchronized false
             val existing = session.target
-            if (existing != null) return@synchronized existing.matches(chapter, pages) && existing.page0.get() === page0
-            session.target = TargetBinding(chapter, pages, page0)
+            if (existing !=
+                null
+            ) {
+                return@synchronized existing.matches(chapter, pages) &&
+                    existing.targetPageObject.get() === targetPageObject
+            }
+            session.target = TargetBinding(chapter, pages, targetPageObject)
             true
         }
     }
@@ -169,7 +190,7 @@ object ReaderOpenLatencyProbe {
         if (!enabled || request == 0L || pages == null || viewerChapters == null) return 0
         val session = sessions.firstOrNull { it.request == request && it.chapter == chapterId } ?: return 0
         val target = session.target ?: return 0
-        return if (!session.exported && target.matches(chapter, pages) && target.page0.get() === page &&
+        return if (!session.exported && target.matches(chapter, pages) && target.targetPageObject.get() === page &&
             target.viewerChapters?.get() === viewerChapters
         ) {
             session.request
@@ -252,12 +273,13 @@ object ReaderOpenLatencyProbe {
     /** One CAS into a preallocated timestamp slot; no lock, allocation, scheduling or I/O. */
     fun record(
         event: String,
-        page: Int = 0,
+        page: Int = -1,
         chapter: Long = active?.chapter ?: -1,
         request: Long = active?.request ?: 0,
     ): Boolean {
-        if (!enabled || page != 0 || request == 0L) return false
+        if (!enabled || request == 0L) return false
         val session = active ?: return false
+        if (page != -1 && page != session.page) return false
         if (chapter != session.chapter || request != session.request) return false
         return recordSlot(session, event)
     }
@@ -273,7 +295,9 @@ object ReaderOpenLatencyProbe {
     fun capturedEvents(): List<Event> = active?.let(::snapshot).orEmpty()
 
     private fun snapshot(session: Session): List<Event> = names.mapIndexedNotNull { index, name ->
-        session.times.get(index).takeIf { it != 0L }?.let { Event(name, it, session.chapter, 0, session.request) }
+        session.times.get(index).takeIf {
+            it != 0L
+        }?.let { Event(name, it, session.chapter, session.page, session.request) }
     }.sortedBy { it.monotonicNanos }
 
     /** Export only after reader onStop; force-killing before leaving intentionally loses the sample. */

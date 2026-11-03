@@ -944,3 +944,11 @@ AndroidReaderPageFetchPort 持有 source 返回的原 Response，用 use 包住 
 Android `HttpPageLoader.loadPage` 仅在已经运行的普通请求仍绑定同一 `ReaderPage`、原 fetch port、相同 fetch 参数及原子内容事实快照时，通过 `ReaderRequestScheduler.promoteActive` 原位提升优先级。提升保留原 `jobKey` 和发布权；`ReaderPageMaterializeRunner.runningWork` 只读取原绑定，不授予新的执行或发布能力。物理工作计数及资源释放继续由原 Job 实际退出收口。fact permit、force refresh、显式重试、旧 generation、内容／URL／页面对象变化或非提升 kind 均不能走该捷径；校验失败沿用原 enqueue／取消替换路径。
 
 回归入口为 `ReaderPairingAdoptionCostTest`、共享方图契约、双端 `ReaderSpreadSamplerTest`，以及真实 `HttpPageLoaderIntegrationTest`／`ReaderPageFactProductionWiringTest` 和 scheduler 拒绝向量。HTTP 回归须同时核对请求次数、原缓存字节、响应关闭、原请求身份及实际退出后的工作归零，不能只以页面 Ready 判断提升成功。
+
+## 2026-11-04 Android 双页初始事实通知复用
+
+`DualPageViewerAdapter.setChapters` 的首次 `DualPagePairingStore.ensure` 已摄入每页事实，随后注册的 StateFlow 仍会逐页发出当前值。与单页 P3 相同，双页在注册前固定该页已摄入的快照，只允许第一次通知在以下条件全部保持时跳过重复 ensure、配置与列表重建：章节页表、store entry 和页对象仍为原对象，固定快照、当前流值及缓存事实相同，重试序号相同，session 编码内容身份仍与页相符。初次 owner 配置及 `setChapters` 末尾的完整列表重建保留。
+
+不能用 `drop(1)`、动态读取“已经摄入”的当前快照或仅比较尺寸替代上述准入。绑定后首回调前的元数据／流替换必须处理；后续通知即使已经被另一次 ensure 看到，仍须执行重试预算、匹配任务及呈现更新。条件不满足时回到原链，旧页表通知沿原身份检查拒收，不增添缓存、等待或新的发布权。该优化只减少 Android 订阅接线的重复工作，不改变共享配对算法、图片质量或翻页动画。
+
+真实回归位于 `DualPagerPageHolderLayoutTest` 的 dual/single fact collectors 用例：187页首次重复 ensure 为零，后续 metadata、重试（含先被其它 ensure 摄入）、编码流替换、首回调前变化、章节窗口与同章节页表替换仍走 production。完整双页真实绘制与无探针真机翻页另外核验；性能结果及未覆盖场景见[持续记录 R2](../evidence/reader-startup-autonomous-2026-11-04.md)。

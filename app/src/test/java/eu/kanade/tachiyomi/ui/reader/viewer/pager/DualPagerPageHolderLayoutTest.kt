@@ -101,6 +101,76 @@ import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView.OnImageEven
 @Config(sdk = [35], manifest = Config.NONE, qualifiers = "w480dp-h1040dp-xxhdpi")
 class DualPagerPageHolderLayoutTest {
     @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `target unit probe requires both real child draws and rejects old presentation`() = runTest {
+        Injekt.get<ReaderPreferences>().automaticSpreadMatching().set(false)
+        useOriginalPngDecoder()
+        runCurrent()
+        val probe = eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe
+        probe.configure(true, 1, 44, "dual-unit", targetPage = 4)
+        val request = probe.startChapter(1, 44)
+        val chapter = loadedChapter(44, 6)
+        val pages = requireNotNull(chapter.pages)
+        pages.forEach { it.status = Page.State.Ready }
+        val chapters = ViewerChapters(chapter, null, null)
+        every { viewer.activity.viewModel.state } returns MutableStateFlow(
+            ReaderViewModel.State(viewer = viewer, viewerChapters = chapters),
+        )
+        ReflectionHelpers.setField(viewer.activity, "latencyRequest", request)
+        assertTrue(probe.bindPageList(request, 44, chapter, pages, pages[4]))
+        assertTrue(probe.bindViewerChapters(request, 44, chapter, pages, chapters))
+        viewer.setChapters(chapters)
+        pages.forEach { viewer.adapter.updatePageDimensions(it, 100, 200) }
+        viewer.moveToPage(pages[4])
+        measure(viewer.pager, 1440, 3120)
+        val holder = viewer.pager.children.filterIsInstance<DualPagerPageHolder>()
+            .first { it.displayPage.containsPage(pages[4]) }
+        assertTrue(holder.displayPage is DisplayPage.Double)
+        val pair = holder.displayPage as DisplayPage.Double
+        try {
+            val prefetched = DualPagerPageHolder(viewer.activity, viewer, holder.displayPage)
+            try {
+                load(prefetched, pair.rightPage, "RIGHT")
+                load(prefetched, pair.leftPage, "LEFT")
+                measure(prefetched, 1440, 3120)
+                paint(prefetched, pages[4])
+                paint(prefetched, pages[3])
+                assertFalse(probe.contains("FIRST_DRAW"))
+                assertFalse(probe.contains("UNIT_DRAWN"))
+            } finally {
+                detach(prefetched)
+            }
+            load(holder, pair.rightPage, "RIGHT")
+            load(holder, pair.leftPage, "LEFT")
+            paint(holder, pages[4])
+            assertTrue(probe.contains("FIRST_DRAW"))
+            assertFalse(probe.contains("UNIT_DRAWN"))
+            paint(holder, pages[3])
+            assertTrue(probe.contains("UNIT_DRAWN"))
+            assertEquals(4, probe.capturedEvents().single { it.event == "UNIT_DRAWN" }.page)
+            val (_, oldTicket) = requireNotNull(holder.presentationScope)
+            probe.configure(true, 1, 44, "next-request", targetPage = 4)
+            probe.startChapter(1, 44)
+            val staleCanvas = Bitmap.createBitmap(1440, 3120, Bitmap.Config.ARGB_8888)
+            try {
+                descendants(holder).filterIsInstance<ReaderPageImageView>().forEach {
+                    it.draw(Canvas(staleCanvas))
+                }
+            } finally {
+                staleCanvas.recycle()
+            }
+            assertFalse(probe.contains("FIRST_DRAW"))
+            assertFalse(probe.contains("UNIT_DRAWN"))
+            viewer.moveToPage(pages[0])
+            assertFalse(
+                viewer.isCurrentPresentation(holder, requireNotNull(viewer.adapter.session(chapter)), oldTicket),
+            )
+        } finally {
+            probe.configure(false, 1, 44, "off")
+        }
+    }
+
+    @Test
     fun `LTR double page factory uses story order and right arrow advances source`() = runTest {
         val activity = viewer.activity
         val model = mockk<ReaderViewModel>(relaxed = true)
@@ -730,6 +800,115 @@ class DualPagerPageHolderLayoutTest {
         suspendCoroutineUninterceptedOrReturn<Unit> { continuation ->
             val result = method.invoke(holder, continuation)
             if (result === COROUTINE_SUSPENDED) COROUTINE_SUSPENDED else Unit
+        }
+    }
+
+    @Test
+    fun `dual fact collectors reuse admitted snapshots but process metadata retry and replacement`() = runTest {
+        val activity = viewer.activity
+        val store = io.mockk.spyk(DualPagePairingStore())
+        val model = mockk<ReaderViewModel>(relaxed = true)
+        every { model.dualPagePairings } returns store
+        every { model.state } returns MutableStateFlow(ReaderViewModel.State())
+        ReflectionHelpers.setField(activity, "viewModel\$delegate", lazyOf(model))
+        Injekt.get<ReaderPreferences>().automaticSpreadMatching().set(false)
+        runCurrent()
+        val ordinary = DualPageR2LPagerViewer(activity, store)
+        ordinary.adapter.spreadDecoderFactory = { input ->
+            eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(input)
+        }
+        ordinary.config.navigationModeChangedListener = null
+        val chapter = loadedChapter(62042, 187)
+        val pages = requireNotNull(chapter.pages)
+        var destroyed = false
+        try {
+            runCurrent()
+            ordinary.setChapters(ViewerChapters(chapter, null, null))
+            val admitted = requireNotNull(store.chapters[chapter])
+            assertTrue(pages.all { admitted.cachedFacts[it] == it.contentFact.value })
+            io.mockk.clearMocks(store, answers = false)
+            runCurrent()
+            io.mockk.verify(exactly = 0) { store.ensure(chapter, pages) }
+
+            val changed = pages[3]
+            changed.publishHeaderFact()
+            runCurrent()
+            io.mockk.verify(atLeast = 1) { store.ensure(chapter, pages) }
+            val withMetadata = requireNotNull(store.chapters[chapter])
+            assertEquals(
+                changed.pageFact.value,
+                withMetadata.session.pageFact(withMetadata.session.identity.pageIds[3]),
+            )
+            val budget = withMetadata.session.factBudget
+            io.mockk.clearMocks(store, answers = false)
+            changed.retryHeaderFact()
+            runCurrent()
+            io.mockk.verify(atLeast = 1) { store.ensure(chapter, pages) }
+            assertTrue(budget !== requireNotNull(store.chapters[chapter]).session.factBudget)
+
+            // Another real consumer may refresh the store before the retry emission is drained.
+            changed.retryHeaderFact()
+            store.ensure(chapter, pages)
+            val beforeRetryDrain = requireNotNull(store.chapters[chapter]).session.factBudget
+            runCurrent()
+            assertEquals(
+                changed.contentFact.value.retrySequence,
+                store.chapters[chapter]?.factRetrySequences?.get(changed),
+            )
+            assertTrue(beforeRetryDrain !== requireNotNull(store.chapters[chapter]).session.factBudget)
+
+            val original = requireNotNull(store.chapters[chapter]).session.identity.content[3].contentVersion
+            changed.stream = { readerTestPng(60, 90).inputStream() }
+            runCurrent()
+            assertTrue(original != requireNotNull(store.chapters[chapter]).session.identity.content[3].contentVersion)
+            assertEquals(
+                changed.encodedContentIdentity(),
+                requireNotNull(store.chapters[chapter]).session.identity.content[3].contentVersion,
+            )
+
+            val next = loadedChapter(62043, 4)
+            val nextPages = requireNotNull(next.pages)
+            ordinary.setChapters(ViewerChapters(next, null, null))
+            // Replace bytes after binding but before the first Flow callback; drop(1) would miss this.
+            val nextChanged = nextPages[2]
+            nextChanged.stream = { readerTestPng(70, 100).inputStream() }
+            io.mockk.clearMocks(store, answers = false)
+            runCurrent()
+            io.mockk.verify(atLeast = 1) { store.ensure(next, nextPages) }
+            assertEquals(
+                nextChanged.encodedContentIdentity(),
+                requireNotNull(store.chapters[next]).session.identity.content[2].contentVersion,
+            )
+            io.mockk.clearMocks(store, answers = false)
+            changed.retryHeaderFact()
+            runCurrent()
+            io.mockk.verify(exactly = 0) { store.ensure(chapter, pages) }
+
+            val previousEntry = requireNotNull(store.chapters[next])
+            val replacementPages = nextPages.map { previous ->
+                ReaderPage(previous.index, stream = { readerTestPng(80, 120).inputStream() }).apply {
+                    this.chapter = next
+                }
+            }
+            next.publishLoadedPageListForTest(replacementPages)
+            ordinary.setChapters(ViewerChapters(next, null, null))
+            assertTrue(previousEntry !== requireNotNull(store.chapters[next]))
+            io.mockk.clearMocks(store, answers = false)
+            nextChanged.retryHeaderFact()
+            runCurrent()
+            io.mockk.verify(exactly = 0) { store.ensure(next, nextPages) }
+            replacementPages[2].retryHeaderFact()
+            runCurrent()
+            io.mockk.verify(atLeast = 1) { store.ensure(next, replacementPages) }
+
+            ordinary.destroy()
+            destroyed = true
+            io.mockk.clearMocks(store, answers = false)
+            nextChanged.retryHeaderFact()
+            runCurrent()
+            io.mockk.verify(exactly = 0) { store.ensure(next, nextPages) }
+        } finally {
+            if (!destroyed) ordinary.destroy()
         }
     }
 

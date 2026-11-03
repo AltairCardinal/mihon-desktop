@@ -399,7 +399,8 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
     internal inline fun <T> traceStartup(name: String, page: ReaderPage, block: () -> T): T {
         val probe = eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe
         if (!probe.enabled) return block()
-        val first = page.chapter.pages?.firstOrNull() ?: return block()
+        val index = probe.targetPageFor(probe.requestFor(page.chapter.chapter.id ?: -1)) ?: return block()
+        val first = page.chapter.pages?.firstOrNull { it.index == index } ?: return block()
         return probe.traceStartup(name, activity.latencyRequestFor(first), page.chapter.chapter.id ?: -1, block)
     }
 

@@ -8,6 +8,27 @@ import org.junit.jupiter.api.Test
 
 class ReaderOpenLatencyProbeTest {
     @Test
+    fun configuredTargetPageRejectsOtherPagesAndOldRequest() {
+        val probe = ReaderOpenLatencyProbe
+        try {
+            probe.configure(true, 10, 20, "dual-target", targetPage = 4)
+            val request = probe.startChapter(10, 20)
+            assertEquals(request, probe.requestFor(20, 4))
+            assertEquals(0L, probe.requestFor(20, 0))
+            assertFalse(probe.record("FIRST_DRAW", 0, 20, request))
+            assertTrue(probe.record("PAGE_LIST_READY", chapter = 20, request = request))
+            assertTrue(probe.record("FIRST_DRAW", 4, 20, request))
+            assertTrue(probe.capturedEvents().all { it.page == 4 })
+            probe.configure(true, 10, 20, "default-target")
+            val next = probe.startChapter(10, 20)
+            assertFalse(probe.record("FIRST_DRAW", 4, 20, request))
+            assertEquals(next, probe.requestFor(20, 0))
+        } finally {
+            probe.configure(false, 10, 20, "off")
+        }
+    }
+
+    @Test
     fun reconfigurationRejectsPriorEpoch() {
         ReaderOpenLatencyProbe.configure(true, 10, 20, "first")
         val old = ReaderOpenLatencyProbe.startChapter(10, 20)

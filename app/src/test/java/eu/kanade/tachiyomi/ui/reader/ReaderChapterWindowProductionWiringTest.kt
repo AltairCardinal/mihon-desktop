@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.reader
 
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.viewModelScope
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.source.Source
@@ -17,6 +18,8 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -42,6 +45,7 @@ class ReaderChapterWindowProductionWiringTest {
     @Test
     fun `ReaderViewModel consumes the shared adjacent effect once and commits the window on activation`() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        var modelToClose: ReaderViewModel? = null
         try {
             val manga = Manga.create().copy(
                 id = 1,
@@ -50,6 +54,8 @@ class ReaderChapterWindowProductionWiringTest {
                 chapterFlags = Manga.CHAPTER_SORTING_NUMBER,
             )
             val chapters = (1L..4L).map { id -> chapter(id) }
+            ReaderOpenLatencyProbe.configure(true, manga.id, 2, "window-target", targetPage = 4)
+            val latencyRequest = ReaderOpenLatencyProbe.startChapter(manga.id, 2)
             val source = mockk<Source>()
             val sourceManager = mockk<SourceManager> {
                 every { isInitialized } returns MutableStateFlow(true)
@@ -67,7 +73,7 @@ class ReaderChapterWindowProductionWiringTest {
                 loadAttempts += checkNotNull(readerChapter.chapter.id)
                 if (readerChapter.state !is ReaderChapter.State.Loaded) {
                     readerChapter.publishLoadedPageListForTest(
-                        listOf(ReaderPage(index = 0).apply { this.chapter = readerChapter }),
+                        List(187) { index -> ReaderPage(index).apply { this.chapter = readerChapter } },
                     )
                 }
             }
@@ -127,8 +133,33 @@ class ReaderChapterWindowProductionWiringTest {
                 libraryPreferences = mockk(relaxed = true),
                 chapterLoaderFactory = { _: Manga, _: Source -> chapterLoader },
             )
+            modelToClose = viewModel
 
             assertTrue(viewModel.init(manga.id, initialChapterId = 2).isSuccess)
+            val publication = requireNotNull(viewModel.state.value.viewerChapters)
+            val initialPages = requireNotNull(publication.currChapter.pages)
+            assertEquals(
+                latencyRequest,
+                ReaderOpenLatencyProbe.requestForTargetPage(
+                    latencyRequest,
+                    2,
+                    publication.currChapter,
+                    initialPages,
+                    initialPages[4],
+                    publication,
+                ),
+            )
+            assertEquals(
+                0L,
+                ReaderOpenLatencyProbe.requestForTargetPage(
+                    latencyRequest,
+                    2,
+                    publication.currChapter,
+                    initialPages,
+                    initialPages[0],
+                    publication,
+                ),
+            )
             val initialWindow = requireNotNull(viewModel.state.value.chapterWindow)
             assertEquals(ReaderChapterId(2), initialWindow.currentChapterId)
             assertEquals(ReaderChapterId(1), initialWindow.previousChapterId)
@@ -169,6 +200,8 @@ class ReaderChapterWindowProductionWiringTest {
             assertEquals(ReaderChapterId(4), activated.nextChapterId)
             assertEquals(1, activated.activationSequence)
         } finally {
+            modelToClose?.viewModelScope?.coroutineContext?.get(Job)?.cancelAndJoin()
+            ReaderOpenLatencyProbe.configure(false, 1, 2, "off")
             Dispatchers.resetMain()
         }
     }

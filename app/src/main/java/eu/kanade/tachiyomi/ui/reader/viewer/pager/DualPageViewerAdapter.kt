@@ -256,10 +256,11 @@ class DualPageViewerAdapter(
                 chapterPairings.remove(chapter)?.session?.close()
                 continue
             }
-            store.ensure(
+            val admitted = store.ensure(
                 chapter,
                 pages,
-            ).session.apply {
+            )
+            admitted.session.apply {
                 configure(
                     viewer.direction,
                     automaticMatching = viewer.config.automaticSpreadMatching,
@@ -267,34 +268,51 @@ class DualPageViewerAdapter(
                 configurePresentationMode(mihon.domain.reader.ReaderPresentationMode.DUAL)
             }
             pages.filter { it !in factCollectors }.forEach { page ->
+                val admittedSnapshot = admitted.cachedFacts[page]
                 factCollectors[page] = scope.launch {
+                    var firstEmission = true
                     page.contentFact.collect { captured ->
-                        if (chapter.pages !== pages || chapterPairings[chapter]?.pages !== pages) return@collect
-                        val entry = store.ensure(chapter, pages)
-                        entry.session.configure(
-                            viewer.direction,
-                            automaticMatching = viewer.config.automaticSpreadMatching,
-                        )
-                        entry.session.configurePresentationMode(mihon.domain.reader.ReaderPresentationMode.DUAL)
-                        if (captured.version != page.contentFact.value.version ||
-                            captured.retrySequence != page.contentFact.value.retrySequence ||
-                            captured.encodedVersion != page.contentFact.value.encodedVersion
-                        ) {
-                            return@collect
-                        }
-                        val previousRetry = entry.factRetrySequences[page] ?: captured.retrySequence
-                        if (captured.retrySequence > previousRetry) {
-                            entry.factRetrySequences[page] = captured.retrySequence
-                            matchingJob?.cancel()
-                            failedSamples.clear()
-                            speculativeFailures = mutableSetOf()
-                            entry.session.retryFacts()
-                        }
-                        val fact = captured.fact
-                        if (fact.state != ReaderPageFactState.UNKNOWN) {
-                            acceptFact(page, fact)
-                        } else {
-                            rebuildItems()
+                        viewer.traceStartup("ReaderR2.dualFact", chapter) {
+                            val initial = firstEmission
+                            firstEmission = false
+                            if (chapter.pages !== pages || chapterPairings[chapter]?.pages !== pages) {
+                                return@traceStartup
+                            }
+                            if (initial && admittedSnapshot == captured && admitted.pages === pages &&
+                                chapterPairings[chapter] === admitted && pages.getOrNull(page.index) === page &&
+                                admitted.cachedFacts[page] == captured && page.contentFact.value == captured &&
+                                admitted.factRetrySequences[page] == captured.retrySequence &&
+                                admitted.session.identity.content.getOrNull(page.index)?.contentVersion ==
+                                page.encodedContentIdentity()
+                            ) {
+                                return@traceStartup
+                            }
+                            val entry = store.ensure(chapter, pages)
+                            entry.session.configure(
+                                viewer.direction,
+                                automaticMatching = viewer.config.automaticSpreadMatching,
+                            )
+                            entry.session.configurePresentationMode(mihon.domain.reader.ReaderPresentationMode.DUAL)
+                            if (captured.version != page.contentFact.value.version ||
+                                captured.retrySequence != page.contentFact.value.retrySequence ||
+                                captured.encodedVersion != page.contentFact.value.encodedVersion
+                            ) {
+                                return@traceStartup
+                            }
+                            val previousRetry = entry.factRetrySequences[page] ?: captured.retrySequence
+                            if (captured.retrySequence > previousRetry) {
+                                entry.factRetrySequences[page] = captured.retrySequence
+                                matchingJob?.cancel()
+                                failedSamples.clear()
+                                speculativeFailures = mutableSetOf()
+                                entry.session.retryFacts()
+                            }
+                            val fact = captured.fact
+                            if (fact.state != ReaderPageFactState.UNKNOWN) {
+                                acceptFact(page, fact)
+                            } else {
+                                rebuildItems()
+                            }
                         }
                     }
                 }
