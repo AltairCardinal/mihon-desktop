@@ -18,6 +18,8 @@
 
 P0已由`64329568ace1`完成，平均首绘由643.7降至267.5ms，见[P0实测](../../evidence/downloaded-reader-startup-p0-2026-11-03.md)。[P1执行计划](../../roadmap/2026-11-03-reader-startup-p1-plan.md)已完成两点定位：header调用约4–5ms，主要调用前等待尚无证据证明可安全删除，故未采用新优化候选，见[P1结果](../../evidence/reader-startup-p1-2026-11-03.md)。历史算法裁定不变，不据本轮诊断重启暂缓方案。
 
+后续入口为[P2计划](../../roadmap/2026-11-03-reader-startup-p2-plan.md)，仅规划编译失败核查与header前等待的分层定位；尚未执行，不改变P0/P1结论或历史算法裁定。
+
 ## 2026-11-01 当前主干复评
 
 - [A2：复用owner索引，暂缓](2026-11-01-main-reevaluation/A2.md)
