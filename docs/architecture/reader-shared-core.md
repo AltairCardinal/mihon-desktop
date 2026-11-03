@@ -682,6 +682,8 @@ Android 原固定 decoder 的原始像素由 SSIV 的旋转和窄镜像 adapter 
 不能交给 URI provider 重新打开文件而失去在途初始化的句柄所有权；SSIV 尚未安装 decoder 或回收抛错时也必须关闭原流。
 Windows 测试可验证流式 PNG、实际 BitmapFactory、SSIV 旋转与 Bitmap source region；原 JNI 的编码分块、ICC 和裁边必须在 ART 验收。
 
+Android 下载／本地章节页表先完成 `getPages()`、页序／章节绑定及 Ready 页编码引用，再由共享 materialize 接受并发布 Loaded；新加载和已有 Loaded 复用均不前置遍历全章 header。当前页仍走原 holder 的按需 header／解码链，其他事实由已有消费者取得，不增加整章后台预读。页表发布时元数据可以是 UNKNOWN，不能据此假定 PORTRAIT；迟到事实继续按既有原子快照和身份规则接收。元数据失败不成为基本阅读门禁，原取消和 loader 生命周期不变。
+
 Android `ReaderPageContentFact` 在同一内容锁内发布 encodedVersion、呈现 version、事实和 retrySequence。
 encodedVersion 只随真实 stream/ref 替换递增；呈现 version 还随首次可信方向确认递增，以撤销默认方向画出的像素。
 头部 I/O 开始前一次捕获 stream、两个版本、重试和可信方向，完成时核对原快照；失败和重试保留同一编码内容已经确认的方向。

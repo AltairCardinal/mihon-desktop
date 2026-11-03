@@ -27,9 +27,9 @@
 | GET_PAGES_BEGIN / END | 真实 PageLoader.getPages，包含规范路径与归档打开/列表加载 |
 | CHAPTER_PATH_BEGIN / END | DownloadProvider 查找目标目录或 CBZ |
 | ARCHIVE_OPEN_BEGIN / END、ARCHIVE_LIST_BEGIN / END | DownloadPageLoader 构造真实归档 reader，随后生成页列表 |
-| HEADER_FACTS_BEGIN / END | AndroidReaderChapterContentPort 对全部 ready 页的 header facts 遍历；不是只测首页 holder。已有页列表复用时也包住该遍历 |
-| PAGE_LIST_READY | ChapterLoader 将 materialize 结果接受并发布完成；已经包含全页 header 遍历 |
-| OPEN_PAGE / ENCODED_READ_COMPLETE | 首页 holder 真实读取编码内容；不包含之前全页 header 读取 |
+| HEADER_FACTS_BEGIN / END | 历史章级 Ready 页 header 遍历端点；下载首开 P0 已移除新加载和 Loaded 复用的遍历，当前样本应不出现，报告为不适用，不补造零耗时事件 |
+| PAGE_LIST_READY | ChapterLoader 将 materialize 页表结果接受并发布完成；已绑定章节与编码引用，不以前置全章 header 齐备为条件 |
+| OPEN_PAGE / ENCODED_READ_COMPLETE | 首页 holder 真实读取编码内容；本页 header 仍由既有按需链生产，可能位于 PAGE_LIST_READY→OPEN_PAGE 段，不能只看第一段缩短 |
 | DECODE_SUBMIT | ReaderPageImageView 提交当前首页图像到原有解码链路 |
 | FIRST_DRAW | 原有 nativeImageDrawn 实际漫画像素回调，SSIV 需要真实 bitmap 绘制且 ready；不是窗口帧、onReady 或 onImageLoaded |
 | FRAME_COMMIT | FIRST_DRAW 后该视图的提交回调，仅 API 29+ 且硬件加速时记录；不是显示面板呈现时间 |
@@ -41,7 +41,7 @@
 - 启用时在主线程预分配 32 个 session，每个 session 有固定 29 个 AtomicLong 时间槽；超出预算拒绝继续采样，不增长集合。
 - 热路径只校验目标 chapter/page/request 并对固定槽执行首次写入 CAS；不加旧版持锁日志、不做快照、文件写入或后台导出调度。capturedEvents/contains 只供测试和导出使用。
 - page 固定为 0。单页与双页 holder 在绑定时捕获 chapter/page/request，迟到的旧请求与其他章节/页不能写入当前 session。异步提交回调捕获同一身份。
-- ReaderActivity.onStop 用该 Activity 的 request 导出；快照、label 与目录在调度前绑定，后续活跃请求不能改写其归属。强停前未离开阅读器会丢失该样本；缺事件或不完整导出必须判无效，不能补造时间点。
+- ReaderActivity.onStop 用该 Activity 的 request 导出；快照、label 与目录在调度前绑定，后续活跃请求不能改写其归属。强停前未离开阅读器会丢失该样本；必要端点缺失或不完整导出必须判无效，不能补造时间点；HEADER_FACTS 等可选事件缺席不使样本无效，也不证明真机图像读取字节为零。
 - 默认关闭的探针仍保留轻量入口判断；既有 ReaderDiagnostics 的产品开销保持原样，不能把这些开销归因于新增稀疏探针，也不能声称测量时它被禁用。
 - 本探针覆盖分页单页/共享双页的首页，不宣称覆盖 Webtoon、所有页、所有存储类型、跨进程连续请求或完整发布性能矩阵。
 - System.nanoTime、Perfetto trace clock、设备 uptime 和 MKV 原始相对 PTS 必须分别保存。跨时钟对齐需同次 trace clock snapshot 等证据；MKV 从零开始不能靠主机启动时间强行映射。
@@ -51,6 +51,6 @@
 
 ## 定向验证
 
-ReaderOpenLatencyProbeTest 覆盖默认禁用、32 session 上界、首次写入、错误页/章节、跨重配置旧请求拒绝。ReaderOpenLatencyWiringTest 执行真实 ChapterLoader/materialize/187 页 header 读取，检查遍历边界与发布顺序。ReaderImageOrientationWiringTest 中的 first content probe requires real bitmap draw and rejects old request 使用真实 SSIV bitmap/canvas，证明未绘制与旧请求不会产生 FIRST_DRAW，有效实际绘制才记录。
+ReaderOpenLatencyProbeTest 覆盖默认禁用、32 session 上界、首次写入、错误页/章节、跨重配置旧请求拒绝。ReaderOpenLatencyWiringTest 执行真实 ChapterLoader/materialize：187 页新加载及新建 Loaded 页复用均不打开章级图像流；复用后仅目标页通过既有生产者取得真实方向与尺寸，编码身份和恢复页保持有效。ReaderImageOrientationWiringTest 中的 first content probe requires real bitmap draw and rejects old request 使用真实 SSIV bitmap/canvas，证明未绘制与旧请求不会产生 FIRST_DRAW，有效实际绘制才记录。
 
 按根规则通过 Gradle 协调器运行这些 focused 测试与受影响格式检查；本文不授权完整模块或全量测试。真机验证须核实际 APK 身份、非调试标志、签名与哈希，且只操作当前已授权、确认解锁的设备及隔离包。

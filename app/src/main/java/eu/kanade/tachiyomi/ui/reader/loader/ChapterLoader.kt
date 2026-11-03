@@ -21,7 +21,6 @@ import mihon.domain.reader.materialize.ReaderChapterContentRequest
 import mihon.domain.reader.materialize.ReaderChapterMaterializeResult
 import mihon.domain.reader.materialize.ReaderMaterializeExecutor
 import mihon.domain.reader.session.ReaderChapterId
-import mihon.domain.reader.session.ReaderChapterLoadPurpose
 import mihon.domain.reader.session.ReaderChapterLoadState
 import mihon.domain.reader.session.ReaderChapterWindowEffect
 import tachiyomi.core.common.i18n.stringResource
@@ -82,22 +81,6 @@ class ChapterLoader(
         }
         if (generation == null) {
             if (pageListEffect != null) awaitExistingWindowLoad(chapter)
-            if (pageListEffect?.purpose != ReaderChapterLoadPurpose.PREFETCH) {
-                withIOContext {
-                    eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
-                        "HEADER_FACTS_BEGIN",
-                        chapter = latencyChapter,
-                        request = latencyRequest,
-                    )
-                    chapter.pages.orEmpty().filter { it.status == eu.kanade.tachiyomi.source.model.Page.State.Ready }
-                        .forEach { it.publishHeaderFact() }
-                    eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
-                        "HEADER_FACTS_END",
-                        chapter = latencyChapter,
-                        request = latencyRequest,
-                    )
-                }
-            }
             return
         }
         withIOContext {
@@ -120,7 +103,6 @@ class ChapterLoader(
                 val port = AndroidReaderChapterContentPort(
                     chapter,
                     loader,
-                    publishHeaderFacts = pageListEffect?.purpose != ReaderChapterLoadPurpose.PREFETCH,
                 )
                 val request = ReaderChapterContentRequest(
                     chapterId = ReaderChapterId(checkNotNull(chapter.chapter.id)),

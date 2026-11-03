@@ -25,7 +25,6 @@ import java.io.InputStream
 internal class AndroidReaderChapterContentPort(
     private val chapter: ReaderChapter,
     private val loader: PageLoader,
-    private val publishHeaderFacts: Boolean = true,
 ) : ReaderChapterContentPort {
 
     var materializedPages: List<ReaderPage> = emptyList()
@@ -46,33 +45,18 @@ internal class AndroidReaderChapterContentPort(
                 chapter = latencyChapter,
                 request = latencyRequest,
             )
-            if (publishHeaderFacts) {
-                eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
-                    "HEADER_FACTS_BEGIN",
-                    chapter = latencyChapter,
-                    request = latencyRequest,
-                )
-            }
             pages.onEach { page ->
                 page.chapter = chapter
                 if (page.status == Page.State.Ready && page.stream != null) {
                     page.encodedPageRef = page.encodedPageRef ?: EncodedPageRef(
                         "android-reader:${request.chapterId.value}:${request.generation}:${page.index}",
                     )
-                    if (publishHeaderFacts) page.publishHeaderFact()
                 }
             }
         } catch (error: CancellationException) {
             throw error
         } catch (error: Throwable) {
             throw error.asPortException(loader.isLocal)
-        }
-        if (publishHeaderFacts) {
-            eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
-                "HEADER_FACTS_END",
-                chapter = latencyChapter,
-                request = latencyRequest,
-            )
         }
         return materializedPages.map { page ->
             ReaderPageDescriptor(
