@@ -577,10 +577,24 @@ class DualPagerPageHolder(
         val orientation = page.contentFact.value.fact.sourceOrientation
         val dimensionsRequest = viewer.adapter.captureDimensions(page)
         val streamFn = page.stream ?: return
+        val latencyChapter = page.chapter.chapter.id ?: -1
+        val latencyRequest = eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.requestFor(latencyChapter, page.index)
         try {
             diagnose("read_start", page, "generation" to generation)
             val (source, isAnimated, background) = withIOContext {
+                eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+                    "OPEN_PAGE",
+                    page.index,
+                    latencyChapter,
+                    latencyRequest,
+                )
                 val source = streamFn().use { Buffer().readFrom(it) }
+                eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+                    "ENCODED_READ_COMPLETE",
+                    page.index,
+                    latencyChapter,
+                    latencyRequest,
+                )
                 val isAnimated = ImageUtil.isAnimatedAndSupported(source)
                 val background = if (!isAnimated && viewer.config.automaticBackground) {
                     ImageUtil.chooseBackground(readerThemedContext, source.peek().inputStream())
@@ -1041,5 +1055,9 @@ class DualPagerPageHolder(
     private inner class SinglePageSubHolder(
         context: Context,
         val page: ReaderPage,
-    ) : ReaderPageImageView(context)
+    ) : ReaderPageImageView(context) {
+        init {
+            bindLatencyPage(page)
+        }
+    }
 }

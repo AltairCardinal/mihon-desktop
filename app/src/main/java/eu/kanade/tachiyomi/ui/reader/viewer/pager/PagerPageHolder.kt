@@ -99,6 +99,7 @@ class PagerPageHolder(
         page.status == Page.State.Ready && renderedContent == page.contentIdentity()
 
     init {
+        bindLatencyPage(page)
         beforeImageDraw = { _, _ ->
             if (!imageCallbackCurrent() || boundContent != page.contentIdentity()) {
                 false
@@ -274,7 +275,19 @@ class PagerPageHolder(
         var pendingRegionFile: java.io.File? = null
         try {
             val prepared = withIOContext {
+                eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+                    "OPEN_PAGE",
+                    latencyPage,
+                    latencyChapter,
+                    latencyRequest,
+                )
                 var source: BufferedSource = streamFn().use { Buffer().readFrom(it) }
+                eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+                    "ENCODED_READ_COMPLETE",
+                    latencyPage,
+                    latencyChapter,
+                    latencyRequest,
+                )
                 val isAnimated = ImageUtil.isAnimatedAndSupported(source)
                 var remainingOrientation = orientation
                 var bounds: mihon.domain.reader.PixelBounds? = null

@@ -367,8 +367,35 @@ open class ReaderPageImageView @JvmOverloads constructor(
             beforeImageDraw?.invoke(width, height) != false
     }
 
+    internal var latencyChapter = -1L
+    internal var latencyPage = -1
+    internal var latencyRequest = 0L
+
+    internal fun bindLatencyPage(page: eu.kanade.tachiyomi.ui.reader.model.ReaderPage) {
+        latencyChapter = page.chapter.chapter.id ?: -1
+        latencyPage = page.index
+        latencyRequest = eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.requestFor(latencyChapter, latencyPage)
+    }
+
     private fun nativeImageDrawn() {
-        if (imageCallbackIsCurrent()) onImageDrawn?.invoke()
+        if (!imageCallbackIsCurrent()) return
+        if (eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+                "FIRST_DRAW",
+                latencyPage,
+                latencyChapter,
+                latencyRequest,
+            )
+        ) {
+            val request = latencyRequest
+            val chapter = latencyChapter
+            val page = latencyPage
+            if (isHardwareAccelerated) {
+                viewTreeObserver.registerFrameCommitCallback {
+                    eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record("FRAME_COMMIT", page, chapter, request)
+                }
+            }
+        }
+        onImageDrawn?.invoke()
     }
 
     /** A new viewport capability must repaint an already decoded child RenderNode. */
@@ -481,6 +508,12 @@ open class ReaderPageImageView @JvmOverloads constructor(
         imageCallbackIsCurrent = callbackIsCurrent
         resetDecodedSideHint()
         this.config = config
+        eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+            "DECODE_SUBMIT",
+            latencyPage,
+            latencyChapter,
+            latencyRequest,
+        )
         val identity = decodeIdentitySource.next(pageIndex)
         if (isAnimated) {
             prepareAnimatedImageView()

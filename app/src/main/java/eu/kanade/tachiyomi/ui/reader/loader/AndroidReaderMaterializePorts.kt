@@ -32,8 +32,28 @@ internal class AndroidReaderChapterContentPort(
         private set
 
     override suspend fun loadChapterContent(request: ReaderChapterContentRequest): List<ReaderPageDescriptor> {
+        val latencyChapter = chapter.chapter.id ?: -1
+        val latencyRequest = eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.requestFor(latencyChapter)
         materializedPages = try {
-            loader.getPages().onEach { page ->
+            eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+                "GET_PAGES_BEGIN",
+                chapter = latencyChapter,
+                request = latencyRequest,
+            )
+            val pages = loader.getPages()
+            eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+                "GET_PAGES_END",
+                chapter = latencyChapter,
+                request = latencyRequest,
+            )
+            if (publishHeaderFacts) {
+                eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+                    "HEADER_FACTS_BEGIN",
+                    chapter = latencyChapter,
+                    request = latencyRequest,
+                )
+            }
+            pages.onEach { page ->
                 page.chapter = chapter
                 if (page.status == Page.State.Ready && page.stream != null) {
                     page.encodedPageRef = page.encodedPageRef ?: EncodedPageRef(
@@ -46,6 +66,13 @@ internal class AndroidReaderChapterContentPort(
             throw error
         } catch (error: Throwable) {
             throw error.asPortException(loader.isLocal)
+        }
+        if (publishHeaderFacts) {
+            eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+                "HEADER_FACTS_END",
+                chapter = latencyChapter,
+                request = latencyRequest,
+            )
         }
         return materializedPages.map { page ->
             ReaderPageDescriptor(

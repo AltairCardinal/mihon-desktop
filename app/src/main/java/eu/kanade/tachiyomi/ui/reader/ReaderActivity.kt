@@ -169,7 +169,16 @@ open class ReaderActivity : BaseActivity() {
     /**
      * Called when the activity is created. Initializes the presenter and configuration.
      */
+    private var latencyRequest = 0L
+
+    override fun onStop() {
+        super.onStop()
+        ReaderOpenLatencyProbe.exportAfterReaderStopped(latencyRequest)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        latencyRequest =
+            ReaderOpenLatencyProbe.startChapter(intent.getLongExtra("manga", -1), intent.getLongExtra("chapter", -1))
         eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.record("reader_start", session = diagnosticSession)
         registerSecureActivity(this)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {

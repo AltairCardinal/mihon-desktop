@@ -67,6 +67,13 @@ class ChapterLoader(
         chapter: ReaderChapter,
         pageListEffect: ReaderChapterWindowEffect.BeginPageListLoad?,
     ) {
+        val latencyChapter = chapter.chapter.id ?: -1
+        val latencyRequest = eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.requestFor(latencyChapter)
+        eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+            "CHAPTER_LOAD_BEGIN",
+            chapter = latencyChapter,
+            request = latencyRequest,
+        )
         beforeBeginPageListLoad?.invoke()
         val generation = if (pageListEffect == null) {
             chapter.beginPageListLoadIfNeeded()
@@ -77,13 +84,28 @@ class ChapterLoader(
             if (pageListEffect != null) awaitExistingWindowLoad(chapter)
             if (pageListEffect?.purpose != ReaderChapterLoadPurpose.PREFETCH) {
                 withIOContext {
+                    eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+                        "HEADER_FACTS_BEGIN",
+                        chapter = latencyChapter,
+                        request = latencyRequest,
+                    )
                     chapter.pages.orEmpty().filter { it.status == eu.kanade.tachiyomi.source.model.Page.State.Ready }
                         .forEach { it.publishHeaderFact() }
+                    eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+                        "HEADER_FACTS_END",
+                        chapter = latencyChapter,
+                        request = latencyRequest,
+                    )
                 }
             }
             return
         }
         withIOContext {
+            eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+                "CHAPTER_IO_ENTER",
+                chapter = latencyChapter,
+                request = latencyRequest,
+            )
             logcat { "Loading pages for ${chapter.chapter.name}" }
             var resolvedLoader: PageLoader? = null
             var terminalHandled = false
@@ -111,6 +133,13 @@ class ChapterLoader(
                             pages = port.materializedPages,
                             descriptors = result.pages,
                         )
+                        if (accepted) {
+                            eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+                                "PAGE_LIST_READY",
+                                chapter = latencyChapter,
+                                request = latencyRequest,
+                            )
+                        }
                         if (!accepted) {
                             chapter.retirePageLoader(generation, loader)
                         }
@@ -157,6 +186,12 @@ class ChapterLoader(
      */
     private fun getPageLoader(chapter: ReaderChapter): PageLoader {
         val dbChapter = chapter.chapter
+        val latencyRequest = eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.requestFor(dbChapter.id ?: -1)
+        eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+            "DOWNLOAD_CHECK_BEGIN",
+            chapter = dbChapter.id ?: -1,
+            request = latencyRequest,
+        )
         val isDownloaded = downloadManager.isChapterDownloaded(
             dbChapter.name,
             dbChapter.scanlator,
@@ -164,6 +199,11 @@ class ChapterLoader(
             manga.title,
             manga.source,
             skipCache = true,
+        )
+        eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+            "DOWNLOAD_CHECK_END",
+            chapter = dbChapter.id ?: -1,
+            request = latencyRequest,
         )
         val storedContent = isDownloaded || source is LocalSource
         val route = classifyStoredContentFailure(storedContent) {

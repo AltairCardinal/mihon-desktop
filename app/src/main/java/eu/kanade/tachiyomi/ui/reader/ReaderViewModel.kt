@@ -449,17 +449,26 @@ class ReaderViewModel @JvmOverloads constructor(
      */
     suspend fun init(mangaId: Long, initialChapterId: Long): Result<Boolean> {
         if (!needsInit()) return Result.success(true)
+        val latencyRequest = ReaderOpenLatencyProbe.requestFor(initialChapterId)
+        ReaderOpenLatencyProbe.record("OPEN_READER_INTENT", chapter = initialChapterId, request = latencyRequest)
         val handle = progressHandle ?: progressCoordinator.openReader(mangaId).also { progressHandle = it }
         return withIOContext {
+            ReaderOpenLatencyProbe.record("INIT_IO_ENTER", chapter = initialChapterId, request = latencyRequest)
             try {
                 handle.awaitPrevious().forEach { error ->
                     logcat(LogPriority.ERROR, error) { "Previous reader progress write failed" }
                 }
                 val manga = getManga.await(mangaId)
+                ReaderOpenLatencyProbe.record("MANGA_READY", chapter = initialChapterId, request = latencyRequest)
                 if (manga != null) {
                     sourceManager.isInitialized.first { it }
                     mutableState.update { it.copy(manga = manga) }
                     val targetId = chapterId.takeIf { it != -1L } ?: initialChapterId
+                    ReaderOpenLatencyProbe.record(
+                        "CHAPTER_LIST_BEGIN",
+                        chapter = initialChapterId,
+                        request = latencyRequest,
+                    )
                     val selected = getChaptersByMangaId.await(mangaId, applyScanlatorFilter = true).first {
                         it.id ==
                             targetId
@@ -488,9 +497,15 @@ class ReaderViewModel @JvmOverloads constructor(
                     chapterId = opened.chapter.id
 
                     val source = sourceManager.getOrStub(opened.manga.source)
+                    ReaderOpenLatencyProbe.record("SOURCE_READY", chapter = initialChapterId, request = latencyRequest)
                     loader = chapterLoaderFactory(opened.manga, source)
 
                     val initialChapter = getChapterList().first { chapterId == it.chapter.id }
+                    ReaderOpenLatencyProbe.record(
+                        "CHAPTER_LIST_READY",
+                        chapter = initialChapterId,
+                        request = latencyRequest,
+                    )
                     try {
                         loadChapter(loader!!, initialChapter)
                         startCatalogCompletion(opened)

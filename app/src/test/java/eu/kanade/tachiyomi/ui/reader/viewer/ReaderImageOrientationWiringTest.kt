@@ -29,6 +29,45 @@ import org.robolectric.util.ReflectionHelpers
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ReaderImageOrientationWiringTest {
     @Test
+    fun `first content probe requires real bitmap draw and rejects old request`() {
+        val probe = eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe
+        probe.configure(true, 10, 20, "draw")
+        try {
+            probe.startChapter(10, 20)
+            val chapter = eu.kanade.tachiyomi.ui.reader.model.ReaderChapter(
+                tachiyomi.domain.chapter.model.Chapter.create().copy(id = 20, mangaId = 10),
+            )
+            val page = ReaderPage(0).apply { this.chapter = chapter }
+            val context = RuntimeEnvironment.getApplication()
+            val view = ReaderPageImageView(context)
+            view.bindLatencyPage(page)
+            val bitmap = Bitmap.createBitmap(60, 40, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+            view.setImage(BitmapDrawable(context.resources, bitmap), ReaderPageImageView.Config(0))
+            view.measure(
+                View.MeasureSpec.makeMeasureSpec(120, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(80, View.MeasureSpec.EXACTLY),
+            )
+            view.layout(0, 0, 120, 80)
+            assertTrue("Decode or ready is not content drawing", !probe.contains("FIRST_DRAW"))
+            val current = probe.startChapter(10, 20)
+            val output = Bitmap.createBitmap(120, 80, Bitmap.Config.ARGB_8888)
+            repeat(3) {
+                view.draw(Canvas(output))
+                shadowOf(Looper.getMainLooper()).idle()
+            }
+            assertEquals(Color.RED, output.getPixel(60, 40))
+            assertTrue("Old holder must not mark the new request", !probe.contains("FIRST_DRAW"))
+            view.bindLatencyPage(page)
+            view.draw(Canvas(output))
+            assertEquals(current, probe.capturedEvents().single { it.event == "FIRST_DRAW" }.request)
+            view.recycle()
+            output.recycle()
+        } finally {
+            probe.configure(false, 10, 20, "off")
+        }
+    }
+
+    @Test
     fun `actual SSIV source regions keep each normalized odd half and remaining direction once`() {
         val context = RuntimeEnvironment.getApplication()
         val colors = intArrayOf(Color.RED, Color.GREEN, Color.BLUE, Color.YELLOW)

@@ -1,0 +1,1161 @@
+{
+  "date": "2026-11-03",
+  "purpose": "Current local main fork Android: simultaneous sparse probe and original four external metrics",
+  "baseRevision": "0db8c3ddf37e28e2ca1a895cf21accbeee05a0e0",
+  "artifact": {
+    "diagnosticOnly": true,
+    "sourceRevision": "0db8c3ddf37e28e2ca1a895cf21accbeee05a0e0",
+    "sourceInputFingerprint": "599bbbaf9e2f3933c1f1f9b0c0cb1e94d748a0edf0ab4791f98e6241604df886",
+    "sourceFiles": [
+      {
+        "path": "app/src/benchmark/AndroidManifest.xml",
+        "sha256": "dc4ebc21b708c2f132a7d31571efc46bb16bf84eac6e2482f2a78ee2fca09f40"
+      },
+      {
+        "path": "app/src/benchmark/java/eu/kanade/tachiyomi/ui/reader/ReaderLatencyArchive.kt",
+        "sha256": "625cb9a56a8ec7e73aac0a60f2377286991ca397d90b54ceda16209742531987"
+      },
+      {
+        "path": "app/src/benchmark/java/eu/kanade/tachiyomi/ui/reader/ReaderLatencyPreparationActivity.kt",
+        "sha256": "9de737d42c75fdabbe8ffba944f657e9149bba4ecf5ae4b115d94fc5a107ba0f"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/ui/main/MainActivity.kt",
+        "sha256": "750195471327ac4c1c558d3cccd5dd1166341a6a462ec0419374b98b432b6f96"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt",
+        "sha256": "4d67f4362c0a99ac3e4cf21045dc65bfd49fe860fe65d7f644ea1b3d209f1063"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderOpenLatencyProbe.kt",
+        "sha256": "55cab5757dd3d3d13acde23bb7cf90c8e81c71739c514aa05d55f99876300e64"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
+        "sha256": "08535a9eae26ac7fe31bbb6efc12a3d96ab755983d606c35da0e8ed0af83c4a4"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderMaterializePorts.kt",
+        "sha256": "0519d58e0c18cbea9a47130841ff19588dcf040cb2a9b9d4c830f153548eee1f"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoader.kt",
+        "sha256": "7396c63acaff0a9c42e13a6c7768e5c8220a375b2603f31abe73356b7b12885e"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/DownloadPageLoader.kt",
+        "sha256": "5d0620aaa635711c172d4535e5e9dac8af1d0ac39780cda3c56f37ab0a3a9889"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderPageImageView.kt",
+        "sha256": "4dbcc1accb46cc7f8efd15dbe876a723f8be3101362aac6b8b6a4e12b81988d9"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPagerPageHolder.kt",
+        "sha256": "a119e645e61c6f035f4d2bf39141caca445974f99ba61a068c94251b4d1d6eb9"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerPageHolder.kt",
+        "sha256": "482042805729ad9961ff942e15f34f77f1b20342b5d24228eec0431ff5633564"
+      }
+    ],
+    "applicationId": "app.mihon.desktop.fork.benchmark",
+    "versionCode": 134,
+    "versionName": "0.19.4-aex.116-benchmark",
+    "variant": "benchmark",
+    "debuggable": false,
+    "profileable": true,
+    "r8": true,
+    "resourceShrink": true,
+    "minSdk": 26,
+    "targetSdk": 36,
+    "abis": [
+      "arm64-v8a",
+      "armeabi-v7a",
+      "x86",
+      "x86_64"
+    ],
+    "apk": "Mihon-Fork-reader-probe-benchmark-universal.apk",
+    "sha256": "ae1e407aa4ae0a912606094cbb8e93991ad3a8f20f65c68c12ad7e55fa4f4fa9",
+    "certificateSha256": "fb141e4e749dc634a3d5d79e179a1057ab81fa1fd7cb5077b6dfeccfe11f3079",
+    "signatureVerified": true,
+    "certificateKind": "isolated diagnostic Android Debug certificate; non-debuggable optimized runtime",
+    "buildLog": "D:/Shell/Github/mihon/.gradle-coordinator/fork-reader-probe-benchmark3.log",
+    "mapping": "mapping.txt"
+  },
+  "device": {
+    "model": "PCE-W30",
+    "api": 31,
+    "android": "12",
+    "serial": "192.168.50.51:5555",
+    "display": [
+      1920,
+      2880
+    ]
+  },
+  "content": {
+    "title": "史莱姆第04卷",
+    "sha256": "b3d7c4e56e58dfee6d9da7d5afafe12b267ccc6d50dd48cd3660456b8d2b4677",
+    "bytes": 41380343,
+    "pages": 187,
+    "page": 0
+  },
+  "settings": {
+    "package": "app.mihon.desktop.fork.benchmark",
+    "apkSha256": "ae1e407aa4ae0a912606094cbb8e93991ad3a8f20f65c68c12ad7e55fa4f4fa9",
+    "installedSha256Matches": true,
+    "nonDebuggableFlagsObserved": true,
+    "actualInstalledDetails": "installed-apk-final.txt",
+    "signing": "../../app/artifacts/android/diagnostics/fork-reader-tablet-probe-20261103/signature.txt",
+    "variant": "benchmark R8+resource shrink nondebuggable",
+    "storage": "SAF dedicated directory, persisted read/write 0x3",
+    "storageEvidence": [
+      "saf-grant.txt",
+      "saf-storage-after.xml"
+    ],
+    "archiveSha256": "b3d7c4e56e58dfee6d9da7d5afafe12b267ccc6d50dd48cd3660456b8d2b4677",
+    "archiveBytes": 41380343,
+    "archiveImages": 187,
+    "mangaId": 1,
+    "chapterId": 1,
+    "page": 0,
+    "prefs": {
+      "readingMode": "single page right to left, default and target manga explicitly selected through normal UI",
+      "landscapeZoom": false,
+      "readingModeHint": false,
+      "verification": "benchmark-only fixture writes, followed by normal Settings UI native visual inspection after samples; XML custom switches omit checkable semantics",
+      "screenshots": [
+        "settings-reader-rtl-top-native.png",
+        "settings-manga-rtl-native.png",
+        "settings-reader-landscape-native.png"
+      ]
+    },
+    "compile": {
+      "requested": "speed -f",
+      "result": "Success",
+      "actualFilterReadback": "not obtained",
+      "evidence": "compile-speed-request.json"
+    },
+    "rawFrames": {
+      "nativeResolution": "1920x2880",
+      "noResampling": true,
+      "frameCounts": [
+        166,
+        176,
+        173
+      ],
+      "timebase": "1/1000 MKV original PTS",
+      "maxFps": 60,
+      "bitrate": 12000000,
+      "video": "10s scrcpy5.0.1 MKV",
+      "trace": "12s 32MiB Perfetto"
+    },
+    "probeFinalEnabled": false,
+    "officialDataTouched": false,
+    "classification": "final RTL aligned sample set"
+  },
+  "protocol": {
+    "video": "Original scrcpy5.0.1 hardware AVC MKV, 10s, max60fps,12Mbps,no playback/control/audio",
+    "trace": "12s32MiB Perfetto",
+    "originalMetricStart": "first app main-thread deliverInputEvent DOWN span ts",
+    "videoTraceAbsoluteMapping": false,
+    "coldMeaning": "new process first reader, not physical disk cold",
+    "probe": "29 fixed timestamps,32 bounded sessions,default off,export after reader stop",
+    "frameCommitNotPresentation": true
+  },
+  "samples": [
+    {
+      "label": "新进程首次①",
+      "probeLabel": "fork-saf-rtl-first-warm",
+      "traceDir": "fork-saf-rtl-first-warm-1",
+      "uiDir": "fork-saf-rtl-first-warm-ui",
+      "request": 1,
+      "pid": 8418,
+      "downSpan": {
+        "ts": 277235667966934,
+        "dur": 3941146
+      },
+      "upSpan": {
+        "ts": 277235674084121,
+        "dur": 20115625
+      },
+      "probeDownMonoNs": 51904190686349,
+      "probeUpMonoNs": 51904195268120,
+      "offset": 225331478908710,
+      "probeDownMappedBootNs": 277235669595059,
+      "probeUpMappedBootNs": 277235674176830,
+      "startActivityTs": 277235693626309,
+      "performCreateTs": 277235708755475,
+      "firstReaderTx": {
+        "ts": 277235701744440,
+        "dur": 56662599,
+        "end": 277235758407039
+      },
+      "stages": [
+        511639583,
+        46188542,
+        12688021,
+        76327083
+      ],
+      "headerNs": 397032292,
+      "getPagesNs": 69342188,
+      "archiveOpenNs": 19160417,
+      "archiveListNs": 13168229,
+      "initToDrawNs": 646699479,
+      "hookDownToDrawNs": 697605729,
+      "chapterId": 1,
+      "page": 0,
+      "package": "app.mihon.desktop.fork.benchmark",
+      "apkSha256": "ae1e407aa4ae0a912606094cbb8e93991ad3a8f20f65c68c12ad7e55fa4f4fa9",
+      "matchedDownSpanTs": 277235667966934,
+      "matchedUpSpanTs": 277235674084121,
+      "startActivityFromDownNs": 25659375,
+      "performCreateFromDownNs": 40788541,
+      "firstTxEndFromDownNs": 90440105,
+      "startActivityFromUpNs": 19542188,
+      "performCreateFromUpNs": 34671354,
+      "firstTxEndFromUpNs": 84322918,
+      "stageTotalNs": 646843229,
+      "intentToFirstDrawNs": 646843229,
+      "stageLabels": [
+        "OPEN_READER_INTENT→PAGE_LIST_READY",
+        "PAGE_LIST_READY→OPEN_PAGE",
+        "OPEN_PAGE→DECODE_SUBMIT",
+        "DECODE_SUBMIT→FIRST_DRAW"
+      ],
+      "clockValidated": true,
+      "status": "OK",
+      "eventCount": 29,
+      "probeEventsMonotonic": true,
+      "eventNamesUnique": true,
+      "clockOffsetBootMinusMonoNs": 225331478908710,
+      "downMappedIntoFirstMainInputSpan": true,
+      "upMappedIntoSecondMainInputSpan": true,
+      "probeEvents": [
+        {
+          "event": "MAIN_TOUCH_DOWN",
+          "monotonicNanos": 51904190686349,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "MAIN_TOUCH_UP",
+          "monotonicNanos": 51904195268120,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "ACTIVITY_CREATE",
+          "monotonicNanos": 51904229869161,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "OPEN_READER_INTENT",
+          "monotonicNanos": 51904241448849,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "INIT_IO_ENTER",
+          "monotonicNanos": 51904241592599,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "MANGA_READY",
+          "monotonicNanos": 51904242144682,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "CHAPTER_LIST_BEGIN",
+          "monotonicNanos": 51904242298849,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "SOURCE_READY",
+          "monotonicNanos": 51904243837911,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "CHAPTER_LIST_READY",
+          "monotonicNanos": 51904245408745,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "CHAPTER_LOAD_BEGIN",
+          "monotonicNanos": 51904245489995,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "CHAPTER_IO_ENTER",
+          "monotonicNanos": 51904245862911,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "DOWNLOAD_CHECK_BEGIN",
+          "monotonicNanos": 51904245867599,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "DOWNLOAD_CHECK_END",
+          "monotonicNanos": 51904283525932,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "GET_PAGES_BEGIN",
+          "monotonicNanos": 51904284278015,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "CHAPTER_PATH_BEGIN",
+          "monotonicNanos": 51904284283224,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "CHAPTER_PATH_END",
+          "monotonicNanos": 51904319048849,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "ARCHIVE_OPEN_BEGIN",
+          "monotonicNanos": 51904321275932,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "ARCHIVE_OPEN_END",
+          "monotonicNanos": 51904340436349,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "ARCHIVE_LIST_BEGIN",
+          "monotonicNanos": 51904340441557,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "ARCHIVE_LIST_END",
+          "monotonicNanos": 51904353609786,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "GET_PAGES_END",
+          "monotonicNanos": 51904353620203,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "HEADER_FACTS_BEGIN",
+          "monotonicNanos": 51904353621765,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "HEADER_FACTS_END",
+          "monotonicNanos": 51904750654057,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "PAGE_LIST_READY",
+          "monotonicNanos": 51904753088432,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "OPEN_PAGE",
+          "monotonicNanos": 51904799276974,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "ENCODED_READ_COMPLETE",
+          "monotonicNanos": 51904811871245,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "DECODE_SUBMIT",
+          "monotonicNanos": 51904811964995,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "FIRST_DRAW",
+          "monotonicNanos": 51904888292078,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "FRAME_COMMIT",
+          "monotonicNanos": 51917641205097,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        }
+      ],
+      "oldTableOrigin": "Perfetto DOWN deliverInputEvent span ts",
+      "oldTableMs": {
+        "startActivity": 25.659375,
+        "performCreate": 40.788541,
+        "firstReaderTxEnd": 90.440105,
+        "nearBlackBounds": [
+          398,
+          467
+        ]
+      },
+      "probe": {
+        "phaseNs": [
+          511639583,
+          46188542,
+          12688021,
+          76327083
+        ],
+        "totalNs": 646843229,
+        "headerNs": 397032292,
+        "traceDownToFirstDrawNs": 699233854,
+        "frameCommitAfterDrawNs": 12752913019
+      },
+      "video": {
+        "frameCount": 166,
+        "boundaries": {
+          "d": "fork-saf-rtl-first-warm-1",
+          "lastResidual": 25,
+          "firstNearBlack": 26,
+          "lastNearBlack": 49,
+          "firstContent": 50,
+          "pts": {
+            "25": 1.619,
+            "26": 1.635,
+            "49": 2.033,
+            "50": 2.086
+          },
+          "lowerMs": 398,
+          "upperMs": 467,
+          "status": "root independently reviewed native-PTS boundary contact sheets; faint residual text/spinner allowed as original method"
+        },
+        "absoluteClockMapping": false
+      },
+      "validation": {
+        "events": 29,
+        "inputSpanMapping": true,
+        "phaseArithmetic": true,
+        "videoPTS": true,
+        "chapterPageRequest": true
+      }
+    },
+    {
+      "label": "同进程暖开②",
+      "probeLabel": "fork-saf-rtl-first-warm",
+      "traceDir": "fork-saf-rtl-first-warm-2",
+      "uiDir": "fork-saf-rtl-first-warm-ui",
+      "request": 2,
+      "pid": 8418,
+      "downSpan": {
+        "ts": 277257901770576,
+        "dur": 1521354
+      },
+      "upSpan": {
+        "ts": 277257904289847,
+        "dur": 21419271
+      },
+      "probeDownMonoNs": 51926423214991,
+      "probeUpMonoNs": 51926425486866,
+      "offset": 225331478908189,
+      "probeDownMappedBootNs": 277257902123180,
+      "probeUpMappedBootNs": 277257904395055,
+      "startActivityTs": 277257925290368,
+      "performCreateTs": 277257940152347,
+      "firstReaderTx": {
+        "ts": 277257952125117,
+        "dur": 37441292,
+        "end": 277257989566409
+      },
+      "stages": [
+        524822396,
+        28418229,
+        2483854,
+        76961459
+      ],
+      "headerNs": 412358854,
+      "getPagesNs": 73257813,
+      "archiveOpenNs": 23483854,
+      "archiveListNs": 8253645,
+      "initToDrawNs": 632670834,
+      "hookDownToDrawNs": 681830209,
+      "chapterId": 1,
+      "page": 0,
+      "package": "app.mihon.desktop.fork.benchmark",
+      "apkSha256": "ae1e407aa4ae0a912606094cbb8e93991ad3a8f20f65c68c12ad7e55fa4f4fa9",
+      "matchedDownSpanTs": 277257901770576,
+      "matchedUpSpanTs": 277257904289847,
+      "startActivityFromDownNs": 23519792,
+      "performCreateFromDownNs": 38381771,
+      "firstTxEndFromDownNs": 87795833,
+      "startActivityFromUpNs": 21000521,
+      "performCreateFromUpNs": 35862500,
+      "firstTxEndFromUpNs": 85276562,
+      "stageTotalNs": 632685938,
+      "intentToFirstDrawNs": 632685938,
+      "stageLabels": [
+        "OPEN_READER_INTENT→PAGE_LIST_READY",
+        "PAGE_LIST_READY→OPEN_PAGE",
+        "OPEN_PAGE→DECODE_SUBMIT",
+        "DECODE_SUBMIT→FIRST_DRAW"
+      ],
+      "clockValidated": true,
+      "status": "OK",
+      "eventCount": 29,
+      "probeEventsMonotonic": true,
+      "eventNamesUnique": true,
+      "clockOffsetBootMinusMonoNs": 225331478908189,
+      "downMappedIntoFirstMainInputSpan": true,
+      "upMappedIntoSecondMainInputSpan": true,
+      "probeEvents": [
+        {
+          "event": "MAIN_TOUCH_DOWN",
+          "monotonicNanos": 51926423214991,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "MAIN_TOUCH_UP",
+          "monotonicNanos": 51926425486866,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "ACTIVITY_CREATE",
+          "monotonicNanos": 51926461266033,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "OPEN_READER_INTENT",
+          "monotonicNanos": 51926472359262,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "INIT_IO_ENTER",
+          "monotonicNanos": 51926472374366,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "MANGA_READY",
+          "monotonicNanos": 51926472587387,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "CHAPTER_LIST_BEGIN",
+          "monotonicNanos": 51926472647283,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "SOURCE_READY",
+          "monotonicNanos": 51926472936866,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "CHAPTER_LIST_READY",
+          "monotonicNanos": 51926473057700,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "CHAPTER_LOAD_BEGIN",
+          "monotonicNanos": 51926473060825,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "CHAPTER_IO_ENTER",
+          "monotonicNanos": 51926473081658,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "DOWNLOAD_CHECK_BEGIN",
+          "monotonicNanos": 51926473082179,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "DOWNLOAD_CHECK_END",
+          "monotonicNanos": 51926509624887,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "GET_PAGES_BEGIN",
+          "monotonicNanos": 51926509651970,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "CHAPTER_PATH_BEGIN",
+          "monotonicNanos": 51926509654054,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "CHAPTER_PATH_END",
+          "monotonicNanos": 51926548229054,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "ARCHIVE_OPEN_BEGIN",
+          "monotonicNanos": 51926551163429,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "ARCHIVE_OPEN_END",
+          "monotonicNanos": 51926574647283,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "ARCHIVE_LIST_BEGIN",
+          "monotonicNanos": 51926574651450,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "ARCHIVE_LIST_END",
+          "monotonicNanos": 51926582905095,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "GET_PAGES_END",
+          "monotonicNanos": 51926582909783,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "HEADER_FACTS_BEGIN",
+          "monotonicNanos": 51926582910825,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "HEADER_FACTS_END",
+          "monotonicNanos": 51926995269679,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "PAGE_LIST_READY",
+          "monotonicNanos": 51926997181658,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "OPEN_PAGE",
+          "monotonicNanos": 51927025599887,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "ENCODED_READ_COMPLETE",
+          "monotonicNanos": 51927027877491,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "DECODE_SUBMIT",
+          "monotonicNanos": 51927028083741,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "FIRST_DRAW",
+          "monotonicNanos": 51927105045200,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        },
+        {
+          "event": "FRAME_COMMIT",
+          "monotonicNanos": 51939844984260,
+          "chapterId": 1,
+          "page": 0,
+          "request": 2
+        }
+      ],
+      "oldTableOrigin": "Perfetto DOWN deliverInputEvent span ts",
+      "oldTableMs": {
+        "startActivity": 23.519792,
+        "performCreate": 38.381771,
+        "firstReaderTxEnd": 87.795833,
+        "nearBlackBounds": [
+          397,
+          465
+        ]
+      },
+      "probe": {
+        "phaseNs": [
+          524822396,
+          28418229,
+          2483854,
+          76961459
+        ],
+        "totalNs": 632685938,
+        "headerNs": 412358854,
+        "traceDownToFirstDrawNs": 682182813,
+        "frameCommitAfterDrawNs": 12739939060
+      },
+      "video": {
+        "frameCount": 176,
+        "boundaries": {
+          "d": "fork-saf-rtl-first-warm-2",
+          "lastResidual": 34,
+          "firstNearBlack": 35,
+          "lastNearBlack": 58,
+          "firstContent": 59,
+          "pts": {
+            "34": 1.624,
+            "35": 1.641,
+            "58": 2.038,
+            "59": 2.089
+          },
+          "lowerMs": 397,
+          "upperMs": 465,
+          "status": "root independently reviewed native-PTS boundary contact sheets; faint residual text/spinner allowed as original method"
+        },
+        "absoluteClockMapping": false
+      },
+      "validation": {
+        "events": 29,
+        "inputSpanMapping": true,
+        "phaseArithmetic": true,
+        "videoPTS": true,
+        "chapterPageRequest": true
+      }
+    },
+    {
+      "label": "新进程首开②",
+      "probeLabel": "fork-saf-rtl-second-process",
+      "traceDir": "fork-saf-rtl-second-process-1",
+      "uiDir": "fork-saf-rtl-second-process-ui",
+      "request": 1,
+      "pid": 8419,
+      "downSpan": {
+        "ts": 277308501364839,
+        "dur": 4622917
+      },
+      "upSpan": {
+        "ts": 277308507184110,
+        "dur": 21980729
+      },
+      "probeDownMonoNs": 51977023324879,
+      "probeUpMonoNs": 51977028363421,
+      "offset": 225331478907669,
+      "probeDownMappedBootNs": 277308502232548,
+      "probeUpMappedBootNs": 277308507271090,
+      "startActivityTs": 277308528653902,
+      "performCreateTs": 277308546868485,
+      "firstReaderTx": {
+        "ts": 277308540720919,
+        "dur": 51957462,
+        "end": 277308592678381
+      },
+      "stages": [
+        532626562,
+        40158855,
+        8719791,
+        70194271
+      ],
+      "headerNs": 403196354,
+      "getPagesNs": 79792187,
+      "archiveOpenNs": 27047917,
+      "archiveListNs": 15008333,
+      "initToDrawNs": 651594791,
+      "hookDownToDrawNs": 703684896,
+      "chapterId": 1,
+      "page": 0,
+      "package": "app.mihon.desktop.fork.benchmark",
+      "apkSha256": "ae1e407aa4ae0a912606094cbb8e93991ad3a8f20f65c68c12ad7e55fa4f4fa9",
+      "matchedDownSpanTs": 277308501364839,
+      "matchedUpSpanTs": 277308507184110,
+      "startActivityFromDownNs": 27289063,
+      "performCreateFromDownNs": 45503646,
+      "firstTxEndFromDownNs": 91313542,
+      "startActivityFromUpNs": 21469792,
+      "performCreateFromUpNs": 39684375,
+      "firstTxEndFromUpNs": 85494271,
+      "stageTotalNs": 651699479,
+      "intentToFirstDrawNs": 651699479,
+      "stageLabels": [
+        "OPEN_READER_INTENT→PAGE_LIST_READY",
+        "PAGE_LIST_READY→OPEN_PAGE",
+        "OPEN_PAGE→DECODE_SUBMIT",
+        "DECODE_SUBMIT→FIRST_DRAW"
+      ],
+      "clockValidated": true,
+      "status": "OK",
+      "eventCount": 29,
+      "probeEventsMonotonic": true,
+      "eventNamesUnique": true,
+      "clockOffsetBootMinusMonoNs": 225331478907669,
+      "downMappedIntoFirstMainInputSpan": true,
+      "upMappedIntoSecondMainInputSpan": true,
+      "probeEvents": [
+        {
+          "event": "MAIN_TOUCH_DOWN",
+          "monotonicNanos": 51977023324879,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "MAIN_TOUCH_UP",
+          "monotonicNanos": 51977028363421,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "ACTIVITY_CREATE",
+          "monotonicNanos": 51977067991025,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "OPEN_READER_INTENT",
+          "monotonicNanos": 51977075310296,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "INIT_IO_ENTER",
+          "monotonicNanos": 51977075414984,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "MANGA_READY",
+          "monotonicNanos": 51977075700400,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "CHAPTER_LIST_BEGIN",
+          "monotonicNanos": 51977075784775,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "SOURCE_READY",
+          "monotonicNanos": 51977076878004,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "CHAPTER_LIST_READY",
+          "monotonicNanos": 51977077606650,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "CHAPTER_LOAD_BEGIN",
+          "monotonicNanos": 51977077654567,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "CHAPTER_IO_ENTER",
+          "monotonicNanos": 51977078010817,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "DOWNLOAD_CHECK_BEGIN",
+          "monotonicNanos": 51977078016025,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "DOWNLOAD_CHECK_END",
+          "monotonicNanos": 51977121903525,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "GET_PAGES_BEGIN",
+          "monotonicNanos": 51977122598838,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "CHAPTER_PATH_BEGIN",
+          "monotonicNanos": 51977122604046,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "CHAPTER_PATH_END",
+          "monotonicNanos": 51977158294150,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "ARCHIVE_OPEN_BEGIN",
+          "monotonicNanos": 51977160316025,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "ARCHIVE_OPEN_END",
+          "monotonicNanos": 51977187363942,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "ARCHIVE_LIST_BEGIN",
+          "monotonicNanos": 51977187370192,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "ARCHIVE_LIST_END",
+          "monotonicNanos": 51977202378525,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "GET_PAGES_END",
+          "monotonicNanos": 51977202391025,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "HEADER_FACTS_BEGIN",
+          "monotonicNanos": 51977202392588,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "HEADER_FACTS_END",
+          "monotonicNanos": 51977605588942,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "PAGE_LIST_READY",
+          "monotonicNanos": 51977607936858,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "OPEN_PAGE",
+          "monotonicNanos": 51977648095713,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "ENCODED_READ_COMPLETE",
+          "monotonicNanos": 51977656376963,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "DECODE_SUBMIT",
+          "monotonicNanos": 51977656815504,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "FIRST_DRAW",
+          "monotonicNanos": 51977727009775,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        },
+        {
+          "event": "FRAME_COMMIT",
+          "monotonicNanos": 51990516426961,
+          "chapterId": 1,
+          "page": 0,
+          "request": 1
+        }
+      ],
+      "oldTableOrigin": "Perfetto DOWN deliverInputEvent span ts",
+      "oldTableMs": {
+        "startActivity": 27.289063,
+        "performCreate": 45.503646,
+        "firstReaderTxEnd": 91.313542,
+        "nearBlackBounds": [
+          382,
+          448
+        ]
+      },
+      "probe": {
+        "phaseNs": [
+          532626562,
+          40158855,
+          8719791,
+          70194271
+        ],
+        "totalNs": 651699479,
+        "headerNs": 403196354,
+        "traceDownToFirstDrawNs": 704552605,
+        "frameCommitAfterDrawNs": 12789417186
+      },
+      "video": {
+        "frameCount": 173,
+        "boundaries": {
+          "d": "fork-saf-rtl-second-process-1",
+          "lastResidual": 33,
+          "firstNearBlack": 34,
+          "lastNearBlack": 56,
+          "firstContent": 57,
+          "pts": {
+            "33": 1.64,
+            "34": 1.656,
+            "56": 2.038,
+            "57": 2.088
+          },
+          "lowerMs": 382,
+          "upperMs": 448,
+          "status": "root independently reviewed native-PTS boundary contact sheets; faint residual text/spinner allowed as original method"
+        },
+        "absoluteClockMapping": false
+      },
+      "validation": {
+        "events": 29,
+        "inputSpanMapping": true,
+        "phaseArithmetic": true,
+        "videoPTS": true,
+        "chapterPageRequest": true
+      }
+    }
+  ],
+  "validation": {
+    "focused": "5/5 and spotless passed",
+    "red": "reconfiguration and header traversal assertions failed before implementation",
+    "baselineFailure": {
+      "test": "failed metadata retry preserves the confirmed direction of the same encoded stream",
+      "expected": "FAILED",
+      "actual": "PORTRAIT",
+      "baselineRevision": "0db8c3ddf37e28e2ca1a895cf21accbeee05a0e0",
+      "baselineWorktree": "D:/Codex/worktrees/mihon-reader-probe-baseline-20261103",
+      "baselineXML": ".test-tmp/fork-reader-tablet-probe-20261103/metadata-head-baseline.xml",
+      "reproducedWithoutProbe": true
+    },
+    "apkSourceFingerprintsVerified": 13
+  },
+  "excluded": {
+    "LTR": "Three earlier LTR samples retained as validDifferentModeLtr; not in final table",
+    "privatePilot": "blocked before reader open, no measured sample"
+  },
+  "cleanup": {
+    "isolatedAppStopped": true,
+    "probeEnabled": false,
+    "scrcpyServersRemaining": [],
+    "officialDataTouched": false,
+    "retainedDiagnosticFixture": true
+  },
+  "rawRoot": ".test-tmp/fork-reader-tablet-probe-20261103"
+}

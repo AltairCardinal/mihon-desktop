@@ -33,12 +33,23 @@ internal class DownloadPageLoader(
 
     override suspend fun getPages(): List<ReaderPage> {
         val dbChapter = chapter.chapter
+        val latencyRequest = eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.requestFor(dbChapter.id ?: -1)
+        eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+            "CHAPTER_PATH_BEGIN",
+            chapter = dbChapter.id ?: -1,
+            request = latencyRequest,
+        )
         val chapterPath = downloadProvider.findChapterDir(
             dbChapter.name,
             dbChapter.scanlator,
             dbChapter.url,
             manga.title,
             source,
+        )
+        eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+            "CHAPTER_PATH_END",
+            chapter = dbChapter.id ?: -1,
+            request = latencyRequest,
         )
         return if (chapterPath?.isFile == true) {
             getPagesFromArchive(chapterPath)
@@ -53,8 +64,27 @@ internal class DownloadPageLoader(
     }
 
     private suspend fun getPagesFromArchive(file: UniFile): List<ReaderPage> {
+        val id = chapter.chapter.id ?: -1
+        val request = eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.requestFor(id)
+        eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+            "ARCHIVE_OPEN_BEGIN",
+            chapter = id,
+            request = request,
+        )
         val loader = ArchivePageLoader(file.archiveReader(context)).also { archivePageLoader = it }
-        return loader.getPages()
+        eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record("ARCHIVE_OPEN_END", chapter = id, request = request)
+        eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+            "ARCHIVE_LIST_BEGIN",
+            chapter = id,
+            request = request,
+        )
+        return loader.getPages().also {
+            eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+                "ARCHIVE_LIST_END",
+                chapter = id,
+                request = request,
+            )
+        }
     }
 
     private fun getPagesFromDirectory(): List<ReaderPage> {

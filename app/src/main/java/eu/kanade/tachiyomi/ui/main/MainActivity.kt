@@ -127,6 +127,16 @@ class MainActivity : BaseActivity() {
         registerSecureActivity(this)
     }
 
+    override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+        when (event.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN ->
+                eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.noteMainTouchDown()
+            android.view.MotionEvent.ACTION_UP ->
+                eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.noteMainTouchUp()
+        }
+        return super.dispatchTouchEvent(event)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         val isLaunch = savedInstanceState == null
 
@@ -134,6 +144,7 @@ class MainActivity : BaseActivity() {
         val splashScreen = if (isLaunch) installSplashScreen() else null
 
         super.onCreate(savedInstanceState)
+        eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.loadConfiguration(this)
 
         // Do not let the launcher create a new activity http://stackoverflow.com/questions/16283079
         if (!isTaskRoot) {
