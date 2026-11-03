@@ -330,6 +330,12 @@ Android 的 `ReaderChapter.State` 是旧 pager/webtoon 观察者使用的只读�
 `ResetChapter` 失效旧 generation 并回收旧 loader，再由同一 `ChapterLoader` 五路 route factory 选择
 download/local/archive/EPUB/online I/O。任何 production 调用都不能从 legacy state 反向发布 session。
 
+页表完成后仍逐页绑定并发布当前状态，保留 descriptor 建立后、实际绑定前发生的状态或编码身份变化。
+`ReaderChapter.dispatch` 在同一 session 锁内执行 reducer；当返回的 snapshot 与当前对象完全相同时，
+不重复构造 legacy 页表。真实新 snapshot 继续先发布 canonical、再转换 legacy，generation 与旧回调
+拒收规则不变。该短路只消除无变化投影，不跳过初始通知或 reducer 的页身份检查；187页真实绑定及
+变更边界由 `ReaderChapterProjectionTest` 覆盖。性能采用依据见[持续优化记录](../evidence/reader-startup-autonomous-2026-11-04.md)。
+
 较新上游 `bc7f7e70…` 的 cache journal + 实体文件存在性检查已由 Android encoded store adapter 保留；
 RC-02 已恢复 cached Error 的显式 Retry 强制重抓，RC-03 又由 shared scheduler 把 Retry 提升为 P0 并
 启动新 generation。encoded store 只有在 journal 与实体文件均存在后才提交逻辑索引；配额淘汰先确认

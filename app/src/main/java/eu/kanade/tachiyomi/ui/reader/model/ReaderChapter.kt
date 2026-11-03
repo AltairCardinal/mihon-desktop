@@ -307,7 +307,9 @@ data class ReaderChapter(val chapter: Chapter) {
         projectLegacyState: Boolean = true,
     ) = synchronized(sharedSessionLock) {
         val current = mutableSharedSessionStateFlow.value
-        mutableSharedSessionStateFlow.value = ReaderSessionReducer.reduce(current, intent).snapshot
+        val next = ReaderSessionReducer.reduce(current, intent).snapshot
+        if (next === current) return@synchronized
+        mutableSharedSessionStateFlow.value = next
         if (projectLegacyState) {
             mutableSharedStateFlow.value = mutableSharedSessionStateFlow.value.toLegacyState()
         }
@@ -324,7 +326,9 @@ internal class ReaderChapterStorageChangeResetToken(
 private fun ReaderChapterLoadState.allowsStorageChangeReset(): Boolean =
     this == ReaderChapterLoadState.Wait || this is ReaderChapterLoadState.Error
 
-private fun ReaderSessionSnapshot.toLegacyState(): ReaderChapterState = when (val loadState = activeChapter.loadState) {
+internal fun ReaderSessionSnapshot.toLegacyState(): ReaderChapterState = when (
+    val loadState = activeChapter.loadState
+) {
     ReaderChapterLoadState.Wait -> ReaderChapterState.Wait
     ReaderChapterLoadState.LoadingPageList -> ReaderChapterState.Loading
     ReaderChapterLoadState.Loaded -> ReaderChapterState.Loaded(

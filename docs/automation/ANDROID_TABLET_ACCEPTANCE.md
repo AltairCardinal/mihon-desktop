@@ -49,6 +49,8 @@ $serial = '192.168.50.51:5555'
 - 阅读器探针先正常离开阅读器触发onStop，等待完整JSON，再停止本任务的隔离包。强停后不能补造丢失的导出。
 - 关闭探针，清理本任务持有的录制/trace/logcat进程，保留用户数据和正式安装。最后执行下列明确熄屏命令并读回Asleep；失败或取消也遵循这个收尾。
 
+2026-11-04持续优化R1中，SLEEP后立即读到`mWakefulness=Asleep`但`mWakefulnessChanging=true`，包装断言未通过；随后只读复核变为`Asleep/false`，没有重发唤醒或输入。后续收尾可对这一过渡状态做有界只读等待，确认收敛再报告完成，不能把即时断言失败直接称为产品故障。原件为`.test-tmp/reader-open-goal-20261104/r1/final-device-cleanup.json`及`final-power-settled.json`，结果见[持续优化记录](../evidence/reader-startup-autonomous-2026-11-04.md)。
+
 ```powershell
 & $adb -s $serial shell input keyevent KEYCODE_SLEEP
 & $adb -s $serial shell dumpsys power
