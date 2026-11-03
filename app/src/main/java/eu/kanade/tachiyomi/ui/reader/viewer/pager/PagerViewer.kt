@@ -85,7 +85,7 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
             field = value
             if (value) {
                 awaitingIdleViewerChapters?.let { viewerChapters ->
-                    setChaptersInternal(viewerChapters)
+                    setChaptersInternal(viewerChapters, latencyAwaitedIdle = true)
                     awaitingIdleViewerChapters = null
                     val currentChapterAlreadySelected =
                         (currentPage as? ReaderPage)?.chapter == viewerChapters.currChapter
@@ -334,7 +334,8 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
     /**
      * Sets the active [chapters] on this pager.
      */
-    private fun setChaptersInternal(chapters: ViewerChapters) {
+    private fun setChaptersInternal(chapters: ViewerChapters, latencyAwaitedIdle: Boolean = false) {
+        activity.recordLatencyChapters("VIEWER_CHAPTERS_APPLY_ENTER", chapters, latencyAwaitedIdle)
         // Remove listener so the change in item doesn't trigger it
         pager.removeOnPageChangeListener(pagerListener)
 
@@ -343,6 +344,7 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
             adapter.items.getOrNull(pager.currentItem) is ChapterTransition
         bindSingleFacts(chapters)
         adapter.setChapters(chapters, forceTransition)
+        activity.recordLatencyChapters("PAGER_ADAPTER_READY", chapters)
 
         // Layout the pager once a chapter is being set
         if (pager.isGone) {

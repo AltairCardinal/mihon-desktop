@@ -840,6 +840,7 @@ open class ReaderActivity : BaseActivity() {
      */
     @SuppressLint("RestrictedApi")
     private fun setChapters(viewerChapters: ViewerChapters) {
+        recordLatencyChapters("ACTIVITY_CHAPTERS_RECEIVED", viewerChapters)
         binding.readerContainer.removeView(loadingIndicator)
         viewModel.state.value.viewer?.setChapters(viewerChapters)
 
@@ -848,6 +849,46 @@ open class ReaderActivity : BaseActivity() {
                 assistUrl = url
             }
         }
+    }
+
+    internal fun recordLatencyChapters(
+        event: String,
+        viewerChapters: ViewerChapters,
+        pagerAwaitedIdle: Boolean? = null,
+    ): Boolean {
+        val chapter = viewerChapters.currChapter
+        val accepted = ReaderOpenLatencyProbe.recordForViewerChapters(
+            event,
+            latencyRequest,
+            chapter.chapter.id ?: -1,
+            chapter,
+            chapter.pages,
+            viewerChapters,
+        )
+        if (accepted && pagerAwaitedIdle != null) {
+            ReaderOpenLatencyProbe.notePagerDispatch(
+                latencyRequest,
+                chapter.chapter.id ?: -1,
+                chapter,
+                chapter.pages,
+                viewerChapters,
+                pagerAwaitedIdle,
+            )
+        }
+        return accepted
+    }
+
+    internal fun latencyRequestFor(page: ReaderPage): Long {
+        if (!ReaderOpenLatencyProbe.enabled || latencyRequest == 0L) return 0
+        val chapter = page.chapter
+        return ReaderOpenLatencyProbe.requestForTargetPage(
+            latencyRequest,
+            chapter.chapter.id ?: -1,
+            chapter,
+            chapter.pages,
+            page,
+            viewModel.state.value.viewerChapters,
+        )
     }
 
     /**

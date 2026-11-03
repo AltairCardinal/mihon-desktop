@@ -371,10 +371,16 @@ open class ReaderPageImageView @JvmOverloads constructor(
     internal var latencyPage = -1
     internal var latencyRequest = 0L
 
-    internal fun bindLatencyPage(page: eu.kanade.tachiyomi.ui.reader.model.ReaderPage) {
+    internal fun bindLatencyPage(
+        page: eu.kanade.tachiyomi.ui.reader.model.ReaderPage,
+        request: Long = eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.requestFor(
+            page.chapter.chapter.id ?: -1,
+            page.index,
+        ),
+    ) {
         latencyChapter = page.chapter.chapter.id ?: -1
         latencyPage = page.index
-        latencyRequest = eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.requestFor(latencyChapter, latencyPage)
+        latencyRequest = request
     }
 
     private fun nativeImageDrawn() {

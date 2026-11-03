@@ -99,7 +99,13 @@ class PagerPageHolder(
         page.status == Page.State.Ready && renderedContent == page.contentIdentity()
 
     init {
-        bindLatencyPage(page)
+        bindLatencyPage(page, viewer.activity.latencyRequestFor(page))
+        eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+            "TARGET_HOLDER_CREATED",
+            latencyPage,
+            latencyChapter,
+            latencyRequest,
+        )
         beforeImageDraw = { _, _ ->
             if (!imageCallbackCurrent() || boundContent != page.contentIdentity()) {
                 false
@@ -250,6 +256,12 @@ class PagerPageHolder(
      * Called when the page is ready.
      */
     private suspend fun setImage() {
+        eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+            "TARGET_IMAGE_ENTER",
+            latencyPage,
+            latencyChapter,
+            latencyRequest,
+        )
         progressIndicator?.setProgress(0)
         renderedContent = null
         beginPresentation()
@@ -257,6 +269,12 @@ class PagerPageHolder(
         val attachment = attachmentGeneration
         val presentation = presentationGeneration
         val encodedContent = page.encodedContentIdentity()
+        eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+            "TARGET_HEADER_DISPATCH",
+            latencyPage,
+            latencyChapter,
+            latencyRequest,
+        )
         withIOContext {
             val headerClaimed = eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
                 "TARGET_HEADER_BEGIN",

@@ -4,7 +4,9 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.lang.ref.WeakReference
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicLongArray
 
@@ -23,10 +25,27 @@ object ReaderOpenLatencyProbe {
         "OPEN_PAGE", "ENCODED_READ_COMPLETE", "DECODE_SUBMIT", "FIRST_DRAW", "FRAME_COMMIT",
         "MAIN_TOUCH_DOWN", "GET_PAGES_END", "HEADER_FACTS_BEGIN", "HEADER_FACTS_END",
         "TARGET_HEADER_BEGIN", "TARGET_HEADER_END",
+        "ACTIVATION_UI_ENTER", "PAIRING_OWNER_READY", "READING_GATE_READY", "CHAPTER_STATE_PUBLISH_BEGIN",
+        "ACTIVITY_CHAPTERS_RECEIVED", "TARGET_IMAGE_ENTER", "TARGET_HEADER_DISPATCH",
+        "VIEWER_CHAPTERS_APPLY_ENTER", "PAGER_ADAPTER_READY", "TARGET_HOLDER_CREATED",
     )
+    private class TargetBinding(chapter: Any, pages: Any, page0: Any) {
+        val chapter = WeakReference(chapter)
+        val pages = WeakReference(pages)
+        val page0 = WeakReference(page0)
+
+        @Volatile var viewerChapters: WeakReference<Any>? = null
+
+        fun matches(chapter: Any, pages: Any?): Boolean = pages != null &&
+            this.chapter.get() === chapter && this.pages.get() === pages && page0.get() != null
+    }
     private class Session(val request: Long, val chapter: Long) {
         val times = AtomicLongArray(names.size)
-        var exported = false
+        val pagerDispatch = AtomicInteger()
+
+        @Volatile var exported = false
+
+        @Volatile var target: TargetBinding? = null
     }
     private val requestSequence = AtomicLong()
     private var nextSession = 0
@@ -105,6 +124,113 @@ object ReaderOpenLatencyProbe {
         return if (chapter == session.chapter) session.request else 0
     }
 
+    /** Initial-load sidecar only; weak identities never retain loader or image resources. */
+    internal fun bindPageList(request: Long, chapterId: Long, chapter: Any, pages: Any, page0: Any): Boolean {
+        val session = activeSession(request, chapterId) ?: return false
+        return synchronized(session) {
+            if (activeSession(request, chapterId) !== session) return@synchronized false
+            val existing = session.target
+            if (existing != null) return@synchronized existing.matches(chapter, pages) && existing.page0.get() === page0
+            session.target = TargetBinding(chapter, pages, page0)
+            true
+        }
+    }
+
+    internal fun bindViewerChapters(
+        request: Long,
+        chapterId: Long,
+        chapter: Any,
+        pages: Any?,
+        viewerChapters: Any,
+    ): Boolean {
+        val session = activeSession(request, chapterId) ?: return false
+        return synchronized(session) {
+            val target = session.target ?: return@synchronized false
+            if (activeSession(request, chapterId) !== session || !target.matches(chapter, pages)) {
+                return@synchronized false
+            }
+            val existing = target.viewerChapters
+            if (existing != null) return@synchronized existing.get() === viewerChapters
+            target.viewerChapters = WeakReference(viewerChapters)
+            true
+        }
+    }
+
+    /** Resolve the registered request, never the current global request for an old holder. */
+    internal fun requestForTargetPage(
+        request: Long,
+        chapterId: Long,
+        chapter: Any,
+        pages: Any?,
+        page: Any,
+        viewerChapters: Any?,
+    ): Long {
+        if (!enabled || request == 0L || pages == null || viewerChapters == null) return 0
+        val session = sessions.firstOrNull { it.request == request && it.chapter == chapterId } ?: return 0
+        val target = session.target ?: return 0
+        return if (!session.exported && target.matches(chapter, pages) && target.page0.get() === page &&
+            target.viewerChapters?.get() === viewerChapters
+        ) {
+            session.request
+        } else {
+            0
+        }
+    }
+
+    internal fun recordForPageList(
+        event: String,
+        request: Long,
+        chapterId: Long,
+        chapter: Any,
+        pages: Any?,
+    ): Boolean {
+        val session = activeSession(request, chapterId) ?: return false
+        if (session.target?.matches(chapter, pages) != true) return false
+        return record(event, chapter = chapterId, request = request)
+    }
+
+    internal fun recordForViewerChapters(
+        event: String,
+        request: Long,
+        chapterId: Long,
+        chapter: Any,
+        pages: Any?,
+        viewerChapters: Any,
+    ): Boolean {
+        val session = activeSession(request, chapterId) ?: return false
+        val target = session.target ?: return false
+        if (!target.matches(chapter, pages) || target.viewerChapters?.get() !== viewerChapters) return false
+        return record(event, chapter = chapterId, request = request)
+    }
+
+    private fun activeSession(request: Long, chapterId: Long): Session? {
+        if (!enabled || request == 0L) return null
+        return active?.takeIf { it.request == request && it.chapter == chapterId && !it.exported }
+    }
+
+    internal fun notePagerDispatch(
+        request: Long,
+        chapterId: Long,
+        chapter: Any,
+        pages: Any?,
+        viewerChapters: Any,
+        awaitedIdle: Boolean,
+    ): Boolean {
+        val session = activeSession(request, chapterId) ?: return false
+        val target = session.target ?: return false
+        if (!target.matches(chapter, pages) || target.viewerChapters?.get() !== viewerChapters) return false
+        return session.pagerDispatch.compareAndSet(0, if (awaitedIdle) 2 else 1)
+    }
+
+    internal fun capturedPagerAwaitedIdle(request: Long): Boolean? {
+        if (!enabled) return null
+        return when (sessions.firstOrNull { it.request == request }?.pagerDispatch?.get()) {
+            1 -> false
+            2 -> true
+            else -> null
+        }
+    }
+
     /** One CAS into a preallocated timestamp slot; no lock, allocation, scheduling or I/O. */
     fun record(
         event: String,
@@ -140,6 +266,8 @@ object ReaderOpenLatencyProbe {
         if (session.exported) return
         session.exported = true
         val captured = snapshot(session)
+        val capturedPagerAwaitedIdle = capturedPagerAwaitedIdle(request)
+        session.target = null
         val capturedLabel = label
         writer.execute {
             runCatching {
@@ -151,8 +279,10 @@ object ReaderOpenLatencyProbe {
                     )
                 }
                 val id = captured.firstOrNull()?.request ?: return@runCatching
+                val payload = JSONObject().put("label", capturedLabel).put("events", array)
+                if (capturedPagerAwaitedIdle != null) payload.put("pagerAwaitedIdle", capturedPagerAwaitedIdle)
                 File(directory, "$capturedLabel-$id.json").writeText(
-                    JSONObject().put("label", capturedLabel).put("events", array).toString(2),
+                    payload.toString(2),
                     Charsets.UTF_8,
                 )
             }

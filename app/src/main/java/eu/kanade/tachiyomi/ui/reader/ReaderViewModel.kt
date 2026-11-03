@@ -507,7 +507,7 @@ class ReaderViewModel @JvmOverloads constructor(
                         request = latencyRequest,
                     )
                     try {
-                        loadChapter(loader!!, initialChapter)
+                        loadChapter(loader!!, initialChapter, latencyRequest = latencyRequest)
                         startCatalogCompletion(opened)
                     } catch (e: Throwable) {
                         showChapterError(initialChapter, e)
@@ -572,6 +572,7 @@ class ReaderViewModel @JvmOverloads constructor(
         loader: ChapterLoader,
         chapter: ReaderChapter,
         activationIntent: ReaderChapterWindowIntent.OpenAdjacent? = null,
+        latencyRequest: Long = 0,
         canActivate: () -> Boolean = { true },
     ): ReadingActivation? {
         if (activationIntent == null) {
@@ -595,10 +596,30 @@ class ReaderViewModel @JvmOverloads constructor(
         )
 
         val pages = chapter.pages?.takeIf { it.isNotEmpty() } ?: return null
+        val latencyChapter = chapter.chapter.id ?: -1
+        if (latencyRequest != 0L) {
+            pages.firstOrNull { it.index == 0 }?.let { page0 ->
+                ReaderOpenLatencyProbe.bindPageList(latencyRequest, latencyChapter, chapter, pages, page0)
+            }
+        }
         val activation = withUIContext {
+            ReaderOpenLatencyProbe.recordForPageList(
+                "ACTIVATION_UI_ENTER",
+                latencyRequest,
+                latencyChapter,
+                chapter,
+                chapter.pages,
+            )
             val expectedWindow = chapterWindowOwner.snapshot
             if (!canActivate() || chapter.pages !== pages) return@withUIContext null
             dualPagePairings.ensure(chapter, pages)
+            ReaderOpenLatencyProbe.recordForPageList(
+                "PAIRING_OWNER_READY",
+                latencyRequest,
+                latencyChapter,
+                chapter,
+                chapter.pages,
+            )
             if (
                 activationIntent != null &&
                 ReaderChapterWindowReducer.reduce(expectedWindow, activationIntent).effects
@@ -613,6 +634,13 @@ class ReaderViewModel @JvmOverloads constructor(
             } else {
                 recordReadingProgress.openSession(chapter.sharedChapterId().value, resume?.snapshot)
             }
+            ReaderOpenLatencyProbe.recordForPageList(
+                "READING_GATE_READY",
+                latencyRequest,
+                latencyChapter,
+                chapter,
+                chapter.pages,
+            )
             if (chapterWindowOwner.snapshot != expectedWindow || !canActivate() || chapter.pages !== pages) {
                 return@withUIContext null
             }
@@ -643,6 +671,22 @@ class ReaderViewModel @JvmOverloads constructor(
             }
             readingActivation = activation
             chapterToDownload = cancelQueuedDownloads(newChapters.currChapter)
+            val latencyPublicationBound = ReaderOpenLatencyProbe.bindViewerChapters(
+                latencyRequest,
+                latencyChapter,
+                chapter,
+                chapter.pages,
+                newChapters,
+            )
+            if (latencyPublicationBound) {
+                ReaderOpenLatencyProbe.recordForPageList(
+                    "CHAPTER_STATE_PUBLISH_BEGIN",
+                    latencyRequest,
+                    latencyChapter,
+                    chapter,
+                    chapter.pages,
+                )
+            }
             mutableState.update {
                 it.copy(
                     viewerChapters = newChapters,
