@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.data.download
 
 import android.content.Context
+import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.Page
@@ -218,6 +219,16 @@ class DownloadManager(
         chapter: Chapter,
     ): List<Page> = diagnosticOperation(DiagnosticCategory.DOWNLOAD_LOCAL, DiagnosticOperation.LOCAL_FILE) {
         val chapterDir = provider.findChapterDir(chapter.name, chapter.scanlator, chapter.url, manga.title, source)
+        pageListFromDirectory(chapterDir)
+    }
+
+    /** Enumerates the location already selected by this reader load; it must not resolve another one. */
+    internal fun buildPageList(chapterDir: UniFile?): List<Page> =
+        diagnosticOperation(DiagnosticCategory.DOWNLOAD_LOCAL, DiagnosticOperation.LOCAL_FILE) {
+            pageListFromDirectory(chapterDir)
+        }
+
+    private fun pageListFromDirectory(chapterDir: UniFile?): List<Page> {
         val files = chapterDir?.listFiles().orEmpty()
             .filter {
                 val name = it.name ?: return@filter false
@@ -230,7 +241,7 @@ class DownloadManager(
             throw Exception(context.stringResource(MR.strings.page_list_empty_error))
         }
 
-        files.sortedWith { first, second ->
+        return files.sortedWith { first, second ->
             ReaderImageCandidatePolicy.compare(
                 ReaderImageSortMode.DOWNLOAD_LEXICAL_CASE_SENSITIVE,
                 first.name.orEmpty(),
@@ -261,6 +272,21 @@ class DownloadManager(
     ): Boolean {
         return cache.isChapterDownloaded(chapterName, chapterScanlator, chapterUrl, mangaTitle, sourceId, skipCache)
     }
+
+    /** A fresh filesystem lookup, owned by one chapter load rather than the directory cache. */
+    internal fun resolveDownloadedChapter(
+        chapterName: String,
+        chapterScanlator: String?,
+        chapterUrl: String,
+        mangaTitle: String,
+        sourceId: Long,
+    ): UniFile? = provider.findChapterDir(
+        chapterName,
+        chapterScanlator,
+        chapterUrl,
+        mangaTitle,
+        sourceManager.getOrStub(sourceId),
+    )
 
     /**
      * Returns the amount of downloaded chapters.

@@ -163,8 +163,8 @@ class ReaderChapterContentRouteTest {
         cases.forEachIndexed { index, case ->
             val downloadManager = mockk<DownloadManager>(relaxed = true)
             every {
-                downloadManager.isChapterDownloaded(any(), any(), any(), any(), any(), any())
-            } returns case.downloaded
+                downloadManager.resolveDownloadedChapter(any(), any(), any(), any(), any())
+            } returns if (case.downloaded) mockk<UniFile>() else null
             val chapter = ReaderChapter(
                 Chapter.create().copy(id = index.toLong() + 1, mangaId = 1, scanlator = "scanlator"),
             )

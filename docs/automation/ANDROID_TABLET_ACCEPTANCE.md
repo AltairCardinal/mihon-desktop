@@ -8,6 +8,16 @@
 
 来源为[阅读器P3证据](../evidence/reader-startup-p3-2026-11-03.md)。成功的无密码唤醒原件：`.test-tmp/reader-open-p3-20261103/black-return-control-compare/wake-summary.json`及同目录`wake.json`、`state-after-wake.json`、`dismiss-keyguard.json`、`state-after-normal-dismiss.json`。用户明确要求无需前台时熄屏，并授权直接唤醒无密码锁屏。
 
+### 无线不可达后改用USB
+
+2026-11-04的P4中，旧无线地址一次连接超时、mDNS为空；这些信息只证明旧入口不可达，不能据此判断设备已锁定或关机。用户接入USB后，`adb devices -l`发现authorized设备`5JB0224111000992`；再次读回PCE-W30、Android12/API31、物理2880×1920/override1920×2880及secure=false，确认是同一目标。原件为`.test-tmp/reader-open-p4-20261104/usb-device-preflight.json`，结果见[P4记录](../evidence/reader-startup-p4-2026-11-04.md)。serial仅是本次记录，后续必须重新枚举，不照搬到另一设备。
+
+所有安装、shell、pull和采集子进程都显式传`-s <已确认USB serial>`，避免默认选到无线别名或其它设备；只适配采集脚本的transport，不改测量时序。USB authorized后已成功复用下述WAKEUP→正常dismiss→状态读回流程，控制A1采集后也已读回Asleep，无须人工解锁。若显示unauthorized，则由用户完成设备正常授权，不能绕过。
+
+USB供电是新的测量条件。控制和候选整组保持同一连接方式，USB组与旧无线组分别保存；不要直接把两组差值解释为产品收益。电池/温度信息在计时窗口外记录，缺少某次前置记录就明确缺失，不补造或改变充电、省电设置。
+
+本轮复用采集脚本已在正常完成与finally收尾中执行：正常离开Reader并保全导出→仅force-stop隔离包→KEYCODE_SLEEP→dumpsys读回Asleep，分别保存各批`final-power.txt`及最终`final-device-cleanup.json`。异常中无法完成导出时保留缺口，不把finally强停当作完整采样。离线检查设置也应看实际控件：P4的XML父/子`checkable=false`不能证明开关OFF；原设置截图空复选框才是本次视觉依据。拼图出现歧义时回看单张原图和未经重采样的裁图，不重新操作设备来覆盖旧状态。hint控件没有保存就明确未复核。
+
 ## 正常唤醒与无密码锁屏
 
 `showing=true`只说明锁屏正在显示，不等于需要密码。先分别核对电源状态、锁屏显示状态和`secure`字段。安装、编译、日志读取及离线分析通常不需要解锁；测量正常点击到漫画可见则必须在已唤醒、锁屏不遮挡、目标应用有焦点的条件下进行。

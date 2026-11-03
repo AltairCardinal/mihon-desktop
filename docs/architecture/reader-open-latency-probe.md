@@ -23,9 +23,9 @@
 | ACTIVITY_CREATE / OPEN_READER_INTENT / INIT_IO_ENTER | 目标 ReaderActivity 创建、ViewModel 初始化入口及 IO 上下文 |
 | MANGA_READY / SOURCE_READY / CHAPTER_LIST_BEGIN / READY | 真实仓库、阅读进度打开和章节列表初始化；边界间可能包含其他原有工作 |
 | CHAPTER_LOAD_BEGIN / CHAPTER_IO_ENTER | 实际 ChapterLoader 进入与 IO 执行 |
-| DOWNLOAD_CHECK_BEGIN / END | DownloadManager 的真实已下载判定 |
+| DOWNLOAD_CHECK_BEGIN / END | DownloadManager 的真实已下载位置解析；P4保留此次查得的UniFile供本次加载消费，沿用sourceManager.getOrStub来源 |
 | GET_PAGES_BEGIN / END | 真实 PageLoader.getPages，包含规范路径与归档打开/列表加载 |
-| CHAPTER_PATH_BEGIN / END | DownloadProvider 查找目标目录或 CBZ |
+| CHAPTER_PATH_BEGIN / END | DownloadPageLoader取得目标目录或CBZ：P4默认链消费本次已解析位置，未提供位置的旧入口仍调用DownloadProvider；该区间不再必然包含一次目录解析 |
 | ARCHIVE_OPEN_BEGIN / END、ARCHIVE_LIST_BEGIN / END | DownloadPageLoader 构造真实归档 reader，随后生成页列表 |
 | HEADER_FACTS_BEGIN / END | 历史章级 Ready 页 header 遍历端点；下载首开 P0 已移除新加载和 Loaded 复用的遍历，当前样本应不出现，报告为不适用，不补造零耗时事件 |
 | TARGET_HEADER_BEGIN / END | 单页 PagerPageHolder 原有 IO body 内，紧贴本页 `publishHeaderFact()` 调用前后；测实际调用 wall time，不含进入 IO 前排队。BEGIN 首次认领成功的同一次调用正常返回才写 END；取消／异常不补 END，后续调用不得补写 |
@@ -43,6 +43,8 @@
 | FRAME_COMMIT | FIRST_DRAW 后该视图的提交回调，仅 API 29+ 且硬件加速时记录；不是显示面板呈现时间 |
 
 所有时间戳只记录一次。阶段区间是观测范围，不能自动解释为单个 API 的独占 CPU 耗时或缺陷原因。TARGET_HEADER 仅在同目标请求、正常内容可见且 PAGE_LIST_READY≤BEGIN≤END≤OPEN_PAGE≤FIRST_DRAW 时用于拆分：P=BEGIN−PAGE_LIST_READY，H=END−BEGIN，Q=OPEN_PAGE−END，三者应等于页表后的原第二段。H可能包含读取、解析、锁或缓存命中，不等于独占CPU；重复holder／换内容／取消存在归属歧义时不使用这对事件归因。此细分未接入双页或条漫。
+
+P4只在一次ChapterLoader加载内传递已解析下载位置，默认factory以ReaderChapter对象身份限定它，不能把它用于其它章节。它不是持久缓存或已打开文件描述符；新加载仍重新解析，取消/被替代的加载沿用原generation与loader回收。目录枚举、候选图片策略、排序与页面流仍执行原生产实现。位置随后消失或访问失败时发布存储错误，不另找其它下载位置或在线回退；原Boolean下载查询及其它下载消费者保持原契约。控制与P4使用相同事件槽与记录器，比较CHAPTER_PATH时必须明确上述语义变化，不能将消费已解析值描述为又执行一次查找。
 
 ## 开销、隔离与失败边界
 

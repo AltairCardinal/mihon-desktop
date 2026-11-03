@@ -174,14 +174,14 @@ class ChapterLoader(
             chapter = dbChapter.id ?: -1,
             request = latencyRequest,
         )
-        val isDownloaded = downloadManager.isChapterDownloaded(
+        val downloadedPath = downloadManager.resolveDownloadedChapter(
             dbChapter.name,
             dbChapter.scanlator,
             dbChapter.url,
             manga.title,
             manga.source,
-            skipCache = true,
         )
+        val isDownloaded = downloadedPath != null
         eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
             "DOWNLOAD_CHECK_END",
             chapter = dbChapter.id ?: -1,
@@ -202,17 +202,21 @@ class ChapterLoader(
                 route = route,
                 chapter = chapter,
                 source = source,
-                factories = routedPageLoaderFactories ?: defaultPageLoaderFactories(),
+                factories = routedPageLoaderFactories ?: defaultPageLoaderFactories(chapter, downloadedPath),
             )
         }
     }
 
-    private fun defaultPageLoaderFactories() = defaultReaderPageLoaderFactories(
+    private fun defaultPageLoaderFactories(
+        chapter: ReaderChapter,
+        downloadedPath: UniFile?,
+    ) = defaultReaderPageLoaderFactories(
         context = context,
         manga = manga,
         source = source,
         downloadManager = downloadManager,
         downloadProvider = downloadProvider,
+        downloadPathFor = { requested -> downloadedPath.takeIf { requested === chapter } },
     )
 
     private inline fun <T> classifyStoredContentFailure(
@@ -257,6 +261,7 @@ internal fun defaultReaderPageLoaderFactories(
     archiveReaderFactory: (UniFile) -> ArchiveReader = { file -> file.archiveReader(context) },
     epubReaderFactory: (UniFile) -> EpubReader = { file -> file.epubReader(context) },
     chapterCacheProvider: () -> ChapterCache = { Injekt.get() },
+    downloadPathFor: (ReaderChapter) -> UniFile? = { null },
 ) = ReaderPageLoaderFactories(
     download = { chapter ->
         DownloadPageLoader(
@@ -265,6 +270,7 @@ internal fun defaultReaderPageLoaderFactories(
             source,
             downloadManager,
             downloadProvider,
+            downloadPathFor(chapter),
         )
     },
     localDirectory = ::DirectoryPageLoader,

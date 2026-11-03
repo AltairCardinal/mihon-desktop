@@ -150,8 +150,9 @@ class ReaderPairingPreparationIntegrationTest {
             val provider = mockk<DownloadProvider>()
             every { provider.findChapterDir(any(), any(), any(), any(), any()) } returns UniFile.fromFile(directory)
             val manager = mockk<DownloadManager>()
-            every { manager.isChapterDownloaded(any(), any(), any(), any(), any(), any()) } returns true
-            every { manager.buildPageList(any(), any(), any()) } returns
+            every { manager.resolveDownloadedChapter(any(), any(), any(), any(), any()) } returns
+                UniFile.fromFile(directory)
+            every { manager.buildPageList(any()) } returns
                 listOf(Page(0).apply { uri = Uri.fromFile(image) })
             test(ChapterLoader(context, manager, provider, manga, source), chapter)
         } finally {

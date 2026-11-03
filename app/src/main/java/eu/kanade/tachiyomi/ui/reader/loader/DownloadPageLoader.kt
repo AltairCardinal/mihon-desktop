@@ -23,6 +23,7 @@ internal class DownloadPageLoader(
     private val source: Source,
     private val downloadManager: DownloadManager,
     private val downloadProvider: DownloadProvider,
+    private val resolvedChapterPath: UniFile? = null,
 ) : PageLoader() {
 
     private val context: Application by injectLazy()
@@ -39,7 +40,7 @@ internal class DownloadPageLoader(
             chapter = dbChapter.id ?: -1,
             request = latencyRequest,
         )
-        val chapterPath = downloadProvider.findChapterDir(
+        val chapterPath = resolvedChapterPath ?: downloadProvider.findChapterDir(
             dbChapter.name,
             dbChapter.scanlator,
             dbChapter.url,
@@ -54,7 +55,7 @@ internal class DownloadPageLoader(
         return if (chapterPath?.isFile == true) {
             getPagesFromArchive(chapterPath)
         } else {
-            getPagesFromDirectory()
+            getPagesFromDirectory(chapterPath)
         }
     }
 
@@ -87,8 +88,12 @@ internal class DownloadPageLoader(
         }
     }
 
-    private fun getPagesFromDirectory(): List<ReaderPage> {
-        val pages = downloadManager.buildPageList(source, manga, chapter.chapter.toDomainChapter()!!)
+    private fun getPagesFromDirectory(chapterPath: UniFile?): List<ReaderPage> {
+        val pages = if (resolvedChapterPath != null) {
+            downloadManager.buildPageList(chapterPath)
+        } else {
+            downloadManager.buildPageList(source, manga, chapter.chapter.toDomainChapter()!!)
+        }
         return pages.map { page ->
             ReaderPage(page.index, page.url, page.imageUrl) {
                 context.contentResolver.openInputStream((page.uri as? Uri) ?: Uri.EMPTY)!!
