@@ -257,7 +257,23 @@ class PagerPageHolder(
         val attachment = attachmentGeneration
         val presentation = presentationGeneration
         val encodedContent = page.encodedContentIdentity()
-        withIOContext { page.publishHeaderFact() }
+        withIOContext {
+            val headerClaimed = eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+                "TARGET_HEADER_BEGIN",
+                latencyPage,
+                latencyChapter,
+                latencyRequest,
+            )
+            page.publishHeaderFact()
+            if (headerClaimed) {
+                eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+                    "TARGET_HEADER_END",
+                    latencyPage,
+                    latencyChapter,
+                    latencyRequest,
+                )
+            }
+        }
         if (generation != decodeGeneration || attachment != attachmentGeneration ||
             presentation != presentationGeneration || page.encodedContentIdentity() != encodedContent
         ) {

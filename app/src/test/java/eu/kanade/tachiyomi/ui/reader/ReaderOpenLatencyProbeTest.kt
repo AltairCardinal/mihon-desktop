@@ -19,14 +19,23 @@ class ReaderOpenLatencyProbeTest {
     }
 
     @Test
-    fun headerTraversalIsObservableAndFirstEventWins() {
-        ReaderOpenLatencyProbe.configure(true, 10, 20, "headers")
+    fun targetHeaderCallIsObservableAndFirstEventWins() {
+        ReaderOpenLatencyProbe.configure(true, 10, 20, "target-header")
         val request = ReaderOpenLatencyProbe.startChapter(10, 20)
-        assertTrue(ReaderOpenLatencyProbe.record("HEADER_FACTS_BEGIN", 0, 20, request))
-        assertFalse(ReaderOpenLatencyProbe.record("HEADER_FACTS_BEGIN", 0, 20, request))
-        assertTrue(ReaderOpenLatencyProbe.record("HEADER_FACTS_END", 0, 20, request))
-        assertFalse(ReaderOpenLatencyProbe.record("FIRST_DRAW", 1, 20, request))
-        assertFalse(ReaderOpenLatencyProbe.record("FIRST_DRAW", 0, 21, request))
+        assertFalse(ReaderOpenLatencyProbe.record("TARGET_HEADER_BEGIN", 1, 20, request))
+        assertFalse(ReaderOpenLatencyProbe.record("TARGET_HEADER_BEGIN", 0, 21, request))
+        assertFalse(ReaderOpenLatencyProbe.record("TARGET_HEADER_BEGIN", 0, 20, request + 1))
+        assertTrue(ReaderOpenLatencyProbe.record("TARGET_HEADER_BEGIN", 0, 20, request))
+        val begin = ReaderOpenLatencyProbe.capturedEvents().single { it.event == "TARGET_HEADER_BEGIN" }
+        assertFalse(ReaderOpenLatencyProbe.record("TARGET_HEADER_BEGIN", 0, 20, request))
+        assertEquals(begin, ReaderOpenLatencyProbe.capturedEvents().single { it.event == "TARGET_HEADER_BEGIN" })
+        assertFalse(ReaderOpenLatencyProbe.record("TARGET_HEADER_END", 1, 20, request))
+        assertFalse(ReaderOpenLatencyProbe.record("TARGET_HEADER_END", 0, 20, request + 1))
+        assertTrue(ReaderOpenLatencyProbe.record("TARGET_HEADER_END", 0, 20, request))
+        assertFalse(ReaderOpenLatencyProbe.record("TARGET_HEADER_END", 0, 20, request))
+        val end = ReaderOpenLatencyProbe.capturedEvents().single { it.event == "TARGET_HEADER_END" }
+        assertTrue(begin.monotonicNanos <= end.monotonicNanos)
+        ReaderOpenLatencyProbe.configure(false, 10, 20, "off")
     }
 
     @Test

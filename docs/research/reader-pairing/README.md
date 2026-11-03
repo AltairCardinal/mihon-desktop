@@ -16,7 +16,7 @@
 
 新会话实施入口：[下载章节首开优化方案与roadmap](../../roadmap/2026-11-03-downloaded-reader-startup-optimization-roadmap.md)。按用户要求，先完成最小改动和三次真机对照，交付优化结果，再进入较完整验证；不提前启动全量测试或历史算法研究。
 
-P0已由`64329568ace1`完成，平均首绘由643.7降至267.5ms，见[P0实测](../../evidence/downloaded-reader-startup-p0-2026-11-03.md)。后续按[P1执行计划](../../roadmap/2026-11-03-reader-startup-p1-plan.md)拆分剩余等待，再决定一个最小候选；P1目前仅完成规划，历史算法裁定不变。
+P0已由`64329568ace1`完成，平均首绘由643.7降至267.5ms，见[P0实测](../../evidence/downloaded-reader-startup-p0-2026-11-03.md)。[P1执行计划](../../roadmap/2026-11-03-reader-startup-p1-plan.md)已完成两点定位：header调用约4–5ms，主要调用前等待尚无证据证明可安全删除，故未采用新优化候选，见[P1结果](../../evidence/reader-startup-p1-2026-11-03.md)。历史算法裁定不变，不据本轮诊断重启暂缓方案。
 
 ## 2026-11-01 当前主干复评
 

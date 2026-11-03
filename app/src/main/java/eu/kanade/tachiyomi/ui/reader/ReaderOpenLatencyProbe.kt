@@ -22,6 +22,7 @@ object ReaderOpenLatencyProbe {
         "ARCHIVE_OPEN_BEGIN", "ARCHIVE_OPEN_END", "ARCHIVE_LIST_BEGIN", "ARCHIVE_LIST_END", "PAGE_LIST_READY",
         "OPEN_PAGE", "ENCODED_READ_COMPLETE", "DECODE_SUBMIT", "FIRST_DRAW", "FRAME_COMMIT",
         "MAIN_TOUCH_DOWN", "GET_PAGES_END", "HEADER_FACTS_BEGIN", "HEADER_FACTS_END",
+        "TARGET_HEADER_BEGIN", "TARGET_HEADER_END",
     )
     private class Session(val request: Long, val chapter: Long) {
         val times = AtomicLongArray(names.size)
