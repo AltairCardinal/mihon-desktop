@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.pager
 
 import android.app.Application
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -1623,6 +1624,81 @@ class AndroidChapterPairingPersistenceWiringTest {
                 }
             }
         }
+    }
+
+    // Synthetic layouts verify diagnostic wiring only; real AUTO opening samples decide O5 applicability.
+    @Test
+    fun `O5 actual AUTO viewer construction records invalid single before valid landscape dual`() = runBlocking {
+        openDatabase(temporaryFolder.newFile(), create = true).use { fixture ->
+            seed(fixture.driver)
+            session(fixture, readingMode = ReadingMode.AUTO.flagValue).use { reader ->
+                val request = prepareO5ActivityProbe(reader)
+                updateActualViewer(reader, 0, 0)
+                assertTrue(reader.model.state.value.viewer is R2LPagerViewer)
+                updateActualViewer(reader, 1800, 900)
+                assertTrue(reader.model.state.value.viewer is DualPageR2LPagerViewer)
+                assertEquals(ReadingMode.AUTO.flagValue, reader.model.getMangaReadingMode())
+                val events = ReaderOpenLatencyProbe.capturedEvents().filter { it.event.startsWith("AUTO_") }
+                assertEquals(
+                    listOf("AUTO_SINGLE_CREATED_INVALID", "AUTO_DUAL_CREATED_LANDSCAPE"),
+                    events.map { it.event },
+                )
+                assertTrue(events.all { it.request == request && it.chapterId == 2L && it.page == 4 })
+                assertTrue(events[0].monotonicNanos < events[1].monotonicNanos)
+            }
+        }
+    }
+
+    @Test
+    fun `O5 actual AUTO viewer starts directly dual with first valid landscape viewport`() = runBlocking {
+        openDatabase(temporaryFolder.newFile(), create = true).use { fixture ->
+            seed(fixture.driver)
+            session(fixture, readingMode = ReadingMode.AUTO.flagValue).use { reader ->
+                prepareO5ActivityProbe(reader)
+                updateActualViewer(reader, 1800, 900)
+                assertTrue(reader.model.state.value.viewer is DualPageR2LPagerViewer)
+                assertEquals(ReadingMode.AUTO.flagValue, reader.model.getMangaReadingMode())
+                assertEquals(
+                    listOf("AUTO_DUAL_CREATED_LANDSCAPE"),
+                    ReaderOpenLatencyProbe.capturedEvents().filter { it.event.startsWith("AUTO_") }.map { it.event },
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `O5 fixed modes stale Activity and disabled probe emit no AUTO markers`() = runBlocking {
+        val cases = listOf(
+            Triple(ReadingMode.RIGHT_TO_LEFT, false, true),
+            Triple(ReadingMode.DUAL_PAGE_R2L, false, true),
+            Triple(ReadingMode.AUTO, true, true),
+            Triple(ReadingMode.AUTO, false, false),
+        )
+        for ((mode, oldRequest, enabled) in cases) {
+            openDatabase(temporaryFolder.newFile(), create = true).use { fixture ->
+                seed(fixture.driver)
+                session(fixture, readingMode = mode.flagValue).use { reader ->
+                    prepareO5ActivityProbe(reader, enabled)
+                    if (oldRequest) ReaderOpenLatencyProbe.startChapter(1, 2)
+                    updateActualViewer(reader, 1800, 900)
+                    if (mode == ReadingMode.RIGHT_TO_LEFT) {
+                        assertTrue(reader.model.state.value.viewer is R2LPagerViewer)
+                    } else {
+                        assertTrue(reader.model.state.value.viewer is DualPageR2LPagerViewer)
+                    }
+                    assertTrue(ReaderOpenLatencyProbe.capturedEvents().none { it.event.startsWith("AUTO_") })
+                }
+            }
+        }
+    }
+
+    private fun prepareO5ActivityProbe(reader: ReaderSession, enabled: Boolean = true): Long {
+        ReaderOpenLatencyProbe.configure(enabled, 1, 2, "o5-activity-wiring", targetPage = 4)
+        val request = ReaderOpenLatencyProbe.startChapter(1, 2)
+        reader.activity.intent = Intent().putExtra("manga", 1L).putExtra("chapter", 2L)
+        // The partial Activity fixture omits onCreate; retain its one captured diagnostic request.
+        ReflectionHelpers.setField(reader.activity, "latencyRequest", request)
+        return request
     }
 
     @Test

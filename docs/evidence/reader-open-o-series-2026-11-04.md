@@ -389,3 +389,35 @@ B4构建2m3s，APK `app/artifacts/android/diagnostics/reader-open-o4-20261104/Mi
 本批产品变更、取证及测试集中在Reader初始化/恢复边界，文档同步说明；文件数含必要接线/诊断/报告，未扩展其他能力。O3不采用门控、O4采用去冗余与同诊断保留将按B4冻结source.diff提交，不带入后续尚未验证的O5草稿；不推送、不正式发布，不更新公共功能说明。
 
 O4独立PTS索引/区间算术核验为12/12 PASS（`analysis/o4-video-pts-verification-12.json`），不替换主代理画面分类。
+
+## O5 实际AUTO构造取证与候选准备
+
+仅取证机制先取得真实RED（实际toViewer已构造但缺marker），7项真实Activity/Probe/viewport/可读性focused及格式通过。B5 probe-only APK SHA `7c0fdd5232cace04d2ffc1cdb455c4adba437cc5c5924f1c91bbbff3ab75c98a`，sourceRevision为O4提交a0320af1b5，code134/原benchmark证书/R8/非debug，冻结27源码文件；没有AUTO优化。原件在原目录`measurement-o5/`及隔离目录`o5/`。
+
+通过正常设置确认AUTO、横屏、matching ON，设备Main实际1920×2880 portrait，Reader为2880×1920 landscape。第一次方向切换焦点短暂null，前置守卫停止并保留prepare-auto-landscape；仅增加O5脚本对null焦点的1秒有界只读等待，意外其它应用仍立即拒绝，未重发方向输入。第一资格脚本又在章节点击前因辅助display grep无匹配退出，该attempt保留，不是性能/构造样本。
+
+两次新进程真实正常点击均触发同request的实际构造：`o5-auto-landscape-r1/probe.json` request1 SINGLE_CREATED_INVALID 173274890266267→DUAL_CREATED_LANDSCAPE 173274999996475（109.730208ms）；`o5-auto-landscape-2/probe.json` request1对应173516843423001→173516947249042（103.826041ms）。这是两类真实构造之间的wall间隔，不是构造CPU耗时；固定slot不能统计精确总构造次数。实际设置和漫画图已由主代理看图确认，均为地图左/标题右、5/187。
+
+方向改变期间ReaderActivity发生重建：新onCreate分配request2，而保留VM/页表仍来自旧请求，原request1到PAGE_LIST_READY止，新request2有ACTIVITY_CREATE/AUTO_DUAL_CREATED_INVALID/PAIRING_RECORD_VALID但缺完整FIRST_DRAW/UNIT。r1最初脚本因要求完整首绘而拒绝；原失败及raw保留，另写construction-evidence-review.json只确认构造证据，不改成有效性能样本。第二次脚本明确只核构造范围，未录屏/Perfetto，不计算输入至首图。不能跨request拼接或把正常画面当完整探针。最终Probe OFF且Asleep/Changing=false。
+
+最小候选仅针对本Activity尚无installedViewer的非MaterialContainerTransform路径；先请求原方向，再等待有效匹配视口，同layout立即恢复，不用延时/新帧。MCT保留原构造→doOnEnd方向→startPostponed流程。真实RED已证明旧production等待时仍安装一次viewer，候选实现/生命周期focused尚在验证，不能提前采用。审查要求覆盖首个有效单页、保留VM旧viewer、加载反馈、最新章节、监听取消及同layout双回调。
+
+另据[Android 16官方行为说明](https://developer.android.com/about/versions/16/behavior-changes-16#adaptive-layouts)，target36大屏系统可能忽略应用方向限制；实际B5 merged manifest target36且无相关optout。候选不能要求系统永远服从方向请求，否则多窗口或大屏会一直加载；该直接风险正用定向RED/GREEN处理，不通过改manifest规避。此处是平台边界证据，不是新性能收益或公共功能承诺。
+
+### O5 最终裁决：保留取证，不采用启动等待
+
+候选真实行为RED为初始viewport无效时viewerContainer实际安装1次而要求0；多窗口/API36大屏/窄content另有候选RED，default继承AUTO等待改global manual也另取真实RED。候选12个唯一focused方法以初次/窗口/销毁/default三项补验等组合通过并有app格式，未重新全跑，也没有模块/全量。夹具DI顺序、等值StateFlow与partial Activity缺SavedState/Fragment初始化导致的失败原件保留，均未算产品RED。API36策略在现有API35 fixture暂设SDK_INT=36并finally恢复以执行production判断及Activity接线，不冒称API36系统实测；MCT真实Transition listener用fixtureSDK35验证，未冒称API26硬件验收。
+
+Root独立审查关闭了多窗口/大屏方向请求忽略造成死等、窄content、等待Reload触碰旧VM viewer/丢spinner、首个单页同false不唤醒、同layout旧listener重入、手动/销毁、DEFAULT全局订阅遗漏等直接风险。普通方向匹配不再强制content轴，系统忽略方向时按正尺寸viewport；MCT明确保持旧流程。未添加postDelayed或调度整帧，但这不证明不会发生额外布局/等待帧。
+
+候选APK SHA `568689140a499d39e4b209ba3b5e1d8afb6374e0946c5efd3310cdb73dc8c0b9`，位于`app/artifacts/android/diagnostics/reader-open-o5-startup-20261104/`。相对probe-only控制，冻结27源码中仅Activity生产实现与PairingTest变化，Probe六槽及其它源码相同。两次正常新进程`o5-startup-1/2`均在request1/2各见AUTO_DUAL_CREATED_LANDSCAPE，未见旧INVALID/SINGLE事件，真实地图左/标题右与5/187恢复正确、正常Back导出，Probe关闭且Asleep/Changing=false。固定槽只记各类首次，不能由此给精确总构造数；两臂资格流程未建立完整相同ART/缓存性能协议，因此只报告构造/画面事实，不相减间隔当净收益。
+
+**不采用理由**：构造变化已证实，不能说候选无效；但当前方向重建场景没有可对齐的完整输入→目标首绘/UNIT端点，未证明完整首绘净收益或无额外等待帧。新增方向、加载反馈、监听取消与平台例外的生命周期成本不能仅凭去掉已观察无效构造来接受。本轮停止追加当前不能完整对齐的样本，不将未测时间写零；未来取得可信跨Activity输入/目标像素端点后可重新评估，不是永久禁令。
+
+候选两文件及优化/逆diff归档`o5/rejected-startup-candidate/`，优化diff SHA `8105d5a124bfd16f78100cdf4384ff65b29e0934303b3a46239335895cec475a`；restoration-verification.json SHA `ad3863f5627561c2688ef2c9052dcc5941d99d891caa619a94b71eba2b781a86`。核原最终SHA后仅应用两文件的优化逆diff，无checkout/reset；四个O5源逐SHA精确恢复B5 probe-only，production指纹回到`dd0a4130b5b238d7c5c2b44030c69bedb75ccc48d7478191de574d05e09912d5`，O4不变。复用该完全相同源码的原7focused GREEN/格式，撤回仅作diff/SHA只读核验，不冒称新执行。六诊断槽及维护边界留在本批提交，不保留startup等待代码/预期测试。
+
+### O6/O7 既有日志取证入口（未实施候选）
+
+在Gradle暂停窗口只读拉取隔离包现有reader-0.log（3,119,725字节/13,193行），其它三个滚动日志不存在，保留stat/pull记录；全程不亮屏/输入，读回Asleep/Changing=false。流式分析O2的6份OFF与O4的6份ON各自有效样本，ACTIVITY_CREATE±3ms内reader_start全部唯一匹配且差值<1ms，按同System.nanoTime毫秒量化到UNIT窗口。12份各有6组holder/source/generation对应的read_start/complete；source3/4各1，其它source1/2/5/6共4次，全部complete在严格内窗。rebuild visible=3,4和ticket_bound原样保留，但read事件没有原子current/visible字段，只称非目标单元读取，不据此宣称严格屏外或精确并发。两个历史组代码/时序不同，不比较模式耗时或池化收益。
+
+汇总`measurement-o6-evidence/analysis/reader-diagnostic-read-window-review.json`含原始窄证据/日志SHA/完整性限制。未见显式dropped/write_failure不等于证明日志零丢失；没有原图sampling start/complete marker，prepare.sample=true不当采样调用，因此O7采样竞争和OFF采样仍未证实。O6将仅评估延后非目标display Buffer读取，原loader/header/sample保持原链；hasRenderedVisiblePages是ALL，不作唯一放行门，必须保护部分绘制/错误/取消及第一次翻页就绪。

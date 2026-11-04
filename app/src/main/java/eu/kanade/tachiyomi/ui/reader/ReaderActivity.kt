@@ -83,6 +83,7 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
+import eu.kanade.tachiyomi.ui.reader.viewer.pager.R2LPagerViewer
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.util.system.isNightMode
 import eu.kanade.tachiyomi.util.system.openInBrowser
@@ -739,7 +740,39 @@ open class ReaderActivity : BaseActivity() {
         val anchor = viewModel.currentReaderPage
         val chapters = viewModel.state.value.viewerChapters
         if (anchor != null && chapters?.currChapter === anchor.chapter) anchor.chapter.requestedPage = anchor.index
+        val observeAutomatic = automatic && ReaderOpenLatencyProbe.enabled
+        val contentWidth = if (observeAutomatic) {
+            binding.viewerContainer.width - binding.viewerContainer.paddingLeft - binding.viewerContainer.paddingRight
+        } else {
+            0
+        }
+        val contentHeight = if (observeAutomatic) {
+            binding.viewerContainer.height - binding.viewerContainer.paddingTop - binding.viewerContainer.paddingBottom
+        } else {
+            0
+        }
         val newViewer = ReadingMode.toViewer(readingMode, this)
+        if (observeAutomatic && (newViewer is R2LPagerViewer || newViewer is DualPageR2LPagerViewer)) {
+            val actualDual = newViewer is DualPageR2LPagerViewer
+            val event = when {
+                contentWidth <= 0 || contentHeight <= 0 -> if (actualDual) {
+                    "AUTO_DUAL_CREATED_INVALID"
+                } else {
+                    "AUTO_SINGLE_CREATED_INVALID"
+                }
+                contentWidth > contentHeight -> if (actualDual) {
+                    "AUTO_DUAL_CREATED_LANDSCAPE"
+                } else {
+                    "AUTO_SINGLE_CREATED_LANDSCAPE"
+                }
+                else -> if (actualDual) "AUTO_DUAL_CREATED_PORTRAIT" else "AUTO_SINGLE_CREATED_PORTRAIT"
+            }
+            ReaderOpenLatencyProbe.record(
+                event,
+                chapter = intent.getLongExtra("chapter", -1),
+                request = latencyRequest,
+            )
+        }
 
         if (window.sharedElementEnterTransition is MaterialContainerTransform) {
             // Wait until transition is complete to avoid crash on API 26

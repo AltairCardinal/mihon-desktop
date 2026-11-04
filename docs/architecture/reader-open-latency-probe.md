@@ -51,8 +51,9 @@ P4只在一次ChapterLoader加载内传递已解析下载位置，默认factory�
 
 ## 开销、隔离与失败边界
 
-- 启用时在主线程预分配 32 个 session，每个 session 有固定48个 AtomicLong 时间槽（历史44槽位、R2追加UNIT_DRAWN、O3追加三个记录存在性槽）；超出预算拒绝继续采样，不增长集合。
+- 启用时在主线程预分配 32 个 session，每个 session 有固定54个 AtomicLong 时间槽（历史44槽位、R2追加UNIT_DRAWN、O3追加三个记录存在性槽、O5追加六个AUTO构造槽）；超出预算拒绝继续采样，不增长集合。
 - O3的`PAIRING_RECORD_EMPTY / VALID / INVALID`只在真实`acceptRestore`接受成功后记录：同一repository snapshot的record为空、非空且通过原校验、非空且原校验产生INVALID_RECORD。恢复入口捕获request，完成时不借用新请求；无额外仓库读取或写入。每类事件只保留首次时间，同请求显式重试可能产生多种分类，须结合动作与时序解释；没有marker不能反推记录为空，也可能未接受、已关闭或请求过期。该诊断不证明屏幕已绘制，不改变既有JSON结构；对照两臂必须携带相同诊断。
+- O5的`AUTO_{SINGLE|DUAL}_CREATED_{INVALID|PORTRAIT|LANDSCAPE}`只在真实`ReadingMode.toViewer`成功返回后记录实际类型；仅AUTO且Probe启用时在调用前读取容器扣padding的内容尺寸。任一边不大于0标INVALID，有效宽大于高标LANDSCAPE，其余有效尺寸（包括正方形）标PORTRAIT；这是几何标签，不是Adaptive策略阈值或设备朝向。沿用该Activity创建时捕获的request及原intent章节，旧Activity不能借用新请求。各类只记第一次，顺序可证明同request出现过两类构造，不能统计精确总次数；无marker也不能独立反证没构造。人工尺寸夹具只验证诊断接线，是否存在真实首开重复构造须看实际AUTO样本。该取证不改变布局决策、JSON结构或计时端点，不增加I/O/provider；关闭时不读尺寸或写事件。
 - 热路径只校验目标 chapter/page/request 并对固定槽执行首次写入 CAS；不加旧版持锁日志、不做快照、文件写入或后台导出调度。capturedEvents/contains 只供测试和导出使用。
 - P2跨层关联只在既有32个session中保存章节、页表、首页和待发布viewerChapters的弱身份；未启用时不建立绑定，不写业务／持久状态，重配置和导出后失效，弱引用失效即拒收。VM只传初始init已捕获request；Activity用自身已捕获request及具体发布对象核验，单页holder从该Activity和同对象绑定捕获request，禁止迟到时回退全局active request。绑定setup仅在诊断生命周期执行，事件仍走原CAS槽。
 - P2一级仅对全链身份有效且非递减的样本相减，PAGE_LIST_READY→ACTIVATION_UI_ENTER→PAIRING_OWNER_READY→READING_GATE_READY→CHAPTER_STATE_PUBLISH_BEGIN→ACTIVITY_CHAPTERS_RECEIVED→TARGET_IMAGE_ENTER→TARGET_HEADER_DISPATCH→TARGET_HEADER_BEGIN的八个相邻wall区间之和应精确等于P；不重排名字、不跨尝试补洞，也不把区间全部当CPU。
@@ -63,6 +64,7 @@ P4只在一次ChapterLoader加载内传递已解析下载位置，默认factory�
 - ReaderActivity.onStop 用该 Activity 的 request 导出；快照、label 与目录在调度前绑定，后续活跃请求不能改写其归属。强停前未离开阅读器会丢失该样本；必要端点缺失或不完整导出必须判无效，不能补造时间点；HEADER_FACTS 等可选事件缺席不使样本无效，也不证明真机图像读取字节为零。
 - 默认关闭的探针仍保留轻量入口判断；既有 ReaderDiagnostics 的产品开销保持原样，不能把这些开销归因于新增稀疏探针，也不能声称测量时它被禁用。
 - 本探针覆盖分页单页/共享双页每次配置的一个目标页及当前双页单元，不同时遍历跟踪整章，不宣称覆盖Webtoon、所有存储类型、跨进程连续请求或完整发布性能矩阵。
+- 方向切换触发ReaderActivity重建时，每次onCreate都会分配独立request，而保留的ViewModel/页表可能仍属于旧请求绑定；当前完整首绘端点可能缺席。各Activity的构造marker可分别作为生命周期证据，但不能把旧请求输入/页表与新请求绘制拼成完整耗时；这类样本不得通过缺失端点的性能校验。真实画面正确不等于探针完整，需保留每份原始导出并明确测量缺口。
 - System.nanoTime、Perfetto trace clock、设备 uptime 和 MKV 原始相对 PTS 必须分别保存。跨时钟对齐需同次 trace clock snapshot 等证据；MKV 从零开始不能靠主机启动时间强行映射。
 - 外部原表对照仍须同时录制原 MKV/Perfetto，保留原始逐帧 PTS，人工给出响应/近黑/首漫画的上下界。探针 FIRST_DRAW 不能直接替代原表视觉端点。
 
