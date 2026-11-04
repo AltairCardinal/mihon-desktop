@@ -339,3 +339,126 @@ R3共580个唯一响应，输入95,122,633（其中缓存94,128,640）、输出2
 可导出：[SVG](assets/reader-startup-cost-benefit-2026-11-04.svg)、[CSV数值表](assets/reader-startup-cost-benefit-2026-11-04.csv)、[JSON口径与数值](assets/reader-startup-cost-benefit-2026-11-04.json)。图按轮次对齐费用、内部绘制收益、近黑上界收益、近黑收益/全轮费用；各模式费用分母都是该轮完整投入，不能把几种模式的ROI相加。R3按快照计算的名义比值分别−0.236/−0.186/−0.620ms/USD，后续费用变化不改变其未证实正收益的结论。
 
 **历史结果不支持“每轮收益必然更小”。** P0收益最大；单页后续多轮收益弱或未确认，P4仍有约33ms近黑上界改善；R1没有确认收益之后，R2双页又取得131/165ms的首次近黑上界改善。本轮R3未成功，只说明本次同流复用不值得保留，不能据此排除上述尚未单独测量的硬件copy策略、其它具体瓶颈或Windows的优化空间。下一轮优先有明确调用链和可验证假设的单一候选，不靠无限增加测试数量追求有利均值。
+
+## R4H：分页图片的可选硬件位图复制
+
+用户授权独立评估单页及双页关闭匹配；起点`90c561d484791f74080cdbe34a729018440a2e6d`，生产代码仍为R2，R3未采用改动不参与。执行范围见唯一计划R4H；本节追加新证据，不改写前轮数据。
+
+### 机制与质量判断边界
+
+固定依赖SSIV `66e0db195d`的`Decoder.decodeRegion`先按原rect/sample调用native ImageDecoder，再依据hardwareConfig与API版本选择`Bitmap.copy(HARDWARE, false)`；成功后回收原普通位图，失败返回null则保留原图。后续tile加载也经过此函数，所以它不保证每页仅发生一次。上轮已确认自动匹配ON的适用路径禁用此复制，本轮候选只把相同存储策略用于分页BufferedSource、未裁边且无sourceBounds的图片；不改采样参数、图像方向或配对算法。
+
+这项开关发生在解码之后，不能将关闭复制称为降低解码分辨率；但源码也不能单独证明最终屏幕像素、色彩和流畅度完全不变。Android定义HARDWARE为不可变、仅存于图形内存的位图；普通位图仍可由硬件加速Canvas显示，上传成本可能转移到绘制阶段。参考[Bitmap.Config](https://developer.android.com/reference/android/graphics/Bitmap.Config#HARDWARE)及[GPU渲染阶段](https://developer.android.com/topic/performance/rendering/inspect-gpu-rendering)。减少提前复制与端到端提速必须分别验证。
+
+代码审查原件为`.test-tmp/reader-open-r4h-20261104/analysis/quality-review.json`及`hardware-copy-bytecode.txt`。native ImageDecoder的实际输出格式、色彩空间、alpha等不能从单一ARGB_8888 helper推断到所有格式；本轮需结合运行时配置及同图画面观察。静态截图仅证明被测试画面的最终像素，短时内存/手势记录也不能替代所有图片、设备或长期运行验收。
+
+### 最小实现、仪器与验证
+
+两个真实行为RED分别为分页BufferedSource仍向真实SSIV提交允许copy的配置、真实Canvas绘制尚无位图类型事件；`red-confirmed.xml`每方法含仓库自动重试3次，不当作6个独立测试。宿主不能执行Android native image-decoder JNI，配置测试保留真实setImage/SSIV请求及setter，隔离执行器并控制设备支持判断；它验证接线，实际解码与copy结果由真机验证。
+
+同仪器A/B在目标有效请求第一次成功转发drawBitmap后记录一种实际Bitmap.Config、一种Canvas加速状态和本BufferedSource请求是否允许copy，不读取/保留像素。普通绘制准入不因记录失败而改变；旧请求、错误目标及过期回调不记录。探针OFF不建立转发Canvas。独立审查发现初稿会给ON路径增加捕获变量分配，已恢复该分支原实现，新元数据仅观测非decoded-side路径。控制和候选同时加入仪器，不能把本轮数字直接与旧无该仪器包相减归因。
+
+最终协调器任务`reader-r4h-final-focused-20261104`通过7个方法及Kotlin Apply/Check：3个新增配置边界/真实Canvas记录方法，2个已有EXIF/旧请求绘制方法，2个双图UNIT/双击缩放方法。主代理读取全部原XML核对0失败，并复审实际策略、转发和准入接线。保留原硬件支持查询一次及原顺序，裁边、sourceBounds、长条SSIV、BitmapDrawable和owned InputStream-region的策略边界得到定向覆盖；没有运行完整模块/全仓库。
+
+另两条既有测试分别报child未完成绑定、缩放期望2而实际1；以冻结`90c561d`的原ReaderPageImageView/Probe作一次最小对照仍出现相同失败。依据为`baseline-check.json`及`baseline-two-existing/`，候选文件已按哈希恢复。仅证明失败不依赖本轮修改，未确定旧失败根因、未修复它们；最终7项通过不能描述为所有相关测试全绿，真实设备的翻页/缩放观察另列。
+
+### 固定产物与采集条件
+
+[控制A](../../app/artifacts/android/diagnostics/reader-open-r4h-a-20261104/Mihon-Fork-reader-r4h-a-benchmark-universal.apk) SHA256 `6fd5b0be388d54d72b696d1ccd5f93d165a944755e818d627bd6fb9e9f4ef475`；[候选B](../../app/artifacts/android/diagnostics/reader-open-r4h-b-20261104/Mihon-Fork-reader-r4h-b-benchmark-universal.apk) SHA256 `b56f649f22a7e72177337bd192009256643ba709463f0557114fd483dacd8e0a`。均为`app.mihon.desktop.fork.benchmark`、code134、同隔离调试证书，保留R8/资源压缩/non-debuggable；不是正式发布包。27个冻结输入仅ReaderPageImageView的分页策略条件不同，新仪器及测试相同；完整source.diff包含新增测试。依据为各产物manifest/source-input及`build-pair.json`。
+
+两包各构建一次，A于UTC03:46:59完成，B于03:48:58完成，后续才开始正式采集。仍为USB PCE-W30/API31，史莱姆第04卷同CBZ；单页source4完整地图，双页OFF为左source4地图/右source3标题，正常保存后5/187。四块ABBA、后两块模式反序，每包每模式两次新进程首次，共8份；不预热Reader、不补采择优，不将设置准备或后续手势观察混入首次样本。
+
+八份正式采集均完成，无失败或重采；所有采前/后实际OAT为`verify/install`。四份A目标页首次画出`HARDWARE`、允许copy且Canvas为GPU；四份B均为`ARGB_8888`、禁用copy且Canvas仍为GPU。结合固定解码库的唯一路径，A至少有一次成功硬件copy，B避开该分支，处理差别实际发生。该观测只覆盖首次被接受的source4 bitmap，不是所有tile/source3的copy计数，也未测copy函数自身毫秒。
+
+### 八份实测结果
+
+以下单位ms，四阶段起点为VM初始化处`OPEN_READER_INTENT`，不是用户输入。FIRST_DRAW是目标source4绘制回调，UNIT是双图都绘完；均不等于物理面板显示。
+
+| 样本 | 初始化→页表 | 页表→OPEN_PAGE | OPEN_PAGE→解码提交 | 解码提交→目标首绘 | 目标首绘合计 | 完整双页绘完 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| A1 single4 | 117.928 | 54.164 | 3.132 | 85.899 | 261.122 | — |
+| A1 OFF | 93.428 | 61.990 | 60.417 | 143.429 | 359.264 | 359.470 |
+| B1 single4 | 108.531 | 51.105 | 10.302 | 97.056 | 266.994 | — |
+| B1 OFF | 95.645 | 78.748 | 40.052 | 117.430 | 331.876 | 332.016 |
+| B2 single4 | 97.951 | 61.689 | 4.762 | 84.561 | 248.962 | — |
+| B2 OFF | 105.451 | 76.630 | 42.148 | 126.916 | 351.145 | 351.297 |
+| A2 single4 | 93.555 | 45.311 | 9.364 | 92.606 | 240.836 | — |
+| A2 OFF | 103.441 | 65.424 | 43.433 | 138.469 | 350.767 | 350.979 |
+
+单页FIRST_DRAW均值**250.979→257.978ms，名义慢6.999ms**；双页OFF UNIT均值**355.224→341.657ms，名义快13.568ms**。OFF第一对快27.454ms，反序第二对慢0.319ms，不能称稳定提速。删除一次copy没有消除读取、调度、native解码、绘制和上传等其余工作；这些数据没有给出copy自身耗时，也不能将某段wall变化全归为copy CPU成本。
+
+原表系统端点同次采集，起点为最早精确`deliverInputEvent src=0x1002`；Reader首TX是窗口相关帧，不是漫画像素：
+
+| 样本 | 输入→StartActivity | 输入→performCreate | 输入→Reader首TX结束 | 输入→目标FIRST_DRAW | 输入→UNIT |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| A1 single4 | 27.939 | 48.020 | 121.542 | 324.104 | — |
+| A1 OFF | 26.446 | 45.129 | 114.264 | 415.444 | 415.649 |
+| B1 single4 | 28.541 | 52.016 | 124.296 | 334.853 | — |
+| B1 OFF | 30.322 | 49.811 | 117.772 | 393.989 | 394.129 |
+| B2 single4 | 29.243 | 50.450 | 113.092 | 309.928 | — |
+| B2 OFF | 33.782 | 56.205 | 129.008 | 421.508 | 421.661 |
+| A2 single4 | 25.477 | 42.489 | 108.051 | 293.818 | — |
+| A2 OFF | 33.535 | 57.186 | 129.127 | 422.824 | 423.035 |
+
+主代理独立读取全部原probe、两包SHA/27项B源码输入和保存的原SQL输出，核四段相加、唯一目标、实际位图事件及同trace MONOTONIC→BOOTTIME，结果一致，见`analysis/root-probe-check.json`。同trace时钟偏移最大差521ns。B1/B2 OFF各有1条negative timestamp dropped告警，相关端点完整，保留告警、不排除样本；其余该项为0。视频仍无绝对输入映射，不输出伪精确的输入→屏幕漫画毫秒。
+
+### 近黑区间与静态画质
+
+主代理独立查看八份原色连续帧88–119，四界依次为最后可辨详情/首近黑/末近黑/首正确漫画。双页首先出现右标题，近黑到此结束；左地图补齐另计。为统一“极淡残影近黑”的旧口径，使用R3原边界93/94与本轮相邻原色帧并列复核；固定空白封面小块只作渐暗档位旁证：旧首近黑灰值约3.895，本轮所选首近黑3.0–3.85，前帧约8–9.05。不是按结果为每份样本选择有利阈值。
+
+| 样本 | 四界帧号 | 近黑区间ms | 首完整双图帧 | 首部分→完整ms |
+| --- | --- | ---: | ---: | ---: |
+| A1 single4 | 98/99/102/103 | 49–83 | — | — |
+| A1 OFF | 88/89/97/98 | 132–168 | 100 | 32 |
+| B1 single4 | 92/93/97/98 | 68–102 | — | — |
+| B1 OFF | 95/96/101/102 | 84–116 | 104 | 34 |
+| B2 single4 | 97/98/100/101 | 35–66 | — | — |
+| B2 OFF | 100/101/107/108 | 99–133 | 110 | 35 |
+| A2 single4 | 93/94/96/97 | 33–67 | — | — |
+| A2 OFF | 89/90/95/96 | 98–132 | 98 | 34 |
+
+近黑上界均值：单页**75→84ms，名义慢9ms**；OFF **150→124.5ms，名义快25.5ms**。OFF第一对快52ms，第二对慢1ms，改善集中在一次对照。统一将全部起点后移一帧，上界分别58→67.5、132→108ms，方向不变，但这不是统计置信区间；每模式每包仅两次首次，不支持可靠P95或稳定收益承诺，≤60ms也未达标。
+
+原PTS以Decimal解析，不按固定fps换算。初读A1单页首图曾错列为104，单独原frame103已明确完整地图，修正为103；近黑起点的初选和统一对照过程都保留。`analysis/video-selections.json`与主代理独立`root-video-check.json`一致。所看连续首开窗口内首图后维持正确内容，静态截图也正确；不声称逐帧看完12秒或以此代替正常翻页验收。
+
+Luna复用八张正式PNG，单页公共漫画区域`[0,58,1920,2821]`、OFF `[0,749,1920,2130]`，排除页码和系统栏且保留页边抗锯齿。同模式A内/B内及全部4组A×B比较，RGB/alpha逐像素完全相同，最大/平均绝对差均0；两模式截图ICC和尺寸也一致。文字边缘和纹理放大差图保存在`analysis/r4h-pair-visuals/`，全数值见`r4h-png-comparison.json`。这些原截图未重采或转码，只在内存裁取同区域。可确认本次地图/标题静态显示没有画质差异；截图的Display-P3 gamut/sRGB EOTF profile不是源Bitmap色彩空间证明，不能据此覆盖未测的透明、广色域或其它格式。
+
+### 正常阅读操作、彩页、帧与内存
+
+正式首开后关闭probe，A/B各单页/OFF做一次短流程：fit→双击放大→平移→复位→翻页→返回。OFF使用前一组蓝色漫画/标题（source1/2）再回source3/4，替代原拟向后翻页，未增加性能样本。初始A两组串行`input tap`未被识别为双击，只显菜单，原件保留且不计有效缩放对照；一次有界时序校正后实际放大/平移/复位成功，再执行四组有效流程。正常输入的准确方法与证据追加于[平板指南](../automation/ANDROID_TABLET_ACCEPTANCE.md#r4h正常双击输入的成功时序)，AGENTS已有该指南入口。
+
+有效原件为`experience-{a,b}-{single,dual-off}-timed-input/`。两模式对应的fit、zoom、reset、翻页和back共10组A/B全屏PNG逐像素一致，包含蓝色双页；说明这次实际放大及彩页显示也未发生像素质量变化。平移两组画面位置略有差别，直接RGB差不能归为颜色/清晰度损失；只确认实际画面移动、内容正确，不声称两次手势轨迹完全相同。依据为`analysis/experience-ab-comparison.json`；主代理另看放大原图、彩页A/B和双页平移对照，确认实际内容与操作结果。
+
+single A/B返回均显示5/187并保存第5页。OFF A/B返回均显示4/187，但左右仍是地图/标题，退出均保存第5页；这是手动返回后的组锚点，不是跳错单元。原result的`finalPage5=false`保留；曾口头误述OFF“返回5/187”，现以原图/XML与保存进度纠正。不能把固定page5布尔代替内容验证。
+
+以下为一次短流程中gfxinfo报告值，重置统计发生在打开后、手势前；不是首次打开P95，也不是纯CPU自耗时或可靠的长期分位数：
+
+| 模式/包 | 总帧 | Janky帧 | 帧耗时P95/P99 ms | Slow bitmap uploads |
+| --- | ---: | ---: | ---: | ---: |
+| single A | 154 | 0 | 10 / 10 | 0 |
+| single B | 154 | 0 | 10 / 10 | 0 |
+| OFF A | 115 | 2 | 10 / 31 | 0 |
+| OFF B | 112 | 3 | 11 / 42 | 0 |
+
+四组均为Skia(OpenGL)。单页短流程帧表现相近；OFF名义略差，但每条件仅一次，不能断言稳定卡顿回退。slow-upload计数0不等于没有GPU上传，也没有证明省copy的时间完全转移到了上传。
+
+内存来自各阶段`dumpsys meminfo`，以下均KiB；Native列是App Summary的Native Heap private dirty，包含其它native分配，不能当作位图自身分配精确值：
+
+| 模式/包 | fit总PSS | fit Native / Graphics | 返回总PSS | 返回Native / Graphics |
+| --- | ---: | ---: | ---: | ---: |
+| single A | 237806 | 30364 / 105860 | 203241 | 28648 / 81596 |
+| single B | 226977 | 52596 / 111500 | 190123 | 48116 / 88540 |
+| OFF A | 239545 | 32256 / 106400 | 240811 | 32596 / 106444 |
+| OFF B | 275006 | 60988 / 117116 | 302114 | 72640 / 127908 |
+
+候选fit阶段Native分别增加约21.7/28.1MiB，返回时增加约19.0/39.1MiB，与保留普通解码位图的机制相符。普通位图仍需被GPU绘制，省掉显式hardware copy并不保证减少稳态内存。OFF总PSS在fit/返回名义高34.6/59.9MiB；single总PSS反而较低，说明其它映射、分配/回收也影响总量，不能将全部差值归因本策略或声称所有模式总内存上升。完整6阶段与原始字段见`analysis/quality-memory-frames.json`；本次不是峰值、长期压力或泄漏测试。
+
+### 采用决定
+
+**本轮候选不推广到单页及双页OFF。** 已证实处理差别真实发生、所测静态/放大/彩页图像没有像素损失，但单页首开无收益，OFF改善只集中于第一对；读图Native内存保持量更高，短流程帧也没有补偿性优势。证据不足以支持改变两模式默认策略，不能把这条ON独有机制直接认作历史模式差异的原因。
+
+这一结论只否决本次“把关闭copy策略直接推广”的候选，不证明copy无成本、所有设备均无收益或以后没有优化空间。仍保留原来的ON策略；本轮不重启配对算法、不修既有ON回翻缺口、不扩Windows或完整矩阵。正式首开8份、有效体验4组、输入无效尝试和真实失败均保留，不追补更多样本寻找有利平均值。
+
+完整[未采用候选补丁](assets/reader-startup-r4h-rejected-candidate.patch)为19175字节，SHA256 `96002e2d4da086afa456cfebf72d0ae7fb386374cf19308bfb976d752691164f`，逐字节等于冻结B的source.diff，包含两个生产文件和新增测试。两个生产文件恢复`90c561d`精确对象字节，新测试在核对冻结哈希后移出当前树；`git apply --check`通过、生产diff为空，依据`analysis/rejection-restoration.json`。新增bitmap诊断也只保留在归档候选中，不是当前主干API；没有因恢复完全相同的基线再构建/重跑测试。
+
+平板最终恢复此前采用的R2 APK，实读SHA `259c0d98b00deeca6a1254f753f2ffe0be2e6a7d8f541db74b117de6cfdadfc6`；UTC04:27:22读回probe OFF、benchmark不运行、Asleep且changing=false，本任务采集进程为空。最初进程检查误匹配自己的shell/grep，包恢复与熄屏已成功；保留失败日志，仅改用raw ps在宿主过滤后只读复核，没有重复安装/采样。官方APK、正式fork及用户数据保留，详见`final-device/result.json`。本批只提交研究结论、完整候选档案及已验证操作方法，不推送、不发布新性能承诺。

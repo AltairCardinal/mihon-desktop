@@ -112,3 +112,15 @@ P3曾在隔离benchmark构建中加入按需只读snapshot provider，成功读�
 完整源件及manifest/keep/build输入保存在`.test-tmp/reader-open-p3-20261103/runtime-predicates/final-source-archive/`，成功调用脚本为同根`check_flip_snapshot.py`；后续若确需复用，先审查并重建临时诊断包，不直接安装旧仪器覆盖当前候选。该构建的耗时不能混入普通探针性能对照。快照只证明采样时状态，不证明此前或此后实际执行过onDraw；locked/drawn也可能是历史记录，不能冒充当前屏幕像素。
 
 本轮连续两次tap没有改变scale/center，未证明系统识别了双击。因此不把“命令已发送”写成“已强制重绘”；交互干预必须从实际缩放、画面或其它可观察状态确认生效。
+
+### R4H：正常双击输入的成功时序
+
+2026-11-04，R4H在同PCE-W30/USB、1920×2880当前视口中再次发现：串行启动两次`input tap`只显示菜单，fit/zoom画面几何未变；旧`experience-a-single/`及`experience-a-dual-off/`保留为输入无效尝试，不能计作缩放通过或产品故障。每次`input`的进程启动耗时会使主机安排的间隔与实际触摸间隔不同，不能用两条命令成功推断双击。
+
+本机成功方式是在同一次正常设备shell中，让两个input进程错开120ms启动并等待结束：
+
+```powershell
+& $adb -s $serial shell 'input tap 650 1440 & sleep 0.12; input tap 650 1440; wait'
+```
+
+这是当前双页地图位置的示例坐标，不是其他尺寸/模式的通用位置；操作前确认正确Reader和目标视口。两次触摸之间不插入uiautomator/状态查询。成功依据是`.test-tmp/reader-open-r4h-20261104/gesture-proof-a-dual-off/{fit,zoom,pan,reset}.png`：实际文字与页面放大、平移后图形位置改变、再次双击恢复完整地图左/标题右，正常退出后熄屏。主代理另独立查看zoom原图确认实际放大。仍须检查实际画面/状态是否收敛，不把此方法当作所有设备必然成功的保证；无效时保留原件、停止盲跑同种手势，不以降低断言或无限重试制造通过。

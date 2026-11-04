@@ -1,0 +1,380 @@
+diff --git a/app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderOpenLatencyProbe.kt b/app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderOpenLatencyProbe.kt
+index dbdeb3a3b8..fc3bb41de4 100644
+--- a/app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderOpenLatencyProbe.kt
++++ b/app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderOpenLatencyProbe.kt
+@@ -1,6 +1,7 @@
+ package eu.kanade.tachiyomi.ui.reader
+ 
+ import android.content.Context
++import android.graphics.Bitmap
+ import org.json.JSONArray
+ import org.json.JSONObject
+ import java.io.File
+@@ -31,6 +32,8 @@ object ReaderOpenLatencyProbe {
+         "VIEWER_CHAPTERS_APPLY_ENTER", "PAGER_ADAPTER_READY", "TARGET_HOLDER_CREATED",
+         "TARGET_LOAD_ENTER", "TARGET_STATUS_COLLECT", "TARGET_READY_ENTER",
+         "UNIT_DRAWN",
++        "DRAW_BITMAP_HARDWARE", "DRAW_BITMAP_ARGB_8888", "DRAW_BITMAP_RGB_565", "DRAW_BITMAP_RGBA_F16",
++        "DRAW_BITMAP_OTHER", "DRAW_CANVAS_GPU", "DRAW_CANVAS_SOFTWARE", "HW_COPY_ALLOWED", "HW_COPY_DISABLED",
+     )
+     private class TargetBinding(chapter: Any, pages: Any, targetPageObject: Any) {
+         val chapter = WeakReference(chapter)
+@@ -45,6 +48,7 @@ object ReaderOpenLatencyProbe {
+     private class Session(val request: Long, val chapter: Long, val page: Int) {
+         val times = AtomicLongArray(names.size)
+         val pagerDispatch = AtomicInteger()
++        val nativeBitmapRecorded = AtomicInteger()
+ 
+         @Volatile var exported = false
+ 
+@@ -270,6 +274,35 @@ object ReaderOpenLatencyProbe {
+         }
+     }
+ 
++    /** Only the first accepted target draw may allocate a forwarding Canvas for bitmap attribution. */
++    internal fun needsNativeBitmap(request: Long, chapter: Long, page: Int): Boolean {
++        val session = activeSession(request, chapter) ?: return false
++        return session.page == page && session.nativeBitmapRecorded.get() == 0
++    }
++
++    /** Records metadata after the original bitmap command succeeded; never reads or retains pixels. */
++    internal fun recordNativeBitmap(
++        request: Long,
++        chapter: Long,
++        page: Int,
++        config: Bitmap.Config?,
++        hardwareCanvas: Boolean,
++        hardwareCopyAllowed: Boolean?,
++    ) {
++        val session = activeSession(request, chapter) ?: return
++        if (session.page != page || !session.nativeBitmapRecorded.compareAndSet(0, 1)) return
++        val event = when (config) {
++            Bitmap.Config.HARDWARE -> "DRAW_BITMAP_HARDWARE"
++            Bitmap.Config.ARGB_8888 -> "DRAW_BITMAP_ARGB_8888"
++            Bitmap.Config.RGB_565 -> "DRAW_BITMAP_RGB_565"
++            Bitmap.Config.RGBA_F16 -> "DRAW_BITMAP_RGBA_F16"
++            else -> "DRAW_BITMAP_OTHER"
++        }
++        recordSlot(session, event)
++        recordSlot(session, if (hardwareCanvas) "DRAW_CANVAS_GPU" else "DRAW_CANVAS_SOFTWARE")
++        hardwareCopyAllowed?.let { recordSlot(session, if (it) "HW_COPY_ALLOWED" else "HW_COPY_DISABLED") }
++    }
++
+     /** One CAS into a preallocated timestamp slot; no lock, allocation, scheduling or I/O. */
+     fun record(
+         event: String,
+diff --git a/app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderPageImageView.kt b/app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderPageImageView.kt
+index ad15300da8..904b4834b6 100644
+--- a/app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderPageImageView.kt
++++ b/app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderPageImageView.kt
+@@ -101,6 +101,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
+     private var pageView: View? = null
+ 
+     private var config: Config? = null
++    private var nativeHardwareCopyAllowed: Boolean? = null
+     private val decodeIdentitySource = DecodeRequestIdentitySource()
+     private var imageCallbackIsCurrent: () -> Boolean = { true }
+     private var animatedDrawableIsCurrent: () -> Boolean = { false }
+@@ -386,6 +387,27 @@ open class ReaderPageImageView @JvmOverloads constructor(
+         latencyDrawIsCurrent = drawIsCurrent
+     }
+ 
++    private fun needsNativeBitmapObservation(): Boolean =
++        eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.enabled && imageCallbackIsCurrent() &&
++            latencyDrawIsCurrent?.invoke() != false &&
++            eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.needsNativeBitmap(
++                latencyRequest,
++                latencyChapter,
++                latencyPage,
++            )
++
++    private fun recordNativeBitmap(config: Bitmap.Config?, canvas: Canvas) {
++        if (!imageCallbackIsCurrent() || latencyDrawIsCurrent?.invoke() == false) return
++        eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.recordNativeBitmap(
++            latencyRequest,
++            latencyChapter,
++            latencyPage,
++            config,
++            canvas.isHardwareAccelerated,
++            nativeHardwareCopyAllowed,
++        )
++    }
++
+     private fun nativeImageDrawn() {
+         if (!imageCallbackIsCurrent()) return
+         if (eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.enabled &&
+@@ -668,7 +690,21 @@ open class ReaderPageImageView @JvmOverloads constructor(
+                             if (!prepareNativeImageDraw(dimensions.width, dimensions.height)) return
+                         }
+                         // A metadata-only pass initializes normal base tiles without locking geometry.
+-                        super.onDraw(canvas)
++                        if (drawable && needsNativeBitmapObservation()) {
++                            var bitmapConfig: Bitmap.Config? = null
++                            var sawBitmap = false
++                            val observed = ReaderDecodedPageCanvas(canvas) { bitmap, _ ->
++                                if (!sawBitmap) {
++                                    bitmapConfig = bitmap.config
++                                    sawBitmap = true
++                                }
++                                true
++                            }
++                            super.onDraw(observed)
++                            if (observed.drewBitmap) recordNativeBitmap(bitmapConfig, canvas)
++                        } else {
++                            super.onDraw(canvas)
++                        }
+                         if (drawable && isReady) nativeImageDrawn()
+                     }
+                 }
+@@ -724,6 +760,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
+         identity: DecodeRequestIdentity? = null,
+         callbackIsCurrent: () -> Boolean = { true },
+     ) = (pageView as? SubsamplingScaleImageView)?.apply {
++        nativeHardwareCopyAllowed = null
+         // Retain the original software decode instead of making its optional hardware copy.
+         // Ordinary stream inputs restore this library version's original hardware default.
+         if (data !is BufferedSource) setHardwareConfig(!decodedSideEnabled())
+@@ -767,7 +804,12 @@ open class ReaderPageImageView @JvmOverloads constructor(
+             }
+             is BufferedSource -> {
+                 if (!isWebtoon || alwaysDecodeLongStripWithSSIV) {
+-                    setHardwareConfig(ImageUtil.canUseHardwareBitmap(data) && !decodedSideEnabled())
++                    // Paged full originals can retain the exact decoded bitmap. Region/crop/long-strip
++                    // routes keep their existing policy; encoded hardware support is still checked once.
++                    val hardwareCopyAllowed = ImageUtil.canUseHardwareBitmap(data) && !decodedSideEnabled() &&
++                        (isWebtoon || config.cropBorders || config.sourceBounds != null)
++                    nativeHardwareCopyAllowed = hardwareCopyAllowed
++                    setHardwareConfig(hardwareCopyAllowed)
+                     setImage(boundedSource(ImageSource.inputStream(data.inputStream()), config))
+                     isVisible = true
+                     return@apply
+diff --git a/app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderHardwareBitmapWiringTest.kt b/app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderHardwareBitmapWiringTest.kt
+new file mode 100644
+index 0000000000..ac1f6a819e
+--- /dev/null
++++ b/app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderHardwareBitmapWiringTest.kt
+@@ -0,0 +1,224 @@
++package eu.kanade.tachiyomi.ui.reader.viewer
++
++import android.graphics.Bitmap
++import android.graphics.Canvas
++import android.graphics.Color
++import android.graphics.drawable.BitmapDrawable
++import android.os.Looper
++import android.view.View
++import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
++import eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe
++import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
++import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
++import io.mockk.every
++import io.mockk.mockkObject
++import io.mockk.unmockkObject
++import io.mockk.verify
++import okio.Buffer
++import okio.BufferedSource
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import org.junit.runner.RunWith
++import org.robolectric.RobolectricTestRunner
++import org.robolectric.RuntimeEnvironment
++import org.robolectric.Shadows.shadowOf
++import org.robolectric.annotation.Config
++import org.robolectric.annotation.GraphicsMode
++import org.robolectric.util.ReflectionHelpers
++import tachiyomi.core.common.util.system.ImageUtil
++import tachiyomi.domain.chapter.model.Chapter
++
++@RunWith(RobolectricTestRunner::class)
++@Config(sdk = [35], manifest = Config.NONE)
++@GraphicsMode(GraphicsMode.Mode.NATIVE)
++class ReaderHardwareBitmapWiringTest {
++    @Test
++    fun `paged uncropped buffered original disables optional native hardware copy`() {
++        val view = ReaderPageImageView(RuntimeEnvironment.getApplication())
++        ReflectionHelpers.callInstanceMethod<Unit>(view, "prepareNonAnimatedImageView")
++        val native = ReflectionHelpers.getField<SubsamplingScaleImageView>(view, "pageView")
++        val requested = mutableListOf<Runnable>()
++        // Keep the real native request and setter wiring; the Windows host cannot run its image-decoder JNI.
++        native.setExecutor { requested += it }
++        mockkObject(ImageUtil)
++        every { ImageUtil.canUseHardwareBitmap(any<BufferedSource>()) } returns true
++        try {
++            view.setImage(Buffer().write(encodedPng()), false, ReaderPageImageView.Config(0), 4)
++            assertTrue("Production must submit the original SSIV initialization", requested.isNotEmpty())
++            assertFalse(
++                "An eligible paged original must keep its native software bitmap instead of an optional copy",
++                ReflectionHelpers.getField<Boolean>(native, "hardwareConfig"),
++            )
++            verify(exactly = 1) { ImageUtil.canUseHardwareBitmap(any<BufferedSource>()) }
++        } finally {
++            view.recycle()
++            unmockkObject(ImageUtil)
++        }
++    }
++
++    private fun encodedPng(): ByteArray {
++        val bitmap = Bitmap.createBitmap(60, 40, Bitmap.Config.ARGB_8888)
++        return java.io.ByteArrayOutputStream().use { output ->
++            bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
++            bitmap.recycle()
++            output.toByteArray()
++        }
++    }
++
++    @Test
++    fun `native copy policy preserves unsupported crop region webtoon and original side sampling boundaries`() {
++        val context = RuntimeEnvironment.getApplication()
++        data class Case(
++            val config: ReaderPageImageView.Config,
++            val webtoon: Boolean = false,
++            val supported: Boolean = true,
++            val expected: Boolean,
++        )
++        val cases = listOf(
++            Case(ReaderPageImageView.Config(0), supported = false, expected = false),
++            Case(ReaderPageImageView.Config(0, cropBorders = true), expected = true),
++            Case(
++                ReaderPageImageView.Config(0, sourceBounds = mihon.domain.reader.PixelBounds(0, 0, 30, 40)),
++                expected = true,
++            ),
++            Case(ReaderPageImageView.Config(0), webtoon = true, expected = true),
++            Case(ReaderPageImageView.Config(0, pageSideHintEnabled = true), expected = false),
++        )
++        mockkObject(ImageUtil)
++        var supported = true
++        var sniffs = 0
++        every { ImageUtil.canUseHardwareBitmap(any<BufferedSource>()) } answers {
++            sniffs++
++            supported
++        }
++        try {
++            for (case in cases) {
++                supported = case.supported
++                val view = ReaderPageImageView(context, isWebtoon = case.webtoon)
++                // Exercise the existing Webtoon SSIV preference branch without changing global DI.
++                if (case.webtoon) {
++                    ReflectionHelpers.setField(view, "alwaysDecodeLongStripWithSSIV\$delegate", lazyOf(true))
++                }
++                ReflectionHelpers.callInstanceMethod<Unit>(view, "prepareNonAnimatedImageView")
++                val native = ReflectionHelpers.getField<SubsamplingScaleImageView>(view, "pageView")
++                native.setExecutor { }
++                val before = sniffs
++                try {
++                    view.setImage(Buffer().write(encodedPng()), false, case.config, 4)
++                    assertEquals(
++                        case.toString(),
++                        case.expected,
++                        ReflectionHelpers.getField<Boolean>(native, "hardwareConfig"),
++                    )
++                    assertEquals("The existing capability lookup must still occur exactly once", before + 1, sniffs)
++                } finally {
++                    view.recycle()
++                }
++            }
++            val drawableView = ReaderPageImageView(context)
++            val bitmap = Bitmap.createBitmap(60, 40, Bitmap.Config.ARGB_8888)
++            try {
++                drawableView.setImage(BitmapDrawable(context.resources, bitmap), ReaderPageImageView.Config(0))
++                val native = ReflectionHelpers.getField<SubsamplingScaleImageView>(drawableView, "pageView")
++                assertTrue(
++                    "Predecoded drawables keep their original native policy",
++                    ReflectionHelpers.getField<Boolean>(native, "hardwareConfig"),
++                )
++            } finally {
++                drawableView.recycle()
++            }
++            val region = java.io.File.createTempFile("reader-policy-region-", ".png", context.cacheDir)
++            region.writeBytes(encodedPng())
++            val regionView = ReaderPageImageView(context)
++            ReflectionHelpers.callInstanceMethod<Unit>(regionView, "prepareNonAnimatedImageView")
++            val regionNative = ReflectionHelpers.getField<SubsamplingScaleImageView>(regionView, "pageView")
++            regionNative.setExecutor { }
++            val beforeRegion = sniffs
++            try {
++                regionView.setRegionImage(region, ReaderPageImageView.Config(0), 4) { true }
++                assertTrue(
++                    "Owned region input streams keep the original native policy",
++                    ReflectionHelpers.getField<Boolean>(regionNative, "hardwareConfig"),
++                )
++                assertEquals("Non-buffered regions must not add an encoded support lookup", beforeRegion, sniffs)
++            } finally {
++                regionView.recycle()
++                region.delete()
++            }
++        } finally {
++            unmockkObject(ImageUtil)
++        }
++    }
++
++    @Test
++    fun `native bitmap probe reports one real draw without changing pixels and rejects stale requests`() {
++        val probe = ReaderOpenLatencyProbe
++        probe.configure(true, 10, 20, "bitmap-config", targetPage = 4)
++        val first = probe.startChapter(10, 20)
++        val chapter = ReaderChapter(Chapter.create().copy(id = 20, mangaId = 10))
++        val page = ReaderPage(4).apply { this.chapter = chapter }
++        val context = RuntimeEnvironment.getApplication()
++        val view = ReaderPageImageView(context)
++        val bitmap = Bitmap.createBitmap(60, 40, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
++        val output = Bitmap.createBitmap(120, 80, Bitmap.Config.ARGB_8888)
++        try {
++            view.bindLatencyPage(page, first)
++            view.setImage(BitmapDrawable(context.resources, bitmap), ReaderPageImageView.Config(0))
++            view.measure(
++                View.MeasureSpec.makeMeasureSpec(120, View.MeasureSpec.EXACTLY),
++                View.MeasureSpec.makeMeasureSpec(80, View.MeasureSpec.EXACTLY),
++            )
++            view.layout(0, 0, 120, 80)
++            var gates = 0
++            view.beforeImageDraw = { _, _ ->
++                gates++
++                true
++            }
++            repeat(3) {
++                view.draw(Canvas(output))
++                shadowOf(Looper.getMainLooper()).idle()
++            }
++            assertEquals(Color.RED, output.getPixel(60, 40))
++            assertTrue(probe.contains("FIRST_DRAW"))
++            assertEquals(1, probe.capturedEvents().count { it.event == "DRAW_BITMAP_ARGB_8888" })
++            assertEquals(1, probe.capturedEvents().count { it.event == "DRAW_CANVAS_SOFTWARE" })
++            assertFalse(probe.contains("DRAW_CANVAS_GPU"))
++
++            val second = probe.startChapter(10, 20)
++            view.draw(Canvas(output))
++            assertTrue(
++                "Old request must not record native metadata for the new session",
++                probe.capturedEvents().none {
++                    it.event.startsWith("DRAW_BITMAP_")
++                },
++            )
++            view.bindLatencyPage(page, second)
++            ReflectionHelpers.setField(view, "imageCallbackIsCurrent", { false })
++            view.draw(Canvas(output))
++            assertFalse(probe.contains("DRAW_BITMAP_ARGB_8888"))
++            ReflectionHelpers.setField(view, "imageCallbackIsCurrent", { true })
++            val wrong = ReaderPage(3).apply { this.chapter = chapter }
++            view.bindLatencyPage(wrong, second)
++            view.draw(Canvas(output))
++            assertFalse(probe.contains("DRAW_BITMAP_ARGB_8888"))
++            view.bindLatencyPage(page, second)
++            gates = 0
++            view.draw(Canvas(output))
++            assertEquals("The diagnostic forwarding path must not add a native admission call", 1, gates)
++            assertTrue(probe.contains("DRAW_BITMAP_ARGB_8888"))
++            view.draw(Canvas(output))
++            assertEquals("A consumed diagnostic slot must not change drawing admission", 2, gates)
++            assertEquals(1, probe.capturedEvents().count { it.event == "DRAW_BITMAP_ARGB_8888" })
++            probe.configure(false, 10, 20, "off", targetPage = 4)
++            view.draw(Canvas(output))
++            assertTrue(probe.capturedEvents().isEmpty())
++            assertEquals(Color.RED, output.getPixel(60, 40))
++        } finally {
++            probe.configure(false, 10, 20, "off", targetPage = 4)
++            view.recycle()
++            output.recycle()
++        }
++    }
++}
