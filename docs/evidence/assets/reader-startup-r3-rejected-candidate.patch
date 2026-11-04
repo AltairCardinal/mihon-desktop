@@ -1,0 +1,1187 @@
+diff --git a/app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderPage.kt b/app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderPage.kt
+index 90c1b89f23..ca3e23d176 100644
+--- a/app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderPage.kt
++++ b/app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderPage.kt
+@@ -4,6 +4,7 @@ import eu.kanade.tachiyomi.source.model.Page
+ import kotlinx.coroutines.CancellationException
+ import kotlinx.coroutines.flow.MutableStateFlow
+ import kotlinx.coroutines.flow.asStateFlow
++import logcat.LogPriority
+ import mihon.domain.error.AppError
+ import mihon.domain.reader.ReaderDualPageFactLimits
+ import mihon.domain.reader.ReaderDualPageFactReadPermit
+@@ -13,10 +14,13 @@ import mihon.domain.reader.ReaderPageModel
+ import mihon.domain.reader.session.EncodedPageRef
+ import mihon.domain.reader.session.ReaderPageLoadState
+ import okio.Buffer
++import okio.BufferedSource
+ import okio.ForwardingSource
++import okio.Source
+ import okio.buffer
+ import okio.source
+ import tachiyomi.core.common.util.system.ImageUtil
++import tachiyomi.core.common.util.system.logcat
+ import java.io.InputStream
+ import java.util.concurrent.atomic.AtomicLong
+ 
+@@ -120,25 +124,70 @@ open class ReaderPage(
+         headerByteLimit: Long = ReaderDualPageFactLimits.MAX_HEADER_BYTES,
+         readPermit: ReaderDualPageFactReadPermit? = null,
+     ) {
+-        val captured = synchronized(contentLock) {
+-            // Activation and a holder consume the same loader-owned original metadata.
+-            // A content replacement clears this fact; a failed read remains retryable.
+-            if (mutableContentFact.value.encodedVersion == encodedVersion &&
+-                mutablePageFact.value.width > 0 && mutablePageFact.value.height > 0
+-            ) {
+-                return
++        val captured = captureHeaderSnapshot() ?: return
++        publishHeaderFact(captured, headerByteLimit, readPermit) { captured.openStream().source() }
++    }
++
++    /** The caller owns this original until its normal encoded read, including cancellation before then. */
++    internal fun openHeaderSource(): BufferedSource? {
++        val captured = captureHeaderSnapshot() ?: return null
++        var opened: BufferedSource? = null
++        var retained = false
++        var failure: Throwable? = null
++        try {
++            retained = publishHeaderFact(captured, ReaderDualPageFactLimits.MAX_HEADER_BYTES, null) {
++                captured.openStream().source().buffer().also { opened = it }.peek()
++            }
++            return opened.takeIf { retained }
++        } catch (error: Throwable) {
++            failure = error
++            throw error
++        } finally {
++            if (!retained) opened?.let { closeHeaderSource(it, failure) }
++        }
++    }
++
++    /** Metadata-only cleanup must not disable ordinary image loading or replace its cancellation. */
++    internal fun closeHeaderSource(source: BufferedSource, failure: Throwable? = null) {
++        try {
++            source.close()
++        } catch (error: Exception) {
++            if (failure != null) {
++                if (error !== failure) failure.addSuppressed(error)
++            } else if (error is CancellationException) {
++                throw error
++            } else {
++                logcat(LogPriority.ERROR, error)
+             }
+-            HeaderSnapshot(
+-                stream ?: return,
+-                encodedVersion,
+-                mutableContentVersion.value,
+-                retrySequence,
+-                confirmedOrientation,
+-            )
+         }
++    }
++
++    private fun captureHeaderSnapshot(): HeaderSnapshot? = synchronized(contentLock) {
++        // Activation and a holder consume the same loader-owned original metadata.
++        // A content replacement clears this fact; a failed read remains retryable.
++        if (mutableContentFact.value.encodedVersion == encodedVersion &&
++            mutablePageFact.value.width > 0 && mutablePageFact.value.height > 0
++        ) {
++            return null
++        }
++        HeaderSnapshot(
++            stream ?: return null,
++            encodedVersion,
++            mutableContentVersion.value,
++            retrySequence,
++            confirmedOrientation,
++        )
++    }
++
++    private fun publishHeaderFact(
++        captured: HeaderSnapshot,
++        headerByteLimit: Long,
++        readPermit: ReaderDualPageFactReadPermit?,
++        openSource: () -> Source,
++    ): Boolean {
+         val openStream = captured.openStream
+         val fact = try {
+-            val physical = openStream().source()
++            val physical = openSource()
+             val permitted = readPermit?.bound(physical, System::nanoTime) ?: physical
+             val bounded = object : ForwardingSource(permitted) {
+                 private var remaining = headerByteLimit
+@@ -180,6 +229,7 @@ open class ReaderPage(
+                     ReaderPageContentFact(mutableContentVersion.value, fact, captured.retrySequence, encodedVersion)
+             }
+         }
++        return fact.width > 0 && fact.height > 0
+     }
+ 
+     private data class HeaderSnapshot(
+diff --git a/app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPagerPageHolder.kt b/app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPagerPageHolder.kt
+index 7e93dd10d1..de495658d8 100644
+--- a/app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPagerPageHolder.kt
++++ b/app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPagerPageHolder.kt
+@@ -25,17 +25,21 @@ import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
+ import eu.kanade.tachiyomi.ui.webview.WebViewActivity
+ import eu.kanade.tachiyomi.widget.ViewPagerAdapter
+ import kotlinx.coroutines.CancellationException
++import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.Job
+ import kotlinx.coroutines.MainScope
++import kotlinx.coroutines.NonCancellable
+ import kotlinx.coroutines.flow.collectLatest
+ import kotlinx.coroutines.launch
+ import kotlinx.coroutines.supervisorScope
++import kotlinx.coroutines.withContext
+ import logcat.LogPriority
+ import mihon.domain.reader.ReaderDualPageViewportTicket
+ import mihon.domain.reader.ReaderPortraitSingleSlot
+ import mihon.domain.reader.SharedDualPageSession
+ import mihon.domain.reader.session.ReaderPageId
+ import okio.Buffer
++import okio.BufferedSource
+ import tachiyomi.core.common.i18n.stringResource
+ import tachiyomi.core.common.util.lang.launchIO
+ import tachiyomi.core.common.util.lang.withIOContext
+@@ -600,277 +604,309 @@ class DualPagerPageHolder(
+         diagnose("header_start", page, "generation" to generation)
+         val attachment = attachmentGeneration
+         val encodedContent = page.encodedContentIdentity()
+-        recordLatency("TARGET_HEADER_DISPATCH", page)
+-        withIOContext {
+-            val claimed = recordLatency("TARGET_HEADER_BEGIN", page)
+-            page.publishHeaderFact()
+-            if (claimed) recordLatency("TARGET_HEADER_END", page)
+-        }
+-        diagnose(
+-            "header_complete",
+-            page,
+-            "generation" to generation,
+-            "elapsedMs" to (System.nanoTime() - started) / 1_000_000,
+-        )
+-        if (attachment != attachmentGeneration || page.encodedContentIdentity() != encodedContent ||
+-            decodeGenerations[page] != generation
+-        ) {
+-            diagnose("display_rejected", page, "reason" to "STALE_HEADER", "generation" to generation)
+-            return
+-        }
+-        beginPresentation()
+-        val content = page.contentIdentity()
+-        val orientation = page.contentFact.value.fact.sourceOrientation
+-        val dimensionsRequest = viewer.adapter.captureDimensions(page)
+-        val streamFn = page.stream ?: return
+-        val latencyChapter = page.chapter.chapter.id ?: -1
+-        val latencyRequest = this.latencyRequest
++        val encodedStream = page.captureEncodedStream(encodedContent)
++        var retainedSource: BufferedSource? = null
++        var retainedFailure: Throwable? = null
+         try {
+-            diagnose("read_start", page, "generation" to generation)
+-            val (source, isAnimated, background) = withIOContext {
+-                eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+-                    "OPEN_PAGE",
+-                    page.index,
+-                    latencyChapter,
+-                    latencyRequest,
+-                )
+-                val source = streamFn().use { Buffer().readFrom(it) }
+-                eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+-                    "ENCODED_READ_COMPLETE",
+-                    page.index,
+-                    latencyChapter,
+-                    latencyRequest,
+-                )
+-                val isAnimated = ImageUtil.isAnimatedAndSupported(source)
+-                val background = if (!isAnimated && viewer.config.automaticBackground) {
+-                    ImageUtil.chooseBackground(readerThemedContext, source.peek().inputStream())
+-                } else {
+-                    null
+-                }
+-                Triple(source, isAnimated, background)
++            recordLatency("TARGET_HEADER_DISPATCH", page)
++            withIOContext {
++                val claimed = recordLatency("TARGET_HEADER_BEGIN", page)
++                retainedSource = page.openHeaderSource()
++                if (claimed) recordLatency("TARGET_HEADER_END", page)
+             }
+             diagnose(
+-                "read_complete",
++                "header_complete",
+                 page,
+                 "generation" to generation,
+                 "elapsedMs" to (System.nanoTime() - started) / 1_000_000,
+             )
+-            withUIContext {
+-                if (attachment != attachmentGeneration) {
+-                    diagnose("display_rejected", page, "reason" to "DETACHED_AFTER_READ", "generation" to generation)
+-                    return@withUIContext
+-                }
+-                // Decode dimensions before displaying
+-                val (rawWidth, rawHeight) = withIOContext {
+-                    ImageUtil.getImageDimensions(source.peek())
+-                }
+-                val (w, h) = orientation.orientedSize(rawWidth, rawHeight)
+-                if (attachment != attachmentGeneration || page.contentIdentity() != content) {
+-                    diagnose("display_rejected", page, "reason" to "STALE_CONTENT", "generation" to generation)
+-                    return@withUIContext
+-                }
+-                viewer.adapter.acceptDecodedDimensions(page, dimensionsRequest, w, h, orientation)
+-                if (page !in displayPage.visiblePages || decodeGenerations[page] != generation) {
+-                    diagnose("display_rejected", page, "reason" to "REBOUND", "generation" to generation)
+-                    return@withUIContext
+-                }
+-                onDimensionsDecoded(side, w, h)
+-
+-                val config = ReaderPageImageView.Config(
+-                    zoomDuration = viewer.config.doubleTapAnimDuration,
+-                    minimumScaleType = com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
+-                        .SCALE_TYPE_CENTER_INSIDE,
+-                    cropBorders = viewer.config.imageCropBorders,
+-                    zoomStartPosition = if (containerGestures) {
+-                        ReaderPageImageView.ZoomStartPosition.CENTER
++            if (attachment != attachmentGeneration || page.encodedContentIdentity() != encodedContent ||
++                decodeGenerations[page] != generation
++            ) {
++                diagnose("display_rejected", page, "reason" to "STALE_HEADER", "generation" to generation)
++                return
++            }
++            beginPresentation()
++            val content = page.contentIdentity()
++            val orientation = page.contentFact.value.fact.sourceOrientation
++            val dimensionsRequest = viewer.adapter.captureDimensions(page)
++            val streamFn = page.stream ?: return
++            if (page.encodedContentIdentity() != encodedContent ||
++                (retainedSource != null && streamFn !== encodedStream)
++            ) {
++                return
++            }
++            val latencyChapter = page.chapter.chapter.id ?: -1
++            val latencyRequest = this.latencyRequest
++            try {
++                diagnose("read_start", page, "generation" to generation)
++                val (source, isAnimated, background) = withIOContext {
++                    eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
++                        "OPEN_PAGE",
++                        page.index,
++                        latencyChapter,
++                        latencyRequest,
++                    )
++                    val source = retainedSource?.let { original ->
++                        retainedSource = null
++                        original.use { Buffer().apply { writeAll(it) } }
++                    } ?: streamFn().use { Buffer().readFrom(it) }
++                    eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
++                        "ENCODED_READ_COMPLETE",
++                        page.index,
++                        latencyChapter,
++                        latencyRequest,
++                    )
++                    val isAnimated = ImageUtil.isAnimatedAndSupported(source)
++                    val background = if (!isAnimated && viewer.config.automaticBackground) {
++                        ImageUtil.chooseBackground(readerThemedContext, source.peek().inputStream())
+                     } else {
+-                        viewer.config.imageZoomType
+-                    },
+-                    landscapeZoom = false, // handled by dual-page container zoom
+-                    sourceOrientation = orientation,
+-                    pageSideHintEnabled = viewer.config.automaticSpreadMatching && !viewer.config.imageCropBorders,
+-                )
+-
+-                // Ready encoded bytes may reach this collector without a visible Queue state.
+-                // Native base decoding still belongs to this slot's loading feedback.
+-                setLoading(side)
+-                val holder = getOrCreateSubHolder(side, page)
+-                boundContents[page] = content
+-                boundEncodedContents[page] = encodedContent
+-                boundRetries[page] = page.contentFact.value.retrySequence
+-                val callbackIsCurrent = {
+-                    attachment == attachmentGeneration && boundContents[page] == content &&
+-                        boundEncodedContents[page] == encodedContent && decodeGenerations[page] == generation &&
+-                        page.status == Page.State.Ready &&
+-                        (page.contentIdentity() == content || retainsVisibleContent(page))
++                        null
++                    }
++                    Triple(source, isAnimated, background)
+                 }
+-                holder.onImageLoaded = {
+-                    diagnose(
+-                        "decode_ready",
+-                        page,
+-                        "generation" to generation,
+-                        "accepted" to callbackIsCurrent(),
+-                        "elapsedMs" to (System.nanoTime() - started) / 1_000_000,
++                diagnose(
++                    "read_complete",
++                    page,
++                    "generation" to generation,
++                    "elapsedMs" to (System.nanoTime() - started) / 1_000_000,
++                )
++                withUIContext {
++                    if (attachment != attachmentGeneration) {
++                        diagnose(
++                            "display_rejected",
++                            page,
++                            "reason" to "DETACHED_AFTER_READ",
++                            "generation" to generation,
++                        )
++                        return@withUIContext
++                    }
++                    // Decode dimensions before displaying
++                    val (rawWidth, rawHeight) = withIOContext {
++                        ImageUtil.getImageDimensions(source.peek())
++                    }
++                    val (w, h) = orientation.orientedSize(rawWidth, rawHeight)
++                    if (attachment != attachmentGeneration || page.contentIdentity() != content) {
++                        diagnose("display_rejected", page, "reason" to "STALE_CONTENT", "generation" to generation)
++                        return@withUIContext
++                    }
++                    viewer.adapter.acceptDecodedDimensions(page, dimensionsRequest, w, h, orientation)
++                    if (page !in displayPage.visiblePages || decodeGenerations[page] != generation) {
++                        diagnose("display_rejected", page, "reason" to "REBOUND", "generation" to generation)
++                        return@withUIContext
++                    }
++                    onDimensionsDecoded(side, w, h)
++
++                    val config = ReaderPageImageView.Config(
++                        zoomDuration = viewer.config.doubleTapAnimDuration,
++                        minimumScaleType = com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
++                            .SCALE_TYPE_CENTER_INSIDE,
++                        cropBorders = viewer.config.imageCropBorders,
++                        zoomStartPosition = if (containerGestures) {
++                            ReaderPageImageView.ZoomStartPosition.CENTER
++                        } else {
++                            viewer.config.imageZoomType
++                        },
++                        landscapeZoom = false, // handled by dual-page container zoom
++                        sourceOrientation = orientation,
++                        pageSideHintEnabled = viewer.config.automaticSpreadMatching && !viewer.config.imageCropBorders,
+                     )
+-                    if (callbackIsCurrent()) {
+-                        if (errorPages[side] === page) {
+-                            errorLayouts[side]?.root?.isVisible = false
+-                            errorPages.remove(side)
+-                            if (errorPage === page) errorPage = errorPages.values.firstOrNull()
+-                        }
+-                        holder.invalidate()
++
++                    // Ready encoded bytes may reach this collector without a visible Queue state.
++                    // Native base decoding still belongs to this slot's loading feedback.
++                    setLoading(side)
++                    val holder = getOrCreateSubHolder(side, page)
++                    boundContents[page] = content
++                    boundEncodedContents[page] = encodedContent
++                    boundRetries[page] = page.contentFact.value.retrySequence
++                    val callbackIsCurrent = {
++                        attachment == attachmentGeneration && boundContents[page] == content &&
++                            boundEncodedContents[page] == encodedContent && decodeGenerations[page] == generation &&
++                            page.status == Page.State.Ready &&
++                            (page.contentIdentity() == content || retainsVisibleContent(page))
+                     }
+-                }
+-                holder.beforeImageDraw = { drawWidth, drawHeight ->
+-                    if (!callbackIsCurrent()) {
+-                        diagnose("display_rejected", page, "reason" to "STALE_CALLBACK", "generation" to generation)
+-                        false
+-                    } else {
+-                        if (presentationScope == null) beginPresentation()
+-                        if (presentationScope == null) {
+-                            diagnose("display_rejected", page, "reason" to "NO_TICKET", "generation" to generation)
++                    holder.onImageLoaded = {
++                        diagnose(
++                            "decode_ready",
++                            page,
++                            "generation" to generation,
++                            "accepted" to callbackIsCurrent(),
++                            "elapsedMs" to (System.nanoTime() - started) / 1_000_000,
++                        )
++                        if (callbackIsCurrent()) {
++                            if (errorPages[side] === page) {
++                                errorLayouts[side]?.root?.isVisible = false
++                                errorPages.remove(side)
++                                if (errorPage === page) errorPage = errorPages.values.firstOrNull()
++                            }
++                            holder.invalidate()
+                         }
+-                        presentationScope?.let { (owner, ticket) ->
+-                            val pageId = owner.identity.pageIds.getOrNull(page.index)
+-                            val physicalSlot = when (side) {
+-                                Side.RIGHT -> ReaderPortraitSingleSlot.RIGHT
+-                                Side.LEFT -> ReaderPortraitSingleSlot.LEFT
+-                                Side.CENTER -> (displayPage as? DisplayPage.Single)?.slot
+-                                    ?: ReaderPortraitSingleSlot.FULL
++                    }
++                    holder.beforeImageDraw = { drawWidth, drawHeight ->
++                        if (!callbackIsCurrent()) {
++                            diagnose("display_rejected", page, "reason" to "STALE_CALLBACK", "generation" to generation)
++                            false
++                        } else {
++                            if (presentationScope == null) beginPresentation()
++                            if (presentationScope == null) {
++                                diagnose("display_rejected", page, "reason" to "NO_TICKET", "generation" to generation)
+                             }
+-                            val beforeFrame = owner.frame(ticket)
+-                            if (pageId == null || beforeFrame == null ||
+-                                owner.identity.content[page.index].contentVersion != encodedContent ||
+-                                beforeFrame.unit.slots.none { it.pageId == pageId && it.position == physicalSlot }
+-                            ) {
+-                                presentationDiagnostics.record(
+-                                    "prepare", owner, ticket, page.index, holder, config,
+-                                    viewer.config.automaticSpreadMatching, isAnimated, physicalSlot, beforeFrame,
+-                                    lockedBefore = pageId in beforeFrame?.lockedPageIds.orEmpty(),
+-                                    prepared = false,
+-                                    outcome = "NATIVE_CAPABILITY_REJECTED",
+-                                )
+-                                false
+-                            } else if (pageId in beforeFrame.lockedPageIds) {
+-                                // Keep an actually exposed outgoing image's original physical capability.
+-                                presentationDiagnostics.record(
+-                                    "retained_lock", owner, ticket, page.index, holder, config,
+-                                    viewer.config.automaticSpreadMatching, isAnimated, physicalSlot, beforeFrame,
+-                                    lockedBefore = true,
+-                                    prepared = true,
+-                                    outcome = "ALREADY_LOCKED",
+-                                )
+-                                true
+-                            } else {
+-                                val beforeRevision = owner.layoutRevision
+-                                val submittedHint = if (viewer.config.automaticSpreadMatching) {
+-                                    holder.decodedPageSideHint
+-                                } else {
+-                                    mihon.domain.reader.ReaderPageSideHint.UNKNOWN
++                            presentationScope?.let { (owner, ticket) ->
++                                val pageId = owner.identity.pageIds.getOrNull(page.index)
++                                val physicalSlot = when (side) {
++                                    Side.RIGHT -> ReaderPortraitSingleSlot.RIGHT
++                                    Side.LEFT -> ReaderPortraitSingleSlot.LEFT
++                                    Side.CENTER -> (displayPage as? DisplayPage.Single)?.slot
++                                        ?: ReaderPortraitSingleSlot.FULL
+                                 }
+-                                val accepted = owner.acceptDecodedFact(
+-                                    ticket,
+-                                    pageId,
+-                                    drawWidth,
+-                                    drawHeight,
+-                                    submittedHint,
+-                                )
+-                                val factFrame = owner.frame(ticket)
+-                                presentationDiagnostics.record(
+-                                    "decoded_fact", owner, ticket, page.index, holder, config,
+-                                    viewer.config.automaticSpreadMatching, isAnimated, physicalSlot, factFrame,
+-                                    lockedBefore = false,
+-                                    beforeFrame = beforeFrame,
+-                                    submittedHint = submittedHint,
+-                                    accepted = accepted,
+-                                    outcome = if (accepted) "ACCEPTED" else "FACT_REJECTED",
+-                                )
+-                                if (owner.layoutRevision !=
+-                                    beforeRevision
++                                val beforeFrame = owner.frame(ticket)
++                                if (pageId == null || beforeFrame == null ||
++                                    owner.identity.content[page.index].contentVersion != encodedContent ||
++                                    beforeFrame.unit.slots.none { it.pageId == pageId && it.position == physicalSlot }
+                                 ) {
+-                                    viewer.adapter.refreshDecodedSide(page, owner)
++                                    presentationDiagnostics.record(
++                                        "prepare", owner, ticket, page.index, holder, config,
++                                        viewer.config.automaticSpreadMatching, isAnimated, physicalSlot, beforeFrame,
++                                        lockedBefore = pageId in beforeFrame?.lockedPageIds.orEmpty(),
++                                        prepared = false,
++                                        outcome = "NATIVE_CAPABILITY_REJECTED",
++                                    )
++                                    false
++                                } else if (pageId in beforeFrame.lockedPageIds) {
++                                    // Keep an actually exposed outgoing image's original physical capability.
++                                    presentationDiagnostics.record(
++                                        "retained_lock", owner, ticket, page.index, holder, config,
++                                        viewer.config.automaticSpreadMatching, isAnimated, physicalSlot, beforeFrame,
++                                        lockedBefore = true,
++                                        prepared = true,
++                                        outcome = "ALREADY_LOCKED",
++                                    )
++                                    true
++                                } else {
++                                    val beforeRevision = owner.layoutRevision
++                                    val submittedHint = if (viewer.config.automaticSpreadMatching) {
++                                        holder.decodedPageSideHint
++                                    } else {
++                                        mihon.domain.reader.ReaderPageSideHint.UNKNOWN
++                                    }
++                                    val accepted = owner.acceptDecodedFact(
++                                        ticket,
++                                        pageId,
++                                        drawWidth,
++                                        drawHeight,
++                                        submittedHint,
++                                    )
++                                    val factFrame = owner.frame(ticket)
++                                    presentationDiagnostics.record(
++                                        "decoded_fact", owner, ticket, page.index, holder, config,
++                                        viewer.config.automaticSpreadMatching, isAnimated, physicalSlot, factFrame,
++                                        lockedBefore = false,
++                                        beforeFrame = beforeFrame,
++                                        submittedHint = submittedHint,
++                                        accepted = accepted,
++                                        outcome = if (accepted) "ACCEPTED" else "FACT_REJECTED",
++                                    )
++                                    if (owner.layoutRevision !=
++                                        beforeRevision
++                                    ) {
++                                        viewer.adapter.refreshDecodedSide(page, owner)
++                                    }
++                                    val frame = owner.frame(ticket)
++                                    val prepared = accepted && frame != null &&
++                                        frame.unit.slots.any { it.pageId == pageId && it.position == physicalSlot } &&
++                                        owner.preparePage(ticket, pageId)
++                                    val outcome = when {
++                                        !accepted -> "FACT_REJECTED"
++                                        frame == null -> "FRAME_EXPIRED"
++                                        frame.unit.slots.none { it.pageId == pageId && it.position == physicalSlot } ->
++                                            "SLOT_CHANGED"
++                                        !prepared -> "LOCK_REJECTED"
++                                        else -> "LOCKED"
++                                    }
++                                    presentationDiagnostics.record(
++                                        "prepare", owner, ticket, page.index, holder, config,
++                                        viewer.config.automaticSpreadMatching, isAnimated, physicalSlot,
++                                        owner.frame(ticket) ?: factFrame,
++                                        lockedBefore = false,
++                                        beforeFrame = beforeFrame,
++                                        submittedHint = submittedHint,
++                                        accepted = accepted,
++                                        prepared = prepared,
++                                        outcome = outcome,
++                                    )
++                                    prepared
+                                 }
+-                                val frame = owner.frame(ticket)
+-                                val prepared = accepted && frame != null &&
+-                                    frame.unit.slots.any { it.pageId == pageId && it.position == physicalSlot } &&
+-                                    owner.preparePage(ticket, pageId)
+-                                val outcome = when {
+-                                    !accepted -> "FACT_REJECTED"
+-                                    frame == null -> "FRAME_EXPIRED"
+-                                    frame.unit.slots.none { it.pageId == pageId && it.position == physicalSlot } ->
+-                                        "SLOT_CHANGED"
+-                                    !prepared -> "LOCK_REJECTED"
+-                                    else -> "LOCKED"
++                            } == true
++                        }
++                    }
++                    holder.onImageDrawn = {
++                        if (callbackIsCurrent()) {
++                            presentationScope?.let { (owner, ticket) ->
++                                val pageId = owner.identity.pageIds.getOrNull(page.index)
++                                if (pageId != null && owner.reportDrawn(ticket, setOf(pageId)) &&
++                                    renderedPages[page] != content
++                                ) {
++                                    renderedPages[page] = content
++                                    visibleContentLeases[page] = content
++                                    recordUnitDrawn(owner, ticket)
++                                    removeProgressIndicator(side)
++                                    diagnose(
++                                        "drawn",
++                                        page,
++                                        "generation" to generation,
++                                        "serial" to ticket.frameId.serial,
++                                        "reason" to "PROGRESS_HIDDEN",
++                                        "elapsedMs" to (System.nanoTime() - started) / 1_000_000,
++                                        "rendered" to renderedPages.keys.joinToString(",") { it.index.toString() },
++                                    )
++                                    post { viewer.onHolderDisplayStateChanged(this@DualPagerPageHolder) }
+                                 }
+-                                presentationDiagnostics.record(
+-                                    "prepare", owner, ticket, page.index, holder, config,
+-                                    viewer.config.automaticSpreadMatching, isAnimated, physicalSlot,
+-                                    owner.frame(ticket) ?: factFrame,
+-                                    lockedBefore = false,
+-                                    beforeFrame = beforeFrame,
+-                                    submittedHint = submittedHint,
+-                                    accepted = accepted,
+-                                    prepared = prepared,
+-                                    outcome = outcome,
+-                                )
+-                                prepared
+                             }
+-                        } == true
++                        }
+                     }
+-                }
+-                holder.onImageDrawn = {
+-                    if (callbackIsCurrent()) {
+-                        presentationScope?.let { (owner, ticket) ->
+-                            val pageId = owner.identity.pageIds.getOrNull(page.index)
+-                            if (pageId != null && owner.reportDrawn(ticket, setOf(pageId)) &&
+-                                renderedPages[page] != content
+-                            ) {
+-                                renderedPages[page] = content
+-                                visibleContentLeases[page] = content
+-                                recordUnitDrawn(owner, ticket)
+-                                removeProgressIndicator(side)
+-                                diagnose(
+-                                    "drawn",
+-                                    page,
+-                                    "generation" to generation,
+-                                    "serial" to ticket.frameId.serial,
+-                                    "reason" to "PROGRESS_HIDDEN",
+-                                    "elapsedMs" to (System.nanoTime() - started) / 1_000_000,
+-                                    "rendered" to renderedPages.keys.joinToString(",") { it.index.toString() },
+-                                )
+-                                post { viewer.onHolderDisplayStateChanged(this@DualPagerPageHolder) }
+-                            }
++                    holder.onImageLoadError = { error ->
++                        diagnose(
++                            "decode_error",
++                            page,
++                            "error" to error?.javaClass?.simpleName,
++                            "generation" to generation,
++                        )
++                        if (callbackIsCurrent()) {
++                            setError(error, page, side)
+                         }
+                     }
++                    decodedImages[page] = BoundImage(source.clone(), isAnimated, config, callbackIsCurrent)
++                    slot(side)?.applyTransform()
++                    diagnose("decode_start", page, "generation" to generation)
++                    holder.setImage(source, isAnimated, config, page.index, callbackIsCurrent = callbackIsCurrent)
++                    if (!isAnimated) holder.pageBackground = background
+                 }
+-                holder.onImageLoadError = { error ->
+-                    diagnose("decode_error", page, "error" to error?.javaClass?.simpleName, "generation" to generation)
+-                    if (callbackIsCurrent()) {
+-                        setError(error, page, side)
++            } catch (e: CancellationException) {
++                diagnose(
++                    "load_cancelled",
++                    page,
++                    "generation" to generation,
++                    "elapsedMs" to (System.nanoTime() - started) / 1_000_000,
++                )
++                throw e
++            } catch (e: Throwable) {
++                diagnose("load_error", page, "error" to e.javaClass.simpleName, "generation" to generation)
++                logcat(LogPriority.ERROR, e)
++                withUIContext {
++                    if (attachment == attachmentGeneration && page.contentIdentity() == content &&
++                        decodeGenerations[page] == generation
++                    ) {
++                        setError(e, page, side)
+                     }
+                 }
+-                decodedImages[page] = BoundImage(source.clone(), isAnimated, config, callbackIsCurrent)
+-                slot(side)?.applyTransform()
+-                diagnose("decode_start", page, "generation" to generation)
+-                holder.setImage(source, isAnimated, config, page.index, callbackIsCurrent = callbackIsCurrent)
+-                if (!isAnimated) holder.pageBackground = background
+             }
+-        } catch (e: CancellationException) {
+-            diagnose(
+-                "load_cancelled",
+-                page,
+-                "generation" to generation,
+-                "elapsedMs" to (System.nanoTime() - started) / 1_000_000,
+-            )
+-            throw e
+-        } catch (e: Throwable) {
+-            diagnose("load_error", page, "error" to e.javaClass.simpleName, "generation" to generation)
+-            logcat(LogPriority.ERROR, e)
+-            withUIContext {
+-                if (attachment == attachmentGeneration && page.contentIdentity() == content &&
+-                    decodeGenerations[page] == generation
+-                ) {
+-                    setError(e, page, side)
++        } catch (error: Throwable) {
++            retainedFailure = error
++            throw error
++        } finally {
++            retainedSource?.let { original ->
++                withContext(NonCancellable + Dispatchers.IO) {
++                    page.closeHeaderSource(original, retainedFailure)
+                 }
+             }
+         }
+diff --git a/app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerPageHolder.kt b/app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerPageHolder.kt
+index ad09b219ea..b677c8decb 100644
+--- a/app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerPageHolder.kt
++++ b/app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerPageHolder.kt
+@@ -14,11 +14,14 @@ import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
+ import eu.kanade.tachiyomi.ui.webview.WebViewActivity
+ import eu.kanade.tachiyomi.widget.ViewPagerAdapter
+ import kotlinx.coroutines.CancellationException
++import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.Job
+ import kotlinx.coroutines.MainScope
++import kotlinx.coroutines.NonCancellable
+ import kotlinx.coroutines.flow.collectLatest
+ import kotlinx.coroutines.launch
+ import kotlinx.coroutines.supervisorScope
++import kotlinx.coroutines.withContext
+ import logcat.LogPriority
+ import mihon.domain.reader.ReaderDualPageViewportTicket
+ import mihon.domain.reader.SharedDualPageSession
+@@ -291,143 +294,171 @@ class PagerPageHolder(
+         val attachment = attachmentGeneration
+         val presentation = presentationGeneration
+         val encodedContent = page.encodedContentIdentity()
+-        eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+-            "TARGET_HEADER_DISPATCH",
+-            latencyPage,
+-            latencyChapter,
+-            latencyRequest,
+-        )
+-        withIOContext {
+-            val headerClaimed = eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+-                "TARGET_HEADER_BEGIN",
++        val encodedStream = page.captureEncodedStream(encodedContent)
++        var retainedSource: BufferedSource? = null
++        var retainedFailure: Throwable? = null
++        try {
++            eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
++                "TARGET_HEADER_DISPATCH",
+                 latencyPage,
+                 latencyChapter,
+                 latencyRequest,
+             )
+-            page.publishHeaderFact()
+-            if (headerClaimed) {
+-                eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+-                    "TARGET_HEADER_END",
++            withIOContext {
++                val headerClaimed = eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
++                    "TARGET_HEADER_BEGIN",
+                     latencyPage,
+                     latencyChapter,
+                     latencyRequest,
+                 )
++                retainedSource = page.openHeaderSource()
++                if (headerClaimed) {
++                    eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
++                        "TARGET_HEADER_END",
++                        latencyPage,
++                        latencyChapter,
++                        latencyRequest,
++                    )
++                }
+             }
+-        }
+-        if (generation != decodeGeneration || attachment != attachmentGeneration ||
+-            presentation != presentationGeneration || page.encodedContentIdentity() != encodedContent
+-        ) {
+-            return
+-        }
+-        beginPresentation()
+-        val content = page.contentIdentity()
+-        val orientation = page.contentFact.value.fact.sourceOrientation
+-        val streamFn = page.stream ?: return
+-        val isCurrent = {
+-            generation == decodeGeneration && attachment == attachmentGeneration &&
+-                presentation == presentationGeneration && content == page.contentIdentity() &&
+-                streamFn === page.stream && page.status == Page.State.Ready
+-        }
+-        var pendingRegionFile: java.io.File? = null
+-        try {
+-            val prepared = withIOContext {
+-                eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+-                    "OPEN_PAGE",
+-                    latencyPage,
+-                    latencyChapter,
+-                    latencyRequest,
+-                )
+-                var source: BufferedSource = streamFn().use { Buffer().readFrom(it) }
+-                eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
+-                    "ENCODED_READ_COMPLETE",
+-                    latencyPage,
+-                    latencyChapter,
+-                    latencyRequest,
+-                )
+-                val isAnimated = ImageUtil.isAnimatedAndSupported(source)
+-                var remainingOrientation = orientation
+-                var bounds: mihon.domain.reader.PixelBounds? = null
+-                var splitOriginal = false
+-                if (orientation == mihon.domain.reader.ReaderImageOrientation.NORMAL) {
+-                    source = process(item, source)
+-                } else if (!isAnimated) {
+-                    val(rawWidth, rawHeight) = ImageUtil.getImageDimensions(source.peek())
+-                    val size = orientation.orientedSize(rawWidth, rawHeight)
+-                    val wide = size.width > size.height
+-                    if (viewer.config.dualPageRotateToFit && wide) {
+-                        remainingOrientation = orientation.rotatedAfter(
+-                            if (viewer.config.dualPageRotateToFitInvert) {
+-                                mihon.domain.reader.PageRotation.COUNTER_CLOCKWISE_90
+-                            } else {
+-                                mihon.domain.reader.PageRotation.CLOCKWISE_90
+-                            },
+-                        )
+-                    } else if (viewer.config.dualPageSplit && (page is InsertPage || wide)) {
+-                        bounds = checkNotNull(
+-                            orientation.splitBounds(
+-                                rawWidth,
+-                                rawHeight,
+-                                if (splitSide() ==
+-                                    ImageUtil.Side.LEFT
+-                                ) {
+-                                    mihon.domain.reader.PageSplitHalf.LEFT
++            if (generation != decodeGeneration || attachment != attachmentGeneration ||
++                presentation != presentationGeneration || page.encodedContentIdentity() != encodedContent
++            ) {
++                return
++            }
++            beginPresentation()
++            val content = page.contentIdentity()
++            val orientation = page.contentFact.value.fact.sourceOrientation
++            val streamFn = page.stream ?: return
++            if (page.encodedContentIdentity() != encodedContent ||
++                (retainedSource != null && streamFn !== encodedStream)
++            ) {
++                return
++            }
++            val isCurrent = {
++                generation == decodeGeneration && attachment == attachmentGeneration &&
++                    presentation == presentationGeneration && content == page.contentIdentity() &&
++                    streamFn === page.stream && page.status == Page.State.Ready
++            }
++            var pendingRegionFile: java.io.File? = null
++            try {
++                val prepared = withIOContext {
++                    eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
++                        "OPEN_PAGE",
++                        latencyPage,
++                        latencyChapter,
++                        latencyRequest,
++                    )
++                    var source: BufferedSource = retainedSource?.let { original ->
++                        retainedSource = null
++                        original.use { Buffer().apply { writeAll(it) } }
++                    } ?: streamFn().use { Buffer().readFrom(it) }
++                    eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.record(
++                        "ENCODED_READ_COMPLETE",
++                        latencyPage,
++                        latencyChapter,
++                        latencyRequest,
++                    )
++                    val isAnimated = ImageUtil.isAnimatedAndSupported(source)
++                    var remainingOrientation = orientation
++                    var bounds: mihon.domain.reader.PixelBounds? = null
++                    var splitOriginal = false
++                    if (orientation == mihon.domain.reader.ReaderImageOrientation.NORMAL) {
++                        source = process(item, source)
++                    } else if (!isAnimated) {
++                        val(rawWidth, rawHeight) = ImageUtil.getImageDimensions(source.peek())
++                        val size = orientation.orientedSize(rawWidth, rawHeight)
++                        val wide = size.width > size.height
++                        if (viewer.config.dualPageRotateToFit && wide) {
++                            remainingOrientation = orientation.rotatedAfter(
++                                if (viewer.config.dualPageRotateToFitInvert) {
++                                    mihon.domain.reader.PageRotation.COUNTER_CLOCKWISE_90
+                                 } else {
+-                                    mihon.domain.reader.PageSplitHalf.RIGHT
++                                    mihon.domain.reader.PageRotation.CLOCKWISE_90
+                                 },
+-                            ),
+-                        )
+-                        splitOriginal = page !is InsertPage
+-                        if (viewer.config.imageCropBorders) {
+-                            pendingRegionFile = regionEncoder(source, bounds, context.cacheDir)
+-                            // The owned PNG already contains this raw region; SSIV crops its local coordinates.
+-                            bounds = null
++                            )
++                        } else if (viewer.config.dualPageSplit && (page is InsertPage || wide)) {
++                            bounds = checkNotNull(
++                                orientation.splitBounds(
++                                    rawWidth,
++                                    rawHeight,
++                                    if (splitSide() ==
++                                        ImageUtil.Side.LEFT
++                                    ) {
++                                        mihon.domain.reader.PageSplitHalf.LEFT
++                                    } else {
++                                        mihon.domain.reader.PageSplitHalf.RIGHT
++                                    },
++                                ),
++                            )
++                            splitOriginal = page !is InsertPage
++                            if (viewer.config.imageCropBorders) {
++                                pendingRegionFile = regionEncoder(source, bounds, context.cacheDir)
++                                // The owned PNG already contains this raw region; SSIV crops its local coordinates.
++                                bounds = null
++                            }
+                         }
+                     }
++                    val background = if (!isAnimated && viewer.config.automaticBackground) {
++                        ImageUtil.chooseBackground(context, source.peek().inputStream())
++                    } else {
++                        null
++                    }
++                    PreparedImage(source, isAnimated, background, remainingOrientation, bounds, splitOriginal)
+                 }
+-                val background = if (!isAnimated && viewer.config.automaticBackground) {
+-                    ImageUtil.chooseBackground(context, source.peek().inputStream())
+-                } else {
+-                    null
+-                }
+-                PreparedImage(source, isAnimated, background, remainingOrientation, bounds, splitOriginal)
+-            }
+-            withUIContext {
+-                if (!isCurrent()) return@withUIContext
+-                if (prepared.splitOriginal) onPageSplit(page)
+-                val imageConfig = Config(
+-                    zoomDuration = viewer.config.doubleTapAnimDuration,
+-                    minimumScaleType = viewer.config.imageScaleType,
+-                    cropBorders = viewer.config.imageCropBorders,
+-                    zoomStartPosition = viewer.config.imageZoomType,
+-                    landscapeZoom = viewer.config.landscapeZoom,
+-                    sourceOrientation = prepared.orientation,
+-                    sourceBounds = prepared.bounds,
+-                )
+-                recycleImage()
+-                boundContent = content
+-                imageCallbackCurrent = isCurrent
+-                val regionFile = pendingRegionFile
+-                if (regionFile != null) {
+-                    displayedRegionFile = regionFile
+-                    pendingRegionFile = null
+-                    setRegionImage(regionFile, imageConfig, page.index, isCurrent)
+-                } else {
+-                    setImage(prepared.source, prepared.animated, imageConfig, page.index, callbackIsCurrent = isCurrent)
++                withUIContext {
++                    if (!isCurrent()) return@withUIContext
++                    if (prepared.splitOriginal) onPageSplit(page)
++                    val imageConfig = Config(
++                        zoomDuration = viewer.config.doubleTapAnimDuration,
++                        minimumScaleType = viewer.config.imageScaleType,
++                        cropBorders = viewer.config.imageCropBorders,
++                        zoomStartPosition = viewer.config.imageZoomType,
++                        landscapeZoom = viewer.config.landscapeZoom,
++                        sourceOrientation = prepared.orientation,
++                        sourceBounds = prepared.bounds,
++                    )
++                    recycleImage()
++                    boundContent = content
++                    imageCallbackCurrent = isCurrent
++                    val regionFile = pendingRegionFile
++                    if (regionFile != null) {
++                        displayedRegionFile = regionFile
++                        pendingRegionFile = null
++                        setRegionImage(regionFile, imageConfig, page.index, isCurrent)
++                    } else {
++                        setImage(
++                            prepared.source,
++                            prepared.animated,
++                            imageConfig,
++                            page.index,
++                            callbackIsCurrent = isCurrent,
++                        )
++                    }
++                    if (!prepared.animated) {
++                        pageBackground = prepared.background
++                    }
++                    removeErrorLayout()
+                 }
+-                if (!prepared.animated) {
+-                    pageBackground = prepared.background
++            } catch (e: CancellationException) {
++                throw e
++            } catch (e: Throwable) {
++                logcat(LogPriority.ERROR, e)
++                withUIContext {
++                    if (isCurrent()) setError(e)
+                 }
+-                removeErrorLayout()
+-            }
+-        } catch (e: CancellationException) {
+-            throw e
+-        } catch (e: Throwable) {
+-            logcat(LogPriority.ERROR, e)
+-            withUIContext {
+-                if (isCurrent()) setError(e)
++            } finally {
++                pendingRegionFile?.delete()
+             }
++        } catch (error: Throwable) {
++            retainedFailure = error
++            throw error
+         } finally {
+-            pendingRegionFile?.delete()
++            retainedSource?.let { original ->
++                withContext(NonCancellable + Dispatchers.IO) {
++                    page.closeHeaderSource(original, retainedFailure)
++                }
++            }
+         }
+     }
+ 
+diff --git a/app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPagerPageHolderLayoutTest.kt b/app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPagerPageHolderLayoutTest.kt
+index 101c7f062f..f32691ff62 100644
+--- a/app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPagerPageHolderLayoutTest.kt
++++ b/app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPagerPageHolderLayoutTest.kt
+@@ -100,6 +100,170 @@ import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView.OnImageEven
+ @RunWith(RobolectricTestRunner::class)
+ @Config(sdk = [35], manifest = Config.NONE, qualifiers = "w480dp-h1040dp-xxhdpi")
+ class DualPagerPageHolderLayoutTest {
++    @Test
++    fun `ordinary cold binding reads original once and closes it after header publication`() = runTest {
++        assertColdOriginalRead(dual = false)
++    }
++
++    @Test
++    fun `dual cold binding reads original once and closes it after header publication`() = runTest {
++        assertColdOriginalRead(dual = true)
++    }
++
++    @Test
++    fun `cold holder closes retained header source when cancelled before Main resumes`() = runTest {
++        for (dual in listOf(false, true)) assertInterruptedHeaderSource(dual, replace = false)
++    }
++
++    @Test
++    fun `cold holder rejects replaced original after header and closes its retained source`() = runTest {
++        for (dual in listOf(false, true)) assertInterruptedHeaderSource(dual, replace = true)
++    }
++
++    private suspend fun assertInterruptedHeaderSource(
++        dual: Boolean,
++        replace: Boolean,
++    ) = kotlinx.coroutines.coroutineScope {
++        val bytes = readerTestPng(100, 200)
++        val closed = java.util.concurrent.atomic.AtomicInteger()
++        val entered = java.util.concurrent.CountDownLatch(1)
++        val release = java.util.concurrent.CountDownLatch(1)
++        val chapter = ReaderChapter(Chapter.create().copy(id = 705, mangaId = 1))
++        val page = ReaderPage(0, stream = {
++            object : java.io.ByteArrayInputStream(bytes) {
++                override fun close() {
++                    closed.incrementAndGet()
++                    super.close()
++                    if (!replace) throw java.io.IOException("cancel cleanup close failure")
++                }
++            }
++        }).apply { this.chapter = chapter }
++        every { ImageUtil.getImageDimensions(any<okio.BufferedSource>()) } answers {
++            entered.countDown()
++            check(release.await(5, java.util.concurrent.TimeUnit.SECONDS))
++            100 to 200
++        }
++        val ordinary = R2LPagerViewer(viewer.activity).apply { config.navigationModeChangedListener = null }
++        val single = if (!dual) PagerPageHolder(viewer.activity, ordinary, page) else null
++        val pair = if (dual) DualPagerPageHolder(viewer.activity, viewer, DisplayPage.Single(page)) else null
++        try {
++            val work = async { if (pair != null) load(pair, page, "CENTER") else bindOrdinary(requireNotNull(single)) }
++            withContext(Dispatchers.IO) { check(entered.await(5, java.util.concurrent.TimeUnit.SECONDS)) }
++            if (replace) {
++                page.stream = { bytes.inputStream() }
++            } else {
++                work.cancel(kotlinx.coroutines.CancellationException("original cancellation"))
++            }
++            release.countDown()
++            if (replace) {
++                work.await()
++            } else {
++                work.join()
++                assertEquals("original cancellation", work.getCompletionExceptionOrNull()?.message)
++            }
++            assertEquals("The original must close even when the header IO cannot return to Main", 1, closed.get())
++            if (replace) {
++                assertEquals(mihon.domain.reader.ReaderPageFactState.UNKNOWN, page.pageFact.value.state)
++                if (single != null) assertNull(ReflectionHelpers.getField<Any?>(single, "config"))
++                if (pair != null) assertTrue(descendants(pair).filterIsInstance<ReaderPageImageView>().none())
++            }
++        } finally {
++            release.countDown()
++            pair?.let(::detach)
++            single?.let { ReflectionHelpers.callInstanceMethod<Unit>(it, "onDetachedFromWindow") }
++            ordinary.destroy()
++            unmockkObject(ImageUtil)
++            mockkObject(ImageUtil)
++            every { ImageUtil.isAnimatedAndSupported(any()) } returns false
++        }
++    }
++
++    @Test
++    fun `cold holder keeps failed metadata retryable through the original encoded route`() = runTest {
++        for (dual in listOf(false, true)) {
++            val bytes = readerTestPng(100, 200)
++            val opened = java.util.concurrent.atomic.AtomicInteger()
++            val closed = java.util.concurrent.atomic.AtomicInteger()
++            val chapter = ReaderChapter(Chapter.create().copy(id = 706, mangaId = 1))
++            val page = ReaderPage(0, stream = {
++                val attempt = opened.incrementAndGet()
++                object : java.io.ByteArrayInputStream(bytes) {
++                    override fun read(b: ByteArray, off: Int, len: Int): Int {
++                        if (attempt == 1) throw java.io.IOException("first header unavailable")
++                        return super.read(b, off, len)
++                    }
++                    override fun close() {
++                        closed.incrementAndGet()
++                        super.close()
++                        if (attempt == 1) throw java.io.IOException("failed header close unavailable")
++                    }
++                }
++            }).apply { this.chapter = chapter }
++            val ordinary = R2LPagerViewer(viewer.activity).apply { config.navigationModeChangedListener = null }
++            val single = if (!dual) PagerPageHolder(viewer.activity, ordinary, page) else null
++            val pair = if (dual) DualPagerPageHolder(viewer.activity, viewer, DisplayPage.Single(page)) else null
++            suspend fun bind() {
++                if (pair != null) load(pair, page, "CENTER") else bindOrdinary(requireNotNull(single))
++            }
++            try {
++                bind()
++                assertEquals(mihon.domain.reader.ReaderPageFactState.FAILED, page.pageFact.value.state)
++                assertEquals(2, opened.get())
++                assertEquals(2, closed.get())
++                page.retryHeaderFact()
++                bind()
++                assertEquals(mihon.domain.reader.ReaderPageFactState.PORTRAIT, page.pageFact.value.state)
++                assertEquals("Retry must retain only its own newly opened original", 3, opened.get())
++                assertEquals(opened.get(), closed.get())
++            } finally {
++                pair?.let(::detach)
++                single?.let { ReflectionHelpers.callInstanceMethod<Unit>(it, "onDetachedFromWindow") }
++                ordinary.destroy()
++            }
++        }
++    }
++
++    private suspend fun assertColdOriginalRead(dual: Boolean) {
++        val bytes = readerTestPng(100, 200)
++        val opened = java.util.concurrent.atomic.AtomicInteger()
++        val closed = java.util.concurrent.atomic.AtomicInteger()
++        val chapter = ReaderChapter(Chapter.create().copy(id = 704, mangaId = 1))
++        val page = ReaderPage(0, stream = {
++            opened.incrementAndGet()
++            object : java.io.ByteArrayInputStream(bytes) {
++                override fun close() {
++                    closed.incrementAndGet()
++                    super.close()
++                }
++            }
++        }).apply { this.chapter = chapter }
++        val ordinary = R2LPagerViewer(viewer.activity).apply { config.navigationModeChangedListener = null }
++        try {
++            if (dual) {
++                val holder = DualPagerPageHolder(viewer.activity, viewer, DisplayPage.Single(page))
++                try {
++                    load(holder, page, "CENTER")
++                } finally {
++                    detach(holder)
++                }
++            } else {
++                val holder = PagerPageHolder(viewer.activity, ordinary, page)
++                try {
++                    bindOrdinary(holder)
++                } finally {
++                    ReflectionHelpers.callInstanceMethod<Unit>(holder, "onDetachedFromWindow")
++                }
++            }
++            assertEquals(mihon.domain.reader.ReaderPageFactState.PORTRAIT, page.pageFact.value.state)
++            assertEquals("The original stream used for metadata must also supply encoded pixels", 1, opened.get())
++            assertEquals("Every opened original must close exactly once", opened.get(), closed.get())
++            assertNull("Existing metadata must not reopen an original", page.openHeaderSource())
++            assertEquals(1, opened.get())
++        } finally {
++            ordinary.destroy()
++        }
++    }
++
+     @Test
+     @GraphicsMode(GraphicsMode.Mode.NATIVE)
+     fun `target unit probe requires both real child draws and rejects old presentation`() = runTest {

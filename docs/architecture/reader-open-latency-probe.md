@@ -39,7 +39,7 @@ R2起`targetPage`是零基源页索引，省略时为0；配置在Main读取后�
 | VIEWER_CHAPTERS_APPLY_ENTER / PAGER_ADAPTER_READY / TARGET_HOLDER_CREATED | P2二级仅细分Activity收到章节到图片链入口：真实setChaptersInternal入口／adapter.setChapters返回／目标holder init绑定request后、启动loadJob前。调用若重入有重叠，应按真实顺序报告，不按名字重排 |
 | TARGET_LOAD_ENTER / TARGET_STATUS_COLLECT / TARGET_READY_ENTER | P3目标holder原load协程body入口／原statusFlow.collectLatest调用前／首次Ready分支入口；保持原调度、supervisorScope和状态收集顺序 |
 | PAGE_LIST_READY | ChapterLoader 将 materialize 页表结果接受并发布完成；已绑定章节与编码引用，不以前置全章 header 齐备为条件 |
-| OPEN_PAGE / ENCODED_READ_COMPLETE | 配置目标页holder真实读取编码内容；本页header仍由既有按需链生产，可能位于PAGE_LIST_READY→OPEN_PAGE段，不能只看第一段缩短 |
+| OPEN_PAGE / ENCODED_READ_COMPLETE | 配置目标页holder后半IO读取完整编码内容；本页header仍由既有按需链生产，可能位于PAGE_LIST_READY→OPEN_PAGE段，不能只看第一段缩短。OPEN_PAGE不是本次第一次打开文件，之前的header阶段可能已开流 |
 | DECODE_SUBMIT | ReaderPageImageView提交配置目标页图像到原有解码链路 |
 | FIRST_DRAW | 原有 nativeImageDrawn 实际漫画像素回调，SSIV 需要真实 bitmap 绘制且 ready；不是窗口帧、onReady 或 onImageLoaded |
 | FRAME_COMMIT | FIRST_DRAW 后该视图的提交回调，仅 API 29+ 且硬件加速时记录；不是显示面板呈现时间 |

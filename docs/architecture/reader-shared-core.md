@@ -952,3 +952,7 @@ Android `HttpPageLoader.loadPage` 仅在已经运行的普通请求仍绑定同�
 不能用 `drop(1)`、动态读取“已经摄入”的当前快照或仅比较尺寸替代上述准入。绑定后首回调前的元数据／流替换必须处理；后续通知即使已经被另一次 ensure 看到，仍须执行重试预算、匹配任务及呈现更新。条件不满足时回到原链，旧页表通知沿原身份检查拒收，不增添缓存、等待或新的发布权。该优化只减少 Android 订阅接线的重复工作，不改变共享配对算法、图片质量或翻页动画。
 
 真实回归位于 `DualPagerPageHolderLayoutTest` 的 dual/single fact collectors 用例：187页首次重复 ensure 为零，后续 metadata、重试（含先被其它 ensure 摄入）、编码流替换、首回调前变化、章节窗口与同章节页表替换仍走 production。完整双页真实绘制与无探针真机翻页另外核验；性能结果及未覆盖场景见[持续记录 R2](../evidence/reader-startup-autonomous-2026-11-04.md)。
+
+## 2026-11-04 未采用的本页同流复用候选
+
+[持续结果R3](../evidence/reader-startup-autonomous-2026-11-04.md)曾让单/双holder在header阶段保留原图流，沿原Main校验后读完整编码。真实冷绑定回归证明开流2→1，取消、换流、清理失败与后备读取均做了定向验证；但十二份真机对照没有支持整体加速，新增跨协程资源生命周期不值得因此保留，当前生产代码仍为R2链路。候选补丁与计时语义留在结果档案，不能把诊断APK中的`openHeaderSource()`当作当前API，也不能由局部读耗时下降推导总收益。

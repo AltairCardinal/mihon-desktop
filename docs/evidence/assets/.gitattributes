@@ -1,0 +1,2 @@
+# Preserve the rejected candidate's exact patch bytes, including blank context lines.
+reader-startup-r3-rejected-candidate.patch -text -whitespace

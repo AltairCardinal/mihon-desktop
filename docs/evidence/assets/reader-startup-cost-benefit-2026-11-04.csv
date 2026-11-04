@@ -1,0 +1,25 @@
+﻿round,mode,target_page,cache_class,metric,benefit_ms,sample_count_before,sample_count_after,before_mean_ms,after_mean_ms,nearblack_upper_sample_count_before,nearblack_upper_sample_count_after,nearblack_upper_benefit_ms,nearblack_upper_benefit_per_round_usd,whole_round_cost_usd,round_cost_shared_across_modes,report,status
+P0,single,0,first,FIRST_DRAW,384.2775,2.0,2.0,649.271,264.9935,2.0,2.0,349.5,48.45862070543273,7.212339,True,docs/evidence/downloaded-reader-startup-p0-2026-11-03.md,reported
+P0,dual_off,4,first,UNIT_DRAWN,,,,,,,,,,7.212339,True,docs/evidence/downloaded-reader-startup-p0-2026-11-03.md,not_measured
+P0,dual_on,4,first,UNIT_DRAWN,,,,,,,,,,7.212339,True,docs/evidence/downloaded-reader-startup-p0-2026-11-03.md,not_measured
+P1,single,0,first,FIRST_DRAW,,,,,,,,,,6.436466,True,docs/evidence/reader-startup-p1-2026-11-03.md,diagnostic only; no candidate
+P1,dual_off,4,first,UNIT_DRAWN,,,,,,,,,,6.436466,True,docs/evidence/reader-startup-p1-2026-11-03.md,not_measured
+P1,dual_on,4,first,UNIT_DRAWN,,,,,,,,,,6.436466,True,docs/evidence/reader-startup-p1-2026-11-03.md,not_measured
+P2,single,0,first,FIRST_DRAW,,,,,,,,,,11.660463,True,docs/evidence/reader-startup-p2-2026-11-03.md,diagnostic only; no candidate
+P2,dual_off,4,first,UNIT_DRAWN,,,,,,,,,,11.660463,True,docs/evidence/reader-startup-p2-2026-11-03.md,not_measured
+P2,dual_on,4,first,UNIT_DRAWN,,,,,,,,,,11.660463,True,docs/evidence/reader-startup-p2-2026-11-03.md,not_measured
+P3,single,0,first,FIRST_DRAW,-1.497,1.0,1.0,324.188,325.685,1.0,1.0,19.0,0.29259696266796936,64.935739,True,docs/evidence/reader-startup-p3-2026-11-03.md,reported
+P3,dual_off,4,first,UNIT_DRAWN,,,,,,,,,,64.935739,True,docs/evidence/reader-startup-p3-2026-11-03.md,not_measured
+P3,dual_on,4,first,UNIT_DRAWN,,,,,,,,,,64.935739,True,docs/evidence/reader-startup-p3-2026-11-03.md,not_measured
+P4,single,0,first,FIRST_DRAW,37.358073,2.0,2.0,320.402604,283.044531,2.0,2.0,33.0,1.2417982050822962,26.574366,True,docs/evidence/reader-startup-p4-2026-11-04.md,reported
+P4,dual_off,4,first,UNIT_DRAWN,,,,,,,,,,26.574366,True,docs/evidence/reader-startup-p4-2026-11-04.md,not_measured
+P4,dual_on,4,first,UNIT_DRAWN,,,,,,,,,,26.574366,True,docs/evidence/reader-startup-p4-2026-11-04.md,not_measured
+R1,single,0,first,FIRST_DRAW,-3.686,2.0,2.0,286.114,289.8,2.0,2.0,-0.5,-0.03164768280413661,15.798945,True,docs/evidence/reader-startup-autonomous-2026-11-04.md,reported
+R1,dual_off,4,first,UNIT_DRAWN,,,,,,,,,,15.798945,True,docs/evidence/reader-startup-autonomous-2026-11-04.md,reported
+R1,dual_on,4,first,UNIT_DRAWN,,,,,,,,,,15.798945,True,docs/evidence/reader-startup-autonomous-2026-11-04.md,reported
+R2,single,0,first,FIRST_DRAW,-17.453,1.0,1.0,282.455,299.907,1.0,1.0,1.0,0.017482637599240847,57.199607,True,docs/evidence/reader-startup-autonomous-2026-11-04.md,reported
+R2,dual_off,4,first,UNIT_DRAWN,124.819,1.0,1.0,498.043,373.224,1.0,1.0,131.0,2.290225525500551,57.199607,True,docs/evidence/reader-startup-autonomous-2026-11-04.md,reported
+R2,dual_on,4,first,UNIT_DRAWN,137.391,1.0,1.0,502.684,365.293,1.0,1.0,165.0,2.88463520387474,57.199607,True,docs/evidence/reader-startup-autonomous-2026-11-04.md,reported
+R3,single,4,first,FIRST_DRAW,0.605729,2,2,250.4624995,249.8567705,2,2,-9.5,-0.2355355335476112,40.333617,True,docs/evidence/reader-startup-autonomous-2026-11-04.md,rejected_no_confirmed_benefit; snapshot lower bound excludes closing responses/render/report/commit
+R3,dual_off,4,first,UNIT_DRAWN,-8.810156,2,2,358.0466145,366.8567705,2,2,-7.5,-0.18594910543232462,40.333617,True,docs/evidence/reader-startup-autonomous-2026-11-04.md,rejected_no_confirmed_benefit; snapshot lower bound excludes closing responses/render/report/commit
+R3,dual_on,4,first,UNIT_DRAWN,-13.226042,2,2,348.654948,361.880990,2,2,-25.0,-0.6198303514410821,40.333617,True,docs/evidence/reader-startup-autonomous-2026-11-04.md,rejected_no_confirmed_benefit; snapshot lower bound excludes closing responses/render/report/commit
