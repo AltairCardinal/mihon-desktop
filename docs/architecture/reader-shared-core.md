@@ -1,5 +1,11 @@
 # 阅读器共享核心架构
 
+## Android 双页事实回调的投影输入
+
+`DualPageViewerAdapter` 对有效事实继续返回“接受成功”，同值事实不会被当成拒收。仅事实回调根据当前 owner 已经实际投影的输入戳决定是否重建：layout、fact work、sample work 和 original header revision。`store.ensure` 可能先摄入事实，因此不能只比较一次 accept 调用前后；采样得到的 Computed 事实也可能保持不变，而原始 header 已变化。共享 `originalHeaderRevision` 只跟踪原始 header 的实际写入／失败 header 移除，不改变认证、事实接受或持久化语义。
+
+投影组装完成时固定消费的输入，在 native refresh／notify 前记录，避免同步回调把后来才 ensure 的事实误标为已经投影。手势期间的提前返回只保留 pending，不记消费；IDLE 沿原链路投影。记录仅保留当前章节窗口的 owner，关闭 adapter 时清理。主动导航、设置、显式重试／刷新仍走原有主动入口，不被事实去重门控。旧 owner／内容／请求的拒收继续由原身份校验负责；没有增加异步合批、图片缓存或新的持久化状态。回归由 `SharedDualPageAndroidWiringTest` 的十个 O2 方法与共享 header revision 契约覆盖；认证计数减少仅说明夹具中的实际工作消除，真机首绘收益另见 O 系列证据报告。
+
 ## Android 普通单页事实订阅的已摄入快照
 
 `PagerViewer.bindSingleFacts` 仍订阅当前章节窗口的逐页事实。窗口绑定时 `DualPagePairingStore.ensure` 已用真实内容身份摄入页表快照；每个新订阅只对第一次 StateFlow 回放使用绑定时固定的 entry 与已摄入快照。只有在初次回放仍等于该固定快照，且当前 chapter/pages/page 对象、当前 entry 的缓存快照（含事实、呈现版本、编码版本与重试序号）、当前事实、已处理重试序号及 owner 编码身份全部相符时才直接复用，避免每页再次扫描全章及重捕获视口。这个判断不无条件跳过首个事件，也不将未知事实当作不重要：订阅开始前替换内容、后续所有发射、元数据、重试或身份不匹配仍走原 ensure/acceptFact/呈现链。旧页表回调与销毁取消继续由原身份和生命周期检查拒收，不新增缓存、调度器或持久化权威。定向回归执行真实 R2LPagerViewer 和生产 store，检查初始无冗余扫描、元数据、重试先被另一个真实 ensure 摄入的交错、订阅前替换、窗口切换及销毁；真实漫画像素结算复用普通单页原生回归。

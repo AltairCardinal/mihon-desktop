@@ -16,6 +16,25 @@ import org.junit.jupiter.api.Test
 
 class SharedDualPageSessionContractTest {
     @Test
+    fun `original header revision changes only for accepted changed metadata`() {
+        val session = SharedDualPageSession(identity(3), ReaderDirection.RTL)
+        val page = session.identity.pageIds[1]
+        val portrait = ReaderPageFact.dimensions(40, 60)
+        val initial = session.originalHeaderRevision
+        val request = session.requestFact(page)
+        assertTrue(session.acceptFact(request, portrait))
+        val accepted = session.originalHeaderRevision
+        assertTrue(accepted > initial)
+        assertTrue(session.acceptFact(request, portrait))
+        assertTrue(session.acceptFact(session.requestFact(page), portrait))
+        assertEquals(accepted, session.originalHeaderRevision)
+        assertFalse(session.acceptFact(request, ReaderPageFact.dimensions(60, 40)))
+        assertEquals(accepted, session.originalHeaderRevision)
+        assertTrue(session.acceptFact(session.requestFact(page), ReaderPageFact.dimensions(60, 40)))
+        assertTrue(session.originalHeaderRevision > accepted)
+    }
+
+    @Test
     fun `same presentation configuration is idempotent for revisions cached units and active capabilities`() {
         for (matching in listOf(false, true)) {
             val session = SharedDualPageSession(identity(5), ReaderDirection.RTL)

@@ -72,6 +72,27 @@ class DualPageViewerAdapter(
     private val chapterPairings = store.chapters
     private var chapters: ViewerChapters? = null
     private var pendingPairing = false
+    private data class FactProjectionInput(
+        val layout: Long,
+        val facts: Long,
+        val samples: Long,
+        val headers: Long,
+    )
+
+    private val projectedFactInputs = mutableMapOf<SharedDualPageSession, FactProjectionInput>()
+
+    private fun SharedDualPageSession.factProjectionInput() =
+        FactProjectionInput(layoutRevision, factWorkRevision, sampleWorkRevision, originalHeaderRevision)
+
+    private fun recordProjectedFacts(inputs: Map<SharedDualPageSession, FactProjectionInput>) {
+        projectedFactInputs.keys.retainAll(inputs.keys)
+        projectedFactInputs.putAll(inputs)
+    }
+
+    private fun projectAcceptedFact(owner: SharedDualPageSession) {
+        if (projectedFactInputs[owner] != owner.factProjectionInput()) rebuildItems()
+    }
+
     private val scope = MainScope()
     private val foregroundCollectors = mutableMapOf<PageLoader, Job>()
 
@@ -202,6 +223,7 @@ class DualPageViewerAdapter(
 
     internal fun close() {
         scope.cancel()
+        projectedFactInputs.clear()
         presentationRefreshOwners.clear()
         chapterPairings.values.forEach {
             it.session.configurePresentationMode(mihon.domain.reader.ReaderPresentationMode.SINGLE)
@@ -358,7 +380,7 @@ class DualPageViewerAdapter(
         ) {
             return false
         }
-        rebuildItems()
+        projectAcceptedFact(owner)
         return true
     }
 
@@ -368,7 +390,7 @@ class DualPageViewerAdapter(
         if (pairing.session.identity.content[page.index].contentVersion != page.encodedContentIdentity()) return
         val request = pairing.session.requestFact(pairing.session.identity.pageIds[page.index])
         if (!pairing.session.acceptFact(request, fact)) return
-        rebuildItems()
+        projectAcceptedFact(pairing.session)
     }
 
     fun adjustPairing() {
@@ -544,7 +566,13 @@ class DualPageViewerAdapter(
             }
         }
         val replacement = (if (viewer.isRtl) logical.asReversed() else logical).toMutableList()
+        // Capture the inputs actually assembled, before native refresh/notify can admit newer facts.
+        // A gesture return above never consumes its pending inputs.
+        val consumedInputs = window.mapNotNull { chapter ->
+            chapterPairings[chapter]?.session?.let { it to it.factProjectionInput() }
+        }.toMap()
         if (items == replacement) {
+            recordProjectedFacts(consumedInputs)
             // Metadata can change certainty and the presentation capability without changing physical slots.
             viewer.refreshPresentation()
             return
@@ -553,6 +581,7 @@ class DualPageViewerAdapter(
         val layoutOnly = targetPage == null && selected is DisplayPage && selected.firstPage.chapter === currentChapter
         viewer.replacePairing(anchor, layoutOnly, retainedTransition) {
             items = replacement
+            recordProjectedFacts(consumedInputs)
             notifyDataSetChanged()
         }
         viewer.logNavigationState("rebuild")

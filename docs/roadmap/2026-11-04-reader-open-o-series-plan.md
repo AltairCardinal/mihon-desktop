@@ -2,7 +2,7 @@
 
 日期：2026-11-04。用户明确授权执行主线程审查提出的优化方案并逐项测量，Sol/Luna执行，主代理监管与独立实现审查。起点 `2425aca5e53112a4d3214cf398f62c04e6b6ff88`；已采用产品仍为R2。旧R3/R4H候选未采用。此次范围为Android真实生产路径，Windows只运行共享变更直接影响的focused契约，不另做Windows性能宣称。
 
-active-task: O2去重候选构建与OFF/ON测量（O1已完成20样本分析、不采用并归档恢复）
+active-task: O3成功恢复门控候选取证与测量（O1不采用；O2低成本去冗余采用，12样本收口）
 
 ## 新 Sol 会话从这里接手
 
@@ -49,6 +49,8 @@ active-task: O2去重候选构建与OFF/ON测量（O1已完成20样本分析、�
 
 ### O2已准备的设计与测试草稿
 
+2026-11-05续跑更新：已在真实adapter取得同值回调认证计数4→8的RED；最小输入戳实现后10项Android接线、1项共享header revision契约及app/domain格式GREEN，Sol独立审查PASS。O1已恢复，O2单独benchmark构建通过（2m17s），APK SHA `84e3be9b15c1c94acdc451a94a0e83583e43ba1a82517833588f849a564f4cb3`。当前在原目录独立`measurement-o2/`按OFF/ON各6份共12份测量，不混入O1样本。后续源码出现的O3测试草稿不在该冻结APK内；下面原交接文字作为准备阶段历史保留。
+
 目前只有测试准备，**没有O2生产实现、没有RED/GREEN、没有构建或收益**。实际文件与selectors以交接收尾段和`git diff`为准，不把草稿当验证通过。
 
 Sol最终回执：只新增`app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/SharedDualPageAndroidWiringTest.kt`的10个方法及共用fixture；原拟`SharedDualPageSessionContractTest.kt`尚未编写。采样完成条件、同步计数窗口、手势/notify重入夹具仍待首轮验证；production及O1文件未因此改变，无活动测试/构建进程。先仅运行第一个真实RED，确认失败原因再扩大到本项确需保护的其他方法，不一次启动整个模块。
@@ -75,6 +77,8 @@ O2 notify reentry cannot mark a later ensured fact as already projected
 - 使用真实adapter公开`updatePageDimensions`、store.ensure、已存在的certificationMetrics/DataSetObserver等证据；覆盖同值去重、真变化、ensure先摄入、header独立变化、owner替换/重试、手势pending及已绘票据。指标是实际认证工作次数，不能冒称精确重建次数。
 
 ### O3/O4已完成的只读设计
+
+2026-11-05续跑测试准备：`AndroidChapterPairingPersistenceWiringTest`新增`O3 successful restore after single first draw does not reload ordinary viewer`、webtoon对应方法，以及`O3 AUTO portrait success does not reload actual single viewer`、`O3 AUTO restore refreshes actual landscape dual after portrait open`，使用真实成功恢复/原生首绘/实际eventFlow→Activity接线及模式切换。另有`O4 init queries original chapters once for small and large lists`、`O4 SHOW_ALL init skips per chapter download lookup`两个真实VM初始化草稿（单章与300额外章节）。O3后续已取得真实首绘后成功恢复的RED（Reload期望0实际1），最小实际viewer判断实现后四新+五既有共9项GREEN，格式通过；尚待取证/构建/测量及提交。O4仅为草稿，未运行RED/GREEN、production未修改；编译/格式必要机械修正不算验证通过。
 
 - **O3**：优先在`AndroidChapterPairingPersistenceWiringTest`建立成功的受控repository.load回调，single/webtoon实际首绘后释放成功恢复，真实eventFlow→activity.handleReaderEvent应不再收到无效Reload；现有失败回调用例不能充当该RED。门控仅限恢复成功结尾，按完成时真实viewer判断，不用保存readingMode或发起时模式。保留数据恢复、可用性、INVALID_RECORD反馈、旧请求拒收及后续切双页。dual即使物理分组相同也可能需要RESTORING→READY后的认证/原图准备，不能仅凭layoutRevision或“same items”删Reload；先保留，再有真实轻刷新接线证据才优化。
 - **O4**：用真实ReaderViewModel.init接线断言初始章节查询2→1、SHOW_ALL且非downloadedOnly时逐章下载判断归零。复用第一次得到的原始Domain列表，仍在原子openChapter返回后按opened.manga和更新的当前章排序/过滤；不预先缓存按旧manga处理的ReaderChapter。catalog refresh仍真实再查，downloadedOnly的独立DownloadCache过滤仍保留。下载惰性先在Android调用点只为SHOW_DOWNLOADED/SHOW_NOT_DOWNLOADED求值，不改共享Boolean API或复制整个过滤算法。
@@ -125,7 +129,9 @@ O1定向追加：A1/B1单页首次与暖态差值方向不同，故B2/A2仅singl
 
 只改单/双holder图像准备和必要的ReaderPage元信息接口。读取一次完整编码Buffer，从同一数据取得真实原图尺寸/完整EXIF方向、动画、背景等；避免header独立IO→Main→再读IO及双页额外尺寸往返。首次显示之前先建立正确方向/内容绑定，不能先显示错误朝向再补事实。保留失败重试、取消、stream/encoded身份变化和已绘伙伴。先真实测试旧实现的额外开流/往返及生产接线，再实现；与R3只复用流的已否决候选区分。测single/OFF/ON，报告净端点与动作迁移。
 
-### [ ] O2：避免无变化事实引发冗余双页重建
+### [x] O2：避免无变化事实引发冗余双页重建
+
+2026-11-05：真实RED、10项Android+1项共享/格式、独立审查、O2单独APK及12份对照完成。保留明确低成本去冗余，时延方向混合不承诺稳定体验收益；实际OFF正常往返/恢复通过，实际ON既有回翻异常单列。误标OFF的ON记录已更正。详见唯一报告O2最终结果。
 
 区分事实“接收成功”和“改变呈现输入”，不直接把公共Boolean接受语义改成变化语义。同值事实不使plan失效，现有items相等返回/拖动延迟仍保留；测试实际adapter调用及同值/真变化/迟到/手势交错。若同一轮Main合并重建，保证主动导航、源页锚点、已绘锁定与完整票据一致。测OFF/ON，操作计数与首绘分别报告，不将所有rebuild入口算作完整算法重算。
 

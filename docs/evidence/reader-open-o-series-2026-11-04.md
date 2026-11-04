@@ -46,7 +46,7 @@ A1重装同一控制APK后，`conditions-o1-a1-install.json` 成功读回当前o
 | 项目 | 状态 | 有效性能样本 | 实测净收益 | 采用状态 |
 | --- | --- | --- | --- | --- |
 | O1 合并图片准备IO与Main往返 | 测量/分析收口，候选补丁归档并恢复基线 | 20（A2为隔夜补充控制） | 未证明跨模式稳定净收益；详见最终裁决 | 不采用 |
-| O2 双页事实变化与冗余重建 | 真实RED→最小实现；10项Android/1项共享/格式通过，独立审查PASS | 0 | 夹具同值回调认证增量4→0；首绘尚未测量 | 候选，待测量 |
+| O2 双页事实变化与冗余重建 | 10项Android/1项共享/格式与独立审查通过；12份真机对照及正常OFF往返收口 | 12 | 同值回调认证增量4→0；真实时延方向混合 | 保留低成本去冗余，不承诺稳定体验收益 |
 | O3 配对恢复按需重绑 | 未实施 | 0 | 尚未测量 | 待执行 |
 | O4 列表复用与惰性下载过滤 | 未实施 | 0 | 尚未测量 | 待执行 |
 | O5 AUTO首次布局 | 未取证 | 0 | 尚未测量 | 待执行 |
@@ -215,3 +215,66 @@ FIRST_DRAW/UNIT是probe绘制回调，非物理呈现；CPU是PAGE_LIST_READY→
 - 最终设备读回probe enabled=false、隔离包force-stop、Asleep且mWakefulnessChanging=false；实际留装A控制SHA `259c0d98b00deeca6a1254f753f2ffe0be2e6a7d8f541db74b117de6cfdadfc6`、OAT verify/install。无本任务采集/trace进程，ADB server保留。
 
 O1以“不采用且证据/补丁归档、源码恢复”的路径完成；其余清单继续执行。
+
+## O2 最终结果（2026-11-05）
+
+**采用低成本去冗余；未证实稳定的体验净收益。** 真实adapter的同值事实仍返回接受成功；旧实现两次同值回调使认证entries从4增至8，新实现保持4，消除了这组回调的4次真实认证入口。该计数是focused夹具中的认证工作，不是精确rebuild次数，也不外推真机整次打开的节省次数。
+
+实现仅在当前owner还有未实际投影输入时重建，输入含layout/fact/sample/original header版本；ensure先摄入、Computed事实保留而header变化、重试、手势pending、owner替换及notify重入均有真实接线覆盖。主动导航/设置/显式重试仍走既有入口，不加异步合批或图片缓存。共享新增只读header revision不改变接受Boolean/认证/持久化语义。
+
+### 验证、产物与条件
+
+- 真实RED：`.test-tmp/reader-open-o-series-20261104/o2/duplicate-red.xml/log`，expected4/actual8，三个失败记录是同一方法的自动重试。最终10个O2 Android真实接线方法、1个共享header revision契约通过，app/domain格式通过；原件`o2/focused-green.xml/log`、`header-revision-green.xml`。首轮因方法名行宽失败仅缩短名称；第二轮GREEN后O1候选8文件已恢复，再运行全部10项通过。
+- 独立Sol审查PASS，覆盖header所有写入、owner/window清理、手势与重入边界，没有阻塞发现。七个交付文件属于同一个事实投影批次，主体测试是10个真实adapter边界，不按行数拆成不完整协议。
+- 冻结benchmark包：权威worktree `app/artifacts/android/diagnostics/reader-open-o2-20261104/Mihon-Fork-reader-open-o2-benchmark-universal.apk`，SHA `84e3be9b15c1c94acdc451a94a0e83583e43ba1a82517833588f849a564f4cb3`。code134、非debug、R8/资源压缩、原benchmark证书已核；构建2m17s，源基线220ec6f586加O2两production文件与测试diff，冻结29文件及production fingerprint。O1不在此包。后来准备的O3/O4测试/实现不属于本冻结包。
+- 对照原件独立位于原目录 `.test-tmp/reader-open-o-series-20261104/measurement-o2/`，不覆盖O1。OFF/ON每模式A1首次/暖、B1首次/暖、B2首次、A2首次，共12份request级VALID；各安装块正常重装、实际SHA及OAT均verify/install，每模式一次无录制预热后强停进入首次。A2本轮确实新重装，非O1的隔夜续接。
+- A1在正式采样前的准备错组、一次双预热、唤醒/参数和JSON尾字面换行错误均保留过程原件与历史；A1正式前已重新安装并恢复一次预热协议，未重录有效样本。标签/config不能代替真实设置：主代理核A2 OFF空框、ON勾选及正式原图。
+- 健康信息保留：A1 ON首次、B1 ON暖态各有negative_timestamp_dropped=1；这些行加†，不能定位被丢事件影响。其余匹配error/drop等为0/null；所有样本还有info级traced_chunks_discarded=156–167，不能把它当作每份丢包数或声称零丢失。完整schema/SQL/输出在analysis中。
+- 主代理独立核12段连续原PTS及较大四/五边界图；Luna另核原PTS/算术。`analysis/video-reviewed.json`保存逐帧选择和视频SHA。A1 ON暖态先出现地图，targetFrame40、完整41，其余先标题再地图。近黑由首部分正确漫画结束，视频绝对输入映射未建立；所有完整单元后至录制结束的原生帧扫描均未再近黑，中心灰度最小约83/255，仅是无再黑筛查，不等同物理呈现证明。
+
+### 完整逐样本净端点（毫秒）
+
+CPU是PAGE_LIST_READY→完整UNIT的main Running；target首绘与UNIT分列，尤其A1 ON暖态不可混用。
+
+| 样本 | DOWN→target | DOWN→UNIT | VM→target | 页表后CPU | 近黑界限 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| o2-a1-dual-off-first | 455.663 | 455.890 | 389.113 | 174.857 | 147–184 |
+| o2-a1-dual-off-warm | 350.558 | 350.708 | 300.692 | 147.963 | 83–116 |
+| o2-a1-dual-on-first† | 401.730 | 401.940 | 338.140 | 172.626 | 67–97 |
+| o2-a1-dual-on-warm | 308.861 | 326.085 | 263.389 | 128.247 | 50–84 |
+| o2-b1-dual-off-first | 401.609 | 401.890 | 340.764 | 166.394 | 82–116 |
+| o2-b1-dual-off-warm | 367.238 | 367.397 | 316.534 | 136.835 | 83–117 |
+| o2-b1-dual-on-first | 394.634 | 394.880 | 332.281 | 164.080 | 67–99 |
+| o2-b1-dual-on-warm† | 346.425 | 346.643 | 299.092 | 134.318 | 66–100 |
+| o2-b2-dual-off | 402.932 | 403.157 | 341.485 | 170.558 | 67–100 |
+| o2-b2-dual-on | 375.648 | 375.832 | 314.526 | 153.200 | 66–100 |
+| o2-a2-dual-off | 411.263 | 411.479 | 347.127 | 178.858 | 83–115 |
+| o2-a2-dual-on | 391.762 | 391.926 | 336.792 | 172.453 | 83–115 |
+
+### 系统端点与相同probe区间（毫秒）
+
+| 样本 | DOWN→StartActivity | →performCreate | →Reader TX | holder→image | image→decode | decode→target | decode→UNIT |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| o2-a1-dual-off-first | 34.318 | 55.965 | 118.525 | 20.424 | 95.084 | 139.766 | 139.993 |
+| o2-a1-dual-off-warm | 27.244 | 41.035 | 99.282 | 14.550 | 55.416 | 130.540 | 130.690 |
+| o2-a1-dual-on-first | 30.767 | 51.230 | 122.699 | 23.852 | 66.361 | 134.434 | 134.644 |
+| o2-a1-dual-on-warm | 21.626 | 37.802 | 79.544 | 11.064 | 41.051 | 111.449 | 128.672 |
+| o2-b1-dual-off-first | 29.729 | 48.879 | 111.710 | 35.572 | 50.062 | 134.786 | 135.067 |
+| o2-b1-dual-off-warm | 23.738 | 42.414 | 101.857 | 16.408 | 34.092 | 156.963 | 157.122 |
+| o2-b1-dual-on-first | 30.856 | 52.505 | 113.307 | 18.557 | 46.815 | 143.325 | 143.571 |
+| o2-b1-dual-on-warm | 24.017 | 39.006 | 87.099 | 13.591 | 58.039 | 122.995 | 123.213 |
+| o2-b2-dual-off | 30.740 | 48.343 | 111.752 | 18.845 | 56.898 | 136.613 | 136.838 |
+| o2-b2-dual-on | 29.876 | 48.819 | 115.061 | 27.740 | 45.417 | 115.002 | 115.186 |
+| o2-a2-dual-off | 27.904 | 49.523 | 125.935 | 28.068 | 48.204 | 134.044 | 134.259 |
+| o2-a2-dual-on | 26.764 | 43.130 | 103.268 | 21.230 | 55.005 | 133.044 | 133.208 |
+
+### 分组与正确性裁决
+
+- OFF首次target：A 455.663/411.263，B 401.609/402.932；首次CPU A174.857/178.858，B166.394/170.558，有较快方向。暖态A/B target 350.558/367.238，候选反而多16.680ms。
+- ON首次target：A401.730†/391.763，B394.634/375.648，候选有较快方向；暖态A/B target308.861/346.425†，UNIT326.085/346.643†。不能用A1提前画出地图的target直接替代完整双页，也不忽略暖态变慢。
+- 每臂两个首次、一个暖态且trace有上述限制，方向混合，小样本不能宣称稳定净收益或P95。保留依据是明确低成本去冗余、原接受/生命周期语义保持、真实接线及正常OFF路径正确；不为追显著性无限追加样本，不把各优化数字相加。
+- 关闭probe的候选正常OFF核验，主代理先以实际空复选框确认OFF：起始5地图左/标题右→6角色/目录→返回5原双图，0.7s后仍同图；正常退出详情第5页、再打开仍同图。`correctness-root-b2-off/reader-open|return|return-stable|reopen.png` SHA均`b8defc586a6cf2f6ab6a65c92b03aaec39c8d88374437cc102747a91ee7face4`。此为实际画面稳定旁证，不冒称native IDLE。
+- 先前`correctness-b2-dual-off`仅目录标签OFF，脚本未切实际开关，前置B2 ON设置一直保持ON。其5→6→4、左标题右蓝页记录已明确更正为**实际ON**，撤回OFF回归说法；不能拿探针enabled=false当匹配OFF。该ON现象与已有同一A/R2控制及此前候选的异常一致（既有P4/本报告O1交接证据），保留为未修复的既有ON边界，不宣称正常ON往返通过，也不扩大修配对算法。
+- 最终两份A2原图仍与固定正确双图SHA一致。`root-final-cleanup/verified.json`实际读回probe=false、Asleep且mWakefulnessChanging=false，实际留装A控制259c0d98…dadfc6；无本任务采集进程，ADB server保留。
+
+采用不等于性能整体达标、正式发布或用户验收。后续以本O2版本作为已采用基线；O3当前仅TDD完成，尚未测量/提交。

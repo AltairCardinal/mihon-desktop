@@ -35,6 +35,8 @@ import kotlinx.coroutines.test.setMain
 import mihon.domain.reader.ReaderAnalysisFailure
 import mihon.domain.reader.ReaderDualPageFactReadPermit
 import mihon.domain.reader.ReaderPageAnalysisEvidence
+import mihon.domain.reader.ReaderPageFactState
+import mihon.domain.reader.SharedDualPageSession
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -67,6 +69,293 @@ class SharedDualPageAndroidWiringTest {
     private lateinit var viewer: DualPageR2LPagerViewer
     private lateinit var activity: RecordingReaderActivity
     private lateinit var model: ReaderViewModel
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `O2 equal dimension callbacks stay accepted without another certification request`() = runBlocking {
+        val fixture = o2Facts()
+        val page = fixture.pages[1]
+        val before = fixture.owner.certificationMetrics.entries
+        viewer.adapter.updatePageDimensions(page, 40, 60)
+        assertTrue(viewer.adapter.acceptDecodedDimensions(page, viewer.adapter.captureDimensions(page), 40, 60))
+        assertEquals(
+            "An accepted duplicate must not re-enter the actual adapter certification work",
+            before,
+            fixture.owner.certificationMetrics.entries,
+        )
+        assertO2Projection(fixture)
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `O2 a fact consumed by ensure still reaches the native adapter projection`() = runBlocking {
+        val fixture = o2Facts(deferredHeader = 1, deferredWidth = 60, deferredHeight = 40)
+        val page = fixture.pages[1]
+        val oldLayout = fixture.owner.layoutRevision
+        page.publishHeaderFact()
+        val admitted = o2Store().ensure(fixture.chapter, fixture.pages)
+        assertSame(fixture.owner, admitted.session)
+        assertEquals(ReaderPageFactState.SPREAD, fixture.owner.pageFact(fixture.owner.identity.pageIds[1])?.state)
+        assertTrue(fixture.owner.layoutRevision > oldLayout)
+        val before = fixture.owner.certificationMetrics.entries
+        assertTrue(viewer.adapter.acceptDecodedDimensions(page, viewer.adapter.captureDimensions(page), 60, 40))
+        assertTrue(
+            "ensure already changed the owner; comparing only this accept call would lose its projection",
+            fixture.owner.certificationMetrics.entries > before,
+        )
+        assertO2Projection(fixture)
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `O2 changed dimensions project once while their repeated accepted value does no new certification`() =
+        runBlocking {
+            val fixture = o2Facts()
+            val page = fixture.pages[1]
+            val location = fixture.owner.location
+            val before = fixture.owner.certificationMetrics.entries
+            viewer.adapter.updatePageDimensions(page, 60, 40)
+            assertEquals(ReaderPageFactState.SPREAD, fixture.owner.pageFact(fixture.owner.identity.pageIds[1])?.state)
+            assertTrue(fixture.owner.certificationMetrics.entries > before)
+            assertEquals(location, fixture.owner.location)
+            assertO2Projection(fixture)
+            val projected = fixture.owner.certificationMetrics.entries
+            assertTrue(viewer.adapter.acceptDecodedDimensions(page, viewer.adapter.captureDimensions(page), 60, 40))
+            assertEquals(projected, fixture.owner.certificationMetrics.entries)
+        }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `O2 changed original header still projects when computed original facts retain their value`() = runBlocking {
+        val fixture = o2Facts(sampleOriginals = true)
+        val page = fixture.pages[0]
+        val id = fixture.owner.identity.pageIds[0]
+        assertTrue(fixture.owner.originalAnalysis(id) is ReaderPageAnalysisEvidence.Computed)
+        val retained = fixture.owner.pageFact(id)
+        val before = fixture.owner.certificationMetrics.entries
+        assertTrue(viewer.adapter.acceptDecodedDimensions(page, viewer.adapter.captureDimensions(page), 60, 40))
+        assertEquals("Computed original evidence remains authoritative", retained, fixture.owner.pageFact(id))
+        assertTrue(
+            "A changed header is a certification input even when the effective sampled fact is retained",
+            fixture.owner.certificationMetrics.entries > before,
+        )
+        val projected = fixture.owner.certificationMetrics.entries
+        assertTrue(viewer.adapter.acceptDecodedDimensions(page, viewer.adapter.captureDimensions(page), 60, 40))
+        assertEquals(projected, fixture.owner.certificationMetrics.entries)
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `O2 replacement rejects old facts and projects new owner before deduplication`() = runBlocking {
+        val fixture = o2Facts()
+        val page = fixture.pages[1]
+        val oldRequest = viewer.adapter.captureDimensions(page)
+        val replacement = readerTestPng(40, 60)
+        page.stream = { replacement.inputStream() }
+        page.publishHeaderFact()
+        val next = o2Store().ensure(fixture.chapter, fixture.pages).session
+        assertNotSame(fixture.owner, next)
+        val before = next.certificationMetrics.entries
+        assertFalse(viewer.adapter.acceptDecodedDimensions(page, oldRequest, 40, 60))
+        assertEquals(before, next.certificationMetrics.entries)
+        assertTrue(viewer.adapter.acceptDecodedDimensions(page, viewer.adapter.captureDimensions(page), 40, 60))
+        assertTrue(next.certificationMetrics.entries > before)
+        assertO2Projection(fixture.copy(owner = next))
+        val projected = next.certificationMetrics.entries
+        assertTrue(viewer.adapter.acceptDecodedDimensions(page, viewer.adapter.captureDimensions(page), 40, 60))
+        assertEquals(projected, next.certificationMetrics.entries)
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `O2 retry sequence still refreshes equal facts before later duplicates are skipped`() = runBlocking {
+        val fixture = o2Facts()
+        val location = fixture.owner.location
+        val revision = fixture.owner.factWorkRevision
+        val before = fixture.owner.certificationMetrics.entries
+        fixture.pages[1].retryHeaderFact()
+        mainDispatcher.scheduler.runCurrent()
+        assertTrue(fixture.owner.factWorkRevision > revision)
+        assertTrue(fixture.owner.certificationMetrics.entries > before)
+        assertEquals(location, fixture.owner.location)
+        assertO2Projection(fixture)
+        val projected = fixture.owner.certificationMetrics.entries
+        viewer.adapter.updatePageDimensions(fixture.pages[1], 40, 60)
+        assertEquals(projected, fixture.owner.certificationMetrics.entries)
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `O2 changed facts remain pending throughout a native gesture and project at idle`() = runBlocking {
+        val fixture = o2Facts()
+        val listener = gestureListener()
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_DRAGGING)
+        assertTrue(viewer.hasActiveGesture)
+        val held = viewer.adapter.items.toList()
+        val before = fixture.owner.certificationMetrics.entries
+        viewer.adapter.updatePageDimensions(fixture.pages[1], 60, 40)
+        assertEquals(held, viewer.adapter.items)
+        assertEquals(before, fixture.owner.certificationMetrics.entries)
+        assertTrue(ReflectionHelpers.getField<Boolean>(viewer.adapter, "pendingPairing"))
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_IDLE)
+        assertFalse(viewer.hasActiveGesture)
+        assertFalse(ReflectionHelpers.getField<Boolean>(viewer.adapter, "pendingPairing"))
+        assertTrue(fixture.owner.certificationMetrics.entries > before)
+        assertO2Projection(fixture)
+        val projected = fixture.owner.certificationMetrics.entries
+        viewer.adapter.updatePageDimensions(fixture.pages[1], 60, 40)
+        assertEquals(projected, fixture.owner.certificationMetrics.entries)
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `O2 duplicate accepted facts preserve the drawn frame ticket and location`() = runBlocking {
+        val fixture = o2Facts()
+        val ticket = requireNotNull(fixture.owner.captureViewport(preparingPageIds = emptySet()))
+        val ids = requireNotNull(fixture.owner.frame(ticket)).unit.pageIds.toSet()
+        ids.forEach { assertTrue(fixture.owner.preparePage(ticket, it)) }
+        assertTrue(fixture.owner.reportDrawn(ticket, ids))
+        val frame = requireNotNull(fixture.owner.frame(ticket))
+        val location = fixture.owner.location
+        val before = fixture.owner.certificationMetrics.entries
+        repeat(3) {
+            assertTrue(
+                viewer.adapter.acceptDecodedDimensions(
+                    fixture.pages[0],
+                    viewer.adapter.captureDimensions(fixture.pages[0]),
+                    40,
+                    60,
+                ),
+            )
+        }
+        assertEquals(before, fixture.owner.certificationMetrics.entries)
+        assertEquals(frame, fixture.owner.frame(ticket))
+        assertEquals(location, fixture.owner.location)
+        assertEquals(ids, fixture.owner.frame(ticket)?.drawnPageIds)
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `O2 explicit sample failure refresh remains active before equal fact callbacks are skipped`() = runBlocking {
+        val fixture = o2Facts()
+        val layout = fixture.owner.layoutRevision
+        val work = fixture.owner.sampleWorkRevision
+        val request = requireNotNull(fixture.owner.requestOriginalAnalysis(fixture.owner.identity.pageIds[1]))
+        assertTrue(fixture.owner.failOriginalAnalysis(request, ReaderAnalysisFailure.RESOURCE))
+        assertEquals(layout, fixture.owner.layoutRevision)
+        assertTrue(fixture.owner.sampleWorkRevision > work)
+        val before = fixture.owner.certificationMetrics.entries
+        // This existing explicit matching refresh remains outside fact-event deduplication.
+        viewer.adapter.refreshPairing()
+        assertTrue(fixture.owner.certificationMetrics.entries > before)
+        val projected = fixture.owner.certificationMetrics.entries
+        viewer.adapter.updatePageDimensions(fixture.pages[1], 40, 60)
+        assertEquals(projected, fixture.owner.certificationMetrics.entries)
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `O2 notify reentry cannot mark a later ensured fact as already projected`() = runBlocking {
+        val fixture = o2Facts(deferredHeader = 2)
+        var injected = false
+        val observer = object : android.database.DataSetObserver() {
+            override fun onChanged() {
+                if (injected) return
+                injected = true
+                fixture.pages[2].publishHeaderFact()
+                assertSame(fixture.owner, o2Store().ensure(fixture.chapter, fixture.pages).session)
+            }
+        }
+        viewer.adapter.registerDataSetObserver(observer)
+        try {
+            viewer.adapter.updatePageDimensions(fixture.pages[1], 60, 40)
+            assertTrue("A real adapter notify must synchronously admit the later fact", injected)
+            val before = fixture.owner.certificationMetrics.entries
+            assertTrue(
+                viewer.adapter.acceptDecodedDimensions(
+                    fixture.pages[2],
+                    viewer.adapter.captureDimensions(fixture.pages[2]),
+                    40,
+                    60,
+                ),
+            )
+            assertTrue(
+                "The outer projection consumed older input; the reentrant ensured fact still owes projection",
+                fixture.owner.certificationMetrics.entries > before,
+            )
+            assertO2Projection(fixture)
+        } finally {
+            viewer.adapter.unregisterDataSetObserver(observer)
+        }
+    }
+
+    private data class O2FactFixture(
+        val chapter: ReaderChapter,
+        val pages: List<ReaderPage>,
+        val owner: SharedDualPageSession,
+    )
+
+    private fun o2Store(): DualPagePairingStore = ReflectionHelpers.getField(viewer.adapter, "store")
+
+    private suspend fun o2Facts(
+        deferredHeader: Int? = null,
+        deferredWidth: Int = 40,
+        deferredHeight: Int = 60,
+        sampleOriginals: Boolean = false,
+    ): O2FactFixture {
+        val chapter = chapter(5)
+        val pages = requireNotNull(chapter.pages)
+        pages.forEach { page ->
+            val bytes = if (page.index == deferredHeader) {
+                readerTestPng(deferredWidth, deferredHeight)
+            } else {
+                readerTestPng(40, 60)
+            }
+            page.stream = { bytes.inputStream() }
+            page.status = eu.kanade.tachiyomi.source.model.Page.State.Ready
+            if (page.index != deferredHeader) page.publishHeaderFact()
+        }
+        chapter.pageLoader = object : eu.kanade.tachiyomi.ui.reader.loader.PageLoader() {
+            override var isLocal = true
+            override val hasForegroundWork = !sampleOriginals
+            override suspend fun getPages() = pages
+        }
+        val reads = java.util.concurrent.atomic.AtomicInteger()
+        val releases = java.util.concurrent.atomic.AtomicInteger()
+        viewer.adapter.spreadDecoderFactory = { stream ->
+            reads.incrementAndGet()
+            eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(stream) { releases.incrementAndGet() }
+        }
+        Injekt.get<ReaderPreferences>().automaticSpreadMatching().set(sampleOriginals)
+        mainDispatcher.scheduler.runCurrent()
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        val owner = requireNotNull(viewer.adapter.session(chapter))
+        val deadline = System.nanoTime() + 5_000_000_000L
+        do {
+            mainDispatcher.scheduler.runCurrent()
+            val job = ReflectionHelpers.getField<kotlinx.coroutines.Job?>(viewer.adapter, "matchingJob")
+            val originalsReady = !sampleOriginals || owner.identity.pageIds.all {
+                owner.originalAnalysis(it) is ReaderPageAnalysisEvidence.Computed
+            }
+            if (job?.isCompleted != false && AndroidReaderSpreadSampler.optionalWork.value == 0 && originalsReady) {
+                if (sampleOriginals) {
+                    assertTrue(reads.get() > 0)
+                    assertEquals(reads.get(), releases.get())
+                }
+                return O2FactFixture(chapter, pages, owner)
+            }
+            kotlinx.coroutines.delay(5)
+        } while (System.nanoTime() < deadline)
+        error("O2 fixture did not finish its real matching/sampling work")
+    }
+
+    private fun assertO2Projection(fixture: O2FactFixture) {
+        val actual = viewer.adapter.items.filterIsInstance<DisplayPage>()
+            .filter { it.firstPage.chapter === fixture.chapter }.map { it.frameId }.toSet()
+        val expected = fixture.owner.presentationFrames.map { it.frameId }.toSet()
+        assertTrue(expected.isNotEmpty())
+        assertEquals("The actual native adapter must contain the current owner's frame projection", expected, actual)
+    }
 
     @Before
     fun setUp() {

@@ -100,6 +100,16 @@ class SharedDualPageSession(
     private var navigationForward = true
     private val facts = mutableMapOf<ReaderPageId, ReaderPageFact>()
     private val originalHeaders = mutableMapOf<ReaderPageId, ReaderPageFact>()
+
+    /** Header changes can affect certification even when computed original facts remain authoritative. */
+    var originalHeaderRevision: Long = 0
+        private set
+
+    private fun setOriginalHeader(pageId: ReaderPageId, fact: ReaderPageFact) {
+        if (originalHeaders[pageId] == fact) return
+        originalHeaders[pageId] = fact
+        originalHeaderRevision++
+    }
     private val requests = mutableMapOf<ReaderPageId, ReaderDualPageFactRequest>()
     private val accepted = mutableMapOf<Long, ReaderPageFact>()
     private var nextRequestId = 0L
@@ -389,8 +399,10 @@ class SharedDualPageSession(
         publications.forEachIndexed { index, publication ->
             check(spreadSamples.acceptOriginal(publication.request, originals[index], publication.samples.edges))
             facts[publication.request.content.pageId] = originals[index]
-            originalHeaders[publication.request.content.pageId] =
-                originals[index].copy(sideHint = ReaderPageSideHint.UNKNOWN)
+            setOriginalHeader(
+                publication.request.content.pageId,
+                originals[index].copy(sideHint = ReaderPageSideHint.UNKNOWN),
+            )
         }
         sampleWorkRevision++
         rebuild()
@@ -494,6 +506,7 @@ class SharedDualPageSession(
         ownsFactBudget = false
         next.facts.putAll(facts.filterKeys { it in unchanged })
         next.originalHeaders.putAll(originalHeaders.filterKeys { it in unchanged })
+        next.originalHeaderRevision = originalHeaderRevision
         next.layoutRevision = layoutRevision + 1
         next.presentation.configure(direction, automaticMatching, presentationMode == ReaderPresentationMode.SINGLE)
         next.presentation.inheritProgress(presentation)
@@ -537,7 +550,7 @@ class SharedDualPageSession(
         requests.clear()
         accepted.clear()
         facts.entries.removeAll { it.value.state == ReaderPageFactState.FAILED }
-        originalHeaders.entries.removeAll { it.value.state == ReaderPageFactState.FAILED }
+        if (originalHeaders.entries.removeAll { it.value.state == ReaderPageFactState.FAILED }) originalHeaderRevision++
         spreadSamples.retryFailures()
         factBudget.close()
         factBudget = ReaderDualPageFactBudget()
@@ -609,7 +622,7 @@ class SharedDualPageSession(
         if (fact.state in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD) ||
             previousHeader?.state !in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD)
         ) {
-            originalHeaders[request.content.pageId] = fact.copy(sideHint = ReaderPageSideHint.UNKNOWN)
+            setOriginalHeader(request.content.pageId, fact.copy(sideHint = ReaderPageSideHint.UNKNOWN))
         }
         val original = spreadSamples.pageAnalysis(request.content.pageId) as? ReaderPageAnalysisEvidence.Computed
         val retained = if (original != null && original.content.sourceOrientation == fact.sourceOrientation) {
