@@ -31,6 +31,7 @@ object ReaderOpenLatencyProbe {
         "VIEWER_CHAPTERS_APPLY_ENTER", "PAGER_ADAPTER_READY", "TARGET_HOLDER_CREATED",
         "TARGET_LOAD_ENTER", "TARGET_STATUS_COLLECT", "TARGET_READY_ENTER",
         "UNIT_DRAWN",
+        "PAIRING_RECORD_EMPTY", "PAIRING_RECORD_VALID", "PAIRING_RECORD_INVALID",
     )
     private class TargetBinding(chapter: Any, pages: Any, targetPageObject: Any) {
         val chapter = WeakReference(chapter)

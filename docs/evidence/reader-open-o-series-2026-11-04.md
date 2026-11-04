@@ -278,3 +278,114 @@ CPU是PAGE_LIST_READY→完整UNIT的main Running；target首绘与UNIT分列，
 - 最终两份A2原图仍与固定正确双图SHA一致。`root-final-cleanup/verified.json`实际读回probe=false、Asleep且mWakefulnessChanging=false，实际留装A控制259c0d98…dadfc6；无本任务采集进程，ADB server保留。
 
 采用不等于性能整体达标、正式发布或用户验收。后续以本O2版本作为已采用基线；O3当前仅TDD完成，尚未测量/提交。
+
+## O3 当前取证：成功恢复后的实际 viewer 门控
+
+真实 single 首绘后释放成功恢复的 RED：预期 Reload 0，实际 1。四项新接线和五项既有恢复/窗口回归共9项行为 GREEN；该轮最终仅格式失败，随后单独 app 格式通过，组合证据不冒称一次执行全通过。进一步记录存在性诊断的真实 RED 后，最终同一轮 Android 5 项接线、Probe 1 项与 app 格式全部通过（`reader-o3-record-green2`）。证据在隔离工作区 `.test-tmp/reader-open-o-series-20261104/o3/`。
+
+生产候选只在后台成功恢复末尾按完成时真实 `DualPageR2LPagerViewer` 保留 Reload；普通单页/条漫保留恢复数据、可用性与错误反馈，AUTO 按实际 viewer 判断。三种固定记录 marker 在真实 acceptRestore 成功后分类同一 snapshot，不增加仓库 I/O，捕获原 request；无 marker 不能推断空记录。
+
+A3/B3 诊断一致，源码清单只 ReaderViewModel 不同，A3 临时撤掉门控后按备份哈希精确恢复候选再构建 B3。A3 SHA `629de93bf8d7532af91e95e6dec67611505a0834f8fd268fd5392138bfdf7982`；B3 SHA `a2f42a3d9c2d55a3720dbd467f2f02befbf5ce7b65fff7583f82e84a591a5993`。两包 code134、非调试、R8、同原 benchmark 证书，source capture 与 artifact 清单保留在 `app/artifacts/android/diagnostics/reader-open-o3-{a,b}-20261104/`；不含 O4 production。尚未完成正式采样、采用裁决或提交，不能视为 O3 完成。
+
+### O3 最终裁决：本轮不采用重载门控
+
+普通成功恢复后的冗余Reload消除已由真实RED/GREEN证明；12份有效保存记录样本未证明稳定首开收益，双页组的时延和部分CPU结果向慢。不能将双页变慢确认为门控所致（双页分支仍保留Reload），也不能未经证实全部归为波动。本轮不采用门控，不追加样本追显著性；保留候选及测试证据，后续O4以真正采用的O2加相同记录诊断为基线。记录诊断本身保留用于区分真实接受的有效非空、空及无效snapshot，不改变业务恢复或增加仓库I/O。
+
+采样：A1/B1各模式首次与再次，B2/A2各模式首次；single和dual-on各6份，共12份按capture/request去重的VALID。每块正常保留数据重装，实际SHA和OAT均独立读回为verify/install，每模式一次probe OFF预热。仅测安装后已预热的新进程首次，不是升级首次或冷磁盘。两臂均为code134、同证书/R8/非debug，两臂诊断一致，唯一生产差异是O3门控。原件位于原目录`.test-tmp/reader-open-o-series-20261104/measurement-o3/`；combined CSV/JSON、完整health CSV和native/thread提取原件保留。
+
+原测试章节最初真实接受EMPTY（`o3-qual-single-probe-ui/probe-1.json`）；通过正常Adjust page pairing两次保存、正常单页7→6→5导航恢复目标，随后`o3-qual-valid-single-ui/probe-1.json`确认VALID。前置变化两臂共享，不与O2空记录组混算收益。中间双页资格检查因4/187页码不符被拒，未列为性能样本。第一正式`o3-a1-single`在计时后PNG拉取20s超时，未完成正常onStop导出，两预注册请求均EXCLUDED；capture原件保留。无已知残留进程，连接/内存检查无已确认故障，同一PNG随后0.146s拉取成功，只能确认一次超时，原因未明。新label `o3-a1-single-r1`重试取得两份VALID，未覆盖旧尝试。
+
+时间单位ms。表中DOWN是原生`deliverInputEvent src=0x1002`（同trace时钟映射）；VM是`OPEN_READER_INTENT`。Probe MAIN_TOUCH_DOWN另列在原CSV，不混称同一起点。CPU为页表就绪至single FIRST_DRAW或dual UNIT_DRAWN的主线程Running，不能与wall相加。近黑由主代理逐段看连续原PTS帧，沿用中央灰度约2/255近黑约定，约一原生帧不确定性；首部分漫画即结束近黑，完整单元单列，视频PTS不映射为输入至物理屏幕时长。
+
+| 样本 | DOWN→target | DOWN→UNIT | VM→target | 页表后CPU | 近黑界限 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| o3-a1-single-r1-first | 305.495 | — | 244.899 | 61.343 | 17–50 |
+| o3-a1-single-r1-warm | 290.041 | — | 245.579 | 67.030 | 34–69 |
+| o3-a1-dual-on-first | 351.769 | 368.708 | 295.324 | 146.518 | 67–100 |
+| o3-a1-dual-on-warm | 326.898 | 327.077 | 277.934 | 144.741 | 16–50 |
+| o3-b1-single-first | 311.791 | — | 255.270 | 55.798 | 33–69 |
+| o3-b1-single-warm | 253.431 | — | 207.728 | 46.478 | 0–33 |
+| o3-b1-dual-on-first | 376.868 | 377.073 | 322.132 | 167.510 | 84–116 |
+| o3-b1-dual-on-warm | 350.346 | 350.500 | 303.921 | 139.055 | 67–99 |
+| o3-b2-single | 309.679 | — | 254.725 | 56.763 | 68–105 |
+| o3-b2-dual-on | 394.868 | 395.145 | 333.038 | 170.514 | 49–83 |
+| o3-a2-single | 288.098 | — | 232.423 | 59.224 | 34–68 |
+| o3-a2-dual-on | 369.948 | 386.671 | 307.564 | 152.315 | 84–116 |
+
+| 样本 | DOWN→StartActivity | →performCreate | →Reader TX | holder→image | image→decode | decode→target | decode→UNIT |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| o3-a1-single-r1-first | 31.499 | 50.300 | 111.010 | 15.130 | 18.905 | 91.361 | — |
+| o3-a1-single-r1-warm | 18.982 | 36.390 | 75.631 | 35.180 | 26.039 | 95.648 | — |
+| o3-a1-dual-on-first | 25.954 | 45.888 | 109.646 | 22.839 | 39.407 | 112.606 | 129.544 |
+| o3-a1-dual-on-warm | 21.834 | 40.389 | 98.088 | 18.326 | 72.530 | 98.575 | 98.754 |
+| o3-b1-single-first | 24.953 | 43.574 | 106.641 | 16.567 | 23.337 | 97.466 | — |
+| o3-b1-single-warm | 23.045 | 38.185 | 94.170 | 9.760 | 17.217 | 86.791 | — |
+| o3-b1-dual-on-first | 24.290 | 42.878 | 93.026 | 23.956 | 54.861 | 126.660 | 126.865 |
+| o3-b1-dual-on-warm | 22.934 | 38.746 | 86.134 | 17.931 | 66.424 | 126.584 | 126.739 |
+| o3-b2-single | 26.828 | 43.257 | 105.951 | 18.584 | 18.021 | 104.754 | — |
+| o3-b2-dual-on | 27.891 | 47.978 | 116.482 | 20.855 | 45.365 | 139.994 | 140.271 |
+| o3-a2-single | 27.094 | 44.261 | 110.000 | 19.065 | 21.489 | 85.241 | — |
+| o3-a2-dual-on | 29.699 | 50.270 | 124.916 | 34.083 | 41.868 | 114.106 | 130.830 |
+
+- single首次A 305.495/288.098，B 311.791/309.679；暖态A290.041、B253.431。页表后CPU首次A61.343/59.224，B55.798/56.763，局部CPU减少未转为稳定首绘收益。
+- dual首次target A351.769/369.948，B376.868/394.868；完整UNIT A368.708/386.671，B377.073/395.145；暖态UNIT A327.077、B350.500。首次CPU A146.518/152.315，B167.510/170.514。不得报告双页无回归，也不据小样本确认因果或P95。
+- 双页A1首次和A2首次先画出目标地图，target领先完整单元约16.9/16.7ms；其余双页先标题后地图，完整单元不等于首部分漫画。12段从full至视频末的逐帧中央ROI筛查均无再次近黑，帧数与原PTS逐项核对，仅作screening旁证。
+- 完整health每trace194行，12份未见非零error/data_loss severity或非info丢弃项；info `traced_chunks_discarded`169–180原样保留，不能称零丢失或把该值当packet loss。
+- B3在probe OFF下single 5→6→5→退出详情第5页→重开5通过，opened/returned/reopened PNG SHA均`3ecbd2ce09a1eef7c019edb2cf652894a03e2f6c811e0c964ba05560a03b6b95`。根已独立核页面，像素相同仅作画面一致旁证。最后留装B3，probe=false、Asleep/Changing=false；已知ON往返边界仍沿用既有记录，不声称本轮修复。
+
+门控已按精确边界撤回；四项gate测试与专用helper归档于`o3/rejected-gate-tests.kt`，SHA256 `08cfe16736cbaebe13f9d6d1de3117ec72112690792c3784739c32fe0057acf4`。无gate的三项真实record wiring、一项Probe slots及app格式通过，最终仅移除无引用import后单独格式复验通过；O4六项组合结果不受此尾部恢复影响，可复用。独立PTS算术核验`analysis/o3-video-pts-verification-12.json`为12/12通过。O3与O4内聚初始化批次一同提交并checkoff。本裁决不表示整体首开体验达标或用户验收。
+
+## O4 候选：初始化查询与下载判断
+
+真实ReaderViewModel.init RED确认GetChaptersByMangaId调用2次而要求1次；SHOW_ALL单章仍调用DownloadManager一次而要求0。两方法自动各重试三次是同两项RED，不是六种行为。最小实现复用第一次原始Domain章节列表；仍在原子openChapter后按opened.manga和opened.chapter处理，catalog refresh不使用该初始列表；下载状态只在实际下载过滤时求值，独立downloadedOnly/DownloadCache链不变。真实SQL权威数据与0/300额外章节、10个下载过滤组合、catalog成功/失败及共享skip接线组成6方法focused。
+
+最终GREEN为组合证据：green2的SHOW_ALL、catalog成功、catalog失败、shared skip四项通过；另外两项失败来自DbChapter.last_page_read的Int/Long期望和InMemoryPreferenceStore未注册skip_filtered夹具。仅修夹具后两项及app格式通过，production未因此改变。不冒称最终代码重新跑整六项，也未执行全模块/全仓库。撤O3尾部gate不影响O4列表/过滤路径，此六项证据可复用；同诊断无gate的4项record/Probe补验及格式亦通过。原件在隔离目录`o4/`。
+
+B4构建2m3s，APK `app/artifacts/android/diagnostics/reader-open-o4-20261104/Mihon-Fork-reader-open-o4-benchmark-universal.apk` SHA `e7ec6fdaf30d7dbbcd2dc09722701c4618ce24573acceeaf6d214ff60a35a03f`；A4复用A3 SHA `629de93bf8d7532af91e95e6dec67611505a0834f8fd268fd5392138bfdf7982`。两臂均无O3gate，同record诊断；`o4/a3-to-b4-production.diff`核对唯一产品差异为O4查询复用和按需下载判断。B4冻结28个源码文件及production指纹，O5后续诊断测试草稿不在其冻结输入。当前12份正式样本尚在完成，不预先宣布采用/收益或checkoff。
+
+### O4 测量与裁决：采用低成本去冗余，未证实稳定首开收益
+
+沿用独立measurement-o4目录。A1/B1各模式首次和再次、B2/A2各模式首次，共12份去重VALID；每块正常保留数据重装后读回实际SHA/OAT为verify/install，再每模式一次probe OFF预热。真实有效保存record与O3准备后同一数据，两臂同诊断且均无O3gate。O4无EXCLUDED采集，未追加择优样本。仅覆盖安装后已预热的新进程首次，不是升级首次、冷盘或P95。
+
+采用依据是低成本、局部、明确的真实调用去冗余和语义保护：RED单章查询2次/下载判断1次，GREEN在0和300额外章节时初始化查询均1次、SHOW_ALL下载判断均0；较大列表的旧实现没有独立RED计数，不将推导301次写成实测。原子opened权威、目录刷新再次查询、下载过滤和独立downloadedOnly原链均有接线验证。本轮时延/CPU方向混合，不能宣称稳定首开加速；与O3持续向慢的双页结果分别裁决，不把功能调用减少自动换算为体验收益。
+
+下面单位ms，DOWN仍为原生deliverInputEvent，VM为OPEN_READER_INTENT；Probe MAIN_TOUCH_DOWN另列原CSV。CPU为页表后至single FIRST_DRAW/dual UNIT_DRAWN的主线程Running。†为trace质量受限：完整health每份194行；A1 dual首次丢2、B1 dual首次丢1、B1 dual再次丢1、A2 dual丢2个negative_timestamp，计4/12 trace、6条。尚未证明是否与端点/CPU范围重叠，不把它们默认为无影响，也不仅凭该计数重录。12份无非零data_loss级统计；info traced_chunks_discarded181–192保留，不能称零丢失。
+
+| 样本 | DOWN→target | DOWN→UNIT | VM→target | 页表后CPU | 页表后shader | 近黑界限 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| o4-a1-single-first | 325.868 | — | 264.981 | 60.628 | 0.000 | 35–69 |
+| o4-a1-single-warm | 255.998 | — | 210.081 | 50.699 | 0.000 | 0–36 |
+| o4-a1-dual-on-first† | 351.353 | 351.663 | 295.547 | 152.527 | 0.000 | 34–66 |
+| o4-a1-dual-on-warm | 356.301 | 356.472 | 310.885 | 149.953 | 0.000 | 67–100 |
+| o4-b1-single-first | 330.082 | — | 272.755 | 61.912 | 0.000 | 66–98 |
+| o4-b1-single-warm | 274.585 | — | 231.753 | 51.604 | 0.000 | 18–52 |
+| o4-b1-dual-on-first† | 386.884 | 387.096 | 322.991 | 167.489 | 0.000 | 33–67 |
+| o4-b1-dual-on-warm† | 331.661 | 331.817 | 282.861 | 132.058 | 0.000 | 33–66 |
+| o4-b2-single | 288.519 | — | 231.575 | 59.593 | 0.000 | 17–50 |
+| o4-b2-dual-on | 394.609 | 394.820 | 336.703 | 170.631 | 0.000 | 50–84 |
+| o4-a2-single | 334.306 | — | 259.917 | 67.264 | 0.000 | 33–67 |
+| o4-a2-dual-on† | 390.904 | 391.190 | 331.724 | 176.774 | 0.251 | 67–100 |
+
+| 样本 | DOWN→StartActivity | →performCreate | →Reader TX | holder→image | image→decode | decode→target | decode→UNIT |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| o4-a1-single-first | 24.669 | 44.556 | 120.714 | 16.969 | 23.952 | 94.974 | — |
+| o4-a1-single-warm | 23.075 | 37.253 | 95.455 | 14.554 | 17.738 | 92.285 | — |
+| o4-a1-dual-on-first† | 25.719 | 45.579 | 110.399 | 20.514 | 45.411 | 107.612 | 107.922 |
+| o4-a1-dual-on-warm | 23.436 | 37.792 | 91.476 | 21.510 | 83.187 | 112.074 | 112.245 |
+| o4-b1-single-first | 23.827 | 46.253 | 117.757 | 22.667 | 28.756 | 92.319 | — |
+| o4-b1-single-warm | 20.043 | 35.705 | 83.970 | 18.742 | 36.514 | 87.269 | — |
+| o4-b1-dual-on-first† | 32.861 | 51.919 | 122.774 | 30.708 | 72.609 | 103.731 | 103.942 |
+| o4-b1-dual-on-warm† | 23.676 | 41.041 | 101.135 | 16.922 | 43.670 | 118.639 | 118.794 |
+| o4-b2-single | 27.771 | 46.911 | 105.898 | 18.390 | 15.621 | 86.394 | — |
+| o4-b2-dual-on | 24.731 | 45.131 | 113.091 | 26.065 | 51.471 | 128.271 | 128.483 |
+| o4-a2-single | 31.411 | 52.140 | 124.248 | 33.633 | 34.415 | 86.459 | — |
+| o4-a2-dual-on† | 29.913 | 48.605 | 100.965 | 19.917 | 55.604 | 131.845 | 132.131 |
+
+- single首次A325.868/334.306、B330.082/288.519，一慢一快；暖态A255.998、B274.585。首次CPU A60.628/67.264、B61.912/59.593，不能只选B2报告稳定改善。
+- dual首次target A351.353†/390.904†、B386.884†/394.609；UNIT A351.663†/391.190†、B387.096†/394.820，首次候选较慢；暖态UNIT A356.472、B331.817†方向较快。首次CPU A152.527†/176.774†、B167.489†/170.631方向混合。小样本和上述trace限制不足以定位变慢原因或证明无回归。
+- 主代理逐段核12段连续原PTS帧：single均为正确地图；dual均先显示右标题，再补目标地图与完整双图。首部分漫画即结束近黑，不把等地图的时间继续算黑。近黑约定及一原生帧误差沿用O3。full至末每帧中央ROI screening均无再近黑，不能冒称物理显示证明。
+- 候选probe OFF正常single 5→6→5→退出详情第5页→重开5通过；opened/returned/reopened PNG SHA同为`3ecbd2ce09a1eef7c019edb2cf652894a03e2f6c811e0c964ba05560a03b6b95`，前翻画面不同。最终probe=false、Asleep/Changing=false，留装B4，仅本任务隔离包；未修改官方/正式fork。
+
+本批产品变更、取证及测试集中在Reader初始化/恢复边界，文档同步说明；文件数含必要接线/诊断/报告，未扩展其他能力。O3不采用门控、O4采用去冗余与同诊断保留将按B4冻结source.diff提交，不带入后续尚未验证的O5草稿；不推送、不正式发布，不更新公共功能说明。
+
+O4独立PTS索引/区间算术核验为12/12 PASS（`analysis/o4-video-pts-verification-12.json`），不替换主代理画面分类。

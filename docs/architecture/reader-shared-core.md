@@ -1,5 +1,11 @@
 # 阅读器共享核心架构
 
+## Android 初始化章节列表的一次性输入
+
+`ReaderViewModel.init`用同一次原始Domain章节查询选择目标章，并将该列表作为初始化`getChapterList`的一次性输入。原子`openChapter`返回的漫画和当前章节仍是权威：之后才映射、排序、过滤和创建ReaderChapter缓存，不能提前按旧漫画生成缓存。该输入不成为长期目录快照；catalog refresh仍重新查询，沿用原有邻章替换、当前页表保留和失败处理。原始查询或打开失败继续进入原初始化错误链，不另加缓存回退。
+
+仅在实际下载过滤为已下载或未下载时，`isChapterFiltered`才求下载状态；SHOW_ALL无需该值。独立`downloadedOnly`仍走原DownloadCache过滤，共享Boolean过滤规则不变。真实VM/SQL原子打开接线覆盖数据权威、单章和300额外章节、下载组合、catalog成功与失败；调用减少不等于已证明真机首开稳定加速，测量与限制见O系列证据报告。
+
 ## Android 双页事实回调的投影输入
 
 `DualPageViewerAdapter` 对有效事实继续返回“接受成功”，同值事实不会被当成拒收。仅事实回调根据当前 owner 已经实际投影的输入戳决定是否重建：layout、fact work、sample work 和 original header revision。`store.ensure` 可能先摄入事实，因此不能只比较一次 accept 调用前后；采样得到的 Computed 事实也可能保持不变，而原始 header 已变化。共享 `originalHeaderRevision` 只跟踪原始 header 的实际写入／失败 header 移除，不改变认证、事实接受或持久化语义。

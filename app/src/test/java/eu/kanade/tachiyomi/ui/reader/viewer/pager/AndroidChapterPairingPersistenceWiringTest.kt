@@ -37,6 +37,7 @@ import eu.kanade.domain.manga.interactor.SetMangaViewerFlags
 import eu.kanade.domain.source.interactor.GetIncognitoState
 import eu.kanade.domain.track.service.TrackPreferences
 import eu.kanade.domain.ui.UiPreferences
+import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.databinding.ReaderActivityBinding
 import eu.kanade.tachiyomi.databinding.ReaderErrorBinding
@@ -46,6 +47,7 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.test.ScreenModelTestHost
 import eu.kanade.tachiyomi.ui.reader.AndroidChapterPairingCoordinator
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
+import eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe
 import eu.kanade.tachiyomi.ui.reader.ReaderViewModel
 import eu.kanade.tachiyomi.ui.reader.loader.ChapterLoader
 import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
@@ -59,10 +61,12 @@ import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonPageHolder
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonViewer
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
+import io.mockk.verify
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
@@ -73,8 +77,10 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
@@ -161,6 +167,7 @@ class AndroidChapterPairingPersistenceWiringTest {
 
     @After
     fun tearDown() {
+        ReaderOpenLatencyProbe.configure(false, -1, -1, "off")
         Injekt = previousInjekt
         Dispatchers.resetMain()
     }
@@ -1619,6 +1626,228 @@ class AndroidChapterPairingPersistenceWiringTest {
     }
 
     @Test
+    fun `O4 init queries original chapters once for small and large lists`() = runBlocking {
+        for (additional in listOf(0, 300)) {
+            openDatabase(temporaryFolder.newFile("o4-query-$additional.db"), create = true).use { fixture ->
+                seed(fixture.driver)
+                fixture.driver.execute(null, "UPDATE mangas SET chapter_flags = ? WHERE _id = 1", 1) {
+                    bindLong(0, Manga.CHAPTER_SORTING_ALPHABET)
+                }
+                fixture.driver.execute(null, "UPDATE chapters SET last_page_read = 2 WHERE _id = 2", 0)
+                session(fixture, additionalChapters = additional).use { reader ->
+                    val query = ReflectionHelpers.getField<GetChaptersByMangaId>(reader.model, "getChaptersByMangaId")
+                    coVerify(exactly = 1) { query.await(1, applyScanlatorFilter = true) }
+                    val cache = ReflectionHelpers.getField<List<ReaderChapter>>(reader.model, "chapterListCache")
+                    assertEquals(additional + 1, cache.size)
+                    assertEquals(2L, reader.model.state.value.currentChapter?.chapter?.id)
+                    assertEquals("C", reader.model.state.value.currentChapter?.chapter?.name)
+                    assertEquals("M", reader.model.state.value.manga?.title)
+                    assertEquals(Manga.CHAPTER_SORTING_ALPHABET, reader.model.state.value.manga?.chapterFlags)
+                    assertEquals(2, reader.model.state.value.currentChapter?.chapter?.last_page_read)
+                    assertEquals(
+                        "Atomic alphabetical sorting must override the preliminary source order",
+                        2L,
+                        cache.first().chapter.id,
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `O4 SHOW_ALL init skips per chapter download lookup`() = runBlocking {
+        for (additional in listOf(0, 300)) {
+            openDatabase(temporaryFolder.newFile("o4-download-$additional.db"), create = true).use { fixture ->
+                seed(fixture.driver)
+                session(fixture, additionalChapters = additional).use { reader ->
+                    assertEquals(Manga.SHOW_ALL, reader.model.state.value.manga?.downloadedFilterRaw)
+                    val downloads = ReflectionHelpers.getField<DownloadManager>(reader.model, "downloadManager")
+                    verify(exactly = 0) { downloads.isChapterDownloaded(any(), any(), any(), any(), any()) }
+                    val cache = ReflectionHelpers.getField<List<ReaderChapter>>(reader.model, "chapterListCache")
+                    assertEquals(additional + 1, cache.size)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `O4 download filters preserve downloaded and not downloaded selection independently of downloadedOnly`() =
+        runBlocking {
+            val filters = listOf(Manga.SHOW_ALL, Manga.CHAPTER_SHOW_DOWNLOADED, Manga.CHAPTER_SHOW_NOT_DOWNLOADED)
+            val cases = filters.flatMap { filter ->
+                listOf(Triple(filter, false, false), Triple(filter, true, false), Triple(filter, true, true))
+            } + Triple(Manga.SHOW_ALL, false, true)
+            for ((filter, skipFiltered, downloadedOnly) in cases) {
+                openDatabase(temporaryFolder.newFile(), create = true).use { fixture ->
+                    seed(fixture.driver)
+                    fixture.driver.execute(null, "UPDATE mangas SET chapter_flags = ? WHERE _id = 1", 1) {
+                        bindLong(0, filter)
+                    }
+                    val downloads = mockk<DownloadManager>(relaxed = true)
+                    every { downloads.isChapterDownloaded(any(), any(), any(), any(), any(), any()) } answers {
+                        thirdArg<String>() != "/o4-extra-1"
+                    }
+                    val downloadCache = mockk<DownloadCache>(relaxed = true)
+                    every { downloadCache.isChapterDownloaded(any(), any(), any(), any(), any(), any()) } answers {
+                        thirdArg<String>() != "/o4-extra-1"
+                    }
+                    session(
+                        fixture,
+                        additionalChapters = 2,
+                        downloadManager = downloads,
+                        downloadCache = downloadCache,
+                        downloadedOnly = downloadedOnly,
+                        skipFiltered = skipFiltered,
+                    ).use { reader ->
+                        assertEquals(filter, reader.model.state.value.manga?.downloadedFilterRaw)
+                        val expected = when {
+                            !skipFiltered || filter == Manga.SHOW_ALL -> setOf(2L, 10L, 11L)
+                            filter == Manga.CHAPTER_SHOW_DOWNLOADED -> setOf(2L, 10L)
+                            else -> setOf(2L, 11L)
+                        }.let { if (downloadedOnly) it - 11L else it }
+                        val cache = ReflectionHelpers.getField<List<ReaderChapter>>(reader.model, "chapterListCache")
+                        assertEquals(
+                            "filter=$filter skip=$skipFiltered downloadedOnly=$downloadedOnly",
+                            expected,
+                            cache.map { requireNotNull(it.chapter.id) }.toSet(),
+                        )
+                        assertEquals(2L, reader.model.state.value.currentChapter?.chapter?.id)
+                        if (skipFiltered && filter != Manga.SHOW_ALL) {
+                            verify(atLeast = 1) {
+                                downloads.isChapterDownloaded(any(), any(), any(), any(), any(), any())
+                            }
+                        } else {
+                            verify(exactly = 0) {
+                                downloads.isChapterDownloaded(any(), any(), any(), any(), any(), any())
+                            }
+                        }
+                        if (downloadedOnly) {
+                            verify(atLeast = 1) {
+                                downloadCache.isChapterDownloaded(any(), any(), any(), any(), any(), any())
+                            }
+                        } else {
+                            verify(exactly = 0) {
+                                downloadCache.isChapterDownloaded(any(), any(), any(), any(), any(), any())
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+    @Test
+    fun `O3 accepted repository records expose empty valid and invalid presence without extra IO`() = runBlocking {
+        for (kind in listOf("EMPTY", "VALID", "INVALID")) {
+            assertO3RecordPresence(kind)
+        }
+    }
+
+    @Test
+    fun `O3 accepted restore cannot mark a newer probe request and disabled observation stays silent`() = runBlocking {
+        assertO3RecordPresence("VALID", replaceProbeRequest = true)
+        assertO3RecordPresence("VALID", enabled = false)
+    }
+
+    private suspend fun assertO3RecordPresence(
+        kind: String,
+        replaceProbeRequest: Boolean = false,
+        enabled: Boolean = true,
+    ) {
+        val probe = ReaderOpenLatencyProbe
+        probe.configure(enabled, 1, 2, "record-presence")
+        probe.startChapter(1, 2)
+        try {
+            openDatabase(temporaryFolder.newFile(), create = true).use { fixture ->
+                seed(fixture.driver)
+                if (kind != "EMPTY") fixture.repository.replace(2, 1, 0, if (kind == "INVALID") 9 else 8, setOf(3))
+                val expected = fixture.repository.load(2, 1)
+                val entered = CompletableDeferred<Unit>()
+                val release = CompletableDeferred<Unit>()
+                val loads = AtomicInteger()
+                val writes = AtomicInteger()
+                val scheduler = TestCoroutineScheduler()
+                val repository = object : ChapterPairingRepository by fixture.repository {
+                    override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot {
+                        loads.incrementAndGet()
+                        entered.complete(Unit)
+                        release.await()
+                        return fixture.repository.load(chapterId, mangaId)
+                    }
+
+                    override suspend fun replaceLayout(
+                        chapterId: Long,
+                        mangaId: Long,
+                        expectedRevision: Long,
+                        pageCount: Int,
+                        adjustment: mihon.domain.reader.ReaderPairingAdjustment,
+                    ): ChapterPairingSnapshot {
+                        writes.incrementAndGet()
+                        return fixture.repository.replaceLayout(
+                            chapterId,
+                            mangaId,
+                            expectedRevision,
+                            pageCount,
+                            adjustment,
+                        )
+                    }
+
+                    override suspend fun replace(
+                        chapterId: Long,
+                        mangaId: Long,
+                        expectedRevision: Long,
+                        pageCount: Int,
+                        forcedSinglePages: Set<Int>,
+                    ): ChapterPairingSnapshot {
+                        writes.incrementAndGet()
+                        return fixture.repository.replace(
+                            chapterId,
+                            mangaId,
+                            expectedRevision,
+                            pageCount,
+                            forcedSinglePages,
+                        )
+                    }
+                }
+                try {
+                    session(
+                        fixture,
+                        repository,
+                        readingMode = 1,
+                        pairingCallbackDispatcher = StandardTestDispatcher(scheduler),
+                    ).use { reader ->
+                        try {
+                            scheduler.runCurrent()
+                            withTimeout(5_000) { entered.await() }
+                            val chapter = requireNotNull(reader.model.state.value.currentChapter)
+                            if (replaceProbeRequest) probe.startChapter(1, 2)
+                            release.complete(Unit)
+                            awaitPairingStatus(reader, chapter, ReaderPairingPersistenceStatus.READY, scheduler)
+                            val markers = probe.capturedEvents().filter { it.event.startsWith("PAIRING_RECORD_") }
+                            if (enabled && !replaceProbeRequest) {
+                                assertEquals(listOf("PAIRING_RECORD_$kind"), markers.map { it.event })
+                            } else {
+                                assertTrue(markers.isEmpty())
+                            }
+                            assertEquals(1, loads.get())
+                            assertEquals(0, writes.get())
+                            assertEquals(expected, fixture.repository.load(2, 1))
+                            assertTrue(reader.model.state.value.pairingRecordReady)
+                        } finally {
+                            release.complete(Unit)
+                            scheduler.runCurrent()
+                        }
+                    }
+                } finally {
+                    release.complete(Unit)
+                    scheduler.runCurrent()
+                }
+            }
+        } finally {
+            probe.configure(false, 1, 2, "off")
+        }
+    }
+
+    @Test
     fun `all modes activate before held pairing read and retain content after failure`() = runBlocking {
         // Reuse the existing Windows JVM PNG fixture boundary: the native format probe is
         // unavailable, while BitmapFactory, the original holder and SSIV still draw real pixels.
@@ -1784,6 +2013,8 @@ class AndroidChapterPairingPersistenceWiringTest {
 
     @Test
     fun `rejected restore releases pending operation when a retained chapter leaves the window`() = runBlocking {
+        ReaderOpenLatencyProbe.configure(true, 1, 2, "rejected-restore")
+        ReaderOpenLatencyProbe.startChapter(1, 2)
         openDatabase(temporaryFolder.newFile("retained-outside-window.db"), create = true).use { fixture ->
             seed(fixture.driver)
             seedAdjacent(fixture.driver)
@@ -1850,6 +2081,7 @@ class AndroidChapterPairingPersistenceWiringTest {
                     )
                     assertTrue(window === reader.model.state.value.viewerChapters)
                     assertTrue(position === reader.model.currentReaderPage)
+                    assertTrue(ReaderOpenLatencyProbe.capturedEvents().none { it.event.startsWith("PAIRING_RECORD_") })
                     reader.model.loadPreviousChapter()
                     reader.model.loadPreviousChapter()
                     assertTrue(original === reader.model.state.value.currentChapter)
@@ -2193,11 +2425,16 @@ class AndroidChapterPairingPersistenceWiringTest {
         repository: ChapterPairingRepository = database.repository,
         includeAdjacent: Boolean = false,
         includeFarAdjacent: Boolean = false,
+        additionalChapters: Int = 0,
         reuseLoadedPages: Boolean = false,
         readingMode: Int = 0,
         pendingPage: Int? = null,
         imageBytes: ByteArray? = null,
         matching: Boolean = false,
+        downloadManager: DownloadManager = mockk(relaxed = true),
+        downloadCache: DownloadCache = mockk(relaxed = true),
+        downloadedOnly: Boolean = false,
+        skipFiltered: Boolean = true,
         pairingCallbackDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
         coordinator: AndroidChapterPairingCoordinator = AndroidChapterPairingCoordinator(repository),
         onPageListLoaded: () -> Unit = {},
@@ -2205,7 +2442,10 @@ class AndroidChapterPairingPersistenceWiringTest {
     ): ReaderSession {
         Injekt = InjektScope(DefaultRegistrar())
         val preferences = InMemoryPreferenceStore(
-            sequenceOf(InMemoryPreferenceStore.InMemoryPreference("reader_auto_spread_matching", matching, false)),
+            sequenceOf(
+                InMemoryPreferenceStore.InMemoryPreference("reader_auto_spread_matching", matching, false),
+                InMemoryPreferenceStore.InMemoryPreference("skip_filtered", skipFiltered, true),
+            ),
         )
         val readerPreferences = ReaderPreferences(preferences)
         Injekt.addSingleton<ChapterPairingRepository>(repository)
@@ -2213,7 +2453,8 @@ class AndroidChapterPairingPersistenceWiringTest {
         Injekt.addSingleton(readerPreferences)
         Injekt.addSingleton(UiPreferences(preferences))
         Injekt.addSingleton(BasePreferences(RuntimeEnvironment.getApplication() as Application, preferences))
-        Injekt.addSingleton(mockk<DownloadManager>(relaxed = true))
+        Injekt.addSingleton(downloadManager)
+        Injekt.addSingleton(downloadCache)
 
         // Atomic production opening reads viewer flags from SQLite, not the preliminary GetManga mock.
         database.driver.execute(null, "UPDATE mangas SET viewer = ? WHERE _id = 1", 1) {
@@ -2256,15 +2497,24 @@ class AndroidChapterPairingPersistenceWiringTest {
         }
         val getChapters = mockk<GetChaptersByMangaId>()
         coEvery { getChapters.await(1, applyScanlatorFilter = true) } returns
-            when {
-                includeFarAdjacent -> listOf(
-                    chapter,
-                    adjacent,
-                    adjacent.copy(id = 4, url = "/chapter-4", sourceOrder = 0),
+            (
+                when {
+                    includeFarAdjacent -> listOf(
+                        chapter,
+                        adjacent,
+                        adjacent.copy(id = 4, url = "/chapter-4", sourceOrder = 0),
+                    )
+                    includeAdjacent -> listOf(chapter, adjacent)
+                    else -> listOf(chapter)
+                } + List(additionalChapters) { index ->
+                    chapter.copy(
+                        id = 10L + index,
+                        url = "/o4-extra-$index",
+                        name = "Extra $index",
+                        sourceOrder = 10L + index,
+                    )
+                }
                 )
-                includeAdjacent -> listOf(chapter, adjacent)
-                else -> listOf(chapter)
-            }
         val loader = mockk<ChapterLoader>()
 
         // These persistence scenarios use legal synthetic portrait content, independently of the
@@ -2304,7 +2554,7 @@ class AndroidChapterPairingPersistenceWiringTest {
         every { downloadPreferences.autoDownloadWhileReading().get() } returns 0
         every { downloadPreferences.removeAfterReadSlots().get() } returns -1
         val basePreferences = mockk<BasePreferences>(relaxed = true)
-        every { basePreferences.downloadedOnly().get() } returns false
+        every { basePreferences.downloadedOnly().get() } returns downloadedOnly
         val incognito = mockk<GetIncognitoState>()
         every { incognito.await(any()) } returns false
         val libraryPreferences = mockk<LibraryPreferences>(relaxed = true)
@@ -2314,7 +2564,7 @@ class AndroidChapterPairingPersistenceWiringTest {
         val model = ReaderViewModel(
             savedState = SavedStateHandle(),
             sourceManager = sourceManager,
-            downloadManager = mockk(relaxed = true),
+            downloadManager = downloadManager,
             downloadProvider = mockk(relaxed = true),
             imageSaver = mockk(relaxed = true),
             readerPreferences = readerPreferences,

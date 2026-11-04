@@ -8,6 +8,30 @@ import org.junit.jupiter.api.Test
 
 class ReaderOpenLatencyProbeTest {
     @Test
+    fun pairingRecordPresenceUsesFixedSlotsAndRejectsOldRequests() {
+        val probe = ReaderOpenLatencyProbe
+        try {
+            probe.configure(true, 10, 20, "pairing-presence", targetPage = 4)
+            val old = probe.startChapter(10, 20)
+            val request = probe.startChapter(10, 20)
+            for (event in listOf("PAIRING_RECORD_EMPTY", "PAIRING_RECORD_VALID", "PAIRING_RECORD_INVALID")) {
+                assertFalse(probe.record(event, chapter = 20, request = old))
+                assertFalse(probe.record(event, chapter = 21, request = request))
+                assertTrue(probe.record(event, chapter = 20, request = request))
+                val first = probe.capturedEvents().single { it.event == event }
+                assertEquals(4, first.page)
+                assertFalse(probe.record(event, chapter = 20, request = request))
+                assertEquals(first, probe.capturedEvents().single { it.event == event })
+            }
+            probe.configure(false, 10, 20, "off")
+            assertFalse(probe.record("PAIRING_RECORD_VALID", chapter = 20, request = request))
+            assertTrue(probe.capturedEvents().isEmpty())
+        } finally {
+            probe.configure(false, 10, 20, "off")
+        }
+    }
+
+    @Test
     fun configuredTargetPageRejectsOtherPagesAndOldRequest() {
         val probe = ReaderOpenLatencyProbe
         try {

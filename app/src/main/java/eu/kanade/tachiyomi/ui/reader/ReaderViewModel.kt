@@ -323,12 +323,16 @@ class ReaderViewModel @JvmOverloads constructor(
      * time in a background thread to avoid blocking the UI.
      */
     private var chapterListCache: List<ReaderChapter>? = null
-    private suspend fun getChapterList(refresh: Boolean = false): List<ReaderChapter> {
+    private suspend fun getChapterList(
+        refresh: Boolean = false,
+        sourceChapters: List<Chapter>? = null,
+    ): List<ReaderChapter> {
         if (!refresh) chapterListCache?.let { return it }
         val retained = chapterListCache.orEmpty().associateBy { it.chapter.id }
 
         val manga = manga!!
-        val chapters = getChaptersByMangaId.await(manga.id, applyScanlatorFilter = true).map { chapter ->
+        val source = sourceChapters ?: getChaptersByMangaId.await(manga.id, applyScanlatorFilter = true)
+        val chapters = source.map { chapter ->
             initialOpenContext?.chapter?.takeIf { it.id == chapter.id } ?: chapter
         }
 
@@ -369,13 +373,16 @@ class ReaderViewModel @JvmOverloads constructor(
             bookmarkedFilterRaw = manga.bookmarkedFilterRaw,
             chapterIsRead = chapter.read,
             chapterIsBookmarked = chapter.bookmark,
-            chapterIsDownloaded = downloadManager.isChapterDownloaded(
-                chapter.name,
-                chapter.scanlator,
-                chapter.url,
-                manga.title,
-                manga.source,
-            ),
+            chapterIsDownloaded = when (manga.downloadedFilterRaw) {
+                Manga.CHAPTER_SHOW_DOWNLOADED, Manga.CHAPTER_SHOW_NOT_DOWNLOADED -> downloadManager.isChapterDownloaded(
+                    chapter.name,
+                    chapter.scanlator,
+                    chapter.url,
+                    manga.title,
+                    manga.source,
+                )
+                else -> false
+            },
         )
 
     private val incognitoMode: Boolean by lazy { getIncognitoState.await(manga?.source) }
@@ -469,7 +476,8 @@ class ReaderViewModel @JvmOverloads constructor(
                         chapter = initialChapterId,
                         request = latencyRequest,
                     )
-                    val selected = getChaptersByMangaId.await(mangaId, applyScanlatorFilter = true).first {
+                    val chapters = getChaptersByMangaId.await(mangaId, applyScanlatorFilter = true)
+                    val selected = chapters.first {
                         it.id ==
                             targetId
                     }
@@ -500,7 +508,7 @@ class ReaderViewModel @JvmOverloads constructor(
                     ReaderOpenLatencyProbe.record("SOURCE_READY", chapter = initialChapterId, request = latencyRequest)
                     loader = chapterLoaderFactory(opened.manga, source)
 
-                    val initialChapter = getChapterList().first { chapterId == it.chapter.id }
+                    val initialChapter = getChapterList(sourceChapters = chapters).first { chapterId == it.chapter.id }
                     ReaderOpenLatencyProbe.record(
                         "CHAPTER_LIST_READY",
                         chapter = initialChapterId,
@@ -928,6 +936,7 @@ class ReaderViewModel @JvmOverloads constructor(
     ): Boolean {
         val chapterId = requireNotNull(chapter.chapter.id)
         val mangaId = requireNotNull(manga?.id)
+        val latencyRequest = ReaderOpenLatencyProbe.requestFor(chapterId)
         if (chapter.pages.isNullOrEmpty()) return true
         while (true) {
             val operation = withUIContext {
@@ -968,7 +977,17 @@ class ReaderViewModel @JvmOverloads constructor(
                     }
                     // Ensure observes actual replacement epochs before accepting this original result.
                     dualPagePairings.ensure(chapter, operation.pages)
-                    dualPagePairings.acceptRestore(operation, snapshot).also {
+                    dualPagePairings.acceptRestore(operation, snapshot).also { accepted ->
+                        if (accepted) {
+                            val event = when {
+                                snapshot.record == null -> "PAIRING_RECORD_EMPTY"
+                                operation.owner.pairingState.notice ==
+                                    mihon.domain.reader.ReaderPairingPersistenceNotice.INVALID_RECORD ->
+                                    "PAIRING_RECORD_INVALID"
+                                else -> "PAIRING_RECORD_VALID"
+                            }
+                            ReaderOpenLatencyProbe.record(event, chapter = chapterId, request = latencyRequest)
+                        }
                         publishPairingRecordAvailability()
                     }
                 }

@@ -444,7 +444,7 @@ class ReaderSyncResumeWiringTest {
         val original = ReadingResumePosition(2, pageIndex, snapshot("adopted-heads"))
         val repository = Repository(original)
         val queryRefreshStarted = kotlinx.coroutines.CompletableDeferred<Unit>()
-        private val queryCount = java.util.concurrent.atomic.AtomicInteger()
+        private val catalogRefreshStarted = java.util.concurrent.atomic.AtomicBoolean()
         private val manga = Manga.create().copy(id = 1, source = 7, chapterFlags = Manga.CHAPTER_SORTING_NUMBER)
         var storedChapters = (1L..3L).map { id ->
             Chapter.create().copy(
@@ -517,7 +517,7 @@ class ReaderSyncResumeWiringTest {
             getManga = mockk<GetManga> { coEvery { await(1) } returns manga },
             getChaptersByMangaId = mockk<GetChaptersByMangaId> {
                 coEvery { await(1, any()) } coAnswers {
-                    if (queryCount.incrementAndGet() > 2 && failCatalogQuery) {
+                    if (catalogRefreshStarted.get() && failCatalogQuery) {
                         queryRefreshStarted.complete(Unit)
                         error("chapter database unavailable")
                     }
@@ -536,7 +536,13 @@ class ReaderSyncResumeWiringTest {
                 every { markDuplicateReadChapterAsRead().get() } returns emptySet()
             },
             chapterLoaderFactory = { _, _ -> loader },
-            catalogPreparation = { catalog ?: tachiyomi.domain.reader.interactor.ReaderCatalogPreparation { null } },
+            catalogPreparation = {
+                tachiyomi.domain.reader.interactor.ReaderCatalogPreparation { context ->
+                    val result = catalog?.prepare(context)
+                    catalogRefreshStarted.set(true)
+                    result
+                }
+            },
         )
         override fun close() = model.viewModelScope.cancel()
     }
