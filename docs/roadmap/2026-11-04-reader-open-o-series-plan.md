@@ -2,11 +2,11 @@
 
 日期：2026-11-04。用户明确授权执行主线程审查提出的优化方案并逐项测量，Sol/Luna执行，主代理监管与独立实现审查。起点 `2425aca5e53112a4d3214cf398f62c04e6b6ff88`；已采用产品仍为R2。旧R3/R4H候选未采用。此次范围为Android真实生产路径，Windows只运行共享变更直接影响的focused契约，不另做Windows性能宣称。
 
-active-task: O1结果收口（2026-11-05按用户要求交接，当前会话停止实施）
+active-task: O2去重候选构建与OFF/ON测量（O1已完成20样本分析、不采用并归档恢复）
 
 ## 新 Sol 会话从这里接手
 
-**这是完整执行计划及唯一交接入口。用户因主控会话成本过高，要求改由新 Sol 会话继续；不要重新调查历史、重建已完成候选或重录有效样本。** 配套结果只维护[同一份证据报告](../evidence/reader-open-o-series-2026-11-04.md)。本计划未勾选的项目仍未完成，O1尚未采用。
+**这是完整执行计划及唯一交接入口。用户因主控会话成本过高，要求改由新 Sol 会话继续；不要重新调查历史、重建已完成候选或重录有效样本。** 配套结果只维护[同一份证据报告](../evidence/reader-open-o-series-2026-11-04.md)。本计划未勾选的项目仍未完成。新会话已完成O1的20样本分析，决定不采用并归档候选、恢复源码；详见证据报告“O1最终裁决”。下方交接段保留为历史起点，不代表最新状态。
 
 ### 工作位置与改动保护
 
@@ -60,7 +60,7 @@ O2 equal dimension callbacks stay accepted without another certification request
 O2 a fact consumed by ensure still reaches the native adapter projection
 O2 changed dimensions project once while their repeated accepted value does no new certification
 O2 changed original header still projects when computed original facts retain their value
-O2 replaced owners reject old requests and project the new accepted owner before deduplication
+O2 replacement rejects old facts and projects new owner before deduplication
 O2 retry sequence still refreshes equal facts before later duplicates are skipped
 O2 changed facts remain pending throughout a native gesture and project at idle
 O2 duplicate accepted facts preserve the drawn frame ticket and location
@@ -119,7 +119,9 @@ O1定向追加：A1/B1单页首次与暖态差值方向不同，故B2/A2仅singl
 
 ## 执行清单
 
-### [ ] O1：一次图片读取与最少Main往返
+### [x] O1：一次图片读取与最少Main往返
+
+2026-11-05收口：20份有效样本（A2为隔夜补充控制）、完整native/CPU/probe/连续帧分析后不采用；候选8文件归档并逐SHA恢复，保留APK和所有测试/测量原件。普通WebP读取减少成立，跨模式稳定体验净收益未证实，EXIF字节及生命周期代价不保留。见唯一证据报告最终裁决。
 
 只改单/双holder图像准备和必要的ReaderPage元信息接口。读取一次完整编码Buffer，从同一数据取得真实原图尺寸/完整EXIF方向、动画、背景等；避免header独立IO→Main→再读IO及双页额外尺寸往返。首次显示之前先建立正确方向/内容绑定，不能先显示错误朝向再补事实。保留失败重试、取消、stream/encoded身份变化和已绘伙伴。先真实测试旧实现的额外开流/往返及生产接线，再实现；与R3只复用流的已否决候选区分。测single/OFF/ON，报告净端点与动作迁移。
 

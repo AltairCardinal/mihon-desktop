@@ -45,8 +45,8 @@ A1重装同一控制APK后，`conditions-o1-a1-install.json` 成功读回当前o
 
 | 项目 | 状态 | 有效性能样本 | 实测净收益 | 采用状态 |
 | --- | --- | --- | --- | --- |
-| O1 合并图片准备IO与Main往返 | 候选/必要focused已完成；采集及交接最终状态见末段 | A1/B1各6，B2为4；A2见末段 | 全组分析未完成，不判稳定收益 | 尚未采用 |
-| O2 双页事实变化与冗余重建 | 真实测试草稿已写，尚未编译/RED；无production修改 | 0 | 尚未测量 | 待执行 |
+| O1 合并图片准备IO与Main往返 | 测量/分析收口，候选补丁归档并恢复基线 | 20（A2为隔夜补充控制） | 未证明跨模式稳定净收益；详见最终裁决 | 不采用 |
+| O2 双页事实变化与冗余重建 | 真实RED→最小实现；10项Android/1项共享/格式通过，独立审查PASS | 0 | 夹具同值回调认证增量4→0；首绘尚未测量 | 候选，待测量 |
 | O3 配对恢复按需重绑 | 未实施 | 0 | 尚未测量 | 待执行 |
 | O4 列表复用与惰性下载过滤 | 未实施 | 0 | 尚未测量 | 待执行 |
 | O5 AUTO首次布局 | 未取证 | 0 | 尚未测量 | 待执行 |
@@ -112,3 +112,106 @@ O2最终只有`SharedDualPageAndroidWiringTest.kt`的10个测试及fixture草稿
 收尾补充：Luna通过正常BACK导出了A2 request1的探针，保存为`o1-a2-single-ui/interrupted-probe-1.json`；第一段partial MKV也保留。但是缺少完整system.perfetto-trace/capture.json，request2没有采集目录，因此该块仍属残缺联合采集，不加入上述16份有效对照。不得因单独探针导出成功恢复其正式样本资格。
 
 **最终设备收尾已完成**：测量根`o1-a2-single-interrupted.json`记录两条A2样本已排除、42事件的恢复probe及partial产物清单。隔离包配置读回`enabled=false`，cleanup label为`o1-a2-single-interrupted-cleanup`；隔离包已force-stop，平板`Asleep`且`mWakefulnessChanging=false`。无本任务主机采集/trace进程，无设备scrcpy/perfetto/隔离包进程；共享ADB server保留。实际留装为A控制APK，完整SHA仍是`259c0d98b00deeca6a1254f753f2ffe0be2e6a7d8f541db74b117de6cfdadfc6`，最近A2安装条件文件为verify/install。Sol/Luna均已停止工作，不在后台继续优化。主代理复读了中断/收尾JSON，未把排除样本计入结果。
+
+## O1 最终裁决（2026-11-05续跑）
+
+**不采用。** 普通WebP首绘前少一次开流已经真实测试确认，但当前小样本没有证明跨模式稳定的体验净收益。候选单页首次较快、暖态重叠且部分较慢；双页OFF两臂区间重叠，ON候选FIRST_DRAW方向较慢。两个首次样本不能据此认定统计回归，也不能宣布稳定改善。四个production文件引入的读取身份/生命周期协调，以及EXIF可能两次完整读取的字节成本，不值得在当前证据下保留。下一项以真正已采用的R2源码为基线，不叠加O1。
+
+### 条件、原件与限制
+
+- 只补了A2缺少的4个请求，未重录已有16份。request级VALID按captureLabel/requestOrdinal去重为20；capture级CAPTURED不是额外样本，原输入前失败和中断联合采集仍EXCLUDED。A1/B1各6、B2/A2各4。
+- A2沿用中断前已安装的A包，**没有重新安装**，因此是隔夜补充控制，不伪装成紧接B2的完整同条件安装块。现场逐driver读回SHA、独立读回OAT均与A相符（verify/install）；安装条件温度28℃，后验现场27℃，USB供电/100%保留。后验温度不代表逐样本前状态。补充条件见测量根`conditions-o1-a2-supplemental-postcapture.json`及四条样本的captureContext。该差异进一步限制稳定性能结论，不追加采样追逐显著性。
+- 校验路径和A/B候选旗标的本轮误用保留validationHistory后重验；一次manifest尾部多余字面\n导致JSON解析失败，修正这两个非JSON字符并读回解析成功。原probe/trace/MKV未改，不将校验错误当作产品故障。
+- 本轮Luna只提取数字，主代理独立看20段原PTS连续帧、全部较大边界图及6处更正图。近黑含少量渐隐残留、排除页码/系统栏/微小spinner；以中心内容约2/255灰度辅助统一边界，仍有约一帧判定不确定性。双页首张正确漫画即结束近黑，目标source4地图与完整双页另计；最终均确认左地图/右卷4。区间为末近黑−首近黑至首漫画−最后可辨详情的采样界限。未校准视频PTS绝对输入，不报告伪精确输入→屏幕时间。
+- `native-metrics-20261104T174330Z.json`与20份`*-thread-running-formal.json`分别保留系统端点、同trace时钟映射及实际launch PID/upid/main tid裁剪统计；A1single原误标validation的文件保留，另以formal重提。完整数字另见`o1-combined-metrics-20.csv/json`、主代理联合`o1-joint-results-20.json`、`video-selections-review-final.json`；video v1/v2更正历史保留。
+- 20份trace均按实际stats schema核验drop/overrun/overwrite/discard/error/data_loss/packet_loss/overflow。19份无对应非零error/data-loss/drop；A2 dual-off有`trace_sorter_negative_timestamp_dropped=2`，该份系统/CPU值加†，不能定位这两条丢弃事件对区间的影响。全部另有info级`traced_chunks_discarded=133–155`、description为空，保留计数而不等同于丢失包数，不宣布零丢失。SQL、schema及逐样本输出在analysis中。
+
+### 完整逐样本端点（毫秒）
+
+FIRST_DRAW/UNIT是probe绘制回调，非物理呈现；CPU是PAGE_LIST_READY→目标FIRST_DRAW/UNIT的主线程Running（双页CPU终点UNIT），不可与wall或多线程工作相加。A2双页标签没有first后缀，仍是新进程首次。
+
+| 样本 | native DOWN→目标首绘 | →完整UNIT | VM→首绘 | 页表后main Running | 视频近黑界限 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| o1-a1-single-retry-first | 316.732 | — | 253.007 | 61.298 | 34–67 |
+| o1-a1-single-retry-warm | 256.276 | — | 209.393 | 48.685 | 0–34 |
+| o1-a1-dual-off-first | 439.849 | 440.046 | 378.222 | 192.631 | 99–133 |
+| o1-a1-dual-off-warm | 352.565 | 352.707 | 305.070 | 143.233 | 84–116 |
+| o1-a1-dual-on-first | 410.540 | 410.729 | 337.893 | 181.297 | 49–86 |
+| o1-a1-dual-on-warm | 337.270 | 337.388 | 290.089 | 150.788 | 67–100 |
+| o1-b1-single-first | 288.418 | — | 233.091 | 60.332 | 17–50 |
+| o1-b1-single-warm | 275.548 | — | 227.181 | 52.655 | 17–51 |
+| o1-b1-dual-off-first | 404.396 | 404.579 | 344.262 | 180.139 | 66–100 |
+| o1-b1-dual-off-warm | 355.487 | 355.651 | 308.840 | 148.567 | 84–117 |
+| o1-b1-dual-on-first | 426.487 | 426.682 | 355.023 | 182.937 | 100–129 |
+| o1-b1-dual-on-warm | 345.219 | 345.349 | 297.584 | 136.605 | 67–100 |
+| o1-b2-single-first | 307.623 | — | 245.282 | 62.209 | 17–51 |
+| o1-b2-single-warm | 266.011 | — | 218.796 | 48.506 | 0–34 |
+| o1-b2-dual-off-first | 437.205 | 437.461 | 378.610 | 188.881 | 115–149 |
+| o1-b2-dual-on-first | 413.449 | 413.622 | 351.497 | 179.818 | 99–131 |
+| o1-a2-final-single-first | 322.227 | — | 257.603 | 60.985 | 34–68 |
+| o1-a2-final-single-warm | 269.318 | — | 218.368 | 45.904 | 0–34 |
+| o1-a2-final-dual-off† | 407.796 | 407.951 | 346.782 | 174.478 | 83–116 |
+| o1-a2-final-dual-on | 402.478 | 402.685 | 338.109 | 176.258 | 99–133 |
+
+### 旧表三个系统端点（同一次native DOWN，毫秒）
+
+| 样本 | →StartActivity | →performCreate | →Reader首TX完成 |
+| --- | ---: | ---: | ---: |
+| o1-a1-single-retry-first | 33.399 | 51.154 | 124.641 |
+| o1-a1-single-retry-warm | 23.395 | 38.765 | 95.404 |
+| o1-a1-dual-off-first | 27.740 | 48.695 | 120.674 |
+| o1-a1-dual-off-warm | 23.231 | 38.094 | 87.518 |
+| o1-a1-dual-on-first | 32.277 | 52.929 | 131.042 |
+| o1-a1-dual-on-warm | 23.739 | 39.901 | 80.314 |
+| o1-b1-single-first | 26.294 | 43.234 | 110.566 |
+| o1-b1-single-warm | 22.511 | 40.424 | 97.063 |
+| o1-b1-dual-off-first | 28.708 | 47.652 | 111.897 |
+| o1-b1-dual-off-warm | 24.235 | 39.366 | 92.808 |
+| o1-b1-dual-on-first | 35.910 | 56.374 | 110.966 |
+| o1-b1-dual-on-warm | 23.303 | 40.151 | 79.487 |
+| o1-b2-single-first | 30.543 | 50.314 | 112.523 |
+| o1-b2-single-warm | 24.670 | 40.104 | 89.135 |
+| o1-b2-dual-off-first | 27.642 | 45.986 | 115.754 |
+| o1-b2-dual-on-first | 29.265 | 51.605 | 115.922 |
+| o1-a2-final-single-first | 30.256 | 52.802 | 118.596 |
+| o1-a2-final-single-warm | 28.735 | 43.938 | 109.622 |
+| o1-a2-final-dual-off | 28.816 | 50.117 | 116.065 |
+| o1-a2-final-dual-on | 33.172 | 52.423 | 122.790 |
+
+### 相同探针区间（毫秒）
+
+不比较O1前后已移动的header小段作为净收益。holder→image、image→decode、decode→draw使用共同端点；双页另列decode→UNIT。
+
+| 样本 | holder→image | image→decode | decode→draw | decode→UNIT |
+| --- | ---: | ---: | ---: | ---: |
+| o1-a1-single-retry-first | 18.587 | 22.073 | 101.335 | — |
+| o1-a1-single-retry-warm | 15.724 | 9.676 | 85.841 | — |
+| o1-a1-dual-off-first | 35.681 | 81.504 | 145.118 | 145.315 |
+| o1-a1-dual-off-warm | 18.917 | 57.322 | 135.532 | 135.674 |
+| o1-a1-dual-on-first | 25.613 | 74.388 | 118.455 | 118.644 |
+| o1-a1-dual-on-warm | 15.925 | 47.063 | 133.780 | 133.898 |
+| o1-b1-single-first | 18.259 | 15.623 | 86.463 | — |
+| o1-b1-single-warm | 10.903 | 13.761 | 105.602 | — |
+| o1-b1-dual-off-first | 24.295 | 42.924 | 153.521 | 153.704 |
+| o1-b1-dual-off-warm | 12.890 | 73.904 | 129.306 | 129.470 |
+| o1-b1-dual-on-first | 25.535 | 41.641 | 170.161 | 170.356 |
+| o1-b1-dual-on-warm | 18.173 | 42.370 | 146.398 | 146.528 |
+| o1-b2-single-first | 14.124 | 24.243 | 87.119 | — |
+| o1-b2-single-warm | 16.180 | 10.009 | 100.118 | — |
+| o1-b2-dual-off-first | 21.929 | 64.772 | 161.998 | 162.254 |
+| o1-b2-dual-on-first | 30.690 | 71.717 | 138.701 | 138.873 |
+| o1-a2-final-single-first | 19.598 | 16.018 | 102.020 | — |
+| o1-a2-final-single-warm | 9.801 | 12.881 | 88.341 | — |
+| o1-a2-final-dual-off | 26.616 | 54.578 | 141.540 | 141.695 |
+| o1-a2-final-dual-on | 28.848 | 84.083 | 107.566 | 107.773 |
+
+### 分组判断与源码收口
+
+- single首次：A native→draw 316.732/322.227，B 288.418/307.623；暖态A 256.276/269.318，B 275.548/266.011。首次有改善方向，暖态没有稳定改善。页表后CPU总体重叠，不把减少开流的操作证据外推成所有条件的时延保证。
+- OFF首次：A 439.849/407.796†，B 404.396/437.205；暖态A/B 352.565/355.487。两臂波动重叠，无已证实净收益。
+- ON首次：A 410.540/402.478，B 426.487/413.449；暖态A/B 337.270/345.219。该组方向不支持采用，但样本少且A2隔夜，不宣布统计回归。视频近黑也有明显波动，不以中位数掩盖单份长等待。
+- 不把这组边际/预热后测量称为升级首开、无扰动基准、P95或性能整体达标。O1不采用，因此不为采用门禁重装B做probe OFF复核，也不扩大到既有ON回翻错单元修复。
+- 最终候选8文件（7个代码/测试+probe维护说明）的完整内容、SHA及patch已存权威worktree `.test-tmp/reader-open-o-series-20261104/o1/rejected-candidate/`，恢复前后逐文件校验；原候选APK/source.diff/mapping与红绿证据保留。恢复只覆盖本任务O1所有权文件，O2测试和实现、原目录用户改动均未回滚。没有未采用产品代码提交。
+- 最终设备读回probe enabled=false、隔离包force-stop、Asleep且mWakefulnessChanging=false；实际留装A控制SHA `259c0d98b00deeca6a1254f753f2ffe0be2e6a7d8f541db74b117de6cfdadfc6`、OAT verify/install。无本任务采集/trace进程，ADB server保留。
+
+O1以“不采用且证据/补丁归档、源码恢复”的路径完成；其余清单继续执行。
