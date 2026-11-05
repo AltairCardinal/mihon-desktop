@@ -1121,3 +1121,97 @@ Desktop 真实 UI 3/实际诊断 2/分页和 owner 取消各 1。准确 domain2/
 维护见 desktop-network-routing 7.6.9–10。EC-06/07 仍未整项完成：Creator/legacy picker
 以及全局搜索元数据安全描述继续，EC-08 原 APK/ART/R8 原生验收仍为必做；不发布候选、
 不操作用户平板、不据 JVM 结果宣布 Android17 厂商设备已验证。
+
+## EC-06/07 安全元数据消费阶段（2026-11-06）
+
+本批实施代理负责 Creator/旧 Desktop 迁移，主代理负责共享 snapshot 与 Android 搜索。
+单一 Gradle 窗口串行交接，主代理统一提交。24 个 Kotlin 文件贯穿领域、实际 DI/service、
+两个既有 UI 入口及行为测试；不是新增诊断系统或 Creator 能力。另同步内部维护说明、
+本证据、roadmap 和既有页面契约，未修改受保护 reader 首开任务。
+
+### 共享机制与 Android 实际搜索
+
+- `ec07-source-metadata-snapshot-red`：空 API 脚手架得到 4 个真实失败（名称/部分语言
+  未读取、控制未传播、兼容错误缺失），19 秒。实现后
+  `ec07-source-metadata-contract-and-model-red` 的共享双目标各 4 方法绿；整体 key 仍
+  因 Android 4 方法红而 FAILED，不能称整体绿。对应 XML 均已按同名目录归档。
+- Android 四个正确红分别为：名称 getter 裸 NoSuch、已登记 ID 又读、未知登记还探测
+  ID、同词但 owner 更新只调用 1 次而非 2 次。新 SourceMetadataSnapshot 仅保原引用和
+  宿主登记键、受守卫名称/语言/错误，不读 ID，不用插件 equals/hash。未实施者独审后
+  才消费；请求、排序、标题和导航用同帧值，同名不同 ID 不再被 TreeMap 合并。
+- `ec06-creator-platform-metadata-red` 中 Android model 11 方法已经绿，真实 UI 仍
+  直接访问失效 ID，正确红。最小 UI 修正让全局/迁移共用内容消费 State.metadata；导航
+  再次检查冻结 ID，未知禁用而非造编号。
+- `ec07-migrate-metadata-wiring-red`：实际迁移 model 显式传入的 SourceManager 没交给
+  父 model，故父级认为全部未知，期望 Success 实际 Error；3 次 retry 算同 1 方法。
+  只补父构造器传参后通过，保留 20→10 专用顺序、显式选择不套全局隐藏/语言规则、
+  两源 API 各一次且 ID getter 零读。测试只关闭自己创建的父 dispatcher。
+- 新 `ec07-metadata-selection-red` 的共享两门与实际 model 一门证明：先准备全部
+  metadata 再丢弃会触发隐藏源/不匹配语言的名称 getter，宿主语言策略还未执行就读了
+  name。三参数 overload 改为 language-first，纯宿主 predicate 在 guard 外；二参数
+  入口保持原顺序。生产隐藏/置顶 ID 在读取之前排除，语言排除不执行名称。控件/策略
+  及部分元信息的原规则不变，未知语言仍有错误反馈。
+- `ec07-source-metadata-focused-green` 共享双目标各 6 方法及准确 13 文件严格格式
+  已通过，但 App 编译在跨模块 nullable language smartcast 失败，不是产品红；只用局部
+  val 缓存 language 后继续尚未执行的 App 范围，没有重跑有效共享 12 项。
+- `ec07-source-metadata-app-final`：model12、recovery2、Migrate1 全绿；实际 UI 的第四
+  次查询（未知登记）暴露 Lazy key 为 snapshot 对象、不能存入 Android Bundle。
+  这是正确产品红。未知 key 改为可保存的代际/快照行位置字符串，仅为 UI token；源 ID
+  仍 null，API 和导航仍禁用。该实际 UI 在后述代理主绿中通过，未重复其他 15 项。
+- 真实页面覆盖四次查询、坏/健康/挂起三源、未置顶第四源零 getter/API、坏源 API 开始
+  后 name/lang 失效仍能显示、旧挂起源取消、owner 新旧/未知版本、未知 ID 零 API、
+  健康行实际 Navigator 推入 BrowseSourceScreen(10) 且 ID getter 零读。目的页只捕获
+  真实 Screen，不借本门验证无关浏览内容。
+- 最后 `ec07-metadata-recovery-cache-red` 的实际方法证实：元数据已恢复，同词切筛选仍
+  复用旧 Error，34 秒。最小修正从同一旧 State 读取 results/owners/metadata，只在引用
+  对应的前后快照都无 metadata error 且 owner 不变时复用。方法也验证 manual retry，
+  恢复源 API 一次、健康源切筛选复用一次/手动重查两次。
+  `ec07-metadata-recovery-cache-green` **PASSED/exit0，17 秒**，准确 3 个受影响方法
+  及 App11 文件正常严格格式通过；不重跑未受影响的共享/UI/迁移。
+
+Root 最终有效组合 **28 项，零失败/错误/跳过**：共享6×2、model12、recovery2、
+Migrate1、实际 UI1。共享归档 `.test-tmp/ec07-source-metadata-focused-green-xml/`；
+App 基线 `.test-tmp/ec07-source-metadata-app-final-xml/` 排除其失败 UI；实际 UI 取
+`.test-tmp/ec06-creator-metadata-boundaries-green-xml/`；三方法末验取
+`.test-tmp/ec07-metadata-recovery-cache-green-xml/`，同平台/类/方法覆盖旧结果而不重复计数。
+共享/消费/predicate/保存 key 与缓存补丁均由未实施者独审，最终 GO；该 GO 不扩至未列边界。
+
+### Creator/实际 DI 与保留旧迁移 picker
+
+- `ec06-creator-metadata-red` 的实际 adapter 三方法正确红，包含 strict 注册零探测、
+  已知元数据逐源失败/健康继续和控制优先。两端 production DI 新门在
+  `ec06-creator-platform-metadata-red` 各三个 site 得到 raw NoSuch，而非仅 mock adapter。
+- 原 AuthorsTab 仍调用 await(id, sources)，直接改成 await(id) 会改变 legacy 的
+  permissive/includeUnknown 默认，故未改变它。Service 从实际已配置 Catalogue adapter
+  派生本轮显式入口，继承宿主 lookup/身份 factory，而 cache 全新、保原显式来源与策略。
+  独立旧入口没有 host lookup 才首次守卫登记；注入 lookup 返回 null 绝不探测 ID。
+- 独审确认的两个具体旧语义问题加入真实红：未知登记但 lang=fr 已被排除，不应先
+  MalformedData 中断健康 en；配置 resolver 指向 B，不应把显式 A 同 ID 的实际 API
+  换给 B。`ec06-creator-legacy-selection-correct-red` 的这两门正确红后，仅调顺序和
+  explicit clone resolver，不修改独立 adapter 本来的 resolver 语义。
+- Desktop 实际 DI 选择门另证实多读一次 fr.name，改接已审三参 helper。已知隐藏 ID
+  完全不读元信息，fr 只一次 language、零 name，健康 en 继续；selected unknown 的
+  Malformed/实际 Linkage 分类和零 ID 读取仍由原门保留。
+- 旧迁移 picker 初次 ID click 抢在行出现之前、unknown 等待超时属于装置问题，未记
+  产品红。补实际 model.migrationSources 进入/读数后，同一四 site（ID/name/lang/未知）
+  给出正确原始 getter 红。最小 safe DTO、禁用及实际 API 前登记复查后，通过真实 UI；
+  正常来源仍走原搜索，错误走原 Snackbar，不假装空结果。
+- `ec06-creator-metadata-boundaries-green` 保留有效 domain15、Android DI1、Desktop3，
+  **19 项**；另 Root UI1 单列。只有 Authors 新 UI 首次等调用计数失败，不能计为绿。
+  诊断确认 counter-only 等待未同步真实 SQL 后 UI 恢复；等待改为实际兼容语义节点，
+  保留 API=1/poisoned ID=0，production 未为此改动。
+- `ec06-creator-authors-di-feedback-green` 的真实 Authors DI/UI 及旧迁移 Snackbar
+  各1通过；旧 DI shares 门缺新登记/已安装帧 fixture，补明确宿主记录，
+  `ec06-creator-old-di-registration-green` 仅该旧1通过。没有 production fallback。
+
+实施代理最终有效 **22 项，零失败/错误/跳过**：domain15、Android3、Desktop4。
+三批有效 XML 分别保存在同名 `.test-tmp/*-xml/`，主代理已逐 case 去重核对。
+`ec06-creator-metadata-strict-final` **PASSED/exit0，3秒**，准确 domain3/app3/Desktop5
+共11 Kotlin 严格格式；临时 materialize Apply 的长行选项未作为验收，终态使用正常规则。
+主代理独立核对 API/DI snapshot/explicit 继承、选择顺序、unknown及旧迁移错误接线通过。
+
+全阶段 **50 项有效组合**与 **24 Kotlin 文件严格格式**通过，不声称最终代码重跑全部50。
+未运行完整模块/全量，不推送、不做正式 APK、不操作用户平板。维护见7.6.11–12。
+EC-06/07 保持未勾选：Desktop 全局完整描述与登录恢复仍欠；另已读到 toDomainManga
+直接访问 SManga 属性，延迟 getter 的受保护消费须补真实失败验证。这是原调用覆盖范围的
+未闭条件，不是原始 Zerobyw 崩溃的新归因。EC-08 原 APK/ART/R8 原生门仍须执行。

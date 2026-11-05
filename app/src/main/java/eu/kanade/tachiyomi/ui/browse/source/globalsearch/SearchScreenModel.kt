@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import mihon.domain.error.AppError
 import mihon.domain.manga.model.toDomainManga
 import tachiyomi.core.common.preference.toggle
 import tachiyomi.core.common.util.lang.launchIO
@@ -40,13 +41,16 @@ import tachiyomi.domain.source.service.SOURCE_COMPATIBILITY_LOG_TAG
 import tachiyomi.domain.source.service.SourceFilterResult
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourceMangaSearchService
+import tachiyomi.domain.source.service.SourceMetadataSnapshot
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourcePageRequest
 import tachiyomi.domain.source.service.SourcePageResult
 import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceQueryReducer
 import tachiyomi.domain.source.service.SourceQueryState
+import tachiyomi.domain.source.service.SourceRecoveryAction
 import tachiyomi.domain.source.service.prepareSourceFilters
+import tachiyomi.domain.source.service.prepareSourceMetadata
 import tachiyomi.domain.source.service.recordSourceFailureDiagnostics
 import tachiyomi.domain.source.service.sourceRecoveryAction
 import tachiyomi.domain.source.service.withSourceFailureIdentity
@@ -79,16 +83,23 @@ abstract class SearchScreenModel(
 
     private var lastQuery: String? = null
     private var lastSourceFilter: SourceFilter? = null
+    private var lastOwners = emptyList<Pair<Source, SourceFailureIdentity>>()
 
     protected var extensionFilter: String? = null
 
-    open val sortComparator = { map: Map<Source, SearchItemResult> ->
-        compareBy<Source>(
-            { (map[it] as? SearchItemResult.Success)?.isEmpty ?: true },
-            { "${it.id}" !in pinnedSources },
-            { "${it.name.lowercase()} (${it.lang})" },
-        )
-    }
+    protected open fun sortComparator(
+        map: Map<Source, SearchItemResult>,
+        metadata: List<SourceMetadataSnapshot>,
+    ): Comparator<Source> = compareBy<Source>(
+        { (map[it] as? SearchItemResult.Success)?.isEmpty ?: true },
+        { metadata.firstOrNull { item -> item.source === it }?.sourceId?.toString() !in pinnedSources },
+        {
+            metadata.firstOrNull { item -> item.source === it }
+                ?.let { item -> "${item.name.orEmpty().lowercase()} (${item.language.orEmpty()})" }.orEmpty()
+        },
+    )
+        .thenBy { source -> metadata.firstOrNull { it.source === source }?.sourceId }
+        .thenBy { source -> metadata.indexOfFirst { it.source === source } }
 
     init {
         screenModelScope.launch {
@@ -111,29 +122,15 @@ abstract class SearchScreenModel(
         }
     }
 
-    open fun getEnabledSources(): List<Source> {
-        return sourceManager.getQuerySources()
-            .filter { it.lang in enabledLanguages && "${it.id}" !in disabledSources }
-            .sortedWith(
-                compareBy(
-                    { "${it.id}" !in pinnedSources },
-                    { "${it.name.lowercase()} (${it.lang})" },
-                ),
-            )
-    }
+    protected open fun sourceCandidates(): List<Source> = sourceManager.getQuerySources()
 
-    private fun getSelectedSources(installed: List<Extension.Installed>): List<Source> {
-        val enabledSources = getEnabledSources()
+    protected open fun isSourceIdEnabled(sourceId: Long?): Boolean = sourceId?.toString() !in disabledSources
 
-        val filter = extensionFilter
-        if (filter.isNullOrEmpty()) {
-            return enabledSources
-        }
+    protected open fun isLanguageEnabled(language: String): Boolean = language in enabledLanguages
 
-        return installed
-            .filter { it.pkgName == filter }
-            .flatMap { it.sources }
-            .filter { it in enabledSources }
+    protected open fun isSourceEnabled(metadata: SourceMetadataSnapshot): Boolean {
+        val language = metadata.language
+        return (language == null || isLanguageEnabled(language)) && isSourceIdEnabled(metadata.sourceId)
     }
 
     fun updateSearchQuery(query: String?) {
@@ -161,33 +158,59 @@ abstract class SearchScreenModel(
         if (query.isNullOrBlank()) return
 
         val sameQuery = this.lastQuery == query
-        if (sameQuery && this.lastSourceFilter == sourceFilter) return
-
-        this.lastQuery = query
-        this.lastSourceFilter = sourceFilter
-
-        searchJob?.cancel()
-        val generation = ++searchGeneration
-
         val installed = extensionManager.installedExtensionsFlow.value
-        val sources = getSelectedSources(installed)
-        val identities = sources.map { source ->
+        val candidates = sourceCandidates()
+        val identities = candidates.map { source ->
             val owner = installed.firstOrNull { extension -> extension.sources.any { it === source } }
             source to SourceFailureIdentity(
+                sourceId = sourceManager.getRegisteredSourceId(source),
                 extensionPackage = owner?.pkgName,
                 extensionName = owner?.name,
                 versionName = owner?.versionName,
                 versionCode = owner?.versionCode,
             )
         }
+        val sameOwners = identities.size == lastOwners.size && identities.zip(lastOwners).all { (next, old) ->
+            next.first === old.first && next.second == old.second
+        }
+        if (sameQuery && this.lastSourceFilter == sourceFilter && sameOwners) return
+
+        this.lastQuery = query
+        this.lastSourceFilter = sourceFilter
+        this.lastOwners = identities
+
+        searchJob?.cancel()
+        val generation = ++searchGeneration
+
+        val metadata = identities.filter { isSourceIdEnabled(it.second.sourceId) }
+            .map { (source, identity) -> prepareSourceMetadata(source, identity.sourceId, ::isLanguageEnabled) }
+            .filter(::isSourceEnabled)
+            .filter { item ->
+                extensionFilter.isNullOrEmpty() ||
+                    identities.first { it.first === item.source }.second.extensionPackage == extensionFilter
+            }
+        val sources = metadata.map { it.source }
 
         // Reuse previous results if possible
         if (sameQuery) {
-            val existingResults = state.value.items
+            val previousState = state.value
+            val existingResults = previousState.items
+            val previousOwners = previousState.sourceIdentities
             updateItems(
                 sources
-                    .associateWith { existingResults[it] ?: SearchItemResult.Loading }
+                    .associateWith { source ->
+                        val owner = identities.first { it.first === source }.second
+                        val unchanged = previousOwners.any { it.first === source && it.second == owner }
+                        val prepared = metadata.first { it.source === source }
+                        val previous = previousState.metadata.firstOrNull { it.source === source }
+                        existingResults[source].takeIf {
+                            unchanged && previous != null && previous.error == null && prepared.error == null
+                        }
+                            ?: SearchItemResult.Loading
+                    }
                     .toPersistentMap(),
+                metadata,
+                identities,
                 generation,
             )
         } else {
@@ -195,20 +218,46 @@ abstract class SearchScreenModel(
                 sources
                     .associateWith { SearchItemResult.Loading }
                     .toPersistentMap(),
+                metadata,
+                identities,
                 generation,
             )
         }
 
         searchJob = workerScope.launch {
-            sources.map { source ->
+            metadata.map { sourceMetadata ->
                 async {
+                    val source = sourceMetadata.source
                     if (state.value.items[source] !is SearchItemResult.Loading) {
+                        return@async
+                    }
+
+                    val sourceId = sourceMetadata.sourceId
+                    val metadataError = sourceMetadata.error ?: if (sourceId == null) AppError.Unknown() else null
+                    if (metadataError != null) {
+                        val error = metadataError.withSourceFailureIdentity(
+                            identities.first { it.first === source }.second,
+                        )
+                        val failed = SearchItemResult.Error(
+                            SourcePageError(
+                                error,
+                                if (sourceId == null) SourceRecoveryAction.None else error.sourceRecoveryAction(),
+                            ),
+                        )
+                        if (updateItem(
+                                source,
+                                failed,
+                                generation,
+                            )
+                        ) {
+                            error.recordSourceFailureDiagnostics(sourceFailureLog)
+                        }
                         return@async
                     }
 
                     val prepared = withContext(coroutineDispatcher) { prepareSourceFilters(source) }
                     val request = SourcePageRequest(
-                        sourceId = source.id,
+                        sourceId = requireNotNull(sourceId),
                         page = 1,
                         generation = generation,
                         query = SourceQuery.Search(
@@ -236,7 +285,7 @@ abstract class SearchScreenModel(
                     when (val reduced = sourceQueryReducer.reduce(current, result)) {
                         is SourceQueryState.Content -> {
                             val titles = reduced.items
-                                .map { it.toDomainManga(source.id) }
+                                .map { it.toDomainManga(sourceId) }
                                 .distinctBy { it.url }
                                 .let { networkToLocalManga(it) }
                             if (isActive && reduced.request.generation == generation) {
@@ -268,12 +317,19 @@ abstract class SearchScreenModel(
         }
     }
 
-    private fun updateItems(items: PersistentMap<Source, SearchItemResult>, generation: Long) {
+    private fun updateItems(
+        items: PersistentMap<Source, SearchItemResult>,
+        metadata: List<SourceMetadataSnapshot>,
+        identities: List<Pair<Source, SourceFailureIdentity>>,
+        generation: Long,
+    ) {
         mutableState.update {
             it.copy(
                 generation = generation,
+                metadata = metadata,
+                sourceIdentities = identities,
                 items = items
-                    .toSortedMap(sortComparator(items))
+                    .toSortedMap(sortComparator(items, metadata))
                     .toPersistentMap(),
             )
         }
@@ -281,9 +337,11 @@ abstract class SearchScreenModel(
 
     private fun updateItem(source: Source, result: SearchItemResult, generation: Long): Boolean {
         val accepted = mutableState.updateAndGet { current ->
-            if (current.generation != generation) return@updateAndGet current
+            if (current.generation != generation || current.metadata.none { it.source === source }) {
+                return@updateAndGet current
+            }
             val items = current.items.mutate { it[source] = result }
-            current.copy(items = items.toSortedMap(sortComparator(items)).toPersistentMap())
+            current.copy(items = items.toSortedMap(sortComparator(items, current.metadata)).toPersistentMap())
         }
         return accepted.generation == generation && accepted.items[source] === result
     }
@@ -308,6 +366,8 @@ abstract class SearchScreenModel(
         val items: PersistentMap<Source, SearchItemResult> = persistentMapOf(),
         val dialog: Dialog? = null,
         val generation: Long = 0,
+        val metadata: List<SourceMetadataSnapshot> = emptyList(),
+        val sourceIdentities: List<Pair<Source, SourceFailureIdentity>> = emptyList(),
     ) {
         val progress: Int = items.count { it.value !is SearchItemResult.Loading }
         val total: Int = items.size

@@ -1032,13 +1032,15 @@ class CreatorDiscoveryService(
     }
 
     private fun legacyPort(sources: List<CatalogueSource>): CreatorDiscoverySourcePort {
-        val sourcesById = sources.distinctBy(CatalogueSource::id).associateBy(CatalogueSource::id)
+        (sourcePort as? CatalogueCreatorDiscoverySourceAdapter)?.let {
+            return it.forExplicitSources(sources, sourceMangaSearchService, clock, titleAttributionPolicy)
+        }
         return CatalogueCreatorDiscoverySourceAdapter(
-            enabledSourcesProvider = { sourcesById.values.toList() },
-            sourceResolver = sourcesById::get,
+            enabledSourcesProvider = { sources },
+            sourceResolver = { null },
             sourceMangaSearchService = sourceMangaSearchService,
-            languageProfileProvider = { source ->
-                source.lang.takeIf(String::isNotBlank)
+            languageProfileProvider = { metadata ->
+                metadata.language?.takeIf(String::isNotBlank)
                     ?.let(CreatorSourceReadingLanguageProfile::Single)
                     ?: CreatorSourceReadingLanguageProfile.Unknown
             },

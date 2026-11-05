@@ -1,5 +1,6 @@
 package tachiyomi.domain.creator.service
 
+import eu.kanade.tachiyomi.network.SourceFailureIdentity
 import eu.kanade.tachiyomi.network.SourceOperationPhase
 import eu.kanade.tachiyomi.network.guardSourceOperation
 import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
@@ -15,19 +16,26 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import mihon.domain.error.AppError
+import mihon.domain.network.AppErrorException
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.model.SourceDateValue
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.source.service.SourceMangaSearchRequest
 import tachiyomi.domain.source.service.SourceMangaSearchService
+import tachiyomi.domain.source.service.SourceMetadataSnapshot
+import tachiyomi.domain.source.service.SourceRegistration
+import tachiyomi.domain.source.service.prepareSourceMetadata
 import tachiyomi.domain.source.service.toSourceAppError
+import tachiyomi.domain.source.service.withSourceFailureIdentity
+
+typealias CreatorSourceIdentityLookup = (CatalogueSource, Long?) -> SourceFailureIdentity
 
 /** Production adapter from extension catalogue APIs to the bounded discovery source contract. */
 class CatalogueCreatorDiscoverySourceAdapter(
     private val enabledSourcesProvider: suspend () -> List<CatalogueSource>,
     private val sourceResolver: (Long) -> CatalogueSource?,
     private val sourceMangaSearchService: SourceMangaSearchService = SourceMangaSearchService(),
-    private val languageProfileProvider: (CatalogueSource) -> CreatorSourceReadingLanguageProfile = {
+    private val languageProfileProvider: (SourceMetadataSnapshot) -> CreatorSourceReadingLanguageProfile = {
         CreatorSourceReadingLanguageProfile.Unknown
     },
     private val extensionPackageProvider: (CatalogueSource) -> String = {
@@ -41,42 +49,133 @@ class CatalogueCreatorDiscoverySourceAdapter(
     },
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val titleAttributionPolicy: CreatorTitleAttributionPolicy = CreatorTitleAttributionPolicy.Disabled,
+    private val registeredSourceIdProvider: ((CatalogueSource) -> Long?)? = null,
+    private val identitySnapshotProvider: (() -> CreatorSourceIdentityLookup)? = null,
+    private val registeredSourceEligibilityProvider: (() -> ((Long) -> Boolean))? = null,
+    private val languageEligibilityProvider: (() -> ((String) -> Boolean))? = null,
 ) : CreatorDiscoverySourcePort {
     private val mutex = Mutex()
     private var snapshotSources = emptyMap<Long, CatalogueSource>()
+    private var snapshotFailures = emptyMap<Long, CreatorSourceFailure>()
     private val searchHits = mutableMapOf<SearchHitKey, CachedSearchHit>()
 
+    /** Explicit legacy callers retain their own candidate list and permissive language policy. */
+    internal fun forExplicitSources(
+        sources: List<CatalogueSource>,
+        searchService: SourceMangaSearchService,
+        legacyClock: () -> Long,
+        policy: CreatorTitleAttributionPolicy,
+    ) = CatalogueCreatorDiscoverySourceAdapter(
+        enabledSourcesProvider = { sources },
+        sourceResolver = { null },
+        sourceMangaSearchService = searchService,
+        languageProfileProvider = { metadata ->
+            metadata.language?.takeIf(String::isNotBlank)?.let(CreatorSourceReadingLanguageProfile::Single)
+                ?: CreatorSourceReadingLanguageProfile.Unknown
+        },
+        extensionPackageProvider = extensionPackageProvider,
+        extensionVersionProvider = extensionVersionProvider,
+        clock = legacyClock,
+        titleAttributionPolicy = policy,
+        registeredSourceIdProvider = registeredSourceIdProvider,
+        identitySnapshotProvider = identitySnapshotProvider,
+    )
+
     override suspend fun enabledSourcesSnapshot(): List<EnabledCreatorSource> {
-        val sources = enabledSourcesProvider()
-            .map { sourceResolver(it.id) ?: it }
-            .distinctBy(CatalogueSource::id)
-        mutex.withLock {
-            snapshotSources = sources.associateBy(CatalogueSource::id)
-            searchHits.keys.removeAll { it.work.sourceId !in snapshotSources }
-        }
-        return sources.map { source ->
-            EnabledCreatorSource(
-                sourceId = source.id,
-                displayName = source.name,
+        val identityForSource = identitySnapshotProvider?.invoke()
+        val idEligible = registeredSourceEligibilityProvider?.invoke() ?: { _: Long -> true }
+        val languageEligible = languageEligibilityProvider?.invoke() ?: { _: String -> true }
+        val registrations = mutableListOf<SourceRegistration>()
+        val seenIds = mutableSetOf<Long>()
+        val prepared = mutableListOf<PreparedSource>()
+        for (candidate in enabledSourcesProvider()) {
+            val prior = registrations.firstOrNull { it.source === candidate }
+            val id = prior?.sourceId ?: if (registeredSourceIdProvider != null) {
+                registeredSourceIdProvider.invoke(candidate)
+            } else {
+                try {
+                    guardSourceOperation(SourceOperationPhase.METADATA) { candidate.id }
+                } catch (error: Exception) {
+                    error.rethrowSourceControlFailure()
+                    val mapped = error.toSourceAppError()
+                    val identity = identityForSource?.invoke(candidate, null)
+                    throw AppErrorException(identity?.let(mapped::withSourceFailureIdentity) ?: mapped)
+                }
+            }
+            if (id != null) {
+                if (!seenIds.add(id)) continue
+                registrations += SourceRegistration(candidate, id)
+                if (!idEligible(id)) continue
+            }
+            // Strict registration keeps the exact source reference; only the old standalone
+            // explicit-list mode retains its supplied resolver's canonical source behavior.
+            val source = if (registeredSourceIdProvider == null &&
+                id != null
+            ) {
+                sourceResolver(id) ?: candidate
+            } else {
+                candidate
+            }
+            val identity = identityForSource?.invoke(source, id)
+            val metadata = if (languageEligibilityProvider == null) {
+                prepareSourceMetadata(source, id)
+            } else {
+                prepareSourceMetadata(source, id, languageEligible)
+            }
+            val failure = metadata.error?.let { error -> identity?.let(error::withSourceFailureIdentity) ?: error }
+            val language = metadata.language
+            if (language != null && !languageEligible(language)) continue
+            if (id == null) {
+                throw AppErrorException(
+                    failure ?: AppError.MalformedData(
+                        IllegalStateException("Source registration identity is unavailable"),
+                    ),
+                )
+            }
+            val descriptor = EnabledCreatorSource(
+                sourceId = id,
+                displayName = metadata.name?.takeIf(String::isNotBlank) ?: "Unknown",
                 capabilities = buildSet {
                     add(CreatorSourceCapability.DETAILS)
-                    if (source is AuthorSearchSource && !titleAttributionPolicy.isEnabled(source.id)) {
+                    if (source is AuthorSearchSource && !titleAttributionPolicy.isEnabled(id)) {
                         add(CreatorSourceCapability.AUTHOR_SEARCH)
                     } else {
                         add(CreatorSourceCapability.CATALOGUE_SEARCH_FALLBACK)
                     }
                 },
-                readingLanguageProfile = languageProfileProvider(source),
-                catalogueLanguageTag = source.lang,
-                extensionPackage = extensionPackageProvider(source),
-                extensionVersion = extensionVersionProvider(source),
+                readingLanguageProfile = if (failure != null) {
+                    CreatorSourceReadingLanguageProfile.Unknown
+                } else {
+                    languageProfileProvider(metadata)
+                },
+                catalogueLanguageTag = metadata.language,
+                extensionPackage = if (identityForSource != null) {
+                    identity?.extensionPackage?.takeIf(String::isNotBlank)
+                        ?: "unknown.extension"
+                } else {
+                    extensionPackageProvider(source)
+                },
+                extensionVersion = if (identityForSource != null) {
+                    identity?.creatorExtensionVersion() ?: "unknown"
+                } else {
+                    extensionVersionProvider(source)
+                },
             )
+            prepared += PreparedSource(source, descriptor, failure?.toCreatorSourceFailure())
         }
+        mutex.withLock {
+            snapshotSources = prepared.associate { it.descriptor.sourceId to it.source }
+            snapshotFailures =
+                prepared.mapNotNull { item -> item.failure?.let { item.descriptor.sourceId to it } }.toMap()
+            searchHits.keys.removeAll { it.work.sourceId !in snapshotSources }
+        }
+        return prepared.map { it.descriptor }
     }
 
     override suspend fun searchPage(request: BoundedAuthorSearchPageRequest): CreatorSourcePageResult {
-        val source = mutex.withLock { snapshotSources[request.sourceId] }
-            ?: return CreatorSourcePageResult.Failure(CreatorSourceFailure.MissingSource)
+        val selected = mutex.withLock { snapshotSources[request.sourceId] to snapshotFailures[request.sourceId] }
+        selected.second?.let { return CreatorSourcePageResult.Failure(it) }
+        val source = selected.first ?: return CreatorSourcePageResult.Failure(CreatorSourceFailure.MissingSource)
         val remainingMillis = request.deadlineAtMillis - clock()
         if (remainingMillis <= 0) return CreatorSourcePageResult.Failure(CreatorSourceFailure.Timeout)
 
@@ -136,8 +235,9 @@ class CatalogueCreatorDiscoverySourceAdapter(
     override suspend fun loadDetails(key: SourceWorkNaturalKey): CreatorSourceDetailsResult = loadDetails(key, false)
 
     override suspend fun loadDetails(key: SourceWorkNaturalKey, titleSearch: Boolean): CreatorSourceDetailsResult {
-        val source = mutex.withLock { snapshotSources[key.sourceId] }
-            ?: return CreatorSourceDetailsResult.Failure(CreatorSourceFailure.MissingSource)
+        val selected = mutex.withLock { snapshotSources[key.sourceId] to snapshotFailures[key.sourceId] }
+        selected.second?.let { return CreatorSourceDetailsResult.Failure(it) }
+        val source = selected.first ?: return CreatorSourceDetailsResult.Failure(CreatorSourceFailure.MissingSource)
         val cached = mutex.withLock { searchHits[SearchHitKey(key, titleSearch)] }
         val listedManga = cached?.manga?.copy() ?: SManga.create().also {
             it.url = key.stableSourceUrl
@@ -227,6 +327,12 @@ class CatalogueCreatorDiscoverySourceAdapter(
         AuthorSearchCreatorRole.UNKNOWN -> CreatorRole.UNKNOWN
     }
 
+    private data class PreparedSource(
+        val source: CatalogueSource,
+        val descriptor: EnabledCreatorSource,
+        val failure: CreatorSourceFailure?,
+    )
+
     private data class SearchPage(
         val items: List<AuthorSearchManga>,
         val hasNextPage: Boolean,
@@ -244,17 +350,24 @@ class CatalogueCreatorDiscoverySourceAdapter(
 
 private fun CatalogueSource.creatorFilters() = guardSourceOperation(SourceOperationPhase.FILTERS) { getFilterList() }
 
+private fun SourceFailureIdentity.creatorExtensionVersion(): String {
+    val version = versionName?.takeIf(String::isNotBlank)
+    return if (version != null && versionCode != null) "$version+$versionCode" else "unknown"
+}
+
 private fun Throwable.toCreatorSourceFailure(): CreatorSourceFailure {
     rethrowSourceControlFailure()
-    return when (val error = toSourceAppError()) {
-        is AppError.ExtensionIncompatible -> CreatorSourceFailure.ExtensionIncompatible(error.cause)
-        is AppError.Authentication, is AppError.Challenge -> CreatorSourceFailure.AuthenticationRequired(null)
-        is AppError.RateLimited -> CreatorSourceFailure.RateLimited(error.retryAfterSeconds?.times(1_000))
-        is AppError.Forbidden -> CreatorSourceFailure.Http(403)
-        is AppError.Server -> CreatorSourceFailure.Http(error.statusCode)
-        is AppError.Network -> CreatorSourceFailure.Network(error.cause?.message)
-        is AppError.MalformedData -> CreatorSourceFailure.MalformedResponse(error.cause?.message)
-        AppError.Cancelled -> throw CancellationException("Source call cancelled", error.cause)
-        else -> CreatorSourceFailure.Network(error.cause?.message)
-    }
+    return toSourceAppError().toCreatorSourceFailure()
+}
+
+private fun AppError.toCreatorSourceFailure(): CreatorSourceFailure = when (val error = this) {
+    is AppError.ExtensionIncompatible -> CreatorSourceFailure.ExtensionIncompatible(error.cause)
+    is AppError.Authentication, is AppError.Challenge -> CreatorSourceFailure.AuthenticationRequired(null)
+    is AppError.RateLimited -> CreatorSourceFailure.RateLimited(error.retryAfterSeconds?.times(1_000))
+    is AppError.Forbidden -> CreatorSourceFailure.Http(403)
+    is AppError.Server -> CreatorSourceFailure.Http(error.statusCode)
+    is AppError.Network -> CreatorSourceFailure.Network(error.cause?.message)
+    is AppError.MalformedData -> CreatorSourceFailure.MalformedResponse(error.cause?.message)
+    AppError.Cancelled -> throw CancellationException("Source call cancelled", error.cause)
+    else -> CreatorSourceFailure.Network(error.cause?.message)
 }

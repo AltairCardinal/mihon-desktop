@@ -829,6 +829,55 @@ typed provider 的当前替换/清空即时可见。保留的 raw additional cal
 runtime 发布同步唤醒源候选观察者时出现反向锁依赖。此设施为后续安全 metadata descriptor
 提供可靠 ID，不代表 Creator、旧迁移 picker 或全局搜索所有 id/name/lang 消费已保护。
 
+#### 7.6.11 查询前的安全元数据快照
+
+共享 `SourceMetadataSnapshot` 保存原 Source 引用、可空登记 ID、已读取名称/语言及类型化
+错误。它是普通只读 class，不依赖插件 equals/hash，不提供未知 ID 的 getter 回退，也不
+改变 Source ABI、ID 算法或持久化 schema。已知普通元数据失败不阻止读取另一项以保留
+部分描述；兼容错误优先于普通失败，取消/致命/未知深尾及宿主 Error 保留传播。
+
+无选择策略的二参数 `prepareSourceMetadata` 保留名称→语言顺序。带纯宿主语言策略的
+三参数入口先读取受守卫的语言；已知不匹配时不执行名称 getter。策略本身在 source guard
+之外，其错误不能被归因给扩展。隐藏/未置顶等可由宿主登记 ID 决定的选择，应在准备前
+完成，避免为了随后丢弃的源触发第三方元数据。未知语言保留失败反馈，不能假装正常空源。
+
+Android SearchScreenModel 在调用前冻结已安装归属与登记键，查询、排序、作品来源 ID、
+卡片及浏览导航共同消费本轮快照。相同显示名称以登记 ID、再以本轮行位置区分，不因
+TreeMap 比较结果相同而合并。同关键词但运行对象/归属版本/登记变化会重新检查，健康
+交集保留；元数据失败在 filter/API 之前形成逐源结果。未知登记不派发 API、不构造假的
+SourcePageRequest ID，浏览入口禁用，其他源仍可完成。
+
+已知行使用原登记 Long 作为 Compose key。未知行只使用页面代际与快照行位置生成可放入
+Android Bundle 的字符串 key；该值仅用于 UI，不能回填 sourceId 或导航参数。直接拿
+snapshot 对象作 Android LazyColumn key 会在未知行出现时失败。迁移搜索保留显式来源及
+其专用顺序，不套全局隐藏/语言选择；其父 model 必须使用同一个显式注入 SourceManager。
+
+这不是所有后续第三方数据读取的总保护声明：Desktop 全局搜索仍须接完整快照，登录恢复
+入口及源返回对象在转换/呈现阶段的延迟 getter 还须沿实际调用边界分别验证。SQL/宿主
+reducer 不属于 source guard，不能为了分类方便包住整段持久化。
+
+#### 7.6.12 Creator 与保留迁移入口的元数据消费
+
+Creator adapter 每次来源快照先通过 factory 捕获当时的宿主安装记录，再按 Source 引用
+冻结归属；factory 不是 DI 初始化时永久保存的一帧。生产 ID lookup 返回 null 时不再
+尝试 getter。已知 ID 的元数据失败保留在来源条目并缓存类型化失败，搜索/详情在实际 API
+之前返回既有 CreatorSourceFailure；健康源继续。已知被隐藏的 ID 完全不读元数据，语言
+不匹配不读名称；已知语言已被排除的未知登记不应再中止所选健康源。
+
+真正被选但没有登记 ID 的来源无法进入现有 Long ID 结果协议，沿既有 AppErrorException
+给出操作级失败：普通缺失为 MalformedData，实际链接错误仍为 ExtensionIncompatible。
+不得造 ID、静默成功或扩展数据库/反馈协议。类型化已知失败与未知登记是不同边界。
+
+原显式来源的 Creator Service 入口保留 permissive 语义。配置了 Catalogue adapter 时，
+派生本轮 adapter 继承宿主 lookup/身份 factory，但保留传入的确切来源和全新临时 cache，
+不让配置端 resolver 替换显式来源，也不套平台默认选择策略。独立旧显式入口没有宿主
+lookup 时，仅在首次登记阶段守卫读取 ID；注入 lookup 后返回 null 不能触发该兼容模式。
+实际 AuthorsTab 仍走原显式调用，由真实 DI/service 接线证明，不能仅验证派生函数存在。
+
+Desktop 保留的旧迁移 picker 同样消费准备后的描述，错误/未知项禁用，目标 ID 来自快照，
+不在渲染或点击时重新读取 getter。实际 API 前再次确认该引用仍登记，失效走既有错误
+Snackbar，不伪装空结果。该旧分支不是当前 More 菜单的默认迁移入口，不据此改变默认导航。
+
 ## 8. 安全与隐私
 
 - 手动代理地址属于敏感配置，不写入普通运行日志。

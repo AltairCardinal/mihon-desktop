@@ -40,8 +40,113 @@ import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourcePageResult
 import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceRecoveryAction
+import tachiyomi.domain.source.service.sourceFailureIdentity
 
 class SearchScreenModelBehaviorTest {
+    @Test
+    fun `known hidden sources and excluded languages do not execute unselected metadata`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val hidden = MetadataSource(9L, "Hidden").apply { nameError = AssertionError("unselected hidden name") }
+        val excluded = MetadataSource(10L, "Excluded", languageTag = "fr").apply {
+            nameError = AssertionError("unselected language name")
+        }
+        val healthy = MetadataSource(11L, "Selected")
+        val model = screenModel(
+            hidden,
+            additionalSources = listOf(excluded, healthy),
+            disabledSourceIds = setOf("9"),
+        )
+        model.updateSearchQuery("query")
+        model.search()
+        runCurrent()
+        assertEquals(setOf(healthy), model.state.value.items.keys)
+        assertEquals(0, hidden.nameReads)
+        assertEquals(0, hidden.languageReads)
+        assertEquals(0, excluded.nameReads)
+        assertEquals(1, excluded.languageReads)
+        assertEquals(0, hidden.searchCalls)
+        assertEquals(0, excluded.searchCalls)
+        assertEquals(1, healthy.searchCalls)
+    }
+
+    @Test
+    fun `registered IDs keep equal headers distinct without another extension ID getter`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val broken = MetadataSource(9L, "Same header").apply { searchError = NoSuchMethodError("future search") }
+        val healthy = MetadataSource(10L, "Same header")
+        val model = screenModel(broken, additionalSources = listOf(healthy))
+        val reads = listOf(broken.idReads, healthy.idReads)
+        broken.idBroken = true
+        healthy.idBroken = true
+        model.updateSearchQuery("query")
+        model.search()
+        runCurrent()
+        assertEquals(2, model.state.value.items.size)
+        assertEquals(2, model.state.value.progress)
+        assertInstanceOf(SearchItemResult.Error::class.java, model.state.value.items[broken])
+        assertInstanceOf(SearchItemResult.Success::class.java, model.state.value.items[healthy])
+        assertEquals(reads, listOf(broken.idReads, healthy.idReads))
+        assertEquals(listOf(1, 1), listOf(broken.nameReads, healthy.nameReads))
+        assertEquals(listOf(1, 1), listOf(broken.languageReads, healthy.languageReads))
+    }
+
+    @Test
+    fun `metadata linkage fails only its source before filters and explicit retry rechecks`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        for (field in listOf("name", "language")) {
+            val broken = MetadataSource(9L, "Broken", field)
+            val healthy = MetadataSource(10L, "Healthy")
+            val model = screenModel(broken, additionalSources = listOf(healthy))
+            broken.metadataBroken = true
+            model.updateSearchQuery("query")
+            model.search()
+            runCurrent()
+            val failed = assertInstanceOf(SearchItemResult.Error::class.java, model.state.value.items[broken])
+            val error = assertInstanceOf(AppError.ExtensionIncompatible::class.java, failed.pageError.error)
+            val marker = assertInstanceOf(
+                eu.kanade.tachiyomi.network.SourceCompatibilityException::class.java,
+                error.cause,
+            )
+            assertEquals(eu.kanade.tachiyomi.network.SourceOperationPhase.METADATA, marker.phase)
+            assertEquals(9L, marker.identity?.sourceId)
+            assertEquals("selected.extension", marker.identity?.extensionPackage)
+            assertInstanceOf(SearchItemResult.Success::class.java, model.state.value.items[healthy])
+            assertEquals(0, broken.filterCalls)
+            assertEquals(0, broken.searchCalls)
+            assertEquals(1, healthy.searchCalls)
+            broken.metadataBroken = false
+            if (field == "name") model.setSourceFilter(SourceFilter.All) else model.retry()
+            runCurrent()
+            assertEquals(null, model.state.value.metadata.first { it.source === broken }.error)
+            assertInstanceOf(SearchItemResult.Success::class.java, model.state.value.items[broken])
+            assertEquals(1, broken.filterCalls)
+            assertEquals(1, broken.searchCalls)
+            assertEquals(if (field == "name") 1 else 2, healthy.searchCalls)
+            assertEquals(2, model.state.value.progress)
+        }
+    }
+
+    @Test
+    fun `unknown registration never probes ID or dispatches source API while healthy source completes`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val unknown = MetadataSource(9L, "Unknown registration").apply { idBroken = true }
+        val healthy = MetadataSource(10L, "Healthy")
+        val model = screenModel(
+            unknown,
+            additionalSources = listOf(healthy),
+            registeredSourceIds = listOf(healthy to 10L),
+        )
+        model.updateSearchQuery("query")
+        model.search()
+        runCurrent()
+        val failed = assertInstanceOf(SearchItemResult.Error::class.java, model.state.value.items[unknown])
+        assertInstanceOf(AppError.Unknown::class.java, failed.pageError.error)
+        assertInstanceOf(SearchItemResult.Success::class.java, model.state.value.items[healthy])
+        assertEquals(0, unknown.idReads)
+        assertEquals(0, unknown.filterCalls)
+        assertEquals(0, unknown.searchCalls)
+        assertEquals(2, model.state.value.progress)
+    }
 
     @Test
     fun `diagnostic writer IO failure preserves broken source and healthy search result`() = runTest {
@@ -130,8 +235,10 @@ class SearchScreenModelBehaviorTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
+        var calls = 0
         val source = object : BaseCatalogueSource() {
             override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+                calls++
                 started.complete(Unit)
                 release.await()
                 throw NoSuchMethodError("future search API")
@@ -161,6 +268,12 @@ class SearchScreenModelBehaviorTest {
         org.junit.jupiter.api.Assertions.assertTrue(diagnostics.contains("1.2.3"), diagnostics)
         org.junit.jupiter.api.Assertions.assertFalse(diagnostics.contains("9.9.9"), diagnostics)
         org.junit.jupiter.api.Assertions.assertFalse(diagnostics.contains("private-query"), diagnostics)
+        assertEquals(1, calls)
+        model.search()
+        runCurrent()
+        assertEquals(2, calls)
+        val replaced = assertInstanceOf(SearchItemResult.Error::class.java, model.state.value.items[source])
+        assertEquals("9.9.9", replaced.pageError.error.sourceFailureIdentity()?.versionName)
     }
 
     @Test
@@ -332,14 +445,19 @@ class SearchScreenModelBehaviorTest {
         extensionPackage: String? = null,
         installedExtensions: MutableStateFlow<List<Extension.Installed>>? = null,
         sourceFailureLog: (String) -> Unit = {},
+        registeredSourceIds: List<Pair<Source, Long>>? = null,
+        disabledSourceIds: Set<String> = emptySet(),
     ): SearchScreenModel {
-        val preferences = preferences()
+        val preferences = preferences(disabledSourceIds)
+        val registered = registeredSourceIds ?: (listOf(source) + additionalSources).map { it to it.id }
         val repository = mockk<MangaRepository>()
         coEvery { repository.insertNetworkManga(any()) } answers { firstArg() }
         return object : SearchScreenModel(
             sourcePreferences = preferences,
             sourceManager = object : SourceManager by mockk(relaxed = true) {
                 override fun getQuerySources() = listOf(source) + additionalSources
+                override fun getRegisteredSourceId(source: Source): Long? =
+                    registered.firstOrNull { it.first === source }?.second
             },
             extensionManager = mockk<ExtensionManager> {
                 every { installedExtensionsFlow } returns
@@ -371,7 +489,7 @@ class SearchScreenModelBehaviorTest {
         }
     }
 
-    private fun preferences(): SourcePreferences {
+    private fun preferences(disabledSourceIds: Set<String> = emptySet()): SourcePreferences {
         val setPreference = { value: Set<String> ->
             mockk<Preference<Set<String>>> {
                 every { get() } returns value
@@ -383,7 +501,7 @@ class SearchScreenModelBehaviorTest {
         }
         return mockk {
             every { enabledLanguages() } returns setPreference(setOf("en"))
-            every { disabledSources() } returns setPreference(emptySet())
+            every { disabledSources() } returns setPreference(disabledSourceIds)
             every { pinnedSources() } returns setPreference(emptySet())
             every { globalSearchFilterState() } returns booleanPreference
         }
@@ -399,6 +517,48 @@ class SearchScreenModelBehaviorTest {
             val (started, result) = if (query == "old") oldStarted to oldResult else newStarted to newResult
             started.complete(Unit)
             return withContext(NonCancellable) { result.await() }
+        }
+    }
+
+    private class MetadataSource(
+        private val registeredId: Long,
+        private val label: String,
+        private val brokenField: String? = null,
+        private val languageTag: String = "en",
+    ) : BaseCatalogueSource() {
+        var idBroken = false
+        var metadataBroken = false
+        var searchError: Throwable? = null
+        var nameError: Throwable? = null
+        var idReads = 0
+        var nameReads = 0
+        var languageReads = 0
+        var filterCalls = 0
+        var searchCalls = 0
+        override val id: Long get() {
+            idReads++
+            if (idBroken) throw NoSuchMethodError("late ID getter")
+            return registeredId
+        }
+        override val name: String get() {
+            nameReads++
+            nameError?.let { throw it }
+            if (metadataBroken && brokenField == "name") throw NoSuchMethodError("late name getter")
+            return label
+        }
+        override val lang: String get() {
+            languageReads++
+            if (metadataBroken && brokenField == "language") throw NoSuchMethodError("late language getter")
+            return languageTag
+        }
+        override fun getFilterList(): FilterList {
+            filterCalls++
+            return FilterList()
+        }
+        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+            searchCalls++
+            searchError?.let { throw it }
+            return MangasPage(emptyList(), false)
         }
     }
 

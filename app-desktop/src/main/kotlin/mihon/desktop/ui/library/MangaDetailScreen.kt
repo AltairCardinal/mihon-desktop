@@ -920,16 +920,31 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 LazyColumn {
                                     items(availableSources) { src ->
                                         DropdownMenuItem(
-                                            text = { Text("${src.name} (${src.lang})") },
+                                            text = {
+                                                val error = src.error
+                                                val name = src.name ?: MR.strings.unknown.localized()
+                                                Text(
+                                                    if (error != null) {
+                                                        desktopSourceErrorMessage(error)
+                                                    } else {
+                                                        "$name (${src.language.orEmpty()})"
+                                                    },
+                                                )
+                                            },
+                                            enabled = src.error == null && src.sourceId != null,
                                             onClick = {
+                                                val targetId = src.sourceId ?: return@DropdownMenuItem
+                                                val targetSource = src.source as CatalogueSource
+                                                if (src.error != null) return@DropdownMenuItem
                                                 model.setShowMigrateSourcePicker(false)
-                                                model.setMigrateTargetSourceId(src.id)
+                                                model.setMigrateTargetSourceId(targetId)
                                                 model.setMigrateSearchResults(null)
                                                 scope.launch {
                                                     model.setMigrateSearching(true)
                                                     try {
                                                         val query = manga?.title ?: return@launch
-                                                        model.setMigrateSearchResults(model.searchMigration(src, query))
+                                                        val matches = model.searchMigration(targetSource, query)
+                                                        model.setMigrateSearchResults(matches)
                                                     } catch (error: Exception) {
                                                         error.rethrowSourceControlFailure()
                                                         model.setMigrateSearching(false)

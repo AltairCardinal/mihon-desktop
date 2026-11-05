@@ -1021,28 +1021,34 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
         ),
     )
     val creatorDiscoverySourcePort = CatalogueCreatorDiscoverySourceAdapter(
-        enabledSourcesProvider = {
-            runCatching { Injekt.get<DesktopSourceManager>() }
-                .getOrNull()
-                ?.getEnabledCatalogueSources()
-                .orEmpty()
-        },
-        sourceResolver = { sourceId ->
-            runCatching { Injekt.get<DesktopSourceManager>() }
-                .getOrNull()
-                ?.get(sourceId) as? CatalogueSource
-        },
+        enabledSourcesProvider = { Injekt.get<DesktopSourceManager>().getCatalogueSources() },
+        sourceResolver = { Injekt.get<DesktopSourceManager>().get(it) as? CatalogueSource },
+        registeredSourceIdProvider = { Injekt.get<DesktopSourceManager>().getRegisteredSourceId(it) },
         sourceMangaSearchService = sourceMangaSearchService,
         titleAttributionPolicy = Injekt.get(),
-        extensionPackageProvider = { source ->
-            runCatching { Injekt.get<DesktopExtensionManager>().getExtensionPackage(source.id) }
-                .getOrNull()
-                ?: "builtin.source"
+        registeredSourceEligibilityProvider = {
+            val disabled = Injekt.get<DesktopAppPreferences>().disabledSources.get()
+            val eligible: (Long) -> Boolean = { it.toString() !in disabled }
+            eligible
         },
-        extensionVersionProvider = { source ->
-            runCatching { Injekt.get<DesktopExtensionManager>().getExtensionVersion(source.id) }
-                .getOrNull()
-                ?: "builtin"
+        languageEligibilityProvider = {
+            val languages = Injekt.get<DesktopAppPreferences>().enabledLanguages.get()
+            val eligible: (String) -> Boolean = { it in languages }
+            eligible
+        },
+        identitySnapshotProvider = {
+            val installed = Injekt.get<DesktopExtensionManager>().installedExtensions.value
+            val lookup: tachiyomi.domain.creator.service.CreatorSourceIdentityLookup = { source, registeredId ->
+                val metadata = installed.firstOrNull { owner -> owner.sources.any { it === source } }?.metadataSnapshot
+                eu.kanade.tachiyomi.network.SourceFailureIdentity(
+                    registeredId,
+                    metadata?.pkgName,
+                    metadata?.name,
+                    metadata?.versionName,
+                    metadata?.versionCode,
+                )
+            }
+            lookup
         },
     )
     Injekt.addSingleton<CreatorDiscoverySourcePort>(creatorDiscoverySourcePort)

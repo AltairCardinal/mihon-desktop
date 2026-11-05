@@ -4286,6 +4286,117 @@ class MangaDetailInteractionTest {
         }
     }
 
+    @Test
+    fun `legacy migration picker uses registered metadata and disables failed or unknown candidates`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val observations = mutableListOf<String>()
+        for (site in listOf("id", "name", "language", "unknown")) {
+            val current = mihon.desktop.source.FakeHttpSource(42L, "en", "Current source")
+            val target = MigrationMetadataSource()
+            val unknownManager = if (site == "unknown") {
+                object : tachiyomi.domain.source.service.SourceManager {
+                    override val isInitialized = kotlinx.coroutines.flow.MutableStateFlow(true)
+                    override val catalogueSources = kotlinx.coroutines.flow.flowOf(listOf(current, target))
+                    override fun getRegisteredSourceId(source: eu.kanade.tachiyomi.source.Source) =
+                        if (source === current) 42L else null
+                    override fun get(sourceKey: Long) = current.takeIf { sourceKey == 42L }
+                    override fun getOrStub(sourceKey: Long): eu.kanade.tachiyomi.source.Source =
+                        get(sourceKey) ?: tachiyomi.domain.source.model.StubSource(sourceKey, "en", "Unknown")
+                    override fun getOnlineSources() = listOf(current)
+                    override fun getCatalogueSources() = listOf(current, target)
+                    override fun getStubSources() = emptyList<tachiyomi.domain.source.model.StubSource>()
+                }
+            } else {
+                null
+            }
+            withDetail(
+                File(root, site),
+                directorySources = listOf(current, target),
+                detailsSourceManagerOverride = unknownManager,
+            ) { scene, model, _, _ ->
+                target.brokenAt = if (site == "unknown") "id" else site
+                val before = target.idReads
+                val attempt = runCatching {
+                    // Exercise the same production preparation before its retained Screen consumer.
+                    model.migrationSources(42L)
+                    model.setShowMigrateSourcePicker(true)
+                    render(scene)
+                    if (site == "id") {
+                        click(scene, "Migration metadata (en)")
+                        withTimeout(5_000) {
+                            while (model.state.value.migrateSearchResults == null) {
+                                render(scene)
+                                delay(10)
+                            }
+                        }
+                        "$site:query:${target.searches}:${target.idReads - before}"
+                    } else {
+                        val expected = if (site == "unknown") {
+                            MR.strings.unknown_error.localized()
+                        } else {
+                            MR.strings.source_error_extension_incompatible.localized()
+                        }
+                        withTimeout(5_000) {
+                            while (activeNodes(scene).none { expected in labels(it) }) {
+                                render(scene)
+                                delay(10)
+                            }
+                        }
+                        val row = activeNodes(scene).first {
+                            it.config.contains(SemanticsActions.OnClick) && expected in labels(it)
+                        }
+                        assertTrue(row.config.contains(SemanticsProperties.Disabled))
+                        "$site:disabled:${target.searches}:${target.idReads - before}"
+                    }
+                }
+                observations +=
+                    attempt.getOrElse { "$site:escaped:${it.javaClass.simpleName}:idReads=${target.idReads - before}" }
+            }
+        }
+        assertEquals(
+            listOf("id:query:1:0", "name:disabled:0:0", "language:disabled:0:0", "unknown:disabled:0:0"),
+            observations,
+        )
+    }
+
+    private class MigrationMetadataSource : eu.kanade.tachiyomi.source.CatalogueSource {
+        var brokenAt: String? = null
+        var idReads = 0
+        var searches = 0
+        override val id: Long get() {
+            idReads++
+            if (brokenAt ==
+                "id"
+            ) {
+                throw NoSuchMethodError("future ID")
+            }
+            return 96L
+        }
+        override val name: String get() {
+            if (brokenAt == "name") throw NoSuchMethodError("future name")
+            return "Migration metadata"
+        }
+        override val lang: String get() {
+            if (brokenAt ==
+                "language"
+            ) {
+                throw NoSuchMethodError("future language")
+            }
+            return "en"
+        }
+        override val supportsLatest = false
+        override fun getFilterList() = eu.kanade.tachiyomi.source.model.FilterList()
+        override suspend fun getSearchManga(
+            page: Int,
+            query: String,
+            filters: eu.kanade.tachiyomi.source.model.FilterList,
+        ): eu.kanade.tachiyomi.source.model.MangasPage {
+            searches++
+            return eu.kanade.tachiyomi.source.model.MangasPage(emptyList(), false)
+        }
+    }
+
     private suspend fun withDetail(
         root: File,
         mangaRepositoryOverride: ((MangaRepository) -> MangaRepository)? = null,
@@ -4298,6 +4409,7 @@ class MangaDetailInteractionTest {
         httpSource: Boolean = false,
         directorySources: List<eu.kanade.tachiyomi.source.CatalogueSource>? = null,
         completeCatalog: Boolean = false,
+        detailsSourceManagerOverride: tachiyomi.domain.source.service.SourceManager? = null,
         downloadManagerFactory: (
             (mihon.desktop.download.DesktopDownloadManager) -> mihon.desktop.download.DesktopDownloadManager
         )? = null,
@@ -4319,7 +4431,7 @@ class MangaDetailInteractionTest {
             Injekt.addFactory<mihon.desktop.download.DesktopDownloadManager> { replacementManager }
         }
         Injekt.get<mihon.desktop.settings.DesktopAppPreferences>().tabletUiMode.set(tabletMode)
-        val detailsSourceManager = if (httpSource || directorySources != null) {
+        val detailsSourceManager = detailsSourceManagerOverride ?: if (httpSource || directorySources != null) {
             mihon.desktop.source.DesktopSourceManager(
                 Injekt.get<mihon.desktop.extension.DesktopExtensionManager>(),
                 builtinSources =

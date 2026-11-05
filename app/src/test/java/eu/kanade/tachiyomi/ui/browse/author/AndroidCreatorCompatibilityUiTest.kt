@@ -5,8 +5,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.printToString
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import eu.kanade.domain.base.BasePreferences
@@ -53,6 +56,7 @@ import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.InjektScope
 import uy.kohesive.injekt.api.addSingleton
+import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.registry.default.DefaultRegistrar
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -67,9 +71,25 @@ class AndroidCreatorCompatibilityUiTest {
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         val previous = Injekt
         Injekt = InjektScope(DefaultRegistrar())
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
+            app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY,
+        )
+        Database.Schema.create(driver)
+        val database = Database(
+            driver,
+            historyAdapter = tachiyomi.data.History.Adapter(tachiyomi.data.DateColumnAdapter),
+            mangasAdapter = tachiyomi.data.Mangas.Adapter(
+                tachiyomi.data.StringListColumnAdapter,
+                tachiyomi.data.UpdateStrategyColumnAdapter,
+            ),
+        )
+        val idReads = AtomicInteger()
         val calls = AtomicInteger()
         val source = object : CatalogueSource {
-            override val id = 10L
+            override val id: Long get() {
+                idReads.incrementAndGet()
+                throw NoSuchMethodError("never probe registered ID")
+            }
             override val name = "Creator ABI fixture"
             override val lang = "en"
             override val supportsLatest = false
@@ -111,33 +131,60 @@ class AndroidCreatorCompatibilityUiTest {
             Injekt.addSingleton(details)
             Injekt.addSingleton(GetCreators(repository))
             Injekt.addSingleton(SetCreatorFollow(repository))
-            Injekt.addSingleton(DiscoverCreatorWorks(CreatorDiscoveryService(repository), details))
+            Injekt.importModule(eu.kanade.tachiyomi.di.PreferenceModule(activity.get().application))
+            Injekt.importModule(eu.kanade.domain.DomainModule())
+            Injekt.addSingleton<tachiyomi.data.DatabaseHandler>(tachiyomi.data.AndroidDatabaseHandler(database, driver))
+            val actualRepository = Injekt.get<CreatorRepository>()
+            kotlinx.coroutines.runBlocking { actualRepository.upsertCreator("ONE") }
+            Injekt.addSingleton<eu.kanade.tachiyomi.extension.ExtensionManager>(
+                mockk(relaxed = true) {
+                    every { installedExtensionsFlow } returns kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+                },
+            )
+            Injekt.addSingleton(details)
+            Injekt.addSingleton(GetCreators(repository))
+            Injekt.addSingleton(SetCreatorFollow(repository))
             Injekt.addSingleton(archive)
             Injekt.addSingleton(ManageCreatorIdentity(identities))
             Injekt.addSingleton(mockk<NetworkToLocalManga>(relaxed = true))
             Injekt.addSingleton<SourceManager>(object : SourceManager {
                 override val isInitialized = kotlinx.coroutines.flow.MutableStateFlow(true)
                 override val catalogueSources = flowOf(listOf(source))
-                override fun get(sourceKey: Long) = source.takeIf { it.id == sourceKey }
+                override fun getRegisteredSourceId(candidate: eu.kanade.tachiyomi.source.Source) =
+                    if (candidate === source) 10L else null
+                override fun get(sourceKey: Long) = source.takeIf { sourceKey == 10L }
                 override fun getOrStub(sourceKey: Long) = source
                 override fun getOnlineSources() = emptyList<eu.kanade.tachiyomi.source.online.HttpSource>()
                 override fun getCatalogueSources() = listOf(source)
                 override fun getStubSources() = emptyList<tachiyomi.domain.source.model.StubSource>()
             })
+            val actualService = Injekt.get<CreatorDiscoveryService>()
+            Injekt.addSingleton(DiscoverCreatorWorks(actualService, details))
             activity.get().setContent { MaterialTheme { Navigator(AndroidAuthorDetailScreen(1L)) { CurrentScreen() } } }
             compose.waitForIdle()
             compose.onNodeWithText(activity.get().stringResource(MR.strings.desktop_ui_check_new_works)).performClick()
-            compose.waitUntil(5_000) { calls.get() == 1 }
+            val compatibilityMessage = activity.get().stringResource(MR.strings.source_error_extension_incompatible)
+            try {
+                compose.waitUntil(5_000) {
+                    compose.onAllNodesWithText(compatibilityMessage).fetchSemanticsNodes().isNotEmpty()
+                }
+            } catch (error: androidx.compose.ui.test.ComposeTimeoutException) {
+                println("CREATOR_UI calls=${calls.get()} idReads=${idReads.get()}")
+                println(compose.onRoot(useUnmergedTree = true).printToString())
+                throw error
+            }
             compose.onNodeWithText(
                 activity.get().stringResource(MR.strings.source_error_extension_incompatible),
             ).assertExists()
             compose.onNodeWithText("private creator ABI details", substring = true).assertDoesNotExist()
             compose.waitForIdle()
             assertEquals(1, calls.get())
+            assertEquals(0, idReads.get())
         } finally {
             activity.get().setContent {}
             activity.pause().stop().destroy()
             Injekt = previous
+            driver.close()
         }
     }
 }

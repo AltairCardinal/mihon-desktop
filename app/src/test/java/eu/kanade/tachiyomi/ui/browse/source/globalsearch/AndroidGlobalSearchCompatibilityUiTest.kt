@@ -5,15 +5,18 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
@@ -30,6 +33,7 @@ import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreen
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -85,6 +89,7 @@ class AndroidGlobalSearchCompatibilityUiTest {
         val broken = object : FixtureSource(9L, "Broken source") {
             override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
                 brokenCalls.incrementAndGet()
+                poisonPresentation = true
                 if (query == "first") {
                     brokenStarted.complete(Unit)
                     releaseBroken.await()
@@ -120,7 +125,14 @@ class AndroidGlobalSearchCompatibilityUiTest {
                 return MangasPage(emptyList(), false)
             }
         }
-        val sources = listOf(broken, healthy, pending)
+        val unpinnedCalls = AtomicInteger()
+        val unpinned = object : FixtureSource(12L, "Unpinned source") {
+            override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+                unpinnedCalls.incrementAndGet()
+                throw AssertionError("Unselected source must not receive a query")
+            }
+        }.apply { poisonPresentation = true }
+        val sources = listOf(broken, healthy, pending, unpinned)
         fun installed(version: String) = mockk<Extension.Installed> {
             every { pkgName } returns "trusted.package"
             every { name } returns "Trusted extension"
@@ -129,6 +141,8 @@ class AndroidGlobalSearchCompatibilityUiTest {
             every { this@mockk.sources } returns sources
         }
         val owners = MutableStateFlow(listOf(installed("1.2.3")))
+        var registrationMissing = false
+        var navigation: Navigator? = null
         try {
             val store = AndroidPreferenceStore(activity.get())
             val preferences = SourcePreferences(store).apply {
@@ -149,8 +163,23 @@ class AndroidGlobalSearchCompatibilityUiTest {
             Injekt.addSingleton<SourceManager>(object : SourceManager by mockk(relaxed = true) {
                 override val isInitialized = MutableStateFlow(true)
                 override fun getQuerySources(): List<Source> = sources
+                override fun getRegisteredSourceId(source: Source): Long? = when {
+                    source === broken -> if (registrationMissing) null else 9L
+                    source === healthy -> 10L
+                    source === pending -> 11L
+                    source === unpinned -> 12L
+                    else -> null
+                }
             })
-            activity.get().setContent { MaterialTheme { Navigator(GlobalSearchScreen()) { CurrentScreen() } } }
+            sources.forEach { it.poisonId = true }
+            activity.get().setContent {
+                MaterialTheme {
+                    Navigator(GlobalSearchScreen()) { navigator ->
+                        navigation = navigator
+                        if (navigator.items.last() is GlobalSearchScreen) CurrentScreen() else Text("Destination")
+                    }
+                }
+            }
             compose.onNode(hasSetTextAction()).performTextInput("first")
             compose.onNode(hasSetTextAction()).performImeAction()
             compose.waitUntil(10_000) {
@@ -180,6 +209,7 @@ class AndroidGlobalSearchCompatibilityUiTest {
             assertEquals(1, healthyCalls.get())
             assertFalse(pendingCancelled.isCompleted)
 
+            broken.poisonPresentation = false
             compose.onNode(hasSetTextAction()).performTextReplacement("second")
             compose.onNode(hasSetTextAction()).performImeAction()
             try {
@@ -205,6 +235,7 @@ class AndroidGlobalSearchCompatibilityUiTest {
             compose.onAllNodes(progress).assertCountEquals(0)
 
             owners.value = emptyList()
+            broken.poisonPresentation = false
             compose.onNode(hasSetTextAction()).performTextReplacement("third")
             compose.onNode(hasSetTextAction()).performImeAction()
             val unknown = activity.get().stringResource(MR.strings.unknown)
@@ -221,6 +252,31 @@ class AndroidGlobalSearchCompatibilityUiTest {
             val allRecords = ShadowLog.getLogsForTag("MihonExtension").filter { it.type == Log.ERROR }
             assertTrue(allRecords[1].msg.contains("version=9.9.9"))
             assertTrue(allRecords[2].msg.contains("source=9, package=unknown"))
+            registrationMissing = true
+            broken.poisonPresentation = false
+            compose.onNode(hasSetTextAction()).performTextReplacement("fourth")
+            compose.onNode(hasSetTextAction()).performImeAction()
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("Healthy fourth").fetchSemanticsNodes().isNotEmpty() &&
+                    compose.onAllNodes(progress).fetchSemanticsNodes().isEmpty()
+            }
+            compose.onNodeWithText("Broken source").assertIsNotEnabled()
+            assertEquals(3, brokenCalls.get())
+            assertEquals(4, healthyCalls.get())
+            sources.take(3).forEach {
+                assertEquals(0, it.idReads.get())
+                assertEquals(4, it.nameReads.get())
+                assertEquals(4, it.languageReads.get())
+            }
+            assertEquals(0, unpinnedCalls.get())
+            assertEquals(0, unpinned.idReads.get())
+            assertEquals(0, unpinned.nameReads.get())
+            assertEquals(0, unpinned.languageReads.get())
+            assertEquals(1, navigation!!.items.size)
+            compose.onNodeWithText("Healthy source").performClick()
+            compose.waitUntil(10_000) { navigation?.items?.lastOrNull() is BrowseSourceScreen }
+            assertEquals(10L, (navigation!!.items.last() as BrowseSourceScreen).sourceId)
+            assertEquals(0, healthy.idReads.get())
         } finally {
             releaseBroken.complete(Unit)
             activity.get().setContent {}
@@ -229,8 +285,28 @@ class AndroidGlobalSearchCompatibilityUiTest {
         }
     }
 
-    private abstract class FixtureSource(override val id: Long, override val name: String) : Source {
-        override val lang = "en"
+    private abstract class FixtureSource(private val registeredId: Long, private val label: String) : Source {
+        @Volatile var poisonId = false
+
+        @Volatile var poisonPresentation = false
+        val idReads = AtomicInteger()
+        val nameReads = AtomicInteger()
+        val languageReads = AtomicInteger()
+        override val id: Long get() {
+            idReads.incrementAndGet()
+            if (poisonId) throw NoSuchMethodError("late ID getter")
+            return registeredId
+        }
+        override val name: String get() {
+            nameReads.incrementAndGet()
+            if (poisonPresentation) throw NoSuchMethodError("late presentation getter")
+            return label
+        }
+        override val lang: String get() {
+            languageReads.incrementAndGet()
+            if (poisonPresentation) throw NoSuchMethodError("late language getter")
+            return "en"
+        }
         override fun getFilterList() = FilterList()
     }
 }
