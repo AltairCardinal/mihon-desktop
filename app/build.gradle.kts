@@ -156,6 +156,9 @@ android {
     }
 
     sourceSets {
+        // Signed release candidates omit the reader timing implementation from the compiler inputs.
+        val signedRelease = providers.gradleProperty("android.candidateVariant").orNull == "release"
+        getByName("main").java.srcDir(if (signedRelease) "src/noReaderProbe/java" else "src/readerProbe/java")
         getByName("test").resources.srcDir(project(":domain").file("src/commonTest/resources"))
         getByName("test").java.srcDir("../data/src/testFixtures/kotlin")
         getByName("test").java.srcDir("../data/src/creatorEntryContract/kotlin")
