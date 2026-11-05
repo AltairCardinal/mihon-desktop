@@ -733,6 +733,38 @@ Linkage 被 Rx 当作 fatal、只逃到该 worker 而未交回订阅者，宿主
 operator 或异步调用的豁免。不得安装全局 Rx hooks/uncaught handler 吞错，也不能用
 默认 HttpSource parser 通过替代该边界证据。
 
+#### 7.6.7 深链接、迁移和章节准备的补充调用边界
+
+Android DeepLinkScreenModel 在实际 ResolvableSource 的 URI 判断、漫画解析、章节解析、
+章节列表及随后的源 ID getter 处守卫。只有专用兼容传输进入新 Failure 状态，并先检查
+控制异常；现有 Screen 复用 EmptyScreen 与共享兼容文案，不导航到全局搜索伪装成
+NoResults。正常不可解析链接仍走原 fallback，正常章节仍调用原本地查找/目录同步链。
+networkToLocalManga、数据库查找和目录同步不在此 source guard 内，也不将其普通错误
+误标为插件不兼容。阶段使用既有 METADATA/DETAILS/CHAPTERS，不新增插件 ABI。
+
+Android SyncChaptersWithSource 仅在 ChapterDirectoryPlan.prepare 的真实 HttpSource
+prepareNewChapter 回调和实际 ID/toString 读取处守卫。每章回调在 guard 外从宿主 Manga
+转换一个独立的 SManga，保留原有可变输入隔离；不能为减少转换而跨章节共享该对象。
+ID 在提交前读取并复用于 Local 判断和目录 effects；主机漫画转换、计划、校验、事务、文件处理及 fetch interval 更新
+保持在边界之外。恢复已有 phase 时读取的实际 ID 也受守卫。兼容失败不能提交空的正常
+目录，取消/致命/宿主 Error 保持控制传播；不重做整个目录模型或改变已提交 phase 恢复。
+
+Desktop 旧详情迁移 searchMigration 的真实搜索、MangaDetailScreenModelFactory 和
+DesktopAppModule batch 的实际 getChapterList 都在原调用位置守卫。factory 保留 typed
+cause；保留的旧 picker/确认分支通过既有 Snackbar 反馈并清除 busy，不能 runCatching
+后假装无结果。当前 More 菜单实际进入 MigrationSearchScreen，该普通导航不变；旧
+picker 测试只证明保留分支，不将它描述为当前默认入口。
+
+现有 batch migration 事件只携带字符串错误，不能据此新增协议：仅在 AppModule 的
+兼容 marker 出口经控制检查后以本地化 IOException 包装，保留完整 cause，再交既有
+ERROR 文本；不把整个迁移/SQL 包成 source 调用。下游共享 BatchMigrationOrchestrator
+及 Desktop controller 的通用 catch 同样先执行 rethrowSourceControlFailure，避免上游
+传播的取消/致命/宿主 Error 或未知 cause 深尾再降为普通 Failed。普通 IO 与已标记兼容
+仍走原逐项失败/健康项继续、暂停/取消/重试和 checkpoint 协议。
+
+本节不等于所有源元数据读取已冻结。Creator 初始 snapshot 和保留 legacy picker 的
+id/name/lang 仍需后续登记键/安全描述接口；不得伪造 sourceId，也不代理 Source 对象。
+
 ## 8. 安全与隐私
 
 - 手动代理地址属于敏感配置，不写入普通运行日志。

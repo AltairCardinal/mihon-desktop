@@ -1,5 +1,7 @@
 package mihon.desktop.library
 
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
 import mihon.desktop.domain.DesktopCoverUpdater
 import mihon.desktop.domain.DesktopCustomCoverStore
 import mihon.desktop.domain.GetAvailableScanlators
@@ -53,7 +55,8 @@ object MangaDetailScreenModelFactory {
                 val useCase = Injekt.get<mihon.desktop.domain.DesktopMigrateMangaUseCase>()
                 val options = mihon.desktop.domain.MigrationOptions(copyNotes = source.notes.isNotBlank())
                 val accepted = useCase.accept(source, options, true)
-                useCase.await(source, item, targetSourceId, targetSource.getChapterList(item), options, true, accepted)
+                val chapters = guardSourceOperation(SourceOperationPhase.CHAPTERS) { targetSource.getChapterList(item) }
+                useCase.await(source, item, targetSourceId, chapters, options, true, accepted)
             },
             manualTracking = mihon.desktop.tracking.DesktopManualTracking.fromInjekt(),
             getMangaWithChapters = Injekt.get<GetMangaWithChapters>(),

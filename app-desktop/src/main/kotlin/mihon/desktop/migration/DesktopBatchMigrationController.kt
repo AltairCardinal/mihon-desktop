@@ -1,5 +1,6 @@
 package mihon.desktop.migration
 
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -311,6 +312,7 @@ class DesktopBatchMigrationController(
                 ) {
                     throw error
                 } catch (error: Exception) {
+                    error.rethrowSourceControlFailure()
                     val current = queue(id) ?: return@launch
                     val failed = current.copy(
                         items = current.items.map { item ->

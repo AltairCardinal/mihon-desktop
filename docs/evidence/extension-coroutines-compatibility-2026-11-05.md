@@ -885,3 +885,119 @@ deadline 与成功 calendar 分离，manual 成功恢复普通 due；MAX 未作�
 Application 解析来自 AppModule.registerInjectables 的生产注册，不再以测试手工注册证明。
 本内聚批次包含11 Kotlin、两份维护证据及 roadmap 阶段说明，超8文件的原因是共享
 分类/实际DB调度/双端反馈接线必须一起验证；不改持久化协议或 schema，不勾选整个EC06。
+
+
+## 2026-11-06 EC06 裸调用补充：DeepLink / 迁移 / 章节准备
+
+本簇由 ab443af354 后续工作区继续，仅闭合已盘点的实际 Source 调用及其必经错误投影。
+没有改 Source ABI、数据库 schema、Source 对象类型、正常导航或新建错误反馈协议。
+不操作设备、不正式构建、不做模块全量。主代理的全局搜索及用户 reader 改动不在本簇。
+
+### 真实 RED
+
+- `ec06-direct-hooks-red`：Android 实际 SQL 目录入口 prepare/id/toString 三点均为
+  raw NoSuchMethodError，预期三点专用类型化传输；真实 firstResolvableSource 的 URI
+  hook 同样 raw 逸出；共享 BatchMigrationOrchestrator 将受控 VM fatal 降为普通 Failed，
+  原错误断言 actual=null。Android test-retry 三次为同一方法，不累计独立用例。
+- 同 key Desktop 编译失败仅夹具漏 supportsLatest/getFilterList、误用不存在的
+  stopAndJoin，是 harness 错误，不计产品红。仅修夹具后
+  `ec06-migration-hooks-correct-red` 四个 Desktop 方法均正确 RED：实际 model 搜索与
+  factory 章节入口 raw NoSuch；真实 DI batch 队列错误显示 private batch failure，未显示
+  兼容文案；owned worker 的本测试局部 handler 未收到 wrapped fatal（被下游吞掉）。
+  该 key 的 Android UI 当时只证明首 URI 缺反馈，不据此宣称其它 hook 已验证。
+- `ec06-direct-ui-matrix-red`（46 秒）：仅为取一次明确 RED 原件临时关闭 app 自动
+  test-retry，未更改项目规则/最终绿配置。真实 Navigator→DeepLinkScreen 的实际 entered
+  矩阵为 `[uri:false:uri,manga:false:manga,id:false:id,chapter:false:chapter,chapters:false:chapters]`，
+  五种 hook 确实执行而兼容文案都缺失。Desktop 真实 MangaDetailScreen 开启保留的旧
+  picker 状态后点击源，model guard 已生效但旧 runCatching 吞掉 marker，既有 Snackbar
+  文案等待超时。不是孤立错误组件或源码扫描。
+
+### 最小实现及 GREEN
+
+`ec06-direct-hooks-green` 权威 JSON 为 PASSED/exit0；实际逐 case 日志与九份 XML
+归档 `.test-tmp/ec06-direct-hooks-green-xml/`。**26 个目标用例，0 失败、0 跳过**：
+共享 domain JVM 4 + Android unit 4，Android app 8，Desktop 10。相同方法的两个目标
+分别列证据，不把 RED 的重复 retry 累计进去。
+
+精确复现使用该 key JSON 中的参数（各 task 后分别绑定 --tests；统一 offline、
+no-parallel、max-workers=2）：
+
+- `:domain:jvmTest`、`:domain:testDebugUnitTest` 各选择
+  `mihon.domain.migration.MigrationOrchestratorTest` 的 `batch source boundary*`、
+  `batch cancellation propagates*`、`batch continues after item failure*`、`batch waits for user*`。
+  覆盖 wrapped VM/CE/host Error、未知深尾原传播，普通 IO/marked compatibility 失败后
+  健康项继续，以及原取消/等待 checkpoint 行为。
+- `:app:testReleaseUnitTest` 选择
+  `eu.kanade.tachiyomi.data.backup.ChapterDirectorySourceContractTest` 的
+  `actual directory source hooks*`、`directory source control*`、
+  `actual Android wrapper deduplicates*`、`actual Android wrapper preserves original rename*`；
+  `eu.kanade.tachiyomi.ui.deeplink.AndroidExternalActionSharedWiringTest` 的
+  `resolvable source URI hook*`、`deep link chapter resolution*`、`source URL search uses*`；
+  精确类 `eu.kanade.tachiyomi.ui.deeplink.AndroidDeepLinkCompatibilityUiTest`。
+  实际 SQL 验证坏源零新增章/零 pending phase、健康目录成功；host database IOException
+  即使带宿主 NoSuch 仍原对象传播。真实 UI 五 hook 都显示兼容文案且未进入章节同步；
+  正常深链接保留 NoResults fallback 和成功章节的既有 sync/result wiring。
+- `:app-desktop:jvmTest` 选择
+  `mihon.desktop.ui.library.MangaDetailScreenModelTest` 的 `legacy migration search*`、
+  `migrateTo persists*`；`mihon.desktop.ui.migration.MigrationSearchInteractionTest` 的
+  `legacy detail factory chapter hook*`、`legacy detail factory callback migrates*`、
+  `actual batch migration chapter ABI*`；
+  `mihon.desktop.migration.DesktopBatchMigrationControllerTest` 的
+  `migration owned worker preserves*`、`queue persists waiting selection*`、
+  `pause cancel item cancel all*`、`resume waits for cancelled original*`；
+  `mihon.desktop.ui.library.MangaDetailInteractionTest.retained legacy migration picker*`。
+  真实 DI factory/batch 失败不产生迁移目标/receipt、不改变原书；旧健康迁移仍保留独立
+  目标和章节属性。旧 picker 是保留分支的真实点击/Snackbar 门，不冒称当前 More 默认
+  导航（More 仍进入普通 MigrationSearchScreen）。局部 owned scope handler 证实控制
+  失败不会被普通 checkpoint 错误吞掉；没有全局 uncaught 吞错。
+
+### 格式及边界
+
+`ec06-direct-hooks-format` PASSED（8 秒），严格原规则，准确 domain 2/app 6/Desktop 9，
+共 **17 Kotlin 文件**；无放宽规则或 suppress，未触碰保护的 reader 文件。格式化包含
+当前目标文件的既有 import/排版整理，没有额外生产行为变更；git diff --check 通过。
+维护见 desktop-network-routing 7.6.7。withSearch 健康 fixture 已恢复原 MangaDexSource
+类型，仅故障参数非 null 时使用受控 delegate；故障场景有效证据不变，健康 factory
+最终夹具补验另记下文，不重跑其余已有效范围。
+
+本阶段不勾选整个 EC06。Creator enabledSourcesSnapshot 仍缺安全登记键/元数据结果接口；
+保留 legacy picker 自身源行 id/name/lang 仍是后续安全描述欠项。Android 的登记键权威
+是 sourcesMapFlow 的 map key（按实例引用查找）；Desktop 当前 getSource/去重仍读取
+source.id，不能把临时新读值称为冻结登记键。已向 root 提供这份接口盘点，未擅自造 ID
+或新增协议。全局诊断和原 APK/R8 原生门仍按 roadmap 待完成。
+
+
+最终健康 fixture 类型补验：`ec06-migration-healthy-final` PASSED/exit0（6 秒），仅运行
+`MigrationSearchInteractionTest.legacy detail factory callback migrates*` 一个旧方法，
+0 失败、0 跳过；原 XML 另存 `.test-tmp/ec06-migration-healthy-final-xml/`。最终健康
+fixture 保持真实 MangaDexSource，故障 fixture 才代理章节 hook。这一方法替代前一
+26 项组合中的同名健康 factory 原件，最终仍为 **26 项**，不累计成 27，也不重复其余
+25 项已有效证据。最终源码无后续行为变化，当前本簇 Gradle 命令均已终态。
+
+
+### 提交前独审修正：每章可变 SManga 输入隔离
+
+独审发现把 manga.toSManga() 提到 ChapterDirectoryPlan 外会让多章共享可变对象，改变
+原来每章新建输入的语义。新增真实 SQL 两章测试：prepare 记录收到的标题和对象引用，
+随后修改 SManga.title；第二章仍必须看到原标题，且引用不同。首 key
+`ec06-prepare-manga-isolation-red` 因测试文件写入断言未命中、未落盘而 No tests found，
+属于输入准备失败，不计产品红。`ec06-prepare-manga-isolation-correct-red` 取得正确 RED：
+已真实新增两章，标题预期 `[Original, Original]`，实际
+`[Original, Mutated by previous chapter hook]`。retry 三次仍是同一个方法。
+
+修正只将 toSManga 放回每章 callback 的 if HttpSource 内、guard 外；仍不把宿主转换
+当作第三方调用，也不改变 source hook 的守卫。`ec06-prepare-manga-isolation-green`
+PASSED/exit0（27 秒），仅四个精确方法：`chapter preparation receives fresh*`、
+`actual directory source hooks*`、`directory source control*`、
+`actual Android wrapper deduplicates*`（同 ChapterDirectorySourceContractTest 类，
+:app:testReleaseUnitTest 每条 --tests 均紧随该任务）。四项 0 失败、0 跳过；同命令准确
+上述 production/test 两文件 strict Spotless Check 通过。原 XML 归档
+`.test-tmp/ec06-prepare-manga-isolation-green-xml/`。其余有效范围未重跑：这四项替代
+原组合中三项目录原件并增加一个隔离门，最终本簇有效组合为 **27 项**，不是将复跑
+四项额外累计。维护7.6.7已明确每章输入隔离；git diff --check 通过，命令均已终态。
+
+主代理独审及修复复审通过：精确 source hooks、宿主事务边界、既有取消分支与下游
+host/fatal/未知尾传播均已检查。每章可变对象回归关闭；归档原件按平台+类+方法去重
+独立核对，有效组合27项，最终健康factory原件替代同名旧项，未把重复补验累计。
+本批17 Kotlin+两份维护证据及roadmap阶段说明是这些真实调用与下游反馈的内聚接线，
+超过8文件不据此扩大测试；不包含root全局UI及用户reader改动，也不勾选整个EC06。

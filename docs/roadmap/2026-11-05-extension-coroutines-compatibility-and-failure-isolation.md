@@ -18,6 +18,13 @@ EC-05 收口／EC-06 阅读下载阶段（2026-11-06）：双端加载、实际 
 
 ## 1. 起点与已有证据
 
+EC-06 直接调用收口阶段（2026-11-06）：DeepLink五类实际source hook、目录prepare/
+必要元数据以及保留迁移查询/详情factory/实际batch queue章节调用精确保护；DeepLink
+错误页及迁移既有反馈不伪装空结果，下游控制/宿主错误不降级。独审发现的每章SManga
+共享污染已由正确SQL红测与最小修正关闭。27项有效focused组合、准确17文件严格格式
+与独立复审通过。本批不勾选EC-06：Creator初始元数据、legacy picker及全局搜索的安全
+描述仍要按原范围完成；诊断和R8原生验收继续。
+
 EC-06 Creator/Rx 阶段（2026-11-06）：实际 adapter、DB service/checkpoint、两个
 interactor 和双端反馈保留兼容分类；坏源不走自动 backoff，手动检查成功可恢复普通due，
 健康源继续。三类自定义 Rx 真实线程证据限定独立线程未交回回调的边界，不泛化豁免。

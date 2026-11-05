@@ -5,11 +5,16 @@ import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
 import eu.kanade.domain.manga.model.toSManga
+import eu.kanade.tachiyomi.network.SourceCompatibilityException
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.online.ResolvableSource
 import eu.kanade.tachiyomi.source.online.UriType
 import kotlinx.coroutines.flow.update
+import mihon.domain.error.AppError
 import mihon.domain.manga.model.toDomainManga
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.chapter.interactor.GetChapterByUrlAndMangaId
@@ -17,6 +22,7 @@ import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.source.service.toSourceAppError
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -30,28 +36,39 @@ class DeepLinkScreenModel(
 
     init {
         screenModelScope.launchIO {
-            val source = sourceManager.firstResolvableSource(query)
+            try {
+                val source = sourceManager.firstResolvableSource(query)
 
-            val manga = source?.getManga(query)?.let {
-                networkToLocalManga(it.toDomainManga(source.id))
-            }
+                val remoteManga = source?.let {
+                    guardSourceOperation(SourceOperationPhase.DETAILS) { it.getManga(query) }
+                }
+                val manga = remoteManga?.let {
+                    val sourceId = guardSourceOperation(SourceOperationPhase.METADATA) { requireNotNull(source).id }
+                    networkToLocalManga(it.toDomainManga(sourceId))
+                }
 
-            val chapter = if (source?.getUriType(query) == UriType.Chapter && manga != null) {
-                source.getChapter(query)?.let { getChapterFromSChapter(it, manga, source) }
-            } else {
-                null
-            }
-
-            mutableState.update {
-                if (manga == null) {
-                    State.NoResults
+                val type = source?.let { guardSourceOperation(SourceOperationPhase.METADATA) { it.getUriType(query) } }
+                val chapter = if (type == UriType.Chapter && manga != null) {
+                    guardSourceOperation(SourceOperationPhase.CHAPTERS) { requireNotNull(source).getChapter(query) }
+                        ?.let { getChapterFromSChapter(it, manga, requireNotNull(source)) }
                 } else {
-                    if (chapter == null) {
-                        State.Result(manga)
+                    null
+                }
+
+                mutableState.update {
+                    if (manga == null) {
+                        State.NoResults
                     } else {
-                        State.Result(manga, chapter.id)
+                        if (chapter == null) {
+                            State.Result(manga)
+                        } else {
+                            State.Result(manga, chapter.id)
+                        }
                     }
                 }
+            } catch (error: SourceCompatibilityException) {
+                error.rethrowSourceControlFailure()
+                mutableState.update { State.Failure(error.toSourceAppError()) }
             }
         }
     }
@@ -60,7 +77,10 @@ class DeepLinkScreenModel(
         val localChapter = getChapterByUrlAndMangaId.await(sChapter.url, manga.id)
 
         return if (localChapter == null) {
-            val sourceChapters = source.getChapterList(manga.toSManga())
+            val remoteManga = manga.toSManga()
+            val sourceChapters = guardSourceOperation(SourceOperationPhase.CHAPTERS) {
+                source.getChapterList(remoteManga)
+            }
             val newChapters = syncChaptersWithSource.await(sourceChapters, manga, source, false)
             newChapters.find { it.url == sChapter.url }
         } else {
@@ -76,6 +96,9 @@ class DeepLinkScreenModel(
         data object NoResults : State
 
         @Immutable
+        data class Failure(val error: AppError) : State
+
+        @Immutable
         data class Result(val manga: Manga, val chapterId: Long? = null) : State
     }
 }
@@ -83,4 +106,6 @@ class DeepLinkScreenModel(
 internal fun SourceManager.firstResolvableSource(query: String): ResolvableSource? =
     getCatalogueSources()
         .filterIsInstance<ResolvableSource>()
-        .firstOrNull { it.getUriType(query) != UriType.Unknown }
+        .firstOrNull { source ->
+            guardSourceOperation(SourceOperationPhase.METADATA) { source.getUriType(query) } != UriType.Unknown
+        }

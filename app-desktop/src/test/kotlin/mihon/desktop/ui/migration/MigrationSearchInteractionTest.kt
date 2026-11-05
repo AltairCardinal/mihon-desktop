@@ -542,6 +542,72 @@ class MigrationSearchInteractionTest {
     }
 
     @Test
+    fun `legacy detail factory chapter hook fails typed before migration commit`(@TempDir root: File) = runBlocking {
+        val missing = NoSuchMethodError("future factory chapter hook")
+        withSearch(root, chapterFailure = missing) { scene, dependencies, _ ->
+            val original = dependencies.getManga.await(scene.sourceId)!!
+            val targetSource = dependencies.sourceManager.getCatalogueSources().first()
+            val target = eu.kanade.tachiyomi.source.model.SManga.create().apply {
+                url = "/manga/future"
+                title = "Future target"
+            }
+            val failure = runCatching {
+                mihon.desktop.library.MangaDetailScreenModelFactory.create(original.id)
+                    .migrateTo(targetSource.id, target, original.title)
+            }.exceptionOrNull()
+            assertEquals("SourceCompatibilityException", failure?.javaClass?.simpleName)
+            assertTrue(failure?.cause === missing)
+            assertEquals(original, dependencies.getManga.await(original.id))
+            assertEquals(null, dependencies.mangaRepository.getMangaByUrlAndSourceId(target.url, targetSource.id))
+            assertEquals(null, dependencies.mangaRepository.migrationReceipt(original.id))
+        }
+    }
+
+    @Test
+    fun `actual batch migration chapter ABI shows compatibility without false success`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val missing = NoSuchMethodError("private future batch chapter ABI")
+        withSearch(root, chapterFailure = java.io.IOException("private batch failure", missing)) {
+                scene,
+                dependencies,
+                _,
+            ->
+            val original = dependencies.getManga.await(scene.sourceId)!!
+            val targetSource = dependencies.sourceManager.getCatalogueSources().first()
+            val controller = dependencies.batchMigrationController
+            val id = controller.submit(
+                listOf(mihon.desktop.migration.BatchMigrationRequest(original.id, original.title)),
+            )
+            withTimeout(5_000) {
+                while (controller.queue(id)?.items?.single()?.status !=
+                    mihon.desktop.migration.BatchMigrationItemStatus.WAITING_FOR_USER
+                ) {
+                    delay(10)
+                }
+            }
+            controller.selectTarget(
+                id,
+                original.id,
+                mihon.desktop.migration.BatchMigrationTargetSelection(targetSource.id, "/manga/future", "Future"),
+                mihon.desktop.migration.BatchMigrationOptions(),
+            )
+            withTimeout(5_000) {
+                while (controller.queue(id)?.items?.single()?.status !=
+                    mihon.desktop.migration.BatchMigrationItemStatus.ERROR
+                ) {
+                    delay(10)
+                }
+            }
+            val failed = controller.queue(id)!!.items.single()
+            assertEquals(MR.strings.source_error_extension_incompatible.localized(), failed.error)
+            assertEquals(original, dependencies.getManga.await(original.id))
+            assertEquals(null, dependencies.mangaRepository.getMangaByUrlAndSourceId("/manga/future", targetSource.id))
+            assertEquals(null, dependencies.mangaRepository.migrationReceipt(original.id))
+        }
+    }
+
+    @Test
     fun `actual DI startup restores prepared files before opening new migration runtime`(
         @TempDir root: File,
     ) = runBlocking {
@@ -1024,6 +1090,7 @@ class MigrationSearchInteractionTest {
         narrow: Boolean = false,
         checkpointRefusal: java.util.concurrent.atomic.AtomicBoolean? = null,
         secondSource: Boolean = false,
+        chapterFailure: Throwable? = null,
         commitGate: Pair<CompletableDeferred<Unit>, CompletableDeferred<Unit>>? = null,
         block: suspend (Scene, DesktopUiDependencies, MockWebServer) -> Unit,
     ) {
@@ -1051,7 +1118,7 @@ class MigrationSearchInteractionTest {
             }
         }
         server.start()
-        val source =
+        val delegateSource =
             MangaDexSource(
                 OkHttpClient(),
                 kotlinx.serialization.json.Json {
@@ -1060,6 +1127,19 @@ class MigrationSearchInteractionTest {
                 server.url("/").toString().trimEnd('/'),
                 null,
             )
+        val source = if (chapterFailure ==
+            null
+        ) {
+            delegateSource
+        } else {
+            object : eu.kanade.tachiyomi.source.CatalogueSource by delegateSource {
+                override suspend fun getChapterList(manga: eu.kanade.tachiyomi.source.model.SManga):
+                    List<eu.kanade.tachiyomi.source.model.SChapter> {
+                    chapterFailure?.let { throw it }
+                    return delegateSource.getChapterList(manga)
+                }
+            }
+        }
         val second =
             MangaDexSource(
                 OkHttpClient(),

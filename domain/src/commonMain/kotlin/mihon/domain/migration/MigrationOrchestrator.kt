@@ -1,5 +1,6 @@
 package mihon.domain.migration
 
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -120,6 +121,7 @@ class BatchMigrationOrchestrator<T> {
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                error.rethrowSourceControlFailure()
                 emit(BatchMigrationEvent.Failed(index, item, error.message ?: error::class.simpleName.orEmpty()))
             }
         }

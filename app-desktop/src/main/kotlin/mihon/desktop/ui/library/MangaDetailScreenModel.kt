@@ -1,6 +1,8 @@
 package mihon.desktop.ui.library
 
 import cafe.adriel.voyager.core.model.ScreenModel
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
@@ -498,7 +500,13 @@ class MangaDetailScreenModel(
             }
         }
         return publishChapterBatchResult(
-            BatchChapterResult(succeededIds = applicable.map { it.id }, failures = emptyList(), skippedIds = skippedIds),
+            BatchChapterResult(
+                succeededIds = applicable.map {
+                    it.id
+                },
+                failures = emptyList(),
+                skippedIds = skippedIds,
+            ),
         )
     }
 
@@ -949,7 +957,9 @@ class MangaDetailScreenModel(
     }
 
     suspend fun searchMigration(source: CatalogueSource, query: String): List<SManga> {
-        return source.getSearchManga(1, query, FilterList()).mangas
+        return guardSourceOperation(SourceOperationPhase.SEARCH) {
+            source.getSearchManga(1, query, FilterList())
+        }.mangas
     }
 
     suspend fun refreshByGesture(): Boolean {

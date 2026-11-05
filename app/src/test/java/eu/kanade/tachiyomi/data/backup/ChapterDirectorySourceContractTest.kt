@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.data.backup
 
 import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
 import eu.kanade.domain.manga.interactor.GetExcludedScanlators
+import eu.kanade.tachiyomi.network.inspectSourceFailure
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.SChapter
 import io.mockk.coEvery
@@ -100,6 +101,150 @@ class ChapterDirectorySourceContractTest {
             }
         }
 
+    @Test
+    fun `actual directory source hooks fail before commit while independent healthy directory succeeds`() =
+        runBlocking<Unit> {
+            SourceUpdateMemoBackupIntegrationTest.Storage(directory.resolve("source-hooks.db"), true).use { storage ->
+                val brokenManga = storage.mangas.insertNetworkManga(
+                    listOf(Manga.create().copy(source = 42, url = "/broken", title = "Broken")),
+                ).single()
+                val healthyManga = storage.mangas.insertNetworkManga(
+                    listOf(Manga.create().copy(source = 42, url = "/healthy", title = "Healthy")),
+                ).single()
+                val observations = mutableListOf<String>()
+                for (site in listOf("prepare", "id", "label")) {
+                    val missing = NoSuchMethodError("future directory $site")
+                    val broken = DirectoryHookSource(site, missing)
+                    val failure = runCatching {
+                        sync(storage).await(listOf(chapter("/new", "Chapter 1")), brokenManga, broken)
+                    }.exceptionOrNull()
+                    observations += "$site:${failure?.javaClass?.simpleName}"
+                    if (failure is eu.kanade.tachiyomi.network.SourceCompatibilityException) {
+                        assertTrue(failure.inspectSourceFailure().causes.any { it === missing })
+                        assertEquals(
+                            if (site == "prepare") {
+                                eu.kanade.tachiyomi.network.SourceOperationPhase.CHAPTERS
+                            } else {
+                                eu.kanade.tachiyomi.network.SourceOperationPhase.METADATA
+                            },
+                            failure.phase,
+                        )
+                    }
+                    assertTrue(storage.chapters.getChapterByMangaId(brokenManga.id).isEmpty())
+                    assertEquals(null, storage.chapters.pendingDirectoryPhase(brokenManga.id))
+                }
+                assertEquals(
+                    listOf(
+                        "prepare:SourceCompatibilityException",
+                        "id:SourceCompatibilityException",
+                        "label:SourceCompatibilityException",
+                    ),
+                    observations,
+                )
+                val added = sync(storage).await(
+                    listOf(chapter("/healthy/ch1", "Chapter 1")),
+                    healthyManga,
+                    DirectoryHookSource(),
+                )
+                assertEquals(1, added.size)
+                assertEquals(1, storage.chapters.getChapterByMangaId(healthyManga.id).size)
+            }
+        }
+
+    @Test
+    fun `directory source control and unrelated host persistence failure remain original before commit`() =
+        runBlocking<Unit> {
+            SourceUpdateMemoBackupIntegrationTest.Storage(directory.resolve("control-hooks.db"), true).use { storage ->
+                val manga = storage.mangas.insertNetworkManga(
+                    listOf(Manga.create().copy(source = 42, url = "/control", title = "Control")),
+                ).single()
+                val fatal = object : VirtualMachineError("controlled prepare fatal") {}
+                val cancelled = kotlinx.coroutines.CancellationException("cancel prepare")
+                val host = AssertionError("source ordinary Error")
+                val ordinary = java.io.IOException("ordinary source IO")
+                for ((failure, expected) in listOf(
+                    java.io.IOException("wrapped fatal", fatal) to fatal,
+                    java.io.IOException("wrapped cancellation", cancelled) to cancelled,
+                    host to host,
+                    ordinary to ordinary,
+                )) {
+                    val actual = runCatching {
+                        sync(storage).await(
+                            listOf(chapter("/new", "Chapter 1")),
+                            manga,
+                            DirectoryHookSource("prepare", failure),
+                        )
+                    }.exceptionOrNull()
+                    org.junit.jupiter.api.Assertions.assertSame(expected, actual)
+                    assertTrue(storage.chapters.getChapterByMangaId(manga.id).isEmpty())
+                }
+                val hostFailure = java.io.IOException("host database", NoSuchMethodError("host missing ABI"))
+                val repository = object : tachiyomi.domain.chapter.repository.ChapterRepository by storage.chapters {
+                    override suspend fun syncDirectory(
+                        request: tachiyomi.domain.chapter.service.ChapterDirectoryCommit,
+                    ): tachiyomi.domain.chapter.service.ChapterDirectoryResult = throw hostFailure
+                }
+                val actual = runCatching {
+                    sync(storage, repository = repository).await(
+                        listOf(chapter("/new", "Chapter 1")),
+                        manga,
+                        DirectoryHookSource(),
+                    )
+                }.exceptionOrNull()
+                org.junit.jupiter.api.Assertions.assertSame(hostFailure, actual)
+                assertTrue(storage.chapters.getChapterByMangaId(manga.id).isEmpty())
+            }
+        }
+
+    @Test
+    fun `chapter preparation receives fresh manga snapshot for each chapter`() = runBlocking<Unit> {
+        SourceUpdateMemoBackupIntegrationTest.Storage(directory.resolve("fresh-source-manga.db"), true).use { storage ->
+            val manga = storage.mangas.insertNetworkManga(
+                listOf(Manga.create().copy(source = 42, url = "/fresh", title = "Original")),
+            ).single()
+            val observedTitles = mutableListOf<String>()
+            val observedObjects = mutableListOf<eu.kanade.tachiyomi.source.model.SManga>()
+            val extension = DirectoryHookSource(onPrepare = { _, sourceManga ->
+                observedTitles += sourceManga.title
+                observedObjects += sourceManga
+                sourceManga.title = "Mutated by previous chapter hook"
+            })
+            val added = sync(storage).await(
+                listOf(chapter("/1", "Chapter 1"), chapter("/2", "Chapter 2")),
+                manga,
+                extension,
+            )
+            assertEquals(2, added.size)
+            assertEquals(2, storage.chapters.getChapterByMangaId(manga.id).size)
+            assertEquals(listOf("Original", "Original"), observedTitles)
+            org.junit.jupiter.api.Assertions.assertNotSame(observedObjects[0], observedObjects[1])
+        }
+    }
+
+    private class DirectoryHookSource(
+        private val site: String? = null,
+        private val failure: Throwable? = null,
+        private val onPrepare: (SChapter, eu.kanade.tachiyomi.source.model.SManga) -> Unit = { _, _ -> },
+    ) : eu.kanade.tachiyomi.source.online.HttpSource() {
+        override val id: Long get() {
+            if (site == "id") throw requireNotNull(failure)
+            return 42L
+        }
+        override val name = "Directory fixture"
+        override val lang = "en"
+        override val baseUrl = "https://directory.invalid"
+        override val supportsLatest = false
+        override fun prepareNewChapter(chapter: SChapter, manga: eu.kanade.tachiyomi.source.model.SManga) {
+            onPrepare(chapter, manga)
+            if (site == "prepare") throw requireNotNull(failure)
+        }
+        override fun toString(): String {
+            if (site == "label") throw requireNotNull(failure)
+            return name
+        }
+        override fun chapterPageParse(response: okhttp3.Response) = SChapter.create()
+    }
+
     private fun chapter(url: String, name: String, upload: Long = 0, scanlator: String? = null) =
         SChapter.create().apply {
             this.url = url
@@ -111,6 +256,7 @@ class ChapterDirectorySourceContractTest {
     private fun sync(
         storage: SourceUpdateMemoBackupIntegrationTest.Storage,
         duplicate: Boolean = false,
+        repository: tachiyomi.domain.chapter.repository.ChapterRepository = storage.chapters,
     ): SyncChaptersWithSource {
         val preferences = mockk<LibraryPreferences>()
         val duplicatePreference = mockk<Preference<Set<String>>>()
@@ -123,7 +269,7 @@ class ChapterDirectorySourceContractTest {
                 coEvery { withDirectoryChanges<Any?>(any(), any()) } coAnswers
                     { secondArg<suspend () -> Any?>().invoke() }
             },
-            mockk(relaxed = true), storage.chapters,
+            mockk(relaxed = true), repository,
             ShouldUpdateDbChapter(), storage.updateManga, UpdateChapter(storage.chapters), storage.getChapters,
             GetExcludedScanlators(storage.handler), preferences,
         )
