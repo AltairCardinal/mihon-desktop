@@ -813,6 +813,7 @@ class ExtensionPresentationWiringTest {
             every { enabledLanguages() } returns preference(setOf("en"))
         }
         val manager = mockk<ExtensionManager> {
+            every { loadFailures } returns MutableStateFlow(emptyMap())
             every { installedExtensionsFlow } returns MutableStateFlow(listOf(normal, nsfw, update, obsolete))
             every { untrustedExtensionsFlow } returns MutableStateFlow(listOf(untrustedZulu, untrustedAlpha))
             every { availableExtensionsFlow } returns MutableStateFlow(

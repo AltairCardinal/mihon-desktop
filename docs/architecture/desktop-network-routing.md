@@ -555,6 +555,48 @@ WebView；保留已有显式刷新入口。`StoredAppError` 仅增加类型字�
 Android R8 后原 APK 和厂商设备结论仍待 EC-08。累计证据见
 [扩展协程兼容性与故障隔离](../evidence/extension-coroutines-compatibility-2026-11-05.md)。
 
+#### 7.6.2 第三方调用 guard 与 Android 加载适配
+
+共享 `guardSourceOperation(phase) { thirdPartyCall() }` 只守卫插件实际执行部分。
+`SourceOperationPhase` 是固定枚举，不承载 query、URL、凭据或推测身份；已有精确阶段
+经反射／IO 包装后再次经过较宽边界时仍保留，外层异常继续作为 cause，旧单参 JVM
+`SourceCompatibilityException(Throwable)` 构造保留。数据库、章节完整性 require、缓存、
+存储和宿主 UI 不能整段塞入 guard。普通异常和非链接 Error 不变成兼容故障。
+
+广域既有 catch 若需保留控制语义，使用 `rethrowSourceControlFailure()`：先传播具体
+fatal／取消及未知深尾；无专用源传输标记时，连被 IOException 包裹的宿主 Error 也须传播。
+已有 `SourceCompatibilityException` 标记且控制检查通过，则保持该判断；例如插件初始化
+Linkage 的 cause 中普通 AssertionError 不得被误当成宿主故障重新抛出。此 helper 本身
+不声称 catch 所包的全部工作来自插件，新增消费仍须对实际第三方 lambda 单独守卫。
+
+Android `ExtensionLoader` 在真实构造、factory 和加载本来消费的 id／name／lang getter
+上使用该边界。工厂任一 provider 失败则整包不发布，不能留下半个成功 source 列表；
+不为“验证”而提前触发 client／baseUrl 等 lazy getter。JVM 测试的 internal classloader
+factory 仅替换 OS 装载边界，默认 production ChildFirstPathClassLoader、信任及签名检查不变。
+真实 APK 的 DEX／R8 装载仍需独立原生证据。
+
+`LoadResult.Failure` 使用 PackageInfo 的可靠包／版本快照记录 phase 和 typed cause。
+Manager 保留此失败及安装存在事实（inventory 的既有 LOAD_FAILED），不伪造 Installed 或
+把坏包当成未安装。管理页空列表也显示失败横幅；显式 retry 经 ScreenModel 回到 Manager。
+同／旧版 catalog 候选不显示成新安装，较新版候选仍用原安装管道，动作标为“更新”，
+保留修复机会与原错误／进度反馈，不自动安装或自动重试。
+
+Receiver 广播装载、手动 retry、信任后的装载各有新 identity owner；Manager 校验 owner
+后才能发布结果，不能只按 versionCode 判断同版本替换。busy 状态也归属于 retry owner：
+旧任务晚完成不得清掉新任务的 busy，更不能把新版健康 runtime 改成旧失败。广播自己的
+pendingLoads 继续处理卸载／替换排序，owner 再覆盖与手动操作交错的代际；既有 installer
+事务拥有的 reload 保留原回滚路径。
+
+信任操作在开始保存时就持有新 owner，避免旧广播在同步保存期间返回 Untrusted 后取消
+用户最新信任意图；这不允许提前执行插件，只有保存成功且该 owner 仍有效才调用 loader。
+保存失败保留原 untrusted 记录；保存期间真正更新／卸载包所产生的新 owner 仍可使旧信任
+失效，保存成功也不能把过期包结果写回。
+
+此适配不等于所有业务边界已经完成。Desktop 加载、filter 前置、HttpSource.baseUrl 的
+管理投影消费、阅读／下载、Creator 与默认 parser 响应生命周期仍按 EC-05/06 逐项接线。
+共享 asObservable 当前使用 execute 和同步 onNext，不能据此声称 Rx map 就在 OkHttp
+enqueue 线程；其它调度链须用真实线程与资源测试证明，不改全局 Rx hooks。
+
 ## 8. 安全与隐私
 
 - 手动代理地址属于敏感配置，不写入普通运行日志。

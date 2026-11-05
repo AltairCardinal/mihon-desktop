@@ -8,6 +8,7 @@ import eu.kanade.tachiyomi.extension.api.ExtensionApi
 import eu.kanade.tachiyomi.extension.api.ExtensionDiscoveryResult
 import eu.kanade.tachiyomi.extension.api.ExtensionUpdateNotifier
 import eu.kanade.tachiyomi.extension.model.Extension
+import eu.kanade.tachiyomi.extension.model.ExtensionLoadFailure
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.extension.model.LoadResult
 import eu.kanade.tachiyomi.extension.model.toArtifact
@@ -135,6 +136,8 @@ class ExtensionManager internal constructor(
 
     private val installedExtensionMapFlow = MutableStateFlow(emptyMap<String, Extension.Installed>())
     val installedExtensionsFlow = installedExtensionMapFlow.mapValues()
+    private val mutableLoadFailures = MutableStateFlow(emptyMap<String, ExtensionLoadFailure>())
+    val loadFailures: StateFlow<Map<String, ExtensionLoadFailure>> = mutableLoadFailures.asStateFlow()
 
     private val availableExtensionMapFlow = MutableStateFlow(emptyMap<String, Extension.Available>())
     val availableExtensionsFlow = availableExtensionMapFlow.mapValues()
@@ -146,6 +149,10 @@ class ExtensionManager internal constructor(
     val untrustedExtensionsFlow = untrustedExtensionMapFlow.mapValues()
 
     private val installationStateLock = Any()
+    private val loadTokens = mutableMapOf<String, Any>()
+    private val loadRetryTokens = mutableMapOf<String, Any>()
+    private val mutableLoadRetries = MutableStateFlow(emptySet<String>())
+    val loadRetries = mutableLoadRetries.asStateFlow()
     private val pendingInstallationEvents = ArrayDeque<InstallationEvent>()
     private var installationEventsLive = false
 
@@ -239,7 +246,10 @@ class ExtensionManager internal constructor(
     private suspend fun refreshInstalledExtensions(status: InstalledAppsPermissionStatus) {
         val canReadShared = status == InstalledAppsPermissionStatus.GRANTED ||
             status == InstalledAppsPermissionStatus.NOT_REQUIRED
-        synchronized(installationStateLock) { installationEventsLive = false }
+        val scanTokens = synchronized(installationStateLock) {
+            installationEventsLive = false
+            loadTokens.toMap()
+        }
         try {
             val extensions = installedExtensionsLoader?.invoke(context)
                 ?: ExtensionLoader.loadExtensions(context, includeShared = canReadShared)
@@ -254,20 +264,31 @@ class ExtensionManager internal constructor(
                 .associate { it.extension.pkgName to it.extension }
             var untrustedExtensions = extensions.filterIsInstance<LoadResult.Untrusted>()
                 .associate { it.extension.pkgName to it.extension }
+            var loadFailures = extensions.filterIsInstance<LoadResult.Failure>()
+                .associate { it.failure.pkgName to it.failure }
             val replayedEvents = synchronized(installationStateLock) {
+                loadFailures = loadFailures.filterKeys { loadTokens[it] === scanTokens[it] }
                 // An incomplete package list is not proof that an extension was uninstalled.
                 if (!completeSharedSnapshot) {
                     installedExtensions = installedExtensionMapFlow.value + installedExtensions
                     untrustedExtensions = untrustedExtensionMapFlow.value + untrustedExtensions
+                    loadFailures = mutableLoadFailures.value + loadFailures
                 }
+                loadFailures = loadFailures - installedExtensions.keys - untrustedExtensions.keys
                 pendingInstallationEvents.forEach { event ->
                     installedExtensions = event.applyToInstalled(installedExtensions)
                     untrustedExtensions = event.applyToUntrusted(untrustedExtensions)
+                    loadFailures = event.applyToFailures(loadFailures)
                 }
                 val replayedEvents = pendingInstallationEvents.isNotEmpty()
                 pendingInstallationEvents.clear()
                 installedExtensionMapFlow.value = installedExtensions
                 untrustedExtensionMapFlow.value = untrustedExtensions
+                mutableLoadFailures.value = loadFailures
+                (installedExtensions.keys + untrustedExtensions.keys + loadFailures.keys).forEach {
+                    loadTokens[it] =
+                        Any()
+                }
                 installationEventsLive = true
                 _isInitialized.value = true
                 replayedEvents
@@ -280,6 +301,7 @@ class ExtensionManager internal constructor(
                 pendingInstallationEvents.forEach { event ->
                     installedExtensionMapFlow.update(event::applyToInstalled)
                     untrustedExtensionMapFlow.update(event::applyToUntrusted)
+                    mutableLoadFailures.update(event::applyToFailures)
                 }
                 pendingInstallationEvents.clear()
                 installationEventsLive = true
@@ -290,6 +312,54 @@ class ExtensionManager internal constructor(
 
     /** Re-read package presence only; this does not install or reload extension code. */
     fun recheckInstalledInventory() = requestInventoryRefresh()
+
+    fun retryFailedExtension(failure: ExtensionLoadFailure) = scope.launch {
+        val token = synchronized(installationStateLock) {
+            if (mutableLoadFailures.value[failure.pkgName] !== failure || failure.pkgName in loadRetryTokens) {
+                return@launch
+            }
+            val token = Any()
+            loadTokens[failure.pkgName] = token
+            loadRetryTokens[failure.pkgName] = token
+            mutableLoadRetries.update { it + failure.pkgName }
+            token
+        }
+        try {
+            when (val result = extensionLoader(context, failure.pkgName)) {
+                is LoadResult.Success -> acceptInstallationEvent(
+                    InstallationEvent.Reloaded(result.extension),
+                    token,
+                    failure,
+                )
+                is LoadResult.Failure -> acceptInstallationEvent(
+                    InstallationEvent.Failed(result.failure),
+                    token,
+                    failure,
+                )
+                is LoadResult.Untrusted -> acceptInstallationEvent(
+                    InstallationEvent.Untrusted(result.extension),
+                    token,
+                    failure,
+                )
+                // Retain the last known failure until a successful or identified newer snapshot.
+                LoadResult.Error -> Unit
+            }
+        } finally {
+            synchronized(installationStateLock) {
+                if (loadRetryTokens[failure.pkgName] === token) {
+                    loadRetryTokens.remove(failure.pkgName)
+                    mutableLoadRetries.update { it - failure.pkgName }
+                }
+            }
+        }
+    }
+
+    private fun invalidateLoadToken(pkgName: String, owner: Any = Any()) {
+        // Callers hold installationStateLock. A superseded retry may still finish, but owns no UI state.
+        loadTokens[pkgName] = owner
+        loadRetryTokens.remove(pkgName)
+        mutableLoadRetries.update { it - pkgName }
+    }
 
     private fun requestInventoryRefresh(): kotlinx.coroutines.Job {
         synchronized(installationStateLock) {
@@ -709,15 +779,27 @@ class ExtensionManager internal constructor(
      * @param extension the extension to trust
      */
     suspend fun trust(extension: Extension.Untrusted) {
-        untrustedExtensionMapFlow.value[extension.pkgName] ?: return
+        val token = synchronized(installationStateLock) {
+            untrustedExtensionMapFlow.value[extension.pkgName] ?: return
+            val owner = Any()
+            // Own the intent before persistence; an older in-flight broadcast must not supersede it.
+            invalidateLoadToken(extension.pkgName, owner)
+            owner
+        }
 
         trustExtension.trust(extension.pkgName, extension.versionCode, extension.signatureHash)
 
-        untrustedExtensionMapFlow.update { it - extension.pkgName }
-
-        extensionLoader(context, extension.pkgName)
-            .let { it as? LoadResult.Success }
-            ?.let { registerNewExtension(it.extension) }
+        synchronized(installationStateLock) {
+            if (loadTokens[extension.pkgName] !== token) return
+            untrustedExtensionMapFlow.update { it - extension.pkgName }
+        }
+        val event = when (val result = extensionLoader(context, extension.pkgName)) {
+            is LoadResult.Success -> InstallationEvent.Reloaded(result.extension)
+            is LoadResult.Failure -> InstallationEvent.Failed(result.failure)
+            is LoadResult.Untrusted -> InstallationEvent.Untrusted(result.extension)
+            LoadResult.Error -> null
+        }
+        event?.let { acceptInstallationEvent(it, token, updatePendingCount = false) }
         requestInventoryRefresh()
     }
 
@@ -752,6 +834,7 @@ class ExtensionManager internal constructor(
                     ),
                 )
             }
+            is LoadResult.Failure -> throw ExtensionInstallFailure(result.failure.error)
             else -> throw ExtensionInstallFailure(
                 AppError.MalformedData(IllegalStateException("Installed extension could not be reloaded: $pkgName")),
             )
@@ -778,6 +861,34 @@ class ExtensionManager internal constructor(
             if (!installer.isInstallTransactionActive(pkgName)) requestInventoryRefresh()
         }
 
+        override fun onExtensionLoadStarted(pkgName: String) {
+            synchronized(installationStateLock) { invalidateLoadToken(pkgName) }
+        }
+
+        override fun onExtensionLoadStarted(pkgName: String, owner: Any) {
+            synchronized(installationStateLock) { invalidateLoadToken(pkgName, owner) }
+        }
+
+        override fun onExtensionLoadCompleted(pkgName: String, owner: Any, result: LoadResult, replacing: Boolean) {
+            if (installer.isInstallTransactionActive(pkgName)) return
+            val event = when (result) {
+                is LoadResult.Success -> if (replacing) {
+                    InstallationEvent.Updated(result.extension.withUpdateCheck())
+                } else {
+                    InstallationEvent.Installed(result.extension.withUpdateCheck())
+                }
+                is LoadResult.Untrusted -> InstallationEvent.Untrusted(result.extension)
+                is LoadResult.Failure -> InstallationEvent.Failed(result.failure)
+                LoadResult.Error -> null
+            }
+            event?.let { acceptInstallationEvent(it, owner) }
+        }
+
+        override fun onExtensionLoadFailed(failure: ExtensionLoadFailure) {
+            if (installer.isInstallTransactionActive(failure.pkgName)) return
+            acceptInstallationEvent(InstallationEvent.Failed(failure))
+        }
+
         override fun onExtensionInstalled(extension: Extension.Installed) {
             if (installer.isInstallTransactionActive(extension.pkgName)) return
             acceptInstallationEvent(InstallationEvent.Installed(extension.withUpdateCheck()))
@@ -800,24 +911,47 @@ class ExtensionManager internal constructor(
         }
     }
 
-    private fun acceptInstallationEvent(event: InstallationEvent) {
+    private fun acceptInstallationEvent(
+        event: InstallationEvent,
+        expectedToken: Any? = null,
+        expectedFailure: ExtensionLoadFailure? = null,
+        updatePendingCount: Boolean = true,
+    ) {
         val applied = synchronized(installationStateLock) {
+            if ((expectedToken != null && loadTokens[event.packageName] !== expectedToken) ||
+                (expectedFailure != null && mutableLoadFailures.value[event.packageName] !== expectedFailure)
+            ) {
+                return
+            }
+            invalidateLoadToken(event.packageName)
             if (!installationEventsLive) {
                 pendingInstallationEvents += event
                 false
             } else {
                 installedExtensionMapFlow.update(event::applyToInstalled)
                 untrustedExtensionMapFlow.update(event::applyToUntrusted)
+                mutableLoadFailures.update(event::applyToFailures)
                 true
             }
         }
-        if (applied) {
+        if (applied && updatePendingCount) {
             updatePendingUpdatesCount()
         }
         requestInventoryRefresh()
     }
 
     private sealed interface InstallationEvent {
+        val packageName: String get() = when (this) {
+            is Installed -> extension.pkgName
+            is Updated -> extension.pkgName
+            is Reloaded -> extension.pkgName
+            is Untrusted -> extension.pkgName
+            is Uninstalled -> pkgName
+            is Failed -> failure.pkgName
+        }
+
+        fun applyToFailures(failures: Map<String, ExtensionLoadFailure>): Map<String, ExtensionLoadFailure> =
+            if (this is Failed) failures + (failure.pkgName to failure) else failures - packageName
         fun applyToInstalled(
             extensions: Map<String, Extension.Installed>,
         ): Map<String, Extension.Installed>
@@ -857,6 +991,11 @@ class ExtensionManager internal constructor(
         data class Uninstalled(val pkgName: String) : InstallationEvent {
             override fun applyToInstalled(extensions: Map<String, Extension.Installed>) = extensions - pkgName
             override fun applyToUntrusted(extensions: Map<String, Extension.Untrusted>) = extensions - pkgName
+        }
+
+        data class Failed(val failure: ExtensionLoadFailure) : InstallationEvent {
+            override fun applyToInstalled(extensions: Map<String, Extension.Installed>) = extensions - failure.pkgName
+            override fun applyToUntrusted(extensions: Map<String, Extension.Untrusted>) = extensions - failure.pkgName
         }
     }
 

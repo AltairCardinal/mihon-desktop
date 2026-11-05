@@ -8,6 +8,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.extension.model.Extension
+import eu.kanade.tachiyomi.extension.model.ExtensionLoadFailure
 import eu.kanade.tachiyomi.extension.model.LoadResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -73,7 +74,10 @@ internal class ExtensionInstallReceiver(private val listener: Listener) : Broadc
     private fun loadCurrentExtension(context: Context, intent: Intent, replacing: Boolean) {
         val pkgName = getPackageNameFromIntent(intent) ?: return
         val token = Any()
-        synchronized(pendingLoads) { pendingLoads[pkgName] = token }
+        synchronized(pendingLoads) {
+            pendingLoads[pkgName] = token
+            listener.onExtensionLoadStarted(pkgName, token)
+        }
         scope.launch {
             try {
                 val result = getExtensionFromIntent(context, intent)
@@ -81,15 +85,7 @@ internal class ExtensionInstallReceiver(private val listener: Listener) : Broadc
                     // A later removal or replacement supersedes this asynchronous loader.
                     // Keep validation and notification atomic with the removal callback.
                     if (pendingLoads[pkgName] !== token) return@synchronized
-                    when (result) {
-                        is LoadResult.Success -> if (replacing) {
-                            listener.onExtensionUpdated(result.extension)
-                        } else {
-                            listener.onExtensionInstalled(result.extension)
-                        }
-                        is LoadResult.Untrusted -> listener.onExtensionUntrusted(result.extension)
-                        else -> {}
-                    }
+                    listener.onExtensionLoadCompleted(pkgName, token, result, replacing)
                     listener.onPackageChanged(pkgName)
                 }
             } finally {
@@ -136,6 +132,21 @@ internal class ExtensionInstallReceiver(private val listener: Listener) : Broadc
      */
     interface Listener {
         fun onPackageChanged(pkgName: String) {}
+        fun onExtensionLoadStarted(pkgName: String) {}
+        fun onExtensionLoadStarted(pkgName: String, owner: Any) = onExtensionLoadStarted(pkgName)
+        fun onExtensionLoadCompleted(pkgName: String, owner: Any, result: LoadResult, replacing: Boolean) {
+            when (result) {
+                is LoadResult.Success -> if (replacing) {
+                    onExtensionUpdated(result.extension)
+                } else {
+                    onExtensionInstalled(result.extension)
+                }
+                is LoadResult.Untrusted -> onExtensionUntrusted(result.extension)
+                is LoadResult.Failure -> onExtensionLoadFailed(result.failure)
+                LoadResult.Error -> Unit
+            }
+        }
+        fun onExtensionLoadFailed(failure: ExtensionLoadFailure) {}
         fun onExtensionInstalled(extension: Extension.Installed)
         fun onExtensionUpdated(extension: Extension.Installed)
         fun onExtensionUntrusted(extension: Extension.Untrusted)

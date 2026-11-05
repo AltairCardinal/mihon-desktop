@@ -1,5 +1,7 @@
 package tachiyomi.domain.source.service
 
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
@@ -26,11 +28,18 @@ class SourceMangaUpdateService {
         val sourceManga = manga.toSourceManga()
         val sourceChapters = chapters.sortedBy { it.sourceOrder }.map { it.toSourceChapter() }
         if (!fetchDetails && !fetchChapters) return SMangaUpdate(sourceManga, sourceChapters)
-        return source.getMangaUpdate(sourceManga, sourceChapters, fetchDetails, fetchChapters).also { update ->
+        val phase = when {
+            fetchDetails && fetchChapters -> SourceOperationPhase.DETAILS_CHAPTERS
+            fetchDetails -> SourceOperationPhase.DETAILS
+            else -> SourceOperationPhase.CHAPTERS
+        }
+        return guardSourceOperation(phase) {
+            source.getMangaUpdate(sourceManga, sourceChapters, fetchDetails, fetchChapters)
+        }.also { update ->
             if (fetchChapters) {
                 require(update.chapterListComplete) { "Source chapter directory is incomplete" }
                 if (update.chapters.isEmpty() &&
-                    source.id != 0L
+                    guardSourceOperation(SourceOperationPhase.METADATA) { source.id } != 0L
                 ) {
                     throw tachiyomi.domain.chapter.model.NoChaptersException()
                 }

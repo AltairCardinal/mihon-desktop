@@ -177,6 +177,13 @@ class ExtensionsScreenModel(
             .onEach { errors -> mutableState.update { it.copy(installErrors = errors) } }
             .launchIn(screenModelScope)
 
+        extensionManager.loadFailures
+            .onEach { failures -> mutableState.update { it.copy(loadFailures = failures) } }
+            .launchIn(screenModelScope)
+        extensionManager.loadRetries
+            .onEach { retrying -> mutableState.update { it.copy(loadRetries = retrying) } }
+            .launchIn(screenModelScope)
+
         extensionManager.originConfirmations
             .onEach { requests -> mutableState.update { it.copy(originConfirmations = requests) } }
             .launchIn(screenModelScope)
@@ -435,6 +442,10 @@ class ExtensionsScreenModel(
         extensionManager.answerOriginConfirmation(id, accepted)
     }
 
+    fun retryFailedExtension(failure: eu.kanade.tachiyomi.extension.model.ExtensionLoadFailure) {
+        extensionManager.retryFailedExtension(failure)
+    }
+
     @Immutable
     data class State(
         val pendingSystemPauses: Map<String, SuggestionBatchPause> = emptyMap(),
@@ -452,6 +463,8 @@ class ExtensionsScreenModel(
         val searchQuery: String? = null,
         val repositoryFailures: List<mihon.domain.extension.model.RepositoryCatalogFailure> = emptyList(),
         val installErrors: Map<String, AppError> = emptyMap(),
+        val loadFailures: Map<String, eu.kanade.tachiyomi.extension.model.ExtensionLoadFailure> = emptyMap(),
+        val loadRetries: Set<String> = emptySet(),
         val installRequestBusy: Boolean = false,
         val originConfirmations: List<ExtensionOriginConfirmation> = emptyList(),
     ) {

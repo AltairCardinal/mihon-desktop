@@ -8,6 +8,7 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.extension.model.Extension
+import eu.kanade.tachiyomi.extension.model.ExtensionLoadFailure
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.extension.model.LoadResult
 import eu.kanade.tachiyomi.extension.model.toArtifact
@@ -15,6 +16,8 @@ import eu.kanade.tachiyomi.extension.util.AndroidInstallPaused
 import eu.kanade.tachiyomi.extension.util.ExtensionInstallReceiver
 import eu.kanade.tachiyomi.extension.util.ExtensionInstaller
 import eu.kanade.tachiyomi.extension.util.ExtensionLoader
+import eu.kanade.tachiyomi.network.SourceCompatibilityException
+import eu.kanade.tachiyomi.network.SourceOperationPhase
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -43,6 +46,7 @@ import mihon.domain.extension.model.RepositoryCatalogFailure
 import mihon.domain.extension.model.RepositoryIdentity
 import mihon.domain.extension.service.ExtensionInstallInvalidated
 import mihon.domain.extension.suggestion.ExtensionInventory
+import mihon.domain.extension.suggestion.ExtensionPresence
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -61,6 +65,178 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class ExtensionManagerTest {
+    @Test
+    fun `replacement failure can retry while stale retry cannot clear the new busy owner`() = runTest {
+        withNotificationEnvironment {
+            val first = ExtensionLoadFailure(
+                "Broken package",
+                PACKAGE,
+                "1.6.2",
+                2,
+                true,
+                SourceOperationPhase.FACTORY,
+                AppError.ExtensionIncompatible(),
+            )
+            val replacement = first.copy(name = "Same version replacement")
+            val oldRelease = CompletableDeferred<Unit>()
+            val newRelease = CompletableDeferred<Unit>()
+            var calls = 0
+            lateinit var listener: ExtensionInstallReceiver.Listener
+            val manager = ExtensionManager(
+                context = mockk(relaxed = true), preferences = preferences(), trustExtension = mockk(relaxed = true),
+                installedExtensionsLoader = { listOf(LoadResult.Failure(first)) },
+                extensionLoader = { _, _ ->
+                    when (++calls) {
+                        1 -> {
+                            oldRelease.await()
+                            LoadResult.Failure(first)
+                        }
+                        else -> {
+                            newRelease.await()
+                            LoadResult.Failure(replacement)
+                        }
+                    }
+                },
+                installerFactory = {
+                    mockk(relaxed = true) {
+                        every { isInstallTransactionActive(any()) } returns false
+                    }
+                },
+                installReceiverRegistrar = { listener = it }, scope = backgroundScope,
+                inventoryProvider = { ExtensionInventory(initialized = true) },
+            )
+            runCurrent()
+            val old = manager.retryFailedExtension(first)
+            runCurrent()
+            listener.onExtensionLoadStarted(PACKAGE)
+            listener.onExtensionLoadFailed(replacement)
+            val fresh = manager.retryFailedExtension(replacement)
+            runCurrent()
+            assertEquals(2, calls)
+            oldRelease.complete(Unit)
+            old.join()
+            assertTrue(PACKAGE in manager.loadRetries.value)
+            assertEquals(replacement, manager.loadFailures.value[PACKAGE])
+            newRelease.complete(Unit)
+            fresh.join()
+            assertFalse(PACKAGE in manager.loadRetries.value)
+        }
+    }
+
+    @Test
+    fun `trusting an incompatible package retains an identified load failure`() = runTest {
+        withNotificationEnvironment(expectNotification = false) {
+            val untrusted = Extension.Untrusted("Broken package", PACKAGE, "1.6.2", 2, 1.6, "signature")
+            val failure = ExtensionLoadFailure(
+                untrusted.name,
+                PACKAGE,
+                untrusted.versionName,
+                untrusted.versionCode,
+                true,
+                SourceOperationPhase.CONSTRUCTION,
+                AppError.ExtensionIncompatible(),
+            )
+            val manager = ExtensionManager(
+                context = mockk(relaxed = true), preferences = preferences(), trustExtension = mockk(relaxed = true),
+                installedExtensionsLoader = { listOf(LoadResult.Untrusted(untrusted)) },
+                extensionLoader = { _, _ -> LoadResult.Failure(failure) },
+                installerFactory = { mockk(relaxed = true) }, installReceiverRegistrar = {}, scope = backgroundScope,
+                inventoryProvider = { ExtensionInventory(initialized = true) },
+            )
+            runCurrent()
+            manager.trust(untrusted)
+            runCurrent()
+            assertEquals(failure, manager.loadFailures.value[PACKAGE])
+            assertTrue(manager.installedExtensionsFlow.value.isEmpty())
+            assertTrue(manager.untrustedExtensionsFlow.value.isEmpty())
+        }
+    }
+
+    @Test
+    fun `explicit load retry ignores a late same version replacement result`() = runTest {
+        withNotificationEnvironment {
+            val failure = ExtensionLoadFailure(
+                "Broken package",
+                "pkg.broken",
+                "1.6.2",
+                106002,
+                true,
+                SourceOperationPhase.FACTORY,
+                AppError.ExtensionIncompatible(),
+            )
+            val release = CompletableDeferred<Unit>()
+            var calls = 0
+            lateinit var listener: ExtensionInstallReceiver.Listener
+            val replacement = installed().copy(
+                pkgName = failure.pkgName,
+                versionName = failure.versionName,
+                versionCode = failure.versionCode,
+            )
+            val manager = ExtensionManager(
+                context = mockk(relaxed = true), preferences = preferences(), trustExtension = mockk(relaxed = true),
+                installedExtensionsLoader = { listOf(LoadResult.Failure(failure)) },
+                extensionLoader = { _, _ ->
+                    calls++
+                    release.await()
+                    LoadResult.Failure(failure.copy(name = "stale"))
+                },
+                installerFactory = {
+                    mockk(relaxed = true) {
+                        every { isInstallTransactionActive(any()) } returns false
+                    }
+                },
+                installReceiverRegistrar = { listener = it }, scope = backgroundScope,
+                inventoryProvider = { ExtensionInventory(initialized = true) },
+            )
+            runCurrent()
+            val retry = manager.retryFailedExtension(failure)
+            runCurrent()
+            assertEquals(1, calls)
+            listener.onExtensionLoadStarted(failure.pkgName)
+            listener.onExtensionUpdated(replacement)
+            release.complete(Unit)
+            retry.join()
+            runCurrent()
+            assertTrue(manager.loadFailures.value.isEmpty())
+            assertEquals(replacement, manager.installedExtensionsFlow.value.single())
+        }
+    }
+
+    @Test
+    fun `initial load failure remains visible and present without publishing a fake source`() = runTest {
+        val failure = ExtensionLoadFailure(
+            "Broken package",
+            "pkg.broken",
+            "1.6.2",
+            106002,
+            true,
+            SourceOperationPhase.FACTORY,
+            AppError.ExtensionIncompatible(SourceCompatibilityException(NoSuchMethodError("future"))),
+        )
+        val healthy = installed()
+        val manager = ExtensionManager(
+            context = mockk(relaxed = true),
+            preferences = preferences(),
+            trustExtension = mockk(relaxed = true),
+            installedExtensionsLoader = { listOf(LoadResult.Failure(failure), LoadResult.Success(healthy)) },
+            installerFactory = { mockk(relaxed = true) },
+            installReceiverRegistrar = {},
+            scope = backgroundScope,
+            inventoryProvider = {
+                ExtensionInventory(
+                    initialized = true,
+                    packages = mapOf(
+                        failure.pkgName to ExtensionPresence.PRESENT,
+                    ),
+                )
+            },
+        )
+        runCurrent()
+        assertEquals(failure, manager.loadFailures.value[failure.pkgName])
+        assertEquals(listOf(healthy.pkgName), manager.installedExtensionsFlow.value.map { it.pkgName })
+        assertEquals(ExtensionPresence.LOAD_FAILED, manager.inventory.value.packages[failure.pkgName])
+    }
+
     @Test
     fun `source icon falls back when an uninstalled package still has a source row`() = missingSourceIcon(null)
 
@@ -608,7 +784,7 @@ class ExtensionManagerTest {
                     } else {
                         ExtensionInventory(
                             true,
-                            mapOf("pkg.failed" to mihon.domain.extension.suggestion.ExtensionPresence.PRESENT),
+                            mapOf("pkg.failed" to ExtensionPresence.PRESENT),
                         )
                     }
                 },
@@ -622,13 +798,13 @@ class ExtensionManagerTest {
                 oldScan.complete(
                     ExtensionInventory(
                         true,
-                        mapOf("pkg.removed" to mihon.domain.extension.suggestion.ExtensionPresence.PRESENT),
+                        mapOf("pkg.removed" to ExtensionPresence.PRESENT),
                     ),
                 )
                 runCurrent()
                 assertTrue(manager.inventory.value.initialized)
                 assertEquals(
-                    mapOf("pkg.failed" to mihon.domain.extension.suggestion.ExtensionPresence.LOAD_FAILED),
+                    mapOf("pkg.failed" to ExtensionPresence.LOAD_FAILED),
                     manager.inventory.value.packages,
                 )
             } finally {
@@ -714,7 +890,7 @@ class ExtensionManagerTest {
         assertTrue(manager.inventory.value.hasUnknownArtifacts)
         assertEquals(listOf(privateExtension), manager.installedExtensionsFlow.value)
         assertEquals(
-            mihon.domain.extension.suggestion.ExtensionPresence.PRESENT,
+            ExtensionPresence.PRESENT,
             manager.inventory.value.packages[privateExtension.pkgName],
         )
     }

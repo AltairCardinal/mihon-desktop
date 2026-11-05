@@ -1,5 +1,7 @@
 package tachiyomi.domain.source.service
 
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.SMangaUpdate
 import kotlinx.coroutines.CoroutineScope
@@ -50,12 +52,14 @@ internal object SharedReaderCatalogRequests {
             val details = synchronized(flights) {
                 flight.details ?: flight.scope.async(start = CoroutineStart.LAZY) {
                     runCatching {
-                        source.getMangaUpdate(
-                            catalog.manga,
-                            catalog.chapters,
-                            fetchDetails = true,
-                            fetchChapters = false,
-                        )
+                        guardSourceOperation(SourceOperationPhase.DETAILS) {
+                            source.getMangaUpdate(
+                                catalog.manga,
+                                catalog.chapters,
+                                fetchDetails = true,
+                                fetchChapters = false,
+                            )
+                        }
                     }
                 }.also { flight.details = it }
             }

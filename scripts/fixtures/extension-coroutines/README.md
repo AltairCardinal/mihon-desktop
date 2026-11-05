@@ -8,8 +8,10 @@
 `future` 的 Source 委派给现存独立 AEX-00 v1.6 样本，经过 production
 DesktopExtensionLoader 加载，过滤器、搜索、解析和网络拦截器分别真实调用未来接口。
 `stubs` 只供编译，导出 JAR 绝不包含 `org.jsoup.Jsoup`、`ec.absent.FutureApi`、
-host API 或协程库。因此升级 1.11.0 后依然抛缺方法／缺类；当前测试只是固定故障，
-并未实现故障隔离。网络 fixture 当前用同步 execute 验证抛错，异步保护留给 EC-04。
+host API 或协程库。因此升级 1.11.0 后仍能触发缺方法／缺类。EC-03/04 已实现有界异常
+分类与真实 OkHttp enqueue 线程内隔离；专用 executor 的 worker 结束后断言一次失败回调、
+无 uncaught 逸出和健康后续请求，并覆盖 Android/Desktop production 网络客户别名。
+这不代表所有源业务／加载边界已覆盖；EC-05/06 的扩展调用保护仍按 roadmap 逐项接入。
 
 ## 重建前置和命令
 

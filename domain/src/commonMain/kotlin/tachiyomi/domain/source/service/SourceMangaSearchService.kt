@@ -1,5 +1,7 @@
 package tachiyomi.domain.source.service
 
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -42,9 +44,15 @@ class SourceMangaSearchService {
     ): MangasPage {
         return diagnosticOperation(DiagnosticCategory.BROWSE_DETAILS, DiagnosticOperation.BROWSE) {
             when (request) {
-                is SourceMangaSearchRequest.Search -> source.getSearchManga(page, request.query, request.filters)
-                SourceMangaSearchRequest.Latest -> source.getLatestUpdates(page)
-                SourceMangaSearchRequest.Popular -> source.getPopularManga(page)
+                is SourceMangaSearchRequest.Search -> guardSourceOperation(SourceOperationPhase.SEARCH) {
+                    source.getSearchManga(page, request.query, request.filters)
+                }
+                SourceMangaSearchRequest.Latest -> guardSourceOperation(SourceOperationPhase.LATEST) {
+                    source.getLatestUpdates(page)
+                }
+                SourceMangaSearchRequest.Popular -> guardSourceOperation(SourceOperationPhase.POPULAR) {
+                    source.getPopularManga(page)
+                }
             }
         }
     }

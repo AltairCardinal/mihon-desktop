@@ -28,11 +28,15 @@ class GetExtensionsByType(
             extensionManager.installedExtensionsFlow,
             extensionManager.untrustedExtensionsFlow,
             extensionManager.availableExtensionsFlow,
-        ) { enabledLanguages, _installed, _untrusted, _available ->
+            extensionManager.loadFailures,
+        ) { enabledLanguages, _installed, _untrusted, _available, loadFailures ->
             val result = classifier.classify(
                 _installed,
                 _untrusted,
-                _available,
+                // Keep an explicit upgrade path without presenting an installed failure as a fresh install.
+                _available.filter { candidate ->
+                    loadFailures[candidate.pkgName]?.let { candidate.versionCode > it.versionCode } ?: true
+                },
                 ExtensionPresentationOptions(showNsfwSources, enabledLanguages),
             )
             Extensions(
