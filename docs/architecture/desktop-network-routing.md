@@ -705,6 +705,34 @@ child coordinator 保留该操作的冻结身份，兼容失败沿正常状态�
 的完整安全描述、Android 对应页面版本反馈和实际日志记录仍须接线，不能把异常已有
 身份字段等同于双端完整诊断已经完成。
 
+#### 7.6.6 Creator 发现与自定义 Rx 的实际边界
+
+Creator 的 catalogue adapter 只在实际过滤器、作者搜索、普通搜索及详情调用处复用
+共享 guard。确定性 ABI 失败保留 `CreatorSourceFailure.ExtensionIncompatible` 与原始
+类型化 cause，不能降为 Network，也不能在作者 hook 失败后改走普通搜索假装恢复。
+普通作者搜索失败仍沿原有 fallback；取消、致命异常、宿主 Error 和未知深尾先传播。
+已知请求 sourceId 用请求快照传递，不为结果归属重复调用第三方 getter。
+
+真实 CreatorDiscoveryService 以现有 checkpoint 的安全错误码记录
+`EXTENSION_INCOMPATIBLE`，并将该失败的 backoffUntil/nextDueAt 置为 Long.MAX_VALUE，
+阻止到期扫描自动重试。这里没有新增 schema，也不承诺自动识别扩展版本更新；用户
+现有显式检查（manual force）仍会执行，成功后清错并恢复普通 due。健康源继续正常发现
+与提交，普通 IO 保留原 backoff。维护时不要将 MAX 当作正常日期展示或做无界日期运算；
+当前 SQL 只比较 due，失败 checkpoint 不进入成功 calendar 重算。
+
+DiscoverCreatorWorks 将类型化不兼容传到既有 Android 作者详情错误区；Desktop scheduler
+保留 task 的 typed error，并在原有 failureMessage 区域使用共享本地化兼容文案。
+不展示内部 ABI 信息，不提供登录/WebView，不增加自动重试或新页面。Creator 初始
+源快照的元数据 getter 仍需后续安全描述接线，本节不代表所有 getter 已被冻结。
+
+自定义 Rx 必须按真实执行/错误交接位置判断：同步自定义 map 的 raw Linkage 可以由
+外层实际 Source ABI/service guard 捕获；扩展在独立 executor 把错误交回 onError
+（如 IOException 包装 Linkage）时，同样可以类型化。若扩展独立 executor 上的 raw
+Linkage 被 Rx 当作 fatal、只逃到该 worker 而未交回订阅者，宿主 await 不会收到终态；
+调用者取消仍负责 unsubscribe。这是已实测的扩展自行管理线程边界，不是对全部自定义
+operator 或异步调用的豁免。不得安装全局 Rx hooks/uncaught handler 吞错，也不能用
+默认 HttpSource parser 通过替代该边界证据。
+
 ## 8. 安全与隐私
 
 - 手动代理地址属于敏感配置，不写入普通运行日志。

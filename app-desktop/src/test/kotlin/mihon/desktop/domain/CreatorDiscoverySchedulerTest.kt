@@ -1,14 +1,14 @@
 package mihon.desktop.domain
 
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -36,6 +36,27 @@ import java.nio.file.Path
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class CreatorDiscoverySchedulerTest {
+    @Test
+    fun `compatibility failure keeps typed task cause and localized existing feedback`() = runTest {
+        val transport = eu.kanade.tachiyomi.network.SourceCompatibilityException(
+            NoSuchMethodError("private creator ABI"),
+        )
+        val scheduler = scheduler(discoverDue = {
+            result(
+                sourceResults = listOf(sourceResult(1L, CreatorSourceFailure.ExtensionIncompatible(transport))),
+                completedSources = 1,
+                totalSources = 1,
+            )
+        })
+        scheduler.runNow().join()
+        assertEquals(TaskStatus.Failed, scheduler.state.value.status)
+        assertEquals(
+            tachiyomi.i18n.MR.strings.source_error_extension_incompatible.localized(),
+            scheduler.state.value.failureMessage,
+        )
+        assertFalse(scheduler.state.value.failureMessage.orEmpty().contains("private creator ABI"))
+        scheduler.stopAndJoin()
+    }
 
     @TempDir lateinit var directory: Path
 
@@ -45,7 +66,10 @@ class CreatorDiscoverySchedulerTest {
         var calls = 0
         val scheduler = scheduler(
             hasDueWork = { due },
-            discoverDue = { calls++; result(completedSources = 1, totalSources = 1) },
+            discoverDue = {
+                calls++
+                result(completedSources = 1, totalSources = 1)
+            },
         )
         assertEquals(null, scheduler.runIfDue())
         assertEquals(null, scheduler.taskSnapshot())
@@ -294,7 +318,10 @@ class CreatorDiscoverySchedulerTest {
             file = file,
             discoverCreator = discover,
             scope = backgroundScope,
-            taskNotifier = DesktopSystemNotifier({ notifications += it; true }, DesktopNotificationService()),
+            taskNotifier = DesktopSystemNotifier({
+                notifications += it
+                true
+            }, DesktopNotificationService()),
         )
         scheduler.start().join()
         scheduler.runForCreator(42L).join()

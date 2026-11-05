@@ -786,3 +786,102 @@ SourceRecoveryAction，不新建页面/DI 类型/存储协议。范围超过 8 �
 未实施本片段的代理独立审查三处 production 接线后通过：操作前单帧 metadataSnapshot、
 Source 引用/owner 双条件复用、child 冻结身份和实际错误区域均符合本阶段边界；未将剩余
 getter/日志/完整 UI gate 当作已通过。
+
+
+## 2026-11-06 EC06 Creator / 自定义 Rx 阶段（focused，非全项完成）
+
+本阶段仅修改 Creator adapter/service/interactor、两端既有错误反馈及对应测试。
+不改 schema、公开 Source ABI、全局 Rx hooks，也不操作设备或发布包。
+
+### 正确 RED 与夹具修正
+
+- `ec06-creator-adapter-correct-red`：真实 adapter 作者 hook 的 raw NoSuchMethodError
+  逸出、包装取消被重建、过滤器缺 ABI 逸出；`ec06-creator-hook-matrix-red` 单方法
+  收集全部实际调用点，观察 filters/details raw NoSuch 逸出，search 被降为 Network。
+- `ec06-creator-ui-schedule-red`：真实 SQLDelight repository + service 已有健康 work
+  提交后，不兼容 checkpoint 仍是普通 backoff（1801000，而非 MAX）；两个真实
+  DiscoverCreatorWorks overload 没有向既有 screen 消费端传播兼容错误；Desktop
+  scheduler 仍反馈普通失败计数。上述分别为真实产品 RED。
+- `ec06-creator-android-feedback-red`：实际 Navigator → 作者详情检查按钮 → model →
+  interactor → service → Source 调用一次后没有本地化兼容反馈，正确 RED。test-retry
+  的同一方法三次失败不计为三个独立用例。
+- 早期 commonTest 的 kotlin.test import、MutableClock 私有 setter、非 Unit 测试
+  返回值导致未发现，以及 Android BasePreferences/仓库类型/MockK SourceManager
+  Flow 与列表方法冲突均为 harness 错误，不计正确 RED。健康 work 初为 0 是测试 watch
+  排除了未知阅读语言，修正 fixture 的 includeUnknown 后才验证 checkpoint 产品红。
+  withTimeout 的取消堆栈恢复可能复制 CE；测试保留本体或直接 cause 为原 CE 的分层断言，
+  没为身份断言更改生产取消语义。
+
+### 最终 GREEN 与可审计原件
+
+`ec06-creator-contracts-green` 权威 JSON 为 PASSED/exit0，49 秒；逐 case 日志和
+九份 XML 归档于 `.test-tmp/ec06-creator-contracts-green-xml/`。共 **21 个独立用例，
+0 失败、0 跳过**：domain JVM 9、domain Android unit 6、data JVM 3、Desktop 2、
+Android 实际 Compose 入口 1。不是模块全量；完整实际参数在同 key 的协调器 JSON。
+
+精确选择器（每个 task 后分别绑定 --tests；统一 offline/no-parallel/max-workers=2）：
+
+- `:domain:jvmTest`：CatalogueCreatorCompatibilityContractTest（3）、
+  SourceRxCompatibilityBoundaryContractTest（3）、CreatorDiscoveryPlanningTest 的
+  `catalogue adapter maps source failures*` 与 `structured author search failure falls back*`
+  （2）、CreatorDiscoverySourceModeTest（1）。前三类包为
+  `tachiyomi.domain.creator.service`，Rx 类包为 `tachiyomi.domain.source.service`。
+- `:domain:testDebugUnitTest`：上述两个新增 contract 精确类（3+3）。
+- `:data:jvmTest`：`tachiyomi.data.creator.CreatorDiscoveryExecutorStateMachineTest` 的
+  `incompatible source waits for manual force*`、`discovery interactor keeps compatibility*`、
+  `manual force bypasses backoff*`（3）。
+- `:app-desktop:jvmTest`：`mihon.desktop.domain.CreatorDiscoverySchedulerTest` 的
+  `compatibility failure keeps typed*` 与 `partial source failure ends*`（2）。
+- `:app:testReleaseUnitTest`：
+  `eu.kanade.tachiyomi.ui.browse.author.AndroidCreatorCompatibilityUiTest`（1）。
+
+真实 service 门证明坏源只调用一次、健康源提交作品；推进一天仍不自动执行坏源、健康
+源继续执行；manual force 修好后清兼容 checkpoint 并恢复正常 due。MAX 的 Instant
+往返及相对当前时间的 Duration 计算无溢出；现有 SQL 仅比较 next_due_at，失败 checkpoint
+不进入成功 calendar 的日期重算。未新增字段，也不宣称能自动识别扩展版本变化。
+Android 实际点击测试验证现有错误区的中文兼容文案、一次源调用、不泄原 ABI 文本；
+Desktop scheduler 验证 typed task cause 与既有本地化 failureMessage。
+
+Rx 三方法在两个共享目标均执行真实 HttpSource override legacy fetchSearchManga →
+Source 默认 suspend ABI → awaitSingle → SourceMangaSearchService：同步 custom map
+raw Linkage 类型化且 onError=0；独立 executor 的 IO 包装 Linkage 经 onError=1 同样
+类型化且 worker 无逸出；独立 executor raw Linkage 被 Rx 包装为 Fatal Scheduler.Worker
+错误，仅到本测试专有线程 handler（有界 awaitTermination/join 后检查），宿主 await
+仍活动且无结果。caller 取消确实 unsubscribe，随后健康源成功。没有全局 handler；
+仅最后一种未交回宿主的独立线程链属于既定限制，不排除全部 custom/async。
+
+### 格式、维护与未完边界
+
+精确 11 Kotlin targets：domain 6 在 `ec06-creator-format-final` 的严格 Check 已过；
+data 1/Desktop 2/app 2 在 `ec06-creator-format-strict` PASSED（4 秒）。前面几个格式
+key 因 data 测试在 formatter 增加函数体缩进后超过 max120 失败，最终仅拆纯宿主
+局部值；没有放宽规则、suppress 或触及 reader 用户改动。后续只有 import/排版及等价
+宿主局部值，无产品行为更改，复用上面 21 项有效证据；git diff --check 通过。
+维护规则见 desktop-network-routing 7.6.6。
+
+有界只读盘点仍欠、未在本阶段擅改：Android DeepLinkScreenModel 的 getChapterList
+及同链 source hooks；Desktop MangaDetailScreenModel.searchMigration 的 getSearchManga、
+MangaDetailScreenModelFactory 与 DesktopAppModule migration queue 的 getChapterList；
+Android SyncChaptersWithSource 在 ChapterDirectoryPlan.prepare 回调内的
+source.prepareNewChapter 及相邻实际元数据读取。不能把整个数据库/目录计划包进 guard。
+Creator enabledSourcesSnapshot 的 id/name/lang 仍为原有元数据入口，未宣称已冻结。
+全局搜索完整安全描述/诊断、真实原 APK/R8 验收仍按 roadmap 待完成；本阶段不勾选整项 EC06。
+
+
+独审补充的生产 DI gate：Android UI fixture 不再手工绑定 Application，改为真实
+`Injekt.importModule(AppModule(activity.application))`；非被测 warmup 的
+NetworkHelper/Database/DownloadManager 仍由局部 fixture 替代，SourceManager 为原真实
+小实现，Application 只由生产模块注册。第一 key `ec06-creator-ui-production-di-green`
+因模块异步 warmup 缺 NetworkPreferences 失败，是 harness 依赖缺口，不是产品 RED。
+补齐非被测 warmup 边界后，`ec06-creator-ui-production-di-final` PASSED/exit0（15 秒），
+实际 UI **1 个独立方法，0 失败、0 跳过**，精确该文件严格 Spotless Check 同命令通过。
+原 XML 留存 `.test-tmp/ec06-creator-ui-production-di-final-xml/`。此门替代前述 UI 原件，
+与仍有效的其余 20 项组成最终 21 项证据，不累计为 22 个独立方法；未重跑其余已绿范围。
+
+主代理独立审查确认：Source hook 保护只围绕实际第三方调用；typed 原因传过两个
+DiscoverCreatorWorks overload 和双端既有反馈，未加入登录/自动重试。实际 SQL 失败源
+deadline 与成功 calendar 分离，manual 成功恢复普通 due；MAX 未作普通展示日期。
+9 份旧有效 XML 共21项已逐一读取，最终 DI UI 原件替代旧 UI 后独立核对通过。新增
+Application 解析来自 AppModule.registerInjectables 的生产注册，不再以测试手工注册证明。
+本内聚批次包含11 Kotlin、两份维护证据及 roadmap 阶段说明，超8文件的原因是共享
+分类/实际DB调度/双端反馈接线必须一起验证；不改持久化协议或 schema，不勾选整个EC06。

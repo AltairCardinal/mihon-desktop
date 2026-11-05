@@ -522,6 +522,9 @@ class CreatorDiscoveryService(
         val consecutiveFailures = if (success) 0L else (previous?.consecutiveFailures ?: 0L) + 1
         val backoffUntil = if (success) {
             null
+        } else if (result.failure is CreatorSourceFailure.ExtensionIncompatible) {
+            // Deterministic ABI failures need an explicit manual check, not a scheduled retry.
+            Long.MAX_VALUE
         } else {
             CreatorDiscoveryBackoff.backoffUntilMillis(now, consecutiveFailures, backoffJitterMillis())
         }
@@ -1065,6 +1068,7 @@ class CreatorDiscoveryService(
     }
 
     private fun CreatorSourceFailure.safeCode(): String = when (this) {
+        is CreatorSourceFailure.ExtensionIncompatible -> "EXTENSION_INCOMPATIBLE"
         is CreatorSourceFailure.AuthenticationRequired -> "AUTHENTICATION_REQUIRED"
         is CreatorSourceFailure.RateLimited -> "RATE_LIMITED"
         is CreatorSourceFailure.Http -> "HTTP_$statusCode"
@@ -1076,6 +1080,7 @@ class CreatorDiscoveryService(
     }
 
     private fun CreatorSourceFailure.describe(): String = when (this) {
+        is CreatorSourceFailure.ExtensionIncompatible -> "extension incompatible"
         is CreatorSourceFailure.AuthenticationRequired -> "authentication required"
         is CreatorSourceFailure.RateLimited -> "rate limited"
         is CreatorSourceFailure.Http -> "http $statusCode"

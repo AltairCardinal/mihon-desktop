@@ -1,5 +1,8 @@
 package tachiyomi.domain.creator.service
 
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.source.AuthorSearchCreatorRole
 import eu.kanade.tachiyomi.source.AuthorSearchManga
 import eu.kanade.tachiyomi.source.AuthorSearchSource
@@ -80,37 +83,42 @@ class CatalogueCreatorDiscoverySourceAdapter(
         return try {
             withTimeout(remainingMillis) {
                 val page = if (source is AuthorSearchSource && !request.titleSearch &&
-                    !titleAttributionPolicy.isEnabled(source.id)
+                    !titleAttributionPolicy.isEnabled(request.sourceId)
                 ) {
                     try {
-                        source.getAuthorSearchManga(request.page, request.alias).let { result ->
+                        guardSourceOperation(SourceOperationPhase.SEARCH) {
+                            source.getAuthorSearchManga(request.page, request.alias)
+                        }.let { result ->
                             SearchPage(result.mangas, result.hasNextPage)
                         }
                     } catch (error: CancellationException) {
                         throw error
-                    } catch (_: Exception) {
+                    } catch (error: Exception) {
+                        error.rethrowSourceControlFailure()
+                        if (error.toSourceAppError() is AppError.ExtensionIncompatible) throw error
                         sourceMangaSearchService.loadPage(
                             source = source,
                             page = request.page,
-                            request = SourceMangaSearchRequest.Search(request.alias, source.getFilterList()),
+                            request = SourceMangaSearchRequest.Search(request.alias, source.creatorFilters()),
                         ).toSearchPage()
                     }
                 } else {
                     sourceMangaSearchService.loadPage(
                         source = source,
                         page = request.page,
-                        request = SourceMangaSearchRequest.Search(request.alias, source.getFilterList()),
+                        request = SourceMangaSearchRequest.Search(request.alias, source.creatorFilters()),
                     ).toSearchPage()
                 }
                 if (page.items.isEmpty()) {
                     CreatorSourcePageResult.Empty
                 } else {
                     val works = page.items
-                        .map { item -> item.toSnapshot(source.id) }
+                        .map { item -> item.toSnapshot(request.sourceId) }
                         .distinctBy(CreatorSourceWorkSnapshot::key)
                     mutex.withLock {
                         page.items.forEach { item ->
-                            searchHits[SearchHitKey(item.key(source.id), request.titleSearch)] = item.toCachedHit()
+                            searchHits[SearchHitKey(item.key(request.sourceId), request.titleSearch)] =
+                                item.toCachedHit()
                         }
                     }
                     CreatorSourcePageResult.Content(works, page.hasNextPage)
@@ -136,9 +144,9 @@ class CatalogueCreatorDiscoverySourceAdapter(
             it.title = key.stableSourceUrl
         }
         return try {
-            val details = source.getMangaDetails(listedManga)
+            val details = guardSourceOperation(SourceOperationPhase.DETAILS) { source.getMangaDetails(listedManga) }
             val work = details.toSnapshot(
-                sourceId = source.id,
+                sourceId = key.sourceId,
                 stableUrlFallback = key.stableSourceUrl,
                 structuredMatches = cached?.structuredMatches.orEmpty(),
             )
@@ -234,13 +242,19 @@ class CatalogueCreatorDiscoverySourceAdapter(
     private data class SearchHitKey(val work: SourceWorkNaturalKey, val titleSearch: Boolean)
 }
 
-private fun Throwable.toCreatorSourceFailure(): CreatorSourceFailure = when (val error = toSourceAppError()) {
-    is AppError.Authentication, is AppError.Challenge -> CreatorSourceFailure.AuthenticationRequired(null)
-    is AppError.RateLimited -> CreatorSourceFailure.RateLimited(error.retryAfterSeconds?.times(1_000))
-    is AppError.Forbidden -> CreatorSourceFailure.Http(403)
-    is AppError.Server -> CreatorSourceFailure.Http(error.statusCode)
-    is AppError.Network -> CreatorSourceFailure.Network(error.cause?.message)
-    is AppError.MalformedData -> CreatorSourceFailure.MalformedResponse(error.cause?.message)
-    AppError.Cancelled -> throw CancellationException("Source call cancelled", error.cause)
-    else -> CreatorSourceFailure.Network(error.cause?.message)
+private fun CatalogueSource.creatorFilters() = guardSourceOperation(SourceOperationPhase.FILTERS) { getFilterList() }
+
+private fun Throwable.toCreatorSourceFailure(): CreatorSourceFailure {
+    rethrowSourceControlFailure()
+    return when (val error = toSourceAppError()) {
+        is AppError.ExtensionIncompatible -> CreatorSourceFailure.ExtensionIncompatible(error.cause)
+        is AppError.Authentication, is AppError.Challenge -> CreatorSourceFailure.AuthenticationRequired(null)
+        is AppError.RateLimited -> CreatorSourceFailure.RateLimited(error.retryAfterSeconds?.times(1_000))
+        is AppError.Forbidden -> CreatorSourceFailure.Http(403)
+        is AppError.Server -> CreatorSourceFailure.Http(error.statusCode)
+        is AppError.Network -> CreatorSourceFailure.Network(error.cause?.message)
+        is AppError.MalformedData -> CreatorSourceFailure.MalformedResponse(error.cause?.message)
+        AppError.Cancelled -> throw CancellationException("Source call cancelled", error.cause)
+        else -> CreatorSourceFailure.Network(error.cause?.message)
+    }
 }

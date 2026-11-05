@@ -86,6 +86,7 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.components.TabContent
 import eu.kanade.presentation.manga.components.MangaCover
 import eu.kanade.tachiyomi.data.cache.CoverCache
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.CancellationException
@@ -99,6 +100,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import mihon.domain.error.AppError
 import tachiyomi.domain.creator.interactor.CreatorArchive
 import tachiyomi.domain.creator.interactor.CreatorDetails
 import tachiyomi.domain.creator.interactor.DiscoverCreatorWorks
@@ -136,6 +138,7 @@ import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.source.service.toSourceAppError
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.creator.CreatorUiLayout
@@ -145,6 +148,7 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import tachiyomi.core.common.i18n.stringResource as contextStringResource
 
 class AndroidMangaCreatorNavigator(
     private val extractCreators: ExtractCreatorsFromManga = ExtractCreatorsFromManga(),
@@ -1713,5 +1717,14 @@ internal class AndroidAuthorDetailScreenModel(
     }
     private fun fail(
         error: Throwable,
-    ) = mutableState.update { it.copy(error = error.message ?: error::class.simpleName, loading = false) }
+    ) {
+        error.rethrowSourceControlFailure()
+        val message = if (error.toSourceAppError() is AppError.ExtensionIncompatible) {
+            val application = Injekt.get<android.app.Application>()
+            application.contextStringResource(MR.strings.source_error_extension_incompatible)
+        } else {
+            error.message ?: error::class.simpleName
+        }
+        mutableState.update { it.copy(error = message, loading = false) }
+    }
 }
