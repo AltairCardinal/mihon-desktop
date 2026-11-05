@@ -34,6 +34,19 @@ class DesktopReaderContentAdapterTest {
     lateinit var tempDir: File
 
     @Test
+    fun `rar content with cbz extension falls back to the original archive backend`() = runTest {
+        val bytes = imageBytes(91)
+        val archive = createStoredRar(tempDir.resolve("misnamed.cbz"), listOf("001.png" to bytes))
+        DesktopReaderContentAdapter().use { adapter ->
+            val page = adapter.archiveDescriptors(76, archive).single()
+            val destination = tempDir.resolve("misnamed.png")
+            adapter.copyArchivePage(76, 0, page.url, destination)
+            assertArrayEquals(bytes, destination.readBytes())
+        }
+        assertTrue(archive.delete(), "Fallback must release the original native handle")
+    }
+
+    @Test
     fun `directory descriptors preserve route sort semantics and ready file refs`() {
         val directory = tempDir.resolve("directory").also(File::mkdirs)
         val page10 = directory.resolve("10.png").also { it.writeBytes(imageBytes(10)) }

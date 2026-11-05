@@ -185,6 +185,7 @@ kotlin {
 
                 // RAR/CBR archive support (RAR4 + RAR5) via 7-Zip JNI bindings
                 // sevenzipjbinding = Java API; sevenzipjbinding-all-platforms = native libs
+                implementation(libs.commons.compress)
                 implementation("net.sf.sevenzipjbinding:sevenzipjbinding:16.02-2.01")
                 implementation("net.sf.sevenzipjbinding:sevenzipjbinding-all-platforms:16.02-2.01")
 

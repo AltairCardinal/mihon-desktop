@@ -44,4 +44,4 @@
 | Android 真机无线/USB ADB、屏幕/锁屏操作、阅读器性能采集或设备收尾 | [Android 平板实测经验](docs/automation/ANDROID_TABLET_ACCEPTANCE.md)：先查成功方法与限制；无密码锁屏正常唤醒，前台需要时亮屏，离线等待和结束后熄屏 |
 | 判断公共说明更新时机、编辑 README/website/双语 changelog、部署 Pages，或用户明确验收具体功能后 | [公共说明](docs/agent-guides/public-documentation.md) |
 | 新增、修改、打开或验证双端 HTML 原型 | [HTML 原型](docs/agent-guides/html-prototypes.md)，只读目标原型 README 与适用规则 |
-| Desktop E2E/Test Mode、跨会话移交、macOS 验收或占用桌面的原生操作/诊断 | [自动化与原生验收](docs/agent-guides/desktop-acceptance.md)，再读平台/工具经验入口 |
+| Desktop E2E/Test Mode、跨会话移交、macOS 验收或占用桌面的原生操作/诊断 | [自动化与原生验收](docs/agent-guides/desktop-acceptance.md)，再读平台/工具经验入口；Windows 阅读器延迟采集另读[已验证流程](docs/automation/DESKTOP_READER_LATENCY.md) |

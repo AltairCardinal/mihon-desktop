@@ -14,6 +14,7 @@ import net.sf.sevenzipjbinding.ISequentialOutStream
 import net.sf.sevenzipjbinding.PropID
 import net.sf.sevenzipjbinding.SevenZip
 import net.sf.sevenzipjbinding.impl.RandomAccessFileInStream
+import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
 import org.jsoup.Jsoup
 import org.jsoup.parser.Parser
 import java.io.File
@@ -22,6 +23,7 @@ import java.io.RandomAccessFile
 import java.net.URI
 import java.security.MessageDigest
 import java.util.concurrent.CountDownLatch
+import org.apache.commons.compress.archivers.zip.ZipFile as CommonsZipFile
 
 internal interface DesktopReaderArchiveOperationProbe {
     fun onStart()
@@ -39,6 +41,7 @@ internal interface DesktopReaderArchiveOperationProbe {
 class DesktopReaderContentAdapter internal constructor(
     private val archiveOperationProbe: DesktopReaderArchiveOperationProbe = DesktopReaderArchiveOperationProbe.None,
     private val contentOperationProbe: DesktopReaderContentOperationProbe = DesktopReaderContentOperationProbe.None,
+    private val preferNativeZip: Boolean = false,
 ) : AutoCloseable, DesktopReaderChapterLeasePort {
     private val lock = Any()
     private val archiveLeases = mutableMapOf<Long, ArchiveLeaseBinding>()
@@ -207,6 +210,13 @@ class DesktopReaderContentAdapter internal constructor(
 
     private fun openArchive(file: File, epub: Boolean): ArchiveLease {
         require(file.isFile) { "Archive is missing: ${file.absolutePath}" }
+        if (!preferNativeZip && !epub && file.extension.lowercase() in ZIP_EXTENSIONS) {
+            try {
+                return CommonsZipArchiveLease(file, archiveOperationProbe, contentOperationProbe)
+            } catch (_: java.io.IOException) {
+                // Unsupported ZIP features and non-ZIP content keep the original native route.
+            }
+        }
         return when {
             epub || file.extension.equals("epub", ignoreCase = true) ->
                 SevenZipArchiveLease(file, archiveOperationProbe, contentOperationProbe, epub = true)
@@ -324,6 +334,88 @@ private abstract class RefCountedArchiveLease : ArchiveLease {
             } finally {
                 closedSignal.countDown()
             }
+        }
+    }
+}
+
+/** A fresh channel per lease avoids java.util.zip's process-wide same-metadata source cache. */
+private class CommonsZipArchiveLease(
+    file: File,
+    private val operationProbe: DesktopReaderArchiveOperationProbe,
+    private val contentOperationProbe: DesktopReaderContentOperationProbe,
+) : RefCountedArchiveLease() {
+    private val operationLock = Any()
+    private val archive = CommonsZipFile.builder().setPath(file.toPath()).get()
+    private val entries: List<ZipArchiveEntry> = try {
+        archive.entries.asSequence().toList().also { entries ->
+            if (entries.any {
+                    it.method !in setOf(0, 8) || !archive.canReadEntryData(it) || !supportsName(it.name) ||
+                        (it.name.any { character -> character.code > 127 } && !it.generalPurposeBit.usesUTF8ForNames())
+                }) {
+                throw java.io.IOException("ZIP feature requires the native archive backend")
+            }
+        }
+    } catch (error: Throwable) {
+        archive.close()
+        throw error
+    }
+    private var pages = emptyList<ZipArchiveEntry>()
+
+    override fun readSnapshot(): ArchiveSnapshot = withOperation {
+        pages = entries.filter { entry ->
+            !entry.isDirectory && entry.name.isNotEmpty() && ReaderImageCandidatePolicy.accepts(entry.name) {
+                contentOperationProbe.record(DesktopReaderContentOperationKind.ARCHIVE_SIGNATURE) { entry.name }
+                archive.getInputStream(entry).use(DesktopReaderImageSignature::matches)
+            }
+        }.sortedWith { first, second ->
+            ReaderImageCandidatePolicy.compare(
+                ReaderImageSortMode.LOCAL_NATURAL_CASE_INSENSITIVE,
+                first.nativePath(),
+                second.nativePath(),
+            )
+        }
+        ArchiveSnapshot(
+            pageNames = pages.map { it.nativePath() },
+            contentFingerprint = sha256(entries.joinToString("\u0001") { entry ->
+                listOf(
+                    entry.nativePath(),
+                    entry.isDirectory.toString(),
+                    entry.size.toString(),
+                    entry.compressedSize.toString(),
+                    if (entry.isDirectory) "" else entry.crc.toInt().toString(),
+                    if (entry.method == 0) "Store" else "Deflate",
+                ).joinToString("\u0000")
+            }),
+        )
+    }
+
+    override fun copyPageContent(pageIndex: Int, destination: File) = withOperation {
+        val entry = pages.getOrNull(pageIndex) ?: error("Archive page index is missing: $pageIndex")
+        contentOperationProbe.record(DesktopReaderContentOperationKind.ARCHIVE_PAGE_COPY, pageIndex) { entry.name }
+        archive.getInputStream(entry).use { input ->
+            destination.outputStream().buffered().use { output -> input.copyTo(output) }
+        }
+        Unit
+    }
+
+    override fun closeBacking() = archive.close()
+
+    private fun supportsName(name: String): Boolean {
+        if (name.isEmpty() || name.startsWith('/') || '\\' in name || ':' in name) return false
+        return name.removeSuffix("/").split('/').all { it.isNotEmpty() && it != "." && it != ".." }
+    }
+
+    // SevenZip exposes platform separators, folder paths without a trailing slash,
+    // and CRC as a signed Int. Keep existing opaque content stamps byte-for-byte.
+    private fun ZipArchiveEntry.nativePath(): String = name.replace('/', File.separatorChar)
+        .let { if (isDirectory) it.trimEnd(File.separatorChar) else it }
+
+    private fun <T> withOperation(block: () -> T): T = synchronized(operationLock) {
+        operationProbe.onStart()
+        try {
+            block()
+        } finally {
+            operationProbe.onFinish()
         }
     }
 }

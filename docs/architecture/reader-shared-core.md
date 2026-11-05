@@ -980,3 +980,28 @@ Android `HttpPageLoader.loadPage` 仅在已经运行的普通请求仍绑定同�
 ## 2026-11-04 未采用的本页同流复用候选
 
 [持续结果R3](../evidence/reader-startup-autonomous-2026-11-04.md)曾让单/双holder在header阶段保留原图流，沿原Main校验后读完整编码。真实冷绑定回归证明开流2→1，取消、换流、清理失败与后备读取均做了定向验证；但十二份真机对照没有支持整体加速，新增跨协程资源生命周期不值得因此保留，当前生产代码仍为R2链路。候选补丁与计时语义留在结果档案，不能把诊断APK中的`openHeaderSource()`当作当前API，也不能由局部读耗时下降推导总收益。
+
+
+### Desktop ZIP 首开与独立归档 channel
+
+普通 ZIP/CBZ 的页表与按页复制优先使用 Commons Compress 1.28.0 的独立 SeekableByteChannel lease，
+避免首次阅读时初始化 SevenZip JNI。沿用原 RefCountedArchiveLease、操作串行锁及 generation 准入；
+关闭、切章和迟到打开仍在原资源所有权链收口，不增加全章解码或改变图片质量。
+选择此实现而非 java.util.zip 的长期 ZipFile lease，是为了避免其进程内 Source 缓存使同路径、同大小、
+同 mtime 的替换在旧 lease 并存时沿用旧中央目录。不得用文件元数据相等代替新的归档内容身份。
+
+快路径只支持 Store/Deflate、库可读的条目及普通相对 slash 路径；反斜杠、绝对/盘符、空路径段、
+`.`/`..` 段，以及非 ASCII 且未标 UTF-8 的名称回到原 SevenZip 路径。EPUB、RAR 保持原实现；
+ZIP 打开失败或不支持的 ZIP 特性也回退，不自行实现中央目录解析或使用 JDK 内部反射。
+条目保留库返回的完整 entry 对象与顺序，复制不能按名称重新查找而丢失重复项的实际数据。
+自然排序、未知后缀的有界签名探测及原有按页复制错误处理继续使用原策略。
+
+持久内容戳兼容原 SevenZip 的平台分隔符、目录路径形式、size、packed size、signed Int CRC（目录为空）
+和 Store/Deflate 方法字符串；真实 CBZ 的全部 opaque URL 与目录、重复名条目已逐项对照。
+CRC 同时作为原身份字段保留；真实坏 CRC 但仍可读的 ZIP 在原路径与新路径均可复制，保持既有容错，
+不借此优化新增更严格的拒绝策略。复制流报错仍由原 adapter 删除未完成的目标文件。
+
+当前定向证据覆盖 Windows 的同元数据替换、旧/新 lease 并存、迟到取消、原 native fallback、
+真实挂载与恢复页字节；其他平台仍需其受影响验证，内部首绘与原生首见亦分别验收。
+库接口与依赖来源：[官方 ZIP 文档](https://commons.apache.org/proper/commons-compress/zip.html)、
+[1.28.0 依赖清单](https://commons.apache.org/proper/commons-compress/dependencies.html)。

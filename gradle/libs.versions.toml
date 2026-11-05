@@ -45,6 +45,7 @@ jsoup = "org.jsoup:jsoup:1.22.1"
 disklrucache = "com.jakewharton:disklrucache:2.0.2"
 unifile = "com.github.tachiyomiorg:unifile:e0def6b3dc"
 libarchive = "me.zhanghai.android.libarchive:library:1.1.6"
+commons-compress = "org.apache.commons:commons-compress:1.28.0"
 
 sqlite-framework = { module = "androidx.sqlite:sqlite-framework", version.ref = "sqlite" }
 sqlite-ktx = { module = "androidx.sqlite:sqlite-ktx", version.ref = "sqlite" }
