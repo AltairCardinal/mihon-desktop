@@ -4,11 +4,51 @@ import kotlinx.coroutines.CancellationException
 import java.io.IOException
 
 /** IO transport for an extension ABI failure; no source identity is inferred by the network layer. */
-class SourceCompatibilityException(cause: Throwable, val phase: SourceOperationPhase?) : IOException(
-    "Extension is incompatible with this application runtime",
+class SourceCompatibilityException(
+    cause: Throwable,
+    val phase: SourceOperationPhase?,
+    val identity: SourceFailureIdentity?,
+) : IOException(
+    "Extension is incompatible with this application runtime" +
+        (identity?.let { " [${it.diagnosticLabel()}, operation=${phase?.name ?: "unknown"}]" } ?: ""),
     cause,
 ) {
     constructor(cause: Throwable) : this(cause, null)
+    constructor(cause: Throwable, phase: SourceOperationPhase?) : this(cause, phase, null)
+}
+
+/** Frozen host installation metadata; null means unknown, never inferred from a routing key or URL. */
+data class SourceFailureIdentity(
+    val sourceId: Long? = null,
+    val extensionPackage: String? = null,
+    val extensionName: String? = null,
+    val versionName: String? = null,
+    val versionCode: Long? = null,
+) {
+    fun diagnosticLabel(): String =
+        "source=${sourceId ?: "unknown"}, package=${extensionPackage.safeDiagnosticField()}, " +
+            "name=${extensionName.safeDiagnosticField()}, version=${versionName.safeDiagnosticField()}, " +
+            "versionCode=${versionCode ?: "unknown"}"
+}
+
+private fun String?.safeDiagnosticField(): String = this
+    ?.take(160)
+    ?.map { if (it.isISOControl() || it == '\u2028' || it == '\u2029') ' ' else it }
+    ?.joinToString("")
+    ?.ifBlank { null }
+    ?: "unknown"
+
+/** Bind only a previously captured owner; do not resolve installation state while reporting failure. */
+fun Throwable.withSourceFailureIdentity(identity: SourceFailureIdentity): Throwable {
+    val inspection = inspectSourceFailure()
+    inspection.fatal?.let { throw it }
+    if (!inspection.complete) throw this
+    inspection.cancellation?.let { throw it }
+    if (inspection.linkage == null) return this
+    val markers = inspection.causes.filterIsInstance<SourceCompatibilityException>()
+    val frozen = markers.firstNotNullOfOrNull { it.identity } ?: identity
+    if (this is SourceCompatibilityException && this.identity == frozen) return this
+    return SourceCompatibilityException(this, markers.firstNotNullOfOrNull { it.phase }, frozen)
 }
 
 /** Stable operation labels; never put a query, URL, credential or guessed identity in these fields. */
@@ -40,10 +80,12 @@ inline fun <T> guardSourceOperation(phase: SourceOperationPhase, block: () -> T)
     if (inspection.linkage != null) {
         val precisePhase = inspection.causes.filterIsInstance<SourceCompatibilityException>()
             .firstNotNullOfOrNull { it.phase }
-        throw if (error is SourceCompatibilityException && error.phase != null) {
+        val identity = inspection.causes.filterIsInstance<SourceCompatibilityException>()
+            .firstNotNullOfOrNull { it.identity }
+        throw if (error is SourceCompatibilityException && error.phase != null && error.identity == identity) {
             error
         } else {
-            SourceCompatibilityException(error, precisePhase ?: phase)
+            SourceCompatibilityException(error, precisePhase ?: phase, identity)
         }
     }
     throw error

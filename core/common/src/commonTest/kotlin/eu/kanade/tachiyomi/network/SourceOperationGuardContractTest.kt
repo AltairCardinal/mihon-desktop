@@ -10,6 +10,60 @@ import java.lang.reflect.InvocationTargetException
 
 class SourceOperationGuardContractTest {
     @Test
+    fun `nested guard keeps the frozen owner and precise phase through transport wrappers`() {
+        val owner = SourceFailureIdentity(9L, "old.package", "Old extension", "1.2.3", 123L)
+        val linkage = NoSuchMethodError("future API")
+        val original = SourceCompatibilityException(linkage, SourceOperationPhase.FILTERS, owner)
+        val transport = IOException("transport", InvocationTargetException(original))
+        val guarded = assertThrows(SourceCompatibilityException::class.java) {
+            guardSourceOperation(SourceOperationPhase.SEARCH) { throw transport }
+        }
+        assertSame(owner, guarded.identity)
+        assertEquals(SourceOperationPhase.FILTERS, guarded.phase)
+        assertSame(transport, guarded.cause)
+        val relabeled = guarded.withSourceFailureIdentity(
+            SourceFailureIdentity(9L, "new.package", "New extension", "9.9.9", 999L),
+        )
+        assertSame(guarded, relabeled)
+        val legacyOuter = SourceCompatibilityException(original, SourceOperationPhase.IMAGE_REQUEST)
+        val promoted = assertThrows(SourceCompatibilityException::class.java) {
+            guardSourceOperation(SourceOperationPhase.SEARCH) { throw legacyOuter }
+        }
+        assertSame(owner, promoted.identity)
+        assertEquals(SourceOperationPhase.IMAGE_REQUEST, promoted.phase)
+        assertSame(legacyOuter, promoted.cause)
+    }
+
+    @Test
+    fun `identity diagnostic fields are bounded single line and unknown is explicit`() {
+        val owner = SourceFailureIdentity(
+            extensionPackage = "package\r\nforged",
+            extensionName = "x".repeat(500),
+            versionName = "1\u2028forged\u2029line",
+        )
+        val label = owner.diagnosticLabel()
+        org.junit.jupiter.api.Assertions.assertFalse(
+            label.any {
+                it.isISOControl() || it == '\u2028' || it == '\u2029'
+            },
+        )
+        org.junit.jupiter.api.Assertions.assertTrue(label.length < 450)
+        org.junit.jupiter.api.Assertions.assertTrue(label.contains("source=unknown"))
+        org.junit.jupiter.api.Assertions.assertTrue(label.contains("versionCode=unknown"))
+    }
+
+    @Test
+    fun `legacy two argument JVM constructor remains callable`() {
+        val cause = NoSuchMethodError("legacy")
+        val value = SourceCompatibilityException::class.java
+            .getConstructor(Throwable::class.java, SourceOperationPhase::class.java)
+            .newInstance(cause, SourceOperationPhase.SEARCH)
+        assertSame(cause, value.cause)
+        assertEquals(SourceOperationPhase.SEARCH, value.phase)
+        assertEquals(null, value.identity)
+    }
+
+    @Test
     fun `broad host catch preserves wrapped host linkage but permits marked source transport`() {
         val linkage = NoSuchMethodError("host database adapter")
         val wrapped = IOException("host operation", InvocationTargetException(linkage))

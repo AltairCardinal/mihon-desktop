@@ -688,3 +688,53 @@ python scripts/gradle-coordinator.py run --key <唯一key> -- .\gradlew.bat :app
 
 本阶段不等于 EC-07 完成：源元数据/安装身份的操作前冻结、并发来源诊断、真正 UI 触发
 搜索的双端接线及完整三源取消场景仍须继续；EC-06 Creator/Rx 与 EC-08 R8 也未收口。
+
+## EC-07 阶段：冻结身份的异常传输与 Android 搜索绑定（2026-11-06）
+
+基线 `5a57915882`。本批只改 core 异常/guard、domain 附加 helper、Android 实际搜索
+model 及其测试；Desktop/UI/真实日志记录不是本批完成项。
+
+- 正确红测 `ec07-identity-owner-red`（23 秒）：真实 `SearchScreenModel` 在源挂起期间
+  将 installedFlow 从同包 1.2.3 换成 9.9.9，然后抛原始 NoSuchMethodError。
+  当前错误链仅 generic 兼容性说明与原错误，缺包名/版本，断言正确失败，不是 DI 或编译错。
+- 先从同一 installed 快照筛选并按 Source 引用匹配，冻结包名/名称/版本，再调用源。
+  不在失败时查 manager；sourceId 来自本次实际 request，不为诊断重读 getter。
+  类型化不兼容结果附冻结身份，原始 NoSuch cause 与精确阶段保留，普通错误投影不变。
+- core 增加不可变身份和三参 ctor，同时保留真实一参/二参 JVM ctor。新增 guard 保真
+  回归在旧的二参重包装行为下执行：`ec07-identity-nested-guard-red` 正确失败，实际
+  identity=null、预期 old.package/1.2.3。随后仅将重包装改为传已有身份，不能用当前
+  owner 覆写已有快照。反射/IO 原包装链仍完整保留。
+- `ec07-identity-owner-guard-green` **PASSED / exit0，33 秒**：core guard 契约 JVM8、
+  Android8，以及真实 Android model6，共 **22 项，零失败/零跳过**。新旧 ctor、
+  单行/长度边界、unknown 明示、旧 owner/phase、取消/VMError 和旧搜索代际均有断言。
+  原始 argv、终态和日志位于 `.gradle-coordinator/` 同 key；三份 XML 核对后按平台前缀
+  归档 `.test-tmp/ec07-identity-owner-guard-green-xml/`，避免同类名覆盖证据。
+- `ec07-identity-format` **PASSED / exit0，4 秒**：通过临时 init 精确限定 core2、domain1、
+  app2，Apply 后严格 Check。格式仅排序/排版，不改变行为；既有用户阅读器文件未触及。
+
+独立审查发现两个本批归属边界，均在提交前关闭：
+
+- `ec07-identity-review-red` 中 core 正确红：旧二参 ctor 的外层 phase 非空、identity 为
+  null，内层已有身份；guard 直接返回外层导致返回 marker.identity 仍 null。修复为仅在
+  已有 phase 且已有身份与检查所得一致时复用，否则携原 phase/完整 cause 提升身份。
+  该 key 的 Android 编译被另一任务正在编写的 Creator 测试夹具构造参数挡住，未执行，
+  不作为 Android 行为红测；修正该夹具后另跑下项，未重复启动已活进程。
+- `ec07-identity-equal-source-red` 正确红：两个真实 Source 的 equals/hash 相同但 id、
+  名称和安装 owner 不同，B 先失败、A 后失败；A 的原始未来 API101 错误却带 second.package。
+  新 identity 映射由 Map 改为 List<Pair>，取值只用引用 ===，不执行插件 equals/hash。
+  此回归限定新身份链的原错误归属，不冒充既有 Source-key UI 容器支持任意自定义相等性。
+- `ec07-identity-reviewed-final` **PASSED / exit0，14 秒**：core JVM8/Android8、Android
+  实际搜索 model7，共 **23 项，零失败/零跳过**；五文件严格格式同时通过。三份 XML
+  核对后另存 `.test-tmp/ec07-identity-reviewed-final-xml/`，按平台前缀避免覆盖。
+  未实施这些片段的代理初审及上述修复复审均通过，GO 仅限本阶段，不是整个 EC-07。
+
+复现行为命令：
+
+```powershell
+python scripts/gradle-coordinator.py run --key <唯一key> -- .\gradlew.bat :core:common:jvmTest --tests 'eu.kanade.tachiyomi.network.SourceOperationGuardContractTest' :core:common:testReleaseUnitTest --tests 'eu.kanade.tachiyomi.network.SourceOperationGuardContractTest' :app:testReleaseUnitTest --tests 'eu.kanade.tachiyomi.ui.browse.source.globalsearch.SearchScreenModelBehaviorTest' --offline --no-parallel --max-workers=2 --console=plain
+```
+
+维护说明见 `desktop-network-routing.md` 7.6.5。这里只证明身份可随现有错误链传输和
+Android 搜索绑定；不能把 DTO/异常 message 存在当成实际诊断记录或 UI 展示证据。
+Desktop 的操作前捕获、元数据安全描述、并发源不串身份、真实日志记录失败保护、双端
+UI gate、完整取消场景与 R8 原生仍是原 roadmap 的后续必做项。

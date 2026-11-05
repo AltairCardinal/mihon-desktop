@@ -1,7 +1,9 @@
 package tachiyomi.domain.source.service
 
 import eu.kanade.tachiyomi.network.HttpException
+import eu.kanade.tachiyomi.network.SourceFailureIdentity
 import eu.kanade.tachiyomi.network.inspectSourceFailure
+import eu.kanade.tachiyomi.network.withSourceFailureIdentity
 import kotlinx.coroutines.CancellationException
 import mihon.domain.error.AppError
 import mihon.domain.network.AppErrorException
@@ -25,6 +27,12 @@ fun Throwable.toSourceAppError(): AppError {
         current.knownSourceAppError()?.let { return it }
     }
     return AppError.MalformedData(this)
+}
+
+/** The caller captures the installed owner before invoking the extension, never on failure. */
+fun AppError.withSourceFailureIdentity(identity: SourceFailureIdentity): AppError = when (this) {
+    is AppError.ExtensionIncompatible -> copy(cause = cause?.withSourceFailureIdentity(identity))
+    else -> this
 }
 
 private fun Throwable.knownSourceAppError(): AppError? {

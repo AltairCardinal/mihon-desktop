@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.browse.source.globalsearch
 
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
+import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -16,6 +17,7 @@ import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -40,6 +42,87 @@ import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceRecoveryAction
 
 class SearchScreenModelBehaviorTest {
+
+    @Test
+    fun `equal source objects never exchange their frozen extension owners`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val firstRelease = CompletableDeferred<Unit>()
+        val secondRelease = CompletableDeferred<Unit>()
+        val starts = mutableListOf<Long>()
+        fun source(id: Long, release: CompletableDeferred<Unit>) = object : BaseCatalogueSource() {
+            override val id = id
+            override val name = "Source $id"
+            override fun equals(other: Any?) = other is Source
+            override fun hashCode() = 7
+            override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+                starts += id
+                release.await()
+                throw NoSuchMethodError("future API $id")
+            }
+        }
+        val first = source(101L, firstRelease)
+        val second = source(202L, secondRelease)
+        fun owner(source: Source, pkg: String) = mockk<Extension.Installed> {
+            every { pkgName } returns pkg
+            every { name } returns pkg
+            every { versionName } returns "1.0.0"
+            every { versionCode } returns 1L
+            every { sources } returns listOf(source)
+        }
+        val installed = MutableStateFlow(listOf(owner(first, "first.package"), owner(second, "second.package")))
+        val model = screenModel(first, additionalSources = listOf(second), installedExtensions = installed)
+        model.updateSearchQuery("query")
+        model.search()
+        runCurrent()
+        assertEquals(setOf(101L, 202L), starts.toSet())
+        secondRelease.complete(Unit)
+        runCurrent()
+        firstRelease.complete(Unit)
+        runCurrent()
+        val failure = assertInstanceOf(SearchItemResult.Error::class.java, model.state.value.items[first])
+        val diagnostics = generateSequence(failure.pageError.error.cause) { it.cause }
+            .mapNotNull { it.message }.joinToString("\n")
+        org.junit.jupiter.api.Assertions.assertTrue(diagnostics.contains("first.package"), diagnostics)
+        org.junit.jupiter.api.Assertions.assertFalse(diagnostics.contains("second.package"), diagnostics)
+    }
+
+    @Test
+    fun `failure diagnostics retain the installed owner from before extension replacement`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val source = object : BaseCatalogueSource() {
+            override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+                started.complete(Unit)
+                release.await()
+                throw NoSuchMethodError("future search API")
+            }
+        }
+        fun installed(version: String) = mockk<eu.kanade.tachiyomi.extension.model.Extension.Installed> {
+            every { pkgName } returns "trusted.extension"
+            every { name } returns "Installed extension"
+            every { versionName } returns version
+            every { versionCode } returns if (version == "1.2.3") 123L else 999L
+            every { sources } returns listOf(source)
+        }
+        val installedFlow = MutableStateFlow(listOf(installed("1.2.3")))
+        val model = screenModel(source, installedExtensions = installedFlow)
+        model.updateSearchQuery("private-query-must-not-be-recorded")
+        model.search()
+        runCurrent()
+        started.await()
+        installedFlow.value = listOf(installed("9.9.9"))
+        release.complete(Unit)
+        runCurrent()
+
+        val failure = assertInstanceOf(SearchItemResult.Error::class.java, model.state.value.items[source])
+        val error = assertInstanceOf(AppError.ExtensionIncompatible::class.java, failure.pageError.error)
+        val diagnostics = generateSequence(error.cause) { it.cause }.mapNotNull { it.message }.joinToString("\n")
+        org.junit.jupiter.api.Assertions.assertTrue(diagnostics.contains("trusted.extension"), diagnostics)
+        org.junit.jupiter.api.Assertions.assertTrue(diagnostics.contains("1.2.3"), diagnostics)
+        org.junit.jupiter.api.Assertions.assertFalse(diagnostics.contains("9.9.9"), diagnostics)
+        org.junit.jupiter.api.Assertions.assertFalse(diagnostics.contains("private-query"), diagnostics)
+    }
 
     @Test
     fun `incompatible filters fail only their source and explicit retry prepares again`() = runTest {
@@ -208,6 +291,7 @@ class SearchScreenModelBehaviorTest {
         sourceMangaSearchService: SourceMangaSearchService = SourceMangaSearchService(),
         additionalSources: List<Source> = emptyList(),
         extensionPackage: String? = null,
+        installedExtensions: MutableStateFlow<List<Extension.Installed>>? = null,
     ): SearchScreenModel {
         val preferences = preferences()
         val repository = mockk<MangaRepository>()
@@ -218,14 +302,20 @@ class SearchScreenModelBehaviorTest {
                 override fun getQuerySources() = listOf(source) + additionalSources
             },
             extensionManager = mockk<ExtensionManager> {
-                every { installedExtensionsFlow } returns kotlinx.coroutines.flow.MutableStateFlow(
-                    listOf(
-                        mockk<eu.kanade.tachiyomi.extension.model.Extension.Installed> {
-                            every { pkgName } returns "selected.extension"
-                            every { sources } returns listOf(source)
-                        },
-                    ),
-                )
+                every { installedExtensionsFlow } returns
+                    (
+                        installedExtensions ?: kotlinx.coroutines.flow.MutableStateFlow(
+                            listOf(
+                                mockk<eu.kanade.tachiyomi.extension.model.Extension.Installed> {
+                                    every { pkgName } returns "selected.extension"
+                                    every { name } returns "Selected extension"
+                                    every { versionName } returns "1.0.0"
+                                    every { versionCode } returns 1L
+                                    every { sources } returns listOf(source)
+                                },
+                            ),
+                        )
+                        )
             },
             networkToLocalManga = NetworkToLocalManga(repository),
             getManga = mockk<GetManga>(),

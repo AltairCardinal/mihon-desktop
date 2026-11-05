@@ -8,6 +8,8 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.util.ioCoroutineScope
 import eu.kanade.tachiyomi.extension.ExtensionManager
+import eu.kanade.tachiyomi.extension.model.Extension
+import eu.kanade.tachiyomi.network.SourceFailureIdentity
 import eu.kanade.tachiyomi.source.Source
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.mutate
@@ -42,6 +44,7 @@ import tachiyomi.domain.source.service.SourceQueryReducer
 import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.domain.source.service.prepareSourceFilters
 import tachiyomi.domain.source.service.sourceRecoveryAction
+import tachiyomi.domain.source.service.withSourceFailureIdentity
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.util.concurrent.Executors
@@ -111,7 +114,7 @@ abstract class SearchScreenModel(
             )
     }
 
-    private fun getSelectedSources(): List<Source> {
+    private fun getSelectedSources(installed: List<Extension.Installed>): List<Source> {
         val enabledSources = getEnabledSources()
 
         val filter = extensionFilter
@@ -119,7 +122,7 @@ abstract class SearchScreenModel(
             return enabledSources
         }
 
-        return extensionManager.installedExtensionsFlow.value
+        return installed
             .filter { it.pkgName == filter }
             .flatMap { it.sources }
             .filter { it in enabledSources }
@@ -158,7 +161,17 @@ abstract class SearchScreenModel(
         searchJob?.cancel()
         val generation = ++searchGeneration
 
-        val sources = getSelectedSources()
+        val installed = extensionManager.installedExtensionsFlow.value
+        val sources = getSelectedSources(installed)
+        val identities = sources.map { source ->
+            val owner = installed.firstOrNull { extension -> extension.sources.any { it === source } }
+            source to SourceFailureIdentity(
+                extensionPackage = owner?.pkgName,
+                extensionName = owner?.name,
+                versionName = owner?.versionName,
+                versionCode = owner?.versionCode,
+            )
+        }
 
         // Reuse previous results if possible
         if (sameQuery) {
@@ -227,7 +240,13 @@ abstract class SearchScreenModel(
                             updateItem(
                                 source,
                                 SearchItemResult.Error(
-                                    SourcePageError(reduced.error, reduced.recoveryAction),
+                                    SourcePageError(
+                                        reduced.error.withSourceFailureIdentity(
+                                            identities.first { it.first === source }.second
+                                                .copy(sourceId = request.sourceId),
+                                        ),
+                                        reduced.recoveryAction,
+                                    ),
                                 ),
                             )
                         }
