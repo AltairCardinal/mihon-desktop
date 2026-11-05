@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
@@ -69,7 +70,6 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.SManga
-import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -85,7 +85,6 @@ import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.desktop.platform.DesktopExternalActionTarget
 import mihon.desktop.settings.BROWSE_RECENT_SEARCH_LIMIT
 import mihon.desktop.settings.DesktopAppPreferences
-import mihon.desktop.source.getEnabledQuerySourceCandidates
 import mihon.desktop.ui.authors.AuthorDetailScreen
 import mihon.desktop.ui.authors.LanguageArchiveFilter
 import mihon.desktop.ui.library.MangaDetailScreen
@@ -102,9 +101,9 @@ import tachiyomi.domain.creator.service.CreatorNameNormalizer
 import tachiyomi.domain.creator.service.CreatorSourceCapability
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.GlobalSearchSourceFilter
-import tachiyomi.domain.source.service.GlobalSearchSourcePolicy
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourceMangaSearchService
+import tachiyomi.domain.source.service.SourceMetadataSnapshot
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.domain.source.service.SourceRecoveryAction
@@ -120,6 +119,8 @@ data class SourceSearchResult(
     val recoveryIntent: DesktopSourceRecoveryIntent = DesktopSourceRecoveryIntent.None,
     val listedByUrl: Map<String, SManga> = emptyMap(),
     val retryMaterialization: Boolean = false,
+    val metadata: SourceMetadataSnapshot? = null,
+    val request: tachiyomi.domain.source.service.SourcePageRequest? = null,
 )
 
 enum class GlobalSearchRowKind { Loading, Empty, Content, Error }
@@ -215,15 +216,26 @@ internal data class GlobalSearchUiState(
 )
 
 internal object GlobalSearchStateProjector {
-    fun project(
-        sources: List<Source>,
+    fun projectPrepared(
+        metadata: List<SourceMetadataSnapshot>,
         state: DesktopGlobalSearchState,
         canonicalResults: Map<Long, CanonicalSearchResult> = emptyMap(),
         pinnedIds: Set<String> = emptySet(),
         onlyShowHasResults: Boolean = false,
     ): GlobalSearchUiState {
-        val allRows = sources.map { source ->
-            when (val queryState = state.queryStates[source.id]) {
+        val allRows = metadata.map { snapshot ->
+            val source = snapshot.source
+            val id = snapshot.sourceId
+            if (id == null) {
+                return@map SourceSearchResult(
+                    source,
+                    emptyList(),
+                    GlobalSearchRowKind.Error,
+                    SourcePageError(snapshot.error ?: AppError.Unknown(), SourceRecoveryAction.None),
+                    metadata = snapshot,
+                )
+            }
+            val row = when (val queryState = state.queryStates[id]) {
                 null, is SourceQueryState.Loading -> SourceSearchResult(
                     source,
                     emptyList(),
@@ -231,7 +243,7 @@ internal object GlobalSearchStateProjector {
                 )
                 is SourceQueryState.Empty -> SourceSearchResult(source, emptyList(), GlobalSearchRowKind.Empty)
                 is SourceQueryState.Content -> when (
-                    val canonical = canonicalResults[source.id]?.takeIf {
+                    val canonical = canonicalResults[id]?.takeIf {
                         it.generation ==
                             state.generation
                     }
@@ -242,7 +254,7 @@ internal object GlobalSearchStateProjector {
                         canonical.items,
                         if (canonical.items.isEmpty()) GlobalSearchRowKind.Empty else GlobalSearchRowKind.Content,
                         queryState.pageError,
-                        recoveryIntent(source, queryState.request, queryState.pageError?.recoveryAction),
+                        recoveryIntent(queryState.request, queryState.pageError?.recoveryAction),
                         canonical.listedByUrl,
                     )
                     is CanonicalSearchResult.Failure -> SourceSearchResult(
@@ -258,18 +270,19 @@ internal object GlobalSearchStateProjector {
                     emptyList(),
                     GlobalSearchRowKind.Error,
                     SourcePageError(queryState.error, queryState.recoveryAction),
-                    recoveryIntent(source, queryState.request, queryState.recoveryAction),
+                    recoveryIntent(queryState.request, queryState.recoveryAction),
                 )
             }
+            row.copy(metadata = snapshot, request = state.queryStates[id]?.request)
         }.sortedWith(
             compareBy<SourceSearchResult>(
                 { it.kind != GlobalSearchRowKind.Content },
-                { it.source.id.toString() !in pinnedIds },
-                { "${it.source.name.lowercase()} (${it.source.lang})" },
+                { it.metadata?.sourceId?.toString() !in pinnedIds },
+                { "${it.metadata?.name.orEmpty().lowercase()} (${it.metadata?.language.orEmpty()})" },
             ),
         )
         val completed = allRows.count { it.kind != GlobalSearchRowKind.Loading }
-        val loading = state.isSearching || completed < sources.size
+        val loading = state.isSearching || completed < metadata.size
         val visibleRows = if (onlyShowHasResults) {
             allRows.filter { it.kind == GlobalSearchRowKind.Content }
         } else {
@@ -278,22 +291,37 @@ internal object GlobalSearchStateProjector {
         return GlobalSearchUiState(
             loading = loading,
             empty = state.generation > 0 && allRows.isNotEmpty() &&
-                completed == sources.size && allRows.all { it.kind == GlobalSearchRowKind.Empty },
+                completed == metadata.size && allRows.all { it.kind == GlobalSearchRowKind.Empty },
             completed = completed,
-            total = sources.size,
+            total = metadata.size,
             results = visibleRows,
         )
     }
 
+    fun project(
+        sources: List<Source>,
+        state: DesktopGlobalSearchState,
+        canonicalResults: Map<Long, CanonicalSearchResult> = emptyMap(),
+        pinnedIds: Set<String> = emptySet(),
+        onlyShowHasResults: Boolean = false,
+    ): GlobalSearchUiState = projectPrepared(
+        sources.map { source ->
+            state.sourceMetadata.firstOrNull { it.source === source }
+                ?: prepareLegacySearchSource(source)
+        },
+        state,
+        canonicalResults,
+        pinnedIds,
+        onlyShowHasResults,
+    )
+
     private fun recoveryIntent(
-        source: Source,
         request: tachiyomi.domain.source.service.SourcePageRequest,
         action: SourceRecoveryAction?,
     ): DesktopSourceRecoveryIntent = when (action) {
         SourceRecoveryAction.Retry -> DesktopSourceRecoveryIntent.Retry(request)
-        SourceRecoveryAction.OpenLogin -> (source as? HttpSource)?.baseUrl
-            ?.let { DesktopSourceRecoveryIntent.OpenLogin(it, request) }
-            ?: DesktopSourceRecoveryIntent.None
+        // Resolve the extension-owned login target only in the explicit recovery action.
+        SourceRecoveryAction.OpenLogin -> DesktopSourceRecoveryIntent.None
         SourceRecoveryAction.None, null -> DesktopSourceRecoveryIntent.None
     }
 }
@@ -336,7 +364,13 @@ class GlobalSearchScreen(
         query: String,
         onStarted: (Long, List<Source>) -> Unit,
     ) = executeSearch(
-        sourceManager.getEnabledQuerySourceCandidates(appPreferences),
+        prepareGlobalSearchSources(
+            sourceManager,
+            appPreferences.enabledLanguages.get(),
+            appPreferences.disabledSources.get(),
+            appPreferences.pinnedSources.get(),
+            GlobalSearchSourceFilter.All,
+        ),
         coordinator,
         query,
         GlobalSearchSourceFilter.All,
@@ -344,7 +378,7 @@ class GlobalSearchScreen(
     )
 
     private suspend fun executeSearch(
-        sources: List<Source>,
+        sources: List<SourceMetadataSnapshot>,
         coordinator: DesktopGlobalSearchCoordinator,
         query: String,
         sourceFilter: GlobalSearchSourceFilter,
@@ -352,10 +386,10 @@ class GlobalSearchScreen(
         onStarted: (Long, List<Source>) -> Unit,
     ) {
         var started = false
-        coordinator.search(sources, query, sourceFilter, installed) { state ->
+        coordinator.searchPrepared(sources, query, sourceFilter, installed) { state ->
             if (!started) {
                 started = true
-                onStarted(state.generation, sources)
+                onStarted(state.generation, sources.map { it.source })
             }
         }
     }
@@ -367,7 +401,8 @@ class GlobalSearchScreen(
         sessionFactory: DesktopSourceLoginSessionFactory,
     ) {
         if (intent !is DesktopSourceRecoveryIntent.Retry) return
-        val child = coordinator.coordinatorFor(source.id) ?: return
+        val id = coordinator.state.sourceMetadata.firstOrNull { it.source === source }?.sourceId ?: return
+        val child = coordinator.coordinatorFor(id) ?: return
         SourceBrowseRecoveryController(
             child,
             DesktopSourceLoginController(sessionFactory, child),
@@ -401,7 +436,6 @@ class GlobalSearchScreen(
         var mangaLanguageFilter by session.mangaLanguageFilter
         var authorIdentityFilter by session.authorIdentityFilter
         var sourceFilter by session.sourceFilter
-        var sourcesByGeneration by session.sourcesByGeneration
         val queryCoordinator = remember(session, sourceMangaSearchService, coordinatorFactory) {
             session.coordinator(coordinatorFactory, sourceMangaSearchService)
         }
@@ -426,8 +460,8 @@ class GlobalSearchScreen(
         )
         var historyExpanded by remember { mutableStateOf(false) }
         var searchInputFocused by remember { mutableStateOf(false) }
-        val searchUiState = GlobalSearchStateProjector.project(
-            sourcesByGeneration[searchState.generation].orEmpty(),
+        val searchUiState = GlobalSearchStateProjector.projectPrepared(
+            searchState.sourceMetadata,
             searchState,
             resultMaterializer.results,
             pinnedIds = appPreferences.pinnedSources.get(),
@@ -521,20 +555,15 @@ class GlobalSearchScreen(
                     authorCoordinator?.search(normalizedQuery)
                     return@launch
                 }
-                val sources = GlobalSearchSourcePolicy.select(
-                    sourceManager.getQuerySources(),
+                val installed = dependencies.extensionPresentationService.installedExtensions.value
+                val sources = prepareGlobalSearchSources(
+                    sourceManager,
                     appPreferences.enabledLanguages.get(),
                     appPreferences.disabledSources.get(),
                     appPreferences.pinnedSources.get(),
                     filter,
                 )
-                val installed = dependencies.extensionPresentationService.installedExtensions.value
-                executeSearch(sources, queryCoordinator, normalizedQuery, filter, installed) {
-                        generation,
-                        selectedSources,
-                    ->
-                    sourcesByGeneration = mapOf(generation to selectedSources)
-                }
+                executeSearch(sources, queryCoordinator, normalizedQuery, filter, installed) { _, _ -> }
             }
         }
 
@@ -549,18 +578,24 @@ class GlobalSearchScreen(
 
         fun recover(sourceResult: SourceSearchResult) {
             scope.launch {
-                val child = queryCoordinator.coordinatorFor(sourceResult.source.id) ?: return@launch
+                val id = sourceResult.metadata?.sourceId ?: return@launch
+                val child = queryCoordinator.coordinatorFor(id) ?: return@launch
+                val intent = if (sourceResult.error?.recoveryAction == SourceRecoveryAction.OpenLogin) {
+                    child.recoveryIntent(sourceResult.source, sourceResult.request)
+                } else {
+                    sourceResult.recoveryIntent
+                }
                 val controller = SourceBrowseRecoveryController(
                     child,
                     DesktopSourceLoginController(sourceLoginSessionFactory, child),
                 )
                 var acceptedAttempt: DesktopSourceLoginAttempt? = null
-                if (sourceResult.recoveryIntent is DesktopSourceRecoveryIntent.OpenLogin) {
+                if (intent is DesktopSourceRecoveryIntent.OpenLogin) {
                     activeRecoveryController = controller
                 }
-                val result = controller.recover(sourceResult.source, sourceResult.recoveryIntent) { attempt ->
+                val result = controller.recover(sourceResult.source, intent) { attempt ->
                     acceptedAttempt = attempt
-                    (sourceResult.recoveryIntent as? DesktopSourceRecoveryIntent.OpenLogin)?.let { loginIntent ->
+                    (intent as? DesktopSourceRecoveryIntent.OpenLogin)?.let { loginIntent ->
                         sourceLoginUiState = loginUiActions.open(attempt, loginIntent.url)
                     }
                 }
@@ -838,13 +873,20 @@ class GlobalSearchScreen(
                 }
                 if (searchMode == GlobalSearchMode.MANGA) {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(sortedResults, key = { it.source.id }) { sourceResult ->
+                        itemsIndexed(sortedResults, key = { index, item ->
+                            item.metadata?.sourceId?.let { id -> "source:$id" }
+                                ?: "unknown:${searchState.generation}:$index"
+                        }) { _, sourceResult ->
+                            val sourceId = sourceResult.metadata?.sourceId
+                            val sourceName = sourceResult.metadata?.name ?: MR.strings.unknown.localized()
                             Text(
-                                text = "${sourceResult.source.name} (${sourceResult.results.size})",
+                                text = "$sourceName (${sourceResult.results.size})",
                                 style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier
-                                    .clickable { navigator.push(SourceBrowseScreen(sourceResult.source.id, query)) }
+                                    .clickable(enabled = sourceId != null && sourceResult.metadata?.error == null) {
+                                        sourceId?.let { navigator.push(SourceBrowseScreen(it, query)) }
+                                    }
                                     .padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
                             )
                             sourceResult.error?.let { error ->
@@ -873,7 +915,7 @@ class GlobalSearchScreen(
                                         androidx.compose.material3.TextButton(
                                             onClick = {
                                                 if (sourceResult.retryMaterialization) {
-                                                    resultMaterializer.retry(sourceResult.source.id)
+                                                    sourceId?.let(resultMaterializer::retry)
                                                 } else {
                                                     recover(sourceResult)
                                                 }
@@ -914,7 +956,8 @@ class GlobalSearchScreen(
                                             if (openingMangaUrl != null) return@GlobalSearchMangaCard
                                             val listed =
                                                 sourceResult.listedByUrl[manga.url] ?: return@GlobalSearchMangaCard
-                                            openingMangaUrl = "${sourceResult.source.id}:${manga.url}"
+                                            val id = sourceId ?: return@GlobalSearchMangaCard
+                                            openingMangaUrl = "$id:${manga.url}"
                                             navigator.push(MangaDetailScreen(manga.id))
                                             // The session scope outlives this screen, so the detail entry
                                             // is still prepared after the navigation cancelled this composition.
@@ -922,7 +965,7 @@ class GlobalSearchScreen(
                                                 try {
                                                     val details = saveSourceMangaForDetails.awaitListedForDetails(
                                                         listed,
-                                                        sourceResult.source.id,
+                                                        id,
                                                     )
                                                     if (details.needsRefresh) {
                                                         saveSourceMangaForDetails.refreshFromSource(

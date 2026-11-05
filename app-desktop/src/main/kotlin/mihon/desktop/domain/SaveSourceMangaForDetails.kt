@@ -1,5 +1,10 @@
 package mihon.desktop.domain
 
+import eu.kanade.tachiyomi.network.SourceCompatibilityException
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
+import eu.kanade.tachiyomi.network.inspectSourceFailure
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
@@ -23,6 +28,7 @@ import mihon.domain.error.AppError
 import mihon.domain.manga.model.toDomainManga
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.chapter.service.ChapterDirectoryDownloadConflictException
 import tachiyomi.domain.chapter.service.finishDirectoryPhase
 import tachiyomi.domain.chapter.service.observeDirectoryPhase
 import tachiyomi.domain.creator.model.SourceDateExtensionIdentity
@@ -86,7 +92,10 @@ class SaveSourceMangaForDetails(
     private val inFlight = mutableMapOf<SourceMangaRefreshKey, RefreshFlight>()
 
     suspend fun awaitSearchResults(results: List<SManga>, sourceId: Long): List<Manga> =
-        results.map { it.toDomainManga(sourceId).copy(chapterFlags = initialChapterFlags()) }
+        results.map {
+            val mapped = it.toDomainManga(sourceId, SourceOperationPhase.SEARCH)
+            mapped.copy(chapterFlags = initialChapterFlags())
+        }
             .distinctBy(Manga::url)
             .let { networkToLocalManga(it) }
 
@@ -106,7 +115,8 @@ class SaveSourceMangaForDetails(
         expectedManga: Manga? = null,
         origin: String = "BROWSE",
     ): Deferred<SourceCallResult<PreparedChapterCatalog>> {
-        val key = SourceMangaRefreshKey(source.id, listed.url)
+        val listedUrl = guardSourceOperation(SourceOperationPhase.DETAILS) { listed.url }
+        val key = SourceMangaRefreshKey(source.id, listedUrl)
         val flight = synchronized(inFlight) {
             inFlight[key]?.let { existing ->
                 if (fetchDetails) {
@@ -177,8 +187,11 @@ class SaveSourceMangaForDetails(
                         } catch (error: kotlinx.coroutines.CancellationException) {
                             throw error
                         } catch (error: Exception) {
+                            error.rethrowSourceControlFailure()
                             SourceCallResult.Error(
-                                if (error is tachiyomi.domain.chapter.service.ChapterDirectoryDownloadConflictException) {
+                                if (error is ChapterDirectoryDownloadConflictException ||
+                                    error.hasSourceCompatibilityMarker()
+                                ) {
                                     error.toSourceAppError()
                                 } else {
                                     AppError.Storage(error)
@@ -213,6 +226,7 @@ class SaveSourceMangaForDetails(
         } catch (error: kotlinx.coroutines.CancellationException) {
             throw error
         } catch (error: Exception) {
+            error.rethrowSourceControlFailure()
             SourceCallResult.Error(AppError.Storage(error))
         }
         return when (local) {
@@ -237,6 +251,7 @@ class SaveSourceMangaForDetails(
         } catch (error: kotlinx.coroutines.CancellationException) {
             throw error
         } catch (error: Exception) {
+            error.rethrowSourceControlFailure()
             SourceCallResult.Error(AppError.Storage(error)).also {
                 updateRefreshState(
                     SourceMangaRefreshKey(manga.source, manga.url),
@@ -262,7 +277,8 @@ class SaveSourceMangaForDetails(
         listedManga: SManga,
         origin: String = "BROWSE",
     ): Manga {
-        val current = mangaRepository.getMangaByUrlAndSourceId(listedManga.url, source.id)
+        val listedUrl = guardSourceOperation(SourceOperationPhase.DETAILS) { listedManga.url }
+        val current = mangaRepository.getMangaByUrlAndSourceId(listedUrl, source.id)
         current?.let { chapterRepository.pendingDirectoryPhase(it.id) }?.let { phase ->
             completePhase(requireNotNull(current), phase)
             return mangaRepository.getMangaById(current.id)
@@ -280,8 +296,11 @@ class SaveSourceMangaForDetails(
         flight: RefreshFlight,
     ): PreparedChapterCatalog {
         val manga = catalogStorageCall {
-            flight.expectedManga ?: mangaRepository.getMangaByUrlAndSourceId(listedManga.url, source.id)
-                ?: listedManga.toDomainManga(source.id)
+            flight.expectedManga ?: run {
+                val listedUrl = guardSourceOperation(SourceOperationPhase.DETAILS) { listedManga.url }
+                mangaRepository.getMangaByUrlAndSourceId(listedUrl, source.id)
+                    ?: listedManga.toDomainManga(source.id, SourceOperationPhase.DETAILS)
+            }
         }
         val known = catalogStorageCall { chapterRepository.getChapterByMangaId(manga.id) }
         val update = SourceMangaUpdateService().await(
@@ -295,7 +314,9 @@ class SaveSourceMangaForDetails(
             original = listedManga,
             details = update.manga,
         )
-        check(details.url == listedManga.url) { "Source manga identity conflict" }
+        val detailsUrl = guardSourceOperation(SourceOperationPhase.DETAILS) { details.url }
+        val listedUrl = guardSourceOperation(SourceOperationPhase.DETAILS) { listedManga.url }
+        check(detailsUrl == listedUrl) { "Source manga identity conflict" }
         val validated = catalogWriter.validate(update.chapters)
         flight.networkDetails = details
         flight.networkChapters = validated
@@ -333,9 +354,11 @@ class SaveSourceMangaForDetails(
         block()
     } catch (error: kotlinx.coroutines.CancellationException) {
         throw error
-    } catch (error: tachiyomi.domain.chapter.service.ChapterDirectoryDownloadConflictException) {
+    } catch (error: ChapterDirectoryDownloadConflictException) {
         throw error
     } catch (error: Exception) {
+        error.rethrowSourceControlFailure()
+        if (error.hasSourceCompatibilityMarker()) throw error
         throw SourceCatalogStorageException(error)
     }
 
@@ -344,7 +367,8 @@ class SaveSourceMangaForDetails(
         listedManga: SManga,
         linkedChapter: SChapter?,
     ): ResolvedSourceChapter {
-        mangaRepository.getMangaByUrlAndSourceId(listedManga.url, source.id)?.let { existingManga ->
+        val listedUrl = guardSourceOperation(SourceOperationPhase.DETAILS) { listedManga.url }
+        mangaRepository.getMangaByUrlAndSourceId(listedUrl, source.id)?.let { existingManga ->
             chapterRepository.pendingDirectoryPhase(existingManga.id)?.let { phase ->
                 completePhase(existingManga, phase)
                 return ResolvedSourceChapter(
@@ -388,18 +412,20 @@ class SaveSourceMangaForDetails(
         sManga: SManga,
         sourceId: Long,
     ): Manga {
-        mangaRepository.getMangaByUrlAndSourceId(sManga.url, sourceId)?.let { return it }
-
+        val url = guardSourceOperation(SourceOperationPhase.DETAILS) { sManga.url }
+        mangaRepository.getMangaByUrlAndSourceId(url, sourceId)?.let { return it }
+        val title = guardSourceOperation(SourceOperationPhase.DETAILS) { sManga.title }
+        val thumbnail = guardSourceOperation(SourceOperationPhase.DETAILS) { sManga.thumbnail_url }
+        val memo = guardSourceOperation(SourceOperationPhase.DETAILS) { sManga.memo }
         val networkManga = Manga.create().copy(
-            url = sManga.url,
-            title = sManga.title,
+            url = url,
+            title = title,
             source = sourceId,
-            thumbnailUrl = sManga.thumbnail_url,
+            thumbnailUrl = thumbnail,
             initialized = false,
-            memo = sManga.memo,
+            memo = memo,
             chapterFlags = initialChapterFlags(),
         )
-
         return networkToLocalManga(networkManga)
     }
 
@@ -449,16 +475,17 @@ class SaveSourceMangaForDetails(
         if (sChapters.isEmpty() && sourceId != 0L) {
             return awaitReaderCatalog(sManga, sourceId, sChapters, fetchDetails, expectedManga)
         }
+        val url = guardSourceOperation(SourceOperationPhase.DETAILS) { sManga.url }
         val remote = if (sChapters.isEmpty()) sChapters else catalogWriter.validate(sChapters)
         val existing = if (expectedManga != null) {
             val current = mangaRepository.getMangaById(expectedManga.id)
             check(
                 current.source == expectedManga.source && current.url == expectedManga.url &&
-                    sourceId == current.source && sManga.url == current.url,
+                    sourceId == current.source && url == current.url,
             ) { "Source manga identity conflict" }
             current
         } else {
-            mangaRepository.getMangaByUrlAndSourceId(sManga.url, sourceId)
+            mangaRepository.getMangaByUrlAndSourceId(url, sourceId)
         }
         existing?.let { manga ->
             chapterRepository.pendingDirectoryPhase(manga.id)?.let { phase ->
@@ -466,11 +493,8 @@ class SaveSourceMangaForDetails(
                 return mangaRepository.getMangaById(manga.id)
             }
         }
-        val identity = existing ?: Manga.create().copy(
-            source = sourceId, url = sManga.url, title = sManga.title,
-            thumbnailUrl = sManga.thumbnail_url, initialized = false, memo = sManga.memo,
-            chapterFlags = initialChapterFlags(),
-        )
+        val identity = existing ?: captureForSave(sManga, sourceId, details = false, includeIdentity = true)
+            .copy(chapterFlags = initialChapterFlags())
         val now = System.currentTimeMillis()
         val extension = sourceDateExtensionIdentityProvider(sourceId)
         val disallowNonAscii = disallowNonAsciiFilenames()
@@ -480,6 +504,7 @@ class SaveSourceMangaForDetails(
         } else {
             mihon.domain.chapter.interactor.DownloadNewChapterPolicy(false, false)
         }
+        val metadata = captureForSave(sManga, sourceId, fetchDetails, includeIdentity = false)
         fun request(manga: Manga) = tachiyomi.domain.chapter.service.ChapterDirectoryCommit(
             mangaId = manga.id,
             source = prepared.map { it.copy(chapter = it.chapter.copy(mangaId = manga.id)) },
@@ -488,14 +513,14 @@ class SaveSourceMangaForDetails(
             complete = complete,
             mangaMetadata = if (fetchDetails) {
                 MangaUpdate(
-                    id = manga.id, title = sManga.title, author = sManga.author, updateAuthor = true,
-                    artist = sManga.artist, updateArtist = true, description = sManga.description,
-                    genre = sManga.genre?.split(", ")?.takeIf { it.isNotEmpty() },
-                    status = sManga.status.toLong(), thumbnailUrl = sManga.thumbnail_url,
-                    updateStrategy = sManga.update_strategy, initialized = true, memo = sManga.memo,
+                    id = manga.id, title = metadata.title, author = metadata.author, updateAuthor = true,
+                    artist = metadata.artist, updateArtist = true, description = metadata.description,
+                    genre = metadata.genre,
+                    status = metadata.status, thumbnailUrl = metadata.thumbnailUrl,
+                    updateStrategy = metadata.updateStrategy, initialized = true, memo = metadata.memo,
                 )
             } else {
-                MangaUpdate(manga.id, memo = sManga.memo)
+                MangaUpdate(manga.id, memo = metadata.memo)
             },
             metadataOnlyForNonFavorites = true,
             effects = tachiyomi.domain.chapter.service.ChapterDirectoryEffects(
@@ -514,7 +539,7 @@ class SaveSourceMangaForDetails(
             existing to directoryCommit(existing, request(existing))
         } else {
             catalogWriter.transaction {
-                check(mangaRepository.getMangaByUrlAndSourceId(sManga.url, sourceId) == null) {
+                check(mangaRepository.getMangaByUrlAndSourceId(url, sourceId) == null) {
                     "Source manga identity conflict"
                 }
                 catalogWriter.validateWorkIdentity(identity)
@@ -543,6 +568,46 @@ class SaveSourceMangaForDetails(
         }
     }
 
+    private fun captureForSave(
+        value: SManga,
+        sourceId: Long,
+        details: Boolean,
+        includeIdentity: Boolean,
+        readMemo: Boolean = true,
+        readStrategy: Boolean = true,
+    ): Manga {
+        val phase = SourceOperationPhase.DETAILS
+        val url = guardSourceOperation(phase) { value.url }
+        val title = if (details || includeIdentity) guardSourceOperation(phase) { value.title } else ""
+        val thumbnail = if (details || includeIdentity) guardSourceOperation(phase) { value.thumbnail_url } else null
+        val memo = if (readMemo) guardSourceOperation(phase) { value.memo } else Manga.create().memo
+        if (!details) {
+            return Manga.create().copy(
+                source = sourceId,
+                url = url,
+                title = title,
+                thumbnailUrl = thumbnail,
+                memo = memo,
+            )
+        }
+        val author = guardSourceOperation(phase) { value.author }
+        val artist = guardSourceOperation(phase) { value.artist }
+        val description = guardSourceOperation(phase) { value.description }
+        val genre = guardSourceOperation(phase) { value.genre }
+        val status = guardSourceOperation(phase) { value.status }
+        val strategy = if (readStrategy) {
+            guardSourceOperation(phase) { value.update_strategy }
+        } else {
+            eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE
+        }
+        return Manga.create().copy(
+            source = sourceId, url = url, title = title, thumbnailUrl = thumbnail, memo = memo,
+            author = author, artist = artist, description = description,
+            genre = genre?.split(", ")?.takeIf { it.isNotEmpty() }, status = status.toLong(), updateStrategy = strategy,
+            initialized = true,
+        )
+    }
+
     private suspend fun awaitReaderCatalog(
         sManga: SManga,
         sourceId: Long,
@@ -553,8 +618,16 @@ class SaveSourceMangaForDetails(
         // Generic callers such as migration may save metadata without receiving a directory.
         // Source refresh callers validate their network response before reaching this method.
         if (sChapters.isNotEmpty()) catalogWriter.validate(sChapters)
+        val metadata = captureForSave(
+            sManga,
+            sourceId,
+            fetchDetails,
+            includeIdentity = false,
+            readMemo = fetchDetails,
+            readStrategy = false,
+        )
         return catalogWriter.transaction {
-            val dbManga = persistManga(sManga, sourceId, fetchDetails, expectedManga)
+            val dbManga = persistManga(metadata, sourceId, fetchDetails, expectedManga)
             if (sChapters.isNotEmpty()) catalogWriter.merge(dbManga, sChapters)
 
             dbManga
@@ -563,7 +636,7 @@ class SaveSourceMangaForDetails(
 
     /** Called only inside the catalogue transaction; directory-only visits retain download identity. */
     private suspend fun persistManga(
-        sManga: SManga,
+        metadata: Manga,
         sourceId: Long,
         fetchDetails: Boolean,
         expectedManga: Manga?,
@@ -572,33 +645,33 @@ class SaveSourceMangaForDetails(
             val current = mangaRepository.getMangaById(expected.id)
             check(
                 current.source == expected.source && current.url == expected.url && sourceId == expected
-                    .source && sManga.url == expected.url,
+                    .source && metadata.url == expected.url,
             ) { "Source manga identity conflict" }
         }
-        val existing = mangaRepository.getMangaByUrlAndSourceId(sManga.url, sourceId)
+        val existing = mangaRepository.getMangaByUrlAndSourceId(metadata.url, sourceId)
         catalogWriter.validateWorkIdentity(
             existing ?: Manga.create().copy(
                 source = sourceId,
-                url = sManga
+                url = metadata
                     .url,
-                title = sManga.title,
-                author = sManga.author,
-                artist = sManga.artist,
+                title = metadata.title,
+                author = metadata.author,
+                artist = metadata.artist,
             ),
         )
         if (!fetchDetails) return requireNotNull(existing)
         val networkManga = Manga.create().copy(
-            url = sManga.url,
-            title = sManga.title,
+            url = metadata.url,
+            title = metadata.title,
             source = sourceId,
-            thumbnailUrl = sManga.thumbnail_url,
-            author = sManga.author,
-            artist = sManga.artist,
-            description = sManga.description,
-            genre = sManga.genre?.split(", ")?.takeIf { it.isNotEmpty() },
-            status = sManga.status.toLong(),
+            thumbnailUrl = metadata.thumbnailUrl,
+            author = metadata.author,
+            artist = metadata.artist,
+            description = metadata.description,
+            genre = metadata.genre,
+            status = metadata.status,
             initialized = true,
-            memo = sManga.memo,
+            memo = metadata.memo,
         )
 
         val storedManga = networkToLocalManga(networkManga)
@@ -606,7 +679,7 @@ class SaveSourceMangaForDetails(
             mangaRepository.update(
                 MangaUpdate(
                     storedManga.id,
-                    memo = sManga.memo,
+                    memo = metadata.memo,
                     initialized = true
                         .takeIf { fetchDetails },
                 ),
@@ -646,10 +719,26 @@ data class ResolvedSourceChapter(
     val chapter: Chapter?,
 )
 
-internal fun mergeSourceMangaDetails(original: SManga, details: SManga): SManga = details.also { d ->
-    runCatching { d.url }.onFailure { d.url = original.url }
-    runCatching { d.title }.onFailure { d.title = original.title }
-    if (d.thumbnail_url.isNullOrBlank()) {
-        d.thumbnail_url = original.thumbnail_url
+internal fun mergeSourceMangaDetails(original: SManga, details: SManga): SManga = details.also { value ->
+    val phase = SourceOperationPhase.DETAILS
+    try {
+        guardSourceOperation(phase) { value.url }
+    } catch (_: UninitializedPropertyAccessException) {
+        val url = guardSourceOperation(phase) { original.url }
+        guardSourceOperation(phase) { value.url = url }
+    }
+    try {
+        guardSourceOperation(phase) { value.title }
+    } catch (_: UninitializedPropertyAccessException) {
+        val title = guardSourceOperation(phase) { original.title }
+        guardSourceOperation(phase) { value.title = title }
+    }
+    val thumbnail = guardSourceOperation(phase) { value.thumbnail_url }
+    if (thumbnail.isNullOrBlank()) {
+        val originalThumbnail = guardSourceOperation(phase) { original.thumbnail_url }
+        guardSourceOperation(phase) { value.thumbnail_url = originalThumbnail }
     }
 }
+
+private fun Throwable.hasSourceCompatibilityMarker(): Boolean =
+    inspectSourceFailure().causes.any { it is SourceCompatibilityException }

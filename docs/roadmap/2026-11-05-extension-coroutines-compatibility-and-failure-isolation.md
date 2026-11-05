@@ -18,6 +18,14 @@ EC-05 收口／EC-06 阅读下载阶段（2026-11-06）：双端加载、实际 
 
 ## 1. 起点与已有证据
 
+EC-06/07 返回对象与 Desktop 快照阶段（2026-11-06）：共享 mapper、Creator 返回字段/
+缓存 copy、Desktop Save 的 SQL 前字段捕获，以及真实 Desktop 全局搜索的安全描述、
+元数据重试、未知行、登录地址显式读取和共享分页 URL 去重完成阶段实现。取消重试时
+原错误/原描述同步恢复，Desktop reducer 的第三方读取移至锁外并拒收旧帧。阶段验证
+为60项有效focused组合、18个Kotlin文件严格格式及独审通过，详见累计证据；EC-06/07
+不勾选：materializer 晚读/分类/未知诊断、Android
+mapper 调用端及登录恢复等已盘点消费仍欠，EC-08原APK/ART/R8保持必做。
+
 EC-06/07 元数据消费阶段（2026-11-06）：共享 snapshot、Android 查询/排序/标题/源导航、
 专用迁移顺序、Creator 两端实际 DI/原 Authors 显式入口及旧 Desktop picker 完成阶段
 实现和独审。隐藏/未置顶/语言排除不执行不需要的 getter，未知 ID 不探测、不造值，

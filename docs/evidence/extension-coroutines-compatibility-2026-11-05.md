@@ -1215,3 +1215,66 @@ App 基线 `.test-tmp/ec07-source-metadata-app-final-xml/` 排除其失败 UI；
 EC-06/07 保持未勾选：Desktop 全局完整描述与登录恢复仍欠；另已读到 toDomainManga
 直接访问 SManga 属性，延迟 getter 的受保护消费须补真实失败验证。这是原调用覆盖范围的
 未闭条件，不是原始 Zerobyw 崩溃的新归因。EC-08 原 APK/ART/R8 原生门仍须执行。
+
+## EC-06/07 返回字段与 Desktop 全局快照阶段（2026-11-06）
+
+基线 `312e067f75fd902ca66e900fa2f620095c87d6fb`。18个 Kotlin 文件属于同一返回对象/
+搜索描述链及其真实测试；Save/SourceSharedState 既有测试的较大机械差异来自严格格式，
+未扩产品范围，用户 reader 未提交内容未纳入。
+
+### 返回对象、Creator 与真实 SQL
+
+- `ec06-returned-manga-fields-red` 的真实 SQL 两门确认 getGenres 未分类、memo 包装
+  fatal 未解包；domain 初次 fixture 漏 getFilterList 是编译装置错误，不计产品红。
+  `ec06-returned-manga-domain-correct-red` 的 mapper2/Creator2正确红；实现逐 getter/
+  getGenres/copy 守卫，保旧 JVM 入口、原 SManga 身份和宿主策略/构造在 guard 外。
+- `ec06-returned-manga-first-green-refresh-red` 确认实际 refresh 把已标记兼容错误覆盖
+  为 Storage；`ec06-returned-manga-early-read-red` 确认最早 listed.url 原 IO，以及
+  merge 首次 getter 故障被 runCatching 吞掉。最小修正仅对未初始化属性保留旧回退，
+  本链实际消费字段在 SQL 前捕获，全量字段在原章节准备回调之后捕获。
+- `ec06-returned-manga-boundaries-green` **PASSED/exit0，21项**：domain JVM8、Android5、
+  Desktop8。domain13 XML已归档；Desktop8 XML后被窄测覆盖，权威 JSON 和原日志逐
+  case PASSED保留，不冒称后来 XML 来自该轮。
+- `ec06-returned-manga-host-control-red` 确认存储 catch 的控制解包缺口；同项 green通过。
+  最后 storage-marker-and-format 的两个真实方法通过且 XML2/零跳过已归档，但该 key
+  因格式整体 FAILED，不能整体计绿。只透传显式兼容 marker，普通 IO 保持 Storage，
+  宿主 IO(Linkage/Assertion/VM)依既有 helper 传播原 Error。domain4正常严格格式已有
+  通过；`ec06-returned-manga-format-strict-final` **PASSED/exit0**，Desktop2严格通过。
+  materialize Apply不作验收。本簇有效 **22项**（domain13/Desktop9），主代理独审GO。
+
+### Desktop 查询描述、分页 URL 与显式登录地址
+
+- `ec07-desktop-prepared-metadata-red` 四门正确红：3处重复 ID getter 的原始 NoSuch、
+  1处隐藏 getter。prepared入口后四门绿。真实页面在搜索开始后毒化 id/name/lang：
+  first-green-ui-red只先看到超时；补诊断的 `ec07-desktop-prepared-ui-cause-red` 确认
+  composition捕获 `NoSuchMethodError: late ID`，不靠超时猜因。Screen/导航/重试接同一
+  sourceMetadata，删除session第二份来源列表，未知不探测ID、不造请求。
+- `ec07-prepared-screen-green-returned-recovery-red` 原4门/真实UI1绿；新 shared reducer2、
+  Desktop URL/login2正确红。逐 URL 守卫，其余集合处理在外；Desktop 锁外 reduce，仅
+  当前 state 实例仍有效才提交并附冻结归属。登录地址只在显式动作读取，校验展示帧的
+  确切 request，失败回该源错误，不造地址。`ec07-prepared-returned-recovery-green`
+  **PASSED/exit0**：共享新2门双目标、Desktop6及真实UI1通过，XML分平台归档。
+- 独审发现 retry 取消的快照恢复缺口。首次 cancel-red被协程复制 CE 的 assertSame
+  阻挡，不计产品红。改为取消类型/message后，
+  `ec07-prepared-retry-metadata-cancel-correct-red` 在旧 snapshot 引用断言正确失败。
+  最小修正仅在 owned started 帧中同时恢复原 metadata/Failure，不覆盖替代请求。
+- 首轮 regression 保留有效18门：投影2、生产UI3、会话4、筛选UI3、共享coordinator6。
+  Policy8失败来自旧mock未提供合法name/lang；登录UI旧fixture没有host登记/installed
+  端口且未等真实代际，并用403期望登录。保留失败，补fixture，不加production回退，
+  不改403分类；登录场景改用401并断言Authentication。
+- `ec07-prepared-retry-cancel-final-regression` 的metadata7/Policy8通过，但因旧登录
+  fixture整体FAILED；只复用15门。`ec07-prepared-login-auth-ui-final`实际登录UI1通过。
+  初次准确格式domain2严格通过，Desktop10一处标题超120列失败；提取同值局部名称后
+  `ec07-prepared-format-strict-final` **PASSED/exit0**，Desktop10正常严格通过。
+  `ec07-prepared-final-ui-and-cancel` **PASSED/exit0**，末次实际搜索UI/登录UI/取消3门
+  重新通过。Root有效 **38项**（共享2×2、Desktop34），零失败/错误/跳过；未实施者独审
+  最终GO，取消修复只做同项复审，不宣称最终代码重跑全部38项。
+
+本阶段有效组合 **60项**、准确 **18 Kotlin 文件**严格格式通过。上述命令/权威JSON/log
+位于 `.gradle-coordinator/`，XML归档在同key的 `.test-tmp/*-xml/`；没有为补归档重跑。
+未执行完整模块/全量、推送、发布或用户平板操作。维护说明见7.6.13及页面契约。
+
+EC-06/07仍不勾选。下一闭合点：Desktop materializer 晚读URL、标记兼容分类与未知ID
+诊断；Android全局/Browse/data paging、DeepLink/SmartSearch/SyncRecovery等已盘点的
+mapper前后消费及登录恢复。不能以本批mapper/reducer绿替代实际caller。EC-08原APK/
+ART/R8、旧ABI与未来ABI原生集成仍未执行；API36不能替代反馈者Android17厂商实机。

@@ -148,10 +148,18 @@ class GlobalSearchResultProductionWiringTest {
                 awaitWhileRendering(scene) {
                     started.isCompleted && pendingStarted.isCompleted && text(scene).contains("Healthy listed 0")
                 }
+                // The original instance survives the install update, but its getters no longer link.
+                every { broken.id } throws NoSuchMethodError("late ID")
+                every { broken.name } throws NoSuchMethodError("late name")
+                every { broken.lang } throws NoSuchMethodError("late language")
                 owners.value = listOf(installed("9.9.9"))
                 release.complete(Unit)
-                awaitWhileRendering(scene) {
-                    coordinator.state.queryStates[9L] is SourceQueryState.Failure && text(scene).contains("1.2.3")
+                try {
+                    awaitWhileRendering(scene) {
+                        coordinator.state.queryStates[9L] is SourceQueryState.Failure && text(scene).contains("1.2.3")
+                    }
+                } catch (error: Throwable) {
+                    throw AssertionError("Search rendering failed: ${capturedErrors.toString(Charsets.UTF_8)}", error)
                 }
                 val failure = coordinator.state.queryStates[9L] as SourceQueryState.Failure
                 val diagnostics = generateSequence(failure.error.cause) {

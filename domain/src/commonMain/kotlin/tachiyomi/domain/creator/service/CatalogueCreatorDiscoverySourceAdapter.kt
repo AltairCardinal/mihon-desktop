@@ -239,16 +239,19 @@ class CatalogueCreatorDiscoverySourceAdapter(
         selected.second?.let { return CreatorSourceDetailsResult.Failure(it) }
         val source = selected.first ?: return CreatorSourceDetailsResult.Failure(CreatorSourceFailure.MissingSource)
         val cached = mutex.withLock { searchHits[SearchHitKey(key, titleSearch)] }
-        val listedManga = cached?.manga?.copy() ?: SManga.create().also {
-            it.url = key.stableSourceUrl
-            it.title = key.stableSourceUrl
-        }
         return try {
+            val listedManga =
+                cached?.manga?.let { guardSourceOperation(SourceOperationPhase.DETAILS) { it.copy() } }
+                    ?: SManga.create().also {
+                        it.url = key.stableSourceUrl
+                        it.title = key.stableSourceUrl
+                    }
             val details = guardSourceOperation(SourceOperationPhase.DETAILS) { source.getMangaDetails(listedManga) }
             val work = details.toSnapshot(
                 sourceId = key.sourceId,
                 stableUrlFallback = key.stableSourceUrl,
                 structuredMatches = cached?.structuredMatches.orEmpty(),
+                phase = SourceOperationPhase.DETAILS,
             )
             CreatorSourceDetailsResult.Content(
                 CreatorSourceDetails(
@@ -256,10 +259,12 @@ class CatalogueCreatorDiscoverySourceAdapter(
                     readingLanguageTag = cached?.readingLanguageTag,
                     originalLanguageTag = cached?.originalLanguageTag,
                     metadata = buildMap {
-                        details.description?.let { put("description", it) }
-                        details.getGenres()?.takeIf(List<String>::isNotEmpty)?.let {
-                            put("genres", it.joinToString("\u001f"))
-                        }
+                        guardSourceOperation(SourceOperationPhase.DETAILS) { details.description }
+                            ?.let { put("description", it) }
+                        guardSourceOperation(SourceOperationPhase.DETAILS) { details.getGenres() }
+                            ?.takeIf(List<String>::isNotEmpty)?.let {
+                                put("genres", it.joinToString("\u001f"))
+                            }
                     },
                 ),
             )
@@ -290,29 +295,33 @@ class CatalogueCreatorDiscoverySourceAdapter(
         sourceId: Long,
         stableUrlFallback: String? = null,
         structuredMatches: List<CreatorStructuredIdentityMatch> = emptyList(),
-    ): CreatorSourceWorkSnapshot = CreatorSourceWorkSnapshot(
-        key = SourceWorkNaturalKey(
-            sourceId = sourceId,
-            stableSourceUrl = CreatorSourceWorkKey.stableUrl(
-                url = runCatching { url }.getOrDefault(stableUrlFallback.orEmpty()),
-                title = title,
-                author = author,
-                artist = artist,
-            ),
-        ),
-        title = title,
-        authorText = author,
-        artistText = artist,
-        thumbnailUrl = thumbnail_url,
-        structuredCreatorMatches = structuredMatches,
-        publishedDate = publishedDateProvider(this),
-        titleAttributionEnabled = titleAttributionPolicy.isEnabled(sourceId),
-    )
+        phase: SourceOperationPhase = SourceOperationPhase.SEARCH,
+    ): CreatorSourceWorkSnapshot {
+        val url = try {
+            guardSourceOperation(phase) { this.url }
+        } catch (_: UninitializedPropertyAccessException) {
+            stableUrlFallback.orEmpty()
+        }
+        val title = guardSourceOperation(phase) { this.title }
+        val author = guardSourceOperation(phase) { this.author }
+        val artist = guardSourceOperation(phase) { this.artist }
+        val thumbnail = guardSourceOperation(phase) { this.thumbnail_url }
+        return CreatorSourceWorkSnapshot(
+            key = SourceWorkNaturalKey(sourceId, CreatorSourceWorkKey.stableUrl(url, title, author, artist)),
+            title = title,
+            authorText = author,
+            artistText = artist,
+            thumbnailUrl = thumbnail,
+            structuredCreatorMatches = structuredMatches,
+            publishedDate = publishedDateProvider(this),
+            titleAttributionEnabled = titleAttributionPolicy.isEnabled(sourceId),
+        )
+    }
 
     private fun AuthorSearchManga.key(sourceId: Long): SourceWorkNaturalKey = manga.toSnapshot(sourceId).key
 
     private fun AuthorSearchManga.toCachedHit(): CachedSearchHit = CachedSearchHit(
-        manga = manga.copy(),
+        manga = guardSourceOperation(SourceOperationPhase.SEARCH) { manga.copy() },
         structuredMatches = matchedCreators.map { match ->
             CreatorStructuredIdentityMatch(match.displayName, match.role.toCreatorRole(), match.evidence)
         },

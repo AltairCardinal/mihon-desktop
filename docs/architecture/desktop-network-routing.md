@@ -852,9 +852,9 @@ Android Bundle 的字符串 key；该值仅用于 UI，不能回填 sourceId 或
 snapshot 对象作 Android LazyColumn key 会在未知行出现时失败。迁移搜索保留显式来源及
 其专用顺序，不套全局隐藏/语言选择；其父 model 必须使用同一个显式注入 SourceManager。
 
-这不是所有后续第三方数据读取的总保护声明：Desktop 全局搜索仍须接完整快照，登录恢复
-入口及源返回对象在转换/呈现阶段的延迟 getter 还须沿实际调用边界分别验证。SQL/宿主
-reducer 不属于 source guard，不能为了分类方便包住整段持久化。
+这不是所有后续第三方数据读取的总保护声明：Desktop 全局搜索接线及已验证的返回字段
+边界见7.6.13，其他调用端仍须分别验证。SQL/宿主 reducer 的整体实现不属于 source
+guard，不能为了分类方便包住整段持久化。
 
 #### 7.6.12 Creator 与保留迁移入口的元数据消费
 
@@ -877,6 +877,36 @@ lookup 时，仅在首次登记阶段守卫读取 ID；注入 lookup 后返回 n
 Desktop 保留的旧迁移 picker 同样消费准备后的描述，错误/未知项禁用，目标 ID 来自快照，
 不在渲染或点击时重新读取 getter。实际 API 前再次确认该引用仍登记，失效走既有错误
 Snackbar，不伪装空结果。该旧分支不是当前 More 菜单的默认迁移入口，不据此改变默认导航。
+
+#### 7.6.13 Desktop 全局搜索快照与返回对象字段边界
+
+Desktop 的生产搜索先捕获已安装帧，再由宿主登记键执行隐藏/置顶选择和安全语言选择。
+`DesktopGlobalSearchState.sourceMetadata` 是本轮展示描述的唯一权威，不再另存一套
+session sourcesByGeneration。已知来源的 child、查询、排序、标题、列表 key、源导航及
+重试均使用冻结 ID；未知来源保留错误行和进度，不制造 Long 请求或进入浏览。独立旧
+coordinator 入口没有 registry 时仅首次守卫登记 ID，不能作为生产 lookup=null 的回退。
+
+child 首次消费已准备描述，元数据 IO 的显式重试重新准备描述和筛选器；取消时仅在本次
+started 帧仍有效的条件下，一并恢复原错误及原描述。相同关键词只在前后元数据都健康、
+对象引用与冻结归属相同的交集中复用，不因原显示名相同而合并来源。
+
+登录地址不在结果投影/渲染期间读取。用户点击既有登录动作后，child 校验所显示的确切
+request，再守卫读取 HttpSource.baseUrl；失败转为该请求的错误并记录冻结归属，链接
+不兼容不保留登录动作。不使用假 URL 或猜测的 ID。正常401继续原 Cookie/登录重试链。
+
+共享 SourceQueryReducer 对去重所需的每个 SManga.url 单独守卫；其余集合处理不包在
+guard 中。字段失败转换为相应查询阶段的失败；后续页仍保留先前内容。Desktop child 在
+锁外执行这段读取，只有原 state 实例仍为当前帧才提交、冻结归属和记录诊断。
+
+`SManga.toDomainManga(Long)` 保留原 JVM 入口，另有显式 phase 重载，逐一保护实际
+读取的字段/getGenres。Creator 的 URL、快照、缓存 copy 与详情字段分别守卫；URL 只
+对原本允许的未初始化属性回退。Desktop Save 在进入 SQL 前把本链实际消费的字段转为
+宿主值；章节准备回调仍收到原 SManga，全量元数据在该回调后捕获，保留原修改语义。
+存储错误仅透传已标记的扩展兼容异常，普通 IO 保持原存储分类；控制/宿主 Error 不降级。
+
+限制：这不代表所有返回字段消费端已闭合。Desktop materializer 的晚读 URL、兼容分类
+保真和未知 ID 的诊断，以及 Android mapper 调用端、分页、迁移/同步和登录恢复仍须
+按 roadmap 的真实调用门继续验证。原 APK/ART/R8 结论仍由 EC-08 独立提供。
 
 ## 8. 安全与隐私
 

@@ -146,12 +146,12 @@ class GlobalSearchSessionRetentionTest {
 
     @Test
     fun `a global search session keeps the results of the last search`() {
-        val fixture = Fixture()
         val session = DesktopGlobalSearchSession(initialQuery = "retained", initialSearchMode = GlobalSearchMode.MANGA)
 
         assertEquals("retained", session.query.value)
         assertEquals(GlobalSearchMode.MANGA, session.searchMode.value)
-        assertTrue(session.sourcesByGeneration.value.isEmpty())
+        val coordinator = session.coordinator(::DesktopGlobalSearchCoordinator, SourceMangaSearchService())
+        assertTrue(coordinator.state.sourceMetadata.isEmpty())
     }
 
     private class Fixture(private val searchResponse: CompletableDeferred<Unit>? = null) {

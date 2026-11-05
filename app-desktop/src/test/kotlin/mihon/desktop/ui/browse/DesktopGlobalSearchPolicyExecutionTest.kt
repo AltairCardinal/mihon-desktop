@@ -234,6 +234,8 @@ class DesktopGlobalSearchPolicyExecutionTest {
         val searchCount = AtomicInteger()
         val source = mockk<CatalogueSource> {
             every { this@mockk.id } returns id
+            every { name } returns "Source $id"
+            every { lang } returns "en"
             every { getFilterList() } returns FilterList()
             coEvery { getSearchManga(1, any(), any()) } coAnswers {
                 searchCount.incrementAndGet()
