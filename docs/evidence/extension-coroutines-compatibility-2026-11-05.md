@@ -643,3 +643,48 @@ Gradle/Kotlin daemon 保留，未终止其它会话进程。
 均已在下游前检查；最后 Desktop queue/Android ComicInfo 复审无阻断。维护边界见
 7.6.4，实际 UI 契约见 page-contracts EC-UI-01–06。Creator、尚列的自定义 Rx/直接 API
 消费、全局搜索汇合/冻结身份诊断和原 APK DEX/R8 均未借此声明完成，继续同一目标。
+
+## EC-07 阶段：全局搜索筛选器准备失败（2026-11-06）
+
+基线 `d9fce82dc9`，仅改双端实际搜索 model/coordinator、其行为测试和共享恢复动作映射。
+未纳入工作区已有阅读器优化和另一实施者尚未收口的 Creator 改动。
+
+- 正确红测 `ec07-global-filter-preflight-correct-red`：Android
+  `SearchScreenModelBehaviorTest.incompatible filters fail only their source and explicit retry prepares again`
+  与 Desktop `DesktopGlobalSearchPolicyExecutionTest.incompatible filter preparation fails only its source and next query recovers`
+  均在真实 `getFilterList()` 抛出同一个 `NoSuchMethodError`，并未进入受保护的服务。
+  Android 的自动 retry 三次仍算一个独立用例。首 key `ec07-global-filter-preflight-red`
+  因 Windows 命令使用无扩展名的 wrapper 未启动 Gradle，不作为产品红测。
+- 双端改用既有 `prepareSourceFilters`；失败通过正常 request/reducer 形成单源错误，
+  不用空过滤器调用失败源。确定性不兼容恢复动作为 None，健康源仍完成。
+  Android 全局显式 retry、Desktop 新查询可重新获取筛选器，不永久拉黑。
+- 首次绿测中 Android 测试两个源使用相同 name/lang，落入既有排序比较器同键合并，
+  健康源键缺失；将夹具健康源改为唯一名称，不修改本批范围外的排序实现，也不把该次算绿。
+- `ec07-global-filter-retry-red` 证明初版普通 IO 重试只调用一次筛选器：真实 child retry
+  绕过失败的准备步骤。修复为仅在该 request 的筛选器准备失败时重做准备，且仍在 IO
+  dispatcher 执行；原先已准备好的分页请求继续原页重试，不重置成第一页。
+- 最终 `ec07-global-filter-final-checked` **PASSED / exit0，20 秒**，原始日志、argv 和
+  JSON 位于 `.gradle-coordinator/` 对应 key。Android model **5**、Desktop global policy
+  **5**、Desktop child 分页重试 **2**，共 **12 项通过，零失败、零跳过**。XML 已核对并
+  归档到 `.test-tmp/ec07-global-filter-final-xml/`。不是模块全量，也未将重试次数累计。
+- 同一最终命令以 `.test-tmp/ec07-global-filter-format.init.gradle` 精确限定 Kotlin 文件：
+  domain1/app2/Desktop2，Apply 后严格 Check 均通过。之前格式 key 的失败为既有长签名
+  排版，不是行为失败；只调整该文件排版，未格式化用户阅读器文件。
+
+独立审查后补验：`ec07-filter-retry-cancellation-red` 证实显式 filter retry 在准备时
+取消会遗留 Loading。修复仅恢复仍由本次 retry 持有的原状态（引用身份核对），保留原
+Failure、重新准备标记和原取消传播；新请求已替换状态时不恢复旧值。
+`ec07-global-filter-reviewed-green` **PASSED / exit0，17 秒**：Desktop policy **6** 与
+分页重试 **2** 项通过，零跳过，XML 归档 `.test-tmp/ec07-global-filter-reviewed-xml/`。
+五文件严格格式 Check 通过。Android 与共享映射未改，复用上一 key 的 model5 项；最终
+证据组合为 **13 个独立 focused 用例**，不声称最终代码重新运行了 Android 或整个模块。
+初审和这一取消缺口修复复审均由未实施根代理片段的实施代理承担。
+
+复现 focused 行为命令（经协调器串行执行；类选择器不可省略）：
+
+```powershell
+python scripts/gradle-coordinator.py run --key <唯一key> -- .\gradlew.bat :app:testReleaseUnitTest --tests 'eu.kanade.tachiyomi.ui.browse.source.globalsearch.SearchScreenModelBehaviorTest' :app-desktop:jvmTest --tests 'mihon.desktop.ui.browse.DesktopGlobalSearchPolicyExecutionTest' --tests 'mihon.desktop.ui.browse.DesktopSourceQueryBehaviorTest.later page failure stays visible and retry reloads the same page*' --tests 'mihon.desktop.ui.browse.DesktopSourceQueryBehaviorTest.empty first page stays empty while empty append keeps rows and retries the same page*' --offline --no-parallel --max-workers=2 --console=plain
+```
+
+本阶段不等于 EC-07 完成：源元数据/安装身份的操作前冻结、并发来源诊断、真正 UI 触发
+搜索的双端接线及完整三源取消场景仍须继续；EC-06 Creator/Rx 与 EC-08 R8 也未收口。

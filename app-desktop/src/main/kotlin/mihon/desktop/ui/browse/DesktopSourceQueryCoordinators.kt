@@ -2,10 +2,10 @@ package mihon.desktop.ui.browse
 
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -26,12 +26,16 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import mihon.domain.error.AppError
 import tachiyomi.domain.source.service.GlobalSearchSourceFilter
+import tachiyomi.domain.source.service.SourceFilterResult
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourcePageRequest
+import tachiyomi.domain.source.service.SourcePageResult
 import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceQueryReducer
 import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.domain.source.service.SourceRecoveryAction
+import tachiyomi.domain.source.service.prepareSourceFilters
+import tachiyomi.domain.source.service.sourceRecoveryAction
 import tachiyomi.i18n.MR
 import java.util.Locale
 
@@ -84,6 +88,7 @@ class SourceBrowseQueryCoordinator(
     private var generation = 0L
     private var publicationOrdinal = 0L
     private var authoritativeState: SourceQueryState? = null
+    private var failedFilterRequest: SourcePageRequest? = null
     private val pendingLoads = mutableMapOf<SourceLoadKey, CompletableDeferred<SourceQueryState>>()
     private val publisher = SourceQueryStatePublisher()
 
@@ -97,6 +102,33 @@ class SourceBrowseQueryCoordinator(
         page: Int,
         query: SourceQuery,
         onStarted: (SourceQueryState) -> Unit = {},
+    ): SourceQueryState = loadPrepared(source, page, query, null, onStarted)
+
+    internal suspend fun loadSearch(
+        source: Source,
+        query: String,
+        onStarted: (SourceQueryState) -> Unit,
+    ): SourceQueryState = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val prepared = prepareSourceFilters(source)
+        loadPrepared(
+            source,
+            1,
+            SourceQuery.Search(
+                query,
+                (prepared as? SourceFilterResult.Content)?.filters
+                    ?: eu.kanade.tachiyomi.source.model.FilterList(),
+            ),
+            (prepared as? SourceFilterResult.Failure)?.error,
+            onStarted,
+        )
+    }
+
+    private suspend fun loadPrepared(
+        source: Source,
+        page: Int,
+        query: SourceQuery,
+        preparationError: AppError?,
+        onStarted: (SourceQueryState) -> Unit,
     ): SourceQueryState {
         val pending = CompletableDeferred<SourceQueryState>()
         var shared: CompletableDeferred<SourceQueryState>? = null
@@ -114,6 +146,7 @@ class SourceBrowseQueryCoordinator(
             }
             if (page > 1 && !canAppendLocked(request)) return requireNotNull(authoritativeState)
             previous = authoritativeState
+            failedFilterRequest = request.takeIf { preparationError != null }
             pendingLoads[key] = pending
             commitLocked(reducer.start(request, authoritativeState))
         }
@@ -123,7 +156,7 @@ class SourceBrowseQueryCoordinator(
             publisher.publish(owned)
             onStarted(requireNotNull(owned.state))
             currentCoroutineContext().ensureActive()
-            completeLoad(source, request).also(pending::complete)
+            completeLoad(source, request, preparationError).also(pending::complete)
         } catch (error: Throwable) {
             val restored = synchronized(lock) {
                 val current = authoritativeState
@@ -152,8 +185,15 @@ class SourceBrowseQueryCoordinator(
     private suspend fun completeLoad(
         source: Source,
         request: SourcePageRequest,
+        preparationError: AppError? = null,
     ): SourceQueryState {
-        val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { service.loadPageResult(source, request) }
+        val result = if (preparationError != null) {
+            SourcePageResult.Failure(request, preparationError, preparationError.sourceRecoveryAction())
+        } else {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                service.loadPageResult(source, request)
+            }
+        }
         currentCoroutineContext().ensureActive()
         val completed = synchronized(lock) {
             val current = requireNotNull(authoritativeState)
@@ -179,15 +219,32 @@ class SourceBrowseQueryCoordinator(
         request: SourcePageRequest,
         expectedAction: SourceRecoveryAction,
     ): SourceQueryState? {
+        var prepareFiltersAgain = false
+        var previous: SourceQueryState? = null
         val started = synchronized(lock) {
             val current = authoritativeState
             if (current?.request != request || current.recoveryAction() != expectedAction) {
                 return@synchronized null
             }
+            previous = current
+            prepareFiltersAgain = failedFilterRequest == request
             commitLocked(reducer.start(request, current))
         }
         if (started == null) return null
         publisher.publish(started)
+        if (prepareFiltersAgain) {
+            return try {
+                loadSearch(source, (request.query as SourceQuery.Search).query) {}
+            } catch (error: Throwable) {
+                val restored = synchronized(lock) {
+                    if (authoritativeState !== started.state) return@synchronized null
+                    failedFilterRequest = request
+                    restoreLocked(previous)
+                }
+                restored?.let(publisher::publish)
+                throw error
+            }
+        }
         return completeLoad(source, request)
     }
 
@@ -269,12 +326,15 @@ class DesktopGlobalSearchCoordinator(
         private val retirementToken = Any()
         private val retirementCause = Retirement(retirementToken)
         private var retired = false
+
         @Volatile var callback: ((DesktopGlobalSearchState) -> Unit)? = onState
             private set
 
         fun register(job: Job) {
             val cause = synchronized(lock) {
-                if (retired) retirementCause else {
+                if (retired) {
+                    retirementCause
+                } else {
                     queryJobs += job
                     null
                 }
@@ -286,7 +346,9 @@ class DesktopGlobalSearchCoordinator(
             collectorScope.launch(start = CoroutineStart.UNDISPATCHED, block = block)
         }
 
-        fun unbindCallback() { callback = null }
+        fun unbindCallback() {
+            callback = null
+        }
 
         fun owns(error: CancellationException): Boolean {
             val visited = mutableListOf<Throwable>()
@@ -424,7 +486,11 @@ class DesktopGlobalSearchCoordinator(
         coordinator: SourceBrowseQueryCoordinator,
         state: SourceQueryState,
     ): DesktopGlobalSearchState? = synchronized(lock) {
-        if (authoritativeState.generation != generation || activeSession?.coordinators?.get(sourceId) !== coordinator) return@synchronized null
+        if (authoritativeState.generation != generation ||
+            activeSession?.coordinators?.get(sourceId) !== coordinator
+        ) {
+            return@synchronized null
+        }
         if (coordinator.state != state) return@synchronized null
         if (authoritativeState.queryStates[sourceId] == state) return@synchronized null
         commitLocked(authoritativeState.copy(queryStates = authoritativeState.queryStates + (sourceId to state)))
@@ -433,7 +499,12 @@ class DesktopGlobalSearchCoordinator(
     private fun commitLocked(state: DesktopGlobalSearchState): DesktopGlobalSearchState =
         state.copy(publicationOrdinal = ++publicationOrdinal).also { authoritativeState = it }
 
-    internal fun aggregateCandidate(generation: Long, sourceId: Long, coordinator: SourceBrowseQueryCoordinator, state: SourceQueryState) =
+    internal fun aggregateCandidate(
+        generation: Long,
+        sourceId: Long,
+        coordinator: SourceBrowseQueryCoordinator,
+        state: SourceQueryState,
+    ) =
         aggregate(generation, sourceId, coordinator, state)
 
     internal fun publishCandidate(
@@ -466,7 +537,6 @@ class DesktopGlobalSearchCoordinator(
         query: String,
         onStarted: (SourceQueryState) -> Unit,
     ): SourceQueryState = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-        coordinator.load(source, 1, SourceQuery.Search(query, source.getFilterList()), onStarted)
+        coordinator.loadSearch(source, query, onStarted)
     }
-
 }

@@ -42,6 +42,51 @@ import tachiyomi.domain.source.service.SourceRecoveryAction
 class SearchScreenModelBehaviorTest {
 
     @Test
+    fun `incompatible filters fail only their source and explicit retry prepares again`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val missing = NoSuchMethodError("future filter API")
+        var incompatible = true
+        var filterCalls = 0
+        var searchCalls = 0
+        val failed = object : BaseCatalogueSource() {
+            override fun getFilterList(): FilterList {
+                filterCalls++
+                if (incompatible) throw missing
+                return FilterList()
+            }
+            override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+                searchCalls++
+                return MangasPage(emptyList(), false)
+            }
+        }
+        val healthy = object : BaseCatalogueSource() {
+            override val id = 10L
+            override val name = "Healthy source"
+            override suspend fun getSearchManga(page: Int, query: String, filters: FilterList) =
+                MangasPage(listOf(manga("/healthy", "Healthy")), false)
+        }
+        val model = screenModel(failed, additionalSources = listOf(healthy))
+        model.updateSearchQuery("query")
+        model.search()
+        runCurrent()
+
+        val failure = assertInstanceOf(SearchItemResult.Error::class.java, model.state.value.items[failed])
+        assertInstanceOf(AppError.ExtensionIncompatible::class.java, failure.pageError.error)
+        assertEquals(SourceRecoveryAction.None, failure.pageError.recoveryAction)
+        assertInstanceOf(SearchItemResult.Success::class.java, model.state.value.items[healthy])
+        assertEquals(2, model.state.value.progress)
+        assertEquals(1, filterCalls)
+        assertEquals(0, searchCalls)
+
+        incompatible = false
+        model.retry()
+        runCurrent()
+        assertInstanceOf(SearchItemResult.Success::class.java, model.state.value.items[failed])
+        assertEquals(2, filterCalls)
+        assertEquals(1, searchCalls)
+    }
+
+    @Test
     fun `source only extension filter and partial failures preserve successful results`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         var successfulCalls = 0

@@ -32,7 +32,7 @@ class SourceMangaSearchService {
             SourcePageResult.Failure(
                 request,
                 appError,
-                appError.recoveryAction(),
+                appError.sourceRecoveryAction(),
             )
         }
     }
@@ -83,7 +83,7 @@ private fun SourceQuery.toSearchRequest(): SourceMangaSearchRequest = when (this
     is SourceQuery.Search -> SourceMangaSearchRequest.Search(query, filters)
 }
 
-private fun AppError.recoveryAction(): SourceRecoveryAction = when (this) {
+fun AppError.sourceRecoveryAction(): SourceRecoveryAction = when (this) {
     is AppError.Authentication -> SourceRecoveryAction.OpenLogin
     AppError.Cancelled -> SourceRecoveryAction.None
     is AppError.ExtensionIncompatible -> SourceRecoveryAction.None

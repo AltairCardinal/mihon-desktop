@@ -31,13 +31,17 @@ import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.source.service.SourceFilterResult
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourcePageRequest
+import tachiyomi.domain.source.service.SourcePageResult
 import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceQueryReducer
 import tachiyomi.domain.source.service.SourceQueryState
+import tachiyomi.domain.source.service.prepareSourceFilters
+import tachiyomi.domain.source.service.sourceRecoveryAction
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.util.concurrent.Executors
@@ -179,15 +183,27 @@ abstract class SearchScreenModel(
                         return@async
                     }
 
+                    val prepared = withContext(coroutineDispatcher) { prepareSourceFilters(source) }
                     val request = SourcePageRequest(
                         sourceId = source.id,
                         page = 1,
                         generation = generation,
-                        query = SourceQuery.Search(query, source.getFilterList()),
+                        query = SourceQuery.Search(
+                            query,
+                            (prepared as? SourceFilterResult.Content)?.filters
+                                ?: eu.kanade.tachiyomi.source.model.FilterList(),
+                        ),
                     )
                     val loading = sourceQueryReducer.start(request)
                     val result = withContext(coroutineDispatcher) {
-                        sourceMangaSearchService.loadPageResult(source, request)
+                        when (prepared) {
+                            is SourceFilterResult.Content -> sourceMangaSearchService.loadPageResult(source, request)
+                            is SourceFilterResult.Failure -> SourcePageResult.Failure(
+                                request,
+                                prepared.error,
+                                prepared.error.sourceRecoveryAction(),
+                            )
+                        }
                     }
                     val current = if (generation == searchGeneration) {
                         loading
