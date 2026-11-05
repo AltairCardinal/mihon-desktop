@@ -67,6 +67,9 @@ class GlobalSearchAuthorityWiringTest {
             every { sourceManager } returns FakeDesktopSourceManager(sources)
             every { appPreferences } answers { activePreferences }
             every { sourceMangaSearchService } returns SourceMangaSearchService()
+            every { extensionPresentationService } returns mockk {
+                every { installedExtensions } returns kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+            }
             every { saveSourceMangaForDetails } returns mockk<SaveSourceMangaForDetails>(relaxed = true) {
                 coEvery { awaitSearchResults(any(), any()) } answers {
                     firstArg<List<SManga>>().distinctBy(SManga::url).map { it.toDomainManga(secondArg()) }
@@ -101,7 +104,8 @@ class GlobalSearchAuthorityWiringTest {
             scene.render()
             withTimeout(2_000) {
                 requireNotNull(coordinator).states.first { state ->
-                    state.queryStates.size == 4 && state.queryStates.values.count { it !is SourceQueryState.Loading } == 3
+                    state.queryStates.size == 4 &&
+                        state.queryStates.values.count { it !is SourceQueryState.Loading } == 3
                 }
             }
             scene.render()
@@ -184,7 +188,8 @@ class GlobalSearchAuthorityWiringTest {
     private fun nodes(scene: ImageComposeScene) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
     private fun semantics(scene: ImageComposeScene) = nodes(scene).joinToString { it.config.toString() }
     private fun selected(scene: ImageComposeScene, label: String) = nodes(scene).any {
-        it.config.toString().contains(label) && it.config.contains(SemanticsProperties.Selected) && it.config[SemanticsProperties.Selected]
+        it.config.toString().contains(label) && it.config.contains(SemanticsProperties.Selected) &&
+            it.config[SemanticsProperties.Selected]
     }
 
     private fun sourceFilterSelected(
@@ -203,7 +208,10 @@ class GlobalSearchAuthorityWiringTest {
         }
     }
     private fun click(scene: ImageComposeScene, label: String) {
-        val node = nodes(scene).first { it.config.toString().contains(label) && it.config.contains(SemanticsActions.OnClick) }
+        val node = nodes(scene).first {
+            it.config.toString().contains(label) &&
+                it.config.contains(SemanticsActions.OnClick)
+        }
         assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
     }
 }

@@ -1,8 +1,5 @@
 package mihon.desktop.ui.browse
 
-import mihon.desktop.LocalDesktopUiDependencies
-import mihon.desktop.ui.source.desktopSourceErrorMessage
-
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
@@ -22,8 +19,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Card
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -33,8 +30,8 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -72,34 +69,38 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
+import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.SaveSourceMangaForDetails
+import mihon.desktop.extension.InstalledExtension
 import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.desktop.platform.DesktopExternalActionTarget
 import mihon.desktop.settings.BROWSE_RECENT_SEARCH_LIMIT
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.getEnabledQuerySourceCandidates
-import mihon.desktop.ui.library.MangaDetailScreen
-import mihon.desktop.ui.authors.LanguageArchiveFilter
 import mihon.desktop.ui.authors.AuthorDetailScreen
+import mihon.desktop.ui.authors.LanguageArchiveFilter
+import mihon.desktop.ui.library.MangaDetailScreen
+import mihon.desktop.ui.source.desktopSourceErrorMessage
 import mihon.domain.error.AppError
-import tachiyomi.domain.manga.model.Manga
-import tachiyomi.domain.creator.model.CreatorRelationVerification
 import tachiyomi.domain.creator.model.CreatorIdentityOption
 import tachiyomi.domain.creator.model.CreatorMention
 import tachiyomi.domain.creator.model.CreatorMentionEvidence
 import tachiyomi.domain.creator.model.CreatorMentionResolution
 import tachiyomi.domain.creator.model.CreatorMetadataField
+import tachiyomi.domain.creator.model.CreatorRelationVerification
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.service.CreatorNameNormalizer
 import tachiyomi.domain.creator.service.CreatorSourceCapability
+import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.GlobalSearchSourceFilter
 import tachiyomi.domain.source.service.GlobalSearchSourcePolicy
 import tachiyomi.domain.source.service.SourceManager
@@ -107,8 +108,8 @@ import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.domain.source.service.SourceRecoveryAction
+import tachiyomi.domain.source.service.sourceFailureIdentity
 import tachiyomi.i18n.MR
-import eu.kanade.tachiyomi.source.online.HttpSource
 
 /** Result group from one source. */
 data class SourceSearchResult(
@@ -125,7 +126,11 @@ enum class GlobalSearchRowKind { Loading, Empty, Content, Error }
 
 internal sealed interface CanonicalSearchResult {
     val generation: Long
-    data class Content(override val generation: Long, val items: List<Manga>, val listedByUrl: Map<String, SManga>) : CanonicalSearchResult
+    data class Content(
+        override val generation: Long,
+        val items: List<Manga>,
+        val listedByUrl: Map<String, SManga>,
+    ) : CanonicalSearchResult
     data class Failure(override val generation: Long, val cause: Throwable) : CanonicalSearchResult
 }
 
@@ -219,9 +224,18 @@ internal object GlobalSearchStateProjector {
     ): GlobalSearchUiState {
         val allRows = sources.map { source ->
             when (val queryState = state.queryStates[source.id]) {
-                null, is SourceQueryState.Loading -> SourceSearchResult(source, emptyList(), GlobalSearchRowKind.Loading)
+                null, is SourceQueryState.Loading -> SourceSearchResult(
+                    source,
+                    emptyList(),
+                    GlobalSearchRowKind.Loading,
+                )
                 is SourceQueryState.Empty -> SourceSearchResult(source, emptyList(), GlobalSearchRowKind.Empty)
-                is SourceQueryState.Content -> when (val canonical = canonicalResults[source.id]?.takeIf { it.generation == state.generation }) {
+                is SourceQueryState.Content -> when (
+                    val canonical = canonicalResults[source.id]?.takeIf {
+                        it.generation ==
+                            state.generation
+                    }
+                ) {
                     null -> SourceSearchResult(source, emptyList(), GlobalSearchRowKind.Loading, queryState.pageError)
                     is CanonicalSearchResult.Content -> SourceSearchResult(
                         source,
@@ -284,9 +298,10 @@ internal object GlobalSearchStateProjector {
     }
 }
 
-internal val LocalGlobalSearchCoordinatorFactory = staticCompositionLocalOf<(SourceMangaSearchService) -> DesktopGlobalSearchCoordinator> {
-    { service -> DesktopGlobalSearchCoordinator(service) }
-}
+internal val LocalGlobalSearchCoordinatorFactory =
+    staticCompositionLocalOf<(SourceMangaSearchService) -> DesktopGlobalSearchCoordinator> {
+        { service -> DesktopGlobalSearchCoordinator(service) }
+    }
 
 internal typealias SourceResultMaterializerFactory = (
     CoroutineScope,
@@ -325,7 +340,7 @@ class GlobalSearchScreen(
         coordinator,
         query,
         GlobalSearchSourceFilter.All,
-        onStarted,
+        onStarted = onStarted,
     )
 
     private suspend fun executeSearch(
@@ -333,10 +348,11 @@ class GlobalSearchScreen(
         coordinator: DesktopGlobalSearchCoordinator,
         query: String,
         sourceFilter: GlobalSearchSourceFilter,
+        installed: List<InstalledExtension> = emptyList(),
         onStarted: (Long, List<Source>) -> Unit,
     ) {
         var started = false
-        coordinator.search(sources, query, sourceFilter) { state ->
+        coordinator.search(sources, query, sourceFilter, installed) { state ->
             if (!started) {
                 started = true
                 onStarted(state.generation, sources)
@@ -352,7 +368,10 @@ class GlobalSearchScreen(
     ) {
         if (intent !is DesktopSourceRecoveryIntent.Retry) return
         val child = coordinator.coordinatorFor(source.id) ?: return
-        SourceBrowseRecoveryController(child, DesktopSourceLoginController(sessionFactory, child)).recover(source, intent)
+        SourceBrowseRecoveryController(
+            child,
+            DesktopSourceLoginController(sessionFactory, child),
+        ).recover(source, intent)
     }
 
     @OptIn(ExperimentalMaterial3Api::class)
@@ -509,7 +528,11 @@ class GlobalSearchScreen(
                     appPreferences.pinnedSources.get(),
                     filter,
                 )
-                executeSearch(sources, queryCoordinator, normalizedQuery, filter) { generation, selectedSources ->
+                val installed = dependencies.extensionPresentationService.installedExtensions.value
+                executeSearch(sources, queryCoordinator, normalizedQuery, filter, installed) {
+                        generation,
+                        selectedSources,
+                    ->
                     sourcesByGeneration = mapOf(generation to selectedSources)
                 }
             }
@@ -569,7 +592,10 @@ class GlobalSearchScreen(
                     title = { Text(MR.strings.desktop_ui_global_search.localized()) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = MR.strings.action_bar_up_description.localized(),
+                            )
                         }
                     },
                 )
@@ -666,7 +692,7 @@ class GlobalSearchScreen(
                                             Icon(
                                                 Icons.Default.Close,
                                                 contentDescription =
-                                                    "${MR.strings.action_delete.localized()} $recentQuery",
+                                                "${MR.strings.action_delete.localized()} $recentQuery",
                                             )
                                         }
                                     },
@@ -702,31 +728,33 @@ class GlobalSearchScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     if (searchMode == GlobalSearchMode.MANGA) {
-                    listOf(
-                        GlobalSearchSourceFilter.PinnedOnly to MR.strings.pinned_sources.localized(),
-                        GlobalSearchSourceFilter.All to MR.strings.all.localized(),
-                    ).forEach { (filter, label) ->
+                        listOf(
+                            GlobalSearchSourceFilter.PinnedOnly to MR.strings.pinned_sources.localized(),
+                            GlobalSearchSourceFilter.All to MR.strings.all.localized(),
+                        ).forEach { (filter, label) ->
+                            FilterChip(
+                                selected = sourceFilter == filter,
+                                modifier = Modifier.testTag(globalSearchSourceFilterTag(filter)),
+                                onClick = {
+                                    if (sourceFilter != filter) {
+                                        sourceFilter = filter
+                                        launchSearch(query, filter)
+                                    }
+                                },
+                                label = { Text(label) },
+                            )
+                        }
                         FilterChip(
-                            selected = sourceFilter == filter,
-                            modifier = Modifier.testTag(globalSearchSourceFilterTag(filter)),
+                            selected = onlyShowHasResults,
                             onClick = {
-                                if (sourceFilter != filter) {
-                                    sourceFilter = filter
-                                    launchSearch(query, filter)
+                                synchronized(appPreferences.globalSearchFilterState) {
+                                    appPreferences.globalSearchFilterState.set(
+                                        !appPreferences.globalSearchFilterState.get(),
+                                    )
                                 }
                             },
-                            label = { Text(label) },
+                            label = { Text(MR.strings.has_results.localized()) },
                         )
-                    }
-                    FilterChip(
-                        selected = onlyShowHasResults,
-                        onClick = {
-                            synchronized(appPreferences.globalSearchFilterState) {
-                                appPreferences.globalSearchFilterState.set(!appPreferences.globalSearchFilterState.get())
-                            }
-                        },
-                        label = { Text(MR.strings.has_results.localized()) },
-                    )
                     } else {
                         listOf(
                             AuthorIdentityFilter.ALL to MR.strings.all.localized(),
@@ -751,7 +779,8 @@ class GlobalSearchScreen(
                             LanguageArchiveFilter.ALL to MR.strings.all.localized(),
                             LanguageArchiveFilter.CONFIRMED to MR.strings.desktop_ui_language_confirmed.localized(),
                             LanguageArchiveFilter.PROBABLE to MR.strings.desktop_ui_language_possible.localized(),
-                            LanguageArchiveFilter.NEEDS_REVIEW to MR.strings.desktop_ui_language_needs_review.localized(),
+                            LanguageArchiveFilter.NEEDS_REVIEW to
+                                MR.strings.desktop_ui_language_needs_review.localized(),
                         ).forEach { (filter, label) ->
                             FilterChip(
                                 selected = mangaLanguageFilter == filter,
@@ -807,86 +836,110 @@ class GlobalSearchScreen(
                 } else {
                     emptyList()
                 }
-                if (searchMode == GlobalSearchMode.MANGA) LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(sortedResults, key = { it.source.id }) { sourceResult ->
-                        Text(
-                            text = "${sourceResult.source.name} (${sourceResult.results.size})",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier
-                                .clickable { navigator.push(SourceBrowseScreen(sourceResult.source.id, query)) }
-                                .padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
-                        )
-                        sourceResult.error?.let { error ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(desktopSourceErrorMessage(error.error), color = MaterialTheme.colorScheme.error)
-                                desktopSourceRecoveryActionLabel(error.recoveryAction)?.let { label ->
-                                    androidx.compose.material3.TextButton(
-                                        onClick = {
-                                            if (sourceResult.retryMaterialization) {
-                                                resultMaterializer.retry(sourceResult.source.id)
-                                            } else {
-                                                recover(sourceResult)
-                                            }
-                                        },
-                                    ) {
-                                        Text(label)
+                if (searchMode == GlobalSearchMode.MANGA) {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        items(sortedResults, key = { it.source.id }) { sourceResult ->
+                            Text(
+                                text = "${sourceResult.source.name} (${sourceResult.results.size})",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .clickable { navigator.push(SourceBrowseScreen(sourceResult.source.id, query)) }
+                                    .padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+                            )
+                            sourceResult.error?.let { error ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            desktopSourceErrorMessage(error.error),
+                                            color = MaterialTheme.colorScheme.error,
+                                        )
+                                        error.error.sourceFailureIdentity()?.let { identity ->
+                                            val name = identity.extensionName?.ifBlank { null }
+                                                ?: MR.strings.unknown.localized()
+                                            val version = identity.versionName?.ifBlank { null }
+                                                ?: MR.strings.unknown.localized()
+                                            Text(
+                                                "$name ($version)",
+                                                style = MaterialTheme.typography.bodySmall,
+                                            )
+                                        }
+                                    }
+                                    desktopSourceRecoveryActionLabel(error.recoveryAction)?.let { label ->
+                                        androidx.compose.material3.TextButton(
+                                            onClick = {
+                                                if (sourceResult.retryMaterialization) {
+                                                    resultMaterializer.retry(sourceResult.source.id)
+                                                } else {
+                                                    recover(sourceResult)
+                                                }
+                                            },
+                                        ) {
+                                            Text(label)
+                                        }
                                     }
                                 }
                             }
-                        }
-                        if (sourceResult.kind == GlobalSearchRowKind.Loading) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                                Text(MR.strings.loading.localized(), modifier = Modifier.padding(start = 8.dp))
-                            }
-                        } else if (sourceResult.kind == GlobalSearchRowKind.Empty) {
-                            Text(MR.strings.no_results_found.localized(), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-                        }
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            items(sourceResult.results, key = { it.source to it.url }) { initialManga ->
-                                val manga by produceState(initialManga, initialManga.source, initialManga.url) {
-                                    getManga.subscribe(initialManga.url, initialManga.source)
-                                        .filterNotNull()
-                                        .collectLatest { value = it }
+                            if (sourceResult.kind == GlobalSearchRowKind.Loading) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                    Text(MR.strings.loading.localized(), modifier = Modifier.padding(start = 8.dp))
                                 }
-                                GlobalSearchMangaCard(
-                                    manga = manga,
-                                    onClick = {
-                                        if (openingMangaUrl != null) return@GlobalSearchMangaCard
-                                        val listed = sourceResult.listedByUrl[manga.url] ?: return@GlobalSearchMangaCard
-                                        openingMangaUrl = "${sourceResult.source.id}:${manga.url}"
-                                        navigator.push(MangaDetailScreen(manga.id))
-                                        // The session scope outlives this screen, so the detail entry
-                                        // is still prepared after the navigation cancelled this composition.
-                                        session.scope.launch {
-                                            try {
-                                                val details = saveSourceMangaForDetails.awaitListedForDetails(
-                                                    listed,
-                                                    sourceResult.source.id,
-                                                )
-                                                if (details.needsRefresh) {
-                                                    saveSourceMangaForDetails.refreshFromSource(sourceResult.source, listed)
-                                                }
-                                            } finally {
-                                                openingMangaUrl = null
-                                            }
-                                        }
-                                    },
+                            } else if (sourceResult.kind == GlobalSearchRowKind.Empty) {
+                                Text(
+                                    MR.strings.no_results_found.localized(),
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                 )
                             }
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                items(sourceResult.results, key = { it.source to it.url }) { initialManga ->
+                                    val manga by produceState(initialManga, initialManga.source, initialManga.url) {
+                                        getManga.subscribe(initialManga.url, initialManga.source)
+                                            .filterNotNull()
+                                            .collectLatest { value = it }
+                                    }
+                                    GlobalSearchMangaCard(
+                                        manga = manga,
+                                        onClick = {
+                                            if (openingMangaUrl != null) return@GlobalSearchMangaCard
+                                            val listed =
+                                                sourceResult.listedByUrl[manga.url] ?: return@GlobalSearchMangaCard
+                                            openingMangaUrl = "${sourceResult.source.id}:${manga.url}"
+                                            navigator.push(MangaDetailScreen(manga.id))
+                                            // The session scope outlives this screen, so the detail entry
+                                            // is still prepared after the navigation cancelled this composition.
+                                            session.scope.launch {
+                                                try {
+                                                    val details = saveSourceMangaForDetails.awaitListedForDetails(
+                                                        listed,
+                                                        sourceResult.source.id,
+                                                    )
+                                                    if (details.needsRefresh) {
+                                                        saveSourceMangaForDetails.refreshFromSource(
+                                                            sourceResult.source,
+                                                            listed,
+                                                        )
+                                                    }
+                                                } finally {
+                                                    openingMangaUrl = null
+                                                }
+                                            }
+                                        },
+                                    )
+                                }
+                            }
+                            HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
                         }
-                        HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
                     }
                 }
                 if (searchMode == GlobalSearchMode.AUTHOR) {
@@ -899,7 +952,10 @@ class GlobalSearchScreen(
                         onOpen = { item ->
                             scope.launch {
                                 val listed = item.work.toSourceManga()
-                                val saved = saveSourceMangaForDetails.awaitListedForDetails(listed, item.work.key.sourceId)
+                                val saved = saveSourceMangaForDetails.awaitListedForDetails(
+                                    listed,
+                                    item.work.key.sourceId,
+                                )
                                 navigator.push(MangaDetailScreen(saved.manga.id))
                             }
                         },
@@ -912,7 +968,12 @@ class GlobalSearchScreen(
                                         item.work.key.sourceId,
                                     )
                                     val mention = item.toCreatorMention()
-                                    when (val resolution = dependencies.manageCreatorIdentity?.resolve(saved.manga, mention)) {
+                                    when (
+                                        val resolution = dependencies.manageCreatorIdentity?.resolve(
+                                            saved.manga,
+                                            mention,
+                                        )
+                                    ) {
                                         is CreatorMentionResolution.Resolved -> {
                                             dependencies.setCreatorFollow.await(resolution.creatorId, true)
                                             navigator.push(AuthorDetailScreen(resolution.creatorId))
@@ -1057,7 +1118,9 @@ private fun AuthorGlobalSearchResults(
                         )
                     }
                 }
-                items(row.items, key = { "author-work-${it.work.key.sourceId}:${it.work.key.stableSourceUrl}" }) { item ->
+                items(row.items, key = {
+                    "author-work-${it.work.key.sourceId}:${it.work.key.stableSourceUrl}"
+                }) { item ->
                     ListItem(
                         headlineContent = { Text(item.work.title) },
                         supportingContent = {

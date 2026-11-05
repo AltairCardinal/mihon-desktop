@@ -22,12 +22,63 @@ import tachiyomi.domain.source.service.GlobalSearchSourceFilter
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.domain.source.service.SourceRecoveryAction
+import tachiyomi.domain.source.service.sourceFailureIdentity
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 class DesktopGlobalSearchPolicyExecutionTest {
+
+    @Test
+    fun `routing artifact and matching source id never supply an unconfirmed owner`() = runBlocking {
+        val active = RecordingSearchSource(1)
+        val other = RecordingSearchSource(1)
+        coEvery { active.source.getSearchManga(1, any(), any()) } throws NoSuchMethodError("future API")
+        val unknown = mihon.desktop.extension.InstalledExtension(
+            java.io.File("routing-name+0.jar"),
+            listOf(active.source),
+            versionName = "fabricated-version",
+        )
+        val unrelated = mihon.desktop.extension.InstalledExtension(
+            java.io.File("other.jar"),
+            listOf(other.source),
+            metadataSnapshot = mihon.desktop.extension.ExtensionMeta("other.package", 123L, "1.2.3"),
+        )
+        val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+        try {
+            coordinator.search(
+                listOf(active.source),
+                "query",
+                GlobalSearchSourceFilter.All,
+                listOf(unrelated, unknown),
+            )
+            val failure = assertInstanceOf(SourceQueryState.Failure::class.java, coordinator.state.queryStates[1L])
+            val identity = requireNotNull(failure.error.sourceFailureIdentity())
+            assertEquals(1L, identity.sourceId)
+            assertNull(identity.extensionPackage)
+            assertNull(identity.extensionName)
+            assertNull(identity.versionName)
+            assertNull(identity.versionCode)
+        } finally {
+            coordinator.close()
+        }
+    }
+
+    @Test
+    fun `replacement source with the same id is searched again for the same query`() = runBlocking {
+        val old = RecordingSearchSource(1)
+        val replacement = RecordingSearchSource(1)
+        val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+        try {
+            coordinator.search(listOf(old.source), "query")
+            coordinator.search(listOf(replacement.source), "query")
+            assertEquals(1, old.searchCount.get())
+            assertEquals(1, replacement.searchCount.get())
+        } finally {
+            coordinator.close()
+        }
+    }
 
     @Test
     fun `cancelled filter retry restores the previous failure`() = runBlocking {

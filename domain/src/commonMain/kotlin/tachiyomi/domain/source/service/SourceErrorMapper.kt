@@ -1,6 +1,7 @@
 package tachiyomi.domain.source.service
 
 import eu.kanade.tachiyomi.network.HttpException
+import eu.kanade.tachiyomi.network.SourceCompatibilityException
 import eu.kanade.tachiyomi.network.SourceFailureIdentity
 import eu.kanade.tachiyomi.network.inspectSourceFailure
 import eu.kanade.tachiyomi.network.withSourceFailureIdentity
@@ -33,6 +34,13 @@ fun Throwable.toSourceAppError(): AppError {
 fun AppError.withSourceFailureIdentity(identity: SourceFailureIdentity): AppError = when (this) {
     is AppError.ExtensionIncompatible -> copy(cause = cause?.withSourceFailureIdentity(identity))
     else -> this
+}
+
+fun AppError.sourceFailureIdentity(): SourceFailureIdentity? = if (this is AppError.ExtensionIncompatible) {
+    cause?.inspectSourceFailure()?.causes?.filterIsInstance<SourceCompatibilityException>()
+        ?.firstNotNullOfOrNull { it.identity }
+} else {
+    null
 }
 
 private fun Throwable.knownSourceAppError(): AppError? {

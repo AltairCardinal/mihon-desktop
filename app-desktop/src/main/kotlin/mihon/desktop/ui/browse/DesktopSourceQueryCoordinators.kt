@@ -1,5 +1,6 @@
 package mihon.desktop.ui.browse
 
+import eu.kanade.tachiyomi.network.SourceFailureIdentity
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.CancellationException
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import mihon.desktop.extension.InstalledExtension
 import mihon.domain.error.AppError
 import tachiyomi.domain.source.service.GlobalSearchSourceFilter
 import tachiyomi.domain.source.service.SourceFilterResult
@@ -36,6 +38,7 @@ import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.domain.source.service.SourceRecoveryAction
 import tachiyomi.domain.source.service.prepareSourceFilters
 import tachiyomi.domain.source.service.sourceRecoveryAction
+import tachiyomi.domain.source.service.withSourceFailureIdentity
 import tachiyomi.i18n.MR
 import java.util.Locale
 
@@ -76,7 +79,10 @@ internal class SourceQueryStatePublisher {
 
 class SourceBrowseQueryCoordinator(
     private val service: SourceMangaSearchService,
+    private val failureIdentity: SourceFailureIdentity?,
 ) {
+    constructor(service: SourceMangaSearchService) : this(service, null)
+
     private data class SourceLoadKey(
         val sourceId: Long,
         val generation: Long,
@@ -187,12 +193,19 @@ class SourceBrowseQueryCoordinator(
         request: SourcePageRequest,
         preparationError: AppError? = null,
     ): SourceQueryState {
-        val result = if (preparationError != null) {
+        val loaded = if (preparationError != null) {
             SourcePageResult.Failure(request, preparationError, preparationError.sourceRecoveryAction())
         } else {
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 service.loadPageResult(source, request)
             }
+        }
+        val result = if (loaded is SourcePageResult.Failure && failureIdentity != null) {
+            loaded.copy(
+                error = loaded.error.withSourceFailureIdentity(failureIdentity.copy(sourceId = request.sourceId)),
+            )
+        } else {
+            loaded
         }
         currentCoroutineContext().ensureActive()
         val completed = synchronized(lock) {
@@ -310,7 +323,17 @@ class DesktopGlobalSearchCoordinator(
         val query: String,
         val sourceFilter: GlobalSearchSourceFilter,
         val sourceIds: List<Long>,
-    )
+        val owners: List<Pair<Source, SourceFailureIdentity>>,
+    ) {
+        fun sameSearch(other: SearchIdentity): Boolean =
+            query == other.query && sourceFilter == other.sourceFilter && sourceIds == other.sourceIds &&
+                owners.size == other.owners.size && owners.zip(other.owners).all { (first, second) ->
+                    first.first === second.first && first.second == second.second
+                }
+
+        fun containsOwner(owner: Pair<Source, SourceFailureIdentity>): Boolean =
+            owners.any { it.first === owner.first && it.second == owner.second }
+    }
 
     private class SearchSession(
         val generation: Long,
@@ -406,14 +429,33 @@ class DesktopGlobalSearchCoordinator(
         query: String,
         sourceFilter: GlobalSearchSourceFilter,
         onState: (DesktopGlobalSearchState) -> Unit = {},
+    ) = search(sources, query, sourceFilter, emptyList(), onState)
+
+    suspend fun search(
+        sources: List<Source>,
+        query: String,
+        sourceFilter: GlobalSearchSourceFilter,
+        installed: List<InstalledExtension>,
+        onState: (DesktopGlobalSearchState) -> Unit = {},
     ) {
-        val identity = SearchIdentity(query, sourceFilter, sources.map(Source::id))
+        val owners = sources.map { source ->
+            val metadata = installed.firstOrNull { owner -> owner.sources.any { it === source } }?.metadataSnapshot
+            source to SourceFailureIdentity(
+                extensionPackage = metadata?.pkgName,
+                extensionName = metadata?.name,
+                versionName = metadata?.versionName,
+                versionCode = metadata?.versionCode,
+            )
+        }
+        val identity = SearchIdentity(query, sourceFilter, sources.map(Source::id), owners)
         val (started, session, previous) = synchronized(lock) {
-            if (activeSession?.identity == identity) return
+            if (activeSession?.identity?.sameSearch(identity) == true) return
             val previousSession = activeSession
             val reusableStates = if (previousSession?.identity?.query == query) {
                 authoritativeState.queryStates.filter { (sourceId, state) ->
-                    sourceId in identity.sourceIds && !state.isLoading && previousSession.coordinators[sourceId] != null
+                    val owner = identity.sourceIds.indexOf(sourceId).takeIf { it >= 0 }?.let(owners::get)
+                    owner != null && previousSession.identity.containsOwner(owner) &&
+                        !state.isLoading && previousSession.coordinators[sourceId] != null
                 }
             } else {
                 emptyMap()
@@ -426,7 +468,7 @@ class DesktopGlobalSearchCoordinator(
                     source.id to (
                         previousSession?.coordinators?.get(source.id)
                             ?.takeIf { source.id in reusableStates }
-                            ?: SourceBrowseQueryCoordinator(service)
+                            ?: SourceBrowseQueryCoordinator(service, owners.first { it.first === source }.second)
                         )
                 },
                 onState = onState,

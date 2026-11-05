@@ -690,8 +690,20 @@ Android 全局搜索从同一个 installed 快照选择扩展并按 Source 对�
 包名/名称/版本，再执行过滤器及查询。失败结果只附加该次冻结身份；操作中安装记录
 更新不会把旧错误标成新版本，sourceId 从实际请求取值，不为诊断额外调用源 getter。
 新增归属映射不依赖插件自定义 equals/hashCode；仅用对象引用匹配，避免同值对象串包。
-这一阶段只证明异常传输和 Android 搜索错误链；Desktop 捕获、UI 安全描述和实际日志
-记录仍须接线，不能把异常已有身份字段等同于双端完整诊断已经完成。
+Desktop 全局搜索的实际页面从既有 extensionPresentationService 读取一次 installed 值，
+向 coordinator 传递本次快照。只按原 Source 引用匹配并消费 metadataSnapshot，不以
+InstalledExtension 的 JAR/routing 名、无元数据的版本默认值或相同 sourceId 补猜归属。
+child coordinator 保留该操作的冻结身份，兼容失败沿正常状态附上请求 sourceId。
+旧的未传 owner 接口仍可调用，身份明确未知；单源浏览的旧构造入口保持不变。
+
+相同查询仅在 Source 引用及冻结 owner 都未变化时复用；替换实例或版本变化后，现有
+搜索按钮可重新检查该源，健康交集仍复用。失败卡复用现有本地化错误区域，以名称/版本
+补充说明，未知使用既有 Unknown 资源；不新增自动重试、登录、停用或更新动作。
+已有 canonical 写入、错误恢复、历史、导航及 session 保留使用原链路。
+
+这里证明异常传输、Android 搜索绑定及 Desktop 实际页面捕获/版本反馈。源元数据 getter
+的完整安全描述、Android 对应页面版本反馈和实际日志记录仍须接线，不能把异常已有
+身份字段等同于双端完整诊断已经完成。
 
 ## 8. 安全与隐私
 

@@ -201,6 +201,9 @@ class GlobalSearchSessionRetentionTest {
             every { extensionManager } returns sourceBrowseExtensionManager()
             every { sourceExtensionLookup } returns sourceBrowseExtensionManager()
             every { sourceMangaSearchService } returns SourceMangaSearchService()
+            every { extensionPresentationService } returns mockk {
+                every { installedExtensions } returns kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+            }
             every { saveSourceMangaForDetails } returns saver
             every { getManga } returns mockk<GetManga> {
                 every { subscribe(any<String>(), any<Long>()) } returns flowOf(null)

@@ -738,3 +738,51 @@ python scripts/gradle-coordinator.py run --key <唯一key> -- .\gradlew.bat :cor
 Android 搜索绑定；不能把 DTO/异常 message 存在当成实际诊断记录或 UI 展示证据。
 Desktop 的操作前捕获、元数据安全描述、并发源不串身份、真实日志记录失败保护、双端
 UI gate、完整取消场景与 R8 原生仍是原 roadmap 的后续必做项。
+
+## EC-07 阶段：Desktop 操作前归属与真实页面版本反馈（2026-11-06）
+
+基线 `64d4cac450`。本批复用现有 extensionPresentationService、coordinator、错误卡和
+SourceRecoveryAction，不新建页面/DI 类型/存储协议。范围超过 8 文件/400 行的内聚原因：
+页面新增读取既有已安装端口，五个既有 UI 夹具需要明确提供空快照；两个主文件的必要
+定向格式另有排版变更，未调整其他业务逻辑。最终 10 个 Kotlin 文件（domain1/Desktop9）。
+
+- 首 `ec07-desktop-owner-ui-red` 停在 MockK 夹具构建异常，不计产品红，不据此推断业务
+  根因。未改 production 重跑同方法的 `ec07-desktop-owner-ui-harness` 已执行实际输入与
+  搜索按钮：健康结果出现，坏源挂起期间安装记录从 1.2.3 换到 9.9.9；失败链只有通用
+  SourceCompat/NoSuch，缺包名/版本，正确红。XML 保存于
+  `.test-tmp/ec07-desktop-owner-ui-red-xml/`，不混同前一次夹具错误。
+- `ec07-desktop-replaced-source-red`：相同 id 的新 Source 对象遇到相同查询被旧 session
+  复用，实际新源调用0次、预期1次，正确红。新查询身份按 Source 引用及冻结 owner DTO
+  比较，不调用第三方 equals/hash。版本/实例变化会重新搜索该源，健康交集保留。
+- 实际页面在 executeSearch 前读取 installed 快照；仅通过 Source=== 与 metadataSnapshot
+  绑定可信名称/包/版本。新增 overload 保留旧调用接口；child 只给类型化兼容失败附冻结
+  身份。未知明确为空，不从 routing JAR 名、primary fabricated-version 或相同 sourceId
+  的其他对象借版本。domain 提取 helper 仅从既有有界 marker 链取身份，其他错误保持原态。
+- 原生页面用例通过：**320px** 宽真实输入/点击提交 → 健康源显示结果 → 坏源只显示本地化
+  不兼容与 Trusted extension/1.2.3，错误链保留 trusted.package，不含查询或 routing 名。
+  安装记录更新后显式再点同关键词搜索，显示9.9.9，健康源实际搜索仍仅1次。
+- 首绿 `ec07-desktop-owner-ui-green` 新用例与 policy7 通过；旧 canonical 错误反馈用例
+  只等 repository.newFailed flag、render 一帧即断言失败。已读真实 fixture：该 flag 在
+  throw 之前完成，早于 materializer/Compose 状态发布；改为有界等待实际错误文案及实际
+  canonical UI，仍通过真实 wiring，错误不出现或旧结果回写仍会失败，不放宽预期。
+- 最终 `ec07-desktop-owner-focused-final` **PASSED / exit0，31 秒**。亲核七份 XML：
+  production3、policy8、authority1、history8、navigation3、retention4、sourceFilter3，
+  共 **30 个独立 focused 用例，零失败/零跳过**。按实际类归档
+  `.test-tmp/ec07-desktop-owner-focused-final-xml/`，不累计此前失败/重复运行。
+- 同一最终命令严格检查精确 10 文件格式；早前 format key 仅长行排版失败。临时
+  `ec07-desktop-owner-format-materialize` 只用于 Apply 展开格式，不作为 Check/验收；
+  最终使用原规则严格 Check，无生产 suppress、无放宽 ktlint 规则。
+
+复现：经协调器运行 `:app-desktop:jvmTest`，精确 `--tests` 以下七类：
+`mihon.desktop.ui.browse.GlobalSearchResultProductionWiringTest`、
+`DesktopGlobalSearchPolicyExecutionTest`、`GlobalSearchAuthorityWiringTest`、
+`GlobalSearchRecentHistoryWiringTest`、`GlobalSearchResultNavigationTest`、
+`GlobalSearchSessionRetentionTest`、`GlobalSearchSourceFilterWiringTest`（后六类同包前缀），
+加 `--offline --no-parallel --max-workers=2 --console=plain`；不是模块全量。
+
+维护见 7.6.5；EC-UI-07/08 只增加这条真实页面的部分证据，仍不整项通过。源 getter
+安全描述、Android 页面、实际诊断 sink、完整三源取消与 R8 仍待完成，保留原 roadmap。
+
+未实施本片段的代理独立审查三处 production 接线后通过：操作前单帧 metadataSnapshot、
+Source 引用/owner 双条件复用、child 冻结身份和实际错误区域均符合本阶段边界；未将剩余
+getter/日志/完整 UI gate 当作已通过。

@@ -341,6 +341,9 @@ class GlobalSearchRecentHistoryWiringTest {
                 every { sourceManager } returns FakeDesktopSourceManager(emptyList())
                 every { appPreferences } returns preferences
                 every { sourceMangaSearchService } returns SourceMangaSearchService()
+                every { extensionPresentationService } returns mockk {
+                    every { installedExtensions } returns kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+                }
                 every { saveSourceMangaForDetails } returns mockk(relaxed = true)
                 every { getManga } returns mockk<GetManga> {
                     every { subscribe(any<String>(), any<Long>()) } returns flowOf(null)
