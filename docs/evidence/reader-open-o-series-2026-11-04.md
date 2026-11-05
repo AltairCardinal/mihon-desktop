@@ -2,6 +2,8 @@
 
 日期：2026-11-04启动，2026-11-05本地收口。执行入口：[完整计划](../roadmap/2026-11-04-reader-open-o-series-plan.md)。起始主干 `2425aca5e5`，起点产品为R2；O1–O11均已完成实施／必要验证／逐项测量或明确限制裁决。采用O2/O4/O8/O9的低成本去冗余，保留记录、AUTO、实际采样与composition诊断；拒绝其余未证明净收益的调度／等待候选，O10不另改初始化，O11不采用profile干预。逐项条件、样本、收益及限制见下表与各节，不相加跨项收益，不宣称跨模式稳定首开加速或双端性能整体达标。
 
+11 月 5 日补测了官方安装版、整个 O 系列之前的 R2 和最终 B9。结论、逐份样本与复算方法见[三方真机对照](#三方真机对照)。
+
 后文早期交接、前置与阶段留装状态作为历史记录保留；当前最终状态以末节为准。官方安装及正式fork未改，未推送、未正式发布、未更新公共能力说明。
 
 ## 条件与测量口径
@@ -14,17 +16,17 @@
 
 A1重装同一控制APK后，`conditions-o1-a1-install.json` 成功读回当前odex的 `compiler-filter=verify`、`compilation-reason=install`，故本块状态已知；这不能追溯覆盖重装前UNKNOWN记录。主代理查看single设置及目标页原图，确认RTL、裁边OFF、横图放大OFF、source4世界地图5/187。准备截图仍有红青方向提示；源码确认该提示经触摸才淡出，不会定时自然消退，且修改导航设置可独立触发它。正式样本须看新进程初开、尚未重新打开设置时的reader图，不能用设置后的提示层推断启动开关；若新进程仍显示，先通过正常全局“点按区域提示”设置核OFF，再重复统一准备。
 
-## 主代理独立复核：源码级确认的耗时来源
+## 主代理独立复核：源码差异与时间证据
 
 以下不是设计估算，是本轮主代理直接对照上游分叉点 `77a86d486fc1` 与当前工作树源码确认的机制，用于给 O1–O11 排优先级。行号为核对时的位置。
 
 1. **holder 的 I/O 与 Main 往返次数**：上游 `PagerPageHolder.setImage()` 是「一段 `withIOContext` 读字节 → 一次 `withUIContext` 显示」。fork 改造前是「`withIOContext` 读 header → 回 Main → `withIOContext` 读完整字节 → 回 Main」，双页还多一次「在 `withUIContext` 内部再 `withIOContext` 取 `getImageDimensions`」。⇒ O1 消除的往返是真实存在的结构差异，不是推测。
-2. **O4 的下载状态查询是回退而非上游行为**：上游把 `downloadManager.isChapterDownloaded(...)` 放在 `||` 短路链里，只有 `manga.downloadedFilterRaw` 真的按下载状态筛选时才会求值。fork 的 `isChapterFiltered` 把它作为**值参数**传给 `isReaderChapterFiltered(..., chapterIsDownloaded = downloadManager.isChapterDownloaded(...))` ⇒ Kotlin 先求值实参 ⇒ **每一章都做一次下载状态查询**（含多个候选目录名与 md5），与是否启用下载筛选无关。`domain/.../ReaderNavigation.kt` 的 `isReaderChapterFiltered` 收 `Boolean` 而非惰性 lambda，所以必须在调用点修。
+2. **O4 的下载状态查询是回退而非上游行为**：上游把 `downloadManager.isChapterDownloaded(...)` 放在 `||` 短路链里，只有 `manga.downloadedFilterRaw` 真的按下载状态筛选时才会求值。fork 的 `isChapterFiltered` 把它作为**值参数**传给 `isReaderChapterFiltered(..., chapterIsDownloaded = downloadManager.isChapterDownloaded(...))` ⇒ Kotlin 先求值实参 ⇒ 在启用跳过过滤章节、执行到该谓词时，即使显示全部下载状态，也会对传入的章节求一次下载状态。外层 `skipPolicy.filtered` 为 false 时会短路。一次状态查询是否继续构造目录名或计算 md5 取决于缓存路径。`domain/.../ReaderNavigation.kt` 的 `isReaderChapterFiltered` 收 `Boolean` 而非惰性 lambda，所以必须在调用点修。
 3. **O4 的章节列表被查了两遍**：`ReaderViewModel` 第 472 行为「只取 selected」执行了一次 `getChaptersByMangaId.await(...)`，`getChapterList()` 内又执行一次同一查询。
 4. **O2 的冗余重建点在调用方，不在 session**：`SharedDualPageSession.acceptOriginalFact` 对同一 request 的**相同事实**会在 `accepted[request.requestId]?.let { return it == fact }` 处提前返回 true 且**不**重建。但 `DualPageViewerAdapter.acceptFact`（及 `acceptDecodedDimensions`）只要 session 返回 true 就**无条件**调用 `rebuildItems()` ⇒ 事实未变同样整窗重建。⇒ O2 要改的是 adapter 的「接受」与「改变呈现输入」语义区分。
 5. **O3 的重绑与阅读模式无关**：`restoreChapterPairingInBackground` 成功后在 `withUIContext` 里无条件 `eventChannel.trySend(Event.ReloadViewerChapters)` ⇒ 单页/条漫也会走一次完整 `setChapters` 重新绑定，而单页并不消费配对布局。
-6. **O8 的收集器是每页一个**：`PagerViewer.bindSingleFacts` 对前/当前/后三章的**每一页**各 launch 一个收集器（`pages.filter { it !in factCollectors }.forEach { ... }`）⇒ 187 页章节即 187 条消息排在 holder 加载之前。
-7. **规模对照**：fork 在 6 个开屏关键文件（`ReaderActivity`、`ReaderViewModel`、`PagerViewer`、`PagerPageHolder`、`DualPagerPageHolder`、`DualPageViewerAdapter`）上相对上游新增 **4,165 行**；`ui/reader` 路径文件数 51 → 75；新增 41 文件的 `domain/reader` 模块。⇒ 开屏变慢不是个别慢点，而是整套双页配对机制默认挂在开屏关键路径上的累积结果。
+6. **O8 的收集器是每页一个**：`PagerViewer.bindSingleFacts` 对前/当前/后三章的**每一页**各 launch 一个收集器（`pages.filter { it !in factCollectors }.forEach { ... }`）。在 O1 控制的四份单页 trace 中，每份的 187 个 `ReaderP3.singleFact` 标记均早于目标页开始加载，标记区间合计分别为 0.738、0.586、0.760、0.543 ms（A1 首次／再次、A2 首次／再次）。A2 再次样本在 holder 创建至加载之间经过 9.486 ms，期间完整落入的此类标记为 0。标记只覆盖回调内的一段代码，不能据此计数 Looper 消息或给队列等待归因。
+7. **规模对照**：fork 在 6 个开屏关键文件（`ReaderActivity`、`ReaderViewModel`、`PagerViewer`、`PagerPageHolder`、`DualPagerPageHolder`、`DualPageViewerAdapter`）上相对上游新增 **4,165 行**；`ui/reader` 路径文件数 51 → 75；新增 41 文件的 `domain/reader` 模块。这些数字描述源码规模。各路径是否在特定模式的首次打开中执行、占了多少时间，以对应 trace 和同条件对照为准。
 
 ## 设备预检与采集工具自检
 
@@ -45,9 +47,9 @@ A1重装同一控制APK后，`conditions-o1-a1-install.json` 成功读回当前o
 
 ## 逐项结果
 
-| 项目 | 状态 | 有效性能样本 | 实测净收益 | 采用状态 |
+| 项目 | 状态 | 有效性能样本 | 实测变化与限制 | 采用状态 |
 | --- | --- | --- | --- | --- |
-| O1 合并图片准备IO与Main往返 | 测量/分析收口，候选补丁归档并恢复基线 | 20（A2为隔夜补充控制） | 未证明跨模式稳定净收益；详见最终裁决 | 不采用 |
+| O1 合并图片准备IO与Main往返 | 测量/分析收口，候选补丁归档并恢复基线 | 20（A2为中断后补采） | 未证明跨模式稳定净收益；详见最终裁决 | 不采用 |
 | O2 双页事实变化与冗余重建 | 10项Android/1项共享/格式与独立审查通过；12份真机对照及正常OFF往返收口 | 12 | 同值回调认证增量4→0；真实时延方向混合 | 保留低成本去冗余，不承诺稳定体验收益 |
 | O3 配对恢复按需重绑 | 真实RED/GREEN、12份有效记录对照、精确恢复收口 | 12（single/dual ON） | 冗余Reload消除，但首开／近黑无稳定净收益 | 不采用门控，保留记录诊断 |
 | O4 列表复用与惰性下载过滤 | 真实VM接线／格式与正常single往返通过 | 12（single/dual ON） | 初始章节查询2→1；SHOW_ALL下载判断1→0；时延／近黑方向混合 | 采用低成本去冗余 |
@@ -122,7 +124,7 @@ O2最终只有`SharedDualPageAndroidWiringTest.kt`的10个测试及fixture草稿
 ### 条件、原件与限制
 
 - 只补了A2缺少的4个请求，未重录已有16份。request级VALID按captureLabel/requestOrdinal去重为20；capture级CAPTURED不是额外样本，原输入前失败和中断联合采集仍EXCLUDED。A1/B1各6、B2/A2各4。
-- A2沿用中断前已安装的A包，**没有重新安装**，因此是隔夜补充控制，不伪装成紧接B2的完整同条件安装块。现场逐driver读回SHA、独立读回OAT均与A相符（verify/install）；安装条件温度28℃，后验现场27℃，USB供电/100%保留。后验温度不代表逐样本前状态。补充条件见测量根`conditions-o1-a2-supplemental-postcapture.json`及四条样本的captureContext。该差异进一步限制稳定性能结论，不追加采样追逐显著性。
+- A2沿用中断前已安装的A包，**没有重新安装**。本地时间 11 月 5 日 01:16 记录中断，01:34–01:39 完成 A2 有效采集。补采保留安装中断的条件差异。现场逐driver读回SHA、独立读回OAT均与A相符（verify/install）；安装条件温度28℃，后验现场27℃，USB供电/100%保留。后验温度不代表逐样本前状态。补充条件见测量根`conditions-o1-a2-supplemental-postcapture.json`及四条样本的captureContext。该差异进一步限制稳定性能结论，不追加采样追逐显著性。
 - 校验路径和A/B候选旗标的本轮误用保留validationHistory后重验；一次manifest尾部多余字面\n导致JSON解析失败，修正这两个非JSON字符并读回解析成功。原probe/trace/MKV未改，不将校验错误当作产品故障。
 - 本轮Luna只提取数字，主代理独立看20段原PTS连续帧、全部较大边界图及6处更正图。近黑含少量渐隐残留、排除页码/系统栏/微小spinner；以中心内容约2/255灰度辅助统一边界，仍有约一帧判定不确定性。双页首张正确漫画即结束近黑，目标source4地图与完整双页另计；最终均确认左地图/右卷4。区间为末近黑−首近黑至首漫画−最后可辨详情的采样界限。未校准视频PTS绝对输入，不报告伪精确输入→屏幕时间。
 - `native-metrics-20261104T174330Z.json`与20份`*-thread-running-formal.json`分别保留系统端点、同trace时钟映射及实际launch PID/upid/main tid裁剪统计；A1single原误标validation的文件保留，另以formal重提。完整数字另见`o1-combined-metrics-20.csv/json`、主代理联合`o1-joint-results-20.json`、`video-selections-review-final.json`；video v1/v2更正历史保留。
@@ -211,7 +213,7 @@ FIRST_DRAW/UNIT是probe绘制回调，非物理呈现；CPU是PAGE_LIST_READY→
 
 - single首次：A native→draw 316.732/322.227，B 288.418/307.623；暖态A 256.276/269.318，B 275.548/266.011。首次有改善方向，暖态没有稳定改善。页表后CPU总体重叠，不把减少开流的操作证据外推成所有条件的时延保证。
 - OFF首次：A 439.849/407.796†，B 404.396/437.205；暖态A/B 352.565/355.487。两臂波动重叠，无已证实净收益。
-- ON首次：A 410.540/402.478，B 426.487/413.449；暖态A/B 337.270/345.219。该组方向不支持采用，但样本少且A2隔夜，不宣布统计回归。视频近黑也有明显波动，不以中位数掩盖单份长等待。
+- ON首次：A 410.540/402.478，B 426.487/413.449；暖态A/B 337.270/345.219。该组方向不支持采用，但样本少且A2沿用中断前安装，不宣布统计回归。视频近黑也有明显波动，不以中位数掩盖单份长等待。
 - 不把这组边际/预热后测量称为升级首开、无扰动基准、P95或性能整体达标。O1不采用，因此不为采用门禁重装B做probe OFF复核，也不扩大到既有ON回翻错单元修复。
 - 最终候选8文件（7个代码/测试+probe维护说明）的完整内容、SHA及patch已存权威worktree `.test-tmp/reader-open-o-series-20261104/o1/rejected-candidate/`，恢复前后逐文件校验；原候选APK/source.diff/mapping与红绿证据保留。恢复只覆盖本任务O1所有权文件，O2测试和实现、原目录用户改动均未回滚。没有未采用产品代码提交。
 - 最终设备读回probe enabled=false、隔离包force-stop、Asleep且mWakefulnessChanging=false；实际留装A控制SHA `259c0d98b00deeca6a1254f753f2ffe0be2e6a7d8f541db74b117de6cfdadfc6`、OAT verify/install。无本任务采集/trace进程，ADB server保留。
@@ -229,7 +231,7 @@ O1以“不采用且证据/补丁归档、源码恢复”的路径完成；其�
 - 真实RED：`.test-tmp/reader-open-o-series-20261104/o2/duplicate-red.xml/log`，expected4/actual8，三个失败记录是同一方法的自动重试。最终10个O2 Android真实接线方法、1个共享header revision契约通过，app/domain格式通过；原件`o2/focused-green.xml/log`、`header-revision-green.xml`。首轮因方法名行宽失败仅缩短名称；第二轮GREEN后O1候选8文件已恢复，再运行全部10项通过。
 - 独立Sol审查PASS，覆盖header所有写入、owner/window清理、手势与重入边界，没有阻塞发现。七个交付文件属于同一个事实投影批次，主体测试是10个真实adapter边界，不按行数拆成不完整协议。
 - 冻结benchmark包：权威worktree `app/artifacts/android/diagnostics/reader-open-o2-20261104/Mihon-Fork-reader-open-o2-benchmark-universal.apk`，SHA `84e3be9b15c1c94acdc451a94a0e83583e43ba1a82517833588f849a564f4cb3`。code134、非debug、R8/资源压缩、原benchmark证书已核；构建2m17s，源基线220ec6f586加O2两production文件与测试diff，冻结29文件及production fingerprint。O1不在此包。后来准备的O3/O4测试/实现不属于本冻结包。
-- 对照原件独立位于原目录 `.test-tmp/reader-open-o-series-20261104/measurement-o2/`，不覆盖O1。OFF/ON每模式A1首次/暖、B1首次/暖、B2首次、A2首次，共12份request级VALID；各安装块正常重装、实际SHA及OAT均verify/install，每模式一次无录制预热后强停进入首次。A2本轮确实新重装，非O1的隔夜续接。
+- 对照原件独立位于原目录 `.test-tmp/reader-open-o-series-20261104/measurement-o2/`，不覆盖O1。OFF/ON每模式A1首次/暖、B1首次/暖、B2首次、A2首次，共12份request级VALID；各安装块正常重装、实际SHA及OAT均verify/install，每模式一次无录制预热后强停进入首次。A2本轮确实新重装，O1则沿用中断前的安装补采。
 - A1在正式采样前的准备错组、一次双预热、唤醒/参数和JSON尾字面换行错误均保留过程原件与历史；A1正式前已重新安装并恢复一次预热协议，未重录有效样本。标签/config不能代替真实设置：主代理核A2 OFF空框、ON勾选及正式原图。
 - 健康信息保留：A1 ON首次、B1 ON暖态各有negative_timestamp_dropped=1；这些行加†，不能定位被丢事件影响。其余匹配error/drop等为0/null；所有样本还有info级traced_chunks_discarded=156–167，不能把它当作每份丢包数或声称零丢失。完整schema/SQL/输出在analysis中。
 - 主代理独立核12段连续原PTS及较大四/五边界图；Luna另核原PTS/算术。`analysis/video-reviewed.json`保存逐帧选择和视频SHA。A1 ON暖态先出现地图，targetFrame40、完整41，其余先标题再地图。近黑由首部分正确漫画结束，视频绝对输入映射未建立；所有完整单元后至录制结束的原生帧扫描均未再近黑，中心灰度最小约83/255，仅是无再黑筛查，不等同物理呈现证明。
@@ -442,9 +444,9 @@ O6设备预检重新确认USB PCE-W30/API31、secure=false及Asleep。A1正常�
 
 同一A6/B6诊断、187页CBZ及目标source4世界地图；A1/B1每模式首次+同进程再次，B2/A2每模式各首次，共12个VALID request。每安装块均正常重装并读回verify/install，每模式Probe OFF预热一次；不是冷盘、升级后首次或P95。A1 ON唤醒失败使用已记录的新r1标签，其余不重录。12份目标区域与主代理审阅的地图左/标题右参考逐像素匹配。
 
-下表单位ms。输入是原表最早native触摸deliver事件；另补12/12实际launch PID主线程身份核验，均与原选中时间戳完全一致（`analysis/o6-startup-input-identity-12.json`）。目标4/UNIT是接受的应用绘制回调，非物理显示；首部分漫画与完整双页分别按原视频帧/PTS看图，视频PTS不映射到输入时钟。
+下表单位ms。输入是原表最早native触摸deliver事件；另补12/12实际launch PID主线程身份核验，均与原选中时间戳完全一致（`analysis/o6-startup-input-identity-12.json`）。目标4/UNIT是接受的应用绘制回调，非物理显示；首部分漫画与完整双页分别按原视频帧/PTS看图，视频PTS不映射到输入时钟。此表 CPU 从输入送达起算，O7–O9 的对应 CPU 表从页表就绪起算。同一份 A1 OFF 首次的两种口径分别为 250.993 和 167.448 ms。
 
-| 样本 | target4 | UNIT | 主线程Running至UNIT | 视频近黑采样界 |
+| 样本 | target4 | UNIT | 主线程 Running（输入送达→UNIT） | 视频近黑采样界 |
 |---|---:|---:|---:|---:|
 | A1 OFF 首次 | 393.126 | 393.332 | 250.993 | 50–83 |
 | A1 OFF 再次 | 330.170 | 330.368 | 200.321 | 16–50 |
@@ -621,6 +623,8 @@ A9诊断控制基于O8采用源码，保留完整State参数，APK `reader-open-
 
 本组首次UNIT均值OFF 429.040→386.532ms、ON 401.774→370.116ms，两次候选首次各模式均偏快；目标draw均值OFF 428.791→376.959ms、ON 401.537→369.889ms。B1 OFF先地图后标题，target早于UNIT约18.95ms，因此不能只选target给完整双图收益。首次Main Running均值OFF 168.998→164.764ms、ON 167.067→153.421ms；暖态UNIT却OFF 321.154→327.787ms、ON 324.270→344.583ms（各仅1份），CPU又方向混合。首次近黑偏短，暖态ON变长；小样本、trace限制及不同提交次数造成的不同诊断写入开销，使这些差值不能直接归因窄参数或外推关闭Probe后的稳定净收益。保留理由是少量参数／引用改动明确消除真实无关提交，原状态／偏好／绘制语义及反馈仍受真实接线保护，不把调用减少当作整体体验达标。
 
+按[近黑区间上界 ≤60 ms 的预算](reader-startup-performance-baseline-2026-11-02.md)，B9 六份双页候选录像中，2 份下界超过 60 ms（OFF 首次 66–100、ON 再次 66–99），4 份跨过 60 ms，0 份能够确认达标。此判断仅用于本轮开启探针且预热过的六份录像。作为跨批波动的参照，O3 与 O4 相同 SHA 的控制包单页首次均值分别是 296.797、330.087 ms（每批两份）；这一组差异不能作为其它轮次的固定扣除量。
+
 `o9-overlay-commits-12.json`按ACTIVITY_CREATE附近唯一reader_start匹配process／Activity session，每session均有reader_end。十二份ROOT在UNIT前都是3次、全session都是7次；控制六份wrapper分别3／7，候选六份分别1／1。所有计入UNIT前的记录都严格早于其毫秒量化边界，无same-bin不定序记录。它证明wrapper提交减少，不能称整个浮层树或叶节点重组下降；父层继续完整State订阅，AppBars、提示与页码原状态链不变。
 
 root独立查看12段原PTS连续边界并保留原索引：B1 OFF首次是左地图先，其余11份为右标题先，完整单元均地图左／标题右，无教学浮层。`o9-video-reviewed.json`逐原生帧流式解码与ffprobe帧数一致，完整后近黑均0；`o9-video-pts-verification-12.json`十二份独立索引／PTS／公式／视频SHA／inclusive帧数PASS。20份正式／预热截图漫画ROI全为`cd4b1e2a37b0eeeb0264ea098a321eb84f01a2ec15c4d9c0f23e0f36a1ed6bf4`，设置逐图由采集代理核实，root另核资格与候选OFF设置。近黑阈值≤2/255可残留极暗旧UI，至少一帧不确定；没有视频PTS到输入时钟校准，不能当精确无内容或输入到屏幕耗时。
@@ -669,3 +673,53 @@ B8与当前B9分别用自己的APK、二进制profile和冻结R8 mapping运行pr
 O1–O11全部本地收口；采用O2/O4/O8/O9及经过验证的默认关闭诊断，其它候选精确撤回／不实施。每项条件与收益表在本报告“逐项结果”，完整逐样本端点、近黑、调用／CPU、正确性与限制各节保留；不同阶段并不相同基线，不能累加收益。既有自动匹配ON回翻错单元没有在本轮修复，AUTO跨Activity完整端点、部分trace负时间戳、O7 A1末OAT缺口和各小样本限制仍保留。未达到用户的正式发布／全平台稳定性能验收，不把本地完成称为这些目标已通过。
 
 最终留装诊断APK：[B9 benchmark](D:/Codex/worktrees/mihon-reader-o-series-20261104/app/artifacts/android/diagnostics/reader-open-o9-overlay-narrow-20261104/Mihon-Fork-reader-open-o9-overlay-narrow-benchmark-universal.apk)。sourceRevision仍是构建时`615c8ea67075b15fda63ed3473ea64fee998b0d4`加冻结diff，不能改标成后续提交；当前已提交production指纹与冻结包同为`4ffa9b726e52cfcf080923994f0d525169803dd1bb793eeae4337619d1b31791`（worktree `o9/final-adopted-production.json`）。源码本地提交，不推送、不正式发布、不更新公共能力说明；原目录用户改动和本任务旧副本保留。所有本任务采集／TP／Gradle进程结束，保留用户共享ADB服务。
+
+## 三方真机对照
+
+2026-11-05，同一 PCE-W30（Android 12、USB）正常点击已下载《史莱姆》第 04 卷。单页三方均恢复第 5/187 页的世界地图；fork 双页分别关闭、开启自动匹配，目标都是左侧世界地图、右侧卷标题。两处公开下载文件在测量结束后核实均为 41,380,343 字节，SHA-256 同为 `b3d7c4e56e58dfee6d9da7d5afafe12b267ccc6d50dd48cd3660456b8d2b4677`。官方为平板原有 0.19.9，fork 仅在隔离包替换优化前 R2 和最终 B9，探针关闭。
+
+### 点击后何时能看到漫画
+
+单位均为 ms。每格有三份独立进程样本，每个进程测首次和同进程再次。表中显示**首个拍到正确画面的原生帧**相对应用收到 DOWN 的时间中位数。双页中先出现地图或标题即计首张，两侧内容齐全另计。归入同一行的两种端点各自取中位数。Δ 为 B9 减参照，负值表示该组三次的中位数变快。
+
+| 阅读模式与端点 | 优化前 R2 首次 / 再次 | 最终 B9 首次 / 再次 | 官方首次 / 再次 | B9 相对 R2 首次 / 再次 | B9 相对官方首次 / 再次 |
+|---|---:|---:|---:|---:|---:|
+| 单页，地图可见 | 351.5 / 305.8 | 336.5 / 264.2 | 289.6 / 282.2 | −15.1 / −41.6 | +46.9 / −17.9 |
+| 双页关闭匹配，首张 | 392.1 / 313.3 | 362.8 / 345.7 | — | −29.3 / +32.4 | — |
+| 双页关闭匹配，两页齐全 | 431.7 / 348.9 | 429.0 / 378.9 | — | −2.6 / +30.0 | — |
+| 双页开启匹配，首张 | 380.3 / 280.6 | 354.3 / 313.1 | — | −26.0 / +32.5 | — |
+| 双页开启匹配，两页齐全 | 423.8 / 355.5 | 402.1 / 349.8 | — | −21.7 / −5.7 | — |
+
+相邻原生帧界定了图像可能出现的区间。单页首次这三个样本的区间中位数分别为 R2 334.5–351.5、B9 302.5–336.5、官方 272.9–289.6。按上下界保守相减，**同批 B9 相对官方的首次差距约 12.9–63.6 ms**。再次打开 B9 为 247.0–264.2、官方为 265.1–282.2。区间只表示录像采样分辨率及两端时钟界限，三份样本不足以给出日常使用差距的统计置信区间。双页关闭匹配时，首次第一张提早约 29 ms，两张齐全只提早约 3 ms。以首张代替完整双页会高估收益。
+
+### 近黑时间是否达到 60 ms
+
+区间为各组三份录像的下界中位数至上界中位数。判定逐份进行：上界 ≤60 ms 为通过，下界 >60 ms 为超时，其余为未定。每行末两列按“通过 / 未定 / 超时”排列。没有采到近黑帧时，下界取 0，上界保留相邻详情与漫画帧的时间差。
+
+| 模式 | 版本 | 首次近黑 ms | 再次近黑 ms | 首次判定 | 再次判定 |
+|---|---|---:|---:|---:|---:|
+| 单页 | 官方 | 16.8–50.9 | 17.0–51.4 | 2 / 1 / 0 | 2 / 1 / 0 |
+| 单页 | R2 | 32.5–66.3 | 16.6–49.6 | 1 / 2 / 0 | 2 / 1 / 0 |
+| 单页 | B9 | 0.0–51.7 | 0.0–16.8 | 3 / 0 / 0 | 3 / 0 / 0 |
+| 双页关闭匹配 | R2 | 82.9–116.5 | 33.1–66.6 | 0 / 0 / 3 | 1 / 2 / 0 |
+| 双页关闭匹配 | B9 | 67.0–99.6 | 33.8–66.5 | 1 / 0 / 2 | 1 / 1 / 1 |
+| 双页开启匹配 | R2 | 66.3–98.0 | 0.0–33.3 | 0 / 1 / 2 | 2 / 1 / 0 |
+| 双页开启匹配 | B9 | 33.1–66.7 | 33.2–66.6 | 0 / 3 / 0 | 1 / 2 / 0 |
+
+因此 B9 单页六次全部满足近黑预算，首次见到地图仍晚于官方。双页关闭匹配六次中三次明确超时；开启匹配六次中一次通过、五次跨越界线。两种双页均未证实达标。44 段记录在首张正确漫画出现后，中心区域未检出再进入近黑亮度范围的采样段。
+
+### 对照条件与复算
+
+- 主对照 42 次，7 个场景各 3 对首次／再次。首次是在正常 UI 核对或调整阅读设置、退出阅读器并强停后，重开应用首次进入该阅读器。每对的再次打开沿用同一进程。隔离安装块顺序 A1、B1、B2、A2、A3、B3，单页和双页模式次序正反交替。官方三次分散采集，其中替代第二轮的同前置样本实际在最后采集。官方原第二轮未在临近采集时进阅读器核对设置，另列为附加观察：首次首图 290.6–307.7、近黑 33.7–67.3；再次首图 244.1–262.3、近黑 0.0–34.7。两份都保留，未计入主表。
+- 官方安装 SHA-256 为 `7a7969564a604bf74608758b540730e53dfe63e11782a718d32380dc9febed58`；R2 为 `259c0d98b00deeca6a1254f753f2ffe0be2e6a7d8f541db74b117de6cfdadfc6`；B9 为 `4c3c6f82eea657aecd0c261972fa04c965a99ac5468f21309b87b032f23ccc59`。隔离包每个安装块前后实读编译状态均为 verify/install，电池温度 26–28°C。官方原安装的编译文件无读取权限。官方沿用真实用户库和作品默认阅读模式，实际为单页 RTL，fork 隔离库显式设置单页 RTL。安装历史、库规模、缓存和采集扰动未被消除。官方阅读进度已恢复为原第 1 页。
+- 逐份把目标进程主线程的触摸送达与唯一 Reader 启动关联，录像使用 scrcpy 原始包 PTS。44 份前后时钟样本均夹住视频，同 boot 的 Perfetto 快照偏移均在该份包络内；编码帧数、顺序与原包相符。13 份 trace 有负时间戳事件被丢弃，判定用到的输入对和 Reader 启动在这些记录中都完整。端点描述编码采集到的正确像素，物理屏幕扫描及无采集条件的确切耗时仍未实测。近黑判断排除状态栏、页码和加载图标，保留相邻帧采样误差。
+- [44 份逐次数据](reader-open-o-final-2026-11-05.csv)保留每个端点的原生帧号、PTS、输入时间、判定和视频 SHA。完整原件与设备记录在本机 [reader-open-o-final-20261105](D:/Shell/Github/mihon/.test-tmp/reader-open-o-final-20261105)。四份双页帧号经左右页纹理比对报警、重看带编号连续帧后修正，原复核稿保留在该目录。所有时差从同一请求计算。
+
+**离线重算**（PowerShell，从本工作树根目录运行）。此命令使用 44 份已保存的原件和经审核的帧号，不连接平板。输出目录须为新目录或空目录。
+
+```powershell
+$data = 'D:/Shell/Github/mihon/.test-tmp/reader-open-o-final-20261105'
+python -X utf8 scripts/reader_open_replay_summary.py --capture-root $data --endpoints "$data/analysis/endpoints-reviewed.csv" --output-dir "$data/replay-local"
+```
+
+后续局部改动只需 Luna 执行受影响模式的一对冷暖采集；正式矩阵才需要整组。单对采集命令与核对条件见[平板自动化操作](../automation/ANDROID_TABLET_ACCEPTANCE.md#下载章首开低成本复测)。
