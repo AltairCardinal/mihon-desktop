@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.ui.browse.source.globalsearch
 
+import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.key
@@ -25,6 +26,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -34,6 +36,7 @@ import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.source.service.SOURCE_COMPATIBILITY_LOG_TAG
 import tachiyomi.domain.source.service.SourceFilterResult
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourceMangaSearchService
@@ -44,6 +47,7 @@ import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceQueryReducer
 import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.domain.source.service.prepareSourceFilters
+import tachiyomi.domain.source.service.recordSourceFailureDiagnostics
 import tachiyomi.domain.source.service.sourceRecoveryAction
 import tachiyomi.domain.source.service.withSourceFailureIdentity
 import uy.kohesive.injekt.Injekt
@@ -61,6 +65,7 @@ abstract class SearchScreenModel(
     private val sourceMangaSearchService: SourceMangaSearchService = Injekt.get(),
     workerScope: CoroutineScope? = null,
     private val coroutineDispatcher: CoroutineDispatcher = Executors.newFixedThreadPool(5).asCoroutineDispatcher(),
+    private val sourceFailureLog: (String) -> Unit = { Log.e(SOURCE_COMPATIBILITY_LOG_TAG, it) },
 ) : StateScreenModel<SearchScreenModel.State>(initialState) {
 
     private val workerScope = workerScope ?: ioCoroutineScope
@@ -242,19 +247,18 @@ abstract class SearchScreenModel(
                             updateItem(source, SearchItemResult.Success(emptyList()), generation)
                         }
                         is SourceQueryState.Failure -> if (isActive) {
-                            updateItem(
-                                source,
-                                SearchItemResult.Error(
-                                    SourcePageError(
-                                        reduced.error.withSourceFailureIdentity(
-                                            identities.first { it.first === source }.second
-                                                .copy(sourceId = request.sourceId),
-                                        ),
-                                        reduced.recoveryAction,
-                                    ),
-                                ),
-                                generation,
+                            val error = reduced.error.withSourceFailureIdentity(
+                                identities.first { it.first === source }.second.copy(sourceId = request.sourceId),
                             )
+                            val failed = SearchItemResult.Error(
+                                SourcePageError(
+                                    error,
+                                    reduced.recoveryAction,
+                                ),
+                            )
+                            if (updateItem(source, failed, generation)) {
+                                error.recordSourceFailureDiagnostics(sourceFailureLog)
+                            }
                         }
                         is SourceQueryState.Loading -> Unit
                     }
@@ -275,12 +279,13 @@ abstract class SearchScreenModel(
         }
     }
 
-    private fun updateItem(source: Source, result: SearchItemResult, generation: Long) {
-        mutableState.update { current ->
-            if (current.generation != generation) return@update current
+    private fun updateItem(source: Source, result: SearchItemResult, generation: Long): Boolean {
+        val accepted = mutableState.updateAndGet { current ->
+            if (current.generation != generation) return@updateAndGet current
             val items = current.items.mutate { it[source] = result }
             current.copy(items = items.toSortedMap(sortComparator(items)).toPersistentMap())
         }
+        return accepted.generation == generation && accepted.items[source] === result
     }
 
     fun setMigrateDialog(currentId: Long, target: Manga) {

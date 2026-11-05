@@ -33,6 +33,7 @@ data class SourceFailureIdentity(
 
 private fun String?.safeDiagnosticField(): String = this
     ?.take(160)
+    ?.let { if (it.lastOrNull()?.isHighSurrogate() == true) it.dropLast(1) else it }
     ?.map { if (it.isISOControl() || it == '\u2028' || it == '\u2029') ' ' else it }
     ?.joinToString("")
     ?.ifBlank { null }

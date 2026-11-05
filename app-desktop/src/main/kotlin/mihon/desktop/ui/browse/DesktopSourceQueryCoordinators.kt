@@ -28,6 +28,7 @@ import kotlinx.coroutines.sync.withPermit
 import mihon.desktop.extension.InstalledExtension
 import mihon.domain.error.AppError
 import tachiyomi.domain.source.service.GlobalSearchSourceFilter
+import tachiyomi.domain.source.service.SOURCE_COMPATIBILITY_LOG_TAG
 import tachiyomi.domain.source.service.SourceFilterResult
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourcePageRequest
@@ -37,10 +38,15 @@ import tachiyomi.domain.source.service.SourceQueryReducer
 import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.domain.source.service.SourceRecoveryAction
 import tachiyomi.domain.source.service.prepareSourceFilters
+import tachiyomi.domain.source.service.recordSourceFailureDiagnostics
 import tachiyomi.domain.source.service.sourceRecoveryAction
 import tachiyomi.domain.source.service.withSourceFailureIdentity
 import tachiyomi.i18n.MR
 import java.util.Locale
+
+private fun logSourceCompatibility(message: String) {
+    System.err.println("[$SOURCE_COMPATIBILITY_LOG_TAG] $message")
+}
 
 sealed interface DesktopSourceRecoveryIntent {
     data class Retry(val request: SourcePageRequest) : DesktopSourceRecoveryIntent
@@ -80,8 +86,11 @@ internal class SourceQueryStatePublisher {
 class SourceBrowseQueryCoordinator(
     private val service: SourceMangaSearchService,
     private val failureIdentity: SourceFailureIdentity?,
+    private val sourceFailureLog: (String) -> Unit,
 ) {
-    constructor(service: SourceMangaSearchService) : this(service, null)
+    constructor(service: SourceMangaSearchService) : this(service, null, ::logSourceCompatibility)
+    constructor(service: SourceMangaSearchService, failureIdentity: SourceFailureIdentity?) :
+        this(service, failureIdentity, ::logSourceCompatibility)
 
     private data class SourceLoadKey(
         val sourceId: Long,
@@ -200,9 +209,11 @@ class SourceBrowseQueryCoordinator(
                 service.loadPageResult(source, request)
             }
         }
-        val result = if (loaded is SourcePageResult.Failure && failureIdentity != null) {
+        val result = if (loaded is SourcePageResult.Failure) {
             loaded.copy(
-                error = loaded.error.withSourceFailureIdentity(failureIdentity.copy(sourceId = request.sourceId)),
+                error = loaded.error.withSourceFailureIdentity(
+                    (failureIdentity ?: SourceFailureIdentity()).copy(sourceId = request.sourceId),
+                ),
             )
         } else {
             loaded
@@ -212,6 +223,9 @@ class SourceBrowseQueryCoordinator(
             val current = requireNotNull(authoritativeState)
             if (current.request != request) return@synchronized null
             commitLocked(reducer.reduce(current, result))
+        }
+        if (completed != null && result is SourcePageResult.Failure) {
+            result.error.recordSourceFailureDiagnostics(sourceFailureLog)
         }
         completed?.let(publisher::publish)
         return completed?.state ?: requireNotNull(state)
@@ -318,7 +332,10 @@ data class DesktopGlobalSearchState(
 
 class DesktopGlobalSearchCoordinator(
     private val service: SourceMangaSearchService,
+    private val sourceFailureLog: (String) -> Unit,
 ) : AutoCloseable {
+    constructor(service: SourceMangaSearchService) : this(service, ::logSourceCompatibility)
+
     private data class SearchIdentity(
         val query: String,
         val sourceFilter: GlobalSearchSourceFilter,
@@ -468,7 +485,11 @@ class DesktopGlobalSearchCoordinator(
                     source.id to (
                         previousSession?.coordinators?.get(source.id)
                             ?.takeIf { source.id in reusableStates }
-                            ?: SourceBrowseQueryCoordinator(service, owners.first { it.first === source }.second)
+                            ?: SourceBrowseQueryCoordinator(
+                                service,
+                                owners.first { it.first === source }.second,
+                                sourceFailureLog,
+                            )
                         )
                 },
                 onState = onState,

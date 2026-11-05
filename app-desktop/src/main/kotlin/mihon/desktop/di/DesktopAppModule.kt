@@ -749,9 +749,9 @@ private fun registerDesktopExtension(
         DesktopSourceManager(
             extensionManager = extensionManager,
             preferences = appPreferences,
-            additionalCatalogueSources = {
-                mihon.desktop.test.http.ReaderTestModeSourceBridge.sources() +
-                    mihon.desktop.test.http.HistoryCatalogTestSourceBridge.sources()
+            additionalSourceRegistrations = {
+                mihon.desktop.test.http.ReaderTestModeSourceBridge.registrations() +
+                    mihon.desktop.test.http.HistoryCatalogTestSourceBridge.registrations()
             },
         )
     } else {
@@ -759,9 +759,9 @@ private fun registerDesktopExtension(
             extensionManager = extensionManager,
             preferences = appPreferences,
             builtinSources = builtInSources,
-            additionalCatalogueSources = {
-                mihon.desktop.test.http.ReaderTestModeSourceBridge.sources() +
-                    mihon.desktop.test.http.HistoryCatalogTestSourceBridge.sources()
+            additionalSourceRegistrations = {
+                mihon.desktop.test.http.ReaderTestModeSourceBridge.registrations() +
+                    mihon.desktop.test.http.HistoryCatalogTestSourceBridge.registrations()
             },
         )
     }

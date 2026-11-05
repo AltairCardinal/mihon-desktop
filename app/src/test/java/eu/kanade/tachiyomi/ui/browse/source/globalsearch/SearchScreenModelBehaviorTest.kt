@@ -44,6 +44,45 @@ import tachiyomi.domain.source.service.SourceRecoveryAction
 class SearchScreenModelBehaviorTest {
 
     @Test
+    fun `diagnostic writer IO failure preserves broken source and healthy search result`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val original = NoSuchMethodError("private-query token=credential")
+        val broken = object : BaseCatalogueSource() {
+            override val id = 9L
+            override val name = "Broken"
+            override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage =
+                throw original
+        }
+        val healthy = object : BaseCatalogueSource() {
+            override val id = 10L
+            override val name = "Healthy"
+            override suspend fun getSearchManga(page: Int, query: String, filters: FilterList) =
+                MangasPage(emptyList(), false)
+        }
+        val records = mutableListOf<String>()
+        var stateAtWrite: SearchItemResult? = null
+        lateinit var model: SearchScreenModel
+        model = screenModel(broken, additionalSources = listOf(healthy), sourceFailureLog = {
+            records += it
+            stateAtWrite = model.state.value.items[broken]
+            throw java.io.IOException("controlled diagnostic sink failure")
+        })
+        model.updateSearchQuery("private-query")
+        model.search()
+        runCurrent()
+        assertEquals(1, records.size)
+        val error = assertInstanceOf(SearchItemResult.Error::class.java, model.state.value.items[broken])
+        assertSame(error, assertInstanceOf(SearchItemResult.Error::class.java, stateAtWrite))
+        assertInstanceOf(AppError.ExtensionIncompatible::class.java, error.pageError.error)
+        org.junit.jupiter.api.Assertions.assertTrue(
+            generateSequence(error.pageError.error.cause) { it.cause }.any { it === original },
+        )
+        assertInstanceOf(SearchItemResult.Success::class.java, model.state.value.items[healthy])
+        org.junit.jupiter.api.Assertions.assertFalse(records.single().contains("private-query"))
+        org.junit.jupiter.api.Assertions.assertFalse(records.single().contains("credential"))
+    }
+
+    @Test
     fun `equal source objects never exchange their frozen extension owners`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val firstRelease = CompletableDeferred<Unit>()
@@ -292,6 +331,7 @@ class SearchScreenModelBehaviorTest {
         additionalSources: List<Source> = emptyList(),
         extensionPackage: String? = null,
         installedExtensions: MutableStateFlow<List<Extension.Installed>>? = null,
+        sourceFailureLog: (String) -> Unit = {},
     ): SearchScreenModel {
         val preferences = preferences()
         val repository = mockk<MangaRepository>()
@@ -323,6 +363,7 @@ class SearchScreenModelBehaviorTest {
             sourceMangaSearchService = sourceMangaSearchService,
             workerScope = this,
             coroutineDispatcher = StandardTestDispatcher(testScheduler),
+            sourceFailureLog = sourceFailureLog,
         ) {
             init {
                 extensionFilter = extensionPackage

@@ -1545,6 +1545,7 @@ class DesktopExtensionInstallTransactionTest {
                     jarFile = runtimeArtifact,
                     classLoader = FixtureNewSource::class.java.classLoader,
                     metadata = readExtensionMeta(artifact),
+                    registeredSourceId = FixtureNewSource.ID,
                 ),
             )
         }

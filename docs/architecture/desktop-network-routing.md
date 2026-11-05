@@ -781,6 +781,54 @@ Android 错误组件复用已有文案、恢复动作和可选小字说明，展
 健康源和挂起源独立；后续查询/版本重新检查取消旧挂起任务，拒收旧结果并完成进度。
 这些规则不代表第三方元数据 getter 或日志 sink 已全部接线，相关欠项继续按 roadmap。
 
+#### 7.6.9 搜索兼容失败的实际诊断通道
+
+全局搜索绑定冻结归属后，通过共享 `recordSourceFailureDiagnostics` 输出单次兼容失败。
+Android 直接使用 ERROR 级 `android.util.Log` 和固定 `MihonExtension` tag；不能依赖只在
+Debug 初始化的通用 logger。它沿用现有 logcat 读取通道。Desktop 默认写既有 stderr，
+不新增日志文件、遥测、诊断页面或自动上传。搜索页面和 child coordinator 可注入写入端
+验证失败处理；生产默认通道须由真实搜索入口测试覆盖，不能仅以 formatter 单元测试验收。
+
+记录只包含冻结 sourceId、已安装包名/名称/版本、固定操作阶段、固定错误类型，以及原始
+链接错误的脱敏栈。未知字段明确写 unknown，不在报错时补读当前安装记录或第三方 getter。
+沿用 `safeCrashReport` 的消息剔除和栈标识过滤，栈文本最多 2048 字符；身份字段每项最多
+160 UTF-16 单元且不拆开有效代理对，移除控制和换行字符。包含 tag 的单条 UTF-8 记录小于
+4096 字节。搜索词、请求 URL、凭据、异常消息及源码文件名不进入新增记录；原 cause 仍
+保存在类型化失败中，不以脱敏字符串替换异常链。
+
+写入在状态 CAS 重试及 coordinator 锁之外完成，不随重组或 CAS 重试重复。普通诊断写入
+Exception 不覆盖原失败，也不取消健康源；写入端包装的取消、VM 致命错误、未知深尾及
+未标记的宿主 Error 仍传播。普通网络错误和取消不产生兼容日志。日志写入不构成搜索成功，
+也不触发作品持久化。
+
+此接线不修改现有 SafeCrashReportCodec 或结构化反馈协议：独立的安全崩溃文件/反馈预览
+不会因此自动附带这些 logcat 或 stderr 记录。导出崩溃日志本身的故障仍须独立定位；R8 后
+真实设备上的日志行为须按 EC-08 原生门验证，JVM/Robolectric 通过不能替代它。
+
+#### 7.6.10 宿主登记 ID 与失败时的只读识别
+
+共享 `SourceManager.getRegisteredSourceId(source)` 只查询宿主已有登记，按 `Source ===`
+匹配；默认实现和未知对象返回 null，不为补身份调用第三方 `id` getter。新登记 DTO
+`SourceRegistration` 的相等和 hash 只依赖引用身份及冻结 Long，不受插件自定义相等性影响。
+这不改变公开扩展 Source ABI、ID 算法或既有 InstalledExtension 整体相等协议，也不包装
+Source；不能据此宣称所有旧容器都不执行插件 equals。
+
+Android 复用当前 sourcesMap 的键，并用同一帧的键排除在线 stub。Desktop loader 在
+METADATA 守卫内保存首次实际 ID，并随 Loaded/Installed runtime 记录发布；按 ID 查源、
+版本、重载验证和候选去重使用该登记值。替换/卸载后旧引用不重新绑定给新实例；没有
+登记信息的测试/旧宿主记录保持未知，不能加失败时读取 getter 的回退。
+
+Desktop builtin 在构造时登记，两个内置测试桥提供宿主常量的 typed registration 快照。
+typed provider 的当前替换/清空即时可见。保留的 raw additional callback 只在原有 get/query
+读取链观察新引用并登记一次；已登记 alias 复用键。失败时的只读识别不刷新 raw callback，
+未曾登记的 raw 对象仍未知；raw 移除须由原有 get/query 观察，不另建事件系统。刷新先
+剔除已观察移除的旧记录，即使后续新源登记失败也不能继续认旧实例。原 builtin/首命中
+短路顺序保持，不能为查询前一源而触发后面坏源的 ID getter。
+
+源登记锁内不再获取 extension runtimeLock：候选读取消费锁外取得的已发布登记快照，避免
+runtime 发布同步唤醒源候选观察者时出现反向锁依赖。此设施为后续安全 metadata descriptor
+提供可靠 ID，不代表 Creator、旧迁移 picker 或全局搜索所有 id/name/lang 消费已保护。
+
 ## 8. 安全与隐私
 
 - 手动代理地址属于敏感配置，不写入普通运行日志。

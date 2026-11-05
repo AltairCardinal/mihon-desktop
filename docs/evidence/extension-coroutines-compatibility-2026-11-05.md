@@ -1036,3 +1036,88 @@ host/fatal/未知尾传播均已检查。每章可变对象回归关闭；归档
 未实施本片段的代理已独审atomic generation更新、Compose key和details接线通过。
 维护见7.6.8。此阶段补齐真实三源UI证据，仍不勾选EC07：完整元数据安全描述、实际诊断
 写入及其失败保护、原APK/R8验收均按原计划继续。
+
+## EC-07 宿主登记键与实际诊断阶段（2026-11-06）
+
+本阶段为两个独立写入边界：实施代理负责登记键，主代理负责日志接线；同一 worktree 的
+Gradle 窗口串行交接，主代理统一提交。共 28 个 Kotlin 文件（含 6 个旧 fake 的明确登记值
+适配），另更新本证据、roadmap 与维护说明。范围跨 loader/manager/真实页面，是因身份
+必须贯穿实际接线，不是另建插件协议、容器或日志平台；未碰已有 reader 首开任务文件。
+
+### 宿主登记键：正确红测、反证与最小实现
+
+- `ec07-registered-source-red`、`ec07-registered-android-stub-red` 确认未实现接口返回
+  null、Android stub 排除和 Desktop 查询/重载又读取失效 ID getter。新增
+  `SourceManager.getRegisteredSourceId` 只按现有宿主登记和 Source 引用查询；未知返回
+  null。新 `SourceRegistration` 不用插件 equals/hash。
+- Android 真实已安装替换链给出反证：equal-source 替换实际上已能发布，不能据 Map.equals
+  推测另建 identity-map 包装。现有每帧 LocalSource 引用变化已使该实际帧不同；保留真实
+  替换测试，仅复用原 map 的键，未改整体发布协议。
+- Desktop loader 保留首次守卫读取的 ID，Installed/Loaded runtime 携带登记；查询、版本、
+  重载和去重消费该键。builtin 构造登记，两个实际测试桥以宿主常量提供 typed 快照，
+  原 raw callback 的 get/query 登记/短路语义保留；只读识别不刷新 raw callback。
+- `ec07-registered-raw-edge-red` 确认失败刷新会残留已移除旧源，且 raw alias 仍探测
+  已登记 builtin 的坏 getter。最小修正为先剔除失效记录、复用 observed/previous/known
+  登记，保留首命中短路，不加失败时猜测 ID 的回退。
+- 独审发现登记锁内新增 runtime lookup 与 manager 发布存在反向锁依赖。
+  `ec07-registered-lock-order-red` 用真实 manager、owned 线程和有界 latch，证明持有
+  runtimeLock 时已发布候选查询不能完成；finally 释放后 join 退出。去掉该嵌套 lookup，
+  改用锁外取得的已发布登记快照，同一门通过。未创建永久死锁或全局清理进程。
+- 第一轮 Android 装置缺 SecurityPreferences/NotificationManager 不是产品红测；补齐原
+  通知 fixture 后的正确红才作为依据。`ec07-registered-lock-order-green` 初次入口缺
+  Spotless 插件属于过程脚本失败，修正脚本后以 final 为终态，不算产品回归。
+
+登记最终有效组合 **29 项，零失败/跳过**：domain 双目标各 1、Android 3、Desktop 24。
+`ec07-registered-source-green` 保留未受后改影响的 DTO 双目标、Android 新门和 typed
+快照门 4 项；`ec07-registered-source-regression` 保留未被末验替代的 20 项；
+`ec07-registered-lock-order-final` 的最新 raw 三门、真实 child-loader 和锁序门共 5 项。
+前两批 XML 已归档于同名 `.test-tmp/*-xml/`。最新 5 项 XML 在交窗后被下一次 JVM test
+清理，不能引用空归档；其权威 JSON 为 PASSED/exit0，原 log 明确列出 5 个 PASSED，
+15 秒终态有效，未为补归档重跑。根代理已核接口、锁顺序、实际测试和该日志。
+准确 18 文件严格格式通过，锁修正后对应 2 文件重验通过；未重跑全部 23 项。
+
+### 实际诊断：先失败，再接线与独审修正
+
+- `ec07-search-log-ui-red`：真实 Android Release 页面兼容提示已出现，但 ERROR tag
+  记录期望 1 实际 0；Desktop 实际页面 stderr 无归因 tag。Android 同一方法的 3 次
+  retry 只算 1 个独立方法。core 新 UTF-8 门另确认 160 单元截断会拆开 emoji，出现
+  `MalformedInputException`。XML 归档 `.test-tmp/ec07-search-log-ui-red-xml/`。
+- 新共享 reporter 先仅加空 API，再以 `ec07-search-log-domain-red` 取得 4 方法中
+  3 个真实行为红：无记录、未知/容量记录缺失、writer 调用次数为 0；普通错误零日志门
+  保持绿。空 API 不作为实现提交。`ec07-search-log-model-correct-red` 以实际 model
+  证明 writer 未调用，其余 7 方法通过。两个正确红 XML 已按同名目录归档。
+- `ec07-search-log-model-red` 的前导通配符方法选择器造成无输出 worker 换代，已通过
+  协调器停止本任务进程，标 CANCELLED，不算产品红；改用精确类后的 correct-red 有效。
+- 最小实现：共享 formatter 只记录冻结身份、固定 phase/kind，以及既有 safeCrashReport
+  处理后的原始链接错误栈。单字段最多 160 UTF-16 单元，不拆有效代理对；栈最多 2048
+  ASCII 字符，含 tag 的 UTF-8 单条小于 4096 字节。不输出 Throwable.message、查询词、
+  URL、凭据或源码文件名。普通 writer Exception 不遮蔽原错误，取消/致命/未知深尾和
+  未标记宿主 Error 仍传播。取消和普通网络失败不生成兼容日志。
+- Android 默认直接 Log.e：App.kt 的通用 logger 只在 Debug 初始化，不能作为 Release
+  真实诊断接线。Desktop 默认使用现有 stderr；可注入 writer 测真实 IO 失败，不引入
+  独立日志文件、反馈 codec/schema 或新的 DI 服务。旧 child 1/2 参数构造器保留。
+- 未实施日志部分的代理独审发现 Android 先写后更新的代际竞态，以及普通 child 丢失
+  已知 request ID。`ec07-search-log-acceptance-red` 用真实 model 证明 writer 看到的是
+  Loading 而非已接受 Error；实际 child 记录 source=unknown 而非已知 9。其余旧行为
+  和迟到请求零日志门保持绿。原 XML 归档同名目录。
+- Android 最小修正为 updateAndGet 返回发布快照，同时检查 generation 和本次新建
+  result 的引用身份；只有接受后在 CAS 外写入，不用跨重试残留 flag。Desktop 只在
+  commit 接受后、锁外写入；始终以可信 request ID 补最小身份，包名/版本未知仍未知，
+  已有冻结身份不改绑。两处补丁已独立复审代码 GO。
+
+最终 `ec07-search-log-focused-green` **PASSED/exit0，52 秒**。根代理核对并归档 9 份
+XML 于 `.test-tmp/ec07-search-log-focused-green-xml/`，**35 项，零失败/零跳过**：
+domain reporter 两目标各 4、core guard/UTF-8 9、Android 真实 UI 1/model 8/recovery 2、
+Desktop 真实 UI 3/实际诊断 2/分页和 owner 取消各 1。准确 domain2/core2/app3/Desktop3
+共 10 文件定向严格格式通过。真实 Android 页面明确断言 BuildConfig.DEBUG=false、
+三个查询分别记录旧版本、新版本和 unknown 归属，每次仅一条；Desktop 实际入口使用
+默认 stderr，更新后重查共两条且保留健康结果。额外 writer IO 失败不掩盖本源错误、
+健康源仍完成；迟到失效 child 不输出记录。没有运行完整模块或全量验证。
+未实施日志部分的代理已独立核对最终 JSON、九份归档 XML、准确格式目标和两处修正，
+本日志阶段最终 GO；不将该审查扩大到尚欠的安全元数据描述或 R8 原生门。
+
+本段为有效组合和最终 focused 的分别说明，不声称所有登记门已在最终日志代码上重跑。
+共享网络、反馈协议未改；安全崩溃文件/结构化反馈预览不会因此自动携带 logcat/stderr。
+维护见 desktop-network-routing 7.6.9–10。EC-06/07 仍未整项完成：Creator/legacy picker
+以及全局搜索元数据安全描述继续，EC-08 原 APK/ART/R8 原生验收仍为必做；不发布候选、
+不操作用户平板、不据 JVM 结果宣布 Android17 厂商设备已验证。

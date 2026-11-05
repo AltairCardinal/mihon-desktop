@@ -21,6 +21,7 @@ import mihon.domain.extension.service.ExtensionInstallFailure
 import mihon.domain.extension.service.ExtensionInstallRequest
 import mihon.domain.extension.service.ExtensionInstallState
 import mihon.domain.extension.suggestion.ExtensionInventory
+import tachiyomi.domain.source.service.SourceRegistration
 
 /**
  * Manages desktop extensions lifecycle: loading, tracking, and providing access to sources.
@@ -132,15 +133,20 @@ class DesktopExtensionManager(
 
     /** Returns a source by its ID, or null if not found. */
     fun getSource(sourceId: Long): Source? =
-        synchronized(runtimeLock) { loadedExtensions.find { it.source.id == sourceId }?.source }
+        synchronized(runtimeLock) { loadedExtensions.find { it.registeredSourceId == sourceId }?.source }
+
+    /** Current runtime registration only; never call a foreign getter during lookup. */
+    fun getRegisteredSourceId(source: Source): Long? = synchronized(runtimeLock) {
+        loadedExtensions.firstOrNull { it.source === source }?.registeredSourceId
+    }
 
     /** Returns the installed extension package that owns [sourceId]. */
     override fun getExtensionPackage(sourceId: Long): String? = synchronized(runtimeLock) {
-        loadedExtensions.find { it.source.id == sourceId }?.jarFile?.nameWithoutExtension
+        loadedExtensions.find { it.registeredSourceId == sourceId }?.jarFile?.nameWithoutExtension
     }
 
     fun getExtensionVersion(sourceId: Long): String? = synchronized(runtimeLock) {
-        loadedExtensions.find { it.source.id == sourceId }?.let { loaded ->
+        loadedExtensions.find { it.registeredSourceId == sourceId }?.let { loaded ->
             val meta = loaded.metadata
             "${meta?.versionName.orEmpty()}+${meta?.versionCode ?: 0L}"
         }
@@ -148,7 +154,7 @@ class DesktopExtensionManager(
 
     fun requiresApkReconversion(sourceId: Long): Boolean =
         installedExtensions.value.any { extension ->
-            extension.requiresApkReconversion && extension.sources.any { it.id == sourceId }
+            extension.requiresApkReconversion && extension.registeredSources.any { it.sourceId == sourceId }
         }
 
     /**
@@ -186,6 +192,9 @@ class DesktopExtensionManager(
                         language = meta?.language.orEmpty(),
                         isNsfw = meta?.isNsfw == true,
                         metadataSnapshot = meta,
+                        registeredSources = exts.mapNotNull { loaded ->
+                            loaded.registeredSourceId?.let { SourceRegistration(loaded.source, it) }
+                        },
                     )
                 },
         )
@@ -216,7 +225,7 @@ class DesktopExtensionManager(
         val removed = lifecycleGate.withPublicOperation {
             releaseRuntime(extension.pkgName)
             extension.jarFile.delete().also { deleted ->
-                if (!deleted) reloadRuntime(extension.pkgName, extension.sources.map { it.id }.toSet())
+                if (!deleted) reloadRuntime(extension.pkgName, extension.registeredSources.map { it.sourceId }.toSet())
             }
         }
         publishInstalledExtensions()
@@ -239,7 +248,7 @@ class DesktopExtensionManager(
                         false
                     }
                 } else {
-                    reloadRuntime(extension.pkgName, extension.sources.map { it.id }.toSet())
+                    reloadRuntime(extension.pkgName, extension.registeredSources.map { it.sourceId }.toSet())
                     false
                 }
             }
@@ -280,7 +289,7 @@ class DesktopExtensionManager(
             expectedSourceIds == null -> !jarExists || replacements.isNotEmpty()
             replacements.isEmpty() -> false
             expectedSourceIds.isEmpty() -> true
-            else -> replacements.map { it.source.id }.toSet().containsAll(expectedSourceIds)
+            else -> replacements.mapNotNull { it.registeredSourceId }.toSet().containsAll(expectedSourceIds)
         }
         if (!valid) {
             closeLoaders(replacements)
@@ -361,6 +370,7 @@ data class InstalledExtension(
     val language: String = "",
     val isNsfw: Boolean = false,
     val metadataSnapshot: ExtensionMeta? = null,
+    val registeredSources: List<SourceRegistration> = emptyList(),
 ) {
     val name: String get() = displayName.ifBlank { jarFile.nameWithoutExtension }
     val pkgName: String get() = jarFile.nameWithoutExtension

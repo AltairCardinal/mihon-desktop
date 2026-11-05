@@ -65,6 +65,8 @@ import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.i18n.MR
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.prefs.Preferences
@@ -126,6 +128,10 @@ class GlobalSearchResultProductionWiringTest {
                 every { extensionPresentationService } returns manager
             }
             val scene = ImageComposeScene(320, 1_400, coroutineContext = coroutineContext) {}
+            val previousErrorStream = System.err
+            val capturedErrors = ByteArrayOutputStream()
+            val errorStream = PrintStream(capturedErrors, true, Charsets.UTF_8)
+            System.setErr(errorStream)
             try {
                 scene.setContent {
                     CompositionLocalProvider(
@@ -156,6 +162,15 @@ class GlobalSearchResultProductionWiringTest {
                 assertFalse(diagnostics.contains("9.9.9"), diagnostics)
                 assertFalse(diagnostics.contains("private-query"), diagnostics)
                 assertFalse(diagnostics.contains("routing-key-must-not-be-identity"), diagnostics)
+                val report = capturedErrors.toString(Charsets.UTF_8)
+                assertTrue(report.contains("[MihonExtension]"), report)
+                assertTrue(report.contains("package=trusted.package"), report)
+                assertTrue(report.contains("version=1.2.3"), report)
+                assertTrue(report.contains("operation=SEARCH"), report)
+                assertTrue(report.contains("NoSuchMethodError"), report)
+                assertFalse(report.contains("private-query"), report)
+                assertFalse(report.contains("9.9.9"), report)
+                assertFalse(report.contains("routing-key-must-not-be-identity"), report)
                 scene.render()
                 assertTrue(text(scene).contains("Trusted extension"), text(scene))
                 assertTrue(text(scene).contains("1.2.3"), text(scene))
@@ -175,10 +190,18 @@ class GlobalSearchResultProductionWiringTest {
                 assertEquals(listOf("private-query"), healthyQueries)
                 assertTrue(pendingCancelled.isCompleted)
                 assertEquals(2, pendingCalls.get())
+                val finalReport = capturedErrors.toString(Charsets.UTF_8)
+                assertEquals(2, finalReport.lineSequence().count { it.startsWith("[MihonExtension]") })
+                assertTrue(finalReport.contains("version=9.9.9"), finalReport)
             } finally {
-                release.complete(Unit)
-                coordinator.close()
-                scene.close()
+                try {
+                    release.complete(Unit)
+                    coordinator.close()
+                    scene.close()
+                } finally {
+                    System.setErr(previousErrorStream)
+                    errorStream.close()
+                }
             }
         }
     }

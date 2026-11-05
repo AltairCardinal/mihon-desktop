@@ -8,6 +8,7 @@ import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceFactory
 import mihon.domain.error.AppError
+import tachiyomi.domain.source.service.SourceRegistration
 import tachiyomi.domain.source.service.toSourceAppError
 import java.io.File
 import java.lang.reflect.Modifier
@@ -118,20 +119,19 @@ open class DesktopExtensionLoader(
             // A JAR scan can discover both a SourceFactory and one of its concrete products.
             // Source IDs are the runtime identity, so publish only the first discovered
             // provider from this installed artifact.
-            val metadataValidated = guardSourceOperation(SourceOperationPhase.METADATA) {
-                sources.forEach { source ->
-                    source.id
-                    source.name
-                    source.lang
-                }
-                sources.distinctBy(Source::id)
-            }
-            metadataValidated.map { source ->
+            val metadataValidated = sources.map { source ->
+                val sourceId = guardSourceOperation(SourceOperationPhase.METADATA) { source.id }
+                guardSourceOperation(SourceOperationPhase.METADATA) { source.name }
+                guardSourceOperation(SourceOperationPhase.METADATA) { source.lang }
+                SourceRegistration(source, sourceId)
+            }.distinctBy { it.sourceId }
+            metadataValidated.map { registration ->
                 LoadedExtension(
-                    source = source,
+                    source = registration.source,
                     jarFile = jarFile,
                     classLoader = classLoader,
                     metadata = metadata,
+                    registeredSourceId = registration.sourceId,
                 )
             }
         } catch (e: Throwable) {
@@ -303,6 +303,7 @@ data class LoadedExtension(
     val jarFile: File,
     val classLoader: ClassLoader,
     val metadata: ExtensionMeta? = null,
+    val registeredSourceId: Long? = null,
 )
 
 data class ExtensionLoadDiagnostic(

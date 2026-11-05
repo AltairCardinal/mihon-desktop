@@ -10,6 +10,15 @@ import java.lang.reflect.InvocationTargetException
 
 class SourceOperationGuardContractTest {
     @Test
+    fun `bounded diagnostic identity keeps supplementary characters valid UTF8`() {
+        val name = "x" + "\uD83D\uDE00".repeat(100)
+        val label = SourceFailureIdentity(extensionName = name).diagnosticLabel()
+        val encoder = Charsets.UTF_8.newEncoder()
+        encoder.encode(java.nio.CharBuffer.wrap(label))
+        assertEquals(79, label.windowed(2).count { it == "\uD83D\uDE00" })
+    }
+
+    @Test
     fun `nested guard keeps the frozen owner and precise phase through transport wrappers`() {
         val owner = SourceFailureIdentity(9L, "old.package", "Old extension", "1.2.3", 123L)
         val linkage = NoSuchMethodError("future API")

@@ -129,7 +129,7 @@ class SourceMembershipReactiveWiringTest {
         var snapshot = emptyList<Pair<File, FakeSource>>()
 
         override fun loadExtensions(): List<LoadedExtension> = snapshot.map { (jar, source) ->
-            LoadedExtension(source, jar, ClassLoader.getPlatformClassLoader())
+            LoadedExtension(source, jar, ClassLoader.getPlatformClassLoader(), registeredSourceId = source.id)
         }
     }
 

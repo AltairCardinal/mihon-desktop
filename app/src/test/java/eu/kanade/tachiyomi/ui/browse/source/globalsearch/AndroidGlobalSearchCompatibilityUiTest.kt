@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.browse.source.globalsearch
 
 import android.app.Application
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
@@ -21,6 +22,7 @@ import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
@@ -37,6 +39,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -44,6 +47,7 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowLog
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.AndroidPreferenceStore
 import tachiyomi.domain.library.service.LibraryPreferences
@@ -67,6 +71,8 @@ class AndroidGlobalSearchCompatibilityUiTest {
 
     @Test
     fun `actual search shows the frozen owner and new query cancels only the old pending source`() {
+        assertFalse(BuildConfig.DEBUG)
+        ShadowLog.clear()
         val previous = Injekt
         Injekt = InjektScope(DefaultRegistrar())
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
@@ -158,6 +164,18 @@ class AndroidGlobalSearchCompatibilityUiTest {
             compose.onNodeWithText(message).assertIsDisplayed()
             compose.onNodeWithText("Trusted extension (1.2.3)").assertIsDisplayed()
             compose.onNodeWithText("private extension ABI details", substring = true).assertDoesNotExist()
+            compose.waitUntil(10_000) {
+                ShadowLog.getLogsForTag("MihonExtension").count { it.type == Log.ERROR } == 1
+            }
+            val records = ShadowLog.getLogsForTag("MihonExtension").filter { it.type == Log.ERROR }
+            assertEquals(1, records.size)
+            val report = records.single().msg
+            assertTrue(report.contains("package=trusted.package"))
+            assertTrue(report.contains("version=1.2.3"))
+            assertTrue(report.contains("operation=SEARCH"))
+            assertTrue(report.contains("NoSuchMethodError"))
+            assertFalse(report.contains("9.9.9"))
+            assertFalse(report.contains("private extension ABI details"))
             assertEquals(1, brokenCalls.get())
             assertEquals(1, healthyCalls.get())
             assertFalse(pendingCancelled.isCompleted)
@@ -197,6 +215,12 @@ class AndroidGlobalSearchCompatibilityUiTest {
             }
             assertEquals(3, brokenCalls.get())
             assertEquals(3, healthyCalls.get())
+            compose.waitUntil(10_000) {
+                ShadowLog.getLogsForTag("MihonExtension").count { it.type == Log.ERROR } == 3
+            }
+            val allRecords = ShadowLog.getLogsForTag("MihonExtension").filter { it.type == Log.ERROR }
+            assertTrue(allRecords[1].msg.contains("version=9.9.9"))
+            assertTrue(allRecords[2].msg.contains("source=9, package=unknown"))
         } finally {
             releaseBroken.complete(Unit)
             activity.get().setContent {}

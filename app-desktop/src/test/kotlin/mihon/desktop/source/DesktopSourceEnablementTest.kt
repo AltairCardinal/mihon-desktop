@@ -4,6 +4,7 @@ import mihon.desktop.extension.DesktopExtensionLoader
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.extension.LoadedExtension
 import mihon.desktop.settings.DesktopAppPreferences
+import mihon.domain.source.model.SourceScreenContent
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertSame
@@ -28,7 +29,9 @@ class DesktopSourceEnablementTest {
             override val supportsLatest = true
         }
         val loader = object : DesktopExtensionLoader(File("missing")) {
-            override fun loadExtensions() = listOf(LoadedExtension(source, File("source-only.jar"), javaClass.classLoader))
+            override fun loadExtensions() = listOf(
+                LoadedExtension(source, File("source-only.jar"), javaClass.classLoader, registeredSourceId = source.id),
+            )
         }
         val preferences = DesktopAppPreferences(DesktopPreferenceStore(root.node("source-only")))
         preferences.enabledLanguages.set(setOf("en"))
@@ -38,7 +41,7 @@ class DesktopSourceEnablementTest {
             assertTrue(source in manager.getQuerySources())
             val model = mihon.desktop.ui.browse.DesktopSourcesScreenModel(manager, preferences)
             try {
-                val content = model.state.value.sourceState.content as mihon.domain.source.model.SourceScreenContent.Content
+                val content = model.state.value.sourceState.content as SourceScreenContent.Content
                 assertTrue(content.sources.any { it.id == source.id && it.supportsLatest })
                 assertTrue(source in manager.getEnabledQuerySourceCandidates(preferences))
             } finally {
