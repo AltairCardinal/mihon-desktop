@@ -33,6 +33,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -347,6 +348,17 @@ open class ReaderActivity : BaseActivity() {
         }
 
         Box(modifier = Modifier.fillMaxSize()) {
+            if (ReaderOpenLatencyProbe.enabled) {
+                SideEffect {
+                    if (ReaderOpenLatencyProbe.enabled) {
+                        eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.record(
+                            "overlay_composed",
+                            fields = mapOf("context" to "ROOT"),
+                            session = diagnosticSession,
+                        )
+                    }
+                }
+            }
             if (!state.menuVisible && showPageNumber) {
                 ReaderPageIndicator(
                     currentPage = state.currentPage,
@@ -357,7 +369,7 @@ open class ReaderActivity : BaseActivity() {
                 )
             }
 
-            ContentOverlay(state = state)
+            ContentOverlay(brightnessValue = state.brightnessOverlayValue)
 
             AppBars(state = state)
         }
@@ -593,7 +605,18 @@ open class ReaderActivity : BaseActivity() {
     }
 
     @Composable
-    private fun ContentOverlay(state: ReaderViewModel.State) {
+    private fun ContentOverlay(brightnessValue: Int) {
+        if (ReaderOpenLatencyProbe.enabled) {
+            SideEffect {
+                if (ReaderOpenLatencyProbe.enabled) {
+                    eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.record(
+                        "overlay_composed",
+                        fields = mapOf("context" to "BRIGHTNESS_WRAPPER"),
+                        session = diagnosticSession,
+                    )
+                }
+            }
+        }
         val flashOnPageChange by readerPreferences.flashOnPageChange().collectAsState()
 
         val colorOverlayEnabled by readerPreferences.colorFilter().collectAsState()
@@ -602,11 +625,11 @@ open class ReaderActivity : BaseActivity() {
         val colorOverlayBlendMode = remember(colorOverlayMode) {
             ReaderPreferences.ColorFilterMode.getOrNull(colorOverlayMode)?.second
         }
-        val colorFilterParams = remember(colorOverlayEnabled, colorOverlay, state.brightnessOverlayValue) {
+        val colorFilterParams = remember(colorOverlayEnabled, colorOverlay, brightnessValue) {
             buildAndroidReaderColorFilterParams(
                 tintEnabled = colorOverlayEnabled,
-                brightnessEnabled = state.brightnessOverlayValue != 0,
-                brightness = state.brightnessOverlayValue / 100f,
+                brightnessEnabled = brightnessValue != 0,
+                brightness = brightnessValue / 100f,
                 r = Color.red(colorOverlay),
                 g = Color.green(colorOverlay),
                 b = Color.blue(colorOverlay),

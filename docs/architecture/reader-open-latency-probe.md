@@ -49,6 +49,12 @@ R2起`targetPage`是零基源页索引，省略时为0；配置在Main读取后�
 
 P4只在一次ChapterLoader加载内传递已解析下载位置，默认factory以ReaderChapter对象身份限定它，不能把它用于其它章节。它不是持久缓存或已打开文件描述符；新加载仍重新解析，取消/被替代的加载沿用原generation与loader回收。目录枚举、候选图片策略、排序与页面流仍执行原生产实现。位置随后消失或访问失败时发布存储错误，不另找其它下载位置或在线回退；原Boolean下载查询及其它下载消费者保持原契约。控制与P4使用相同事件槽与记录器，比较CHAPTER_PATH时必须明确上述语义变化，不能将消费已解析值描述为又执行一次查找。
 
+## 浮层 composition body 提交诊断
+
+O9 在实际消费阅读器状态的 Box body 与亮度 ContentOverlay body 直接放置条件 SideEffect，沿用 ReaderDiagnostics，记录 `overlay_composed`，context 分别为 ROOT 和 BRIGHTNESS_WRAPPER。process 与 Activity diagnosticSession 定位会话；它们不是可跳过的独立 Composable 探针，也不增加子组件 callback 参数。只有 Probe 开启时注册 SideEffect，执行时再次检查；关闭时不创建该分支 SideEffect 或字段 Map。开启状态不是 Compose State，配置须在本次 Reader 创建前完成；中途打开不保证立即触发 composition。
+
+计数说明这些 body 成功提交，不能代替叶节点重组、实际绘制次数、CPU 成本或物理呈现。毫秒量化、日志轮转、队尾强停与丢弃边界仍适用，缺事件时不能无条件填零。对照两臂须携带相同诊断；实际提交次数不同也会改变诊断写入量，Probe ON 的小幅耗时差不能直接当作关闭探针后的产品净收益。真实亮度及菜单／错误反馈仍由生产状态与原偏好订阅驱动，诊断不参与显示决策。
+
 ## 开销、隔离与失败边界
 
 O7另在既有ReaderDiagnostics滚动日志中记录实际采样调用，不新增稀疏时间槽。仅`ReaderOpenLatencyProbe.enabled`为true时创建调用上下文：`sample_begin/end`包围`sampleOriginal`，`sample_region_begin/end`紧贴真实`decoder.decode`。以process、Activity session、chapter、sourceIndex及进程内serial关联；context为本调用内从1开始的region序号，调用级为0。serial溢出后从1重新开始，不是持久身份。关闭时不创建每调用上下文、序号或字段Map；已开启的调用即使中途关闭仍闭合边界。

@@ -48,6 +48,134 @@ class ReaderChapterErrorDialogIntegrationTest {
     @get:Rule val compose = createEmptyComposeRule()
 
     @Test
+    fun `O9 overlay commit diagnostics follow enabled and remain silent when disabled`() =
+        withOverlayDiagnostics { logs ->
+            withReader { reader, model ->
+                drainOverlayDiagnostics(logs, reader)
+                assertTrue("Actual ROOT commit marker is missing", overlayCommits(logs, reader, "ROOT") > 0)
+                assertTrue(
+                    "Actual brightness wrapper commit marker is missing",
+                    overlayCommits(logs, reader, "BRIGHTNESS_WRAPPER") > 0,
+                )
+                val rootBefore = overlayCommits(logs, reader, "ROOT")
+                val wrapperBeforeUnrelated = overlayCommits(logs, reader, "BRIGHTNESS_WRAPPER")
+                compose.runOnIdle { model.showMenus(true) }
+                compose.waitForIdle()
+                drainOverlayDiagnostics(logs, reader)
+                assertTrue(overlayCommits(logs, reader, "ROOT") > rootBefore)
+                assertEquals(
+                    "Narrow brightness input keeps this wrapper idle for an unrelated real State event",
+                    wrapperBeforeUnrelated,
+                    overlayCommits(logs, reader, "BRIGHTNESS_WRAPPER"),
+                )
+                val brightnessBefore = overlayCommits(logs, reader, "BRIGHTNESS_WRAPPER")
+                compose.runOnIdle { model.setBrightnessOverlayValue(-30) }
+                compose.waitForIdle()
+                drainOverlayDiagnostics(logs, reader)
+                assertTrue(overlayCommits(logs, reader, "BRIGHTNESS_WRAPPER") > brightnessBefore)
+                compose.onNodeWithText(MR.strings.action_retry.getString(reader)).assertIsDisplayed()
+                compose.onNodeWithText(MR.strings.action_close.getString(reader)).assertIsDisplayed()
+                val rootEnabled = overlayCommits(logs, reader, "ROOT")
+                val brightnessEnabled = overlayCommits(logs, reader, "BRIGHTNESS_WRAPPER")
+                ReaderOpenLatencyProbe.enabled = false
+                compose.runOnIdle {
+                    model.showMenus(false)
+                    model.setBrightnessOverlayValue(-60)
+                }
+                compose.waitForIdle()
+                drainOverlayDiagnostics(logs, reader)
+                assertEquals(rootEnabled, overlayCommits(logs, reader, "ROOT"))
+                assertEquals(brightnessEnabled, overlayCommits(logs, reader, "BRIGHTNESS_WRAPPER"))
+                compose.onNodeWithText(MR.strings.action_close.getString(reader)).performClick()
+                compose.runOnIdle { assertTrue(reader.isFinishing) }
+            }
+        }
+
+    // Stage two runs only after the actual body markers have their own genuine RED/GREEN.
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `O9 unrelated state keeps brightness wrapper idle while actual brightness still draws`() =
+        withOverlayDiagnostics { logs ->
+            withReader { reader, model ->
+                drainOverlayDiagnostics(logs, reader)
+                assertTrue(overlayCommits(logs, reader, "ROOT") > 0)
+                assertTrue(overlayCommits(logs, reader, "BRIGHTNESS_WRAPPER") > 0)
+                val rootBefore = overlayCommits(logs, reader, "ROOT")
+                val brightnessBefore = overlayCommits(logs, reader, "BRIGHTNESS_WRAPPER")
+                compose.runOnIdle { model.showMenus(true) }
+                compose.waitForIdle()
+                drainOverlayDiagnostics(logs, reader)
+                assertTrue(overlayCommits(logs, reader, "ROOT") > rootBefore)
+                assertEquals(brightnessBefore, overlayCommits(logs, reader, "BRIGHTNESS_WRAPPER"))
+                val beforePixel = overlayCenterPixel(reader)
+                compose.runOnIdle { model.setBrightnessOverlayValue(-50) }
+                compose.waitForIdle()
+                drainOverlayDiagnostics(logs, reader)
+                assertTrue(overlayCommits(logs, reader, "BRIGHTNESS_WRAPPER") > brightnessBefore)
+                org.junit.Assert.assertNotEquals(beforePixel, overlayCenterPixel(reader))
+                compose.onNodeWithText(MR.strings.action_retry.getString(reader)).assertIsDisplayed()
+                compose.onNodeWithText(MR.strings.action_close.getString(reader)).assertIsDisplayed()
+            }
+        }
+
+    private fun overlayCenterPixel(reader: ReaderActivity): Int {
+        var pixel = 0
+        compose.runOnIdle {
+            val view = reader.binding.composeOverlay
+            assertTrue("The real overlay must be laid out before pixel observation", view.width > 0 && view.height > 0)
+            val image = android.graphics.Bitmap.createBitmap(
+                view.width,
+                view.height,
+                android.graphics.Bitmap.Config.ARGB_8888,
+            )
+            try {
+                view.draw(android.graphics.Canvas(image))
+                pixel = image.getPixel(view.width / 2, view.height / 3)
+            } finally {
+                image.recycle()
+            }
+        }
+        return pixel
+    }
+
+    private fun overlayCommits(logs: java.io.File, reader: ReaderActivity, context: String): Int =
+        overlayLogLines(logs).count {
+            "event=overlay_composed " in it && "context=$context" in it &&
+                "session=${reader.diagnosticSession} " in it
+        }
+
+    private fun overlayLogLines(logs: java.io.File): List<String> =
+        logs.listFiles().orEmpty().flatMap { it.readLines(Charsets.UTF_8) }
+
+    private fun drainOverlayDiagnostics(logs: java.io.File, reader: ReaderActivity) {
+        val serial = System.nanoTime()
+        eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.record(
+            "o9_test_drain",
+            fields = mapOf("serial" to serial),
+            session = reader.diagnosticSession,
+        )
+        compose.waitUntil(timeoutMillis = 5_000) {
+            overlayLogLines(logs).any { "event=o9_test_drain " in it && "serial=$serial" in it }
+        }
+    }
+
+    private fun withOverlayDiagnostics(block: (java.io.File) -> Unit) {
+        val logs = java.nio.file.Files.createTempDirectory("reader-o9-overlay").toFile()
+        val previousSink = eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.sink
+        val sink = eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnosticSink(directory = { logs })
+        eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.sink = sink
+        ReaderOpenLatencyProbe.configure(true, 1, 1, "o9-overlay", 4)
+        try {
+            block(logs)
+        } finally {
+            ReaderOpenLatencyProbe.configure(false, -1, -1, "off")
+            eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.sink = previousSink
+            sink.close()
+            logs.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `initial chapter error has a visible close action which finishes the reader`() = withReader { reader, _ ->
         compose.onNodeWithText(MR.strings.action_close.getString(reader)).assertIsDisplayed().performClick()
         compose.runOnIdle { assertTrue(reader.isFinishing) }

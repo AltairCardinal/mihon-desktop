@@ -47,15 +47,15 @@ A1重装同一控制APK后，`conditions-o1-a1-install.json` 成功读回当前o
 | --- | --- | --- | --- | --- |
 | O1 合并图片准备IO与Main往返 | 测量/分析收口，候选补丁归档并恢复基线 | 20（A2为隔夜补充控制） | 未证明跨模式稳定净收益；详见最终裁决 | 不采用 |
 | O2 双页事实变化与冗余重建 | 10项Android/1项共享/格式与独立审查通过；12份真机对照及正常OFF往返收口 | 12 | 同值回调认证增量4→0；真实时延方向混合 | 保留低成本去冗余，不承诺稳定体验收益 |
-| O3 配对恢复按需重绑 | 未实施 | 0 | 尚未测量 | 待执行 |
-| O4 列表复用与惰性下载过滤 | 未实施 | 0 | 尚未测量 | 待执行 |
-| O5 AUTO首次布局 | 未取证 | 0 | 尚未测量 | 待执行 |
-| O6 邻单元准备优先级 | 未取证 | 0 | 尚未测量 | 待执行 |
-| O7 匹配与首图竞争 | 未取证 | 0 | 尚未测量 | 待执行 |
-| O8 索引/监听 | 未实施 | 0 | 尚未测量 | 待执行 |
-| O9 浮层状态订阅 | 未实施 | 0 | 尚未测量 | 待执行 |
+| O3 配对恢复按需重绑 | 真实RED/GREEN、12份有效记录对照、精确恢复收口 | 12（single/dual ON） | 冗余Reload消除，但首开／近黑无稳定净收益 | 不采用门控，保留记录诊断 |
+| O4 列表复用与惰性下载过滤 | 真实VM接线／格式与正常single往返通过 | 12（single/dual ON） | 初始章节查询2→1；SHOW_ALL下载判断1→0；时延／近黑方向混合 | 采用低成本去冗余 |
+| O5 AUTO首次布局 | 无效single→dual已取证，候选红绿／画面通过，已恢复 | 完整性能0；构造资格见O5 | 候选消除已观察无效构造，但方向重建使完整首绘端点不能对齐 | 不采用等待，保留六槽诊断 |
+| O6 邻单元准备优先级 | 红绿／独立审查／首开与有限首翻完成，已恢复 | 首开12；晚首翻4 | OFF首次395.231→400.078ms、ON356.966→373.454ms；近黑无一致改善且邻页就绪后移 | 不采用读取门 |
+| O7 匹配与首图竞争 | 真实调用诊断／租约红绿／对照完成，已恢复租约 | 正式12；资格4 | UNIT前确定重叠5/6→0/6，但ON工作后移；首绘／近黑混合 | 保留诊断，不采用租约 |
+| O8 索引/监听 | 六项共享／Android接线与格式、正常OFF/ON往返完成 | 正式12；另排除1／conditioning1 | 8/187页查询扫描72/35,156→0；首开无稳定改善；监听覆盖不足支撑聚合 | 采用现有索引复用，不实施章级信号 |
+| O9 浮层状态订阅 | 五方法／格式与12份对照、Probe OFF正常往返完成 | 正式12；资格2 | UNIT前wrapper3→1、parent仍3；首次完整双图均值偏快，暖态变慢，受诊断开销／trace限制 | 保留窄参数与默认关闭诊断 |
 | O10 Activity归因 | 未取证 | 0 | 尚未测量 | 待执行 |
-| O11 profile可比性 | APK含profile；安装块实际filter为verify，profile应用收益未测 | 0 | 尚未测量 | 待执行 |
+| O11 profile可比性 | 实际release／benchmark profile已核，当前B9目标Reader七类未命中；设备条件待核 | 0 | profile存在不证明ART应用或首开收益 | 待收口 |
 
 ## O1：先确认真实冗余读取
 
@@ -582,3 +582,55 @@ root逐份查看12段原生PTS连续边界，卷标题部分先出现、随后�
 Probe OFF正常阅读检查原件`normal-roundtrip-dual-off/`和`normal-roundtrip-dual-on/`：本次均5→6→5，退出详情第5页、重开地图左／标题右，三个目标ROI相同；相邻截图间0.7秒中心像素相同只说明观测区间稳定，不等于native IDLE。OFF前翻目录左／角色表右；ON前翻角色表左／右侧留黑，原件如实保留，未把它解释成正确双图配对或新回归。历史ON 5→6→4问题本次未复现，不称修复。此检查不是快速首翻计时，不承诺首翻无代价。
 
 最终实际留装B8，Probe OFF、无benchmark进程、Asleep/Changing=false，matching ON、双页RTL、正常Back保存第5页，读回证据`correctness-final/final-verification.json`。本项新增内部架构说明索引生命周期与稳定快照前提；O9草案／诊断不入本提交。未推送、未正式发布、未更新公共能力说明；继续O9–O11。
+
+
+## O9 浮层实际提交与窄亮度参数（采用）
+
+先区分父层、wrapper与叶节点：原`ContentOverlay(State)`只消费brightnessOverlayValue，原叶节点已经传基本值；SettingsScreenModel已有map/distinct，不能笼统声称所有浮层全树重组。最小诊断为真实Box状态消费body及ContentOverlay body直接条件SideEffect，沿用ReaderDiagnostics的process／Activity diagnosticSession，event=overlay_composed、context=ROOT/BRIGHTNESS_WRAPPER。不抽取可能自身被skip的Composable helper、不改变子组件callback参数，也不把state读取外移。Probe关闭不创建该分支SideEffect和字段Map；执行时再检查开启状态。计数只代表成功composition body提交，不等于叶重组、draw或CPU成本。
+
+Stage1真实RED为原生产overlay及按钮已挂载、ROOT marker期望>0实际0；最小marker后单方法与app格式PASS，真实菜单事件让原ROOT/wrapper均增加、亮度事件仍增加、ProbeOFF不再记录、真实关闭仍生效。Stage2先启用独立方法取得真实RED：无关菜单后wrapper预期1实际2（三次框架retry同因）。之后仅把完整State参数改为brightness Int及其三处既有引用；五方法（诊断、无关状态skip/真实亮度像素、初始关闭／后续错误关闭／同章重试）与app格式PASS。真实overlay Canvas像素变化不需复制算法或测试底色；Stage1原断言/完整两文件SHA与Stage2原件、narrow-only diff均保存在worktree `o9/brightness-scope-source-files.json`，不是放宽生产行为迁就夹具。AppBars/其余状态仍原链路，不扩展重构。
+
+A9诊断控制基于O8采用源码，保留完整State参数，APK `reader-open-o9-overlay-control-20261104/Mihon-Fork-reader-open-o9-overlay-control-benchmark-universal.apk`，SHA `af599287f164c5e1330b7443d03ce4565904d26692d296b5e8363b74399adea4`，production指纹`57036c1605069b0cb75f88da028408a1a03eb3da6021b0b1be5f41e40183ebb0`，sourceRevision `615c8ea67075b15fda63ed3473ea64fee998b0d4`加冻结diff。原证书、code134、nondebug/R8/shrink，构建140.9秒PASS；冻结源码按SHA从Stage1原件恢复后构建，再逐SHA换回Stage2，不使用破坏性Git回滚。
+
+原目录独立`measurement-o9-overlay/`两份A9资格（无视频／Perfetto，不混入正式性能）：同USB/CBZ/5页，root独立核OFF/ON截图与正确双图。日志按reader_start距ACTIVITY_CREATE≤3ms唯一关联process/session，UNIT前ROOT/wrapper次数OFF4/4、ON3/3，全session分别8/8和7/7，均有reader_end；精确marker及量化边界保留在`reader-diagnostics-qualification-a/qualification-overlay-counts.json`。这确认实际首开重复提交存在，不证明整树或CPU开销。两份资格所属安装块采前／采后OAT均verify/install，设备已ProbeOFF／Asleep。B9同诊断的窄参数候选构建201.9秒PASS，APK `reader-open-o9-overlay-narrow-20261104/Mihon-Fork-reader-open-o9-overlay-narrow-benchmark-universal.apk`，SHA `4c3c6f82eea657aecd0c261972fa04c965a99ac5468f21309b87b032f23ccc59`，production指纹`4ffa9b726e52cfcf080923994f0d525169803dd1bb793eeae4337619d1b31791`，同revision加冻结diff；尚无A/B收益或最终采用裁决。
+
+
+
+### O9 最终测量与裁决
+
+**保留窄亮度参数及默认关闭的提交诊断。** 同USB／同CBZ／双页RTL／默认方向／zoom OFF，A1/B1各mode首次+暖、B2/A2各mode首次共12份VALID，无重录、无样本排除；各块逐mode一次Probe OFF预热。正式四块安装及采后actual OAT均verify/install、SHA匹配。A1重装前一次旧安装OAT不可读，保留UNKNOWN和权限观察，未归因；按既定install-r后读到新路径的verify/install才开始正式块，不使用资格旧header代签。A1首次日志stat格式不兼容留下仅listing的未完成目录，r2按既有成功形状完整拉取两滚动文件并保留SHA；原件未覆盖，非性能采样失败。
+
+每份精确launch PID／主TID的最早src=0x1002输入与原native down一致，同trace两个snapshot的clock spread为0–522ns。下面Running仍为PAGE_LIST_READY→UNIT主线程CPU，近黑是视频采样区间。FIRST_DRAW仅目标地图，UNIT仅生产绘制回调，均非物理present；†为error级负时间戳丢弃。
+
+| 样本 | 输入→目标draw ms | 输入→UNIT ms | Main Running ms | 视频近黑采样界限 ms |
+| --- | ---: | ---: | ---: | --- |
+| a1 off 首次 | 443.860 | 444.097 | 169.709 | 115–150 |
+| a1 off 暖 | 321.001 | 321.154 | 119.512 | 50–84 |
+| a1 on 首次† | 411.778 | 412.018 | 174.139 | 49–84 |
+| a1 on 暖 | 324.064 | 324.270 | 139.702 | 33–67 |
+| b1 off 首次 | 361.812 | 380.762 | 158.737 | 66–100 |
+| b1 off 暖 | 327.655 | 327.787 | 138.104 | 34–66 |
+| b1 on 首次 | 355.893 | 356.149 | 144.449 | 34–67 |
+| b1 on 暖 | 344.439 | 344.583 | 116.941 | 66–99 |
+| b2 off | 392.107 | 392.302 | 170.791 | 33–66 |
+| b2 on† | 383.884 | 384.083 | 162.393 | 49–84 |
+| a2 off | 413.722 | 413.983 | 168.286 | 82–116 |
+| a2 on | 391.296 | 391.529 | 159.994 | 67–100 |
+
+本组首次UNIT均值OFF 429.040→386.532ms、ON 401.774→370.116ms，两次候选首次各模式均偏快；目标draw均值OFF 428.791→376.959ms、ON 401.537→369.889ms。B1 OFF先地图后标题，target早于UNIT约18.95ms，因此不能只选target给完整双图收益。首次Main Running均值OFF 168.998→164.764ms、ON 167.067→153.421ms；暖态UNIT却OFF 321.154→327.787ms、ON 324.270→344.583ms（各仅1份），CPU又方向混合。首次近黑偏短，暖态ON变长；小样本、trace限制及不同提交次数造成的不同诊断写入开销，使这些差值不能直接归因窄参数或外推关闭Probe后的稳定净收益。保留理由是少量参数／引用改动明确消除真实无关提交，原状态／偏好／绘制语义及反馈仍受真实接线保护，不把调用减少当作整体体验达标。
+
+`o9-overlay-commits-12.json`按ACTIVITY_CREATE附近唯一reader_start匹配process／Activity session，每session均有reader_end。十二份ROOT在UNIT前都是3次、全session都是7次；控制六份wrapper分别3／7，候选六份分别1／1。所有计入UNIT前的记录都严格早于其毫秒量化边界，无same-bin不定序记录。它证明wrapper提交减少，不能称整个浮层树或叶节点重组下降；父层继续完整State订阅，AppBars、提示与页码原状态链不变。
+
+root独立查看12段原PTS连续边界并保留原索引：B1 OFF首次是左地图先，其余11份为右标题先，完整单元均地图左／标题右，无教学浮层。`o9-video-reviewed.json`逐原生帧流式解码与ffprobe帧数一致，完整后近黑均0；`o9-video-pts-verification-12.json`十二份独立索引／PTS／公式／视频SHA／inclusive帧数PASS。20份正式／预热截图漫画ROI全为`cd4b1e2a37b0eeeb0264ea098a321eb84f01a2ec15c4d9c0f23e0f36a1ed6bf4`，设置逐图由采集代理核实，root另核资格与候选OFF设置。近黑阈值≤2/255可残留极暗旧UI，至少一帧不确定；没有视频PTS到输入时钟校准，不能当精确无内容或输入到屏幕耗时。
+
+192份native／CPU／identity／完整health/schema/severity raw query全部exit0、--no-agent未截断，每trace保留565条stats。两份error级trace_sorter_negative_timestamp_dropped共3条（A1 ON首次2、B2 ON1）；info级chunks_discarded235–246、patches各2，data_loss级未返回非零值也不构成无损证明。android_logs_total=0只作计数事实。原件`o9-native-cpu-health-12.json/.csv`、`o9-startup-input-identity-12.json`、`o9-startup-nonzero-health-12.json`及逐capture raw；一次性join在`o9-startup-comparison.json/.csv`，不合池历史或累加跨项收益。
+
+候选Probe OFF正常OFF路径5→6→5，前翻目录左／角色表右，回翻及重开地图左／标题右、同ROI，退出详情保存第5页；root独立核原图，正常菜单和进度随操作更新。间隔0.7秒中心像素相同仅说明所采区间稳定，不冒称native IDLE或快速首翻计时。原件`normal-roundtrip-dual-off/observations.json`；此处不复测既有ON回翻错单元、不称其修复。读回`correctness-final-o9.json`为B9、ProbeOFF、无目标进程、Asleep/Changing=false，暂留matching OFF供后续O10诊断；不是整个任务最终状态。最终源码与Stage2 GREEN两项SHA一致，内部架构／诊断维护说明同步，未推送／正式发布／更新公共能力说明。O9本地收口，继续O10/O11。
+
+## O11 baseline profile 只读条件预检（尚未收口）
+
+本机真实SDK `cmdline-tools/latest/bin/profgen.bat`、邻近classpath及依赖Jar均存在；当前JAVA_HOME为Temurin21，launcher要求Java17+。非标准`profgen help`退出1但给usage，随后`--help`及dumpProfile/print子命令help均退出0；B8内嵌profile的dumpProfile与print实际执行退出0、无stderr。命令、输出和SHA在原目录`o10-o11-tools/`，不是只因文件存在就称工具可执行。已检查SDK platform-tools、cmdline-tools、NDK/legacy tools指定入口，没有找到dmtracedump/simpleperf，不扩大成机器或设备不支持；apkanalyzer/dexdump已找到但未执行。
+
+`release-and-B9-profile-inventory.json`只读核两份真实APK：历史正式release vc126（SHA `35969ac31b8045cb97408620ee7be752627988f352822a3d764f048ab0bcf13b`、revision a59cfab401）携带baseline.prof 22,177B及profm 2,460B；当前B9 benchmark携带prof 22,156B及profm 2,460B。均为pro/010与prm/002 header，实际ZIP CRC/SHA保留；正式release是不同版本／源码／包身份，未安装，不作为O系列时延对照，也不宣称本轮构建了release。B8的22,157B及旧资料其它大小各属于相应产物，不互相覆盖或猜原因。
+
+B8与当前B9分别用自己的APK、二进制profile和冻结R8 mapping运行profgen dumpProfile。两份HRF均22,069行：原始flag前缀HSP15,658、HP58、P215、SP374，另有5,764类项。ReaderActivity、ReaderViewModel、DualPageViewerAdapter、DualPagerPageHolder、SharedDualPageSession、ReaderSpreadSamplesOwner、AndroidReaderSpreadSampler七个目标类在这些方法／类项中均未命中；Reader包仅ReaderPreferences与Companion构造／初始化的四行。B8的print输出22,073行是类导向展示，方法／flag统计实际来自dumpProfile HRF，不混用两者。详情`B8-reader-profile-coverage.json`、`B9-reader-profile-coverage.json`及raw HRF；未查到只限对应冻结profile文本，不能说目标方法运行时绝不执行、整个profile无用或ART未采用。实际设备编译能力及可比干预仍待O9结束后核实，O11不据此勾选。

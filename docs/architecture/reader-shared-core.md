@@ -12,6 +12,12 @@
 
 投影组装完成时固定消费的输入，在 native refresh／notify 前记录，避免同步回调把后来才 ensure 的事实误标为已经投影。手势期间的提前返回只保留 pending，不记消费；IDLE 沿原链路投影。记录仅保留当前章节窗口的 owner，关闭 adapter 时清理。主动导航、设置、显式重试／刷新仍走原有主动入口，不被事实去重门控。旧 owner／内容／请求的拒收继续由原身份校验负责；没有增加异步合批、图片缓存或新的持久化状态。回归由 `SharedDualPageAndroidWiringTest` 的十个 O2 方法与共享 header revision 契约覆盖；认证计数减少仅说明夹具中的实际工作消除，真机首绘收益另见 O 系列证据报告。
 
+## Android 阅读浮层的亮度参数边界
+
+`setComposeOverlay` 继续收集完整 ReaderViewModel.State，页面进度、菜单和错误反馈仍沿原状态链更新。只有 `ContentOverlay` 的参数收窄为它实际消费的 brightness Int，使无关 State 变化可以跳过这一 wrapper body；不新增 Flow、投影缓存或调度器，也不承诺整个浮层树不再重组。其内部色彩、混合模式和刷新偏好仍独立订阅，亮度变化继续进入原归一化／绘制组件，错误和取消处理不变，不增加新的回退显示。
+
+真实 Compose 接线覆盖无关菜单变化时父层提交而 wrapper 跳过、亮度变化仍提交且改变实际 Canvas 像素，以及原错误关闭／重试反馈。默认关闭的提交诊断及其计数／开销边界见[探针说明](reader-open-latency-probe.md)；提交减少不能换算为叶绘制、主线程或用户时延收益，真机结果单独记录。
+
 ## 共享事实请求的当前内容索引
 
 `SharedDualPageSession.requestFact` 与请求有效性检查复用当前 `ReaderSpreadSamplesOwner` 已有的 pageId→content 索引，避免每张图片请求及回报再线性查找整章。索引不另增缓存权威；metadata 更新重建当前索引，rebind 更换 owner，每次查询都读取当前 owner。generation、pageListRevision、完整 pageIds 顺序、location sequence 和请求对象引用校验继续执行，整个请求操作不承诺 O(1)。缺页请求仍抛 IllegalArgumentException，关闭会话请求仍抛 IllegalStateException，迟到或伪造票据仍拒收。
