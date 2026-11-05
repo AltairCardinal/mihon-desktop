@@ -2,7 +2,7 @@
 
 日期 2026-11-05。执行人 Sol，设备采集可由一位 Luna 操作。目的是让新进程中第一次打开已下载章节时更早看到正确漫画，并守住已做到的单页近黑 ≤60 ms。先处理阅读器窗口第一帧之前的主线程工作，再独立判断普通单页合并图片读取的收益。两项分别裁决，即使第一项没有合格候选，也继续第二项。
 
-**当前唯一 active-task 为 A1，离线定位首个窗口帧之前的额外工作。** 后续会话从第一个未完成项开始，在同一份结果记录中更新证据、基线和下一项。
+**执行已收口，active-task：无。** A1 六份原件复算完成，A2 因无合格候选不适用；B 完成真实 RED/GREEN、独立审查及两组冷暖对照后不采用，源码与设备均恢复 B9。机制、逐样本真机端点、采用决定及限制见[统一结果](../evidence/android-reader-single-first-open-2026-11-05.md)。以下勾选表示按条件完成裁决，不表示采用、发布或未执行的 A2 测试通过。
 
 ## 接手位置与已有结果
 
@@ -25,10 +25,10 @@ B9 单页六次近黑均通过预算。图层帧早于漫画像素。约 29.2 ms
 
 ## A1 · 先定位首个窗口帧前的工作
 
-- [ ] **输入与计算。** 复用[最终采集目录](D:/Shell/Github/mihon/.test-tmp/reader-open-o-final-20261105)内现有六条首次记录。B9 取 `final-b-single-r{1,2,3}-first`；官方取 `final-official-single-r1-first`、`final-official-single-r2-equivalent-first`、`final-official-single-r3-first`。分别读 `independent-trace-check/<label>.json` 的 PID、DOWN，核对 `capture.json`、CSV 和 boot 身份；使用同目录各条 `system.perfetto-trace` 与 [本机 Trace Processor](D:/Shell/Github/mihon/.test-tmp/upstream-original-trace-20261102/tools/trace_processor_shell.exe)。优先分析既有原件，无需操作官方应用。
-- [ ] **把时间分段。** 记录 DOWN、目标 `StartActivity`、主线程 `performCreate:eu.kanade.tachiyomi.ui.reader.ReaderActivity` 起止、DOWN 后第一个对应 Reader 图层 actual frame 的 `ts+dur`。第一条帧的 dur 无效则标不可判，不换一条冒充首帧。用应用 PID/UPID 和主线程 UTID 限定 `sched`，对每个 Running 段与目标区间求交。再对主线程 slice 取同名区间并集、裁到 DOWN→首个 Reader 图层帧，把运行时间归入创建、遍历、布局、绘制、重组、触摸、Binder 或未归属。检查嵌套关系，同一份时间只计一次；等待 IPC 和排队另列。区分旧详情页淡出与新窗口，证据不足的遍历保留“窗口未知”。
-- [ ] **从已复算的结果选一个可干预点。** 六条原始追踪的族内 Running 中位数（B9／官方）为 `performCreate` **17.77／7.63 ms**，`traversal` **20.79／7.99 ms**，`Compose:recompose` **5.12／1.31 ms**，`inflate` **1.38／0.78 ms**。这些行之间可嵌套。先从前两项的子调用与重复次数入手，单纯改 XML inflate 优先级低。对照本地上游标签 `7a917968e3` 和 [B9 ReaderActivity](../../app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt) 将命名开销落到实际调用及消费者；[O10 方法采样](../evidence/reader-open-o-series-2026-11-04.md#o10-activity剩余工作归因完成不另改初始化)只有双页 OFF/ON，只可用于辨认候选调用。
-- [ ] **进入 A2 的门槛。** 交出一行因果链“触发条件 → 同一结果被重复计算／尚无消费者的工作 → 真实调用次数或耗时 → 可保留的用户行为”。至少两条 B9 首次 trace 支持发生位置，再用源码或生产接线确认冗余。如果通用系统 slice 无法归到函数，最多增加一份默认关闭的诊断构建、一次单页首次定位，围绕**同一嫌疑点**记录次数和起止，限定在首帧窗口；该次只供归因。若仍只有宽泛的“Compose 很慢”或系统／编译条件差异，记录 A 无可执行候选，转 B。产出为六行原始值、两组中位数和一个选择理由。
+- [x] **输入与计算。** 复用[最终采集目录](D:/Shell/Github/mihon/.test-tmp/reader-open-o-final-20261105)内现有六条首次记录。B9 取 `final-b-single-r{1,2,3}-first`；官方取 `final-official-single-r1-first`、`final-official-single-r2-equivalent-first`、`final-official-single-r3-first`。分别读 `independent-trace-check/<label>.json` 的 PID、DOWN，核对 `capture.json`、CSV 和 boot 身份；使用同目录各条 `system.perfetto-trace` 与 [本机 Trace Processor](D:/Shell/Github/mihon/.test-tmp/upstream-original-trace-20261102/tools/trace_processor_shell.exe)。优先分析既有原件，无需操作官方应用。
+- [x] **把时间分段。** 记录 DOWN、目标 `StartActivity`、主线程 `performCreate:eu.kanade.tachiyomi.ui.reader.ReaderActivity` 起止、DOWN 后第一个对应 Reader 图层 actual frame 的 `ts+dur`。第一条帧的 dur 无效则标不可判，不换一条冒充首帧。用应用 PID/UPID 和主线程 UTID 限定 `sched`，对每个 Running 段与目标区间求交。再对主线程 slice 取同名区间并集、裁到 DOWN→首个 Reader 图层帧，把运行时间归入创建、遍历、布局、绘制、重组、触摸、Binder 或未归属。检查嵌套关系，同一份时间只计一次；等待 IPC 和排队另列。区分旧详情页淡出与新窗口，证据不足的遍历保留“窗口未知”。
+- [x] **从已复算的结果选一个可干预点。** 六条原始追踪的族内 Running 中位数（B9／官方）为 `performCreate` **17.77／7.63 ms**，`traversal` **20.79／7.99 ms**，`Compose:recompose` **5.12／1.31 ms**，`inflate` **1.38／0.78 ms**。这些行之间可嵌套。先从前两项的子调用与重复次数入手，单纯改 XML inflate 优先级低。对照本地上游标签 `7a917968e3` 和 [B9 ReaderActivity](../../app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt) 将命名开销落到实际调用及消费者；[O10 方法采样](../evidence/reader-open-o-series-2026-11-04.md#o10-activity剩余工作归因完成不另改初始化)只有双页 OFF/ON，只可用于辨认候选调用。
+- [x] **进入 A2 的门槛。** 交出一行因果链“触发条件 → 同一结果被重复计算／尚无消费者的工作 → 真实调用次数或耗时 → 可保留的用户行为”。至少两条 B9 首次 trace 支持发生位置，再用源码或生产接线确认冗余。如果通用系统 slice 无法归到函数，最多增加一份默认关闭的诊断构建、一次单页首次定位，围绕**同一嫌疑点**记录次数和起止，限定在首帧窗口；该次只供归因。若仍只有宽泛的“Compose 很慢”或系统／编译条件差异，记录 A 无可执行候选，转 B。产出为六行原始值、两组中位数和一个选择理由。
 
 ## A2 · 只改一个已证实的首帧前依赖
 
@@ -39,16 +39,16 @@ B9 单页六次近黑均通过预算。图层帧早于漫画像素。约 29.2 ms
 | 遍历／重组落在阅读器浮层，隐藏分支仍提前构建对象，或无关状态连续触发同一分支重复执行 | 从 `ReaderActivityBinding.setComposeOverlay`、`AppBars`、设置弹窗的实际读取字段追溯。仅把**已定位**的构造移到真实消费分支，或将订阅缩到具体消费组件。沿用 ViewModel 及现有状态流。O9 已收窄亮度子组件，不重做 O9。 | 用真实 Activity/Compose 接线模拟菜单关闭的启动更新，证明无关分支仍被创建或执行，记录修改后的次数。显示页码、亮度或菜单仍应立即生效；触发设置／错误弹窗时验证对应内容与动作。只选择被改分支的交互。 |
 | 创建／恢复期间存在可复现的同步或重复调用，当前普通单页并无消费者 | 对照 `onCreate`、`onResume`、`onWindowFocusChanged` 定位调用方，例如额外的初始化，或为可选双页任务取得系统状态。若两次结果等价，复用本次生命周期的结果；若只在某分支有消费者，把获取移到该分支**第一次真正使用之前**。保留焦点变化、系统内存压力和模式切换的更新语义。 | 用真实 lifecycle／消费入口证明首次单页确实发生不必要操作；改后该操作消失，同时首次进入消费模式、重新聚焦或收到系统变化仍取得最新状态。普通日志与计时探针分别核查，不能靠关闭原有观测能力取得成绩。 |
 
-- [ ] 先在当前控制代码得到上述真实 RED，再做一个局部修改、同一 focused GREEN、受影响模块格式检查。保留窗口安全、导航、动画、首图前应见的菜单／页码／错误反馈。禁止用固定延迟、额外空帧或预热挪动计时边界。若检查覆盖共享入口，补一条实际受影响的非单页契约即可。
-- [ ] 依下文 A/B 规则比较 B9 与仅含 A 的候选。首个 Reader 图层帧和对应主线程 Running 用于验证机制，采用仍看正确漫画端点、近黑和暖态。记录 A 的采用或撤回，并冻结 B 阶段的控制 SHA。
+- [x] **不适用：A 无候选，未执行 A2 实现／测试。** 原门槛：先在当前控制代码得到上述真实 RED，再做一个局部修改、同一 focused GREEN、受影响模块格式检查。保留窗口安全、导航、动画、首图前应见的菜单／页码／错误反馈。禁止用固定延迟、额外空帧或预热挪动计时边界。若检查覆盖共享入口，补一条实际受影响的非单页契约即可。
+- [x] **不适用：未构建 A 候选，B 控制冻结为 B9。** 原规则：依下文 A/B 规则比较 B9 与仅含 A 的候选。首个 Reader 图层帧和对应主线程 Running 用于验证机制，采用仍看正确漫画端点、近黑和暖态。记录 A 的采用或撤回，并冻结 B 阶段的控制 SHA。
 
 ## B · 已下载普通单页合并图片读取
 
-- [ ] **重新立项的条件。** 旧 O1 将普通页和双页一起改。两次单页首次的输入→内部首绘分别提前 28.3、14.6 ms，暖态方向不一致，双页结果混合。R3 也试过跨线程段保留同一打开流。新条件是 B9、仅普通单页下载归档、以探针关闭后的输入→正确像素裁决。[O1 实测及否决理由](../evidence/reader-open-o-series-2026-11-04.md#o1-最终裁决2026-11-05续跑) · [O1 归档及 SHA 清单](D:/Codex/worktrees/mihon-reader-o-series-20261104/.test-tmp/reader-open-o-series-20261104/o1/rejected-candidate/manifest.json)
-- [ ] **入口与数据流。** 从 [普通单页 setImage](../../app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerPageHolder.kt)、[页信息与版本](../../app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderPage.kt) 和 [已解析的下载来源](../../app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/DownloadPageLoader.kt) 接入。路由只读 loader 建页时已知的归档来源，避免为识别文件再查下载目录。以同一个原始 stream factory、encoded version、重试序号、holder 绑定代次捕获请求。普通缓存未命中时在同一个 IO 任务内开流，用独立 peek 在既有最多 512 KiB 的边界内解析尺寸／方向；普通方向直接从该缓冲流读完用于显示的字节，释放原流，沿已有动画判断、裁切、背景和解码链准备图片。缓存命中复用当前有效信息。目标是卷内普通 WebP 的首次真实绘制只开一次原流，且移除读头与读图之间的 Main 往返。
-- [ ] **复杂图片与并发边界。** 旧 O1 在有 EXIF 方向的页面可能因发布新方向触发第二次完整准备。允许在有界头已识别出方向变化、解析失败或当前显示条件不支持合并时选择 B9 兼容顺序：先处理这次已取得的头结果，复核当前绑定，再由原链打开完整图片。须在读取整图**之前**作这个决定；避免读完整图后丢弃再整图读取。正常元信息失败沿原可读／可重试语义。处理首个正常页时再回主线程，单次检查 stream、版本、重试、页面、绑定与取消状态，原子发布有效事实后，用当前呈现身份绑定已准备图像。自发方向更新和外部替换分别处理。资料解析不得移动显示字节的读取位置；取消、异常及过期返回都释放流和本次临时资源。双页、条漫、在线图片、其他来源沿现有入口。不得通过改变图像质量、缓存上限、绘制许可或阅读进度消除等待。
-- [ ] **真实 RED/GREEN。** 首选归档补丁内 `DualPagerPageHolderLayoutTest` 的 `O1 foreground mounted WebP holder reads once before its first real draw` 作为夹具来源，让新的实际下载归档分支被生产 holder 调用，以首个正确像素为截点。先确认 B9 为首次 2 次开流，再验证候选 1 次、像素正确、关闭次数匹配。最小附加用例覆盖一张非正常 EXIF 的首次方向和读取字节量，以及在读取中发生替换／重试或取消时旧内容被拒绝。按风险组合或复用既有方法，必要时纳入大于 512 KiB 的 EXIF 原件以区分“多一次有界头”与“多一次全图”。原补丁 SHA `6908abc0aac2ae8819db6ad586e8668f70bef2fd3d998800c174657acf2b4f77`，仅取相关夹具和语义，不整包移植。即使旧夹具此前有失败，也只用针对本次行为的同基线证据裁决，不改老断言凑绿。若实际下载归档分支无法通过上述行为检查，记录原因并撤回 B。
-- [ ] **独立对照。** A 采用则以“A 已采用包”对“A+B”，否则以 B9 对“仅 B”。每对两臂只差 B。检查第 5 页地图、5→6→5 和退出恢复位置；若非普通方向或撤销旧绑定的行为发生回归，停止采用。用录像端点决定收益，内部 HEADER 与 OPEN_PAGE 的先后会因设计变化，不能通过挪动探针证明提速。
+- [x] **重新立项的条件。** 旧 O1 将普通页和双页一起改。两次单页首次的输入→内部首绘分别提前 28.3、14.6 ms，暖态方向不一致，双页结果混合。R3 也试过跨线程段保留同一打开流。新条件是 B9、仅普通单页下载归档、以探针关闭后的输入→正确像素裁决。[O1 实测及否决理由](../evidence/reader-open-o-series-2026-11-04.md#o1-最终裁决2026-11-05续跑) · [O1 归档及 SHA 清单](D:/Codex/worktrees/mihon-reader-o-series-20261104/.test-tmp/reader-open-o-series-20261104/o1/rejected-candidate/manifest.json)
+- [x] **入口与数据流。** 从 [普通单页 setImage](../../app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerPageHolder.kt)、[页信息与版本](../../app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderPage.kt) 和 [已解析的下载来源](../../app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/DownloadPageLoader.kt) 接入。路由只读 loader 建页时已知的归档来源，避免为识别文件再查下载目录。以同一个原始 stream factory、encoded version、重试序号、holder 绑定代次捕获请求。普通缓存未命中时在同一个 IO 任务内开流，用独立 peek 在既有最多 512 KiB 的边界内解析尺寸／方向；普通方向直接从该缓冲流读完用于显示的字节，释放原流，沿已有动画判断、裁切、背景和解码链准备图片。缓存命中复用当前有效信息。目标是卷内普通 WebP 的首次真实绘制只开一次原流，且移除读头与读图之间的 Main 往返。
+- [x] **复杂图片与并发边界。** 旧 O1 在有 EXIF 方向的页面可能因发布新方向触发第二次完整准备。允许在有界头已识别出方向变化、解析失败或当前显示条件不支持合并时选择 B9 兼容顺序：先处理这次已取得的头结果，复核当前绑定，再由原链打开完整图片。须在读取整图**之前**作这个决定；避免读完整图后丢弃再整图读取。正常元信息失败沿原可读／可重试语义。处理首个正常页时再回主线程，单次检查 stream、版本、重试、页面、绑定与取消状态，原子发布有效事实后，用当前呈现身份绑定已准备图像。自发方向更新和外部替换分别处理。资料解析不得移动显示字节的读取位置；取消、异常及过期返回都释放流和本次临时资源。双页、条漫、在线图片、其他来源沿现有入口。不得通过改变图像质量、缓存上限、绘制许可或阅读进度消除等待。
+- [x] **真实 RED/GREEN。** 首选归档补丁内 `DualPagerPageHolderLayoutTest` 的 `O1 foreground mounted WebP holder reads once before its first real draw` 作为夹具来源，让新的实际下载归档分支被生产 holder 调用，以首个正确像素为截点。先确认 B9 为首次 2 次开流，再验证候选 1 次、像素正确、关闭次数匹配。最小附加用例覆盖一张非正常 EXIF 的首次方向和读取字节量，以及在读取中发生替换／重试或取消时旧内容被拒绝。按风险组合或复用既有方法，必要时纳入大于 512 KiB 的 EXIF 原件以区分“多一次有界头”与“多一次全图”。原补丁 SHA `6908abc0aac2ae8819db6ad586e8668f70bef2fd3d998800c174657acf2b4f77`，仅取相关夹具和语义，不整包移植。即使旧夹具此前有失败，也只用针对本次行为的同基线证据裁决，不改老断言凑绿。若实际下载归档分支无法通过上述行为检查，记录原因并撤回 B。
+- [x] **独立对照。** A 采用则以“A 已采用包”对“A+B”，否则以 B9 对“仅 B”。每对两臂只差 B。检查第 5 页地图、5→6→5 和退出恢复位置；若非普通方向或撤销旧绑定的行为发生回归，停止采用。用录像端点决定收益，内部 HEADER 与 OPEN_PAGE 的先后会因设计变化，不能通过挪动探针证明提速。
 
 ## 两个候选共用的最小测量与采用规则
 
