@@ -421,3 +421,67 @@ Root独立审查关闭了多窗口/大屏方向请求忽略造成死等、窄con
 在Gradle暂停窗口只读拉取隔离包现有reader-0.log（3,119,725字节/13,193行），其它三个滚动日志不存在，保留stat/pull记录；全程不亮屏/输入，读回Asleep/Changing=false。流式分析O2的6份OFF与O4的6份ON各自有效样本，ACTIVITY_CREATE±3ms内reader_start全部唯一匹配且差值<1ms，按同System.nanoTime毫秒量化到UNIT窗口。12份各有6组holder/source/generation对应的read_start/complete；source3/4各1，其它source1/2/5/6共4次，全部complete在严格内窗。rebuild visible=3,4和ticket_bound原样保留，但read事件没有原子current/visible字段，只称非目标单元读取，不据此宣称严格屏外或精确并发。两个历史组代码/时序不同，不比较模式耗时或池化收益。
 
 汇总`measurement-o6-evidence/analysis/reader-diagnostic-read-window-review.json`含原始窄证据/日志SHA/完整性限制。未见显式dropped/write_failure不等于证明日志零丢失；没有原图sampling start/complete marker，prepare.sample=true不当采样调用，因此O7采样竞争和OFF采样仍未证实。O6将仅评估延后非目标display Buffer读取，原loader/header/sample保持原链；hasRenderedVisiblePages是ALL，不作唯一放行门，必须保护部分绘制/错误/取消及第一次翻页就绪。
+
+### O6 候选红绿与冻结（尚未采用、尚无设备收益）
+
+补充既有日志`analysis/reader-holder-drawn-next-unit-decode-ready.json`：12份最早目标accepted drawn均为source3，之前四份非目标读取已complete；source5/6各首个accepted decode_ready均能按holder/source/generation匹配，在ACTIVITY_CREATE至UNIT+1500ms内存在。两者较晚ready相对MAIN_TOUCH_DOWN为337.561–437.929ms，相对UNIT为−17.617至+25.575ms。decode_ready是原生onImageLoaded接受回调，不是物理显示或首翻终点；不跨O2/O4代码组解释模式收益。
+
+真实RED在挂载的pager记录`read_start`，目标3/4尚无accepted draw时实际邻页5/6/1/2已开始完整display Buffer读取（`o6/read-order-red.xml/log`）。最小候选只在header/身份校验之后、完整Buffer读取之前，让非当前单元于Main可取消等待；当前真实单元通行。每Viewer仅首次一次，任一当前accepted子图draw或可见错误即放行，不等完整UNIT；初始chapter/owner/location/frame/content变化撤销优先，destroy取消并拒绝迟到内容事件，解除后清理初始快照引用。等待后重核attachment/content/encoded/generation，不修改普通loader、采样、共享配对、进度结算或原有post入口。
+
+组合focused证据为3个O6新方法与4个既有Layout回归。`reader-o6-final-focused-green`中的初次读取/预就绪后真实首翻回翻，以及部分绘制后立刻Queue、status/decoder失败、双图绑定前错误和成功槽保留retry两个方法通过；取消/导航/内容替换方法最后在`reader-o6-cancel-final-green`与格式检查通过。原4个Layout回归通过于`reader-o6-focused-green2`，未因收尾重新全跑。同步ANY出口另有真实Canvas draw→Queue的RED（`o6/draw-event-red.xml/log`），实现只同步释放等待信号，原post结算不变；destroy迟到事件及未建owner过早放行亦保留`o6/lifecycle-red.*`证据。
+
+既有Shared detached capability用例在候选及HEAD production下均失败，基线原件`o6/detach-baseline.xml/log`，不纳入修复。新取消夹具曾把移除后合法重挂产生的新任务也拒绝，并额外要求票据持续null；最终按本项真实契约核对取消前旧holder/source/generation三元组不能开始迟到read，允许合法新任务，不把无关票据边界改成O6功能。首次编译nullable frame及测试等待checkpoint失败原件保留；上述组合证据不是最终源码重跑所有7方法。
+
+主代理独立审查两production文件及新测试，`git diff --check`通过。三个文件共428行新增/1行删除，主要是同一准入边界的真实诊断/原生Canvas/生命周期夹具；保持内聚，不拆出新框架或能力。冻结product指纹`acf19ec0ef85d24934c47d1826d92f3c24be62cabae50d8cfb8d3e5b012f8c48`，`reader-o6-benchmark-build`于2m11s通过。冻结前后逐SHA一致；B6 APK为`app/artifacts/android/diagnostics/reader-open-o6-20261104/Mihon-Fork-reader-open-o6-benchmark-universal.apk`，SHA `db7bfd391ff31e9ab02f8bae71b09e0dad6728df2667083d8a8b88382d9e68cc`，code134、原benchmark证书、R8/资源缩减/非debug。A6沿用B5 probe-only APK，独立`measurement-o6/`准备OFF/ON各6份。APK冻结不代表采用、首开改善或首翻无代价。
+
+O6设备预检重新确认USB PCE-W30/API31、secure=false及Asleep。A1正常重装A6后实际ART为verify/install，OFF两份已VALID；ON预热后一次正式唤醒前置检查在正常dismiss返回0.4s后仍showing=true而停止，尚未登记性能样本。随后仅只读复核已showing=false；保留`o6-a1-dual-on-wake/commands.json`和`settled-readback.json`，未归因应用故障。前置脚本仅将dismiss后的只读等待改为6×200ms，不重复唤醒或解除输入；新标签`o6-a1-dual-on-r1`复用已完成的一次预热，两个request均VALID，不覆盖失败原件或重录OFF。脚本旧/新SHA与失败边界写入manifest；正式计时入口不变。
+
+## O6 最终裁决：不采用初次显示读取门
+
+同一A6/B6诊断、187页CBZ及目标source4世界地图；A1/B1每模式首次+同进程再次，B2/A2每模式各首次，共12个VALID request。每安装块均正常重装并读回verify/install，每模式Probe OFF预热一次；不是冷盘、升级后首次或P95。A1 ON唤醒失败使用已记录的新r1标签，其余不重录。12份目标区域与主代理审阅的地图左/标题右参考逐像素匹配。
+
+下表单位ms。输入是原表最早native触摸deliver事件；另补12/12实际launch PID主线程身份核验，均与原选中时间戳完全一致（`analysis/o6-startup-input-identity-12.json`）。目标4/UNIT是接受的应用绘制回调，非物理显示；首部分漫画与完整双页分别按原视频帧/PTS看图，视频PTS不映射到输入时钟。
+
+| 样本 | target4 | UNIT | 主线程Running至UNIT | 视频近黑采样界 |
+|---|---:|---:|---:|---:|
+| A1 OFF 首次 | 393.126 | 393.332 | 250.993 | 50–83 |
+| A1 OFF 再次 | 330.170 | 330.368 | 200.321 | 16–50 |
+| A1 ON 首次 | 358.240 | 358.489 | 228.170 | 33–67 |
+| A1 ON 再次† | 297.487 | 314.690 | 179.885 | 33–67 |
+| B1 OFF 首次† | 387.667 | 387.855 | 241.988 | 85–116 |
+| B1 OFF 再次 | 339.536 | 339.717 | 198.257 | 17–50 |
+| B1 ON 首次 | 377.432 | 377.639 | 246.926 | 50–85 |
+| B1 ON 再次 | 336.453 | 336.701 | 204.515 | 33–67 |
+| B2 OFF 首次† | 412.490 | 412.711 | 262.076 | 65–101 |
+| B2 ON 首次 | 369.476 | 369.702 | 246.838 | 33–66 |
+| A2 OFF 首次† | 397.336 | 397.546 | 255.661 | 66–100 |
+| A2 ON 首次 | 355.692 | 371.716 | 236.028 | 66–99 |
+
+完整逐样本、8个独立分组及两对first差值见`analysis/o6-startup-comparison.json/.csv`。每arm/mode首次n=2、再次n=1；描述均值：OFF首次target4为395.231→400.078、UNIT为395.439→400.283，两个first的target4差为−5.459/+15.154；ON首次target4为356.966→373.454、UNIT为365.102→373.671，target4两对均向慢（+19.192/+13.784），但第二对UNIT略快2.014。再次OFF target4为330.170→339.536，ON为297.487→336.453。近黑未形成一致改善，不把这些小样本外推为稳定退化或收益，不叠加不同阶段百分比。
+
+**健康统计更正**：旧query/解析每trace仅保留41项，原`o6-native-cpu-health-12.json`中“非零均0”不完整，不能引用为完整健康证明。新`analysis/o6-startup-nonzero-health-12.json`与逐trace原件通过`--no-agent`重新窄查：12份`traced_chunks_discarded`为info/source=trace、累计193–204，不直接视为本次计时丢包；†四份`trace_sorter_negative_timestamp_dropped`依次为A1 ON再次1、A2 OFF1、B1 OFF首次1、B2 OFF2。其它样本未返回该非零项；筛选所得其它非零/error/data_loss为空，android_logs_total均0。所选输入和外部draw日志/时钟对齐完整，但异常原件仍保留，不保证CPU统计无遗漏，不依其细小差值宣称优化，也不重录择优。
+
+读取机制已证实生效：首个目标3/4 accepted drawn之前，A6每份非目标read_start/read_complete为4/4，B6为0/0；到target4/UNIT前两臂又均为4/4，故不是持续禁止预取。首个drawn在OFF均为source3；ON A6为3/4/4，B6均3。source5/6较晚accepted decode_ready相对UNIT，A6 OFF 1.129–3.162、ON 5.334–24.899，B6 OFF 82.527–103.477、ON 71.896–85.395ms。完整三元组、量化边界及原日志在`analysis/o6-reader-read-order-and-readiness.json`。这只证明非目标完整读取被后移，不证明严格屏外或精确资源争用；尤其5/6较晚ready不能直接当作ON真实下一单元终点。
+
+12段连续视频及每份firstPartial/firstFull的单张原索引图均已审。首轮拼图列错读曾提出三个错误改值，单张原图反证后全部撤回，错误JSON另存`video-reviewed-rejected-montage-reading.json`，不用于结果；最终`video-reviewed.json`经`o6-video-pts-verification-12.json`逐索引/PTS/SHA/算术核验12/12通过。完整双页后逐帧近黑扫描均0。近黑约2/255允许很暗旧UI残影，边界约一帧不确定，不把完整单元前已有一张漫画的时间继续算黑屏。
+
+### 独立首翻：四份有限条件观察
+
+另在相同实际verify/install下，正常每模式预热一次，由截图目标像素匹配后立即发送一次前翻；四份均两次截图轮询，实际章节输入→前翻输入已达2.183–2.245秒。因此不覆盖首图刚出就翻，不能用这四份证明更早首翻无代价。OFF实际成员5/6（目录左、角色表右）；ON实际成员仅5（角色表左槽、右空），均6/187。A/B按模式的最终全幅RGB完全相等；这是已观察基线行为对照，不新增对旧配对算法正确性的承诺，也未修复既有ON回翻错单元。
+
+| 首翻条件 | 输入→首成员accepted drawn | 输入→全部成员accepted drawn | 首翻视频近黑界 |
+|---|---:|---:|---:|
+| A6 OFF | 365.629 | 392.629 | 16–48 |
+| B6 OFF† | 359.542 | 391.542 | 0–32 |
+| A6 ON† | 474.772 | 474.772 | 17–50 |
+| B6 ON† | 471.222 | 471.222 | 17–51 |
+
+每条件n=1，不给稳定加速或无回归结论。OFF实际holder在触摸前1.71–1.79秒已decode_ready；ON最终新holder的source5在触摸后约457.8/453.2ms ready，不能挪用初始邻接holder已ready作该单元终点。起点来自保存的`/proc/uptime`包围区间内、精确PID=TID主线程第二组tap pair首条deliver，按单次tap序列推定DOWN；trace无action参数，虽然config声明标签，android_logs实际0，不能声称标签已采到。各trace两个clock snapshot将独立draw日志映射到trace时钟，drawn非物理显示；视频只给内部PTS近黑区间，不与输入混算。四份累计chunks_discarded为205/206/207/208；†的负时间戳丢弃为A ON1、B OFF1、B ON2，不推断它恰好丢失本次端点，但必须保留计量限制。原件见`analysis/o6-first-turn-readiness-and-accepted-draw.json`及`o6-first-turn-video-review.json`。
+
+### 采用与恢复边界
+
+**不采用**：真实读取优先机制有效，正确性focused和独立审查通过，但当前条件没有稳定首开收益，且邻接就绪明确后移。约90行生命周期/身份准入设施的维护成本不能以“首绘前少读四页”替代体验证据。四份较晚首翻仅支持有限观察，不抵消更早预取的后移成本；不再追加本项候选或样本，不把未测/异常指标写成0。
+
+冻结B6 artifact/source.diff/映射、真实RED/GREEN和全部测量均保留。核最终SHA后仅逆应用本任务三文件的精确diff，逐文件SHA与A6元数据一致，production指纹恢复`dd0a4130b5b238d7c5c2b44030c69bedb75ccc48d7478191de574d05e09912d5`；记录在隔离工作区`o6/rejected-initial-read-candidate/restoration-verification.json`。源码无O6准入/测试残留，O2/O4与O5六槽诊断不变；撤回复用完全相同基线的已有验证，只新做逆diff/SHA/只读核验，未声称恢复后重跑Gradle。
+
+设备已正常恢复A6/B5 probe-only APK SHA `7c0fdd5232cace04d2ffc1cdb455c4adba437cc5c5924f1c91bbbff3ab75c98a`，读回verify/install；Probe OFF正常界面核对双页RTL、默认方向、matching ON、地图左/标题右5/187，正常Back保存第5页，最终Asleep/Changing=false。证据`measurement-o6/restore-adopted-baseline/final-verification.json`。未推送、未正式发布、未更新公共能力说明；O7–O11仍待执行。
