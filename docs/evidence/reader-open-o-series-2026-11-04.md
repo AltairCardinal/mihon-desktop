@@ -1,6 +1,8 @@
 # 阅读器 O1–O11 逐项实施与实测记录
 
-日期：2026-11-04，交接更新于2026-11-05。执行入口：[完整计划与新Sol会话交接](../roadmap/2026-11-04-reader-open-o-series-plan.md)。起始主干 `2425aca5e5`；此前采用版本为R2。用户因主控会话成本要求停止本会话实施，交新Sol会话继续。O1尚未完成采用判断，O2仅有未运行测试草稿；本页不将设计估算写成实测收益，不代表全部优化或双端性能目标已经完成。
+日期：2026-11-04启动，2026-11-05本地收口。执行入口：[完整计划](../roadmap/2026-11-04-reader-open-o-series-plan.md)。起始主干 `2425aca5e5`，起点产品为R2；O1–O11均已完成实施／必要验证／逐项测量或明确限制裁决。采用O2/O4/O8/O9的低成本去冗余，保留记录、AUTO、实际采样与composition诊断；拒绝其余未证明净收益的调度／等待候选，O10不另改初始化，O11不采用profile干预。逐项条件、样本、收益及限制见下表与各节，不相加跨项收益，不宣称跨模式稳定首开加速或双端性能整体达标。
+
+后文早期交接、前置与阶段留装状态作为历史记录保留；当前最终状态以末节为准。官方安装及正式fork未改，未推送、未正式发布、未更新公共能力说明。
 
 ## 条件与测量口径
 
@@ -54,8 +56,8 @@ A1重装同一控制APK后，`conditions-o1-a1-install.json` 成功读回当前o
 | O7 匹配与首图竞争 | 真实调用诊断／租约红绿／对照完成，已恢复租约 | 正式12；资格4 | UNIT前确定重叠5/6→0/6，但ON工作后移；首绘／近黑混合 | 保留诊断，不采用租约 |
 | O8 索引/监听 | 六项共享／Android接线与格式、正常OFF/ON往返完成 | 正式12；另排除1／conditioning1 | 8/187页查询扫描72/35,156→0；首开无稳定改善；监听覆盖不足支撑聚合 | 采用现有索引复用，不实施章级信号 |
 | O9 浮层状态订阅 | 五方法／格式与12份对照、Probe OFF正常往返完成 | 正式12；资格2 | UNIT前wrapper3→1、parent仍3；首次完整双图均值偏快，暖态变慢，受诊断开销／trace限制 | 保留窄参数与默认关闭诊断 |
-| O10 Activity归因 | 未取证 | 0 | 尚未测量 | 待执行 |
-| O11 profile可比性 | 实际release／benchmark profile已核，当前B9目标Reader七类未命中；设备条件待核 | 0 | profile存在不证明ART应用或首开收益 | 待收口 |
+| O10 Activity归因 | 同B9两份2ms ART采样结构／窗口／R8候选核实 | 性能0；方法归因2 | 窗口IPC／traversal、Compose、holder、adapter与native draw路径；采样不足证明可删除初始化 | 取证完成，不另改初始化 |
+| O11 profile可比性 | release／benchmark profile实物、解码与设备命令已核；正常安装已恢复 | 0（未建立有效干预） | runtime profile快照权限拒绝；compile Success后actual OAT不可读，filter未知 | 不采用profile干预，不估算收益 |
 
 ## O1：先确认真实冗余读取
 
@@ -627,10 +629,43 @@ root独立查看12段原PTS连续边界并保留原索引：B1 OFF首次是左�
 
 候选Probe OFF正常OFF路径5→6→5，前翻目录左／角色表右，回翻及重开地图左／标题右、同ROI，退出详情保存第5页；root独立核原图，正常菜单和进度随操作更新。间隔0.7秒中心像素相同仅说明所采区间稳定，不冒称native IDLE或快速首翻计时。原件`normal-roundtrip-dual-off/observations.json`；此处不复测既有ON回翻错单元、不称其修复。读回`correctness-final-o9.json`为B9、ProbeOFF、无目标进程、Asleep/Changing=false，暂留matching OFF供后续O10诊断；不是整个任务最终状态。最终源码与Stage2 GREEN两项SHA一致，内部架构／诊断维护说明同步，未推送／正式发布／更新公共能力说明。O9本地收口，继续O10/O11。
 
-## O11 baseline profile 只读条件预检（尚未收口）
+## O10 Activity剩余工作归因（完成，不另改初始化）
+
+使用已采用同一B9 APK（SHA `4c3c6f82eea657aecd0c261972fa04c965a99ac5468f21309b87b032f23ccc59`），实际二进制manifest的profileable enabled/shell均true。设备am help支持sample profiling，OFF／ON各一次2ms方法采样，在Main真实章节点击前启动，约2秒后正常stop，随后正常Back导出probe。未加入生产诊断代码、未启用debuggable、未改变初始化顺序；采样与O9原性能样本严格分开。可使用profileable的依据见[Android官方说明](https://developer.android.com/guide/topics/manifest/profileable-element)。
+
+原件在`o10/o10-off-method/`、`o10/o10-on-method/`，methods.trace分别417,624／465,668B，SHA与result一致。依据Android12 AOSP [trace.cc](https://android.googlesource.com/platform/art/+/refs/tags/android-12.0.0_r1/runtime/trace.cc)、[trace.h](https://android.googlesource.com/platform/art/+/refs/tags/android-12.0.0_r1/runtime/trace.h)与[time_utils.cc](https://android.googlesource.com/platform/art/+/refs/tags/android-12.0.0_r1/libartbase/base/time_utils.cc)解析：SLOW v3／dual、32B binary header／14B record、11861／12909条记录与文本头一致、payload尾0；overflow=false，main PID27584／31326与采集PID／线程字典一致，未知方法／线程、栈错／时间倒退均0。startTime来自CLOCK_MONOTONIC，与probe窗口直接对齐；没有套用视频PTS或另一个trace时钟。
+
+| 诊断条件 | ACTIVITY_CREATE→UNIT wall ms | 窗内完整观测区间thread CPU delta ms | 跨边界CPU额外不确定范围 ms |
+| --- | ---: | ---: | ---: |
+| matching OFF | 354.243 | 216.639 | 0–3.990 |
+| matching ON | 373.298 | 225.327 | 0–3.274 |
+
+这些是采样栈驻留／CPU增量的近似归因，不是叶方法精确耗时、真实调用次数或无扰动性能。main changed-stack snapshots为302／326；ART只记录栈差分，记录数不是采样tick，也不是调用数。边界CPU没有按wall线性摊分，inclusive祖先不求和。长间隔可能是栈未变，不能把OFF的getViewTreeObserver叶栈驻留约64.8ms当成该函数实际独占执行64.8ms。
+
+实际栈包括首次traversal／窗口IPC、Compose setup／attach、holder loading／attach、adapter rebuild与native draw；两个最长观测栈间隔分别位于Compose attach及Insets更新。R8 mapping177MB只流式读取被观察的类／方法，保留原符号及多义／inline候选，不强行唯一反混淆。完整逐interval与三个窗口分析及原符号在`sampled-attribution.json`，总索引`o10/sampled-attribution-summary.json`（SHA `b16b4a34bf6a5282fc5ee97ae6f4ac8780818eac6554620a727ae432f83242c5`）。root独立核二进制格式、clock／栈重建及边界处理；没有证实可删除的冗余初始化，不凭onCreate inclusive调整协程或删除服务，故不新建候选／TDD／性能A/B。
+
+两份采样后实际目标仍5/187、地图左／标题右，ROI与正式样本相同；`method-capture-check.json`保留身份及SHA。即时finally原件均Asleep但Changing=true，随后只读核实Asleep/false，未重复输入或将过渡状态当产品故障；ProbeOFF、无目标进程。O10前／后实际安装OAT均verify/install。这两份只供归因，不提供近黑、收益或与O9的横向净差。生产源码未变，复用O9对应源码GREEN，不另跑模块／全量。
+
+## O11 baseline profile条件核实（完成，不采用干预）
 
 本机真实SDK `cmdline-tools/latest/bin/profgen.bat`、邻近classpath及依赖Jar均存在；当前JAVA_HOME为Temurin21，launcher要求Java17+。非标准`profgen help`退出1但给usage，随后`--help`及dumpProfile/print子命令help均退出0；B8内嵌profile的dumpProfile与print实际执行退出0、无stderr。命令、输出和SHA在原目录`o10-o11-tools/`，不是只因文件存在就称工具可执行。已检查SDK platform-tools、cmdline-tools、NDK/legacy tools指定入口，没有找到dmtracedump/simpleperf，不扩大成机器或设备不支持；apkanalyzer/dexdump已找到但未执行。
 
 `release-and-B9-profile-inventory.json`只读核两份真实APK：历史正式release vc126（SHA `35969ac31b8045cb97408620ee7be752627988f352822a3d764f048ab0bcf13b`、revision a59cfab401）携带baseline.prof 22,177B及profm 2,460B；当前B9 benchmark携带prof 22,156B及profm 2,460B。均为pro/010与prm/002 header，实际ZIP CRC/SHA保留；正式release是不同版本／源码／包身份，未安装，不作为O系列时延对照，也不宣称本轮构建了release。B8的22,157B及旧资料其它大小各属于相应产物，不互相覆盖或猜原因。
 
-B8与当前B9分别用自己的APK、二进制profile和冻结R8 mapping运行profgen dumpProfile。两份HRF均22,069行：原始flag前缀HSP15,658、HP58、P215、SP374，另有5,764类项。ReaderActivity、ReaderViewModel、DualPageViewerAdapter、DualPagerPageHolder、SharedDualPageSession、ReaderSpreadSamplesOwner、AndroidReaderSpreadSampler七个目标类在这些方法／类项中均未命中；Reader包仅ReaderPreferences与Companion构造／初始化的四行。B8的print输出22,073行是类导向展示，方法／flag统计实际来自dumpProfile HRF，不混用两者。详情`B8-reader-profile-coverage.json`、`B9-reader-profile-coverage.json`及raw HRF；未查到只限对应冻结profile文本，不能说目标方法运行时绝不执行、整个profile无用或ART未采用。实际设备编译能力及可比干预仍待O9结束后核实，O11不据此勾选。
+B8与当前B9分别用自己的APK、二进制profile和冻结R8 mapping运行profgen dumpProfile。两份HRF均22,069行：原始flag前缀HSP15,658、HP58、P215、SP374，另有5,764类项。ReaderActivity、ReaderViewModel、DualPageViewerAdapter、DualPagerPageHolder、SharedDualPageSession、ReaderSpreadSamplesOwner、AndroidReaderSpreadSampler七个目标类在这些方法／类项中均未命中；Reader包仅ReaderPreferences与Companion构造／初始化的四行。B8的print输出22,073行是类导向展示，方法／flag统计实际来自dumpProfile HRF，不混用两者。详情`B8-reader-profile-coverage.json`、`B9-reader-profile-coverage.json`及raw HRF；未查到只限对应冻结profile文本，不能说目标方法运行时绝不执行、整个profile无用或ART未采用。设备能力与最终边界见下文；这部分只读解码本身不构成profile收益证据。
+
+### O11 设备能力、失败边界与恢复
+
+当前设备package help（退出255但完整usage已保存）列出目标包compile、snapshot-profile。O11只对隔离benchmark包执行一次snapshot-profile：系统以SecurityException拒绝，shell UID2000缺`android.permission.READ_RUNTIME_PROFILES`；原先226B的旧primary.prof.txt在前后listing中未变化，不拿它当本次snapshot。没有提权、授予系统权限或改文件权限，也没有借其它接口绕开该拒绝。
+
+随后仅一次目标包强制speed-profile编译请求，无全包、清profile或reset，返回0／Success。真实读回OAT header失败：文件mode0640、system:all_a198、17,146,600B，shell不在该组，oatdump实际rc1；`conditions-o11-after-speed-profile.json`明确UNKNOWN／filter=null，不能由请求参数、文件大小或Success推断actual speed-profile。命令存在与报告成功只证明这个请求链可执行，未证明目标方法已编译或baseline profile已应用。
+
+在runtime profile不可取、干预后actual filter无法核实的条件下，无法建立同APK／同实际filter的可信profile干预对照。本轮不采额外性能组、不修改APK profile、不估算收益；这不表示所有设备或将来条件永久不支持。O11按计划“记录具体限制”的路径收口，无产品／构建依赖变更，纯取证仅做身份、结构和只读一致性核验，不增加产品测试范围。
+
+为结束临时编译试验，保留数据正常重装同B9。安装后及正常UI复核后均实际读到verify/install、APK SHA相同；最终设置双页RTL、默认方向、matching ON、zoom OFF，目标5/187地图左／标题右，正常Back保存第5页。Probe配置实际OFF、无benchmark进程、Asleep/Changing=false。原件`o11/restore-normal-B9-install.json`、`conditions-o11-restored-normal-install.json`、`conditions-o11-final-after-ui.json`及`final-o-series-device-state.json`；未清数据或profile、未修改官方／正式fork。
+
+## O系列最终交付边界
+
+O1–O11全部本地收口；采用O2/O4/O8/O9及经过验证的默认关闭诊断，其它候选精确撤回／不实施。每项条件与收益表在本报告“逐项结果”，完整逐样本端点、近黑、调用／CPU、正确性与限制各节保留；不同阶段并不相同基线，不能累加收益。既有自动匹配ON回翻错单元没有在本轮修复，AUTO跨Activity完整端点、部分trace负时间戳、O7 A1末OAT缺口和各小样本限制仍保留。未达到用户的正式发布／全平台稳定性能验收，不把本地完成称为这些目标已通过。
+
+最终留装诊断APK：[B9 benchmark](D:/Codex/worktrees/mihon-reader-o-series-20261104/app/artifacts/android/diagnostics/reader-open-o9-overlay-narrow-20261104/Mihon-Fork-reader-open-o9-overlay-narrow-benchmark-universal.apk)。sourceRevision仍是构建时`615c8ea67075b15fda63ed3473ea64fee998b0d4`加冻结diff，不能改标成后续提交；当前已提交production指纹与冻结包同为`4ffa9b726e52cfcf080923994f0d525169803dd1bb793eeae4337619d1b31791`（worktree `o9/final-adopted-production.json`）。源码本地提交，不推送、不正式发布、不更新公共能力说明；原目录用户改动和本任务旧副本保留。所有本任务采集／TP／Gradle进程结束，保留用户共享ADB服务。
