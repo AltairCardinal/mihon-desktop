@@ -597,6 +597,26 @@ pendingLoads 继续处理卸载／替换排序，owner 再覆盖与手动操作�
 共享 asObservable 当前使用 execute 和同步 onNext，不能据此声称 Rx map 就在 OkHttp
 enqueue 线程；其它调度链须用真实线程与资源测试证明，不改全局 Rx hooks。
 
+#### 7.6.3 默认 HttpSource 请求与响应解析边界
+
+默认 HttpSource 的热门、搜索、最新、详情、章节、页列表与图片 URL 链在实际执行
+client getter、请求 hook 和解析 hook 时使用同一个 guard。OkHttp newCall 等宿主装配
+留在 guard 外；搜索保留原有 defer 时机，其余 fetch 的即时装配时机不变，不修改公开 ABI。
+旧的仅捕获 NoClassDefFoundError 并转 RuntimeException 的搜索分支由统一类型化传输替代。
+
+解析必须在 Rx map 内转换链接错误，不能等 map 以外的协程 catch：RxJava 会把原始
+LinkageError 当作 fatal，跳过订阅者 onError。默认 parser 返回值不持有 HTTP 流，
+成功与失败后均由默认链关闭响应。关闭失败时先检查双方的 fatal、未知深尾及取消，
+再传播宿主 Error；普通清理失败才附加到原异常，不能使用 use() 将 fatal 压成 suppressed。
+OkHttp 自己对普通 close 异常的 quiet 语义保持不变。
+
+图片请求只守卫 client 和 imageRequest；成功 getImage 返回的 Response 仍由调用者
+读取并关闭，不能套用 parser 的资源规则。Range、进度、取消、旧单参重载分派保持原链路。
+
+本节仅证明默认 HttpSource 的 hooks 与资源生命周期。扩展覆盖 fetch/get 方法、自定义
+Rx operator 或额外调度时仍需实际业务调用边界及线程证据；不能用默认链通过替代这些
+接线，也不修改全局 Rx hooks 或 uncaught handler 来吞错。
+
 ## 8. 安全与隐私
 
 - 手动代理地址属于敏感配置，不写入普通运行日志。

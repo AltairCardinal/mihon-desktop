@@ -403,9 +403,50 @@ Receiver／重试／信任 owner 及原始日志/XML，完成审查后随本纵�
 
 ### 仍未完成的范围（继续同一目标）
 
+以下为 Android 加载阶段收口时的待项；默认 HTTP 链的后续进展见下一节。
+
 Desktop loader／reload／failure 管理、Android installer typed reload 回滚的独立集成补验、
 HttpSource client 调用期／baseUrl 管理投影 getter、filter 前置实际入口、reader／下载确定性故障不自动重试、
 Creator 分类保真、默认 HTTP parser hook 与响应关闭证据仍待实现／验收。
 core asObservable 当前为 execute + 同步 onNext，awaitSingle 无默认 subscribeOn；这不是
 enqueue callback 的证据。后续 Rx 测试须先证明实际线程／逸出位置，不改全局 Rx hooks，
 不把扩展自定义 operator 一概排除。原 APK／R8／厂商设备仍留 EC-08，当前不操作设备。
+
+### EC-06 阶段：默认 HttpSource 请求／Rx 解析与响应所有权（2026-11-06）
+
+本段由根代理实现，原实施代理独立审查；与尚在进行的 Desktop 加载管理／filter 消费
+修改分开提交，不据此勾选整个 EC-05/06。
+本批超过 400 行主要来自同一个真实线程／HTTP／响应所有权测试矩阵，五个文件仍属于
+单一默认 HTTP 边界；主要风险是 Rx fatal 传播与资源提前关闭，由上述双目标行为测试覆盖。
+
+- `ec06-http-default-red`：只运行新增 `HttpSourceCompatibilityBoundaryTest` 的 JVM
+  目标，4/4 正确失败。请求／client 及图片请求仍抛原始 NoClassDefFoundError／
+  NoSuchMethodError；parser Linkage 没有送达 onError；fatal 本身保留但响应关闭计数为 0。
+  使用 MockWebServer 的真实响应与独立 executor／线程级 uncaught handler；不修改全局
+  Rx 或 uncaught hooks，不以同步 mock mapper 替代实际 Rx 链。
+- 最小实现把 client／request hook 的 guard 与 OkHttp.newCall 装配分开，七类默认
+  parser 在 map 内转换 Linkage，原搜索 defer 时机不变。getImage 仅守卫请求构造，
+  成功的 Response 仍由调用者读取并关闭；不改公开 Source／HttpSource ABI。
+- `ec06-http-default-green` 名称虽含 green，实际状态为 FAILED：JVM 15 项中 14 项通过，
+  新增第 5 项证明 use() 把关闭阶段的可控 VMError 压成 suppressed；Android 未执行。
+  改显式 finally 后，`ec06-http-default-close-green` 实际也为 FAILED：JVM 16 项中
+  15 项通过，第 6 项证明 parser AssertionError 先传播会隐藏 close 的 EIIE(Cancel)。
+  两次失败均保留原始日志/XML，没有把命令名称当通过证据。
+- 资源收尾最终按双方 fatal → 未知深尾 → 取消 → 宿主 Error 的优先级处理，普通
+  cleanup 才可附加到 primary；OkHttp 对普通 close 异常的 quiet 语义保持原状。
+- `ec06-http-default-final`：同一个新增类 6 项与直接受影响的既有
+  `HttpSourceApiContractTest` 10 项，在 `:source-api:jvmTest` 和
+  `:source-api:testDebugUnitTest` 各运行一次，**32 项通过，零跳过，6 秒**。
+  原样 argv/终态位于 `.gradle-coordinator/<key>.json`，原始日志为同名 `.log`；
+  两目标 XML 在 `source-api/build/test-results/{jvmTest,testDebugUnitTest}/`。
+  新测试内部覆盖七类 parser、七类 request/client getter、健康后续响应、fatal／取消／
+  普通 IO、图片响应不提前关闭；既有范围涵盖 Range、进度、HTTP 状态、取消及旧重载。
+- `ec06-http-default-format-final`：仅 HttpSource.kt 与新增 BoundaryTest，doFirst 核对
+  精确 2 targets，Spotless Apply／Check 通过（Gradle 1 秒）；此前格式失败仅为长签名，
+  拆行后复验，不修改行为。根代理重新读取四份 XML，确认 32/0fail/0skip；未实施本段的
+  原实施代理独立审查 production、测试和维护说明后给出 GO，无阻断。所有本段 worker
+  均终止，未关闭缓存 daemon，未触碰其它任务的阅读器改动。
+
+这是默认 HttpSource 的 production hooks 与资源证据；不能替代扩展覆盖 fetch/get、
+自定义 operator／调度、reader/download、Creator、全局搜索和 R8 原生验收。维护边界
+见 `docs/architecture/desktop-network-routing.md` 7.6.3。没有运行模块／仓库全量，未操作设备。
