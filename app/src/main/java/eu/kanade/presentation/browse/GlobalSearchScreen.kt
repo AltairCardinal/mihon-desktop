@@ -20,6 +20,7 @@ import mihon.domain.error.AppError
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourceRecoveryAction
+import tachiyomi.domain.source.service.sourceFailureIdentity
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
@@ -123,6 +124,13 @@ internal fun GlobalSearchContent(
                             GlobalSearchErrorResultItem(
                                 message = message,
                                 actionLabel = actionLabel,
+                                details = result.pageError.error.sourceFailureIdentity()?.let { identity ->
+                                    val name = identity.extensionName?.ifBlank { null }
+                                        ?: stringResource(MR.strings.unknown)
+                                    val version = identity.versionName?.ifBlank { null }
+                                        ?: stringResource(MR.strings.unknown)
+                                    "$name ($version)"
+                                },
                                 onAction = { onErrorAction(source, result.pageError) },
                             )
                         }

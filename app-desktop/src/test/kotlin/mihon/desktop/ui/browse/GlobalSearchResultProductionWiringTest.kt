@@ -23,6 +23,7 @@ import io.mockk.mockk
 import io.mockk.spyk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.onCompletion
@@ -36,7 +37,7 @@ import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.SaveSourceMangaForDetails
-import mihon.desktop.extension.DesktopExtensionManager
+import mihon.desktop.extension.DesktopExtensionPresentationService
 import mihon.desktop.extension.ExtensionMeta
 import mihon.desktop.extension.InstalledExtension
 import mihon.desktop.settings.DesktopAppPreferences
@@ -65,6 +66,7 @@ import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.i18n.MR
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.prefs.Preferences
 
 private const val ASYNC_TIMEOUT_MS = 15_000L
@@ -86,20 +88,35 @@ class GlobalSearchResultProductionWiringTest {
             }
             val healthyQueries = mutableListOf<String>()
             val healthy = source(10L, "Healthy", searches = healthyQueries, sharedUrl = "/healthy", resultCount = 1)
+            val pending = source(11L, "Pending", resultCount = 0)
+            val pendingStarted = CompletableDeferred<Unit>()
+            val pendingCancelled = CompletableDeferred<Unit>()
+            val pendingCalls = AtomicInteger()
+            coEvery { pending.getSearchManga(1, any(), any()) } coAnswers {
+                if (pendingCalls.incrementAndGet() == 1) {
+                    pendingStarted.complete(Unit)
+                    try {
+                        awaitCancellation()
+                    } finally {
+                        pendingCancelled.complete(Unit)
+                    }
+                }
+                MangasPage(emptyList(), false)
+            }
             fun installed(version: String) = InstalledExtension(
                 jarFile = java.io.File("routing-key-must-not-be-identity.jar"),
                 sources = listOf(broken),
                 metadataSnapshot = ExtensionMeta("trusted.package", 123L, version, name = "Trusted extension"),
             )
             val owners = MutableStateFlow(listOf(installed("1.2.3")))
-            val manager = mockk<DesktopExtensionManager> { every { installedExtensions } returns owners }
+            val manager = mockk<DesktopExtensionPresentationService> { every { installedExtensions } returns owners }
             val preferences = DesktopAppPreferences(DesktopPreferenceStore(fixture.preferenceRoot)).apply {
                 enabledLanguages.set(setOf("en"))
-                pinnedSources.set(setOf("9", "10"))
+                pinnedSources.set(setOf("9", "10", "11"))
             }
             val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
             val dependencies = mockk<DesktopUiDependencies> {
-                every { sourceManager } returns FakeDesktopSourceManager(listOf(broken, healthy))
+                every { sourceManager } returns FakeDesktopSourceManager(listOf(broken, healthy, pending))
                 every { appPreferences } returns preferences
                 every { sourceMangaSearchService } returns SourceMangaSearchService()
                 every { saveSourceMangaForDetails } returns fixture.saver
@@ -122,10 +139,14 @@ class GlobalSearchResultProductionWiringTest {
                 setText(scene, "private-query")
                 scene.render()
                 click(scene, MR.strings.action_search.localized())
-                awaitWhileRendering(scene) { started.isCompleted && text(scene).contains("Healthy listed 0") }
+                awaitWhileRendering(scene) {
+                    started.isCompleted && pendingStarted.isCompleted && text(scene).contains("Healthy listed 0")
+                }
                 owners.value = listOf(installed("9.9.9"))
                 release.complete(Unit)
-                awaitWhileRendering(scene) { !coordinator.state.isSearching }
+                awaitWhileRendering(scene) {
+                    coordinator.state.queryStates[9L] is SourceQueryState.Failure && text(scene).contains("1.2.3")
+                }
                 val failure = coordinator.state.queryStates[9L] as SourceQueryState.Failure
                 val diagnostics = generateSequence(failure.error.cause) {
                     it.cause
@@ -143,13 +164,17 @@ class GlobalSearchResultProductionWiringTest {
                     text(scene),
                 )
                 assertTrue(text(scene).contains("Healthy listed 0"), text(scene))
+                assertTrue(coordinator.state.isSearching)
+                assertFalse(pendingCancelled.isCompleted)
                 val previousGeneration = coordinator.state.generation
                 click(scene, MR.strings.action_search.localized())
                 awaitWhileRendering(scene) {
                     coordinator.state.generation > previousGeneration && !coordinator.state.isSearching &&
-                        text(scene).contains("9.9.9")
+                        text(scene).contains("9.9.9") && text(scene).contains("Healthy listed 0")
                 }
                 assertEquals(listOf("private-query"), healthyQueries)
+                assertTrue(pendingCancelled.isCompleted)
+                assertEquals(2, pendingCalls.get())
             } finally {
                 release.complete(Unit)
                 coordinator.close()

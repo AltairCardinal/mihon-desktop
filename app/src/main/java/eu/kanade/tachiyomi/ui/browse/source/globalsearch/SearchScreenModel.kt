@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.browse.source.globalsearch
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.produceState
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
@@ -94,12 +95,14 @@ abstract class SearchScreenModel(
 
     @Composable
     fun getManga(initialManga: Manga): androidx.compose.runtime.State<Manga> {
-        return produceState(initialValue = initialManga) {
-            getManga.subscribe(initialManga.url, initialManga.source)
-                .filterNotNull()
-                .collectLatest { manga ->
-                    value = manga
-                }
+        return key(initialManga.source, initialManga.url) {
+            produceState(initialValue = initialManga) {
+                getManga.subscribe(initialManga.url, initialManga.source)
+                    .filterNotNull()
+                    .collectLatest { manga ->
+                        value = manga
+                    }
+            }
         }
     }
 
@@ -180,12 +183,14 @@ abstract class SearchScreenModel(
                 sources
                     .associateWith { existingResults[it] ?: SearchItemResult.Loading }
                     .toPersistentMap(),
+                generation,
             )
         } else {
             updateItems(
                 sources
                     .associateWith { SearchItemResult.Loading }
                     .toPersistentMap(),
+                generation,
             )
         }
 
@@ -230,11 +235,11 @@ abstract class SearchScreenModel(
                                 .distinctBy { it.url }
                                 .let { networkToLocalManga(it) }
                             if (isActive && reduced.request.generation == generation) {
-                                updateItem(source, SearchItemResult.Success(titles))
+                                updateItem(source, SearchItemResult.Success(titles), generation)
                             }
                         }
                         is SourceQueryState.Empty -> if (isActive) {
-                            updateItem(source, SearchItemResult.Success(emptyList()))
+                            updateItem(source, SearchItemResult.Success(emptyList()), generation)
                         }
                         is SourceQueryState.Failure -> if (isActive) {
                             updateItem(
@@ -248,6 +253,7 @@ abstract class SearchScreenModel(
                                         reduced.recoveryAction,
                                     ),
                                 ),
+                                generation,
                             )
                         }
                         is SourceQueryState.Loading -> Unit
@@ -258,9 +264,10 @@ abstract class SearchScreenModel(
         }
     }
 
-    private fun updateItems(items: PersistentMap<Source, SearchItemResult>) {
+    private fun updateItems(items: PersistentMap<Source, SearchItemResult>, generation: Long) {
         mutableState.update {
             it.copy(
+                generation = generation,
                 items = items
                     .toSortedMap(sortComparator(items))
                     .toPersistentMap(),
@@ -268,11 +275,12 @@ abstract class SearchScreenModel(
         }
     }
 
-    private fun updateItem(source: Source, result: SearchItemResult) {
-        val newItems = state.value.items.mutate {
-            it[source] = result
+    private fun updateItem(source: Source, result: SearchItemResult, generation: Long) {
+        mutableState.update { current ->
+            if (current.generation != generation) return@update current
+            val items = current.items.mutate { it[source] = result }
+            current.copy(items = items.toSortedMap(sortComparator(items)).toPersistentMap())
         }
-        updateItems(newItems)
     }
 
     fun setMigrateDialog(currentId: Long, target: Manga) {
@@ -294,6 +302,7 @@ abstract class SearchScreenModel(
         val onlyShowHasResults: Boolean = false,
         val items: PersistentMap<Source, SearchItemResult> = persistentMapOf(),
         val dialog: Dialog? = null,
+        val generation: Long = 0,
     ) {
         val progress: Int = items.count { it.value !is SearchItemResult.Loading }
         val total: Int = items.size

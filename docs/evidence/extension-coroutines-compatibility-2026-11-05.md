@@ -1001,3 +1001,38 @@ host/fatal/未知尾传播均已检查。每章可变对象回归关闭；归档
 独立核对，有效组合27项，最终健康factory原件替代同名旧项，未把重复补验累计。
 本批17 Kotlin+两份维护证据及roadmap阶段说明是这些真实调用与下游反馈的内聚接线，
 超过8文件不据此扩大测试；不包含root全局UI及用户reader改动，也不勾选整个EC06。
+
+## EC-07 阶段：Android 真实页面与双端三源取消（2026-11-06）
+
+基线 `ab443af354`，本批只含root全局UI/model及真实页面测试；直接调用簇已独立提交，
+其并发改动不计入本批证据。生产改动是既有错误组件的可选身份说明及必要状态/订阅修复，
+不新增页面/导航/DI类型或持久化协议。
+
+- 首 key `ec07-android-global-ui-red` 为多余测试 import 编译错误，非产品红。
+  `ec07-android-global-ui-correct-red` 执行真实 Navigator、输入与IME提交，健康作品和
+  本地化兼容提示已出现，但缺 Trusted extension (1.2.3)，正确红；3次自动retry仍算1方法。
+  XML 归档 `.test-tmp/ec07-android-global-ui-correct-red-xml/`。
+- 最小UI实现仅消费操作前冻结身份，原错误正文/恢复动作不变。加入三源与新查询断言后，
+  `ec07-global-ui-three-source-green` 的新Android方法失败、旧model/recovery通过。
+  Desktop在final Manager getter装桩时报MockK错误，改为mock实际消费的既有presentation
+  service接口，不改production；其后真实Desktop三源用例通过。
+- `ec07-global-ui-diagnostic` 单次诊断关闭自动重试，真实计数broken2/healthy2且旧挂起源
+  已取消，但语义树仍显示Healthy first、broken/pending Loading。已读production：
+  updateItem在State外计算整图，线程池完成结果会互相覆盖。修复同一update内读改写，
+  加State.generation屏障，CAS重试重算items并拒绝已失效结果，保留当前其他字段。
+- `ec07-android-ui-atomic-red` 分步验证：broken/pending已正确结束、9.9.9提示出现，
+  仍显示Healthy first。真正原因是getManga的produceState没有来源/URL身份；快速新查询
+  没有经过Loading帧时会复用旧初值和订阅。以key(source,url)重建独立状态组，不能靠
+  等待UI多一帧或只改测试文案掩盖。该次XML归档 `.test-tmp/ec07-android-ui-atomic-red-xml/`。
+- 最终 `ec07-global-ui-three-source-final` **PASSED/exit0，39秒**，恢复默认测试retry和
+  原严格格式规则。亲核四XML：Android真实UI1、model7、recovery2、Desktop真实页面3，
+  **共13项，零失败/零跳过**；归档 `.test-tmp/ec07-global-ui-three-source-final-xml/`。
+  精确app4/Desktop1共5文件Apply后strict Check通过；未扩模块全量。
+- Android320px真实输入/IME：坏源提示和旧版本、健康作品出现，挂起源没有被兼容失败
+  取消；第二查询取消旧挂起源、显示新健康作品/新owner，旧结果/版本消失、进度归零；
+  第三查询无已安装归属时显示Unknown/Unknown。每次每源1调用，无自动重试。Desktop
+  同一现有提交用例已加第三挂起源，显式版本重查取消旧源且健康实际search仍仅1次。
+
+未实施本片段的代理已独审atomic generation更新、Compose key和details接线通过。
+维护见7.6.8。此阶段补齐真实三源UI证据，仍不勾选EC07：完整元数据安全描述、实际诊断
+写入及其失败保护、原APK/R8验收均按原计划继续。
