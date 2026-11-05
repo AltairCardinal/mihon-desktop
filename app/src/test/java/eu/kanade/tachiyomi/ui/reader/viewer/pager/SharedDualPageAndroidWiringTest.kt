@@ -59,11 +59,21 @@ import uy.kohesive.injekt.api.InjektScope
 import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.registry.default.DefaultRegistrar
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], manifest = Config.NONE)
 class SharedDualPageAndroidWiringTest {
+    private var o7Sink: eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnosticSink? = null
+    private var o7PreviousSink: eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnosticSink? = null
+    private var o7Directory: java.io.File? = null
+
+    private fun o7Lines(): List<String> =
+        o7Directory?.listFiles().orEmpty().flatMap { it.readLines() }
+
     private val mainDispatcher = StandardTestDispatcher()
     private lateinit var previousInjekt: InjektScope
     private lateinit var viewer: DualPageR2LPagerViewer
@@ -382,6 +392,7 @@ class SharedDualPageAndroidWiringTest {
 
     @After
     fun tearDown() {
+        // Restore optional diagnostics even if the native wiring assertion fails.
         try {
             if (::viewer.isInitialized) {
                 val ownedScope = ReflectionHelpers.getField<kotlinx.coroutines.CoroutineScope>(viewer.adapter, "scope")
@@ -407,6 +418,12 @@ class SharedDualPageAndroidWiringTest {
                 )
             }
         } finally {
+            if (o7Sink != null) {
+                eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.configure(false, -1, -1, "off")
+                eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.sink = o7PreviousSink
+                o7Sink?.close()
+                o7Directory?.deleteRecursively()
+            }
             Dispatchers.resetMain()
             Injekt = previousInjekt
         }
@@ -653,6 +670,178 @@ class SharedDualPageAndroidWiringTest {
         val owner = requireNotNull(viewer.adapter.session(chapter))
         val ticket = requireNotNull(owner.captureViewport())
         assertTrue(owner.reportDrawn(ticket, requireNotNull(owner.frame(ticket)).unit.pageIds.toSet()))
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `O7 diagnostics follow automatic and required original work`() = runBlocking {
+        o7Directory = java.nio.file.Files.createTempDirectory("reader-o7-wiring").toFile()
+        o7PreviousSink = eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.sink
+        o7Sink =
+            eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnosticSink(directory = { requireNotNull(o7Directory) })
+        eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.sink = o7Sink
+        eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.configure(true, 1, 7, "o7-wiring", 4)
+        val chapter = chapter(5)
+        val encoded = readerTestPng(40, 60)
+        requireNotNull(chapter.pages).forEach {
+            it.stream = { encoded.inputStream() }
+            it.publishHeaderFact()
+            it.status = eu.kanade.tachiyomi.source.model.Page.State.Ready
+        }
+        var decoderCalls = 0
+        var regionCalls = 0
+        viewer.adapter.spreadDecoderFactory = { stream ->
+            decoderCalls++
+            val decoder = eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(stream)
+            object : eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageRegionDecoder {
+                override fun decode(region: android.graphics.Rect): android.graphics.Bitmap {
+                    regionCalls++
+                    return decoder.decode(region)
+                }
+                override fun recycle() = decoder.recycle()
+            }
+        }
+        suspend fun pump(condition: () -> Boolean) {
+            val deadline = System.nanoTime() + 5_000_000_000L
+            do {
+                mainDispatcher.scheduler.runCurrent()
+                kotlinx.coroutines.delay(5)
+            } while (!condition() && System.nanoTime() < deadline)
+        }
+        val preferences = Injekt.get<ReaderPreferences>()
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        mainDispatcher.scheduler.runCurrent()
+        assertEquals(0, decoderCalls)
+        assertTrue(o7Lines().none { "event=sample_begin " in it })
+        preferences.automaticSpreadMatching().set(true)
+        pump {
+            val owner = requireNotNull(viewer.adapter.session(chapter))
+            owner.identity.pageIds.all { owner.originalAnalysis(it) is ReaderPageAnalysisEvidence.Computed } &&
+                o7Lines().count { "event=sample_end " in it } == 5
+        }
+        val owner = requireNotNull(viewer.adapter.session(chapter))
+        assertTrue(
+            "Actual sampler outputs reach the real shared owner",
+            owner.identity.pageIds.all {
+                owner.originalAnalysis(it) is ReaderPageAnalysisEvidence.Computed
+            },
+        )
+        val calls = o7Lines().filter { "event=sample_begin " in it }
+        assertEquals(5, decoderCalls)
+        assertEquals(5, calls.size)
+        assertTrue(calls.all { "session=${activity.diagnosticSession} " in it && "chapter=7 " in it })
+        assertEquals(10, regionCalls)
+        assertEquals(10, o7Lines().count { "event=sample_region_end " in it && "outcome=RETURNED" in it })
+        preferences.automaticSpreadMatching().set(false)
+        mainDispatcher.scheduler.runCurrent()
+        pump { !viewer.config.automaticSpreadMatching }
+        assertFalse(
+            "The real preference consumer must reach OFF before replacing display content",
+            viewer.config.automaticSpreadMatching,
+        )
+        pump {
+            ReflectionHelpers.getField<kotlinx.coroutines.Job?>(viewer.adapter, "matchingJob")?.isCompleted != false &&
+                AndroidReaderSpreadSampler.optionalWork.value == 0
+        }
+        assertEquals(0, AndroidReaderSpreadSampler.optionalWork.value)
+        // The sink is FIFO: this test-only barrier drains all spans offered by the completed job.
+        eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.record(
+            "o7_test_drain",
+            session = activity.diagnosticSession,
+        )
+        pump { o7Lines().any { "event=o7_test_drain " in it } }
+        assertTrue(o7Lines().any { "event=o7_test_drain " in it })
+        fun serial(line: String) = line.substringAfter("serial=").substringBefore(' ')
+        val callsBeforeDisplay = o7Lines().filter { "event=sample_begin " in it }.map(::serial).toSet()
+        val decodersBeforeDisplay = decoderCalls
+        val regionsBeforeDisplay = regionCalls
+        val streams = ConcurrentLinkedQueue<Pair<AtomicInteger, AtomicBoolean>>()
+        val page = requireNotNull(chapter.pages)[4]
+        page.stream = {
+            val bytes = AtomicInteger()
+            val closed = AtomicBoolean()
+            streams.add(bytes to closed)
+            object : java.io.FilterInputStream(encoded.inputStream()) {
+                override fun read(): Int = super.read().also { if (it >= 0) bytes.incrementAndGet() }
+                override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+                    super.read(buffer, offset, length).also { if (it > 0) bytes.addAndGet(it) }
+                override fun close() {
+                    closed.set(true)
+                    super.close()
+                }
+            }
+        }
+        assertEquals(ReaderPageFactState.UNKNOWN, page.pageFact.value.state)
+        // Finish required evidence independently before ordinary display preparation can supply geometry itself.
+        pump {
+            viewer.adapter.session(chapter)?.identity?.content?.getOrNull(page.index)?.contentVersion ==
+                page.encodedContentIdentity()
+        }
+        val requiredNeed = viewer.adapter.requirePairing(DisplayPage.Single(page))
+        assertTrue(
+            "The real display requirement must request missing geometry",
+            requiredNeed is mihon.domain.reader.ReaderPairingCertification.NeedFacts,
+        )
+        pump {
+            decoderCalls == decodersBeforeDisplay + 1 &&
+                o7Lines().count { "event=sample_end " in it } == callsBeforeDisplay.size + 1
+        }
+        assertFalse(viewer.config.automaticSpreadMatching)
+        assertEquals(
+            "The invalidated required page reaches the real decoder even with matching OFF",
+            decodersBeforeDisplay + 1,
+            decoderCalls,
+        )
+        assertEquals(regionsBeforeDisplay + 2, regionCalls)
+        val newCalls = o7Lines().filter { "event=sample_begin " in it && serial(it) !in callsBeforeDisplay }
+        assertEquals(1, newCalls.size)
+        val requiredEvents = o7Lines().filter { "serial=" in it && serial(it) == serial(newCalls.single()) }
+        assertTrue(
+            requiredEvents.all {
+                "chapter=7 sourceIndex=4 " in it && "session=${activity.diagnosticSession} " in it
+            },
+        )
+        assertEquals(1, requiredEvents.count { "event=sample_end " in it && "outcome=COMPUTED" in it })
+        val regionBegins = requiredEvents.filter { "event=sample_region_begin " in it }
+        val regionEnds = requiredEvents.filter { "event=sample_region_end " in it }
+        assertEquals(2, regionBegins.size)
+        assertEquals(2, regionEnds.size)
+        assertTrue(regionEnds.all { "outcome=RETURNED" in it })
+        fun ordinal(line: String) = line.substringAfter("context=").substringBefore(' ')
+        assertEquals(listOf("1", "2"), regionBegins.map(::ordinal))
+        assertEquals(regionBegins.map(::ordinal), regionEnds.map(::ordinal))
+        val display = DualPagerPageHolder(activity, viewer, DisplayPage.Single(page))
+        val displayRead = launch(mainDispatcher) {
+            val sideType = DualPagerPageHolder::class.java.declaredClasses.single { it.simpleName == "Side" }
+            val side = requireNotNull(sideType.enumConstants).single { it.toString() == "CENTER" }
+            val setImage = DualPagerPageHolder::class.java.declaredMethods.single { it.name == "setImage" }
+                .apply { isAccessible = true }
+            kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn<Unit> { continuation ->
+                val result = setImage.invoke(display, page, side, continuation)
+                if (result === kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED) result else Unit
+            }
+        }
+        try {
+            pump { displayRead.isCompleted && o7Lines().any { "event=read_start " in it && "sourceIndex=4 " in it } }
+            assertTrue(
+                o7Lines().any {
+                    "event=read_start " in it && "sourceIndex=4 " in it &&
+                        "session=${activity.diagnosticSession} " in it
+                },
+            )
+            assertTrue(
+                "Production consumed and closed an entire encoded PNG before the Windows JNI boundary",
+                streams.any {
+                    it.first.get() == encoded.size && it.second.get()
+                },
+            )
+        } finally {
+            displayRead.cancel()
+            mainDispatcher.scheduler.runCurrent()
+            displayRead.join()
+            ReflectionHelpers.callInstanceMethod<Unit>(display, "onDetachedFromWindow")
+            mainDispatcher.scheduler.runCurrent()
+        }
     }
 
     @Test

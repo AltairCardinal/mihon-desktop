@@ -898,6 +898,7 @@ class DualPageViewerAdapter(
                                             !pressured && !foregroundBusy && timeRemaining
                                         },
                                         readPermit = permit,
+                                        diagnosticSession = viewer.activity.diagnosticSession,
                                     )
                                 }
                             }

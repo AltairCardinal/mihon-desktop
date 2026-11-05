@@ -37,6 +37,141 @@ import java.io.InputStream
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class AndroidReaderSpreadSamplerTest {
     @Test
+    fun `O7 diagnostics bind actual original calls and native regions only when enabled`() = runBlocking {
+        val bitmap = Bitmap.createBitmap(40, 60, Bitmap.Config.ARGB_8888)
+        val encoded = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+        bitmap.recycle()
+        val page = ReaderPage(1, stream = { encoded.inputStream() })
+        val owner = session(page)
+        var decodes = 0
+        try {
+            val request = requireNotNull(owner.requestOriginalAnalysis(id(1)))
+            val lines = o7Diagnostics {
+                repeat(3) { index ->
+                    eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.enabled = index != 1
+                    assertNotNull(
+                        AndroidReaderSpreadSampler.sampleOriginal(page, request, 40, 60, { stream ->
+                            val decoder = decodedRegionFactory(stream)
+                            object : ReaderPageRegionDecoder {
+                                override fun decode(region: Rect): Bitmap {
+                                    decodes++
+                                    if (index == 2) eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.enabled = false
+                                    return decoder.decode(region)
+                                }
+                                override fun recycle() = decoder.recycle()
+                            }
+                        }),
+                    )
+                }
+            }
+            assertEquals(6, decodes)
+            val calls = lines.filter { "event=sample_begin " in it }
+            assertEquals("Only the two ON actual calls are recorded, even though source1 is not target4", 2, calls.size)
+            assertTrue(calls.all { "chapter=87 sourceIndex=1 " in it })
+            val serials = calls.map { requireNotNull(o7Field(it, "serial")).toInt() }
+            assertEquals("OFF must not consume a diagnostic call serial", serials[0] + 1, serials[1])
+            for (serial in serials) {
+                val events = lines.filter { o7Field(it, "serial") == serial.toString() }
+                assertEquals(1, events.count { "event=sample_end " in it && "outcome=COMPUTED" in it })
+                val begins = events.filter { "event=sample_region_begin " in it }
+                val ends = events.filter { "event=sample_region_end " in it }
+                assertEquals(2, begins.size)
+                assertEquals(listOf("1", "2"), begins.map { o7Field(it, "context") })
+                assertEquals(begins.map { o7Field(it, "context") }, ends.map { o7Field(it, "context") })
+                assertTrue(ends.all { "outcome=RETURNED" in it })
+            }
+        } finally {
+            owner.close()
+        }
+    }
+
+    @Test
+    fun `O7 diagnostics close failed cancelled and empty original calls`() = runBlocking {
+        for (case in listOf("ERROR", "CANCELLED", "CONSTRUCTOR", "NO_PLAN", "EMPTY", "NO_STREAM")) {
+            val failure = if (case ==
+                "CANCELLED"
+            ) {
+                kotlinx.coroutines.CancellationException()
+            } else {
+                IllegalStateException()
+            }
+            var recycled = 0
+            var regions = 0
+            val page = ReaderPage(1, stream = { byteArrayOf().inputStream() })
+            val owner = session(page)
+            try {
+                val request = requireNotNull(owner.requestOriginalAnalysis(id(1)))
+                if (case == "NO_STREAM") page.stream = null
+                val lines = o7Diagnostics {
+                    val result = runCatching {
+                        AndroidReaderSpreadSampler.sampleOriginal(
+                            page,
+                            request,
+                            if (case == "NO_PLAN") 0 else 40,
+                            if (case == "EMPTY") 40 else 60,
+                            decoderFactory = {
+                                if (case == "CONSTRUCTOR") throw failure
+                                object : ReaderPageRegionDecoder {
+                                    override fun decode(region: Rect): Bitmap {
+                                        regions++
+                                        throw failure
+                                    }
+                                    override fun recycle() {
+                                        recycled++
+                                    }
+                                }
+                            },
+                        )
+                    }
+                    if (case in listOf("ERROR", "CANCELLED", "CONSTRUCTOR")) {
+                        org.junit.Assert.assertSame(failure, result.exceptionOrNull())
+                    } else {
+                        assertTrue(result.isSuccess)
+                    }
+                }
+                assertEquals(case, 1, lines.count { "event=sample_begin " in it })
+                val outcome = when (case) {
+                    "CONSTRUCTOR" -> "ERROR"
+                    "EMPTY" -> "COMPUTED"
+                    "NO_STREAM" -> "NO_RESULT"
+                    else -> case
+                }
+                assertEquals(case, 1, lines.count { "event=sample_end " in it && "outcome=$outcome" in it })
+                val expectedRegions = if (case in listOf("ERROR", "CANCELLED")) 1 else 0
+                assertEquals(expectedRegions, regions)
+                assertEquals(expectedRegions, recycled)
+                assertEquals(expectedRegions, lines.count { "event=sample_region_begin " in it })
+                assertEquals(expectedRegions, lines.count { "event=sample_region_end " in it && "outcome=$case" in it })
+            } finally {
+                owner.close()
+            }
+        }
+    }
+
+    private fun o7Field(line: String, name: String) =
+        line.split(' ').firstOrNull { it.startsWith("$name=") }?.substringAfter('=')
+
+    private suspend fun o7Diagnostics(block: suspend () -> Unit): List<String> {
+        val root = java.nio.file.Files.createTempDirectory("reader-o7-sampler").toFile()
+        val before = eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.sink
+        val sink = eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnosticSink(directory = { root })
+        eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.sink = sink
+        eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.configure(true, 1, 87, "o7-test", 4)
+        try {
+            block()
+        } finally {
+            eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe.configure(false, -1, -1, "off")
+            eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.sink = before
+            sink.close()
+        }
+        return try {
+            root.listFiles().orEmpty().flatMap { it.readLines() }
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `square original stays Computed without stream or region work in every rotation`() = runBlocking<Unit> {
         val bitmap = Bitmap.createBitmap(40, 40, Bitmap.Config.ARGB_8888)
         bitmap.eraseColor(0xff4080c0.toInt())

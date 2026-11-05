@@ -51,6 +51,12 @@ P4只在一次ChapterLoader加载内传递已解析下载位置，默认factory�
 
 ## 开销、隔离与失败边界
 
+O7另在既有ReaderDiagnostics滚动日志中记录实际采样调用，不新增稀疏时间槽。仅`ReaderOpenLatencyProbe.enabled`为true时创建调用上下文：`sample_begin/end`包围`sampleOriginal`，`sample_region_begin/end`紧贴真实`decoder.decode`。以process、Activity session、chapter、sourceIndex及进程内serial关联；context为本调用内从1开始的region序号，调用级为0。serial溢出后从1重新开始，不是持久身份。关闭时不创建每调用上下文、序号或字段Map；已开启的调用即使中途关闭仍闭合边界。
+
+`sample_end`的COMPUTED仅表示返回采样结果，不表示共享owner接受；NO_PLAN、NO_RESULT、CANCELLED、ERROR分别保留无计划、无结果、取消和异常边界。region的RETURNED仅表示decode返回，不保证后续尺寸、资源或身份校验通过。自动匹配OFF与Probe关闭不同：缺失原图几何的必需事实任务仍可到达采样链，不能先验要求OFF零调用。普通read与采样span重叠只能证明wall-time重叠，不能证明独占CPU争用或因果收益。
+
+这些日志使用量化到毫秒的System.nanoTime，和稀疏probe的纳秒端点比较时保留边界量化误差；它们不是物理显示时间。判断没有采样前，须核该session探针确实启用、进程/会话起止存在、所有滚动文件范围完整且无dropped/write_failure；强停可能使队尾未写出。缺事件或文件轮转不完整时结论为未知，不能填零。
+
 - 启用时在主线程预分配 32 个 session，每个 session 有固定54个 AtomicLong 时间槽（历史44槽位、R2追加UNIT_DRAWN、O3追加三个记录存在性槽、O5追加六个AUTO构造槽）；超出预算拒绝继续采样，不增长集合。
 - O3的`PAIRING_RECORD_EMPTY / VALID / INVALID`只在真实`acceptRestore`接受成功后记录：同一repository snapshot的record为空、非空且通过原校验、非空且原校验产生INVALID_RECORD。恢复入口捕获request，完成时不借用新请求；无额外仓库读取或写入。每类事件只保留首次时间，同请求显式重试可能产生多种分类，须结合动作与时序解释；没有marker不能反推记录为空，也可能未接受、已关闭或请求过期。该诊断不证明屏幕已绘制，不改变既有JSON结构；对照两臂必须携带相同诊断。
 - O5的`AUTO_{SINGLE|DUAL}_CREATED_{INVALID|PORTRAIT|LANDSCAPE}`只在真实`ReadingMode.toViewer`成功返回后记录实际类型；仅AUTO且Probe启用时在调用前读取容器扣padding的内容尺寸。任一边不大于0标INVALID，有效宽大于高标LANDSCAPE，其余有效尺寸（包括正方形）标PORTRAIT；这是几何标签，不是Adaptive策略阈值或设备朝向。沿用该Activity创建时捕获的request及原intent章节，旧Activity不能借用新请求。各类只记第一次，顺序可证明同request出现过两类构造，不能统计精确总次数；无marker也不能独立反证没构造。人工尺寸夹具只验证诊断接线，是否存在真实首开重复构造须看实际AUTO样本。该取证不改变布局决策、JSON结构或计时端点，不增加I/O/provider；关闭时不读尺寸或写事件。

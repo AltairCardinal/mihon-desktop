@@ -485,3 +485,56 @@ O6设备预检重新确认USB PCE-W30/API31、secure=false及Asleep。A1正常�
 冻结B6 artifact/source.diff/映射、真实RED/GREEN和全部测量均保留。核最终SHA后仅逆应用本任务三文件的精确diff，逐文件SHA与A6元数据一致，production指纹恢复`dd0a4130b5b238d7c5c2b44030c69bedb75ccc48d7478191de574d05e09912d5`；记录在隔离工作区`o6/rejected-initial-read-candidate/restoration-verification.json`。源码无O6准入/测试残留，O2/O4与O5六槽诊断不变；撤回复用完全相同基线的已有验证，只新做逆diff/SHA/只读核验，未声称恢复后重跑Gradle。
 
 设备已正常恢复A6/B5 probe-only APK SHA `7c0fdd5232cace04d2ffc1cdb455c4adba437cc5c5924f1c91bbbff3ab75c98a`，读回verify/install；Probe OFF正常界面核对双页RTL、默认方向、matching ON、地图左/标题右5/187，正常Back保存第5页，最终Asleep/Changing=false。证据`measurement-o6/restore-adopted-baseline/final-verification.json`。未推送、未正式发布、未更新公共能力说明；O7–O11仍待执行。
+
+## O7 实际原图采样取证（保留诊断，不采用调度候选）
+
+新增默认关闭的调用诊断：Probe开启时，`sample_begin/end`包围真实`sampleOriginal`，`sample_region_begin/end`紧贴真实region decoder；按process/Activity session/chapter/sourceIndex/serial及region ordinal关联。COMPUTED表示sampler返回，RETURNED表示decode返回，均不能代替owner接受或物理显示。关闭时没有每调用上下文、serial分配或字段Map；中途关闭仍闭合已开启调用。维护边界见[探针说明](../architecture/reader-open-latency-probe.md)。
+
+真实RED为采样已执行但诊断调用数期望2、实际0；两个sampler方法及独立Android接线方法组合GREEN，app格式通过，原件/最终SHA见worktree `o7/source-files-accepted-contract.json`。接线验证已知headers初始matching OFF零调用、ON五次调用/十次region并进入共享owner；消费OFF、旧任务结束及FIFO排空后，替换source4流使几何失效，真实必需任务仍新增一次调用/两次region。计划要求核实OFF是否采样，并未要求OFF一律零调用；早期额外零调用假设已被反例纠正，未改变生产策略迁就断言。旧matching分组测试同一失败已在严格HEAD复现，原断言未改，不称修复。Windows JNI类型检测限制使夹具只能验证普通PNG完整读取及关闭，不能冒充read_complete或像素验证。
+
+诊断APK位于`app/artifacts/android/diagnostics/reader-open-o7-probe-20261104/`，SHA `e8b07de11997c806cdce2ba0c6eeac7550567730cbc5835c90c5033c2e3fc530`，sourceRevision `b494a0d0c658ffec5790f4ff1b9aa55088defb41`加冻结diff，production指纹`db143a54e082e8e22205094ce8ce3cc46f55414e61f1670fa6e7c9a15eb4a642`。保持code134、原诊断证书、非debug/R8/shrink；构建130.6秒PASS。首次启动命令路径写法错误未执行Gradle，`o7/build-launch-failed.log`保留，不当产品失败或行为RED。
+
+同USB PCE-W30/API31、同CBZ/source4，正常保留数据安装后按OFF/ON各一次Probe OFF预热，再各两次新进程单次首开，四份资格位于原目录`measurement-o7/`，不混入后续A/B。未录视频/Perfetto，不报告近黑或净收益。root独立查看实际OFF/ON设置与正常双图；六份预热/资格图片中央漫画ROI均相同（`target-roi-check.json`），5/187、地图左/标题右，无教学浮层。四份完整probe含真实read/decode/FIRST_DRAW/UNIT，补足Windows显示限制。最终日志快照`reader-diagnostics-qualification-final/`保留两个实际滚动文件及SHA。
+
+`analysis/o7-qualification-four.json`四次reader_start均唯一匹配ACTIVITY_CREATE（≤3ms），各有reader_end；按启动窗内begin选中采样span数2/4/3/3、region数1/1/2/3，各完整session内均闭合，普通准备各六对。先裁窗导致ON跨UNIT span被误列未闭合的旧版旁存`o7-qualification-four-window-clipped.json`，已撤回该解释。OFF两次及ON第二次存在超过1ms量化边界的region与普通准备窗重叠；ON第一次未观察该重叠。普通read_start→read_complete含IO排队/解析，不能解释为精确物理读取或独占CPU竞争。无显式dropped/write_failure不证明绝对无损。资格结束Probe OFF、Asleep/Changing=false；下一步仅试验复用现有前台计数覆盖普通准备，不新增首绘等待门。
+
+### O7 普通准备租约候选与验证
+
+候选仅三行：`DualPagerPageHolder.setImage`在既有read_start前借用`ReaderPageImageView.beginForegroundWork`，外层finally释放；范围覆盖普通编码Buffer、背景/几何处理到native提交，不等FIRST_DRAW。复用既有计数、幂等释放和adapter空闲重试，不改loader、sampler算法、预算或O6已拒门控。root独立审查物理读取退出、取消/异常/旧身份返回的finally及native任务接管路径；正在运行的JNI region不可抢占，不保证消除所有竞争窗口。
+
+真实RED为普通PNG物理读取已阻塞而计数期望1、实际0（`o7/read-admission-red.xml/log`）。两个新方法与两个原executor回归、原真实双child draw/旧presentation拒收共五方法GREEN，app格式通过（`read-admission-source-files.json`）；受控read区间内region不启动，释放后无需额外输入恢复，异常/取消在物理退出前仍busy、退出后归零。Windows COMPLETE只证明普通stream完成及JNI边界finally，不冒充正常native提交；旧targetdraw回归绕开提交，该缺口留真机。补跑O7诊断接线时，第六次采样期望6实际5：新租约下普通准备先供给header可能消除需求，原并发计数夹具不再可靠，原件`admission-wiring-regression-failed.xml/log`保留。随后明确等待新content摄入并调用生产`requirePairing`确认NeedFacts，先完成必需第六次调用/两region，再独立普通读取；保留所有计数、同session及span断言，单方法与格式PASS，见`read-admission-diagnostic-wiring-source.json`。不是通过放宽生产策略或删除失败断言收口。
+
+B7候选APK位于`app/artifacts/android/diagnostics/reader-open-o7-admission-20261104/`，SHA `65fbe0fdebd87e6345586a3342e8b379e09f7797ff8a21be8c3f423746e45809`，同基线revision加冻结六文件diff，production指纹`a5f1781635e785f39a232e709a89a2846f8c51d20d98c33c66403f42a6d3d1e2`，132.1秒R8构建PASS、原证书/非debug。A7为上述O7probe诊断包；两臂诊断相同，仅B7有准备租约。A1/B1首次与暖、B2/A2首次的OFF/ON十二份对照位于新`measurement-o7-admission/`，与资格四份分开，逐安装块实际读回OAT并逐mode预热；候选去留待完整端点、实际工作顺序及正确性共同评估。
+
+### O7 最终测量与裁决
+
+**不采用准备租约，保留默认关闭的真实调用诊断。** 十二份正式记录全部VALID，四块安装后初始OAT均为verify/install，B1/B2/A2采集后仍相同；A1采集结束后的OAT未留存，不能从后续重装追溯填补。该缺口不等于A1安装后初始读回缺失。每块每mode一次Probe OFF预热，首次表示安装后已预热的新进程首次；每臂每mode两次首次、一次同进程再次，没有升级首次/P95或跨任务合池结论。
+
+下表单位ms。起点为各trace中精确launch PID且TID=PID主线程最早`deliverInputEvent src=0x1002`，十二份均与原native down_ts一致；两个clock snapshot映射MONOTONIC→BOOTTIME，差值0–1041ns。Running为页表发布到UNIT的主线程CPU时间，不是wall时间。FIRST_DRAW是目标source4地图，先显示的source3卷标题由视频首部分端点另计；均不是物理屏幕present。†表示该trace有负时间戳丢弃，不能据细小CPU差作因果推断。
+
+| 样本 | 输入→目标draw | 输入→UNIT | Main Running | 视频近黑采样界限 |
+| --- | ---: | ---: | ---: | --- |
+| A1 OFF 首次 | 413.266 | 413.471 | 183.976 | 50–83 |
+| A1 OFF 暖 | 317.953 | 318.122 | 131.492 | 0–34 |
+| A1 ON 首次 | 379.506 | 379.703 | 162.658 | 67–101 |
+| A1 ON 暖† | 337.344 | 337.538 | 145.331 | 33–65 |
+| B1 OFF 首次 | 422.061 | 422.283 | 165.941 | 99–133 |
+| B1 OFF 暖† | 350.135 | 350.298 | 146.727 | 49–83 |
+| B1 ON 首次† | 390.422 | 390.644 | 159.305 | 34–66 |
+| B1 ON 暖 | 321.975 | 322.138 | 131.613 | 17–50 |
+| B2 OFF 首次† | 398.716 | 398.931 | 170.955 | 82–114 |
+| B2 ON 首次† | 378.435 | 378.705 | 171.035 | 33–67 |
+| A2 OFF 首次 | 420.655 | 420.844 | 176.431 | 67–99 |
+| A2 ON 首次† | 376.163 | 376.369 | 171.361 | 16–50 |
+
+首次目标首绘均值OFF 416.961→410.389、ON 377.835→384.428，逐次方向不一致；暖态OFF 317.953→350.135、ON 337.344→321.975，各仅一份。OFF首次Main Running均值180.204→168.448，但ON仅167.010→165.170，且trace健康限制不能保证CPU无遗漏。OFF候选两次近黑均更长，ON方向混合；不把减少重叠解释为稳定体验收益，也不从这些小样本称整体达标。
+
+`analysis/o7-reader-sampling-and-readiness.json`以真实process/session及量化毫秒匹配十二份probe，全session共74次sampleOriginal、76次region；43 COMPUTED/31 CANCELLED，全部调用/region/普通read成对，12个reader_end，无显式loss事件，但不证明绝对无损。UNIT前确定region/普通准备内段重叠A为5/6、B为0/6；B ON的UNIT后新调用10/9/10、各全session均10次，后续仍分别2/1/1个region与普通准备重叠。它改变时序，没有证明全程竞争消失或减少总工作。source5/6 accepted decode_ready均绑定同holder/generation的真实read，保留相对UNIT时间，但不能当作ON实际首翻成员或首翻完成。本轮未另做快速首翻计时，不能称首翻无代价；首开无稳定净收益且工作后移已足以拒绝候选，不继续扩大采样或准入机制。
+
+root独立查看十二份原PTS连续边界，首部分卷标题与完整地图左/标题右分列，保留原provisional选择；近黑使用既有内容ROI灰度均值≤2/255代理，可能残留极暗旧UI，阈值与帧采样至少一帧不确定，不能当literal全黑或精确无内容时间。`o7-video-reviewed.json`逐帧流式核完整单元之后的全部原视频，解码帧数等于ffprobe、后续近黑均0；`o7-video-pts-verification-12.json`十二份索引/PTS/公式/视频SHA独立通过。二十份预热/正式截图的漫画ROI均为`cd4b1e2a37b0eeeb0264ea098a321eb84f01a2ec15c4d9c0f23e0f36a1ed6bf4`，现场OFF/ON及默认方向/双页RTL由root逐准备截图核实，无教学浮层。视频没有校准输入时钟，不提供伪精确输入→屏幕值。
+
+原始native/clock/health查询全部`--no-agent`保存，`o7-startup-input-identity-12.json`与`o7-native-cpu-health-12.json/.csv`保留身份和CPU范围；每trace的info级traced_chunks_discarded为209–220，不能自动解释成相关丢包。六份error级trace_sorter_negative_timestamp_dropped共7条（A1 ON暖1、B1 OFF暖1、B1 ON首次2、B2 OFF1、B2 ON1、A2 ON1）；其它未返回该非零项。android_logs_total为0只是查询结果，不能证明trace无数据。详见完整`o7-startup-nonzero-health-12.json`及逐trace raw；这些限制随数值保留，不归因编译、采样或产品缺陷。生成汇总曾把post-block字段误命名postInstall，已更正并保留旧版，raw未改。
+
+最终仅逆应用`admission-only.diff`（SHA `abf81bc8b01ca75b07e7676507f54a0cfb52abbf78d22fe07a630522a09d2389`）撤回holder三行与两专属测试；两文件逐SHA回到A7，production指纹恢复`db143a54e082e8e22205094ce8ce3cc46f55414e61f1670fa6e7c9a15eb4a642`。恢复后新的显式必需任务诊断接线方法及app格式PASS，两个未变sampler方法复用既有GREEN；组合证据不是最终三方法合跑或模块全量。原候选五项测试、接线补验、全部失败和冻结APK/完整diff/独立两文件diff保留；最终源码与测试索引`o7/final-adopted-diagnostics-source.json`、恢复证明`o7/rejected-preparation-lease/restoration-verification.json`。本批超过400行来自同一诊断接线、真实失败夹具及完整证据，保持内聚提交，不增加产品能力范围。
+
+实际留装A7诊断控制包，SHA与源码指纹对应；Probe配置已实际读回OFF、隔离包无进程、Asleep/Changing=false，设置为双页RTL/默认方向/matching ON，正常Back保存第5页。原件`startup-cleanup/final-verification.json`。未推送、未发布、未更新公共能力说明。O7本地收口，O8–O11继续。
