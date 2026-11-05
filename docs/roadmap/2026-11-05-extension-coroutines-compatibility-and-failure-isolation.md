@@ -6,18 +6,20 @@ active-task: EC-03
 
 实施进度：EC-01/02 完成正确 ABI 红→升级后绿，38 项最终 focused 测试通过、零跳过；12 个生产/测试运行时配置的协程均解析为 1.11.0，定向格式通过。主代理核对原始日志/XML、薄 JAR 内容和来源/哈希后独立审查通过。Desktop 真实源使用官方签名 JVM JAR；原 APK 的 Legacy 转换 VerifyError 单独记录，仍须 EC-08 的 Android DEX/R8 原生验证。详见[累计证据](../evidence/extension-coroutines-compatibility-2026-11-05.md)。
 
+EC-03/04 进行中：分类契约正确红为 7 项中 6 项失败、普通 HTTP 对照通过；真实异步网络边界正确红为 2 项失败。下层实现后这 9 项 JVM focused 已通过，双端生产客户端/外部扩展上下文别名、文案与最终格式仍待收口。Desktop 与 Android 文案正确红均已确认；Android 同方法被既有 test-retry 自动重试 2 次，记录为一个用例的 3 次执行，不冒充 3 个独立用例。尚未提交或勾选 EC-03/04，也不宣称整个源调用或 UI 汇合已隔离。
+
 本计划对应用户要求的两件事：升级宿主协程运行库以兼容新版扩展；升级异常保护，使未来可识别的扩展链接错误转为单个源失败。后续执行按 EC-01 → EC-08 顺序进行；任务勾选表示该任务实现、必要验证、维护文档和本地提交已完成，不表示用户或正式发布验收通过。
 
 ## 1. 起点与已有证据
 
 - 源码基线：`main@2425aca5e53112a4d3214cf398f62c04e6b6ff88`。工作区已有阅读器首开优化及相关文档改动，均属于其他任务，禁止修改、暂存或提交。实施前重新检查 HEAD、工作区和构建占用；发生并发写入时使用独立 worktree。
-- 项目协程版本由 [`gradle/kotlinx.versions.toml`](../../gradle/kotlinx.versions.toml) 的 BOM 管理，当前为 `1.10.2`；这是 APK/JVM 应用内置的 `kotlinx.coroutines` 版本，不是 Android、Kotlin 编译器或 Mihon 应用版本。
+- 项目协程版本由 [`gradle/kotlinx.versions.toml`](../../gradle/kotlinx.versions.toml) 的 BOM 管理，故障基线为 `1.10.2`，EC-02 已将源码升级为 `1.11.0`；这是 APK/JVM 应用内置的 `kotlinx.coroutines` 版本，不是 Android、Kotlin 编译器或 Mihon 应用版本。源码升级和 JVM 测试通过不等于反馈者安装包已更新或 Android 原生验收已完成。
 - 反馈截图确认 Zerobyw 为 **1.6.2**。从公开仓库取得的同版本 APK，其 DEX 的 R8 标识与报错一致：`125eb32eedce472b811a65094f178dcd8f9e57abeaf4c38ce7128866500da47d`；`b`、`y`、`z` 三个类均携带该标识。
 - 该 APK SHA-256：`b04e4a298e6fef4fa58ef452ece77dc988025515f4b9b835d54a085c072dc874`。DEX 实际引用 `kotlinx.coroutines.BuildersKt.runBlockingK$default(CoroutineContext, Function2, int, Object): Object`，必须保留方法名中的 **K**。
 - 本机平板正式应用 `0.19.4-aex.116 / vc134` 的 APK 中，`BuildersKt` 仅定义旧的 `runBlocking` / `runBlocking$default`；本机 Zerobyw 为 **1.4.21**。按扩展名称排除不同版本不构成有效排除证据。
 - 当前直接故障已由 APK 静态证据定位为宿主/扩展协程 ABI 不匹配；未在反馈者 Android 17 设备复现，不据此归因于联想设备或 Android 17。最初截图与后补文本的宿主 R8 标识不同，不混用为同一构建。
 - 官方 [1.11.0 JVM API 清单](https://github.com/Kotlin/kotlinx.coroutines/blob/1.11.0/kotlinx-coroutines-core/api/kotlinx-coroutines-core.api) 同时保留新旧两组方法；[1.11.0 发布说明](https://github.com/Kotlin/kotlinx.coroutines/releases/tag/1.11.0) 是升级检查依据。
-- 当前 [`UncaughtExceptionInterceptor`](../../core/common/src/commonMain/kotlin/eu/kanade/tachiyomi/network/interceptor/UncaughtExceptionInterceptor.kt) 只捕获 `Exception`。`NoSuchMethodError` 属于 `LinkageError`；[OkHttp 5.3.2 AsyncCall](https://github.com/square/okhttp/blob/parent-5.3.2/okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/connection/RealCall.kt) 对非 IO 的 Throwable 可能先通知失败再重抛，因此仅在搜索协程外层捕获不构成保护。
+- 故障基线的 [`UncaughtExceptionInterceptor`](../../core/common/src/commonMain/kotlin/eu/kanade/tachiyomi/network/interceptor/UncaughtExceptionInterceptor.kt) 只捕获 `Exception`。`NoSuchMethodError` 属于 `LinkageError`；[OkHttp 5.3.2 AsyncCall](https://github.com/square/okhttp/blob/parent-5.3.2/okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/connection/RealCall.kt) 对非 IO 的 Throwable 可能先通知失败再重抛，因此仅在搜索协程外层捕获不构成保护。EC-04 的工作区实现和最终收口状态以上方实施进度为准。
 
 前序采集原件位于忽略目录 `.test-tmp/search-crash-20261105/`，不是可携带的测试依赖。EC-01 必须将需要长期维护的最小证据、制品来源和校验值纳入现有夹具机制，不能让后续测试依赖本机临时路径或聊天附件。
 
@@ -119,6 +121,7 @@ active-task: EC-03
 - 先列出双端实际调用清单：筛选器获取 → 热门/最新/搜索；作品详情/章节更新；页列表/图片请求与解析。沿现有 service/reader/download adapter 补守卫，不把整个数据库事务、页面 reducer 或下载持久化过程包成“扩展调用”。
 - 特别覆盖 `SearchScreenModel` 在 `loadPageResult` 之前调用 `source.getFilterList()` 的路径，以及网络回调之后才执行的 Rx/普通解析代码。只修改 `SourceMangaSearchService` 内 catch 无法覆盖这些路径。
 - 原始 LinkageError 及 EC-04 的 IO 包装均产出同一个共享不兼容结果。保留 Desktop `safeSourceCall` 超时与取消语义，复用 SharedReaderCatalogRequests 的去重/取消规则，不重写阅读器配对、holder 或缓存算法。
+- 检查既有错误投影是否丢失分类，特别是 `CatalogueCreatorDiscoverySourceAdapter.toCreatorSourceFailure()` 的通用 Network 回退。仅补本错误的保真映射和直接消费端反馈，并通过真实 adapter 调用验证；不借此扩建 Creator 能力或重写其错误体系。
 - **验收/验证**：源 API 同步抛错、挂起后抛错、解析抛错各有真实调用用例；详情/章节失败不写成功元数据，页列表失败不冒充空章，图片/下载失败不提交完成状态。健康并行章节或下载仍完成，确定性错误不自动入队重试。旧请求在新搜索/窗口替代后不回写。
 - **范围止点**：保护宿主管理的调用和网络链。扩展刻意自建全新客户端且删除保护链、未管理的线程/JNI 另行说明；不引入字节码注入或进程隔离去补无限范围。
 
