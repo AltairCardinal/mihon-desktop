@@ -1,0 +1,25 @@
+sample,arm,descriptor_transaction,device_stub_method,observed_count,slice_wall_total_ms,main_running_overlap_total_ms,scope
+final-b-single-r1-first,B9,transact[android.app.IActivityManager:70],getMemoryInfo,1,0.174479,0.057813,app-main DOWN to first Reader actual frame end; no nested-name summation
+final-b-single-r1-first,B9,transact[android.content.pm.IPackageManager:9],getApplicationInfo,1,0.116666,0.029166,app-main DOWN to first Reader actual frame end; no nested-name summation
+final-b-single-r1-first,B9,transact[android.os.IServiceManager:2],checkService,4,1.106251,0.181251,app-main DOWN to first Reader actual frame end; no nested-name summation
+final-b-single-r1-first,B9,transact[android.app.IActivityClientController:36],setTaskDescription,3,1.794271,0.235938,app-main DOWN to first Reader actual frame end; no nested-name summation
+final-b-single-r2-first,B9,transact[android.app.IActivityManager:70],getMemoryInfo,1,0.157292,0.051042,app-main DOWN to first Reader actual frame end; no nested-name summation
+final-b-single-r2-first,B9,transact[android.content.pm.IPackageManager:9],getApplicationInfo,1,0.114062,0.026562,app-main DOWN to first Reader actual frame end; no nested-name summation
+final-b-single-r2-first,B9,transact[android.os.IServiceManager:2],checkService,4,1.178647,0.144273,app-main DOWN to first Reader actual frame end; no nested-name summation
+final-b-single-r2-first,B9,transact[android.app.IActivityClientController:36],setTaskDescription,3,0.891667,0.167708,app-main DOWN to first Reader actual frame end; no nested-name summation
+final-b-single-r3-first,B9,transact[android.app.IActivityManager:70],getMemoryInfo,1,0.146875,0.0375,app-main DOWN to first Reader actual frame end; no nested-name summation
+final-b-single-r3-first,B9,transact[android.content.pm.IPackageManager:9],getApplicationInfo,1,0.12448,0.028126,app-main DOWN to first Reader actual frame end; no nested-name summation
+final-b-single-r3-first,B9,transact[android.os.IServiceManager:2],checkService,4,1.88646,0.238025,app-main DOWN to first Reader actual frame end; no nested-name summation
+final-b-single-r3-first,B9,transact[android.app.IActivityClientController:36],setTaskDescription,3,1.628645,0.265102,app-main DOWN to first Reader actual frame end; no nested-name summation
+final-official-single-r1-first,official,transact[android.app.IActivityManager:70],getMemoryInfo,0,0.0,0.0,app-main DOWN to first Reader actual frame end; no nested-name summation
+final-official-single-r1-first,official,transact[android.content.pm.IPackageManager:9],getApplicationInfo,0,0.0,0.0,app-main DOWN to first Reader actual frame end; no nested-name summation
+final-official-single-r1-first,official,transact[android.os.IServiceManager:2],checkService,2,0.422396,0.060938,app-main DOWN to first Reader actual frame end; no nested-name summation
+final-official-single-r1-first,official,transact[android.app.IActivityClientController:36],setTaskDescription,5,2.91198,0.436459,app-main DOWN to first Reader actual frame end; no nested-name summation
+final-official-single-r2-equivalent-first,official,transact[android.app.IActivityManager:70],getMemoryInfo,0,0.0,0.0,app-main DOWN to first Reader actual frame end; no nested-name summation
+final-official-single-r2-equivalent-first,official,transact[android.content.pm.IPackageManager:9],getApplicationInfo,0,0.0,0.0,app-main DOWN to first Reader actual frame end; no nested-name summation
+final-official-single-r2-equivalent-first,official,transact[android.os.IServiceManager:2],checkService,3,0.722918,0.125523,app-main DOWN to first Reader actual frame end; no nested-name summation
+final-official-single-r2-equivalent-first,official,transact[android.app.IActivityClientController:36],setTaskDescription,5,1.957292,0.320835,app-main DOWN to first Reader actual frame end; no nested-name summation
+final-official-single-r3-first,official,transact[android.app.IActivityManager:70],getMemoryInfo,0,0.0,0.0,app-main DOWN to first Reader actual frame end; no nested-name summation
+final-official-single-r3-first,official,transact[android.content.pm.IPackageManager:9],getApplicationInfo,0,0.0,0.0,app-main DOWN to first Reader actual frame end; no nested-name summation
+final-official-single-r3-first,official,transact[android.os.IServiceManager:2],checkService,3,0.725521,0.109896,app-main DOWN to first Reader actual frame end; no nested-name summation
+final-official-single-r3-first,official,transact[android.app.IActivityClientController:36],setTaskDescription,5,1.34375,0.314062,app-main DOWN to first Reader actual frame end; no nested-name summation
