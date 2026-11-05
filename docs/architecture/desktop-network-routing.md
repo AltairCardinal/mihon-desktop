@@ -527,6 +527,34 @@ production `ImageLoader`：普通远程图片使用全局托管客户端，漫�
 搜索/热门/最新、详情与章节调用、阅读器页面、下载和书架更新应保留同一个结构化错误，
 由共享呈现器按当前语言显示可操作原因。底层 cause 只用于诊断，不作为主要用户文案。
 
+#### 7.6.1 扩展链接错误的下层分类与 HTTP 传输边界
+
+共享 `inspectSourceFailure()` 按异常身份（`===`）检查最多 64 个 cause 节点，先排除
+`VirtualMachineError`／`ThreadDeath`，再识别取消与链接错误。闭环在所有可达身份已读后
+停止；超深链不推断深处安全，保留原错误传播。初始化、反射、Rx 或 IO 包装不能隐藏
+致命／取消原因，稳定 `AppErrorException` 也须先经过同一检查。
+
+`UncaughtExceptionInterceptor` 只保护其后的 `chain.proceed`。非致命、非取消链接错误
+转换为保留原 cause 的 `SourceCompatibilityException : IOException`，使真正的 OkHttp
+enqueue worker 只通知一次失败而不继续抛出链接错误；不伪造 HTTP 响应、源身份或网络成功。
+普通 IO 沿用原实例，取消沿用既有 IO 传输，普通非链接 Error 与未知深链不被吞掉。
+默认客户端、别名、按源客户及其 `newBuilder()` 派生客户保留保护链；扩展自行删除保护链
+或另建完全独立客户端不在此保证内。
+
+共享 `toSourceAppError()` 把可判定的链接错误归为 `ExtensionIncompatible`，不降为
+Network／MalformedData／NoResults。源分页恢复动作是 None，不自动重试或跳转登录／
+WebView；保留已有显式刷新入口。`StoredAppError` 仅增加类型字符串识别，不增加字段或
+数据库 schema，未知旧／新 payload 仍按 Unknown 读取。用户文案只说可能需要更新应用或
+扩展，不展示原始 ABI／私有请求详情。底层网络异常不猜 sourceId、包名或用户操作阶段，
+归因由持有已安装记录的上层另行完成。
+
+当前这里只完成下层分类和托管网络链隔离；加载、getter、过滤器、网络完成后的源解析、
+阅读／下载业务边界及全局搜索 UI 汇合仍须各自验证，不能以 HTTP worker 通过替代。
+`CatalogueCreatorDiscoverySourceAdapter.toCreatorSourceFailure()` 的通用 else 仍会把新错误
+投影成 CreatorSourceFailure.Network，是后续 EC-06/07 明确待处理项，本阶段不扩 Creator 模型。
+Android R8 后原 APK 和厂商设备结论仍待 EC-08。累计证据见
+[扩展协程兼容性与故障隔离](../evidence/extension-coroutines-compatibility-2026-11-05.md)。
+
 ## 8. 安全与隐私
 
 - 手动代理地址属于敏感配置，不写入普通运行日志。

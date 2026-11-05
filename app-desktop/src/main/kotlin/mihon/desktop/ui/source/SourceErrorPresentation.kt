@@ -26,6 +26,7 @@ internal fun desktopSourceErrorMessage(
     }
     is AppError.Authentication -> MR.strings.source_error_authentication.localized(locale)
     is AppError.Forbidden -> MR.strings.source_error_forbidden.localized(locale)
+    is AppError.ExtensionIncompatible -> MR.strings.source_error_extension_incompatible.localized(locale)
     is AppError.RateLimited -> error.retryAfterSeconds?.let {
         MR.strings.desktop_ui_download_rate_limited_seconds.localized(locale, it)
     } ?: MR.strings.desktop_ui_download_rate_limited.localized(locale)

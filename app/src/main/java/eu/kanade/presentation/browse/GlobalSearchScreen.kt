@@ -107,7 +107,10 @@ internal fun GlobalSearchContent(
                         is SearchItemResult.Error -> {
                             val message = when (val error = result.pageError.error) {
                                 is AppError.Network -> stringResource(MR.strings.exception_offline)
-                                is AppError.Authentication, is AppError.Forbidden -> stringResource(
+                                is AppError.Authentication,
+                                is AppError.Forbidden,
+                                is AppError.ExtensionIncompatible,
+                                -> stringResource(
                                     checkNotNull(sourceErrorMessageResource(error)),
                                 )
                                 else -> stringResource(MR.strings.unknown_error)

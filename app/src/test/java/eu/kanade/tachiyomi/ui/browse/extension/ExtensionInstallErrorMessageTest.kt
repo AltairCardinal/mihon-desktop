@@ -10,6 +10,16 @@ import tachiyomi.i18n.MR
 
 class ExtensionInstallErrorMessageTest {
     @Test
+    fun `compatibility uses one safe localizable resource without network or login guidance`() {
+        val error = AppError.ExtensionIncompatible(NoSuchMethodError("private URL token and ABI detail"))
+        assertEquals(
+            MR.strings.source_error_extension_incompatible,
+            eu.kanade.presentation.util.sourceErrorMessageResource(error),
+        )
+        assertEquals(MR.strings.source_error_extension_incompatible, extensionInstallErrorMessage(error))
+    }
+
+    @Test
     fun `source authentication and access denial use distinct safe reader and search resources`() {
         assertEquals(
             MR.strings.source_error_authentication,

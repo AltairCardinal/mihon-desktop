@@ -81,7 +81,10 @@ fun BrowseSourceContent(
     val getErrorMessage: (LoadState.Error) -> String = { state ->
         when (val error = (state.error as? SourcePageException)?.pageError?.error) {
             is AppError.Network -> context.stringResource(MR.strings.exception_offline)
-            is AppError.Authentication, is AppError.Forbidden -> context.stringResource(
+            is AppError.Authentication,
+            is AppError.Forbidden,
+            is AppError.ExtensionIncompatible,
+            -> context.stringResource(
                 checkNotNull(sourceErrorMessageResource(error)),
             )
             null -> with(context) { state.error.formattedMessage }

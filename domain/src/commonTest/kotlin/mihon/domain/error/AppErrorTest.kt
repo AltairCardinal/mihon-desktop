@@ -29,6 +29,7 @@ class AppErrorTest {
             AppError.Server(500),
             AppError.Permission(),
             AppError.MalformedData(),
+            AppError.ExtensionIncompatible(),
             AppError.NoResults,
             AppError.Storage(),
             AppError.Cancelled,
@@ -36,7 +37,7 @@ class AppErrorTest {
             AppError.Unknown(),
         )
 
-        assertEquals(13, variants.map { it::class }.distinct().size)
+        assertEquals(14, variants.map { it::class }.distinct().size)
         assertEquals(null, AppError.NoResults.cause)
     }
 

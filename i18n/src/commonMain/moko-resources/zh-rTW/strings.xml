@@ -1625,6 +1625,7 @@
     <string name="desktop_action_exit_fullscreen">退出全螢幕</string>
     <string name="source_error_authentication">需要登入（HTTP 401），請登入後重試。</string>
     <string name="source_error_forbidden">伺服器拒絕存取（HTTP 403），請檢查圖源設定或存取限制。</string>
+    <string name="source_error_extension_incompatible">擴充套件與目前應用程式不相容，可能需要更新應用程式或擴充套件。</string>
     <string name="desktop_library_download_added">已新增%1$d個章節至下載佇列</string>
     <string name="desktop_library_no_unread">已新增0個章節至下載佇列：沒有未讀章節</string>
     <string name="desktop_library_no_downloadable_unread">沒有可新增的未讀章節</string>

@@ -285,6 +285,9 @@ class DesktopExtensionApi(
             is AppError.Network -> cause?.message ?: "Network error while downloading extension"
             is AppError.Authentication -> "Extension download was rejected by the server"
             is AppError.Forbidden -> "Extension server denied access (HTTP 403)"
+            is AppError.ExtensionIncompatible ->
+                "This extension is incompatible with the application. " +
+                    "Updating the application or extension may help."
             is AppError.Challenge -> "Extension download requires an unsupported challenge"
             is AppError.RateLimited -> "Extension download was rate limited"
             is AppError.Server -> "Extension server returned HTTP $statusCode"

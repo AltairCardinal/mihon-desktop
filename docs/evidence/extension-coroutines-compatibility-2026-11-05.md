@@ -1,7 +1,8 @@
 # 扩展协程兼容性与故障隔离累计证据
 
-日期：2026-11-05。实施起点：`main@736c6d18d1`。当前仅 EC-01/02；
-EC-03–08 尚未实现／验收。本记录后续继续追加，不建立另一套 checkoff 状态。
+日期：2026-11-05。实施起点：`main@736c6d18d1`。EC-01/02 已审查并提交
+`b13d4523df147c7f47082df244df126b98310304`；EC-03/04 本地实现与 focused 完成，
+待主代理独立审查／提交。EC-05–08 待实施／验收。本记录继续追加，不建立另一套 checkoff 状态。
 工作区原有 Android 阅读器首开及相关文档修改受到保护，未纳入本任务。
 
 ## 范围与制品
@@ -166,8 +167,98 @@ Desktop 保持原有 kotlinx-coroutines-android 排除。唯一版本源 diff �
 已有阅读器文档仅产生其原有 CRLF 提示，未修改或格式化它。脚本、fixture、来源说明和
 测试虽分多个文件，但共同构成单一可重放 ABI 回归，不引入产品状态系统。
 
-## 尚待收口
+## EC-01/02 交付边界
 
-- 主代理已独立核对红测原始缺方法、最终各目标 XML、依赖解析、格式终态、夹具无运行库/桩捆绑及制品校验。EC-01/02 审查通过，随本批内聚实现本地提交；后续继续 EC-03。
-- future 目前固定预期故障，尚未实现 EC-03–07 的分类／隔离／UI 反馈。
+- 主代理已独立核对红测原始缺方法、各目标 XML、依赖解析、格式、夹具与制品校验，EC-01/02 提交为上述 b13d4523df。
+- future 源 API、过滤器和解析仍保留预期故障，不能视为 EC-05–07 的调用边界／全局 UI 已完成。
 - 原 APK 的 R8 后 Android 原生调用和反馈者厂商设备均未验收。不得据 JVM 证据宣称这些已通过。
+
+## EC-03/04：下层分类与真实异步 HTTP 隔离
+
+本簇起点 b13d4523df，单一代码／Gradle 写入者，无新子代理，不修改 reader 或 roadmap。
+24 个 Kotlin/build 文件、3 个文案 XML、维护文档与本累计证据共同构成同一跨模块协议批次。
+
+### 接口与边界
+
+- core `inspectSourceFailure()` 以身份检查最多 64 个 cause；闭环穷尽身份后结束，未知超深尾保留原错误传播。
+  VMError／ThreadDeath 优先于取消，取消优先于链接错误；Initializer／反射／Rx／IO 包装不能抢先吞掉原因。
+  两个 equals/hashCode 相同但身份不同的 wrapper 仍能检查内层。
+- `SourceCompatibilityException : IOException` 保留原 cause，不猜源身份或操作阶段。
+  UncaughtExceptionInterceptor 只保护其后的 chain.proceed；非致命／非取消链接错误转为专用 IO。
+  普通 IO 保留原实例，取消保留既有 IO 传输，普通 AssertionError 和未知深尾仍传播。
+- domain mapper 先检查 fatal／未知尾／取消／链接，再沿用 AppErrorException、HTTP、IO 和 parser 分类。
+  新 `AppError.ExtensionIncompatible` 不降为 Network／MalformedData／NoResults；分页 recovery 为 None。
+  StoredAppError 只增加类型识别，无字段／schema 变化；实际 Json encode/decode 往返及旧未知 payload 可读。
+- English／简体／繁体文案及直接错误选择器、必要 sealed 消费端做最小增补，无页面／布局／导航变更。
+  这不等于 EC-07 完整搜索 UI 验收。维护规则见 [网络维护说明](../architecture/desktop-network-routing.md)。
+
+已知后续风险：`CatalogueCreatorDiscoverySourceAdapter.toCreatorSourceFailure()` 的通用 else
+仍会把新类别投影成 CreatorSourceFailure.Network，明确留待 EC-06/07，不在本簇扩 Creator 模型。
+加载／factory／getter／过滤器、网络之后的 parser、阅读／下载和全局搜索汇合仍待 EC-05–07。
+
+### 正确 RED 与真实网络证据
+
+以下均经协调器 run，完整参数保存在同 key 的 `.gradle-coordinator/<key>.json`，原日志为同名 `.log`。
+所有 test task 均紧随其精确 --tests；没有本簇新增整模块或全量。
+
+| key | 精确入口 | 正确失败 |
+| --- | --- | --- |
+| ec03-mapper-red | domain:jvmTest / SourceCompatibilityErrorContractTest | 7 项中 6 失败、普通 HTTP 对照通过 |
+| ec04-network-red | core:common:jvmTest / SourceFailureBoundaryContractTest | 2 项失败：真实 enqueue 后 worker 仍抛链接错误；包裹 VMError 被当 IO 吞掉 |
+| ec03-presentation-red | app-desktop:jvmTest / SourceCompatibilityPresentationTest | 应有兼容文案，实际 Unknown error |
+| ec03-android-presentation-red | app:testReleaseUnitTest / ExtensionInstallErrorMessageTest.compatibility uses* | 期望兼容资源，实际 null；原有 maxRetries=2 导致同一方法 3 次失败，不是 3 个不同用例 |
+
+不是编译红或符号存在检查。首轮 core JVM 2 + domain JVM 7 在 `ec0304-core-domain-green` 通过。
+网络共用 helper 只接入 core／Desktop 测试 source sets，future 拦截器来自 EC-01 不变的独立 JAR。
+每场景独立 executor，用 afterExecute 观测 Throwable，callback 之后 join 实际 worker 至结束再断言，
+不靠 sleep 阴性结果，不改全局 uncaught handler，也不吞错误。验证一次 onFailure、零 onResponse、
+任务归零、健康后续请求，以及响应／executor／连接池释放。
+
+Android production 默认／nonCloudflare／cloudflare／clientForSource 的派生客户均执行应用与网络拦截器。
+Desktop 经 production loader 加载 future，并复用原 DerivedClientHttpSource 的非 inline 外部栈入口，
+真正通过 StackWalker 上下文解析三个别名及 source 客户；断言 loader 登记 owner、非 global 客户与 route scope。
+nullable test bridge 不论前值 null 与否均恢复。新 Desktop 测试首次未注入 appPreferences 而回退 global，
+这是测试前置错误，补既有内存偏好后再通过，未修改产品 routing。
+
+### 最终 focused：51 个独立用例
+
+```text
+python scripts/gradle-coordinator.py run --key ec0304-shared-platform-green -- .\gradlew.bat :core:common:jvmTest --tests eu.kanade.tachiyomi.network.SourceFailureBoundaryContractTest :core:common:testDebugUnitTest --tests eu.kanade.tachiyomi.network.SourceFailureBoundaryContractTest --tests "eu.kanade.tachiyomi.network.AndroidNetworkHelperExtensionCompatibilityTest.future linkage*" :domain:jvmTest --tests tachiyomi.domain.source.service.SourceCompatibilityErrorContractTest --tests mihon.domain.error.AppErrorTest --tests tachiyomi.domain.source.service.SourceOnlyQueryContractTest :domain:testDebugUnitTest --tests tachiyomi.domain.source.service.SourceCompatibilityErrorContractTest --tests mihon.domain.error.AppErrorTest --tests tachiyomi.domain.source.service.SourceOnlyQueryContractTest --offline --no-parallel --max-workers=2 --console=plain
+python scripts/gradle-coordinator.py run --key ec0304-desktop-green -- .\gradlew.bat :app-desktop:jvmTest --tests mihon.desktop.extension.DesktopExtensionLinkageIsolationTest --tests mihon.desktop.extension.SourceCompatibilityPresentationTest --tests mihon.desktop.extension.SourceCallWrapperTest --tests "mihon.desktop.extension.DesktopExtensionNetworkRoutingIntegrationTest.extension derived client*" --offline --no-parallel --max-workers=2 --console=plain
+python scripts/gradle-coordinator.py run --key ec0304-platform-final -- .\gradlew.bat :app-desktop:jvmTest --tests mihon.desktop.extension.DesktopExtensionLinkageIsolationTest :app:testReleaseUnitTest --tests eu.kanade.tachiyomi.ui.browse.extension.ExtensionInstallErrorMessageTest --offline --no-parallel --max-workers=2 --console=plain
+```
+
+| 证据／目标 | 范围 | 结果 |
+| --- | --- | --- |
+| shared-platform-green／core JVM | 边界／普通 401/403/429/500／取消 | 3 通过 |
+| shared-platform-green／core Android unit | 同上 3 + production alias 1 | 4 通过 |
+| shared-platform-green／domain JVM | compat 7 + AppError 6 + SourceOnlyQuery 3 | 16 通过 |
+| shared-platform-green／domain Android unit | 同上 | 16 通过 |
+| desktop-green／Desktop，未受后续改动影响的有效结果复用 | presentation 1 + wrapper 6 + 原 routing 1 | 8 通过 |
+| platform-final／Desktop | 修正前置后的真实 scoped alias／enqueue | 1 通过 |
+| platform-final／Android app release unit | 精确资源／安装文案类 | 3 通过 |
+
+共享 **39** + Desktop **9** + Android app **3** = **51 项独立用例通过，无未解释失败、无跳过**。
+shared-platform-green 42 秒，platform-final 28 秒；只对失败的 Desktop 新方法补验，未重复已有效的 8 项或共享 39 项。
+组合证据不等于最终代码重跑了全量。
+
+### 格式诊断、内存事件与收口
+
+`ec0304-format` 原失败来自**旧增量历史**中的 D:/Github 路径，不是当前 target 扫描 AndroidCookieJar。
+D:/Github 为 D:/Shell/Github 同仓库联接。只读 target diagnostic 与实际 Spotless 8.3 字节码确认，
+处理 InputChanges 时先 relativize 才判断 REMOVED，旧路径因而被拒绝；afterProject 当前 target 已正确。
+仅对四个内部 spotlessKotlin 使用原生 `--rerun` 强制非增量，未用 --rerun-tasks 重跑依赖；doFirst
+断言实际 target 为 core 6／domain 6／Desktop 7／app 5，准确 24 文件，排除 filetree 为空。
+`ec0304-format-exact` 处理历史后只报两条新增 when 过长，拆行后 `ec0304-format-finish` 全部通过。
+prefs 注入修改**之后**又跑 `ec0304-isolation-format`，通过，然后才运行 platform-final。
+没有修改项目全局格式系统或 reader；一次性 init 是忽略目录中的过程产物。
+
+Android 红编译时空闲内存降至约 1.85GB/32GB，停止追加负载并检查进程。实施者基于前簇创建身份
+及单次空闲栈停止 Kotlin daemon 59124，随后测试编译 RMI 断连，说明空闲快照与停止间出现复用竞态；
+这是清理判断失误，不能归因产品。Gradle 自动 fallback 编译成功后才执行正确 RED，未重启该构建。
+内存回升约 6GB；早先把 60476 按内存猜成 Kotlin daemon 的表述已纠正：当时 43636／60476 都是
+GradleDaemon，52536 是 43636 的 fallback 子 Java，CPU 推进后退出。此后未停止任何 daemon，
+不再用旧 PID／单次栈判定可清理；最终无活构建／测试 worker，标准缓存 daemon 单独报告。
+
+没有全模块／全仓库、R8、安装、平板操作或正式构建。本簇无版本变化，EC-01/02 的生产依赖解析仍适用。
+主代理已独立核对共享分类优先级、真实 enqueue worker 终止、外部别名上下文、测试接线和原始日志/XML，审查通过，随本批内聚提交；实施者停写后再授权下一簇。原 APK／厂商设备缺口继续留待 EC-08。

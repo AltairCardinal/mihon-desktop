@@ -26,6 +26,7 @@ data class StoredAppError(
         "Server" -> AppError.Server(requireNotNull(statusCode), message?.let(::IllegalStateException))
         "Permission" -> AppError.Permission(message?.let(::IllegalStateException))
         "MalformedData" -> AppError.MalformedData(message?.let(::IllegalStateException))
+        "ExtensionIncompatible" -> AppError.ExtensionIncompatible(message?.let(::IllegalStateException))
         "Storage" -> AppError.Storage(message?.let(::IllegalStateException))
         "Cancelled" -> AppError.Cancelled
         "PartialFailure" -> AppError.PartialFailure(

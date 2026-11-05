@@ -78,6 +78,7 @@ private fun SourceQuery.toSearchRequest(): SourceMangaSearchRequest = when (this
 private fun AppError.recoveryAction(): SourceRecoveryAction = when (this) {
     is AppError.Authentication -> SourceRecoveryAction.OpenLogin
     AppError.Cancelled -> SourceRecoveryAction.None
+    is AppError.ExtensionIncompatible -> SourceRecoveryAction.None
     else -> SourceRecoveryAction.Retry
 }
 

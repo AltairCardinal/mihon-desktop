@@ -19,12 +19,12 @@ import java.io.File
 import java.net.Proxy
 import java.net.URI
 import java.util.UUID
-import java.util.prefs.Preferences
 import java.util.jar.JarEntry
 import java.util.jar.JarOutputStream
+import java.util.prefs.Preferences
 
 object ExtensionNetworkTestBridge {
-    lateinit var networkHelper: NetworkHelper
+    var networkHelper: NetworkHelper? = null
 }
 
 class DesktopExtensionNetworkRoutingIntegrationTest {
@@ -47,12 +47,13 @@ class DesktopExtensionNetworkRoutingIntegrationTest {
             appPreferences = preferences,
             extensionNetworkContext = networkContext,
         )
+        val previousHelper = ExtensionNetworkTestBridge.networkHelper
         ExtensionNetworkTestBridge.networkHelper = NetworkHelper(
             client = desktopNetwork.client,
             sourceClientProvider = desktopNetwork::clientForSource,
             extensionClientProvider = desktopNetwork::clientForCurrentExtension,
         )
-        createFixtureJar(File(tempDir, "$packageName.jar"))
+        createDerivedClientFixtureJar(File(tempDir, "$packageName.jar"))
 
         val loaded = DesktopExtensionLoader(tempDir, networkContext).loadExtensions()
         try {
@@ -82,20 +83,23 @@ class DesktopExtensionNetworkRoutingIntegrationTest {
         } finally {
             loaded.map { it.classLoader }.distinct().forEach { (it as? AutoCloseable)?.close() }
             desktopNetwork.close()
+            ExtensionNetworkTestBridge.networkHelper = previousHelper
             preferenceNode.removeNode()
         }
     }
+}
 
-    private fun createFixtureJar(jar: File) {
-        val className = "fixture.extension.DerivedClientHttpSource"
-        val classResource = className.replace('.', '/') + ".class"
-        JarOutputStream(jar.outputStream()).use { output ->
-            output.putNextEntry(JarEntry(classResource))
-            requireNotNull(javaClass.classLoader.getResourceAsStream(classResource)).use { it.copyTo(output) }
-            output.closeEntry()
-            output.putNextEntry(JarEntry("META-INF/services/eu.kanade.tachiyomi.source.Source"))
-            output.write(className.toByteArray(Charsets.UTF_8))
-            output.closeEntry()
+internal fun createDerivedClientFixtureJar(jar: File) {
+    val className = "fixture.extension.DerivedClientHttpSource"
+    val classResource = className.replace('.', '/') + ".class"
+    JarOutputStream(jar.outputStream()).use { output ->
+        output.putNextEntry(JarEntry(classResource))
+        requireNotNull(DesktopExtensionLoader::class.java.classLoader.getResourceAsStream(classResource)).use {
+            it.copyTo(output)
         }
+        output.closeEntry()
+        output.putNextEntry(JarEntry("META-INF/services/eu.kanade.tachiyomi.source.Source"))
+        output.write(className.toByteArray(Charsets.UTF_8))
+        output.closeEntry()
     }
 }
