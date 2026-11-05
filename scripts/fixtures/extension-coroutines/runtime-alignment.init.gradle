@@ -1,0 +1,37 @@
+// Focused dependency-resolution check only; no compilation or product configuration changes.
+def configurationsByProject = [
+    ':app': ['releaseRuntimeClasspath', 'releaseUnitTestRuntimeClasspath'],
+    ':source-api': ['jvmRuntimeClasspath', 'jvmTestRuntimeClasspath', 'debugRuntimeClasspath', 'debugUnitTestRuntimeClasspath'],
+    ':domain': ['jvmRuntimeClasspath', 'jvmTestRuntimeClasspath', 'debugRuntimeClasspath', 'debugUnitTestRuntimeClasspath'],
+    ':app-desktop': ['jvmRuntimeClasspath', 'jvmTestRuntimeClasspath'],
+]
+
+gradle.beforeProject { project ->
+    if (configurationsByProject.containsKey(project.path)) {
+        project.tasks.register('ecCoroutineRuntimeAlignment') {
+            doLast {
+                configurationsByProject[project.path].each { name ->
+                    def configuration = project.configurations.findByName(name)
+                    if (configuration == null || !configuration.canBeResolved) {
+                        throw new GradleException("Missing resolvable production/test configuration ${project.path}:$name")
+                    }
+                    def resolution = configuration.incoming.resolutionResult
+                    def unresolved = resolution.allDependencies.findAll {
+                        it instanceof org.gradle.api.artifacts.result.UnresolvedDependencyResult
+                    }
+                    if (!unresolved.empty) {
+                        throw new GradleException("Unresolved dependencies ${project.path}:$name: $unresolved")
+                    }
+                    def modules = resolution.allComponents
+                        .collect { it.moduleVersion }
+                        .findAll { it != null && it.group == 'org.jetbrains.kotlinx' && it.name.startsWith('kotlinx-coroutines-') }
+                        .sort { it.name }
+                    if (modules.empty || modules.any { it.version != '1.11.0' }) {
+                        throw new GradleException("Coroutine alignment failed ${project.path}:$name: $modules")
+                    }
+                    println("EC_ALIGNMENT ${project.path}:$name " + modules.join(', '))
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,14 @@
+{
+  "schema": "ec-coroutines-binary-fixtures/v1",
+  "artifactKind": "controlled-future-ABI-source-and-interceptor",
+  "notAThirdPartyRelease": true,
+  "sha256": "37243fcb5e8dc11f05d3aa56cac1af9bb1f3621ac45d6a17fc73882858082bcc",
+  "source": "scripts/fixtures/extension-coroutines/future",
+  "compileOnlyStubs": "scripts/fixtures/extension-coroutines/stubs",
+  "upstreamFixture": "aex00-external-v16-controlled-sample.jar",
+  "upstreamProvenance": "aex00-external-v16-controlled-sample.provenance.json",
+  "license": "Apache-2.0",
+  "runtimeDependenciesBundled": false,
+  "expectedOutcome": "NoSuchMethodError in filter/parser/interceptor; NoClassDefFoundError in search",
+  "compatibilityProtectionImplemented": false
+}
