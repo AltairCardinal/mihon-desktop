@@ -538,3 +538,47 @@ root独立查看十二份原PTS连续边界，首部分卷标题与完整地图�
 最终仅逆应用`admission-only.diff`（SHA `abf81bc8b01ca75b07e7676507f54a0cfb52abbf78d22fe07a630522a09d2389`）撤回holder三行与两专属测试；两文件逐SHA回到A7，production指纹恢复`db143a54e082e8e22205094ce8ce3cc46f55414e61f1670fa6e7c9a15eb4a642`。恢复后新的显式必需任务诊断接线方法及app格式PASS，两个未变sampler方法复用既有GREEN；组合证据不是最终三方法合跑或模块全量。原候选五项测试、接线补验、全部失败和冻结APK/完整diff/独立两文件diff保留；最终源码与测试索引`o7/final-adopted-diagnostics-source.json`、恢复证明`o7/rejected-preparation-lease/restoration-verification.json`。本批超过400行来自同一诊断接线、真实失败夹具及完整证据，保持内聚提交，不增加产品能力范围。
 
 实际留装A7诊断控制包，SHA与源码指纹对应；Probe配置已实际读回OFF、隔离包无进程、Asleep/Changing=false，设置为双页RTL/默认方向/matching ON，正常Back保存第5页。原件`startup-cleanup/final-verification.json`。未推送、未发布、未更新公共能力说明。O7本地收口，O8–O11继续。
+
+## O8 当前事实请求索引（采用；章节信号不实施）
+
+先读[历史A2](../research/reader-pairing/2026-11-01-main-reevaluation/A2.md)及A1/A2原raw：其对象是certifier重复建map/ordinal，176页分配下降但8页wall反向、未改评分负控漂移，暂缓结论保留。本轮新条件是当前`requestFact/isCurrentFactRequest`各自线性扫描content，Android初次逐页请求/接受187页真实路径有该调用形态；不恢复旧A2补丁或借用其收益。O2已减少重复投影，后续实际调用权重仍须用当前样本，不套旧比例。
+
+新失败测试用真实`SharedDualPageSession`及8/187页计数型只读列表、构造后清计数，逆序页身份防止错误地把sourceIndex当ordinal；真实请求与owns校验访问72/35,156次，断言≤4n失败（`o8/fact-index-red.xml/log`）。候选只给现有`ReaderSpreadSamplesOwner.contentByPage`增加internal nullable只读lookup，并替换两处查找；不新建map、不改certifier或监听。关闭/缺页异常类、generation/revision/完整页序/location及票据引用检查原样，metadata/rebind后每次读取当前owner索引，索引和身份生命周期由root独立审查。
+
+四项domain能力/metadata/navigation契约、两项实际Android replacement/retry接线与domain/app格式组合PASS，计数8/187均0；完整请求仍保留pageIds相等比较，不能宣称整个request O(1)。原始selectors/日志/XML及三文件SHA见`o8/fact-index-source-files.json`。首次准备GREEN启动后在编辑范围守卫复核阶段取消，最终只保留两处目标，不能把该准备中止当行为RED。有效identity要求发布后的稳定快照；外部原地修改MutableList已有pageIds/map不一致边界未修，不顺带防御复制或承诺此异常用法兼容。当前仅索引候选，章节级信号另按剩余队列证据判断，二者不合包计收益。
+
+
+### O8 测量与最终裁决
+
+**采用现有索引复用这一低成本去冗余，未证实稳定整体首开加速；不实施章节级信号。** A8为O7保留诊断包，B8为`app/artifacts/android/diagnostics/reader-open-o8-index-20261104/Mihon-Fork-reader-open-o8-index-benchmark-universal.apk`，SHA `b2c9d59f56cb135aa0633f124be12983dbf6d359a26eca302b3bbda9b975e21e`，sourceRevision `43b9a32cc4db00db9f1e94f1f12f6e17441df1e8`加冻结三文件diff，production指纹`1cc691935d4e4fffb8e352714c8a3c5005fbcdd9314e992b8c122752a611fd44`。非debug、R8/shrink、code134、原证书，构建及输入清单保留在artifact目录。此处revision不能替换成本次后续提交SHA。
+
+独立`measurement-o8-index/`按A1/B1首次+暖、B2/A2首次，OFF/ON共12份VALID；每块每mode一次Probe OFF预热，四块安装后和采后实际OAT均verify/install。first指预热后新进程首次，warm是同进程再次，不是升级冷启动。计时起点为精确launch PID/TID主线程最早src=0x1002 deliverInputEvent，12份均匹配native down；同trace两个snapshot转换时钟，spread为0–521ns。Running为PAGE_LIST_READY→UNIT的主线程CPU时间，不是wall。目标FIRST_DRAW为source4地图；先出现的右侧卷标题由视频部分端点另记，均不冒充物理present。
+
+| 样本 | 输入→目标draw ms | 输入→UNIT ms | Main Running ms | 视频近黑采样界限 ms |
+| --- | ---: | ---: | ---: | --- |
+| a1 off 首次† | 409.894 | 410.109 | 174.172 | 83–115 |
+| a1 off 暖 | 339.549 | 339.689 | 128.786 | 49–85 |
+| a1 on 首次 | 405.709 | 405.960 | 173.537 | 67–99 |
+| a1 on-retry 暖 | 307.740 | 307.888 | 121.035 | 33–66 |
+| b1 off 首次 | 401.266 | 401.510 | 171.608 | 66–100 |
+| b1 off 暖† | 326.828 | 326.977 | 125.007 | 33–68 |
+| b1 on 首次† | 378.904 | 379.145 | 159.083 | 50–83 |
+| b1 on 暖 | 333.931 | 334.101 | 142.842 | 50–83 |
+| b2 off† | 416.055 | 416.318 | 178.358 | 66–99 |
+| b2 on | 413.157 | 413.383 | 181.937 | 66–100 |
+| a2 off | 441.561 | 441.787 | 178.420 | 133–166 |
+| a2 on† | 403.351 | 403.576 | 163.114 | 85–116 |
+
+首次目标draw均值OFF 425.727→408.660ms、ON 404.530→396.030ms，但ON B2比相邻A2慢，Main Running首次OFF 176.296→174.983ms、ON 168.326→170.510ms。暖态OFF 339.549→326.828ms、ON 307.740→333.931ms，各仅一份，且ON控制暖态有下述恢复偏离。近黑与完整端点的小样本不能证明稳定净收益，不合池或累加O2/O4收益。采用理由是请求/校验真实扫描明确消除、仅复用已有索引和原语义，而非宣称体验目标已达标。
+
+A1 ON原request2在14秒视频结尾仍显示正确目标，但采后UI捕获系统通知权限弹窗，5/187后置检查失败且缺probe2，保持EXCLUDED。原request1数据完整，root核raw并保留原排除历史后恢复CAPTURED，独立校验VALID；没有重录择优。新label `o8-a1-dual-on-retry` request1仅CONDITIONING、request2才作暖态；共14attempt=12VALID+1EXCLUDED+1CONDITIONING。额外打开及恢复进程使该暖态偏离原流程，不将其差值归因产品。预检未见弹窗，未授予／拒绝通知权限。采集脚本仅在计时段结束后对已观察、归属benchmark且唤醒解锁的通知dialog允许正常BACK，再执行原后置检查；本轮没有证据确认该guard实际触发，不称此分支已实测修复。旧脚本SHA及失败视频、恢复记录均保留。
+
+root逐份查看12段原生PTS连续边界，卷标题部分先出现、随后完整地图左／标题右；原provisional选择均保留。近黑为原ROI灰度均值≤2/255的采样代理，可能残留极暗UI，至少一帧不确定，不能当literal全黑或精确无内容时间。`o8-video-reviewed.json`全视频逐原帧流式解码，帧数与ffprobe一致，完整单元后近黑均0；独立`o8-video-pts-verification-12.json`十二份索引／PTS／公式／MKV SHA PASS。正式12及预热8份漫画ROI均`cd4b1e2a37b0eeeb0264ea098a321eb84f01a2ec15c4d9c0f23e0f36a1ed6bf4`，root逐设置图核OFF/ON、双页RTL、默认方向及zoom OFF。
+
+`o8-startup-comparison.json/.csv`以正式12精确清单join原native/CPU/video/health，保留逐样本raw及实际clock。†五份负时间戳丢弃共6条：A1 OFF首次1、B1 OFF暖1、B1 ON首次1、B2 OFF2、A2 ON1，限制细小CPU差的解释。info级chunks_discarded十二份221–234；patches_discarded五份各2；非零统计不自动证明相关启动区间丢失或产品原因。query exit均0、stderr保留、无agent截断；android_logs_total=0不证明trace为空。
+
+章节信号评估另见`o8-collector-covered-cost-12.json/.csv`及串行TP原query：精确PID/main、PAGE_LIST_READY→UNIT内每份187个ReaderR2.dualFact入口，裁剪后inclusive合计0.459369–1.221872ms、单段最大0.008855–0.086979ms，无无效／边界裁剪段。这是已覆盖入口wall成本，不是完整collector或重算成本；没有区分初始skip、有效处理、stale、retry的marker。traceStartup在TARGET_HEADER_BEGIN后不再开启新段，之后152.427–222.642ms区域缺该覆盖，不能填零；ProbeON wrapper在section外还扫描到target source4，OFF不执行。P3单页tag缺失不作单页结论，嵌套tag不求和。现有证据不足支持引入章级聚合复杂性，保留P3固定初始快照、连续重试、窗口替换等既有协议，不声称全程无成本或章级方案永远无收益。
+
+Probe OFF正常阅读检查原件`normal-roundtrip-dual-off/`和`normal-roundtrip-dual-on/`：本次均5→6→5，退出详情第5页、重开地图左／标题右，三个目标ROI相同；相邻截图间0.7秒中心像素相同只说明观测区间稳定，不等于native IDLE。OFF前翻目录左／角色表右；ON前翻角色表左／右侧留黑，原件如实保留，未把它解释成正确双图配对或新回归。历史ON 5→6→4问题本次未复现，不称修复。此检查不是快速首翻计时，不承诺首翻无代价。
+
+最终实际留装B8，Probe OFF、无benchmark进程、Asleep/Changing=false，matching ON、双页RTL、正常Back保存第5页，读回证据`correctness-final/final-verification.json`。本项新增内部架构说明索引生命周期与稳定快照前提；O9草案／诊断不入本提交。未推送、未正式发布、未更新公共能力说明；继续O9–O11。

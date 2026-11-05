@@ -584,7 +584,7 @@ class SharedDualPageSession(
     /** The existing I/O owner captures and returns this exact ticket with its normal header request. */
     fun requestFact(pageId: ReaderPageId): ReaderDualPageFactRequest {
         check(!closed)
-        val content = requireNotNull(identity.content.firstOrNull { it.pageId == pageId })
+        val content = requireNotNull(spreadSamples.currentContent(pageId))
         return ReaderDualPageFactRequest(identity, content, location?.sequence ?: 0, nextRequestId++).also {
             requests[pageId] = it
         }
@@ -594,7 +594,7 @@ class SharedDualPageSession(
         !closed && request.identity.generation == identity.generation &&
             request.identity.pageListRevision == identity.pageListRevision &&
             request.identity.pageIds == identity.pageIds &&
-            request.content == identity.content.firstOrNull { it.pageId == request.content.pageId } &&
+            request.content == spreadSamples.currentContent(request.content.pageId) &&
             request.locationSequence == (location?.sequence ?: 0) && requests[request.content.pageId] === request
 
     /** Reuses a still-issued physical request without treating other pages' metadata as replacement. */

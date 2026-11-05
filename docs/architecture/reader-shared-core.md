@@ -12,6 +12,12 @@
 
 投影组装完成时固定消费的输入，在 native refresh／notify 前记录，避免同步回调把后来才 ensure 的事实误标为已经投影。手势期间的提前返回只保留 pending，不记消费；IDLE 沿原链路投影。记录仅保留当前章节窗口的 owner，关闭 adapter 时清理。主动导航、设置、显式重试／刷新仍走原有主动入口，不被事实去重门控。旧 owner／内容／请求的拒收继续由原身份校验负责；没有增加异步合批、图片缓存或新的持久化状态。回归由 `SharedDualPageAndroidWiringTest` 的十个 O2 方法与共享 header revision 契约覆盖；认证计数减少仅说明夹具中的实际工作消除，真机首绘收益另见 O 系列证据报告。
 
+## 共享事实请求的当前内容索引
+
+`SharedDualPageSession.requestFact` 与请求有效性检查复用当前 `ReaderSpreadSamplesOwner` 已有的 pageId→content 索引，避免每张图片请求及回报再线性查找整章。索引不另增缓存权威；metadata 更新重建当前索引，rebind 更换 owner，每次查询都读取当前 owner。generation、pageListRevision、完整 pageIds 顺序、location sequence 和请求对象引用校验继续执行，整个请求操作不承诺 O(1)。缺页请求仍抛 IllegalArgumentException，关闭会话请求仍抛 IllegalStateException，迟到或伪造票据仍拒收。
+
+内容身份必须作为发布后稳定的快照使用；不支持外部原地修改其 MutableList。此类修改原本就可能使 pageIds 与内部索引不一致，本次不增加防御复制或兼容承诺。8/187 页逆序身份的真实请求契约，以及 metadata、窗口替换、重试的共享／Android 接线保护该边界。章节级逐页 collector 协议保持不变；调用减少与真机首开收益分别报告。
+
 ## Android 普通单页事实订阅的已摄入快照
 
 `PagerViewer.bindSingleFacts` 仍订阅当前章节窗口的逐页事实。窗口绑定时 `DualPagePairingStore.ensure` 已用真实内容身份摄入页表快照；每个新订阅只对第一次 StateFlow 回放使用绑定时固定的 entry 与已摄入快照。只有在初次回放仍等于该固定快照，且当前 chapter/pages/page 对象、当前 entry 的缓存快照（含事实、呈现版本、编码版本与重试序号）、当前事实、已处理重试序号及 owner 编码身份全部相符时才直接复用，避免每页再次扫描全章及重捕获视口。这个判断不无条件跳过首个事件，也不将未知事实当作不重要：订阅开始前替换内容、后续所有发射、元数据、重试或身份不匹配仍走原 ensure/acceptFact/呈现链。旧页表回调与销毁取消继续由原身份和生命周期检查拒收，不新增缓存、调度器或持久化权威。定向回归执行真实 R2LPagerViewer 和生产 store，检查初始无冗余扫描、元数据、重试先被另一个真实 ensure 摄入的交错、订阅前替换、窗口切换及销毁；真实漫画像素结算复用普通单页原生回归。

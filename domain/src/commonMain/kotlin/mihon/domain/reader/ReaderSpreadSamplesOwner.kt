@@ -33,6 +33,9 @@ class ReaderSpreadSamplesOwner(
     val cachedSampleCount: Int get() = samples.size
     val confirmedEdgeCount: Int get() = scores.size
 
+    /** Read-only lookup in the current validated identity snapshot; metadata/rebind replaces its index. */
+    internal fun currentContent(pageId: ReaderPageId): ReaderDualPageContentIdentity? = contentByPage[pageId]
+
     fun pageAnalysis(pageId: ReaderPageId): ReaderPageAnalysisEvidence =
         analyses[pageId] ?: ReaderPageAnalysisEvidence.NotAnalyzed
 

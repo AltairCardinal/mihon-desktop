@@ -16,6 +16,71 @@ import org.junit.jupiter.api.Test
 
 class SharedDualPageSessionContractTest {
     @Test
+    fun `O8 fact requests avoid repeated chapter scans while retaining exact capabilities`() {
+        val queryVisits = linkedMapOf<Int, Int>()
+        for (count in listOf(8, 187)) {
+            val original = identity(count)
+            // Source indices are not list ordinals; retain the original identities in reversed story order.
+            val expectedContent = original.content.reversed()
+            var visits = 0
+            val countedContent = object : AbstractList<ReaderDualPageContentIdentity>() {
+                override val size: Int get() = expectedContent.size
+                override fun get(index: Int): ReaderDualPageContentIdentity {
+                    visits++
+                    return expectedContent[index]
+                }
+            }
+            val issuedIdentity = original.copy(content = countedContent)
+            val session = SharedDualPageSession(issuedIdentity, ReaderDirection.RTL)
+            lateinit var issued: ReaderDualPageFactRequest
+            try {
+                // Identity validation and owner/index construction belong to initialization, not this query window.
+                visits = 0
+                val requests = expectedContent.map { content ->
+                    session.requestFact(content.pageId).also { request ->
+                        assertSame(issuedIdentity, request.identity)
+                        assertSame(content, request.content)
+                    }
+                }
+                requests.forEach { assertTrue(session.ownsFactRequest(it)) }
+                queryVisits[count] = visits
+
+                val prior = requests.last()
+                val latest = session.requestFact(prior.content.pageId)
+                issued = latest
+                assertNotSame(prior, latest)
+                assertFalse(session.ownsFactRequest(prior), "A new request revokes only that page's old ticket")
+                assertTrue(session.ownsFactRequest(requests.first()), "Other pages keep their issued tickets")
+                assertTrue(session.ownsFactRequest(latest))
+                assertTrue(session.acceptFact(latest, ReaderPageFact.dimensions(40, 60)))
+                val foreign = SharedDualPageSession(issuedIdentity, ReaderDirection.RTL)
+                try {
+                    assertFalse(
+                        foreign.ownsFactRequest(latest),
+                        "Equal identity cannot transfer another owner's ticket",
+                    )
+                    assertFalse(foreign.acceptFact(latest, ReaderPageFact.dimensions(40, 60)))
+                } finally {
+                    foreign.close()
+                }
+                assertThrows(IllegalArgumentException::class.java) {
+                    session.requestFact(ReaderPageId(ReaderChapterId(999), prior.content.pageId.sourcePageIndex))
+                }
+            } finally {
+                session.close()
+            }
+            assertFalse(session.ownsFactRequest(issued))
+            assertThrows(IllegalStateException::class.java) { session.requestFact(expectedContent.first().pageId) }
+        }
+        println("O8_FACT_CONTENT_VISITS $queryVisits")
+        // Allow bounded initialization of a reusable lookup, but not a fresh scan for every page/ticket.
+        assertTrue(
+            queryVisits.all { (count, visits) -> visits <= 4 * count },
+            "Actual content-list visits after initialization for requestFact plus ownsFactRequest: $queryVisits",
+        )
+    }
+
+    @Test
     fun `original header revision changes only for accepted changed metadata`() {
         val session = SharedDualPageSession(identity(3), ReaderDirection.RTL)
         val page = session.identity.pageIds[1]
