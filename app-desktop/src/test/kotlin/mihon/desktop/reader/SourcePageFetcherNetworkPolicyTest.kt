@@ -19,6 +19,38 @@ class SourcePageFetcherNetworkPolicyTest {
     lateinit var tempDir: File
 
     @Test
+    fun `source network getter linkage is classified without ever using a fallback request`() = runBlocking {
+        for (failHeaders in listOf(false, true)) {
+            MockWebServer().use { server ->
+                server.start()
+                val failure = NoSuchMethodError("future source network ABI")
+                val client = OkHttpClient()
+                val source = object : CatalogueSource by mockk<CatalogueSource>() {
+                    fun getClient(): OkHttpClient = if (failHeaders) client else throw failure
+                    fun getHeaders(): Headers = if (failHeaders) throw failure else Headers.EMPTY
+                }
+                val destination = File(tempDir, "linkage-$failHeaders.png")
+                val result = SourcePageFetcher(source, client).fetchToDestination(
+                    Page(0, imageUrl = server.url("/protected.png").toString()),
+                    destination,
+                )
+                val error = assertInstanceOf(
+                    mihon.domain.error.AppError.ExtensionIncompatible::class.java,
+                    assertInstanceOf(SourcePageFetchResult.Failure::class.java, result).error,
+                )
+                val typed =
+                    assertInstanceOf(eu.kanade.tachiyomi.network.SourceCompatibilityException::class.java, error.cause)
+                assertEquals(eu.kanade.tachiyomi.network.SourceOperationPhase.IMAGE_REQUEST, typed.phase)
+                org.junit.jupiter.api.Assertions.assertSame(failure, typed.cause)
+                assertEquals(0, server.requestCount)
+                assertFalse(destination.exists())
+                client.dispatcher.executorService.shutdownNow()
+                client.connectionPool.evictAll()
+            }
+        }
+    }
+
+    @Test
     fun `failed source network getters never send a fallback request`() = runBlocking {
         for (failHeaders in listOf(false, true)) {
             MockWebServer().use { server ->

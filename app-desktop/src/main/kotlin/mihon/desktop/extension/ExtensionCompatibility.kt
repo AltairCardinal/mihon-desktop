@@ -1,5 +1,7 @@
 package mihon.desktop.extension
 
+import eu.kanade.tachiyomi.network.inspectSourceFailure
+
 /**
  * Categorizes why an extension failed to load.
  *
@@ -35,7 +37,11 @@ enum class ExtensionFailureCategory {
             if (error == null) return LOAD_OK
 
             // Walk the cause chain to find the most informative failure
-            val chain = generateSequence(error) { it.cause }.toList()
+            val inspection = error.inspectSourceFailure()
+            inspection.fatal?.let { throw it }
+            if (!inspection.complete) throw error
+            inspection.cancellation?.let { throw it }
+            val chain = inspection.causes
 
             for (t in chain) {
                 // Missing Android/AndroidX stub
@@ -57,7 +63,7 @@ enum class ExtensionFailureCategory {
                 if ("binding" in msg && ("find" in msg || "can't" in msg || "cannot" in msg)) {
                     return DI_FAILURE
                 }
-                if ("injekt" in msg || "inject" in msg && "binding" in msg) {
+                if ("injekt" in msg || ("inject" in msg && "binding" in msg)) {
                     return DI_FAILURE
                 }
             }

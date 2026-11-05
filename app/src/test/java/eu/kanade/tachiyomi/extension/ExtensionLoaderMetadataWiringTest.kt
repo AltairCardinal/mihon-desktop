@@ -228,6 +228,28 @@ class ExtensionLoaderMetadataWiringTest {
             val healthy = loadPlatformFixture()
             assertTrue(healthy is LoadResult.Success)
             assertEquals(0, LoaderLinkageFixture.clientReads)
+            val actualSource = (healthy as LoadResult.Success).extension.sources.single()
+            val callResult = tachiyomi.domain.source.service.SourceMangaSearchService().loadPageResult(
+                actualSource,
+                tachiyomi.domain.source.service.SourcePageRequest(
+                    actualSource.id,
+                    1,
+                    1L,
+                    tachiyomi.domain.source.service.SourceQuery.Search(
+                        "client boundary",
+                        eu.kanade.tachiyomi.source.model.FilterList(),
+                    ),
+                ),
+            )
+            assertTrue(callResult is tachiyomi.domain.source.service.SourcePageResult.Failure)
+            val callFailure = callResult as tachiyomi.domain.source.service.SourcePageResult.Failure
+            assertTrue(callFailure.error is mihon.domain.error.AppError.ExtensionIncompatible)
+            assertEquals(tachiyomi.domain.source.service.SourceRecoveryAction.None, callFailure.recoveryAction)
+            assertEquals(
+                eu.kanade.tachiyomi.network.SourceOperationPhase.SEARCH,
+                (callFailure.error.cause as eu.kanade.tachiyomi.network.SourceCompatibilityException).phase,
+            )
+            assertEquals(1, LoaderLinkageFixture.clientReads)
             preferences.trustedExtensions().delete()
 
             val signedCandidate = PackageInfo().apply {

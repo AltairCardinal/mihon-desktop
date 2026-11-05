@@ -1,5 +1,7 @@
 package mihon.desktop.extension
 
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -8,10 +10,13 @@ import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
 import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 
 /** Resolves a source image URL across both the app and extension child classloaders. */
-suspend fun resolveSourceImageUrl(source: CatalogueSource, page: Page): String? = when (source) {
-    is HttpSource -> source.getImageUrl(page)
-    else -> invokeReflectiveImageUrl(source, page)
-}
+suspend fun resolveSourceImageUrl(source: CatalogueSource, page: Page): String? =
+    guardSourceOperation(SourceOperationPhase.IMAGE_URL) {
+        when (source) {
+            is HttpSource -> source.getImageUrl(page)
+            else -> invokeReflectiveImageUrl(source, page)
+        }
+    }
 
 private suspend fun invokeReflectiveImageUrl(source: CatalogueSource, page: Page): String? {
     val method = source.javaClass.methods.firstOrNull { candidate ->

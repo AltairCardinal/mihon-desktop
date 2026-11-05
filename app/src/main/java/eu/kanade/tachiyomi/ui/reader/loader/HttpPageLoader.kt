@@ -2,6 +2,9 @@ package eu.kanade.tachiyomi.ui.reader.loader
 
 import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.database.models.toDomainChapter
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
@@ -119,10 +122,8 @@ internal class HttpPageLoader(
         val pages = try {
             chapterCache.getPageListFromCache(chapter.chapter.toDomainChapter()!!)
         } catch (e: Throwable) {
-            if (e is CancellationException) {
-                throw e
-            }
-            source.getPageList(chapter.chapter)
+            e.rethrowSourceControlFailure()
+            guardSourceOperation(SourceOperationPhase.PAGE_LIST) { source.getPageList(chapter.chapter) }
         }
         return pages.mapIndexed { index, page ->
             // Don't trust sources and use our own indexing
@@ -158,6 +159,8 @@ internal class HttpPageLoader(
 
         // Automatically retry failed pages when subscribed to this page
         if (page.status is Page.State.Error) {
+            val error = (page.toSharedLoadState() as? mihon.domain.reader.session.ReaderPageLoadState.Error)?.error
+            if (error is AppError.ExtensionIncompatible) return@withContext
             page.status = Page.State.Queue
         }
 

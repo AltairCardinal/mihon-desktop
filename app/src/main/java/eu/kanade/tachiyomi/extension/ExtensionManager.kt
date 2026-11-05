@@ -73,6 +73,7 @@ import mihon.domain.extensionrepo.model.ExtensionRepo
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.source.model.StubSource
+import tachiyomi.domain.source.service.toSourceAppError
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -352,6 +353,34 @@ class ExtensionManager internal constructor(
                 }
             }
         }
+    }
+
+    internal fun isCurrentInstalledInstance(owner: Extension.Installed): Boolean = synchronized(installationStateLock) {
+        installedExtensionMapFlow.value[owner.pkgName] === owner
+    }
+
+    internal fun reportSourceMetadataFailure(
+        owner: Extension.Installed,
+        error: eu.kanade.tachiyomi.network.SourceCompatibilityException,
+    ): ExtensionLoadFailure? {
+        val failure = ExtensionLoadFailure(
+            owner.name,
+            owner.pkgName,
+            owner.versionName,
+            owner.versionCode,
+            owner.isShared,
+            error.phase ?: eu.kanade.tachiyomi.network.SourceOperationPhase.METADATA,
+            error.toSourceAppError(),
+        )
+        synchronized(installationStateLock) {
+            if (installedExtensionMapFlow.value[owner.pkgName] !== owner) return null
+            installedExtensionMapFlow.update { it - owner.pkgName }
+            mutableLoadFailures.update { it + (owner.pkgName to failure) }
+            // This is feedback about an existing runtime, not a new package load attempt.
+            // Never invalidate an in-flight replacement's owner token.
+        }
+        requestInventoryRefresh()
+        return failure
     }
 
     private fun invalidateLoadToken(pkgName: String, owner: Any = Any()) {

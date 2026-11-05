@@ -1,17 +1,17 @@
 package mihon.desktop.extension
 
-import mihon.domain.extension.suggestion.ExtensionInventory
 import eu.kanade.tachiyomi.source.Source
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
 import mihon.domain.error.AppError
@@ -20,6 +20,7 @@ import mihon.domain.extension.service.ExtensionInstallCoordinator
 import mihon.domain.extension.service.ExtensionInstallFailure
 import mihon.domain.extension.service.ExtensionInstallRequest
 import mihon.domain.extension.service.ExtensionInstallState
+import mihon.domain.extension.suggestion.ExtensionInventory
 
 /**
  * Manages desktop extensions lifecycle: loading, tracking, and providing access to sources.
@@ -32,13 +33,17 @@ class DesktopExtensionManager(
     apkConverter: ApkToJarConverter = ApkToJarConverter(),
     fileSystem: DesktopExtensionFileSystem = DefaultDesktopExtensionFileSystem,
     artifactAuthenticator: DesktopArtifactAuthenticator = DefaultDesktopArtifactAuthenticator,
+    initializationScope: CoroutineScope? = null,
 ) : AutoCloseable, DesktopExtensionPresentationService, DesktopSourceExtensionLookup {
 
     private val loadedExtensions = mutableListOf<LoadedExtension>()
     private val runtimeLock = Any()
     private val lifecycleGate = DesktopExtensionLifecycleGate()
     private val installScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val loadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val loadScope = CoroutineScope(
+        (initializationScope?.coroutineContext ?: Dispatchers.IO) +
+            SupervisorJob(initializationScope?.coroutineContext?.get(Job)),
+    )
     private val installPort = DesktopExtensionInstallPort(
         extensionsDirectory = loader.extensionsDirectory,
         artifactProvider = artifactProvider,
@@ -51,10 +56,12 @@ class DesktopExtensionManager(
         lifecycleGate = lifecycleGate,
     )
     private val installCoordinator = ExtensionInstallCoordinator(installPort, installScope)
-    private val mutableInstalledExtensions = MutableStateFlow<List<InstalledExtension>>(emptyList())
-    override val installedExtensions: StateFlow<List<InstalledExtension>> = mutableInstalledExtensions.asStateFlow()
-    private val mutableInventory = MutableStateFlow(ExtensionInventory())
-    val inventory = mutableInventory.asStateFlow()
+    private val mutableRuntimeSnapshot = MutableStateFlow(DesktopExtensionRuntimeSnapshot())
+    override val runtimeSnapshot = mutableRuntimeSnapshot.asStateFlow()
+    override val installedExtensions = runtimeSnapshot.projectRuntimeState { it.installed }
+    val loadFailures = runtimeSnapshot.projectRuntimeState { it.loadFailures }
+    val inventory = runtimeSnapshot.projectRuntimeState { it.inventory }
+    private var runtimeLoadFailures = emptyList<ExtensionLoadDiagnostic>()
 
     /** Loads all extensions from the extensions directory. */
     fun loadAll() {
@@ -64,6 +71,7 @@ class DesktopExtensionManager(
                 loadedExtensions.toList().also {
                     loadedExtensions.clear()
                     loadedExtensions.addAll(replacements)
+                    runtimeLoadFailures = loader.diagnostics
                     runtimeRevision++
                 }
             }
@@ -79,6 +87,7 @@ class DesktopExtensionManager(
 
     @Volatile
     private var loadJob: Job? = null
+    private var loadCompletion: CompletableDeferred<Unit>? = null
 
     /**
      * Loads every installed extension in the background.
@@ -90,16 +99,28 @@ class DesktopExtensionManager(
     fun loadAllAsync() {
         synchronized(runtimeLock) {
             if (loadJob?.isActive == true) return
+            val completion = CompletableDeferred<Unit>()
+            loadCompletion = completion
             loadJob = loadScope.launch {
-                runCatching { loadAll() }
-                mutableInitialized.value = true
+                try {
+                    loadAll()
+                    mutableInitialized.value = true
+                    completion.complete(Unit)
+                } catch (error: Throwable) {
+                    completion.completeExceptionally(error)
+                    throw error
+                }
+            }.also { job ->
+                job.invokeOnCompletion { error ->
+                    if (error != null) completion.completeExceptionally(error)
+                }
             }
         }
     }
 
     /** Suspends until the background extension load has finished. */
     suspend fun awaitInitialized() {
-        loadJob?.join()
+        synchronized(runtimeLock) { loadCompletion }?.await()
         mutableInitialized.value = true
     }
 
@@ -120,7 +141,7 @@ class DesktopExtensionManager(
 
     fun getExtensionVersion(sourceId: Long): String? = synchronized(runtimeLock) {
         loadedExtensions.find { it.source.id == sourceId }?.let { loaded ->
-            val meta = readExtensionMeta(loaded.jarFile)
+            val meta = loaded.metadata
             "${meta?.versionName.orEmpty()}+${meta?.versionCode ?: 0L}"
         }
     }
@@ -138,15 +159,16 @@ class DesktopExtensionManager(
     fun getInstalledExtensions(): List<InstalledExtension> = installedExtensions.value
 
     private fun snapshotInstalledExtensions(): InstalledSnapshot {
-        val (revision, extensions) = synchronized(runtimeLock) {
-            runtimeRevision to loadedExtensions.toList()
+        val (revision, extensions, failures) = synchronized(runtimeLock) {
+            Triple(runtimeRevision, loadedExtensions.toList(), runtimeLoadFailures)
         }
         return InstalledSnapshot(
             revision = revision,
+            failures = failures,
             extensions = extensions
                 .groupBy { it.jarFile }
                 .map { (jarFile, exts) ->
-                    val meta = readExtensionMeta(jarFile)
+                    val meta = exts.first().metadata
                     InstalledExtension(
                         jarFile = jarFile,
                         sources = exts.map { it.source },
@@ -163,6 +185,7 @@ class DesktopExtensionManager(
                         displayName = meta?.name.orEmpty(),
                         language = meta?.language.orEmpty(),
                         isNsfw = meta?.isNsfw == true,
+                        metadataSnapshot = meta,
                     )
                 },
         )
@@ -175,8 +198,11 @@ class DesktopExtensionManager(
             // Snapshot projection performs file I/O outside the runtime lock. A slower, older
             // projection must not overwrite a newer installation snapshot that already won.
             if (snapshot.revision >= publishedRuntimeRevision) {
-                mutableInstalledExtensions.value = snapshot.extensions
-                mutableInventory.value = inventorySnapshot
+                mutableRuntimeSnapshot.value = DesktopExtensionRuntimeSnapshot(
+                    snapshot.extensions,
+                    snapshot.failures,
+                    inventorySnapshot,
+                )
                 publishedRuntimeRevision = snapshot.revision
             }
         }
@@ -228,7 +254,10 @@ class DesktopExtensionManager(
     internal suspend fun installExtension(artifact: ExtensionArtifact): ExtensionInstallState =
         installExtensionStates(artifact).last()
 
-    override fun installExtensionStates(artifact: ExtensionArtifact, beforeCommit: (() -> Unit)?): Flow<ExtensionInstallState> =
+    override fun installExtensionStates(
+        artifact: ExtensionArtifact,
+        beforeCommit: (() -> Unit)?,
+    ): Flow<ExtensionInstallState> =
         installCoordinator.install(ExtensionInstallRequest(artifact, beforeCommit))
             .onCompletion { publishInstalledExtensions() }
 
@@ -245,7 +274,8 @@ class DesktopExtensionManager(
 
     private fun reloadRuntime(packageName: String, expectedSourceIds: Set<Long>?) {
         val replacements = loader.loadPackage(packageName)
-        val jarExists = java.io.File(loader.extensionsDirectory, "$packageName.jar").isFile
+        val jarName = "$packageName.jar"
+        val jarExists = java.io.File(loader.extensionsDirectory, jarName).isFile
         val valid = when {
             expectedSourceIds == null -> !jarExists || replacements.isNotEmpty()
             replacements.isEmpty() -> false
@@ -254,8 +284,17 @@ class DesktopExtensionManager(
         }
         if (!valid) {
             closeLoaders(replacements)
+            val diagnostic = loader.diagnostics.lastOrNull { it.jarName == jarName }
+            synchronized(runtimeLock) {
+                runtimeLoadFailures =
+                    runtimeLoadFailures.filterNot { it.jarName == jarName } + listOfNotNull(diagnostic)
+                runtimeRevision++
+            }
             throw ExtensionInstallFailure(
-                AppError.MalformedData(IllegalStateException("Extension runtime reload failed for $packageName")),
+                diagnostic?.error
+                    ?: AppError.MalformedData(
+                        IllegalStateException("Extension runtime reload failed for $packageName"),
+                    ),
             )
         }
 
@@ -263,6 +302,7 @@ class DesktopExtensionManager(
             loadedExtensions.filter { it.jarFile.nameWithoutExtension == packageName }.also {
                 loadedExtensions.removeAll(it.toSet())
                 loadedExtensions.addAll(replacements)
+                runtimeLoadFailures = runtimeLoadFailures.filterNot { it.jarName == jarName }
                 runtimeRevision++
             }
         }
@@ -296,6 +336,7 @@ class DesktopExtensionManager(
     private data class InstalledSnapshot(
         val revision: Long,
         val extensions: List<InstalledExtension>,
+        val failures: List<ExtensionLoadDiagnostic>,
     )
 }
 
@@ -319,6 +360,7 @@ data class InstalledExtension(
     val displayName: String = "",
     val language: String = "",
     val isNsfw: Boolean = false,
+    val metadataSnapshot: ExtensionMeta? = null,
 ) {
     val name: String get() = displayName.ifBlank { jarFile.nameWithoutExtension }
     val pkgName: String get() = jarFile.nameWithoutExtension

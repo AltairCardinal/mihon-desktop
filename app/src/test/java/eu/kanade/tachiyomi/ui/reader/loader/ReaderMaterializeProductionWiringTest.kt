@@ -95,6 +95,7 @@ class ReaderMaterializeProductionWiringTest {
         val source = mockk<HttpSource>()
         val cache = mockk<ChapterCache>()
         val response = mockk<Response>()
+        every { response.code } returns 200
         every { response.close() } returns Unit
         every { cache.isImageInCache(any()) } returns true
         every { cache.putImageToCache(any(), any()) } returns true
@@ -120,7 +121,7 @@ class ReaderMaterializeProductionWiringTest {
 
         assertEquals(1, executor.pageCalls)
         assertTrue(executor.forceRefreshes.single())
-        assertEquals(1, encodedStore.writeCalls)
+        assertEquals(1, encodedStore.writeCalls, "Materialized page: ${page.toSharedLoadState()}")
         verify(exactly = 1) { cache.putImageToCache("https://example.test/image", response) }
         assertEquals(Page.State.Ready, page.status)
         loader.recycle()
@@ -131,6 +132,7 @@ class ReaderMaterializeProductionWiringTest {
         val source = mockk<HttpSource>()
         val cache = mockk<ChapterCache>()
         val response = mockk<Response>()
+        every { response.code } returns 200
         every { response.close() } returns Unit
         val cachedUrls = mutableSetOf<String>()
         var attempts = 0

@@ -1,5 +1,7 @@
 package mihon.domain.extension.service
 
+import eu.kanade.tachiyomi.network.inspectSourceFailure
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -41,7 +43,13 @@ class ExtensionInstallCoordinator(
         try {
             flight.events
                 .takeWhile { it !is InstallEvent.Complete }
-                .collect { emit((it as InstallEvent.State).value) }
+                .collect { event ->
+                    when (event) {
+                        is InstallEvent.State -> emit(event.value)
+                        is InstallEvent.ControlFailure -> throw event.error
+                        InstallEvent.Complete -> Unit
+                    }
+                }
         } finally {
             if (releaseFlight(flight)) {
                 withContext(NonCancellable) {
@@ -74,22 +82,26 @@ class ExtensionInstallCoordinator(
         return InstallFlight(request).also { created ->
             created.job = scope.launch(start = CoroutineStart.LAZY) {
                 var terminalState: ExtensionInstallState? = null
+                var controlFailure: Throwable? = null
                 try {
                     terminalState = runInstall(request, created.events)
                 } catch (failure: CancellationException) {
                     terminalState = ExtensionInstallState.Failed(failure.toAppError())
                 } catch (failure: Throwable) {
+                    controlFailure = failure.controlFailureOrNull()
+                    controlFailure?.let { throw it }
                     terminalState = ExtensionInstallState.Failed(failure.toAppError())
                 } finally {
-                    finishFlight(packageName, created, terminalState)
+                    finishFlight(packageName, created, terminalState, controlFailure)
                 }
             }
             inFlight[packageName] = created
             created.job.invokeOnCompletion { failure ->
+                val control = failure?.takeUnless { it is CancellationException }?.controlFailureOrNull()
                 val terminalState = failure?.let {
                     ExtensionInstallState.Failed(it.toAppError())
                 }
-                finishFlight(packageName, created, terminalState)
+                finishFlight(packageName, created, if (control == null) terminalState else null, control)
             }
         }
     }
@@ -111,6 +123,7 @@ class ExtensionInstallCoordinator(
         packageName: String,
         flight: InstallFlight,
         terminalState: ExtensionInstallState?,
+        controlFailure: Throwable? = null,
     ) {
         val finish = synchronized(flightLock) {
             if (flight.finished) return@synchronized false
@@ -121,6 +134,7 @@ class ExtensionInstallCoordinator(
         }
         if (!finish) return
         terminalState?.let { flight.events.tryEmit(InstallEvent.State(it)) }
+        controlFailure?.let { flight.events.tryEmit(InstallEvent.ControlFailure(it)) }
         flight.events.tryEmit(InstallEvent.Complete)
         flight.completion.complete(Unit)
     }
@@ -135,6 +149,7 @@ class ExtensionInstallCoordinator(
         var transactionFailure: Throwable? = null
         var error: AppError? = null
         var commitEntered = false
+        val failures = mutableListOf<Throwable>()
         try {
             events.state(ExtensionInstallState.Preparing)
             prepared = port.prepare(request)
@@ -149,12 +164,13 @@ class ExtensionInstallCoordinator(
             port.cleanup(prepared)
             cleanupCompleted = true
         } catch (failure: Throwable) {
+            failures += failure
             transactionFailure = failure
             error = if (rollback == null || !commitEntered) {
                 failure.toAppError()
             } else {
                 withContext(NonCancellable) {
-                    rollbackAndRestore(request.artifact.packageName, rollback, failure.toAppError(), events)
+                    rollbackAndRestore(request.artifact.packageName, rollback, failure.toAppError(), events, failures)
                 }
             }
         } finally {
@@ -165,11 +181,13 @@ class ExtensionInstallCoordinator(
                 if (cleanupFailure == null) {
                     cleanupCompleted = true
                 } else {
+                    failures += cleanupFailure
                     error = error?.withSecondary(cleanupFailure.toAppError(), cleanupFailure)
                         ?: cleanupFailure.toAppError()
                 }
             }
         }
+        rethrowInstallControlFailures(failures)
         if (transactionFailure is CancellationException) throw transactionFailure
         return error?.let(ExtensionInstallState::Failed)
             ?: ExtensionInstallState.Installed(request.artifact)
@@ -180,11 +198,13 @@ class ExtensionInstallCoordinator(
         token: ExtensionInstallRollbackToken,
         triggeringError: AppError,
         events: MutableSharedFlow<InstallEvent>,
+        failures: MutableList<Throwable>,
     ): AppError {
         events.state(ExtensionInstallState.RollingBack)
         try {
             port.rollback(token)
         } catch (rollbackFailure: Throwable) {
+            failures += rollbackFailure
             return rollbackFailure.toAppError()
         }
 
@@ -193,6 +213,7 @@ class ExtensionInstallCoordinator(
             port.reload(packageName)
             triggeringError
         } catch (restoreFailure: Throwable) {
+            failures += restoreFailure
             AppError.PartialFailure(
                 failures = listOf(triggeringError, restoreFailure.toAppError()),
                 cause = restoreFailure,
@@ -214,7 +235,24 @@ private class InstallFlight(
 
 private sealed interface InstallEvent {
     data class State(val value: ExtensionInstallState) : InstallEvent
+    data class ControlFailure(val error: Throwable) : InstallEvent
     data object Complete : InstallEvent
+}
+
+private fun Throwable.controlFailureOrNull(): Throwable? = try {
+    rethrowSourceControlFailure()
+    null
+} catch (control: Throwable) {
+    control
+}
+
+/** Finish rollback and cleanup before forwarding control failures; a secondary host Error cannot hide a VM failure. */
+private fun rethrowInstallControlFailures(failures: List<Throwable>) {
+    val inspections = failures.map { it.inspectSourceFailure() }
+    inspections.firstNotNullOfOrNull { it.fatal }?.let { throw it }
+    inspections.forEachIndexed { index, inspection -> if (!inspection.complete) throw failures[index] }
+    inspections.firstNotNullOfOrNull { it.cancellation }?.let { throw it }
+    failures.forEach { it.rethrowSourceControlFailure() }
 }
 
 private suspend fun MutableSharedFlow<InstallEvent>.state(state: ExtensionInstallState) {

@@ -592,8 +592,39 @@ pendingLoads 继续处理卸载／替换排序，owner 再覆盖与手动操作�
 保存失败保留原 untrusted 记录；保存期间真正更新／卸载包所产生的新 owner 仍可使旧信任
 失效，保存成功也不能把过期包结果写回。
 
-此适配不等于所有业务边界已经完成。Desktop 加载、filter 前置、HttpSource.baseUrl 的
-管理投影消费、阅读／下载、Creator 与默认 parser 响应生命周期仍按 EC-05/06 逐项接线。
+Android 管理投影在真实 id／name／lang／baseUrl getter 处分别守卫，然后将宿主内存
+descriptor 附在本轮 Installed copy；不改变 Source 对象、类型、id 或公开 ABI。投影错误
+回报必须携带 Manager 原 Installed 引用，确认仍是当前安装实例后才移入失败记录；
+反馈不是一次新的加载意图，不能推进 owner 从而取消较新的替换。移除坏 runtime 后
+保留失败与安装事实，避免 flow 因重复读取同一个坏 getter 而无限重入。直接 adapter
+调用没有 prepared descriptor 时也须经过相同 getter guard。
+
+`prepareSourceFilters` 只执行真实 getFilterList，Content 保留原引用，Failure 保留原
+错误分类；普通 IO 与控制异常规则不变。构造／remember 消费者直接展示 Failure，并
+阻止依赖该筛选器的查询，不能调用 OrThrow 再把错误抛回 UI。空 FilterList 只可作为
+伴随明确失败的内部占位。用户显式重试才重新准备；筛选器编辑的新树也在真实点击
+边界获取，失败关闭编辑并反馈，不能在重组期间不断触发第三方 getter。
+
+Desktop 装载的身份来自本次加载开始时读取的 sidecar 快照；成功 Source 和失败诊断
+共用该不可变快照，之后不能因 null 或旧版本字段缺失再读取新 sidecar 补旧结果身份。
+管理 projection 使用一次 runtime snapshot 选择候选与投影失败；getter 故障在同一
+projection 返回 typed failure，不能在纯投影内同步触发 reload 或反写 Manager。
+未知 metadata 显式显示 unknown，artifact 文件名只表示文件。失败包的同／旧版候选
+不作新安装，较新版保留既有显式更新管道。该 Desktop 批的逐门验收状态见累计证据，
+尚未完成的 gate 不由此维护约束代替。
+
+管理详情的源行、排序、启用开关与浏览／设置参数继续使用同一 prepared descriptor，
+不能为展示再调用 Source 的 id／name／lang／baseUrl；Source 引用仍保留原实例与类型。
+Desktop 当前 ScreenModel 只在同一个 runtime 对象和 catalog 对象下复用自己的当前
+projection，偏好／语言选项变化只重新分类，不能触发 getter；新 runtime 或 catalog 帧
+必须重新投影。此缓存只属于现有 model 当前帧，不是全局源缓存或动态代理。
+Android GetExtensionSources 在订阅开始固定实际源行所需的 metadata，不主动探测未用的
+client／baseUrl，偏好排放只改变 enabled；DetailsScreenModel 仅在 extension 变化时重新
+订阅，避免 `_sources` 更新形成自我重入。typed 源失败以原安装 owner 回报 Manager 后
+沿既有管理反馈收敛；控制异常和未标记宿主 Error 不进入空源列表回退。
+
+此适配不等于所有业务边界已经完成。Desktop 剩余接线／回归、阅读／下载、Creator
+及其它第三方回调仍按 EC-05/06 逐项接线；默认 parser 响应生命周期另见 7.6.3。
 共享 asObservable 当前使用 execute 和同步 onNext，不能据此声称 Rx map 就在 OkHttp
 enqueue 线程；其它调度链须用真实线程与资源测试证明，不改全局 Rx hooks。
 
@@ -616,6 +647,33 @@ OkHttp 自己对普通 close 异常的 quiet 语义保持不变。
 本节仅证明默认 HttpSource 的 hooks 与资源生命周期。扩展覆盖 fetch/get 方法、自定义
 Rx operator 或额外调度时仍需实际业务调用边界及线程证据；不能用默认链通过替代这些
 接线，也不修改全局 Rx hooks 或 uncaught handler 来吞错。
+
+#### 7.6.4 阅读与下载实际调用及确定性失败
+
+Android HttpPageLoader 的缓存 miss 只对普通缓存异常回退到源：控制异常、宿主 Error
+和未知 cause 深尾先传播，不能因此发起额外源请求。页列表与 AndroidReaderPageFetchPort
+的图片 URL／图片请求分别守卫实际第三方 lambda；磁盘缓存、encoded store 和调度器
+不标成源执行。CanonicalReaderMaterializeExecutor 在通用错误投影前同样保留控制／
+宿主错误，已标记的兼容失败仍沿既有 Failed 结果投影，不冒充空章或 Ready。
+
+普通失败保留原阅读器重试语义；已分类的不兼容页在 holder 重新绑定时不自动排队，
+现有用户显式 retryPage 仍可重新执行。正常 viewport、物理并发预算、代际失效、配对和
+缓存算法不改。Android Downloader 在页列表、图片 URL、图片和实际使用的源名称／
+章节链接处守卫，目录命名只守卫 source.toString，不把文件操作包进 guard。兼容失败
+保留页／章节错误并显示既有本地化文案，不发布章节完成目录或 cache 完成记录；普通
+图片 IO 仍是原来的三次有界重试，取消／致命／宿主 Error 不转为普通下载失败。
+
+Desktop chapter port 对实际 getPageList 使用同样守卫；图片 URL／完整图片响应及
+client／headers 的共享 adapter 覆盖直接和反射 suspend 调用，包括挂起后恢复的故障。
+API 缺失的既有合法回退保持；存在但执行失败的 getter 不改用 fallback client。
+Reader 与下载队列共享这些 adapter，Source 对象和类型不代理。Desktop 队列还须在
+自身页列表入口接入 guard，在重试前拒绝确定性不兼容，并先识别专用传输 marker，再
+沿用网络／存储分类；不能把 client／headers ABI 失败误报为磁盘错误。宿主存储异常
+若包着 VM fatal，同样传播到所属任务处理器，不能降为 Storage。
+
+两端失败源与健康源／章节有真实并行验证；正常请求 headers、POST、body、旧重载、
+HTTP 错误、取消、资源释放和旧代际保持各自现有链路。本节不覆盖任意插件自行管理的
+线程或独立客户端，也不能替代自定义 Rx 调度、Creator、全局搜索归因和 R8 原生验收。
 
 ## 8. 安全与隐私
 

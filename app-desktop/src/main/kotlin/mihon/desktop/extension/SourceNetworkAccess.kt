@@ -1,5 +1,7 @@
 package mihon.desktop.extension
 
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
 import okhttp3.Headers
@@ -7,14 +9,18 @@ import okhttp3.OkHttpClient
 import java.lang.reflect.InvocationTargetException
 
 /** Only sources without a network accessor may use a caller's fallback network policy. */
-internal fun Source.sourceClientOrNull(): OkHttpClient? = when (this) {
-    is HttpSource -> client
-    else -> invokeNetworkAccessor("getClient")?.let { it as OkHttpClient }
+internal fun Source.sourceClientOrNull(): OkHttpClient? = guardSourceOperation(SourceOperationPhase.IMAGE_REQUEST) {
+    when (this) {
+        is HttpSource -> client
+        else -> invokeNetworkAccessor("getClient")?.let { it as OkHttpClient }
+    }
 }
 
-internal fun Source.sourceHeadersOrNull(): Headers? = when (this) {
-    is HttpSource -> headers
-    else -> invokeNetworkAccessor("getHeaders")?.let { it as Headers }
+internal fun Source.sourceHeadersOrNull(): Headers? = guardSourceOperation(SourceOperationPhase.IMAGE_REQUEST) {
+    when (this) {
+        is HttpSource -> headers
+        else -> invokeNetworkAccessor("getHeaders")?.let { it as Headers }
+    }
 }
 
 private fun Source.invokeNetworkAccessor(name: String): Any? {

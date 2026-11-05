@@ -1,13 +1,12 @@
 package mihon.desktop.download
 
-import tachiyomi.core.common.feedback.DiagnosticCategory
-import tachiyomi.core.common.feedback.DiagnosticEvent
-import tachiyomi.core.common.feedback.DiagnosticEvents
-import tachiyomi.core.common.feedback.DiagnosticOperation
-import tachiyomi.core.common.feedback.DiagnosticStage
-
 import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.network.SourceCompatibilityException
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
+import eu.kanade.tachiyomi.network.inspectSourceFailure
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
@@ -56,6 +55,11 @@ import mihon.domain.task.NotificationEvent
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import tachiyomi.core.common.feedback.DiagnosticCategory
+import tachiyomi.core.common.feedback.DiagnosticEvent
+import tachiyomi.core.common.feedback.DiagnosticEvents
+import tachiyomi.core.common.feedback.DiagnosticOperation
+import tachiyomi.core.common.feedback.DiagnosticStage
 import tachiyomi.data.download.PersistentDownloadStore
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.toSourceAppError
@@ -360,12 +364,14 @@ class DesktopDownloadManager(
                 currentStatuses[item.chapterId] =
                     DownloadQueueStatus.valueOf(item.status.name.replace("DONE", "COMPLETED"))
                 _queue.value = next
-                DiagnosticEvents.record(DiagnosticEvent(
-                    DiagnosticCategory.DOWNLOAD_LOCAL,
-                    DiagnosticOperation.DOWNLOAD,
-                    DiagnosticStage.START,
-                    count = next.size,
-                ))
+                DiagnosticEvents.record(
+                    DiagnosticEvent(
+                        DiagnosticCategory.DOWNLOAD_LOCAL,
+                        DiagnosticOperation.DOWNLOAD,
+                        DiagnosticStage.START,
+                        count = next.size,
+                    ),
+                )
                 true
             }
         } finally {
@@ -650,16 +656,18 @@ class DesktopDownloadManager(
             }
             _queue.value = nextQueue
             currentStatuses[chapterId] = target
-            DiagnosticEvents.record(DiagnosticEvent(
-                DiagnosticCategory.DOWNLOAD_LOCAL,
-                DiagnosticOperation.DOWNLOAD,
-                when (target) {
-                    DownloadQueueStatus.COMPLETED -> DiagnosticStage.SUCCESS
-                    DownloadQueueStatus.ERROR -> DiagnosticStage.FAILURE
-                    DownloadQueueStatus.CANCELLED -> DiagnosticStage.CANCELLED
-                    else -> DiagnosticStage.START
-                },
-            ))
+            DiagnosticEvents.record(
+                DiagnosticEvent(
+                    DiagnosticCategory.DOWNLOAD_LOCAL,
+                    DiagnosticOperation.DOWNLOAD,
+                    when (target) {
+                        DownloadQueueStatus.COMPLETED -> DiagnosticStage.SUCCESS
+                        DownloadQueueStatus.ERROR -> DiagnosticStage.FAILURE
+                        DownloadQueueStatus.CANCELLED -> DiagnosticStage.CANCELLED
+                        else -> DiagnosticStage.START
+                    },
+                ),
+            )
             if (target == DownloadQueueStatus.QUEUED) {
                 val oldKey = DownloadAttemptKey(chapterId, currentGeneration)
                 resolvedDownloadIdentities.remove(oldKey)
@@ -1169,7 +1177,11 @@ class DesktopDownloadManager(
             name = item.chapterName
         }
         emitIo(DownloadIoOperation.SOURCE_PAGE_LIST)
-        return when (val result = safeSourceCall(timeoutMs = sourceCallTimeoutMs) { source.getPageList(chapter) }) {
+        return when (
+            val result = safeSourceCall(timeoutMs = sourceCallTimeoutMs) {
+                guardSourceOperation(SourceOperationPhase.PAGE_LIST) { source.getPageList(chapter) }
+            }
+        ) {
             is SourceCallResult.Success -> ResolvedPageTable(
                 pageTable = PartialPageTable.complete(
                     result.value.mapIndexed { readerOrdinal, page ->
@@ -1320,6 +1332,7 @@ class DesktopDownloadManager(
                 token?.let { releasePagePublishToken(it, deleteFinal = moved) } ?: cleanupStaging(stagingFile)
             }
             if (!isCurrentAttempt(attempt)) return false
+            if (lastError.toAppError() is AppError.ExtensionIncompatible) break
             val wait = stateMachine.retryDelayMillis(retryAttempt++) ?: break
             if (!updateRetryCount(attempt, retryAttempt)) return false
             retryDelay(wait)
@@ -1942,7 +1955,11 @@ class DesktopDownloadManager(
 
     private fun Throwable?.toAppError(): AppError {
         val error = this ?: return AppError.Unknown()
+        error.rethrowSourceControlFailure()
         if (error is AppErrorException) return error.error
+        if (error.inspectSourceFailure().causes.any { it is SourceCompatibilityException }) {
+            return error.toSourceAppError()
+        }
         if (error is HttpException) return error.toSourceAppError()
         if (error is DownloadHttpException) {
             return when (error.statusCode) {

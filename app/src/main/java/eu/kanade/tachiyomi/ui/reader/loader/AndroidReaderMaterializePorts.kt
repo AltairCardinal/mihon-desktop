@@ -1,6 +1,8 @@
 package eu.kanade.tachiyomi.ui.reader.loader
 
 import eu.kanade.tachiyomi.data.cache.ChapterCache
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
@@ -77,7 +79,9 @@ internal class AndroidReaderPageFetchPort(
     private val encodedPageStore: ReaderEncodedPageStore = AndroidReaderEncodedPageStore(chapterCache),
 ) : ReaderPageFetchPort {
 
-    override suspend fun resolveImageUrl(request: ReaderPageFetchRequest): String = sourceCall {
+    override suspend fun resolveImageUrl(request: ReaderPageFetchRequest): String = sourceCall(
+        SourceOperationPhase.IMAGE_URL,
+    ) {
         source.getImageUrl(page)
     }
 
@@ -93,7 +97,7 @@ internal class AndroidReaderPageFetchPort(
         val originalResponse = tachiyomi.core.common.feedback.diagnosticOperation(
             tachiyomi.core.common.feedback.DiagnosticCategory.READER,
             tachiyomi.core.common.feedback.DiagnosticOperation.READER_IMAGE,
-        ) { sourceCall { source.getImage(page) } }
+        ) { sourceCall(SourceOperationPhase.IMAGE_REQUEST) { source.getImage(page) } }
         tachiyomi.core.common.feedback.DiagnosticEvents.record(
             tachiyomi.core.common.feedback.DiagnosticEvent(
                 tachiyomi.core.common.feedback.DiagnosticCategory.READER,
@@ -144,8 +148,8 @@ internal class AndroidReaderPageFetchPort(
 
     fun openEncodedPage(ref: EncodedPageRef): InputStream = chapterCache.getImageFile(ref.value).inputStream()
 
-    private suspend fun <T> sourceCall(block: suspend () -> T): T = try {
-        block()
+    private suspend fun <T> sourceCall(phase: SourceOperationPhase, block: suspend () -> T): T = try {
+        guardSourceOperation(phase) { block() }
     } catch (error: CancellationException) {
         throw error
     } catch (error: AppErrorException) {

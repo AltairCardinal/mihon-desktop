@@ -60,7 +60,7 @@ class SourceMangaSearchService {
     suspend fun searchAllPages(
         source: Source,
         query: String,
-        filters: FilterList = source.getFilterList(),
+        filters: FilterList = preparedSourceFiltersOrThrow(source),
     ): List<SManga> {
         val results = mutableListOf<SManga>()
         var page = 1

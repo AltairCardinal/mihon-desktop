@@ -10,11 +10,80 @@ import mihon.domain.reader.session.ReaderEncodedPageProvenance
 import mihon.domain.reader.session.ReaderPageDescriptor
 import mihon.domain.reader.session.ReaderPageId
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class ReaderMaterializeExecutorTest {
+
+    @Test
+    fun `chapter and page materialization propagate wrapped control and host Errors without failure publication`() =
+        runTest {
+            val fatal = object : VirtualMachineError("controlled reader fatal") {}
+            val controls =
+                listOf<Throwable>(
+                    fatal,
+                    ThreadDeath(),
+                    kotlinx.coroutines.CancellationException("reader cancel"),
+                    AssertionError("host storage bug"),
+                )
+            for (control in controls) {
+                for (wrapped in listOf(false, true)) {
+                    val failure = if (wrapped) {
+                        AppErrorException(
+                            AppError.Storage(java.io.IOException("wrapped port", control)),
+                        )
+                    } else {
+                        control
+                    }
+                    val chapterError = runCatching {
+                        CanonicalReaderMaterializeExecutor.materializeChapter(
+                            ReaderChapterContentRequest(ReaderChapterId(7), 3),
+                            ReaderChapterContentPort { throw failure },
+                        )
+                    }.exceptionOrNull()
+                    assertSame(control, chapterError)
+                    val events = mutableListOf<ReaderPageMaterializeEvent>()
+                    val pageError = runCatching {
+                        CanonicalReaderMaterializeExecutor.materializePage(
+                            pageRequest(),
+                            RecordingPageFetchPort(failure = failure),
+                        ) {
+                            events += it
+                            true
+                        }
+                    }.exceptionOrNull()
+                    assertSame(control, pageError)
+                    assertFalse(
+                        events.any {
+                            it is ReaderPageMaterializeEvent.Failed ||
+                                it is ReaderPageMaterializeEvent.Ready
+                        },
+                    )
+                }
+            }
+        }
+
+    @Test
+    fun `classified incompatible materialization remains a page failure with its original cause`() = runTest {
+        val original = eu.kanade.tachiyomi.network.SourceCompatibilityException(
+            NoSuchMethodError("future page"),
+            eu.kanade.tachiyomi.network.SourceOperationPhase.IMAGE_REQUEST,
+        )
+        val error = AppError.ExtensionIncompatible(original)
+        val events = mutableListOf<ReaderPageMaterializeEvent>()
+        val result = CanonicalReaderMaterializeExecutor.materializePage(
+            pageRequest(),
+            RecordingPageFetchPort(failure = AppErrorException(error)),
+        ) {
+            events += it
+            true
+        }
+        assertEquals(error, assertInstanceOf(ReaderPageMaterializeResult.Failed::class.java, result).error)
+        assertSame(original, assertInstanceOf(ReaderPageMaterializeEvent.Failed::class.java, events.last()).cause)
+    }
 
     @Test
     fun `chapter content succeeds atomically and rejects an empty page list`() = runTest {

@@ -37,6 +37,82 @@ import java.io.IOException
 class HttpPageLoaderIntegrationTest {
 
     @Test
+    fun `page list source linkage is typed and a cache control failure never calls the source`() = runTest {
+        val chapter = ReaderChapter(Chapter.create().copy(id = 1, mangaId = 1))
+        val cache = mockk<ChapterCache>()
+        val source = mockk<HttpSource>()
+        val failure = NoSuchMethodError("future page list API")
+        every { cache.getPageListFromCache(any()) } throws IOException("ordinary cache miss")
+        coEvery { source.getPageList(any()) } throws failure
+        val loader = HttpPageLoader(
+            chapter,
+            source,
+            cache,
+            StandardTestDispatcher(testScheduler),
+            encodedPageStore = mockk(relaxed = true),
+        )
+        try {
+            val error = runCatching { loader.getPages() }.exceptionOrNull()
+            val typed = assertInstanceOf(eu.kanade.tachiyomi.network.SourceCompatibilityException::class.java, error)
+            assertSame(failure, typed.cause)
+            assertEquals(eu.kanade.tachiyomi.network.SourceOperationPhase.PAGE_LIST, typed.phase)
+            var sourceCalls = 0
+            coEvery { source.getPageList(any()) } answers {
+                sourceCalls++
+                listOf(Page(0, "page"))
+            }
+            val fatal = object : VirtualMachineError("controlled cache fatal") {}
+            for (control in listOf<Throwable>(
+                fatal,
+                CancellationException("cache cancel"),
+                AssertionError("cache host bug"),
+            )) {
+                every { cache.getPageListFromCache(any()) } throws IOException("wrapped cache", control)
+                assertSame(control, runCatching { loader.getPages() }.exceptionOrNull())
+                assertEquals(0, sourceCalls)
+            }
+        } finally {
+            loader.recycle()
+        }
+    }
+
+    @Test
+    fun `incompatible image stays failed on holder rebind while healthy page and explicit retry work`() = runTest {
+        val fixture = Fixture(testScheduler)
+        val failure = NoSuchMethodError("future image API")
+        fixture.sourceFailures[0] = failure
+        val loader = fixture.loader
+        var holder: kotlinx.coroutines.Job? = null
+        try {
+            loader.onPageSelected(fixture.pages[0])
+            fixture.release(0)
+            fixture.release(1)
+            runCurrent()
+            val state = assertInstanceOf(
+                mihon.domain.reader.session.ReaderPageLoadState.Error::class.java,
+                fixture.pages[0].toSharedLoadState(),
+            )
+            assertInstanceOf(mihon.domain.error.AppError.ExtensionIncompatible::class.java, state.error)
+            assertEquals(Page.State.Ready, fixture.pages[1].status)
+            val started = fixture.started.toList()
+            holder = launch { loader.loadPage(fixture.pages[0]) }
+            runCurrent()
+            assertEquals(started, fixture.started, "Rebinding cannot automatically repeat a deterministic ABI failure")
+            assertTrue(fixture.pages[0].status is Page.State.Error)
+            fixture.sourceFailures.remove(0)
+            loader.retryPage(fixture.pages[0])
+            fixture.release(0)
+            runCurrent()
+            assertEquals(2, fixture.started.count { it == 0 })
+            assertEquals(Page.State.Ready, fixture.pages[0].status)
+        } finally {
+            holder?.cancel()
+            loader.recycle()
+            runCurrent()
+        }
+    }
+
+    @Test
     fun `two held viewport operations retain the physical budget until an actual source exit`() = runTest {
         val fixture = Fixture(testScheduler, nonCancellablePages = setOf(0, 1))
         val loader = fixture.loader
@@ -519,6 +595,7 @@ class HttpPageLoaderIntegrationTest {
         ),
     ) {
         val started = mutableListOf<Int>()
+        val sourceFailures = mutableMapOf<Int, Throwable>()
         val cancelled = mutableListOf<Int>()
         var peakInFlight = 0
             private set
@@ -550,11 +627,13 @@ class HttpPageLoaderIntegrationTest {
                     if (page.index in nonCancellablePages) {
                         withContext(NonCancellable) {
                             releases[page.index].receive()
+                            sourceFailures[page.index]?.let { throw it }
                             if (page.index in failingPages) throw IOException("stale failure")
                             response
                         }
                     } else {
                         releases[page.index].receive()
+                        sourceFailures[page.index]?.let { throw it }
                         if (page.index in failingPages) throw IOException("load failure")
                         response
                     }

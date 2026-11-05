@@ -1,27 +1,12 @@
 package mihon.desktop.ui.extension
 
-import mihon.domain.extension.service.ExtensionInstallBusy
-import mihon.domain.extension.model.ExtensionCatalogResult
-import mihon.domain.extension.suggestion.ObserveExtensionSuggestions
-import mihon.domain.extension.suggestion.ExtensionSuggestions
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.withContext
-import mihon.domain.extension.model.ExtensionArtifact
-import mihon.domain.extension.service.ExtensionInstallLease
-import mihon.domain.extension.service.ExtensionInstallInvalidation
-import mihon.domain.extension.service.ExtensionInstallInvalidated
-import mihon.domain.extension.suggestion.ExtensionSuggestionBatchController
-import mihon.domain.extension.suggestion.SuggestionBatchInstallPort
-import mihon.domain.extension.suggestion.SuggestionBatchResult
-import mihon.domain.extension.suggestion.SuggestionIdentity
-import mihon.domain.extension.suggestion.suggestionIdentityKey
-import mihon.domain.extension.suggestion.ExtensionInventory
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
@@ -37,16 +22,32 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import mihon.desktop.extension.DesktopExtensionInstallStart
 import mihon.domain.error.AppError
+import mihon.domain.extension.model.ExtensionArtifact
+import mihon.domain.extension.model.ExtensionCatalogResult
+import mihon.domain.extension.model.RepositoryIdentity
+import mihon.domain.extension.model.toIdentity
 import mihon.domain.extension.presentation.ExtensionPresentationAction
 import mihon.domain.extension.presentation.ExtensionPresentationActionState
 import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
 import mihon.domain.extension.presentation.ExtensionPresentationResult
+import mihon.domain.extension.service.ExtensionInstallBusy
+import mihon.domain.extension.service.ExtensionInstallInvalidated
+import mihon.domain.extension.service.ExtensionInstallInvalidation
+import mihon.domain.extension.service.ExtensionInstallLease
 import mihon.domain.extension.service.ExtensionInstallState
-import mihon.domain.extension.model.RepositoryIdentity
-import mihon.domain.extension.model.toIdentity
+import mihon.domain.extension.suggestion.ExtensionInventory
+import mihon.domain.extension.suggestion.ExtensionSuggestionBatchController
+import mihon.domain.extension.suggestion.ExtensionSuggestions
+import mihon.domain.extension.suggestion.ObserveExtensionSuggestions
+import mihon.domain.extension.suggestion.SuggestionBatchInstallPort
+import mihon.domain.extension.suggestion.SuggestionBatchResult
+import mihon.domain.extension.suggestion.SuggestionIdentity
+import mihon.domain.extension.suggestion.SuggestionPanelState
+import mihon.domain.extension.suggestion.suggestionIdentityKey
 import mihon.domain.extensionrepo.model.ExtensionRepo
 
 data class DesktopPendingTrust(
@@ -57,7 +58,7 @@ data class DesktopPendingTrust(
 
 data class DesktopExtensionsState(
     val suggestions: ExtensionSuggestions = ExtensionSuggestions(),
-    val suggestionPanel: mihon.domain.extension.suggestion.SuggestionPanelState = mihon.domain.extension.suggestion.SuggestionPanelState(),
+    val suggestionPanel: SuggestionPanelState = SuggestionPanelState(),
     val searchQuery: String = "",
     val projection: DesktopExtensionProjection? = null,
     val presentation: ExtensionPresentationResult<DesktopExtensionItem>? = null,
@@ -72,6 +73,7 @@ data class DesktopExtensionsState(
     val pendingTrust: DesktopPendingTrust? = null,
     val disabledSourceIds: Set<String> = emptySet(),
     val reservedSteps: Map<String, ExtensionPresentationInstallStep> = emptyMap(),
+    val loadFailures: List<mihon.desktop.extension.ExtensionLoadDiagnostic> = emptyList(),
 ) {
     val installSteps get() = actions.installSteps + reservedSteps
 }
@@ -85,7 +87,9 @@ class ExtensionsScreenModel(
     private val catalogFreshnessMillis: Long = DEFAULT_CATALOG_FRESHNESS_MILLIS,
     private val suggestionObserver: ObserveExtensionSuggestions? = null,
     private val suggestionPreferences: mihon.domain.extension.suggestion.ExtensionSuggestionPreferences =
-        mihon.domain.extension.suggestion.ExtensionSuggestionPreferences(tachiyomi.core.common.preference.InMemoryPreferenceStore()),
+        mihon.domain.extension.suggestion.ExtensionSuggestionPreferences(
+            tachiyomi.core.common.preference.InMemoryPreferenceStore(),
+        ),
 ) {
     private val ownerJob = SupervisorJob(parentScope?.coroutineContext?.get(Job))
     private val scope = CoroutineScope((parentScope?.coroutineContext ?: Dispatchers.Default) + ownerJob)
@@ -99,6 +103,8 @@ class ExtensionsScreenModel(
     private var activeTrust: DesktopPendingTrust? = null
     private var isClosed = false
     private var latestCatalog: DesktopExtensionCatalogState? = null
+    private var projectedRuntime: mihon.desktop.extension.DesktopExtensionRuntimeSnapshot? = null
+    private var projectedCatalog: DesktopExtensionCatalogState? = null
     private var configuredCatalogIdentities: List<RepositoryIdentity>? = null
     private val suggestionCatalog = MutableStateFlow<ExtensionCatalogResult?>(null)
     private var catalogLoadedAtMillis: Long? = null
@@ -108,13 +114,16 @@ class ExtensionsScreenModel(
     internal val activeJobCount get() = synchronized(lock) { packageJobs.values.count(Job::isActive) }
 
     val suggestionPanel = mihon.domain.extension.suggestion.ExtensionSuggestionPanel(
-        scope, state.map { it.suggestions }.distinctUntilChanged(),
-        state.map { it.installSteps }.distinctUntilChanged(), suggestionPreferences,
+        scope,
+        state.map { it.suggestions }.distinctUntilChanged(),
+        state.map { it.installSteps }.distinctUntilChanged(),
+        suggestionPreferences,
     )
 
     val suggestionBatch by lazy {
         ExtensionSuggestionBatchController(
-            scope, port.installArbiter,
+            scope,
+            port.installArbiter,
             SuggestionBatchInstallPort(::installReserved),
             ::suggestionEligibility,
         )
@@ -122,7 +131,9 @@ class ExtensionsScreenModel(
 
     fun suggestionSnapshot() = suggestionPanel.state.value.rows.filter { it.canInstall }.map { it.suggestion.artifact }
 
-    fun confirmSuggestionBatch(snapshot: List<mihon.domain.extension.model.ExtensionArtifact>) = suggestionBatch.start(snapshot)
+    fun confirmSuggestionBatch(snapshot: List<mihon.domain.extension.model.ExtensionArtifact>) = suggestionBatch.start(
+        snapshot,
+    )
 
     fun updatedBatchSnapshot(previous: List<ExtensionArtifact>): List<ExtensionArtifact> = previous.map { artifact ->
         val candidates = batchReplacementCandidates(artifact)
@@ -133,7 +144,10 @@ class ExtensionsScreenModel(
 
     fun batchReplacementCandidates(artifact: ExtensionArtifact): List<ExtensionArtifact> =
         suggestionCatalog.value?.entries.orEmpty()
-            .filter { it.artifact.packageName == artifact.packageName && it.compatibility == mihon.domain.extension.model.ExtensionCompatibility.Compatible }
+            .filter {
+                it.artifact.packageName == artifact.packageName &&
+                    it.compatibility == mihon.domain.extension.model.ExtensionCompatibility.Compatible
+            }
             .map { it.artifact }.groupBy { SuggestionIdentity.of(it) }
             .values.map { versions -> versions.maxBy { it.versionCode } }
             .filter { options.value.showNsfw || !it.isNsfw }
@@ -141,8 +155,12 @@ class ExtensionsScreenModel(
     fun isCurrentBatchArtifact(artifact: ExtensionArtifact) = artifact in batchReplacementCandidates(artifact)
 
     fun batchSourcesConflict(snapshot: List<ExtensionArtifact>, continuing: Boolean): Boolean {
-        val installed = if (continuing) suggestionBatch.state.value.items
-            .filter { it.result == SuggestionBatchResult.Installed }.map { it.artifact } else emptyList()
+        val installed = if (continuing) {
+            suggestionBatch.state.value.items
+                .filter { it.result == SuggestionBatchResult.Installed }.map { it.artifact }
+        } else {
+            emptyList()
+        }
         val sources = (snapshot + installed).flatMap { it.sources.map { source -> source.id }.distinct() }
         return sources.size != sources.distinct().size
     }
@@ -151,22 +169,35 @@ class ExtensionsScreenModel(
         scope.launch { port.inventory.collect { currentInventory.value = it } }
         scope.launch {
             port.installArbiter.reservations.collect { reservations ->
-                mutableState.update { it.copy(reservedSteps = reservations.mapValues { (_, reservation) ->
-                    reservation.progress?.presentationStep() ?: ExtensionPresentationInstallStep.Pending
-                }) }
+                mutableState.update {
+                    it.copy(
+                        reservedSteps = reservations.mapValues { (_, reservation) ->
+                            reservation.progress?.presentationStep() ?: ExtensionPresentationInstallStep.Pending
+                        },
+                    )
+                }
             }
         }
-        scope.launch { suggestionPanel.state.collect { panel -> mutableState.update { it.copy(suggestionPanel = panel) } } }
+        scope.launch {
+            suggestionPanel.state.collect { panel -> mutableState.update { it.copy(suggestionPanel = panel) } }
+        }
         require(catalogFreshnessMillis >= 0) { "Catalog freshness must not be negative" }
         suggestionObserver?.let { observer ->
             scope.launch {
-                observer.subscribe(suggestionCatalog, port.inventory, options.map { it.showNsfw }, suggestionPreferences.ignoredIdentities()).collect { result ->
+                observer.subscribe(
+                    suggestionCatalog,
+                    port.inventory,
+                    options.map {
+                        it.showNsfw
+                    },
+                    suggestionPreferences.ignoredIdentities(),
+                ).collect { result ->
                     mutableState.update { it.copy(suggestions = result) }
                 }
             }
         }
         scope.launch {
-            combine(port.installedExtensions, options, port.disabledSources) { _, currentOptions, disabledSources ->
+            combine(port.runtimeSnapshot, options, port.disabledSources) { _, currentOptions, disabledSources ->
                 currentOptions to disabledSources
             }.collect { (currentOptions, disabledSources) ->
                 mutableState.update { it.copy(disabledSourceIds = disabledSources) }
@@ -263,8 +294,11 @@ class ExtensionsScreenModel(
                     DesktopPendingTrust(item.operationPackageName, start.request),
                 )
                 is DesktopPresentationInstallStart.Rejected -> {
-                    if (start.error.cause is ExtensionInstallBusy) clearTerminal(item.operationPackageName)
-                    else recordError(item.operationPackageName, start.error)
+                    if (start.error.cause is ExtensionInstallBusy) {
+                        clearTerminal(item.operationPackageName)
+                    } else {
+                        recordError(item.operationPackageName, start.error)
+                    }
                 }
             }
         }
@@ -275,7 +309,8 @@ class ExtensionsScreenModel(
         if (suggestionCatalog.value?.entries?.none { it.artifact == artifact } != false) return null
         val candidate = latestCatalog?.available?.firstOrNull {
             it.pkgName == artifact.packageName && it.repoUrl == artifact.repository.baseUrl &&
-                it.repoFingerprint == artifact.repository.signingKeyFingerprint && it.versionCode == artifact.versionCode &&
+                it.repoFingerprint == artifact.repository.signingKeyFingerprint &&
+                it.versionCode == artifact.versionCode &&
                 it.libVersion == artifact.libVersion
         } ?: return null
         return install(candidate.item())
@@ -288,7 +323,11 @@ class ExtensionsScreenModel(
 
     fun retry(item: DesktopExtensionItem): Job? = if (
         state.value.presentation?.updates.orEmpty().any { it.operationPackageName == item.operationPackageName }
-    ) update(item) else install(item)
+    ) {
+        update(item)
+    } else {
+        install(item)
+    }
 
     fun updateAll(): List<Job> = updateAllCandidates().map { install(it.item()) }
 
@@ -365,12 +404,12 @@ class ExtensionsScreenModel(
     }
 
     fun extensionSources(item: DesktopExtensionItem): List<DesktopExtensionSourceItem> =
-        item.installed?.let { port.extensionSources(it, state.value.disabledSourceIds) }.orEmpty()
+        port.extensionSources(item, state.value.disabledSourceIds)
 
     fun setSourceEnabled(sourceId: Long, enabled: Boolean) = port.setSourceEnabled(sourceId, enabled)
 
     fun setSourcesEnabled(item: DesktopExtensionItem, enabled: Boolean) {
-        item.installed?.let { port.setSourcesEnabled(it, enabled) }
+        port.setSourcesEnabled(item, enabled)
     }
 
     suspend fun closeAndJoin() {
@@ -382,16 +421,26 @@ class ExtensionsScreenModel(
         drainActive()
     }
 
-    private fun publish(currentOptions: ExtensionPresentationOptions, clearRefreshError: Boolean = false) = synchronized(lock) {
+    private fun publish(
+        currentOptions: ExtensionPresentationOptions,
+        clearRefreshError: Boolean = false,
+    ) = synchronized(lock) {
         val loadedCatalog = latestCatalog
         suggestionCatalog.value = loadedCatalog?.catalog?.takeIf { catalog ->
             configuredCatalogIdentities?.let { catalog.repositories.matches(it) } != false
         }
         val catalog = loadedCatalog ?: EMPTY_CATALOG
-        val projection = port.project(catalog)
+        val runtime = port.runtimeSnapshot.value
+        val projection = state.value.projection?.takeIf {
+            projectedRuntime === runtime && projectedCatalog === catalog
+        } ?: port.project(catalog, runtime).also {
+            projectedRuntime = runtime
+            projectedCatalog = catalog
+        }
         mutableState.update {
             it.copy(
                 projection = projection,
+                loadFailures = projection.loadFailures,
                 presentation = port.classify(projection, currentOptions),
                 options = currentOptions,
                 hasLoadedCatalog = loadedCatalog != null,
@@ -451,7 +500,11 @@ class ExtensionsScreenModel(
             }
         }
 
-    private suspend fun collectInstall(packageName: String, events: Flow<DesktopPresentationInstallEvent>, onProgress: ((ExtensionInstallState) -> Unit)? = null): ExtensionInstallState? {
+    private suspend fun collectInstall(
+        packageName: String,
+        events: Flow<DesktopPresentationInstallEvent>,
+        onProgress: ((ExtensionInstallState) -> Unit)? = null,
+    ): ExtensionInstallState? {
         var lastStep: ExtensionPresentationInstallStep? = null
         var terminal: ExtensionInstallState? = null
         events.onEach { event ->
@@ -466,31 +519,53 @@ class ExtensionsScreenModel(
                 (raw as? ExtensionInstallState.Failed)?.error?.let { error ->
                     if (error == AppError.Cancelled || error.cause is ExtensionInstallInvalidated) {
                         clearEvidence(packageName)
-                    } else recordError(packageName, error)
+                    } else {
+                        recordError(packageName, error)
+                    }
                 }
             }
         }.takeWhile { desktopExtensionPresentationStore.shouldContinue(it.step) }.collect()
-        if (lastStep == ExtensionPresentationInstallStep.Installed || lastStep == ExtensionPresentationInstallStep.Idle) {
+        if (lastStep == ExtensionPresentationInstallStep.Installed ||
+            lastStep == ExtensionPresentationInstallStep.Idle
+        ) {
             clearTerminal(packageName)
         }
         return terminal
     }
 
     private fun suggestionEligibility(artifact: ExtensionArtifact): ExtensionInstallInvalidation? {
-        if (suggestionIdentityKey(SuggestionIdentity.of(artifact)) in suggestionPreferences.ignored.get().lineSequence()) {
+        if (suggestionIdentityKey(SuggestionIdentity.of(artifact)) in
+            suggestionPreferences.ignored.get().lineSequence()
+        ) {
             return ExtensionInstallInvalidation.IGNORED
         }
         val inventory = currentInventory.value
-        if (!inventory.initialized || inventory.hasUnknownArtifacts) return ExtensionInstallInvalidation.INVENTORY_UNKNOWN
+        if (!inventory.initialized ||
+            inventory.hasUnknownArtifacts
+        ) {
+            return ExtensionInstallInvalidation.INVENTORY_UNKNOWN
+        }
         if (artifact.packageName in inventory.records) return ExtensionInstallInvalidation.PRESENT
-        if (suggestionCatalog.value?.entries?.any { it.artifact == artifact } != true) return ExtensionInstallInvalidation.CATALOG_CHANGED
+        if (suggestionCatalog.value?.entries?.any { it.artifact == artifact } !=
+            true
+        ) {
+            return ExtensionInstallInvalidation.CATALOG_CHANGED
+        }
         val suggestions = state.value.suggestions
         if (suggestions.isLoading) return ExtensionInstallInvalidation.INVENTORY_UNKNOWN
-        if (suggestions.suggestions.none { it.identity == SuggestionIdentity.of(artifact) }) return ExtensionInstallInvalidation.INELIGIBLE
+        if (suggestions.suggestions.none {
+                it.identity == SuggestionIdentity.of(artifact)
+            }
+        ) {
+            return ExtensionInstallInvalidation.INELIGIBLE
+        }
         return null
     }
 
-    private suspend fun installReserved(lease: ExtensionInstallLease, onProgress: (Long, ExtensionInstallState) -> Unit): SuggestionBatchResult {
+    private suspend fun installReserved(
+        lease: ExtensionInstallLease,
+        onProgress: (Long, ExtensionInstallState) -> Unit,
+    ): SuggestionBatchResult {
         val packageName = lease.artifact.packageName
         val operation = BatchOperation(CompletableDeferred()) { onProgress(lease.transactionId, it) }
         synchronized(lock) { batchOperations[lease.transactionId] = operation }
@@ -507,7 +582,9 @@ class ExtensionsScreenModel(
                         waitingForTrust = true
                         enqueuePending(DesktopPendingTrust(packageName, start.request, lease.transactionId))
                     }
-                    is DesktopPresentationInstallStart.Rejected -> operation.completion.complete(SuggestionBatchResult.Failed(start.error))
+                    is DesktopPresentationInstallStart.Rejected -> operation.completion.complete(
+                        SuggestionBatchResult.Failed(start.error),
+                    )
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -539,12 +616,23 @@ class ExtensionsScreenModel(
         is ExtensionInstallState.Installed -> SuggestionBatchResult.Installed
         is ExtensionInstallState.Failed -> when (val invalidation = error.cause) {
             is ExtensionInstallInvalidated -> SuggestionBatchResult.Invalidated(invalidation.reason)
-            else -> if (error == AppError.Cancelled) SuggestionBatchResult.Cancelled else SuggestionBatchResult.Failed(error)
+            else -> if (error ==
+                AppError.Cancelled
+            ) {
+                SuggestionBatchResult.Cancelled
+            } else {
+                SuggestionBatchResult.Failed(error)
+            }
         }
-        else -> SuggestionBatchResult.Failed(AppError.Unknown(IllegalStateException("Installation ended without a result")))
+        else -> SuggestionBatchResult.Failed(
+            AppError.Unknown(IllegalStateException("Installation ended without a result")),
+        )
     }
 
-    private class BatchOperation(val completion: CompletableDeferred<SuggestionBatchResult>, val onProgress: (ExtensionInstallState) -> Unit) {
+    private class BatchOperation(
+        val completion: CompletableDeferred<SuggestionBatchResult>,
+        val onProgress: (ExtensionInstallState) -> Unit,
+    ) {
         @Volatile var job: Job? = null
     }
 
@@ -558,7 +646,10 @@ class ExtensionsScreenModel(
 
     private fun clearEvidence(packageName: String) {
         mutableState.update {
-            it.copy(rawInstallStates = it.rawInstallStates - packageName, installErrors = it.installErrors - packageName)
+            it.copy(
+                rawInstallStates = it.rawInstallStates - packageName,
+                installErrors = it.installErrors - packageName,
+            )
         }
     }
 
@@ -570,7 +661,9 @@ class ExtensionsScreenModel(
     private fun enqueuePending(next: DesktopPendingTrust) {
         var replaced: DesktopPendingTrust? = null
         val accepted = synchronized(lock) {
-            if (isClosed) false else {
+            if (isClosed) {
+                false
+            } else {
                 val existingIndex = pendingTrustQueue.indexOfFirst { it.packageName == next.packageName }
                 if (existingIndex >= 0) {
                     replaced = pendingTrustQueue.set(existingIndex, next)
@@ -605,7 +698,13 @@ class ExtensionsScreenModel(
                 if (removed != null) {
                     mutableState.update {
                         it.copy(
-                            pendingTrust = if (activeTrust == null && index != 0) pendingTrustQueue.firstOrNull() else null,
+                            pendingTrust = if (activeTrust == null &&
+                                index != 0
+                            ) {
+                                pendingTrustQueue.firstOrNull()
+                            } else {
+                                null
+                            },
                         )
                     }
                 }
@@ -626,7 +725,9 @@ class ExtensionsScreenModel(
         val isActive = synchronized(lock) { activeTrust?.request?.requestId == pending.request.requestId }
         if (!isActive) return
         if (!completed) runCatching { port.discardTrust(pending.request.requestId) }
-        if (!completed || state.value.actions.installSteps[pending.packageName] != ExtensionPresentationInstallStep.Error) {
+        if (!completed ||
+            state.value.actions.installSteps[pending.packageName] != ExtensionPresentationInstallStep.Error
+        ) {
             clearTerminal(pending.packageName)
         }
         synchronized(lock) {

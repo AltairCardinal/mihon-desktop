@@ -450,3 +450,196 @@ enqueue callback 的证据。后续 Rx 测试须先证明实际线程／逸出�
 这是默认 HttpSource 的 production hooks 与资源证据；不能替代扩展覆盖 fetch/get、
 自定义 operator／调度、reader/download、Creator、全局搜索和 R8 原生验收。维护边界
 见 `docs/architecture/desktop-network-routing.md` 7.6.3。没有运行模块／仓库全量，未操作设备。
+
+### EC-05/06 后续批：安装回滚、实际筛选器和元数据投影（阶段验证）
+
+本批仍未完成整个 EC-05/06。下列绿测与尚待收口的 Desktop 验证分别记录，不以已有
+loader 冷态不读 getter 代替实际业务消费测试。
+
+- `ec05-android-typed-rollback-focused`：真实 Manager → Installer → AndroidInstallPort →
+  Coordinator 的单方法通过（9 秒）。候选装载返回带可靠身份的兼容失败，旧 APK bytes、
+  signers、trust、版本和原 Source 实例恢复；验证两次 reload、失败记录清除及 lease 释放。
+  OS/装载结果是既有可控 seam，其余事务是 production。此前 `ec05-android-typed-rollback`
+  错把长期 StateFlow 全量收集，测试不收敛；协调器停止本 key 后已退出，不能计为产品红。
+- `ec06-filter-preparation-red`：共享三方法确认旧默认 getFilterList 调用会逸出；
+  `ec06-filter-preparation-green`：相同三方法在 JVM／Android 各运行一次，6 项通过。
+  Content 保留 FilterList 引用；Failure 保留 typed error；失败时默认 searchAllPages
+  不调用搜索页，控制异常／宿主 Error 不降级，普通 IO 保持原分类。
+- Android 真实 Browse 的构造与 Retry 曾分别由 `ec06-android-filter-ui-red`、
+  `ec06-android-filter-retry-red` 确认原始链接错误及 Retry 未重新准备筛选器的业务失败。
+  `ec06-android-filter-ui-green`：真实 Navigator/Screen 两项与直接相关旧行为两项共
+  4 项通过（24 秒）。错误占位伴随 filterError，不执行查询；显式 Retry 获取新筛选器，
+  同一引用进入真实搜索服务，保留既有目录过滤/Pager 行为。
+- `ec05-android-metadata-projection-red`：两项均到达真实 GetExtensionsByType 的坏
+  HttpSource.baseUrl，原始 NoSuchMethodError 逸出。`ec05-android-metadata-projection-green`
+  4 个独立方法通过（18 秒）：新投影两项、loader 冷态到同一 HttpSource 实际 client
+  消费一项、既有 Android presentation wiring 一项。健康 Source 引用不变；baseUrl
+  仅读取一次后收敛，失败移入管理记录并保留 LOAD_FAILED 安装事实；旧同版本实例
+  在 getter 内触发替换后，其迟到错误不能污染新实例。内存 presentationSources 只在
+  本轮投影 copy 使用，Manager 校验原 Installed 引用，反馈不推进新加载 owner。
+- `ec05-desktop-projection-filter-red` 未执行测试：任务名误写为不存在的
+  `:app-desktop:test`，1 秒配置失败。纠正为 `:app-desktop:jvmTest` 后，
+  `ec05-desktop-projection-filter-correct-red` 精确 5 方法全部正确失败（18 秒）：
+  canonical repo 取了另一帧 runtime；坏包同版本仍作为 Available；baseUrl 原始链接
+  错误逸出；真实 Navigator 下 SourceBrowse／MigrationSearch 构造各逸出筛选器错误。
+  `ec05-desktop-projection-runtime-green`：该 5 方法与新增 Browse／Migration 普通 IO
+  显式 Retry 两项、真实 installed ABI 回滚／健康升级两项、无 provider 管理可见一项、
+  实际管理页 blank／unknown／reload 一项，共 **11 项通过、零跳过**（Gradle 6 秒）。
+  新版候选 Update 实际点击与最后准确格式仍单独收口，不拿投影绿替代 UI 接线。
+- `ec05-install-control-runtime-regression`：共享安装控制契约最终三方法在 JVM／Android
+  各三项，另 JVM 精确选择既有成功、reload rollback、commit cancellation、同包共享、
+  last collector cleanup 五项；Desktop 精确选择新版 Update 页一项、旧转换快照一项、
+  跨包迟到 projection 一项及旧 artifact/runtime 回滚一项。**15 项通过、零跳过**
+  （17 秒）。旧 fake loader 显式提供加载时 metadata，不要求 production 回读 sidecar。
+  后续加强实际 Update 错误文案断言时发现旧通用文案与预期不同，另行区分并补真正
+  typed compatibility 反馈门，不能把这次通过当成最后反馈验收。
+
+Desktop loader 的独立装载矩阵还包括以下有效记录：
+
+- `ec05-desktop-load-correct-red`、`ec05-desktop-diagnostic-red` 分别确认真实 service／
+  strict／legacy provider 的构造、工厂与元数据失败会被吞掉或发布半包，以及原诊断
+  cause walker 会重入有环 cause。首个 `ec05-desktop-load-red` 是测试泛型编译问题，
+  不计为产品红。`ec05-desktop-load-green` 与 `ec05-desktop-snapshot-green` 给出对应
+  discovery／控制传播／健康 helper 共存及冻结身份的绿证据。
+- `ec05-desktop-snapshot-red` 在真实 provider 构造期间替换 sidecar，确认旧失败／
+  成功 Source 会被归到新 version 999；`ec05-desktop-snapshot-green` 的 5 方法通过，
+  原 162 快照同时用于成功 Source 和诊断，不在 report／presentation 时重读新 sidecar。
+- `ec05-desktop-background-red`、`ec05-desktop-unawaited-red` 分别确认旧后台吞控制错／
+  假 Ready，以及 async 只对测试 awaiter 抛错而 production 无 await 时不传播的问题。
+  `ec05-desktop-background-green`、`ec05-desktop-unawaited-green` 保留 launch 的真实
+  本任务异常传播与每次 attempt 的独立 completion；无人 await 时局部 handler 仍收到
+  原控制错误，取消不假 Ready。不安装全局吞错 handler。
+- `ec05-desktop-no-provider-red` 确认空／仅不可加载 helper 的真实 JAR 缺少包级反馈，
+  最小普通诊断在上述 11 项 green 中复验。健康 provider 与可选依赖缺失 helper 共存
+  仍可搜索，不把任意 helper 缺依赖都升级为整包兼容失败。
+- `ec05-desktop-typed-reload-correct-red` 确认真实 child-loaded provider 在 candidate
+  阶段可加载、installed JAR 阶段缺 ABI 后，错误被降为 MalformedData／恢复后残留诊断；
+  对应两项在 11 项 green 中通过，旧 bytes／meta／Source runtime 恢复、健康升级清
+  失败记录。前一 `ec05-desktop-typed-reload-red` 的 fixture 落入 parent-first 宿主路径，
+  没触发目标故障，不计正确红。
+
+详情与最终反馈的后续收口：
+
+- `ec05-desktop-final-consumers-red` 三个真实失败分别是 primary VM fatal 被关闭阶段的
+  cancellation 覆盖、typed Update 已进真实安装事务但 UI 未显示本地化兼容文案、源行
+  与启用动作重新读取已准备过的坏 getter。`ec05-android-details-metadata-red` 仅一个
+  方法重试三次：真实 GetExtensionSources → DetailsScreenModel 的 name getter 已到达，
+  NoSuchMethodError 在 XML 中保留，Manager 却无失败反馈，不是三项独立用例。
+- `ec05-details-final-consumers-green`：Desktop 6 方法与 Android 3 方法通过（37 秒）；
+  包括真实筛选器草稿语义、migration HTTP 分页错误、原 Android source action 和真实
+  管理 Banner gate。关闭 helper 比较双方 fatal／未知尾／取消，普通 IO 才可 suppressed；
+  普通非 IO 关闭失败仍传播，不新建资源框架。
+- `ec05-details-preference-frame-red` 缺 import，非产品红；后一个默认 service DTO 每次
+  value 新建帧的输入不作为 production identity 证据。改用真实 MutableStateFlow 的
+  稳定 runtime 对象后，`ec05-details-stable-frame-red` 确认禁用偏好反馈会重入 getter。
+  `ec05-details-stable-frame-green` 3 方法通过（17 秒）：当前 model 的同 runtime／catalog
+  帧复用 prepared projection；catalog 新帧会重新发现错误，runtime 新帧可用新 owner
+  恢复，实际详情导航／移除仍工作。不建立全局 cache，key 与投影使用单次捕获的帧。
+- `ec05-metadata-owned-final` 是 identity 去重与最后等价排版之后的精确复验：Desktop
+  projection／源行 4 方法，Android 实际详情失败／偏好排放 2 方法及旧 fixed source
+  action 1 方法，**7 项通过、零跳过（28 秒）**。Android 源行偏好变化保持原 Source 引用，
+  name getter 不重入且未用的 baseUrl 零读取；去重比较原 Installed owner 的引用身份。
+  三份原始 XML 已在覆盖前保留到 `.test-tmp/ec05-metadata-owned-final-xml/`。
+
+实际新版 Update 页最后通过真实 DesktopExtensionApi.beginInstall → Manager → 安装协调器
+到受控下载边界，typed compatibility 失败显示本地化文案，保留原失败包/版本与更新修复
+入口，没有虚构 Installed、自动安装或泄露内部 ABI 细节。`ec05-desktop-failed-update-ui-red`
+是测试错引不存在 copy 字段的编译问题；`ec05-desktop-failed-update-ui-correct-red` 才确认
+Update 按钮缺失。`ec05-desktop-update-feedback-green` 名称虽含 green，实际普通 Network
+预期文案不匹配，未当作兼容红；之后 typed compatibility 文案的真实红/绿由上述
+final-consumers-red/green 和末次 7 项结果收口。
+
+格式的有效门为 `ec0506-desktop-android-format` 中 domain 精确 5 targets、
+`ec0506-owned-format-final` 中 app 精确 14 targets，以及
+`ec0506-desktop-format-verified-final` 中 Desktop 精确 18 targets：共 **37 个 Kotlin
+文件按原规则通过 Apply／Check**。前序失败均为长签名、长宿主表达式或等价 mixed 条件
+括号，未扫描用户 reader 文件。两个 materialize key 只是临时精确 Apply 的排版过程：
+先前 lint suppression 没有落下所需自动排版，随后仅临时关闭 max-line-length rule 使
+自动修复落盘，再手动拆长行；**不计它们为 Check／通过证据**，最终严格 key 没有加载
+该临时 init，项目格式配置没有改变。
+
+每条命令的原样 argv、终态和退出码保存在 `.gradle-coordinator/<key>.json`，原始
+日志在同名 `.log`，没有运行无选择器模块／仓库全量。reader／download 的根代理独立
+实现与 46 项组合证据另由根代理补入，不能与本段重复累计。Creator、自定义 Rx／调度、
+全局搜索汇合及原 APK DEX／R8／厂商设备仍按后续任务验收，本段不据此勾选整个 EC-06。
+
+为补 root reader 历史 XML 被后续 focused task 覆盖的审计缺口，另执行
+`ec06-desktop-reader-evidence-final`：只选仍适用的 8 个 reader／network consumer 方法，
+不重跑已有下载 6 项。临时 init 仅开启该 test task 的 passed/failed/skipped 日志；
+**8/0fail/0skip，4 秒**，原日志逐 case 写出 PASSED，XML 为 6+2，已保留在
+`.test-tmp/ec06-desktop-reader-evidence-final-xml/`。这 8 项属于根代理 46 项的补证据，
+不能再额外累加。末次只读进程检查无 Gradle Test Executor／GradleWorkerMain；缓存
+Gradle/Kotlin daemon 保留，未终止其它会话进程。
+
+### EC-06 阶段：双端阅读／下载实际边界（根代理实现、独立审查）
+
+本批与上一节共同提交；54 个 Kotlin 文件属于同一扩展失败边界的加载、投影及业务消费，
+包含两端真实接线和受控外部制品／线程矩阵，超过 8 文件／400 行仍保持内聚。主要风险
+是共享错误投影吞控制异常、源归属与旧 runtime 错绑，以及确定性失败被反复排队；
+没有增加 Source 代理、数据库／队列协议或全局异常钩子。既有阅读器首开任务文件受保护。
+
+正确失败与最小实现按实际接线分层确认：
+
+- `ec06-android-reader-red`：domain 控制门正确 RED（可控 VM fatal 被降为 Unknown），
+  typed compatibility 对照通过。app 后续编译遇到新下载测试的两个 harness 泛型问题，
+  不记为 app 行为红。`ec06-android-reader-app-correct-red` 才确认 page list 原始
+  NoSuch 逸出；当前 port 尚未标记的 image Linkage 经新控制 helper 后未形成页错误。
+- 加实际源 guard 后，`ec06-android-reader-boundary-red` 深入到两个真正的余下失败：
+  holder 重绑定使 starts 从 `[0,1,2]` 变成 `[0,1,2,0]`；缓存包装 VM fatal 后仍回退
+  源请求。只对不兼容页禁止自动 bind 重试，缓存 catch 先传播控制／宿主 Error；显式
+  retry 保留。`ec06-reader-control-green` 的 domain 两方法双目标、reader 两方法及
+  下载初始两方法共 8 通过（35 秒），后两项在后续下载最终门中覆盖，不能重复累计。
+- `ec06-android-downloader-red`：两真实 private production image stage 使用原 Flow
+  和虚拟 delay，确认 NoSuch 未类型化、包装 VM fatal 被重试。普通 IO 四次的对照已
+  到达并通过。guard 仅包 getImage；retryWhen 先控制检查，再拒兼容错误，其余策略不改。
+- 章节测试的首两次失败分别是 suspend addChapter 错用 verify、mock provider 的默认
+  参数读取未构造偏好；均为 harness，已改 coVerify 与真实 provider 的 spy。另 owned job
+  的首轮受 WorkManager 未初始化影响，之后只替换该 OS 调度 adapter，
+  `ec06-download-job-behavior-red` 才明确 expected fatal、actual null。健康章对照最初
+  用 InMemoryPreferenceStore 每次新建 getter，设置 CBZ=false 未保持；改自有 Android
+  SharedPreferences 后，未改对应 production 即在 `ec06-download-healthy-baseline` 通过。
+- `ec06-download-chapter-behavior-red` 中有效失败是兼容消息显示 raw ABI、章节吞掉
+  包装 fatal、provider.toString 原始 Linkage。真实 downloadChapter、cache/rename、
+  后台 owned job 与局部 handler 均有断言；页列表、图片 URL、图片各路径失败不提交
+  完成，健康并行章节能最终 DOWNLOADED。`ec06-android-download-metadata-red` 另确认
+  ComicInfo 的 getChapterUrl 原始 NoSuch；只补该 hook 和 name getter，不包宿主 XML/IO。
+- `ec06-desktop-reader-source-red`：三个实际消费者均到达原始 NoSuch，分别是 overridden
+  page list、yield 后的反射图片 hook 和网络 getter。守卫放在具体第三方边界，覆盖
+  suspend 恢复；`ec06-desktop-reader-source-green` 同时跑既有 headers、自定义请求、
+  child-loaded 来源和 HTTP 错误。最终可审计的 8 项 reader 原始证据以上一节的
+  `ec06-desktop-reader-evidence-final` 为准，原下载 2 项由后续完整 6 项相关类替代。
+- `ec06-desktop-download-source-red` 五个真实 queue cases：pages 逃到所属 handler，
+  url 已绿，image 调用 4 次，client/headers 被误判 Storage。只加 queue 自身页列表
+  guard、拒绝兼容重试和 marker 分类。首 green 尚有 image 稳定 AppErrorException 被
+  二次包装，按原稳定结果分支顺序纠正。`ec06-desktop-download-host-control-red` 在
+  真实 writePage 以 IOException 包 VM fatal，确认会落普通 Storage；恢复控制 helper
+  后交所属任务处理器，未把整个磁盘阶段标为源代码。
+- `ec06-download-boundaries-green`：Desktop 五个源 hook cases 加 host write fatal 共
+  **6**，Android 完整下载类 **8**，合计 **14/0fail/0skip，22 秒**。源缺 ABI 只尝试一次、
+  没有错误进度／完成目录；健康同队列章节真实发布。源 image URL/response、原 cause、
+  phase、无 fallback 请求及不泄 ABI 的本地化消息均有实际断言。
+
+受影响的旧行为与组合计数：
+
+- `ec06-reader-download-regression` 中 domain 精确三方法双目标 **6** 通过；Android
+  五个旧方法中 **4** 通过，另加的元数据偏好方法属于上一节，不重复累计。旧 explicit
+  retry 门（同方法 retry3）在 encoded write 次数断言失败，不当成三个独立失败。
+- `ec06-reader-old-retry-diagnostic` 确认实际错误是 `MockKException: Response.code()`
+  未设答案。executor 已执行；读取响应状态码在 HEAD 的旧 production 已存在，因此只
+  补两处响应桩 code=200，不改生产逻辑。`ec06-reader-old-retry-regression-green` 只
+  补失败旧一项、相邻普通 IO 恢复一项，以及未执行的 Desktop 下载六项，**8 项通过**。
+  外层 CLI 曾瞬时显示 NOT_STARTED，未据此重启；同 key 的权威 JSON exit0/PASSED、
+  原始 BUILD SUCCESSFUL 和 XML Android2/Desktop6 已重新核对（30 秒）。
+- 最终是 **46 个独立 focused 用例的有效组合**：domain 新2×2+旧3×2=10；Android
+  reader 新2+旧6、download 新8=16；Desktop reader 新3+旧5、download 新6+旧6=20。
+  这不是在最终代码上重跑全部模块。原始 argv/终态/日志按各 key 保留；末次 reader
+  8 项 XML 已归档，剩余重复项采用后续有效结果，不将 retry 或重复补证累加。
+- 根代理 **17 个 Kotlin 文件**严格格式：`ec06-reader-download-format-final` 中
+  domain 精确2；`ec06-reader-download-format-app-desktop-complete` 中 app 精确7、
+  Desktop 精确8（4 秒）。失败仅长签名排版；英文方法名缩短一个词、断行及自动格式
+  不改行为。与上一节 37 个互不重叠文件共同通过，未扫描用户的 ReaderPage 等文件。
+
+根代理与实施代理交叉独立审查其未实施的稳定片段，关键公共运行机制和平台 wiring
+均已在下游前检查；最后 Desktop queue/Android ComicInfo 复审无阻断。维护边界见
+7.6.4，实际 UI 契约见 page-contracts EC-UI-01–06。Creator、尚列的自定义 Rx/直接 API
+消费、全局搜索汇合/冻结身份诊断和原 APK DEX/R8 均未借此声明完成，继续同一目标。

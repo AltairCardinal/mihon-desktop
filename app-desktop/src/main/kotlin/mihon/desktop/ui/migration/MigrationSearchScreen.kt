@@ -81,7 +81,9 @@ import mihon.desktop.ui.browse.SourceBrowseQueryCoordinator
 import mihon.desktop.ui.browse.SourceBrowseStateProjector
 import mihon.desktop.ui.source.desktopSourceErrorMessage
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.source.service.SourceFilterResult
 import tachiyomi.domain.source.service.SourceQuery
+import tachiyomi.domain.source.service.prepareSourceFilters
 import tachiyomi.domain.source.service.toSourceAppError
 import tachiyomi.i18n.MR
 
@@ -106,10 +108,12 @@ data class MigrationSearchScreen(
         var submitted by remember { mutableStateOf(query) }
         var page by remember { mutableIntStateOf(1) }
         var retry by remember { mutableIntStateOf(0) }
-        val listingQuery = remember(selectedId, submitted) {
+        val preparedFilters = remember(selectedId, submitted, retry) { source?.let(::prepareSourceFilters) }
+        val filterFailure = (preparedFilters as? SourceFilterResult.Failure)?.error
+        val listingQuery = remember(selectedId, submitted, preparedFilters) {
             SourceQuery.Search(
                 submitted,
-                source?.getFilterList() ?: FilterList(),
+                (preparedFilters as? SourceFilterResult.Content)?.filters ?: FilterList(),
             )
         }
         val scope = rememberCoroutineScope()
@@ -123,9 +127,11 @@ data class MigrationSearchScreen(
             state?.request?.let { it.sourceId == selectedId && it.query == listingQuery && it.page == page } == true
         val results = if (matching) projected.items else emptyList()
         val hasNext = matching && projected.hasNextPage
-        val loading = projected.loading || (!matching && source != null)
+        val loading = filterFailure == null && (projected.loading || (!matching && source != null))
         val error = if (source == null) {
             MR.strings.source_not_installed.localized()
+        } else if (filterFailure != null) {
+            desktopSourceErrorMessage(filterFailure)
         } else {
             if (matching) projected.pageError?.error?.let { desktopSourceErrorMessage(it) } else null
         }
@@ -141,7 +147,9 @@ data class MigrationSearchScreen(
             }
         }
         LaunchedEffect(selectedId, submitted, page, retry) {
-            source?.let { coordinator.load(it, page, listingQuery) }
+            if (preparedFilters is SourceFilterResult.Content) {
+                source?.let { coordinator.load(it, page, listingQuery) }
+            }
         }
         target?.let { (targetSource, targetManga) ->
             MigrationConfirmation(
@@ -218,6 +226,10 @@ data class MigrationSearchScreen(
                     ) {
                         Text(requireNotNull(error), color = MaterialTheme.colorScheme.error)
                         Button(onClick = {
+                            if (filterFailure != null) {
+                                retry++
+                                return@Button
+                            }
                             source?.let { currentSource ->
                                 state?.request?.let { request ->
                                     scope.launch { coordinator.retry(currentSource, request) }

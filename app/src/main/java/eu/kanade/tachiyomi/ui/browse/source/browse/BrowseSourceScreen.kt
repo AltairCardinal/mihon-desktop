@@ -179,6 +179,9 @@ data class BrowseSourceScreen(
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         ) { paddingValues ->
             BrowseSourceScreenContent(
+                onRetry = {
+                    if (state.filterError != null) screenModel.resetFilters() else mangaList.retry()
+                },
                 source = screenModel.source,
                 mangaList = mangaList,
                 navigator = navigator,
@@ -378,6 +381,7 @@ internal fun BrowseSourceScreenContent(
     onMangaLongClick: (Manga) -> Unit,
     catalogFilter: CatalogResultFilter = CatalogResultFilter(),
     hideInLibraryItems: Boolean = false,
+    onRetry: () -> Unit = mangaList::retry,
 ) {
     BrowseSourceContent(
         source = source,
@@ -396,6 +400,7 @@ internal fun BrowseSourceScreenContent(
         onMangaLongClick = onMangaLongClick,
         catalogFilter = catalogFilter,
         hideInLibraryItems = hideInLibraryItems,
+        onRetry = onRetry,
     )
 }
 

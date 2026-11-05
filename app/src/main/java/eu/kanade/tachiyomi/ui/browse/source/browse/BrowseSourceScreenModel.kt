@@ -55,6 +55,7 @@ import tachiyomi.domain.manga.model.MangaWithChapterCount
 import tachiyomi.domain.manga.model.toMangaUpdate
 import tachiyomi.domain.source.interactor.GetRemoteManga
 import tachiyomi.domain.source.service.CatalogResultFilter
+import tachiyomi.domain.source.service.SourceFilterResult
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourcePageError
@@ -63,6 +64,8 @@ import tachiyomi.domain.source.service.SourcePageResult
 import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceQueryReducer
 import tachiyomi.domain.source.service.SourceQueryState
+import tachiyomi.domain.source.service.SourceRecoveryAction
+import tachiyomi.domain.source.service.prepareSourceFilters
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.time.Instant
@@ -95,18 +98,21 @@ class BrowseSourceScreenModel(
     private val pagingScope = pagerCoroutineScope ?: ioCoroutineScope
 
     init {
+        val prepared = prepareSourceFilters(source)
+        val filters = (prepared as? SourceFilterResult.Content)?.filters ?: FilterList()
         mutableState.update {
             var query: String? = null
             var listing = it.listing
 
             if (listing is Listing.Search) {
                 query = listing.query
-                listing = Listing.Search(query, source.getFilterList())
+                listing = Listing.Search(query, filters)
             }
 
             it.copy(
                 listing = listing,
-                filters = source.getFilterList(),
+                filters = filters,
+                filterError = (prepared as? SourceFilterResult.Failure)?.error,
                 toolbarQuery = query,
             )
         }
@@ -120,9 +126,9 @@ class BrowseSourceScreenModel(
      * Flow of Pager flow tied to [State.listing]
      */
     val hideInLibraryItems = sourcePreferences.hideInLibraryItems().get()
-    val mangaPagerFlowFlow = state.map { it.listing }
+    val mangaPagerFlowFlow = state.map { it.listing to it.filterError }
         .distinctUntilChanged()
-        .map { listing ->
+        .map { (listing, filterError) ->
             val generation = ++queryGeneration
             // One access at the raw page boundary requests at most one nonempty source page.
             Pager(PagingConfig(pageSize = 25, prefetchDistance = 1)) {
@@ -132,6 +138,7 @@ class BrowseSourceScreenModel(
                     generation = generation,
                     sourceMangaSearchService = sourceMangaSearchService,
                     networkToLocalManga = networkToLocalManga,
+                    filterError = filterError,
                 )
             }.flow.map { pagingData ->
                 pagingData.map { manga ->
@@ -155,7 +162,20 @@ class BrowseSourceScreenModel(
     }
 
     fun resetFilters() {
-        mutableState.update { it.copy(filters = source.getFilterList()) }
+        val prepared = prepareSourceFilters(source)
+        mutableState.update {
+            it.copy(
+                filters = (prepared as? SourceFilterResult.Content)?.filters ?: FilterList(),
+                filterError = (prepared as? SourceFilterResult.Failure)?.error,
+                listing = if (it.filterError != null && prepared is SourceFilterResult.Content &&
+                    it.listing is Listing.Search
+                ) {
+                    it.listing.copy(filters = prepared.filters)
+                } else {
+                    it.listing
+                },
+            )
+        }
     }
 
     fun setCatalogFilter(filter: CatalogResultFilter) {
@@ -176,7 +196,11 @@ class BrowseSourceScreenModel(
 
     fun search(query: String? = null, filters: FilterList? = null) {
         val input = state.value.listing as? Listing.Search
-            ?: Listing.Search(query = null, filters = source.getFilterList())
+            ?: run {
+                val prepared = prepareSourceFilters(source)
+                mutableState.update { it.copy(filterError = (prepared as? SourceFilterResult.Failure)?.error) }
+                Listing.Search(null, (prepared as? SourceFilterResult.Content)?.filters ?: FilterList())
+            }
 
         mutableState.update {
             it.copy(
@@ -190,7 +214,9 @@ class BrowseSourceScreenModel(
     }
 
     fun searchGenre(genreName: String) {
-        val defaultFilters = source.getFilterList()
+        val prepared = prepareSourceFilters(source)
+        mutableState.update { it.copy(filterError = (prepared as? SourceFilterResult.Failure)?.error) }
+        val defaultFilters = (prepared as? SourceFilterResult.Content)?.filters ?: return
         var genreExists = false
 
         filter@ for (sourceFilter in defaultFilters) {
@@ -368,6 +394,7 @@ class BrowseSourceScreenModel(
     data class State(
         val listing: Listing,
         val filters: FilterList = FilterList(),
+        val filterError: AppError? = null,
         val toolbarQuery: String? = null,
         val dialog: Dialog? = null,
         val catalogFilter: CatalogResultFilter = CatalogResultFilter(),
@@ -386,12 +413,21 @@ internal class SharedSourcePagingSource(
     private val generation: Long,
     private val sourceMangaSearchService: SourceMangaSearchService,
     private val networkToLocalManga: NetworkToLocalManga,
+    private val filterError: AppError? = null,
 ) : PagingSource<Long, Manga>() {
     private val reducer = SourceQueryReducer()
     private var queryState: SourceQueryState? = null
     private val localMangaByUrl = mutableMapOf<String, Manga>()
 
     override suspend fun load(params: LoadParams<Long>): LoadResult<Long, Manga> {
+        filterError?.let { error ->
+            val recovery = when (error) {
+                is AppError.ExtensionIncompatible, AppError.Cancelled -> SourceRecoveryAction.None
+                is AppError.Authentication -> SourceRecoveryAction.OpenLogin
+                else -> SourceRecoveryAction.Retry
+            }
+            return LoadResult.Error(SourcePageException(SourcePageError(error, recovery)))
+        }
         val page = params.key ?: 1L
         val request = SourcePageRequest(
             sourceId = source.id,

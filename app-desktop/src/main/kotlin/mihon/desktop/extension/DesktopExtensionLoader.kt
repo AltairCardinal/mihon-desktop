@@ -1,7 +1,14 @@
 package mihon.desktop.extension
 
+import eu.kanade.tachiyomi.network.SourceCompatibilityException
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
+import eu.kanade.tachiyomi.network.inspectSourceFailure
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceFactory
+import mihon.domain.error.AppError
+import tachiyomi.domain.source.service.toSourceAppError
 import java.io.File
 import java.lang.reflect.Modifier
 import java.net.URL
@@ -65,6 +72,8 @@ open class DesktopExtensionLoader(
 
     private fun loadFromJar(jarFile: File): List<LoadedExtension> {
         var classLoader: ExtensionClassLoader? = null
+        mutableDiagnostics.removeAll { it.jarName == jarFile.name }
+        val metadata = readExtensionMeta(jarFile)
         return try {
             classLoader = ExtensionClassLoader(
                 jarFile.toURI().toURL(),
@@ -73,12 +82,14 @@ open class DesktopExtensionLoader(
             networkContext.register(classLoader, jarFile.nameWithoutExtension)
 
             // 1. Try ServiceLoader first (fast path for JVM-compiled extensions).
-            val meta = readExtensionMeta(jarFile)
+            val meta = metadata
             val strict = meta?.strictProvider == true
             var sources = if (strict) {
                 loadStrictManifestSources(jarFile, checkNotNull(meta.extensionClass), classLoader)
             } else {
-                ServiceLoader.load(Source::class.java, classLoader).toList()
+                guardSourceOperation(SourceOperationPhase.CONSTRUCTION) {
+                    ServiceLoader.load(Source::class.java, classLoader).toList()
+                }
             }
 
             // 2. Manifest class name (fast path for dex2jar-converted APK extensions).
@@ -93,29 +104,42 @@ open class DesktopExtensionLoader(
             // 3. Fallback: scan all class entries for concrete Source implementations.
             //    Needed for dex2jar-converted APKs without a meta sidecar (e.g. manually placed).
             if (sources.isEmpty() && !strict) {
-                sources = scanJarForSources(jarFile, classLoader)
+                sources = scanJarForSources(jarFile, classLoader, metadata)
             }
 
             if (sources.isEmpty()) {
                 classLoader.close()
+                if (mutableDiagnostics.none { it.jarName == jarFile.name }) {
+                    recordDiagnostic(jarFile, IllegalStateException("No loadable Source provider was found"), metadata)
+                }
                 return emptyList()
             }
 
             // A JAR scan can discover both a SourceFactory and one of its concrete products.
             // Source IDs are the runtime identity, so publish only the first discovered
             // provider from this installed artifact.
-            sources.distinctBy(Source::id).map { source ->
+            val metadataValidated = guardSourceOperation(SourceOperationPhase.METADATA) {
+                sources.forEach { source ->
+                    source.id
+                    source.name
+                    source.lang
+                }
+                sources.distinctBy(Source::id)
+            }
+            metadataValidated.map { source ->
                 LoadedExtension(
                     source = source,
                     jarFile = jarFile,
                     classLoader = classLoader,
+                    metadata = metadata,
                 )
             }
         } catch (e: Throwable) {
-            classLoader?.close()
+            closeFailedExtensionLoader(classLoader, e)
+            rethrowLoaderControlFailure(e)
             // ServiceConfigurationError (extends Error) is thrown when a ServiceLoader provider
             // cannot be instantiated — must catch Throwable, not just Exception.
-            recordDiagnostic(jarFile, e)
+            recordDiagnostic(jarFile, e, metadata)
             emptyList()
         }
     }
@@ -126,12 +150,16 @@ open class DesktopExtensionLoader(
                 require(jar.getJarEntry(name.replace('.', '/') + ".class") != null) {
                     "Missing manifest provider: $name"
                 }
-                val type = loader.loadClass(name)
+                val type = guardSourceOperation(SourceOperationPhase.CONSTRUCTION) { loader.loadClass(name) }
                 require(type.classLoader === loader) { "Manifest provider must belong to the extension" }
-                val constructor = type.getDeclaredConstructor().apply { isAccessible = true }
-                val sources = when (val provider = constructor.newInstance()) {
+                val provider = guardSourceOperation(SourceOperationPhase.CONSTRUCTION) {
+                    type.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
+                }
+                val sources = when (provider) {
                     is Source -> listOf(provider)
-                    is SourceFactory -> provider.createSources()
+                    is SourceFactory -> guardSourceOperation(SourceOperationPhase.FACTORY) {
+                        provider.createSources().toList()
+                    }
                     else -> error("Manifest entry is not a Source or SourceFactory")
                 }
                 require(sources.isNotEmpty()) { "Manifest provider has no sources" }
@@ -140,12 +168,16 @@ open class DesktopExtensionLoader(
             }
         }
 
-    private fun recordDiagnostic(jarFile: File, error: Throwable) {
+    private fun recordDiagnostic(jarFile: File, error: Throwable, metadata: ExtensionMeta?) {
         mutableDiagnostics += ExtensionLoadDiagnostic(
             jarName = jarFile.name,
             category = ExtensionFailureCategory.from(error),
             errorType = error.javaClass.name,
             message = error.message ?: error.javaClass.simpleName,
+            cause = error,
+            error = if (error is SourceCompatibilityException) error.toSourceAppError() else null,
+            metadata = metadata,
+            phase = (error as? SourceCompatibilityException)?.phase,
         )
         System.err.println("Failed to load extension from ${jarFile.name}: ${error.message}")
     }
@@ -165,19 +197,26 @@ open class DesktopExtensionLoader(
         return classNames.split(":").flatMap { name ->
             val trimmed = name.trim().ifEmpty { return@flatMap emptyList() }
             try {
-                val cls = classLoader.loadClass(trimmed)
+                val cls = guardSourceOperation(SourceOperationPhase.CONSTRUCTION) { classLoader.loadClass(trimmed) }
                 if (!sourceInterface.isAssignableFrom(cls) && !sourceFactoryInterface.isAssignableFrom(cls)) {
                     return@flatMap emptyList()
                 }
-                val ctor = cls.getDeclaredConstructors().firstOrNull { it.parameterCount == 0 }
-                    ?: return@flatMap emptyList()
-                ctor.isAccessible = true
-                when (val instance = ctor.newInstance()) {
+                val instance = guardSourceOperation(SourceOperationPhase.CONSTRUCTION) {
+                    val ctor = cls.getDeclaredConstructors().firstOrNull { it.parameterCount == 0 }
+                        ?: return@flatMap emptyList()
+                    ctor.isAccessible = true
+                    ctor.newInstance()
+                }
+                when (instance) {
                     is Source -> listOf(instance)
-                    is SourceFactory -> instance.createSources()
+                    is SourceFactory -> guardSourceOperation(SourceOperationPhase.FACTORY) {
+                        instance.createSources().toList()
+                    }
                     else -> emptyList()
                 }
-            } catch (_: Throwable) {
+            } catch (error: Throwable) {
+                error.rethrowSourceControlFailure()
+                if (error is SourceCompatibilityException) throw error
                 emptyList()
             }
         }
@@ -190,7 +229,11 @@ open class DesktopExtensionLoader(
      * Inner/anonymous classes (names containing '$') are skipped to avoid
      * spurious instantiation attempts on compiler-generated artefacts.
      */
-    internal fun scanJarForSources(jarFile: File, classLoader: ClassLoader): List<Source> {
+    internal fun scanJarForSources(
+        jarFile: File,
+        classLoader: ClassLoader,
+        metadata: ExtensionMeta? = readExtensionMeta(jarFile),
+    ): List<Source> {
         val sourceInterface = Source::class.java
         val sourceFactoryInterface = SourceFactory::class.java
         val result = mutableListOf<Source>()
@@ -200,6 +243,7 @@ open class DesktopExtensionLoader(
                     .filter { !it.isDirectory && it.name.endsWith(".class") && '$' !in it.name }
                     .forEach { entry ->
                         val className = entry.name.removeSuffix(".class").replace('/', '.')
+                        var provider = false
                         try {
                             val cls = classLoader.loadClass(className)
                             if (
@@ -210,22 +254,42 @@ open class DesktopExtensionLoader(
                                 !cls.isInterface &&
                                 !Modifier.isAbstract(cls.modifiers)
                             ) {
-                                val ctor = cls.getDeclaredConstructors()
-                                    .firstOrNull { it.parameterCount == 0 }
-                                    ?: return@forEach
-                                ctor.isAccessible = true
-                                when (val instance = ctor.newInstance()) {
+                                provider = true
+                                val instance = guardSourceOperation(SourceOperationPhase.CONSTRUCTION) {
+                                    val ctor = cls.getDeclaredConstructors().firstOrNull { it.parameterCount == 0 }
+                                        ?: return@forEach
+                                    ctor.isAccessible = true
+                                    ctor.newInstance()
+                                }
+                                when (instance) {
                                     is Source -> result.add(instance)
-                                    is SourceFactory -> result.addAll(instance.createSources())
+                                    is SourceFactory -> result.addAll(
+                                        guardSourceOperation(SourceOperationPhase.FACTORY) {
+                                            instance.createSources().toList()
+                                        },
+                                    )
                                 }
                             }
-                        } catch (_: Throwable) {
-                            // Skip classes that cannot be loaded or instantiated
+                        } catch (error: Throwable) {
+                            if (provider) {
+                                error.rethrowSourceControlFailure()
+                                if (error is SourceCompatibilityException) throw error
+                            } else {
+                                val inspection = error.inspectSourceFailure()
+                                inspection.fatal?.let { throw it }
+                                if (!inspection.complete) throw error
+                                inspection.cancellation?.let { throw it }
+                                if (error is Error && error !is LinkageError) throw error
+                            }
+                            // Unknown optional helpers may depend on platform classes absent on Desktop.
                         }
                     }
             }
         } catch (e: Throwable) {
-            recordDiagnostic(jarFile, e)
+            e.rethrowSourceControlFailure()
+            if (e is SourceCompatibilityException) throw e
+            recordDiagnostic(jarFile, e, metadata)
+            return emptyList()
         }
         return result
     }
@@ -238,6 +302,7 @@ data class LoadedExtension(
     val source: Source,
     val jarFile: File,
     val classLoader: ClassLoader,
+    val metadata: ExtensionMeta? = null,
 )
 
 data class ExtensionLoadDiagnostic(
@@ -245,7 +310,45 @@ data class ExtensionLoadDiagnostic(
     val category: ExtensionFailureCategory,
     val errorType: String,
     val message: String,
+    val cause: Throwable? = null,
+    val error: AppError? = null,
+    val metadata: ExtensionMeta? = null,
+    val phase: SourceOperationPhase? = null,
 )
+
+/** ServiceLoader's own invalid-provider configuration is a diagnostic, not an unrelated host Error. */
+private fun rethrowLoaderControlFailure(error: Throwable) {
+    if (error !is java.util.ServiceConfigurationError) {
+        error.rethrowSourceControlFailure()
+        return
+    }
+    val inspection = error.inspectSourceFailure()
+    inspection.fatal?.let { throw it }
+    if (!inspection.complete) throw error
+    inspection.cancellation?.let { throw it }
+    inspection.causes.drop(1).firstOrNull {
+        it is Error && it !is java.util.ServiceConfigurationError
+    }?.let { throw it }
+}
+
+internal fun closeFailedExtensionLoader(loader: AutoCloseable?, error: Throwable) {
+    try {
+        loader?.close()
+    } catch (cleanup: Throwable) {
+        val primary = error.inspectSourceFailure()
+        val closing = cleanup.inspectSourceFailure()
+        primary.fatal?.let { throw it }
+        closing.fatal?.let { throw it }
+        if (!primary.complete) throw error
+        if (!closing.complete) throw cleanup
+        primary.cancellation?.let { throw it }
+        closing.cancellation?.let { throw it }
+        rethrowLoaderControlFailure(error)
+        cleanup.rethrowSourceControlFailure()
+        if (cleanup !is java.io.IOException) throw cleanup
+        if (cleanup !== error) error.addSuppressed(cleanup)
+    }
+}
 
 /**
  * Child-first classloader for extensions.

@@ -69,6 +69,7 @@ fun BrowseSourceContent(
     onMangaLongClick: (Manga) -> Unit,
     catalogFilter: CatalogResultFilter = CatalogResultFilter(),
     hideInLibraryItems: Boolean = false,
+    onRetry: () -> Unit = mangaList::retry,
 ) {
     val context = LocalContext.current
 
@@ -107,7 +108,7 @@ fun BrowseSourceContent(
                 SnackbarResult.Dismissed -> snackbarHostState.currentSnackbarData?.dismiss()
                 SnackbarResult.ActionPerformed -> performBrowseSourceRecovery(
                     pageError = pageError,
-                    retry = mangaList::retry,
+                    retry = onRetry,
                     openLogin = onErrorAction,
                 )
             }
@@ -141,14 +142,14 @@ fun BrowseSourceContent(
                             stringRes = MR.strings.login,
                             icon = Icons.Outlined.Public,
                             onClick = {
-                                performBrowseSourceRecovery(pageError, mangaList::retry, onErrorAction)
+                                performBrowseSourceRecovery(pageError, onRetry, onErrorAction)
                             },
                         )
                         SourceRecoveryAction.None -> null
                         SourceRecoveryAction.Retry, null -> EmptyScreenAction(
                             stringRes = MR.strings.action_retry,
                             icon = Icons.Outlined.Refresh,
-                            onClick = mangaList::retry,
+                            onClick = onRetry,
                         )
                     },
                     EmptyScreenAction(
@@ -194,7 +195,7 @@ fun BrowseSourceContent(
                     TextButton(
                         onClick = {
                             if (errorState is LoadState.Error) {
-                                performBrowseSourceRecovery(pageError, mangaList::retry, onErrorAction)
+                                performBrowseSourceRecovery(pageError, onRetry, onErrorAction)
                             } else {
                                 mangaList[mangaList.itemCount - 1]
                             }

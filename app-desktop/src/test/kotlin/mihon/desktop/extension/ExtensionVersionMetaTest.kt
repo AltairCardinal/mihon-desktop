@@ -123,7 +123,9 @@ class ExtensionVersionMetaTest {
             ),
         )
         val loader = object : DesktopExtensionLoader(tmpDir.toFile()) {
-            override fun loadExtensions() = listOf(LoadedExtension(source, jar, javaClass.classLoader))
+            override fun loadExtensions() = listOf(
+                LoadedExtension(source, jar, javaClass.classLoader, readExtensionMeta(jar)),
+            )
         }
         val manager = DesktopExtensionManager(loader)
         val sourceLookup = DesktopExtensionSourceLookup(manager)
