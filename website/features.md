@@ -19,6 +19,8 @@ The initial guide carries forward the repository’s already-public README and g
 | Author following and discovery | Follow authors and explore works from configured sources | Shared author behavior; interface and results depend on platform and sources |
 | Work language information | Metadata-based identification and manual correction in the author archive | Broader language filtering remains a development direction |
 
+**Android downloaded-chapter opening:** The accepted Android candidate `0.19.4-aex.118` opens downloaded chapters with the B9 reader optimizations. Chapter page lists become available before whole-chapter image-header inspection, and reading reuses unchanged page facts and chapter lookups. The signed tablet candidate omits the reader timing recorder. Acceptance covers opening latency on the tested Android tablet; timing depends on the device and content.
+
 ## Desktop reading {#desktop-reading}
 
 **Windows global search:** Opening global search focuses the text field. Entering with a work title or another keyword places the caret at the end without opening search history, so typing appends to the keyword. Clicking the field explicitly can open history; entering with an empty query opens existing history. Manual caret positions and selections survive refocusing and returning from a work's details, and result updates do not reclaim focus. Choosing a history entry places the caret at the end of the replacement text. Acceptance covers Windows only.

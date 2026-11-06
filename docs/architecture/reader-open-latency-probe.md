@@ -2,6 +2,12 @@
 
 用于已下载章节的定向诊断，不是正式性能门禁，也不改变阅读器调度。默认关闭。实现位于 app 的 ReaderOpenLatencyProbe，单页 PagerPageHolder 与共享双页 DualPagerPageHolder 共用实际图像绘制回调。
 
+## 已验收签名包的源码边界
+
+从已验收平板候选 `0.19.4-aex.118` 起，`scripts/build-android.py candidate` 通过 `android.candidateVariant=release` 选择 `app/src/noReaderProbe/java` 的常量禁用适配器。R8 移除计时方法，成品不包含 session、事件存储、配置读取和导出逻辑。适配器保留调用接口，避免诊断代码影响阅读器功能接线。
+
+普通调试、benchmark 以及未指定上述 candidate 属性的底层 Gradle 构建继续选择 `app/src/readerProbe/java` 的诊断实现。正式无探针交付须走 candidate 入口，不能仅用运行时 enabled=false 代替成品检查。构建后应验证 DEX 中既无记录器方法，也无 Session、TargetBinding、reader-open-real 配置路径和 benchmark 准备 Activity。候选源码或签名核验失败时停止安装，不更换证书或清除用户数据。
+
 ## 配置与使用
 
 1. 使用现有 benchmark 变体构建；它继承 release 的 R8、资源压缩和非调试运行时，使用独立的 app.mihon.desktop.fork.benchmark 身份与诊断签名。它不是正式候选，不递增正式版本，也不能覆盖官方、fork 正式或上游 benchmark。

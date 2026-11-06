@@ -9,6 +9,12 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## November 6, 2026 — Android downloaded-chapter opening
+
+The project owner accepted opening latency in signed Android tablet candidate `0.19.4-aex.118` (code 136, source `4f311f611b`). This integrates the B9 startup optimizations, including publishing page lists ahead of whole-chapter header reads, reusing unchanged facts and chapter lookups, and avoiding unrelated brightness-overlay updates. The accepted signed build omits the reader timing recorder. The unadopted Compose rc01 experiment is excluded. Acceptance is limited to the tested Android opening experience.
+
+This records candidate acceptance and source integration. A public product release has not been issued.
+
 ## November 2, 2026 — Windows page-image retry
 
 **Accepted candidate documentation · no public product release**

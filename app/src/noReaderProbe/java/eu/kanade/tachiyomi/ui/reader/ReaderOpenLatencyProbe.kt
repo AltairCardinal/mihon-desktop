@@ -5,6 +5,7 @@ import android.content.Context
 /** Compile-time adapter for signed tablet builds. No recorder, configuration or event storage. */
 @Suppress("UNUSED_PARAMETER")
 internal object ReaderOpenLatencyProbe {
+    @Suppress("ktlint:standard:property-naming") // Preserve the shared diagnostic adapter API.
     const val enabled = false
 
     fun loadConfiguration(context: Context) = Unit
