@@ -1004,6 +1004,22 @@ memo、所需标签及prepareNewChapter分别保护，宿主目录plan/commit在
 登记键查询语义不改。上述链路有真实SQL/缓存、实际Model/Worker和Module接线门，
 不代表其他后台来源投影或EC-08原生门已通过。
 
+#### 7.6.18 Desktop 来源仓库的后台投影
+
+DesktopSourceRepository四条实际Flow不再为了构建DomainSource反复读取插件ID。
+query/online只使用宿主已登记键；无法登记的引用零getter且不构造假ID。计数流直接
+使用数据库sourceId，保留原行、计数与真实Stub语义，不因metadata不兼容丢掉已有作品。
+
+每次投影开始先冻结Source引用和已安装metadataSnapshot对应的纯宿主身份，再守卫
+实际name/lang；仅getSources需要supportsLatest，其他三流不读取，已有metadata失败
+也不再探测该能力。兼容失败保留可读的partial字段，缺名称沿Module现有本地化Unknown
+provider回退，语言缺失为空，latest=false；普通IO、取消、致命及宿主Error继续传播。
+不新增DomainSource错误协议、schema或页面；接受映射后沿既有stderr诊断写冻结归属。
+诊断不使用jar文件名猜包名，不调用插件equals/hashCode或格式化getter。
+
+此投影与实际Module订阅已有正确红→绿及独审，EC-06/07按累计证据收口；R8后真实
+原APK、旧/未来ABI及ART执行仍须EC-08独立提供，不能以本段或JVM测试替代。
+
 ## 8. 安全与隐私
 
 - 手动代理地址属于敏感配置，不写入普通运行日志。

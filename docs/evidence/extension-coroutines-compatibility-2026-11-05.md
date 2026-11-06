@@ -1532,3 +1532,34 @@ Source裸读id/lang/name，getSources另读supportsLatest，计数已有hostID�
 后台DI中已观察到的getter路径，不把builtin测试Assertion推断为原APK崩溃新根因；
 下一有限闭合点只修这条投影及其现有Module接线/真实Flow测试，不新增错误协议/UI。
 EC-08仍须在最终提交快照执行原APK/ART/R8，不以本段绿测替代。
+
+## EC-06/07 来源投影与有限完成审计（2026-11-06）
+
+基线 `03030d05dbecaef46eb897f5914240e883d9341a`。仅Repo/Test/Module三文件，修
+现有后台来源描述，不新增UI、SourceRepository协议、schema或其他Repository。
+
+- `ec07-desktop-source-repository-red`：旧3健康绿，新5实际行为红，覆盖四Flow的
+  已登记ID重复读取、元数据、unknown零getter、包装控制/普通IO和真实DI后台投影。
+  真实SQL counts/stub及坏/健康并存均执行实际Repository，不用源码扫描代替。
+- query/online用getRegisteredSourceId，不登记则排除该未知引用、零getter/无假ID；
+  count直接保DB键、原计数/Stub/行。每次映射先freeze安装纯DTO/Source引用，再用
+  既有snapshot/逐getter guard；Compat才fallback并诊断，普通IO从原cause传播。
+  Unknown名称沿Module延迟本地化，SQL/宿主Flow处理不放source guard。
+- 首green旧3/新4绿，唯一失败为metadata失败时latest仍true，未冒称整绿。修为已有
+  metadata错误不读cap且latest=false，其他三流从不读取cap。
+- `ec07-desktop-source-repository-owner-red`：仅临时撤Module新增snapshot provider，
+  真实DI已登记ID12到达，但stderr的包名/版本unknown，期望registered.package/1.2.3
+  正确红；全文校验恢复。此处发布受控host runtime帧，不声称重跑artifact认证加载。
+- `ec07-desktop-source-repository-final` **PASSED/exit0/18秒**：8独立方法、零失败/
+  错误/跳过，准确3文件正常strict。末次
+  `ec07-desktop-source-repository-counted-final` **PASSED/14秒**，仅补其中2方法的
+  cap读取计数和真正HttpSource unknown断言及同3格式，非额外2个独立用例。
+- Root亲读完整三文件diff、8+2有效XML与owner-red原件，独审GO。实施代理按原
+  EC-06/07条目复核已有各簇有效focused/独审，未发现新的已证实欠项；其自实施部分
+  仅复用Root独审，不以自查代独审。历史阶段的“尚待”保留为当时状态，不再视为当前
+  欠项；各阶段数字不相加宣称末次全量。原范围止点仍为插件主动移除保护链、未交回
+  回调的独立Rx线程和JNI，不新增全局hook或转换器兼容系统。
+
+本次提交后EC-06/07收口，当前剩余EC-08。独立快照已建但尚停在a9e5bea5ab，须前进
+到含本次提交的最终SHA、确认源码干净后才构建R8。原APK/ART、R8 DEX与test APK
+无重复host runtime/编译桩的门均仍未通过；API36不替代反馈者Android17厂商设备。

@@ -767,7 +767,24 @@ private fun registerDesktopExtension(
     }
     Injekt.addSingleton<SourceManager>(sourceManager)
     Injekt.addSingleton(sourceManager)
-    val sourceRepository = DesktopSourceRepository(sourceManager, handler)
+    val sourceRepository = DesktopSourceRepository(
+        sourceManager,
+        handler,
+        unknownName = { MR.strings.unknown.localized() },
+        failureIdentitySnapshot = {
+            extensionManager.installedExtensions.value.flatMap { installed ->
+                val metadata = installed.metadataSnapshot
+                installed.sources.map { source ->
+                    source to eu.kanade.tachiyomi.network.SourceFailureIdentity(
+                        extensionPackage = metadata?.pkgName,
+                        extensionName = metadata?.name,
+                        versionName = metadata?.versionName,
+                        versionCode = metadata?.versionCode,
+                    )
+                }
+            }
+        },
+    )
     Injekt.addSingleton<SourceRepository>(sourceRepository)
     val suggestionObserver = ObserveExtensionSuggestions(sourceRepository, sourceManager)
     Injekt.addSingleton(suggestionObserver)
