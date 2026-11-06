@@ -60,3 +60,12 @@
 - 8份正式样本全部保留PARTIAL、实际gap及每页端点；原始QPC/回调关联由主代理复算，R/F命中与前帧另目视确认。E0 warm只有首漫画的R上界，不能把fallback过渡区间当成已确认的响应下界。正常退出阅读器后关停自有应用、采集与clock helper，按完整路径/命令核归属。
 
 计数收益、8份/10页CSV、准备错误和未通过目标见[D6报告](../evidence/desktop-reader-d6-2026-11-06.md)。本节记录成功方法和限制，不新增永久采集系统或完整测试授权。
+
+## D7：首次落盘等待与辅助状态接口
+
+- 延续D6的活动进程/无终态manifest/tail≤5秒组合。采集刚启动时events.jsonl可能尚未生成首个可读取frame，不能立刻按采集死亡处理；本轮在派发章节点击前最多等待12秒、反复检查同一采集，成功后立即输入，仍要求健康检查到输入≤10秒。只等待录制器启动，不重发章节点击、不替换已发生的慢样本、不改变writer flush或后端负担。最终局部覆盖仍逐份检查。
+- 辅助翻页身份必须读取 `/test/reader/state`。通用 `/test/state` 可以返回200且含HomeScreen等路由信息，但不包含mountedReader/sharedUnits/location，不能据此证明阅读器页对、代次或翻页成功。本轮误取的page-next/back原件保留、未用作身份验证；原生画面观察与正式采集的reader/state分开说明。
+- 同进程再次打开可重建runtime并再次使用generation1；累计productionEvents中的OPEN_PAGE须按最新OPEN intent时间之后及章/代次/页筛选，不能只按generation混合首次与warm。OPEN_PAGE没有intent key，时间范围关联不称直接精确join。当前阅读位置取reader的currentPage，独立scenarioCurrentPageIndex不能代替；fallback R只导出上界。
+- 采集完成后，先让每份stop产生终态manifest，再翻页或进入离线分析。ON可能在同一source index上重选重叠unit，正常往返必须记录实际页对/位置及对照，不能以index相同断言恢复同一物理frame。
+
+12份对照、PARTIAL/gap与采用裁决见[D7结果](../evidence/desktop-reader-d7-2026-11-07.md)。复用既有采集器和有界准备脚本，没有增加正式产品接口或永久采样系统。

@@ -353,9 +353,13 @@ class DesktopReaderSession(
                         purpose = ReaderIoPurpose.PAGE_LIST,
                     )
                 }
+                val target = update.snapshot.activeChapter.pages.getOrNull(materializationContext.initialPage)
+                ReaderStartupTrace.mark("PAGE_LIST_PUBLISH_BEGIN", target?.id, request.generation)
                 publishStateLocked()
                 enqueueAdjacentImagesLocked()
-                maybeStartAdjacentPageListLocked()
+                val adjacent = maybeStartAdjacentPageListLocked()
+                ReaderStartupTrace.mark("PAGE_LIST_PUBLISH_END", target?.id, request.generation)
+                adjacent
             }
             adjacentPageListJob?.start()
             pumpPageRequests()
@@ -445,8 +449,12 @@ class DesktopReaderSession(
     ) {
         val progressJob: Job?
         val adjacentPageListJob: Job?
+        val scheduledGeneration: Long
+        ReaderStartupTrace.mark("VIEWPORT_SCHEDULE_WAIT", anchorPageId)
         synchronized(lock) {
             if (closed) return
+            scheduledGeneration = core.snapshot.generation
+            ReaderStartupTrace.mark("VIEWPORT_SCHEDULE_LOCKED", anchorPageId, scheduledGeneration)
             val update = core.settleViewport(
                 visiblePageIds = visiblePageIds,
                 anchorPageId = anchorPageId,
@@ -464,6 +472,7 @@ class DesktopReaderSession(
             adjacentPageListJob = maybeStartAdjacentPageListLocked()
             enqueueAdjacentImagesLocked()
         }
+        ReaderStartupTrace.mark("VIEWPORT_SCHEDULE_END", anchorPageId, scheduledGeneration)
         progressJob?.start()
         adjacentPageListJob?.start()
         pumpPageRequests()

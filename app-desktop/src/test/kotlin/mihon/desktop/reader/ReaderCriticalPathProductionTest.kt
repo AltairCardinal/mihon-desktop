@@ -84,6 +84,27 @@ class ReaderCriticalPathProductionTest {
     }
 
     @Test
+    fun `startup stages follow the mounted production page list to current open`() = runTest {
+        val trace = captureFirstFrame(Route.LOCAL_CBZ, pageCount = 187, observeStartup = true)
+        assertEquals(0L, trace.startupDropped, "The causal startup trace must not be truncated")
+        val stages = trace.startupEvents.map { it.stage }
+        listOf(
+            "PAGE_LIST_PUBLISH_BEGIN", "PAGE_LIST_PUBLISH_END",
+            "DUAL_IDENTITY_BEGIN", "DUAL_IDENTITY_END",
+            "DUAL_PROJECTION_BEGIN", "DUAL_PROJECTION_END",
+            "VIEWPORT_SCHEDULE_WAIT", "VIEWPORT_SCHEDULE_LOCKED", "VIEWPORT_SCHEDULE_END",
+            "PREVIEW_ACQUIRE_BEGIN", "CONTENT_PIN_BEGIN", "CONTENT_PIN_END",
+        ).forEach { stage -> assertTrue(stage in stages, "Missing production stage $stage: $stages") }
+        val currentEvents = trace.startupEvents.filter {
+            it.chapterId == CURRENT_CHAPTER_ID && it.pageIndex == 0 && it.generation == 1L
+        }
+        listOf("PAGE_LIST_PUBLISH_BEGIN", "PAGE_LIST_PUBLISH_END", "VIEWPORT_SCHEDULE_END", "CONTENT_PIN_BEGIN", "OPEN_PAGE")
+            .map { stage -> currentEvents.first { it.stage == stage }.monotonicNanos }
+            .zipWithNext().forEach { (before, after) -> assertTrue(before <= after) }
+        trace.startupEvents.forEach { println("D7_STARTUP,$it") }
+    }
+
+    @Test
     fun `disabled content operation probe does not evaluate archive identity`() {
         var identityEvaluated = false
 
@@ -101,6 +122,7 @@ class ReaderCriticalPathProductionTest {
     private suspend fun TestScope.captureFirstFrame(
         route: Route,
         pageCount: Int,
+        observeStartup: Boolean = false,
     ): FirstFrameTrace {
         val caseRoot = tempDir.resolve("${route.name.lowercase()}-$pageCount")
         val fixture = ReaderProductionTestFixture(caseRoot, currentCoroutineContext())
@@ -154,7 +176,7 @@ class ReaderCriticalPathProductionTest {
             null
         }
         val sourceManager = FakeDesktopSourceManager(listOfNotNull(source))
-        val controller = ReaderTestModeController()
+        val controller = ReaderTestModeController().also { if (observeStartup) it.enableStartupObservation() }
         val contentOperations = CopyOnWriteArrayList<DesktopReaderContentOperation>()
         ReaderIoTestModeBridge.install(controller)
         var now = 0L
@@ -247,6 +269,8 @@ class ReaderCriticalPathProductionTest {
                 imageRequests = fixture.server.requestCount,
                 contentOperations = contentOperations.toList(),
                 enteredGates = enteredGates,
+                startupEvents = controller.startupObservation?.snapshot()?.events.orEmpty(),
+                startupDropped = controller.startupObservation?.snapshot()?.dropped ?: 0L,
             )
         } finally {
             ReaderIoGatePoint.entries.forEach { fixture.gate(it).release() }
@@ -354,6 +378,8 @@ class ReaderCriticalPathProductionTest {
         val imageRequests: Int,
         val contentOperations: List<DesktopReaderContentOperation>,
         val enteredGates: Set<ReaderIoGatePoint>,
+        val startupEvents: List<ReaderStartupEvent>,
+        val startupDropped: Long,
     ) {
         val eventTypes = events.map(ReaderIoTestEvent::type)
         val currentPageOpenCount = events.count {

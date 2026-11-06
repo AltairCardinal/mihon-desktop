@@ -395,6 +395,7 @@ class ReaderScreenModel(
             acceptedPhysicalContents.clear()
             return null
         }
+        mihon.desktop.reader.ReaderStartupTrace.mark("DUAL_IDENTITY_BEGIN", pages.getOrNull(current.currentPage)?.id, current.session.generation)
         val ids = pages.map { it.id }
         val previous = dualSession
         val sameOrder = previous?.identity?.pageIds == ids &&
@@ -468,6 +469,7 @@ class ReaderScreenModel(
                 )
             }
         }
+        mihon.desktop.reader.ReaderStartupTrace.mark("DUAL_IDENTITY_END", pages.getOrNull(current.currentPage)?.id, current.session.generation)
         val owner = requireNotNull(dualSession)
         owner.configure(
             dualDirection(current),
@@ -492,6 +494,7 @@ class ReaderScreenModel(
 
     private fun publishDualSession(owner: SharedDualPageSession) = synchronized(productionRuntimeLifecycleLock) {
         if (disposeRequested || dualSession !== owner) return@synchronized
+        mihon.desktop.reader.ReaderStartupTrace.mark("DUAL_PROJECTION_BEGIN", owner.location?.pageId, owner.identity.generation)
         refreshCertificationTargetsLocked(owner)
         val pairing = owner.pairingState
         val status = pairing.status
@@ -551,6 +554,7 @@ class ReaderScreenModel(
                 }
             }
         }
+        mihon.desktop.reader.ReaderStartupTrace.mark("DUAL_PROJECTION_END", owner.location?.pageId, owner.identity.generation)
     }
 
     private data class DualContentStamp(

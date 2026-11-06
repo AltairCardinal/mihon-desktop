@@ -35,3 +35,11 @@ Desktop `ReaderScreenModel.ensureDualSession` 在同作品、同generation、同
 `toReaderChapterRefs` 在一次章节投影内每章只求一次downloaded值，供isDownloaded和过滤共用；source0仍短路为已下载且不调用远端判断。下次打开重新判断，不将Boolean当成已验证内容位置，不跨打开缓存位置或失败；异常继续由既有打开链处理。该局部复用通过真实detail readerRequest与ReaderNavigator过滤/下一章接线验证。
 
 真实模型计数夹具中8页读取44→16、187页17,765→374；远端每章下载回调2→1，source0为0。采用限局部工作量减少，未证实稳定首图毫秒收益；8份Windows外部样本、三模式画面/往返、条件项不实施及限制见[D6结果](../evidence/desktop-reader-d6-2026-11-06.md)。无新增探针或等待协议，不以本批代替完整模式/平台验收。
+
+## D7：摄入、投影与实际视口的观测边界
+
+默认关闭的细观测新增DUAL_IDENTITY与DUAL_PROJECTION、VIEWPORT_SCHEDULE、页表发布及content pin边界，联合既有SESSION_ACCEPT入口/锁内/结束事件分析。事件关联当前generation及可用pageId；viewport结束沿用锁内执行时的generation，避免锁外换代后把旧操作错记为新请求。记录仍有界、只在内存、不同步落盘；正式A/B关闭细观测。inclusive区间、归档物理准备、显示OPEN与Compose apply分列，不能相加或把前两者当成同一次读取。
+
+当前生产订阅仍属于Screen的LaunchedEffect，物理内容准备仍依赖真实viewport。D7曾把session元数据订阅移交model/runtime IO scope，真实夹具证明可解除未挂载时model仍Loading的依赖；但正常单页first的外部F区间重叠，双页对照亦未满足采用门槛，行为候选及其并发配套已撤回。不能将该实验的owned job或原子发布当成现行架构，也不据此宣称现行主干发生了实验并发问题。
+
+再次研究订阅迁移，须同时覆盖取消/旧代和非空session与derived identity的逐emission一致性；原实现依赖EDT串行的中间状态不能直接移入IO线程。真实factory、StateFlow观察及外部反例见[D7结果](../evidence/desktop-reader-d7-2026-11-07.md)。不以更早OPEN或单次warm改善替代首次正确漫画、双页与反向验证。
