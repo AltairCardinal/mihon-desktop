@@ -1446,3 +1446,40 @@ ScreenModel、原反馈位及真实测试；无新页面/schema/协议，用户r
 但其前置EC-06未完成，暂仍未勾。扩展自行丢弃保护链、未管理线程/JNI为原范围止点。
 EC-08原APK、R8后新旧ABI与未来源/健康源原生集成仍为必要门槛，本段不宣称该门通过，
 不替代Android17厂商实机或正式候选验收。
+
+## EC-08 原生装置准备（在途，未作原生验收结论）
+
+准备以 `e329d42c7c699552b1f12200a80c52fafb037420` 为最近已提交功能基线；实际 R8
+源码快照仍须包含 EC-06 余下常规更新链的最终提交，不能用此准备阶段代替完整门槛。
+
+- 本地原 APK 经 `ec-fetch-zerobyw-fixture.py --kind apk --existing ...` 验证79679字节/
+  固定SHA b04e4a…874，apksigner证书9add…da2；aapt2读回版本106002/1.6.2、target37，
+  classes.dex头为038。未下载或修改/重签原 APK，未将它纳入Git。
+- 将已归档 old/new/future 薄JAR用SDK36 D8 min26直接转换，仅为测试数据，不重编译
+  宿主或旧输入。自有future DEX以独立`ec.future.controlled`1.6.1打包并用任务专属
+  测试证书签署，不替代正式证书。容器/原DEX/hash和输入路径见资产provenance。
+  D8对Kotlin2.3元数据有警告，exit0不作ART成功证据。最初keytool原生日志以Windows
+  代码页输出，严格解码为UTF-8保留；后续Java子进程显式UTF-8/英文，不忽略解码错误。
+- 新instrumentation调用真实private ExtensionLoader/信任路径和共享搜索service，
+  用原保护链仅改回环传输目的地；独立probe不静态链接新blocking符号。真实原源在途
+  时让未来源失败后继续健康结果；原异步网络worker逐线程join后再判一次callback/
+  零uncaught，probe验证默认值/上下文/异常及已取消Job。专用模拟器、benchmark/
+  nondebuggable入口先验证，finally恢复临时字段/偏好及本测试文件。
+- 首compile及task inventory key因PowerShell拆分未引号的带点`-P`参数失败；
+  权威command已核，未把它计为产品红。正确参数的compile在旧instrumentation
+  `BrowseSourceUiWiringTest`漏接required host sourceId处编译失败；仅补健康fixture
+  参数，无production默认回退，亦不计ABI红。
+- `ec08-native-instrumentation-compile-reviewed` **PASSED/exit0，2分31秒**：准确3个
+  文本target（app build、专项测试、旧UI fixture）正常strict与
+  `compileBenchmarkAndroidTestKotlin`成功。只编译，无assemble/R8/运行。
+- 未实施者独立核3个DEX class_defs均只含ec/aex样本，不含host/Kotlin/coroutines/
+  编译桩，并核old/new method_ids分别引用runBlocking与runBlockingK及默认入口。
+  首审的线程终态竞态、非挂起async不能证明并行、未实际验证取消3点已修；末次编译
+  覆盖修复，同轮修复复审GO仅限装置与编译，不是运行验收。
+- ADB枚举为空、无emulator/qemu进程。只在任务私有ANDROID_AVD_HOME创建新API36
+  配置`.test-tmp/ec-native-avd-home/ec-api36.avd`，未启动，不复用用户AVD userdata。
+
+下一步仍先收口有限Update/Manga/Library两端实际消费，再从完整已提交独立快照进行
+一次聚焦benchmark R8宿主/test APK构建与专用AVD运行。须核实际包名/签名/hash、R8
+配置/DEX和test APK无另一份宿主runtime或missing桩，不添加测试专用keep掩盖production。
+未执行正式候选、发布、推送、全模块/全量测试或用户平板操作。

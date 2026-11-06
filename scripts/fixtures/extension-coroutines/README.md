@@ -68,3 +68,43 @@ Legacy converter 的 JVM 装载遭遇 `i.intercept @901` VerifyError，不能到
 loader 运行；没有把 JVM JAR 当成原 APK，也不复制 parser。
 网络经 production DI NetworkHelper 的既有 seam 指向 MockWebServer，验证冷域名获取和
 随后两次搜索，不能证明真实站点当前在线，也不能代替 Android R8 真正 DEX 调用。
+
+## EC-08 Android 原生装置
+
+`app/src/androidTest/assets/ec-coroutines/` 归档本项目所有的独立 DEX 输入；不是宿主
+重新编译的类。输入仍是上文已固定的 old/new/future 薄 JAR，分别经 SDK build-tools
+36.0.0 的 D8 `--min-api 26 --lib <android-36/android.jar> --output <dex-jar> <input-jar>`
+转换。`provenance.properties` 区分输入 JAR、DEX-JAR 容器、原始 classes.dex 与 APK
+哈希。D8 8.10.9 对 Kotlin 2.3 元数据有警告，exit0只证明产出，不证明 ART 成功。
+
+future 的同一 classes.dex 加入经 `aapt2 link` 构造的空资源 APK，元数据对应本目录
+`native/AndroidManifest.xml`；以本任务专用测试证书进行 v2/v3 签名。该包是
+`ec.future.controlled`，独立于旧 AEX 样本和正式应用；没有重签第三方或旧样本。
+私钥仅在忽略目录，不能用于正式包。重新生成并换测试证书时须明确审核新制品，
+同步更新 APK/证书 hash，不能默默替换固定输入；普通测试不重建这些夹具。
+DEX class_defs 不得定义 kotlin/kotlinx/host API、org.jsoup 或 ec.absent 编译桩。
+
+真实第三方 Zerobyw APK仍不入库。显式指定已校验的本地文件才会复制到既有生成资产：
+
+```powershell
+python scripts/gradle-coordinator.py run --key ec-native-compile -- .\gradlew.bat :app:compileBenchmarkAndroidTestKotlin '-Pmihon.testBuildType=benchmark' '-Pmihon.ecRealApk=<pinned-apk-path>' --offline --no-parallel --max-workers=2
+```
+
+PowerShell 中带点的 `-P` 参数必须加引号。默认 instrumentation 仍针对 Debug；显式
+benchmark 不分配正式版本，也不额外加入 releaseAndroidTest 的无关场景。编译不等于
+验收。R8 宿主与 test APK 必须在含所需提交的独立干净快照构建；之后核对包名、证书、
+hash、实际 R8 配置/DEX，确认测试 APK 没有另一份宿主协程实现或 missing API 桩。
+不能仅为 benchmark 添加生产没有的 keep 来使 ABI 检查通过。
+
+只在已核身份的任务专用 API36 模拟器运行
+`ExtensionCoroutineCompatibilityInstrumentationTest`，并显式传 `ecDedicated=true`。
+测试首先拒绝非模拟器、非 benchmark 或 debuggable 宿主；不会覆盖已存在的夹具文件。
+它通过真实私有扩展 loader 与信任流程加载原 APK/旧源/future，使用原 NetworkHelper
+保护链，仅反射替换三种客户端字段的最后传输目的地为回环。替换成功须读回确认；
+资源、信任偏好和字段在 finally 恢复。反射 seam 不是用户功能或生产运行时改造。
+旧/新 probe 验证原默认值、显式上下文、异常及已取消 Job；原 APK 验证冷域名及搜索。
+健康原源的真实 HTTP 响应受控挂起期间让 future 失败，再释放健康结果；异步网络门
+等待本任务实际 worker 线程结束后，才判一次回调与零 uncaught。
+
+该门的实际执行结果、源码快照和产物 hash 只写累计 evidence；本说明不宣称已运行，
+API36也不能替代反馈者 Android17/联想厂商设备验收。benchmark 不能作为正式安装包交付。
