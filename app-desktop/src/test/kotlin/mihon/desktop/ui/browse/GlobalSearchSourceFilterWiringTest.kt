@@ -58,6 +58,9 @@ class GlobalSearchSourceFilterWiringTest {
             every { sourceManager } returns FakeDesktopSourceManager(listOf(pinned, unpinned))
             every { appPreferences } returns preferences
             every { sourceMangaSearchService } returns SourceMangaSearchService()
+            every { extensionPresentationService } returns mockk {
+                every { installedExtensions } returns kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+            }
             every { saveSourceMangaForDetails } returns mockk(relaxed = true)
             every { getManga } returns staticGetManga()
             every { sourceLoginSessionFactory } returns mockk(relaxed = true)
@@ -176,6 +179,9 @@ class GlobalSearchSourceFilterWiringTest {
             every { sourceManager } returns FakeDesktopSourceManager(sources)
             every { appPreferences } returns preferences
             every { sourceMangaSearchService } returns SourceMangaSearchService()
+            every { extensionPresentationService } returns mockk {
+                every { installedExtensions } returns kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+            }
             every { saveSourceMangaForDetails } returns mockk(relaxed = true)
             every { getManga } returns staticGetManga()
             every { sourceLoginSessionFactory } returns mockk(relaxed = true)

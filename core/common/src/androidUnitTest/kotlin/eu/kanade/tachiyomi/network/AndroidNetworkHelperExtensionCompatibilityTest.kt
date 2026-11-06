@@ -37,6 +37,19 @@ import java.util.zip.GZIPOutputStream
 class AndroidNetworkHelperExtensionCompatibilityTest {
 
     @Test
+    fun `future linkage is contained on default aliases and derived source clients`() {
+        val helper = networkHelper()
+        try {
+            @Suppress("DEPRECATION")
+            ExtensionLinkageNetworkContract.verify(
+                listOf(helper.client, helper.nonCloudflareClient, helper.cloudflareClient, helper.clientForSource(7L)),
+            )
+        } finally {
+            helper.client.cache?.close()
+        }
+    }
+
+    @Test
     fun `default client keeps production guards without legacy compression interceptors`() {
         val helper = networkHelper()
 

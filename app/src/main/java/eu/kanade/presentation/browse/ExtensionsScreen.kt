@@ -98,6 +98,7 @@ fun ExtensionScreen(
     onStopBatch: () -> Unit = {},
     batchPauseExplanation: String? = null,
     onResolveBatchPause: (() -> Unit)? = null,
+    onRetryLoadFailure: (eu.kanade.tachiyomi.extension.model.ExtensionLoadFailure) -> Unit = {},
 ) {
     val navigator = LocalNavigator.currentOrThrow
 
@@ -108,7 +109,8 @@ fun ExtensionScreen(
     ) {
         when {
             state.isLoading -> LoadingScreen(Modifier.padding(contentPadding))
-            state.isEmpty && state.repositoryFailures.isEmpty() && !state.suggestionPanel.loading &&
+            state.isEmpty && state.loadFailures.isEmpty() && state.repositoryFailures.isEmpty() &&
+                !state.suggestionPanel.loading &&
                 state.suggestionPanel.total == 0 && state.suggestionPanel.unmatched.isEmpty() &&
                 !state.suggestionPanel.canUndo && state.suggestionBatch.items.isEmpty() -> {
                 val msg = if (!searchQuery.isNullOrEmpty()) {
@@ -153,6 +155,7 @@ fun ExtensionScreen(
                     batchPauseExplanation = batchPauseExplanation,
                     onResolveBatchPause = onResolveBatchPause,
                     onRefresh = onRefresh,
+                    onRetryLoadFailure = onRetryLoadFailure,
                 )
             }
         }
@@ -184,6 +187,7 @@ private fun ExtensionContent(
     onStopBatch: () -> Unit = {},
     batchPauseExplanation: String? = null,
     onResolveBatchPause: (() -> Unit)? = null,
+    onRetryLoadFailure: (eu.kanade.tachiyomi.extension.model.ExtensionLoadFailure) -> Unit = {},
 ) {
     val context = LocalContext.current
     val navigator = LocalNavigator.currentOrThrow
@@ -201,6 +205,11 @@ private fun ExtensionContent(
     FastScrollLazyColumn(
         contentPadding = contentPadding + topSmallPaddingValues,
     ) {
+        if (state.loadFailures.isNotEmpty()) {
+            item(key = "extension-load-failures") {
+                ExtensionLoadFailuresBanner(state.loadFailures, state.loadRetries, onRetryLoadFailure)
+            }
+        }
         if (state.repositoryFailures.isNotEmpty()) {
             item(key = "extension-repository-failures") {
                 Column {
@@ -299,6 +308,9 @@ private fun ExtensionContent(
                     modifier = Modifier.animateItemFastScroll(),
                     item = item,
                     installError = state.installErrors[item.extension.pkgName],
+                    isFailedExtensionUpdate = state.loadFailures[item.extension.pkgName]?.let {
+                        item.extension is Extension.Available && item.extension.versionCode > it.versionCode
+                    } ?: false,
                     onClickItem = {
                         when (it) {
                             is Extension.Available -> if (it.compatibility ==
@@ -366,6 +378,7 @@ private fun ExtensionContent(
 private fun ExtensionItem(
     item: ExtensionUiModel.Item,
     installError: AppError?,
+    isFailedExtensionUpdate: Boolean,
     onClickItem: (Extension) -> Unit,
     onLongClickItem: (Extension) -> Unit,
     onClickItemCancel: (Extension) -> Unit,
@@ -419,6 +432,7 @@ private fun ExtensionItem(
             ExtensionItemActions(
                 extension = extension,
                 installStep = installStep,
+                isFailedExtensionUpdate = isFailedExtensionUpdate,
                 onClickItemCancel = onClickItemCancel,
                 onClickItemAction = onClickItemAction,
                 onClickItemSecondaryAction = onClickItemSecondaryAction,
@@ -539,6 +553,7 @@ private fun ExtensionItemContent(
 private fun ExtensionItemActions(
     extension: Extension,
     installStep: InstallStep,
+    isFailedExtensionUpdate: Boolean = false,
     modifier: Modifier = Modifier,
     onClickItemCancel: (Extension) -> Unit = {},
     onClickItemAction: (Extension) -> Unit = {},
@@ -612,7 +627,9 @@ private fun ExtensionItemActions(
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.GetApp,
-                                contentDescription = stringResource(MR.strings.ext_install),
+                                contentDescription = stringResource(
+                                    if (isFailedExtensionUpdate) MR.strings.ext_update else MR.strings.ext_install,
+                                ),
                             )
                         }
                     }

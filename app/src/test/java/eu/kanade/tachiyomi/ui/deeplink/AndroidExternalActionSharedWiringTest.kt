@@ -10,6 +10,8 @@ import eu.kanade.presentation.more.settings.screen.browse.ExtensionReposScreen
 import eu.kanade.presentation.more.settings.screen.data.RestoreBackupScreen
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.source.online.ResolvableSource
 import eu.kanade.tachiyomi.source.online.UriType
@@ -39,7 +41,9 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.chapter.interactor.GetChapterByUrlAndMangaId
+import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
+import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.service.SourceManager
 
@@ -119,6 +123,59 @@ class AndroidExternalActionSharedWiringTest {
         verify(atLeast = 1) { (selected as ResolvableSource).getUriType(url) }
         verify(exactly = 0) { (later as ResolvableSource).getUriType(any()) }
     }
+
+    @Test
+    fun `resolvable source URI hook preserves typed ABI failure instead of escaping source selection`() {
+        val missing = NoSuchMethodError("future uri hook")
+        val source = resolvableSource(UriType.Manga)
+        every { (source as ResolvableSource).getUriType(any()) } throws missing
+        val failure = runCatching { TestSourceManager(listOf(source)).firstResolvableSource("private-query") }
+            .exceptionOrNull()
+        assertEquals("SourceCompatibilityException", failure?.javaClass?.simpleName)
+        assertSame(missing, failure?.cause)
+    }
+
+    @Test
+    fun `deep link chapter resolution keeps healthy source and existing chapter synchronization wiring`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val source = resolvableSource(UriType.Chapter)
+        every { source.id } returns 42L
+        val remote = SManga.create().apply {
+            url = "/manga"
+            title = "Manga"
+        }
+        val remoteChapter = SChapter.create().apply {
+            url = "/chapter"
+            name = "Chapter"
+        }
+        coEvery { (source as ResolvableSource).getManga(any()) } returns remote
+        coEvery { (source as ResolvableSource).getChapter(any()) } returns remoteChapter
+        coEvery { source.getChapterList(any()) } returns listOf(remoteChapter)
+        val manga = Manga.create().copy(id = 1L, source = 42L)
+        val network = mockk<NetworkToLocalManga>()
+        coEvery { network.invoke(any<Manga>()) } returns manga
+        val lookup = mockk<GetChapterByUrlAndMangaId>()
+        coEvery { lookup.await(any(), any()) } returns null
+        val sync = mockk<SyncChaptersWithSource>()
+        coEvery { sync.await(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns listOf(
+            Chapter.create().copy(id = 77L, mangaId = 1L, url = "/chapter"),
+        )
+        val model = modelHost.create {
+            DeepLinkScreenModel(
+                "https://fixture.invalid/chapter",
+                TestSourceManager(listOf(source)),
+                network,
+                lookup,
+                sync,
+            )
+        }
+        val state = withContext(Dispatchers.IO) {
+            withTimeout(5_000) { model.state.first { it !is DeepLinkScreenModel.State.Loading } }
+        }
+        assertEquals(DeepLinkScreenModel.State.Result(manga, 77L), state)
+        io.mockk.coVerify(exactly = 1) { sync.await(any(), manga, source, false, any(), any(), any(), any(), any()) }
+    }
+
     private fun act(action: String, query: String? = null, text: String? = null) =
         intent(action, query, text).toExternalAction()
     private fun intent(action: String, query: String? = null, text: String? = null, data: String? = null): Intent {
@@ -136,6 +193,9 @@ class AndroidExternalActionSharedWiringTest {
         }
     private fun Any.field(name: String) = javaClass.getDeclaredField(name).also { it.isAccessible = true }.get(this)
     private class TestSourceManager(private val sources: List<CatalogueSource>) : SourceManager {
+        private val registrations = sources.map { it to it.id }
+        override fun getRegisteredSourceId(source: Source): Long? =
+            registrations.firstOrNull { it.first === source }?.second
         override val isInitialized = MutableStateFlow(true)
         override val catalogueSources = flowOf(sources)
         override fun get(sourceKey: Long): Source? = null

@@ -1442,7 +1442,10 @@ class MangaDetailInteractionTest {
                         actual.updateAll(updates)
                     } catch (failure: Exception) {
                         if (capture && updates.size > 1) {
-                            assertFalse(actual.getChapterById(firstId)!!.read, "the failed batch rolled back its first write")
+                            assertFalse(
+                                actual.getChapterById(firstId)!!.read,
+                                "the failed batch rolled back its first write",
+                            )
                             rollbackObserved = true
                         }
                         throw failure
@@ -1573,9 +1576,13 @@ class MangaDetailInteractionTest {
             firstId = selected.first().id
             val rejectedId = selected[1].id
             val driver = Injekt.get<app.cash.sqldelight.db.SqlDriver>()
-            driver.execute(null, "CREATE TRIGGER reject_bookmark BEFORE UPDATE OF bookmark ON chapters " +
-                "WHEN NEW._id = $rejectedId AND NEW.bookmark = 1 " +
-                "BEGIN SELECT RAISE(ABORT, 'rejected bookmark'); END", 0)
+            driver.execute(
+                null,
+                "CREATE TRIGGER reject_bookmark BEFORE UPDATE OF bookmark ON chapters " +
+                    "WHEN NEW._id = $rejectedId AND NEW.bookmark = 1 " +
+                    "BEGIN SELECT RAISE(ABORT, 'rejected bookmark'); END",
+                0,
+            )
             try {
                 capture = true
                 val result = model.markSelectedBookmark(selected)
@@ -2125,7 +2132,9 @@ class MangaDetailInteractionTest {
         withDetail(root, chapterRepositoryOverride = { actual ->
             object : ChapterRepository by actual {
                 override suspend fun updateAll(updates: List<ChapterUpdate>) {
-                    if (reject && updates.any { it.bookmark == true && actual.getChapterById(it.id)?.name == "Chapter 2" }) {
+                    if (reject &&
+                        updates.any { it.bookmark == true && actual.getChapterById(it.id)?.name == "Chapter 2" }
+                    ) {
                         error("actual bookmark batch rejected")
                     }
                     actual.updateAll(updates)
@@ -2687,7 +2696,9 @@ class MangaDetailInteractionTest {
     fun `narrow large font primary actions have real in-window bounds and sequential keyboard reachability`(
         @TempDir root: File,
     ) = runBlocking {
-        withDetail(root, completeCatalog = true, mangaTransform = { it.copy(favorite = true) }, httpSource = true) { scene, _, _, _ ->
+        withDetail(root, completeCatalog = true, mangaTransform = {
+            it.copy(favorite = true)
+        }, httpSource = true) { scene, _, _, _ ->
             scene.resize(320, 680)
             scene.fontScale = 2f
             Injekt.get<mihon.desktop.settings.DesktopAppPreferences>().themeMode.set(
@@ -4235,6 +4246,157 @@ class MangaDetailInteractionTest {
         }
     }
 
+    @Test
+    fun `retained legacy migration picker shows typed source failure in existing snackbar`(
+        @TempDir root: File,
+    ) = runBlocking {
+        var calls = 0
+        val source = object : eu.kanade.tachiyomi.source.CatalogueSource by
+        mihon.desktop.source.FakeHttpSource(96L, "en", "Broken migration") {
+            override suspend fun getSearchManga(
+                page: Int,
+                query: String,
+                filters: eu.kanade.tachiyomi.source.model.FilterList,
+            ): eu.kanade.tachiyomi.source.model.MangasPage {
+                calls++
+                throw NoSuchMethodError("private migration ABI")
+            }
+        }
+        withDetail(root, directorySources = listOf(source)) { scene, model, manga, chapters ->
+            // Current More action opens MigrationSearchScreen; this exercises the retained picker state.
+            model.setShowMigrateSourcePicker(true)
+            render(scene)
+            click(scene, "Broken migration (en)")
+            withTimeout(5_000) {
+                while (nodes(scene).none { MR.strings.source_error_extension_incompatible.localized() in labels(it) }) {
+                    render(scene)
+                    delay(10)
+                }
+            }
+            assertEquals(1, calls)
+            assertFalse(model.state.value.migrateSearching)
+            assertEquals(null, model.state.value.migrateSearchResults)
+            assertEquals(manga, Injekt.get<MangaRepository>().getMangaById(manga.id))
+            assertEquals(
+                chapters.map {
+                    it.id
+                },
+                Injekt.get<ChapterRepository>().getChapterByMangaId(manga.id).map { it.id },
+            )
+        }
+    }
+
+    @Test
+    fun `legacy migration picker uses registered metadata and disables failed or unknown candidates`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val observations = mutableListOf<String>()
+        for (site in listOf("id", "name", "language", "unknown")) {
+            val current = mihon.desktop.source.FakeHttpSource(42L, "en", "Current source")
+            val target = MigrationMetadataSource()
+            val unknownManager = if (site == "unknown") {
+                object : tachiyomi.domain.source.service.SourceManager {
+                    override val isInitialized = kotlinx.coroutines.flow.MutableStateFlow(true)
+                    override val catalogueSources = kotlinx.coroutines.flow.flowOf(listOf(current, target))
+                    override fun getRegisteredSourceId(source: eu.kanade.tachiyomi.source.Source) =
+                        if (source === current) 42L else null
+                    override fun get(sourceKey: Long) = current.takeIf { sourceKey == 42L }
+                    override fun getOrStub(sourceKey: Long): eu.kanade.tachiyomi.source.Source =
+                        get(sourceKey) ?: tachiyomi.domain.source.model.StubSource(sourceKey, "en", "Unknown")
+                    override fun getOnlineSources() = listOf(current)
+                    override fun getCatalogueSources() = listOf(current, target)
+                    override fun getStubSources() = emptyList<tachiyomi.domain.source.model.StubSource>()
+                }
+            } else {
+                null
+            }
+            withDetail(
+                File(root, site),
+                directorySources = listOf(current, target),
+                detailsSourceManagerOverride = unknownManager,
+            ) { scene, model, _, _ ->
+                target.brokenAt = if (site == "unknown") "id" else site
+                val before = target.idReads
+                val attempt = runCatching {
+                    // Exercise the same production preparation before its retained Screen consumer.
+                    model.migrationSources(42L)
+                    model.setShowMigrateSourcePicker(true)
+                    render(scene)
+                    if (site == "id") {
+                        click(scene, "Migration metadata (en)")
+                        withTimeout(5_000) {
+                            while (model.state.value.migrateSearchResults == null) {
+                                render(scene)
+                                delay(10)
+                            }
+                        }
+                        "$site:query:${target.searches}:${target.idReads - before}"
+                    } else {
+                        val expected = if (site == "unknown") {
+                            MR.strings.unknown_error.localized()
+                        } else {
+                            MR.strings.source_error_extension_incompatible.localized()
+                        }
+                        withTimeout(5_000) {
+                            while (activeNodes(scene).none { expected in labels(it) }) {
+                                render(scene)
+                                delay(10)
+                            }
+                        }
+                        val row = activeNodes(scene).first {
+                            it.config.contains(SemanticsActions.OnClick) && expected in labels(it)
+                        }
+                        assertTrue(row.config.contains(SemanticsProperties.Disabled))
+                        "$site:disabled:${target.searches}:${target.idReads - before}"
+                    }
+                }
+                observations +=
+                    attempt.getOrElse { "$site:escaped:${it.javaClass.simpleName}:idReads=${target.idReads - before}" }
+            }
+        }
+        assertEquals(
+            listOf("id:query:1:0", "name:disabled:0:0", "language:disabled:0:0", "unknown:disabled:0:0"),
+            observations,
+        )
+    }
+
+    private class MigrationMetadataSource : eu.kanade.tachiyomi.source.CatalogueSource {
+        var brokenAt: String? = null
+        var idReads = 0
+        var searches = 0
+        override val id: Long get() {
+            idReads++
+            if (brokenAt ==
+                "id"
+            ) {
+                throw NoSuchMethodError("future ID")
+            }
+            return 96L
+        }
+        override val name: String get() {
+            if (brokenAt == "name") throw NoSuchMethodError("future name")
+            return "Migration metadata"
+        }
+        override val lang: String get() {
+            if (brokenAt ==
+                "language"
+            ) {
+                throw NoSuchMethodError("future language")
+            }
+            return "en"
+        }
+        override val supportsLatest = false
+        override fun getFilterList() = eu.kanade.tachiyomi.source.model.FilterList()
+        override suspend fun getSearchManga(
+            page: Int,
+            query: String,
+            filters: eu.kanade.tachiyomi.source.model.FilterList,
+        ): eu.kanade.tachiyomi.source.model.MangasPage {
+            searches++
+            return eu.kanade.tachiyomi.source.model.MangasPage(emptyList(), false)
+        }
+    }
+
     private suspend fun withDetail(
         root: File,
         mangaRepositoryOverride: ((MangaRepository) -> MangaRepository)? = null,
@@ -4247,6 +4409,7 @@ class MangaDetailInteractionTest {
         httpSource: Boolean = false,
         directorySources: List<eu.kanade.tachiyomi.source.CatalogueSource>? = null,
         completeCatalog: Boolean = false,
+        detailsSourceManagerOverride: tachiyomi.domain.source.service.SourceManager? = null,
         downloadManagerFactory: (
             (mihon.desktop.download.DesktopDownloadManager) -> mihon.desktop.download.DesktopDownloadManager
         )? = null,
@@ -4268,7 +4431,7 @@ class MangaDetailInteractionTest {
             Injekt.addFactory<mihon.desktop.download.DesktopDownloadManager> { replacementManager }
         }
         Injekt.get<mihon.desktop.settings.DesktopAppPreferences>().tabletUiMode.set(tabletMode)
-        val detailsSourceManager = if (httpSource || directorySources != null) {
+        val detailsSourceManager = detailsSourceManagerOverride ?: if (httpSource || directorySources != null) {
             mihon.desktop.source.DesktopSourceManager(
                 Injekt.get<mihon.desktop.extension.DesktopExtensionManager>(),
                 builtinSources =
@@ -4709,10 +4872,11 @@ class MangaDetailInteractionTest {
         withDetail(root) { scene, _, _, chapters ->
             withTimeout(5_000) {
                 while (nodes(scene).none {
-                    it.tag("manga-continue-reading-fab") ||
-                        MR.strings.action_start.localized() in labels(it) ||
-                        MR.strings.action_resume.localized() in labels(it)
-                }) {
+                        it.tag("manga-continue-reading-fab") ||
+                            MR.strings.action_start.localized() in labels(it) ||
+                            MR.strings.action_resume.localized() in labels(it)
+                    }
+                ) {
                     render(scene)
                     delay(10)
                 }

@@ -1,5 +1,11 @@
 package mihon.desktop.domain
 
+import eu.kanade.tachiyomi.network.SourceCompatibilityException
+import eu.kanade.tachiyomi.network.SourceFailureIdentity
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
+import eu.kanade.tachiyomi.network.inspectSourceFailure
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.SManga
 import mihon.desktop.extension.SourceCallResult
@@ -19,7 +25,9 @@ import tachiyomi.domain.creator.model.SourceDateQualityIdentity
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.service.CreatorSourceWorkKey
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.source.service.toSourceAppError
 import tachiyomi.domain.source.service.toSourceManga
+import tachiyomi.domain.source.service.withSourceFailureIdentity
 
 /**
  * Checks a single library manga against its source for new chapters,
@@ -54,6 +62,10 @@ class LibraryUpdateChecker(
     private val fetchInterval: tachiyomi.domain.manga.interactor.FetchInterval? = null,
     private val hasCustomCover: (Long) -> Boolean = { false },
     private val clock: java.time.Clock = java.time.Clock.systemDefaultZone(),
+    private val failureIdentityProvider: (
+        Source,
+        Long,
+    ) -> SourceFailureIdentity = { _, id -> SourceFailureIdentity(id) },
 ) {
 
     /**
@@ -67,6 +79,23 @@ class LibraryUpdateChecker(
         source: Source,
         origin: String = "LIBRARY_UPDATE",
         taskReceipt: tachiyomi.domain.chapter.service.DirectoryTaskReceipt? = null,
+    ): UpdateResult {
+        val identity = failureIdentityProvider(source, manga.source)
+        return try {
+            checkForUpdatesInternal(manga, source, origin, taskReceipt, identity)
+        } catch (error: Exception) {
+            error.rethrowSourceControlFailure()
+            if (error.inspectSourceFailure().causes.none { it is SourceCompatibilityException }) throw error
+            UpdateResult(0, sourceError = error.toSourceAppError().withSourceFailureIdentity(identity))
+        }
+    }
+
+    private suspend fun checkForUpdatesInternal(
+        manga: Manga,
+        source: Source,
+        origin: String,
+        taskReceipt: tachiyomi.domain.chapter.service.DirectoryTaskReceipt?,
+        identity: SourceFailureIdentity,
     ): UpdateResult {
         chapterRepository.pendingDirectoryPhase(manga.id)?.let { pending ->
             if (taskReceipt != null && pending.effects.taskReceipt == null) {
@@ -105,25 +134,39 @@ class LibraryUpdateChecker(
         ) {
             is SourceCallResult.Success -> r.value
             is SourceCallResult.Timeout -> return UpdateResult(newChapterCount = 0, sourceError = r.error)
-            is SourceCallResult.Error -> return UpdateResult(newChapterCount = 0, sourceError = r.error)
+            is SourceCallResult.Error -> return UpdateResult(
+                newChapterCount = 0,
+                sourceError = r.error.withSourceFailureIdentity(identity),
+            )
         }
         val remoteChapters = remoteUpdate.chapters
         val acceptedTime = java.time.ZonedDateTime.now(clock)
         val observedAt = acceptedTime.toInstant().toEpochMilli()
         val current = mangaRepository.getMangaById(manga.id)
-        val coverVersion = if (fetchDetails && !remoteUpdate.manga.thumbnail_url.isNullOrEmpty() &&
+        val preparedMetadata = if (fetchDetails) {
+            tachiyomi.domain.source.service.sourceMangaMetadata(
+                current,
+                remoteUpdate.manga,
+                updateTitles,
+                null,
+                SourceOperationPhase.DETAILS_CHAPTERS,
+            )
+        } else {
+            null
+        }
+        val memo =
+            preparedMetadata?.memo ?: guardSourceOperation(SourceOperationPhase.CHAPTERS) { remoteUpdate.manga.memo }
+        val sourceLabel = guardSourceOperation(SourceOperationPhase.METADATA) { source.toString() }
+        val thumbnail = preparedMetadata?.thumbnailUrl
+        val coverVersion = if (fetchDetails && !thumbnail.isNullOrEmpty() &&
             !hasCustomCover(manga.id) &&
-            (origin == "DETAIL_REFRESH" || current.thumbnailUrl != remoteUpdate.manga.thumbnail_url)
+            (origin == "DETAIL_REFRESH" || current.thumbnailUrl != thumbnail)
         ) {
             maxOf(observedAt, current.coverLastModified + 1)
         } else {
             null
         }
-        val metadata = if (fetchDetails) {
-            tachiyomi.domain.source.service.sourceMangaMetadata(current, remoteUpdate.manga, updateTitles, coverVersion)
-        } else {
-            null
-        }
+        val metadata = preparedMetadata?.copy(coverLastModified = coverVersion)
         val window = fetchInterval?.getWindow(acceptedTime)
         val extensionIdentity = sourceDateExtensionIdentityProvider(manga.source)
         val stableSourceUrl = CreatorSourceWorkKey.stableUrl(manga.url, manga.title, manga.author, manga.artist)
@@ -136,7 +179,8 @@ class LibraryUpdateChecker(
         }
         val prepared = tachiyomi.domain.chapter.service.ChapterDirectoryPlan.prepare(manga, remoteChapters) { chapter ->
             if (source is eu.kanade.tachiyomi.source.online.HttpSource) {
-                source.prepareNewChapter(chapter, manga.toSourceManga())
+                val input = manga.toSourceManga()
+                guardSourceOperation(SourceOperationPhase.CHAPTERS) { source.prepareNewChapter(chapter, input) }
             }
         }
         val committed = commitDirectory(
@@ -145,13 +189,13 @@ class LibraryUpdateChecker(
                 manga.id,
                 prepared,
                 observedAt,
-                mangaMemo = remoteUpdate.manga.memo,
+                mangaMemo = memo,
                 mangaMetadata = metadata,
                 complete = remoteUpdate.chapterListComplete,
                 allowEmpty = manga.source == 0L,
                 markDuplicateAsRead = markDuplicateAsRead(),
                 effects = tachiyomi.domain.chapter.service.ChapterDirectoryEffects(
-                    manga.source, source.toString(), manga.url, manga.title, origin, observedAt,
+                    manga.source, sourceLabel, manga.url, manga.title, origin, observedAt,
                     extensionIdentity.packageName, extensionIdentity.version, stableSourceUrl,
                     remoteChapters.map {
                         tachiyomi.domain.chapter.service.DirectoryChapterDate(it.url, it.date_upload)

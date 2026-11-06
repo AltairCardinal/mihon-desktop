@@ -52,6 +52,7 @@ import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import uy.kohesive.injekt.api.addSingleton
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -59,6 +60,117 @@ import java.nio.file.Path
 import java.util.Properties
 
 class AndroidExtensionInstallSecurityRollbackTest {
+    @Test
+    fun `identified incompatible reload rolls real installer back to old bytes trust and runtime`(
+        @TempDir directory: Path,
+    ) = runTest {
+        withServer(CANDIDATE_BYTES) { server ->
+            val gateway = FakeGateway(directory.resolve("transactions").toFile()).apply {
+                privatePackage = installed(directory, "old-private", REPOSITORY)
+            }
+            val original = checkNotNull(gateway.privatePackage)
+            val oldSource = object : eu.kanade.tachiyomi.source.Source {
+                override val id = 901L
+                override val name = "Original runtime"
+            }
+            val oldRuntime = eu.kanade.tachiyomi.extension.model.Extension.Installed(
+                "Original", PACKAGE_NAME, original.versionName, original.versionCode, 1.4,
+                "en", false, null, listOf(oldSource), null, isShared = false,
+            )
+            val compat = AppError.ExtensionIncompatible(
+                eu.kanade.tachiyomi.network.SourceCompatibilityException(
+                    NoSuchMethodError("future installed constructor"),
+                    eu.kanade.tachiyomi.network.SourceOperationPhase.CONSTRUCTION,
+                ),
+            )
+            val failed = eu.kanade.tachiyomi.extension.model.ExtensionLoadFailure(
+                "Candidate",
+                PACKAGE_NAME,
+                "1.4.2",
+                2,
+                false,
+                eu.kanade.tachiyomi.network.SourceOperationPhase.CONSTRUCTION,
+                compat,
+            )
+            val pm = mockk<PackageManager>(relaxed = true)
+            val context = gatewayContext(directory.resolve("files").toFile(), directory.resolve("cache").toFile(), pm)
+            val previous = uy.kohesive.injekt.Injekt
+            uy.kohesive.injekt.Injekt =
+                uy.kohesive.injekt.api.InjektScope(uy.kohesive.injekt.registry.default.DefaultRegistrar())
+            uy.kohesive.injekt.Injekt.addSingleton(
+                eu.kanade.tachiyomi.core.security.SecurityPreferences(
+                    tachiyomi.core.common.preference.InMemoryPreferenceStore(),
+                ),
+            )
+            mockkStatic(androidx.core.app.NotificationManagerCompat::class)
+            every { androidx.core.app.NotificationManagerCompat.from(any()) } returns mockk(relaxed = true)
+            var reloads = 0
+            try {
+                val manager = ExtensionManager(
+                    context = context,
+                    preferences = eu.kanade.domain.source.service.SourcePreferences(
+                        tachiyomi.core.common.preference.InMemoryPreferenceStore(),
+                    ),
+                    trustExtension = mockk(relaxed = true),
+                    installedExtensionsLoader = {
+                        listOf(eu.kanade.tachiyomi.extension.model.LoadResult.Success(oldRuntime))
+                    },
+                    extensionLoader = { _, _ ->
+                        reloads++
+                        if (gateway.privatePackage?.versionCode ==
+                            2L
+                        ) {
+                            eu.kanade.tachiyomi.extension.model.LoadResult.Failure(failed)
+                        } else {
+                            eu.kanade.tachiyomi.extension.model.LoadResult.Success(oldRuntime)
+                        }
+                    },
+                    installerFactory = { reload ->
+                        eu.kanade.tachiyomi.extension.util.ExtensionInstaller(
+                            context,
+                            reload,
+                            backgroundScope,
+                            gateway,
+                            OkHttpClient(),
+                            {
+                                BasePreferences.ExtensionInstaller.PRIVATE
+                            },
+                        )
+                    },
+                    installReceiverRegistrar = {}, scope = backgroundScope,
+                    inventoryProvider = { mihon.domain.extension.suggestion.ExtensionInventory(initialized = true) },
+                )
+                runCurrent()
+                val candidate = eu.kanade.tachiyomi.extension.model.Extension.Available(
+                    "Candidate", PACKAGE_NAME, "1.4.2", 2, 1.4, "en", false, emptyList(), "example.apk", "",
+                    REPOSITORY.baseUrl, repoFingerprint = REPOSITORY.signingKeyFingerprint,
+                    declaredSha256 = Hash.sha256(
+                        CANDIDATE_BYTES,
+                    ),
+                    downloadUrl = server.url("/apk/example.apk").toString(),
+                )
+                val terminal = manager.installExtension(candidate).first { it.isCompleted() }
+                assertEquals(eu.kanade.tachiyomi.extension.model.InstallStep.Error, terminal)
+                assertInstanceOf(AppError.ExtensionIncompatible::class.java, manager.installErrors.value[PACKAGE_NAME])
+                assertEquals("old-private", gateway.privatePackage?.apk?.readText())
+                assertEquals(original.signers, gateway.privatePackage?.signers)
+                assertEquals(original.trust, gateway.privatePackage?.trust)
+                assertEquals(original.versionCode, gateway.privatePackage?.versionCode)
+                org.junit.jupiter.api.Assertions.assertSame(
+                    oldSource,
+                    manager.installedExtensionsFlow.value.single().sources.single(),
+                )
+                assertTrue(manager.loadFailures.value.isEmpty())
+                assertEquals(2, reloads)
+                kotlinx.coroutines.withTimeout(5_000) {
+                    manager.installArbiter.reservations.first { PACKAGE_NAME !in it }
+                }
+            } finally {
+                unmockkStatic(androidx.core.app.NotificationManagerCompat::class)
+                uy.kohesive.injekt.Injekt = previous
+            }
+        }
+    }
 
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings = ["success", "cancel", "false-success"])

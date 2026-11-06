@@ -11,12 +11,14 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.util.Screen
+import eu.kanade.presentation.util.sourceErrorMessageResource
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
+import tachiyomi.presentation.core.screens.EmptyScreen
 import tachiyomi.presentation.core.screens.LoadingScreen
 
 class DeepLinkScreen(
@@ -47,6 +49,13 @@ class DeepLinkScreen(
                 }
                 is DeepLinkScreenModel.State.NoResults -> {
                     navigator.replace(GlobalSearchScreen(query))
+                }
+                is DeepLinkScreenModel.State.Failure -> {
+                    val failed = state as DeepLinkScreenModel.State.Failure
+                    EmptyScreen(
+                        stringRes = sourceErrorMessageResource(failed.error) ?: MR.strings.unknown_error,
+                        modifier = Modifier.padding(contentPadding),
+                    )
                 }
                 is DeepLinkScreenModel.State.Result -> {
                     val resultState = state as DeepLinkScreenModel.State.Result

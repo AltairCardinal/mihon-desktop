@@ -1,5 +1,7 @@
 package eu.kanade.tachiyomi.ui.browse.source.globalsearch
 
+import eu.kanade.tachiyomi.network.SourceCompatibilityException
+import eu.kanade.tachiyomi.network.SourceOperationPhase
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
@@ -37,6 +39,60 @@ class GlobalSearchRecoveryBehaviorTest {
 
         assertInstanceOf(WebViewScreen::class.java, destination)
     }
+
+    @Test
+    fun `prepared login uses only the registered title and ID and refuses unknown or foreign snapshots`() {
+        val source = io.mockk.mockk<HttpSource>()
+        var urlReads = 0
+        io.mockk.every { source.id } throws NoSuchMethodError("late ID")
+        io.mockk.every { source.name } throws NoSuchMethodError("late name")
+        io.mockk.every { source.baseUrl } answers {
+            urlReads++
+            "https://example.com"
+        }
+        val error = SourcePageError(AppError.Authentication(), SourceRecoveryAction.OpenLogin)
+        val snapshot = tachiyomi.domain.source.service.SourceMetadataSnapshot(source, 9L, "Prepared login", "en", null)
+        val actual = runCatching { globalSearchRecoveryScreen(source, error, snapshot) }
+        org.junit.jupiter.api.Assertions.assertNull(actual.exceptionOrNull())
+        val screen = assertInstanceOf(WebViewScreen::class.java, actual.getOrThrow())
+        assertEquals(9L, screen.savedField("sourceId"))
+        assertEquals("Prepared login", screen.savedField("initialTitle"))
+        val unknown = tachiyomi.domain.source.service.SourceMetadataSnapshot(source, null, "Unknown", "en", null)
+        org.junit.jupiter.api.Assertions.assertNull(globalSearchRecoveryScreen(source, error, unknown))
+        val other = io.mockk.mockk<HttpSource>()
+        org.junit.jupiter.api.Assertions.assertNull(globalSearchRecoveryScreen(other, error, snapshot))
+        assertEquals(1, urlReads)
+    }
+
+    @Test
+    fun `prepared login target linkage is typed while controls and host Errors remain original`() {
+        val source = io.mockk.mockk<HttpSource>()
+        val snapshot = tachiyomi.domain.source.service.SourceMetadataSnapshot(source, 9L, "Login", "en", null)
+        val page = SourcePageError(AppError.Authentication(), SourceRecoveryAction.OpenLogin)
+        val fatal = object : VirtualMachineError("controlled") {}
+        val cancel = kotlinx.coroutines.CancellationException("cancelled")
+        val host = AssertionError("host")
+        val missing = java.io.IOException("target", NoSuchMethodError("future baseURL"))
+        for ((thrown, expected) in listOf(
+            missing to null,
+            java.io.IOException("wrapped", fatal) to fatal,
+            ExceptionInInitializerError(cancel) to cancel,
+            host to host,
+        )) {
+            io.mockk.every { source.baseUrl } throws thrown
+            val actual = runCatching { globalSearchRecoveryScreen(source, page, snapshot) }.exceptionOrNull()
+            if (expected == null) {
+                val typed = assertInstanceOf(SourceCompatibilityException::class.java, actual)
+                org.junit.jupiter.api.Assertions.assertSame(missing, typed.cause)
+                assertEquals(SourceOperationPhase.METADATA, typed.phase)
+            } else {
+                org.junit.jupiter.api.Assertions.assertSame(expected, actual)
+            }
+        }
+    }
+
+    private fun WebViewScreen.savedField(name: String): Any? =
+        WebViewScreen::class.java.getDeclaredField(name).apply { isAccessible = true }.get(this)
 
     private class TestHttpSource : HttpSource() {
         override val id = 7L

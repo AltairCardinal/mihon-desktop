@@ -1,30 +1,32 @@
 package mihon.desktop.ui.browse
 
-import mihon.domain.extension.service.ExtensionInstallArbiter
-import eu.kanade.tachiyomi.network.HttpException
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.AnnotatedString
+import cafe.adriel.voyager.core.screen.Screen
+import cafe.adriel.voyager.navigator.CurrentScreen
+import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.Navigator
+import cafe.adriel.voyager.navigator.currentOrThrow
+import dev.icerock.moko.resources.StringResource
 import eu.kanade.tachiyomi.network.DesktopCookieJar
+import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.source.CatalogueSource
-import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
-import dev.icerock.moko.resources.StringResource
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import cafe.adriel.voyager.core.screen.Screen
-import androidx.compose.ui.ExperimentalComposeUiApi
-import androidx.compose.ui.ImageComposeScene
-import androidx.compose.ui.semantics.SemanticsNode
-import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.text.AnnotatedString
-import cafe.adriel.voyager.navigator.CurrentScreen
-import cafe.adriel.voyager.navigator.LocalNavigator
-import cafe.adriel.voyager.navigator.Navigator
-import cafe.adriel.voyager.navigator.currentOrThrow
+import eu.kanade.tachiyomi.source.online.HttpSource
+import io.mockk.coEvery
+import io.mockk.every
+import io.mockk.mockk
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -33,31 +35,28 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
-import io.mockk.every
-import io.mockk.coEvery
-import io.mockk.mockk
+import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.LocalExtensionScreenModel
-import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.network.ChallengeRecoveryIntent
 import mihon.desktop.network.CloudflareChallengeManager
-import mihon.desktop.network.DesktopBrowserOpener
 import mihon.desktop.network.DesktopAuthenticatedSessionCommitter
-import mihon.desktop.network.DesktopSourceLoginSessionFactory
+import mihon.desktop.network.DesktopBrowserOpener
 import mihon.desktop.network.DesktopSourceLoginAdapter
+import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.FakeDesktopSourceManager
@@ -68,13 +67,14 @@ import mihon.desktop.ui.settings.ExtensionRepoScreen
 import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
+import mihon.domain.extension.service.ExtensionInstallArbiter
 import mihon.domain.manga.model.toDomainManga
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
+import okhttp3.Headers
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.Headers
-import mockwebserver3.MockResponse
-import mockwebserver3.MockWebServer
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
@@ -82,19 +82,20 @@ import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
-import tachiyomi.domain.source.service.SourceMangaSearchService
+import tachiyomi.core.common.preference.DesktopPreferenceStore
+import tachiyomi.core.common.preference.Preference
 import tachiyomi.domain.manga.interactor.GetManga
-import tachiyomi.domain.source.service.SourceManager
-import tachiyomi.domain.source.service.SourcePageRequest
-import tachiyomi.domain.source.service.SourceQuery
-import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.domain.source.service.AuthenticatedCookie
 import tachiyomi.domain.source.service.AuthenticatedSession
 import tachiyomi.domain.source.service.AuthenticatedSessionCommitter
 import tachiyomi.domain.source.service.SourceLoginState
+import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.source.service.SourceMangaSearchService
+import tachiyomi.domain.source.service.SourcePageRequest
+import tachiyomi.domain.source.service.SourceQuery
+import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.i18n.MR
-import tachiyomi.core.common.preference.Preference
-import tachiyomi.core.common.preference.DesktopPreferenceStore
+import java.io.File
 import java.util.Collections
 import java.util.Locale
 import java.util.concurrent.CompletableFuture
@@ -102,7 +103,6 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
-import java.io.File
 import java.util.prefs.Preferences
 
 /** Root screen of the navigator used by the global search lifecycle test. */
@@ -215,11 +215,13 @@ class SourceSharedStateWiringTest {
 
             val extensionNodes = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
             assertTrue(extensionNodes.any { hasText(it, MR.strings.label_sources.localized()) })
-            assertTrue(extensionNodes.any {
-                it.config.contains(SemanticsProperties.ContentDescription) &&
-                    it.config[SemanticsProperties.ContentDescription]
-                        .contains(MR.strings.desktop_extension_reload_installed.localized())
-            })
+            assertTrue(
+                extensionNodes.any {
+                    it.config.contains(SemanticsProperties.ContentDescription) &&
+                        it.config[SemanticsProperties.ContentDescription]
+                            .contains(MR.strings.desktop_extension_reload_installed.localized())
+                },
+            )
 
             val repositoriesAction = requireNotNull(
                 extensionNodes.firstOrNull {
@@ -276,7 +278,9 @@ class SourceSharedStateWiringTest {
             }
         }
         scene.render()
-        val semantics = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.joinToString { it.config.toString() }
+        val semantics = scene.semanticsOwners.flatMap {
+            flatten(it.rootSemanticsNode)
+        }.joinToString { it.config.toString() }
 
         assertTrue(semantics.contains(allowed.name))
         assertFalse(semantics.contains(hidden.name))
@@ -414,15 +418,25 @@ class SourceSharedStateWiringTest {
             fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
             fun nodes(scene: ImageComposeScene) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
             fun click(scene: ImageComposeScene, label: String) {
-                val node = nodes(scene).first { it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains(label) }
+                val node = nodes(scene).first {
+                    it.config.contains(SemanticsActions.OnClick) &&
+                        it.config.toString().contains(label)
+                }
                 assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
             }
             fun clickLast(scene: ImageComposeScene, label: String) {
-                val node = nodes(scene).last { it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains(label) }
+                val node = nodes(scene).last {
+                    it.config.contains(SemanticsActions.OnClick) &&
+                        it.config.toString().contains(label)
+                }
                 assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
             }
             suspend fun awaitClick(scene: ImageComposeScene, label: String) = withTimeout(2_000) {
-                while (nodes(scene).none { it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains(label) }) {
+                while (nodes(scene).none {
+                        it.config.contains(SemanticsActions.OnClick) &&
+                            it.config.toString().contains(label)
+                    }
+                ) {
                     scene.render()
                     delay(10)
                 }
@@ -559,7 +573,11 @@ class SourceSharedStateWiringTest {
             { error("stale cancel") },
         )
         val stale = sourceLoginDialogEvents(requireNotNull(state), { state }, actions) { state = it }
-        val staleTerminal = sourceLoginDialogEvents(requireNotNull(state).copy(terminal = true), { state }, actions) { state = it }
+        val staleTerminal =
+            sourceLoginDialogEvents(requireNotNull(state).copy(terminal = true), { state }, actions) {
+                state =
+                    it
+            }
         state = newer
         stale.edit("stale=secret")
         stale.submit()
@@ -637,7 +655,15 @@ class SourceSharedStateWiringTest {
 
         val loading = SourceBrowseStateProjector.project(SourceQueryState.Loading(request, listOf(item)))
         val failed = SourceBrowseStateProjector.project(
-            SourceQueryState.Content(request, listOf(item), false, pageError = tachiyomi.domain.source.service.SourcePageError(AppError.Server(500), tachiyomi.domain.source.service.SourceRecoveryAction.Retry)),
+            SourceQueryState.Content(
+                request,
+                listOf(item),
+                false,
+                pageError = tachiyomi.domain.source.service.SourcePageError(
+                    AppError.Server(500),
+                    tachiyomi.domain.source.service.SourceRecoveryAction.Retry,
+                ),
+            ),
         )
 
         assertEquals(listOf("/kept"), loading.items.map(SManga::url))
@@ -672,11 +698,23 @@ class SourceSharedStateWiringTest {
                 isSearching = true,
                 queryStates = mapOf(
                     content.id to SourceQueryState.Content(contentRequest, listOf(contentItem), false),
-                    failure.id to SourceQueryState.Failure(failureRequest, AppError.Server(500), tachiyomi.domain.source.service.SourceRecoveryAction.Retry),
+                    failure.id to
+                        SourceQueryState.Failure(
+                            failureRequest,
+                            AppError.Server(500),
+                            tachiyomi.domain.source.service.SourceRecoveryAction.Retry,
+                        ),
                     empty.id to SourceQueryState.Empty(SourcePageRequest(empty.id, 1, 3, SourceQuery.Popular)),
                 ),
             ),
-            mapOf(content.id to CanonicalSearchResult.Content(3, listOf(contentItem.toDomainManga(content.id)), mapOf(contentItem.url to contentItem))),
+            mapOf(
+                content.id to
+                    CanonicalSearchResult.Content(
+                        3,
+                        listOf(contentItem.toDomainManga(content.id)),
+                        mapOf(contentItem.url to contentItem),
+                    ),
+            ),
         )
 
         assertTrue(ui.loading)
@@ -688,18 +726,31 @@ class SourceSharedStateWiringTest {
         assertTrue(
             GlobalSearchStateProjector.project(
                 listOf(empty),
-                DesktopGlobalSearchState(4, false, mapOf(empty.id to SourceQueryState.Empty(SourcePageRequest(empty.id, 1, 4, SourceQuery.Popular)))),
+                DesktopGlobalSearchState(
+                    4,
+                    false,
+                    mapOf(empty.id to SourceQueryState.Empty(SourcePageRequest(empty.id, 1, 4, SourceQuery.Popular))),
+                ),
             ).empty,
         )
     }
+
     @Test
     fun `global retry reuses the session child and exact failed request`() = runBlocking {
         val source = QueryFailureSource()
         val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
         coordinator.search(listOf(source), "same-query")
         val child = requireNotNull(coordinator.coordinatorFor(source.id))
-        val failed = requireNotNull(GlobalSearchStateProjector.project(listOf(source), coordinator.state).results.single().recoveryIntent)
-        val factory = DesktopSourceLoginSessionFactory(AuthenticatedSessionCommitter { _, _ -> }, DesktopBrowserOpener { _, _ -> false })
+        val failed =
+            requireNotNull(
+                GlobalSearchStateProjector.project(listOf(source), coordinator.state).results.single().recoveryIntent,
+            )
+        val factory =
+            DesktopSourceLoginSessionFactory(
+                AuthenticatedSessionCommitter { _, _ ->
+                },
+                DesktopBrowserOpener { _, _ -> false },
+            )
         GlobalSearchScreen().retry(coordinator, source, failed, factory)
 
         assertSame(child, coordinator.coordinatorFor(source.id))
@@ -711,15 +762,22 @@ class SourceSharedStateWiringTest {
     @OptIn(ExperimentalComposeUiApi::class)
     fun `global login action uses the shared dialog and retries its failed child request`() = runBlocking {
         MockWebServer().use { server ->
-            server.enqueue(MockResponse(code = 403))
+            server.enqueue(MockResponse(code = 401))
             server.enqueue(MockResponse(code = 200))
             server.start()
             val cookieJar = DesktopCookieJar()
-            val source = RoutedHttpSource(server.url("/").toString().removeSuffix("/"), OkHttpClient.Builder().cookieJar(cookieJar).build())
+            val source =
+                RoutedHttpSource(
+                    server.url("/").toString().removeSuffix("/"),
+                    OkHttpClient.Builder().cookieJar(cookieJar).build(),
+                )
             val dependencies = mockk<DesktopUiDependencies> {
                 every { sourceManager } returns MutableSourceManager(listOf(source))
                 every { appPreferences } returns sourcePreferences(pinnedSources = setOf(source.id.toString()))
                 every { sourceMangaSearchService } returns SourceMangaSearchService()
+                every { extensionPresentationService } returns mockk {
+                    every { installedExtensions } returns MutableStateFlow(emptyList())
+                }
                 every { saveSourceMangaForDetails } returns canonicalSaver()
                 every { getManga } returns staticGetManga()
                 every { sourceLoginSessionFactory } returns DesktopSourceLoginSessionFactory(
@@ -733,9 +791,11 @@ class SourceSharedStateWiringTest {
             fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
             fun nodes() = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
             fun click(text: String): Boolean {
-                val node = requireNotNull(nodes().firstOrNull {
-                    it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains(text)
-                })
+                val node = requireNotNull(
+                    nodes().firstOrNull {
+                        it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains(text)
+                    },
+                )
                 return requireNotNull(node.config[SemanticsActions.OnClick].action).invoke()
             }
             try {
@@ -744,19 +804,28 @@ class SourceSharedStateWiringTest {
                 scene.setContent {
                     CompositionLocalProvider(
                         LocalDesktopUiDependencies provides dependencies,
-                        LocalGlobalSearchCoordinatorFactory provides { service -> DesktopGlobalSearchCoordinator(service).also { coordinator = it } },
+                        LocalGlobalSearchCoordinatorFactory provides
+                            { service -> DesktopGlobalSearchCoordinator(service).also { coordinator = it } },
                     ) { Navigator(GlobalSearchScreen("captured")) { CurrentScreen() } }
                 }
                 scene.render()
-                withTimeout(2_000) { requireNotNull(coordinator).states.first { !it.isSearching } }
+                withTimeout(2_000) { requireNotNull(coordinator).states.first { it.generation > 0 && !it.isSearching } }
                 val child = requireNotNull(requireNotNull(coordinator).coordinatorFor(source.id))
+                assertInstanceOf(
+                    AppError.Authentication::class.java,
+                    (child.state as SourceQueryState.Failure).error,
+                )
                 val failed = requireNotNull(coordinator).state.queryStates.getValue(source.id).request
                 scene.render()
 
                 assertTrue(click(copy.title))
                 scene.render()
                 val cookieHeader = nodes().filter { it.config.contains(SemanticsActions.SetText) }.last()
-                assertTrue(requireNotNull(cookieHeader.config[SemanticsActions.SetText].action).invoke(AnnotatedString("invalid")))
+                assertTrue(
+                    requireNotNull(
+                        cookieHeader.config[SemanticsActions.SetText].action,
+                    ).invoke(AnnotatedString("invalid")),
+                )
                 scene.render()
                 assertTrue(click(copy.submit))
                 scene.render()
@@ -874,7 +943,10 @@ class SourceSharedStateWiringTest {
         val input = nodes().first { it.config.contains(SemanticsActions.SetText) }
         assertTrue(requireNotNull(input.config[SemanticsActions.SetText].action).invoke(AnnotatedString("second")))
         scene.render()
-        val button = nodes().first { it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains("Search") }
+        val button = nodes().first {
+            it.config.contains(SemanticsActions.OnClick) &&
+                it.config.toString().contains("Search")
+        }
         assertTrue(requireNotNull(button.config[SemanticsActions.OnClick].action).invoke())
         withTimeout(2_000) { started.await() }
         scene.render()
@@ -896,6 +968,7 @@ class SourceSharedStateWiringTest {
         assertEquals(null, requireNotNull(coordinator).coordinatorFor(second.id))
         scene.close()
     }
+
     @Test
     fun `source coordinator publishes shared loading and retries the exact request`() = runBlocking {
         val source = PagingSource()
@@ -963,8 +1036,14 @@ class SourceSharedStateWiringTest {
         val retryStarted = CompletableDeferred<Unit>()
         val finishRetry = CompletableDeferred<Unit>()
         val source = object : NamedSource(29, "Recovery") {
-            override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage = when (query) {
-                "original" -> if (originalAttempts++ == 0) throw HttpException(500) else {
+            override suspend fun getSearchManga(
+                page: Int,
+                query: String,
+                filters: FilterList,
+            ): MangasPage = when (query) {
+                "original" -> if (originalAttempts++ == 0) {
+                    throw HttpException(500)
+                } else {
                     retryStarted.complete(Unit)
                     finishRetry.await()
                     MangasPage(listOf(manga("/retried")), false)
@@ -982,10 +1061,20 @@ class SourceSharedStateWiringTest {
         withTimeout(2_000) { coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Loading } }
         finishRetry.complete(Unit)
         retry.await()
-        withTimeout(2_000) { coordinator.states.first { (it.queryStates[source.id] as? SourceQueryState.Content)?.items?.singleOrNull()?.url == "/retried" } }
+        withTimeout(2_000) {
+            coordinator.states.first {
+                (it.queryStates[source.id] as? SourceQueryState.Content)?.items?.singleOrNull()?.url ==
+                    "/retried"
+            }
+        }
 
         oldChild.load(source, 1, SourceQuery.Search("new", FilterList()))
-        withTimeout(2_000) { coordinator.states.first { (it.queryStates[source.id]?.request?.query as? SourceQuery.Search)?.query == "new" } }
+        withTimeout(2_000) {
+            coordinator.states.first {
+                (it.queryStates[source.id]?.request?.query as? SourceQuery.Search)?.query ==
+                    "new"
+            }
+        }
         oldChild.load(source, 1, SourceQuery.Search("fail", FilterList()))
         withTimeout(2_000) { coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Failure } }
         coordinator.search(listOf(source), "replacement")
@@ -1002,7 +1091,10 @@ class SourceSharedStateWiringTest {
 
     @Test
     fun `completed global search detaches compat callback from later exact recovery`() = runBlocking {
-        listOf(CancellationException("late callback"), AssertionError("late callback")).forEachIndexed { index, lateError ->
+        listOf(CancellationException("late callback"), AssertionError("late callback")).forEachIndexed {
+                index,
+                lateError,
+            ->
             val attempts = mutableMapOf<String, Int>()
             val successGate = Channel<Unit>(Channel.UNLIMITED)
             val source = object : NamedSource(30L + index, "Detached callback") {
@@ -1049,7 +1141,8 @@ class SourceSharedStateWiringTest {
                 withTimeout(10_000) { secondLoading.await() }
                 val secondContent = async(start = CoroutineStart.UNDISPATCHED) {
                     coordinator.states.first {
-                        (it.queryStates[source.id] as? SourceQueryState.Content)?.items?.singleOrNull()?.url == "/second"
+                        (it.queryStates[source.id] as? SourceQueryState.Content)?.items?.singleOrNull()?.url ==
+                            "/second"
                     }
                 }
                 successGate.send(Unit)
@@ -1072,7 +1165,12 @@ class SourceSharedStateWiringTest {
         val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
         coordinator.search(listOf(source), "sequence", callbacks::add)
         val queryStates = callbacks.filter { it.isSearching }.mapNotNull { it.queryStates[source.id] }
-        assertEquals(listOf(SourceQueryState.Loading::class, SourceQueryState.Failure::class), queryStates.map { it::class })
+        assertEquals(
+            listOf(SourceQueryState.Loading::class, SourceQueryState.Failure::class),
+            queryStates.map {
+                it::class
+            },
+        )
         assertEquals(1, callbacks.count { !it.isSearching })
     }
 
@@ -1122,7 +1220,8 @@ class SourceSharedStateWiringTest {
 
         assertFalse(oldChild === currentChild)
         assertSame(currentChild, coordinator.coordinatorFor(source.id))
-        val result = assertInstanceOf(SourceQueryState.Content::class.java, coordinator.states.value.queryStates[source.id])
+        val result =
+            assertInstanceOf(SourceQueryState.Content::class.java, coordinator.states.value.queryStates[source.id])
         assertEquals("new", (result.request.query as SourceQuery.Search).query)
         assertEquals(listOf("/new"), result.items.map(SManga::url))
     }
@@ -1136,11 +1235,13 @@ class SourceSharedStateWiringTest {
         coordinator.search(listOf(source), "new")
         assertEquals(null, withTimeout(2_000) { old.await() })
         withTimeout(2_000) { source.oldCancelled.await() }
-        val result = assertInstanceOf(SourceQueryState.Content::class.java, coordinator.states.value.queryStates[source.id])
+        val result =
+            assertInstanceOf(SourceQueryState.Content::class.java, coordinator.states.value.queryStates[source.id])
         assertEquals("new", (result.request.query as SourceQuery.Search).query)
         assertFalse(coordinator.states.value.isSearching)
         assertEquals(result.request, coordinator.coordinatorFor(source.id)?.state?.request)
     }
+
     @Test
     fun `cancelling current global search retires its child and clears searching`() = runBlocking {
         val source = CancellableGlobalSearchSource()
@@ -1153,6 +1254,7 @@ class SourceSharedStateWiringTest {
         assertEquals(null, coordinator.coordinatorFor(source.id))
         withTimeout(2_000) { source.oldCancelled.await() }
     }
+
     @Test
     fun `compat global callback failure cannot interrupt authoritative aggregation or cleanup`() = runBlocking {
         val source = NamedSource(21, "Callback")
@@ -1160,14 +1262,19 @@ class SourceSharedStateWiringTest {
         coordinator.search(listOf(source), "safe") { error("compat callback") }
         assertInstanceOf(SourceQueryState.Empty::class.java, coordinator.states.value.queryStates[source.id])
         assertFalse(coordinator.states.value.isSearching)
-        assertEquals(coordinator.states.value.queryStates[source.id]?.request, coordinator.coordinatorFor(source.id)?.state?.request)
+        assertEquals(
+            coordinator.states.value.queryStates[source.id]?.request,
+            coordinator.coordinatorFor(source.id)?.state?.request,
+        )
     }
 
     @Test
     fun `current global callback cancellation propagates after cleanup`() = runBlocking {
         val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
         val result = runCatching {
-            coordinator.search(listOf(NamedSource(25, "Cancel callback")), "cancel") { throw CancellationException("callback") }
+            coordinator.search(listOf(NamedSource(25, "Cancel callback")), "cancel") {
+                throw CancellationException("callback")
+            }
         }.exceptionOrNull()
         assertInstanceOf(CancellationException::class.java, result)
         assertFalse(coordinator.states.value.isSearching)
@@ -1193,13 +1300,19 @@ class SourceSharedStateWiringTest {
             DesktopGlobalSearchState(generation = 1, publicationOrdinal = 1),
             DesktopGlobalSearchState(generation = 2, publicationOrdinal = 2),
         ).map { candidate ->
-            CompletableFuture.runAsync { release.await(); coordinator.publishCandidate(candidate) }
+            CompletableFuture.runAsync {
+                release.await()
+                coordinator.publishCandidate(candidate)
+            }
         }
         release.countDown()
         CompletableFuture.allOf(*publications.toTypedArray()).get(2, TimeUnit.SECONDS)
         assertEquals(2, coordinator.states.value.generation)
         val loserCallbacks = mutableListOf<DesktopGlobalSearchState>()
-        coordinator.publishCandidate(DesktopGlobalSearchState(generation = 1, publicationOrdinal = 1), loserCallbacks::add)
+        coordinator.publishCandidate(
+            DesktopGlobalSearchState(generation = 1, publicationOrdinal = 1),
+            loserCallbacks::add,
+        )
         assertTrue(loserCallbacks.isEmpty())
     }
 
@@ -1230,8 +1343,24 @@ class SourceSharedStateWiringTest {
         coordinator.search(listOf(source), "same")
         val current = coordinator.states.value
         val candidate = current.queryStates.getValue(source.id)
-        assertEquals(null, coordinator.aggregateCandidate(current.generation - 1, source.id, requireNotNull(coordinator.coordinatorFor(source.id)), candidate))
-        assertEquals(null, coordinator.aggregateCandidate(current.generation, source.id, SourceBrowseQueryCoordinator(SourceMangaSearchService()), candidate))
+        assertEquals(
+            null,
+            coordinator.aggregateCandidate(
+                current.generation - 1,
+                source.id,
+                requireNotNull(coordinator.coordinatorFor(source.id)),
+                candidate,
+            ),
+        )
+        assertEquals(
+            null,
+            coordinator.aggregateCandidate(
+                current.generation,
+                source.id,
+                SourceBrowseQueryCoordinator(SourceMangaSearchService()),
+                candidate,
+            ),
+        )
     }
 
     @Test
@@ -1279,7 +1408,12 @@ class SourceSharedStateWiringTest {
         val result = runCatching {
             coordinator.search(listOf(source), "outer") {
                 CompletableFuture.supplyAsync { coordinator.coordinatorFor(source.id) }.get(1, TimeUnit.SECONDS)
-                if (!reentered) runBlocking { reentered = true; coordinator.search(emptyList(), "inner") }
+                if (!reentered) {
+                    runBlocking {
+                        reentered = true
+                        coordinator.search(emptyList(), "inner")
+                    }
+                }
                 throw CancellationException("outer callback")
             }
         }.exceptionOrNull()
@@ -1299,7 +1433,12 @@ class SourceSharedStateWiringTest {
         var reentered = false
         val result = runCatching {
             coordinator.search(listOf(source), "outer") {
-                if (!reentered) runBlocking { reentered = true; coordinator.search(emptyList(), "inner") }
+                if (!reentered) {
+                    runBlocking {
+                        reentered = true
+                        coordinator.search(emptyList(), "inner")
+                    }
+                }
             }
         }.exceptionOrNull()
         assertEquals(null, result)
@@ -1370,7 +1509,11 @@ class SourceSharedStateWiringTest {
             )
             val attempt = controller.newAttempt()
             val login = async(start = CoroutineStart.UNDISPATCHED) {
-                controller.login(source, DesktopSourceRecoveryIntent.OpenLogin(source.url.toString(), captured), attempt)
+                controller.login(
+                    source,
+                    DesktopSourceRecoveryIntent.OpenLogin(source.url.toString(), captured),
+                    attempt,
+                )
             }
 
             assertTrue(controller.submitCookies(attempt, "session=secret; auth_token=token"))
@@ -1408,7 +1551,10 @@ class SourceSharedStateWiringTest {
         val controller = DesktopSourceLoginController(
             DesktopSourceLoginSessionFactory(
                 AuthenticatedSessionCommitter { _, _ -> },
-                DesktopBrowserOpener { _, ticket -> firstTicket = ticket; true },
+                DesktopBrowserOpener { _, ticket ->
+                    firstTicket = ticket
+                    true
+                },
             ),
             coordinator,
         )
@@ -1505,7 +1651,10 @@ class SourceSharedStateWiringTest {
             assertTrue(terminal.terminal)
             assertEquals(expected, terminal.feedback)
         }
-        assertEquals(null, actions.complete(active, active.attempt, SourceLoginState.Authenticated(setOf("session"), 1)))
+        assertEquals(
+            null,
+            actions.complete(active, active.attempt, SourceLoginState.Authenticated(setOf("session"), 1)),
+        )
         assertEquals(null, actions.complete(active, active.attempt, SourceLoginState.Cancelled))
     }
 
@@ -1596,7 +1745,11 @@ class SourceSharedStateWiringTest {
             coordinator,
         )
 
-        assertTrue(runCatching { controller.login(source, intent, controller.newAttempt()) { error("UI failed") } }.isFailure)
+        assertTrue(
+            runCatching {
+                controller.login(source, intent, controller.newAttempt()) { error("UI failed") }
+            }.isFailure,
+        )
         val fresh = controller.newAttempt()
         val running = async(start = CoroutineStart.UNDISPATCHED) { controller.login(source, intent, fresh) }
         assertTrue(controller.cancel(fresh))
@@ -1624,19 +1777,38 @@ class SourceSharedStateWiringTest {
         }
 
         assertEquals(SourceLoginState.BrowserUnavailable, outcome(DesktopBrowserOpener { _, _ -> false }))
-        assertEquals(SourceLoginState.Cancelled, outcome(DesktopBrowserOpener { _, ticket -> ticket.cancel(); true }))
+        assertEquals(
+            SourceLoginState.Cancelled,
+            outcome(
+                DesktopBrowserOpener { _, ticket ->
+                    ticket.cancel()
+                    true
+                },
+            ),
+        )
         assertEquals(SourceLoginState.TimedOut, outcome(DesktopBrowserOpener { _, _ -> true }, timeout = 1))
         assertInstanceOf(
             SourceLoginState.InvalidCookies::class.java,
-            outcome(DesktopBrowserOpener { _, ticket ->
-                ticket.complete(session("session", "secret").copy(cookies = session("session", "secret").cookies.map { it.copy(domain = "evil.test") }))
-                true
-            }),
+            outcome(
+                DesktopBrowserOpener { _, ticket ->
+                    ticket.complete(
+                        session("session", "secret").copy(
+                            cookies = session("session", "secret").cookies.map {
+                                it.copy(domain = "evil.test")
+                            },
+                        ),
+                    )
+                    true
+                },
+            ),
         )
         assertEquals(
             SourceLoginState.CommitFailed,
             outcome(
-                DesktopBrowserOpener { _, ticket -> ticket.complete(session("session", "secret")); true },
+                DesktopBrowserOpener { _, ticket ->
+                    ticket.complete(session("session", "secret"))
+                    true
+                },
                 AuthenticatedSessionCommitter { _, _ -> error("commit failed") },
             ),
         )
@@ -1664,7 +1836,11 @@ class SourceSharedStateWiringTest {
         val controller = SourceBrowseRecoveryController(
             coordinator,
             DesktopSourceLoginController(
-                DesktopSourceLoginSessionFactory(AuthenticatedSessionCommitter { _, _ -> }, DesktopBrowserOpener { _, _ -> true }),
+                DesktopSourceLoginSessionFactory(
+                    AuthenticatedSessionCommitter { _, _ ->
+                    },
+                    DesktopBrowserOpener { _, _ -> true },
+                ),
                 coordinator,
             ),
         )
@@ -1702,7 +1878,10 @@ class SourceSharedStateWiringTest {
                     DesktopSourceLoginController(
                         DesktopSourceLoginSessionFactory(
                             DesktopAuthenticatedSessionCommitter(helper.cookieJar),
-                            DesktopBrowserOpener { _, ticket -> tickets += ticket; true },
+                            DesktopBrowserOpener { _, ticket ->
+                                tickets += ticket
+                                true
+                            },
                         ),
                         coordinator,
                     ),
@@ -1724,7 +1903,9 @@ class SourceSharedStateWiringTest {
                     ),
                 )
                 val cloudflareCall = async(Dispatchers.IO) {
-                    runCatching { helper.client.newCall(Request.Builder().url(server.url("/cf")).build()).execute().close() }
+                    runCatching {
+                        helper.client.newCall(Request.Builder().url(server.url("/cf")).build()).execute().close()
+                    }
                 }
                 var challenge = manager.tryReceive()
                 repeat(100) {
@@ -1863,7 +2044,11 @@ class SourceSharedStateWiringTest {
         override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
             if (query != "old") return MangasPage(listOf(manga("/new")), false)
             oldStarted.complete(Unit)
-            try { awaitCancellation() } finally { oldCancelled.complete(Unit) }
+            try {
+                awaitCancellation()
+            } finally {
+                oldCancelled.complete(Unit)
+            }
         }
     }
 
@@ -1909,22 +2094,34 @@ class SourceSharedStateWiringTest {
         override val supportsLatest = false
         override suspend fun getPopularManga(page: Int) = MangasPage(emptyList(), false)
         override suspend fun getLatestUpdates(page: Int) = MangasPage(emptyList(), false)
-        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList) = MangasPage(emptyList(), false)
+        override suspend fun getSearchManga(
+            page: Int,
+            query: String,
+            filters: FilterList,
+        ) = MangasPage(emptyList(), false)
         override fun getFilterList() = FilterList()
         override suspend fun getMangaDetails(manga: SManga) = manga
         override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()
         override suspend fun getPageList(chapter: SChapter) = emptyList<Page>()
     }
 
-    private class MutableSourceManager(var sources: List<CatalogueSource>) : SourceManager {
+    private class MutableSourceManager(initialSources: List<CatalogueSource>) : SourceManager {
+        private var registrations = initialSources.map { it to it.id }
+        var sources = initialSources
+            set(value) {
+                registrations = value.map { it to it.id }
+                field = value
+            }
+        override fun getRegisteredSourceId(source: eu.kanade.tachiyomi.source.Source): Long? =
+            registrations.firstOrNull { it.first === source }?.second
         override val isInitialized = MutableStateFlow(true)
         override val catalogueSources get() = flowOf(sources)
         override fun getCatalogueSources() = sources
         override fun getOnlineSources() = sources.filterIsInstance<HttpSource>()
         override fun getStubSources() = emptyList<tachiyomi.domain.source.model.StubSource>()
-        override fun get(sourceKey: Long) = sources.find { it.id == sourceKey }
+        override fun get(sourceKey: Long) = registrations.firstOrNull { it.second == sourceKey }?.first
         override fun getOrStub(sourceKey: Long): eu.kanade.tachiyomi.source.Source =
-            sources.find { it.id == sourceKey } ?: tachiyomi.domain.source.model.StubSource(sourceKey, "", "")
+            get(sourceKey) ?: tachiyomi.domain.source.model.StubSource(sourceKey, "", "")
     }
 
     private companion object {

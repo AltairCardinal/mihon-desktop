@@ -1,6 +1,7 @@
 package mihon.domain.migration
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.test.runTest
 import mihon.domain.migration.models.MigrationFlag
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -10,6 +11,45 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class MigrationOrchestratorTest {
+    @Test
+    fun `batch source boundary propagates control and host errors but retains ordinary and marked failures`() =
+        runTest {
+            val fatal = object : VirtualMachineError("controlled fixture fatal") {}
+            val cancelled = CancellationException("caller cancellation")
+            val host = AssertionError("host invariant")
+            for ((thrown, expected) in listOf(
+                fatal to fatal,
+                java.io.IOException("wrapped fatal", fatal) to fatal,
+                java.io.IOException("wrapped cancellation", cancelled) to cancelled,
+                java.io.IOException("wrapped host", host) to host,
+            )) {
+                val failure = runCatching {
+                    BatchMigrationOrchestrator<Int>().run(listOf(1)) { throw thrown }
+                        .collect { }
+                }.exceptionOrNull()
+                org.junit.jupiter.api.Assertions.assertSame(expected, failure)
+            }
+            var deep: Throwable = NoSuchMethodError("unknown deep tail")
+            repeat(80) { deep = java.io.IOException("wrapper", deep) }
+            val incomplete = deep
+            val propagated = runCatching {
+                BatchMigrationOrchestrator<Int>().run(listOf(1)) { throw incomplete }.collect { }
+            }.exceptionOrNull()
+            org.junit.jupiter.api.Assertions.assertSame(incomplete, propagated)
+            val missing = NoSuchMethodError("future chapter")
+            val compatible = eu.kanade.tachiyomi.network.SourceCompatibilityException(
+                missing,
+                eu.kanade.tachiyomi.network.SourceOperationPhase.CHAPTERS,
+            )
+            for (ordinary in listOf(java.io.IOException("network"), compatible)) {
+                val events = mutableListOf<BatchMigrationEvent<Int>>()
+                BatchMigrationOrchestrator<Int>().run(listOf(1, 2)) { if (it == 1) throw ordinary else "healthy" }
+                    .collect { events += it }
+                assertTrue(events.first() is BatchMigrationEvent.Failed)
+                assertTrue(events[1] is BatchMigrationEvent.Succeeded)
+            }
+        }
+
     @Test
     fun `current shared migration flag bits round trip`() {
         val flags = MigrationFlag.entries.toSet()

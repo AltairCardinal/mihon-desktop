@@ -1,5 +1,7 @@
 package tachiyomi.domain.source.service
 
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -30,7 +32,7 @@ class SourceMangaSearchService {
             SourcePageResult.Failure(
                 request,
                 appError,
-                appError.recoveryAction(),
+                appError.sourceRecoveryAction(),
             )
         }
     }
@@ -42,9 +44,15 @@ class SourceMangaSearchService {
     ): MangasPage {
         return diagnosticOperation(DiagnosticCategory.BROWSE_DETAILS, DiagnosticOperation.BROWSE) {
             when (request) {
-                is SourceMangaSearchRequest.Search -> source.getSearchManga(page, request.query, request.filters)
-                SourceMangaSearchRequest.Latest -> source.getLatestUpdates(page)
-                SourceMangaSearchRequest.Popular -> source.getPopularManga(page)
+                is SourceMangaSearchRequest.Search -> guardSourceOperation(SourceOperationPhase.SEARCH) {
+                    source.getSearchManga(page, request.query, request.filters)
+                }
+                SourceMangaSearchRequest.Latest -> guardSourceOperation(SourceOperationPhase.LATEST) {
+                    source.getLatestUpdates(page)
+                }
+                SourceMangaSearchRequest.Popular -> guardSourceOperation(SourceOperationPhase.POPULAR) {
+                    source.getPopularManga(page)
+                }
             }
         }
     }
@@ -52,7 +60,7 @@ class SourceMangaSearchService {
     suspend fun searchAllPages(
         source: Source,
         query: String,
-        filters: FilterList = source.getFilterList(),
+        filters: FilterList = preparedSourceFiltersOrThrow(source),
     ): List<SManga> {
         val results = mutableListOf<SManga>()
         var page = 1
@@ -75,9 +83,10 @@ private fun SourceQuery.toSearchRequest(): SourceMangaSearchRequest = when (this
     is SourceQuery.Search -> SourceMangaSearchRequest.Search(query, filters)
 }
 
-private fun AppError.recoveryAction(): SourceRecoveryAction = when (this) {
+fun AppError.sourceRecoveryAction(): SourceRecoveryAction = when (this) {
     is AppError.Authentication -> SourceRecoveryAction.OpenLogin
     AppError.Cancelled -> SourceRecoveryAction.None
+    is AppError.ExtensionIncompatible -> SourceRecoveryAction.None
     else -> SourceRecoveryAction.Retry
 }
 

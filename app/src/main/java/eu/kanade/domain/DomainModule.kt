@@ -248,16 +248,25 @@ class DomainModule : InjektModule {
                 sourceResolver = { sources.get(it) as? eu.kanade.tachiyomi.source.CatalogueSource },
                 sourceMangaSearchService = get(),
                 titleAttributionPolicy = get(),
-                languageProfileProvider = { source ->
-                    source.lang.takeIf(String::isNotBlank)
+                registeredSourceIdProvider = sources::getRegisteredSourceId,
+                languageProfileProvider = { metadata ->
+                    metadata.language?.takeIf(String::isNotBlank)
                         ?.let(tachiyomi.domain.creator.service.CreatorSourceReadingLanguageProfile::Single)
                         ?: tachiyomi.domain.creator.service.CreatorSourceReadingLanguageProfile.Unknown
                 },
-                extensionPackageProvider = { source ->
-                    extensionManager.getExtensionPackage(source.id) ?: "builtin.source"
-                },
-                extensionVersionProvider = { source ->
-                    extensionManager.getExtensionVersion(source.id) ?: "builtin"
+                identitySnapshotProvider = {
+                    val installed = extensionManager.installedExtensionsFlow.value
+                    val lookup: tachiyomi.domain.creator.service.CreatorSourceIdentityLookup = { source, registeredId ->
+                        val owner = installed.firstOrNull { extension -> extension.sources.any { it === source } }
+                        eu.kanade.tachiyomi.network.SourceFailureIdentity(
+                            registeredId,
+                            owner?.pkgName,
+                            owner?.name,
+                            owner?.versionName,
+                            owner?.versionCode,
+                        )
+                    }
+                    lookup
                 },
             )
         }

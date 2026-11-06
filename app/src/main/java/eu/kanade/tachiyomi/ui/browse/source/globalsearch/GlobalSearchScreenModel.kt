@@ -1,7 +1,5 @@
 package eu.kanade.tachiyomi.ui.browse.source.globalsearch
 
-import eu.kanade.tachiyomi.source.Source
-
 class GlobalSearchScreenModel(
     initialQuery: String = "",
     initialExtensionFilter: String? = null,
@@ -18,8 +16,9 @@ class GlobalSearchScreenModel(
         }
     }
 
-    override fun getEnabledSources(): List<Source> {
-        return super.getEnabledSources()
-            .filter { state.value.sourceFilter != SourceFilter.PinnedOnly || "${it.id}" in pinnedSources }
-    }
+    override fun isSourceIdEnabled(sourceId: Long?): Boolean = super.isSourceIdEnabled(sourceId) &&
+        (
+            state.value.sourceFilter != SourceFilter.PinnedOnly || sourceId == null ||
+                sourceId.toString() in pinnedSources
+            )
 }

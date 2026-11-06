@@ -23,16 +23,16 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -50,8 +50,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -59,23 +59,23 @@ import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.online.HttpSource
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.LocalExtensionScreenModel
 import mihon.desktop.extension.ExtensionOrigin
 import mihon.desktop.extension.InstalledExtension
+import mihon.desktop.network.DesktopNetworkRoutingPort
+import mihon.desktop.network.DesktopPluginNetworkSupport
 import mihon.desktop.network.PluginDomainExportFormat
 import mihon.desktop.network.exportPluginDomains
 import mihon.desktop.network.normalizePluginHost
 import mihon.desktop.platform.DesktopUrlOpener
-import mihon.desktop.network.DesktopNetworkRoutingPort
-import mihon.desktop.network.DesktopPluginNetworkSupport
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.settings.PluginNetworkMode
+import mihon.desktop.settings.parseDesktopProxyUrl
 import mihon.desktop.ui.settings.DesktopDirectoryOpener
 import mihon.desktop.ui.settings.RadioSettingsItem
-import mihon.desktop.settings.parseDesktopProxyUrl
 import tachiyomi.core.common.preference.getAndSet
 import tachiyomi.i18n.MR
 import java.io.File
@@ -127,7 +127,16 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
         }
         fun openUrl(url: String) {
             platformActions.openUrl(url)
-                .onFailure { scope.launch { snackbar.showSnackbar(MR.strings.desktop_extension_open_link_failed.localized(Locale.getDefault(), it.message.orEmpty())) } }
+                .onFailure {
+                    scope.launch {
+                        snackbar.showSnackbar(
+                            MR.strings.desktop_extension_open_link_failed.localized(
+                                Locale.getDefault(),
+                                it.message.orEmpty(),
+                            ),
+                        )
+                    }
+                }
         }
 
         Scaffold(
@@ -136,7 +145,10 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                     title = { Text(extension?.name ?: MR.strings.desktop_extension_details_title.localized()) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = MR.strings.action_bar_up_description.localized(),
+                            )
                         }
                     },
                 )
@@ -183,7 +195,9 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                             color = MaterialTheme.colorScheme.onError,
                             style = MaterialTheme.typography.bodyMedium,
                             textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.error).padding(16.dp),
+                            modifier = Modifier.fillMaxWidth().background(
+                                MaterialTheme.colorScheme.error,
+                            ).padding(16.dp),
                         )
                     }
                 }
@@ -215,21 +229,62 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                 item {
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(MR.strings.desktop_extension_metadata_title.localized(), style = MaterialTheme.typography.titleMedium)
-                            Text(MR.strings.desktop_extension_metadata_file.localized(Locale.getDefault(), extension.jarFile.absolutePath))
-                            Text(MR.strings.desktop_extension_metadata_size.localized(Locale.getDefault(), extension.jarFile.length()))
-                            Text(MR.strings.desktop_extension_metadata_sha256.localized(Locale.getDefault(), extension.artifactSha256.ifBlank { MR.strings.unknown.localized() }))
-                            Text(MR.strings.desktop_extension_metadata_repository.localized(Locale.getDefault(), extension.repoName.ifBlank { extension.repoUrl.ifBlank { MR.strings.unknown.localized() } }))
-                            Text(MR.strings.desktop_extension_metadata_fingerprint.localized(Locale.getDefault(), extension.repoFingerprint.ifBlank { MR.strings.unknown.localized() }))
+                            Text(
+                                MR.strings.desktop_extension_metadata_title.localized(),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Text(
+                                MR.strings.desktop_extension_metadata_file.localized(
+                                    Locale.getDefault(),
+                                    extension.jarFile.absolutePath,
+                                ),
+                            )
+                            Text(
+                                MR.strings.desktop_extension_metadata_size.localized(
+                                    Locale.getDefault(),
+                                    extension.jarFile.length(),
+                                ),
+                            )
+                            Text(
+                                MR.strings.desktop_extension_metadata_sha256.localized(
+                                    Locale.getDefault(),
+                                    extension.artifactSha256.ifBlank {
+                                        MR.strings.unknown.localized()
+                                    },
+                                ),
+                            )
+                            Text(
+                                MR.strings.desktop_extension_metadata_repository.localized(
+                                    Locale.getDefault(),
+                                    extension.repoName.ifBlank {
+                                        extension.repoUrl.ifBlank { MR.strings.unknown.localized() }
+                                    },
+                                ),
+                            )
+                            Text(
+                                MR.strings.desktop_extension_metadata_fingerprint.localized(
+                                    Locale.getDefault(),
+                                    extension.repoFingerprint.ifBlank {
+                                        MR.strings.unknown.localized()
+                                    },
+                                ),
+                            )
                             Spacer(Modifier.height(4.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 OutlinedButton(onClick = {
                                     if (!platformActions.openDirectory(extension.jarFile.parentFile)) {
-                                        scope.launch { snackbar.showSnackbar(MR.strings.desktop_extension_open_folder_failed.localized()) }
+                                        scope.launch {
+                                            snackbar.showSnackbar(
+                                                MR.strings.desktop_extension_open_folder_failed.localized(),
+                                            )
+                                        }
                                     }
                                 }) {
                                     Icon(Icons.Default.FolderOpen, contentDescription = null)
-                                    Text(MR.strings.desktop_extension_open_folder.localized(), Modifier.padding(start = 6.dp))
+                                    Text(
+                                        MR.strings.desktop_extension_open_folder.localized(),
+                                        Modifier.padding(start = 6.dp),
+                                    )
                                 }
                                 if (extension.repoUrl.isNotBlank()) {
                                     OutlinedButton(onClick = { openUrl(extension.repoUrl) }) {
@@ -256,33 +311,53 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                         }
                     }
                 }
-                items(sources, key = { it.source.id }) { sourceItem ->
+                items(sources, key = { it.presentation.id }) { sourceItem ->
                     val source = sourceItem.source
+                    val descriptor = sourceItem.presentation
                     Card(Modifier.fillMaxWidth()) {
                         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 val displayName = sourceItem.displayName(Locale.getDefault())
                                 Text(displayName, style = MaterialTheme.typography.titleSmall)
                                 Text(
-                                    listOf(source.name.takeUnless { it == displayName }, source.lang).filterNotNull().joinToString(" · "),
+                                    listOf(
+                                        descriptor.name.takeUnless {
+                                            it == displayName
+                                        },
+                                        descriptor.language,
+                                    ).filterNotNull().joinToString(" · "),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                             Switch(
                                 checked = sourceItem.enabled,
-                                onCheckedChange = { model.setSourceEnabled(source.id, it) },
+                                onCheckedChange = { model.setSourceEnabled(descriptor.id, it) },
                             )
-                            if (source is HttpSource && source.baseUrl.startsWith("http")) {
-                                IconButton(onClick = { openUrl(source.baseUrl) }) {
-                                    Icon(Icons.Default.Public, contentDescription = MR.strings.desktop_extension_open_source_website.localized(Locale.getDefault(), source.name))
+                            if (source is HttpSource && descriptor.baseUrl?.startsWith("http") == true) {
+                                IconButton(onClick = { openUrl(requireNotNull(descriptor.baseUrl)) }) {
+                                    Icon(
+                                        Icons.Default.Public,
+                                        contentDescription = MR.strings.desktop_extension_open_source_website.localized(
+                                            Locale.getDefault(),
+                                            descriptor.name,
+                                        ),
+                                    )
                                 }
                             }
                             if (source is ConfigurableSource) {
-                                IconButton(onClick = { onSettings(navigator, source.id, source.name) }) {
-                                    Icon(Icons.Default.Settings, contentDescription = MR.strings.desktop_extension_source_settings.localized(Locale.getDefault(), source.name))
+                                IconButton(onClick = { onSettings(navigator, descriptor.id, descriptor.name) }) {
+                                    Icon(
+                                        Icons.Default.Settings,
+                                        contentDescription = MR.strings.desktop_extension_source_settings.localized(
+                                            Locale.getDefault(),
+                                            descriptor.name,
+                                        ),
+                                    )
                                 }
                             }
-                            TextButton(onClick = { onBrowse(navigator, source.id) }) { Text(MR.strings.browse.localized()) }
+                            TextButton(onClick = {
+                                onBrowse(navigator, descriptor.id)
+                            }) { Text(MR.strings.browse.localized()) }
                         }
                     }
                 }
@@ -295,8 +370,14 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                             val incognito = extension.pkgName in incognitoExtensions
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
-                                    Text(MR.strings.pref_incognito_mode.localized(), style = MaterialTheme.typography.titleSmall)
-                                    Text(MR.strings.pref_incognito_mode_extension_summary.localized(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(
+                                        MR.strings.pref_incognito_mode.localized(),
+                                        style = MaterialTheme.typography.titleSmall,
+                                    )
+                                    Text(
+                                        MR.strings.pref_incognito_mode_extension_summary.localized(),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
                                 }
                                 Switch(
                                     checked = incognito,
@@ -306,13 +387,24 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                                         }
                                     },
                                     modifier = Modifier.semantics {
-                                        contentDescription = MR.strings.desktop_extension_incognito_for.localized(Locale.getDefault(), extension.pkgName)
+                                        contentDescription =
+                                            MR.strings.desktop_extension_incognito_for.localized(
+                                                Locale.getDefault(),
+                                                extension.pkgName,
+                                            )
                                     },
                                 )
                             }
                             OutlinedButton(onClick = {
                                 val removed = dependencies.extensionCookiePort.clearCookies(extension.sources)
-                                scope.launch { snackbar.showSnackbar(MR.strings.desktop_extension_cookies_cleared.localized(Locale.getDefault(), removed)) }
+                                scope.launch {
+                                    snackbar.showSnackbar(
+                                        MR.strings.desktop_extension_cookies_cleared.localized(
+                                            Locale.getDefault(),
+                                            removed,
+                                        ),
+                                    )
+                                }
                             }) { Text(MR.strings.pref_clear_cookies.localized()) }
                         }
                     }
@@ -338,16 +430,29 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                 AlertDialog(
                     onDismissRequest = { confirmUninstall = false },
                     title = { Text(MR.strings.ext_confirm_remove.localized()) },
-                    text = { Text(MR.strings.desktop_extension_remove_metadata_confirmation.localized(Locale.getDefault(), extension.name)) },
+                    text = {
+                        Text(
+                            MR.strings.desktop_extension_remove_metadata_confirmation.localized(
+                                Locale.getDefault(),
+                                extension.name,
+                            ),
+                        )
+                    },
                     confirmButton = {
                         TextButton(onClick = {
                             confirmUninstall = false
                             if (!model.uninstall(item)) {
-                                scope.launch { snackbar.showSnackbar(MR.strings.desktop_extension_uninstall_failed.localized()) }
+                                scope.launch {
+                                    snackbar.showSnackbar(MR.strings.desktop_extension_uninstall_failed.localized())
+                                }
                             }
                         }) { Text(MR.strings.ext_uninstall.localized()) }
                     },
-                    dismissButton = { TextButton(onClick = { confirmUninstall = false }) { Text(MR.strings.action_cancel.localized()) } },
+                    dismissButton = {
+                        TextButton(onClick = {
+                            confirmUninstall = false
+                        }) { Text(MR.strings.action_cancel.localized()) }
+                    },
                 )
             }
             if (showNsfwWarning) {

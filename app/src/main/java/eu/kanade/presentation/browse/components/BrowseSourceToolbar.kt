@@ -29,6 +29,7 @@ fun BrowseSourceToolbar(
     searchQuery: String?,
     onSearchQueryChange: (String?) -> Unit,
     source: Source?,
+    sourceTitle: String?,
     displayMode: LibraryDisplayMode,
     onDisplayModeChange: (LibraryDisplayMode) -> Unit,
     navigateUp: () -> Unit,
@@ -39,7 +40,6 @@ fun BrowseSourceToolbar(
     scrollBehavior: TopAppBarScrollBehavior? = null,
 ) {
     // Avoid capturing unstable source in actions lambda
-    val title = source?.name
     val isLocalSource = source is LocalSource
     val isConfigurableSource = source is ConfigurableSource
 
@@ -47,7 +47,7 @@ fun BrowseSourceToolbar(
 
     SearchToolbar(
         navigateUp = navigateUp,
-        titleContent = { AppBarTitle(title) },
+        titleContent = { AppBarTitle(sourceTitle) },
         searchQuery = searchQuery,
         onChangeSearchQuery = onSearchQueryChange,
         onSearch = onSearch,

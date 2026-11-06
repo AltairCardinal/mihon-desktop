@@ -1,12 +1,19 @@
 package tachiyomi.data.creator
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.MangasPage
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SManga
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
+import mihon.domain.network.AppErrorException
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import tachiyomi.data.Database
@@ -14,6 +21,9 @@ import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.JvmDatabaseHandler
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
+import tachiyomi.domain.creator.interactor.CreatorDetails
+import tachiyomi.domain.creator.interactor.DiscoverCreatorWorks
+import tachiyomi.domain.creator.interactor.GetCreatorDetails
 import tachiyomi.domain.creator.model.ArchiveWatchPolicy
 import tachiyomi.domain.creator.model.CreatorRelationOrigin
 import tachiyomi.domain.creator.model.CreatorRelationVerification
@@ -32,8 +42,10 @@ import tachiyomi.domain.creator.model.SourceDiscoveryObservation
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.WatchBaselineState
 import tachiyomi.domain.creator.service.BoundedAuthorSearchPageRequest
+import tachiyomi.domain.creator.service.CatalogueCreatorDiscoverySourceAdapter
 import tachiyomi.domain.creator.service.CreatorDiscoveryBackoff
 import tachiyomi.domain.creator.service.CreatorDiscoveryBounds
+import tachiyomi.domain.creator.service.CreatorDiscoverySchedule
 import tachiyomi.domain.creator.service.CreatorDiscoveryService
 import tachiyomi.domain.creator.service.CreatorDiscoverySourcePort
 import tachiyomi.domain.creator.service.CreatorSourceCapability
@@ -41,6 +53,7 @@ import tachiyomi.domain.creator.service.CreatorSourceDetails
 import tachiyomi.domain.creator.service.CreatorSourceDetailsResult
 import tachiyomi.domain.creator.service.CreatorSourceFailure
 import tachiyomi.domain.creator.service.CreatorSourcePageResult
+import tachiyomi.domain.creator.service.CreatorSourceReadingLanguageProfile
 import tachiyomi.domain.creator.service.CreatorSourceWorkSnapshot
 import tachiyomi.domain.creator.service.EnabledCreatorSource
 
@@ -52,6 +65,107 @@ import tachiyomi.domain.creator.service.EnabledCreatorSource
  * broken executor, broken repository wiring or a bypassed state machine fails these tests.
  */
 class CreatorDiscoveryExecutorStateMachineTest {
+    @Test
+    fun `discovery interactor keeps compatibility visible to existing author screen consumers`(): Unit =
+        runBlocking {
+            val creator = repository.upsertCreator("ONE")
+            val source = CompatibilitySource(10L, true)
+            val adapter = CatalogueCreatorDiscoverySourceAdapter(
+                enabledSourcesProvider = { listOf(source) },
+                sourceResolver = { source },
+                clock = { 1_000 },
+            )
+            val service = CreatorDiscoveryService(repository, repository, adapter, clock = { 1_000 })
+            val interactor = DiscoverCreatorWorks(
+                service,
+                GetCreatorDetails(repository),
+            )
+            val calls = listOf<suspend () -> CreatorDetails>(
+                { interactor.await(creator.id) },
+                { interactor.await(creator.id, listOf(source)) },
+            )
+            val observed = calls.map { call ->
+                val thrown = runCatching { call() }.exceptionOrNull()
+                (thrown as? AppErrorException)?.error?.javaClass?.simpleName
+            }
+            observed shouldContainExactly listOf("ExtensionIncompatible", "ExtensionIncompatible")
+            source.searchCalls shouldBe 2
+        }
+
+    @Test
+    fun `incompatible source waits for manual force while healthy discovery keeps its normal due time`(): Unit =
+        runBlocking {
+            val now = MutableClock(1_000L)
+            val creatorId = seedWatch(now, sourceIds = setOf(10L, 20L))
+            repository.upsertWatchPolicy(
+                checkNotNull(repository.getWatchPolicy(creatorId)).copy(
+                    readingLanguageTags = emptySet(),
+                    includeUnknown = true,
+                ),
+                now = now.value,
+            )
+            val broken = CompatibilitySource(10L, true)
+            val healthy = CompatibilitySource(20L, false)
+            val adapter = CatalogueCreatorDiscoverySourceAdapter(
+                enabledSourcesProvider = { listOf(broken, healthy) },
+                sourceResolver = { id -> listOf(broken, healthy).firstOrNull { it.id == id } },
+                languageProfileProvider = { CreatorSourceReadingLanguageProfile.Single("en") },
+                clock = { now.value },
+            )
+            val service = CreatorDiscoveryService(repository, repository, adapter, clock = { now.value })
+            val first = service.discoverDueWatches()
+            first.runState shouldBe DiscoveryRunState.PARTIAL
+            first.sourceResults.single { it.sourceId == 10L }.failure
+                .shouldBeInstanceOf<CreatorSourceFailure.ExtensionIncompatible>()
+            broken.searchCalls shouldBe 1
+            healthy.searchCalls shouldBe 1
+            queryLong("SELECT COUNT(*) FROM author_archive_source_works WHERE source_id = 20") shouldBe 1L
+            val checkpoint = repository.getSourceCheckpoints(creatorId).single { it.sourceId == 10L }
+            checkpoint.errorCode shouldBe "EXTENSION_INCOMPATIBLE"
+            checkpoint.backoffUntil shouldBe Long.MAX_VALUE
+            val failedNextDue = queryLong("SELECT next_due_at FROM author_archive_watch_sources WHERE source_id = 10")
+            failedNextDue shouldBe Long.MAX_VALUE
+            java.time.Instant.ofEpochMilli(Long.MAX_VALUE).toEpochMilli() shouldBe Long.MAX_VALUE
+            val currentInstant = java.time.Instant.ofEpochMilli(now.value)
+            val maximumInstant = java.time.Instant.ofEpochMilli(Long.MAX_VALUE)
+            val remainingMillis = java.time.Duration.between(currentInstant, maximumInstant).toMillis()
+            remainingMillis shouldBe Long.MAX_VALUE - now.value
+            now.advance(86_400_000L + 1)
+            service.discoverDueWatches()
+            broken.searchCalls shouldBe 1
+            healthy.searchCalls shouldBe 2
+            broken.incompatible = false
+            val manual = service.discoverCreator(creatorId)
+            manual.runState shouldBe DiscoveryRunState.SUCCEEDED
+            broken.searchCalls shouldBe 2
+            repository.getSourceCheckpoints(creatorId).single { it.sourceId == 10L }.backoffUntil shouldBe null
+            repository.getSourceCheckpoints(creatorId).single { it.sourceId == 10L }.errorCode shouldBe null
+            queryLong("SELECT next_due_at FROM author_archive_watch_sources WHERE source_id = 10") shouldBe
+                CreatorDiscoverySchedule().nextDue(now.value)
+        }
+
+    private class CompatibilitySource(override val id: Long, var incompatible: Boolean) : CatalogueSource {
+        override val name = "Creator source $id"
+        override val lang = "en"
+        override val supportsLatest = false
+        var searchCalls = 0
+        override fun getFilterList() = FilterList()
+        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+            searchCalls++
+            if (incompatible) throw NoSuchMethodError("private creator search ABI")
+            val manga = SManga.create().also {
+                it.url = "/creator-work-$id"
+                it.title = "Work $id"
+                it.author = "ONE"
+            }
+            return MangasPage(listOf(manga), false)
+        }
+        override suspend fun getMangaDetails(manga: SManga) = manga.copy().also { it.initialized = true }
+        override suspend fun getPopularManga(page: Int) = MangasPage(emptyList(), false)
+        override suspend fun getLatestUpdates(page: Int) = MangasPage(emptyList(), false)
+        override suspend fun getChapterList(manga: SManga): List<SChapter> = emptyList()
+        override suspend fun getPageList(chapter: SChapter): List<Page> = emptyList()
+    }
 
     private lateinit var repository: CreatorRepositoryImpl
     private lateinit var driver: JdbcSqliteDriver

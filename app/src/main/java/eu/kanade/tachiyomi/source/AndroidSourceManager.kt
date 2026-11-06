@@ -83,6 +83,9 @@ class AndroidSourceManager(
         }
     }
 
+    override fun getRegisteredSourceId(source: Source): Long? =
+        sourcesMapFlow.value.entries.firstOrNull { it.value === source }?.key
+
     override fun get(sourceKey: Long): Source? {
         return sourcesMapFlow.value[sourceKey]
     }
@@ -100,7 +103,7 @@ class AndroidSourceManager(
     override fun getQuerySources(): List<Source> = sourcesMapFlow.value.values.toList()
 
     override fun getStubSources(): List<StubSource> {
-        val onlineSourceIds = getOnlineSources().map { it.id }
+        val onlineSourceIds = sourcesMapFlow.value.entries.filter { it.value is HttpSource }.map { it.key }
         return stubSourcesMap.values.filterNot { it.id in onlineSourceIds }
     }
 

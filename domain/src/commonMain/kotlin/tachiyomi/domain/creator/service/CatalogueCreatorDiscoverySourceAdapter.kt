@@ -1,5 +1,9 @@
 package tachiyomi.domain.creator.service
 
+import eu.kanade.tachiyomi.network.SourceFailureIdentity
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.source.AuthorSearchCreatorRole
 import eu.kanade.tachiyomi.source.AuthorSearchManga
 import eu.kanade.tachiyomi.source.AuthorSearchSource
@@ -12,19 +16,26 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import mihon.domain.error.AppError
+import mihon.domain.network.AppErrorException
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.model.SourceDateValue
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.source.service.SourceMangaSearchRequest
 import tachiyomi.domain.source.service.SourceMangaSearchService
+import tachiyomi.domain.source.service.SourceMetadataSnapshot
+import tachiyomi.domain.source.service.SourceRegistration
+import tachiyomi.domain.source.service.prepareSourceMetadata
 import tachiyomi.domain.source.service.toSourceAppError
+import tachiyomi.domain.source.service.withSourceFailureIdentity
+
+typealias CreatorSourceIdentityLookup = (CatalogueSource, Long?) -> SourceFailureIdentity
 
 /** Production adapter from extension catalogue APIs to the bounded discovery source contract. */
 class CatalogueCreatorDiscoverySourceAdapter(
     private val enabledSourcesProvider: suspend () -> List<CatalogueSource>,
     private val sourceResolver: (Long) -> CatalogueSource?,
     private val sourceMangaSearchService: SourceMangaSearchService = SourceMangaSearchService(),
-    private val languageProfileProvider: (CatalogueSource) -> CreatorSourceReadingLanguageProfile = {
+    private val languageProfileProvider: (SourceMetadataSnapshot) -> CreatorSourceReadingLanguageProfile = {
         CreatorSourceReadingLanguageProfile.Unknown
     },
     private val extensionPackageProvider: (CatalogueSource) -> String = {
@@ -38,79 +49,175 @@ class CatalogueCreatorDiscoverySourceAdapter(
     },
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val titleAttributionPolicy: CreatorTitleAttributionPolicy = CreatorTitleAttributionPolicy.Disabled,
+    private val registeredSourceIdProvider: ((CatalogueSource) -> Long?)? = null,
+    private val identitySnapshotProvider: (() -> CreatorSourceIdentityLookup)? = null,
+    private val registeredSourceEligibilityProvider: (() -> ((Long) -> Boolean))? = null,
+    private val languageEligibilityProvider: (() -> ((String) -> Boolean))? = null,
 ) : CreatorDiscoverySourcePort {
     private val mutex = Mutex()
     private var snapshotSources = emptyMap<Long, CatalogueSource>()
+    private var snapshotFailures = emptyMap<Long, CreatorSourceFailure>()
     private val searchHits = mutableMapOf<SearchHitKey, CachedSearchHit>()
 
+    /** Explicit legacy callers retain their own candidate list and permissive language policy. */
+    internal fun forExplicitSources(
+        sources: List<CatalogueSource>,
+        searchService: SourceMangaSearchService,
+        legacyClock: () -> Long,
+        policy: CreatorTitleAttributionPolicy,
+    ) = CatalogueCreatorDiscoverySourceAdapter(
+        enabledSourcesProvider = { sources },
+        sourceResolver = { null },
+        sourceMangaSearchService = searchService,
+        languageProfileProvider = { metadata ->
+            metadata.language?.takeIf(String::isNotBlank)?.let(CreatorSourceReadingLanguageProfile::Single)
+                ?: CreatorSourceReadingLanguageProfile.Unknown
+        },
+        extensionPackageProvider = extensionPackageProvider,
+        extensionVersionProvider = extensionVersionProvider,
+        clock = legacyClock,
+        titleAttributionPolicy = policy,
+        registeredSourceIdProvider = registeredSourceIdProvider,
+        identitySnapshotProvider = identitySnapshotProvider,
+    )
+
     override suspend fun enabledSourcesSnapshot(): List<EnabledCreatorSource> {
-        val sources = enabledSourcesProvider()
-            .map { sourceResolver(it.id) ?: it }
-            .distinctBy(CatalogueSource::id)
-        mutex.withLock {
-            snapshotSources = sources.associateBy(CatalogueSource::id)
-            searchHits.keys.removeAll { it.work.sourceId !in snapshotSources }
-        }
-        return sources.map { source ->
-            EnabledCreatorSource(
-                sourceId = source.id,
-                displayName = source.name,
+        val identityForSource = identitySnapshotProvider?.invoke()
+        val idEligible = registeredSourceEligibilityProvider?.invoke() ?: { _: Long -> true }
+        val languageEligible = languageEligibilityProvider?.invoke() ?: { _: String -> true }
+        val registrations = mutableListOf<SourceRegistration>()
+        val seenIds = mutableSetOf<Long>()
+        val prepared = mutableListOf<PreparedSource>()
+        for (candidate in enabledSourcesProvider()) {
+            val prior = registrations.firstOrNull { it.source === candidate }
+            val id = prior?.sourceId ?: if (registeredSourceIdProvider != null) {
+                registeredSourceIdProvider.invoke(candidate)
+            } else {
+                try {
+                    guardSourceOperation(SourceOperationPhase.METADATA) { candidate.id }
+                } catch (error: Exception) {
+                    error.rethrowSourceControlFailure()
+                    val mapped = error.toSourceAppError()
+                    val identity = identityForSource?.invoke(candidate, null)
+                    throw AppErrorException(identity?.let(mapped::withSourceFailureIdentity) ?: mapped)
+                }
+            }
+            if (id != null) {
+                if (!seenIds.add(id)) continue
+                registrations += SourceRegistration(candidate, id)
+                if (!idEligible(id)) continue
+            }
+            // Strict registration keeps the exact source reference; only the old standalone
+            // explicit-list mode retains its supplied resolver's canonical source behavior.
+            val source = if (registeredSourceIdProvider == null &&
+                id != null
+            ) {
+                sourceResolver(id) ?: candidate
+            } else {
+                candidate
+            }
+            val identity = identityForSource?.invoke(source, id)
+            val metadata = if (languageEligibilityProvider == null) {
+                prepareSourceMetadata(source, id)
+            } else {
+                prepareSourceMetadata(source, id, languageEligible)
+            }
+            val failure = metadata.error?.let { error -> identity?.let(error::withSourceFailureIdentity) ?: error }
+            val language = metadata.language
+            if (language != null && !languageEligible(language)) continue
+            if (id == null) {
+                throw AppErrorException(
+                    failure ?: AppError.MalformedData(
+                        IllegalStateException("Source registration identity is unavailable"),
+                    ),
+                )
+            }
+            val descriptor = EnabledCreatorSource(
+                sourceId = id,
+                displayName = metadata.name?.takeIf(String::isNotBlank) ?: "Unknown",
                 capabilities = buildSet {
                     add(CreatorSourceCapability.DETAILS)
-                    if (source is AuthorSearchSource && !titleAttributionPolicy.isEnabled(source.id)) {
+                    if (source is AuthorSearchSource && !titleAttributionPolicy.isEnabled(id)) {
                         add(CreatorSourceCapability.AUTHOR_SEARCH)
                     } else {
                         add(CreatorSourceCapability.CATALOGUE_SEARCH_FALLBACK)
                     }
                 },
-                readingLanguageProfile = languageProfileProvider(source),
-                catalogueLanguageTag = source.lang,
-                extensionPackage = extensionPackageProvider(source),
-                extensionVersion = extensionVersionProvider(source),
+                readingLanguageProfile = if (failure != null) {
+                    CreatorSourceReadingLanguageProfile.Unknown
+                } else {
+                    languageProfileProvider(metadata)
+                },
+                catalogueLanguageTag = metadata.language,
+                extensionPackage = if (identityForSource != null) {
+                    identity?.extensionPackage?.takeIf(String::isNotBlank)
+                        ?: "unknown.extension"
+                } else {
+                    extensionPackageProvider(source)
+                },
+                extensionVersion = if (identityForSource != null) {
+                    identity?.creatorExtensionVersion() ?: "unknown"
+                } else {
+                    extensionVersionProvider(source)
+                },
             )
+            prepared += PreparedSource(source, descriptor, failure?.toCreatorSourceFailure())
         }
+        mutex.withLock {
+            snapshotSources = prepared.associate { it.descriptor.sourceId to it.source }
+            snapshotFailures =
+                prepared.mapNotNull { item -> item.failure?.let { item.descriptor.sourceId to it } }.toMap()
+            searchHits.keys.removeAll { it.work.sourceId !in snapshotSources }
+        }
+        return prepared.map { it.descriptor }
     }
 
     override suspend fun searchPage(request: BoundedAuthorSearchPageRequest): CreatorSourcePageResult {
-        val source = mutex.withLock { snapshotSources[request.sourceId] }
-            ?: return CreatorSourcePageResult.Failure(CreatorSourceFailure.MissingSource)
+        val selected = mutex.withLock { snapshotSources[request.sourceId] to snapshotFailures[request.sourceId] }
+        selected.second?.let { return CreatorSourcePageResult.Failure(it) }
+        val source = selected.first ?: return CreatorSourcePageResult.Failure(CreatorSourceFailure.MissingSource)
         val remainingMillis = request.deadlineAtMillis - clock()
         if (remainingMillis <= 0) return CreatorSourcePageResult.Failure(CreatorSourceFailure.Timeout)
 
         return try {
             withTimeout(remainingMillis) {
                 val page = if (source is AuthorSearchSource && !request.titleSearch &&
-                    !titleAttributionPolicy.isEnabled(source.id)
+                    !titleAttributionPolicy.isEnabled(request.sourceId)
                 ) {
                     try {
-                        source.getAuthorSearchManga(request.page, request.alias).let { result ->
+                        guardSourceOperation(SourceOperationPhase.SEARCH) {
+                            source.getAuthorSearchManga(request.page, request.alias)
+                        }.let { result ->
                             SearchPage(result.mangas, result.hasNextPage)
                         }
                     } catch (error: CancellationException) {
                         throw error
-                    } catch (_: Exception) {
+                    } catch (error: Exception) {
+                        error.rethrowSourceControlFailure()
+                        if (error.toSourceAppError() is AppError.ExtensionIncompatible) throw error
                         sourceMangaSearchService.loadPage(
                             source = source,
                             page = request.page,
-                            request = SourceMangaSearchRequest.Search(request.alias, source.getFilterList()),
+                            request = SourceMangaSearchRequest.Search(request.alias, source.creatorFilters()),
                         ).toSearchPage()
                     }
                 } else {
                     sourceMangaSearchService.loadPage(
                         source = source,
                         page = request.page,
-                        request = SourceMangaSearchRequest.Search(request.alias, source.getFilterList()),
+                        request = SourceMangaSearchRequest.Search(request.alias, source.creatorFilters()),
                     ).toSearchPage()
                 }
                 if (page.items.isEmpty()) {
                     CreatorSourcePageResult.Empty
                 } else {
                     val works = page.items
-                        .map { item -> item.toSnapshot(source.id) }
+                        .map { item -> item.toSnapshot(request.sourceId) }
                         .distinctBy(CreatorSourceWorkSnapshot::key)
                     mutex.withLock {
                         page.items.forEach { item ->
-                            searchHits[SearchHitKey(item.key(source.id), request.titleSearch)] = item.toCachedHit()
+                            searchHits[SearchHitKey(item.key(request.sourceId), request.titleSearch)] =
+                                item.toCachedHit()
                         }
                     }
                     CreatorSourcePageResult.Content(works, page.hasNextPage)
@@ -128,19 +235,23 @@ class CatalogueCreatorDiscoverySourceAdapter(
     override suspend fun loadDetails(key: SourceWorkNaturalKey): CreatorSourceDetailsResult = loadDetails(key, false)
 
     override suspend fun loadDetails(key: SourceWorkNaturalKey, titleSearch: Boolean): CreatorSourceDetailsResult {
-        val source = mutex.withLock { snapshotSources[key.sourceId] }
-            ?: return CreatorSourceDetailsResult.Failure(CreatorSourceFailure.MissingSource)
+        val selected = mutex.withLock { snapshotSources[key.sourceId] to snapshotFailures[key.sourceId] }
+        selected.second?.let { return CreatorSourceDetailsResult.Failure(it) }
+        val source = selected.first ?: return CreatorSourceDetailsResult.Failure(CreatorSourceFailure.MissingSource)
         val cached = mutex.withLock { searchHits[SearchHitKey(key, titleSearch)] }
-        val listedManga = cached?.manga?.copy() ?: SManga.create().also {
-            it.url = key.stableSourceUrl
-            it.title = key.stableSourceUrl
-        }
         return try {
-            val details = source.getMangaDetails(listedManga)
+            val listedManga =
+                cached?.manga?.let { guardSourceOperation(SourceOperationPhase.DETAILS) { it.copy() } }
+                    ?: SManga.create().also {
+                        it.url = key.stableSourceUrl
+                        it.title = key.stableSourceUrl
+                    }
+            val details = guardSourceOperation(SourceOperationPhase.DETAILS) { source.getMangaDetails(listedManga) }
             val work = details.toSnapshot(
-                sourceId = source.id,
+                sourceId = key.sourceId,
                 stableUrlFallback = key.stableSourceUrl,
                 structuredMatches = cached?.structuredMatches.orEmpty(),
+                phase = SourceOperationPhase.DETAILS,
             )
             CreatorSourceDetailsResult.Content(
                 CreatorSourceDetails(
@@ -148,10 +259,12 @@ class CatalogueCreatorDiscoverySourceAdapter(
                     readingLanguageTag = cached?.readingLanguageTag,
                     originalLanguageTag = cached?.originalLanguageTag,
                     metadata = buildMap {
-                        details.description?.let { put("description", it) }
-                        details.getGenres()?.takeIf(List<String>::isNotEmpty)?.let {
-                            put("genres", it.joinToString("\u001f"))
-                        }
+                        guardSourceOperation(SourceOperationPhase.DETAILS) { details.description }
+                            ?.let { put("description", it) }
+                        guardSourceOperation(SourceOperationPhase.DETAILS) { details.getGenres() }
+                            ?.takeIf(List<String>::isNotEmpty)?.let {
+                                put("genres", it.joinToString("\u001f"))
+                            }
                     },
                 ),
             )
@@ -182,29 +295,33 @@ class CatalogueCreatorDiscoverySourceAdapter(
         sourceId: Long,
         stableUrlFallback: String? = null,
         structuredMatches: List<CreatorStructuredIdentityMatch> = emptyList(),
-    ): CreatorSourceWorkSnapshot = CreatorSourceWorkSnapshot(
-        key = SourceWorkNaturalKey(
-            sourceId = sourceId,
-            stableSourceUrl = CreatorSourceWorkKey.stableUrl(
-                url = runCatching { url }.getOrDefault(stableUrlFallback.orEmpty()),
-                title = title,
-                author = author,
-                artist = artist,
-            ),
-        ),
-        title = title,
-        authorText = author,
-        artistText = artist,
-        thumbnailUrl = thumbnail_url,
-        structuredCreatorMatches = structuredMatches,
-        publishedDate = publishedDateProvider(this),
-        titleAttributionEnabled = titleAttributionPolicy.isEnabled(sourceId),
-    )
+        phase: SourceOperationPhase = SourceOperationPhase.SEARCH,
+    ): CreatorSourceWorkSnapshot {
+        val url = try {
+            guardSourceOperation(phase) { this.url }
+        } catch (_: UninitializedPropertyAccessException) {
+            stableUrlFallback.orEmpty()
+        }
+        val title = guardSourceOperation(phase) { this.title }
+        val author = guardSourceOperation(phase) { this.author }
+        val artist = guardSourceOperation(phase) { this.artist }
+        val thumbnail = guardSourceOperation(phase) { this.thumbnail_url }
+        return CreatorSourceWorkSnapshot(
+            key = SourceWorkNaturalKey(sourceId, CreatorSourceWorkKey.stableUrl(url, title, author, artist)),
+            title = title,
+            authorText = author,
+            artistText = artist,
+            thumbnailUrl = thumbnail,
+            structuredCreatorMatches = structuredMatches,
+            publishedDate = publishedDateProvider(this),
+            titleAttributionEnabled = titleAttributionPolicy.isEnabled(sourceId),
+        )
+    }
 
     private fun AuthorSearchManga.key(sourceId: Long): SourceWorkNaturalKey = manga.toSnapshot(sourceId).key
 
     private fun AuthorSearchManga.toCachedHit(): CachedSearchHit = CachedSearchHit(
-        manga = manga.copy(),
+        manga = guardSourceOperation(SourceOperationPhase.SEARCH) { manga.copy() },
         structuredMatches = matchedCreators.map { match ->
             CreatorStructuredIdentityMatch(match.displayName, match.role.toCreatorRole(), match.evidence)
         },
@@ -218,6 +335,12 @@ class CatalogueCreatorDiscoverySourceAdapter(
         AuthorSearchCreatorRole.BOTH -> CreatorRole.BOTH
         AuthorSearchCreatorRole.UNKNOWN -> CreatorRole.UNKNOWN
     }
+
+    private data class PreparedSource(
+        val source: CatalogueSource,
+        val descriptor: EnabledCreatorSource,
+        val failure: CreatorSourceFailure?,
+    )
 
     private data class SearchPage(
         val items: List<AuthorSearchManga>,
@@ -234,7 +357,20 @@ class CatalogueCreatorDiscoverySourceAdapter(
     private data class SearchHitKey(val work: SourceWorkNaturalKey, val titleSearch: Boolean)
 }
 
-private fun Throwable.toCreatorSourceFailure(): CreatorSourceFailure = when (val error = toSourceAppError()) {
+private fun CatalogueSource.creatorFilters() = guardSourceOperation(SourceOperationPhase.FILTERS) { getFilterList() }
+
+private fun SourceFailureIdentity.creatorExtensionVersion(): String {
+    val version = versionName?.takeIf(String::isNotBlank)
+    return if (version != null && versionCode != null) "$version+$versionCode" else "unknown"
+}
+
+private fun Throwable.toCreatorSourceFailure(): CreatorSourceFailure {
+    rethrowSourceControlFailure()
+    return toSourceAppError().toCreatorSourceFailure()
+}
+
+private fun AppError.toCreatorSourceFailure(): CreatorSourceFailure = when (val error = this) {
+    is AppError.ExtensionIncompatible -> CreatorSourceFailure.ExtensionIncompatible(error.cause)
     is AppError.Authentication, is AppError.Challenge -> CreatorSourceFailure.AuthenticationRequired(null)
     is AppError.RateLimited -> CreatorSourceFailure.RateLimited(error.retryAfterSeconds?.times(1_000))
     is AppError.Forbidden -> CreatorSourceFailure.Http(403)

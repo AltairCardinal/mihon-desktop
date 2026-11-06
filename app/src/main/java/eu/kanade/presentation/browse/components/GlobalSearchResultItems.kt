@@ -34,6 +34,7 @@ fun GlobalSearchResultItem(
     subtitle: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     Column(modifier = modifier) {
@@ -44,7 +45,7 @@ fun GlobalSearchResultItem(
                     end = MaterialTheme.padding.extraSmall,
                 )
                 .fillMaxWidth()
-                .clickable(onClick = onClick),
+                .clickable(enabled = enabled, onClick = onClick),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -55,7 +56,7 @@ fun GlobalSearchResultItem(
                 )
                 Text(text = subtitle)
             }
-            IconButton(onClick = onClick) {
+            IconButton(onClick = onClick, enabled = enabled) {
                 Icon(imageVector = Icons.AutoMirrored.Outlined.ArrowForward, contentDescription = null)
             }
         }
@@ -83,6 +84,7 @@ fun GlobalSearchLoadingResultItem() {
 fun GlobalSearchErrorResultItem(
     message: String?,
     actionLabel: String? = null,
+    details: String? = null,
     onAction: () -> Unit = {},
 ) {
     Column(
@@ -101,6 +103,13 @@ fun GlobalSearchErrorResultItem(
             text = message ?: stringResource(MR.strings.unknown_error),
             textAlign = TextAlign.Center,
         )
+        details?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
+            )
+        }
         if (actionLabel != null) {
             TextButton(onClick = onAction) {
                 Text(actionLabel)

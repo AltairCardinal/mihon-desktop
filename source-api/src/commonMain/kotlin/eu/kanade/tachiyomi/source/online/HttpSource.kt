@@ -2,15 +2,20 @@ package eu.kanade.tachiyomi.source.online
 
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.network.SourceOperationPhase
 import eu.kanade.tachiyomi.network.asObservableSuccess
 import eu.kanade.tachiyomi.network.awaitSuccess
+import eu.kanade.tachiyomi.network.guardSourceOperation
+import eu.kanade.tachiyomi.network.inspectSourceFailure
 import eu.kanade.tachiyomi.network.newCachelessCallWithProgress
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import okhttp3.Call
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -117,10 +122,10 @@ abstract class HttpSource : CatalogueSource {
      */
     @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getPopularManga"))
     override fun fetchPopularManga(page: Int): Observable<MangasPage> {
-        return client.newCall(popularMangaRequest(page))
+        return sourceCall(SourceOperationPhase.POPULAR) { popularMangaRequest(page) }
             .asObservableSuccess()
             .map { response ->
-                popularMangaParse(response)
+                response.parseSourceResponse(SourceOperationPhase.POPULAR) { popularMangaParse(it) }
             }
     }
 
@@ -155,16 +160,10 @@ abstract class HttpSource : CatalogueSource {
         filters: FilterList,
     ): Observable<MangasPage> {
         return Observable.defer {
-            try {
-                client.newCall(searchMangaRequest(page, query, filters)).asObservableSuccess()
-            } catch (e: NoClassDefFoundError) {
-                // RxJava doesn't handle Errors, which tends to happen during global searches
-                // if an old extension using non-existent classes is still around
-                throw RuntimeException(e)
-            }
+            sourceCall(SourceOperationPhase.SEARCH) { searchMangaRequest(page, query, filters) }.asObservableSuccess()
         }
             .map { response ->
-                searchMangaParse(response)
+                response.parseSourceResponse(SourceOperationPhase.SEARCH) { searchMangaParse(it) }
             }
     }
 
@@ -196,10 +195,10 @@ abstract class HttpSource : CatalogueSource {
      */
     @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getLatestUpdates"))
     override fun fetchLatestUpdates(page: Int): Observable<MangasPage> {
-        return client.newCall(latestUpdatesRequest(page))
+        return sourceCall(SourceOperationPhase.LATEST) { latestUpdatesRequest(page) }
             .asObservableSuccess()
             .map { response ->
-                latestUpdatesParse(response)
+                response.parseSourceResponse(SourceOperationPhase.LATEST) { latestUpdatesParse(it) }
             }
     }
 
@@ -233,10 +232,11 @@ abstract class HttpSource : CatalogueSource {
 
     @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getMangaDetails"))
     override fun fetchMangaDetails(manga: SManga): Observable<SManga> {
-        return client.newCall(mangaDetailsRequest(manga))
+        return sourceCall(SourceOperationPhase.DETAILS) { mangaDetailsRequest(manga) }
             .asObservableSuccess()
             .map { response ->
-                mangaDetailsParse(response).apply { initialized = true }
+                response.parseSourceResponse(SourceOperationPhase.DETAILS) { mangaDetailsParse(it) }
+                    .apply { initialized = true }
             }
     }
 
@@ -272,10 +272,10 @@ abstract class HttpSource : CatalogueSource {
 
     @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getChapterList"))
     override fun fetchChapterList(manga: SManga): Observable<List<SChapter>> {
-        return client.newCall(chapterListRequest(manga))
+        return sourceCall(SourceOperationPhase.CHAPTERS) { chapterListRequest(manga) }
             .asObservableSuccess()
             .map { response ->
-                chapterListParse(response)
+                response.parseSourceResponse(SourceOperationPhase.CHAPTERS) { chapterListParse(it) }
             }
     }
 
@@ -318,10 +318,10 @@ abstract class HttpSource : CatalogueSource {
 
     @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getPageList"))
     override fun fetchPageList(chapter: SChapter): Observable<List<Page>> {
-        return client.newCall(pageListRequest(chapter))
+        return sourceCall(SourceOperationPhase.PAGE_LIST) { pageListRequest(chapter) }
             .asObservableSuccess()
             .map { response ->
-                pageListParse(response)
+                response.parseSourceResponse(SourceOperationPhase.PAGE_LIST) { pageListParse(it) }
             }
     }
 
@@ -357,9 +357,9 @@ abstract class HttpSource : CatalogueSource {
 
     @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getImageUrl"))
     open fun fetchImageUrl(page: Page): Observable<String> {
-        return client.newCall(imageUrlRequest(page))
+        return sourceCall(SourceOperationPhase.IMAGE_URL) { imageUrlRequest(page) }
             .asObservableSuccess()
-            .map { imageUrlParse(it) }
+            .map { response -> response.parseSourceResponse(SourceOperationPhase.IMAGE_URL) { imageUrlParse(it) } }
     }
 
     /**
@@ -407,8 +407,48 @@ abstract class HttpSource : CatalogueSource {
     }
 
     private suspend fun getImageResponse(page: Page, existingSize: Long): Response {
-        return client.newCachelessCallWithProgress(imageRequest(page), page, existingSize)
+        val sourceClient = guardSourceOperation(SourceOperationPhase.IMAGE_REQUEST) { client }
+        val request = guardSourceOperation(SourceOperationPhase.IMAGE_REQUEST) { imageRequest(page) }
+        return sourceClient.newCachelessCallWithProgress(request, page, existingSize)
             .awaitSuccess()
+    }
+
+    private inline fun sourceCall(phase: SourceOperationPhase, request: () -> Request): Call {
+        val sourceClient = guardSourceOperation(phase) { client }
+        val sourceRequest = guardSourceOperation(phase, request)
+        return sourceClient.newCall(sourceRequest)
+    }
+
+    // Convert inside the Rx mapper: RxJava treats raw LinkageError as fatal before onError.
+    // Parsed values own no HTTP stream; raw image responses above remain owned by the caller.
+    private inline fun <T> Response.parseSourceResponse(phase: SourceOperationPhase, parse: (Response) -> T): T {
+        var failure: Throwable? = null
+        try {
+            return guardSourceOperation(phase) { parse(this) }
+        } catch (error: Throwable) {
+            failure = error
+            throw error
+        } finally {
+            try {
+                close()
+            } catch (cleanup: Throwable) {
+                // use() suppresses even VM failures when parsing already failed. Preserve control
+                // propagation before attaching an ordinary cleanup failure to the primary error.
+                val primary = failure
+                val primaryInspection = primary?.inspectSourceFailure()
+                val cleanupInspection = cleanup.inspectSourceFailure()
+                primaryInspection?.fatal?.let { throw it }
+                cleanupInspection.fatal?.let { throw it }
+                if (primary != null && primaryInspection?.complete == false) throw primary
+                if (!cleanupInspection.complete) throw cleanup
+                primaryInspection?.cancellation?.let { throw it }
+                cleanupInspection.cancellation?.let { throw it }
+                failure?.rethrowSourceControlFailure()
+                cleanup.rethrowSourceControlFailure()
+                if (failure == null) throw cleanup
+                if (failure !== cleanup) failure.addSuppressed(cleanup)
+            }
+        }
     }
 
     /**

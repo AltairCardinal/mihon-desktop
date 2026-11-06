@@ -2,6 +2,8 @@ package eu.kanade.tachiyomi.data.download
 
 import android.content.Context
 import com.hippo.unifile.UniFile
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
 import eu.kanade.tachiyomi.source.Source
 import logcat.LogPriority
 import mihon.domain.reader.content.DownloadArtifactNamingPolicy
@@ -178,7 +180,7 @@ class DownloadProvider(
      */
     fun getSourceDirName(source: Source): String {
         return DownloadArtifactNamingPolicy.validFilename(
-            originalName = source.toString(),
+            originalName = guardSourceOperation(SourceOperationPhase.METADATA) { source.toString() },
             disallowNonAscii = libraryPreferences.disallowNonAsciiFilenames().get(),
         )
     }

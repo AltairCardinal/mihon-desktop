@@ -45,6 +45,10 @@ object ReaderTestModeSourceBridge {
 
     fun sources(): List<CatalogueSource> = listOfNotNull(value.get())
 
+    fun registrations(): List<tachiyomi.domain.source.service.SourceRegistration> = listOfNotNull(value.get()).map {
+        tachiyomi.domain.source.service.SourceRegistration(it, ReaderTestModeController.READER_TEST_SOURCE_ID)
+    }
+
     fun install(source: ReaderTestModeOnlineSource) {
         value.set(source)
     }

@@ -2,13 +2,17 @@ package tachiyomi.domain.creator.interactor
 
 import eu.kanade.tachiyomi.source.CatalogueSource
 import kotlinx.coroutines.flow.Flow
+import mihon.domain.error.AppError
+import mihon.domain.network.AppErrorException
 import mihon.domain.sync.SyncMutationContext
 import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.CreatorWatch
 import tachiyomi.domain.creator.model.DiscoveryCandidate
 import tachiyomi.domain.creator.model.MangaCreator
 import tachiyomi.domain.creator.repository.CreatorRepository
+import tachiyomi.domain.creator.service.CreatorDiscoveryResult
 import tachiyomi.domain.creator.service.CreatorDiscoveryService
+import tachiyomi.domain.creator.service.CreatorSourceFailure
 
 class GetCreators(
     private val repository: CreatorRepository,
@@ -56,13 +60,19 @@ class DiscoverCreatorWorks(
     private val getCreatorDetails: GetCreatorDetails,
 ) {
     suspend fun await(creatorId: Long): CreatorDetails {
-        discoveryService.discoverCreator(creatorId)
+        discoveryService.discoverCreator(creatorId).requireCompatibleSources()
         return getCreatorDetails.await(creatorId)
     }
 
     /** Temporary compatibility overload for Android until the final platform cutover. */
     suspend fun await(creatorId: Long, sources: List<CatalogueSource>): CreatorDetails {
-        discoveryService.discoverCreator(creatorId, sources)
+        discoveryService.discoverCreator(creatorId, sources).requireCompatibleSources()
         return getCreatorDetails.await(creatorId)
+    }
+}
+
+private fun CreatorDiscoveryResult.requireCompatibleSources() {
+    sourceResults.firstNotNullOfOrNull { it.failure as? CreatorSourceFailure.ExtensionIncompatible }?.let {
+        throw AppErrorException(AppError.ExtensionIncompatible(it.cause))
     }
 }

@@ -1,5 +1,7 @@
 package tachiyomi.domain.source.service
 
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
 import eu.kanade.tachiyomi.source.model.SManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
@@ -10,9 +12,26 @@ fun sourceMangaMetadata(
     remote: SManga,
     updateFavoriteTitles: Boolean,
     coverLastModified: Long? = null,
+): MangaUpdate = sourceMangaMetadata(
+    stored,
+    remote,
+    updateFavoriteTitles,
+    coverLastModified,
+    SourceOperationPhase.DETAILS,
+)
+
+fun sourceMangaMetadata(
+    stored: Manga,
+    remote: SManga,
+    updateFavoriteTitles: Boolean,
+    coverLastModified: Long?,
+    phase: SourceOperationPhase,
 ): MangaUpdate {
     val title = try {
-        remote.title.takeIf { it.isNotEmpty() && (!stored.favorite || updateFavoriteTitles) }
+        guardSourceOperation(phase) { remote.title }.takeIf {
+            it.isNotEmpty() &&
+                (!stored.favorite || updateFavoriteTitles)
+        }
     } catch (_: UninitializedPropertyAccessException) {
         null
     }
@@ -20,14 +39,14 @@ fun sourceMangaMetadata(
         id = stored.id,
         title = title,
         coverLastModified = coverLastModified,
-        author = remote.author,
-        artist = remote.artist,
-        description = remote.description,
-        genre = remote.getGenres(),
-        thumbnailUrl = remote.thumbnail_url?.takeIf(String::isNotEmpty),
-        status = remote.status.toLong(),
-        updateStrategy = remote.update_strategy,
+        author = guardSourceOperation(phase) { remote.author },
+        artist = guardSourceOperation(phase) { remote.artist },
+        description = guardSourceOperation(phase) { remote.description },
+        genre = guardSourceOperation(phase) { remote.getGenres() },
+        thumbnailUrl = guardSourceOperation(phase) { remote.thumbnail_url }?.takeIf(String::isNotEmpty),
+        status = guardSourceOperation(phase) { remote.status }.toLong(),
+        updateStrategy = guardSourceOperation(phase) { remote.update_strategy },
         initialized = true,
-        memo = remote.memo,
+        memo = guardSourceOperation(phase) { remote.memo },
     )
 }

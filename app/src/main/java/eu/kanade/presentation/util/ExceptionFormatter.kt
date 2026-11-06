@@ -16,6 +16,7 @@ import java.net.UnknownHostException
 fun sourceErrorMessageResource(error: AppError): StringResource? = when (error) {
     is AppError.Authentication -> MR.strings.source_error_authentication
     is AppError.Forbidden -> MR.strings.source_error_forbidden
+    is AppError.ExtensionIncompatible -> MR.strings.source_error_extension_incompatible
     else -> null
 }
 

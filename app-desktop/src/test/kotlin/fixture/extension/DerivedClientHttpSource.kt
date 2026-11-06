@@ -20,7 +20,11 @@ class DerivedClientHttpSource : HttpSource() {
     override val supportsLatest = false
 
     // Matches real extensions such as Manhuagui: capture a derived client in the constructor.
-    override val client: OkHttpClient = ExtensionNetworkTestBridge.networkHelper.client.newBuilder().build()
+    override val client: OkHttpClient = checkNotNull(
+        ExtensionNetworkTestBridge.networkHelper,
+    ).client.newBuilder().build()
+
+    fun callFromExtension(block: () -> Any): Any = block()
 
     override fun popularMangaRequest(page: Int): Request = error("not used")
     override fun popularMangaParse(response: Response): MangasPage = error("not used")

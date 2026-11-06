@@ -1,6 +1,8 @@
 package mihon.desktop.ui.library
 
 import cafe.adriel.voyager.core.model.ScreenModel
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
@@ -498,7 +500,13 @@ class MangaDetailScreenModel(
             }
         }
         return publishChapterBatchResult(
-            BatchChapterResult(succeededIds = applicable.map { it.id }, failures = emptyList(), skippedIds = skippedIds),
+            BatchChapterResult(
+                succeededIds = applicable.map {
+                    it.id
+                },
+                failures = emptyList(),
+                skippedIds = skippedIds,
+            ),
         )
     }
 
@@ -942,14 +950,35 @@ class MangaDetailScreenModel(
             .get(manga.source)
     }
 
-    fun migrationSources(currentSourceId: Long?): List<CatalogueSource> {
-        return requireNotNull(sourceManager) { "SourceManager is required" }
-            .getCatalogueSources()
-            .filter { it.id != currentSourceId }
+    fun migrationSources(currentSourceId: Long?): List<tachiyomi.domain.source.service.SourceMetadataSnapshot> {
+        val manager = requireNotNull(sourceManager) { "SourceManager is required" }
+        return manager.getCatalogueSources().mapNotNull { source ->
+            val registeredId = manager.getRegisteredSourceId(source)
+            if (registeredId != null && registeredId == currentSourceId) return@mapNotNull null
+            val metadata = tachiyomi.domain.source.service.prepareSourceMetadata(source, registeredId)
+            if (registeredId != null || metadata.error != null) {
+                metadata
+            } else {
+                tachiyomi.domain.source.service.SourceMetadataSnapshot(
+                    source,
+                    null,
+                    metadata.name,
+                    metadata.language,
+                    mihon.domain.error.AppError.Unknown(
+                        IllegalStateException("Source registration identity is unavailable"),
+                    ),
+                )
+            }
+        }
     }
 
     suspend fun searchMigration(source: CatalogueSource, query: String): List<SManga> {
-        return source.getSearchManga(1, query, FilterList()).mangas
+        if (sourceManager != null && sourceManager.getRegisteredSourceId(source) == null) {
+            throw mihon.domain.network.AppErrorException(mihon.domain.error.AppError.Unknown())
+        }
+        return guardSourceOperation(SourceOperationPhase.SEARCH) {
+            source.getSearchManga(1, query, FilterList())
+        }.mangas
     }
 
     suspend fun refreshByGesture(): Boolean {

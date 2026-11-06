@@ -1,6 +1,7 @@
 package mihon.desktop.reader
 
 import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.network.inspectSourceFailure
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -100,6 +101,96 @@ class DesktopReaderMaterializePortsIntegrationTest {
 
     @TempDir
     lateinit var tempDir: File
+
+    @Test
+    fun `overridden page list ABI failure stays classified through the canonical desktop reader`() = runTest {
+        val failure = NoSuchMethodError("future page list override")
+        val source = PageSource(emptyList(), OkHttpClient(), failure)
+        val port =
+            DesktopReaderChapterContentPort(
+                context(),
+                DesktopDownloadProvider(tempDir.resolve("compat-downloads")),
+                FakeDesktopSourceManager(listOf(source)),
+            )
+        val result = CanonicalReaderMaterializeExecutor.materializeChapter(
+            ReaderChapterContentRequest(ReaderChapterId(1L), 1L),
+            port,
+        )
+        val error = assertInstanceOf(
+            AppError.ExtensionIncompatible::class.java,
+            assertInstanceOf(ReaderChapterMaterializeResult.Failed::class.java, result).error,
+        )
+        val typed = assertInstanceOf(eu.kanade.tachiyomi.network.SourceCompatibilityException::class.java, error.cause)
+        assertSame(failure, typed.cause)
+        assertEquals(eu.kanade.tachiyomi.network.SourceOperationPhase.PAGE_LIST, typed.phase)
+    }
+
+    @Test
+    fun `reflective suspended image hooks keep compatibility and never publish ready encoded content`() = runTest {
+        for (site in listOf("url", "response")) {
+            val failure = NoSuchMethodError("future reflective $site")
+            val client = OkHttpClient.Builder().addInterceptor {
+                throw AssertionError("Unexpected fallback request")
+            }.build()
+            val source = object : CatalogueSource by mockk<CatalogueSource>(relaxed = true) {
+                override val id = 42L
+                override val name = "Reflective fixture"
+
+                @Suppress("unused")
+                suspend fun getImageUrl(page: Page): String {
+                    kotlinx.coroutines.yield()
+                    if (site == "url") throw failure
+                    return "https://fixture.invalid/image"
+                }
+
+                @Suppress("unused")
+                suspend fun getImage(page: Page): Response {
+                    kotlinx.coroutines.yield()
+                    throw failure
+                }
+            }
+            val descriptor = mihon.domain.reader.session.ReaderPageDescriptor(
+                0,
+                url = "/resolve",
+                imageUrl = "https://fixture.invalid/image".takeIf { site == "response" },
+            )
+            val store = DesktopReaderEncodedPageStore(tempDir.resolve("compat-$site"))
+            store.beginSession(emptySet())
+            val events = mutableListOf<ReaderPageMaterializeEvent>()
+            val result = CanonicalReaderMaterializeExecutor.materializePage(
+                ReaderPageFetchRequest(ReaderPageId(ReaderChapterId(1L), 0), 1L, descriptor.url, descriptor.imageUrl),
+                DesktopReaderPageFetchPort(
+                    context(),
+                    descriptor,
+                    FakeDesktopSourceManager(listOf(source)),
+                    NetworkHelper(client),
+                    store,
+                ),
+            ) {
+                events += it
+                true
+            }
+            val error = assertInstanceOf(
+                AppError.ExtensionIncompatible::class.java,
+                assertInstanceOf(ReaderPageMaterializeResult.Failed::class.java, result).error,
+            )
+            val typed =
+                assertInstanceOf(eu.kanade.tachiyomi.network.SourceCompatibilityException::class.java, error.cause)
+            assertTrue(typed.inspectSourceFailure().causes.any { it === failure })
+            assertEquals(
+                if (site == "url") {
+                    eu.kanade.tachiyomi.network.SourceOperationPhase.IMAGE_URL
+                } else {
+                    eu.kanade.tachiyomi.network.SourceOperationPhase.IMAGE_REQUEST
+                },
+                typed.phase,
+            )
+            assertFalse(events.any { it is ReaderPageMaterializeEvent.Ready })
+            assertTrue(store.diagnostics().refs.isEmpty())
+            client.dispatcher.executorService.shutdownNow()
+            client.connectionPool.evictAll()
+        }
+    }
 
     @Test
     fun `failed encoded write removes partial bytes before retry lookup`() = runTest {
@@ -1136,6 +1227,7 @@ class DesktopReaderMaterializePortsIntegrationTest {
     private class PageSource(
         private val pages: List<Page>,
         val httpClient: OkHttpClient,
+        private val failure: Throwable? = null,
     ) : CatalogueSource {
         override val id = 42L
         override val name = "reader-pages"
@@ -1151,7 +1243,10 @@ class DesktopReaderMaterializePortsIntegrationTest {
         @Suppress("unused")
         suspend fun getImageUrl(page: Page): String = page.imageUrl.orEmpty()
 
-        override suspend fun getPageList(chapter: SChapter): List<Page> = pages
+        override suspend fun getPageList(chapter: SChapter): List<Page> {
+            failure?.let { throw it }
+            return pages
+        }
         override suspend fun getMangaDetails(manga: SManga): SManga = manga
         override suspend fun getChapterList(manga: SManga): List<SChapter> = emptyList()
         override suspend fun getPopularManga(page: Int): MangasPage = MangasPage(emptyList(), false)

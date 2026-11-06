@@ -5,6 +5,7 @@ import android.content.pm.ServiceInfo
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Build
+import android.util.Log
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
@@ -21,9 +22,18 @@ import androidx.work.workDataOf
 import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
 import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.manga.model.toSManga
+import eu.kanade.presentation.util.sourceErrorMessageResource
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.notification.Notifications
+import eu.kanade.tachiyomi.extension.ExtensionManager
+import eu.kanade.tachiyomi.network.SourceCompatibilityException
+import eu.kanade.tachiyomi.network.SourceFailureIdentity
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
+import eu.kanade.tachiyomi.network.inspectSourceFailure
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.util.storage.getUriCompat
 import eu.kanade.tachiyomi.util.system.createFileInCacheDir
 import eu.kanade.tachiyomi.util.system.isConnectedToWifi
@@ -65,7 +75,11 @@ import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.model.SourceNotInstalledException
+import tachiyomi.domain.source.service.SOURCE_COMPATIBILITY_LOG_TAG
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.source.service.recordSourceFailureDiagnostics
+import tachiyomi.domain.source.service.toSourceAppError
+import tachiyomi.domain.source.service.withSourceFailureIdentity
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -143,6 +157,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                     // Assume success although cancelled
                     finishLifecycle(lifecycleOccurrence, TaskLifecycleEvent.Complete, Result.success())
                 } else {
+                    e.rethrowSourceControlFailure()
                     logcat(LogPriority.ERROR, e)
                     finishLifecycle(lifecycleOccurrence, TaskLifecycleEvent.Fail, Result.failure())
                 }
@@ -252,7 +267,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
         val progressCount = AtomicInt(0)
         val currentlyUpdatingManga = CopyOnWriteArrayList<Manga>()
         val newUpdates = CopyOnWriteArrayList<Pair<Manga, Array<Chapter>>>()
-        val failedUpdates = CopyOnWriteArrayList<Pair<Manga, String?>>()
+        val failedUpdates = CopyOnWriteArrayList<UpdateFailure>()
         val hasDownloads = AtomicBoolean(false)
         val fetchWindow = fetchInterval.getWindow(ZonedDateTime.now())
 
@@ -275,8 +290,18 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                                     progressCount,
                                     manga,
                                 ) {
+                                    val source = sourceManager.getOrStub(manga.source)
+                                    val owner = Injekt.get<ExtensionManager>().installedExtensionsFlow.value
+                                        .firstOrNull { it.sources.any { registered -> registered === source } }
+                                    val identity = SourceFailureIdentity(
+                                        manga.source,
+                                        owner?.pkgName,
+                                        owner?.name,
+                                        owner?.versionName,
+                                        owner?.versionCode,
+                                    )
                                     try {
-                                        val newChapters = updateManga(manga, fetchWindow)
+                                        val newChapters = updateManga(manga, fetchWindow, source)
                                             .sortedByDescending { it.sourceOrder }
 
                                         if (newChapters.isNotEmpty()) {
@@ -294,19 +319,42 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                                             newUpdates.add(manga to newChapters.toTypedArray())
                                         }
                                     } catch (e: Throwable) {
-                                        if (e is kotlinx.coroutines.CancellationException) throw e
-                                        val errorMessage = when (e) {
-                                            is NoChaptersException -> context.stringResource(
-                                                MR.strings.no_chapters_error,
-                                            )
-                                            // failedUpdates will already have the source, don't need to copy it
-                                            // into the message
-                                            is SourceNotInstalledException -> context.stringResource(
-                                                MR.strings.loader_not_implemented_error,
-                                            )
-                                            else -> e.message
+                                        e.rethrowSourceControlFailure()
+                                        ensureActive()
+                                        val sourceError = if (e.inspectSourceFailure().causes.any {
+                                                it is SourceCompatibilityException
+                                            }
+                                        ) {
+                                            e.toSourceAppError().withSourceFailureIdentity(identity)
+                                        } else {
+                                            null
                                         }
-                                        failedUpdates.add(manga to errorMessage)
+                                        val compatibilityMessage = sourceError?.let(::sourceErrorMessageResource)
+                                        val errorMessage = if (compatibilityMessage != null) {
+                                            context.stringResource(compatibilityMessage)
+                                        } else {
+                                            when (e) {
+                                                is NoChaptersException -> context.stringResource(
+                                                    MR.strings.no_chapters_error,
+                                                )
+                                                // failedUpdates will already have the source, don't need to copy it
+                                                // into the message
+                                                is SourceNotInstalledException -> context.stringResource(
+                                                    MR.strings.loader_not_implemented_error,
+                                                )
+                                                else -> e.message
+                                            }
+                                        }
+                                        failedUpdates.add(
+                                            UpdateFailure(
+                                                manga,
+                                                source,
+                                                errorMessage,
+                                                identity,
+                                                sourceError is mihon.domain.error.AppError.ExtensionIncompatible,
+                                            ),
+                                        )
+                                        sourceError?.let(::reportSourceFailure)
                                     }
                                 }
                             }
@@ -346,9 +394,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
      * @param manga the manga to update.
      * @return a pair of the inserted and removed chapters.
      */
-    private suspend fun updateManga(manga: Manga, fetchWindow: Pair<Long, Long>): List<Chapter> {
-        val source = sourceManager.getOrStub(manga.source)
-
+    private suspend fun updateManga(manga: Manga, fetchWindow: Pair<Long, Long>, source: Source): List<Chapter> {
         return updateManga.awaitFromRemote(
             manga, source,
             fetchDetails = libraryPreferences.autoUpdateMetadata().get(),
@@ -394,7 +440,19 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
     /**
      * Writes basic file of update errors to cache dir.
      */
-    private fun writeErrorFile(errors: List<Pair<Manga, String?>>): File {
+    private class UpdateFailure(
+        val manga: Manga,
+        val source: Source,
+        val message: String?,
+        val identity: SourceFailureIdentity,
+        val incompatible: Boolean,
+    )
+
+    private fun reportSourceFailure(error: mihon.domain.error.AppError) {
+        error.recordSourceFailureDiagnostics(write = { Log.e(SOURCE_COMPATIBILITY_LOG_TAG, it) })
+    }
+
+    private fun writeErrorFile(errors: List<UpdateFailure>): File {
         try {
             if (errors.isNotEmpty()) {
                 val file = context.createFileInCacheDir("mihon_update_errors.txt")
@@ -404,20 +462,40 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                     // ! Error
                     //   # Source
                     //     - Manga
-                    errors.groupBy({ it.second }, { it.first }).forEach { (error, mangas) ->
+                    errors.groupBy { it.message }.forEach { (error, mangas) ->
                         out.write("\n! ${error}\n")
-                        mangas.groupBy { it.source }.forEach { (srcId, mangas) ->
-                            val source = sourceManager.getOrStub(srcId)
-                            out.write("  # $source\n")
+                        mangas.groupBy { it.manga.source }.forEach { (srcId, mangas) ->
+                            val first = mangas.first()
+                            val fallback = first.identity.extensionName?.takeIf { it.isNotBlank() }
+                                ?: "${context.stringResource(MR.strings.unknown)} ($srcId)"
+                            val label = if (mangas.any { it.incompatible }) {
+                                fallback
+                            } else {
+                                try {
+                                    guardSourceOperation(SourceOperationPhase.METADATA) { first.source.toString() }
+                                } catch (error: Exception) {
+                                    error.rethrowSourceControlFailure()
+                                    val causes = error.inspectSourceFailure().causes
+                                    if (causes.none { it is SourceCompatibilityException }) {
+                                        throw error
+                                    }
+                                    val mapped = error.toSourceAppError().withSourceFailureIdentity(first.identity)
+                                    reportSourceFailure(mapped)
+                                    fallback
+                                }
+                            }
+                            out.write("  # $label\n")
                             mangas.forEach {
-                                out.write("    - ${it.title}\n")
+                                out.write("    - ${it.manga.title}\n")
                             }
                         }
                     }
                 }
                 return file
             }
-        } catch (_: Exception) {}
+        } catch (error: Exception) {
+            error.rethrowSourceControlFailure()
+        }
         return File("")
     }
 

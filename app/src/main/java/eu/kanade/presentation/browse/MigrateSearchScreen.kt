@@ -44,6 +44,8 @@ fun MigrateSearchScreen(
         GlobalSearchContent(
             fromSourceId = fromSourceId,
             items = state.filteredItems,
+            sourceMetadata = state.metadata,
+            generation = state.generation,
             contentPadding = paddingValues,
             getManga = getManga,
             onClickSource = onClickSource,

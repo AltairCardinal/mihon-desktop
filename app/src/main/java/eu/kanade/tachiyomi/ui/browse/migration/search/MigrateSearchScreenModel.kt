@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.source.service.SourceMetadataSnapshot
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -17,16 +18,21 @@ class MigrateSearchScreenModel(
     getManga: GetManga = Injekt.get(),
     private val sourceManager: SourceManager = Injekt.get(),
     private val sourcePreferences: SourcePreferences = Injekt.get(),
-) : SearchScreenModel() {
+) : SearchScreenModel(sourceManager = sourceManager) {
 
     private val migrationSources by lazy { sourcePreferences.migrationSources().get() }
 
-    override val sortComparator = { map: Map<Source, SearchItemResult> ->
-        compareBy<Source>(
-            { (map[it] as? SearchItemResult.Success)?.isEmpty ?: true },
-            { migrationSources.indexOf(it.id) },
-        )
-    }
+    override fun sortComparator(
+        map: Map<Source, SearchItemResult>,
+        metadata: List<SourceMetadataSnapshot>,
+    ): Comparator<Source> = compareBy<Source>(
+        { (map[it] as? SearchItemResult.Success)?.isEmpty ?: true },
+        { source ->
+            metadata.firstOrNull { it.source === source }?.sourceId?.let(migrationSources::indexOf)
+                ?: Int.MAX_VALUE
+        },
+    )
+        .thenBy { source -> metadata.indexOfFirst { it.source === source } }
 
     init {
         screenModelScope.launch {
@@ -41,7 +47,13 @@ class MigrateSearchScreenModel(
         }
     }
 
-    override fun getEnabledSources(): List<Source> {
+    override fun sourceCandidates(): List<Source> {
         return migrationSources.mapNotNull(sourceManager::get)
     }
+
+    override fun isSourceEnabled(metadata: SourceMetadataSnapshot): Boolean = true
+
+    override fun isSourceIdEnabled(sourceId: Long?): Boolean = true
+
+    override fun isLanguageEnabled(language: String): Boolean = true
 }

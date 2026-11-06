@@ -14,6 +14,9 @@ kotlin {
     applyDefaultHierarchyTemplate()
 
     sourceSets {
+        commonTest {
+            kotlin.srcDir("src/networkTest/kotlin")
+        }
         commonMain {
             dependencies {
                 implementation(project.dependencies.platform(kotlinx.coroutines.bom))
@@ -62,6 +65,7 @@ kotlin {
             dependencies {
                 implementation(libs.bundles.test)
                 implementation(kotlinx.coroutines.test)
+                implementation(libs.okhttp.mockwebserver)
                 runtimeOnly(libs.junit.platform.launcher)
             }
         }
@@ -82,4 +86,8 @@ android {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    systemProperty(
+        "ec.future.jar",
+        rootProject.file("app-desktop/src/test/resources/extensions/real/ec-coroutines-future.jar").absolutePath,
+    )
 }

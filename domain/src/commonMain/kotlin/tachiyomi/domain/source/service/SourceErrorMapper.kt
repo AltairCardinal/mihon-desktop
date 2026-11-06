@@ -1,6 +1,10 @@
 package tachiyomi.domain.source.service
 
 import eu.kanade.tachiyomi.network.HttpException
+import eu.kanade.tachiyomi.network.SourceCompatibilityException
+import eu.kanade.tachiyomi.network.SourceFailureIdentity
+import eu.kanade.tachiyomi.network.inspectSourceFailure
+import eu.kanade.tachiyomi.network.withSourceFailureIdentity
 import kotlinx.coroutines.CancellationException
 import mihon.domain.error.AppError
 import mihon.domain.network.AppErrorException
@@ -11,30 +15,46 @@ import okio.IOException
  *
  * Source entry points (search, details, chapters, pages and downloads) must use this mapper rather
  * than inventing operation-specific strings. Known network failures may be wrapped by extension or
- * reactive adapters, so the cause chain is inspected before treating the failure as malformed data.
+ * reactive adapters, so the bounded cause chain is inspected before ordinary IO/HTTP mapping.
+ * Fatal causes and unknown deep tails propagate; cancellation keeps the existing Cancelled result.
  */
 fun Throwable.toSourceAppError(): AppError {
-    knownSourceAppError()?.let { return it }
+    val failure = inspectSourceFailure()
+    failure.fatal?.let { throw it }
+    if (!failure.complete) throw this
+    if (failure.cancellation != null) return AppError.Cancelled
+    if (failure.linkage != null) return AppError.ExtensionIncompatible(this)
+    failure.causes.forEach { current ->
+        current.knownSourceAppError()?.let { return it }
+    }
     return AppError.MalformedData(this)
 }
 
+/** The caller captures the installed owner before invoking the extension, never on failure. */
+fun AppError.withSourceFailureIdentity(identity: SourceFailureIdentity): AppError = when (this) {
+    is AppError.ExtensionIncompatible -> copy(cause = cause?.withSourceFailureIdentity(identity))
+    else -> this
+}
+
+fun AppError.sourceFailureIdentity(): SourceFailureIdentity? = if (this is AppError.ExtensionIncompatible) {
+    cause?.inspectSourceFailure()?.causes?.filterIsInstance<SourceCompatibilityException>()
+        ?.firstNotNullOfOrNull { it.identity }
+} else {
+    null
+}
+
 private fun Throwable.knownSourceAppError(): AppError? {
-    var current: Throwable? = this
-    val visited = mutableSetOf<Throwable>()
-    while (current != null && visited.add(current)) {
-        when (current) {
-            is AppErrorException -> return current.error
-            is CancellationException -> return AppError.Cancelled
-            is HttpException -> return when (current.code) {
-                401 -> AppError.Authentication(current)
-                403 -> AppError.Forbidden(current)
-                429 -> AppError.RateLimited(cause = current)
-                in 500..599 -> AppError.Server(current.code, current)
-                else -> AppError.Unknown(current)
-            }
-            is IOException -> return AppError.Network(current)
+    when (this) {
+        is AppErrorException -> return error
+        is CancellationException -> return AppError.Cancelled
+        is HttpException -> return when (code) {
+            401 -> AppError.Authentication(this)
+            403 -> AppError.Forbidden(this)
+            429 -> AppError.RateLimited(cause = this)
+            in 500..599 -> AppError.Server(code, this)
+            else -> AppError.Unknown(this)
         }
-        current = current.cause
+        is IOException -> return AppError.Network(this)
     }
     return null
 }

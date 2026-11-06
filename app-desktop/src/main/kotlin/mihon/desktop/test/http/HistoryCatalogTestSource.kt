@@ -32,5 +32,8 @@ internal object HistoryCatalogTestSourceBridge {
     private val source = AtomicReference<HistoryCatalogTestSource?>()
     fun install(value: HistoryCatalogTestSource) = source.set(value)
     fun sources(): List<CatalogueSource> = listOfNotNull(source.get())
+    fun registrations(): List<tachiyomi.domain.source.service.SourceRegistration> = listOfNotNull(source.get()).map {
+        tachiyomi.domain.source.service.SourceRegistration(it, HistoryCatalogTestSource.SOURCE_ID)
+    }
     fun clear(value: HistoryCatalogTestSource) = source.compareAndSet(value, null)
 }

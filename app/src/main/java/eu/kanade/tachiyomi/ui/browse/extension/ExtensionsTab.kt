@@ -106,6 +106,7 @@ fun extensionsTab(
                 onUninstallExtension = { extensionsScreenModel.uninstallExtension(it) },
                 onUpdateExtension = extensionsScreenModel::updateExtension,
                 onRefresh = extensionsScreenModel::findAvailableExtensions,
+                onRetryLoadFailure = extensionsScreenModel::retryFailedExtension,
                 suggestionController = extensionsScreenModel.suggestionPanel,
                 onInstallSuggestion = extensionsScreenModel::installSuggestion,
                 onRequestBatchStart = { extensionsScreenModel.requestSuggestionBatch() },

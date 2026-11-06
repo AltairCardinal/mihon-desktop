@@ -226,6 +226,7 @@ kotlin {
             }
         }
         val jvmTest by getting {
+            kotlin.srcDir("../core/common/src/networkTest/kotlin")
             resources.srcDir(project(":domain").file("src/commonTest/resources"))
             kotlin.srcDirs(
                 "src/test/kotlin",
@@ -248,6 +249,10 @@ tasks.named("compileKotlinJvm") { dependsOn(generateBuildInfo) }
 tasks.named("compileTestKotlinJvm") { dependsOn(generateBuildInfo) }
 
 tasks.withType<Test> {
+    systemProperty(
+        "ec.future.jar",
+        rootProject.file("app-desktop/src/test/resources/extensions/real/ec-coroutines-future.jar").absolutePath,
+    )
     val testTempDir = layout.buildDirectory.dir("test-tmp").get().asFile
     val includeLiveNetworkTests = providers.gradleProperty("includeLiveNetworkTests")
         .map(String::toBoolean)

@@ -1,41 +1,49 @@
 package mihon.desktop.ui.extension
 
-import mihon.domain.error.AppError
-import mihon.domain.extension.service.ExtensionInstallLease
-import mihon.domain.extension.suggestion.ExtensionInventory
+import eu.kanade.tachiyomi.network.SourceCompatibilityException
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
+import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import eu.kanade.tachiyomi.source.Source
-import eu.kanade.tachiyomi.source.online.HttpSource
 import mihon.desktop.extension.DesktopAvailableExtension
 import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopExtensionInstallStart
 import mihon.desktop.extension.DesktopExtensionPresentationService
+import mihon.desktop.extension.DesktopExtensionRuntimeSnapshot
+import mihon.desktop.extension.ExtensionFailureCategory
+import mihon.desktop.extension.ExtensionLoadDiagnostic
 import mihon.desktop.extension.InstalledExtension
+import mihon.desktop.extension.projectRuntimeState
 import mihon.desktop.settings.DesktopAppPreferences
+import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.model.ExtensionCompatibility
 import mihon.domain.extension.model.RepositoryIdentity
 import mihon.domain.extension.model.extractExtensionLibVersion
-import mihon.domain.extension.presentation.ExtensionPresentationAdapter
 import mihon.domain.extension.presentation.ExtensionPresentationAction
 import mihon.domain.extension.presentation.ExtensionPresentationActionState
+import mihon.domain.extension.presentation.ExtensionPresentationAdapter
 import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
 import mihon.domain.extension.presentation.ExtensionPresentationItem
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
 import mihon.domain.extension.presentation.ExtensionPresentationResult
 import mihon.domain.extension.presentation.ExtensionPresentationSource
 import mihon.domain.extension.presentation.ExtensionPresentationStore
+import mihon.domain.extension.service.ExtensionInstallLease
 import mihon.domain.extension.service.ExtensionInstallState
 import mihon.domain.extension.service.ExtensionUpdatePolicy
 import mihon.domain.extension.service.SharedExtensionUpdatePolicy
+import mihon.domain.extension.suggestion.ExtensionInventory
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import mihon.domain.extensionrepo.model.normalizedSigningKeyFingerprint
 import tachiyomi.core.common.preference.getAndSet
+import tachiyomi.domain.source.service.toSourceAppError
 import tachiyomi.i18n.MR
 import java.util.Locale
 
@@ -51,20 +59,22 @@ data class DesktopExtensionProjection(
     val installed: List<DesktopExtensionItem>,
     val available: List<DesktopExtensionItem>,
     val failures: List<mihon.domain.extension.model.RepositoryCatalogFailure>,
+    val loadFailures: List<ExtensionLoadDiagnostic> = emptyList(),
 )
 
 data class DesktopExtensionSourceItem(
     val source: Source,
     val enabled: Boolean,
     val labelAsName: Boolean,
+    val presentation: ExtensionPresentationSource,
 ) {
-    fun displayName(locale: Locale): String = source.name.takeIf { labelAsName }
-        ?: when (source.lang) {
+    fun displayName(locale: Locale): String = presentation.name.takeIf { labelAsName }
+        ?: when (presentation.language) {
             "all" -> MR.strings.multi_lang.localized(locale)
             "other" -> MR.strings.other_source.localized(locale)
-            else -> Locale.forLanguageTag(source.lang.normalizedLanguageTag())
+            else -> Locale.forLanguageTag(presentation.language.normalizedLanguageTag())
                 .getDisplayName(locale)
-                .ifBlank { source.lang }
+                .ifBlank { presentation.language }
         }
 }
 
@@ -105,7 +115,7 @@ data class DesktopExtensionCatalogState(
 class DesktopExtensionPresentationPort(
     private val api: DesktopExtensionApi,
     private val service: DesktopExtensionPresentationService,
-    installedExtensions: StateFlow<List<InstalledExtension>> = service.installedExtensions,
+    installedExtensions: StateFlow<List<InstalledExtension>>? = null,
     private val updatePolicy: ExtensionUpdatePolicy = SharedExtensionUpdatePolicy,
     private val sourcePreferences: DesktopExtensionSourcePreferenceAdapter? = null,
     internal val configuredRepositories: Flow<List<ExtensionRepo>>? = null,
@@ -113,7 +123,10 @@ class DesktopExtensionPresentationPort(
         flowOf(ExtensionInventory()),
 ) {
     val installArbiter get() = api.installArbiter
-    val installedExtensions: StateFlow<List<InstalledExtension>> = installedExtensions
+    val installedExtensions: StateFlow<List<InstalledExtension>> = installedExtensions ?: service.installedExtensions
+    val runtimeSnapshot: StateFlow<DesktopExtensionRuntimeSnapshot> = installedExtensions?.projectRuntimeState {
+        DesktopExtensionRuntimeSnapshot(installed = it)
+    } ?: service.runtimeSnapshot
     val disabledSources: Flow<Set<String>> = sourcePreferences?.disabledSources ?: flowOf(emptySet())
 
     suspend fun refresh(): DesktopExtensionCatalogState {
@@ -162,16 +175,26 @@ class DesktopExtensionPresentationPort(
     )
 
     fun uninstall(item: DesktopExtensionItem): Boolean =
-        installArbiter.withRemoval(item.operationPackageName) { item.installed?.let(service::removeExtensionWithMeta) == true } == true
+        installArbiter.withRemoval(item.operationPackageName) {
+            item.installed?.let(service::removeExtensionWithMeta) == true
+        } == true
 
     suspend fun reloadInstalled() = withContext(Dispatchers.IO) { service.reloadAll() }
 
-    fun extensionSources(extension: InstalledExtension, disabledSources: Set<String>): List<DesktopExtensionSourceItem> {
+    fun extensionSources(item: DesktopExtensionItem, disabledSources: Set<String>): List<DesktopExtensionSourceItem> {
+        val extension = item.installed ?: return emptyList()
+        val descriptors = item.presentation.sources
+        check(descriptors.size == extension.sources.size)
         val isMultiSource = extension.sources.size > 1
-        val labelAsName = isMultiSource && extension.sources.map(Source::name).distinct().size > 1
+        val labelAsName = isMultiSource && descriptors.map { it.name }.distinct().size > 1
         return desktopExtensionPresentationStore.enabledFirst(
-            extension.sources.map { source ->
-                DesktopExtensionSourceItem(source, source.id.toString() !in disabledSources, labelAsName)
+            extension.sources.zip(descriptors).map { (source, descriptor) ->
+                DesktopExtensionSourceItem(
+                    source,
+                    descriptor.id.toString() !in disabledSources,
+                    labelAsName,
+                    descriptor,
+                )
             },
             DesktopExtensionSourceItem::enabled,
         ) { it.displayName(Locale.getDefault()).lowercase() }
@@ -179,56 +202,100 @@ class DesktopExtensionPresentationPort(
 
     fun setSourceEnabled(sourceId: Long, enabled: Boolean) = sourcePreferences?.setEnabled(sourceId, enabled)
 
-    fun setSourcesEnabled(extension: InstalledExtension, enabled: Boolean) =
-        sourcePreferences?.setAllEnabled(extension.sources.map(Source::id), enabled)
+    fun setSourcesEnabled(item: DesktopExtensionItem, enabled: Boolean) =
+        sourcePreferences?.setAllEnabled(item.presentation.sources.map { it.id }, enabled)
 
-    fun canonicalCandidates(catalog: DesktopExtensionCatalogState): Map<String, DesktopAvailableExtension> =
+    fun canonicalCandidates(
+        catalog: DesktopExtensionCatalogState,
+        installed: List<InstalledExtension> = runtimeSnapshot.value.installed,
+    ): Map<String, DesktopAvailableExtension> =
         catalog.available.groupBy(DesktopAvailableExtension::pkgName).mapValues { (packageName, candidates) ->
-            val installed = installedExtensions.value.find { it.pkgName == packageName }
+            val owner = installed.find { it.pkgName == packageName }
             candidates.find {
-                installed != null && it.repoUrl.normalizedRepo() == installed.repoUrl.normalizedRepo() &&
-                    (installed.repoFingerprint.isBlank() ||
-                        it.repoFingerprint.normalizedSigningKeyFingerprint() == installed.repoFingerprint.normalizedSigningKeyFingerprint())
+                owner != null && it.repoUrl.normalizedRepo() == owner.repoUrl.normalizedRepo() &&
+                    (
+                        owner.repoFingerprint.isBlank() ||
+                            it.repoFingerprint.normalizedSigningKeyFingerprint() ==
+                            owner.repoFingerprint.normalizedSigningKeyFingerprint()
+                        )
             } ?: candidates.last()
         }
 
-    fun project(catalog: DesktopExtensionCatalogState): DesktopExtensionProjection {
-        val candidates = canonicalCandidates(catalog)
+    fun project(
+        catalog: DesktopExtensionCatalogState,
+        runtime: DesktopExtensionRuntimeSnapshot = runtimeSnapshot.value,
+    ): DesktopExtensionProjection {
+        val candidates = canonicalCandidates(catalog, runtime.installed)
+        val loadFailures = runtime.loadFailures.toMutableList()
         val successfulRepos = catalog.catalog.repositories +
             catalog.catalog.entries.map { it.artifact.repository } +
             catalog.available.map { RepositoryIdentity(it.repoUrl, it.repoName, it.repoFingerprint) }
         val failedRepos = catalog.catalog.failures.mapTo(mutableSetOf()) { it.repository.baseUrl.normalizedRepo() }
-        val installed = installedExtensions.value.map { extension ->
+        val installed = runtime.installed.mapNotNull { extension ->
+            val installedFingerprint = extension.repoFingerprint.normalizedSigningKeyFingerprint()
+            val installedRepo = extension.repoUrl.normalizedRepo()
             val candidate = catalog.available.find {
                 it.pkgName == extension.pkgName &&
-                    (extension.repoUrl.isBlank() || it.repoUrl.normalizedRepo() == extension.repoUrl.normalizedRepo()) &&
-                    (extension.repoFingerprint.isBlank() ||
-                        it.repoFingerprint.normalizedSigningKeyFingerprint() == extension.repoFingerprint.normalizedSigningKeyFingerprint())
+                    (extension.repoUrl.isBlank() || it.repoUrl.normalizedRepo() == installedRepo) &&
+                    (
+                        extension.repoFingerprint.isBlank() ||
+                            it.repoFingerprint.normalizedSigningKeyFingerprint() ==
+                            installedFingerprint
+                        )
             }
             val bundled = extension.pkgName == BUNDLED_MANGADEX
-            extension.item(
-                hasUpdate = !bundled && candidate != null && candidate.compatibility == ExtensionCompatibility.Compatible && (
-                    extension.requiresApkReconversion ||
-                        updatePolicy.isUpdateAvailable(
-                            candidate.versionCode,
-                            candidate.libVersion,
-                            extension.versionCode,
-                            extractExtensionLibVersion(extension.versionName) ?: 0.0,
-                        )
-                    ),
-                isObsolete = !bundled && candidate == null && extension.repoUrl.isNotBlank() &&
-                    successfulRepos.any {
-                        it.baseUrl.normalizedRepo() == extension.repoUrl.normalizedRepo() &&
-                            (extension.repoFingerprint.isBlank() ||
-                                it.signingKeyFingerprint.normalizedSigningKeyFingerprint() == extension.repoFingerprint.normalizedSigningKeyFingerprint())
-                    } &&
-                    extension.repoUrl.normalizedRepo() !in failedRepos,
-            ).copy(compatibility = candidate?.compatibility)
+            try {
+                extension.item(
+                    hasUpdate = !bundled && candidate != null &&
+                        candidate.compatibility == ExtensionCompatibility.Compatible && (
+                            extension.requiresApkReconversion ||
+                                updatePolicy.isUpdateAvailable(
+                                    candidate.versionCode,
+                                    candidate.libVersion,
+                                    extension.versionCode,
+                                    extractExtensionLibVersion(extension.versionName) ?: 0.0,
+                                )
+                            ),
+                    isObsolete = !bundled && candidate == null && extension.repoUrl.isNotBlank() &&
+                        successfulRepos.any {
+                            it.baseUrl.normalizedRepo() == installedRepo &&
+                                (
+                                    extension.repoFingerprint.isBlank() ||
+                                        it.signingKeyFingerprint.normalizedSigningKeyFingerprint() ==
+                                        installedFingerprint
+                                    )
+                        } &&
+                        installedRepo !in failedRepos,
+                ).copy(compatibility = candidate?.compatibility)
+            } catch (error: SourceCompatibilityException) {
+                loadFailures += ExtensionLoadDiagnostic(
+                    jarName = extension.jarFile.name,
+                    category = ExtensionFailureCategory.from(error),
+                    errorType = error.javaClass.simpleName,
+                    message = "Source metadata could not be read",
+                    cause = error,
+                    error = error.toSourceAppError(),
+                    metadata = extension.metadataSnapshot,
+                    phase = error.phase,
+                )
+                null
+            }
+        }
+        val failedVersions = loadFailures.mapNotNull { it.metadata }
+            .groupBy { it.pkgName }.mapValues { (_, values) -> values.maxOf { it.versionCode } }
+        val available = candidates.values.filterNot { it.pkgName == BUNDLED_MANGADEX }.mapNotNull { candidate ->
+            val failedVersion = failedVersions[candidate.pkgName]
+            when {
+                failedVersion == null -> candidate.item()
+                candidate.versionCode <= failedVersion -> null
+                else -> candidate.item().let { it.copy(presentation = it.presentation.copy(hasUpdate = true)) }
+            }
         }
         return DesktopExtensionProjection(
             installed,
-            candidates.values.filterNot { it.pkgName == BUNDLED_MANGADEX }.map(DesktopAvailableExtension::item),
+            available,
             catalog.catalog.failures,
+            loadFailures,
         )
     }
 }
@@ -257,7 +324,16 @@ internal fun InstalledExtension.item(hasUpdate: Boolean, isObsolete: Boolean) = 
         isNsfw,
         hasUpdate,
         isObsolete,
-        sources.map { ExtensionPresentationSource(it.id, it.lang, it.name, (it as? HttpSource)?.baseUrl) },
+        sources.map { source ->
+            ExtensionPresentationSource(
+                guardSourceOperation(SourceOperationPhase.METADATA) { source.id },
+                guardSourceOperation(SourceOperationPhase.METADATA) { source.lang },
+                guardSourceOperation(SourceOperationPhase.METADATA) { source.name },
+                (source as? HttpSource)?.let {
+                    guardSourceOperation(SourceOperationPhase.METADATA) { it.baseUrl }
+                },
+            )
+        },
     ),
     pkgName,
     installed = this,
@@ -289,8 +365,11 @@ internal fun ExtensionInstallState.presentationStep() = when (this) {
     ExtensionInstallState.Preparing -> ExtensionPresentationInstallStep.Downloading
     is ExtensionInstallState.Installed -> ExtensionPresentationInstallStep.Installed
     is ExtensionInstallState.Failed ->
-        if (error == AppError.Cancelled) ExtensionPresentationInstallStep.Idle
-        else ExtensionPresentationInstallStep.Error
+        if (error == AppError.Cancelled) {
+            ExtensionPresentationInstallStep.Idle
+        } else {
+            ExtensionPresentationInstallStep.Error
+        }
     else -> ExtensionPresentationInstallStep.Installing
 }
 

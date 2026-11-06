@@ -23,7 +23,9 @@ import io.mockk.mockk
 import io.mockk.spyk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
@@ -35,6 +37,9 @@ import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.SaveSourceMangaForDetails
+import mihon.desktop.extension.DesktopExtensionPresentationService
+import mihon.desktop.extension.ExtensionMeta
+import mihon.desktop.extension.InstalledExtension
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.desktop.ui.library.MangaDetailScreen
@@ -44,6 +49,7 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.data.Database
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.JvmDatabaseHandler
@@ -51,22 +57,252 @@ import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
 import tachiyomi.data.chapter.ChapterRepositoryImpl
 import tachiyomi.data.manga.MangaRepositoryImpl
-import tachiyomi.core.common.preference.DesktopPreferenceStore
-import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.interactor.GetManga
+import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceMangaSearchService
+import tachiyomi.domain.source.service.SourceQueryState
+import tachiyomi.domain.source.service.sourceFailureIdentity
 import tachiyomi.i18n.MR
-import java.util.prefs.Preferences
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.prefs.Preferences
 
 private const val ASYNC_TIMEOUT_MS = 15_000L
 private const val INITIAL_RENDER_TIMEOUT_MS = 30_000L
 
 @OptIn(ExperimentalComposeUiApi::class)
 class GlobalSearchResultProductionWiringTest {
+
+    @Test
+    fun `returned field incompatibility stays typed through real persistence and mounted global search`() =
+        runBlocking {
+            Fixture().use { fixture ->
+                val original = NoSuchMethodError("future returned genres")
+                val listed = SManga.create().apply {
+                    url = "/broken-returned"
+                    title = "Delayed fields"
+                }
+                val returned = object : SManga by listed {
+                    override fun getGenres(): List<String>? = throw original
+                }
+                val broken = source(9L, "Delayed", resultCount = 0)
+                coEvery { broken.getSearchManga(1, any(), any()) } returns MangasPage(listOf(returned), false)
+                val healthy = source(10L, "Healthy", sharedUrl = "/healthy-returned", resultCount = 1)
+                val owner = InstalledExtension(
+                    java.io.File("routing-only.jar"),
+                    listOf(broken),
+                    metadataSnapshot = ExtensionMeta("trusted.returned", 123L, "1.2.3", name = "Returned extension"),
+                )
+                val preferences = DesktopAppPreferences(DesktopPreferenceStore(fixture.preferenceRoot)).apply {
+                    enabledLanguages.set(setOf("en"))
+                    pinnedSources.set(setOf("9", "10"))
+                }
+                val dependencies = mockk<DesktopUiDependencies> {
+                    every { sourceManager } returns FakeDesktopSourceManager(listOf(broken, healthy))
+                    every { appPreferences } returns preferences
+                    every { sourceMangaSearchService } returns SourceMangaSearchService()
+                    every { saveSourceMangaForDetails } returns fixture.saver
+                    every { getManga } returns fixture.getManga
+                    every { sourceLoginSessionFactory } returns mockk(relaxed = true)
+                    every { creatorDiscoverySourcePort } returns null
+                    every { extensionPresentationService } returns mockk {
+                        every { installedExtensions } returns MutableStateFlow(listOf(owner))
+                    }
+                }
+                val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+                var materializer: SourceResultMaterializer? = null
+                val scene = ImageComposeScene(500, 1_200, coroutineContext = coroutineContext) {}
+                val previousErrorStream = System.err
+                val captured = ByteArrayOutputStream()
+                System.setErr(PrintStream(captured, true, Charsets.UTF_8))
+                try {
+                    scene.setContent {
+                        CompositionLocalProvider(
+                            LocalDesktopUiDependencies provides dependencies,
+                            LocalGlobalSearchCoordinatorFactory provides { coordinator },
+                            LocalSourceResultMaterializerFactory provides { scope, persist ->
+                                SourceResultMaterializer(scope, persist).also { materializer = it }
+                            },
+                        ) { Navigator(GlobalSearchScreen("private-query")) { CurrentScreen() } }
+                    }
+                    awaitWhileRendering(scene) {
+                        materializer?.results?.get(9L) is CanonicalSearchResult.Failure &&
+                            text(scene).contains("Healthy listed 0")
+                    }
+                    val ui = GlobalSearchStateProjector.projectPrepared(
+                        coordinator.state.sourceMetadata,
+                        coordinator.state,
+                        requireNotNull(materializer).results,
+                    )
+                    val error = requireNotNull(ui.results.single { it.metadata?.sourceId == 9L }.error).error
+                    org.junit.jupiter.api.Assertions.assertInstanceOf(
+                        mihon.domain.error.AppError.ExtensionIncompatible::class.java,
+                        error,
+                    )
+                    assertEquals("trusted.returned", error.sourceFailureIdentity()?.extensionPackage)
+                    assertTrue(
+                        text(scene).contains(MR.strings.source_error_extension_incompatible.localized()),
+                        text(scene),
+                    )
+                    assertFalse(ui.loading)
+                    assertFalse(text(scene).contains(MR.strings.action_retry.localized()), text(scene))
+                    assertEquals(null, fixture.mangas.getMangaByUrlAndSourceId("/broken-returned", 9L))
+                    assertNotNull(fixture.mangas.getMangaByUrlAndSourceId("/healthy-returned", 10L))
+                    val report = captured.toString(Charsets.UTF_8)
+                    assertTrue(report.contains("package=trusted.returned"), report)
+                    assertTrue(report.contains("operation=SEARCH"), report)
+                    assertFalse(report.contains("private-query"), report)
+                    assertFalse(report.contains("broken-returned"), report)
+                } finally {
+                    coordinator.close()
+                    materializer?.close()
+                    scene.close()
+                    System.setErr(previousErrorStream)
+                }
+            }
+        }
+
+    @Test
+    fun `submitted search keeps the old extension owner while a healthy source completes`() = runBlocking {
+        Fixture().use { fixture ->
+            val started = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            val broken = source(9L, "Broken", resultCount = 0)
+            coEvery { broken.getSearchManga(1, any(), any()) } coAnswers {
+                started.complete(Unit)
+                release.await()
+                throw NoSuchMethodError("future search API")
+            }
+            val healthyQueries = mutableListOf<String>()
+            val healthy = source(10L, "Healthy", searches = healthyQueries, sharedUrl = "/healthy", resultCount = 1)
+            val pending = source(11L, "Pending", resultCount = 0)
+            val pendingStarted = CompletableDeferred<Unit>()
+            val pendingCancelled = CompletableDeferred<Unit>()
+            val pendingCalls = AtomicInteger()
+            coEvery { pending.getSearchManga(1, any(), any()) } coAnswers {
+                if (pendingCalls.incrementAndGet() == 1) {
+                    pendingStarted.complete(Unit)
+                    try {
+                        awaitCancellation()
+                    } finally {
+                        pendingCancelled.complete(Unit)
+                    }
+                }
+                MangasPage(emptyList(), false)
+            }
+            fun installed(version: String) = InstalledExtension(
+                jarFile = java.io.File("routing-key-must-not-be-identity.jar"),
+                sources = listOf(broken),
+                metadataSnapshot = ExtensionMeta("trusted.package", 123L, version, name = "Trusted extension"),
+            )
+            val owners = MutableStateFlow(listOf(installed("1.2.3")))
+            val manager = mockk<DesktopExtensionPresentationService> { every { installedExtensions } returns owners }
+            val preferences = DesktopAppPreferences(DesktopPreferenceStore(fixture.preferenceRoot)).apply {
+                enabledLanguages.set(setOf("en"))
+                pinnedSources.set(setOf("9", "10", "11"))
+            }
+            val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+            val dependencies = mockk<DesktopUiDependencies> {
+                every { sourceManager } returns FakeDesktopSourceManager(listOf(broken, healthy, pending))
+                every { appPreferences } returns preferences
+                every { sourceMangaSearchService } returns SourceMangaSearchService()
+                every { saveSourceMangaForDetails } returns fixture.saver
+                every { getManga } returns fixture.getManga
+                every { sourceLoginSessionFactory } returns mockk(relaxed = true)
+                every { creatorDiscoverySourcePort } returns null
+                every { extensionPresentationService } returns manager
+            }
+            val scene = ImageComposeScene(320, 1_400, coroutineContext = coroutineContext) {}
+            val previousErrorStream = System.err
+            val capturedErrors = ByteArrayOutputStream()
+            val errorStream = PrintStream(capturedErrors, true, Charsets.UTF_8)
+            System.setErr(errorStream)
+            try {
+                scene.setContent {
+                    CompositionLocalProvider(
+                        LocalDesktopUiDependencies provides dependencies,
+                        LocalGlobalSearchCoordinatorFactory provides { coordinator },
+                    ) {
+                        Navigator(GlobalSearchScreen()) { CurrentScreen() }
+                    }
+                }
+                scene.render()
+                setText(scene, "private-query")
+                scene.render()
+                click(scene, MR.strings.action_search.localized())
+                awaitWhileRendering(scene) {
+                    started.isCompleted && pendingStarted.isCompleted && text(scene).contains("Healthy listed 0")
+                }
+                // The original instance survives the install update, but its getters no longer link.
+                every { broken.id } throws NoSuchMethodError("late ID")
+                every { broken.name } throws NoSuchMethodError("late name")
+                every { broken.lang } throws NoSuchMethodError("late language")
+                owners.value = listOf(installed("9.9.9"))
+                release.complete(Unit)
+                try {
+                    awaitWhileRendering(scene) {
+                        coordinator.state.queryStates[9L] is SourceQueryState.Failure && text(scene).contains("1.2.3")
+                    }
+                } catch (error: Throwable) {
+                    throw AssertionError("Search rendering failed: ${capturedErrors.toString(Charsets.UTF_8)}", error)
+                }
+                val failure = coordinator.state.queryStates[9L] as SourceQueryState.Failure
+                val diagnostics = generateSequence(failure.error.cause) {
+                    it.cause
+                }.mapNotNull { it.message }.joinToString("\n")
+                assertTrue(diagnostics.contains("trusted.package"), diagnostics)
+                assertTrue(diagnostics.contains("1.2.3"), diagnostics)
+                assertFalse(diagnostics.contains("9.9.9"), diagnostics)
+                assertFalse(diagnostics.contains("private-query"), diagnostics)
+                assertFalse(diagnostics.contains("routing-key-must-not-be-identity"), diagnostics)
+                val report = capturedErrors.toString(Charsets.UTF_8)
+                assertTrue(report.contains("[MihonExtension]"), report)
+                assertTrue(report.contains("package=trusted.package"), report)
+                assertTrue(report.contains("version=1.2.3"), report)
+                assertTrue(report.contains("operation=SEARCH"), report)
+                assertTrue(report.contains("NoSuchMethodError"), report)
+                assertFalse(report.contains("private-query"), report)
+                assertFalse(report.contains("9.9.9"), report)
+                assertFalse(report.contains("routing-key-must-not-be-identity"), report)
+                scene.render()
+                assertTrue(text(scene).contains("Trusted extension"), text(scene))
+                assertTrue(text(scene).contains("1.2.3"), text(scene))
+                assertTrue(
+                    text(scene).contains(MR.strings.source_error_extension_incompatible.localized()),
+                    text(scene),
+                )
+                assertTrue(text(scene).contains("Healthy listed 0"), text(scene))
+                assertTrue(coordinator.state.isSearching)
+                assertFalse(pendingCancelled.isCompleted)
+                val previousGeneration = coordinator.state.generation
+                click(scene, MR.strings.action_search.localized())
+                awaitWhileRendering(scene) {
+                    coordinator.state.generation > previousGeneration && !coordinator.state.isSearching &&
+                        text(scene).contains("9.9.9") && text(scene).contains("Healthy listed 0")
+                }
+                assertEquals(listOf("private-query"), healthyQueries)
+                assertTrue(pendingCancelled.isCompleted)
+                assertEquals(2, pendingCalls.get())
+                val finalReport = capturedErrors.toString(Charsets.UTF_8)
+                assertEquals(2, finalReport.lineSequence().count { it.startsWith("[MihonExtension]") })
+                assertTrue(finalReport.contains("version=9.9.9"), finalReport)
+            } finally {
+                try {
+                    release.complete(Unit)
+                    coordinator.close()
+                    scene.close()
+                } finally {
+                    System.setErr(previousErrorStream)
+                    errorStream.close()
+                }
+            }
+        }
+    }
 
     @Test
     fun `only composed cards observe canonical database rows without another search`() = runBlocking {
@@ -92,6 +328,9 @@ class GlobalSearchResultProductionWiringTest {
                 every { getManga } returns fixture.getManga
                 every { sourceLoginSessionFactory } returns mockk(relaxed = true)
                 every { creatorDiscoverySourcePort } returns null
+                every { extensionPresentationService } returns mockk {
+                    every { installedExtensions } returns MutableStateFlow(emptyList())
+                }
             }
             var navigator: Navigator? = null
             var resultMaterializer: SourceResultMaterializer? = null
@@ -123,18 +362,29 @@ class GlobalSearchResultProductionWiringTest {
                 } ?: false
                 check(initialRowsReady) {
                     "Initial rows did not settle: observed=${fixture.repository.observedRows}, " +
-                        "active=${fixture.repository.activeSubscriptions}, canonical=${resultMaterializer.diagnostic()}, " +
+                        "active=${fixture.repository.activeSubscriptions}, " +
+                        "canonical=${resultMaterializer.diagnostic()}, " +
                         "text=${text(scene).take(2_000)}"
                 }
                 scene.render()
                 yield()
                 val sharedKeys = setOf(sourceA.id to "/shared", sourceB.id to "/shared")
-                assertTrue(fixture.repository.activeSubscriptions.size in 1..<10 && fixture.repository.activeSubscriptions.containsAll(sharedKeys))
-                assertTrue(fixture.repository.seenSubscriptions.size in 1..<10 && fixture.repository.seenSubscriptions.containsAll(sharedKeys))
+                assertTrue(
+                    fixture.repository.activeSubscriptions.size in 1..<10 &&
+                        fixture.repository.activeSubscriptions.containsAll(sharedKeys),
+                )
+                assertTrue(
+                    fixture.repository.seenSubscriptions.size in 1..<10 &&
+                        fixture.repository.seenSubscriptions.containsAll(sharedKeys),
+                )
 
                 val observed = requireNotNull(fixture.mangas.getMangaByUrlAndSourceId("/shared", sourceA.id))
                 val untouched = requireNotNull(fixture.mangas.getMangaByUrlAndSourceId("/shared", sourceB.id))
-                assertTrue(fixture.mangas.update(MangaUpdate(observed.id, title = "DB updated", thumbnailUrl = "updated-cover", favorite = true)))
+                assertTrue(
+                    fixture.mangas.update(
+                        MangaUpdate(observed.id, title = "DB updated", thumbnailUrl = "updated-cover", favorite = true),
+                    ),
+                )
                 val repositoryUpdated = requireNotNull(fixture.mangas.getMangaByUrlAndSourceId("/shared", sourceA.id))
                 assertEquals("updated-cover", repositoryUpdated.thumbnailUrl)
                 withTimeout(ASYNC_TIMEOUT_MS) {
@@ -144,15 +394,23 @@ class GlobalSearchResultProductionWiringTest {
                     }
                 }
                 withTimeout(ASYNC_TIMEOUT_MS) {
-                    while (!text(scene).contains("DB updated") || !text(scene).contains(MR.strings.in_library.localized())) {
+                    while (!text(scene).contains("DB updated") ||
+                        !text(scene).contains(MR.strings.in_library.localized())
+                    ) {
                         scene.render()
                         yield()
                     }
                 }
-                assertTrue(nodes(scene, unmerged = true).any {
-                    it.config.contains(SemanticsProperties.TestTag) && it.config[SemanticsProperties.TestTag] == "global-search-cover:updated-cover"
-                })
-                assertEquals(listOf("B listed 0", "B-cover-0", false), listOf(untouched.title, untouched.thumbnailUrl, untouched.favorite))
+                assertTrue(
+                    nodes(scene, unmerged = true).any {
+                        it.config.contains(SemanticsProperties.TestTag) &&
+                            it.config[SemanticsProperties.TestTag] == "global-search-cover:updated-cover"
+                    },
+                )
+                assertEquals(
+                    listOf("B listed 0", "B-cover-0", false),
+                    listOf(untouched.title, untouched.thumbnailUrl, untouched.favorite),
+                )
                 val listed = listedA.single { it.url == "/shared" }
                 val action = clickAction(scene, "DB updated")
                 val stackSize = requireNotNull(navigator).size
@@ -164,8 +422,14 @@ class GlobalSearchResultProductionWiringTest {
                 assertEquals(1, details.inputs.size)
                 val updateInput = details.inputs.single()
                 assertSame(listed, refreshInputs.single())
-                assertEquals(listOf("/shared", "DB updated", "updated-cover"), listOf(updateInput.url, updateInput.title, updateInput.thumbnail_url))
-                assertEquals(listOf("/shared", "A listed 0", "A-cover-0"), listOf(listed.url, listed.title, listed.thumbnail_url))
+                assertEquals(
+                    listOf("/shared", "DB updated", "updated-cover"),
+                    listOf(updateInput.url, updateInput.title, updateInput.thumbnail_url),
+                )
+                assertEquals(
+                    listOf("/shared", "A listed 0", "A-cover-0"),
+                    listOf(listed.url, listed.title, listed.thumbnail_url),
+                )
                 details.release.complete(Unit)
                 withTimeout(ASYNC_TIMEOUT_MS) { details.completed.await() }
                 assertEquals(1, details.inputs.size)
@@ -193,6 +457,9 @@ class GlobalSearchResultProductionWiringTest {
                 every { getManga } returns fixture.getManga
                 every { sourceLoginSessionFactory } returns mockk(relaxed = true)
                 every { creatorDiscoverySourcePort } returns null
+                every { extensionPresentationService } returns mockk {
+                    every { installedExtensions } returns MutableStateFlow(emptyList())
+                }
             }
             val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
             try {
@@ -213,15 +480,18 @@ class GlobalSearchResultProductionWiringTest {
                 awaitWhileRendering(scene) { fixture.repository.oldInserted.isCompleted }
                 awaitWhileRendering(scene) { fixture.repository.newStarted.isCompleted }
                 scene.render()
-                assertFalse(text(scene).contains("old canonical"), "stale completion must be rejected before the new result publishes")
+                assertFalse(
+                    text(scene).contains("old canonical"),
+                    "stale completion must be rejected before the new result publishes",
+                )
                 fixture.repository.releaseNew.complete(Unit)
                 awaitWhileRendering(scene) { fixture.repository.newFailed.isCompleted }
-                scene.render()
+                awaitWhileRendering(scene) { text(scene).contains(MR.strings.unknown_error.localized()) }
                 assertTrue(text(scene).contains(MR.strings.unknown_error.localized()))
                 assertFalse(text(scene).contains("new canonical"))
                 click(scene, MR.strings.action_retry.localized())
                 awaitWhileRendering(scene) { fixture.repository.newInserted.isCompleted }
-                scene.render()
+                awaitWhileRendering(scene) { text(scene).contains("new canonical") }
                 assertTrue(text(scene).contains("new canonical"))
                 assertNotNull(fixture.mangas.getMangaByUrlAndSourceId("/new/0", source.id))
 
@@ -252,7 +522,9 @@ class GlobalSearchResultProductionWiringTest {
             searches += query
             val items = (0 until resultCount).map { index ->
                 SManga.create().apply {
-                    url = sharedUrl?.takeIf { index == 0 } ?: if (sharedUrl == null) "/$query/$index" else "/$name/$query/$index"
+                    url =
+                        sharedUrl?.takeIf { index == 0 }
+                            ?: if (sharedUrl == null) "/$query/$index" else "/$name/$query/$index"
                     title = if (sharedUrl == null) "$query canonical $index" else "$name listed $index"
                     thumbnail_url = "$name-cover-$index"
                 }
@@ -269,7 +541,10 @@ class GlobalSearchResultProductionWiringTest {
         }
     }
 
-    private fun nodes(scene: ImageComposeScene, unmerged: Boolean = false): List<SemanticsNode> = scene.semanticsOwners.flatMap { owner ->
+    private fun nodes(
+        scene: ImageComposeScene,
+        unmerged: Boolean = false,
+    ): List<SemanticsNode> = scene.semanticsOwners.flatMap { owner ->
         fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
         flatten(if (unmerged) owner.unmergedRootSemanticsNode else owner.rootSemanticsNode)
     }
@@ -305,7 +580,11 @@ class GlobalSearchResultProductionWiringTest {
         val preferenceRoot = Preferences.userRoot().node("mihon-global-search-${System.nanoTime()}")
         private val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also(Database.Schema::create)
         private val handler = JvmDatabaseHandler(
-            Database(driver, tachiyomi.data.History.Adapter(DateColumnAdapter), tachiyomi.data.Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter)),
+            Database(
+                driver,
+                tachiyomi.data.History.Adapter(DateColumnAdapter),
+                tachiyomi.data.Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+            ),
             driver,
         )
         val mangas = MangaRepositoryImpl(
@@ -314,7 +593,8 @@ class GlobalSearchResultProductionWiringTest {
         )
         val repository = ControlledRepository(mangas)
         val getManga = GetManga(repository)
-        val saver = SaveSourceMangaForDetails(NetworkToLocalManga(repository), repository, ChapterRepositoryImpl(handler))
+        val saver =
+            SaveSourceMangaForDetails(NetworkToLocalManga(repository), repository, ChapterRepositoryImpl(handler))
         override fun close() {
             driver.close()
             preferenceRoot.clear()
@@ -343,7 +623,10 @@ class GlobalSearchResultProductionWiringTest {
         override fun getMangaByUrlAndSourceIdAsFlow(url: String, sourceId: Long): Flow<Manga?> =
             (sourceId to url).let { key ->
                 delegate.getMangaByUrlAndSourceIdAsFlow(url, sourceId)
-                    .onStart { seenSubscriptions += key; activeSubscriptions += key }
+                    .onStart {
+                        seenSubscriptions += key
+                        activeSubscriptions += key
+                    }
                     .onEach { it?.let { manga -> observedRows += Triple(sourceId, url, manga.title) } }
                     .onCompletion { activeSubscriptions -= key }
             }

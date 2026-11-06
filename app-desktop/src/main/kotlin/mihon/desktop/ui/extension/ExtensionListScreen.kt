@@ -1,8 +1,6 @@
 package mihon.desktop.ui.extension
 
-import mihon.desktop.LocalDesktopUiDependencies
-import mihon.desktop.LocalExtensionScreenModel
-
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
@@ -22,19 +19,19 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -68,6 +65,8 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import kotlinx.coroutines.launch
+import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.LocalExtensionScreenModel
 import mihon.desktop.extension.ApkConversionException
 import mihon.desktop.extension.ApkConversionStage
 import mihon.desktop.extension.DesktopAvailableExtension
@@ -76,11 +75,12 @@ import mihon.desktop.extension.isExtensionAvailableOnDesktop
 import mihon.desktop.platform.DesktopUrlOpener
 import mihon.desktop.ui.browse.SourceBrowseScreen
 import mihon.desktop.ui.settings.ExtensionRepoScreen
+import mihon.desktop.ui.source.desktopSourceErrorMessage
 import mihon.domain.error.AppError
+import mihon.domain.extension.model.ExtensionCompatibility
 import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
 import mihon.domain.extension.presentation.extensionActionEligibility
-import mihon.domain.extension.model.ExtensionCompatibility
 import tachiyomi.i18n.MR
 import java.util.Locale
 
@@ -140,234 +140,286 @@ internal fun ExtensionListContent(
     initialTab: Int = 0,
     onSuggestionMigration: (Long) -> Unit = {},
 ) {
-        val state by model.state.collectAsState()
-        val copy = remember { extensionListCopy() }
-        val scope = rememberCoroutineScope()
-        val snackbarHostState = remember { SnackbarHostState() }
+    val state by model.state.collectAsState()
+    val copy = remember { extensionListCopy() }
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
-        var selectedTab by remember(initialTab) { mutableStateOf(initialTab.coerceIn(0, 1)) }
-        var pendingRemoval by remember { mutableStateOf<DesktopExtensionItem?>(null) }
-        var showLangFilter by remember { mutableStateOf(false) }
-        val ui = remember(state) { state.toExtensionListUiProjection(state.searchQuery) }
-        val installedCount = state.presentation?.let { it.updates.size + it.installed.size } ?: 0
-        val installedExtensions = state.projection?.installed.orEmpty().mapNotNull(DesktopExtensionItem::installed)
-        val languageInventory = remember(state.projection) {
-            state.projection?.let { projection ->
-                (projection.installed + projection.available).flatMap { item ->
-                    listOfNotNull(item.presentation.language) + item.presentation.sources.map { it.language }
-                }.filter(String::isNotBlank).toSet()
-            }.orEmpty()
+    var selectedTab by remember(initialTab) { mutableStateOf(initialTab.coerceIn(0, 1)) }
+    var pendingRemoval by remember { mutableStateOf<DesktopExtensionItem?>(null) }
+    var showLangFilter by remember { mutableStateOf(false) }
+    val ui = remember(state) { state.toExtensionListUiProjection(state.searchQuery) }
+    val installedCount = state.presentation?.let { it.updates.size + it.installed.size } ?: 0
+    val installedExtensions = state.projection?.installed.orEmpty().mapNotNull(DesktopExtensionItem::installed)
+    val languageInventory = remember(state.projection) {
+        state.projection?.let { projection ->
+            (projection.installed + projection.available).flatMap { item ->
+                listOfNotNull(item.presentation.language) + item.presentation.sources.map { it.language }
+            }.filter(String::isNotBlank).toSet()
+        }.orEmpty()
+    }
+    val currentTabLangs = remember(selectedTab, state.projection) {
+        (if (selectedTab == 0) state.projection?.installed.orEmpty() else state.projection?.available.orEmpty())
+            .flatMap { item ->
+                listOfNotNull(item.presentation.language) + item.presentation.sources.map { it.language }
+            }.filter(String::isNotBlank).distinct().sorted()
+    }
+
+    LaunchedEffect(model) { model.refreshIfStale() }
+
+    LaunchedEffect(state.reloadError) {
+        state.reloadError?.let { error ->
+            snackbarHostState.showSnackbar(
+                MR.strings.desktop_extension_reload_failed.localized(
+                    Locale.getDefault(),
+                    error.message?.takeIf(String::isNotBlank) ?: MR.strings.unknown_error.localized(),
+                ),
+            )
+            model.acknowledgeReloadError(error)
         }
-        val currentTabLangs = remember(selectedTab, state.projection) {
-            (if (selectedTab == 0) state.projection?.installed.orEmpty() else state.projection?.available.orEmpty())
-                .flatMap { item ->
-                    listOfNotNull(item.presentation.language) + item.presentation.sources.map { it.language }
-                }.filter(String::isNotBlank).distinct().sorted()
-        }
+    }
 
-        LaunchedEffect(model) { model.refreshIfStale() }
+    pendingRemoval?.let { item ->
+        val ext = requireNotNull(item.installed)
+        AlertDialog(
+            onDismissRequest = { pendingRemoval = null },
+            title = { Text(MR.strings.ext_confirm_remove.localized()) },
+            text = { Text(MR.strings.desktop_extension_remove_confirmation.localized(Locale.getDefault(), ext.name)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (!model.uninstall(item)) {
+                        scope.launch {
+                            snackbarHostState.showSnackbar(MR.strings.desktop_extension_uninstall_failed.localized())
+                        }
+                    }
+                    pendingRemoval = null
+                }) { Text(MR.strings.ext_uninstall.localized(), color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRemoval = null }) { Text(MR.strings.action_cancel.localized()) }
+            },
+        )
+    }
 
-        LaunchedEffect(state.reloadError) {
-            state.reloadError?.let { error ->
-                snackbarHostState.showSnackbar(
-                    MR.strings.desktop_extension_reload_failed.localized(
+    state.pendingTrust?.let { pending ->
+        AlertDialog(
+            onDismissRequest = { model.dismissTrust() },
+            title = { Text(MR.strings.untrusted_extension.localized()) },
+            text = {
+                Text(
+                    MR.strings.desktop_extension_trust_changed.localized(
                         Locale.getDefault(),
-                        error.message?.takeIf(String::isNotBlank) ?: MR.strings.unknown_error.localized(),
+                        pending.request.existingFingerprint,
+                        pending.request.incomingFingerprint,
                     ),
                 )
-                model.acknowledgeReloadError(error)
-            }
-        }
+            },
+            confirmButton = {
+                TextButton(onClick = { model.confirmTrust() }) { Text(MR.strings.ext_trust.localized()) }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { model.dismissTrust() },
+                    modifier = Modifier.semantics {
+                        contentDescription = listOf(
+                            MR.strings.action_cancel.localized(),
+                            MR.strings.untrusted_extension.localized(),
+                        ).joinToString(" ")
+                    },
+                ) { Text(MR.strings.action_cancel.localized()) }
+            },
+        )
+    }
 
-        pendingRemoval?.let { item ->
-            val ext = requireNotNull(item.installed)
-            AlertDialog(
-                onDismissRequest = { pendingRemoval = null },
-                title = { Text(MR.strings.ext_confirm_remove.localized()) },
-                text = { Text(MR.strings.desktop_extension_remove_confirmation.localized(Locale.getDefault(), ext.name)) },
-                confirmButton = {
-                    TextButton(onClick = {
-                        if (!model.uninstall(item)) {
-                            scope.launch {
-                                snackbarHostState.showSnackbar(MR.strings.desktop_extension_uninstall_failed.localized())
+    if (showLangFilter) {
+        LanguageFilterDialog(
+            langs = currentTabLangs,
+            selectedLangs = state.options.enabledLanguages,
+            showNsfw = state.options.showNsfw,
+            onApply = { languages, showNsfw ->
+                model.setOptions(ExtensionPresentationOptions(showNsfw, languages.ifEmpty { languageInventory }))
+            },
+            onDismiss = { showLangFilter = false },
+        )
+    }
+
+    Scaffold(
+        topBar = {
+            Column {
+                TopAppBar(
+                    title = { Text(title ?: copy.title) },
+                    navigationIcon = {
+                        if (showBackButton) {
+                            IconButton(onClick = onBack) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = MR.strings.action_bar_up_description.localized(),
+                                )
                             }
                         }
-                        pendingRemoval = null
-                    }) { Text(MR.strings.ext_uninstall.localized(), color = MaterialTheme.colorScheme.error) }
-                },
-                dismissButton = {
-                    TextButton(onClick = { pendingRemoval = null }) { Text(MR.strings.action_cancel.localized()) }
-                },
-            )
-        }
-
-        state.pendingTrust?.let { pending ->
-            AlertDialog(
-                onDismissRequest = { model.dismissTrust() },
-                title = { Text(MR.strings.untrusted_extension.localized()) },
-                text = {
-                    Text(
-                        MR.strings.desktop_extension_trust_changed.localized(
-                            Locale.getDefault(),
-                            pending.request.existingFingerprint,
-                            pending.request.incomingFingerprint,
-                        ),
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = { model.confirmTrust() }) { Text(MR.strings.ext_trust.localized()) }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = { model.dismissTrust() },
-                        modifier = Modifier.semantics {
-                            contentDescription = "${MR.strings.action_cancel.localized()} ${MR.strings.untrusted_extension.localized()}"
-                        },
-                    ) { Text(MR.strings.action_cancel.localized()) }
-                },
-            )
-        }
-
-        if (showLangFilter) {
-            LanguageFilterDialog(
-                langs = currentTabLangs,
-                selectedLangs = state.options.enabledLanguages,
-                showNsfw = state.options.showNsfw,
-                onApply = { languages, showNsfw ->
-                    model.setOptions(ExtensionPresentationOptions(showNsfw, languages.ifEmpty { languageInventory }))
-                },
-                onDismiss = { showLangFilter = false },
-            )
-        }
-
-        Scaffold(
-            topBar = {
-                Column {
-                    TopAppBar(
-                        title = { Text(title ?: copy.title) },
-                        navigationIcon = {
-                            if (showBackButton) {
-                                IconButton(onClick = onBack) {
-                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
-                                }
+                    },
+                    actions = {
+                        onRepositories?.let {
+                            TextButton(onClick = it) {
+                                Text(MR.strings.label_extension_repos.localized())
                             }
-                        },
-                        actions = {
-                            onRepositories?.let {
-                                TextButton(onClick = it) {
-                                    Text(MR.strings.label_extension_repos.localized())
-                                }
-                            }
-                            if (currentTabLangs.isNotEmpty()) {
-                                IconButton(onClick = { showLangFilter = true }) {
-                                    if (state.options.enabledLanguages.isNotEmpty()) {
-                                        BadgedBox(badge = { Badge { Text("${state.options.enabledLanguages.size}") } }) {
-                                            Icon(Icons.Default.FilterList, contentDescription = MR.strings.desktop_extension_filter_by_language.localized())
-                                        }
-                                    } else {
-                                        Icon(Icons.Default.FilterList, contentDescription = MR.strings.desktop_extension_filter_by_language.localized())
-                                    }
-                                }
-                            }
-                            if (selectedTab == 0) {
-                                IconButton(onClick = { model.reloadInstalled() }) {
-                                    Icon(Icons.Default.Refresh, contentDescription = MR.strings.desktop_extension_reload_installed.localized())
-                                }
-                            } else {
-                                IconButton(onClick = { model.refresh() }) {
-                                    Icon(Icons.Default.Refresh, contentDescription = MR.strings.desktop_extension_refresh_available.localized())
-                                }
-                            }
-                        },
-                    )
-                    primaryNavigation?.invoke()
-                    TabRow(selectedTabIndex = selectedTab) {
-                        Tab(
-                            selected = selectedTab == 0,
-                            onClick = {
-                                if (selectedTab != 0) {
-                                    selectedTab = 0
-                                    model.search("")
-                                }
-                            },
-                            text = {
-                                Text("${MR.strings.ext_installed.localized()} ($installedCount)")
-                            },
-                        )
-                        Tab(
-                            selected = selectedTab == 1,
-                            onClick = {
-                                if (selectedTab != 1) {
-                                    selectedTab = 1
-                                    model.search("")
-                                }
-                            },
-                            text = {
-                                if (ui.updates.isNotEmpty()) {
-                                    BadgedBox(badge = { Badge { Text("${ui.updates.size}") } }) {
-                                        Text(copy.available)
+                        }
+                        if (currentTabLangs.isNotEmpty()) {
+                            val languageFilterLabel = MR.strings.desktop_extension_filter_by_language.localized()
+                            IconButton(onClick = { showLangFilter = true }) {
+                                if (state.options.enabledLanguages.isNotEmpty()) {
+                                    BadgedBox(badge = { Badge { Text("${state.options.enabledLanguages.size}") } }) {
+                                        Icon(
+                                            Icons.Default.FilterList,
+                                            contentDescription = languageFilterLabel,
+                                        )
                                     }
                                 } else {
+                                    Icon(
+                                        Icons.Default.FilterList,
+                                        contentDescription = languageFilterLabel,
+                                    )
+                                }
+                            }
+                        }
+                        if (selectedTab == 0) {
+                            IconButton(onClick = { model.reloadInstalled() }) {
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = MR.strings.desktop_extension_reload_installed.localized(),
+                                )
+                            }
+                        } else {
+                            IconButton(onClick = { model.refresh() }) {
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = MR.strings.desktop_extension_refresh_available.localized(),
+                                )
+                            }
+                        }
+                    },
+                )
+                primaryNavigation?.invoke()
+                TabRow(selectedTabIndex = selectedTab) {
+                    Tab(
+                        selected = selectedTab == 0,
+                        onClick = {
+                            if (selectedTab != 0) {
+                                selectedTab = 0
+                                model.search("")
+                            }
+                        },
+                        text = {
+                            Text("${MR.strings.ext_installed.localized()} ($installedCount)")
+                        },
+                    )
+                    Tab(
+                        selected = selectedTab == 1,
+                        onClick = {
+                            if (selectedTab != 1) {
+                                selectedTab = 1
+                                model.search("")
+                            }
+                        },
+                        text = {
+                            if (ui.updates.isNotEmpty()) {
+                                BadgedBox(badge = { Badge { Text("${ui.updates.size}") } }) {
                                     Text(copy.available)
                                 }
-                            },
-                        )
-                    }
-                    OutlinedTextField(
-                        value = state.searchQuery,
-                        onValueChange = {
-                            mihon.domain.easteregg.PigEasterEggTrigger.check(it)
-                            model.search(it)
+                            } else {
+                                Text(copy.available)
+                            }
                         },
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                        singleLine = true,
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                        placeholder = { Text(copy.search) },
                     )
                 }
-            },
-            snackbarHost = { SnackbarHost(snackbarHostState) },
-        ) { padding ->
-            Column(Modifier.padding(padding).fillMaxSize()) {
-                state.refreshError?.let { error ->
-                    ElevatedCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                        Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                OutlinedTextField(
+                    value = state.searchQuery,
+                    onValueChange = {
+                        mihon.domain.easteregg.PigEasterEggTrigger.check(it)
+                        model.search(it)
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    placeholder = { Text(copy.search) },
+                )
+            }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+    ) { padding ->
+        Column(Modifier.padding(padding).fillMaxSize()) {
+            if (selectedTab == 0 && state.loadFailures.isNotEmpty()) {
+                ElevatedCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                        state.loadFailures.forEach { failure ->
+                            val metadata = failure.metadata
                             Text(
-                                MR.strings.desktop_extension_refresh_failed.localized(
-                                    Locale.getDefault(),
-                                    error.message?.takeIf(String::isNotBlank) ?: error.toString(),
-                                ),
+                                if (metadata != null) {
+                                    "${metadata.name.ifBlank { MR.strings.unknown.localized() }} · " +
+                                        metadata.versionName.ifBlank { MR.strings.unknown.localized() }
+                                } else {
+                                    "${MR.strings.unknown.localized()} · ${failure.jarName}"
+                                },
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            Text(
+                                failure.error?.let { desktopSourceErrorMessage(it) }
+                                    ?: MR.strings.unknown_error.localized(),
                                 style = MaterialTheme.typography.bodyMedium,
                             )
-                            TextButton(onClick = model::refresh, modifier = Modifier.align(Alignment.End)) {
-                                Text(copy.retry)
-                            }
                         }
                     }
                 }
-                if (ui.failures.isNotEmpty()) {
-                    ElevatedCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                        Column(Modifier.fillMaxWidth().padding(12.dp)) {
-                            Text(copy.repositoryFailure, style = MaterialTheme.typography.titleSmall)
-                            ui.failures.forEach {
-                                Text(MR.strings.desktop_extension_repository_error.localized(Locale.getDefault(), it.repository.name.ifBlank { it.repository.baseUrl }, it.error.toString()))
-                            }
-                            TextButton(onClick = model::refresh, modifier = Modifier.align(Alignment.End)) { Text(copy.retry) }
-                        }
-                    }
-                }
-                if (selectedTab == 1 && state.hasLoadedCatalog && state.actions.isRefreshing) {
-                    Column(Modifier.fillMaxWidth()) {
-                        LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+            state.refreshError?.let { error ->
+                ElevatedCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(12.dp)) {
                         Text(
-                            copy.refreshingCached,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            MR.strings.desktop_extension_refresh_failed.localized(
+                                Locale.getDefault(),
+                                error.message?.takeIf(String::isNotBlank) ?: error.toString(),
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
                         )
+                        TextButton(onClick = model::refresh, modifier = Modifier.align(Alignment.End)) {
+                            Text(copy.retry)
+                        }
                     }
                 }
-                when (selectedTab) {
+            }
+            if (ui.failures.isNotEmpty()) {
+                ElevatedCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                        Text(copy.repositoryFailure, style = MaterialTheme.typography.titleSmall)
+                        ui.failures.forEach {
+                            Text(
+                                MR.strings.desktop_extension_repository_error.localized(
+                                    Locale.getDefault(),
+                                    it.repository.name.ifBlank {
+                                        it.repository.baseUrl
+                                    },
+                                    it.error.toString(),
+                                ),
+                            )
+                        }
+                        TextButton(onClick = model::refresh, modifier = Modifier.align(Alignment.End)) {
+                            Text(copy.retry)
+                        }
+                    }
+                }
+            }
+            if (selectedTab == 1 && state.hasLoadedCatalog && state.actions.isRefreshing) {
+                Column(Modifier.fillMaxWidth()) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Text(
+                        copy.refreshingCached,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            when (selectedTab) {
                 0 -> {
                     val batchContent = extensionSuggestionBatchContent(model)
                     val suggestionContent = extensionSuggestionContent(
@@ -375,8 +427,14 @@ internal fun ExtensionListContent(
                         onInstall = { model.installSuggestion(it) },
                         onWebsite = { source ->
                             DesktopUrlOpener.open(source.baseUrl).onFailure { error ->
-                                scope.launch { snackbarHostState.showSnackbar(
-                                    MR.strings.desktop_extension_open_link_failed.localized(Locale.getDefault(), error.message.orEmpty())) }
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(
+                                        MR.strings.desktop_extension_open_link_failed.localized(
+                                            Locale.getDefault(),
+                                            error.message.orEmpty(),
+                                        ),
+                                    )
+                                }
                             }
                         },
                         onRepositories = onRepositories ?: {},
@@ -393,16 +451,16 @@ internal fun ExtensionListContent(
                         errors = state.installErrors,
                     )
                     InstalledTab(
-                    extensions = ui.installed,
-                    onUninstall = { pendingRemoval = it },
-                    onOpen = onOpen,
-                    emptyCopy = copy,
-                    leadingContent = {
-                        item(key = "extension-suggestion-batch") { batchContent() }
-                        suggestionContent()
-                    },
-                    modifier = Modifier.weight(1f),
-                )
+                        extensions = ui.installed,
+                        onUninstall = { pendingRemoval = it },
+                        onOpen = onOpen,
+                        emptyCopy = copy,
+                        leadingContent = {
+                            item(key = "extension-suggestion-batch") { batchContent() }
+                            suggestionContent()
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
                 }
                 1 -> AvailableTab(
                     extensions = ui.updates + ui.available,
@@ -420,7 +478,10 @@ internal fun ExtensionListContent(
                             .onFailure {
                                 scope.launch {
                                     snackbarHostState.showSnackbar(
-                                        MR.strings.desktop_extension_open_link_failed.localized(Locale.getDefault(), it.message.orEmpty()),
+                                        MR.strings.desktop_extension_open_link_failed.localized(
+                                            Locale.getDefault(),
+                                            it.message.orEmpty(),
+                                        ),
                                     )
                                 }
                             }
@@ -438,8 +499,8 @@ internal fun ExtensionListContent(
                     modifier = Modifier.weight(1f),
                 )
             }
-            }
         }
+    }
 }
 
 internal enum class AvailableExtensionLoadState {
@@ -450,7 +511,9 @@ internal enum class AvailableExtensionLoadState {
     Content,
 }
 
-internal fun DesktopExtensionsState.availableExtensionLoadState(hasContent: Boolean): AvailableExtensionLoadState = when {
+internal fun DesktopExtensionsState.availableExtensionLoadState(
+    hasContent: Boolean,
+): AvailableExtensionLoadState = when {
     configuredRepositoryCount == 0 -> AvailableExtensionLoadState.NoRepositories
     !hasLoadedCatalog && refreshError == null -> AvailableExtensionLoadState.Loading
     !hasLoadedCatalog -> AvailableExtensionLoadState.Failed
@@ -555,7 +618,8 @@ private fun AvailableTab(
             }
             items(extensions, key = { it.presentation.packageName }) { item ->
                 val isInstalled = isExtensionAvailableOnDesktop(item.operationPackageName, installedExtensions)
-                val hasUpdate = updatableExtensions.any { it.operationPackageName == item.operationPackageName }
+                val hasUpdate = item.presentation.hasUpdate ||
+                    updatableExtensions.any { it.operationPackageName == item.operationPackageName }
                 AvailableExtensionCard(
                     item = item,
                     isInstalled = isInstalled,
@@ -613,7 +677,11 @@ private fun ExtensionCard(
                 Icon(Icons.Default.Settings, contentDescription = MR.strings.action_settings.localized())
             }
             IconButton(onClick = onUninstall) {
-                Icon(Icons.Default.Delete, contentDescription = MR.strings.ext_uninstall.localized(), tint = MaterialTheme.colorScheme.error)
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = MR.strings.ext_uninstall.localized(),
+                    tint = MaterialTheme.colorScheme.error,
+                )
             }
         }
     }
@@ -660,7 +728,11 @@ private fun AvailableExtensionCard(
                     }
                 }
                 Text(
-                    text = MR.strings.desktop_extension_language_version.localized(Locale.getDefault(), presentation.language.orEmpty(), extension.versionName),
+                    text = MR.strings.desktop_extension_language_version.localized(
+                        Locale.getDefault(),
+                        presentation.language.orEmpty(),
+                        extension.versionName,
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -677,7 +749,13 @@ private fun AvailableExtensionCard(
             }
             presentation.sources.firstOrNull { it.baseUrl?.startsWith("http") == true }?.let { source ->
                 IconButton(onClick = { onOpenUrl(requireNotNull(source.baseUrl)) }) {
-                    Icon(Icons.Default.Public, contentDescription = MR.strings.desktop_extension_open_source_website.localized(Locale.getDefault(), source.name))
+                    Icon(
+                        Icons.Default.Public,
+                        contentDescription = MR.strings.desktop_extension_open_source_website.localized(
+                            Locale.getDefault(),
+                            source.name,
+                        ),
+                    )
                 }
             }
             when {
@@ -707,7 +785,8 @@ private fun AvailableExtensionCard(
                         contentDescription = "${MR.strings.ext_update.localized()} ${presentation.name}"
                     },
                 ) { Text(MR.strings.ext_update.localized()) }
-                isInstalled -> OutlinedButton(onClick = {}, enabled = false) { Text(MR.strings.ext_installed.localized()) }
+                isInstalled -> OutlinedButton(onClick = {
+                }, enabled = false) { Text(MR.strings.ext_installed.localized()) }
                 eligibility.canStart -> Button(
                     onClick = onInstall,
                     modifier = Modifier.semantics {
@@ -743,6 +822,7 @@ internal fun extensionInstallErrorCopy(name: String, error: AppError, locale: Lo
     val detail = error.cause?.message.orEmpty()
     val conversion = (error as? AppError.MalformedData)?.cause as? ApkConversionException
     return when {
+        error is AppError.ExtensionIncompatible -> desktopSourceErrorMessage(error, locale)
         conversion != null -> MR.strings.desktop_extension_conversion_failed_detailed.localized(
             locale,
             name,
@@ -750,17 +830,25 @@ internal fun extensionInstallErrorCopy(name: String, error: AppError, locale: Lo
             conversion.failure.attempts,
             conversion.failure.error.userFacingConversionReason(),
         )
-        error is AppError.MalformedData && detail.startsWith("Android-only") -> MR.strings.desktop_extension_android_only.localized(locale, name)
-        error is AppError.MalformedData && detail.startsWith("APK convert failed") -> MR.strings.desktop_extension_conversion_failed.localized(locale, name)
+        error is AppError.MalformedData && detail.startsWith(
+            "Android-only",
+        ) -> MR.strings.desktop_extension_android_only.localized(locale, name)
+        error is AppError.MalformedData && detail.startsWith(
+            "APK convert failed",
+        ) -> MR.strings.desktop_extension_conversion_failed.localized(locale, name)
         else -> MR.strings.desktop_extension_install_failed.localized(locale, detail.ifBlank { error.toString() })
     }
 }
 
 private fun ApkConversionStage.localized(locale: Locale): String = when (this) {
     ApkConversionStage.INSPECT_INPUT -> MR.strings.desktop_extension_conversion_stage_inspect_input.localized(locale)
-    ApkConversionStage.PREPARE_WORKSPACE -> MR.strings.desktop_extension_conversion_stage_prepare_workspace.localized(locale)
+    ApkConversionStage.PREPARE_WORKSPACE -> MR.strings.desktop_extension_conversion_stage_prepare_workspace.localized(
+        locale,
+    )
     ApkConversionStage.TRANSLATE_DEX -> MR.strings.desktop_extension_conversion_stage_translate_dex.localized(locale)
-    ApkConversionStage.REWRITE_BYTECODE -> MR.strings.desktop_extension_conversion_stage_rewrite_bytecode.localized(locale)
+    ApkConversionStage.REWRITE_BYTECODE -> MR.strings.desktop_extension_conversion_stage_rewrite_bytecode.localized(
+        locale,
+    )
     ApkConversionStage.COPY_ASSETS -> MR.strings.desktop_extension_conversion_stage_copy_assets.localized(locale)
     ApkConversionStage.PUBLISH_OUTPUT -> MR.strings.desktop_extension_conversion_stage_publish_output.localized(locale)
     ApkConversionStage.CLEANUP -> MR.strings.desktop_extension_conversion_stage_cleanup.localized(locale)
@@ -773,7 +861,10 @@ private fun Throwable.userFacingConversionReason(): String {
     return if (message.isBlank()) type else "$type: $message"
 }
 
-internal fun extensionInstallStepCopy(step: ExtensionPresentationInstallStep?, locale: Locale = Locale.getDefault()): String? = when (step) {
+internal fun extensionInstallStepCopy(
+    step: ExtensionPresentationInstallStep?,
+    locale: Locale = Locale.getDefault(),
+): String? = when (step) {
     ExtensionPresentationInstallStep.Pending -> MR.strings.ext_pending.localized(locale)
     ExtensionPresentationInstallStep.Downloading -> MR.strings.ext_downloading.localized(locale)
     ExtensionPresentationInstallStep.Installing -> MR.strings.ext_installing.localized(locale)
@@ -784,9 +875,17 @@ internal fun extensionInstallStepCopy(step: ExtensionPresentationInstallStep?, l
 private fun EmptyExtensions(copy: ExtensionListCopy, modifier: Modifier = Modifier) {
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(copy.emptyInstalled, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                copy.emptyInstalled,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Spacer(modifier = Modifier.height(8.dp))
-            Text(copy.emptyInstalledHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                copy.emptyInstalledHint,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -829,7 +928,9 @@ private fun LanguageFilterDialog(
                             java.util.Locale.forLanguageTag(lang).getDisplayLanguage(java.util.Locale.ENGLISH)
                                 .replaceFirstChar { it.uppercase() }
                                 .takeIf { it.isNotBlank() } ?: lang
-                        } catch (_: Exception) { lang }
+                        } catch (_: Exception) {
+                            lang
+                        }
                     }
                     Row(
                         verticalAlignment = Alignment.CenterVertically,

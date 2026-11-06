@@ -4,7 +4,6 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
-import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -58,9 +57,6 @@ internal class DesktopGlobalSearchSession(
 
     /** Source filter of the search. */
     val sourceFilter = mutableStateOf(GlobalSearchSourceFilter.PinnedOnly)
-
-    /** Sources that produced the results of the current generation. */
-    val sourcesByGeneration = mutableStateOf(emptyMap<Long, List<Source>>())
 
     /** True once a search was started, so returning to the screen does not search again. */
     var searched: Boolean = false

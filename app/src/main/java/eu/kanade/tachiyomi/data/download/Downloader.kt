@@ -8,6 +8,9 @@ import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.data.library.LibraryUpdateNotifier
 import eu.kanade.tachiyomi.data.notification.NotificationHandler
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.source.UnmeteredSource
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -39,6 +42,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import logcat.LogPriority
 import mihon.core.archive.ZipWriter
+import mihon.domain.error.AppError
 import nl.adaptivity.xmlutil.serialization.XML
 import okhttp3.Response
 import tachiyomi.core.common.i18n.stringResource
@@ -55,6 +59,7 @@ import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.source.service.toSourceAppError
 import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
@@ -255,9 +260,10 @@ class Downloader(
                 stop()
             }
         } catch (e: Throwable) {
-            if (e is CancellationException) throw e
+            e.rethrowSourceControlFailure()
             logcat(LogPriority.ERROR, e)
-            notifier.onError(e.message)
+            if (e.toSourceAppError() is AppError.ExtensionIncompatible) download.status = Download.State.ERROR
+            notifier.onError(e.downloadFailureMessage())
             stop()
         }
     }
@@ -390,7 +396,9 @@ class Downloader(
             // If the page list already exists, start from the file
             val pageList = download.pages ?: run {
                 // Otherwise, pull page list from network and add them to download object
-                val pages = download.source.getPageList(download.chapter.toSChapter())
+                val pages = guardSourceOperation(SourceOperationPhase.PAGE_LIST) {
+                    download.source.getPageList(download.chapter.toSChapter())
+                }
 
                 if (pages.isEmpty()) {
                     throw Exception(context.stringResource(MR.strings.page_list_empty_error))
@@ -415,9 +423,20 @@ class Downloader(
                     if (page.imageUrl.isNullOrEmpty()) {
                         page.status = Page.State.LoadPage
                         try {
-                            page.imageUrl = download.source.getImageUrl(page)
+                            page.imageUrl = guardSourceOperation(SourceOperationPhase.IMAGE_URL) {
+                                download.source.getImageUrl(page)
+                            }
                         } catch (e: Throwable) {
+                            e.rethrowSourceControlFailure()
                             page.status = Page.State.Error(e)
+                            if (e.toSourceAppError() is AppError.ExtensionIncompatible) {
+                                notifier.onError(
+                                    e.downloadFailureMessage(),
+                                    download.chapter.name,
+                                    download.manga.title,
+                                    download.manga.id,
+                                )
+                            }
                         }
                     }
 
@@ -457,11 +476,16 @@ class Downloader(
 
             download.status = Download.State.DOWNLOADED
         } catch (error: Throwable) {
-            if (error is CancellationException) throw error
+            error.rethrowSourceControlFailure()
             // If the page list threw, it will resume here
             logcat(LogPriority.ERROR, error)
             download.status = Download.State.ERROR
-            notifier.onError(error.message, download.chapter.name, download.manga.title, download.manga.id)
+            notifier.onError(
+                error.downloadFailureMessage(),
+                download.chapter.name,
+                download.manga.title,
+                download.manga.id,
+            )
         }
     }
 
@@ -507,13 +531,20 @@ class Downloader(
             page.progress = 100
             page.status = Page.State.Ready
         } catch (e: Throwable) {
-            if (e is CancellationException) throw e
+            e.rethrowSourceControlFailure()
             // Mark this page as error and allow to download the remaining
             page.progress = 0
             page.status = Page.State.Error(e)
-            notifier.onError(e.message, download.chapter.name, download.manga.title, download.manga.id)
+            notifier.onError(e.downloadFailureMessage(), download.chapter.name, download.manga.title, download.manga.id)
         }
     }
+
+    private fun Throwable.downloadFailureMessage(): String? =
+        if (toSourceAppError() is AppError.ExtensionIncompatible) {
+            context.stringResource(MR.strings.source_error_extension_incompatible)
+        } else {
+            message
+        }
 
     /**
      * Downloads the image from network to a file in tmpDir.
@@ -527,7 +558,7 @@ class Downloader(
         page.status = Page.State.DownloadImage
         page.progress = 0
         return flow {
-            val response = source.getImage(page)
+            val response = guardSourceOperation(SourceOperationPhase.IMAGE_REQUEST) { source.getImage(page) }
             val file = tmpDir.createFile("$filename.tmp")!!
             try {
                 response.body.source().saveTo(file.openOutputStream())
@@ -541,7 +572,9 @@ class Downloader(
             emit(file)
         }
             // Retry 3 times, waiting 2, 4 and 8 seconds between attempts.
-            .retryWhen { _, attempt ->
+            .retryWhen { error, attempt ->
+                error.rethrowSourceControlFailure()
+                if (error.toSourceAppError() is AppError.ExtensionIncompatible) return@retryWhen false
                 if (attempt < 3) {
                     delay((2L shl attempt.toInt()) * 1000)
                     true
@@ -665,7 +698,11 @@ class Downloader(
             .mapNotNull { track ->
                 track.remoteUrl.takeUnless { url -> url.isBlank() }?.trim()
             }
-            .plus(source.getChapterUrl(chapter.toSChapter()).trim())
+            .plus(
+                guardSourceOperation(SourceOperationPhase.METADATA) {
+                    source.getChapterUrl(chapter.toSChapter())
+                }.trim(),
+            )
             .distinct()
 
         val comicInfo = getComicInfo(
@@ -673,7 +710,7 @@ class Downloader(
             chapter,
             urls,
             categories,
-            source.name,
+            guardSourceOperation(SourceOperationPhase.METADATA) { source.name },
         )
 
         // Remove the old file

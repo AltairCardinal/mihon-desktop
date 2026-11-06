@@ -1,5 +1,6 @@
 package mihon.domain.reader.materialize
 
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import kotlinx.coroutines.CancellationException
 import mihon.domain.error.AppError
 import mihon.domain.network.AppErrorException
@@ -179,9 +180,12 @@ object CanonicalReaderMaterializeExecutor : ReaderMaterializeExecutor {
     }
 }
 
-private fun Throwable.toMaterializeAppError(): AppError = when (this) {
-    is AppErrorException -> error
-    else -> AppError.Unknown(this)
+private fun Throwable.toMaterializeAppError(): AppError {
+    rethrowSourceControlFailure()
+    return when (this) {
+        is AppErrorException -> error
+        else -> AppError.Unknown(this)
+    }
 }
 
 private fun Throwable.materializeCause(): Throwable = when (this) {

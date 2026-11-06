@@ -54,6 +54,12 @@ val syncAex01AndroidTestAssets = tasks.register<Sync>("syncAex01AndroidTestAsset
         include("keiyoushi-mangadex-1.6.0.apk")
         include("keiyoushi-mangadex-1.4.211.apk")
     }
+    // Explicit local input only: the third-party release APK is not redistributed.
+    providers.gradleProperty("mihon.ecRealApk").orNull?.let { input ->
+        val apk = rootProject.file(input)
+        require(apk.isFile) { "mihon.ecRealApk must name the pinned local Zerobyw APK" }
+        from(apk) { rename { "ec-zerobyw-1.6.2.apk" } }
+    }
     into(aex01AndroidTestAssets)
 }
 
@@ -74,7 +80,9 @@ android {
     namespace = "eu.kanade.tachiyomi"
     // Opt in explicitly: ordinary device tests must retain their debug target.
     testBuildType = providers.gradleProperty("mihon.testBuildType").orElse("debug").get().also {
-        require(it == "debug" || it == "release") { "mihon.testBuildType must be debug or release" }
+        require(it in setOf("debug", "release", "benchmark")) {
+            "mihon.testBuildType must be debug, release or benchmark"
+        }
     }
     testOptions.unitTests.isIncludeAndroidResources = true
 

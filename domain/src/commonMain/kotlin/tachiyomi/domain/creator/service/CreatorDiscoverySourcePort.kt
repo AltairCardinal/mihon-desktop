@@ -102,6 +102,8 @@ sealed interface CreatorSourceDetailsResult {
 }
 
 sealed interface CreatorSourceFailure {
+    data class ExtensionIncompatible(val cause: Throwable?) : CreatorSourceFailure
+
     data class AuthenticationRequired(val loginUrl: String?) : CreatorSourceFailure
 
     data class RateLimited(val retryAfterMillis: Long?) : CreatorSourceFailure

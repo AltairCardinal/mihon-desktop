@@ -21,6 +21,8 @@ import okhttp3.Request
 import okhttp3.Response
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import tachiyomi.data.source.NoResultsException
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
@@ -33,80 +35,125 @@ import tachiyomi.domain.source.service.SourceRecoveryAction
 class BrowseSourceRecoveryBehaviorTest {
 
     @Test
-    fun `duplicate raw pages retain a paging boundary for explicit result filtering`() = runTest {
-        val source = object : CatalogueSource {
-            override val id = 991L
-            override val name = "Repeated source page"
-            override val lang = "en"
-            override val supportsLatest = false
-            override suspend fun getPopularManga(page: Int) = MangasPage(
-                listOf(
-                    SManga.create().apply {
-                        url = "/same"
-                        title = "[English] Same work"
-                    },
-                ),
-                hasNextPage = page < 3,
-            )
-            override suspend fun getSearchManga(page: Int, query: String, filters: FilterList) = getPopularManga(page)
-            override suspend fun getLatestUpdates(page: Int) = getPopularManga(page)
-            override fun getFilterList() = FilterList()
-            override suspend fun getMangaDetails(manga: SManga) = manga
-            override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()
-            override suspend fun getPageList(chapter: SChapter) = emptyList<Page>()
+    fun `legacy Browse login factory guards only target metadata and preserves control`() {
+        val source = mockk<HttpSource>()
+        val login = SourcePageError(AppError.Authentication(), SourceRecoveryAction.OpenLogin)
+        for (site in listOf("id", "name", "baseUrl")) {
+            io.mockk.every { source.id } returns 9L
+            io.mockk.every { source.name } returns "Legacy login"
+            io.mockk.every { source.baseUrl } returns "https://legacy.invalid"
+            val original = NoSuchMethodError(site)
+            when (site) {
+                "id" -> io.mockk.every { source.id } throws original
+                "name" -> io.mockk.every { source.name } throws original
+                else -> io.mockk.every { source.baseUrl } throws original
+            }
+            val failure = assertThrows(eu.kanade.tachiyomi.network.SourceCompatibilityException::class.java) {
+                browseSourceRecoveryScreen(source, login)
+            }
+            assertSame(original, failure.cause)
+            assertEquals(eu.kanade.tachiyomi.network.SourceOperationPhase.METADATA, failure.phase)
         }
-        val repository = mockk<MangaRepository>()
-        val pagingSource = pagingSource(source, repository)
-        val first = pagingSource.load(refresh()) as PagingSource.LoadResult.Page<Long, Manga>
-        val second = pagingSource.load(append(2)) as PagingSource.LoadResult.Page<Long, Manga>
-
-        assertEquals(listOf("/same"), first.data.map { it.url })
-        assertEquals(listOf("/same"), second.data.map { it.url })
-        assertEquals(3L, second.nextKey)
-        coVerify(exactly = 1) { repository.insertNetworkManga(any()) }
-    }
-
-    @Test
-    fun `refresh 403 preserves OpenLogin through the real paging source`() = runTest {
-        val source = FailingCatalogueSource(failPage = 1)
-        val result = pagingSource(source).load(refresh())
-
-        val error = assertInstanceOf(PagingSource.LoadResult.Error::class.java, result)
-        val pageError = assertInstanceOf(SourcePageException::class.java, error.throwable).pageError
-
-        assertEquals(SourceRecoveryAction.OpenLogin, pageError.recoveryAction)
-    }
-
-    @Test
-    fun `append 403 preserves OpenLogin through the real paging source`() = runTest {
-        val source = FailingCatalogueSource(failPage = 2)
-        val pagingSource = pagingSource(source)
-
-        assertInstanceOf(PagingSource.LoadResult.Page::class.java, pagingSource.load(refresh()))
-        val error = assertInstanceOf(PagingSource.LoadResult.Error::class.java, pagingSource.load(append(2)))
-        val pageError = assertInstanceOf(SourcePageException::class.java, error.throwable).pageError
-
-        assertEquals(SourceRecoveryAction.OpenLogin, pageError.recoveryAction)
-    }
-
-    @Test
-    fun `empty refresh stays no results while empty append is retryable through the real paging source`() = runTest {
-        val emptyRefresh = assertInstanceOf(
-            PagingSource.LoadResult.Page::class.java,
-            pagingSource(EmptyPageCatalogueSource(emptyFirstPage = true)).load(refresh()),
+        io.mockk.every { source.id } returns 9L
+        io.mockk.every { source.name } returns "Legacy login"
+        val fatal = object : VirtualMachineError("controlled") {}
+        io.mockk.every { source.baseUrl } throws fatal
+        assertSame(fatal, assertThrows(VirtualMachineError::class.java) { browseSourceRecoveryScreen(source, login) })
+        val cancelled = kotlinx.coroutines.CancellationException("controlled")
+        io.mockk.every { source.baseUrl } throws cancelled
+        assertSame(
+            cancelled,
+            assertThrows(kotlinx.coroutines.CancellationException::class.java) {
+                browseSourceRecoveryScreen(source, login)
+            },
         )
-        assertEquals(emptyList<Any>(), emptyRefresh.data)
-        assertEquals(null, emptyRefresh.nextKey)
-
-        val appendSource = EmptyPageCatalogueSource(emptyFirstPage = false)
-        val pagingSource = pagingSource(appendSource)
-        val first = pagingSource.load(refresh()) as PagingSource.LoadResult.Page<Long, Manga>
-        assertEquals(listOf("/first"), first.data.map { it.url })
-
-        val append = assertInstanceOf(PagingSource.LoadResult.Error::class.java, pagingSource.load(append(2)))
-        assertInstanceOf(NoResultsException::class.java, append.throwable)
-        assertEquals(listOf(1, 2), appendSource.requestedPages)
+        val hostError = AssertionError("host")
+        io.mockk.every { source.baseUrl } throws hostError
+        assertSame(hostError, assertThrows(AssertionError::class.java) { browseSourceRecoveryScreen(source, login) })
     }
+
+    @Test
+    fun `duplicate raw pages retain a paging boundary for explicit result filtering`() =
+        runTest {
+            val source = object : CatalogueSource {
+                override val id = 991L
+                override val name = "Repeated source page"
+                override val lang = "en"
+                override val supportsLatest = false
+                override suspend fun getPopularManga(page: Int) = MangasPage(
+                    listOf(
+                        SManga.create().apply {
+                            url = "/same"
+                            title = "[English] Same work"
+                        },
+                    ),
+                    hasNextPage = page < 3,
+                )
+                override suspend fun getSearchManga(page: Int, query: String, filters: FilterList) =
+                    getPopularManga(page)
+                override suspend fun getLatestUpdates(page: Int) = getPopularManga(page)
+                override fun getFilterList() = FilterList()
+                override suspend fun getMangaDetails(manga: SManga) = manga
+                override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()
+                override suspend fun getPageList(chapter: SChapter) = emptyList<Page>()
+            }
+            val repository = mockk<MangaRepository>()
+            val pagingSource = pagingSource(source, repository)
+            val first = pagingSource.load(refresh()) as PagingSource.LoadResult.Page<Long, Manga>
+            val second = pagingSource.load(append(2)) as PagingSource.LoadResult.Page<Long, Manga>
+
+            assertEquals(listOf("/same"), first.data.map { it.url })
+            assertEquals(listOf("/same"), second.data.map { it.url })
+            assertEquals(3L, second.nextKey)
+            coVerify(exactly = 1) { repository.insertNetworkManga(any()) }
+        }
+
+    @Test
+    fun `refresh 403 preserves Forbidden without opening login through the real paging source`() =
+        runTest {
+            val source = FailingCatalogueSource(failPage = 1)
+            val result = pagingSource(source).load(refresh())
+
+            val error = assertInstanceOf(PagingSource.LoadResult.Error::class.java, result)
+            val pageError = assertInstanceOf(SourcePageException::class.java, error.throwable).pageError
+
+            assertInstanceOf(AppError.Forbidden::class.java, pageError.error)
+            assertEquals(SourceRecoveryAction.Retry, pageError.recoveryAction)
+        }
+
+    @Test
+    fun `append 403 preserves Forbidden without opening login through the real paging source`() =
+        runTest {
+            val source = FailingCatalogueSource(failPage = 2)
+            val pagingSource = pagingSource(source)
+
+            assertInstanceOf(PagingSource.LoadResult.Page::class.java, pagingSource.load(refresh()))
+            val error = assertInstanceOf(PagingSource.LoadResult.Error::class.java, pagingSource.load(append(2)))
+            val pageError = assertInstanceOf(SourcePageException::class.java, error.throwable).pageError
+
+            assertInstanceOf(AppError.Forbidden::class.java, pageError.error)
+            assertEquals(SourceRecoveryAction.Retry, pageError.recoveryAction)
+        }
+
+    @Test
+    fun `empty refresh stays no results while empty append is retryable through the real paging source`() =
+        runTest {
+            val emptyRefresh = assertInstanceOf(
+                PagingSource.LoadResult.Page::class.java,
+                pagingSource(EmptyPageCatalogueSource(emptyFirstPage = true)).load(refresh()),
+            )
+            assertEquals(emptyList<Any>(), emptyRefresh.data)
+            assertEquals(null, emptyRefresh.nextKey)
+
+            val appendSource = EmptyPageCatalogueSource(emptyFirstPage = false)
+            val pagingSource = pagingSource(appendSource)
+            val first = pagingSource.load(refresh()) as PagingSource.LoadResult.Page<Long, Manga>
+            assertEquals(listOf("/first"), first.data.map { it.url })
+
+            val append = assertInstanceOf(PagingSource.LoadResult.Error::class.java, pagingSource.load(append(2)))
+            assertInstanceOf(NoResultsException::class.java, append.throwable)
+            assertEquals(listOf(1, 2), appendSource.requestedPages)
+        }
 
     @Test
     fun `Browse OpenLogin recovery uses the existing source WebView screen`() {
@@ -135,6 +182,36 @@ class BrowseSourceRecoveryBehaviorTest {
         assertEquals(0, loginAttempts)
     }
 
+    @Test
+    fun `real paging HTTP status classification retains authentication forbidden rate limit and server recovery`() =
+        runTest {
+            for (status in listOf(401, 403, 429, 500)) {
+                for (page in listOf(1, 2)) {
+                    val paging = pagingSource(FailingCatalogueSource(page, status))
+                    if (page == 2) assertInstanceOf(PagingSource.LoadResult.Page::class.java, paging.load(refresh()))
+                    val result = paging.load(if (page == 1) refresh() else append(page.toLong()))
+                    val error = assertInstanceOf(
+                        SourcePageException::class.java,
+                        assertInstanceOf(PagingSource.LoadResult.Error::class.java, result).throwable,
+                    ).pageError
+                    val kind = when (status) {
+                        401 -> AppError.Authentication::class.java
+                        403 -> AppError.Forbidden::class.java
+                        429 -> AppError.RateLimited::class.java
+                        else -> AppError.Server::class.java
+                    }
+                    assertInstanceOf(kind, error.error)
+                    assertEquals(
+                        when (status) {
+                            401 -> SourceRecoveryAction.OpenLogin
+                            else -> SourceRecoveryAction.Retry
+                        },
+                        error.recoveryAction,
+                    )
+                }
+            }
+        }
+
     private fun pagingSource(
         source: CatalogueSource,
         repository: MangaRepository = mockk(),
@@ -142,6 +219,7 @@ class BrowseSourceRecoveryBehaviorTest {
         coEvery { repository.insertNetworkManga(any()) } answers { firstArg() }
         return SharedSourcePagingSource(
             source = source,
+            sourceId = source.id,
             listing = BrowseSourceScreenModel.Listing.Popular,
             generation = 1,
             sourceMangaSearchService = SourceMangaSearchService(),
@@ -161,14 +239,14 @@ class BrowseSourceRecoveryBehaviorTest {
         placeholdersEnabled = false,
     )
 
-    private class FailingCatalogueSource(private val failPage: Int) : CatalogueSource {
+    private class FailingCatalogueSource(private val failPage: Int, private val status: Int = 403) : CatalogueSource {
         override val id = 1L
         override val name = "Paging source"
         override val lang = "en"
         override val supportsLatest = false
 
         override suspend fun getPopularManga(page: Int): MangasPage {
-            if (page == failPage) throw HttpException(403)
+            if (page == failPage) throw HttpException(status)
             return MangasPage(listOf(manga("/first", "First")), true)
         }
 

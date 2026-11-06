@@ -86,12 +86,14 @@ import mihon.desktop.ui.source.desktopSourceErrorMessage
 import mihon.domain.error.AppError
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.CatalogResultFilter
+import tachiyomi.domain.source.service.SourceFilterResult
 import tachiyomi.domain.source.service.SourceLoginState
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.domain.source.service.SourceResultMetadata
+import tachiyomi.domain.source.service.prepareSourceFilters
 import tachiyomi.i18n.MR
 import java.util.Locale
 
@@ -304,8 +306,13 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
         }
 
         // Search state, retained across navigation like the Android screen model.
+        var sourceFilters by remember(source) {
+            mutableStateOf(source?.let(::prepareSourceFilters) ?: SourceFilterResult.Content(FilterList()))
+        }
+        val filterFailure = (sourceFilters as? SourceFilterResult.Failure)?.error
+        val preparedFilters = (sourceFilters as? SourceFilterResult.Content)?.filters
         val listingQueryState = remember(session, source) {
-            session.listingQueryState(source?.getFilterList() ?: FilterList())
+            session.listingQueryState(preparedFilters ?: FilterList())
         }
         var listingQuery by listingQueryState
         var searchQuery by session.searchQuery
@@ -380,13 +387,25 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
 
         // Filter state
         var showFilterDialog by remember { mutableStateOf(false) }
-        val hasFilters = remember(source) { source?.getFilterList()?.isNotEmpty() == true }
+        var filterDialogDraft by remember { mutableStateOf<FilterList?>(null) }
+        val hasFilters = preparedFilters?.isNotEmpty() == true
 
         fun loadPage(page: Int, query: SourceQuery = listingQuery) {
-            if (source == null || requiresApkReconversion || (page > 1 && queryUiState.loading)) return
+            if (source == null || sourceFilters is SourceFilterResult.Failure ||
+                requiresApkReconversion || (page > 1 && queryUiState.loading)
+            ) {
+                return
+            }
             session.scope.launch {
                 queryCoordinator.load(source, page, query)
             }
+        }
+
+        fun freshFilters(): FilterList? {
+            val current = source ?: return FilterList()
+            val result = prepareSourceFilters(current)
+            sourceFilters = result
+            return (result as? SourceFilterResult.Content)?.filters
         }
 
         fun recover() {
@@ -429,12 +448,10 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
         }
 
         // Filter dialog
-        if (showFilterDialog) {
+        if (showFilterDialog && filterDialogDraft != null) {
             FilterDialog(
-                filters = (listingQuery as? SourceQuery.Search)?.filters
-                    ?: source?.getFilterList()
-                    ?: FilterList(),
-                resetFilters = { source?.getFilterList() ?: FilterList() },
+                filters = requireNotNull(filterDialogDraft),
+                resetFilters = ::freshFilters,
                 onApply = { updatedFilters ->
                     showFilterDialog = false
                     searchQuery = ""
@@ -496,7 +513,7 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
                                 onSearch = { q ->
                                     searchActive = false
                                     val filters = (listingQuery as? SourceQuery.Search)?.filters
-                                        ?: source?.getFilterList()
+                                        ?: preparedFilters
                                         ?: FilterList()
                                     SourceQuery.Search(q, filters).also {
                                         listingQuery = it
@@ -553,7 +570,18 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
                     if (hasFilters) {
                         FilterChip(
                             selected = listingQuery is SourceQuery.Search,
-                            onClick = { showFilterDialog = true },
+                            onClick = {
+                                val applied = (listingQuery as? SourceQuery.Search)?.filters ?: preparedFilters
+                                if (applied != null) {
+                                    freshFilters()?.let { fresh ->
+                                        require(fresh !== applied) {
+                                            "Source must return a fresh FilterList for draft editing"
+                                        }
+                                        filterDialogDraft = applied.copyStatesToFreshTree(fresh)
+                                        showFilterDialog = true
+                                    }
+                                }
+                            },
                             leadingIcon = { Icon(Icons.Default.FilterList, contentDescription = null) },
                             label = { Text(MR.strings.action_filter.localized()) },
                         )
@@ -614,6 +642,24 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
                                 ) {
                                     Text(MR.strings.desktop_extension_reconversion_action.localized())
                                 }
+                            }
+                        }
+                    }
+
+                    filterFailure != null -> {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(desktopSourceErrorMessage(filterFailure), color = MaterialTheme.colorScheme.error)
+                                androidx.compose.material3.Button(onClick = {
+                                    freshFilters()?.let { filters ->
+                                        showFilterDialog = false
+                                        listingQuery = when (val current = listingQuery) {
+                                            is SourceQuery.Search -> current.copy(filters = filters)
+                                            else -> current
+                                        }
+                                        loadPage(1)
+                                    }
+                                }) { Text(MR.strings.action_retry.localized()) }
                             }
                         }
                     }
@@ -773,16 +819,14 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
 @Composable
 private fun FilterDialog(
     filters: FilterList,
-    resetFilters: () -> FilterList,
+    resetFilters: () -> FilterList?,
     onApply: (FilterList) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    fun freshSourceTree(): FilterList = resetFilters().also {
+    fun freshSourceTree(): FilterList? = resetFilters()?.also {
         require(it !== filters) { "Source must return a fresh FilterList for draft editing" }
     }
-    var draft by remember(filters) {
-        mutableStateOf(filters.copyStatesToFreshTree(freshSourceTree()))
-    }
+    var draft by remember(filters) { mutableStateOf(filters) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -797,7 +841,7 @@ private fun FilterDialog(
         },
         dismissButton = {
             Row {
-                TextButton(onClick = { draft = freshSourceTree() }) {
+                TextButton(onClick = { freshSourceTree()?.let { draft = it } ?: onDismiss() }) {
                     Text(MR.strings.action_reset.localized(), color = MaterialTheme.colorScheme.error)
                 }
                 TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }

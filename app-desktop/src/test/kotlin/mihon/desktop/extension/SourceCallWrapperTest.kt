@@ -1,5 +1,6 @@
 package mihon.desktop.extension
 
+import eu.kanade.tachiyomi.network.HttpException
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.TimeoutCancellationException
@@ -7,9 +8,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import mihon.domain.error.AppError
 import mihon.domain.network.AppErrorException
-import eu.kanade.tachiyomi.network.HttpException
-import java.io.IOException
 import org.junit.jupiter.api.Test
+import java.io.IOException
 
 /**
  * Tests for [safeSourceCall] — the unified timeout + error wrapper for extension API calls.
@@ -26,11 +26,15 @@ class SourceCallWrapperTest {
     @Test
     fun `classifies IO HTTP and parser failures with the shared source error contract`(): Unit = runBlocking {
         val network = safeSourceCall<Int> { throw IOException("connection reset") } as SourceCallResult.Error
-        val authentication = safeSourceCall<Int> { throw HttpException(403) } as SourceCallResult.Error
-        val malformed = safeSourceCall<Int> { throw IllegalArgumentException("broken document") } as SourceCallResult.Error
+        val authentication = safeSourceCall<Int> { throw HttpException(401) } as SourceCallResult.Error
+        val forbidden = safeSourceCall<Int> { throw HttpException(403) } as SourceCallResult.Error
+        val malformed = safeSourceCall<Int> {
+            throw IllegalArgumentException("broken document")
+        } as SourceCallResult.Error
 
         network.error.shouldBeInstanceOf<AppError.Network>()
         authentication.error.shouldBeInstanceOf<AppError.Authentication>()
+        forbidden.error.shouldBeInstanceOf<AppError.Forbidden>()
         malformed.error.shouldBeInstanceOf<AppError.MalformedData>()
     }
 
@@ -44,7 +48,10 @@ class SourceCallWrapperTest {
 
     @Test
     fun `returns Timeout when block exceeds timeoutMs`(): Unit = runBlocking {
-        val result = safeSourceCall<Int>(timeoutMs = 50L) { delay(5_000); 99 }
+        val result = safeSourceCall<Int>(timeoutMs = 50L) {
+            delay(5_000)
+            99
+        }
         result.shouldBeInstanceOf<SourceCallResult.Timeout>()
         (result as SourceCallResult.Timeout).error.shouldBeInstanceOf<AppError.Network>()
     }

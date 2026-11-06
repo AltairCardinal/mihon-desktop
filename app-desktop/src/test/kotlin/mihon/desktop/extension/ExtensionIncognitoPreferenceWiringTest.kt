@@ -1,6 +1,5 @@
 package mihon.desktop.extension
 
-import mihon.domain.extension.service.ExtensionInstallArbiter
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
@@ -26,11 +25,12 @@ import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.DesktopSourceManager
-import mihon.desktop.ui.extension.ExtensionDetailsScreen
 import mihon.desktop.ui.extension.DesktopExtensionPresentationPort
+import mihon.desktop.ui.extension.ExtensionDetailsScreen
 import mihon.desktop.ui.extension.ExtensionsScreenModel
 import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
+import mihon.domain.extension.service.ExtensionInstallArbiter
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -74,7 +74,9 @@ class ExtensionIncognitoPreferenceWiringTest {
         val jar = tempDir.resolve("extension.hidden.jar").also { it.createNewFile() }
         val manager = DesktopExtensionManager(
             object : DesktopExtensionLoader(tempDir) {
-                override fun loadExtensions() = listOf(LoadedExtension(StubSource, jar, javaClass.classLoader))
+                override fun loadExtensions() = listOf(
+                    LoadedExtension(StubSource, jar, javaClass.classLoader, registeredSourceId = StubSource.id),
+                )
             },
         ).also { it.loadAll() }
         val preferences = DesktopAppPreferences(
@@ -113,7 +115,10 @@ class ExtensionIncognitoPreferenceWiringTest {
                     Navigator(ExtensionDetailsScreen(jar.absolutePath)) { CurrentScreen() }
                 }
             }
-            val description = MR.strings.desktop_extension_incognito_for.localized(Locale.getDefault(), "extension.hidden")
+            val description = MR.strings.desktop_extension_incognito_for.localized(
+                Locale.getDefault(),
+                "extension.hidden",
+            )
             val toggle = withTimeout(5_000) {
                 var match: SemanticsNode?
                 do {

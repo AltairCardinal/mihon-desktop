@@ -9,7 +9,12 @@ import androidx.core.content.pm.PackageInfoCompat
 import eu.kanade.domain.extension.interactor.TrustExtension
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.model.Extension
+import eu.kanade.tachiyomi.extension.model.ExtensionLoadFailure
 import eu.kanade.tachiyomi.extension.model.LoadResult
+import eu.kanade.tachiyomi.network.SourceCompatibilityException
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceFactory
 import eu.kanade.tachiyomi.util.lang.Hash
@@ -28,6 +33,7 @@ import mihon.domain.extension.suggestion.ExtensionInventoryLocation
 import mihon.domain.extension.suggestion.ExtensionInventoryRecord
 import mihon.domain.extension.suggestion.ExtensionPresence
 import tachiyomi.core.common.util.system.logcat
+import tachiyomi.domain.source.service.toSourceAppError
 import uy.kohesive.injekt.injectLazy
 import java.io.File
 
@@ -228,13 +234,21 @@ internal object ExtensionLoader {
      * Attempts to load an extension from the given package name. It checks if the extension
      * contains the required feature flag before trying to load it.
      */
-    suspend fun loadExtensionFromPkgName(context: Context, pkgName: String): LoadResult {
+    suspend fun loadExtensionFromPkgName(context: Context, pkgName: String): LoadResult =
+        loadExtensionFromPkgName(context, pkgName) { path, parent -> ChildFirstPathClassLoader(path, null, parent) }
+
+    /** The OS classloader boundary is injectable for JVM platform tests; admission and loading stay production. */
+    internal suspend fun loadExtensionFromPkgName(
+        context: Context,
+        pkgName: String,
+        classLoaderFactory: (String, ClassLoader) -> ClassLoader,
+    ): LoadResult {
         val extensionPackage = getExtensionInfoFromPkgName(context, pkgName)
         if (extensionPackage == null) {
             logcat(LogPriority.ERROR) { "Extension package is not found ($pkgName)" }
             return LoadResult.Error
         }
-        return loadExtension(context, extensionPackage)
+        return loadExtension(context, extensionPackage, classLoaderFactory)
     }
 
     fun getExtensionPackageInfoFromPkgName(context: Context, pkgName: String): PackageInfo? {
@@ -279,7 +293,14 @@ internal object ExtensionLoader {
      * @param context The application context.
      * @param extensionInfo The extension to load.
      */
-    private suspend fun loadExtension(context: Context, extensionInfo: ExtensionInfo): LoadResult {
+    private suspend fun loadExtension(
+        context: Context,
+        extensionInfo: ExtensionInfo,
+        classLoaderFactory: (
+            String,
+            ClassLoader,
+        ) -> ClassLoader = { path, parent -> ChildFirstPathClassLoader(path, null, parent) },
+    ): LoadResult {
         val pkgManager = context.packageManager
         val pkgInfo = extensionInfo.packageInfo
         val appInfo = pkgInfo.applicationInfo ?: return LoadResult.Error
@@ -334,11 +355,29 @@ internal object ExtensionLoader {
         val sourceClasses = appInfo.metaData?.getString(METADATA_SOURCE_CLASS)
             ?.takeIf { it.isNotBlank() } ?: return LoadResult.Error
 
+        fun failure(error: Throwable): LoadResult {
+            error.rethrowSourceControlFailure()
+            if (error !is SourceCompatibilityException) return LoadResult.Error
+            return LoadResult.Failure(
+                ExtensionLoadFailure(
+                    extName,
+                    pkgName,
+                    versionName,
+                    versionCode,
+                    extensionInfo.isShared,
+                    error.phase ?: SourceOperationPhase.CONSTRUCTION,
+                    error.toSourceAppError(),
+                ),
+            )
+        }
+
         val classLoader = try {
-            ChildFirstPathClassLoader(appInfo.sourceDir, null, context.classLoader)
-        } catch (e: Exception) {
+            guardSourceOperation(SourceOperationPhase.CONSTRUCTION) {
+                classLoaderFactory(appInfo.sourceDir, context.classLoader)
+            }
+        } catch (e: Throwable) {
             logcat(LogPriority.ERROR, e) { "Extension load error: $extName ($pkgName)" }
-            return LoadResult.Error
+            return failure(e)
         }
 
         val sources = sourceClasses
@@ -353,19 +392,36 @@ internal object ExtensionLoader {
             }
             .flatMap {
                 try {
-                    when (val obj = Class.forName(it, false, classLoader).getDeclaredConstructor().newInstance()) {
+                    when (
+                        val obj = guardSourceOperation(SourceOperationPhase.CONSTRUCTION) {
+                            Class.forName(it, false, classLoader).getDeclaredConstructor().newInstance()
+                        }
+                    ) {
                         is Source -> listOf(obj)
-                        is SourceFactory -> obj.createSources()
+                        is SourceFactory -> guardSourceOperation(SourceOperationPhase.FACTORY) {
+                            obj.createSources().toList()
+                        }
                         else -> throw Exception("Unknown source class type: ${obj.javaClass}")
                     }
                 } catch (e: Throwable) {
                     logcat(LogPriority.ERROR, e) { "Extension load error: $extName ($it)" }
-                    return LoadResult.Error
+                    return failure(e)
                 }
             }
 
-        val langs = sources.map { it.lang }
-            .toSet()
+        val langs = try {
+            sources.map { source ->
+                guardSourceOperation(SourceOperationPhase.METADATA) {
+                    // These are consumed by source registration and the installed-source list.
+                    // client/baseUrl/filter getters remain lazy until their real business call.
+                    source.id
+                    source.name
+                    source.lang
+                }
+            }.toSet()
+        } catch (error: Throwable) {
+            return failure(error)
+        }
         val lang = when (langs.size) {
             0 -> ""
             1 -> langs.first()

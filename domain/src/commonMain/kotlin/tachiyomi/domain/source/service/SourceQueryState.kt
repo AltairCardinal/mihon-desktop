@@ -1,5 +1,8 @@
 package tachiyomi.domain.source.service
 
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
 import mihon.domain.error.AppError
@@ -114,11 +117,27 @@ class SourceQueryReducer {
         }
 
         return when (result) {
-            is SourcePageResult.Content -> SourceQueryState.Content(
-                request = result.request,
-                items = (current.items + result.items).distinctBy { it.url },
-                hasNextPage = result.hasNextPage,
-            )
+            is SourcePageResult.Content -> {
+                val phase = when (result.request.query) {
+                    SourceQuery.Popular -> SourceOperationPhase.POPULAR
+                    SourceQuery.Latest -> SourceOperationPhase.LATEST
+                    is SourceQuery.Search -> SourceOperationPhase.SEARCH
+                }
+                val items = (current.items + result.items).map { manga ->
+                    val url = try {
+                        guardSourceOperation(phase) { manga.url }
+                    } catch (error: Exception) {
+                        error.rethrowSourceControlFailure()
+                        val appError = error.toSourceAppError()
+                        return reduce(
+                            current,
+                            SourcePageResult.Failure(result.request, appError, appError.sourceRecoveryAction()),
+                        )
+                    }
+                    url to manga
+                }.distinctBy { it.first }.map { it.second }
+                SourceQueryState.Content(result.request, items, result.hasNextPage)
+            }
             is SourcePageResult.Empty -> if (current.items.isEmpty()) {
                 SourceQueryState.Empty(result.request)
             } else {

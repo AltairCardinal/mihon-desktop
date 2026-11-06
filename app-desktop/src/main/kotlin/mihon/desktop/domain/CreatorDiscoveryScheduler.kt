@@ -26,6 +26,7 @@ import mihon.domain.task.TaskStatus
 import tachiyomi.domain.creator.model.DiscoveryRunState
 import tachiyomi.domain.creator.service.CreatorDiscoveryResult
 import tachiyomi.domain.creator.service.CreatorSourceFailure
+import tachiyomi.i18n.MR
 
 /** Whether the current creator discovery occurrence is a global due check or a single author check. */
 enum class CreatorDiscoveryRunScope {
@@ -311,7 +312,14 @@ class CreatorDiscoveryScheduler(
             newCandidateCount = result.newCandidateCount,
             errorCount = maxOf(result.errorCount, failedUnits.size),
             failedUnits = failedUnits.map { it.unitId },
-            failureMessage = if (completed) null else "${failedUnits.size.takeIf { it > 0 } ?: result.errorCount} of ${result.totalSources} sources failed",
+            failureMessage = when {
+                completed -> null
+                failedUnits.any { it.error is AppError.ExtensionIncompatible } ->
+                    MR.strings.source_error_extension_incompatible.localized()
+                else -> "${failedUnits.size.takeIf {
+                    it > 0
+                } ?: result.errorCount} of ${result.totalSources} sources failed"
+            },
             leaseBusy = result.leaseBusy,
             skipped = result.skipped,
             lastFinishedAt = clock(),
@@ -319,6 +327,7 @@ class CreatorDiscoveryScheduler(
     }
 
     private fun CreatorSourceFailure.toAppError(): AppError = when (this) {
+        is CreatorSourceFailure.ExtensionIncompatible -> AppError.ExtensionIncompatible(cause)
         is CreatorSourceFailure.AuthenticationRequired -> AppError.Authentication()
         is CreatorSourceFailure.RateLimited -> AppError.RateLimited(retryAfterSeconds = retryAfterMillis?.div(1_000))
         is CreatorSourceFailure.Http -> AppError.Server(statusCode)

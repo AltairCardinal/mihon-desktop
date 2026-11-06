@@ -35,9 +35,24 @@ class ExtensionManagerTest {
         val jar1 = File(tmpDir.toFile(), "ext1.jar").also { it.createNewFile() }
         val jar2 = File(tmpDir.toFile(), "ext2.jar").also { it.createNewFile() }
         val fakes = listOf(
-            LoadedExtension(source = StubSource(1L), jarFile = jar1, classLoader = javaClass.classLoader),
-            LoadedExtension(source = StubSource(2L), jarFile = jar1, classLoader = javaClass.classLoader),
-            LoadedExtension(source = StubSource(3L), jarFile = jar2, classLoader = javaClass.classLoader),
+            LoadedExtension(
+                source = StubSource(1L),
+                jarFile = jar1,
+                classLoader = javaClass.classLoader,
+                registeredSourceId = 1L,
+            ),
+            LoadedExtension(
+                source = StubSource(2L),
+                jarFile = jar1,
+                classLoader = javaClass.classLoader,
+                registeredSourceId = 2L,
+            ),
+            LoadedExtension(
+                source = StubSource(3L),
+                jarFile = jar2,
+                classLoader = javaClass.classLoader,
+                registeredSourceId = 3L,
+            ),
         )
         val manager = DesktopExtensionManager(FakeLoader(fakes))
         manager.loadAll()
@@ -55,8 +70,18 @@ class ExtensionManagerTest {
         val jar1 = File(tmpDir.toFile(), "ext1.jar").also { it.createNewFile() }
         val jar2 = File(tmpDir.toFile(), "ext2.jar").also { it.createNewFile() }
         val fakes = listOf(
-            LoadedExtension(source = StubSource(1L), jarFile = jar1, classLoader = javaClass.classLoader),
-            LoadedExtension(source = StubSource(2L), jarFile = jar2, classLoader = javaClass.classLoader),
+            LoadedExtension(
+                source = StubSource(1L),
+                jarFile = jar1,
+                classLoader = javaClass.classLoader,
+                registeredSourceId = 1L,
+            ),
+            LoadedExtension(
+                source = StubSource(2L),
+                jarFile = jar2,
+                classLoader = javaClass.classLoader,
+                registeredSourceId = 2L,
+            ),
         )
         val manager = DesktopExtensionManager(FakeLoader(fakes))
         manager.loadAll()
@@ -74,7 +99,12 @@ class ExtensionManagerTest {
     fun `InstalledExtension name is jar file without extension`(@TempDir tmpDir: Path) {
         val jar = File(tmpDir.toFile(), "my-source-1.0.jar").also { it.createNewFile() }
         val fakes = listOf(
-            LoadedExtension(source = StubSource(1L), jarFile = jar, classLoader = javaClass.classLoader),
+            LoadedExtension(
+                source = StubSource(1L),
+                jarFile = jar,
+                classLoader = javaClass.classLoader,
+                registeredSourceId = 1L,
+            ),
         )
         val manager = DesktopExtensionManager(FakeLoader(fakes))
         manager.loadAll()
@@ -86,7 +116,7 @@ class ExtensionManagerTest {
     fun `source id resolves to its loaded extension package`() {
         val jar = File("extension.hidden.jar")
         val manager = DesktopExtensionManager(
-            FakeLoader(listOf(LoadedExtension(StubSource(42L), jar, javaClass.classLoader))),
+            FakeLoader(listOf(LoadedExtension(StubSource(42L), jar, javaClass.classLoader, registeredSourceId = 42L))),
         )
         manager.loadAll()
 

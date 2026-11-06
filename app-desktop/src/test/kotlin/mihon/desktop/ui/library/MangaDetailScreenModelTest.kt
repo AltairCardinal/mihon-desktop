@@ -14,8 +14,8 @@ import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.download.DownloadStatus
 import mihon.desktop.reader.ReadingMode
-import mihon.desktop.tracking.DesktopManualTracking
 import mihon.desktop.reader.viewerFlagsWithReadingMode
+import mihon.desktop.tracking.DesktopManualTracking
 import mihon.domain.error.AppError
 import mihon.domain.task.TaskState
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -33,8 +33,8 @@ import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.category.repository.CategoryRepository
-import tachiyomi.domain.chapter.interactor.BatchUpdateChapters
 import tachiyomi.domain.chapter.interactor.BatchChapterResult
+import tachiyomi.domain.chapter.interactor.BatchUpdateChapters
 import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
@@ -415,7 +415,12 @@ class MangaDetailScreenModelTest {
         assertEquals(listOf(1L, 2L), result.succeededIds)
         assertEquals(listOf(3L), result.failures.map { it.id })
         assertEquals(listOf(1L, 2L, 3L), repository.attemptedWrites.first().map { it.id })
-        assertEquals(listOf(listOf(1L), listOf(2L), listOf(3L)), repository.attemptedWrites.drop(1).map { it.map(ChapterUpdate::id) })
+        assertEquals(
+            listOf(listOf(1L), listOf(2L), listOf(3L)),
+            repository.attemptedWrites.drop(1).map {
+                it.map(ChapterUpdate::id)
+            },
+        )
         assertEquals(listOf(1L, 2L), backing.updates.map { it.id })
         assertTrue(backing.updates.all { it.lastPageRead == 0L })
         assertTrue(backing.updates.all { it.syncContext == mihon.domain.sync.SyncMutationContext.User })
@@ -1149,6 +1154,29 @@ class MangaDetailScreenModelTest {
         model.setCategoriesForManga(1L, listOf(10L, 11L))
 
         assertEquals(listOf(10L, 11L), mangaRepository.getMangaCategoryIds(1L))
+    }
+
+    @Test
+    fun `legacy migration search keeps missing ABI typed and does not fake empty results`() = runTest {
+        val missing = NoSuchMethodError("future migration search")
+        val source = object : eu.kanade.tachiyomi.source.CatalogueSource {
+            override val id = 94L
+            override val name = "Migration fixture"
+            override val supportsLatest = false
+            override fun getFilterList() = eu.kanade.tachiyomi.source.model.FilterList()
+            override val lang = "en"
+            override suspend fun getSearchManga(
+                page: Int,
+                query: String,
+                filters: eu.kanade.tachiyomi.source.model.FilterList,
+            ): eu.kanade.tachiyomi.source.model.MangasPage = throw missing
+        }
+        val model = MangaDetailScreenModel(mangaId = 1L)
+        val failure = runCatching { model.searchMigration(source, "private query") }.exceptionOrNull()
+        assertInstanceOf(eu.kanade.tachiyomi.network.SourceCompatibilityException::class.java, failure)
+        assertSame(missing, failure?.cause)
+        val transport = failure as eu.kanade.tachiyomi.network.SourceCompatibilityException
+        assertEquals(eu.kanade.tachiyomi.network.SourceOperationPhase.SEARCH, transport.phase)
     }
 
     @Test

@@ -25,7 +25,7 @@
 | fork 身份 | init 脚本改成 `app.mihon.desktop.fork`；迁移前 code 32，name `0.19.4-aex.14` | `b085025984:scripts/android-fork-release.init.gradle`，可用 `git show` 读取历史版本 |
 | Release 限制 | fork init 强制 R8、资源压缩、非调试、遥测/更新器关闭、Gradle 外签名 | 同上历史 init；现在由正常 Gradle 配置承担 |
 | 签名 | 现有 PowerShell 脚本检查版本、身份、zipalign 与证书；密钥在仓库外，密码通过本机 DPAPI 解密后临时传入环境变量 | [签名脚本](../../scripts/sign-android-fork-release.ps1)、[一次性建钥脚本](../../scripts/create-android-fork-release-key.ps1) |
-| 测试变体 | 默认 `mihon.testBuildType=debug`；显式 `release` 才加入 release 专用测试源集 | [app/build.gradle.kts](../../app/build.gradle.kts) |
+| 测试变体 | 默认 `mihon.testBuildType=debug`；显式 `release` 才加入 release 专用测试源集；显式 `benchmark` 用于独立 R8 专项验收，不加入 release 专用场景 | [app/build.gradle.kts](../../app/build.gradle.kts) |
 | 其他变体 | 还存在 foss、preview、benchmark；preview/benchmark 使用调试签名 | [app/build.gradle.kts](../../app/build.gradle.kts) |
 | 工具链 | 仓库 CI JDK 21；minSdk 26、compile/targetSdk 36；本机 SDK `D:/Android/Sdk`、Build Tools 36.0.0 | [JDK](../../.github/.java-version)、[AndroidConfig](../../buildSrc/src/main/kotlin/mihon/buildlogic/AndroidConfig.kt)、[AGENTS](../../AGENTS.md) |
 | 日常 CI | Build & Test 仍带遥测/更新器参数构建默认 Release，上传未签名 arm64 APK | [build.yml](../../.github/workflows/build.yml) |
@@ -53,6 +53,18 @@ Debug 只打开本项目发布页，正式 APK 下载仍必须验证既有包名
 Debug 迁移到新 ID 后，既有 `app.mihon.dev` 数据不会自动进入新应用。保留旧安装，可按用户意图使用生产备份/恢复；不卸载、不复制私有数据库冒充自动迁移。原正式 `app.mihon.desktop.fork` 的 ID 和证书保持连续，官方 `app.mihon` 安装不受本项目升级操作影响。
 
 专项隔离脚本必须更新“宿主默认 ID”的断言，同时保留其明确的隔离目标 ID 和旧宿主升级夹具。禁止同时加载多个身份改写脚本。涉及 `${applicationId}` 的 provider、Shizuku authority、测试包 targetPackage、深链和快捷方式必须检查实际 merged manifest 与运行接线；不能靠全局字符串替换完成迁移。
+
+协程兼容专项的外部原 APK 仅通过显式 `mihon.ecRealApk` 本地路径加入生成的测试资产，
+不下载、不重新签署或在 Git 中分发第三方制品；测试按固定 hash 验证后使用。构建参数、
+独立薄 DEX/自有 future APK 的来源和原生门见[EC 夹具说明](../../scripts/fixtures/extension-coroutines/README.md#ec-08-android-原生装置)。
+仅编译 instrumentation 不证明 R8/ART 验收通过，benchmark 也不作为正式候选交付。
+
+EC 原生测试从独立 APK 调用真实信任、loader 和源服务。普通共用的
+`app/proguard-rules.pro` 只保留这些入口及测试读取的结果成员签名；内部实现继续优化。
+测试侧的 `applymapping` 不能恢复宿主已经内联或改变原型的方法，遇到此类错误须先
+区分测试接线失败与外部扩展 ABI 失败。不得用 benchmark 独有 keep、打入第二份宿主
+运行库或批量保留内部类解决；修改共用规则后须重新核对实际 DEX 和安装 hash，并复验
+原场景。非必要的内部设置访问应从测试移除，不为它扩展保留范围。
 
 ## 4. 版本与签名规范
 

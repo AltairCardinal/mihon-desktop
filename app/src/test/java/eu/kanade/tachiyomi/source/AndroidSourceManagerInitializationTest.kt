@@ -174,6 +174,102 @@ class AndroidSourceManagerInitializationTest {
         }
     }
 
+    @Test
+    fun `registered source identity survives broken getter and equal instance replacement without probing`() = runTest {
+        val previous = Injekt
+        Injekt = uy.kohesive.injekt.api.InjektScope(uy.kohesive.injekt.registry.default.DefaultRegistrar())
+        Injekt.addSingleton(
+            eu.kanade.tachiyomi.core.security.SecurityPreferences(
+                tachiyomi.core.common.preference.InMemoryPreferenceStore(),
+            ),
+        )
+        val notifications = mockk<androidx.core.app.NotificationManagerCompat>(relaxed = true)
+        io.mockk.mockkStatic(androidx.core.app.NotificationManagerCompat::class)
+        every { androidx.core.app.NotificationManagerCompat.from(any()) } returns notifications
+        val first = MutableRegisteredSource()
+        val second = MutableRegisteredSource()
+        lateinit var listener: eu.kanade.tachiyomi.extension.util.ExtensionInstallReceiver.Listener
+        val extensionManager = ExtensionManager(
+            context = mockk(relaxed = true),
+            preferences = preferences(),
+            trustExtension = mockk(relaxed = true),
+            installedExtensionsLoader = { listOf(LoadResult.Success(installed(first))) },
+            installerFactory = { mockk(relaxed = true) },
+            installReceiverRegistrar = { listener = it },
+            inventoryProvider = { mihon.domain.extension.suggestion.ExtensionInventory() },
+            scope = backgroundScope,
+        )
+        val repository = mockk<StubSourceRepository>(relaxed = true) {
+            every { subscribeAll() } returns flowOf(emptyList())
+            coEvery { getStubSource(any()) } returns null
+        }
+        Injekt.addSingleton<LocalSourceFileSystem>(mockk(relaxed = true))
+        Injekt.addSingleton<LocalCoverManager>(mockk(relaxed = true))
+        mockkConstructor(LocalSource::class)
+        io.mockk.mockkObject(eu.kanade.tachiyomi.extension.util.ExtensionLoader)
+        every { eu.kanade.tachiyomi.extension.util.ExtensionLoader.uninstallPrivateExtension(any(), any()) } returns
+            Unit
+        try {
+            val manager = AndroidSourceManager(mockk(relaxed = true), extensionManager, repository, backgroundScope)
+            runCurrent()
+            assertTrue(manager.isInitialized.value)
+            val observations = mutableListOf<String>()
+            val reads = first.reads
+            first.broken = true
+            observations += "first:${manager.getRegisteredSourceId(first)}"
+            observations += "lookup:${manager.get(7L) === first}"
+            observations += try {
+                manager.getStubSources()
+                "stubs:true"
+            } catch (
+                failure: Throwable,
+            ) {
+                "stubs:escaped:${failure.javaClass.simpleName}"
+            }
+            observations += "extra:${first.reads - reads}"
+            listener.onExtensionUpdated(installed(second).copy(versionCode = 2))
+            runCurrent()
+            observations += "replacement:${manager.get(7L) === second}"
+            observations += "old:${manager.getRegisteredSourceId(first)}"
+            val secondReads = second.reads
+            second.broken = true
+            observations += "second:${manager.getRegisteredSourceId(second)}"
+            observations += "second-extra:${second.reads - secondReads}"
+            listener.onPackageUninstalled("org.example.extension")
+            runCurrent()
+            observations += "removed:${manager.getRegisteredSourceId(second)}"
+            assertEquals(
+                listOf(
+                    "first:7", "lookup:true", "stubs:true", "extra:0", "replacement:true", "old:null",
+                    "second:7", "second-extra:0", "removed:null",
+                ),
+                observations,
+            )
+        } finally {
+            unmockkConstructor(LocalSource::class)
+            io.mockk.unmockkObject(eu.kanade.tachiyomi.extension.util.ExtensionLoader)
+            io.mockk.unmockkStatic(androidx.core.app.NotificationManagerCompat::class)
+            Injekt = previous
+        }
+    }
+
+    private class MutableRegisteredSource : HttpSource() {
+        var reads = 0
+        var broken = false
+        override val id: Long get() {
+            reads++
+            if (broken) throw NoSuchMethodError("future registered id")
+            return 7L
+        }
+        override val name = "Registered fixture"
+        override val lang = "en"
+        override val baseUrl = "https://registered.invalid"
+        override val supportsLatest = false
+        override fun chapterPageParse(response: okhttp3.Response) = eu.kanade.tachiyomi.source.model.SChapter.create()
+        override fun equals(other: Any?) = other is MutableRegisteredSource
+        override fun hashCode() = 1
+    }
+
     private fun preferences() = mockk<SourcePreferences>(relaxed = true) {
         every { enabledLanguages() } returns mockk<Preference<Set<String>>> {
             every { isSet() } returns true

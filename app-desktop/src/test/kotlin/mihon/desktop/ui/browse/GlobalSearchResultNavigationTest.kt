@@ -97,7 +97,8 @@ class GlobalSearchResultNavigationTest {
             assertTrue(fixture.activeSubscriptions.size in 1..<10)
             assertTrue(fixture.seenSubscriptions.size in 1..<10)
             val row = nodes(scene).first {
-                it.config.contains(SemanticsActions.ScrollToIndex) && it.config.toString().contains("HorizontalScrollAxisRange")
+                it.config.contains(SemanticsActions.ScrollToIndex) &&
+                    it.config.toString().contains("HorizontalScrollAxisRange")
             }
             assertTrue(requireNotNull(row.config[SemanticsActions.ScrollToIndex].action).invoke(11))
             withTimeout(2_000) {
@@ -126,8 +127,10 @@ class GlobalSearchResultNavigationTest {
             }
             assertEquals(emptyList<String>(), fixture.searchQueries)
             fun hasLabel(node: SemanticsNode, label: String): Boolean =
-                (node.config.contains(SemanticsProperties.Text) &&
-                    node.config[SemanticsProperties.Text].any { it.text == label }) ||
+                (
+                    node.config.contains(SemanticsProperties.Text) &&
+                        node.config[SemanticsProperties.Text].any { it.text == label }
+                    ) ||
                     node.children.any { hasLabel(it, label) }
             val listingChips = nodes(scene).filter {
                 it.config.contains(SemanticsProperties.Selected) && it.config.contains(SemanticsActions.OnClick)
@@ -151,7 +154,8 @@ class GlobalSearchResultNavigationTest {
             every { name } returns "Authority"
             every { lang } returns "en"
             every { supportsLatest } returns false
-            every { getFilterList() } answers { FilterList(Filter.Header("filters-${filterListCalls.incrementAndGet()}")) }
+            every { getFilterList() } answers
+                { FilterList(Filter.Header("filters-${filterListCalls.incrementAndGet()}")) }
             coEvery { getSearchManga(1, any(), any()) } answers {
                 searchQueries += secondArg<String>()
                 searchFilters += thirdArg<FilterList>()
@@ -178,7 +182,9 @@ class GlobalSearchResultNavigationTest {
         private val saver = mockk<SaveSourceMangaForDetails>(relaxed = true) {
             coEvery { awaitSearchResults(any(), any()) } answers {
                 val sourceId = secondArg<Long>()
-                firstArg<List<SManga>>().mapIndexed { index, item -> item.toDomainManga(sourceId).copy(id = index + 1L) }
+                firstArg<List<SManga>>().mapIndexed { index, item ->
+                    item.toDomainManga(sourceId).copy(id = index + 1L)
+                }
             }
         }
         private val dependencies = mockk<DesktopUiDependencies> {
@@ -187,6 +193,9 @@ class GlobalSearchResultNavigationTest {
             every { extensionManager } returns sourceBrowseExtensionManager()
             every { sourceExtensionLookup } returns sourceBrowseExtensionManager()
             every { sourceMangaSearchService } returns SourceMangaSearchService()
+            every { extensionPresentationService } returns mockk {
+                every { installedExtensions } returns kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+            }
             every { saveSourceMangaForDetails } returns saver
             every { getManga } returns mockk<GetManga> {
                 every { subscribe(any<String>(), any<Long>()) } answers {
@@ -209,15 +218,15 @@ class GlobalSearchResultNavigationTest {
 
         fun mount(screen: Screen, coroutineContext: CoroutineContext, width: Int = 900) =
             ImageComposeScene(width, 700, coroutineContext = coroutineContext) {}.also { scene ->
-            scene.setContent {
-                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
-                    Navigator(screen) {
-                        navigator = LocalNavigator.currentOrThrow
-                        CurrentScreen()
+                scene.setContent {
+                    CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                        Navigator(screen) {
+                            navigator = LocalNavigator.currentOrThrow
+                            CurrentScreen()
+                        }
                     }
                 }
             }
-        }
 
         private fun preference(value: Set<String>): Preference<Set<String>> = mockk { every { get() } returns value }
 

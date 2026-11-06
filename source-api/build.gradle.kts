@@ -79,6 +79,7 @@ tasks.withType<Test> {
 
 android {
     namespace = "eu.kanade.tachiyomi.source"
+    sourceSets["test"].resources.srcDir("src/commonTest/resources")
 
     defaultConfig {
         consumerProguardFile("consumer-proguard.pro")

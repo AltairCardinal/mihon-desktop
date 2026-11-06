@@ -13,6 +13,8 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.network.SourceCompatibilityException
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import kotlinx.collections.immutable.ImmutableList
@@ -66,23 +68,32 @@ class ExtensionDetailsScreenModel(
                     }
             }
             launch {
-                state.collectLatest { state ->
-                    if (state.extension == null) return@collectLatest
-                    getExtensionSources.subscribe(state.extension)
-                        .map { sources ->
-                            actionStore.enabledFirst(sources, ExtensionSourceItem::enabled) { item ->
-                                item.source.name.takeIf { item.labelAsName }
-                                    ?: LocaleHelper.getSourceDisplayName(item.source.lang, context).lowercase()
+                state.map { it.extension }
+                    .distinctUntilChanged { previous, current -> previous === current }
+                    .collectLatest { extension ->
+                        if (extension == null) return@collectLatest
+                        getExtensionSources.subscribe(extension)
+                            .map { sources ->
+                                actionStore.enabledFirst(sources, ExtensionSourceItem::enabled) { item ->
+                                    item.presentation.name.takeIf { item.labelAsName }
+                                        ?: LocaleHelper.getSourceDisplayName(
+                                            item.presentation.language,
+                                            context,
+                                        ).lowercase()
+                                }
                             }
-                        }
-                        .catch { throwable ->
-                            logcat(LogPriority.ERROR, throwable)
-                            mutableState.update { it.copy(_sources = persistentListOf()) }
-                        }
-                        .collectLatest { sources ->
-                            mutableState.update { it.copy(_sources = sources.toImmutableList()) }
-                        }
-                }
+                            .catch { throwable ->
+                                throwable.rethrowSourceControlFailure()
+                                if (throwable is SourceCompatibilityException) {
+                                    extensionManager.reportSourceMetadataFailure(extension, throwable)
+                                }
+                                logcat(LogPriority.ERROR, throwable)
+                                mutableState.update { it.copy(_sources = persistentListOf()) }
+                            }
+                            .collectLatest { sources ->
+                                mutableState.update { it.copy(_sources = sources.toImmutableList()) }
+                            }
+                    }
             }
             launch {
                 preferences.incognitoExtensions()
@@ -126,9 +137,12 @@ class ExtensionDetailsScreenModel(
     }
 
     fun toggleSources(enable: Boolean) {
-        state.value.extension?.sources
-            ?.map { it.id }
-            ?.let { toggleSource.await(it, enable) }
+        val current = state.value
+        val extension = current.extension ?: return
+        val ids = extension.sources.mapNotNull { source ->
+            current.sources.firstOrNull { it.source === source }?.presentation?.id
+        }
+        if (ids.size == extension.sources.size) toggleSource.await(ids, enable)
     }
 
     fun toggleIncognito(enable: Boolean) {

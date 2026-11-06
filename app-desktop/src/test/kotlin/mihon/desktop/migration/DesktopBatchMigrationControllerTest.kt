@@ -42,6 +42,35 @@ class DesktopBatchMigrationControllerTest {
     lateinit var directory: Path
 
     @Test
+    fun `migration owned worker preserves wrapped fatal and host errors instead of failed checkpoint`() = runTest {
+        val fatal = object : VirtualMachineError("controlled migration fatal") {}
+        val host = AssertionError("host checkpoint invariant")
+        for ((index, expected) in listOf(fatal, host).withIndex()) {
+            val observed = mutableListOf<Throwable>()
+            val handler = kotlinx.coroutines.CoroutineExceptionHandler { _, error -> observed += error }
+            val workerScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler) + handler)
+            val controller = DesktopBatchMigrationController(
+                DesktopTaskScheduler(FileTaskCheckpointStore(directory.resolve("control-$index.json"))),
+                { _: Long, _: BatchMigrationTargetSelection -> throw java.io.IOException("wrapped", expected) },
+                workerScope,
+                StandardTestDispatcher(testScheduler),
+            )
+            try {
+                val id = controller.submit(listOf(BatchMigrationRequest(1L, "Broken")))
+                runCurrent()
+                controller.selectTarget(id, 1L, target("Broken"), BatchMigrationOptions())
+                advanceUntilIdle()
+                assertEquals(listOf(expected), observed)
+                assertFalse(controller.queue(id)!!.items.single().status == BatchMigrationItemStatus.ERROR)
+            } finally {
+                controller.stop()
+                controller.awaitStopped()
+                workerScope.cancel()
+            }
+        }
+    }
+
+    @Test
     fun `runtime close and join waits for migration checkpoint without joining shared scope`() = runTest {
         val enteredWrite = CountDownLatch(1)
         val releaseWrite = CountDownLatch(1)

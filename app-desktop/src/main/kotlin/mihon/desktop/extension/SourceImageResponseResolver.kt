@@ -1,5 +1,7 @@
 package mihon.desktop.extension
 
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -9,7 +11,10 @@ import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
 import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 
 /** Shared by online reading and queued downloads: keep the source's complete image operation. */
-internal suspend fun resolveSourceImageResponse(source: CatalogueSource, page: Page): Response? {
+internal suspend fun resolveSourceImageResponse(source: CatalogueSource, page: Page): Response? =
+    guardSourceOperation(SourceOperationPhase.IMAGE_REQUEST) { resolveImageResponse(source, page) }
+
+private suspend fun resolveImageResponse(source: CatalogueSource, page: Page): Response? {
     if (source is HttpSource) return source.getImage(page)
     val method = source.javaClass.methods.firstOrNull { candidate ->
         candidate.name == "getImage" && candidate.parameterCount == 2 &&

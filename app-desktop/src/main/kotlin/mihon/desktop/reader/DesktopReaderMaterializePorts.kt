@@ -1,11 +1,8 @@
 package mihon.desktop.reader
 
-import tachiyomi.core.common.feedback.DiagnosticCategory
-import tachiyomi.core.common.feedback.DiagnosticEvent
-import tachiyomi.core.common.feedback.DiagnosticEvents
-import tachiyomi.core.common.feedback.DiagnosticOperation
-import tachiyomi.core.common.feedback.DiagnosticStage
 import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
@@ -40,6 +37,11 @@ import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.session.ReaderEncodedPageProvenance
 import mihon.domain.reader.session.ReaderPageDescriptor
 import mihon.domain.reader.storage.EncodedPageStoreWriteResult
+import tachiyomi.core.common.feedback.DiagnosticCategory
+import tachiyomi.core.common.feedback.DiagnosticEvent
+import tachiyomi.core.common.feedback.DiagnosticEvents
+import tachiyomi.core.common.feedback.DiagnosticOperation
+import tachiyomi.core.common.feedback.DiagnosticStage
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.toSourceChapter
 import java.io.File
@@ -97,12 +99,14 @@ class DesktopReaderChapterContentPort(
             )
         }.also { pages ->
             if (chapterDownloaded == true) {
-                DiagnosticEvents.record(DiagnosticEvent(
-                    DiagnosticCategory.DOWNLOAD_LOCAL,
-                    DiagnosticOperation.LOCAL_FILE,
-                    DiagnosticStage.SUCCESS,
-                    count = pages.size,
-                ))
+                DiagnosticEvents.record(
+                    DiagnosticEvent(
+                        DiagnosticCategory.DOWNLOAD_LOCAL,
+                        DiagnosticOperation.LOCAL_FILE,
+                        DiagnosticStage.SUCCESS,
+                        count = pages.size,
+                    ),
+                )
             }
         }
     }
@@ -146,7 +150,11 @@ class DesktopReaderChapterContentPort(
             url = context.chapterUrl
             name = context.chapterTitle
         }
-        val pages = when (val result = safeSourceCall { source.getPageList(chapter) }) {
+        val pages = when (
+            val result = safeSourceCall {
+                guardSourceOperation(SourceOperationPhase.PAGE_LIST) { source.getPageList(chapter) }
+            }
+        ) {
             is SourceCallResult.Success -> result.value
             is SourceCallResult.Timeout -> throw AppErrorException(result.error)
             is SourceCallResult.Error -> throw AppErrorException(result.error)

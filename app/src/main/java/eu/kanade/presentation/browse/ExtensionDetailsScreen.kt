@@ -197,7 +197,7 @@ private fun ExtensionDetails(
 
         items(
             items = sources,
-            key = { it.source.id },
+            key = { it.presentation.id },
         ) { source ->
             SourceSwitchPreference(
                 modifier = Modifier.animateItem(),
@@ -424,16 +424,16 @@ private fun SourceSwitchPreference(
     TextPreferenceWidget(
         modifier = modifier,
         title = if (source.labelAsName) {
-            source.source.toString()
+            source.displayName
         } else {
-            LocaleHelper.getSourceDisplayName(source.source.lang, context)
+            LocaleHelper.getSourceDisplayName(source.presentation.language, context)
         },
         widget = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (source.source is ConfigurableSource) {
-                    IconButton(onClick = { onClickSourcePreferences(source.source.id) }) {
+                    IconButton(onClick = { onClickSourcePreferences(source.presentation.id) }) {
                         Icon(
                             imageVector = Icons.Outlined.Settings,
                             contentDescription = stringResource(MR.strings.label_settings),
@@ -449,7 +449,7 @@ private fun SourceSwitchPreference(
                 )
             }
         },
-        onPreferenceClick = { onClickSource(source.source.id) },
+        onPreferenceClick = { onClickSource(source.presentation.id) },
     )
 }
 

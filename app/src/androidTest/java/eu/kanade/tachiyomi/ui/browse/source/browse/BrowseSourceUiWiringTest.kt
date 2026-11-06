@@ -277,6 +277,7 @@ class BrowseSourceUiWiringTest {
         return Pager(PagingConfig(pageSize = 1, prefetchDistance = 1)) {
             SharedSourcePagingSource(
                 source = source,
+                sourceId = source.id,
                 listing = BrowseSourceScreenModel.Listing.Popular,
                 generation = 1,
                 sourceMangaSearchService = SourceMangaSearchService(),

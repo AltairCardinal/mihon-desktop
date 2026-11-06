@@ -1,30 +1,17 @@
 package mihon.desktop.extension
 
-import mihon.domain.extension.service.ExtensionInstallBusy
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.io.IOException
-import java.nio.file.Path
-import java.security.MessageDigest
-import java.util.Base64
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.toList
@@ -38,8 +25,9 @@ import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionArtifact
 import mihon.domain.extension.model.ExtensionSourceDescriptor
 import mihon.domain.extension.model.RepositoryIdentity
-import mihon.domain.extension.service.ExtensionInstallState
+import mihon.domain.extension.service.ExtensionInstallBusy
 import mihon.domain.extension.service.ExtensionInstallFailure
+import mihon.domain.extension.service.ExtensionInstallState
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
@@ -49,9 +37,9 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
-import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -60,8 +48,80 @@ import org.objectweb.asm.ClassVisitor
 import org.objectweb.asm.ClassWriter
 import org.objectweb.asm.MethodVisitor
 import org.objectweb.asm.Opcodes
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.IOException
+import java.nio.file.Path
+import java.security.MessageDigest
+import java.util.Base64
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 class DesktopExtensionInstallTransactionTest {
+    @Test
+    fun `installed ABI reload failure retains compatibility and restores old artifact runtime`(
+        @TempDir directory: Path,
+    ) = runBlocking {
+        val snapshot = installedSnapshot(directory, "fixture.extension")
+        fixture.extension.InstalledReloadAbiProbe.locations.clear()
+        val manager = transactionManager(
+            DesktopExtensionLoader(directory.toFile()),
+            artifactProvider = { _, target ->
+                target.writeBytes(sourceJar(fixture.extension.InstalledReloadAbiSource::class.java))
+            },
+        )
+        try {
+            manager.loadAll()
+            val terminal = manager.installExtension(
+                artifact(FixtureNewSource.ID).copy(packageName = "fixture.extension"),
+            )
+            assertTrue(fixture.extension.InstalledReloadAbiProbe.locations.contains("candidate.jar"))
+            assertTrue(fixture.extension.InstalledReloadAbiProbe.locations.contains("fixture.extension.jar"))
+            val failure = assertInstanceOf(ExtensionInstallState.Failed::class.java, terminal)
+            assertInstanceOf(AppError.ExtensionIncompatible::class.java, failure.error)
+            snapshot.assertUnchanged()
+            assertEquals(FixtureOldSource::class.java.name, manager.getSource(FixtureOldSource.ID)?.javaClass?.name)
+            assertEquals(1L, manager.installedExtensions.value.single().versionCode)
+            assertTrue(manager.loadFailures.value.isEmpty())
+            assertNoTransactionFiles(directory)
+        } finally {
+            manager.close()
+        }
+    }
+
+    @Test
+    fun `healthy upgrade clears the previous incompatible installed snapshot failure`(
+        @TempDir directory: Path,
+    ) = runBlocking {
+        installedSnapshot(directory, "fixture.extension")
+        val jar = directory.resolve("fixture.extension.jar").toFile()
+        jar.writeBytes(sourceJar(fixture.extension.InstalledReloadAbiSource::class.java))
+        writeExtensionMeta(jar, checkNotNull(readExtensionMeta(jar)).copy(artifactSha256 = jar.readBytes().sha256()))
+        val manager = transactionManager(
+            DesktopExtensionLoader(directory.toFile()),
+            artifactProvider = { _, target ->
+                target.writeBytes(sourceJar(fixture.extension.HealthyReloadSource::class.java))
+            },
+        )
+        try {
+            manager.loadAll()
+            assertEquals(1, manager.loadFailures.value.size)
+            assertInstanceOf(
+                ExtensionInstallState.Installed::class.java,
+                manager.installExtension(artifact(FixtureNewSource.ID).copy(packageName = "fixture.extension")),
+            )
+            assertTrue(manager.loadFailures.value.isEmpty())
+            assertEquals(2L, manager.installedExtensions.value.single().versionCode)
+            assertEquals(FixtureNewSource.ID, manager.getInstalledSources().single().id)
+        } finally {
+            manager.close()
+        }
+    }
+
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(booleans = [false, true])
     fun `production commit and rollback metadata replacements exclude concurrent readers`(
@@ -74,7 +134,9 @@ class DesktopExtensionInstallTransactionTest {
         val replacements = java.util.concurrent.atomic.AtomicInteger()
         val fileSystem = object : DesktopExtensionFileSystem by DefaultDesktopExtensionFileSystem {
             override fun replaceFromSnapshot(snapshot: File, destination: File) {
-                if (destination.name == "$PACKAGE.meta.json" && replacements.incrementAndGet() == if (rollback) 2 else 1) {
+                if (destination.name == "$PACKAGE.meta.json" &&
+                    replacements.incrementAndGet() == if (rollback) 2 else 1
+                ) {
                     entered.countDown()
                     check(release.await(5, TimeUnit.SECONDS))
                 }
@@ -82,9 +144,11 @@ class DesktopExtensionInstallTransactionTest {
             }
         }
         val loader = FailOnceLoader(directory.toFile())
-        val manager = transactionManager(loader,
+        val manager = transactionManager(
+            loader,
             artifactProvider = { _, destination -> destination.writeBytes(sourceJar(FixtureNewSource::class.java)) },
-            fileSystem = fileSystem).also { it.loadAll() }
+            fileSystem = fileSystem,
+        ).also { it.loadAll() }
         loader.failNextReload = rollback
         val install = async(Dispatchers.IO) { manager.installExtension(artifact(FixtureNewSource.ID)) }
         val reader = java.util.concurrent.Executors.newSingleThreadExecutor()
@@ -131,7 +195,9 @@ class DesktopExtensionInstallTransactionTest {
             assertFalse(PACKAGE in manager.inventory.value.records)
             assertFalse(installed.jarFile.exists())
             assertTrue(metadata.exists())
-        } finally { manager.close() }
+        } finally {
+            manager.close()
+        }
     }
 
     @Test
@@ -165,8 +231,10 @@ class DesktopExtensionInstallTransactionTest {
             }
             assertTrue(deleting.await(5, TimeUnit.SECONDS))
             val early = runCatching { deletion.get(100, TimeUnit.MILLISECONDS) }
-            assertTrue(early.exceptionOrNull() is java.util.concurrent.TimeoutException,
-                "Deletion completed during read: done=${deletion.isDone}, sidecarExists=${metadata.exists()}")
+            assertTrue(
+                early.exceptionOrNull() is java.util.concurrent.TimeoutException,
+                "Deletion completed during read: done=${deletion.isDone}, sidecarExists=${metadata.exists()}",
+            )
             release.countDown()
             assertNotNull(read.get(5, TimeUnit.SECONDS))
             deletion.get(5, TimeUnit.SECONDS)
@@ -205,7 +273,9 @@ class DesktopExtensionInstallTransactionTest {
     }
 
     @Test
-    fun `same package concurrent API requests keep the owner and reject the duplicate as busy`(@TempDir directory: Path) = runBlocking {
+    fun `same package concurrent API requests keep the owner and reject the duplicate as busy`(
+        @TempDir directory: Path,
+    ) = runBlocking {
         val bytes = sourceJar(FixtureNewSource::class.java)
         MockWebServer().use { server ->
             server.start()
@@ -279,7 +349,9 @@ class DesktopExtensionInstallTransactionTest {
     }
 
     @Test
-    fun `invalid package path cannot create artifacts outside extension directory`(@TempDir directory: Path) = runBlocking {
+    fun `invalid package path cannot create artifacts outside extension directory`(
+        @TempDir directory: Path,
+    ) = runBlocking {
         val extensions = directory.resolve("extensions").toFile().also(File::mkdirs)
         MockWebServer().use { server ->
             server.start()
@@ -311,7 +383,9 @@ class DesktopExtensionInstallTransactionTest {
     }
 
     @Test
-    fun `provider outside declared package is rejected after real runtime load`(@TempDir directory: Path) = runBlocking {
+    fun `provider outside declared package is rejected after real runtime load`(
+        @TempDir directory: Path,
+    ) = runBlocking {
         val declaredPackage = "$PACKAGE.expected"
         val bytes = zip(
             declaredPackage.replace('.', '/') + "/Marker.class" to byteArrayOf(0),
@@ -346,7 +420,9 @@ class DesktopExtensionInstallTransactionTest {
     }
 
     @Test
-    fun `all traversal absolute and drive package forms are rejected before download`(@TempDir directory: Path) = runBlocking {
+    fun `all traversal absolute and drive package forms are rejected before download`(
+        @TempDir directory: Path,
+    ) = runBlocking {
         val invalid = listOf("../escape", "..\\escape", "/escape", "\\escape", "C:\\escape", "C:/escape")
         MockWebServer().use { server ->
             server.start()
@@ -368,8 +444,13 @@ class DesktopExtensionInstallTransactionTest {
     }
 
     @Test
-    fun `candidate provider load failure closes loader and leaves full directory snapshot unchanged`(@TempDir directory: Path) = runBlocking {
-        val marker = directory.resolve("keep/nested.txt").toFile().also { it.parentFile.mkdirs(); it.writeText("keep") }
+    fun `candidate provider load failure closes loader and leaves full directory snapshot unchanged`(
+        @TempDir directory: Path,
+    ) = runBlocking {
+        val marker = directory.resolve("keep/nested.txt").toFile().also {
+            it.parentFile.mkdirs()
+            it.writeText("keep")
+        }
         val before = directorySnapshot(directory)
         val brokenProvider = zip(
             PACKAGE.replace('.', '/') + "/Marker.class" to byteArrayOf(0),
@@ -385,7 +466,9 @@ class DesktopExtensionInstallTransactionTest {
     }
 
     @Test
-    fun `metadata commit failure restores both snapshots and next transaction succeeds`(@TempDir directory: Path) = runBlocking {
+    fun `metadata commit failure restores both snapshots and next transaction succeeds`(
+        @TempDir directory: Path,
+    ) = runBlocking {
         val snapshot = installedSnapshot(directory)
         val fileSystem = FailOnceFileSystem(
             replaceFailure = { destination, occurrence -> destination.name == "$PACKAGE.meta.json" && occurrence == 1 },
@@ -480,7 +563,9 @@ class DesktopExtensionInstallTransactionTest {
     }
 
     @Test
-    fun `cleanup failure after candidate reload releases new runtime before restoring old snapshot`(@TempDir directory: Path) = runBlocking {
+    fun `cleanup failure after candidate reload releases new runtime before restoring old snapshot`(
+        @TempDir directory: Path,
+    ) = runBlocking {
         val snapshot = installedSnapshot(directory)
         val fileSystem = CleanupFailureFileSystem()
         val manager = transactionManager(
@@ -526,7 +611,9 @@ class DesktopExtensionInstallTransactionTest {
         val loader = FailOnceLoader(directory.toFile())
         val manager = transactionManager(
             loader = loader,
-            artifactProvider = { _, destination -> destination.writeBytes(sourceJar(BlockingValidationSource::class.java)) },
+            artifactProvider = { _, destination ->
+                destination.writeBytes(sourceJar(BlockingValidationSource::class.java))
+            },
         ).also { it.loadAll() }
         val installed = manager.getInstalledExtensions().single()
         BlockingValidationSource.blockNextValidation()
@@ -561,7 +648,9 @@ class DesktopExtensionInstallTransactionTest {
         val snapshot = installedSnapshot(directory)
         val manager = transactionManager(
             loader = DesktopExtensionLoader(directory.toFile()),
-            artifactProvider = { _, destination -> destination.writeBytes(classOnlyJar(DesktopExtensionInstallTransactionTest::class.java)) },
+            artifactProvider = { _, destination ->
+                destination.writeBytes(classOnlyJar(DesktopExtensionInstallTransactionTest::class.java))
+            },
         ).also { it.loadAll() }
 
         try {
@@ -636,11 +725,15 @@ class DesktopExtensionInstallTransactionTest {
     }
 
     @Test
-    fun `public operation queued before close is rejected after install window releases`(@TempDir directory: Path) = runBlocking {
+    fun `public operation queued before close is rejected after install window releases`(
+        @TempDir directory: Path,
+    ) = runBlocking {
         installedSnapshot(directory)
         val manager = transactionManager(
             loader = DesktopExtensionLoader(directory.toFile()),
-            artifactProvider = { _, destination -> destination.writeBytes(sourceJar(BlockingValidationSource::class.java)) },
+            artifactProvider = { _, destination ->
+                destination.writeBytes(sourceJar(BlockingValidationSource::class.java))
+            },
         ).also { it.loadAll() }
         BlockingValidationSource.blockNextValidation()
         val install = async(Dispatchers.IO) { manager.installExtension(artifact(BlockingValidationSource.ID)) }
@@ -687,7 +780,9 @@ class DesktopExtensionInstallTransactionTest {
     }
 
     @Test
-    fun `recovery archive delete failure is reported then removed by rollback cleanup`(@TempDir directory: Path) = runBlocking {
+    fun `recovery archive delete failure is reported then removed by rollback cleanup`(
+        @TempDir directory: Path,
+    ) = runBlocking {
         val snapshot = installedSnapshot(directory)
         val fileSystem = FailOnceFileSystem(
             deleteFailure = { destination, occurrence ->
@@ -723,7 +818,9 @@ class DesktopExtensionInstallTransactionTest {
     }
 
     @Test
-    fun `prepare failure and cleanup failure return Network plus Storage partial failure`(@TempDir directory: Path) = runBlocking {
+    fun `prepare failure and cleanup failure return Network plus Storage partial failure`(
+        @TempDir directory: Path,
+    ) = runBlocking {
         val manager = transactionManager(
             loader = DesktopExtensionLoader(directory.toFile()),
             artifactProvider = { _, destination ->
@@ -808,7 +905,10 @@ class DesktopExtensionInstallTransactionTest {
                 assertNull(api.confirmTrust(pending.requestId, manager))
                 assertEquals(1, server.requestCount)
                 val installed = manager.installedExtensions.value.single()
-                assertEquals(listOf(extension.name, extension.lang, extension.isNsfw), listOf(installed.name, installed.language, installed.isNsfw))
+                assertEquals(
+                    listOf(extension.name, extension.lang, extension.isNsfw),
+                    listOf(installed.name, installed.language, installed.isNsfw),
+                )
                 assertTrue(manager.removeExtensionWithMeta(installed))
                 assertTrue(manager.installedExtensions.value.isEmpty())
             } finally {
@@ -899,14 +999,21 @@ class DesktopExtensionInstallTransactionTest {
             assertNull(manager.getSource(FixtureNewSource.ID))
             assertEquals(
                 installedBefore.map { it.copy(sources = emptyList()) to it.sources.map { source -> source.id } },
-                manager.installedExtensions.value.map { it.copy(sources = emptyList()) to it.sources.map { source -> source.id } },
+                manager.installedExtensions.value.map {
+                    it.copy(sources = emptyList()) to
+                        it.sources.map { source -> source.id }
+                },
             )
             assertNoTransactionFiles(directory)
         } finally {
             withContext(NonCancellable) {
                 install.cancel()
                 loader.allowReload.countDown()
-                try { install.join() } finally { manager.close() }
+                try {
+                    install.join()
+                } finally {
+                    manager.close()
+                }
             }
         }
     }
@@ -954,7 +1061,12 @@ class DesktopExtensionInstallTransactionTest {
             val destination = directory.resolve("destination-directory").toFile().also(File::mkdirs)
 
             val failure = org.junit.jupiter.api.Assertions.assertThrows(ExtensionInstallFailure::class.java) {
-                runBlocking { api.downloadArtifact(artifact(FixtureNewSource.ID).copy(downloadUrl = server.url("/artifact").toString()), destination) }
+                runBlocking {
+                    api.downloadArtifact(
+                        artifact(FixtureNewSource.ID).copy(downloadUrl = server.url("/artifact").toString()),
+                        destination,
+                    )
+                }
             }
 
             assertInstanceOf(AppError.Storage::class.java, failure.error)
@@ -1069,7 +1181,9 @@ class DesktopExtensionInstallTransactionTest {
     }
 
     @Test
-    fun `dex conversion failure preserves installed jar and removes temporary files`(@TempDir directory: Path) = runBlocking {
+    fun `dex conversion failure preserves installed jar and removes temporary files`(
+        @TempDir directory: Path,
+    ) = runBlocking {
         val snapshot = installedSnapshot(directory)
 
         val result = install(zip("classes.dex" to byteArrayOf(1, 2, 3)), directory, FixtureNewSource.ID)
@@ -1216,7 +1330,9 @@ class DesktopExtensionInstallTransactionTest {
         repoName = "Repository",
         repoFingerprint = "fingerprint",
         declaredSha256 = digest,
-        sources = sourceId?.let { listOf(DesktopAvailableSource(it, "en", "Fixture", "https://example.com")) }.orEmpty(),
+        sources = sourceId?.let {
+            listOf(DesktopAvailableSource(it, "en", "Fixture", "https://example.com"))
+        }.orEmpty(),
     )
 
     private fun availableWithoutServer(packageName: String) = DesktopAvailableExtension(
@@ -1248,13 +1364,15 @@ class DesktopExtensionInstallTransactionTest {
         declaredSha256 = null,
     )
 
-    private fun installedSnapshot(directory: Path): Snapshot {
+    private fun installedSnapshot(directory: Path, packageName: String = PACKAGE): Snapshot {
         directory.toFile().mkdirs()
-        val jar = directory.resolve("$PACKAGE.jar").toFile().also { it.writeBytes(sourceJar(FixtureOldSource::class.java)) }
+        val jar = directory.resolve("$packageName.jar").toFile().also {
+            it.writeBytes(sourceJar(FixtureOldSource::class.java))
+        }
         writeExtensionMeta(
             jar,
             ExtensionMeta(
-                pkgName = PACKAGE,
+                pkgName = packageName,
                 versionCode = 1,
                 versionName = "1.4.1",
                 repoUrl = "https://repo.example",
@@ -1374,7 +1492,8 @@ class DesktopExtensionInstallTransactionTest {
         directory.toFile().walkTopDown()
             .filter(File::isFile)
             .associate {
-                it.relativeTo(directory.toFile()).invariantSeparatorsPath to Base64.getEncoder().encodeToString(it.readBytes())
+                it.relativeTo(directory.toFile()).invariantSeparatorsPath to
+                    Base64.getEncoder().encodeToString(it.readBytes())
             }
 
     private fun ByteArray.sha256(): String = MessageDigest.getInstance("SHA-256")
@@ -1425,6 +1544,8 @@ class DesktopExtensionInstallTransactionTest {
                     source = FixtureNewSource(),
                     jarFile = runtimeArtifact,
                     classLoader = FixtureNewSource::class.java.classLoader,
+                    metadata = readExtensionMeta(artifact),
+                    registeredSourceId = FixtureNewSource.ID,
                 ),
             )
         }
@@ -1455,7 +1576,9 @@ class DesktopExtensionInstallTransactionTest {
         private var jarReplaceCalls = 0
 
         override fun replaceFromSnapshot(snapshot: File, destination: File) {
-            if (destination.name == "$PACKAGE.jar" && ++jarReplaceCalls > 1 && manager.getSource(FixtureNewSource.ID) != null) {
+            if (destination.name == "$PACKAGE.jar" && ++jarReplaceCalls > 1 &&
+                manager.getSource(FixtureNewSource.ID) != null
+            ) {
                 throw IOException("new runtime still owns destination during rollback")
             }
             DefaultDesktopExtensionFileSystem.replaceFromSnapshot(snapshot, destination)
@@ -1564,7 +1687,13 @@ class DesktopExtensionInstallTransactionTest {
 
         override fun replaceFromSnapshot(snapshot: File, destination: File) {
             val occurrence = replaceCounts.merge(destination.absolutePath, 1, Int::plus) ?: 1
-            if (replaceFailure(destination, occurrence)) throw IOException("injected replace failure for ${destination.name}")
+            if (replaceFailure(
+                    destination,
+                    occurrence,
+                )
+            ) {
+                throw IOException("injected replace failure for ${destination.name}")
+            }
             DefaultDesktopExtensionFileSystem.replaceFromSnapshot(snapshot, destination)
         }
 
@@ -1596,7 +1725,9 @@ class FixtureOldSource : Source {
     override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()
     override suspend fun getPageList(chapter: SChapter) = emptyList<Page>()
 
-    companion object { const val ID = 7001L }
+    companion object {
+        const val ID = 7001L
+    }
 }
 
 class FixtureNewSource : Source {
@@ -1607,7 +1738,9 @@ class FixtureNewSource : Source {
     override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()
     override suspend fun getPageList(chapter: SChapter) = emptyList<Page>()
 
-    companion object { const val ID = 7002L }
+    companion object {
+        const val ID = 7002L
+    }
 }
 
 class BlockingValidationSource : Source {

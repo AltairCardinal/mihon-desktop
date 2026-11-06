@@ -18,8 +18,10 @@ import eu.kanade.tachiyomi.ui.browse.source.globalsearch.SourceFilter
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import mihon.domain.error.AppError
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.source.service.SourceMetadataSnapshot
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourceRecoveryAction
+import tachiyomi.domain.source.service.sourceFailureIdentity
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
@@ -58,6 +60,8 @@ fun GlobalSearchScreen(
     ) { paddingValues ->
         GlobalSearchContent(
             items = state.filteredItems,
+            sourceMetadata = state.metadata,
+            generation = state.generation,
             contentPadding = paddingValues,
             getManga = getManga,
             onClickSource = onClickSource,
@@ -71,6 +75,8 @@ fun GlobalSearchScreen(
 @Composable
 internal fun GlobalSearchContent(
     items: Map<Source, SearchItemResult>,
+    sourceMetadata: List<SourceMetadataSnapshot>,
+    generation: Long,
     contentPadding: PaddingValues,
     getManga: @Composable (Manga) -> State<Manga>,
     onClickSource: (Source) -> Unit,
@@ -82,14 +88,17 @@ internal fun GlobalSearchContent(
     LazyColumn(
         contentPadding = contentPadding,
     ) {
-        items.forEach { (source, result) ->
-            item(key = source.id) {
+        items.entries.forEachIndexed { fallbackIndex, (source, result) ->
+            val metadata = sourceMetadata.firstOrNull { it.source === source }
+            val rowIndex = metadata?.let { item -> sourceMetadata.indexOfFirst { it === item } } ?: fallbackIndex
+            item(key = metadata?.sourceId ?: "unknown-source:$generation:$rowIndex") {
+                val name = metadata?.name?.ifBlank { null } ?: stringResource(MR.strings.unknown)
                 GlobalSearchResultItem(
-                    title = fromSourceId?.let {
-                        "▶ ${source.name}".takeIf { source.id == fromSourceId }
-                    } ?: source.name,
-                    subtitle = LocaleHelper.getLocalizedDisplayName(source.lang),
+                    title = if (fromSourceId != null && metadata?.sourceId == fromSourceId) "▶ $name" else name,
+                    subtitle = metadata?.language?.let(LocaleHelper::getLocalizedDisplayName)
+                        ?: stringResource(MR.strings.unknown),
                     onClick = { onClickSource(source) },
+                    enabled = metadata?.sourceId != null && metadata.error == null,
                     modifier = Modifier.animateItem(),
                 ) {
                     when (result) {
@@ -107,7 +116,10 @@ internal fun GlobalSearchContent(
                         is SearchItemResult.Error -> {
                             val message = when (val error = result.pageError.error) {
                                 is AppError.Network -> stringResource(MR.strings.exception_offline)
-                                is AppError.Authentication, is AppError.Forbidden -> stringResource(
+                                is AppError.Authentication,
+                                is AppError.Forbidden,
+                                is AppError.ExtensionIncompatible,
+                                -> stringResource(
                                     checkNotNull(sourceErrorMessageResource(error)),
                                 )
                                 else -> stringResource(MR.strings.unknown_error)
@@ -120,6 +132,13 @@ internal fun GlobalSearchContent(
                             GlobalSearchErrorResultItem(
                                 message = message,
                                 actionLabel = actionLabel,
+                                details = result.pageError.error.sourceFailureIdentity()?.let { identity ->
+                                    val name = identity.extensionName?.ifBlank { null }
+                                        ?: stringResource(MR.strings.unknown)
+                                    val version = identity.versionName?.ifBlank { null }
+                                        ?: stringResource(MR.strings.unknown)
+                                    "$name ($version)"
+                                },
                                 onAction = { onErrorAction(source, result.pageError) },
                             )
                         }

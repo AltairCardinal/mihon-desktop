@@ -108,6 +108,170 @@ import java.util.Collections
 @Config(sdk = [35], manifest = Config.NONE)
 class MangaScreenModelSharedMutationWiringTest {
     @Test
+    fun `actual detail refresh displays localized compatibility with the owner captured before update`() = runTest {
+        val current = manga(true)
+        val owner = eu.kanade.tachiyomi.extension.model.Extension.Installed(
+            "Detail owner", "trusted.details", "1.2.3", 123L, 1.6, "en", false,
+            null, listOf(source), null, isShared = false,
+        )
+        val installed = MutableStateFlow(listOf(owner))
+        val manager = Injekt.get<eu.kanade.tachiyomi.extension.ExtensionManager>()
+        every { manager.installedExtensionsFlow } returns installed
+        org.junit.Assert.assertSame(installed, manager.installedExtensionsFlow)
+        val updater = mockk<UpdateManga>()
+        coEvery {
+            updater.awaitFromRemote(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+            )
+        } coAnswers {
+            if (thirdArg<Boolean>() || arg<Boolean>(3)) {
+                installed.value = emptyList()
+                throw eu.kanade.tachiyomi.network.SourceCompatibilityException(
+                    NoSuchMethodError("private update"),
+                    eu.kanade.tachiyomi.network.SourceOperationPhase.DETAILS,
+                )
+            }
+            current to emptyList()
+        }
+        val model = screenModel(manga = current, chapters = listOf(chapter(1)), updateManga = updater)
+        try {
+            awaitSuccess(model)
+            org.junit.Assert.assertSame(source, model.source)
+            org.robolectric.shadows.ShadowLog.clear()
+            model.fetchAllFromSource()
+            val app = RuntimeEnvironment.getApplication()
+            val expected = app.stringResource(MR.strings.source_error_extension_incompatible)
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) { while (model.snackbarHostState.currentSnackbarData == null) delay(10) }
+            }
+            assertEquals(expected, model.snackbarHostState.currentSnackbarData!!.visuals.message)
+            val records = org.robolectric.shadows.ShadowLog.getLogsForTag("MihonExtension")
+            assertEquals(1, records.size)
+            assertTrue(records.toString(), records.single().msg.contains("package=trusted.details"))
+            assertTrue(records.toString(), records.single().msg.contains("version=1.2.3"))
+            assertTrue(!records.single().msg.contains("private update"))
+        } finally {
+            model.onDispose()
+        }
+    }
+
+    @Test
+    fun `actual detail refresh catch propagates wrapped fatal cancel and host errors`() = runTest {
+        val current = manga(true)
+        val fatal = object : VirtualMachineError("controlled") {}
+        val cancel = kotlinx.coroutines.CancellationException("controlled")
+        val host = AssertionError("host")
+        val observations = mutableListOf<Pair<Throwable, Throwable?>>()
+        for (expected in listOf(fatal, cancel, host)) {
+            var failure: Throwable? = null
+            val updater = mockk<UpdateManga>()
+            coEvery {
+                updater.awaitFromRemote(
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                )
+            } coAnswers {
+                if (thirdArg<Boolean>() || arg<Boolean>(3)) failure?.let { throw it }
+                current to emptyList()
+            }
+            val model = screenModel(manga = current, chapters = listOf(chapter(1)), updateManga = updater)
+            try {
+                awaitSuccess(model)
+                failure = java.io.IOException("wrapper", expected)
+                val actual = runCatching { invokeFetch(model) }.exceptionOrNull()
+                observations += expected to actual
+            } finally {
+                model.onDispose()
+            }
+        }
+        observations.forEach { (expected, actual) ->
+            if (expected === cancel) {
+                assertTrue(actual is kotlinx.coroutines.CancellationException)
+                assertEquals(cancel.message, actual?.message)
+            } else {
+                org.junit.Assert.assertSame(expected, actual)
+            }
+        }
+    }
+
+    private suspend fun invokeFetch(model: MangaScreenModel): Unit =
+        kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn { continuation ->
+            val method = MangaScreenModel::class.java.getDeclaredMethod(
+                "fetchFromSource",
+                Boolean::class.javaPrimitiveType,
+                Boolean::class.javaPrimitiveType,
+                Boolean::class.javaPrimitiveType,
+                kotlin.coroutines.Continuation::class.java,
+            ).apply { isAccessible = true }
+            try {
+                method.invoke(model, true, true, true, continuation)
+            } catch (
+                error: java.lang.reflect.InvocationTargetException,
+            ) {
+                throw error.targetException
+            }
+        }
+
+    @Test
+    fun `actual detail refresh keeps ordinary IO feedback without compatibility diagnostics`() = runTest {
+        val current = manga(true)
+        val updater = mockk<UpdateManga>()
+        coEvery {
+            updater.awaitFromRemote(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+            )
+        } coAnswers {
+            if (thirdArg<Boolean>() || arg<Boolean>(3)) throw java.io.IOException("ordinary source IO")
+            current to emptyList()
+        }
+        val model = screenModel(manga = current, chapters = listOf(chapter(1)), updateManga = updater)
+        try {
+            awaitSuccess(model)
+            org.robolectric.shadows.ShadowLog.clear()
+            model.fetchAllFromSource()
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) { while (model.snackbarHostState.currentSnackbarData == null) delay(10) }
+            }
+            assertEquals("ordinary source IO", model.snackbarHostState.currentSnackbarData!!.visuals.message)
+            assertTrue(org.robolectric.shadows.ShadowLog.getLogsForTag("MihonExtension").isEmpty())
+        } finally {
+            model.onDispose()
+        }
+    }
+
+    @Test
     fun `Android manual download uses raw repository range and stable ascending candidates before limit`() = runTest {
         val original = listOf(
             chapter(1).copy(chapterNumber = 1.0, bookmark = true, read = true),
@@ -711,6 +875,11 @@ class MangaScreenModelSharedMutationWiringTest {
         Injekt.addSingleton(BasePreferences(application, preferenceStore))
         Injekt.addSingleton(UiPreferences(preferenceStore))
         Injekt.addSingleton(SourcePreferences(preferenceStore))
+        Injekt.addSingleton<eu.kanade.tachiyomi.extension.ExtensionManager>(
+            mockk {
+                every { installedExtensionsFlow } returns MutableStateFlow(emptyList())
+            },
+        )
         Injekt.addSingleton(mockk<ManageCreatorIdentity>(relaxed = true))
         lifecycleOwner = TestLifecycleOwner().also {
             it.registry.currentState = Lifecycle.State.RESUMED

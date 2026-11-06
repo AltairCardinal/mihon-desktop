@@ -5,6 +5,8 @@ import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -18,7 +20,7 @@ import tachiyomi.domain.chapter.service.finishDirectoryFiles
 import tachiyomi.domain.chapter.service.finishDirectoryPhase
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.model.Manga
-import tachiyomi.source.local.isLocal
+import tachiyomi.source.local.LocalSource
 import java.time.ZonedDateTime
 
 class SyncChaptersWithSource(
@@ -58,13 +60,20 @@ class SyncChaptersWithSource(
             finishPhase(manga, source, pending, observe)
             return pending.addedIds.mapNotNull { chapterRepository.getChapterById(it) }
         }
-        if (rawSourceChapters.isEmpty() && !source.isLocal()) throw NoChaptersException()
+        val sourceId = guardSourceOperation(SourceOperationPhase.METADATA) { source.id }
+        val localSource = sourceId == LocalSource.ID
+        if (rawSourceChapters.isEmpty() && !localSource) throw NoChaptersException()
         val now = ZonedDateTime.now()
         val prepared = tachiyomi.domain.chapter.service.ChapterDirectoryPlan.prepare(
             manga,
             rawSourceChapters,
         ) { chapter ->
-            if (source is HttpSource) source.prepareNewChapter(chapter, manga.toSManga())
+            if (source is HttpSource) {
+                val sourceManga = manga.toSManga()
+                guardSourceOperation(SourceOperationPhase.CHAPTERS) {
+                    source.prepareNewChapter(chapter, sourceManga)
+                }
+            }
         }
         val request = tachiyomi.domain.chapter.service.ChapterDirectoryCommit(
             mangaId = manga.id,
@@ -72,12 +81,12 @@ class SyncChaptersWithSource(
             now = now.toInstant().toEpochMilli(),
             markDuplicateAsRead = libraryPreferences.markDuplicateReadChapterAsRead().get()
                 .contains(LibraryPreferences.MARK_DUPLICATE_CHAPTER_READ_NEW),
-            allowEmpty = source.isLocal(),
+            allowEmpty = localSource,
             complete = chapterListComplete,
             mangaMetadata = mangaMetadata,
             effects = effects ?: tachiyomi.domain.chapter.service.ChapterDirectoryEffects(
-                source.id,
-                source.toString(),
+                sourceId,
+                guardSourceOperation(SourceOperationPhase.METADATA) { source.toString() },
                 manga.url,
                 manga.title,
                 "ANDROID_DIRECT",
@@ -119,7 +128,8 @@ class SyncChaptersWithSource(
     ) {
         val latest = updateManga.mangaForDirectory(manga.id)
         check(
-            latest.id == phase.mangaId && source.id == phase.effects.sourceId &&
+            latest.id == phase.mangaId &&
+                guardSourceOperation(SourceOperationPhase.METADATA) { source.id } == phase.effects.sourceId &&
                 latest.source == phase.effects.sourceId && latest.url == phase.effects.mangaUrl &&
                 latest.title == phase.currentTitle,
         ) { "Pending directory manga identity changed" }

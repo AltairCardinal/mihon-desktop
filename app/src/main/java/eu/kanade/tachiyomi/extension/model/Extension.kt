@@ -34,6 +34,8 @@ sealed class Extension {
         val isShared: Boolean,
         val repoUrl: String? = null,
         val availableCompatibility: ExtensionCompatibility? = null,
+        /** Prepared only by the current management projection; source objects remain unchanged. */
+        val presentationSources: List<mihon.domain.extension.presentation.ExtensionPresentationSource>? = null,
     ) : Extension()
 
     data class Available(

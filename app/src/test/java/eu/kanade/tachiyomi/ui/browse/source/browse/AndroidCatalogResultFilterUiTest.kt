@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasClickAction
@@ -44,6 +45,7 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.AndroidPreferenceStore
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
@@ -71,6 +73,78 @@ import uy.kohesive.injekt.registry.default.DefaultRegistrar
 class AndroidCatalogResultFilterUiTest {
     @get:Rule
     val compose = createEmptyComposeRule()
+
+    @Test
+    fun `real browse retry prepares failed filters again before querying`() {
+        val previous = Injekt
+        Injekt = InjektScope(DefaultRegistrar())
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val reads = java.util.concurrent.atomic.AtomicInteger()
+        val restoredFilters = FilterList(eu.kanade.tachiyomi.source.model.Filter.Header("Restored filters"))
+        val source = object : Source {
+            override val id = 904L
+            override val name = "Transient filters"
+            override val lang = "en"
+            override fun getFilterList(): FilterList {
+                if (reads.incrementAndGet() == 1) throw java.io.IOException("transient source filter IO")
+                return restoredFilters
+            }
+            override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+                assertSame(restoredFilters, filters)
+                calls.incrementAndGet()
+                return MangasPage(emptyList(), false)
+            }
+        }
+        try {
+            registerDependencies(activity.get(), source)
+            activity.get().setContent {
+                MaterialTheme { Navigator(BrowseSourceScreen(source.id, "query")) { CurrentScreen() } }
+            }
+            compose.waitForIdle()
+            val retry = activity.get().stringResource(MR.strings.action_retry)
+            compose.waitUntil(5_000) { compose.onAllNodesWithText(retry).fetchSemanticsNodes().isNotEmpty() }
+            assertEquals(0, calls.get())
+            compose.onNodeWithText(retry).performClick()
+            compose.waitUntil(5_000) { calls.get() == 1 }
+            assertEquals(2, reads.get())
+        } finally {
+            activity.pause().stop().destroy()
+            Injekt = previous
+        }
+    }
+
+    @Test
+    fun `real browse constructor displays incompatible filters without issuing a source query`() {
+        val previous = Injekt
+        Injekt = InjektScope(DefaultRegistrar())
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val source = object : Source {
+            override val id = 903L
+            override val name = "Broken filters"
+            override val lang = "en"
+            override fun getFilterList(): FilterList = throw NoSuchMethodError("future filter API")
+            override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+                calls.incrementAndGet()
+                return MangasPage(emptyList(), false)
+            }
+        }
+        try {
+            registerDependencies(activity.get(), source)
+            activity.get().setContent {
+                MaterialTheme { Navigator(BrowseSourceScreen(source.id, "query")) { CurrentScreen() } }
+            }
+            compose.waitForIdle()
+            val message = activity.get().stringResource(MR.strings.source_error_extension_incompatible)
+            compose.waitUntil(5_000) { compose.onAllNodesWithText(message).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText(message).assertIsDisplayed()
+            assertEquals(0, calls.get())
+        } finally {
+            activity.pause().stop().destroy()
+            Injekt = previous
+        }
+    }
 
     @Test
     fun `unknown and conflicting languages keep an empty metadata row matching a known language`() {

@@ -4,6 +4,9 @@ import eu.kanade.domain.extension.model.Extensions
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
+import eu.kanade.tachiyomi.network.SourceCompatibilityException
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
 import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -28,11 +31,38 @@ class GetExtensionsByType(
             extensionManager.installedExtensionsFlow,
             extensionManager.untrustedExtensionsFlow,
             extensionManager.availableExtensionsFlow,
-        ) { enabledLanguages, _installed, _untrusted, _available ->
+            extensionManager.loadFailures,
+        ) { enabledLanguages, _installed, _untrusted, _available, loadFailures ->
+            val currentFailures = loadFailures.toMutableMap()
+            val prepared = _installed.mapNotNull { owner ->
+                if (owner.pkgName in currentFailures ||
+                    !extensionManager.isCurrentInstalledInstance(owner)
+                ) {
+                    return@mapNotNull null
+                }
+                try {
+                    if (owner.sources.isEmpty()) {
+                        owner
+                    } else {
+                        owner.copy(
+                            presentationSources = readInstalledSourcePresentation(owner),
+                        )
+                    }
+                } catch (error: SourceCompatibilityException) {
+                    extensionManager.reportSourceMetadataFailure(owner, error)?.let {
+                        currentFailures[owner.pkgName] =
+                            it
+                    }
+                    null
+                }
+            }
             val result = classifier.classify(
-                _installed,
+                prepared,
                 _untrusted,
-                _available,
+                // Keep an explicit upgrade path without presenting an installed failure as a fresh install.
+                _available.filter { candidate ->
+                    currentFailures[candidate.pkgName]?.let { candidate.versionCode > it.versionCode } ?: true
+                },
                 ExtensionPresentationOptions(showNsfwSources, enabledLanguages),
             )
             Extensions(
@@ -57,9 +87,7 @@ private object AndroidExtensionPresentationAdapter : ExtensionPresentationAdapte
         hasUpdate = (extension as? Extension.Installed)?.hasUpdate == true,
         isObsolete = (extension as? Extension.Installed)?.isObsolete == true,
         sources = when (extension) {
-            is Extension.Installed -> extension.sources.map {
-                ExtensionPresentationSource(it.id, it.lang, it.name, (it as? HttpSource)?.baseUrl)
-            }
+            is Extension.Installed -> extension.presentationSources ?: readInstalledSourcePresentation(extension)
             is Extension.Available -> extension.sources.map {
                 ExtensionPresentationSource(it.id, it.lang, it.name, it.baseUrl)
             }
@@ -73,4 +101,18 @@ private object AndroidExtensionPresentationAdapter : ExtensionPresentationAdapte
             lang = source.language,
             sources = extension.sources.filter { it.id == source.id },
         )
+}
+
+private fun readInstalledSourcePresentation(extension: Extension.Installed) = extension.sources.map { source ->
+    val id = guardSourceOperation(SourceOperationPhase.METADATA) { source.id }
+    val lang = guardSourceOperation(SourceOperationPhase.METADATA) { source.lang }
+    val name = guardSourceOperation(SourceOperationPhase.METADATA) { source.name }
+    val baseUrl = if (source is HttpSource) {
+        guardSourceOperation(SourceOperationPhase.METADATA) {
+            source.baseUrl
+        }
+    } else {
+        null
+    }
+    ExtensionPresentationSource(id, lang, name, baseUrl)
 }

@@ -7,8 +7,6 @@ import androidx.compose.foundation.ScrollbarStyle
 import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollbarAdapter
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -28,6 +26,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollbarAdapter
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDownward
@@ -113,6 +113,7 @@ import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
 import coil3.toBitmap
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.delay
@@ -135,6 +136,7 @@ import tachiyomi.domain.chapter.service.hasActiveChapterFilters
 import tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga
 import tachiyomi.domain.creator.model.CreatorMentionResolution
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.source.service.toSourceAppError
 import tachiyomi.domain.source.service.toSourceManga
 import tachiyomi.i18n.MR
 import java.util.Locale
@@ -918,18 +920,40 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 LazyColumn {
                                     items(availableSources) { src ->
                                         DropdownMenuItem(
-                                            text = { Text("${src.name} (${src.lang})") },
+                                            text = {
+                                                val error = src.error
+                                                val name = src.name ?: MR.strings.unknown.localized()
+                                                Text(
+                                                    if (error != null) {
+                                                        desktopSourceErrorMessage(error)
+                                                    } else {
+                                                        "$name (${src.language.orEmpty()})"
+                                                    },
+                                                )
+                                            },
+                                            enabled = src.error == null && src.sourceId != null,
                                             onClick = {
+                                                val targetId = src.sourceId ?: return@DropdownMenuItem
+                                                val targetSource = src.source as CatalogueSource
+                                                if (src.error != null) return@DropdownMenuItem
                                                 model.setShowMigrateSourcePicker(false)
-                                                model.setMigrateTargetSourceId(src.id)
+                                                model.setMigrateTargetSourceId(targetId)
                                                 model.setMigrateSearchResults(null)
                                                 scope.launch {
                                                     model.setMigrateSearching(true)
-                                                    runCatching {
-                                                        val query = manga?.title ?: return@runCatching
-                                                        model.setMigrateSearchResults(model.searchMigration(src, query))
+                                                    try {
+                                                        val query = manga?.title ?: return@launch
+                                                        val matches = model.searchMigration(targetSource, query)
+                                                        model.setMigrateSearchResults(matches)
+                                                    } catch (error: Exception) {
+                                                        error.rethrowSourceControlFailure()
+                                                        model.setMigrateSearching(false)
+                                                        categorySnackbar.showSnackbar(
+                                                            desktopSourceErrorMessage(error.toSourceAppError()),
+                                                        )
+                                                    } finally {
+                                                        model.setMigrateSearching(false)
                                                     }
-                                                    model.setMigrateSearching(false)
                                                 }
                                             },
                                         )
@@ -1021,7 +1045,14 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                             TextButton(onClick = {
                                 val targetSourceId = migrateTargetSourceId ?: return@TextButton
                                 scope.launch {
-                                    model.migrateTo(targetSourceId, confirmItem, manga?.title)
+                                    try {
+                                        model.migrateTo(targetSourceId, confirmItem, manga?.title)
+                                    } catch (error: Exception) {
+                                        error.rethrowSourceControlFailure()
+                                        categorySnackbar.showSnackbar(
+                                            desktopSourceErrorMessage(error.toSourceAppError()),
+                                        )
+                                    }
                                 }
                                 model.setMigrateConfirmItem(null)
                                 model.setMigrateSearchResults(null)

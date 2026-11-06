@@ -1,6 +1,5 @@
 package mihon.desktop.ui.extension
 
-import mihon.domain.extension.service.ExtensionInstallArbiter
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
@@ -11,19 +10,20 @@ import androidx.compose.ui.text.AnnotatedString
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import dev.mihon.injekt.patchInjekt
+import fixture.extension.CompatibilityLoadControl
+import io.mockk.clearMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
-import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
@@ -34,8 +34,13 @@ import mihon.desktop.extension.DesktopAvailableExtension
 import mihon.desktop.extension.DesktopAvailableSource
 import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopExtensionInstallStart
+import mihon.desktop.extension.DesktopExtensionLoader
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.extension.InstalledExtension
+import mihon.desktop.extension.buildCompatibilityLoadingJar
+import mihon.desktop.extension.deleteExtensionMeta
+import mihon.desktop.extension.readExtensionMeta
+import mihon.desktop.extension.writeExtensionMeta
 import mihon.desktop.network.DesktopNetworkRoutingPort
 import mihon.desktop.network.DesktopPluginNetworkSupport
 import mihon.desktop.settings.DesktopAppPreferences
@@ -43,17 +48,20 @@ import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.model.RepositoryCatalogFailure
 import mihon.domain.extension.model.RepositoryIdentity
-import mihon.domain.extension.presentation.ExtensionPresentationOptions
 import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
+import mihon.domain.extension.presentation.ExtensionPresentationOptions
+import mihon.domain.extension.service.ExtensionInstallArbiter
 import mihon.domain.extension.service.ExtensionInstallState
+import mihon.domain.extension.suggestion.ExtensionSuggestionBatchController
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import tachiyomi.i18n.MR
+import org.junit.jupiter.api.io.TempDir
 import tachiyomi.core.common.preference.DesktopPreferenceStore
+import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
 import java.io.File
@@ -62,6 +70,212 @@ import java.util.UUID
 import java.util.prefs.Preferences
 
 class ExtensionPresentationUiTest {
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
+    fun `failed-only page keeps newer catalog update in the real installation pipeline`(
+        @TempDir directory: File,
+    ) = runBlocking {
+        val broken = buildCompatibilityLoadingJar(directory, "strict", "name")
+        val original = checkNotNull(readExtensionMeta(broken))
+        val repository = RepositoryIdentity("https://repo.example", "Fixture repo", "ab".repeat(32))
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(broken.readBytes())
+            .joinToString("") { "%02x".format(it) }
+        writeExtensionMeta(
+            broken,
+            original.copy(
+                name = "Broken update fixture",
+                repoUrl = repository.baseUrl,
+                repoName = repository.name,
+                repoFingerprint = repository.signingKeyFingerprint,
+                artifactSha256 = digest,
+            ),
+        )
+        CompatibilityLoadControl.site = "name"
+        CompatibilityLoadControl.failure = NoSuchMethodError("future source name")
+        val attempts = java.util.concurrent.atomic.AtomicInteger()
+        val updateFailure = AppError.ExtensionIncompatible(
+            eu.kanade.tachiyomi.network.SourceCompatibilityException(
+                NoSuchMethodError("private update ABI detail"),
+                eu.kanade.tachiyomi.network.SourceOperationPhase.CONSTRUCTION,
+            ),
+        )
+        val manager = DesktopExtensionManager(DesktopExtensionLoader(directory), artifactProvider = { _, _ ->
+            attempts.incrementAndGet()
+            throw mihon.domain.extension.service.ExtensionInstallFailure(updateFailure)
+        })
+        manager.loadAll()
+        var version = original.versionCode
+        fun catalog(): ExtensionCatalogResult {
+            val artifact = mihon.domain.extension.model.ExtensionArtifact(
+                "Broken update fixture", original.pkgName, "1.6.$version", version, "en", false, emptyList(),
+                repository, "https://repo.example/fixture.jar", "", null,
+            )
+            return ExtensionCatalogResult(
+                listOf(
+                    mihon.domain.extension.model.ExtensionCatalogEntry(
+                        artifact,
+                        mihon.domain.extension.model.ExtensionCompatibility.Compatible,
+                    ),
+                ),
+                emptyList(),
+            )
+        }
+        val api = io.mockk.spyk(DesktopExtensionApi(okhttp3.OkHttpClient(), kotlinx.serialization.json.Json, mockk()))
+        coEvery { api.refreshCatalog() } coAnswers { catalog() }
+        coEvery { api.loadExtensionIcon(any()) } returns null
+        val model = ExtensionsScreenModel(
+            DesktopExtensionPresentationPort(api, manager),
+            this,
+            ExtensionPresentationOptions(false, setOf("en")),
+        )
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { extensionApi } returns api
+            every { extensionManager } returns manager
+        }
+        val scene = ImageComposeScene(1000, 900, coroutineContext = coroutineContext) {}
+        try {
+            model.refresh().join()
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    ExtensionListContent(model)
+                }
+            }
+            awaitText(scene, "Broken update fixture · 1.6.2")
+            assertTrue(manager.installedExtensions.value.isEmpty())
+            assertEquals(1, model.state.value.loadFailures.size)
+            click(scene, extensionListCopy().available)
+            withTimeout(5_000) {
+                while (model.state.value.projection?.available?.isNotEmpty() != false) {
+                    scene.render()
+                    yield()
+                }
+            }
+            scene.render()
+            assertFalse(
+                nodes(scene).any {
+                    it.config.contains(SemanticsActions.OnClick) &&
+                        it.config.toString().contains("${MR.strings.action_install.localized()} Broken update fixture")
+                },
+            )
+            version++
+            model.refresh().join()
+            awaitText(scene, "${MR.strings.ext_update.localized()} Broken update fixture")
+            click(scene, "${MR.strings.ext_update.localized()} Broken update fixture")
+            withTimeout(5_000) {
+                while (model.state.value.installErrors[original.pkgName] !is AppError.ExtensionIncompatible) {
+                    scene.render()
+                    yield()
+                }
+            }
+            assertEquals(1, attempts.get())
+            awaitText(scene, mihon.desktop.ui.source.desktopSourceErrorMessage(updateFailure))
+            assertEquals(null, model.state.value.pendingTrust)
+            assertEquals(1, model.state.value.loadFailures.size)
+            assertTrue(manager.installedExtensions.value.isEmpty())
+            assertEquals(original.versionCode, manager.loadFailures.value.single().metadata?.versionCode)
+            assertFalse(nodes(scene).any { "private update ABI detail" in it.config.toString() })
+            click(scene, "${MR.strings.ext_installed.localized()} (0)")
+            awaitText(scene, "Broken update fixture · 1.6.2")
+        } finally {
+            scene.close()
+            model.closeAndJoin()
+            manager.close()
+            CompatibilityLoadControl.site = "healthy"
+        }
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
+    fun `failed artifact stays visible and real reload recovers the runtime`(@TempDir directory: File) = runBlocking {
+        val broken = buildCompatibilityLoadingJar(directory, "strict", "name")
+        writeExtensionMeta(broken, checkNotNull(readExtensionMeta(broken)).copy(name = "Broken fixture"))
+        val healthy = buildCompatibilityLoadingJar(directory, "service", "construction")
+        writeExtensionMeta(healthy, checkNotNull(readExtensionMeta(healthy)).copy(name = "Healthy fixture"))
+        CompatibilityLoadControl.site = "name"
+        CompatibilityLoadControl.failure = NoSuchMethodError("future source name")
+        val loads = java.util.concurrent.atomic.AtomicInteger()
+        val manager = DesktopExtensionManager(object : DesktopExtensionLoader(directory) {
+            override fun loadExtensions(): List<mihon.desktop.extension.LoadedExtension> {
+                loads.incrementAndGet()
+                return super.loadExtensions()
+            }
+        })
+        manager.loadAll()
+        val api = mockk<DesktopExtensionApi> {
+            every { installArbiter } returns ExtensionInstallArbiter()
+            coEvery { refreshCatalog() } returns ExtensionCatalogResult(emptyList(), emptyList())
+            every { availableExtensions(any()) } returns emptyList()
+            coEvery { loadExtensionIcon(any()) } returns null
+        }
+        val model = ExtensionsScreenModel(
+            DesktopExtensionPresentationPort(api, manager),
+            this,
+            ExtensionPresentationOptions(false, setOf("en")),
+        )
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { extensionApi } returns api
+            every { extensionManager } returns manager
+        }
+        val scene = ImageComposeScene(1000, 900, coroutineContext = coroutineContext) {}
+        try {
+            model.refresh().join()
+            withTimeout(5_000) { while (model.state.value.loadFailures.isEmpty()) yield() }
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    ExtensionListContent(model)
+                }
+            }
+            awaitText(scene, "Broken fixture · 1.6.2")
+            assertEquals(listOf(510L), manager.getInstalledSources().map { it.id })
+            repeat(3) {
+                scene.render()
+                yield()
+            }
+            assertEquals(1, loads.get())
+            val unknown = MR.strings.unknown.localized()
+            writeExtensionMeta(
+                broken,
+                checkNotNull(readExtensionMeta(broken)).copy(
+                    pkgName = "",
+                    name = "",
+                    versionName = "",
+                    versionCode = 0,
+                ),
+            )
+            manager.reloadAll()
+            awaitText(scene, "$unknown · $unknown")
+            deleteExtensionMeta(broken)
+            manager.reloadAll()
+            awaitText(scene, "$unknown · ${broken.name}")
+            CompatibilityLoadControl.site = "healthy"
+            click(scene, MR.strings.desktop_extension_reload_installed.localized())
+            withTimeout(5_000) {
+                while (manager.loadFailures.value.isNotEmpty() || model.state.value.loadFailures.isNotEmpty()) {
+                    scene.render()
+                    yield()
+                }
+            }
+            withTimeout(5_000) {
+                while (nodes(scene).any { "Broken fixture · 1.6.2" in it.config.toString() }) {
+                    scene.render()
+                    yield()
+                }
+            }
+            assertFalse(nodes(scene).any { "Broken fixture · 1.6.2" in it.config.toString() })
+            assertEquals(setOf(510L, 511L), manager.getInstalledSources().map { it.id }.toSet())
+            repeat(3) {
+                scene.render()
+                yield()
+            }
+            assertEquals(4, loads.get())
+        } finally {
+            scene.close()
+            model.closeAndJoin()
+            manager.close()
+            CompatibilityLoadControl.site = "healthy"
+        }
+    }
+
     @OptIn(ExperimentalComposeUiApi::class)
     @Test
     fun `unsupported extension is visible with disabled install action`() = runBlocking {
@@ -76,7 +290,12 @@ class ExtensionPresentationUiTest {
             coEvery { loadExtensionIcon(any()) } returns null
         }
         val manager = mockk<DesktopExtensionManager>(relaxed = true)
-        val model = ExtensionsScreenModel(DesktopExtensionPresentationPort(api, manager, MutableStateFlow(emptyList())), this, ExtensionPresentationOptions(false, setOf("en")))
+        val model =
+            ExtensionsScreenModel(
+                DesktopExtensionPresentationPort(api, manager, MutableStateFlow(emptyList())),
+                this,
+                ExtensionPresentationOptions(false, setOf("en")),
+            )
         val dependencies = mockk<DesktopUiDependencies> {
             every { extensionApi } returns api
             every { extensionManager } returns manager
@@ -84,11 +303,19 @@ class ExtensionPresentationUiTest {
         val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
         try {
             model.refresh().join()
-            scene.setContent { CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) { ExtensionListContent(model) } }
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    ExtensionListContent(model)
+                }
+            }
             scene.render()
             click(scene, extensionListCopy().available)
             awaitText(scene, candidate.name)
-            val install = nodes(scene).filter { it.config.getOrElse(SemanticsProperties.ContentDescription) { emptyList() }.contains("${MR.strings.action_install.localized()} ${candidate.name}") }
+            val install = nodes(scene).filter {
+                it.config.getOrElse(SemanticsProperties.ContentDescription) {
+                    emptyList()
+                }.contains("${MR.strings.action_install.localized()} ${candidate.name}")
+            }
             assertTrue(install.isEmpty() || install.all { it.config.contains(SemanticsProperties.Disabled) })
             assertTrue(nodes(scene).any { it.config.toString().contains(candidate.libVersion.toString()) })
         } finally {
@@ -96,6 +323,7 @@ class ExtensionPresentationUiTest {
             model.closeAndJoin()
         }
     }
+
     @OptIn(ExperimentalComposeUiApi::class)
     @Test
     fun `details opened from the list return to the list when the installed extension disappears`() = runBlocking {
@@ -265,11 +493,12 @@ class ExtensionPresentationUiTest {
     @OptIn(ExperimentalComposeUiApi::class)
     @Test
     fun `both extension screens consume the local model instead of the global singleton`() = runBlocking {
-        val localState = MutableStateFlow(DesktopExtensionsState(options = ExtensionPresentationOptions(false, emptySet())))
+        val localState =
+            MutableStateFlow(DesktopExtensionsState(options = ExtensionPresentationOptions(false, emptySet())))
         val localModel = mockk<ExtensionsScreenModel>(relaxed = true)
         val globalModel = mockk<ExtensionsScreenModel>(relaxed = true)
         every { localModel.state } returns localState
-        every { localModel.suggestionBatch } returns mihon.domain.extension.suggestion.ExtensionSuggestionBatchController(
+        every { localModel.suggestionBatch } returns ExtensionSuggestionBatchController(
             this,
             ExtensionInstallArbiter(),
             mihon.domain.extension.suggestion.SuggestionBatchInstallPort { _, _ -> error("No installation expected") },
@@ -320,7 +549,10 @@ class ExtensionPresentationUiTest {
             this,
             ExtensionPresentationOptions(false, setOf("en")),
         )
-        val dependencies = mockk<DesktopUiDependencies> { every { extensionApi } returns api; every { extensionManager } returns manager }
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { extensionApi } returns api
+            every { extensionManager } returns manager
+        }
         val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
         fun mount() = scene.setContent {
             CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) { ExtensionListContent(model) }
@@ -625,45 +857,90 @@ class ExtensionPresentationUiTest {
     @Test
     fun `production content renders local empty data with failure and retries`() = runBlocking {
         val candidate = extension(
-            "Update extension", "pkg.visible",
+            "Update extension",
+            "pkg.visible",
             listOf(source(1, "en", "English source"), source(2, "fr", "French source")),
         )
         val available = extension(
-            "Available extension", "pkg.available",
-            listOf(source(4, "en", "Alpha available source"), source(5, "fr", "Beta available source"), source(6, "es", "Filtered available source")),
+            "Available extension",
+            "pkg.available",
+            listOf(
+                source(4, "en", "Alpha available source"),
+                source(5, "fr", "Beta available source"),
+                source(6, "es", "Filtered available source"),
+            ),
         )
-        val firstAvailable = available.copy(name = "Stale available extension", repoUrl = "https://stale", repoFingerprint = "stale")
+        val firstAvailable = available.copy(
+            name = "Stale available extension",
+            repoUrl = "https://stale",
+            repoFingerprint = "stale",
+        )
         val installed = InstalledExtension(
             File("pkg.visible.jar"),
-            listOf(mockk { every { id } returns 3; every { name } returns "German source"; every { lang } returns "de" }),
-            versionCode = 1, versionName = "1.5.0", displayName = candidate.name, language = "ja",
+            listOf(
+                mockk {
+                    every { id } returns 3
+                    every { name } returns "German source"
+                    every { lang } returns "de"
+                },
+            ),
+            versionCode = 1,
+            versionName = "1.5.0",
+            displayName = candidate.name,
+            language = "ja",
         )
-        val failure = RepositoryCatalogFailure(RepositoryIdentity("https://failed", "Failed repository", "key"), AppError.Network())
+        val failure =
+            RepositoryCatalogFailure(
+                RepositoryIdentity("https://failed", "Failed repository", "key"),
+                AppError.Network(),
+            )
         val partial = ExtensionCatalogResult(emptyList(), listOf(failure))
         val catalogs = Channel<ExtensionCatalogResult>(Channel.UNLIMITED)
         var refreshCalls = 0
         val api = mockk<DesktopExtensionApi> {
             io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
-            coEvery { refreshCatalog() } coAnswers { refreshCalls++; catalogs.receive() }
+            coEvery { refreshCatalog() } coAnswers {
+                refreshCalls++
+                catalogs.receive()
+            }
             every { availableExtensions(any()) } answers {
-                if (firstArg<ExtensionCatalogResult>() === partial) listOf(candidate, firstAvailable, available) else emptyList()
+                if (firstArg<ExtensionCatalogResult>() ===
+                    partial
+                ) {
+                    listOf(candidate, firstAvailable, available)
+                } else {
+                    emptyList()
+                }
             }
             coEvery { loadExtensionIcon(any()) } returns null
         }
         val manager = mockk<DesktopExtensionManager>(relaxed = true)
         val installedFlow = MutableStateFlow<List<InstalledExtension>>(emptyList())
         val model = ExtensionsScreenModel(
-            DesktopExtensionPresentationPort(api, manager, installedFlow), this, ExtensionPresentationOptions(false, setOf("en", "fr")),
+            DesktopExtensionPresentationPort(api, manager, installedFlow),
+            this,
+            ExtensionPresentationOptions(false, setOf("en", "fr")),
         )
-        val dependencies = mockk<DesktopUiDependencies> { every { extensionApi } returns api; every { extensionManager } returns manager }
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { extensionApi } returns api
+            every { extensionManager } returns manager
+        }
         val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
         suspend fun awaitAction(label: String) = withTimeout(5_000) {
             while (true) {
                 scene.render()
                 if (nodes(scene).any {
                         it.config.contains(SemanticsActions.OnClick) &&
-                            (it.config.contains(SemanticsProperties.Text) && it.config[SemanticsProperties.Text].any { text -> text.text == label } ||
-                                it.config.contains(SemanticsProperties.ContentDescription) && it.config[SemanticsProperties.ContentDescription].contains(label))
+                            (
+                                (
+                                    it.config.contains(SemanticsProperties.Text) &&
+                                        it.config[SemanticsProperties.Text].any { text -> text.text == label }
+                                    ) ||
+                                    (
+                                        it.config.contains(SemanticsProperties.ContentDescription) &&
+                                            it.config[SemanticsProperties.ContentDescription].contains(label)
+                                        )
+                                )
                     }
                 ) {
                     return@withTimeout
@@ -676,7 +953,9 @@ class ExtensionPresentationUiTest {
             patchInjekt()
             Injekt.addSingleton(model)
             scene.setContent {
-                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) { Navigator(ExtensionListScreen()) { CurrentScreen() } }
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    Navigator(ExtensionListScreen()) { CurrentScreen() }
+                }
             }
             awaitText(scene, extensionListCopy().emptyInstalled)
             withTimeout(5_000) { while (refreshCalls < 1) yield() }
@@ -689,7 +968,10 @@ class ExtensionPresentationUiTest {
             val partialRefresh = model.refresh()
             catalogs.send(partial)
             partialRefresh.join()
-            val projectedAvailable = model.state.value.projection?.available.orEmpty().filter { it.operationPackageName == available.pkgName }
+            val projectedAvailable = model.state.value.projection?.available.orEmpty().filter {
+                it.operationPackageName ==
+                    available.pkgName
+            }
             assertEquals(1, projectedAvailable.size)
             assertSame(available, projectedAvailable.single().available)
             val availableUi = model.state.value.presentation?.available.orEmpty()
@@ -701,40 +983,82 @@ class ExtensionPresentationUiTest {
             scene.render()
             val rendered = nodes(scene).joinToString { it.config.toString() }
             assertSame(failure, model.state.value.projection?.failures?.single())
-            listOf(candidate.name, "Alpha available source", "Beta available source", "${MR.strings.ext_update_all.localized()} (1)", MR.strings.ext_update.localized(), "Failed repository").forEach {
+            listOf(
+                candidate.name,
+                "Alpha available source",
+                "Beta available source",
+                "${MR.strings.ext_update_all.localized()} (1)",
+                MR.strings.ext_update.localized(),
+                "Failed repository",
+            ).forEach {
                 assertTrue(rendered.contains(it), "missing production extension UI: $it")
             }
-            assertEquals(1, nodes(scene).count { it.config.contains(SemanticsProperties.Text) && it.config[SemanticsProperties.Text].any { text -> text.text == "1" } })
-            assertEquals(2, nodes(scene).count { it.config.contains(SemanticsProperties.ContentDescription) && it.config[SemanticsProperties.ContentDescription].any { it.startsWith("${MR.strings.action_install.localized()} ") } })
+            assertEquals(
+                1,
+                nodes(scene).count {
+                    it.config.contains(SemanticsProperties.Text) &&
+                        it.config[SemanticsProperties.Text].any { text -> text.text == "1" }
+                },
+            )
+            assertEquals(
+                2,
+                nodes(scene).count {
+                    it.config.contains(SemanticsProperties.ContentDescription) &&
+                        it.config[SemanticsProperties.ContentDescription].any {
+                            it.startsWith("${MR.strings.action_install.localized()} ")
+                        }
+                },
+            )
             val updateError = AppError.Storage(IllegalStateException("update failed"))
             coEvery { api.beginInstall(candidate, manager) } returnsMany listOf(
                 DesktopExtensionInstallStart.Started(flowOf(ExtensionInstallState.Failed(updateError))),
-                DesktopExtensionInstallStart.Started(flow { emit(ExtensionInstallState.Preparing); awaitCancellation() }),
+                DesktopExtensionInstallStart.Started(
+                    flow {
+                        emit(ExtensionInstallState.Preparing)
+                        awaitCancellation()
+                    },
+                ),
                 trust("update-all-trust"),
                 DesktopExtensionInstallStart.Started(flowOf(ExtensionInstallState.Failed(AppError.Cancelled))),
             )
             val actionError = AppError.Network(IllegalStateException("offline"))
             coEvery { api.beginInstall(available, manager) } returnsMany listOf(
                 DesktopExtensionInstallStart.Started(flowOf(ExtensionInstallState.Failed(actionError))),
-                DesktopExtensionInstallStart.Started(flow { emit(ExtensionInstallState.Preparing); awaitCancellation() }),
+                DesktopExtensionInstallStart.Started(
+                    flow {
+                        emit(ExtensionInstallState.Preparing)
+                        awaitCancellation()
+                    },
+                ),
                 trust("trust-confirm"),
                 trust("trust-dismiss"),
             )
-            every { api.confirmTrust("trust-confirm", manager) } returns flowOf(ExtensionInstallState.Installed(mockk()))
+            every { api.confirmTrust("trust-confirm", manager) } returns
+                flowOf(ExtensionInstallState.Installed(mockk()))
             every { api.discardTrust("trust-dismiss") } returns true
             every { api.discardTrust("update-all-trust") } returns true
             click(scene, "${MR.strings.ext_update.localized()} ${candidate.name}")
             withTimeout(5_000) { coVerify(exactly = 1) { api.beginInstall(candidate, manager) } }
             withTimeout(5_000) { model.state.first { it.installErrors[candidate.pkgName] === updateError } }
-            val preserved = model.state.value.projection?.installed?.single { it.operationPackageName == candidate.pkgName }
+            val preserved = model.state.value.projection?.installed?.single {
+                it.operationPackageName ==
+                    candidate.pkgName
+            }
             assertSame(installed, preserved?.installed)
             assertEquals(installed.versionCode, preserved?.installed?.versionCode)
             awaitText(scene, extensionInstallErrorCopy(candidate.name, updateError))
-            assertTrue(nodes(scene).any { it.config.toString().contains(extensionInstallErrorCopy(candidate.name, updateError)) })
+            assertTrue(
+                nodes(scene).any {
+                    it.config.toString().contains(extensionInstallErrorCopy(candidate.name, updateError))
+                },
+            )
             awaitAction("${MR.strings.action_retry.localized()} ${candidate.name}")
             click(scene, "${MR.strings.action_retry.localized()} ${candidate.name}")
             withTimeout(5_000) {
-                model.state.first { it.actions.installSteps[candidate.pkgName] == ExtensionPresentationInstallStep.Downloading }
+                model.state.first {
+                    it.actions.installSteps[candidate.pkgName] ==
+                        ExtensionPresentationInstallStep.Downloading
+                }
             }
             awaitText(scene, MR.strings.ext_downloading.localized())
             assertTrue(nodes(scene).any { it.config.toString().contains(MR.strings.ext_downloading.localized()) })
@@ -746,11 +1070,17 @@ class ExtensionPresentationUiTest {
             withTimeout(5_000) { model.state.first { available.pkgName in it.installErrors } }
             awaitText(scene, extensionInstallErrorCopy("Alpha available source", actionError))
             val errorFeedback = nodes(scene).joinToString { it.config.toString() }
-            assertTrue(errorFeedback.contains(candidate.name) && errorFeedback.contains(extensionInstallErrorCopy("Alpha available source", actionError)))
+            assertTrue(
+                errorFeedback.contains(candidate.name) &&
+                    errorFeedback.contains(extensionInstallErrorCopy("Alpha available source", actionError)),
+            )
             awaitAction("${MR.strings.action_retry.localized()} Alpha available source")
             click(scene, "${MR.strings.action_retry.localized()} Alpha available source")
             withTimeout(5_000) {
-                model.state.first { it.actions.installSteps[available.pkgName] == ExtensionPresentationInstallStep.Downloading }
+                model.state.first {
+                    it.actions.installSteps[available.pkgName] ==
+                        ExtensionPresentationInstallStep.Downloading
+                }
             }
             awaitText(scene, MR.strings.ext_downloading.localized())
             assertTrue(nodes(scene).any { it.config.toString().contains(MR.strings.ext_downloading.localized()) })
@@ -769,24 +1099,46 @@ class ExtensionPresentationUiTest {
             withTimeout(5_000) { model.state.first { it.pendingTrust?.request?.requestId == "trust-dismiss" } }
             awaitAction("${MR.strings.action_cancel.localized()} ${MR.strings.untrusted_extension.localized()}")
             click(scene, "${MR.strings.action_cancel.localized()} ${MR.strings.untrusted_extension.localized()}")
-            withTimeout(5_000) { model.state.first { it.pendingTrust == null && available.pkgName !in it.actions.installSteps } }
+            withTimeout(5_000) {
+                model.state.first {
+                    it.pendingTrust == null &&
+                        available.pkgName !in it.actions.installSteps
+                }
+            }
             verify(exactly = 1) { api.discardTrust("trust-dismiss") }
             awaitAction("${MR.strings.ext_update_all.localized()} (1)")
             click(scene, "${MR.strings.ext_update_all.localized()} (1)")
             withTimeout(5_000) { model.state.first { it.pendingTrust?.request?.requestId == "update-all-trust" } }
             awaitAction("${MR.strings.action_cancel.localized()} ${MR.strings.untrusted_extension.localized()}")
-            val successSummary = MR.strings.desktop_extension_updated_message.localized(java.util.Locale.getDefault(), 1, 1)
+            val successSummary = MR.strings.desktop_extension_updated_message.localized(
+                java.util.Locale.getDefault(),
+                1,
+                1,
+            )
             assertFalse(nodes(scene).any { it.config.toString().contains(successSummary) })
             click(scene, "${MR.strings.action_cancel.localized()} ${MR.strings.untrusted_extension.localized()}")
-            withTimeout(5_000) { model.state.first { it.pendingTrust == null && candidate.pkgName !in it.actions.installSteps } }
+            withTimeout(5_000) {
+                model.state.first {
+                    it.pendingTrust == null &&
+                        candidate.pkgName !in it.actions.installSteps
+                }
+            }
             awaitAction("${MR.strings.ext_update.localized()} ${candidate.name}")
-            assertTrue(nodes(scene).any { it.config.toString().contains("${MR.strings.ext_update.localized()} ${candidate.name}") })
+            assertTrue(
+                nodes(scene).any {
+                    it.config.toString().contains("${MR.strings.ext_update.localized()} ${candidate.name}")
+                },
+            )
             click(scene, "${MR.strings.ext_update_all.localized()} (1)")
             withTimeout(5_000) { coVerify(exactly = 4) { api.beginInstall(candidate, manager) } }
             withTimeout(5_000) { model.state.first { candidate.pkgName !in it.actions.installSteps } }
             awaitAction("${MR.strings.ext_update.localized()} ${candidate.name}")
             assertFalse(nodes(scene).any { it.config.toString().contains(successSummary) })
-            assertTrue(nodes(scene).any { it.config.toString().contains("${MR.strings.ext_update.localized()} ${candidate.name}") })
+            assertTrue(
+                nodes(scene).any {
+                    it.config.toString().contains("${MR.strings.ext_update.localized()} ${candidate.name}")
+                },
+            )
             click(scene, MR.strings.desktop_extension_filter_by_language.localized())
             awaitText(scene, "French (fr)")
             assertTrue(nodes(scene).any { it.config.toString().contains("French (fr)") })
@@ -876,12 +1228,21 @@ class ExtensionPresentationUiTest {
     }
 
     @OptIn(ExperimentalComposeUiApi::class)
-    private fun nodes(scene: ImageComposeScene): List<SemanticsNode> = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+    private fun nodes(scene: ImageComposeScene): List<SemanticsNode> =
+        scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
     private fun click(scene: ImageComposeScene, label: String, last: Boolean = false) {
         val matches = nodes(scene).filter {
             it.config.contains(SemanticsActions.OnClick) &&
-                (it.config.contains(SemanticsProperties.Text) && it.config[SemanticsProperties.Text].any { text -> text.text == label } ||
-                    it.config.contains(SemanticsProperties.ContentDescription) && it.config[SemanticsProperties.ContentDescription].contains(label))
+                (
+                    (
+                        it.config.contains(SemanticsProperties.Text) &&
+                            it.config[SemanticsProperties.Text].any { text -> text.text == label }
+                        ) ||
+                        (
+                            it.config.contains(SemanticsProperties.ContentDescription) &&
+                                it.config[SemanticsProperties.ContentDescription].contains(label)
+                            )
+                    )
         }
         val node = if (last) matches.last() else matches.single()
         assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
@@ -903,14 +1264,15 @@ class ExtensionPresentationUiTest {
         assertTrue(requireNotNull(input.config[SemanticsActions.SetText].action).invoke(AnnotatedString(value)))
     }
 
-    private suspend fun awaitExtensionNames(scene: ImageComposeScene, visible: String, hidden: String) = withTimeout(5_000) {
-        while (true) {
-            scene.render()
-            val content = nodes(scene).map { it.config.toString() }
-            if (content.any { visible in it } && content.none { hidden in it }) return@withTimeout
-            yield()
+    private suspend fun awaitExtensionNames(scene: ImageComposeScene, visible: String, hidden: String) =
+        withTimeout(5_000) {
+            while (true) {
+                scene.render()
+                val content = nodes(scene).map { it.config.toString() }
+                if (content.any { visible in it } && content.none { hidden in it }) return@withTimeout
+                yield()
+            }
         }
-    }
 
     private suspend fun awaitText(scene: ImageComposeScene, expected: String) = withTimeout(5_000) {
         while (true) {

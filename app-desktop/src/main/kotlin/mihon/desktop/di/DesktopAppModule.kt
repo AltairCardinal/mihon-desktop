@@ -1,12 +1,15 @@
 package mihon.desktop.di
 
-import tachiyomi.core.common.feedback.DiagnosticEvents
 import android.app.Application
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import dev.mihon.injekt.patchInjekt
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.network.SourceCompatibilityException
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.CoroutineScope
@@ -21,8 +24,8 @@ import mihon.desktop.backup.BackupRestoreScreenModelFactory
 import mihon.desktop.compat.AndroidCompat
 import mihon.desktop.domain.DesktopCustomCoverStore
 import mihon.desktop.domain.DesktopMigrateMangaUseCase
-import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.domain.DesktopNotification
+import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.domain.DesktopSystemNotifier
 import mihon.desktop.domain.DesktopTrackerSessionProvider
 import mihon.desktop.domain.GetAvailableScanlators
@@ -89,6 +92,7 @@ import mihon.desktop.ui.extension.DesktopExtensionSourcePreferenceAdapter
 import mihon.desktop.ui.extension.ExtensionsScreenModel
 import mihon.desktop.ui.settings.DesktopDirectoryOpenPort
 import mihon.desktop.ui.settings.DesktopUpdateScreenModel
+import mihon.desktop.ui.source.desktopSourceErrorMessage
 import mihon.desktop.update.DesktopUpdateController
 import mihon.desktop.update.DesktopUpdateDownloader
 import mihon.desktop.update.DesktopUpdateInstaller
@@ -106,6 +110,7 @@ import mihon.domain.extensionrepo.service.ExtensionRepoService
 import mihon.domain.upcoming.interactor.GetUpcomingManga
 import okhttp3.OkHttpClient
 import okio.Path.Companion.toOkioPath
+import tachiyomi.core.common.feedback.DiagnosticEvents
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
@@ -184,12 +189,12 @@ import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import tachiyomi.domain.release.interactor.GetApplicationRelease
 import tachiyomi.domain.release.service.ApplicationUpdatePreferences
-import tachiyomi.i18n.MR
 import tachiyomi.domain.release.service.ReleaseService
 import tachiyomi.domain.source.repository.SourceRepository
 import tachiyomi.domain.source.service.AuthenticatedCookie
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourceMangaSearchService
+import tachiyomi.domain.source.service.toSourceAppError
 import tachiyomi.domain.track.interactor.DeleteTrack
 import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.domain.track.interactor.GetTracksPerManga
@@ -202,6 +207,7 @@ import tachiyomi.domain.track.service.TrackerSessionProvider
 import tachiyomi.domain.updates.interactor.GetUpdates
 import tachiyomi.domain.updates.repository.UpdatesRepository
 import tachiyomi.domain.updates.service.UpdatesPreferences
+import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.addSingletonFactory
@@ -238,7 +244,9 @@ internal fun resolveDesktopStartupContext(
 /**
  * Window geometry store that reads and writes the persisted geometry directly.
  */
-internal fun desktopWindowGeometryStore(preferenceStore: PreferenceStore): mihon.desktop.platform.DesktopWindowGeometryStore {
+internal fun desktopWindowGeometryStore(
+    preferenceStore: PreferenceStore,
+): mihon.desktop.platform.DesktopWindowGeometryStore {
     val preference = preferenceStore.getString(Preference.appStateKey("desktop_window_geometry"), "")
     return object : mihon.desktop.platform.DesktopWindowGeometryStore {
         override fun read(): String = preference.get()
@@ -623,7 +631,9 @@ internal fun initDataLayer(
         extractCreators = Injekt.get(),
     )
     val chapterRepository: ChapterRepository = ChapterRepositoryImpl(
-        handler, creatorRepositoryImpl, Injekt.get(),
+        handler,
+        creatorRepositoryImpl,
+        Injekt.get(),
     ).let { repository ->
         chapterRepositoryOverride?.invoke(repository) ?: repository
     }
@@ -658,7 +668,12 @@ internal fun initDataLayer(
     Injekt.addSingleton(creatorLibraryIndexer)
     Injekt.addSingleton(
         tachiyomi.domain.creator.service.CreatorTitleAttributionEditor(
-            Injekt.get(), mangaRepository, mangaRepositoryImpl, creatorRepositoryImpl, Injekt.get(), Injekt.get(),
+            Injekt.get(),
+            mangaRepository,
+            mangaRepositoryImpl,
+            creatorRepositoryImpl,
+            Injekt.get(),
+            Injekt.get(),
         ),
     )
     Injekt.addSingleton<tachiyomi.data.backup.AuthorArchiveBackupContributor>(authorArchiveBackupContributor)
@@ -734,9 +749,9 @@ private fun registerDesktopExtension(
         DesktopSourceManager(
             extensionManager = extensionManager,
             preferences = appPreferences,
-            additionalCatalogueSources = {
-                mihon.desktop.test.http.ReaderTestModeSourceBridge.sources() +
-                    mihon.desktop.test.http.HistoryCatalogTestSourceBridge.sources()
+            additionalSourceRegistrations = {
+                mihon.desktop.test.http.ReaderTestModeSourceBridge.registrations() +
+                    mihon.desktop.test.http.HistoryCatalogTestSourceBridge.registrations()
             },
         )
     } else {
@@ -744,15 +759,32 @@ private fun registerDesktopExtension(
             extensionManager = extensionManager,
             preferences = appPreferences,
             builtinSources = builtInSources,
-            additionalCatalogueSources = {
-                mihon.desktop.test.http.ReaderTestModeSourceBridge.sources() +
-                    mihon.desktop.test.http.HistoryCatalogTestSourceBridge.sources()
+            additionalSourceRegistrations = {
+                mihon.desktop.test.http.ReaderTestModeSourceBridge.registrations() +
+                    mihon.desktop.test.http.HistoryCatalogTestSourceBridge.registrations()
             },
         )
     }
     Injekt.addSingleton<SourceManager>(sourceManager)
     Injekt.addSingleton(sourceManager)
-    val sourceRepository = DesktopSourceRepository(sourceManager, handler)
+    val sourceRepository = DesktopSourceRepository(
+        sourceManager,
+        handler,
+        unknownName = { MR.strings.unknown.localized() },
+        failureIdentitySnapshot = {
+            extensionManager.installedExtensions.value.flatMap { installed ->
+                val metadata = installed.metadataSnapshot
+                installed.sources.map { source ->
+                    source to eu.kanade.tachiyomi.network.SourceFailureIdentity(
+                        extensionPackage = metadata?.pkgName,
+                        extensionName = metadata?.name,
+                        versionName = metadata?.versionName,
+                        versionCode = metadata?.versionCode,
+                    )
+                }
+            }
+        },
+    )
     Injekt.addSingleton<SourceRepository>(sourceRepository)
     val suggestionObserver = ObserveExtensionSuggestions(sourceRepository, sourceManager)
     Injekt.addSingleton(suggestionObserver)
@@ -778,10 +810,17 @@ private fun registerDesktopExtension(
     val extensionController = SourceExtensionTestModeController(extensionScreenModel)
     Injekt.addSingleton(extensionController)
     SourceExtensionTestModeBridge.install(extensionController)
-    registerDesktopTracking(sourceManager, networkHelper.client, trackerServiceRegistry,
-        DesktopCredentialStore(mihon.desktop.platform.DesktopRecoveryProfile.credentialBackend(
-            paths.recoveryProfileRoot, OsCredentialBackend(),
-        )))
+    registerDesktopTracking(
+        sourceManager,
+        networkHelper.client,
+        trackerServiceRegistry,
+        DesktopCredentialStore(
+            mihon.desktop.platform.DesktopRecoveryProfile.credentialBackend(
+                paths.recoveryProfileRoot,
+                OsCredentialBackend(),
+            ),
+        ),
+    )
     val extensionRepoService = ExtensionRepoService(Injekt.get<NetworkHelper>(), Injekt.get<Json>())
     Injekt.addSingleton(extensionRepoService)
     Injekt.addSingleton(GetExtensionRepo(extensionRepoRepository))
@@ -927,6 +966,18 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
             mangaRepository,
             Injekt.get<CreatorArchiveRepository>(),
             sourceDateExtensionIdentityProvider,
+            failureIdentityProvider = { source, sourceId ->
+                val manager = Injekt.get<DesktopExtensionManager>()
+                val metadata = manager.installedExtensions.value
+                    .firstOrNull { it.sources.any { registered -> registered === source } }?.metadataSnapshot
+                eu.kanade.tachiyomi.network.SourceFailureIdentity(
+                    sourceId,
+                    metadata?.pkgName,
+                    metadata?.name,
+                    metadata?.versionName,
+                    metadata?.versionCode,
+                )
+            },
             renameDirectoryChapter = { phase, change ->
                 Injekt.get<mihon.desktop.download.DesktopDownloadProvider>().renameDirectoryChapter(phase, change)
             },
@@ -999,28 +1050,34 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
         ),
     )
     val creatorDiscoverySourcePort = CatalogueCreatorDiscoverySourceAdapter(
-        enabledSourcesProvider = {
-            runCatching { Injekt.get<DesktopSourceManager>() }
-                .getOrNull()
-                ?.getEnabledCatalogueSources()
-                .orEmpty()
-        },
-        sourceResolver = { sourceId ->
-            runCatching { Injekt.get<DesktopSourceManager>() }
-                .getOrNull()
-                ?.get(sourceId) as? CatalogueSource
-        },
+        enabledSourcesProvider = { Injekt.get<DesktopSourceManager>().getCatalogueSources() },
+        sourceResolver = { Injekt.get<DesktopSourceManager>().get(it) as? CatalogueSource },
+        registeredSourceIdProvider = { Injekt.get<DesktopSourceManager>().getRegisteredSourceId(it) },
         sourceMangaSearchService = sourceMangaSearchService,
         titleAttributionPolicy = Injekt.get(),
-        extensionPackageProvider = { source ->
-            runCatching { Injekt.get<DesktopExtensionManager>().getExtensionPackage(source.id) }
-                .getOrNull()
-                ?: "builtin.source"
+        registeredSourceEligibilityProvider = {
+            val disabled = Injekt.get<DesktopAppPreferences>().disabledSources.get()
+            val eligible: (Long) -> Boolean = { it.toString() !in disabled }
+            eligible
         },
-        extensionVersionProvider = { source ->
-            runCatching { Injekt.get<DesktopExtensionManager>().getExtensionVersion(source.id) }
-                .getOrNull()
-                ?: "builtin"
+        languageEligibilityProvider = {
+            val languages = Injekt.get<DesktopAppPreferences>().enabledLanguages.get()
+            val eligible: (String) -> Boolean = { it in languages }
+            eligible
+        },
+        identitySnapshotProvider = {
+            val installed = Injekt.get<DesktopExtensionManager>().installedExtensions.value
+            val lookup: tachiyomi.domain.creator.service.CreatorSourceIdentityLookup = { source, registeredId ->
+                val metadata = installed.firstOrNull { owner -> owner.sources.any { it === source } }?.metadataSnapshot
+                eu.kanade.tachiyomi.network.SourceFailureIdentity(
+                    registeredId,
+                    metadata?.pkgName,
+                    metadata?.name,
+                    metadata?.versionName,
+                    metadata?.versionCode,
+                )
+            }
+            lookup
         },
     )
     Injekt.addSingleton<CreatorDiscoverySourcePort>(creatorDiscoverySourcePort)
@@ -1051,9 +1108,12 @@ internal suspend fun initUILayer(
     downloadFileOperations: mihon.desktop.download.DownloadFileOperations =
         mihon.desktop.download.DefaultDownloadFileOperations,
     credentialBackendFactory: (CredentialNamespace) -> mihon.desktop.platform.CredentialBackend =
-        { namespace -> mihon.desktop.platform.DesktopRecoveryProfile.credentialBackend(
-            paths.recoveryProfileRoot, OsCredentialBackend(namespace = namespace),
-        ) },
+        { namespace ->
+            mihon.desktop.platform.DesktopRecoveryProfile.credentialBackend(
+                paths.recoveryProfileRoot,
+                OsCredentialBackend(namespace = namespace),
+            )
+        },
     profileDirectoryOpener: (File) -> Boolean = mihon.desktop.ui.settings.DesktopDirectoryOpener::open,
     nativeSharePort: DesktopNativeSharePort = defaultDesktopNativeSharePort(),
     trackerConnectivity: mihon.desktop.tracking.DesktopNetworkConnectivity =
@@ -1123,7 +1183,10 @@ internal suspend fun initUILayer(
                 Injekt.get<DesktopNotificationService>().postWhenObserved(
                     DesktopNotification(
                         title = MR.strings.fork_update_available_title.localized(),
-                        message = MR.strings.fork_update_available_message.localized(java.util.Locale.getDefault(), release.version),
+                        message = MR.strings.fork_update_available_message.localized(
+                            java.util.Locale.getDefault(),
+                            release.version,
+                        ),
                     ),
                 )
             },
@@ -1322,11 +1385,17 @@ internal suspend fun initUILayer(
                         genre = target.genre?.joinToString(", ")
                         status = target.status
                     }
+                    val targetChapters = try {
+                        guardSourceOperation(SourceOperationPhase.CHAPTERS) { targetSource.getChapterList(targetManga) }
+                    } catch (error: SourceCompatibilityException) {
+                        error.rethrowSourceControlFailure()
+                        throw java.io.IOException(desktopSourceErrorMessage(error.toSourceAppError()), error)
+                    }
                     useCase.await(
                         accepted.source,
                         targetManga,
                         target.sourceId,
-                        targetSource.getChapterList(targetManga),
+                        targetChapters,
                         migrationOptions,
                         options.replace,
                         accepted,
@@ -1423,9 +1492,12 @@ internal suspend fun initUILayer(
         )
         Injekt.addSingleton<mihon.domain.sync.security.SyncSecureStore>(syncSecureStore)
         val syncDiagnosticEnvironment = mihon.data.sync.runtime.SyncDiagnosticEnvironment(
-            platform = "DESKTOP", appVersion = mihon.desktop.APP_VERSION,
-            sourceRevision = BuildInfo.GIT_HASH, releaseIdentity = "mihon.desktop",
-            build = mihon.desktop.AppVersion.BUILD.toString(), releaseBuild = !BuildInfo.IS_NON_RELEASE_BUILD,
+            platform = "DESKTOP",
+            appVersion = mihon.desktop.APP_VERSION,
+            sourceRevision = BuildInfo.GIT_HASH,
+            releaseIdentity = "mihon.desktop",
+            build = mihon.desktop.AppVersion.BUILD.toString(),
+            releaseBuild = !BuildInfo.IS_NON_RELEASE_BUILD,
         )
         val syncRuntime = mihon.data.sync.runtime.SyncRuntime(
             handler = handler,
@@ -1443,7 +1515,8 @@ internal suspend fun initUILayer(
             diagnosticDirectory = paths.networkCacheDir.resolve("sync-diagnostics").toOkioPath(),
             diagnosticEnvironment = syncDiagnosticEnvironment,
             diagnosticJournal = mihon.data.sync.runtime.SyncDiagnosticJournal(
-                paths.logsDir.resolve("sync-diagnostics-journal").toOkioPath(), syncDiagnosticEnvironment,
+                paths.logsDir.resolve("sync-diagnostics-journal").toOkioPath(),
+                syncDiagnosticEnvironment,
             ),
         )
         paths.recoveryProfileRoot?.let(mihon.desktop.platform.DesktopRecoveryProfile::originalLabel)?.let {
@@ -1487,10 +1560,12 @@ internal suspend fun initUILayer(
             updateScreenModel = updateScreenModel,
         )
         runtime.attachCloseable(nativeSharePort)
-        runtime.attachCloseable(AutoCloseable {
-            feedbackRuntime.memory.snapshot = null
-            DiagnosticEvents.uninstall(feedbackRuntime.store)
-        })
+        runtime.attachCloseable(
+            AutoCloseable {
+                feedbackRuntime.memory.snapshot = null
+                DiagnosticEvents.uninstall(feedbackRuntime.store)
+            },
+        )
         Injekt.addSingleton(runtime)
     } catch (failure: Throwable) {
         DiagnosticEvents.uninstall(feedbackRuntime.store)
@@ -1770,7 +1845,8 @@ internal fun createSchemaAtomically(driver: SqlDriver, schemaCreator: (SqlDriver
     }
 }
 
-private fun SqlDriver.foreignKeysEnabled(): Boolean = executeQuery(    identifier = null,
+private fun SqlDriver.foreignKeysEnabled(): Boolean = executeQuery(
+    identifier = null,
     sql = "PRAGMA foreign_keys",
     parameters = 0,
     mapper = { cursor ->

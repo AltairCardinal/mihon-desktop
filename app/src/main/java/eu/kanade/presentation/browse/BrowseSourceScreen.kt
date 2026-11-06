@@ -69,10 +69,16 @@ fun BrowseSourceContent(
     onMangaLongClick: (Manga) -> Unit,
     catalogFilter: CatalogResultFilter = CatalogResultFilter(),
     hideInLibraryItems: Boolean = false,
+    onRetry: () -> Unit = mangaList::retry,
+    presentationError: SourcePageError? = null,
 ) {
     val context = LocalContext.current
 
-    val errorState = mangaList.loadState.refresh.takeIf { it is LoadState.Error }
+    val presentationErrorState = remember(presentationError) {
+        presentationError?.let { LoadState.Error(SourcePageException(it)) }
+    }
+    val errorState = presentationErrorState
+        ?: mangaList.loadState.refresh.takeIf { it is LoadState.Error }
         ?: mangaList.loadState.append.takeIf { it is LoadState.Error }
     val pageError = (errorState as? LoadState.Error)?.error
         ?.let { it as? SourcePageException }
@@ -81,7 +87,10 @@ fun BrowseSourceContent(
     val getErrorMessage: (LoadState.Error) -> String = { state ->
         when (val error = (state.error as? SourcePageException)?.pageError?.error) {
             is AppError.Network -> context.stringResource(MR.strings.exception_offline)
-            is AppError.Authentication, is AppError.Forbidden -> context.stringResource(
+            is AppError.Authentication,
+            is AppError.Forbidden,
+            is AppError.ExtensionIncompatible,
+            -> context.stringResource(
                 checkNotNull(sourceErrorMessageResource(error)),
             )
             null -> with(context) { state.error.formattedMessage }
@@ -104,14 +113,14 @@ fun BrowseSourceContent(
                 SnackbarResult.Dismissed -> snackbarHostState.currentSnackbarData?.dismiss()
                 SnackbarResult.ActionPerformed -> performBrowseSourceRecovery(
                     pageError = pageError,
-                    retry = mangaList::retry,
+                    retry = onRetry,
                     openLogin = onErrorAction,
                 )
             }
         }
     }
 
-    if (mangaList.itemCount == 0 && mangaList.loadState.refresh is LoadState.Loading) {
+    if (errorState == null && mangaList.itemCount == 0 && mangaList.loadState.refresh is LoadState.Loading) {
         LoadingScreen(Modifier.padding(contentPadding))
         return
     }
@@ -138,14 +147,14 @@ fun BrowseSourceContent(
                             stringRes = MR.strings.login,
                             icon = Icons.Outlined.Public,
                             onClick = {
-                                performBrowseSourceRecovery(pageError, mangaList::retry, onErrorAction)
+                                performBrowseSourceRecovery(pageError, onRetry, onErrorAction)
                             },
                         )
                         SourceRecoveryAction.None -> null
                         SourceRecoveryAction.Retry, null -> EmptyScreenAction(
                             stringRes = MR.strings.action_retry,
                             icon = Icons.Outlined.Refresh,
-                            onClick = mangaList::retry,
+                            onClick = onRetry,
                         )
                     },
                     EmptyScreenAction(
@@ -191,7 +200,7 @@ fun BrowseSourceContent(
                     TextButton(
                         onClick = {
                             if (errorState is LoadState.Error) {
-                                performBrowseSourceRecovery(pageError, mangaList::retry, onErrorAction)
+                                performBrowseSourceRecovery(pageError, onRetry, onErrorAction)
                             } else {
                                 mangaList[mangaList.itemCount - 1]
                             }
