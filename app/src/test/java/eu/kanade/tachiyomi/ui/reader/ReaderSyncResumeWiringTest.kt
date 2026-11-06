@@ -47,6 +47,50 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 class ReaderSyncResumeWiringTest {
     @Test
+    fun `next chapter entry does not inherit the shorter outgoing chapter page`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        try {
+            Fixture(chapterPageCounts = mapOf(1L to 34, 2L to 48)).use { fixture ->
+                assertTrue(fixture.model.init(1, 1).getOrThrow())
+                val outgoing = requireNotNull(fixture.model.state.value.currentChapter)
+                fixture.model.onLayoutPageSelected(requireNotNull(outgoing.pages).last())
+                assertEquals(33, outgoing.requestedPage)
+
+                fixture.model.loadNextChapter()
+
+                val incoming = requireNotNull(fixture.model.state.value.currentChapter)
+                assertEquals(2L, incoming.chapter.id)
+                assertEquals(48, requireNotNull(incoming.pages).size)
+                assertEquals(0, incoming.requestedPage)
+            }
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `saved activity page applies only to its chapter when opening an unread neighbor`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        try {
+            Fixture(
+                savedState = SavedStateHandle(mapOf<String, Any>("chapter_id" to 2L, "page_index" to 2)),
+                firstChapterLastPageRead = 1,
+            ).use { fixture ->
+                assertTrue(fixture.model.init(1, 2).getOrThrow())
+                assertEquals(2, fixture.model.state.value.currentChapter!!.requestedPage)
+
+                fixture.model.loadPreviousChapter()
+
+                val incoming = requireNotNull(fixture.model.state.value.currentChapter)
+                assertEquals(1L, incoming.chapter.id)
+                assertEquals(1, incoming.requestedPage)
+            }
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun `invalid automatic resume waits for explicit confirmation of the same page`() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val fixture = Fixture(pageIndex = 8)
@@ -440,6 +484,7 @@ class ReaderSyncResumeWiringTest {
         firstChapterLastPageRead: Long = 0,
         catalog: tachiyomi.domain.reader.interactor.ReaderCatalogPreparation? = null,
         failCatalogQuery: Boolean = false,
+        chapterPageCounts: Map<Long, Int> = emptyMap(),
     ) : AutoCloseable {
         val original = ReadingResumePosition(2, pageIndex, snapshot("adopted-heads"))
         val repository = Repository(original)
@@ -483,7 +528,9 @@ class ReaderSyncResumeWiringTest {
                             repository.candidate =
                                 ReadingResumePosition(3, 2, snapshot("late-heads"))
                         }
-                        return (0..2).map { ReaderPage(it).apply { this.chapter = chapter } }
+                        return List(chapterPageCounts[chapter.chapter.id] ?: 3) {
+                            ReaderPage(it).apply { this.chapter = chapter }
+                        }
                     }
                 }
             },
