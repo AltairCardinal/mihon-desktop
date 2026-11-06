@@ -12,6 +12,7 @@ import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.network.SourceCompatibilityException
 import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.inspectSourceFailure
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.DelayedMangaFixture
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -67,6 +68,47 @@ import tachiyomi.domain.source.service.SourceQuery
 
 class BrowseSourceScreenModelBehaviorTest {
     private val modelHost = ScreenModelTestHost()
+
+    @Test
+    fun `browse presentation metadata failure blocks API with the operation owner and permits explicit recovery`() =
+        runTest {
+            Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+            val original = NoSuchMethodError("private title")
+            var fail = true
+            val source = mockk<eu.kanade.tachiyomi.source.Source>()
+            every { source.name } answers { if (fail) throw original else "Recovered browse" }
+            every { source.supportsLatest } returns false
+            every { source.getFilterList() } returns FilterList()
+            coEvery { source.getPopularManga(1) } returns MangasPage(emptyList(), false)
+            val owner = mockk<Extension.Installed> {
+                every { sources } returns listOf(source)
+                every { pkgName } returns "trusted.browse"
+                every { name } returns "Trusted browse"
+                every { versionName } returns "1.2.3"
+                every { versionCode } returns 123L
+            }
+            val model = screenModel(source, registeredId = 9L, installed = MutableStateFlow(listOf(owner)))
+            val error = assertInstanceOf(
+                mihon.domain.error.AppError.ExtensionIncompatible::class.java,
+                model.state.value.filterError,
+            )
+            val marker = assertInstanceOf(SourceCompatibilityException::class.java, error.cause)
+            org.junit.jupiter.api.Assertions.assertTrue(
+                marker.inspectSourceFailure().causes.any { it === original },
+            )
+            assertEquals(SourceOperationPhase.METADATA, marker.phase)
+            assertEquals("trusted.browse", marker.identity?.extensionPackage)
+            backgroundScope.launch { model.mangaPagerFlowFlow.collect() }
+            runCurrent()
+            coVerify(exactly = 0) { source.getPopularManga(any()) }
+            fail = false
+            model.resetFilters()
+            assertNull(model.state.value.filterError)
+            val recovered = backgroundScope.async { model.mangaPagerFlowFlow.value.asSnapshot() }
+            runCurrent()
+            assertEquals(emptyList<Any>(), recovered.await())
+            coVerify(exactly = 1) { source.getPopularManga(1) }
+        }
 
     @Test
     fun `real paging load classifies delayed manga fields before saving and keeps healthy pages independent`() =

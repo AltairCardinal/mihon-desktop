@@ -21,6 +21,8 @@ import okhttp3.Request
 import okhttp3.Response
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import tachiyomi.data.source.NoResultsException
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
@@ -31,6 +33,44 @@ import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourceRecoveryAction
 
 class BrowseSourceRecoveryBehaviorTest {
+
+    @Test
+    fun `legacy Browse login factory guards only target metadata and preserves control`() {
+        val source = mockk<HttpSource>()
+        val login = SourcePageError(AppError.Authentication(), SourceRecoveryAction.OpenLogin)
+        for (site in listOf("id", "name", "baseUrl")) {
+            io.mockk.every { source.id } returns 9L
+            io.mockk.every { source.name } returns "Legacy login"
+            io.mockk.every { source.baseUrl } returns "https://legacy.invalid"
+            val original = NoSuchMethodError(site)
+            when (site) {
+                "id" -> io.mockk.every { source.id } throws original
+                "name" -> io.mockk.every { source.name } throws original
+                else -> io.mockk.every { source.baseUrl } throws original
+            }
+            val failure = assertThrows(eu.kanade.tachiyomi.network.SourceCompatibilityException::class.java) {
+                browseSourceRecoveryScreen(source, login)
+            }
+            assertSame(original, failure.cause)
+            assertEquals(eu.kanade.tachiyomi.network.SourceOperationPhase.METADATA, failure.phase)
+        }
+        io.mockk.every { source.id } returns 9L
+        io.mockk.every { source.name } returns "Legacy login"
+        val fatal = object : VirtualMachineError("controlled") {}
+        io.mockk.every { source.baseUrl } throws fatal
+        assertSame(fatal, assertThrows(VirtualMachineError::class.java) { browseSourceRecoveryScreen(source, login) })
+        val cancelled = kotlinx.coroutines.CancellationException("controlled")
+        io.mockk.every { source.baseUrl } throws cancelled
+        assertSame(
+            cancelled,
+            assertThrows(kotlinx.coroutines.CancellationException::class.java) {
+                browseSourceRecoveryScreen(source, login)
+            },
+        )
+        val hostError = AssertionError("host")
+        io.mockk.every { source.baseUrl } throws hostError
+        assertSame(hostError, assertThrows(AssertionError::class.java) { browseSourceRecoveryScreen(source, login) })
+    }
 
     @Test
     fun `duplicate raw pages retain a paging boundary for explicit result filtering`() =

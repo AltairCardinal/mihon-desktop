@@ -941,6 +941,26 @@ DeepLink 在选定可解析来源后使用宿主登记 ID；缺登记显示既�
 URI 选择与原健康章节同步链保持不变。上述边界均有真实 UI/API/Paging 或持久化接线门，
 不把结果类型或源码符号检查当验收，不扩为任意插件线程/JNI的进程级保证。
 
+#### 7.6.15 Android Browse 展示与同步恢复
+
+Browse 在初始化及显式重置筛选器时，先按 Source 引用冻结安装归属，再只准备当前页面
+需要的 name/supportsLatest；失败复用已有 filterError 阻止查询，不预读 lang/client。
+toolbar、listing 和 WebView 标题消费准备值及宿主导航 ID。assist 与显式 WebView/login
+动作只守卫实际需要的 baseUrl，Navigator 不在守卫内。错误只回写仍有效的 State/
+pageError 引用，接受后记录冻结归属的安全诊断；反馈使用原页面错误区域，保留健康内容。
+显式重试走原 resetFilters，新 listing/search 清除展示错误，不在重绘时自动重试。
+保留旧组件/factory 的独立入口，但不能用其 getter 回退替代生产已准备的宿主描述。
+
+同步恢复的 READER 仅在本地作品缺失时，沿原恢复入口获取详情。宿主登记 ID 不存在时
+不探测 source.id 或发送详情请求；调用前按 Source 引用冻结安装归属。只守卫源 API、
+实际返回字段及原 URL setter，保留原请求 URL、30 秒超时与 IO 调度，映射完成后才沿
+既有 NetworkToLocal 持久化。SQL/导航不放进 source guard；控制及未标记宿主 Error
+先传播。接受当前 recoveryPlatformRequest 后才显示不兼容提示、冻结扩展名/版本并
+记录诊断，返回仍使用原 TARGET_UNAVAILABLE 协议，不新增同步状态或恢复协议。
+
+这两条入口的接线测试不能替代 Smart 迁移反馈、EC-06/07 整体收口或 EC-08 原 APK/
+ART/R8 验收；宿主管理之外的插件线程/JNI 边界仍遵循7.6原有说明。
+
 ## 8. 安全与隐私
 
 - 手动代理地址属于敏感配置，不写入普通运行日志。

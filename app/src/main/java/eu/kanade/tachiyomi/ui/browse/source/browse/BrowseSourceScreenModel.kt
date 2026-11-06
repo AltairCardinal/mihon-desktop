@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.browse.source.browse
 
 import android.content.res.Configuration
+import android.util.Log
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
@@ -25,6 +26,8 @@ import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.network.SourceCompatibilityException
 import eu.kanade.tachiyomi.network.SourceFailureIdentity
 import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.util.removeCovers
@@ -38,6 +41,7 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import mihon.domain.error.AppError
 import mihon.domain.manga.model.toDomainManga
@@ -59,9 +63,11 @@ import tachiyomi.domain.manga.model.MangaWithChapterCount
 import tachiyomi.domain.manga.model.toMangaUpdate
 import tachiyomi.domain.source.interactor.GetRemoteManga
 import tachiyomi.domain.source.service.CatalogResultFilter
+import tachiyomi.domain.source.service.SOURCE_COMPATIBILITY_LOG_TAG
 import tachiyomi.domain.source.service.SourceFilterResult
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourceMangaSearchService
+import tachiyomi.domain.source.service.SourceMetadataSnapshot
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourcePageRequest
 import tachiyomi.domain.source.service.SourcePageResult
@@ -70,6 +76,8 @@ import tachiyomi.domain.source.service.SourceQueryReducer
 import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.domain.source.service.SourceRecoveryAction
 import tachiyomi.domain.source.service.prepareSourceFilters
+import tachiyomi.domain.source.service.recordSourceFailureDiagnostics
+import tachiyomi.domain.source.service.sourceRecoveryAction
 import tachiyomi.domain.source.service.toSourceAppError
 import tachiyomi.domain.source.service.withSourceFailureIdentity
 import uy.kohesive.injekt.Injekt
@@ -111,9 +119,36 @@ class BrowseSourceScreenModel(
         return SourceFailureIdentity(sourceId, owner?.pkgName, owner?.name, owner?.versionName, owner?.versionCode)
     }
 
+    private fun preparePresentation(identity: SourceFailureIdentity): Pair<SourceMetadataSnapshot, Boolean> {
+        var name: String? = null
+        var supportsLatest = false
+        var failure: AppError? = null
+        try {
+            name = guardSourceOperation(SourceOperationPhase.METADATA) { source.name }
+            supportsLatest = guardSourceOperation(SourceOperationPhase.METADATA) { source.supportsLatest }
+        } catch (error: Exception) {
+            error.rethrowSourceControlFailure()
+            failure = error.toSourceAppError().withSourceFailureIdentity(identity)
+        }
+        return SourceMetadataSnapshot(source, sourceId, name, null, failure) to supportsLatest
+    }
+
+    internal fun isCurrentPresentation(expected: State): Boolean = state.value === expected
+
+    internal fun reportPresentationFailure(expected: State, error: AppError): Boolean {
+        val mapped = error.withSourceFailureIdentity(expected.failureIdentity ?: SourceFailureIdentity(sourceId))
+        val pageError = SourcePageError(mapped, mapped.sourceRecoveryAction())
+        val accepted = mutableState.updateAndGet { current ->
+            if (current === expected) current.copy(presentationError = pageError) else current
+        }.presentationError === pageError
+        if (accepted) mapped.recordSourceFailureDiagnostics(write = { Log.e(SOURCE_COMPATIBILITY_LOG_TAG, it) })
+        return accepted
+    }
+
     init {
         val identity = captureSourceIdentity()
-        val prepared = prepareSourceFilters(source)
+        val (metadata, supportsLatest) = preparePresentation(identity)
+        val prepared = metadata.error?.let { SourceFilterResult.Failure(it) } ?: prepareSourceFilters(source)
         val filters = (prepared as? SourceFilterResult.Content)?.filters ?: FilterList()
         mutableState.update {
             var query: String? = null
@@ -129,6 +164,8 @@ class BrowseSourceScreenModel(
                 filters = filters,
                 filterError = (prepared as? SourceFilterResult.Failure)?.error?.withSourceFailureIdentity(identity),
                 failureIdentity = identity,
+                sourceMetadata = metadata,
+                supportsLatest = supportsLatest,
                 toolbarQuery = query,
             )
         }
@@ -181,12 +218,16 @@ class BrowseSourceScreenModel(
 
     fun resetFilters() {
         val identity = captureSourceIdentity()
-        val prepared = prepareSourceFilters(source)
+        val (metadata, supportsLatest) = preparePresentation(identity)
+        val prepared = metadata.error?.let { SourceFilterResult.Failure(it) } ?: prepareSourceFilters(source)
         mutableState.update {
             it.copy(
                 filters = (prepared as? SourceFilterResult.Content)?.filters ?: FilterList(),
                 filterError = (prepared as? SourceFilterResult.Failure)?.error?.withSourceFailureIdentity(identity),
                 failureIdentity = identity,
+                sourceMetadata = metadata,
+                supportsLatest = supportsLatest,
+                presentationError = null,
                 listing = if (it.filterError != null && prepared is SourceFilterResult.Content &&
                     it.listing is Listing.Search
                 ) {
@@ -204,7 +245,9 @@ class BrowseSourceScreenModel(
 
     fun setListing(listing: Listing) {
         val identity = captureSourceIdentity()
-        mutableState.update { it.copy(listing = listing, toolbarQuery = null, failureIdentity = identity) }
+        mutableState.update {
+            it.copy(listing = listing, toolbarQuery = null, failureIdentity = identity, presentationError = null)
+        }
     }
 
     fun setFilters(filters: FilterList) {
@@ -222,9 +265,8 @@ class BrowseSourceScreenModel(
                 val prepared = prepareSourceFilters(source)
                 mutableState.update {
                     it.copy(
-                        filterError = (prepared as? SourceFilterResult.Failure)?.error?.withSourceFailureIdentity(
-                            identity,
-                        ),
+                        filterError = it.sourceMetadata?.error
+                            ?: (prepared as? SourceFilterResult.Failure)?.error?.withSourceFailureIdentity(identity),
                         failureIdentity = identity,
                     )
                 }
@@ -239,6 +281,7 @@ class BrowseSourceScreenModel(
                 ),
                 toolbarQuery = query ?: input.query,
                 failureIdentity = identity,
+                presentationError = null,
             )
         }
     }
@@ -248,10 +291,10 @@ class BrowseSourceScreenModel(
         val prepared = prepareSourceFilters(source)
         mutableState.update {
             it.copy(
-                filterError = (prepared as? SourceFilterResult.Failure)?.error?.withSourceFailureIdentity(
-                    identity,
-                ),
+                filterError = it.sourceMetadata?.error
+                    ?: (prepared as? SourceFilterResult.Failure)?.error?.withSourceFailureIdentity(identity),
                 failureIdentity = identity,
+                presentationError = null,
             )
         }
         val defaultFilters = (prepared as? SourceFilterResult.Content)?.filters ?: return
@@ -435,6 +478,9 @@ class BrowseSourceScreenModel(
         val filters: FilterList = FilterList(),
         val filterError: AppError? = null,
         val failureIdentity: SourceFailureIdentity? = null,
+        val sourceMetadata: SourceMetadataSnapshot? = null,
+        val supportsLatest: Boolean = false,
+        val presentationError: SourcePageError? = null,
         val toolbarQuery: String? = null,
         val dialog: Dialog? = null,
         val catalogFilter: CatalogResultFilter = CatalogResultFilter(),

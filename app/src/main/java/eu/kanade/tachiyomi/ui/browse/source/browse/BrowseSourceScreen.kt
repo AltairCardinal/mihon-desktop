@@ -49,6 +49,9 @@ import eu.kanade.presentation.category.components.ChangeCategoryDialog
 import eu.kanade.presentation.manga.DuplicateMangaDialog
 import eu.kanade.presentation.util.AssistContentScreen
 import eu.kanade.presentation.util.Screen
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.browse.extension.details.SourcePreferencesScreen
@@ -68,9 +71,11 @@ import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.service.CatalogResultFilter
+import tachiyomi.domain.source.service.SourceMetadataSnapshot
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourceRecoveryAction
 import tachiyomi.domain.source.service.SourceResultMetadata
+import tachiyomi.domain.source.service.toSourceAppError
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.padding
@@ -118,6 +123,12 @@ data class BrowseSourceScreen(
         val uriHandler = LocalUriHandler.current
         val snackbarHostState = remember { SnackbarHostState() }
         val mangaList = screenModel.mangaPagerFlowFlow.collectAsLazyPagingItems()
+        val isCurrentRecovery: (SourcePageError) -> Boolean = { expected ->
+            val loadError = (mangaList.loadState.refresh as? androidx.paging.LoadState.Error)
+                ?: (mangaList.loadState.append as? androidx.paging.LoadState.Error)
+            val current = state.presentationError ?: (loadError?.error as? SourcePageException)?.pageError
+            screenModel.isCurrentPresentation(state) && current === expected
+        }
         val resultMetadata = mangaList.itemSnapshotList.items.map { item ->
             val manga by item.collectAsState()
             remember(manga) { SourceResultMetadata.from(manga) }
@@ -125,18 +136,29 @@ data class BrowseSourceScreen(
 
         val onHelpClick = { uriHandler.openUri(LocalSource.HELP_URL) }
         val onWebViewClick = f@{
-            val source = screenModel.source as? HttpSource ?: return@f
-            navigator.push(
-                WebViewScreen(
-                    url = source.baseUrl,
-                    initialTitle = source.name,
-                    sourceId = source.id,
-                ),
-            )
+            if (!screenModel.isCurrentPresentation(state)) return@f
+            val metadata = state.sourceMetadata ?: return@f
+            val target = try {
+                browseSourceWebViewScreen(screenModel.source, metadata)
+            } catch (error: Exception) {
+                error.rethrowSourceControlFailure()
+                screenModel.reportPresentationFailure(state, error.toSourceAppError())
+                null
+            }
+            if (screenModel.isCurrentPresentation(state)) target?.let(navigator::push)
         }
 
-        LaunchedEffect(screenModel.source) {
-            assistUrl = (screenModel.source as? HttpSource)?.baseUrl
+        LaunchedEffect(screenModel.source, state.sourceMetadata) {
+            assistUrl = null
+            val metadata = state.sourceMetadata ?: return@LaunchedEffect
+            val url = try {
+                browseSourceWebUrl(screenModel.source, metadata)
+            } catch (error: Exception) {
+                error.rethrowSourceControlFailure()
+                screenModel.reportPresentationFailure(state, error.toSourceAppError())
+                null
+            }
+            if (screenModel.isCurrentPresentation(state)) assistUrl = url
         }
 
         Scaffold(
@@ -150,6 +172,7 @@ data class BrowseSourceScreen(
                         searchQuery = state.toolbarQuery,
                         onSearchQueryChange = screenModel::setToolbarQuery,
                         source = screenModel.source,
+                        sourceTitle = state.sourceMetadata?.name ?: stringResource(MR.strings.unknown),
                         displayMode = screenModel.displayMode,
                         onDisplayModeChange = { screenModel.displayMode = it },
                         navigateUp = navigateUp,
@@ -160,7 +183,7 @@ data class BrowseSourceScreen(
                     )
 
                     BrowseSourceListingChips(
-                        source = screenModel.source,
+                        supportsLatest = state.supportsLatest,
                         listing = state.listing,
                         hasFilters = state.filters.isNotEmpty(),
                         onListingSelected = {
@@ -180,9 +203,30 @@ data class BrowseSourceScreen(
         ) { paddingValues ->
             BrowseSourceScreenContent(
                 onRetry = {
-                    if (state.filterError != null) screenModel.resetFilters() else mangaList.retry()
+                    if (state.filterError != null || state.presentationError != null) {
+                        screenModel.resetFilters()
+                    } else {
+                        mangaList.retry()
+                    }
                 },
                 source = screenModel.source,
+                presentationError = state.presentationError,
+                onErrorAction = recovery@{ pageError ->
+                    if (pageError.recoveryAction != SourceRecoveryAction.OpenLogin ||
+                        !isCurrentRecovery(pageError)
+                    ) {
+                        return@recovery
+                    }
+                    val metadata = state.sourceMetadata ?: return@recovery
+                    val target = try {
+                        browseSourceRecoveryScreen(screenModel.source, pageError, metadata)
+                    } catch (error: Exception) {
+                        error.rethrowSourceControlFailure()
+                        screenModel.reportPresentationFailure(state, error.toSourceAppError())
+                        null
+                    }
+                    if (isCurrentRecovery(pageError)) target?.let(navigator::push)
+                },
                 mangaList = mangaList,
                 navigator = navigator,
                 columns = screenModel.getColumnsPreference(LocalConfiguration.current.orientation),
@@ -289,7 +333,7 @@ data class BrowseSourceScreen(
 
 @Composable
 internal fun BrowseSourceListingChips(
-    source: Source,
+    source: Source? = null,
     listing: Listing,
     hasFilters: Boolean,
     onListingSelected: (Listing) -> Unit,
@@ -297,6 +341,7 @@ internal fun BrowseSourceListingChips(
     catalogFilter: CatalogResultFilter = CatalogResultFilter(),
     resultMetadata: List<SourceResultMetadata> = emptyList(),
     onCatalogFilterChange: (CatalogResultFilter) -> Unit = {},
+    supportsLatest: Boolean? = null,
 ) {
     Row(
         modifier = Modifier
@@ -326,7 +371,10 @@ internal fun BrowseSourceListingChips(
                 Text(text = stringResource(MR.strings.popular))
             },
         )
-        if (source.supportsLatest) {
+        val showLatest = supportsLatest ?: source?.let {
+            guardSourceOperation(SourceOperationPhase.METADATA) { it.supportsLatest }
+        } ?: false
+        if (showLatest) {
             FilterChip(
                 selected = listing == Listing.Latest,
                 onClick = {
@@ -382,6 +430,10 @@ internal fun BrowseSourceScreenContent(
     catalogFilter: CatalogResultFilter = CatalogResultFilter(),
     hideInLibraryItems: Boolean = false,
     onRetry: () -> Unit = mangaList::retry,
+    presentationError: SourcePageError? = null,
+    onErrorAction: (SourcePageError) -> Unit = { pageError ->
+        browseSourceRecoveryScreen(source, pageError)?.let(navigator::push)
+    },
 ) {
     BrowseSourceContent(
         source = source,
@@ -391,9 +443,8 @@ internal fun BrowseSourceScreenContent(
         snackbarHostState = snackbarHostState,
         contentPadding = contentPadding,
         onWebViewClick = onWebViewClick,
-        onErrorAction = { pageError ->
-            browseSourceRecoveryScreen(source, pageError)?.let(navigator::push)
-        },
+        onErrorAction = onErrorAction,
+        presentationError = presentationError,
         onHelpClick = onHelpClick,
         onLocalSourceHelpClick = onLocalSourceHelpClick,
         onMangaClick = onMangaClick,
@@ -409,10 +460,29 @@ internal fun browseSourceRecoveryScreen(
     pageError: SourcePageError,
 ): Screen? {
     if (pageError.recoveryAction != SourceRecoveryAction.OpenLogin) return null
-    val httpSource = source as? HttpSource ?: return null
-    return WebViewScreen(
-        url = httpSource.baseUrl,
-        initialTitle = httpSource.name,
-        sourceId = httpSource.id,
-    )
+    if (source !is HttpSource) return null
+    val id = guardSourceOperation(SourceOperationPhase.METADATA) { source.id }
+    val name = guardSourceOperation(SourceOperationPhase.METADATA) { source.name }
+    return browseSourceRecoveryScreen(source, pageError, SourceMetadataSnapshot(source, id, name, null, null))
+}
+
+internal fun browseSourceRecoveryScreen(
+    source: Source,
+    pageError: SourcePageError,
+    metadata: SourceMetadataSnapshot,
+): Screen? {
+    if (pageError.recoveryAction != SourceRecoveryAction.OpenLogin) return null
+    return browseSourceWebViewScreen(source, metadata)
+}
+
+private fun browseSourceWebUrl(source: Source, metadata: SourceMetadataSnapshot): String? {
+    if (source !is HttpSource || metadata.source !== source || metadata.sourceId == null || metadata.error != null) {
+        return null
+    }
+    return guardSourceOperation(SourceOperationPhase.METADATA) { source.baseUrl }
+}
+
+private fun browseSourceWebViewScreen(source: Source, metadata: SourceMetadataSnapshot): Screen? {
+    val url = browseSourceWebUrl(source, metadata) ?: return null
+    return WebViewScreen(url = url, initialTitle = metadata.name, sourceId = checkNotNull(metadata.sourceId))
 }

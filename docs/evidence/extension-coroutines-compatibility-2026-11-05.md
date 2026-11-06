@@ -1348,3 +1348,45 @@ ART/R8、旧ABI与未来ABI原生集成仍未执行；API36不能替代反馈者
 EC-06/07保持未勾选：Browse UI标题/openWebView/assist、Smart迁移实际失败反馈和
 SyncRecovery尚未开始本簇实现，不能由本轮Model或mapper通过替代。EC-08原APK/ART/R8
 及真实旧/未来ABI集成仍为必做，厂商Android17不以API36模拟器代验。
+
+## EC-06/07 Browse 展示与同步恢复阶段（2026-11-06）
+
+基线 `818e1ab53fddb936d21ccc066d992ec24a672223`。本阶段沿既有页面及恢复入口补
+第三方读取，不新增页面、schema、依赖或反馈协议。命令/权威 JSON/log 位于
+`.gradle-coordinator/`，XML 归档位于同名 `.test-tmp/*-xml/`。
+
+### Browse 页面（实施代理，Root 独审）
+
+- `ec06-browse-ui-metadata-red` **FAILED**，6 独立方法正确红；XML18为 retry3。
+  真实 UI 的 name/supportsLatest/assist/baseUrl 和准备后毒化 getter 路径，以及
+  legacy factory/Model 准备失败均执行 production，不以源码扫描替代。
+- Model 在任何 filter/API 前冻结 owner，准备本页所需 name/supportsLatest；失败
+  复用 filterError 阻查询。生产 toolbar/listing/WebView 使用准备值及宿主 ID；
+  assist/显式动作只守卫 baseUrl，导航在外，错误仅回写当前 State/pageError。
+  presentationError 沿原反馈位显示，保留健康内容，不在重绘时自动重试。
+- `ec06-browse-ui-metadata-green` **PASSED/exit0，35秒，26独立方法**：真实 UI5、
+  Model12、Recovery8、默认 DI1；4 XML均零失败/错误/跳过。真实401→点Login→
+  晚baseUrl失败保留调用前owner，未导航；毒化后标题/ID不再被重复读取。
+- `ec06-browse-ui-format` **PASSED**，准确7个Kotlin正常严格规则，无放宽。
+  Root核对完整production diff、各测试边界及原件后独审GO。
+
+### 同步恢复 READER（Root，实施代理独审）
+
+- `ec06-sync-source-native-red` **FAILED/51秒**，真实Navigator→恢复Screen的1方法
+  正确红，原NoSuch从LaunchedEffect逸出；XML3是retry，不作为3个独立用例。
+- 保持原行为机械提取 helper 后，首 helper-red被并行Browse签名编译装置阻挡，不计
+  产品红。`ec06-sync-source-helper-correct-red` **FAILED/37秒**，4独立方法正确红：
+  已登记仍读ID、未知先探测、返回字段/setter缺少分类、wrapped控制未传播。
+- helper使用宿主登记ID和Source引用owner，调用前冻结归属；详情API及返回字段/
+  URL setter精确守卫，保留原URL、超时及IO调度。输入构造/SQL在guard外；普通
+  存储IO不改类，wrapped fatal/取消/宿主Error先传播。当前请求接受后才反馈和诊断，
+  沿原返回协议失败，不伪装成功导航或泛化为身份缺失。
+- `ec06-sync-source-boundaries-green` **PASSED/32秒，6方法**：helper4、真实错误UI1
+  （API/返回字段两site）、原健康返回路径1，XML归档零失败/错误/跳过。
+- 独审建议把宿主input构造移出guard，已机械收窄。两次末验format key仅因测试名称
+  超120列失败、尚未执行测试，不计产品红或绿；缩短名称，无suppression。
+  `ec06-sync-source-strict-final` **PASSED/exit0，32秒**，准确3文件正常strict，
+  同6方法重新通过；XML1+4+1零失败/错误/跳过。未实施者绑定最终证据独审GO。
+
+本段有效组合32方法，不与前轮54项重复累计成末次全跑。Smart迁移搜索及其实际失败
+反馈仍待收口，EC-06/07暂不勾选；EC-08原APK/ART/R8保持原必做范围。

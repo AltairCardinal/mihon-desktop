@@ -70,10 +70,15 @@ fun BrowseSourceContent(
     catalogFilter: CatalogResultFilter = CatalogResultFilter(),
     hideInLibraryItems: Boolean = false,
     onRetry: () -> Unit = mangaList::retry,
+    presentationError: SourcePageError? = null,
 ) {
     val context = LocalContext.current
 
-    val errorState = mangaList.loadState.refresh.takeIf { it is LoadState.Error }
+    val presentationErrorState = remember(presentationError) {
+        presentationError?.let { LoadState.Error(SourcePageException(it)) }
+    }
+    val errorState = presentationErrorState
+        ?: mangaList.loadState.refresh.takeIf { it is LoadState.Error }
         ?: mangaList.loadState.append.takeIf { it is LoadState.Error }
     val pageError = (errorState as? LoadState.Error)?.error
         ?.let { it as? SourcePageException }
@@ -115,7 +120,7 @@ fun BrowseSourceContent(
         }
     }
 
-    if (mangaList.itemCount == 0 && mangaList.loadState.refresh is LoadState.Loading) {
+    if (errorState == null && mangaList.itemCount == 0 && mangaList.loadState.refresh is LoadState.Loading) {
         LoadingScreen(Modifier.padding(contentPadding))
         return
     }

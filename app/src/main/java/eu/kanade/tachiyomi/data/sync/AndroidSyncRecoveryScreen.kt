@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.data.sync
 
 import android.content.Intent
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -35,14 +36,23 @@ import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.more.settings.screen.SettingsAdvancedScreen
 import eu.kanade.presentation.more.settings.screen.SettingsDataScreen
+import eu.kanade.presentation.util.sourceErrorMessageResource
 import eu.kanade.tachiyomi.crash.CrashActivity
 import eu.kanade.tachiyomi.extension.ExtensionManager
+import eu.kanade.tachiyomi.network.SourceCompatibilityException
+import eu.kanade.tachiyomi.network.SourceFailureIdentity
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
+import eu.kanade.tachiyomi.network.withSourceFailureIdentity
 import eu.kanade.tachiyomi.ui.browse.extension.ExtensionsScreenModel
 import eu.kanade.tachiyomi.ui.browse.extension.details.ExtensionDetailsScreen
 import eu.kanade.tachiyomi.ui.browse.extension.extensionsTab
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -50,6 +60,7 @@ import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncRecoveryPlatformAction
 import mihon.data.sync.runtime.SyncRecoveryPlatformResult
 import mihon.data.sync.runtime.SyncRuntime
+import mihon.domain.error.AppError
 import mihon.domain.manga.model.toDomainManga
 import mihon.domain.sync.SyncObjectType
 import mihon.feature.migration.config.MigrationConfigScreen
@@ -57,7 +68,11 @@ import mihon.presentation.sync.SyncCompatibilityContent
 import mihon.presentation.sync.SyncCompatibilityFeedback
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.repository.MangaRepository
+import tachiyomi.domain.source.service.SOURCE_COMPATIBILITY_LOG_TAG
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.source.service.recordSourceFailureDiagnostics
+import tachiyomi.domain.source.service.sourceFailureIdentity
+import tachiyomi.domain.source.service.toSourceAppError
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 import uy.kohesive.injekt.Injekt
@@ -77,6 +92,7 @@ data class AndroidSyncRecoveryScreen(val requestId: String, val action: SyncReco
         var target by remember(requestId) { mutableStateOf<Screen?>(null) }
         var loaded by remember(requestId) { mutableStateOf(false) }
         var blocked by remember(requestId) { mutableStateOf(false) }
+        var sourceError by remember(requestId) { mutableStateOf<AppError?>(null) }
         var result by remember(requestId) {
             mutableStateOf<SyncRecoveryPlatformResult>(SyncRecoveryPlatformResult.NoChange)
         }
@@ -113,7 +129,7 @@ data class AndroidSyncRecoveryScreen(val requestId: String, val action: SyncReco
             }
         }
         LaunchedEffect(requestId) {
-            target = when (action) {
+            val preparedTarget = when (action) {
                 SyncRecoveryPlatformAction.NETWORK -> SettingsAdvancedScreen
                 SyncRecoveryPlatformAction.BACKUP -> SettingsDataScreen
                 SyncRecoveryPlatformAction.STORAGE -> {
@@ -159,22 +175,15 @@ data class AndroidSyncRecoveryScreen(val requestId: String, val action: SyncReco
                             val repository = Injekt.get<MangaRepository>()
                             var manga = repository.getMangaByUrlAndSourceId(url, source)
                             if (manga == null && action == SyncRecoveryPlatformAction.READER) {
-                                val provider = Injekt.get<SourceManager>().get(source)
-                                require(provider != null && provider.id == source)
-                                val details = withTimeoutOrNull(30_000) {
-                                    provider.getMangaDetails(
-                                        eu.kanade.tachiyomi.source.model.SManga.create()
-                                            .apply {
-                                                this.url = url
-                                                title = ""
-                                            },
-                                    )
-                                }
-                                if (details != null) {
-                                    require(details.title.isNotBlank())
-                                    details.url = url
-                                    manga = Injekt.get<NetworkToLocalManga>().invoke(details.toDomainManga(source))
-                                }
+                                manga = fetchSyncRecoveryManga(
+                                    source,
+                                    url,
+                                    Injekt.get<SourceManager>(),
+                                    persist = { Injekt.get<NetworkToLocalManga>().invoke(it) },
+                                    installedSnapshot = {
+                                        Injekt.get<ExtensionManager>().installedExtensionsFlow.value
+                                    },
+                                )
                             }
                             if (manga == null) {
                                 blocked = true
@@ -188,13 +197,28 @@ data class AndroidSyncRecoveryScreen(val requestId: String, val action: SyncReco
                             cancelled: CancellationException,
                         ) {
                             throw cancelled
-                        } catch (_: Exception) {
+                        } catch (error: SourceCompatibilityException) {
+                            error.rethrowSourceControlFailure()
+                            currentCoroutineContext().ensureActive()
+                            if (panel.state.value.recoveryPlatformRequest === request) {
+                                val mapped = error.toSourceAppError()
+                                sourceError = mapped
+                                mapped.recordSourceFailureDiagnostics(write = {
+                                    Log.e(SOURCE_COMPATIBILITY_LOG_TAG, it)
+                                })
+                                blocked = true
+                            }
+                            null
+                        } catch (error: Exception) {
+                            error.rethrowSourceControlFailure()
                             blocked = true
                             null
                         }
                     }
                 }
             }
+            if (request != null && panel.state.value.recoveryPlatformRequest !== request) return@LaunchedEffect
+            target = preparedTarget
             if (request == null) blocked = true
             loaded = true
         }
@@ -221,7 +245,12 @@ data class AndroidSyncRecoveryScreen(val requestId: String, val action: SyncReco
                 } else {
                     MR.strings.sync_recovery_item_identity
                 }
-                Text(stringResource(blockedReason))
+                Text(stringResource(sourceError?.let(::sourceErrorMessageResource) ?: blockedReason))
+                sourceError?.sourceFailureIdentity()?.let { identity ->
+                    val name = identity.extensionName ?: stringResource(MR.strings.unknown)
+                    val version = identity.versionName ?: stringResource(MR.strings.unknown)
+                    Text("$name ($version)")
+                }
                 Button(onClick = {
                     panel.dispatch(SyncPanelAction.OpenRecovery)
                     panel.dispatch(SyncPanelAction.OpenRecoveryPlatform(SyncRecoveryPlatformAction.BACKUP))
@@ -234,6 +263,43 @@ data class AndroidSyncRecoveryScreen(val requestId: String, val action: SyncReco
                 }
             }
         }
+    }
+}
+
+internal suspend fun fetchSyncRecoveryManga(
+    sourceId: Long,
+    url: String,
+    manager: SourceManager,
+    persist: suspend (tachiyomi.domain.manga.model.Manga) -> tachiyomi.domain.manga.model.Manga,
+    installedSnapshot: () -> List<eu.kanade.tachiyomi.extension.model.Extension.Installed> = { emptyList() },
+): tachiyomi.domain.manga.model.Manga? {
+    var identity: SourceFailureIdentity? = null
+    return try {
+        val provider = manager.get(sourceId) ?: return null
+        if (manager.getRegisteredSourceId(provider) != sourceId) return null
+        val owner = installedSnapshot().firstOrNull { it.sources.any { source -> source === provider } }
+        identity = SourceFailureIdentity(sourceId, owner?.pkgName, owner?.name, owner?.versionName, owner?.versionCode)
+        val input = eu.kanade.tachiyomi.source.model.SManga.create().apply {
+            this.url = url
+            title = ""
+        }
+        val details = withContext(Dispatchers.IO) {
+            withTimeoutOrNull(30_000) {
+                guardSourceOperation(SourceOperationPhase.DETAILS) {
+                    provider.getMangaDetails(input)
+                }
+            }
+        } ?: return null
+        val title = guardSourceOperation(SourceOperationPhase.DETAILS) { details.title }
+        require(title.isNotBlank())
+        guardSourceOperation(SourceOperationPhase.DETAILS) { details.url = url }
+        val mapped = details.toDomainManga(sourceId, SourceOperationPhase.DETAILS)
+        currentCoroutineContext().ensureActive()
+        persist(mapped)
+    } catch (error: Exception) {
+        error.rethrowSourceControlFailure()
+        if (error is SourceCompatibilityException && identity != null) throw error.withSourceFailureIdentity(identity)
+        throw error
     }
 }
 
