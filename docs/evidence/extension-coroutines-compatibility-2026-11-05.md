@@ -1483,3 +1483,52 @@ EC-08原APK、R8后新旧ABI与未来源/健康源原生集成仍为必要门槛
 一次聚焦benchmark R8宿主/test APK构建与专用AVD运行。须核实际包名/签名/hash、R8
 配置/DEX和test APK无另一份宿主runtime或missing桩，不添加测试专用keep掩盖production。
 未执行正式候选、发布、推送、全模块/全量测试或用户平板操作。
+
+## EC-06 常规详情／书库更新返回消费（2026-11-06）
+
+基线 `a9e5bea5ab9febf8fa58cc836139bbf707873ce5`。6个production与5个测试文件构成
+共享元数据→Android详情/书库和Desktop唯一另一个调用端的有限链，Module只接新的
+冻结诊断身份，不改schema/sourceDate数据或新增UI。Root独审未实施的完整production
+及关键测试，并核原件；用户reader改动不纳入。
+
+- `ec06-update-metadata-shared-red`：4方法中2新门正确红，旧标题/genre规则2绿；
+  getter原IO/包装控制未按边界传播。随后Android实际SQL/cover门、真实Manga catch
+  门与Desktop Checker实际四site门各有正确红，既有普通/健康语义保留。
+- 首Android key缺测试stringResource import、hostID门的relaxed pendingPhase误走
+  恢复分支均是装置问题，不计产品红；修为明确null后取得hostID正确门。
+  Library早期多轮0进入计数/缺文件也不计产品证据；“缓存Scope”只是前期推断。
+  最终确认Kotlin默认chapterRepository在mock body前解析时缺依赖，补齐后API到达。
+- `ec06-library-update-default-dependency-correct-red` **FAILED/24秒**，诊断性关闭
+  retry仅本key，之后恢复默认。两方法均先通过API进入计数1，再分别在错误文件
+  重读source.toString的原NoSuch、包装VM被吞为null处正确失败；同key Manga已正确
+  本地化并保冻结owner。保护版仅撤本任务内容取红、全文校验恢复，不回滚用户内容。
+- 共享helper逐实际字段守卫并返回宿主MangaUpdate，Android先捕获再访问cover/cache/
+  SQL；标题未初始化/genre逗号语义保留。Manga/Library先恢复控制再仅消费marker，
+  owner在源调用前冻结；错误文件不再重读已知坏标签。Desktop返回消费及prepare
+  callback精确守卫，目录事务在外，兼容沿原sourceError反馈，普通存储IO不改类。
+- `ec06-update-consumers-final-focused` 整体**FAILED/1分48秒**，只复用有效共享8和
+  App12；归档中Desktop XML为旧输出不计。Library唯一剩余host AssertionError
+  Same引用失败实际为协程栈恢复副本，类型/message/原cause关联正确；VM Same和
+  CE类型/message已过。`ec06-update-di-wire-red-control-regression` 的App1补验绿，
+  该key另一Desktop方法装置失败不计正确红，不宣称该key整绿。
+- 新Module DI门首unknown/builtin对照不足以检出遗漏接线。补真实Manager现有runtime
+  snapshot的已知Source/registeredSources/metadataSnapshot，jar文件名故意不同，
+  目标仍为真实Injekt Checker执行更新。早期expected2/actual3实为idReads，并非API
+  次数；后台旧SourceRepository裸读已毒化的builtin ID使该装置失败。最终此门使用
+  合法稳定ID，hostID不探测由专门矩阵覆盖，不因此声称旧Repository已保护。
+- `ec06-update-di-known-owner-correct-red` **FAILED/9秒**：仅撤Module named provider，
+  API两次到达已通过后，expected trusted.installed/actual null，证明接线必要；全文
+  校验恢复。`ec06-update-consumers-desktop-final` **PASSED/exit0/21秒**，Desktop6
+  零失败/错误/跳过；已知/未知归属、ID、冻结版本、真实commit和普通IO/控制边界有门。
+- 精确定向format首key因Desktop未显式应用lint plugin失败，只修init；深层日志lambda
+  格式后长行改为同义私有报告函数，无suppression。domain2正常strict复用，最终key
+  App6/Desktop3正常strict；共准确11文件。Root已核完整diff与上述有效XML，独审GO。
+
+有效组合**27**＝共享4×2＋Android13（Update4/Manga4/Library5）＋Desktop6；不是末次
+重新全跑27，也不与前阶段相加声称全量。命令/权威JSON/log/XML按既有单一机制保存。
+
+EC-06/07暂不勾：同轮审计确认DesktopSourceRepository四投影的公共mapper仍对所有
+Source裸读id/lang/name，getSources另读supportsLatest，计数已有hostID仍重读。这是
+后台DI中已观察到的getter路径，不把builtin测试Assertion推断为原APK崩溃新根因；
+下一有限闭合点只修这条投影及其现有Module接线/真实Flow测试，不新增错误协议/UI。
+EC-08仍须在最终提交快照执行原APK/ART/R8，不以本段绿测替代。

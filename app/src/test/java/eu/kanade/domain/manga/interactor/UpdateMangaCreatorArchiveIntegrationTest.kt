@@ -1,5 +1,6 @@
 package eu.kanade.domain.manga.interactor
 
+import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
@@ -35,6 +36,114 @@ import tachiyomi.domain.manga.repository.MangaRepository
 @org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
 @org.robolectric.annotation.Config(sdk = [35], manifest = org.robolectric.annotation.Config.NONE)
 class UpdateMangaCreatorArchiveIntegrationTest {
+    @Test
+    fun `actual detail update freezes returned fields before any cover deletion or SQL metadata write`() = runBlocking {
+        val path = java.nio.file.Files.createTempFile("ec-update-returned-", ".db")
+        val storage = eu.kanade.tachiyomi.data.backup.SourceUpdateMemoBackupIntegrationTest.Storage(path.toFile(), true)
+        try {
+            val current = storage.mangas.insertNetworkManga(
+                listOf(
+                    Manga.create().copy(
+                        source = 9L,
+                        url = "/existing",
+                        title = "Stored title",
+                        thumbnailUrl = "https://old.invalid/cover",
+                    ),
+                ),
+            ).single()
+            for (site in listOf("genres", "memo")) {
+                val missing = java.io.IOException("private field", NoSuchMethodError(site))
+                val base = SManga.create().apply {
+                    title = "Bad new title"
+                    thumbnail_url = "https://new.invalid/cover"
+                }
+                val remote = object : SManga by base {
+                    override fun getGenres(): List<String>? {
+                        if (site ==
+                            "genres"
+                        ) {
+                            throw missing
+                        }
+                        return base.getGenres()
+                    }
+                    override var memo: kotlinx.serialization.json.JsonObject
+                        get() {
+                            if (site == "memo") throw missing
+                            return base.memo
+                        }
+                        set(value) {
+                            base.memo = value
+                        }
+                }
+                val source = mockk<Source> {
+                    coEvery { getMangaUpdate(any(), any(), true, false) } returns SMangaUpdate(remote, emptyList())
+                }
+                val covers = mockk<eu.kanade.tachiyomi.data.cache.CoverCache>(relaxed = true)
+                every { covers.getCustomCoverFile(any()) } returns
+                    java.io.File(path.parent.toFile(), "ec-no-cover-${System.nanoTime()}")
+                var deletes = 0
+                every { covers.deleteFromCache(any(), any()) } answers {
+                    deletes++
+                    0
+                }
+                val actual = runCatching {
+                    storage.updateManga.awaitFromRemote(
+                        current, source, true, false,
+                        chapterRepository = storage.chapters, syncChaptersWithSource = mockk(relaxed = true),
+                        coverCache = covers,
+                        libraryPreferences = tachiyomi.domain.library.service.LibraryPreferences(
+                            tachiyomi.core.common.preference.InMemoryPreferenceStore(),
+                        ),
+                        downloadManager = mockk(relaxed = true),
+                    )
+                }.exceptionOrNull()
+                org.junit.Assert.assertTrue(
+                    "$site:$actual",
+                    actual is eu.kanade.tachiyomi.network.SourceCompatibilityException,
+                )
+                assertEquals(0, deletes)
+                assertEquals("Stored title", storage.mangas.getMangaById(current.id).title)
+                assertEquals("https://old.invalid/cover", storage.mangas.getMangaById(current.id).thumbnailUrl)
+            }
+        } finally {
+            storage.close()
+            java.nio.file.Files.deleteIfExists(path)
+        }
+    }
+
+    @Test
+    fun `actual catalog update uses host ID and guards only required source label and returned memo`() = runBlocking {
+        val current = Manga.create().copy(id = 42, source = 9L, url = "/existing", title = "Stored")
+        val repository = mockk<MangaRepository>(relaxed = true) { coEvery { getMangaById(42L) } returns current }
+        val chapter = SChapter.create().apply {
+            url = "/chapter"
+            name = "Chapter"
+        }
+        val source = mockk<Source> {
+            every { id } throws AssertionError("host ID required")
+            coEvery { getMangaUpdate(any(), any(), false, true) } returns SMangaUpdate(SManga.create(), listOf(chapter))
+        }
+        val sync = mockk<SyncChaptersWithSource>(relaxed = true)
+        val chapters = mockk<ChapterRepository>(relaxed = true) {
+            coEvery { pendingDirectoryPhase(current.id) } returns null
+            coEvery { getChapterByMangaId(current.id) } returns emptyList()
+        }
+        val updater = UpdateManga(repository, FetchInterval(mockk<GetChaptersByMangaId>()))
+        val actual = runCatching {
+            updater.awaitFromRemote(
+                current, source, false, true,
+                chapterRepository = chapters, syncChaptersWithSource = sync,
+                coverCache = mockk(relaxed = true),
+                libraryPreferences = tachiyomi.domain.library.service.LibraryPreferences(
+                    tachiyomi.core.common.preference.InMemoryPreferenceStore(),
+                ),
+                downloadManager = mockk(relaxed = true),
+            )
+        }.exceptionOrNull()
+        org.junit.Assert.assertNull(actual)
+        coVerify(exactly = 1) { sync.await(any(), any(), source, any(), any(), any(), any(), any(), any()) }
+    }
+
     @Test
     fun `detail updater joins catalog already fetching for reader and retains original chapter sync`() = runBlocking {
         val manga = Manga.create().copy(id = 42, source = 10, url = "/shared-detail", title = "Shared detail")

@@ -949,6 +949,18 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
             mangaRepository,
             Injekt.get<CreatorArchiveRepository>(),
             sourceDateExtensionIdentityProvider,
+            failureIdentityProvider = { source, sourceId ->
+                val manager = Injekt.get<DesktopExtensionManager>()
+                val metadata = manager.installedExtensions.value
+                    .firstOrNull { it.sources.any { registered -> registered === source } }?.metadataSnapshot
+                eu.kanade.tachiyomi.network.SourceFailureIdentity(
+                    sourceId,
+                    metadata?.pkgName,
+                    metadata?.name,
+                    metadata?.versionName,
+                    metadata?.versionCode,
+                )
+            },
             renameDirectoryChapter = { phase, change ->
                 Injekt.get<mihon.desktop.download.DesktopDownloadProvider>().renameDirectoryChapter(phase, change)
             },

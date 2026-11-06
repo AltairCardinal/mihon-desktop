@@ -23,6 +23,7 @@ import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
+import eu.kanade.tachiyomi.network.inspectSourceFailure
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -55,6 +56,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.domain.creator.service.CreatorDiscoveryService
 import tachiyomi.domain.library.model.LibraryManga
@@ -81,6 +83,182 @@ import java.util.concurrent.TimeUnit
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], manifest = Config.NONE)
 class LibraryUpdateJobSharedLifecycleIntegrationTest {
+    @Test
+    fun `actual library worker localizes compatibility and avoids rethrowing the failed source label`() = runBlocking {
+        val marker = eu.kanade.tachiyomi.network.SourceCompatibilityException(
+            NoSuchMethodError("private ABI"),
+            eu.kanade.tachiyomi.network.SourceOperationPhase.DETAILS,
+        )
+        withSourceFailureWorker(marker, brokenLabel = true) { worker, attempts ->
+            val result = runCatching { worker.doWork() }
+            assertEquals("actual update pipeline must be entered", 1, attempts.get())
+            assertEquals(null, result.exceptionOrNull())
+            assertEquals(ListenableWorker.Result.success(), result.getOrThrow())
+            val message = context.stringResource(tachiyomi.i18n.MR.strings.source_error_extension_incompatible)
+            val file = java.io.File(context.externalCacheDir, "mihon_update_errors.txt")
+            assertTrue(file.readText().contains(message))
+            val logs = org.robolectric.shadows.ShadowLog.getLogsForTag("MihonExtension")
+            assertTrue(logs.any { it.msg.contains("package=trusted.library") && it.msg.contains("version=1.2.3") })
+        }
+    }
+
+    @Test
+    fun `actual library source loop propagates wrapped fatal cancel and host errors`() = runBlocking {
+        val fatal = object : VirtualMachineError("controlled") {}
+        val cancel = kotlinx.coroutines.CancellationException("controlled")
+        val host = AssertionError("host")
+        val observations = mutableListOf<Pair<Throwable, Throwable?>>()
+        for (expected in listOf(fatal, cancel, host)) {
+            withSourceFailureWorker(java.io.IOException("wrapped", expected)) { worker, attempts ->
+                val current = libraryItem(
+                    42L,
+                    0L,
+                ).copy(manga = Manga.create().copy(id = 42L, source = 42L, favorite = true))
+                LibraryUpdateJob::class.java.getDeclaredField("mangaToUpdate").apply { isAccessible = true }
+                    .set(worker, listOf(current))
+                observations += expected to runCatching { invokeLibrarySourceLoop(worker) }.exceptionOrNull()
+                assertEquals("actual source loop must enter the updater", 1, attempts.get())
+            }
+        }
+        observations.forEach { (expected, actual) ->
+            if (expected === cancel) {
+                assertTrue(actual is kotlinx.coroutines.CancellationException)
+                assertEquals(cancel.message, actual?.message)
+            } else if (expected === host) {
+                assertTrue(actual is AssertionError)
+                assertEquals(host.message, actual?.message)
+                assertTrue(actual!!.inspectSourceFailure().causes.any { it === host })
+            } else {
+                org.junit.Assert.assertSame(expected, actual)
+            }
+        }
+    }
+
+    private suspend fun invokeLibrarySourceLoop(worker: LibraryUpdateJob): Unit =
+        kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn { continuation ->
+            val method = LibraryUpdateJob::class.java.getDeclaredMethod(
+                "updateChapterList",
+                kotlin.coroutines.Continuation::class.java,
+            ).apply { isAccessible = true }
+            try {
+                method.invoke(worker, continuation)
+            } catch (
+                error: java.lang.reflect.InvocationTargetException,
+            ) {
+                throw error.targetException
+            }
+        }
+
+    @Test
+    fun `actual library worker keeps ordinary IO error file and does not record compatibility`() = runBlocking {
+        withSourceFailureWorker(java.io.IOException("ordinary library IO")) { worker, attempts ->
+            assertEquals(ListenableWorker.Result.success(), worker.doWork())
+            assertEquals(1, attempts.get())
+            val file = java.io.File(context.externalCacheDir, "mihon_update_errors.txt")
+            assertTrue(file.readText().contains("ordinary library IO"))
+            assertTrue(file.readText().contains("Library source"))
+            assertTrue(org.robolectric.shadows.ShadowLog.getLogsForTag("MihonExtension").isEmpty())
+        }
+    }
+
+    private suspend fun withSourceFailureWorker(
+        failure: Throwable,
+        brokenLabel: Boolean = false,
+        block: suspend (LibraryUpdateJob, java.util.concurrent.atomic.AtomicInteger) -> Unit,
+    ) {
+        val previousScope = Injekt
+        Injekt = InjektScope(DefaultRegistrar())
+        Injekt.addSingleton(mockk<SecurityPreferences>(relaxed = true))
+        Injekt.addSingleton(mockk<DownloadManager>(relaxed = true))
+        Injekt.addSingleton(mockk<CoverCache>(relaxed = true))
+        Injekt.addSingleton(mockk<SyncChaptersWithSource>(relaxed = true))
+        Injekt.addSingleton<tachiyomi.domain.chapter.repository.ChapterRepository>(mockk(relaxed = true))
+        Injekt.addSingleton(mockk<FilterChaptersForDownload>(relaxed = true))
+        Injekt.addSingleton<FetchInterval>(mockk { every { getWindow(any()) } returns (0L to Long.MAX_VALUE) })
+        Injekt.addSingleton<tachiyomi.domain.category.interactor.DeleteCategory>(
+            mockk {
+                coEvery { recoverPending() } returns tachiyomi.domain.category.interactor.DeleteCategory.Result.Success
+            },
+        )
+        val current = Manga.create().copy(
+            id = 42L,
+            source = 42L,
+            title = "Library work",
+            favorite = true,
+            initialized = true,
+        )
+        val source = mockk<Source>()
+        every { source.id } throws AssertionError("host ID must be used")
+        every { source.toString() } answers
+            { if (brokenLabel) throw NoSuchMethodError("private label") else "Library source" }
+        val owner = eu.kanade.tachiyomi.extension.model.Extension.Installed(
+            "Library owner", "trusted.library", "1.2.3", 123L, 1.6, "en", false,
+            null, listOf(source), null, isShared = false,
+        )
+        val installed = MutableStateFlow(listOf(owner))
+        val attempts = java.util.concurrent.atomic.AtomicInteger()
+        Injekt.addSingleton<eu.kanade.tachiyomi.extension.ExtensionManager>(
+            mockk {
+                every { installedExtensionsFlow } returns installed
+            },
+        )
+        Injekt.addSingleton<SourceManager>(mockk { every { getOrStub(42L) } returns source })
+        Injekt.addSingleton<GetLibraryManga>(
+            mockk {
+                coEvery { await() } returns
+                    listOf(libraryItem(42L, 0L).copy(manga = current))
+            },
+        )
+        Injekt.addSingleton<GetManga>(mockk { coEvery { await(42L) } returns current })
+        Injekt.addSingleton<UpdateManga>(
+            mockk {
+                coEvery {
+                    awaitFromRemote(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
+                } coAnswers {
+                    attempts.incrementAndGet()
+                    installed.value = emptyList()
+                    throw failure
+                }
+            },
+        )
+        val preferences = LibraryPreferences(
+            tachiyomi.core.common.preference.AndroidPreferenceStore(
+                context,
+                context.getSharedPreferences("ec-library-${System.nanoTime()}", Context.MODE_PRIVATE),
+            ),
+        ).apply {
+            autoUpdateMangaRestrictions().set(emptySet())
+        }
+        Injekt.addSingleton(preferences)
+        assertEquals(current, Injekt.get<GetManga>().await(42L))
+        assertEquals(1, Injekt.get<GetLibraryManga>().await().size)
+        org.junit.Assert.assertNotNull(Injekt.get<tachiyomi.domain.chapter.repository.ChapterRepository>())
+        mockkStatic("eu.kanade.tachiyomi.util.system.WorkManagerExtensionsKt")
+        coEvery { any<CoroutineWorker>().setForegroundSafely() } returns Unit
+        io.mockk.mockkConstructor(LibraryUpdateNotifier::class)
+        every { anyConstructed<LibraryUpdateNotifier>().showProgressNotification(any(), any(), any()) } returns Unit
+        every { anyConstructed<LibraryUpdateNotifier>().showQueueSizeWarningNotificationIfNeeded(any()) } returns Unit
+        every { anyConstructed<LibraryUpdateNotifier>().cancelProgressNotification() } returns Unit
+        every { anyConstructed<LibraryUpdateNotifier>().showUpdateErrorNotification(any(), any()) } returns Unit
+        mockkObject(CreatorDiscoveryJob.Companion)
+        every { CreatorDiscoveryJob.enqueue(any()) } returns Unit
+        mockkStatic(androidx.core.content.FileProvider::class)
+        every { androidx.core.content.FileProvider.getUriForFile(any(), any(), any()) } returns
+            android.net.Uri.parse("content://ec-owned/library-errors")
+        try {
+            check(context.externalCacheDir!!.isDirectory || context.externalCacheDir!!.mkdirs())
+            org.robolectric.shadows.ShadowLog.clear()
+            val worker = TestListenableWorkerBuilder<LibraryUpdateJob>(
+                context,
+            ).setTags(listOf(WORK_NAME_MANUAL)).build()
+            block(worker, attempts)
+        } finally {
+            unmockkObject(CreatorDiscoveryJob.Companion)
+            io.mockk.unmockkConstructor(LibraryUpdateNotifier::class)
+            unmockkStatic(androidx.core.content.FileProvider::class)
+            Injekt = previousScope
+        }
+    }
 
     @Test
     fun `actual library worker characterizes smart restrictions fetch once and zero chapter eligibility`() {
@@ -126,6 +304,11 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
         oneOverride: Boolean = false,
     ) {
         Injekt = InjektScope(DefaultRegistrar())
+        Injekt.addSingleton<eu.kanade.tachiyomi.extension.ExtensionManager>(
+            mockk {
+                every { installedExtensionsFlow } returns MutableStateFlow(emptyList())
+            },
+        )
         Injekt.addSingleton(mockk<SecurityPreferences>(relaxed = true))
         val downloads = mockk<DownloadManager>(relaxed = true)
         coEvery {
@@ -747,6 +930,11 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
     }
 
     private fun registerWorkerDependencies() {
+        Injekt.addSingleton<eu.kanade.tachiyomi.extension.ExtensionManager>(
+            mockk {
+                every { installedExtensionsFlow } returns MutableStateFlow(emptyList())
+            },
+        )
         val recoveryStore = tachiyomi.core.common.preference.AndroidPreferenceStore(
             context,
             context.getSharedPreferences("startup-recovery-${System.nanoTime()}", Context.MODE_PRIVATE),

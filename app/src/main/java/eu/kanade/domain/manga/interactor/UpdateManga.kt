@@ -3,6 +3,8 @@ package eu.kanade.domain.manga.interactor
 import eu.kanade.domain.manga.model.hasCustomCover
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
 import eu.kanade.tachiyomi.source.model.SManga
 import tachiyomi.domain.chapter.service.observeDirectoryPhase
 import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
@@ -71,6 +73,7 @@ class UpdateManga(
         val currentManga: Manga
         val newChapters: List<tachiyomi.domain.chapter.model.Chapter>
         if (fetchChapters) {
+            val sourceLabel = guardSourceOperation(SourceOperationPhase.METADATA) { source.toString() }
             val observedAt = Instant.now().toEpochMilli()
             val extension = sourceDateExtensionIdentityProvider(latestManga.source)
             val policy = if ((manualFetch || requireFavorite) && latestManga.favorite &&
@@ -81,15 +84,23 @@ class UpdateManga(
                 mihon.domain.chapter.interactor.DownloadNewChapterPolicy(false, false)
             }
             val metadata = if (fetchDetails) {
-                prepareSourceMetadata(latestManga, update.manga, manualFetch, coverCache, libraryPreferences)
+                prepareSourceMetadata(
+                    latestManga,
+                    update.manga,
+                    manualFetch,
+                    coverCache,
+                    libraryPreferences,
+                    SourceOperationPhase.DETAILS_CHAPTERS,
+                )
             } else {
-                MangaUpdate(latestManga.id, memo = update.manga.memo)
+                val memo = guardSourceOperation(SourceOperationPhase.CHAPTERS) { update.manga.memo }
+                MangaUpdate(latestManga.id, memo = memo)
             }
             newChapters = syncChaptersWithSource.await(
                 update.chapters, latestManga, source, manualFetch, fetchWindow,
                 mangaMetadata = metadata, chapterListComplete = update.chapterListComplete,
                 effects = tachiyomi.domain.chapter.service.ChapterDirectoryEffects(
-                    source.id, source.toString(), latestManga.url, latestManga.title,
+                    latestManga.source, sourceLabel, latestManga.url, latestManga.title,
                     if (requireFavorite) {
                         "LIBRARY_UPDATE"
                     } else if (manualFetch) {
@@ -170,12 +181,20 @@ class UpdateManga(
         manualFetch: Boolean,
         coverCache: CoverCache,
         libraryPreferences: LibraryPreferences,
+        phase: SourceOperationPhase = SourceOperationPhase.DETAILS,
     ): MangaUpdate {
+        val metadata = tachiyomi.domain.source.service.sourceMangaMetadata(
+            localManga,
+            remoteManga,
+            libraryPreferences.updateMangaTitles().get(),
+            null,
+            phase,
+        )
         val coverLastModified =
             when {
                 // Never refresh covers if the url is empty to avoid "losing" existing covers
-                remoteManga.thumbnail_url.isNullOrEmpty() -> null
-                !manualFetch && localManga.thumbnailUrl == remoteManga.thumbnail_url -> null
+                metadata.thumbnailUrl.isNullOrEmpty() -> null
+                !manualFetch && localManga.thumbnailUrl == metadata.thumbnailUrl -> null
                 localManga.isLocal() -> Instant.now().toEpochMilli()
                 localManga.hasCustomCover(coverCache) -> {
                     coverCache.deleteFromCache(localManga, false)
@@ -187,12 +206,7 @@ class UpdateManga(
                 }
             }
 
-        return tachiyomi.domain.source.service.sourceMangaMetadata(
-            localManga,
-            remoteManga,
-            libraryPreferences.updateMangaTitles().get(),
-            coverLastModified,
-        )
+        return metadata.copy(coverLastModified = coverLastModified)
     }
 
     suspend fun awaitUpdateFetchInterval(

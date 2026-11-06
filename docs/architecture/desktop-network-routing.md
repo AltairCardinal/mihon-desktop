@@ -983,6 +983,27 @@ hideUnmatched 不移除错误行，批量动作的跳过统计包含 Failure。
 发布与记录；移除/取消后的迟到结果不得覆盖或追加诊断。不新增迁移协议、数据库字段
 或页面；以上定向接线证据不替代 EC-08 原生验收。
 
+#### 7.6.17 常规详情与书库更新消费
+
+共享 sourceMangaMetadata 保留旧4参及默认参数入口，新增显式 phase 入口；仅逐一守卫
+原更新策略实际消费的字段。标题未初始化保留原回退，genre列表不做join/split重解释，
+不新增remote.url/initialized读取。Android UpdateManga先取得纯宿主MangaUpdate，再
+计算封面版本、访问缓存或写SQL；章节效果使用已存Manga.source，所需source.toString
+单独METADATA守卫，fetchDetails=false仅保护实际memo读取。
+
+作品页及LibraryUpdateJob在更新API前按Source引用冻结安装归属。catch先恢复取消、
+致命和未标记宿主Error；只有显式兼容marker沿既有本地化提示/安全诊断反馈。作品页
+接受仍属同一作品/来源的结果；书库保留WorkManager顶层已有取消完成约定，不将内层
+取消当普通failedUpdates。错误文件保存本次源引用与冻结身份，兼容失败不重读坏标签；
+普通失败需要标签时仅守卫toString，失败使用安全宿主标签，文件IO不属于source guard。
+
+Desktop Checker在实际API前捕获failure identity；Module按Source===匹配已安装的
+metadataSnapshot，不用文件名或sourceDate的builtin回退猜测诊断归属。实际返回字段/
+memo、所需标签及prepareNewChapter分别保护，宿主目录plan/commit在外；兼容失败沿
+原UpdateResult.sourceError反馈，存储IO/控制与宿主Error保持原传播。sourceDate已有
+登记键查询语义不改。上述链路有真实SQL/缓存、实际Model/Worker和Module接线门，
+不代表其他后台来源投影或EC-08原生门已通过。
+
 ## 8. 安全与隐私
 
 - 手动代理地址属于敏感配置，不写入普通运行日志。

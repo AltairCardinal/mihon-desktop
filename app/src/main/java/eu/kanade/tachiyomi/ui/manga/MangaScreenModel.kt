@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.manga
 
 import android.content.Context
+import android.util.Log
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -32,12 +33,18 @@ import eu.kanade.domain.track.service.TrackPreferences
 import eu.kanade.presentation.manga.DownloadAction
 import eu.kanade.presentation.manga.components.ChapterDownloadAction
 import eu.kanade.presentation.util.formattedMessage
+import eu.kanade.presentation.util.sourceErrorMessageResource
 import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.data.track.EnhancedTracker
 import eu.kanade.tachiyomi.data.track.TrackerManager
+import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.network.HttpException
+import eu.kanade.tachiyomi.network.SourceCompatibilityException
+import eu.kanade.tachiyomi.network.SourceFailureIdentity
+import eu.kanade.tachiyomi.network.inspectSourceFailure
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
@@ -48,6 +55,8 @@ import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
@@ -89,7 +98,11 @@ import tachiyomi.domain.manga.model.MangaWithChapterCount
 import tachiyomi.domain.manga.model.applyFilter
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.reader.interactor.RecordReadingProgress
+import tachiyomi.domain.source.service.SOURCE_COMPATIBILITY_LOG_TAG
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.source.service.recordSourceFailureDiagnostics
+import tachiyomi.domain.source.service.toSourceAppError
+import tachiyomi.domain.source.service.withSourceFailureIdentity
 import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.i18n.MR
 import tachiyomi.source.local.isLocal
@@ -279,6 +292,15 @@ class MangaScreenModel(
      */
     private suspend fun fetchFromSource(fetchDetails: Boolean, fetchChapters: Boolean, manualFetch: Boolean = false) {
         val state = successState ?: return
+        val owner = Injekt.get<ExtensionManager>().installedExtensionsFlow.value
+            .firstOrNull { it.sources.any { registered -> registered === state.source } }
+        val identity = SourceFailureIdentity(
+            state.manga.source,
+            owner?.pkgName,
+            owner?.name,
+            owner?.versionName,
+            owner?.versionCode,
+        )
         try {
             withIOContext {
                 val (_, newChapters) = updateManga.awaitFromRemote(
@@ -293,14 +315,25 @@ class MangaScreenModel(
                 )
             }
         } catch (e: Throwable) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
+            e.rethrowSourceControlFailure()
+            currentCoroutineContext().ensureActive()
+            if (successState?.manga?.id != state.manga.id || successState?.source !== state.source) return
             // Ignore early hints "errors" that aren't handled by OkHttp
             if (e is HttpException && e.code == 103) return
 
             logcat(LogPriority.ERROR, e)
+            val compatibility = if (e.inspectSourceFailure().causes.any { it is SourceCompatibilityException }) {
+                e.toSourceAppError().withSourceFailureIdentity(identity)
+            } else {
+                null
+            }
+            compatibility?.recordSourceFailureDiagnostics(write = { Log.e(SOURCE_COMPATIBILITY_LOG_TAG, it) })
+            val compatibilityMessage = compatibility?.let(::sourceErrorMessageResource)
             screenModelScope.launch {
                 snackbarHostState.showSnackbar(
-                    message = if (e is NoChaptersException) {
+                    message = if (compatibilityMessage != null) {
+                        context.stringResource(compatibilityMessage)
+                    } else if (e is NoChaptersException) {
                         context.stringResource(MR.strings.no_chapters_error)
                     } else {
                         with(context) { e.formattedMessage }
