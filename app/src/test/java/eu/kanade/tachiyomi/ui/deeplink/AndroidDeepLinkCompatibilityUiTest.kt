@@ -21,8 +21,12 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -48,12 +52,77 @@ class AndroidDeepLinkCompatibilityUiTest {
     @get:Rule val compose = createEmptyComposeRule()
 
     @Test
+    fun `deep link uses its registered ID without a late ID getter`() = runBlocking {
+        val source = FailingResolvableSource("id")
+        val network = mockk<NetworkToLocalManga>()
+        coEvery { network.invoke(any<Manga>()) } answers { firstArg<Manga>().copy(id = 7L) }
+        val model = DeepLinkScreenModel(
+            "https://fixture.invalid/id",
+            FixtureManager(source),
+            network,
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+        )
+        try {
+            val result = withTimeout(5_000) { model.state.first { it !is DeepLinkScreenModel.State.Loading } }
+            assertNull(source.entered)
+            assertEquals(95L, (result as DeepLinkScreenModel.State.Result).manga.source)
+        } finally {
+            model.onDispose()
+        }
+    }
+
+    @Test
+    fun `deep link returned manga fields keep the details phase`() = runBlocking {
+        val source = FailingResolvableSource("mangaField")
+        val network = mockk<NetworkToLocalManga>(relaxed = true)
+        val model = DeepLinkScreenModel(
+            "https://fixture.invalid/field",
+            FixtureManager(source),
+            network,
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+        )
+        try {
+            val failed = withTimeout(5_000) { model.state.first { it is DeepLinkScreenModel.State.Failure } }
+                as DeepLinkScreenModel.State.Failure
+            val marker = failed.error.cause as eu.kanade.tachiyomi.network.SourceCompatibilityException
+            assertEquals(eu.kanade.tachiyomi.network.SourceOperationPhase.DETAILS, marker.phase)
+            coVerify(exactly = 0) { network.invoke(any<Manga>()) }
+        } finally {
+            model.onDispose()
+        }
+    }
+
+    @Test
+    fun `deep link unknown registration dispatches no manga API or ID getter`() = runBlocking {
+        val network = mockk<NetworkToLocalManga>(relaxed = true)
+        val unknown = FailingResolvableSource("id")
+        val unknownModel = DeepLinkScreenModel(
+            "https://fixture.invalid/unknown",
+            FixtureManager(unknown, false),
+            network,
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+        )
+        try {
+            val failed = withTimeout(5_000) { unknownModel.state.first { it is DeepLinkScreenModel.State.Failure } }
+                as DeepLinkScreenModel.State.Failure
+            assertEquals(0, unknown.mangaCalls)
+            assertNull(unknown.entered)
+            assertEquals(mihon.domain.error.AppError.Unknown::class, failed.error::class)
+        } finally {
+            unknownModel.onDispose()
+        }
+    }
+
+    @Test
     fun `actual deep link source hooks show compatibility instead of navigation or successful chapter sync`() {
         val previous = Injekt
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         try {
             val observations = mutableListOf<String>()
-            for (site in listOf("uri", "manga", "id", "chapter", "chapters")) {
+            for (site in listOf("uri", "manga", "chapter", "chapterUrl", "chapters")) {
                 Injekt = InjektScope(DefaultRegistrar())
                 val source = FailingResolvableSource(site)
                 val network = mockk<NetworkToLocalManga>()
@@ -85,8 +154,8 @@ class AndroidDeepLinkCompatibilityUiTest {
                 listOf(
                     "uri:true:uri",
                     "manga:true:manga",
-                    "id:true:id",
                     "chapter:true:chapter",
+                    "chapterUrl:true:chapterUrl",
                     "chapters:true:chapters",
                 ),
                 observations,
@@ -100,6 +169,8 @@ class AndroidDeepLinkCompatibilityUiTest {
 
     private class FailingResolvableSource(private val site: String) : CatalogueSource, ResolvableSource {
         @Volatile var entered: String? = null
+
+        @Volatile var mangaCalls = 0
         private fun fail(at: String) {
             if (site == at) {
                 entered = at
@@ -116,20 +187,45 @@ class AndroidDeepLinkCompatibilityUiTest {
         override val lang = "en"
         override fun getUriType(uri: String): UriType {
             fail("uri")
-            return UriType.Chapter
+            return if (site == "id") UriType.Manga else UriType.Chapter
         }
         override suspend fun getManga(uri: String): SManga {
+            mangaCalls++
             fail("manga")
-            return SManga.create().apply {
+            val manga = SManga.create().apply {
                 url = "/manga"
                 title = "Manga"
+            }
+            return if (site == "mangaField") {
+                object : SManga by manga {
+                    override fun getGenres(): List<String>? {
+                        fail("mangaField")
+                        return manga.getGenres()
+                    }
+                }
+            } else {
+                manga
             }
         }
         override suspend fun getChapter(uri: String): SChapter {
             fail("chapter")
-            return SChapter.create().apply {
+            val chapter = SChapter.create().apply {
                 url = "/chapter"
                 name = "Chapter"
+            }
+            return if (site == "chapterUrl") {
+                object : SChapter by chapter {
+                    override var url: String
+                        get() {
+                            fail("chapterUrl")
+                            return chapter.url
+                        }
+                        set(value) {
+                            chapter.url = value
+                        }
+                }
+            } else {
+                chapter
             }
         }
         override suspend fun getChapterList(manga: SManga): List<SChapter> {
@@ -138,7 +234,12 @@ class AndroidDeepLinkCompatibilityUiTest {
         }
     }
 
-    private class FixtureManager(private val source: CatalogueSource) : SourceManager {
+    private class FixtureManager(
+        private val source: CatalogueSource,
+        private val registered: Boolean = true,
+    ) : SourceManager {
+        override fun getRegisteredSourceId(source: Source): Long? =
+            if (registered && this.source === source) 95L else null
         override val isInitialized = MutableStateFlow(true)
         override val catalogueSources = flowOf(listOf(source))
         override fun get(sourceKey: Long): Source = source

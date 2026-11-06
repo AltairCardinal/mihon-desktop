@@ -68,6 +68,12 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
+import eu.kanade.tachiyomi.network.SourceCompatibilityException
+import eu.kanade.tachiyomi.network.SourceFailureIdentity
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
+import eu.kanade.tachiyomi.network.inspectSourceFailure
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.CancellationException
@@ -107,7 +113,11 @@ import tachiyomi.domain.source.service.SourceMetadataSnapshot
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.domain.source.service.SourceRecoveryAction
+import tachiyomi.domain.source.service.recordSourceFailureDiagnostics
 import tachiyomi.domain.source.service.sourceFailureIdentity
+import tachiyomi.domain.source.service.sourceRecoveryAction
+import tachiyomi.domain.source.service.toSourceAppError
+import tachiyomi.domain.source.service.withSourceFailureIdentity
 import tachiyomi.i18n.MR
 
 /** Result group from one source. */
@@ -132,7 +142,11 @@ internal sealed interface CanonicalSearchResult {
         val items: List<Manga>,
         val listedByUrl: Map<String, SManga>,
     ) : CanonicalSearchResult
-    data class Failure(override val generation: Long, val cause: Throwable) : CanonicalSearchResult
+    data class Failure(
+        override val generation: Long,
+        val cause: Throwable,
+        val error: AppError = AppError.Unknown(cause),
+    ) : CanonicalSearchResult
 }
 
 internal class SourceResultMaterializer(
@@ -141,29 +155,43 @@ internal class SourceResultMaterializer(
 ) {
     val results = mutableStateMapOf<Long, CanonicalSearchResult>()
     private val requests = mutableMapOf<Long, List<SManga>>()
+    private val requestIdentities = mutableMapOf<Long, SourceFailureIdentity>()
     private val jobs = mutableMapOf<Long, Job>()
     private val activeAttempts = mutableMapOf<Long, Long>()
     private var activeGeneration = 0L
     private var nextAttempt = 0L
 
     fun sync(state: DesktopGlobalSearchState) {
-        sync(state.generation, state.queryStates)
+        sync(state.generation, state.queryStates, state.sourceIdentities)
     }
 
     fun sync(generation: Long, queryStates: Map<Long, SourceQueryState?>) {
+        sync(generation, queryStates, emptyMap())
+    }
+
+    private fun sync(
+        generation: Long,
+        queryStates: Map<Long, SourceQueryState?>,
+        identities: Map<Long, SourceFailureIdentity>,
+    ) {
         if (activeGeneration != generation) {
             jobs.values.forEach(Job::cancel)
             jobs.clear()
             requests.clear()
+            requestIdentities.clear()
             activeAttempts.clear()
             results.clear()
             activeGeneration = generation
         }
         queryStates.forEach { (sourceId, queryState) ->
             if (queryState is SourceQueryState.Content) {
-                val listed = queryState.items.distinctBy(SManga::url)
-                if (requests[sourceId] != listed) {
+                val listed = queryState.items
+                val previous = requests[sourceId]
+                if (previous == null || previous.size != listed.size ||
+                    previous.indices.any { previous[it] !== listed[it] }
+                ) {
                     requests[sourceId] = listed
+                    requestIdentities[sourceId] = identities[sourceId] ?: SourceFailureIdentity(sourceId = sourceId)
                     start(sourceId, listed)
                 }
             }
@@ -184,23 +212,37 @@ internal class SourceResultMaterializer(
     private fun start(sourceId: Long, listed: List<SManga>) {
         val expectedGeneration = activeGeneration
         val expectedAttempt = ++nextAttempt
+        val identity = requestIdentities[sourceId] ?: SourceFailureIdentity(sourceId = sourceId)
         activeAttempts[sourceId] = expectedAttempt
         jobs[sourceId]?.cancel()
         jobs[sourceId] = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
-                val canonical = persist(listed, sourceId)
+                val listedByUrl = linkedMapOf<String, SManga>()
+                listed.forEach { manga ->
+                    val url = guardSourceOperation(SourceOperationPhase.SEARCH) { manga.url }
+                    if (url !in listedByUrl) listedByUrl[url] = manga
+                }
+                // Persist uses the original extension objects; storage itself is outside the source guard.
+                val canonical = persist(listedByUrl.values.toList(), sourceId)
                 if (activeGeneration == expectedGeneration && activeAttempts[sourceId] == expectedAttempt) {
                     results[sourceId] = CanonicalSearchResult.Content(
                         expectedGeneration,
                         canonical,
-                        listed.distinctBy(SManga::url).associateBy(SManga::url),
+                        listedByUrl,
                     )
                 }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                error.rethrowSourceControlFailure()
+                val appError = if (error.inspectSourceFailure().causes.any { it is SourceCompatibilityException }) {
+                    error.toSourceAppError().withSourceFailureIdentity(identity)
+                } else {
+                    AppError.Unknown(error)
+                }
                 if (activeGeneration == expectedGeneration && activeAttempts[sourceId] == expectedAttempt) {
-                    results[sourceId] = CanonicalSearchResult.Failure(expectedGeneration, error)
+                    results[sourceId] = CanonicalSearchResult.Failure(expectedGeneration, error, appError)
+                    appError.recordSourceFailureDiagnostics(::logSourceCompatibility)
                 }
             }
         }
@@ -261,8 +303,8 @@ internal object GlobalSearchStateProjector {
                         source,
                         emptyList(),
                         GlobalSearchRowKind.Error,
-                        SourcePageError(AppError.Unknown(canonical.cause), SourceRecoveryAction.Retry),
-                        retryMaterialization = true,
+                        SourcePageError(canonical.error, canonical.error.sourceRecoveryAction()),
+                        retryMaterialization = canonical.error.sourceRecoveryAction() == SourceRecoveryAction.Retry,
                     )
                 }
                 is SourceQueryState.Failure -> SourceSearchResult(

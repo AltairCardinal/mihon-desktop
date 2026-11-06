@@ -64,6 +64,7 @@ import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourceQueryState
+import tachiyomi.domain.source.service.sourceFailureIdentity
 import tachiyomi.i18n.MR
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
@@ -76,6 +77,95 @@ private const val INITIAL_RENDER_TIMEOUT_MS = 30_000L
 
 @OptIn(ExperimentalComposeUiApi::class)
 class GlobalSearchResultProductionWiringTest {
+
+    @Test
+    fun `returned field incompatibility stays typed through real persistence and mounted global search`() =
+        runBlocking {
+            Fixture().use { fixture ->
+                val original = NoSuchMethodError("future returned genres")
+                val listed = SManga.create().apply {
+                    url = "/broken-returned"
+                    title = "Delayed fields"
+                }
+                val returned = object : SManga by listed {
+                    override fun getGenres(): List<String>? = throw original
+                }
+                val broken = source(9L, "Delayed", resultCount = 0)
+                coEvery { broken.getSearchManga(1, any(), any()) } returns MangasPage(listOf(returned), false)
+                val healthy = source(10L, "Healthy", sharedUrl = "/healthy-returned", resultCount = 1)
+                val owner = InstalledExtension(
+                    java.io.File("routing-only.jar"),
+                    listOf(broken),
+                    metadataSnapshot = ExtensionMeta("trusted.returned", 123L, "1.2.3", name = "Returned extension"),
+                )
+                val preferences = DesktopAppPreferences(DesktopPreferenceStore(fixture.preferenceRoot)).apply {
+                    enabledLanguages.set(setOf("en"))
+                    pinnedSources.set(setOf("9", "10"))
+                }
+                val dependencies = mockk<DesktopUiDependencies> {
+                    every { sourceManager } returns FakeDesktopSourceManager(listOf(broken, healthy))
+                    every { appPreferences } returns preferences
+                    every { sourceMangaSearchService } returns SourceMangaSearchService()
+                    every { saveSourceMangaForDetails } returns fixture.saver
+                    every { getManga } returns fixture.getManga
+                    every { sourceLoginSessionFactory } returns mockk(relaxed = true)
+                    every { creatorDiscoverySourcePort } returns null
+                    every { extensionPresentationService } returns mockk {
+                        every { installedExtensions } returns MutableStateFlow(listOf(owner))
+                    }
+                }
+                val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+                var materializer: SourceResultMaterializer? = null
+                val scene = ImageComposeScene(500, 1_200, coroutineContext = coroutineContext) {}
+                val previousErrorStream = System.err
+                val captured = ByteArrayOutputStream()
+                System.setErr(PrintStream(captured, true, Charsets.UTF_8))
+                try {
+                    scene.setContent {
+                        CompositionLocalProvider(
+                            LocalDesktopUiDependencies provides dependencies,
+                            LocalGlobalSearchCoordinatorFactory provides { coordinator },
+                            LocalSourceResultMaterializerFactory provides { scope, persist ->
+                                SourceResultMaterializer(scope, persist).also { materializer = it }
+                            },
+                        ) { Navigator(GlobalSearchScreen("private-query")) { CurrentScreen() } }
+                    }
+                    awaitWhileRendering(scene) {
+                        materializer?.results?.get(9L) is CanonicalSearchResult.Failure &&
+                            text(scene).contains("Healthy listed 0")
+                    }
+                    val ui = GlobalSearchStateProjector.projectPrepared(
+                        coordinator.state.sourceMetadata,
+                        coordinator.state,
+                        requireNotNull(materializer).results,
+                    )
+                    val error = requireNotNull(ui.results.single { it.metadata?.sourceId == 9L }.error).error
+                    org.junit.jupiter.api.Assertions.assertInstanceOf(
+                        mihon.domain.error.AppError.ExtensionIncompatible::class.java,
+                        error,
+                    )
+                    assertEquals("trusted.returned", error.sourceFailureIdentity()?.extensionPackage)
+                    assertTrue(
+                        text(scene).contains(MR.strings.source_error_extension_incompatible.localized()),
+                        text(scene),
+                    )
+                    assertFalse(ui.loading)
+                    assertFalse(text(scene).contains(MR.strings.action_retry.localized()), text(scene))
+                    assertEquals(null, fixture.mangas.getMangaByUrlAndSourceId("/broken-returned", 9L))
+                    assertNotNull(fixture.mangas.getMangaByUrlAndSourceId("/healthy-returned", 10L))
+                    val report = captured.toString(Charsets.UTF_8)
+                    assertTrue(report.contains("package=trusted.returned"), report)
+                    assertTrue(report.contains("operation=SEARCH"), report)
+                    assertFalse(report.contains("private-query"), report)
+                    assertFalse(report.contains("broken-returned"), report)
+                } finally {
+                    coordinator.close()
+                    materializer?.close()
+                    scene.close()
+                    System.setErr(previousErrorStream)
+                }
+            }
+        }
 
     @Test
     fun `submitted search keeps the old extension owner while a healthy source completes`() = runBlocking {

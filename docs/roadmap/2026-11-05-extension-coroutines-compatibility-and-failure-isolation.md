@@ -1,6 +1,6 @@
 # 新版扩展协程接口兼容与扩展故障隔离
 
-日期：2026-11-05。状态：**EC-01–05 已完成定向验证与独立审查；继续 EC-06。双端搜索日志归因已接线；剩余安全元数据消费、整体隔离收口和 Android R8 验收尚未完成**。
+日期：2026-11-05。状态：**EC-01–05 已完成定向验证与独立审查；继续 EC-06。双端搜索及返回字段消费已有阶段验证；Browse UI、迁移/同步剩余调用、整体隔离收口和 Android R8 验收尚未完成**。
 
 active-task: EC-06
 
@@ -17,6 +17,14 @@ EC-06 默认 HTTP 链阶段（2026-11-06）：默认 HttpSource 的 client／req
 EC-05 收口／EC-06 阅读下载阶段（2026-11-06）：双端加载、实际 filter/baseUrl 消费、管理页与详情 prepared metadata、冻结身份、typed 更新回滚及失败反馈完成必要独立审查与定向验证，EC-05 勾选。共享 guard 已接真实阅读和下载调用，确定性不兼容不自动重试、健康并行章节能完成；根代理 reader/download 的 46 项有效 focused 组合通过，新增/受影响 54 个 Kotlin 文件精确定向严格格式通过。累计证据分别保留误红、正确红、绿测及组合复用范围；不是最终代码全量重跑。此内聚阶段随代码、测试和维护说明提交；EC-06 仍须 Creator 分类保真、自定义 Rx／调度边界及剩余已列直接 API 消费，EC-07/08 保留完整原验收条件。
 
 ## 1. 起点与已有证据
+
+EC-06/07 转换与 Android 消费阶段（2026-11-06）：Desktop materializer 的晚读URL、
+兼容分类及冻结诊断、Android 全局转换/登录恢复、Browse Model/Paging、遗留数据仓库
+三种分页及 DeepLink 消费完成正确红→最小实现→focused。54项有效组合、准确21个
+Kotlin严格格式及必要独审通过。Browse重复项新增读取回归和筛选器后迟取owner的问题
+均有正确红→修正；旧HTTP断言修为现有401/403语义，不改生产分类。本批不勾EC06/07：
+Browse UI标题/WebView/assist、Smart迁移完整反馈和SyncRecovery尚欠；EC08原APK/
+ART/R8仍未执行。命令、复用范围与装置错误详见累计证据，不与前轮60项混算。
 
 EC-06/07 返回对象与 Desktop 快照阶段（2026-11-06）：共享 mapper、Creator 返回字段/
 缓存 copy、Desktop Save 的 SQL 前字段捕获，以及真实 Desktop 全局搜索的安全描述、

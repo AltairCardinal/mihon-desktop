@@ -51,7 +51,7 @@ import tachiyomi.i18n.MR
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicReference
 
-private fun logSourceCompatibility(message: String) {
+internal fun logSourceCompatibility(message: String) {
     System.err.println("[$SOURCE_COMPATIBILITY_LOG_TAG] $message")
 }
 
@@ -410,6 +410,7 @@ data class DesktopGlobalSearchState(
     val queryStates: Map<Long, SourceQueryState> = emptyMap(),
     internal val publicationOrdinal: Long = 0,
     val sourceMetadata: List<SourceMetadataSnapshot> = emptyList(),
+    val sourceIdentities: Map<Long, SourceFailureIdentity> = emptyMap(),
 )
 
 class DesktopGlobalSearchCoordinator(
@@ -614,6 +615,9 @@ class DesktopGlobalSearchCoordinator(
                         isSearching = true,
                         queryStates = reusableStates,
                         sourceMetadata = prepared,
+                        sourceIdentities = prepared.mapIndexedNotNull { index, snapshot ->
+                            snapshot.sourceId?.let { it to owners[index].second }
+                        }.toMap(),
                     ),
                 ),
                 next,
@@ -626,6 +630,11 @@ class DesktopGlobalSearchCoordinator(
         var completedNormally = false
         try {
             publish(started, session)
+            if (synchronized(lock) { activeSession === session }) {
+                prepared.filter { it.sourceId == null }.forEach {
+                    it.error?.recordSourceFailureDiagnostics(sourceFailureLog)
+                }
+            }
             coroutineScope {
                 prepared.mapNotNull { snapshot ->
                     val source = snapshot.source

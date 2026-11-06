@@ -1278,3 +1278,73 @@ EC-06/07仍不勾选。下一闭合点：Desktop materializer 晚读URL、标记
 诊断；Android全局/Browse/data paging、DeepLink/SmartSearch/SyncRecovery等已盘点的
 mapper前后消费及登录恢复。不能以本批mapper/reducer绿替代实际caller。EC-08原APK/
 ART/R8、旧ABI与未来ABI原生集成仍未执行；API36不能替代反馈者Android17厂商实机。
+
+## EC-06/07 转换保真与 Android 调用端阶段（2026-11-06）
+
+基线 `9fe1463226a6f5075815e4a8160fb65ba01b3442`。本阶段是既有异常边界的消费端接线，
+不新增页面、依赖版本、schema 或反馈协议；用户 reader 未提交内容未纳入。下列 key 的
+命令/权威 JSON/log 位于 `.gradle-coordinator/`，XML在同名 `.test-tmp/*-xml/`。
+
+### Desktop materializer 与未知来源诊断（Root）
+
+- `ec07-materializer-boundaries-red` 六门中五门正确红、一门普通存储 IO 正对照绿：
+  真实 Save+挂载搜索页把 getGenres 的已标记兼容错误降为 Unknown；sync 晚读 URL 原始
+  NoSuch 逸出；包装取消与宿主/致命错误被吞为结果；未知登记的兼容错误日志为0。
+- 最小实现把冻结身份放入本轮 state 的纯宿主 Long→DTO map；job 内逐 URL 守卫并冻结
+  原对象表，SQL/persist不guard，失败只认显式兼容 marker。控制与宿主 Error先传播，
+  普通 IO 保持原 Unknown/Retry；兼容错误保留分类、归属、None恢复与安全日志。
+  未知 ID 的已接受 prepared 错误诊断不创建 child 或假请求。
+- `ec07-materializer-boundaries-green` **PASSED/exit0，39秒，8方法**，零失败/错误/跳过：
+  新六门加真实 canonical 重试/旧完成拒收、close后不可取消完成拒收各1。归档4 XML
+  方法数1+2+1+4；真实 SQL 的坏源零成功写入，健康结果与总进度保留。
+- 首格式 key 仅因临时 init 缺显式 lint plugin 失败，不计产品红；correct格式一度有两
+  个长测试声明，换行后 `ec07-materializer-format-strict-final` **PASSED/exit0**，正常
+  严格规则准确5文件。未实施者独审GO，未扩至其他未列消费端。
+
+### Android Global/Browse/Login（实施代理，Root独审）
+
+- `ec06-android-late-mapping-red` 正确红2方法：Global的晚读字段兼容异常逃至 owned
+  worker handler，未形成逐源错误；真实 Paging.load直接抛同类标记异常。XML6是各
+  retry3，不算6。最小转换捕获在 SQL外，冻结归属并只在接受该代际后诊断。
+- 首 registration-login key漏旧测试的新增 required sourceId，只是编译装置错误。
+  `ec06-android-mapping-registration-login-correct-red` 的注册ID、prepared factory与
+  缓存/同页重复四个独立方法正确红，原mapping2已绿。重复回归是新实现先转换所有项
+  引入的多余 title/memo读取，修为先守卫URL、只转换未缓存首次项，仍保原分页边界。
+- `ec06-android-login-ui-filter-owner-red` 确认真实Navigator登录点击和filter内替换
+  安装帧的两门失败。Model在第三方筛选器调用前捕获owner存入状态；Pager消费同帧。
+  Global实际点击用prepared ID/name，只守卫baseUrl，旧generation/pageError拒收，
+  失败回既有错误区，不能打开WebView；SQL和Navigator都不包作扩展调用。
+- `ec06-android-global-browse-login-focused-green` 整体FAILED，但有效34方法全绿并
+  归档。失败为默认DI门fixture错误listing（生产AppModule已解析真实ExtensionManager），
+  以及两条过期403→OpenLogin预期，均保留失败，不计新产品红。修fixture/旧断言并加
+  HTTP矩阵，不改生产分类：401认证/登录，403 Forbidden/Retry，429/500保既有恢复。
+- `ec06-android-late-caller-final-focused` **PASSED/exit0，24秒**：默认DI1、两条403
+  修正、HTTP矩阵1准确补验通过，且准确10文件正常严格格式通过；中间materialize Apply
+  不作最终证据。Root逐 case合并核对为当前38有效方法：Global Model14、factory4、真实
+  登录UI1、Browse Model11、Recovery7、默认DI1；旧403方法改名后的两条历史失败不冒充
+  当前方法或额外通过。未受后续改动影响的34与最终4组合复用，不宣称末次重跑38。
+
+### 遗留仓库分页与 DeepLink（Root，实施代理独审）
+
+- `ec06-data-deeplink-consumption-red` 正确红6独立方法：data2为实际Repository三路
+  load API原NoSuch逸出、存储catch吞包装fatal；App4为登记95仍读ID、未知登记先发
+  getManga、返回字段丢DETAILS阶段、真实UI的chapterUrl原NoSuch使该项卡住。App XML12
+  是retry3，不算12；其余四个健康hook继续显示正确反馈，不靠整体超时猜原因。
+- Repository将请求的宿主ID传给search/popular/latest Paging，逐API/字段守卫并保
+  对应phase，现有catch先恢复控制；SQL在外、旧构造入口保留。DeepLink选定后只查宿主
+  登记，未知显示原错误且不发作品API/探测ID；详情字段DETAILS、章节URL一次CHAPTERS
+  守卫，之后本地查找/同步匹配用宿主值。旧测试manager补显式登记，无production回退。
+- `ec06-data-deeplink-consumption-green` **PASSED/exit0，47秒，8方法**，零失败/错误/
+  跳过：data2、Native DeepLink4、旧健康解析/章节同步2，XML分平台归档。主代理核对
+  AndroidSourceManager确实按Source引用读既有map键，不执行getId。
+- `ec06-data-deeplink-format-strict` data3正常严格通过，App3有一处长行阻止文件写入；
+  手工换行后 `ec06-data-deeplink-format-strict-final` **PASSED/exit0**，准确App3正常
+  严格通过；未放宽规则或格式化用户reader。实施代理独审GO。
+
+本阶段有效组合 **54方法**（Root16、代理38）、准确 **21 Kotlin文件**严格格式通过，
+`git diff --check`通过。两方互审各自未实施的目标链路；不与前阶段60项重复累计为本轮
+重跑，不运行完整模块/全量、不推送/发布、不操作实体平板。维护说明见7.6.14与页面契约。
+
+EC-06/07保持未勾选：Browse UI标题/openWebView/assist、Smart迁移实际失败反馈和
+SyncRecovery尚未开始本簇实现，不能由本轮Model或mapper通过替代。EC-08原APK/ART/R8
+及真实旧/未来ABI集成仍为必做，厂商Android17不以API36模拟器代验。

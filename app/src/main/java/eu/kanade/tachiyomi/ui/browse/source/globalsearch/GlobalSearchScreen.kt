@@ -13,13 +13,18 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.core.util.ifSourcesLoaded
 import eu.kanade.presentation.browse.GlobalSearchScreen
 import eu.kanade.presentation.util.Screen
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
+import tachiyomi.domain.source.service.SourceMetadataSnapshot
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourceRecoveryAction
+import tachiyomi.domain.source.service.toSourceAppError
 import tachiyomi.presentation.core.screens.LoadingScreen
 
 class GlobalSearchScreen(
@@ -81,11 +86,27 @@ class GlobalSearchScreen(
                 },
                 onClickItem = { navigator.push(MangaScreen(it.id, true)) },
                 onLongClickItem = { navigator.push(MangaScreen(it.id, true)) },
-                onErrorAction = { source, pageError ->
+                onErrorAction = recovery@{ source, pageError ->
                     when (pageError.recoveryAction) {
                         SourceRecoveryAction.Retry -> screenModel.retry()
                         SourceRecoveryAction.OpenLogin -> {
-                            globalSearchRecoveryScreen(source, pageError)?.let(navigator::push)
+                            if (!screenModel.isCurrentSourceError(source, pageError, state.generation)) return@recovery
+                            val metadata = state.metadata.firstOrNull { it.source === source } ?: return@recovery
+                            val target = try {
+                                globalSearchRecoveryScreen(source, pageError, metadata)
+                            } catch (error: Exception) {
+                                error.rethrowSourceControlFailure()
+                                screenModel.reportSourceRecoveryFailure(
+                                    source,
+                                    pageError,
+                                    state.generation,
+                                    error.toSourceAppError(),
+                                )
+                                null
+                            }
+                            if (screenModel.isCurrentSourceError(source, pageError, state.generation)) {
+                                target?.let(navigator::push)
+                            }
                         }
                         SourceRecoveryAction.None -> Unit
                     }
@@ -95,15 +116,23 @@ class GlobalSearchScreen(
     }
 }
 
+internal fun globalSearchRecoveryScreen(source: Source, pageError: SourcePageError): Screen? {
+    if (pageError.recoveryAction != SourceRecoveryAction.OpenLogin || source !is HttpSource) return null
+    val id = guardSourceOperation(SourceOperationPhase.METADATA) { source.id }
+    val name = guardSourceOperation(SourceOperationPhase.METADATA) { source.name }
+    return globalSearchRecoveryScreen(source, pageError, SourceMetadataSnapshot(source, id, name, null, null))
+}
+
 internal fun globalSearchRecoveryScreen(
     source: Source,
     pageError: SourcePageError,
+    metadata: SourceMetadataSnapshot,
 ): Screen? {
-    if (pageError.recoveryAction != SourceRecoveryAction.OpenLogin) return null
-    val httpSource = source as? HttpSource ?: return null
-    return WebViewScreen(
-        url = httpSource.baseUrl,
-        initialTitle = httpSource.name,
-        sourceId = httpSource.id,
-    )
+    if (pageError.recoveryAction != SourceRecoveryAction.OpenLogin || source !is HttpSource ||
+        metadata.source !== source || metadata.sourceId == null || metadata.error != null
+    ) {
+        return null
+    }
+    val url = guardSourceOperation(SourceOperationPhase.METADATA) { source.baseUrl }
+    return WebViewScreen(url = url, initialTitle = metadata.name, sourceId = metadata.sourceId)
 }

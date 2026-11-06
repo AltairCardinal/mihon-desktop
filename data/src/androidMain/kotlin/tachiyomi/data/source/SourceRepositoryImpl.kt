@@ -73,17 +73,17 @@ class SourceRepositoryImpl(
         filterList: FilterList,
     ): SourcePagingSource {
         val source = requireNotNull(sourceManager.get(sourceId))
-        return SourceSearchPagingSource(source, query, filterList)
+        return SourceSearchPagingSource(source, query, filterList, sourceId)
     }
 
     override fun getPopular(sourceId: Long): SourcePagingSource {
         val source = requireNotNull(sourceManager.get(sourceId))
-        return SourcePopularPagingSource(source)
+        return SourcePopularPagingSource(source, sourceId)
     }
 
     override fun getLatest(sourceId: Long): SourcePagingSource {
         val source = requireNotNull(sourceManager.get(sourceId))
-        return SourceLatestPagingSource(source)
+        return SourceLatestPagingSource(source, sourceId)
     }
 
     private fun mapSourceToDomainSource(source: Source): DomainSource = DomainSource(

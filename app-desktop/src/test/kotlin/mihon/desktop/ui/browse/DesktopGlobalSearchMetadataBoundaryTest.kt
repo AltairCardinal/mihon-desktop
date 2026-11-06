@@ -32,6 +32,39 @@ import java.io.IOException
 
 class DesktopGlobalSearchMetadataBoundaryTest {
     @Test
+    fun `unknown registered ID records its frozen metadata incompatibility without dispatch or fake request`() =
+        runBlocking {
+            val unknown = FixtureSource("Unknown").apply { presentationError = NoSuchMethodError("future name") }
+            val owner = InstalledExtension(
+                File("routing-only.jar"),
+                listOf(unknown),
+                metadataSnapshot = ExtensionMeta("unknown.registered", 123L, "1.2.3", name = "Known package"),
+            )
+            val logs = mutableListOf<String>()
+            DesktopGlobalSearchCoordinator(SourceMangaSearchService(), logs::add).use { coordinator ->
+                coordinator.searchPrepared(
+                    listOf(prepareSourceMetadata(unknown, null)),
+                    "private-query",
+                    installed = listOf(owner),
+                )
+                assertTrue(coordinator.state.queryStates.isEmpty())
+                val row = GlobalSearchStateProjector.projectPrepared(
+                    coordinator.state.sourceMetadata,
+                    coordinator.state,
+                ).results.single()
+                assertInstanceOf(AppError.ExtensionIncompatible::class.java, row.error?.error)
+                assertEquals("unknown.registered", row.error?.error?.sourceFailureIdentity()?.extensionPackage)
+                assertEquals(0, unknown.idReads)
+                assertEquals(0, unknown.filterCalls)
+                assertEquals(0, unknown.searchCalls)
+                assertEquals(1, logs.size)
+                assertTrue(logs.single().contains("source=unknown"))
+                assertTrue(logs.single().contains("package=unknown.registered"))
+                assertFalse(logs.single().contains("private-query"))
+            }
+        }
+
+    @Test
     fun `cancelled metadata recovery restores the previous snapshot with the previous failure`() = runBlocking {
         val source = FixtureSource("Recovered").apply { presentationError = IOException("metadata IO") }
         DesktopGlobalSearchCoordinator(SourceMangaSearchService(), {}).use { coordinator ->

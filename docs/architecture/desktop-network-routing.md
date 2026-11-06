@@ -904,9 +904,42 @@ guard 中。字段失败转换为相应查询阶段的失败；后续页仍保�
 宿主值；章节准备回调仍收到原 SManga，全量元数据在该回调后捕获，保留原修改语义。
 存储错误仅透传已标记的扩展兼容异常，普通 IO 保持原存储分类；控制/宿主 Error 不降级。
 
-限制：这不代表所有返回字段消费端已闭合。Desktop materializer 的晚读 URL、兼容分类
-保真和未知 ID 的诊断，以及 Android mapper 调用端、分页、迁移/同步和登录恢复仍须
-按 roadmap 的真实调用门继续验证。原 APK/ART/R8 结论仍由 EC-08 独立提供。
+后续 materializer、Android 全局/分页及深链接的验证边界见7.6.14。尚余 Browse UI 的
+标题/WebView/assist、Smart 迁移实际反馈和 SyncRecovery 等已盘点入口，不能把 mapper
+或 reducer 的通过视为所有消费端完成。原 APK/ART/R8 结论由 EC-08 独立提供。
+
+#### 7.6.14 转换结果保真及 Android 消费端
+
+Desktop 全局状态保存本次已确认的 `sourceIdentities`（Long→纯宿主 DTO），materializer
+接收此帧，而不在失败时查询当前安装记录。它在任务内逐一守卫 URL、冻结 URL→原 SManga
+的表，然后调用原持久化。缓存比较只使用原对象引用，不调用插件 equals；不因持久化后
+补建导航索引而再次读 URL。存储本身不放入 source guard：只有已标记的兼容异常保留
+ExtensionIncompatible/冻结归属，其余普通 IO 仍为原 Unknown/Retry；控制与宿主 Error
+先传播。兼容失败不自动重试或显示登录，旧代际/attempt/已关闭任务不发布完成结果。
+未知 ID 的 prepared 兼容错误只在已接受的搜索操作中记录一次安全诊断，不造 child/request。
+
+Android Global Content 在实际字段转换范围捕获标记兼容异常，沿原逐源错误、操作前
+归属与代际发布；NetworkToLocal/SQL仍在外。登录恢复只消费展示帧的 prepared metadata，
+在用户点击时守卫 baseUrl，前后校验 generation 与旧 pageError 引用；失败通过 CAS
+反馈给仍有效的同一错误帧，接受后才诊断，不打开 WebView。旧二参数 factory 只用于
+无宿主描述的独立调用，所需 ID/name 守卫读取，不能作为生产未知登记的回退。
+
+Android Browse Model 在筛选器调用前捕获归属并放入操作状态，Pager 同时消费 listing、
+filterError、identity，不能在源失败后才读取已更新的安装记录。可信导航 ID 用于初始化
+偏好及 Paging 请求。分页先守卫/冻结 URL，仅为未缓存且首次出现的作品转换其他字段；
+重复页保持原分页边界，坏重复项不额外读取 title/memo 等字段。链接错误走既有类型化
+分页错误和恢复语义，API/字段失败不写成功作品；真实默认 AppModule 的新依赖接线有验证。
+
+遗留 AndroidSourceRepository 的 search/popular/latest 将已请求的宿主 ID 传入 Paging，
+分别使用 SEARCH/POPULAR/LATEST 守卫 API和字段。独立旧构造入口保留，只在确实没有
+宿主 ID 时守卫读取一次本次 load 所需的 ID；不能在每个结果项重新探测。已有 catch
+先恢复取消/致命/宿主 Error，普通持久化 IO 仍是原 LoadResult.Error，不改 schema。
+
+DeepLink 在选定可解析来源后使用宿主登记 ID；缺登记显示既有未知错误，不读取 ID 或
+请求作品。详情字段保留 DETAILS 阶段；所选 SChapter.url 在 CHAPTERS 内读取一次，
+之后本地查询/同步匹配复用该宿主字符串，不能把查询、事务或整个同步过程包为插件调用。
+URI 选择与原健康章节同步链保持不变。上述边界均有真实 UI/API/Paging 或持久化接线门，
+不把结果类型或源码符号检查当验收，不扩为任意插件线程/JNI的进程级保证。
 
 ## 8. 安全与隐私
 

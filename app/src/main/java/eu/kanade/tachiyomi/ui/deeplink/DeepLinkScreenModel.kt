@@ -38,13 +38,17 @@ class DeepLinkScreenModel(
         screenModelScope.launchIO {
             try {
                 val source = sourceManager.firstResolvableSource(query)
+                val sourceId = source?.let(sourceManager::getRegisteredSourceId)
+                if (source != null && sourceId == null) {
+                    mutableState.update { State.Failure(AppError.Unknown()) }
+                    return@launchIO
+                }
 
                 val remoteManga = source?.let {
                     guardSourceOperation(SourceOperationPhase.DETAILS) { it.getManga(query) }
                 }
                 val manga = remoteManga?.let {
-                    val sourceId = guardSourceOperation(SourceOperationPhase.METADATA) { requireNotNull(source).id }
-                    networkToLocalManga(it.toDomainManga(sourceId))
+                    networkToLocalManga(it.toDomainManga(requireNotNull(sourceId), SourceOperationPhase.DETAILS))
                 }
 
                 val type = source?.let { guardSourceOperation(SourceOperationPhase.METADATA) { it.getUriType(query) } }
@@ -74,7 +78,8 @@ class DeepLinkScreenModel(
     }
 
     private suspend fun getChapterFromSChapter(sChapter: SChapter, manga: Manga, source: Source): Chapter? {
-        val localChapter = getChapterByUrlAndMangaId.await(sChapter.url, manga.id)
+        val chapterUrl = guardSourceOperation(SourceOperationPhase.CHAPTERS) { sChapter.url }
+        val localChapter = getChapterByUrlAndMangaId.await(chapterUrl, manga.id)
 
         return if (localChapter == null) {
             val remoteManga = manga.toSManga()
@@ -82,7 +87,7 @@ class DeepLinkScreenModel(
                 source.getChapterList(remoteManga)
             }
             val newChapters = syncChaptersWithSource.await(sourceChapters, manga, source, false)
-            newChapters.find { it.url == sChapter.url }
+            newChapters.find { it.url == chapterUrl }
         } else {
             localChapter
         }

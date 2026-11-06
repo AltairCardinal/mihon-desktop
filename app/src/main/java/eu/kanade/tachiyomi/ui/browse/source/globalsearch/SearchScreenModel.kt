@@ -11,7 +11,9 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.util.ioCoroutineScope
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
+import eu.kanade.tachiyomi.network.SourceCompatibilityException
 import eu.kanade.tachiyomi.network.SourceFailureIdentity
+import eu.kanade.tachiyomi.network.SourceOperationPhase
 import eu.kanade.tachiyomi.source.Source
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.mutate
@@ -53,6 +55,7 @@ import tachiyomi.domain.source.service.prepareSourceFilters
 import tachiyomi.domain.source.service.prepareSourceMetadata
 import tachiyomi.domain.source.service.recordSourceFailureDiagnostics
 import tachiyomi.domain.source.service.sourceRecoveryAction
+import tachiyomi.domain.source.service.toSourceAppError
 import tachiyomi.domain.source.service.withSourceFailureIdentity
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -284,10 +287,20 @@ abstract class SearchScreenModel(
                     }
                     when (val reduced = sourceQueryReducer.reduce(current, result)) {
                         is SourceQueryState.Content -> {
-                            val titles = reduced.items
-                                .map { it.toDomainManga(sourceId) }
-                                .distinctBy { it.url }
-                                .let { networkToLocalManga(it) }
+                            val mapped = try {
+                                reduced.items.map { it.toDomainManga(sourceId, SourceOperationPhase.SEARCH) }
+                            } catch (error: SourceCompatibilityException) {
+                                val appError = error.toSourceAppError().withSourceFailureIdentity(
+                                    identities.first { it.first === source }.second,
+                                )
+                                val pageError = SourcePageError(appError, SourceRecoveryAction.None)
+                                val failed = SearchItemResult.Error(pageError)
+                                if (isActive && updateItem(source, failed, generation)) {
+                                    appError.recordSourceFailureDiagnostics(sourceFailureLog)
+                                }
+                                return@async
+                            }
+                            val titles = networkToLocalManga(mapped.distinctBy { it.url })
                             if (isActive && reduced.request.generation == generation) {
                                 updateItem(source, SearchItemResult.Success(titles), generation)
                             }
@@ -317,6 +330,30 @@ abstract class SearchScreenModel(
         }
     }
 
+    internal fun isCurrentSourceError(source: Source, error: SourcePageError, generation: Long): Boolean {
+        val current = state.value
+        val currentError = (current.items[source] as? SearchItemResult.Error)?.pageError
+        return current.generation == generation && currentError === error
+    }
+
+    internal fun reportSourceRecoveryFailure(
+        source: Source,
+        expectedError: SourcePageError,
+        generation: Long,
+        error: AppError,
+    ): Boolean {
+        val current = state.value
+        val previous = current.items[source] as? SearchItemResult.Error ?: return false
+        if (current.generation != generation || previous.pageError !== expectedError) return false
+        val identity = current.sourceIdentities.firstOrNull { it.first === source }?.second ?: return false
+        val appError = error.withSourceFailureIdentity(identity)
+        val recovery = if (identity.sourceId == null) SourceRecoveryAction.None else appError.sourceRecoveryAction()
+        val failed = SearchItemResult.Error(SourcePageError(appError, recovery))
+        val accepted = updateItem(source, failed, generation, previous)
+        if (accepted) appError.recordSourceFailureDiagnostics(sourceFailureLog)
+        return accepted
+    }
+
     private fun updateItems(
         items: PersistentMap<Source, SearchItemResult>,
         metadata: List<SourceMetadataSnapshot>,
@@ -335,9 +372,16 @@ abstract class SearchScreenModel(
         }
     }
 
-    private fun updateItem(source: Source, result: SearchItemResult, generation: Long): Boolean {
+    private fun updateItem(
+        source: Source,
+        result: SearchItemResult,
+        generation: Long,
+        expected: SearchItemResult? = null,
+    ): Boolean {
         val accepted = mutableState.updateAndGet { current ->
-            if (current.generation != generation || current.metadata.none { it.source === source }) {
+            if (current.generation != generation || current.metadata.none { it.source === source } ||
+                (expected != null && current.items[source] !== expected)
+            ) {
                 return@updateAndGet current
             }
             val items = current.items.mutate { it[source] = result }

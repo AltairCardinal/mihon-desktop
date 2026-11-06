@@ -1,6 +1,9 @@
 package tachiyomi.data.source
 
 import androidx.paging.PagingState
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -16,19 +19,25 @@ class SourceSearchPagingSource(
     source: Source,
     private val query: String,
     private val filters: FilterList,
-) : BaseSourcePagingSource(source) {
+    registeredSourceId: Long?,
+) : BaseSourcePagingSource(source, registeredSourceId = registeredSourceId, phase = SourceOperationPhase.SEARCH) {
+    constructor(source: Source, query: String, filters: FilterList) : this(source, query, filters, null)
     override suspend fun requestNextPage(currentPage: Int): MangasPage {
         return source.getSearchManga(currentPage, query, filters)
     }
 }
 
-class SourcePopularPagingSource(source: Source) : BaseSourcePagingSource(source) {
+class SourcePopularPagingSource(source: Source, registeredSourceId: Long?) :
+    BaseSourcePagingSource(source, registeredSourceId = registeredSourceId, phase = SourceOperationPhase.POPULAR) {
+    constructor(source: Source) : this(source, null)
     override suspend fun requestNextPage(currentPage: Int): MangasPage {
         return source.getPopularManga(currentPage)
     }
 }
 
-class SourceLatestPagingSource(source: Source) : BaseSourcePagingSource(source) {
+class SourceLatestPagingSource(source: Source, registeredSourceId: Long?) :
+    BaseSourcePagingSource(source, registeredSourceId = registeredSourceId, phase = SourceOperationPhase.LATEST) {
+    constructor(source: Source) : this(source, null)
     override suspend fun requestNextPage(currentPage: Int): MangasPage {
         return source.getLatestUpdates(currentPage)
     }
@@ -37,7 +46,11 @@ class SourceLatestPagingSource(source: Source) : BaseSourcePagingSource(source) 
 abstract class BaseSourcePagingSource(
     protected val source: Source,
     private val networkToLocalManga: NetworkToLocalManga = Injekt.get(),
+    private val registeredSourceId: Long?,
+    private val phase: SourceOperationPhase,
 ) : SourcePagingSource() {
+    constructor(source: Source, networkToLocalManga: NetworkToLocalManga = Injekt.get()) :
+        this(source, networkToLocalManga, null, SourceOperationPhase.METADATA)
 
     private val seenManga = hashSetOf<String>()
 
@@ -47,14 +60,16 @@ abstract class BaseSourcePagingSource(
         val page = params.key ?: 1
 
         return try {
+            // Only legacy standalone callers lack a host registration; do not probe the ID per item.
+            val sourceId = registeredSourceId ?: guardSourceOperation(SourceOperationPhase.METADATA) { source.id }
             val mangasPage = withIOContext {
-                requestNextPage(page.toInt())
+                guardSourceOperation(phase) { requestNextPage(page.toInt()) }
                     .takeIf { it.mangas.isNotEmpty() }
                     ?: throw NoResultsException()
             }
 
             val manga = mangasPage.mangas
-                .map { it.toDomainManga(source.id) }
+                .map { it.toDomainManga(sourceId, phase) }
                 .filter { seenManga.add(it.url) }
                 .let { networkToLocalManga(it) }
 
@@ -64,6 +79,7 @@ abstract class BaseSourcePagingSource(
                 nextKey = if (mangasPage.hasNextPage) page + 1 else null,
             )
         } catch (e: Exception) {
+            e.rethrowSourceControlFailure()
             LoadResult.Error(e)
         }
     }

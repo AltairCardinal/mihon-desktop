@@ -193,6 +193,9 @@ class AndroidExternalActionSharedWiringTest {
         }
     private fun Any.field(name: String) = javaClass.getDeclaredField(name).also { it.isAccessible = true }.get(this)
     private class TestSourceManager(private val sources: List<CatalogueSource>) : SourceManager {
+        private val registrations = sources.map { it to it.id }
+        override fun getRegisteredSourceId(source: Source): Long? =
+            registrations.firstOrNull { it.first === source }?.second
         override val isInitialized = MutableStateFlow(true)
         override val catalogueSources = flowOf(sources)
         override fun get(sourceKey: Long): Source? = null
