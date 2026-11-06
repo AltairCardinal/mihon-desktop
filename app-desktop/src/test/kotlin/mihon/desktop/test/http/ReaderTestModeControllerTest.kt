@@ -43,6 +43,50 @@ import kotlin.io.path.writeText
 
 class ReaderTestModeControllerTest {
 
+    @Test
+    fun `detail click correlation is bounded scoped and rejects unbound stale or wrong chapter opens`() {
+        val previousMode = mihon.desktop.test.state.applicationState.testMode
+        ReaderTestModeController().use { controller ->
+            ReaderIoTestModeBridge.install(controller)
+            try {
+                mihon.desktop.test.state.applicationState.testMode = false
+                assertEquals(null, ReaderIoTestModeBridge.detailChapterClicked(7))
+                assertTrue(controller.detailChapterClicks().isEmpty())
+                mihon.desktop.test.state.applicationState.testMode = true
+                fun open(chapter: Long, time: Long) = ReaderIoEvent(
+                    ReaderIoEventType.OPEN_READER_INTENT, time, ReaderChapterId(chapter), generation = 1,
+                    purpose = ReaderIoPurpose.READER_OPEN,
+                )
+                val cancelled = requireNotNull(ReaderIoTestModeBridge.detailChapterClicked(7))
+                ReaderIoTestModeBridge.bind().record(open(7, 100))
+                assertEquals(null, controller.detailChapterClicks().single().openIntentNanos, "API open cannot claim a cancelled click")
+                val first = requireNotNull(ReaderIoTestModeBridge.detailChapterClicked(7))
+                val bound = ReaderIoTestModeBridge.withDetailClick(first) { ReaderIoTestModeBridge.bind() }
+                bound.record(open(8, 200))
+                assertEquals(null, controller.detailChapterClicks().last().openIntentNanos)
+                bound.record(open(7, 300))
+                bound.record(open(7, 400))
+                assertEquals(300L, controller.detailChapterClicks().last().openIntentNanos)
+                val warm = requireNotNull(ReaderIoTestModeBridge.detailChapterClicked(7))
+                ReaderIoTestModeBridge.withDetailClick(warm) { ReaderIoTestModeBridge.bind() }.record(open(7, 500))
+                assertTrue(cancelled < first && first < warm)
+                assertEquals(listOf(null, 300L, 500L), controller.detailChapterClicks().map { it.openIntentNanos })
+                controller.beginScenario()
+                bound.record(open(7, 600))
+                assertTrue(controller.detailChapterClicks().isEmpty())
+                repeat(70) { ReaderIoTestModeBridge.detailChapterClicked(it.toLong()) }
+                assertEquals(64, controller.detailChapterClicks().size)
+                assertEquals(6L, controller.detailChapterClicks().first().chapterId)
+                controller.close()
+                bound.record(open(7, 700))
+                assertTrue(controller.detailChapterClicks().isEmpty())
+            } finally {
+                ReaderIoTestModeBridge.clear(controller)
+                mihon.desktop.test.state.applicationState.testMode = previousMode
+            }
+        }
+    }
+
     @TempDir
     lateinit var tempDirectory: Path
 

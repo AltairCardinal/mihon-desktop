@@ -134,6 +134,8 @@ data class DesktopReaderScreen(
     val downloadedOnly: Boolean = false,
     @Transient val onProductionClosed: () -> Unit = {},
 ) : Screen {
+    // Test-only correlation; excluded from data-class equality, navigation key and serialization.
+    @Transient internal var testDetailClickSequence: Long? = null
 
     // 章节切换发生在同一 Screen/session 内；key 只标识最初打开的 reader entry。
     override val key: String get() = "DesktopReaderScreen-$chapterId-$chapterUrl"
@@ -146,17 +148,19 @@ data class DesktopReaderScreen(
         val runtimeFactory = remember { desktopReaderRuntimeFactory() }
         val model = rememberScreenModel {
             mihon.desktop.reader.ReaderStartupTrace.markChapter("COMPOSE_MODEL_CREATE", chapterId)
-            runtimeFactory.createScreenModel(
-                initialContext = initialContext(),
-                isWebtoon = isWebtoon,
-                mangaViewerFlags = mangaViewerFlags,
-                dualPageOverride = isDualPage,
-                progressTrackerOverride = progressTracker,
-                onProductionClosed = onProductionClosed,
-                chapters = chapters,
-                opening = opening,
-                downloadedOnly = downloadedOnly,
-            )
+            mihon.desktop.test.http.ReaderIoTestModeBridge.withDetailClick(testDetailClickSequence) {
+                runtimeFactory.createScreenModel(
+                    initialContext = initialContext(),
+                    isWebtoon = isWebtoon,
+                    mangaViewerFlags = mangaViewerFlags,
+                    dualPageOverride = isDualPage,
+                    progressTrackerOverride = progressTracker,
+                    onProductionClosed = onProductionClosed,
+                    chapters = chapters,
+                    opening = opening,
+                    downloadedOnly = downloadedOnly,
+                )
+            }
         }
         val runtime = checkNotNull(model.runtime)
         DisposableEffect(runtime) {

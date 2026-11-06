@@ -46,6 +46,14 @@ data class ReaderIoTestEvent(
     val byteLimit: Int? = null,
 )
 
+@Serializable
+internal data class DetailChapterClick(
+    val sequence: Long,
+    val chapterId: Long,
+    val monotonicNanos: Long,
+    val openIntentNanos: Long? = null,
+)
+
 enum class ReaderTestFixtureKind {
     DOWNLOADED_DIRECTORY,
     CBZ,
@@ -154,6 +162,19 @@ class ReaderTestModeController(
     private val downloadManager: DesktopDownloadManager? = null,
     private val baseUrl: String = "http://127.0.0.1:8080",
 ) : ReaderIoProbe, DownloadIoProbe, ReaderIoGate, AutoCloseable {
+    private val detailClickLock = Any()
+    private val detailClickSequence = AtomicLong()
+    private val detailClicks = ArrayDeque<DetailChapterClick>()
+
+    internal fun detailChapterClicked(chapterId: Long): Long = synchronized(detailClickLock) {
+        val click = DetailChapterClick(detailClickSequence.incrementAndGet(), chapterId, System.nanoTime())
+        if (detailClicks.size == 64) detailClicks.removeFirst()
+        detailClicks.addLast(click)
+        click.sequence
+    }
+
+    internal fun detailChapterClicks(): List<DetailChapterClick> = synchronized(detailClickLock) { detailClicks.toList() }
+
     internal var startupObservation: mihon.desktop.reader.ReaderStartupObservation? =
         if (System.getenv("MIHON_READER_STARTUP_OBSERVATION") == "1") {
             mihon.desktop.reader.ReaderStartupObservation()
@@ -405,7 +426,17 @@ class ReaderTestModeController(
         record(scenario.get(), event)
     }
 
-    private fun record(expectedScenario: Long, event: ReaderIoEvent) {
+    private fun record(expectedScenario: Long, event: ReaderIoEvent, detailClick: Long? = null) {
+        if (detailClick != null && event.type == ReaderIoEventType.OPEN_READER_INTENT && scenario.get() == expectedScenario) {
+            synchronized(detailClickLock) {
+                val current = detailClicks.firstOrNull { it.sequence == detailClick }
+                if (current != null && current.chapterId == event.chapterId.value && current.openIntentNanos == null) {
+                    val updated = detailClicks.map { if (it === current) it.copy(openIntentNanos = event.monotonicNanos) else it }
+                    detailClicks.clear()
+                    detailClicks.addAll(updated)
+                }
+            }
+        }
         startupObservation?.record(event.type.name, event.pageId, event.generation)
         synchronized(scenarioStateLock) {
             if (
@@ -493,6 +524,7 @@ class ReaderTestModeController(
 
     fun beginScenario(currentPageIndex: Int = 0) {
         require(currentPageIndex >= 0) { "currentPageIndex must be non-negative" }
+        synchronized(detailClickLock) { detailClicks.clear() }
         synchronized(scenarioStateLock) {
             scenario.incrementAndGet()
             events.clear()
@@ -505,9 +537,9 @@ class ReaderTestModeController(
         }
     }
 
-    fun bindScenario(): ReaderIoProbe {
+    fun bindScenario(detailClick: Long? = null): ReaderIoProbe {
         val expected = scenario.get()
-        return ReaderIoProbe { event -> record(expected, event) }
+        return ReaderIoProbe { event -> record(expected, event, detailClick) }
     }
 
     fun clearEvents() = beginScenario()
@@ -835,6 +867,7 @@ class ReaderTestModeController(
     }
 
     override fun close() {
+        synchronized(detailClickLock) { detailClicks.clear() }
         removeStartupInputObservation()
         mihon.desktop.reader.ReaderStartupTrace.clear(startupObservation)
         val owners = synchronized(readControlLock) {
@@ -896,6 +929,19 @@ class ReaderTestModeController(
 }
 
 object ReaderIoTestModeBridge : ReaderIoProbe, DownloadIoProbe, ReaderIoGate {
+    private val constructingDetailClick = ThreadLocal<Long?>()
+
+    internal fun detailChapterClicked(chapterId: Long): Long? =
+        if (mihon.desktop.test.state.applicationState.testMode) controller?.detailChapterClicked(chapterId) else null
+
+    internal fun <T> withDetailClick(sequence: Long?, block: () -> T): T {
+        if (sequence == null || !mihon.desktop.test.state.applicationState.testMode) return block()
+        val previous = constructingDetailClick.get()
+        constructingDetailClick.set(sequence)
+        return try { block() } finally {
+            if (previous == null) constructingDetailClick.remove() else constructingDetailClick.set(previous)
+        }
+    }
     override suspend fun await(point: ReaderIoGatePoint) = Unit
     override fun bindContentReads(): ReaderIoGate =
         if (mihon.desktop.test.state.applicationState.testMode) controller ?: ReaderIoGate.None else ReaderIoGate.None
@@ -911,7 +957,7 @@ object ReaderIoTestModeBridge : ReaderIoProbe, DownloadIoProbe, ReaderIoGate {
         controller?.onIo(event)
     }
 
-    override fun bind(): ReaderIoProbe = controller?.bindScenario() ?: ReaderIoProbe.None
+    override fun bind(): ReaderIoProbe = controller?.bindScenario(constructingDetailClick.get()) ?: ReaderIoProbe.None
 
     fun install(controller: ReaderTestModeController) {
         value.set(controller)

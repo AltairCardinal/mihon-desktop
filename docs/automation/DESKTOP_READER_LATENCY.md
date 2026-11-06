@@ -40,3 +40,14 @@
 - 本轮12条均主动stop，保留PARTIAL/native-capture-exit告警；帧号连续、原帧文件无缺失，首见两端处于已录范围。只报告该局部转换，不改写manifest或声称物理屏幕扫描验证。结束正常退出阅读器、POST shutdown，确认自有应用/采集退出，QPC helper exit0。
 
 结果、逐样本边界和采用范围见[D4报告](../evidence/desktop-reader-d4-2026-11-06.md)；默认关闭的细观测与无进展唤醒规则见[内部架构](../architecture/desktop-reader-startup-observation.md)。
+
+## D5同仪器对照与输入覆盖（2026-11-06）
+
+- 控制E0与候选E1都包含同一低成本 `detailChapterClicks` 接线，细观测关闭。从 state 最新 OPEN 的 chapterId/openIntentNanos 唯一关联正常点击 callback，不能将累计事件里的第一次打开当 warm。callback→外部帧是主比较口径；原 sky 输入包络→外部帧另列，原始系统输入前段仍未知。实际工具包络有约93–643ms，不能统一写成100ms。
+- profile 从 `.test-tmp/desktop-first-open-20261106/sol/normal-profile` 复制，核精确LF marker、原件SHA、恢复页及设置。启动参数中的完整 EXE 必须与所给 preview manifest 的 artifactPath、目录 tag 一致；E0/E1窗口标题相同，不能靠标题区别。nativeInteraction 构建时的 NOT_RUN 保持原值，后续原生结果写证据，不篡改构建 manifest。
+- QPC helper 使用独立 TCP 逐行协议与新 client 对象；正式输入前六次校准。helper 空闲超时曾在输入前触发，校准失败不派发点击。辅助进程可有界延长空闲时间，结束发 stop 并核实际命令归属；PID会复用，禁止按旧PID表批量终止。
+- READY 只证明曾捕获首帧，不能证明90秒后仍在录制。输入前若校准失败或处理拖延，必须重新确认采集仍存活且最近帧在当前时间附近；必要时停止并重建该次采集，不能仅凭旧 ready.json 继续点击。D5一份 E0-dual-off/first 在90秒上限后17.135秒才输入，即使 received==written/missing0仍无输入画面覆盖，必须标技术失效并保留。另建 fresh profile/JVM 补采 first，不用慢样本替换规则择优。
+- visiblePageIndices 为集合顺序，左右页以 currentDisplayPageIndices 和实际画面为准。D5关闭匹配为[4,3]；开启匹配 first为[5,4]、正常保存进度后 warm为[6,5]。每页F/K及完整页对F分别保存。warm实际不同页对不与first交叉算收益。
+- 本轮不采D4的0.5秒CPU窗，看到正确完整漫画才GET、停止WGC；离线读图期间不维持采集。主动停止的 PARTIAL/native-capture-exit:1继续保留，frame编号/PNG连续与输入到首图覆盖逐份核实，不称完整扫描验证。结束正常退出阅读器，POST shutdown并核精确EXE/自有采集/helper退出。
+
+原件、14份有效样本及1份技术失效、采用裁决见 [D5报告](../evidence/desktop-reader-d5-2026-11-06.md)。

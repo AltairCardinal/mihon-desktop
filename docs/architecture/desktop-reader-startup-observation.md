@@ -15,3 +15,15 @@ AWT DOWN/UP 是自有 ComposeWindow 的 EDT 监听执行时刻；CHAPTER_CLICK �
 此出口等待已有生产流的真实变化，不引入定时器、延迟或共享协议修改。模型在 publisher collect 的锁内增加输入 revision；规划时捕获 revision，完成时若已有后续输入到达，保留一次重臂，避免晚到 fact、重试、模式/内容或 viewport 需求变化被活动任务吞掉。既有 busy 状态实际退出的重臂、预算释放、取消清理和有界失败恢复保持原链路。该规则不把尚在运行或尚未消费的 capability 视为无进展，不改变共享配对判定、图像质量或资源预算。
 
 定向验证包含真实 CBZ 的静止生产回归、短章节负控、当前真实双页 viewport 输入在旧任务终止窗口已被 collector 消费后的重臂竞态，以及缓存复用、邻页 header、重试/配置变化、实际资源退出与内容替换接线。收益由正常 UI 的首漫画外部采集裁决；内部不再空转不自动等于用户首开达到目标。当前原生验证限 Windows，其他平台未据此宣称性能结论。
+
+## D5：独立于细观测的正常点击锚点
+
+Test Mode 的正常详情章行回调在启动协程前记录 `detailChapterClicks`，最多保留最近64条。记录包括递增 sequence、chapterId、单调时钟和可空的 openIntentNanos；沿现有 `/test/reader/state` 导出，不同步落盘。普通运行不记录，也不额外读取此时钟。它与默认关闭的 CHAPTER_CLICK 细事件是两个不同用途的观测：正式对照两臂都有前者，关闭后者。
+
+导航对象上的临时 sequence 不进入 equality、导航 key 或持久化。runtime 构建期间通过既有 probe.bind 关联同章的第一个 OPEN；取消而没有构建时保持未关联，测试 API 或其他入口不会借用上一次点击。分析必须按 chapterId 与 openIntentNanos 精确关联最新 OPEN，不能取同进程第一条点击。该起点仍是应用回调，排除了此前的系统输入处理；不得称原始输入送达或据此判断完整响应预算。
+
+## D5：已撤回的初始内容准备候选
+
+当前 production 仍在接受页表后等待 Compose 实际 viewport 提交，再通过普通 scheduler 准备当前页 encoded 内容。D5曾尝试在下载路由已确定时由初始物理页提前提供无进度调度需求；虽然真实行为RED/GREEN证明依赖解除，但单页反向顺序未重现收益，关闭匹配双页首次有可辨退化，候选及共享resolver已精确撤回。不能将实验设计当作现行架构，也不将此结果推定为所有提前准备方案无效。
+
+再次研究前先读 [D5证据](../evidence/desktop-reader-d5-2026-11-06.md)，提供新的触发条件或反例。沿用资源预算、代次、真实viewport、图像质量和进度保护；注意既有 applySchedulePlanLocked 内的 runner.cancel 即使空集合也会 pump，不能假定调度都在session锁外。保留的新长期设施只有上节Test Mode点击锚点。

@@ -1284,6 +1284,7 @@ internal fun Application.testHttpServer(
                         put("startupObservation", Json.encodeToJsonElement(it))
                     }
                     put("productionEvents", Json.encodeToJsonElement(events))
+                    put("detailChapterClicks", Json.encodeToJsonElement(fixtureController?.detailChapterClicks().orEmpty()))
                     put("firstPagePresented", JsonPrimitive(events.any { it.type == "FIRST_PAGE_PRESENTED" }))
                     put("readerFixture", fixtureController?.fixtureDescriptor()?.toJson() ?: JsonNull)
                     put("sourcePageListCalls", JsonPrimitive(fixtureController?.sourcePageListCallCount() ?: 0))
