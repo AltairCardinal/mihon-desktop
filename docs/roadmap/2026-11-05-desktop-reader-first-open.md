@@ -1,6 +1,6 @@
 # Windows 已下载章节首次打开优化执行计划
 
-日期2026-11-05，2026-11-07更新。active-child-plan：无。D0–D7本批任务均已实施或按门槛明确裁决；[D7](2026-11-06-desktop-reader-d7-open-stream.md)性能候选已撤回，D6局部采用C1/C3，整体体验目标仍未达标。用户已接受Android无探针B9延迟，本计划仅处理Windows；后续新机制须先依据剩余证据另定，不把研究任务完成说成产品提速。
+日期2026-11-05，2026-11-07更新。active-child-plan：无。[D8恢复入口同锁准备复用](2026-11-07-desktop-reader-d8-restore-prepare.md)已按局部工作量采用，未证明外部首开毫秒收益。D0–D7本批任务均已实施或按门槛明确裁决；[D7](2026-11-06-desktop-reader-d7-open-stream.md)性能候选已撤回，D6局部采用C1/C3，整体体验目标仍未达标。用户已接受Android无探针B9延迟，本计划仅处理Windows；不把研究任务完成说成产品提速。
 
 ## 基线与工作边界
 
@@ -115,6 +115,13 @@ Sol medium 负责 production 调用归因、真实失败测试、一个最小候
 - [x] 定位、唯一候选、必要测试/审查和外部不采用裁决完成；文档与代码同批本地提交，不推送、不发布，不重试已撤回D5/D7补丁。
 - [ ] 整体响应≤100ms、近黑≤60ms及追平官方：仍未通过。本轮新增可确认首开体验收益为0ms，不表示没有后续优化空间。
 
+### D8　同锁恢复入口准备复用（本批完成，局部工作量采用）
+
+详见[D8计划](2026-11-07-desktop-reader-d8-restore-prepare.md)与[D8结果](../evidence/desktop-reader-d8-2026-11-07.md)。初始化、页表摄入在同一生命周期锁内复用刚准备的owner，真实模型/coordinator RED→GREEN确认identity2→1、held projection3→2、repository读取仍1且保存布局正确；独立重试/冲突恢复继续ensure，RESTORING及完成/失败publish保留。10项focused和一次独审通过，未改变订阅、物理页启动或共享算法。
+
+- [x] 真实工作量减少、恢复/身份接线及内部约束完成；同批本地提交，不推送。不为约1–2ms历史窗口新增两包、GUI/录制或全量。
+- [ ] 外部F/K改善与整体体验目标：本轮未重测，不从D7数据扣除局部计数；当前可执行包没有自动包含本轮源码。
+
 ## 交接入口
 
-执行前读取仓库AGENTS及其架构、验证、Desktop构建/原生验收和适用研究索引。Windows文本/脚本UTF-8，后台创建时禁止分配控制台；重型Gradle统一协调器串行。工具、系统或断联失败先定位，不因失败增加代理或全量测试。D6原件在本树.test-tmp/desktop-first-open-d6-20261106/，旧轮原件按各报告保留；当前采用结论以D3/D4/D6和D7撤回结果共同为准；D7原件位于main交付工作树的.test-tmp/desktop-first-open-d7-20261106/。
+执行前读取仓库AGENTS及其架构、验证、Desktop构建/原生验收和适用研究索引。Windows文本/脚本UTF-8，后台创建时禁止分配控制台；重型Gradle统一协调器串行。工具、系统或断联失败先定位，不因失败增加代理或全量测试。D6原件在本树.test-tmp/desktop-first-open-d6-20261106/，旧轮原件按各报告保留；当前采用结论以D3/D4/D6/D8局部采用和D7撤回结果共同为准；D7原件位于main交付工作树的.test-tmp/desktop-first-open-d7-20261106/。

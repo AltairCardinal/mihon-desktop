@@ -28,6 +28,70 @@ import org.junit.jupiter.api.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class DesktopChapterPairingModelIntegrationTest {
     @Test
+    fun `same locked restore entry prepares its owner only once and still restores saved layout`() = runTest {
+        val counts = mutableListOf<Pair<Int, Int>>()
+        for (duringAcceptance in listOf(false, true)) {
+            val reader = loaded(11, generation = 1)
+            val gate = CompletableDeferred<Unit>()
+            var reads = 0
+            val repository = object : CompleteLayoutRepository() {
+                override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot {
+                    assertEquals(11L, chapterId)
+                    assertEquals(10L, mangaId)
+                    reads++
+                    gate.await()
+                    return ChapterPairingSnapshot(ChapterPairingRecord(1, 8, setOf(3)), 4)
+                }
+                override suspend fun replaceLayout(
+                    chapterId: Long,
+                    mangaId: Long,
+                    expectedRevision: Long,
+                    pageCount: Int,
+                    adjustment: ReaderPairingAdjustment,
+                ): ChapterPairingSnapshot = error("Restore cannot write")
+            }
+            val initial = if (duringAcceptance) {
+                reader.copy(snapshot = mihon.domain.reader.session.ReaderSessionSnapshot.initial(reader.snapshot.activeChapter.id))
+            } else reader
+            val observation = mihon.desktop.reader.ReaderStartupObservation()
+            mihon.desktop.reader.ReaderStartupTrace.install(observation)
+            var model: ReaderScreenModel? = null
+            try {
+                val current = ReaderScreenModel(
+                    initialSessionState = initial,
+                    dualPageOverride = true,
+                    pairingCoordinator = DesktopChapterPairingCoordinator(repository, backgroundScope),
+                ).also { model = it }
+                if (duringAcceptance) current.acceptSessionState(reader)
+                runCurrent()
+                assertEquals(1, reads)
+                assertEquals(mihon.domain.reader.ReaderPairingPersistenceStatus.RESTORING,
+                    current.state.value.dualPairingState?.status)
+                val stages = observation.snapshot()
+                assertEquals(0L, stages.dropped)
+                val identities = stages.events.count { it.stage == "DUAL_IDENTITY_BEGIN" }
+                val projections = stages.events.count { it.stage == "DUAL_PROJECTION_BEGIN" }
+                gate.complete(Unit)
+                runCurrent()
+                assertEquals(PairingLoad.READY, current.state.value.pairingLoad)
+                assertEquals(setOf(3), current.state.value.forcedSinglePages)
+                assertEquals(4L, current.state.value.pairingRevision)
+                assertEquals(reader.snapshot.activeChapter.pages.map { it.id }, current.state.value.dualPageIdentity?.pageIds)
+                println("D8_RESTORE duringAcceptance=$duringAcceptance identities=$identities projections=$projections reads=$reads")
+                counts += identities to projections
+            } finally {
+                gate.complete(Unit)
+                model?.onDispose()
+                mihon.desktop.reader.ReaderStartupTrace.clear(observation)
+            }
+        }
+        counts.forEach { (identities, projections) ->
+            assertEquals(1, identities, "The restore entry must reuse the owner just prepared under its lock")
+            assertEquals(2, projections, "Keep preparation and the necessary RESTORING publication")
+        }
+    }
+
+    @Test
     fun `actual repository read begins with the shared restoring ticket and first binding keeps it`() = runTest {
         val gate = CompletableDeferred<Unit>()
         var reads = 0

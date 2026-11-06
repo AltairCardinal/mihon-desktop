@@ -306,8 +306,9 @@ class ReaderScreenModel(
     private var deferredContentState: DesktopReaderSessionState? = null
 
     init {
-        synchronized(productionRuntimeLifecycleLock) { ensureDualSession() }
-        beginPairingRestore(initialSessionState)
+        synchronized(productionRuntimeLifecycleLock) {
+            ensureDualSession()?.let { beginPairingRestore(initialSessionState, it) }
+        }
     }
 
     internal fun attachCatalog(
@@ -2199,17 +2200,24 @@ class ReaderScreenModel(
                 pairingEpoch++
                 pairingRequest = null
             }
-            if (ensureDualSession()?.pairingState?.status == ReaderPairingPersistenceStatus.WAITING_FOR_RESTORE) {
-                beginPairingRestore(accepted)
+            val owner = ensureDualSession()
+            if (owner?.pairingState?.status == ReaderPairingPersistenceStatus.WAITING_FOR_RESTORE) {
+                beginPairingRestore(accepted, owner)
             }
         }
         mihon.desktop.reader.ReaderStartupTrace.mark("SESSION_ACCEPT_END", generation = reader.snapshot.generation)
     }
 
-    private fun beginPairingRestore(reader: DesktopReaderSessionState) =
+    private fun beginPairingRestore(
+        reader: DesktopReaderSessionState,
+        preparedOwner: SharedDualPageSession? = null,
+    ) =
         synchronized(productionRuntimeLifecycleLock) {
             val coordinator = pairingCoordinator ?: return@synchronized
-            val owner = ensureDualSession() ?: return@synchronized
+            // Supplied only by an entry that just prepared this owner under the same lifecycle lock.
+            // Independent retry/recovery calls must still prepare the current session here.
+            val owner = preparedOwner ?: ensureDualSession() ?: return@synchronized
+            if (disposeRequested || dualSession !== owner || owner.isClosed) return@synchronized
             val context = reader.context
             if (context.isTemporaryReaderFile()) {
                 publishDualSession(owner)

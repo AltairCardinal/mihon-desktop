@@ -43,3 +43,9 @@ Desktop `ReaderScreenModel.ensureDualSession` 在同作品、同generation、同
 当前生产订阅仍属于Screen的LaunchedEffect，物理内容准备仍依赖真实viewport。D7曾把session元数据订阅移交model/runtime IO scope，真实夹具证明可解除未挂载时model仍Loading的依赖；但正常单页first的外部F区间重叠，双页对照亦未满足采用门槛，行为候选及其并发配套已撤回。不能将该实验的owned job或原子发布当成现行架构，也不据此宣称现行主干发生了实验并发问题。
 
 再次研究订阅迁移，须同时覆盖取消/旧代和非空session与derived identity的逐emission一致性；原实现依赖EDT串行的中间状态不能直接移入IO线程。真实factory、StateFlow观察及外部反例见[D7结果](../evidence/desktop-reader-d7-2026-11-07.md)。不以更早OPEN或单次warm改善替代首次正确漫画、双页与反向验证。
+
+## D8：同锁恢复入口的准备复用
+
+初始化和页表摄入在model生命周期锁内准备当前SharedDualPageSession后，可将本次owner直接传给私有恢复helper，避免进入恢复时再次构建身份/投影。preparedOwner不保存在字段中、不跨调用/异步边界复用；helper仍检查dispose、owner对象当前性及关闭状态。独立重试和保存冲突恢复不传该参数，沿原入口重新ensure当前owner。
+
+恢复请求建立后的RESTORING发布及成功/失败回调发布仍为必要操作，不能随重复准备一起删除。内容/代次/恢复请求的原有失效与迟到处理保持。真实模型/coordinator回归确认两个入口准备2→1、held阶段投影3→2、读取仍1且保存布局正确；这是局部工作量优化，没有证明外部首开毫秒收益。证据及验证边界见[D8结果](../evidence/desktop-reader-d8-2026-11-07.md)。
