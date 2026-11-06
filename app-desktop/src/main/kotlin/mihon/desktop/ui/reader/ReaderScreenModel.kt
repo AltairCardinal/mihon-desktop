@@ -423,16 +423,21 @@ class ReaderScreenModel(
             if (replaced) dualContentVersions[page.id] = (dualContentVersions[page.id] ?: 0L) + 1
             dualContentStamps[page.id] = stamp
         }
-        val content = ids.map { id ->
+        val content = ids.mapIndexed { index, id ->
             val version = "desktop:${dualContentVersions[id] ?: 0L}"
+            val previousContent = if (sameOrder) {
+                previous?.identity?.content?.getOrNull(index)?.takeIf {
+                    it.pageId == id && it.contentVersion == version
+                }
+            } else {
+                previous?.identity?.content?.firstOrNull {
+                    it.pageId == id && it.contentVersion == version
+                }
+            }
             ReaderDualPageContentIdentity(
                 id,
                 version,
-                sourceOrientation = previous?.identity?.content?.firstOrNull {
-                    it.pageId == id &&
-                        it.contentVersion == version
-                }
-                    ?.sourceOrientation ?: ReaderImageOrientation.NORMAL,
+                sourceOrientation = previousContent?.sourceOrientation ?: ReaderImageOrientation.NORMAL,
             )
         }
         val contentByPage = content.associateBy { it.pageId }

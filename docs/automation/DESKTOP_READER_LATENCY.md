@@ -51,3 +51,12 @@
 - 本轮不采D4的0.5秒CPU窗，看到正确完整漫画才GET、停止WGC；离线读图期间不维持采集。主动停止的 PARTIAL/native-capture-exit:1继续保留，frame编号/PNG连续与输入到首图覆盖逐份核实，不称完整扫描验证。结束正常退出阅读器，POST shutdown并核精确EXE/自有采集/helper退出。
 
 原件、14份有效样本及1份技术失效、采用裁决见 [D5报告](../evidence/desktop-reader-d5-2026-11-06.md)。
+
+## D6：缓冲日志新鲜度与恢复后对照
+
+- 先前用events.jsonl文件tail距当前≤1秒作为点击门槛过严。实际`CompositorWriter.log`以默认缓冲打开文件、逐行write而不逐事件flush；本轮静止窗口的已落盘tail可落后约0.7–2.3秒，不能单凭它认定录制结束。不要为修工具门槛而在两臂中途改变录制器flush或测量负担。
+- 本轮成功预检组合为：核自有capture进程仍活动、终态manifest尚未产生、读取tail的前后QPC与最后已落盘帧相差≤5秒，健康检查后≤10秒才派发输入。它是有界存活防护，不是“最新帧的精确时间”。最终仍逐份核实际input包络、callback到正确漫画原帧均处于录制覆盖内；旧ready.json不替代此核验。预检失败发生在点击前时，不创建input.json。
+- Esc中断的末份E0在章节输入前结束，整份profile和raw保留为`prep-only-E0-single-reverse-interrupted`，恢复后另复制fresh profile/JVM采first。已有慢样本不替换。反向pair中断前后相隔较大，必须披露负载/温度/磁盘冷态未控制，不能因区间刚好分离就给优化记稳定毫秒收益。
+- 8份正式样本全部保留PARTIAL、实际gap及每页端点；原始QPC/回调关联由主代理复算，R/F命中与前帧另目视确认。E0 warm只有首漫画的R上界，不能把fallback过渡区间当成已确认的响应下界。正常退出阅读器后关停自有应用、采集与clock helper，按完整路径/命令核归属。
+
+计数收益、8份/10页CSV、准备错误和未通过目标见[D6报告](../evidence/desktop-reader-d6-2026-11-06.md)。本节记录成功方法和限制，不新增永久采集系统或完整测试授权。

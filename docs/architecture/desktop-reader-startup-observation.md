@@ -27,3 +27,11 @@ Test Mode 的正常详情章行回调在启动协程前记录 `detailChapterClic
 当前 production 仍在接受页表后等待 Compose 实际 viewport 提交，再通过普通 scheduler 准备当前页 encoded 内容。D5曾尝试在下载路由已确定时由初始物理页提前提供无进度调度需求；虽然真实行为RED/GREEN证明依赖解除，但单页反向顺序未重现收益，关闭匹配双页首次有可辨退化，候选及共享resolver已精确撤回。不能将实验设计当作现行架构，也不将此结果推定为所有提前准备方案无效。
 
 再次研究前先读 [D5证据](../evidence/desktop-reader-d5-2026-11-06.md)，提供新的触发条件或反例。沿用资源预算、代次、真实viewport、图像质量和进度保护；注意既有 applySchedulePlanLocked 内的 runner.cancel 即使空集合也会 pump，不能假定调度都在session锁外。保留的新长期设施只有上节Test Mode点击锚点。
+
+## D6：同序身份读取与本次下载判断
+
+Desktop `ReaderScreenModel.ensureDualSession` 在同作品、同generation、同有序pageId列表时，按ordinal读取上一身份的content，并继续核对pageId/contentVersion；校验不符仍使用原NORMAL默认方向。其他页序沿用原查找fallback，内容替换、stamps、版本推进、方向事实、owner退役及进度协议不变。目的仅为减少稳定同序下的重复线性查询，不建立共享/跨代缓存，不改配对认证算法，也不因同序而跳过合法状态更新。
+
+`toReaderChapterRefs` 在一次章节投影内每章只求一次downloaded值，供isDownloaded和过滤共用；source0仍短路为已下载且不调用远端判断。下次打开重新判断，不将Boolean当成已验证内容位置，不跨打开缓存位置或失败；异常继续由既有打开链处理。该局部复用通过真实detail readerRequest与ReaderNavigator过滤/下一章接线验证。
+
+真实模型计数夹具中8页读取44→16、187页17,765→374；远端每章下载回调2→1，source0为0。采用限局部工作量减少，未证实稳定首图毫秒收益；8份Windows外部样本、三模式画面/往返、条件项不实施及限制见[D6结果](../evidence/desktop-reader-d6-2026-11-06.md)。无新增探针或等待协议，不以本批代替完整模式/平台验收。
