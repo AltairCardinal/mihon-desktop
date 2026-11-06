@@ -10,6 +10,51 @@
 # Keep the same rule in ordinary releases so tests exercise the shipped artifact.
 -keep,allowoptimization class androidx.tracing.Trace { public static *; }
 
+# Separate-APK native acceptance calls these host entry points after shrinking.
+# Retain only their call signatures in all builds, including ordinary releases;
+# their implementations, guards and external coroutine ABI remain optimized.
+-keepclassmembers,allowoptimization class eu.kanade.domain.extension.interactor.TrustExtension {
+    void trust(java.lang.String,long,java.lang.String);
+}
+-keepclassmembers,allowoptimization class eu.kanade.tachiyomi.extension.util.ExtensionLoader {
+    java.lang.Object loadExtensionFromPkgName(android.content.Context,java.lang.String,kotlin.coroutines.Continuation);
+}
+-keepclassmembers,allowoptimization class eu.kanade.tachiyomi.extension.model.LoadResult$Success {
+    eu.kanade.tachiyomi.extension.model.Extension$Installed getExtension();
+}
+-keepclassmembers,allowoptimization class tachiyomi.domain.source.service.SourceMangaSearchService {
+    <init>();
+    java.lang.Object loadPageResult(eu.kanade.tachiyomi.source.Source,tachiyomi.domain.source.service.SourcePageRequest,kotlin.coroutines.Continuation);
+}
+-keepclassmembers,allowoptimization class tachiyomi.domain.source.service.SourceQuery$Search {
+    <init>(java.lang.String,eu.kanade.tachiyomi.source.model.FilterList);
+}
+-keepclassmembers,allowoptimization class tachiyomi.domain.source.service.SourcePageRequest {
+    <init>(long,int,long,tachiyomi.domain.source.service.SourceQuery);
+}
+-keepclassmembers,allowoptimization class tachiyomi.domain.source.service.SourcePageResult$Content {
+    java.util.List getItems();
+}
+-keepclassmembers,allowoptimization class tachiyomi.domain.source.service.SourcePageResult$Failure {
+    mihon.domain.error.AppError getError();
+    tachiyomi.domain.source.service.SourceRecoveryAction getRecoveryAction();
+}
+-keepclassmembers,allowoptimization enum tachiyomi.domain.source.service.SourceRecoveryAction {
+    public static tachiyomi.domain.source.service.SourceRecoveryAction None;
+}
+-keepclassmembers,allowoptimization class tachiyomi.domain.source.service.SourceFilterPreparationKt {
+    public static tachiyomi.domain.source.service.SourceFilterResult prepareSourceFilters(eu.kanade.tachiyomi.source.Source);
+}
+-keepclassmembers,allowoptimization class tachiyomi.domain.source.service.SourceFilterResult$Failure {
+    mihon.domain.error.AppError getError();
+}
+-keepclassmembers,allowoptimization class eu.kanade.tachiyomi.network.SourceCompatibilityExceptionKt {
+    public static eu.kanade.tachiyomi.network.SourceFailureInspection inspectSourceFailure(java.lang.Throwable);
+}
+-keepclassmembers,allowoptimization class eu.kanade.tachiyomi.network.SourceFailureInspection {
+    java.lang.LinkageError getLinkage();
+}
+
 # Keep common dependencies used in extensions
 -keep,allowoptimization class androidx.preference.** { public protected *; }
 -keep,allowoptimization class kotlin.** { public protected *; }

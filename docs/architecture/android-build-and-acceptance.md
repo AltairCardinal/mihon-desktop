@@ -59,6 +59,13 @@ Debug 迁移到新 ID 后，既有 `app.mihon.dev` 数据不会自动进入新�
 独立薄 DEX/自有 future APK 的来源和原生门见[EC 夹具说明](../../scripts/fixtures/extension-coroutines/README.md#ec-08-android-原生装置)。
 仅编译 instrumentation 不证明 R8/ART 验收通过，benchmark 也不作为正式候选交付。
 
+EC 原生测试从独立 APK 调用真实信任、loader 和源服务。普通共用的
+`app/proguard-rules.pro` 只保留这些入口及测试读取的结果成员签名；内部实现继续优化。
+测试侧的 `applymapping` 不能恢复宿主已经内联或改变原型的方法，遇到此类错误须先
+区分测试接线失败与外部扩展 ABI 失败。不得用 benchmark 独有 keep、打入第二份宿主
+运行库或批量保留内部类解决；修改共用规则后须重新核对实际 DEX 和安装 hash，并复验
+原场景。非必要的内部设置访问应从测试移除，不为它扩展保留范围。
+
 ## 4. 版本与签名规范
 
 ### 4.1 唯一版本来源

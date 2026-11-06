@@ -1563,3 +1563,124 @@ EC-08仍须在最终提交快照执行原APK/ART/R8，不以本段绿测替代�
 本次提交后EC-06/07收口，当前剩余EC-08。独立快照已建但尚停在a9e5bea5ab，须前进
 到含本次提交的最终SHA、确认源码干净后才构建R8。原APK/ART、R8 DEX与test APK
 无重复host runtime/编译桩的门均仍未通过；API36不替代反馈者Android17厂商设备。
+
+
+## EC-08 R8 原生产物与原生入口修正（2026-11-06）
+
+独立 worktree `D:/Shell/Github/mihon-ec-native` 首次构建输入为干净提交
+`f3eb95a1ff9155fe31a702d99d78b9d1e78637aa`，不含用户 Reader 未提交改动。
+`ec08-r8-native-build` **PASSED/exit0/5分3秒**；benchmark 与 AndroidTest
+runtime 的 core-jvm 严格解析为 1.11.0。host 为 non-debuggable、API26/36、
+独立 `.benchmark` 身份；原普通 release R8 配置用于本次收缩，无测试专用 ABI keep。
+
+- 首 host x86_64 APK SHA256
+  `7e8cf375e5d2ef0816529fc21315d12cdb62f12bff57dcfd47ac3200eb554373`；
+  首 test APK SHA256
+  `b05168fac7cb6e2d2704395d6a51e4cea258d0ca18733705f19b8f955a66dd4b`。
+  两包同一 Android Debug signer
+  `fb141e4e749dc634a3d5d79e179a1057ab81fa1fd7cb5077b6dfeccfe11f3079`，
+  并非正式候选/正式签名。host 为已有 vc134，不分配正式版本。
+- Root 与未实施者分别检查实际 DEX 的 class_defs/class_data/encoded_method：
+  BuildersKt 新旧 `runBlocking`/`runBlockingK` 及两组 `$default` 均有正确原型、
+  public static 和可执行 code；不是仅在 method_ids 看到引用。test 无第二份协程
+  core、Source API 或 ec.absent/Jsoup 编译桩；其 kotlinx.coroutines.test 是合法测试工具。
+  嵌入原 APK、薄 DEX 的 hash 与已固定 provenance 一致。
+- 首 R8 的缺类警告为已有 window vendor/sidecar 与 jsoup optional RE2J：前者有
+  vendor API 0/空 folding 回退，后者 Class.forName 缺失使用 JDK regex。现有
+  `-ignorewarnings` 已在普通 release 配置；本任务未增加 dontwarn/依赖/替代桩，
+  未把这些警告描述为构建失败或原崩溃新根因。
+- 专用私有 AVD `ec-coroutines-api36`、serial `emulator-5580`、API36/x86_64/ranchu，
+  headless/WHPX/swiftshader；启动前无设备，不操作用户平板或其他 AVD。
+  已从 pm path 和设备 sha256sum 读回首两包实际安装 hash，均匹配。
+- `instrumentation-1` adb exit0 但 **JUnit 初始化失败**：expression body 的推断返回值
+  不为 void。显式 `runBlocking<Unit>` 修正，只是装置修复，不计产品红测/运行通过。
+- `ec08-native-junit-entry` 构建成功；test SHA
+  `94dd87bae980c851d1f91515d419981643f779b51d5867c8e1220274d7299bac` 安装读回匹配。
+  `instrumentation-2` 能进入测试，但调用被 host R8 内联的内部 showNsfwSource 时
+  NoSuchMethodError；尚未加载外部扩展。移除非必要默认 true 的 NSFW 设置访问。
+- `ec08-native-r8-test-seam` 因 Root 未先创建目标临时 init 目录而配置失败，非产品红。
+  修正目录后 `ec08-native-r8-test-seam-ready` **PASSED/48秒**，准确3文件 strict。
+  test SHA `57d91d649b0e91ccaa220dbd87b6ca901b5e8e01870587f52719398e63e9ea29`
+  安装读回匹配；`instrumentation-3` 通过真实 NetworkHelper 三客户端路由接线，
+  随后在被 host R8 内联的 TrustExtension.trust 失败，仍未进入外部兼容场景。
+- 测试 R8 的 applymapping 不能恢复宿主已删除/变形的内部方法；不是协程 ABI 缺失。
+  按既有 release acceptance 模式，在普通共用 proguard-rules 保留本测试实际跨 APK
+  调用的信任/loader/service 入口、DTO 构造/结果读取、分类读取的确切成员。
+  不新建测试专用产品逻辑，不保整包，不改变 BuildersKt/guard/拦截器规则；实现继续优化。
+  未实施者已对方向与有限成员范围独审 GO。修改后必须重建宿主与测试并复验原场景，
+  不能复用旧 host SHA 或把编译成功当 ART 验收。
+
+过程原件保存在主工作区 `.test-tmp/ec-native-fixtures/` 的 instrumentation-1/2/3
+log/json、installed-packages.json 与后续安装记录；协调器日志在 native worktree。
+当前仍未宣称 EC-08 通过；最终制品、完整场景结果与设备收尾待本节后续记录。
+
+
+`ec08-native-production-entry-keep` 已成功构建两包。新 host SHA
+`548fd830817019ab4b10d5dae2f9165dedb6f29519fad7795088ae9fb007cb16`，
+安装读回匹配，新旧可执行 ABI DEX 审计通过。`instrumentation-4` 已完成真实 Zerobyw
+冷加载与两页预期内容，后在测试的请求顺序断言失败：原先记录拦截器入口，外层搜索
+先入链，内部才触发域名请求，入口顺序不是服务端收到顺序。保留原“域名先于搜索”
+断言，将记录点移到 Loopback 服务端 accept 后读取 request line；未放宽为无序匹配。
+
+`ec08-native-wire-order` **PASSED**，准确3文件 strict，test SHA
+`ce388b9b4231864aa5b4d3757c39c4379e9322b5c58748afe04ca248f6cc8e73` 安装读回匹配。
+`instrumentation-5` 真正执行唯一完整方法，**OK (1 test)、零失败/跳过，Time 0.206秒**。
+顺序完成原 APK 冷域名/两页内容、旧 APK 搜索、新旧薄 DEX 的值/显式上下文/异常/取消、
+future filters/API 兼容失败与在途健康源并行、真实 enqueue 一次失败回调及健康后续请求、
+owned worker 退出且 uncaught 为空、资源与信任恢复。此时原生运行已通过；构建输入为
+f3eb95a1ff 加本节所述两个源码文件的修正，最终干净提交快照复验仍待收口记录。
+
+
+## EC-08 最终干净快照原生验收与完成审计（2026-11-06）
+
+代码/测试快照为 `01b3f9f207f2ffbb2cffa67c4f008542f8ed0401`，native worktree
+在源码逐文件与提交比对后快进到该 SHA，构建前后 git status 均干净。最终交付提交
+仅补入本节/roadmap 完成说明，与该快照的 production、测试、Gradle/ProGuard 内容相同。
+
+```powershell
+# 在 D:/Shell/Github/mihon-ec-native；精确3文件strict，既有普通release R8规则
+python scripts/gradle-coordinator.py start --key ec08-final-clean-snapshot -- .\gradlew.bat -I .test-tmp/ec08-native-format.init.gradle :app:spotlessKotlinCheck :app:assembleBenchmark :app:assembleBenchmarkAndroidTest '-Pmihon.testBuildType=benchmark' '-Pmihon.ecRealApk=D:/Shell/Github/mihon/.test-tmp/search-crash-20261105/tachiyomi-zh.zerobyw-v1.6.2.apk' --offline --no-parallel --max-workers=2 --console=plain
+# 已安装并逐包读回hash后，只执行此类的唯一方法
+D:/Android/Sdk/platform-tools/adb.exe -s emulator-5580 shell am instrument -w -r -e class eu.kanade.tachiyomi.extension.ExtensionCoroutineCompatibilityInstrumentationTest -e ecDedicated true app.mihon.desktop.fork.benchmark.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+- `ec08-final-clean-snapshot` **PASSED/exit0/3分30秒**，2026-11-06
+  02:47:07–02:50:37 UTC；无全量/完整模块测试、finalParityAudit 或正式发布。
+- 最终[内部宿主APK](D:/Shell/Github/mihon-ec-native/app/build/outputs/apk/benchmark/app-x86_64-benchmark.apk)
+  SHA256 `2f547f72922623fc19414755e8f9b96a1d9ea4c913b0d2e634c28af31300d430`。
+  `.benchmark`/vc134/`0.19.4-aex.116-benchmark`、min26/target36/non-debuggable。
+- 最终[独立测试APK](D:/Shell/Github/mihon-ec-native/app/build/outputs/apk/androidTest/benchmark/app-benchmark-androidTest.apk)
+  SHA256 `a4326dfc2360c25afa679992f06ae573d15b12950586903583ddbc7026edc909`，
+  `.benchmark.test`，targetPackage 为上述宿主。两包仍为相同 Android Debug cert SHA256
+  `fb141e4e749dc634a3d5d79e179a1057ab81fa1fd7cb5077b6dfeccfe11f3079`；
+  **仅内部原生验收产物，不是可分发正式候选**，未升级版本或使用正式签名。
+- 每包分别安装后从设备 pm path/sha256sum 读回，与以上 hash 完全匹配；实际 AVD
+  `ec-coroutines-api36`、serial `emulator-5580`、API36/x86_64/ranchu 再次确认。
+  manifest/badging/签名与实际 host/test DEX 均重审，新旧可执行方法定义仍保留；
+  test 无协程 core/ec.absent 桩，原外部 APK 未改写/重签/捆入宿主运行库。
+- `instrumentation-final` **OK (1 test)**、方法 status0、numtests1、零失败/跳过；
+  runner Time **0.109秒**，adb exit0、墙钟0.60秒。不是仅 adb 成功或仅检查符号存在。
+  原APK冷域名→两页真实解析内容、原旧APK搜索、独编新旧ABI返回/异常/取消、未来
+  filters/API失败与在途健康源完成、真实enqueue一次回调与健康后续请求、owned worker
+  join且uncaught为空以及finally恢复资源全部顺序执行。
+- 原始[runner日志](D:/Shell/Github/mihon/.test-tmp/ec-native-fixtures/instrumentation-final.log)、
+  [制品/设备/安装清单](D:/Shell/Github/mihon/.test-tmp/ec-native-fixtures/final-installed.json)、
+  final-host/test-dex.json、cert/badging 与同名 json 均在既有忽略证据目录。
+  Root亲读日志/实际产物；未实施者对原件、归属和未覆盖条件独立审查。此前run1–4
+  的装置失败保留，不计产品正确红或最终通过，不与run5/final重复计独立用例。
+- Desktop复用 `ec-desktop-final` 官方签名JVM JAR真实loader/冷域名/两次搜索，以及
+  EC03–07未来夹具、真实派生客户端/异步网络、双端UI接线/诊断/取消的有效focused组合；
+  本轮只改Android测试/共用keep与维护说明，不使这些结果失效，不宣称重跑全量。
+- 收尾只对已复核任务AVD执行 `adb -s emulator-5580 emu kill`；成功后 serial 从
+  adb devices 消失，任务启动PID45968亦不存在；未结束用户终端/其他Java或设备。
+  cleanup.json保存关机结果；Gradle协调器为终态PASSED，无本任务仍在执行的构建。
+
+有限最终审计对照原roadmap第8节：当前/向后兼容、未来API与异步网络隔离、调用覆盖、
+控制/取消与资源、诊断归属、双端真实运行证据均闭合，EC01–08勾选。不更新公共
+README/网站/changelog，不承诺任意插件、自建脱离宿主管理线程/JNI或被主动删除的
+保护链；“导出日志再崩溃”仍是未在本批修复的独立问题。
+
+**剩余外部验收边界**：受控HTTP不证明当前真实站点可用；API36不替代反馈者Android17
+联想设备，未获额外授权不操作用户平板。正式签名候选、用户手工验收、推送均未执行。
+另一会话并发推进main并保留本任务分支，本批仍在
+`codex/extension-compatibility-preserved-20261106` 本地，未自动改写或合入并发主干。

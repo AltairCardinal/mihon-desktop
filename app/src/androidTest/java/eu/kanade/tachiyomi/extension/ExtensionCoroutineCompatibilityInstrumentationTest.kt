@@ -59,7 +59,7 @@ import java.util.concurrent.atomic.AtomicReference
 /** Runs only on the task-owned emulator and non-debuggable R8 benchmark host. */
 class ExtensionCoroutineCompatibilityInstrumentationTest {
     @Test
-    fun externalBinariesWorkAfterR8AndFutureFailuresStaySourceLocal() = runBlocking {
+    fun externalBinariesWorkAfterR8AndFutureFailuresStaySourceLocal() = runBlocking<Unit> {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         check(InstrumentationRegistry.getArguments().getString("ecDedicated") == "true")
@@ -70,15 +70,10 @@ class ExtensionCoroutineCompatibilityInstrumentationTest {
         val trusted = preferences.trustedExtensions()
         val originalTrust = trusted.get()
         val trustWasSet = trusted.isSet()
-        val nsfw = preferences.showNsfwSource()
-        val originalNsfw = nsfw.get()
-        val nsfwWasSet = nsfw.isSet()
         val ownedFiles = mutableListOf<File>()
         val helper = Injekt.get<NetworkHelper>()
         val changedFields = mutableListOf<Pair<java.lang.reflect.Field, Any>>()
-        val paths = Collections.synchronizedList(mutableListOf<String>())
         try {
-            nsfw.set(true)
             Loopback().use { server ->
                 // Preserve each production chain. Only the final transport destination changes.
                 for (name in listOf("client", "nonCloudflareClient", "cloudflareClient")) {
@@ -86,7 +81,6 @@ class ExtensionCoroutineCompatibilityInstrumentationTest {
                     val original = field.get(helper) as OkHttpClient
                     val routed = original.newBuilder().addInterceptor { chain ->
                         val request = chain.request()
-                        paths += request.url.encodedPath
                         val local = request.url.newBuilder().scheme("http").host("127.0.0.1")
                             .port(server.port).build()
                         chain.proceed(request.newBuilder().url(local).build())
@@ -135,7 +129,7 @@ class ExtensionCoroutineCompatibilityInstrumentationTest {
                     )
                 }
                 assertEquals(3, server.count.get())
-                assertEquals(listOf("/source-domains/zerobyw.txt", "/pc/pc/", "/pc/pc/"), paths.toList())
+                assertEquals(listOf("/source-domains/zerobyw.txt", "/pc/pc/", "/pc/pc/"), server.paths.toList())
 
                 // These thin DEX inputs were compiled before the host, against different runtimes.
                 for ((name, hash, className) in listOf(
@@ -213,7 +207,6 @@ class ExtensionCoroutineCompatibilityInstrumentationTest {
             changedFields.asReversed().forEach { (field, original) -> field.set(helper, original) }
             ownedFiles.asReversed().forEach { if (it.exists()) check(it.delete()) }
             if (trustWasSet) trusted.set(originalTrust) else trusted.delete()
-            if (nsfwWasSet) nsfw.set(originalNsfw) else nsfw.delete()
         }
     }
 
@@ -295,6 +288,7 @@ class ExtensionCoroutineCompatibilityInstrumentationTest {
         private val server = ServerSocket(0, 8, InetAddress.getByName("127.0.0.1"))
         val port: Int get() = server.localPort
         val count = AtomicInteger()
+        val paths = Collections.synchronizedList(mutableListOf<String>())
         val failure = AtomicReference<Throwable?>()
         val blockSearch = AtomicReference<Pair<CountDownLatch, CountDownLatch>?>()
         private val worker = Thread({
@@ -304,6 +298,7 @@ class ExtensionCoroutineCompatibilityInstrumentationTest {
                         socket.soTimeout = 15_000
                         val reader = socket.getInputStream().bufferedReader(Charsets.US_ASCII)
                         val path = reader.readLine().split(' ')[1].substringBefore('?')
+                        paths += path
                         while (!reader.readLine().isNullOrEmpty()) Unit
                         if (path == "/pc/pc/") {
                             blockSearch.getAndSet(null)?.let { (entered, release) ->
