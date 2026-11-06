@@ -30,3 +30,13 @@
 主动stop会使既有录制器记录native-capture-exit:1并标PARTIAL。本次received==written、missing=0、帧序连续，且输入到稳定地图已完整处于所录时间区间，因此可报告该局部转换端点并保留尾部告警；不得改写为RECORDED或完整物理扫描验证。采样间隙按实际界限报告。
 
 区间结束后先正常退出阅读器保存进度，再关闭独立实例，核自有采集PID退出。编译/离线等待期间不继续派发输入或维持主动采集。其他用户实例与配置不操作。
+
+## D4续测确认（2026-11-06）
+
+- 用户恢复原生操作授权后，复用冻结控制/候选及已有focused结果，使用六份新隔离profile完成12条first/warm。中断的未点击C-single另存interrupted-C-single-20261106，原件不覆盖；每份的实际模式和页对由mountedReader与漫画画面共同确认。关闭匹配先D再C，其他模式先C再D；这是交替顺序，不能声称充分随机化或控制了磁盘/JIT冷态。
+- 正式采样前移除MIHON_READER_STARTUP_OBSERVATION，保留原productionEvents。先实际看到完整正确漫画，再采0.5秒当前JVM子进程CPU，最后GET状态、写stop。避免早期GET争用阅读器锁；不得混用旧轮早期GET数据宣称同条件净收益。该CPU窗包含合法后台工作且以15.625ms量化，不是纯空转时间或整机占用率。
+- 常驻QPC helper退出后必须新建helper、逐行读取器及校准函数；本次Node REPL旧函数保留旧cell绑定，单独重赋外层变量仍会读旧reader。正式输入前用新函数完成六次往返交集检查，校准失败时不派发输入。本轮正式映射宽约20微秒，输入时点仍保留约100ms的sky调用包络。
+- 外部分析逐页携带nearBlack，不能把双页两侧混为同一个黑区。连续黑采样遇到长QPC gap不能按任意阈值拆开、当作有内容；保留整段、两端非黑原帧及内部未观测区间。R须实际核对明确阅读器载入反馈或漫画，旧详情点击涟漪不算。
+- 本轮12条均主动stop，保留PARTIAL/native-capture-exit告警；帧号连续、原帧文件无缺失，首见两端处于已录范围。只报告该局部转换，不改写manifest或声称物理屏幕扫描验证。结束正常退出阅读器、POST shutdown，确认自有应用/采集退出，QPC helper exit0。
+
+结果、逐样本边界和采用范围见[D4报告](../evidence/desktop-reader-d4-2026-11-06.md)；默认关闭的细观测与无进展唤醒规则见[内部架构](../architecture/desktop-reader-startup-observation.md)。

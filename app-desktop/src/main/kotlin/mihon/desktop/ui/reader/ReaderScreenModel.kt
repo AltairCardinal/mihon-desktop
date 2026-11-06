@@ -592,6 +592,8 @@ class ReaderScreenModel(
 
     private var factPublisherJob: Job? = null
     private var spreadPublisherJob: Job? = null
+    // Protected by productionRuntimeLifecycleLock; captures inputs arriving during a terminating round.
+    private var publisherInputRevision = 0L
 
     /**
      * Whether the publisher that is currently registered in [spreadPublisherJob] has run.
@@ -719,7 +721,10 @@ class ReaderScreenModel(
                 ) { current, _, _, _, _ ->
                     current
                 }.collect { current ->
+                    mihon.desktop.reader.ReaderStartupTrace.mark("PUBLISHER_LOCK_WAIT", generation = current.session.generation)
                     val (transition, stuckToCancel, shouldRetry) = synchronized(productionRuntimeLifecycleLock) {
+                        mihon.desktop.reader.ReaderStartupTrace.mark("PUBLISHER_LOCKED", generation = current.session.generation)
+                        publisherInputRevision++
                         val owner = ensureDualSession() ?: return@synchronized Triple(null, null, false)
                         if (owner.location?.pageId != lastBindingAttemptLocation ||
                             lastBindingAttemptEpoch != externalInputEpoch
@@ -778,8 +783,11 @@ class ReaderScreenModel(
                                 owner.ownsFactRequest(it)
                             } ?: owner.requestFact(item.request.pageId)
                             pendingHeaderTickets[item.request.pageId] = original
+                            mihon.desktop.reader.ReaderStartupTrace.mark("HEADER_ENQUEUE", item.request.pageId, item.request.generation)
                             headerJobs[item] = scope.launch {
+                                mihon.desktop.reader.ReaderStartupTrace.mark("HEADER_SEMAPHORE_WAIT", item.request.pageId, item.request.generation)
                                 parallelism.acquire()
+                                mihon.desktop.reader.ReaderStartupTrace.mark("HEADER_ADMITTED", item.request.pageId, item.request.generation)
                                 try {
                                     if (item.request.pageId != owner.location?.pageId &&
                                         !optionalWorkCanRun(runtime)
@@ -790,11 +798,14 @@ class ReaderScreenModel(
                                         item.request,
                                         mihon.domain.reader.observability.ReaderIoPurpose.NORMAL_NEIGHBOUR_HEADER,
                                     )
+                                    mihon.desktop.reader.ReaderStartupTrace.mark("HEADER_PARSE_BEGIN", item.request.pageId, item.request.generation)
                                     val fact = lease?.use { originalHeader(it.content, original.content.rotation) }
                                         ?: ReaderPageFact(
                                             ReaderPageFactState.FAILED,
                                         )
+                                    mihon.desktop.reader.ReaderStartupTrace.mark("HEADER_PARSE_END", item.request.pageId, item.request.generation)
                                     acceptDualFact(original, fact, item.request)
+                                    mihon.desktop.reader.ReaderStartupTrace.mark("HEADER_ACCEPTED", item.request.pageId, item.request.generation)
                                 } catch (_: DesktopReaderOptionalWorkPaused) {
                                     synchronized(productionRuntimeLifecycleLock) {
                                         headerJobs
@@ -846,6 +857,7 @@ class ReaderScreenModel(
                             Triple(null, stuck, retry)
                         }
                     }
+                    mihon.desktop.reader.ReaderStartupTrace.mark("PUBLISHER_UNLOCKED", generation = current.session.generation)
                     stuckToCancel?.cancel()
                     transition?.applyOutsideLock()
                     if (shouldRetry) {
@@ -1267,6 +1279,7 @@ class ReaderScreenModel(
         // happen while this publisher is still finishing, so the publisher arms itself
         // again when the blocking work is already gone.
         val waitsForBusyState = java.util.concurrent.atomic.AtomicBoolean(false)
+        val noProgressInputRevision = java.util.concurrent.atomic.AtomicLong(-1L)
         val job = scope.launch(start = CoroutineStart.LAZY) {
             // The publisher has run: the field no longer holds a publisher that was
             // registered but never started.
@@ -1310,6 +1323,7 @@ class ReaderScreenModel(
                 // publisher leaves because of it and has to be armed again when the
                 // work that blocked it really exits.
                 var readerBusy = false
+                var classifiedInputRevision = -1L
                 val classification =
                     synchronized(productionRuntimeLifecycleLock) {
                         if (disposeRequested || dualSession !== owner ||
@@ -1321,6 +1335,7 @@ class ReaderScreenModel(
                                 emptyList<ReaderPageId>(),
                             )
                         }
+                        classifiedInputRevision = publisherInputRevision
                         admitCachedOriginalsLocked(owner, runtime)
                         val allNeeds = certificationNeedsLocked(owner).filter {
                             it.kind != ReaderPairingFactKind.PAIRING_RULES
@@ -1951,6 +1966,10 @@ class ReaderScreenModel(
                 if (publishedCount.get() == 0 && taskJobs.values.none { it.isActive } &&
                     pendingCompletionIds.isEmpty()
                 ) {
+                    // A capability may become unnecessary or unavailable without publishing.
+                    // With no work left, only a changed input can make the next plan useful.
+                    waitsForRealEvent.set(true)
+                    noProgressInputRevision.set(classifiedInputRevision)
                     break
                 }
             }
@@ -1979,8 +1998,11 @@ class ReaderScreenModel(
                 // publisher arms itself again when the blocking work is already gone.
                 // An aborted publisher whose binding failed must only clean up and not self re-arm:
                 // bounded retry is controlled solely by the binding layer.
-                val canRearm = !waitsForRealEvent.get() ||
-                    (waitsForBusyState.get() && !pairingBusyState(runtime, publisherOwnerKey))
+                val canRearm = synchronized(productionRuntimeLifecycleLock) {
+                    !waitsForRealEvent.get() ||
+                        (noProgressInputRevision.get() >= 0 && publisherInputRevision != noProgressInputRevision.get()) ||
+                        (waitsForBusyState.get() && !pairingBusyState(runtime, publisherOwnerKey))
+                }
                 if (!disposeRequested && !aborted && canRearm) {
                     optionalWorkRevision.update { it + 1 }
                 }
@@ -2057,8 +2079,10 @@ class ReaderScreenModel(
         )
     }
 
-    fun acceptSessionState(reader: DesktopReaderSessionState) =
+    fun acceptSessionState(reader: DesktopReaderSessionState) {
+        mihon.desktop.reader.ReaderStartupTrace.mark("SESSION_ACCEPT_WAIT", generation = reader.snapshot.generation)
         synchronized(productionRuntimeLifecycleLock) {
+            mihon.desktop.reader.ReaderStartupTrace.mark("SESSION_ACCEPT_LOCKED", generation = reader.snapshot.generation)
             val previous = _state.value
             val sameContentList = previous.session.generation == reader.snapshot.generation &&
                 previous.context.chapterId == reader.context.chapterId &&
@@ -2170,6 +2194,8 @@ class ReaderScreenModel(
                 beginPairingRestore(accepted)
             }
         }
+        mihon.desktop.reader.ReaderStartupTrace.mark("SESSION_ACCEPT_END", generation = reader.snapshot.generation)
+    }
 
     private fun beginPairingRestore(reader: DesktopReaderSessionState) =
         synchronized(productionRuntimeLifecycleLock) {
@@ -2594,10 +2620,12 @@ class ReaderScreenModel(
         height: Int,
         sideHint: ReaderPageSideHint = ReaderPageSideHint.UNKNOWN,
     ): Boolean = synchronized(productionRuntimeLifecycleLock) {
+        mihon.desktop.reader.ReaderStartupTrace.mark("DUAL_PREPARE_LOCKED", page.id)
         if (!isCurrentDualContent(page)) return@synchronized false
         val owner = dualSession ?: return@synchronized false
         if (owner.frame(ticket) == null) return@synchronized false
         val revision = owner.layoutRevision
+        mihon.desktop.reader.ReaderStartupTrace.mark("DUAL_FACT_BEGIN", page.id)
         if (!owner.acceptDecodedFact(
                 ticket,
                 page.id,
@@ -2608,8 +2636,11 @@ class ReaderScreenModel(
         ) {
             return@synchronized false
         }
+        mihon.desktop.reader.ReaderStartupTrace.mark("DUAL_FACT_END", page.id)
         if (revision != owner.layoutRevision) publishDualSession(owner)
-        owner.preparePage(ticket, page.id)
+        owner.preparePage(ticket, page.id).also {
+            mihon.desktop.reader.ReaderStartupTrace.mark("DUAL_PREPARE_END", page.id, detail = if (it) 1 else 0)
+        }
     }
 
     internal fun isCurrentDualViewport(ticket: ReaderDualPageViewportTicket) =

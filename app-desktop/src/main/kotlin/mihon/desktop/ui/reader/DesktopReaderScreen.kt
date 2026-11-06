@@ -145,6 +145,7 @@ data class DesktopReaderScreen(
         val scope = rememberCoroutineScope()
         val runtimeFactory = remember { desktopReaderRuntimeFactory() }
         val model = rememberScreenModel {
+            mihon.desktop.reader.ReaderStartupTrace.markChapter("COMPOSE_MODEL_CREATE", chapterId)
             runtimeFactory.createScreenModel(
                 initialContext = initialContext(),
                 isWebtoon = isWebtoon,
@@ -219,6 +220,9 @@ data class DesktopReaderScreen(
         }
         val focusRequester = remember { FocusRequester() }
         ReaderLifecycleEffect(model)
+        androidx.compose.runtime.SideEffect {
+            mihon.desktop.reader.ReaderStartupTrace.mark("COMPOSE_READER_APPLY", generation = state.session.generation)
+        }
         LaunchedEffect(runtime.session) {
             runtime.session.state.collect(model::acceptSessionState)
         }

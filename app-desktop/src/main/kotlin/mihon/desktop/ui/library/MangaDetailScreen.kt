@@ -439,6 +439,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
             scope.launch { categorySnackbar.showSnackbar(message) }
         }
         fun openChapter(chapterId: Long) {
+            mihon.desktop.reader.ReaderStartupTrace.markChapter("CHAPTER_CLICK", chapterId)
             scope.launch {
                 val current = model.state.value.manga ?: return@launch
                 if (current.id != mangaId) return@launch

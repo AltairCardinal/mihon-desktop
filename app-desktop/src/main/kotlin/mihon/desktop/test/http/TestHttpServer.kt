@@ -1280,6 +1280,9 @@ internal fun Application.testHttpServer(
                     put("chapterTitle", JsonPrimitive(production?.chapterTitle ?: readerState.chapterTitle))
                     put("hasNextChapter", JsonPrimitive(production?.hasNextChapter ?: readerState.hasNextChapter))
                     put("hasPrevChapter", JsonPrimitive(production?.hasPrevChapter ?: readerState.hasPrevChapter))
+                    fixtureController?.startupObservation?.snapshot()?.let {
+                        put("startupObservation", Json.encodeToJsonElement(it))
+                    }
                     put("productionEvents", Json.encodeToJsonElement(events))
                     put("firstPagePresented", JsonPrimitive(events.any { it.type == "FIRST_PAGE_PRESENTED" }))
                     put("readerFixture", fixtureController?.fixtureDescriptor()?.toJson() ?: JsonNull)

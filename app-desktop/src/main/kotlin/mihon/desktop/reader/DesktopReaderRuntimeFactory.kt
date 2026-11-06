@@ -183,6 +183,7 @@ class DesktopReaderRuntimeFactory internal constructor(
         parentScope: CoroutineScope,
         progressTrackerOverride: ReaderProgressTracker? = null,
     ): DesktopReaderRuntime {
+        ReaderStartupTrace.markChapter("RUNTIME_CREATE_BEGIN", initialContext.chapterId)
         val normalizedInitialContext = normalizeDownloadIdentity(initialContext)
         val ioReporter = ReaderIoReporter(readerIoProbe.bind(), readerMonotonicClock)
         val store = encodedPageStoreCoordinator.openSessionStore()
@@ -293,6 +294,7 @@ class DesktopReaderRuntimeFactory internal constructor(
                         synchronized(lifecycleLock) { activeRuntimes -= runtime }
                     }
                     session.start()
+                    ReaderStartupTrace.markChapter("RUNTIME_CREATE_END", initialContext.chapterId)
                     true
                 }
             }

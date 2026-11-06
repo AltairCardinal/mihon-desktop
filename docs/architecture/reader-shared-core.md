@@ -1005,3 +1005,7 @@ CRC 同时作为原身份字段保留；真实坏 CRC 但仍可读的 ZIP 在原
 真实挂载与恢复页字节；其他平台仍需其受影响验证，内部首绘与原生首见亦分别验收。
 库接口与依赖来源：[官方 ZIP 文档](https://commons.apache.org/proper/commons-compress/zip.html)、
 [1.28.0 依赖清单](https://commons.apache.org/proper/commons-compress/dependencies.html)。
+
+## Desktop 首开观测与无进展发布器
+
+Windows首开诊断的默认关闭条件、事件边界、CPU量化限制，以及无发布结果且没有在途工作的采样轮如何等待真实输入，见[Desktop首开观测与发布器](desktop-reader-startup-observation.md)。该规则位于Desktop模型，不改变共享配对协议、Android行为或图片质量；迟到输入被活动轮消费时必须继续唤醒，不能只按“这轮无结果”吞掉新需求。真实CBZ红绿、竞态变异及关闭细观测的窗口对照见[D4证据](../evidence/desktop-reader-d4-2026-11-06.md)。

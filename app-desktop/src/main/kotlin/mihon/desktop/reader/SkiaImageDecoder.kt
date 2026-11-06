@@ -133,7 +133,9 @@ object SkiaImageDecoder {
                                 ),
                             ),
                         )
+                        ReaderStartupTrace.mark("RASTER_PIXELS_BEGIN")
                         codec.readPixels(original)
+                        ReaderStartupTrace.mark("RASTER_PIXELS_END")
                         original.setImmutable()
                         val evidence = mihon.domain.reader.PageRotation.entries.associateWith { rotation ->
                             val plan =

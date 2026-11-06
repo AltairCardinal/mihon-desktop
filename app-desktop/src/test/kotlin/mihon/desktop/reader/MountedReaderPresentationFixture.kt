@@ -106,6 +106,7 @@ internal class MountedReaderPresentationFixture(
     heldResponsePage: Int? = null,
     encodedPageBytes: ByteArray? = null,
     automaticLayout: Boolean = false,
+    observeStartup: Boolean = false,
 ) : AutoCloseable {
     private val productionFixture = ReaderProductionTestFixture(
         root,
@@ -115,7 +116,10 @@ internal class MountedReaderPresentationFixture(
     )
     private val pageBytes = encodedPageBytes ?: productionFixture.pageBytes
     private val previousInjekt = Injekt
-    private val controller = ReaderTestModeController()
+    private val controller = ReaderTestModeController().apply {
+        if (observeStartup) enableStartupObservation()
+    }
+    fun startupSnapshot() = controller.startupObservation?.snapshot()
     private val responseGate = java.util.concurrent.CountDownLatch(1)
     private val source = if (case.route == MountedReaderContentRoute.ONLINE) {
         productionFixture.server.dispatcher = object : mockwebserver3.Dispatcher() {
@@ -189,7 +193,10 @@ internal class MountedReaderPresentationFixture(
             encodedCacheDirectory = root.resolve("encoded"),
             readerIoProbe = ReaderIoTestModeBridge,
             readerMonotonicClock = ReaderMonotonicClock { ++now },
-            readerIoGate = productionFixture.ioGate,
+            readerIoGate = if (observeStartup) object : ReaderIoGate {
+                override suspend fun await(point: ReaderIoGatePoint) = productionFixture.ioGate.await(point)
+                override fun bindContentReads(): ReaderIoGate = controller
+            } else productionFixture.ioGate,
             pageImageDecoder = pageImageDecoder,
             pairingCoordinator = pairingCoordinator,
         )

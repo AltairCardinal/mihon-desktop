@@ -1009,7 +1009,10 @@ class DesktopReaderPageImagePipeline internal constructor(
             purpose = ReaderIoPurpose.VISIBLE_DECODE,
         )
         try {
+            ReaderStartupTrace.mark("DECODER_CALL_BEGIN", key.contentKey.pageId, key.generation)
             decoder.decode(encoded, key).also { decoded ->
+                ReaderStartupTrace.mark("DECODER_CALL_END", key.contentKey.pageId, key.generation)
+
                 if (decoded == null) handlePartialDecodeFailure(key)
             }
         } catch (error: CancellationException) {

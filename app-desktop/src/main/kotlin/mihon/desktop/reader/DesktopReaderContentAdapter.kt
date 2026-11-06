@@ -132,6 +132,7 @@ class DesktopReaderContentAdapter internal constructor(
         opaquePageRef: String,
         destination: File,
     ): Long = runInterruptible {
+        ReaderStartupTrace.markChapter("ARCHIVE_COPY_BEGIN", chapterId, pageIndex)
         val lease = synchronized(lock) {
             val binding = archiveLeases[chapterId]
                 ?: error("Reader archive lease is unavailable for chapter $chapterId")
@@ -143,6 +144,7 @@ class DesktopReaderContentAdapter internal constructor(
         destination.parentFile?.mkdirs()
         try {
             lease.copyPage(pageIndex, destination)
+            ReaderStartupTrace.markChapter("ARCHIVE_COPY_END", chapterId, pageIndex)
             destination.length()
         } catch (error: Throwable) {
             destination.delete()

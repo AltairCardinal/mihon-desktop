@@ -167,6 +167,149 @@ class SharedSpreadDesktopResourceWiringTest {
     @TempDir lateinit var temp: File
 
     @Test
+    fun `stationary completed pairing work waits for a real input instead of self rearming`() = runBlocking {
+        Fixture(pageCount = 12, initialPage = 4, matching = true).use { fixture ->
+            assertStationaryPublisher(fixture)
+        }
+    }
+
+    @Test
+    @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named = "MIHON_CBZ_DIAGNOSTIC", matches = ".+")
+    fun `stationary actual opening payload waits instead of empty publisher restarts`() = runBlocking {
+        val archive = File(requireNotNull(System.getenv("MIHON_CBZ_DIAGNOSTIC")))
+        // Real archive descriptors begin Queued and become Ready through production materialization.
+        // Only normal demand extracts bytes; the page table retains all 187 unknown fact records.
+        Fixture(pageCount = 187, initialPage = 4, matching = true, originalDirectory = archive).use { fixture ->
+            assertStationaryPublisher(fixture)
+        }
+    }
+
+    @Test
+    @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named = "MIHON_CBZ_DIAGNOSTIC", matches = ".+")
+    fun `input consumed while no progress publisher exits still runs its new viewport work`() = runBlocking {
+        val archive = File(requireNotNull(System.getenv("MIHON_CBZ_DIAGNOSTIC")))
+        Fixture(pageCount = 187, initialPage = 4, matching = true, originalDirectory = archive).use { fixture ->
+            assertStationaryPublisher(fixture)
+            val model = fixture.model
+            val owner = requireNotNull(fixture.owner())
+            val unit = requireNotNull(model.state.value.currentDisplayUnitId)
+            val pages = unit.slots.mapNotNull { it.pageId }.toSet()
+            val held = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            val consumed = CompletableDeferred<Unit>()
+            val holding = AtomicBoolean(false)
+            val resumedRounds = AtomicInteger()
+            val firstToken = Any()
+            val lateToken = Any()
+            val lock = ReaderScreenModel::class.java.getDeclaredField("productionRuntimeLifecycleLock")
+                .apply { isAccessible = true }.get(model)
+            fun register(token: Any) = model.registerPagerViewportDemand(
+                token, mihon.desktop.ui.reader.presentation.VisiblePageSet(unit, pages, pages.first()), owner.location,
+            )
+            model.p5SpreadPublisherRoundObserver = ReaderSpreadPublisherRoundObserver(
+                captureSamples = { _, _ -> emptyMap() },
+                onRound = { round ->
+                    if (release.isCompleted) resumedRounds.incrementAndGet()
+                    if (round.publishedCountAfter == 0 && round.outstandingAfter.isEmpty() &&
+                        round.pendingCompletionIds.isEmpty() && holding.compareAndSet(false, true)
+                    ) {
+                        held.complete(Unit)
+                        runBlocking { kotlinx.coroutines.withTimeout(15_000) { release.await() } }
+                    }
+                },
+            )
+            try {
+                assertTrue(register(firstToken))
+                kotlinx.coroutines.withTimeout(5_000) { held.await() }
+                // No more scene rendering: only the real Default-dispatcher publisher runs.
+                delay(100)
+                synchronized(lock) {
+                    mockkObject(model)
+                    every {
+                        model invoke "startSpreadSamplesLocked" withArguments listOf(
+                            any<SharedDualPageSession>(), any<mihon.desktop.reader.DesktopReaderRuntime>(),
+                            any<CoroutineScope>(), any<kotlinx.coroutines.sync.Semaphore>(),
+                        )
+                    } answers {
+                        callOriginal().also { result ->
+                            if (!release.isCompleted) {
+                                assertEquals(null, result, "Old publisher is active when the new input is consumed")
+                                consumed.complete(Unit)
+                            }
+                        }
+                    }
+                }
+                assertTrue(register(lateToken))
+                kotlinx.coroutines.withTimeout(5_000) { consumed.await() }
+                delay(100)
+                assertSame(owner, fixture.owner())
+                assertTrue(!release.isCompleted)
+                release.complete(Unit)
+                kotlinx.coroutines.withTimeout(5_000) {
+                    while (resumedRounds.get() == 0) delay(5)
+                }
+                assertTrue(resumedRounds.get() > 0, "Consumed current-unit demand needs a fresh production planning round")
+            } finally {
+                release.complete(Unit)
+                model.p5SpreadPublisherRoundObserver = null
+                model.releasePagerViewportDemand(firstToken)
+                model.releasePagerViewportDemand(lateToken)
+                synchronized(lock) { unmockkObject(model) }
+            }
+        }
+    }
+    private suspend fun assertStationaryPublisher(fixture: Fixture) {
+        fixture.mountReader()
+        fixture.pump(timeoutMillis = 10_000) {
+            fixture.owner()?.displayedHistory?.any { it.drawnPageIds.isNotEmpty() } == true &&
+                fixture.runtime.session.physicalWorkCount.value == 0 &&
+                fixture.runtime.pageImagePipeline.foregroundWork.value == 0 &&
+                fixture.runtime.pageImagePipeline.optionalWork.value == 0
+        }
+        assertTrue(fixture.owner()?.displayedHistory?.any { it.drawnPageIds.isNotEmpty() } == true)
+        var lastIo = fixture.ioEvents.size
+        var stableSince = System.nanoTime()
+        fixture.pump(timeoutMillis = 3_000) {
+            if (lastIo != fixture.ioEvents.size) {
+                lastIo = fixture.ioEvents.size
+                stableSince = System.nanoTime()
+            }
+            System.nanoTime() - stableSince >= 200_000_000L
+        }
+        val owner = requireNotNull(fixture.owner())
+        val identity = owner.identity
+        val facts = owner.factWorkRevision
+        val samples = owner.sampleWorkRevision
+        val events = fixture.ioEvents.size
+        val bindings = AtomicInteger()
+        val model = fixture.model
+        val modelLock = ReaderScreenModel::class.java.getDeclaredField("productionRuntimeLifecycleLock")
+            .apply { isAccessible = true }.get(model)
+        synchronized(modelLock) {
+            mockkObject(model)
+            every {
+                model invoke "startSpreadSamplesLocked" withArguments listOf(
+                    any<SharedDualPageSession>(), any<mihon.desktop.reader.DesktopReaderRuntime>(),
+                    any<CoroutineScope>(), any<kotlinx.coroutines.sync.Semaphore>(),
+                )
+            } answers {
+                bindings.incrementAndGet()
+                callOriginal()
+            }
+        }
+        try {
+            val observedUntil = System.nanoTime() + 150_000_000L
+            fixture.pump(timeoutMillis = 500) { System.nanoTime() >= observedUntil }
+            assertEquals(identity, fixture.owner()?.identity)
+            assertEquals(facts, owner.factWorkRevision, "No new fact input arrived")
+            assertEquals(samples, owner.sampleWorkRevision, "No new sample input arrived")
+            assertEquals(events, fixture.ioEvents.size, "No real I/O completion needs another round")
+            assertEquals(0, bindings.get(), "A stationary reader must not continuously bind empty publishers")
+        } finally {
+            synchronized(modelLock) { unmockkObject(model) }
+        }
+    }
+    @Test
     fun `reader state HTTP reports bounded real model and runtime attempts across retry and rebind`() = runBlocking {
         val previousTestMode = applicationState.testMode
         applicationState.testMode = true
@@ -1364,7 +1507,7 @@ class SharedSpreadDesktopResourceWiringTest {
                 ).use { assertTrue(it.asset.originalSamples.isNotEmpty()) }
             }
             val decodes = fixture.decoderReady.toMap()
-            val previousAttempts = attempts(requireNotNull(fixture.owner()))
+            val previousBudget = requireNotNull(fixture.owner()).factBudget
             val opens = fixture.ioEvents.count {
                 it.type == ReaderIoEventType.OPEN_PAGE ||
                     it.type == ReaderIoEventType.HEADER_READ
@@ -1384,11 +1527,10 @@ class SharedSpreadDesktopResourceWiringTest {
                 },
                 "Cache-only fact admission cannot reopen encoded content or headers",
             )
-            assertEquals(
-                previousAttempts,
-                attempts(owner),
-                "Exact cache admission must not reserve new attempts or refund existing work",
+            org.junit.jupiter.api.Assertions.assertNotSame(
+                previousBudget, owner.factBudget, "Matching configuration replaces its fact budget",
             )
+            assertTrue(attempts(owner).isEmpty(), "Exact cache admission must not reserve attempts in the new budget")
             assertEquals(decodes, fixture.decoderReady.toMap(), "Cache-only fact admission cannot call the decoder")
             assertEquals(0, fixture.regionReads.get())
             assertTrue(fixture.runtime.pageContentOwner.snapshot().activeLeaseCounts.isEmpty())
