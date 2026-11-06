@@ -9,6 +9,15 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## November 6, 2026 — Android extension compatibility and integrated candidate
+
+**Accepted candidate documentation · no public product release**
+
+- Signed candidate `0.19.4-aex.119` (code 137) combines the previously accepted reader-startup optimizations and recorder-free delivery build with newer-extension coroutine compatibility. Recognized interface-linkage failures remain local to the affected source, with available extension/version diagnostics; healthy sources can continue.
+- [Integrated source `41ca3eb2e5`](https://github.com/AltairCardinal/mihon-desktop/commit/41ca3eb2e50f25bd8fd70bac504cec2b1cebb7b5). The candidate passed 11 focused tests, signed-artifact checks and API36 emulator upgrade/startup checks. This does not establish acceptance on the reporting Lenovo Android17 device, universal future-extension compatibility, or a new performance measurement. The separate crash-log export failure is outside this fix.
+
+Acceptance basis: the project owner accepted this delivered Android candidate on November 6, 2026 in a private conversation and authorized main integration, commit and push. No product release or APK upload is implied.
+
 ## November 6, 2026 — Android downloaded-chapter opening
 
 The project owner accepted opening latency in signed Android tablet candidate `0.19.4-aex.118` (code 136, source `4f311f611b`). This integrates the B9 startup optimizations, including publishing page lists ahead of whole-chapter header reads, reusing unchanged facts and chapter lookups, and avoiding unrelated brightness-overlay updates. The accepted signed build omits the reader timing recorder. The unadopted Compose rc01 experiment is excluded. Acceptance is limited to the tested Android opening experience.

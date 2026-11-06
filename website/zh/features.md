@@ -131,6 +131,7 @@ Mihon 的书库与阅读体验有了桌面入口。可以在桌面界面管理�
 | 缺失扩展安装建议 | 扩展页面根据书库收藏提示缺失扩展，提供单项或批量安装流程；可用性受已配置仓库与平台安装规则约束。 | [交付记录与平台边界](https://github.com/AltairCardinal/mihon-desktop/blob/main/docs/2026-09-17-extension-install-suggestions-handoff.md) |
 | Upcoming 章节预测 | 从桌面更新页进入 Upcoming，查看预期日期；预测不保证实际发布时间。 | [已记录的桌面差异](https://github.com/AltairCardinal/mihon-desktop/blob/main/docs/MIHON_ANDROID_DESKTOP_FEATURE_IMPLEMENTATION_COMPARISON.md#desktop-产品差异) |
 | 桌面 Webtoon 自动滚动 | 在 Webtoon 阅读设置中开启自动滚动并选择速度；本说明不宣称 Android 已有同等支持。 | [已记录的桌面差异](https://github.com/AltairCardinal/mihon-desktop/blob/main/docs/MIHON_ANDROID_DESKTOP_FEATURE_IMPLEMENTATION_COMPARISON.md#desktop-产品差异) |
+| Android 扩展兼容 | 全局搜索及来源加载将可识别的扩展接口不兼容反馈为当前源失败，保留可确认的扩展身份／版本，健康源可继续。已支持 Zerobyw 1.6.2 使用的协程接口；不保证任意未来接口，也不隔离插件自行管理的线程／JNI。 | [已验收候选与边界](https://github.com/AltairCardinal/mihon-desktop/blob/main/docs/evidence/android-extension-reader-integrated-candidate-2026-11-06.md) |
 | 桌面扩展兼容 | APK-to-JAR 兼容层将受支持的 Android 扩展行为适配到桌面，不保证所有 Android 扩展都可运行。 | [已记录的桌面差异](https://github.com/AltairCardinal/mihon-desktop/blob/main/docs/MIHON_ANDROID_DESKTOP_FEATURE_IMPLEMENTATION_COMPARISON.md#desktop-产品差异) |
 | 桌面输入与系统集成 | 键盘鼠标操作、宽屏布局，以及桌面文件目录和剪贴板集成适配桌面使用习惯；各项操作的平台支持有所不同。 | [平台对照说明](https://github.com/AltairCardinal/mihon-desktop/blob/main/docs/MIHON_ANDROID_DESKTOP_FEATURE_IMPLEMENTATION_COMPARISON.md) |
 
