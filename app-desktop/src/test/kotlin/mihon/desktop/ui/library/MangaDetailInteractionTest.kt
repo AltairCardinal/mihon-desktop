@@ -55,6 +55,7 @@ import mihon.desktop.di.initDesktopDIForTest
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.library.MangaDetailScreenModelFactory
 import mihon.desktop.platform.toDesktopNotification
+import mihon.desktop.test.http.testHttpServer
 import mihon.desktop.ui.reader.DesktopReaderScreen
 import mihon.desktop.ui.theme.DesktopTheme
 import org.jetbrains.skia.Image
@@ -97,6 +98,65 @@ import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
 @Isolated
 @OptIn(ExperimentalComposeUiApi::class, InternalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class MangaDetailInteractionTest {
+
+    @Test
+    fun `normal chapter callback exports its bounded input anchor without fine observation`(@TempDir root: File) = runBlocking {
+        withDetail(root) { scene, _, _, chapters ->
+            val previousMode = mihon.desktop.test.state.applicationState.testMode
+            val controller = mihon.desktop.test.http.ReaderTestModeController()
+            mihon.desktop.test.http.ReaderIoTestModeBridge.install(controller)
+            val server = io.ktor.server.engine.embeddedServer(io.ktor.server.cio.CIO, host = "127.0.0.1", port = 0) {
+                testHttpServer()
+            }.start()
+            try {
+                val port = server.resolvedConnectors().single().port
+                val client = java.net.http.HttpClient.newHttpClient()
+                fun read(): kotlinx.serialization.json.JsonObject {
+                    val body = client.send(
+                        java.net.http.HttpRequest.newBuilder(java.net.URI("http://127.0.0.1:$port/test/reader/state")).GET().build(),
+                        java.net.http.HttpResponse.BodyHandlers.ofString(),
+                    ).body()
+                    return kotlinx.serialization.json.Json.parseToJsonElement(body) as kotlinx.serialization.json.JsonObject
+                }
+                mihon.desktop.test.state.applicationState.testMode = true
+                assertNull(controller.startupObservation, "Fine observation stays disabled")
+                chapterMouse(scene, "Chapter 1")
+                render(scene)
+                val reader = scene.navigator.lastItem as DesktopReaderScreen
+                assertEquals(chapters[0].id, reader.chapterId)
+                val state = read()
+                val clicks = state["detailChapterClicks"] as? kotlinx.serialization.json.JsonArray
+                assertNotNull(clicks, "Existing reader-state HTTP must export the normal chapter callback anchor")
+                val anchor = requireNotNull(clicks).single() as kotlinx.serialization.json.JsonObject
+                assertEquals(reader.chapterId.toString(), anchor["chapterId"].toString())
+                val open = controller.snapshot().last { it.type == "OPEN_READER_INTENT" }
+                assertEquals(open.monotonicNanos.toString(), anchor["openIntentNanos"].toString())
+                assertTrue(requireNotNull(anchor["monotonicNanos"]).toString().toLong() <= open.monotonicNanos)
+                scene.navigator.pop()
+                render(scene)
+                chapterMouse(scene, "Chapter 1")
+                render(scene)
+                val warm = requireNotNull(read()["detailChapterClicks"]) as kotlinx.serialization.json.JsonArray
+                assertEquals(2, warm.size)
+                val latest = warm.last() as kotlinx.serialization.json.JsonObject
+                assertTrue(requireNotNull(latest["sequence"]).toString().toLong() > requireNotNull(anchor["sequence"]).toString().toLong())
+                assertEquals(controller.snapshot().last { it.type == "OPEN_READER_INTENT" }.monotonicNanos.toString(), latest["openIntentNanos"].toString())
+                scene.navigator.pop()
+                render(scene)
+                mihon.desktop.test.state.applicationState.testMode = false
+                chapterMouse(scene, "Chapter 2")
+                render(scene)
+                assertEquals(2, (read()["detailChapterClicks"] as kotlinx.serialization.json.JsonArray).size, "Ordinary callback does not record")
+                scene.navigator.pop()
+                render(scene)
+            } finally {
+                server.stop(0, 0)
+                mihon.desktop.test.http.ReaderIoTestModeBridge.clear(controller)
+                controller.close()
+                mihon.desktop.test.state.applicationState.testMode = previousMode
+            }
+        }
+    }
 
     @Test
     fun `actual detail legacy and duplicate dialogs revoke the original armed content intent`(

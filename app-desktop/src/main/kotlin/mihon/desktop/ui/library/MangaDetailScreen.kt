@@ -441,6 +441,8 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
             scope.launch { categorySnackbar.showSnackbar(message) }
         }
         fun openChapter(chapterId: Long) {
+            val detailClick = mihon.desktop.test.http.ReaderIoTestModeBridge.detailChapterClicked(chapterId)
+            mihon.desktop.reader.ReaderStartupTrace.markChapter("CHAPTER_CLICK", chapterId)
             scope.launch {
                 val current = model.state.value.manga ?: return@launch
                 if (current.id != mangaId) return@launch
@@ -452,7 +454,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 }
                 val request = model.readerRequest(current, model.state.value.chapters, chapter) ?: return@launch
                 navigator.push(
-                    mihon.desktop.reader.desktopReaderScreen(request),
+                    mihon.desktop.reader.desktopReaderScreen(request).also { it.testDetailClickSequence = detailClick },
                 )
             }
         }

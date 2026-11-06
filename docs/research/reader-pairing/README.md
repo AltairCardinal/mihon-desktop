@@ -30,6 +30,12 @@ P0已由`64329568ace1`完成，平均首绘由643.7降至267.5ms，见[P0实测]
 
 后续独立[持续优化R4H](../../evidence/reader-startup-autonomous-2026-11-04.md)已测试该hardware-copy候选：8份同仪器真机首开确认控制实际HARDWARE、候选实际ARGB_8888且都GPU绘制；静态/放大/蓝色双页对应像素一致。单页首绘/近黑未改善，OFF近黑上界均值名义快25.5ms但两对为+52/−1ms，未证实稳定收益；候选Native保持量更高，4组短流程帧没有额外优势。**不推广**，源码与设备均恢复R2，完整补丁/真实失败/原PTS及资源边界在唯一报告；这不否定其它设备或后续具体条件下重新评估，也不重启历史配对算法。首次目标bitmap观测不等于全tile的copy次数/自耗时。
 
+## 2026-11-06 Desktop 新的调用条件与D6裁决
+
+[D6结果](../../evidence/desktop-reader-d6-2026-11-06.md)、[优化分析](../../evidence/desktop-reader-d6-optimization-analysis-2026-11-06.md)与[roadmap](../../roadmap/2026-11-06-desktop-reader-d6-roadmap.md)已完成本批实施和有界裁决。C1只在Desktop adapter的同序身份查找使用ordinal并核pageId/version，其他情况保留原fallback；真实模型8页读取44→16、187页17,765→374，短章/方向/版本/重排/换代/关闭通过。它不是旧A2共享certifier补丁，共享O8原已具备，不恢复A2/A3/A4暂缓方案。
+
+C3仅每次投影每远端章Boolean判断2→1，source0=0、下次打开重查。C2没有完整可复用输入键/真实冗余RED，C4/C5/C6无安全可删依赖证据，位置复用/C7未启动。8份Windows新raw、三模式正确漫画/往返及6项focused完成；单页首次正反向均观察候选较早，但中断/环境漂移未控制、warm重叠、双页无同轮控制，只按局部工作量采用，未证实稳定首开ms或≤60ms近黑。D5提前准备仍撤回，本轮不改变历史算法裁定，也不把条件不实施解释为永久无优化空间。
+
 ## 2026-11-01 当前主干复评
 
 - [A2：复用owner索引，暂缓](2026-11-01-main-reevaluation/A2.md)

@@ -83,11 +83,13 @@ internal fun rememberReaderPresentationImage(
         readerPresentationDecodeKey(page, generation)
     }
     val holder = remember(owner, identity, decodeKey) {
+        mihon.desktop.reader.ReaderStartupTrace.mark("COMPOSE_SLOT_REMEMBER", page.id, generation)
         owner.createHolder(identity, decodeKey)
     }
     val state by key(holder) { holder.state.collectAsState() }
     val regionState by key(holder.regionHolder) { holder.regionHolder.state.collectAsState() }
     DisposableEffect(holder) {
+        mihon.desktop.reader.ReaderStartupTrace.mark("COMPOSE_SLOT_APPLY", page.id, generation)
         holder.acquire()
         onDispose(holder::close)
     }

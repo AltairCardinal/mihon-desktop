@@ -1125,6 +1125,54 @@ class MangaDetailScreenModelTest {
     }
 
     @Test
+    fun `readerRequest reuses one download decision per remote chapter for navigation and filtering`() = runTest {
+        val calls = mutableMapOf<Long, Int>()
+        val model = MangaDetailScreenModel(
+            mangaId = 1L,
+            isDownloaded = { _, chapter ->
+                calls[chapter.id] = (calls[chapter.id] ?: 0) + 1
+                chapter.id != 2L
+            },
+        )
+        val manga = createFakeManga(id = 1L).copy(source = 9L, chapterFlags = Manga.CHAPTER_SHOW_DOWNLOADED)
+        val chapters = (1L..3L).map { id ->
+            createFakeChapter(id).copy(sourceOrder = id, chapterNumber = id.toDouble())
+        }
+        try {
+            val request = requireNotNull(model.readerRequest(manga, chapters, chapters.first()))
+            val refs = request.chapters
+            assertEquals(setOf(1L, 2L, 3L), refs.map { it.id }.toSet())
+            assertTrue(refs.first { it.id == 1L }.isDownloaded)
+            assertFalse(refs.first { it.id == 2L }.isDownloaded)
+            assertTrue(refs.first { it.id == 2L }.isFiltered)
+            assertFalse(refs.first { it.id == 3L }.isFiltered)
+            val navigator = mihon.desktop.reader.ReaderNavigator(refs, request.currentChapterIndex, skipFilteredChapters = true)
+            assertEquals(3L, listOfNotNull(navigator.nextToRead, navigator.previousRead).single().id)
+            println("D6_C3 remote downloadCalls=$calls")
+            assertEquals(mapOf(1L to 1, 2L to 1, 3L to 1), calls)
+            model.readerRequest(manga, chapters, chapters.first())
+            assertEquals(mapOf(1L to 2, 2L to 2, 3L to 2), calls, "a later open must recheck downloads")
+        } finally {
+            model.onDispose()
+        }
+    }
+
+    @Test
+    fun `readerRequest local source never invokes remote download checks`() = runTest {
+        var calls = 0
+        val model = MangaDetailScreenModel(mangaId = 1L, isDownloaded = { _, _ -> calls++; false })
+        val manga = createFakeManga(id = 1L).copy(source = 0L, chapterFlags = Manga.CHAPTER_SHOW_DOWNLOADED)
+        val chapters = listOf(createFakeChapter(1L), createFakeChapter(2L))
+        try {
+            val request = requireNotNull(model.readerRequest(manga, chapters, chapters.first()))
+            assertTrue(request.chapters.all { it.isDownloaded && !it.isFiltered })
+            assertEquals(0, calls)
+        } finally {
+            model.onDispose()
+        }
+    }
+
+    @Test
     fun `readerRequest marks filtered and duplicate chapters for shared reader skip policy`() = runTest {
         val model = MangaDetailScreenModel(mangaId = 1L)
         val manga = createFakeManga(id = 1L).copy(chapterFlags = Manga.CHAPTER_SHOW_UNREAD)

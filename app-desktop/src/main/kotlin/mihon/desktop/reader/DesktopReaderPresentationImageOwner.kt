@@ -183,6 +183,7 @@ class DesktopReaderPresentationImageOwner internal constructor(
         identity: DesktopReaderPresentationImageSlotIdentity,
         decodeKey: ReaderPageDecodeKey,
     ): DesktopReaderPresentationImageHolder {
+        ReaderStartupTrace.mark("HOLDER_CREATE_BEGIN", identity.pageId, identity.generation)
         require(identity.pageId == decodeKey.contentKey.pageId) {
             "Presentation and decode page identities must match"
         }
@@ -218,6 +219,7 @@ class DesktopReaderPresentationImageOwner internal constructor(
             check(identity.attemptGeneration == currentAttemptLocked(identity)) {
                 "Presentation holder attempt must be current"
             }
+            ReaderStartupTrace.mark("HOLDER_CREATE_LOCKED", identity.pageId, identity.generation)
             DesktopReaderPresentationImageHolder(
                 identity = identity,
                 decodeKey = decodeKey,
@@ -225,7 +227,10 @@ class DesktopReaderPresentationImageOwner internal constructor(
                 regionHolder = regionOwner.createHolder(identity, decodeKey),
                 pageIoObserver = pageIoObserver,
                 owner = this,
-            ).also(holders::add)
+            ).also {
+                holders.add(it)
+                ReaderStartupTrace.mark("HOLDER_CREATED", identity.pageId, identity.generation)
+            }
         }
     }
 
@@ -429,6 +434,7 @@ internal class DesktopReaderPresentationImageHolder internal constructor(
         get() = owner.memoryAuthority
 
     fun acquire() {
+        ReaderStartupTrace.mark("HOLDER_ACQUIRE_REQUEST", identity.pageId, identity.generation)
         if (!owner.isCurrent(this)) return
         var jobToStart: Job? = null
         synchronized(lock) {
@@ -437,6 +443,7 @@ internal class DesktopReaderPresentationImageHolder internal constructor(
             jobToStart = scope.launch(start = CoroutineStart.LAZY) { acquirePresentationLease() }
             acquireJob = jobToStart
         }
+        ReaderStartupTrace.mark("HOLDER_ACQUIRE_LAUNCH", identity.pageId, identity.generation)
         jobToStart?.start()
     }
 
@@ -493,10 +500,12 @@ internal class DesktopReaderPresentationImageHolder internal constructor(
     private suspend fun acquirePresentationLease() {
         val runningJob = checkNotNull(currentCoroutineContext()[Job])
         try {
+            ReaderStartupTrace.mark("HOLDER_LEASE_WAIT_BEGIN", identity.pageId, identity.generation)
             regionHolder.acquire()
             val regionState = regionHolder.state.first { snapshot ->
                 snapshot.previewAsset != null || snapshot.previewFailed || snapshot.closed
             }
+            ReaderStartupTrace.mark("HOLDER_LEASE_WAIT_END", identity.pageId, identity.generation)
             when {
                 regionState.previewAsset != null -> owner.acceptReadyAsset(this, runningJob, regionState.previewAsset)
                 regionState.previewFailed -> owner.publishFailure(this, runningJob, regionState.previewFailure)
@@ -517,6 +526,7 @@ internal class DesktopReaderPresentationImageHolder internal constructor(
         asset: DesktopReaderImageAsset,
     ): Boolean = synchronized(lock) {
         if (closed || acquireJob !== runningJob) return false
+        ReaderStartupTrace.mark("HOLDER_READY", identity.pageId, identity.generation)
         mutableState.value = DesktopReaderPresentationImageState.Ready(identity, asset)
         true
     }

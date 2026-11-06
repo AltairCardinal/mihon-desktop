@@ -1,0 +1,17 @@
+batch,arm,mode,opening,pageListMs,openMs,decodeMs,presentMs,pageListToOpenMs,decodeToPresentMs,windowCapture,captureReason,dualPageActual,autoPairActual,restoredPage,pageCount
+original,A,single,first,13.4855,558.2589,562.0537,634.8611,544.7734,72.80739999999992,UNAVAILABLE,ValueError: The reader owner's visible AWT frame was not found,False,False,0,180
+original,A,single,warm,5.3522,20.8287,21.3296,60.1943,15.476500000000001,38.8647,UNAVAILABLE,ValueError: The reader owner's visible AWT frame was not found,False,False,0,180
+original,B,single,first,32.2817,40.1222,42.9584,289.0211,7.840499999999999,246.0627,UNAVAILABLE,ValueError: The reader owner's visible AWT frame was not found,False,False,0,180
+original,B,single,warm,4.7132,4.9634,5.3861,51.821,0.2502000000000004,46.4349,UNAVAILABLE,ValueError: The reader owner's visible AWT frame was not found,False,False,0,180
+original,A,dual,first,16.1214,278.4162,286.4356,365.7836,262.2948,79.34799999999996,UNAVAILABLE,ValueError: The reader owner's visible AWT frame was not found,True,False,0,180
+original,A,dual,warm,6.3413,21.9657,22.43,70.7263,15.624399999999998,48.296299999999995,UNAVAILABLE,ValueError: The reader owner's visible AWT frame was not found,True,False,0,180
+original,B,dual,first,14.3092,20.3414,22.6394,308.8241,6.0322,286.18469999999996,UNAVAILABLE,ValueError: The reader owner's visible AWT frame was not found,True,False,0,180
+original,B,dual,warm,6.7995,6.9804,7.4139,55.6874,0.18090000000000028,48.2735,UNAVAILABLE,ValueError: The reader owner's visible AWT frame was not found,True,False,0,180
+window-pid-corrected,A,single,first,14.8058,176.967,182.5248,249.2969,162.1612,66.7721,RECORDED,,False,False,0,180
+window-pid-corrected,A,single,warm,4.8328,18.0784,18.6158,60.6403,13.2456,42.0245,RECORDED,,False,False,0,180
+window-pid-corrected,B,single,first,14.5044,25.2077,29.1317,261.6841,10.703299999999999,232.5524,UNAVAILABLE,ValueError: The reader owner's visible AWT frame was not found,False,False,0,180
+window-pid-corrected,B,single,warm,5.2186,5.4262,5.8541,50.5817,0.20759999999999934,44.727599999999995,RECORDED,,False,False,0,180
+window-pid-corrected,A,dual,first,15.7719,230.3976,236.0643,313.7963,214.62570000000002,77.73199999999997,UNAVAILABLE,ValueError: The reader owner's visible AWT frame was not found,True,False,0,180
+window-pid-corrected,A,dual,warm,5.1754,22.3812,22.8919,72.8751,17.2058,49.983200000000004,RECORDED,,True,False,0,180
+window-pid-corrected,B,dual,first,15.6227,22.1626,24.694,251.5669,6.539900000000001,226.87290000000002,UNAVAILABLE,ValueError: The reader owner's visible AWT frame was not found,True,False,0,180
+window-pid-corrected,B,dual,warm,4.7534,4.9138,5.2721,56.8865,0.1604000000000001,51.614399999999996,RECORDED,,True,False,0,180

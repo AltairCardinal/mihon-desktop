@@ -9,6 +9,12 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## November 6, 2026 — Windows reader preparation
+
+The accepted Windows candidate reduces repeated preparation when opening chapters while preserving image quality, page order, and normal page turning. Evidence supports the local work reduction, but does not establish a stable first-open speedup or a fixed millisecond gain; results vary with device and content. This acceptance covers the Windows preview only.
+
+Implementation: `104851e5c54c696557c68820c2e2bf840d152bcd`. Acceptance basis: the project owner accepted this Windows scope in a private session on November 6, 2026 and authorized main integration and push. Accepted preview: `0.11.24.6.a5fb088`; no public product release has been issued.
+
 ## November 6, 2026 — Android extension compatibility and integrated candidate
 
 **Accepted candidate documentation · no public product release**

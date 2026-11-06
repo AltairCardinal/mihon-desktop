@@ -284,16 +284,27 @@ internal class ReaderPagerNativePresentation(
         height: Int = 0,
         sideHint: ReaderPageSideHint = ReaderPageSideHint.UNKNOWN,
     ): Boolean {
-        if (!active || !exposed || slot !in expected) return false
+        mihon.desktop.reader.ReaderStartupTrace.mark("PAGER_PREPARE_BEGIN", slot.pageId)
+        if (!active || !exposed || slot !in expected) {
+            mihon.desktop.reader.ReaderStartupTrace.mark("PAGER_REJECT_EXPOSURE", slot.pageId)
+            return false
+        }
         val model = binding?.model ?: return true
         val page = slot.pageId ?: return false
-        if (content != null && !model.isCurrentDualContent(content)) return false
+        if (content != null && !model.isCurrentDualContent(content)) {
+            mihon.desktop.reader.ReaderStartupTrace.mark("PAGER_REJECT_CONTENT", page)
+            return false
+        }
         if (binding?.currentGeometry != true) {
             // Resizing revokes progress capabilities immediately, but current pixels need not
             // disappear while the next composition mounts its replacement geometry.
+            mihon.desktop.reader.ReaderStartupTrace.mark("PAGER_GEOMETRY_UNAVAILABLE", page)
             return content != null && slot in rendered
         }
-        if (ticket?.let { model.isDualViewportPageLocked(it, page) } == true) return true
+        if (ticket?.let { model.isDualViewportPageLocked(it, page) } == true) {
+            mihon.desktop.reader.ReaderStartupTrace.mark("PAGER_READY_LOCKED", page)
+            return true
+        }
         fun prepared(): Boolean = ticket?.let {
             if (content == null) {
                 model.prepareDualViewportPage(it, page)
@@ -301,15 +312,26 @@ internal class ReaderPagerNativePresentation(
                 model.prepareDecodedDualViewportPage(it, content, width, height, sideHint)
             }
         } == true
-        if (prepared()) return true
-        if (ticket?.let(model::isCurrentDualViewport) == true) return false
-        if (ticket != null && !selected && ticket?.locationSequence != binding?.logicalLocation?.sequence) return false
+        if (prepared()) {
+            mihon.desktop.reader.ReaderStartupTrace.mark("PAGER_READY_PREPARED", page)
+            return true
+        }
+        if (ticket?.let(model::isCurrentDualViewport) == true) {
+            mihon.desktop.reader.ReaderStartupTrace.mark("PAGER_REJECT_TICKET_PREPARE", page)
+            return false
+        }
+        if (ticket != null && !selected && ticket?.locationSequence != binding?.logicalLocation?.sequence) {
+            mihon.desktop.reader.ReaderStartupTrace.mark("PAGER_REJECT_NAVIGATION", page)
+            return false
+        }
         val previous = ticket
         // Claim the successor's frame before retiring the old mount's release-only handle.
         if (model.registerPagerViewportDemand(demandToken, visible, navigationLocation)) demandModel = model
         ticket = model.beginPagerViewport(visible, userNavigation, navigationLocation, selected, demandToken)
         if (previous != ticket) previous?.let(model::releaseDualViewport)
-        return prepared()
+        return prepared().also {
+            mihon.desktop.reader.ReaderStartupTrace.mark("PAGER_SUCCESSOR_PREPARED", page, detail = if (it) 1 else 0)
+        }
     }
 
     private fun reportIfReady() {

@@ -37,6 +37,8 @@ Mihon’s reading and library experience gains a desktop home. Use the desktop i
 
 **Windows paging controls:** in Reader settings → Reading mode, select **Paged** (翻页式 in Chinese). Under **Pager**, choose **Left to right** or **Right to left**; only one direction can be selected. Single-page and two-page layouts use this direction. Automatic mode keeps its adaptive right-to-left behavior and disables manual direction selection; Webtoon does not show paging direction controls.
 
+**Windows reader preparation:** The accepted Windows reader candidate reduces repeated preparation when opening chapters while preserving image quality, page order, and normal page turning. The observed speed depends on the device and content; this change does not establish a stable opening-time improvement.
+
 **Manga details and chapter list:** The chapter list provides native dynamic scrollbars in both dual-pane and single-pane layouts, highlighting on scroll or hover. When the floating "Continue" action button is visible in the bottom-right corner, the list automatically maintains an 88dp bottom clearance so the final chapter row remains completely clear of the button when scrolled to the end.
 
 **Chapter action feedback:** On Windows, successful or skipped chapter actions on the manga detail page no longer show the success/skip/failure count snackbar. Failure feedback and the optional Add to library action remain available.

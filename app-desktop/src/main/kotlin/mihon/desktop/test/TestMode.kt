@@ -98,6 +98,7 @@ object TestMode {
         synchronized(lifecycleLock) {
             readerController = reader
         }
+        reader.installStartupInputObservation()
         val browse = BrowseSearchTestModeController(
             coordinator = mihon.desktop.ui.browse.DesktopGlobalSearchCoordinator(Injekt.get()),
             sourcesProvider = { Injekt.get<tachiyomi.domain.source.service.SourceManager>().getCatalogueSources() },

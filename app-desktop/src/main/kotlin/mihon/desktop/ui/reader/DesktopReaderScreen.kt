@@ -134,6 +134,8 @@ data class DesktopReaderScreen(
     val downloadedOnly: Boolean = false,
     @Transient val onProductionClosed: () -> Unit = {},
 ) : Screen {
+    // Test-only correlation; excluded from data-class equality, navigation key and serialization.
+    @Transient internal var testDetailClickSequence: Long? = null
 
     // 章节切换发生在同一 Screen/session 内；key 只标识最初打开的 reader entry。
     override val key: String get() = "DesktopReaderScreen-$chapterId-$chapterUrl"
@@ -145,17 +147,20 @@ data class DesktopReaderScreen(
         val scope = rememberCoroutineScope()
         val runtimeFactory = remember { desktopReaderRuntimeFactory() }
         val model = rememberScreenModel {
-            runtimeFactory.createScreenModel(
-                initialContext = initialContext(),
-                isWebtoon = isWebtoon,
-                mangaViewerFlags = mangaViewerFlags,
-                dualPageOverride = isDualPage,
-                progressTrackerOverride = progressTracker,
-                onProductionClosed = onProductionClosed,
-                chapters = chapters,
-                opening = opening,
-                downloadedOnly = downloadedOnly,
-            )
+            mihon.desktop.reader.ReaderStartupTrace.markChapter("COMPOSE_MODEL_CREATE", chapterId)
+            mihon.desktop.test.http.ReaderIoTestModeBridge.withDetailClick(testDetailClickSequence) {
+                runtimeFactory.createScreenModel(
+                    initialContext = initialContext(),
+                    isWebtoon = isWebtoon,
+                    mangaViewerFlags = mangaViewerFlags,
+                    dualPageOverride = isDualPage,
+                    progressTrackerOverride = progressTracker,
+                    onProductionClosed = onProductionClosed,
+                    chapters = chapters,
+                    opening = opening,
+                    downloadedOnly = downloadedOnly,
+                )
+            }
         }
         val runtime = checkNotNull(model.runtime)
         DisposableEffect(runtime) {
@@ -219,6 +224,9 @@ data class DesktopReaderScreen(
         }
         val focusRequester = remember { FocusRequester() }
         ReaderLifecycleEffect(model)
+        androidx.compose.runtime.SideEffect {
+            mihon.desktop.reader.ReaderStartupTrace.mark("COMPOSE_READER_APPLY", generation = state.session.generation)
+        }
         LaunchedEffect(runtime.session) {
             runtime.session.state.collect(model::acceptSessionState)
         }
