@@ -1,5 +1,6 @@
 package mihon.feature.migration.list
 
+import android.util.Log
 import androidx.annotation.FloatRange
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
@@ -7,8 +8,17 @@ import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
 import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.tachiyomi.extension.ExtensionManager
+import eu.kanade.tachiyomi.extension.model.Extension
+import eu.kanade.tachiyomi.network.SourceCompatibilityException
+import eu.kanade.tachiyomi.network.SourceFailureIdentity
+import eu.kanade.tachiyomi.network.SourceOperationPhase
+import eu.kanade.tachiyomi.network.guardSourceOperation
+import eu.kanade.tachiyomi.network.inspectSourceFailure
+import eu.kanade.tachiyomi.network.rethrowSourceControlFailure
 import eu.kanade.tachiyomi.source.CatalogueSource
-import eu.kanade.tachiyomi.source.getNameForMangaInfo
+import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
@@ -27,6 +37,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import logcat.LogPriority
+import mihon.domain.error.AppError
 import mihon.domain.migration.BatchMigrationEvent
 import mihon.domain.migration.usecases.MigrateMangaUseCase
 import mihon.feature.migration.list.models.MigratingManga
@@ -39,7 +50,11 @@ import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.source.service.SOURCE_COMPATIBILITY_LOG_TAG
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.source.service.recordSourceFailureDiagnostics
+import tachiyomi.domain.source.service.toSourceAppError
+import tachiyomi.domain.source.service.withSourceFailureIdentity
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -55,6 +70,8 @@ class MigrationListScreenModel(
     private val getChaptersByMangaId: GetChaptersByMangaId = Injekt.get(),
     private val migrateManga: MigrateMangaUseCase = Injekt.get(),
     private val batchMigrationRunner: AndroidBatchMigrationRunner<MigratingManga> = AndroidBatchMigrationRunner(),
+    private val extensionManager: ExtensionManager = Injekt.get(),
+    private val sourceFailureLog: (String) -> Unit = { Log.e(SOURCE_COMPATIBILITY_LOG_TAG, it) },
 ) : StateScreenModel<MigrationListScreenModel.State>(State()) {
 
     private val smartSearchEngine = SmartSourceSearchEngine(extraSearchQuery)
@@ -77,18 +94,36 @@ class MigrationListScreenModel(
                     async {
                         val manga = getManga.await(it) ?: return@async null
                         val chapterInfo = getChapterInfo(it)
+                        val source = sourceManager.getOrStub(manga.source)
+                        val installed = extensionManager.installedExtensionsFlow.value
+                        val identity = sourceIdentity(manga.source, source, installed)
+                        var failure: AppError? = null
+                        val label = try {
+                            sourceLabel(source)
+                        } catch (error: Exception) {
+                            failure = error.compatibilityFailure(identity) ?: throw error
+                            ""
+                        }
                         MigratingManga(
                             manga = manga,
                             chapterCount = chapterInfo.chapterCount,
                             latestChapter = chapterInfo.latestChapter,
-                            source = sourceManager.getOrStub(manga.source).getNameForMangaInfo(),
+                            source = label,
                             parentContext = screenModelScope.coroutineContext,
-                        )
+                        ).also { item -> failure?.let { item.searchResult.value = SearchResult.Failure(it) } }
                     }
                 }
                 .awaitAll()
                 .filterNotNull()
+            currentCoroutineContext().ensureActive()
             mutableState.update { it.copy(items = manga.toImmutableList()) }
+            manga.forEach { item ->
+                if (owns(item)) {
+                    (item.searchResult.value as? SearchResult.Failure)?.error
+                        ?.recordSourceFailureDiagnostics(sourceFailureLog)
+                }
+            }
+            if (manga.any { it.searchResult.value is SearchResult.Failure }) updateMigrationProgress()
             runMigrations(manga)
         }
     }
@@ -100,23 +135,59 @@ class MigrationListScreenModel(
         )
     }
 
-    private suspend fun Manga.toSuccessSearchResult(): SearchResult.Success {
+    private suspend fun Manga.toSuccessSearchResult(label: String): SearchResult.Success {
         val chapterInfo = getChapterInfo(id)
-        val source = sourceManager.getOrStub(source).getNameForMangaInfo()
         return SearchResult.Success(
             manga = this,
             chapterCount = chapterInfo.chapterCount,
             latestChapter = chapterInfo.latestChapter,
-            source = source,
+            source = label,
         )
+    }
+
+    private fun sourceIdentity(id: Long, source: Source, installed: List<Extension.Installed>): SourceFailureIdentity {
+        val owner = installed.firstOrNull { it.sources.any { registered -> registered === source } }
+        return SourceFailureIdentity(id, owner?.pkgName, owner?.name, owner?.versionName, owner?.versionCode)
+    }
+
+    private fun sourceLabel(source: Source): String {
+        val languages = preferences.enabledLanguages().get().filterNot { it == "all" || it == "other" }
+        val language = guardSourceOperation(SourceOperationPhase.METADATA) { source.lang }
+        return if (languages.size == 1 && language in languages) {
+            guardSourceOperation(SourceOperationPhase.METADATA) { source.name }
+        } else {
+            guardSourceOperation(SourceOperationPhase.METADATA) { source.toString() }
+        }
+    }
+
+    private fun Throwable.compatibilityFailure(identity: SourceFailureIdentity): AppError? {
+        rethrowSourceControlFailure()
+        if (inspectSourceFailure().causes.none { it is SourceCompatibilityException }) return null
+        return toSourceAppError().withSourceFailureIdentity(identity)
+    }
+
+    private class Candidate(val id: Long, val source: Source, val identity: SourceFailureIdentity)
+    private class Attempt(
+        val candidate: Candidate,
+        val value: Pair<Manga, ChapterInfo>? = null,
+        val error: AppError? = null,
+    )
+    private class Selection(val result: SearchResult, val failures: List<AppError>)
+
+    private suspend fun owns(item: MigratingManga): Boolean {
+        currentCoroutineContext().ensureActive()
+        return item.migrationScope.isActive && state.value.items.any { it === item }
     }
 
     private suspend fun runMigrations(mangas: List<MigratingManga>) {
         val prioritizeByChapters = preferences.migrationPrioritizeByChapters().get()
         val deepSearchMode = preferences.migrationDeepSearchMode().get()
 
-        val sources = preferences.migrationSources().get()
-            .mapNotNull { sourceManager.get(it) as? CatalogueSource }
+        val installed = extensionManager.installedExtensionsFlow.value
+        val sources = preferences.migrationSources().get().mapNotNull { id ->
+            val source = sourceManager.get(id) as? CatalogueSource ?: return@mapNotNull null
+            Candidate(id, source, sourceIdentity(id, source, installed))
+        }
 
         for (manga in mangas) {
             if (!currentCoroutineContext().isActive) break
@@ -124,52 +195,63 @@ class MigrationListScreenModel(
             if (manga.searchResult.value != SearchResult.Searching) continue
             if (!manga.migrationScope.isActive) continue
 
-            val result = try {
+            val selection = try {
                 manga.migrationScope.async {
+                    val failures = mutableListOf<AppError>()
                     if (prioritizeByChapters) {
                         val sourceSemaphore = Semaphore(5)
                         sources.map { source ->
                             async innerAsync@{
                                 sourceSemaphore.withPermit {
-                                    val result = searchSource(manga.manga, source, deepSearchMode)
-                                    if (result == null || result.second.chapterCount == 0) return@innerAsync null
-                                    result
+                                    searchSource(manga.manga, source, deepSearchMode)
                                 }
                             }
                         }
-                            .mapNotNull { it.await() }
-                            .maxByOrNull { it.second.latestChapter ?: 0.0 }
+                            .map { it.await() }
+                            .also { attempts -> failures += attempts.mapNotNull { it.error } }
+                            .filter { it.value != null && it.value.second.chapterCount > 0 }
+                            .sortedByDescending { it.value?.second?.latestChapter ?: 0.0 }
+                            .forEach { attempt ->
+                                when (val selected = finishCandidate(attempt)) {
+                                    is SearchResult.Success -> return@async Selection(selected, failures.toList())
+                                    is SearchResult.Failure -> failures += selected.error
+                                    else -> Unit
+                                }
+                            }
                     } else {
                         sources.forEach { source ->
-                            val result = searchSource(manga.manga, source, deepSearchMode)
-                            if (result != null) return@async result
+                            val attempt = searchSource(manga.manga, source, deepSearchMode)
+                            attempt.error?.let(failures::add)
+                            if (attempt.value != null) {
+                                when (val selected = finishCandidate(attempt)) {
+                                    is SearchResult.Success -> return@async Selection(selected, failures.toList())
+                                    is SearchResult.Failure -> failures += selected.error
+                                    else -> Unit
+                                }
+                            }
                         }
-                        null
                     }
+                    Selection(
+                        failures.firstOrNull()?.let { SearchResult.Failure(it) } ?: SearchResult.NotFound,
+                        failures.toList(),
+                    )
                 }
                     .await()
             } catch (_: CancellationException) {
                 continue
             }
 
-            if (result != null && result.first.thumbnailUrl == null) {
-                try {
-                    val newManga = sourceManager.getOrStub(result.first.source).getMangaDetails(result.first.toSManga())
-                    updateManga.awaitUpdateFromSource(result.first, newManga, true)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: Exception) {
-                }
-            }
+            if (!owns(manga)) continue
+            val result = selection.result
+            manga.searchResult.value = result
+            selection.failures.forEach { if (owns(manga)) it.recordSourceFailureDiagnostics(sourceFailureLog) }
 
-            manga.searchResult.value = result?.first?.toSuccessSearchResult() ?: SearchResult.NotFound
-
-            if (result == null && hideUnmatched) {
+            if (result == SearchResult.NotFound && hideUnmatched) {
                 removeManga(manga)
             }
-            if (result != null &&
+            if (result is SearchResult.Success &&
                 hideWithoutUpdates &&
-                (result.second.latestChapter ?: 0.0) <= (manga.latestChapter ?: 0.0)
+                (result.latestChapter ?: 0.0) <= (manga.latestChapter ?: 0.0)
             ) {
                 removeManga(manga)
             }
@@ -180,30 +262,86 @@ class MigrationListScreenModel(
 
     private suspend fun searchSource(
         manga: Manga,
-        source: CatalogueSource,
+        candidate: Candidate,
         deepSearchMode: Boolean,
-    ): Pair<Manga, ChapterInfo>? {
+    ): Attempt {
+        val source = candidate.source as CatalogueSource
         return try {
             val searchResult = if (deepSearchMode) {
-                smartSearchEngine.deepSearch(source, manga.title)
+                smartSearchEngine.deepSearch(source, candidate.id, manga.title)
             } else {
-                smartSearchEngine.regularSearch(source, manga.title)
+                smartSearchEngine.regularSearch(source, candidate.id, manga.title)
             }
 
-            if (searchResult == null || (searchResult.url == manga.url && source.id == manga.source)) return null
+            if (searchResult == null || (searchResult.url == manga.url && candidate.id == manga.source)) {
+                return Attempt(candidate)
+            }
 
             val localManga = networkToLocalManga(searchResult)
             try {
-                val chapters = source.getChapterList(localManga.toSManga())
+                val input = localManga.toSManga()
+                val chapters = guardSourceOperation(SourceOperationPhase.CHAPTERS) { source.getChapterList(input) }
                 syncChaptersWithSource.await(chapters, localManga, source)
             } catch (e: Exception) {
+                e.compatibilityFailure(candidate.identity)?.let { return Attempt(candidate, error = it) }
                 logcat(LogPriority.ERROR, e)
             }
-            localManga to getChapterInfo(localManga.id)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
+            Attempt(candidate, localManga to getChapterInfo(localManga.id))
+        } catch (error: Exception) {
+            Attempt(candidate, error = error.compatibilityFailure(candidate.identity))
+        }
+    }
+
+    private suspend fun finishCandidate(attempt: Attempt, forceDetails: Boolean = false): SearchResult {
+        val manga = checkNotNull(attempt.value).first
+        val candidate = attempt.candidate
+        if (forceDetails || manga.thumbnailUrl == null) {
+            val input = manga.toSManga()
+            try {
+                val remote = guardSourceOperation(SourceOperationPhase.DETAILS) {
+                    candidate.source.getMangaDetails(input)
+                }
+                val prepared = snapshotDetails(remote, manga.url)
+                updateManga.awaitUpdateFromSource(manga, prepared, true)
+            } catch (error: Exception) {
+                error.compatibilityFailure(candidate.identity)?.let { return SearchResult.Failure(it) }
+            }
+        }
+        val label = try {
+            sourceLabel(candidate.source)
+        } catch (error: Exception) {
+            return SearchResult.Failure(error.compatibilityFailure(candidate.identity) ?: throw error)
+        }
+        return manga.toSuccessSearchResult(label)
+    }
+
+    private fun snapshotDetails(remote: SManga, url: String): SManga {
+        val title = try {
+            guardSourceOperation(SourceOperationPhase.DETAILS) { remote.title }
+        } catch (_: UninitializedPropertyAccessException) {
             null
+        }
+        val thumbnail = guardSourceOperation(SourceOperationPhase.DETAILS) { remote.thumbnail_url }
+        val author = guardSourceOperation(SourceOperationPhase.DETAILS) { remote.author }
+        val artist = guardSourceOperation(SourceOperationPhase.DETAILS) { remote.artist }
+        val description = guardSourceOperation(SourceOperationPhase.DETAILS) { remote.description }
+        val genres = guardSourceOperation(SourceOperationPhase.DETAILS) { remote.getGenres() }
+        val status = guardSourceOperation(SourceOperationPhase.DETAILS) { remote.status }
+        val strategy = guardSourceOperation(SourceOperationPhase.DETAILS) { remote.update_strategy }
+        val memo = guardSourceOperation(SourceOperationPhase.DETAILS) { remote.memo }
+        val host = SManga.create().apply {
+            this.url = url
+            title?.let { this.title = it }
+            thumbnail_url = thumbnail
+            this.author = author
+            this.artist = artist
+            this.description = description
+            this.status = status
+            update_strategy = strategy
+            this.memo = memo
+        }
+        return object : SManga by host {
+            override fun getGenres(): List<String>? = genres
         }
     }
 
@@ -227,32 +365,34 @@ class MigrationListScreenModel(
         migratingManga.searchResult.value = SearchResult.Searching
         screenModelScope.launchIO {
             val result = migratingManga.migrationScope.async {
-                val manga = getManga.await(target) ?: return@async null
+                val manga = getManga.await(target) ?: return@async SearchResult.NotFound
+                val source = sourceManager.get(manga.source) ?: return@async SearchResult.NotFound
+                val candidate = Candidate(
+                    manga.source,
+                    source,
+                    sourceIdentity(manga.source, source, extensionManager.installedExtensionsFlow.value),
+                )
                 try {
-                    val source = sourceManager.get(manga.source)!!
-                    val chapters = source.getChapterList(manga.toSManga())
+                    val input = manga.toSManga()
+                    val chapters = guardSourceOperation(SourceOperationPhase.CHAPTERS) { source.getChapterList(input) }
                     syncChaptersWithSource.await(chapters, manga, source)
-                } catch (_: Exception) {
-                    return@async null
+                } catch (error: Exception) {
+                    return@async error.compatibilityFailure(candidate.identity)?.let { SearchResult.Failure(it) }
+                        ?: SearchResult.NotFound
                 }
-                manga
+                finishCandidate(Attempt(candidate, manga to getChapterInfo(manga.id)), forceDetails = true)
             }
                 .await()
 
-            if (result == null) {
+            if (!owns(migratingManga)) return@launchIO
+            if (result == SearchResult.NotFound) {
                 migratingManga.searchResult.value = SearchResult.NotFound
                 withUIContext { onMissingChapters() }
                 return@launchIO
             }
 
-            try {
-                val newManga = sourceManager.getOrStub(result.source).getMangaDetails(result.toSManga())
-                updateManga.awaitUpdateFromSource(result, newManga, true)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-            }
-            migratingManga.searchResult.value = result.toSuccessSearchResult()
+            migratingManga.searchResult.value = result
+            if (result is SearchResult.Failure) result.error.recordSourceFailureDiagnostics(sourceFailureLog)
             updateMigrationProgress()
         }
     }
@@ -373,7 +513,9 @@ class MigrationListScreenModel(
                 dialog = Dialog.Migrate(
                     copy = copy,
                     totalCount = items.size,
-                    skippedCount = items.count { it.searchResult.value == SearchResult.NotFound },
+                    skippedCount = items.count {
+                        it.searchResult.value == SearchResult.NotFound || it.searchResult.value is SearchResult.Failure
+                    },
                 ),
             )
         }

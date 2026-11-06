@@ -54,6 +54,7 @@ import eu.kanade.presentation.manga.components.MangaCover
 import eu.kanade.presentation.util.animateItemFastScroll
 import eu.kanade.presentation.util.formatChapterNumber
 import eu.kanade.presentation.util.rememberResourceBitmapPainter
+import eu.kanade.presentation.util.sourceErrorMessageResource
 import eu.kanade.tachiyomi.R
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
@@ -131,7 +132,7 @@ fun MigrationListScreenContent(
                             .align(Alignment.Top)
                             .fillMaxHeight(),
                         manga = item.manga,
-                        source = item.source,
+                        source = item.source.ifBlank { stringResource(MR.strings.unknown) },
                         chapterCount = item.chapterCount,
                         latestChapter = item.latestChapter,
                         onClick = { onItemClick(item.manga) },
@@ -266,7 +267,7 @@ fun MigrationListItemResult(
                     CircularProgressIndicator()
                 }
             }
-            MigratingManga.SearchResult.NotFound -> {
+            MigratingManga.SearchResult.NotFound, is MigratingManga.SearchResult.Failure -> {
                 Column(
                     Modifier
                         .widthIn(max = 150.dp)
@@ -283,7 +284,13 @@ fun MigrationListItemResult(
                         contentScale = ContentScale.Crop,
                     )
                     Text(
-                        text = stringResource(MR.strings.migrationListScreen_noMatchFoundText),
+                        text = stringResource(
+                            if (result is MigratingManga.SearchResult.Failure) {
+                                sourceErrorMessageResource(result.error) ?: MR.strings.unknown_error
+                            } else {
+                                MR.strings.migrationListScreen_noMatchFoundText
+                            },
+                        ),
                         modifier = Modifier.padding(MaterialTheme.padding.extraSmall),
                         style = MaterialTheme.typography.titleSmall,
                     )
@@ -324,7 +331,10 @@ private fun MigrationListItemAction(
                     )
                 }
             }
-            MigratingManga.SearchResult.NotFound, is MigratingManga.SearchResult.Success -> {
+            MigratingManga.SearchResult.NotFound,
+            is MigratingManga.SearchResult.Failure,
+            is MigratingManga.SearchResult.Success,
+            -> {
                 IconButton(onClick = { menuExpanded = true }) {
                     Icon(
                         imageVector = Icons.Outlined.MoreVert,

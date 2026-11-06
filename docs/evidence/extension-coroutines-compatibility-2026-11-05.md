@@ -1390,3 +1390,59 @@ SyncRecovery尚未开始本簇实现，不能由本轮Model或mapper通过替代
 
 本段有效组合32方法，不与前轮54项重复累计成末次全跑。Smart迁移搜索及其实际失败
 反馈仍待收口，EC-06/07暂不勾选；EC-08原APK/ART/R8保持原必做范围。
+
+## EC-06/07 Smart 迁移收口（2026-11-06）
+
+基线 `34dcff172fe18940ecf48b90fa6a6ef312b87330`，前置实现测试曾以其父提交运行，
+该基线仅增加已验证 Browse/Sync，不改变迁移语义。8个Kotlin文件为同一引擎、实际
+ScreenModel、原反馈位及真实测试；无新页面/schema/协议，用户reader改动未纳入。
+
+- 首 `ec06-smart-migration-source-red` 为 repository fixture 返回值类型编译错误，
+  不计产品红。`ec06-smart-migration-source-correct-red` 的 Engine2正确红；Model3
+  因 InMemoryPreferenceStore 每 getter 新建实例导致候选配置为空，不计产品证据。
+  修为 initialPreferences 并断言实际配置/filter到达后，
+  `ec06-smart-migration-model-behavior-red` **FAILED/42秒**：坏源假NotFound、重复
+  ID getter、真实页面hideUnmatched隐去错误3门正确红；两选择模式健康对照已绿。
+- 引擎只守卫实际ID/filter/API/返回字段，生产使用宿主ID重载；Model仅保真显式
+  兼容marker，SQL/缓存/同步在外。普通按序、按章5并发/最新章策略保留，坏候选详情
+  失败后继续剩余候选，不为健康未选候选新增详情探测。Failure沿原反馈位显示且不
+  被hideUnmatched删除；手动选择亦保章/详情/标签错误与调用前owner。
+- Root独审阻止完整mapper给details新增url/initialized要求，最终仅冻结原更新链
+  消费字段。健康门禁读这两个字段、允许未初始化标题，并断言逗号genre元素不变；
+  UpdateManga拿到宿主快照，不改变传给插件的原输入，也不守卫整个宿主更新过程。
+- `ec06-smart-migration-first-green` **PASSED/36秒，9方法**，原件已归档。
+  独审发现初始标签不诊断、健康候选成功时丢坏源日志；
+  `ec06-smart-migration-diagnostics-red` **FAILED/21秒**，两日志门正确红，真实
+  NonCancellable挂起→移除→等待原Job结束后的零回写/零日志正对照通过。
+  以Selection(result, failures)保留诊断，await后检查context/item引用/scope再接受，
+  初始已接受Failure记录一次，最终Failure不重复写日志。
+- `ec06-smart-migration-final-focused` **PASSED/32秒，14独立方法**：Engine2、
+  Model8、真实UI1、旧Batch3；4 XML零失败/错误/跳过，准确8文件正常strict通过。
+  自查发现legacy ID入口在控制解包外；`ec06-smart-legacy-id-control-red` 正确红
+  （预期宿主AssertionError却得IO，XML3为retry）。两行最小修正后
+  `ec06-smart-legacy-id-control-green` **PASSED/13秒**，Engine2及对应2文件strict
+  重新通过，其余12方法不受影响。有效组合仍为14，不冒称末次重跑全部14。
+- Root亲读最终4 XML及Engine补验XML、完整production diff及关键测试，独审GO。
+  Sync的未实施者独审亦亲读最终6项原件后GO。命令/权威JSON/log/XML仍按前述单一
+  `.gradle-coordinator/`和`.test-tmp/*-xml/`机制归档，无额外状态系统。
+
+### EC-06/07 原任务验收对照
+
+| 原验收项 | 已有生产接线及有效证据 |
+| --- | --- |
+| FILTERS→热门/最新/搜索、同步/挂起及解析错误 | 默认HttpSource/Rx32双目标、直接调用与三种Paging、Smart引擎/Model；各段保留正确红测 |
+| 详情/章节/页列表/图片/下载无假成功，健康并行继续 | 阅读下载46、Creator21、DeepLink/迁移/目录27及后续返回字段/SQL补验；确定性错误不自动重试 |
+| getter/返回字段与真正caller，宿主存储不误归扩展 | 元数据、返回字段/Save、materializer、AndroidGlobal/Browse/DeepLink/Sync/Smart各阶段真实门 |
+| 双端全局搜索真实入口、坏/健康/挂起源与进度 | Desktop页面30、Android真实页面与双端三源取消13及后续prepared/真实UI补验 |
+| 显式重试、取消/新代际拒收、版本重新评估 | 双端三源、prepared retry取消红→修、materializer attempt/close与Smart移除迟到门 |
+| UI/i18n/冻结名版本和安全诊断，坏源不显示登录恢复 | 身份传输23、实际日志35、登记键29、真实UI/Global登录及Browse/Sync/Smart后续门；unknown不探测ID、不造值 |
+
+表内数值指对应阶段的有效组合，存在跨阶段复用；**不得相加声称末次全量通过**。
+这些证据闭合表内已实施的调用与消费范围，不能据此整项勾选EC-06：有限收口审查又
+确认常规 `UpdateManga.awaitFromRemote` 的返回详情仍交宿主更新链裸读；
+`MangaScreenModel.fetchFromSource` 与 `LibraryUpdateJob` 的 `catch(Throwable)` 对包装
+控制/宿主Error及兼容分类仍有消费缺口。这是原“作品详情/章节更新”实际路径，继续
+以该有限链的真实失败门收口，不扩大到任意SChapter字段。EC-07已有全局入口证据，
+但其前置EC-06未完成，暂仍未勾。扩展自行丢弃保护链、未管理线程/JNI为原范围止点。
+EC-08原APK、R8后新旧ABI与未来源/健康源原生集成仍为必要门槛，本段不宣称该门通过，
+不替代Android17厂商实机或正式候选验收。

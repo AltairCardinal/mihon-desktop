@@ -16,6 +16,7 @@ import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.mapNotNull
@@ -88,6 +89,7 @@ class MigrationListScreenModelBatchWiringTest {
                 getChaptersByMangaId = mockk<GetChaptersByMangaId>(relaxed = true),
                 migrateManga = mockk<MigrateMangaUseCase>(relaxed = true),
                 batchMigrationRunner = runner,
+                extensionManager = mockk { every { installedExtensionsFlow } returns MutableStateFlow(emptyList()) },
             )
         }
 
@@ -212,6 +214,7 @@ class MigrationListScreenModelBatchWiringTest {
                 getChaptersByMangaId = getChapters,
                 migrateManga = migrateManga,
                 batchMigrationRunner = AndroidBatchMigrationRunner(),
+                extensionManager = mockk { every { installedExtensionsFlow } returns MutableStateFlow(emptyList()) },
             )
         }
         val items = withContext(Dispatchers.Default.limitedParallelism(1)) {
@@ -278,6 +281,7 @@ class MigrationListScreenModelBatchWiringTest {
                 getChaptersByMangaId = mockk<GetChaptersByMangaId>(relaxed = true),
                 migrateManga = mockk<MigrateMangaUseCase>(relaxed = true),
                 batchMigrationRunner = runner,
+                extensionManager = mockk { every { installedExtensionsFlow } returns MutableStateFlow(emptyList()) },
             )
         }
     }
