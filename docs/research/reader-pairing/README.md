@@ -30,6 +30,10 @@ P0已由`64329568ace1`完成，平均首绘由643.7降至267.5ms，见[P0实测]
 
 后续独立[持续优化R4H](../../evidence/reader-startup-autonomous-2026-11-04.md)已测试该hardware-copy候选：8份同仪器真机首开确认控制实际HARDWARE、候选实际ARGB_8888且都GPU绘制；静态/放大/蓝色双页对应像素一致。单页首绘/近黑未改善，OFF近黑上界均值名义快25.5ms但两对为+52/−1ms，未证实稳定收益；候选Native保持量更高，4组短流程帧没有额外优势。**不推广**，源码与设备均恢复R2，完整补丁/真实失败/原PTS及资源边界在唯一报告；这不否定其它设备或后续具体条件下重新评估，也不重启历史配对算法。首次目标bitmap观测不等于全tile的copy次数/自耗时。
 
+## 2026-11-06 Desktop 新的调用条件（仅规划）
+
+[D6优化分析](../../evidence/desktop-reader-d6-optimization-analysis-2026-11-06.md)与[roadmap](../../roadmap/2026-11-06-desktop-reader-d6-roadmap.md)登记三处Android经验的Desktop对应条件：ensureDualSession逐页旧身份线性查询、同输入的状态/呈现重复投影、同次下载结果复用。C1静态N²形态属于Desktop adapter，不是恢复旧A2 certifier补丁；共享O8已经具备，C1自身调用量/毫秒尚未测。C2先证明实际重复及完整输入身份，不能凭revision不变跳过重试/合法变化。D5提前准备已因跨顺序/双页结果撤回，不在本批复活。当前只新增分析/计划，不改变历史A2/A3/A4暂缓裁定，也不宣称已有新性能收益。
+
 ## 2026-11-01 当前主干复评
 
 - [A2：复用owner索引，暂缓](2026-11-01-main-reevaluation/A2.md)
