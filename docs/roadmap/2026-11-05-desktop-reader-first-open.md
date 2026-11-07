@@ -1,6 +1,6 @@
 # Windows 已下载章节首次打开优化执行计划
 
-日期2026-11-05，2026-11-07更新。active-child-plan：无。[D8恢复入口同锁准备复用](2026-11-07-desktop-reader-d8-restore-prepare.md)已按局部工作量采用，未证明外部首开毫秒收益。D0–D7本批任务均已实施或按门槛明确裁决；[D7](2026-11-06-desktop-reader-d7-open-stream.md)性能候选已撤回，D6局部采用C1/C3，整体体验目标仍未达标。用户已接受Android无探针B9延迟，本计划仅处理Windows；不把研究任务完成说成产品提速。
+日期2026-11-05，2026-11-07更新。active-child-plan：[D10　Windows 下载 CBZ 与首个真实容器](2026-11-07-windows-reader-cbz-first-page.md)。D9 已完成[两段归因](../evidence/desktop-reader-d9-first-open-causes-2026-11-07.md)和[联合原型验证](../evidence/desktop-reader-cbz-slot-feasibility-2026-11-07.md)。D0–D8 的采用与撤回结论见下文。D10 由新 Sol 会话接手，单独判定两项内部目标和屏幕首图体验。
 
 ## 基线与工作边界
 
