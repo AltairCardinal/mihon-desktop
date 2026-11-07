@@ -81,7 +81,6 @@ import mihon.domain.reader.isReaderChapterFiltered
 import mihon.domain.reader.markDuplicateChapters
 import mihon.domain.reader.progress.ReaderProgressPolicy
 import mihon.domain.reader.progress.ReaderProgressSignal
-import mihon.domain.reader.progress.resolveReaderChapterEntryPage
 import mihon.domain.reader.session.ReaderChapterLoadPurpose
 import mihon.domain.reader.session.ReaderChapterLoadState
 import mihon.domain.reader.session.ReaderChapterWindowEffect
@@ -389,22 +388,12 @@ class ReaderViewModel @JvmOverloads constructor(
     private val downloadAheadAmount = downloadPreferences.autoDownloadWhileReading().get()
 
     init {
-        // To save state
+        // Save the accepted position; chapter activation must not reinterpret a viewer's page turn as a fresh open.
         state.map { it.viewerChapters?.currChapter }
             .distinctUntilChanged()
             .filterNotNull()
             .onEach { currentChapter ->
-                currentChapter.requestedPage = resolveReaderChapterEntryPage(
-                    isRead = currentChapter.chapter.read,
-                    lastPageRead = currentChapter.chapter.last_page_read.toLong(),
-                    // Activity restoration belongs to the chapter saved with this page index.
-                    restoredPage = chapterPageIndex.takeIf { it >= 0 && currentChapter.chapter.id == chapterId },
-                )
                 chapterPageIndex = currentChapter.requestedPage
-                dualPagePairings.chapters[currentChapter]?.session?.let { owner ->
-                    owner.identity.pageIds.getOrNull(currentChapter.requestedPage)
-                        ?.takeIf { it != owner.location?.pageId }?.let(owner::goToPage)
-                }
                 chapterId = currentChapter.chapter.id!!
             }
             .launchIn(viewModelScope)
@@ -583,6 +572,7 @@ class ReaderViewModel @JvmOverloads constructor(
         chapter: ReaderChapter,
         activationIntent: ReaderChapterWindowIntent.OpenAdjacent? = null,
         latencyRequest: Long = 0,
+        selectedPage: ReaderPage? = null,
         canActivate: () -> Boolean = { true },
     ): ReadingActivation? {
         if (activationIntent == null) {
@@ -623,7 +613,11 @@ class ReaderViewModel @JvmOverloads constructor(
                 chapter.pages,
             )
             val expectedWindow = chapterWindowOwner.snapshot
-            if (!canActivate() || chapter.pages !== pages) return@withUIContext null
+            if (!canActivate() || chapter.pages !== pages ||
+                (selectedPage != null && pages.getOrNull(selectedPage.index) !== selectedPage)
+            ) {
+                return@withUIContext null
+            }
             dualPagePairings.ensure(chapter, pages)
             ReaderOpenLatencyProbe.recordForPageList(
                 "PAIRING_OWNER_READY",
@@ -677,9 +671,15 @@ class ReaderViewModel @JvmOverloads constructor(
             explicitResumePage = null
             resumeViewport = null
             if (resume != null) {
-                chapterPageIndex = if (invalidResumePage) 0 else resume.pageIndex
-                chapter.requestedPage = chapterPageIndex
+                chapter.requestedPage = if (invalidResumePage) 0 else resume.pageIndex
+                // Explicit opening/restoration may reposition the owner; seamless activation must retain its anchor.
+                dualPagePairings.chapters[chapter]?.session?.let { owner ->
+                    owner.identity.pageIds.getOrNull(chapter.requestedPage)
+                        ?.takeIf { it != owner.location?.pageId }?.let(owner::goToPage)
+                }
                 pendingResumePosition = null
+            } else if (selectedPage != null) {
+                chapter.requestedPage = selectedPage.index
             }
             readingActivation = activation
             chapterToDownload = cancelQueuedDownloads(newChapters.currChapter)
@@ -728,7 +728,8 @@ class ReaderViewModel @JvmOverloads constructor(
      * Called when the user changed to the given [chapter] when changing pages from the viewer.
      * It's used only to set this chapter as active.
      */
-    private fun loadNewChapter(chapter: ReaderChapter, settlementSequence: Long): Deferred<ReadingActivation?>? {
+    private fun loadNewChapter(page: ReaderPage, settlementSequence: Long): Deferred<ReadingActivation?>? {
+        val chapter = page.chapter
         val loader = loader ?: return null
         val activationIntent = createAdjacentActivationIntent(chapter) ?: return null
 
@@ -741,7 +742,7 @@ class ReaderViewModel @JvmOverloads constructor(
             if (!readerProgressSettlementArbiter.isLatest(settlementSequence)) return@async null
 
             try {
-                loadChapter(loader, chapter, activationIntent, canActivate = {
+                loadChapter(loader, chapter, activationIntent, selectedPage = page, canActivate = {
                     readerProgressSettlementArbiter.isLatest(settlementSequence)
                 })
             } catch (e: Throwable) {
@@ -1088,7 +1089,7 @@ class ReaderViewModel @JvmOverloads constructor(
         val selectedActivation = readingActivation?.takeIf { it.chapter === selectedChapter }
         val activationJob = if (selectedChapter != getCurrentChapter()) {
             logcat { "Setting ${selectedChapter.chapter.url} as active" }
-            loadNewChapter(selectedChapter, settlementSequence)
+            loadNewChapter(page, settlementSequence)
         } else {
             null
         }

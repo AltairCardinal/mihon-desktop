@@ -9,6 +9,13 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## November 7, 2026 — Android chapter progress isolation
+
+**Accepted fix documentation · no public product release**
+
+- The reported forward chapter transition no longer inherits the outgoing chapter's page index. Implementation: `4bdca36f34`.
+- Acceptance basis: the project owner confirmed the reported fix on Android on November 7, 2026, in a private conversation. Backward chapter entry was reported separately and is outside this acceptance. This does not establish Windows or macOS runtime acceptance or publish a product release.
+
 ## November 6, 2026 — Windows reader preparation
 
 The accepted Windows candidate reduces repeated preparation when opening chapters while preserving image quality, page order, and normal page turning. Evidence supports the local work reduction, but does not establish a stable first-open speedup or a fixed millisecond gain; results vary with device and content. This acceptance covers the Windows preview only.

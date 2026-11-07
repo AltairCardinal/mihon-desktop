@@ -47,6 +47,44 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 class ReaderSyncResumeWiringTest {
     @Test
+    fun `backward page turn preserves the previous read chapter tail through activation`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val savedState = SavedStateHandle()
+        val fixture = Fixture(savedState = savedState, chapterPageCounts = mapOf(1L to 11))
+        try {
+            fixture.storedChapters = fixture.storedChapters.map { it.copy(read = true) }
+            assertTrue(fixture.model.init(1, 2).getOrThrow())
+            val previous = requireNotNull(fixture.model.state.value.viewerChapters?.prevChapter)
+            fixture.model.consumeAdjacentChapterEffect(
+                previous,
+                mihon.domain.reader.ReaderAdjacentChapterEffect.LoadAdjacentChapterPageList,
+            )
+            val pages = requireNotNull(previous.pages)
+            val owner = fixture.model.dualPagePairings.ensure(previous, pages).session
+            val tail = pages.last()
+            assertTrue(owner.goToPage(owner.identity.pageIds[tail.index], forward = false))
+
+            // The real dual viewer selects its boundary anchor before pixels settle.
+            fixture.model.onPageSelected(tail, listOf(tail), recordProgress = false)
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) { fixture.model.state.first { it.currentChapter === previous } }
+            }
+
+            assertEquals(tail.index, owner.location?.pageId?.sourcePageIndex)
+            assertEquals(tail.index, previous.requestedPage)
+            assertEquals(1L, savedState.get<Long>("chapter_id"))
+            assertEquals(tail.index, savedState.get<Int>("page_index"))
+            assertEquals(null, kotlinx.coroutines.withTimeoutOrNull(100) { fixture.repository.records.receive() })
+        } finally {
+            fixture.close()
+            withContext(Dispatchers.Default) {
+                fixture.model.viewModelScope.coroutineContext[kotlinx.coroutines.Job]!!.join()
+            }
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun `next chapter entry does not inherit the shorter outgoing chapter page`() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         try {

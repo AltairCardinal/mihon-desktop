@@ -33,6 +33,8 @@ Mihon’s reading and library experience gains a desktop home. Use the desktop i
 
 **Try it:** [build a desktop preview](./getting-started.md), add a work through a configured source or local library, then open a chapter.
 
+**Android chapter progress isolation:** in the accepted Android case, advancing to the next chapter no longer carries the outgoing chapter's page index into it. This acceptance covers the reported forward transition; backward chapter entry is being corrected separately and is not included in this acceptance.
+
 **Windows startup feedback:** launch the packaged EXE to see a dark Mihon card with a starting message and an accent strip while the application initializes. The card is positioned at the center of the work area on the monitor containing the mouse pointer before it first becomes visible; launching from a secondary monitor no longer flashes it on the primary monitor first. It closes automatically when the first application window opens. The card appears after JVM/AWT initialization and is a static waiting indicator, not a progress percentage. Startup timing depends on the machine; restoring a maximized window can still leave a brief gap before its content is presented. This feature is accepted for Windows packaged builds only; the main window retains its existing saved-position behavior.
 
 **Windows paging controls:** in Reader settings → Reading mode, select **Paged** (翻页式 in Chinese). Under **Pager**, choose **Left to right** or **Right to left**; only one direction can be selected. Single-page and two-page layouts use this direction. Automatic mode keeps its adaptive right-to-left behavior and disables manual direction selection; Webtoon does not show paging direction controls.

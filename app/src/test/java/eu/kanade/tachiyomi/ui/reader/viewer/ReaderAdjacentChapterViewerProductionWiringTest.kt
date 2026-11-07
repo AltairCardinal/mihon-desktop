@@ -228,6 +228,7 @@ class ReaderAdjacentChapterViewerProductionWiringTest {
             lazyOf(
                 mockk<ReaderViewModel>(relaxed = true) {
                     every { dualPagePairings } returns DualPagePairingStore()
+                    every { state } returns kotlinx.coroutines.flow.MutableStateFlow(ReaderViewModel.State())
                 },
             ),
         )
