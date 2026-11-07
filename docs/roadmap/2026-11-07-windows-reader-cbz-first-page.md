@@ -1,6 +1,6 @@
 # D10　Windows 下载章节首开优化设计与执行路线
 
-供新 Sol 会话直接实施。首个未勾选任务是当前任务。研究基线 `c34fbccf92db` 含 [D9 归因](../evidence/desktop-reader-d9-first-open-causes-2026-11-07.md) 和[两项合用实测](../evidence/desktop-reader-cbz-slot-feasibility-2026-11-07.md)。交接时核对的最新产品基线为本地 main `ae5bb3bb5aca9e84e6616a1183129e6f0a25e77b`，已含新的章节入口修复。本页是[父路线图](2026-11-05-desktop-reader-first-open.md)的执行入口。进度按首个未勾选项继续，当前组件测试与尚未测量的窗口端点见 [D10 证据](../evidence/desktop-reader-d10-2026-11-07.md)。
+本轮已完成，采用miniz归档B，撤回未达到采用门槛的两阶段容器C。归档严格目标达到；holder与整体体验目标仍未达到，不把任务收口写成性能全达标。以下保留原执行要求和逐项结果。研究基线 `c34fbccf92db` 含 [D9 归因](../evidence/desktop-reader-d9-first-open-causes-2026-11-07.md) 和[两项合用实测](../evidence/desktop-reader-cbz-slot-feasibility-2026-11-07.md)。交接时核对的最新产品基线为本地 main `ae5bb3bb5aca9e84e6616a1183129e6f0a25e77b`，已含新的章节入口修复。本页是[父路线图](2026-11-05-desktop-reader-first-open.md)的执行入口。已完成联合候选与最终B窗口对照、两个最终内部首次和双页往返。组件及窗口端点见 [D10 证据](../evidence/desktop-reader-d10-2026-11-07.md)。
 
 ## 目标、成本和采用口径
 
@@ -30,7 +30,7 @@
 
 ### 2. 将 miniz 接入实际下载归档路径
 
-- [ ] 交付可重建的 Windows 后端，实证命中、兼容回退、页身份与租约安全。
+- [x] 交付可重建Windows后端；真实包正常入口命中，兼容回退、页身份、租约和失败处理通过，采用仅归档B。
 
 两臂的开档起点统一放在下载 CBZ 已定位、即将选择后端的同一位置，包括点击后发生的加载检查、解析与回退；同时保留打开意图到页表作为宽口径复核。终点沿用收到完整、已接受页表时的生产事件。命中与回退分别报告，再报告默认打开路径，避免筛掉后端未就绪的第一次。
 
@@ -46,7 +46,7 @@
 
 ### 3. 将已验证的两阶段容器移植到首次单页视口
 
-- [ ] 正常首开挂载真实容器，Ready 后同对象首绘、交接、取消和翻页均通过。
+- [x] 完成真实容器候选的首绘、交接、取消、翻页红绿与窗口比较；未达到采用门槛，按第5项精确撤回，最终产品沿原视口。
 
 移植须保留主干 `011681faac` 已区分的路径。底栏上一章/下一章按钮明确进入目标章首页，阅读流向前越界进入上一章末页，普通详情首开沿用恢复位置；异步页表到达后解析边界。轻量视口在页边界使用阅读流回调，不能把它接到底栏按钮回调。复用 [DesktopReaderChapterTransitionIntegrationTest](../../app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt) 中已挂载工具栏和跨章边界的定向用例。旧实验的 `DesktopReaderScreen.kt` 不能覆盖当前文件。
 
@@ -58,7 +58,7 @@
 
 ### 4. 分辨两个等待，按证据选择下一处改动
 
-- [ ] 随实际产品样本定位容器前和取图前等待，验证有因果依据的改动或记录停手原因。
+- [x] 两个真实首次完成有界归因；可确认直接回收量0，未证多余交接或重复工作，记录停手原因，未作推测性调度/绑定修改。
 
 保留同源控制与候选，在[既有有界 startup 观测](../../app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderStartupObservation.kt)中按需补点，仅对当前章、代次、attempt、目标页关联同一单调时钟、线程及请求。只记录未覆盖的边界，常规运行关闭、首绘后统一导出。先复用已有[联合 A](D:/Codex/worktrees/mihon-reader-single-first-slot-20261107/.test-tmp/first-slot-20261107/actual/twoJointA/first/state.json)及[联合 B](D:/Codex/worktrees/mihon-reader-single-first-slot-20261107/.test-tmp/first-slot-20261107/actual/twoJointB/first/state.json)；新产品候选先取两个独立首次，用同一份采样同时核对两条路径。下列数值均为可调查窗口，不能相加作为预计首绘收益。
 
@@ -72,7 +72,7 @@
 
 ### 5. 在产品窗口作采用裁决并交付
 
-- [ ] 交付冻结候选、两项严格目标、外部 F/R/K 和保留或撤回的依据。
+- [x] 交付冻结B、两项严格目标与实际差距、A/B及B/A外部F/R/K、双页往返和采用/撤回依据；证据及父子路线图同批本地提交，不推送。
 
 正式采样前给包、配置、代码版本、探针负担、打开顺序留档。区间跨过预算边界时写“分辨率不足”；不要拿区间中点宣称达标。如果只保留 B，在默认 B 与 A 的外部对照完成前，仅给归档组件结论。更多 ZIP 布局与页名可作为独立后续工作，按实际未命中类型与兼容证据扩展，本轮不将已测速度外推到回退的漫画。
 
@@ -83,4 +83,4 @@
 3. **判定。** 两对中的可见收益区间均支持同方向改进才报告此次体验收益，例如 F 的控制下界减候选上界均大于零。小于录制区分能力、反向不重现、负载异常影响结论时保留原件并注明未证实。若仅 K 明确改善，单报 K，F/R 不得有可辨退化。两项内部严格阈值有一份超标就列出超出量；样本达标不承诺稳定上界。出现错图、双页退化、启动等待、生命周期破坏则停用有问题的改动，选择已验证的较小组合。原生环境不可用时可交付已通过的组件证据，保留窗口验收缺口。
 4. **交付。** 项目协调器串行跑相关 Desktop focused 测试和 `scripts/build-desktop.sh preview`，记录实际可执行文件、包内 DLL 来源及 hash。按步骤提交可独立审查的改动，将采用/撤回、真实样本、探针状态、当次 F/K 与剩余差距写入一份 evidence；同步本页复选框和父路线图。用户未验收前保持公共功能说明原样。正常退出测试阅读器，关停自己建立的实例和采集器。
 
-新会话可直接从第 1 项开始。既有[两端差值归因](../evidence/desktop-reader-d9-first-open-causes-2026-11-07.md)、[D5 反例](../evidence/desktop-reader-d5-2026-11-06.md)、[D7 反例](../evidence/desktop-reader-d7-2026-11-07.md)和[D8 已采用的局部优化](../evidence/desktop-reader-d8-2026-11-07.md)作为已完成研究复用。
+本轮交付源码 `f2928b7e1c` 的干净B预览；[最终产物与采用裁决](../evidence/desktop-reader-d10-2026-11-07.md#最终b裁决与交付)。本轮不自动启动进一步优化，父计划整体性能预算仍保留未通过。既有[两端差值归因](../evidence/desktop-reader-d9-first-open-causes-2026-11-07.md)、[D5 反例](../evidence/desktop-reader-d5-2026-11-06.md)、[D7 反例](../evidence/desktop-reader-d7-2026-11-07.md)和[D8 已采用的局部优化](../evidence/desktop-reader-d8-2026-11-07.md)作为已完成研究复用。
