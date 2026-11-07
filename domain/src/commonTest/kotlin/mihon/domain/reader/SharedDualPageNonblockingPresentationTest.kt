@@ -532,6 +532,103 @@ class SharedDualPageNonblockingPresentationTest {
         }
     }
 
+    @Test
+    fun `nearby projection uses the exact certified candidate without activating or drawing it`() {
+        for (direction in listOf(ReaderDirection.RTL, ReaderDirection.LTR)) {
+            val owner = owner(direction = direction, count = 16, target = 6)
+            val ids = owner.identity.pageIds
+            owner.configure(direction, automaticMatching = true)
+            val plan = ReaderOriginalPageSampling.plan(100, 150)!!
+            ids.forEachIndexed { index, id ->
+                assertTrue(
+                    owner.acceptOriginalAnalysis(
+                        owner.requestOriginalAnalysis(id)!!,
+                        ReaderPageFact.dimensions(100, 150),
+                        plan.samples(
+                            plan.left.map { if (index == 2) -1 else 0xff334455.toInt() },
+                            plan.right.map { 0xff334455.toInt() },
+                        ),
+                    ),
+                )
+            }
+            assertTrue(owner.goToPage(ids[6]))
+            owner.preparePresentationFrame()
+            val anchor = owner.location
+            val frame = owner.targetFrameId
+            for (index in listOf(8, 9, 5, 4)) {
+                val proof = owner.certifyPairing(ids[index]) as ReaderPairingCertification.Certified
+                assertTrue(
+                    owner.presentationFrames.any { it.unit.id == proof.segment.unit.id },
+                    "Nearby native projection must match the actual navigation candidate at $index",
+                )
+            }
+            assertEquals(anchor, owner.location)
+            assertEquals(frame, owner.targetFrameId)
+            assertTrue(owner.displayedHistory.isEmpty())
+            owner.close()
+        }
+    }
+
+    @Test
+    fun `one resident neighbour proof survives an unproved partner and a later unrelated proposal`() {
+        val owner = owner(count = 16, target = 6)
+        val ids = owner.identity.pageIds
+        owner.configure(ReaderDirection.RTL, automaticMatching = true)
+        val plan = ReaderOriginalPageSampling.plan(100, 150)!!
+        ids.forEachIndexed { index, id ->
+            assertTrue(
+                owner.acceptOriginalAnalysis(
+                    owner.requestOriginalAnalysis(id)!!,
+                    ReaderPageFact.dimensions(100, 150),
+                    plan.samples(
+                        plan.left.map { if (index == 2) -1 else 0xff334455.toInt() },
+                        plan.right.map { 0xff334455.toInt() },
+                    ),
+                ),
+            )
+        }
+        assertTrue(owner.goToPage(ids[6]))
+        owner.preparePresentationFrame()
+        val proof = owner.certifyPairing(ids[8]) as ReaderPairingCertification.Certified
+        owner.certifyPairing(ids[12])
+        owner.certifyPairing(ids[4])
+        assertTrue(
+            owner.presentationFrames.any { it.unit.id == proof.segment.unit.id },
+            "A DEFAULT partner must not overwrite the surviving certified neighbour claim",
+        )
+        assertEquals(ids[6], owner.location!!.pageId)
+        assertTrue(owner.displayedHistory.isEmpty())
+        owner.close()
+    }
+
+    @Test
+    fun `prepared outgoing frame renews its neighbour capability without duplicating physical identity`() {
+        val owner = owner(count = 16, target = 5)
+        val ids = owner.identity.pageIds
+        ids.forEach { owner.acceptFact(owner.requestFact(it), ReaderPageFact.dimensions(100, 150)) }
+        val outgoing = owner.capturePresentableViewport(ids[5])!!
+        paint(owner, outgoing, 5)
+        paint(owner, outgoing, 6)
+        assertTrue(owner.navigate(true))
+        assertEquals(ids[7], owner.location!!.pageId)
+        val current = owner.capturePresentableViewport(ids[7])!!
+        paint(owner, current, 7)
+        paint(owner, current, 8)
+        val renewedFrame = owner.preparePresentationFrame(ids[5], activate = false)
+        assertEquals(
+            outgoing.frameId,
+            renewedFrame,
+            "A live unchanged outgoing bitmap must become the prepared neighbour in the same physical frame",
+        )
+        val renewed = owner.capturePresentableViewport(ids[5], frameId = renewedFrame, activate = false)!!
+        assertNotSame(outgoing, renewed)
+        assertFalse(renewed.readingEligible)
+        assertFalse(owner.preparePage(outgoing, ids[6]))
+        assertTrue(owner.releaseViewport(outgoing))
+        assertNotNull(owner.frame(renewed))
+        owner.close()
+    }
+
     private fun paint(owner: SharedDualPageSession, ticket: ReaderDualPageViewportTicket, index: Int) {
         val page = owner.identity.pageIds[index]
         assertTrue(owner.acceptDecodedFact(ticket, page, 100, 150))

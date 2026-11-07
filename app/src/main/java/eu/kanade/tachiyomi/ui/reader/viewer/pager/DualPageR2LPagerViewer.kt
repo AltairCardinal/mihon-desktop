@@ -56,6 +56,7 @@ class DualPageR2LPagerViewer(
     override val downloadManager: DownloadManager by injectLazy()
 
     private val scope = MainScope()
+    internal val imagePreparation = ReaderImagePreparationQueue(scope)
 
     override val pager = Pager(activity)
 
@@ -70,6 +71,7 @@ class DualPageR2LPagerViewer(
     private var awaitingReplacementIdle = false
     private var destroyed = false
     private var gestureInProgress = false
+    private var gestureOrigin: Any? = null
     internal val hasActiveGesture: Boolean get() = gestureInProgress
     private var viewportSize: Pair<Int, Int>? = null
     private fun geometrySettings() = listOf(
@@ -147,11 +149,16 @@ class DualPageR2LPagerViewer(
                 awaitingReplacementIdle = true
                 return
             }
-            if (state == ViewPager.SCROLL_STATE_DRAGGING) gestureInProgress = true
+            if (state == ViewPager.SCROLL_STATE_DRAGGING) {
+                if (!gestureInProgress) gestureOrigin = currentPage
+                gestureInProgress = true
+            }
             if (state == ViewPager.SCROLL_STATE_IDLE) {
                 val completedGesture = gestureInProgress
                 gestureInProgress = false
                 if (completedGesture) {
+                    adapter.completeGestureNavigation(gestureOrigin, currentPage)
+                    gestureOrigin = null
                     val chapter = (currentPage as? DisplayPage)?.firstPage?.chapter
                     val anchor = chapter?.let { adapter.session(it)?.location?.pageId?.sourcePageIndex }
                         ?.let { chapter?.pages?.getOrNull(it) }
@@ -182,7 +189,7 @@ class DualPageR2LPagerViewer(
         pager.isVisible = false
         pager.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         pager.isFocusable = false
-        pager.offscreenPageLimit = 1
+        pager.offscreenPageLimit = 2
         pager.id = R.id.reader_pager
         pager.adapter = adapter
         pager.addOnPageChangeListener(pagerListener)
@@ -257,6 +264,7 @@ class DualPageR2LPagerViewer(
         presentedViewports.clear()
         pager.removeOnPageChangeListener(pagerListener)
         adapter.close()
+        imagePreparation.close()
         scope.cancel()
     }
 
@@ -612,14 +620,17 @@ class DualPageR2LPagerViewer(
         if (destroyed) return null
         discardObsoletePresentations()
         val owner = adapter.session(displayPage.firstPage.chapter) ?: return null
-        // Keep required original preparation running, independently of basic pixel permission.
-        adapter.requirePairing(displayPage)
         val unitId = displayPage.sharedUnitId(owner) ?: return null
-        val selected = if (displayPage.frameId != null) {
+        val selected = displayPage.firstPage.chapter === adapter.currentChapter && if (displayPage.frameId != null) {
             displayPage.frameId == owner.targetFrameId
         } else {
             unitId == owner.targetUnit?.id
         }
+        // Wider native paging mounts include placeholders beyond the six-source image window.
+        // Those placeholders must not allocate capabilities or churn the pairing memo.
+        if (!selected && displayPage.visiblePages.none(imagePreparation::contains)) return null
+        // Keep required original preparation running for actual image consumers, independently of drawing.
+        adapter.requirePairing(displayPage)
         val pageId = if (selected) {
             owner.location?.pageId
         } else {

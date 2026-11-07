@@ -901,7 +901,7 @@ class SharedDualPageNativeStablePresentationTest {
 
     @Test
     fun `mounted offscreen neighbors remain decoded without being reported as displayed`() = runTest {
-        Fixture(this, originalHeadersBeforeImages = true).use { fixture ->
+        Fixture(this, pageCount = 5, originalHeadersBeforeImages = true).use { fixture ->
             fixture.pump()
             fixture.partner.complete(Unit)
             repeat(60) {
@@ -913,6 +913,16 @@ class SharedDualPageNativeStablePresentationTest {
                 fixture.presented,
                 "Only pixels actually exposed by the viewport establish presentation",
             )
+            val opens = fixture.sourceOpens.get()
+            val decoded = fixture.decodedImages.get()
+            fixture.tapForward()
+            fixture.settle(60)
+            assertEquals(setOf(3, 4), fixture.visibleSources())
+            fixture.tapBackward()
+            fixture.settle(60)
+            assertEquals(setOf(1, 2), fixture.visibleSources())
+            assertEquals(opens, fixture.sourceOpens.get(), "Prepared native neighbours must not reopen sources")
+            assertEquals(decoded, fixture.decodedImages.get(), "Prepared native neighbours must not decode again")
         }
     }
 

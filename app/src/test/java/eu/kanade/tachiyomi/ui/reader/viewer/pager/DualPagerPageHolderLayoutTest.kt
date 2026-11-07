@@ -2330,6 +2330,9 @@ class DualPagerPageHolderLayoutTest {
     @Test
     fun `retry button uses failed page loader and Ready collector clears its error`() = runTest {
         val (unused, right, left) = pair()
+        detach(unused)
+        right.chapter.publishLoadedPageListForTest(listOf(right, left))
+        viewer.setChapters(ViewerChapters(right.chapter, null, null))
         val retried = mutableListOf<ReaderPage>()
         right.status = Page.State.Ready
         left.status = Page.State.Error(IllegalStateException("fixture image unavailable"))

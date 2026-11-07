@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.reader.viewer.pager
 
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.view.children
 import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
 import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
@@ -72,6 +73,7 @@ class DualPageViewerAdapter(
     private val chapterPairings = store.chapters
     private var chapters: ViewerChapters? = null
     private var pendingPairing = false
+    private var lastNavigationForward = true
     private data class FactProjectionInput(
         val layout: Long,
         val facts: Long,
@@ -191,6 +193,7 @@ class DualPageViewerAdapter(
     internal fun navigate(chapter: ReaderChapter, forward: Boolean): ReaderPage? {
         val entry = chapterPairings[chapter] ?: return null
         if (!entry.session.navigate(forward)) return null
+        lastNavigationForward = forward
         preparationTargets.remove(chapter)
         if (matchingSession === entry.session) matchingJob?.cancel()
         val target = entry.session.location?.pageId?.sourcePageIndex?.let(entry.pages::getOrNull) ?: return null
@@ -219,6 +222,14 @@ class DualPageViewerAdapter(
         if (matchingSession === owner) matchingJob?.cancel()
         pendingPairing = true
         startMatching()
+    }
+
+    internal fun completeGestureNavigation(origin: Any?, selected: Any?) {
+        val from = positionOf(origin)
+        val to = positionOf(selected)
+        if (from >= 0 && to >= 0 && from != to) {
+            lastNavigationForward = if (viewer.isRtl) to < from else to > from
+        }
     }
 
     internal fun close() {
@@ -537,6 +548,7 @@ class DualPageViewerAdapter(
         } else {
             logicalTarget ?: (selected as? DisplayPage)?.firstPage
         }
+        updateNormalPreparationWindow(chapters)
         val logical = buildList<Any> {
             chapters.prevChapter?.let { chapter ->
                 if (isReadyForDisplay(chapter)) {
@@ -1023,6 +1035,46 @@ class DualPageViewerAdapter(
 
     private fun isReadyForDisplay(chapter: ReaderChapter?): Boolean =
         chapter?.state is ReaderChapter.State.Loaded
+
+    /** Ordinary image work follows source distance, independently of ViewPager construction order. */
+    private fun updateNormalPreparationWindow(chapters: ViewerChapters) {
+        val entry = chapterPairings[chapters.currChapter] ?: return
+        // Select and prepare the current candidate before deriving its source window. A newly
+        // available proof may change an unexposed fallback's phase in this very publication.
+        entry.session.certifyPairing()
+        entry.session.preparePresentationFrame()
+        val unit = entry.session.targetUnit ?: return
+        val current = unit.pageIds.mapNotNull { entry.pages.getOrNull(it.sourcePageIndex) }
+        val story = listOfNotNull(chapters.prevChapter, chapters.currChapter, chapters.nextChapter)
+            .filter(::isReadyForDisplay).flatMap { it.pages.orEmpty() }
+        val indices = current.map(story::indexOf).filter { it >= 0 }
+        if (indices.isEmpty()) return
+        val before = (1..2).mapNotNull { story.getOrNull(indices.min() - it) }
+        val after = (1..2).mapNotNull { story.getOrNull(indices.max() + it) }
+        val neighbours = if (lastNavigationForward) after + before else before + after
+        val preparing = current + neighbours
+        // Freeze exact candidate identities before publishing descriptors or constructing holders.
+        // Offscreen frames have independent leases and never activate the reading location.
+        val preparedUnits = mutableMapOf(entry.session to unit.pageIds.toMutableSet())
+        preparing.forEach { page ->
+            val owner = chapterPairings[page.chapter]?.session ?: return@forEach
+            val id = owner.identity.pageIds.getOrNull(page.index) ?: return@forEach
+            val handled = preparedUnits.getOrPut(owner) { mutableSetOf() }
+            if (id in handled) return@forEach
+            owner.certifyPairing(id)
+            val selected = owner.presentationUnitForPage(id) ?: return@forEach
+            owner.preparePresentationFrame(
+                id,
+                selected.id,
+                activate = owner === entry.session && id == owner.location?.pageId,
+            )
+            handled += selected.pageIds
+        }
+        val holders = viewer.pager.children.filterIsInstance<DualPagerPageHolder>().toList()
+        val prepared = holders.flatMap { it.preparedPages() }.toSet()
+        viewer.imagePreparation.updateWindow(preparing, current.toSet(), prepared)
+        holders.forEach { it.onPreparationWindowChanged() }
+    }
 
     private fun buildDisplayPages(pages: List<ReaderPage>, session: SharedDualPageSession): List<DisplayPage> {
         session.preparePresentationFrame()

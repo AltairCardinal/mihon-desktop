@@ -152,7 +152,15 @@ internal class ReaderDualPagePresentationOwner(
         // a mount may obtain its first ticket. They remain replaceable until a real pixel lock.
         val retained = records.values.filter { it.visible }.map { it.unit }
         val selected = listOfNotNull(active)
-        val claims = selected.flatMap { unit -> unit.pageIds.map { it to unit } }.toMap()
+        // Only the existing near-source window may override the chapter-start fallback. Reuse
+        // actual validated candidates; projection remains a read and never certifies the chapter.
+        val nearby = active?.pageIds?.map(ordinals::getValue)?.let { indices ->
+            pages.subList((indices.min() - 2).coerceAtLeast(0), (indices.max() + 3).coerceAtMost(pages.size))
+        }.orEmpty()
+        val reliableNeighbours = nearby.map(::candidate)
+            .filter { it.source == ReaderDualPagePresentationSource.CERTIFIED }
+            .map { it.unit }
+        val claims = (reliableNeighbours + selected).flatMap { unit -> unit.pageIds.map { it to unit } }.toMap()
         val emitted = mutableSetOf<ReaderPageId>()
         val next = buildList {
             for (page in pages) {
@@ -304,7 +312,7 @@ internal class ReaderDualPagePresentationOwner(
         if (exact == null && active == null && requestedUnit != null && desired.unit.id != requestedUnit) return null
         return exact ?: active
             ?: records.values.firstOrNull {
-                it.visible && it.activeSequence == location.sequence && it.unit.id == desired.unit.id
+                it.visible && !it.stale && it.unit.id == desired.unit.id
             }
             ?: Record(
                 ReaderDualPageFrameId(identity().generation, context, serial++),

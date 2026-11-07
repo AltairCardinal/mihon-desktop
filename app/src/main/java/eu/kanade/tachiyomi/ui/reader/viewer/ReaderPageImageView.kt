@@ -343,6 +343,8 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
     var onImageLoaded: (() -> Unit)? = null
 
+    internal var retainPreparationWork: (() -> (() -> Unit))? = null
+
     /** Acquires physical geometry immediately before the child can expose its first pixels. */
     var beforeImageDraw: ((width: Int, height: Int) -> Boolean)? = null
 
@@ -675,7 +677,12 @@ open class ReaderPageImageView @JvmOverloads constructor(
             }
         }.apply {
             // This SSIV version defaults to the same AsyncTask pool; only observe its original tasks.
-            setExecutor(ReaderImageForegroundExecutor(AsyncTask.THREAD_POOL_EXECUTOR))
+            setExecutor(
+                ReaderImageForegroundExecutor(AsyncTask.THREAD_POOL_EXECUTOR) {
+                    retainPreparationWork?.invoke()
+                        ?: {}
+                },
+            )
             setMaxTileSize(ImageUtil.hardwareBitmapThreshold)
             setDoubleTapZoomStyle(SubsamplingScaleImageView.ZOOM_FOCUS_CENTER)
             setPanLimit(SubsamplingScaleImageView.PAN_LIMIT_INSIDE)
@@ -797,7 +804,9 @@ open class ReaderPageImageView @JvmOverloads constructor(
                     .customDecoder(true)
                     .crossfade(false)
                     .build()
-                    .let { request -> observeReaderImageRequest { context.imageLoader.enqueue(request) } }
+                    .let { request ->
+                        observeReaderImageRequest(retainPreparationWork) { context.imageLoader.enqueue(request) }
+                    }
             }
             else -> {
                 throw IllegalArgumentException("Not implemented for class ${data::class.simpleName}")
@@ -913,7 +922,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
             )
             .crossfade(false)
             .build()
-        observeReaderImageRequest { context.imageLoader.enqueue(request) }
+        observeReaderImageRequest(retainPreparationWork) { context.imageLoader.enqueue(request) }
     }
 
     private fun Int.getSystemScaledDuration(): Int {
@@ -943,8 +952,17 @@ open class ReaderPageImageView @JvmOverloads constructor(
 }
 
 /** Initial Coil work remains observed until its original deferred actually completes, including cancellation. */
-internal fun observeReaderImageRequest(enqueue: () -> Disposable): Disposable {
-    val finished = ReaderPageImageView.beginForegroundWork()
+internal fun observeReaderImageRequest(
+    retainWork: (() -> (() -> Unit))? = null,
+    enqueue: () -> Disposable,
+): Disposable {
+    val originalFinished = ReaderPageImageView.beginForegroundWork()
+    val preparationFinished = retainWork?.invoke()
+    val finished = {
+        originalFinished()
+        preparationFinished?.invoke()
+        Unit
+    }
     return try {
         enqueue().also { it.job.invokeOnCompletion { finished() } }
     } catch (failure: Throwable) {
@@ -956,9 +974,18 @@ internal fun observeReaderImageRequest(enqueue: () -> Disposable): Disposable {
 private const val MAX_ZOOM_SCALE = 5F
 
 /** Keeps accepted queued/running native work busy until its original Runnable actually exits. */
-internal class ReaderImageForegroundExecutor(private val delegate: Executor) : Executor {
+internal class ReaderImageForegroundExecutor(
+    private val delegate: Executor,
+    private val retainWork: (() -> (() -> Unit))? = null,
+) : Executor {
     override fun execute(command: Runnable) {
-        val finished = ReaderPageImageView.beginForegroundWork()
+        val originalFinished = ReaderPageImageView.beginForegroundWork()
+        val preparationFinished = retainWork?.invoke()
+        val finished = {
+            originalFinished()
+            preparationFinished?.invoke()
+            Unit
+        }
         try {
             delegate.execute {
                 try {

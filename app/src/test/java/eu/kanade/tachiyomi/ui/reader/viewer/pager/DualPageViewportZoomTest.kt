@@ -69,7 +69,311 @@ import kotlin.time.Duration.Companion.seconds
 class DualPageViewportZoomTest {
     private val fixture = DualPagerPageHolderLayoutTest()
     private val mounted = mutableListOf<DualPagerPageHolder>()
+    private var displayDecoderInstalled = false
+    private val displayDecoderPixels = java.util.concurrent.ConcurrentHashMap<Any, Bitmap>()
     private lateinit var mainScheduler: kotlinx.coroutines.test.TestCoroutineScheduler
+
+    private fun useOriginalDisplayDecoder() {
+        if (displayDecoderInstalled) return
+        displayDecoderInstalled = true
+        mockkConstructor(Decoder::class)
+        every { anyConstructed<Decoder>().init(any(), any()) } answers {
+            val source = secondArg<InputProvider>().openStream()!!.use { BitmapFactory.decodeStream(it)!! }
+            displayDecoderPixels[self] = source
+            Point(source.width, source.height)
+        }
+        every { anyConstructed<Decoder>().decodeRegion(any(), any()) } answers {
+            val region = firstArg<Rect>()
+            val sample = secondArg<Int>()
+            Bitmap.createBitmap(
+                (region.width() + sample - 1) / sample,
+                (region.height() + sample - 1) / sample,
+                Bitmap.Config.ARGB_8888,
+            ).also { tile ->
+                Canvas(tile).drawBitmap(
+                    displayDecoderPixels[self]!!,
+                    region,
+                    Rect(0, 0, tile.width, tile.height),
+                    Paint(Paint.FILTER_BITMAP_FLAG),
+                )
+            }
+        }
+        every { anyConstructed<Decoder>().isReady() } answers { displayDecoderPixels[self]?.isRecycled == false }
+        every { anyConstructed<Decoder>().recycle() } answers {
+            displayDecoderPixels.remove(self)?.recycle()
+            Unit
+        }
+    }
+
+    @Test
+    fun sixSourceAdmissionStartsCurrentThenNaturalForwardAndReverseNeighbours() = runTest {
+        normalAdmission(emptySet())
+    }
+
+    @Test
+    fun oneCurrentImageErrorStillAdmitsTheSuccessfulCurrentAndFourNeighbours() = runTest {
+        normalAdmission(setOf(5))
+    }
+
+    @Test
+    fun bothCurrentImageErrorsStillReleaseTheOrderedNeighbourQueue() = runTest {
+        normalAdmission(setOf(5, 6))
+    }
+
+    @Test
+    fun missingCurrentStreamStillReleasesTheOrderedNeighbourQueue() = runTest {
+        normalAdmission(emptySet(), missingStream = true)
+    }
+
+    private fun kotlinx.coroutines.test.TestScope.normalAdmission(errors: Set<Int>, missingStream: Boolean = false) {
+        useOriginalDisplayDecoder()
+        useEncodedOriginalProducer(viewer())
+        val viewer = viewer()
+        uy.kohesive.injekt.Injekt.get<eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences>()
+            .automaticSpreadMatching().set(false)
+        runCurrent()
+        val chapter = originalChapter(74103, 16, 6)
+        val pages = chapter.pages!!
+        errors.forEach { pages[it].status = Page.State.Error(java.io.IOException("Controlled current image error")) }
+        if (missingStream) pages[5].stream = null
+        val starts = java.util.concurrent.CopyOnWriteArrayList<Int>()
+        chapter.pageLoader = object : eu.kanade.tachiyomi.ui.reader.loader.PageLoader() {
+            override var isLocal = true
+            override suspend fun getPages() = pages
+            override suspend fun loadPage(page: ReaderPage) {
+                starts += page.index
+            }
+        }
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        viewer.moveToPage(pages[6])
+        invokeFixture("measure", viewer.pager, 1400, 1000)
+        runCurrent()
+        awaitProduction {
+            viewer.pager.children.filterIsInstance<DualPagerPageHolder>().forEach { holder ->
+                descendants(holder).filterIsInstance<ReaderPageImageView>().filter { it.childCount > 0 }
+                    .forEach { it.onImageLoaded() }
+            }
+            starts.size >= 6
+        }
+        assertEquals(setOf(5, 6), starts.take(2).toSet())
+        assertEquals(listOf(7, 8, 4, 3), starts.drop(2).take(4))
+        assertEquals("Only the six-source window may enter normal preparation", 6, starts.size)
+        assertTrue(viewer.adapter.session(chapter)!!.displayedHistory.isEmpty())
+    }
+
+    @Test
+    fun preparedShiftedNeighboursSurviveRealForwardAndReverseKeys() = runTest {
+        preparedNeighboursSurviveRealKeys(shifted = true)
+    }
+
+    @Test
+    fun nullableProposalUpgradesToItsIssuedFrameWithoutRebindingNativePixels() = runTest {
+        useOriginalDisplayDecoder()
+        val source = subject(ReaderPortraitSingleSlot.RIGHT, provisionalPair = true, actualPairFrame = true)
+        val published = source.holder.displayPage as DisplayPage.Double
+        val proposal = DisplayPage.Double(published.rightPage, published.leftPage)
+        val holder = DualPagerPageHolder(viewer().activity, viewer(), proposal).also { mounted += it }
+        val issued = requireNotNull(holder.presentationScope).second.frameId
+        invokeFixture("detach", source.holder)
+        load(holder, published.rightPage, "RIGHT")
+        invokeFixture("measure", holder, 1400, 1000)
+        val image = ReflectionHelpers.getField<ReaderPageImageView>(holder, "rightHolder")
+        paintReaderImage(image, source.encoded)
+        val native = image.getChildAt(0)
+        val generations = ReflectionHelpers.getField<Map<ReaderPage, Long>>(holder, "decodeGenerations")
+        val generation = generations.getValue(published.rightPage)
+        assertTrue(viewer().adapter.getItemPosition(holder) != androidx.viewpager.widget.PagerAdapter.POSITION_NONE)
+        assertEquals(issued, holder.displayPage.frameId)
+        assertSame(native, image.getChildAt(0))
+        val updatedGenerations = ReflectionHelpers.getField<Map<ReaderPage, Long>>(holder, "decodeGenerations")
+        assertEquals(generation, updatedGenerations.getValue(published.rightPage))
+    }
+
+    @Test
+    fun preparedSamePhaseProposalSurvivesPublishedFrameUpgrade() = runTest {
+        preparedNeighboursSurviveRealKeys(shifted = false)
+    }
+
+    private suspend fun kotlinx.coroutines.test.TestScope.preparedNeighboursSurviveRealKeys(shifted: Boolean) {
+        useOriginalDisplayDecoder()
+        val viewer = viewer()
+        useEncodedOriginalProducer(viewer)
+        uy.kohesive.injekt.Injekt.get<eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences>()
+            .automaticSpreadMatching().set(shifted)
+        runCurrent()
+        val encoded = List(16) { index ->
+            val bitmap = Bitmap.createBitmap(400, 800, Bitmap.Config.ARGB_8888).apply {
+                eraseColor(Color.RED)
+                if (shifted && index == 2) {
+                    Canvas(this).drawRect(0f, 0f, 40f, 800f, Paint().apply { color = Color.WHITE })
+                }
+            }
+            ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                .toByteArray().also { bitmap.recycle() }
+        }
+        val chapter = ReaderChapter(Chapter.create().copy(id = if (shifted) 74101 else 74102, mangaId = 1))
+            .apply { requestedPage = 6 }
+        val pages = List(16) { index ->
+            ReaderPage(index, stream = { encoded[index].inputStream() }).apply {
+                this.chapter = chapter
+                status = Page.State.Ready
+                publishHeaderFact()
+            }
+        }
+        chapter.publishLoadedPageListForTest(pages)
+        chapter.pageLoader = eu.kanade.tachiyomi.ui.reader.loader.DownloadPageLoader(
+            chapter,
+            tachiyomi.domain.manga.model.Manga.create(),
+            io.mockk.mockk(relaxed = true),
+            io.mockk.mockk(relaxed = true),
+            io.mockk.mockk(relaxed = true),
+        )
+        viewer.pager.pageTurnRippleEnabled = false
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        awaitCertified(viewer, chapter, 6)
+        viewer.moveToPage(pages[6])
+        val owner = requireNotNull(viewer.adapter.session(chapter))
+        val expectedStart = if (shifted) 6 else 5
+        assertEquals(listOf(expectedStart, expectedStart + 1), owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
+        invokeFixture("measure", viewer.pager, 1400, 1000)
+        settleOriginalPager(viewer)
+        fun holders() = viewer.pager.children.filterIsInstance<DualPagerPageHolder>().toList()
+        fun ready(holder: DualPagerPageHolder): Boolean {
+            val bound = ReflectionHelpers.getField<Map<ReaderPage, Any>>(holder, "decodedImages")
+            val needed = holder.displayPage.visiblePages.filter { viewer.imagePreparation.contains(it) }
+            if (needed.isEmpty()) return true
+            var complete = needed.all { it in bound }
+            for (field in listOf("leftHolder", "rightHolder")) {
+                val image = ReflectionHelpers.getField<ReaderPageImageView?>(holder, field) ?: continue
+                if (image.childCount == 0) {
+                    complete = false
+                    continue
+                }
+                val native = image.getChildAt(0) as SubsamplingScaleImageView
+                if (ReflectionHelpers.getField<Bitmap?>(native, "bitmap") == null) {
+                    // Supply only the unavailable host decoder boundary. No offscreen draw is fabricated.
+                    val page = if (field == "leftHolder" && holder.displayPage is DisplayPage.Double) {
+                        (holder.displayPage as DisplayPage.Double).leftPage
+                    } else {
+                        holder.displayPage.firstPage
+                    }
+                    if (page !in needed) continue
+                    val bytes = encoded[page.index]
+                    native.setImage(
+                        com.davemorrissey.labs.subscaleview.ImageSource.bitmap(
+                            BitmapFactory.decodeByteArray(bytes, 0, bytes.size),
+                        ),
+                    )
+                }
+                image.onImageLoaded()
+            }
+            return complete
+        }
+        awaitProduction({
+            "Mounted neighbours must really prepare: target=${owner.targetUnit!!.pageIds.map { it.sourcePageIndex }} " +
+                "priority=${ReflectionHelpers.getField<List<ReaderPage>>(viewer.imagePreparation, "priority").map {
+                    it.index
+                }} " +
+                "active=${ReflectionHelpers.getField<Map<Any, ReaderPage>>(
+                    viewer.imagePreparation,
+                    "active",
+                ).values.map {
+                    it.index
+                }} " +
+                "frames=${owner.presentationFrames.map {
+                    it.frameId to it.unit.pageIds.map { p -> p.sourcePageIndex }
+                }} " +
+                "holders=${holders().map { h ->
+                    h.displayPage.visiblePages.map { it.index } to
+                        ReflectionHelpers.getField<Map<ReaderPage, Any>>(h, "decodedImages").keys.map { it.index }
+                }}"
+        }) {
+            holders().isNotEmpty() && holders().all(::ready)
+        }
+        fun drawCurrent() {
+            invokeFixture("measure", viewer.pager, 1400, 1000)
+            val current = holders().single { it.displayPage.frameId == owner.targetFrameId }
+            for (page in current.displayPage.visiblePages) {
+                val sides = current.displayPage as DisplayPage.Double
+                val field = if (sides.leftPage === page) "leftHolder" else "rightHolder"
+                paintReaderImage(ReflectionHelpers.getField(current, field), encoded[page.index])
+            }
+            invokeFixture("measure", viewer.pager, 1400, 1000)
+            settleOriginalPager(viewer)
+        }
+        drawCurrent()
+        val targetBefore = owner.location
+        assertEquals(
+            setOf(expectedStart, expectedStart + 1),
+            owner.displayedHistory.flatMap { it.drawnPageIds }
+                .map { it.sourcePageIndex }.toSet(),
+        )
+        val nextPage = expectedStart + 2
+        val prepared = holders().single { it.displayPage.containsPage(pages[nextPage]) }
+        val nativeBefore = descendants(prepared).filterIsInstance<ReaderPageImageView>().map {
+            it.getChildAt(0)
+        }.toList()
+        assertEquals(targetBefore, owner.location)
+        val directory = kotlin.io.path.createTempDirectory("dual-prepared-normal-work").toFile()
+        val sink = eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnosticSink({ directory })
+        val previousSink = eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.sink
+        eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.sink = sink
+        try {
+            for ((key, target) in listOf(
+                android.view.KeyEvent.KEYCODE_DPAD_LEFT to nextPage,
+                android.view.KeyEvent.KEYCODE_DPAD_LEFT to nextPage + 2,
+                android.view.KeyEvent.KEYCODE_DPAD_RIGHT to nextPage,
+                android.view.KeyEvent.KEYCODE_DPAD_RIGHT to expectedStart,
+            )) {
+                val engineRunsBefore = owner.certificationMetrics.engineRuns
+                viewer.handleKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, key))
+                invokeFixture("measure", viewer.pager, 1400, 1000)
+                settleOriginalPager(viewer)
+                assertEquals(target, owner.targetUnit!!.pageIds.minOf { it.sourcePageIndex })
+                if (target == nextPage) {
+                    val actual = holders().single { it.displayPage.frameId == owner.targetFrameId }
+                    assertSame("A prepared neighbour must survive native adapter reconciliation", prepared, actual)
+                    assertEquals(
+                        nativeBefore,
+                        descendants(actual).filterIsInstance<ReaderPageImageView>()
+                            .map { it.getChildAt(0) }.toList(),
+                    )
+                }
+                awaitProduction({
+                    "After real input $key target=$target expected prepared holders, actual=" + holders().map {
+                        "${it.displayPage}:" +
+                            ReflectionHelpers.getField<Map<ReaderPage, Any>>(it, "decodedImages").keys.map { it.index }
+                    }
+                }) { holders().all(::ready) }
+                drawCurrent()
+                println(
+                    "DUAL_PREFETCH_CERTIFY shifted=$shifted target=$target key=$key engineDelta=" +
+                        (owner.certificationMetrics.engineRuns - engineRunsBefore),
+                )
+            }
+            assertEquals(false, ReflectionHelpers.getField<Boolean>(viewer.adapter, "lastNavigationForward"))
+            val beforeCancel = owner.location
+            val down = SystemClock.uptimeMillis()
+            send(viewer.pager, down, down, MotionEvent.ACTION_DOWN, 700f, 500f)
+            send(viewer.pager, down, down + 30, MotionEvent.ACTION_MOVE, 680f, 500f)
+            send(viewer.pager, down, down + 60, MotionEvent.ACTION_CANCEL, 680f, 500f)
+            settleOriginalPager(viewer)
+            assertEquals(beforeCancel, owner.location)
+            assertEquals(false, ReflectionHelpers.getField<Boolean>(viewer.adapter, "lastNavigationForward"))
+        } finally {
+            eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.sink = previousSink
+            sink.close()
+        }
+        val lines = directory.listFiles()!!.flatMap { it.readLines() }
+        for (event in listOf("loader_start", "read_start", "decode_start")) {
+            assertEquals(
+                "Already prepared source must have zero additional normal $event on entry or revisit",
+                0,
+                lines.count { it.contains("sourceIndex=$nextPage ") && it.contains("event=$event ") },
+            )
+        }
+        directory.deleteRecursively()
+    }
 
     @Test
     fun realHttpDualRtlHeldTargetStillPaintsPartner() = runTest {
@@ -2410,7 +2714,23 @@ class DualPageViewportZoomTest {
             0,
             eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.optionalWork.value,
         )
+        if (displayDecoderInstalled) {
+            viewer().pager.children.filterIsInstance<DualPagerPageHolder>().forEach { holder ->
+                descendants(holder).filterIsInstance<ReaderPageImageView>().forEach { it.recycle() }
+            }
+        }
         fixture.tearDown()
+        if (displayDecoderInstalled) {
+            val idleDeadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5)
+            while (ReaderPageImageView.foregroundWork.value > 0 && System.nanoTime() < idleDeadline) {
+                mainScheduler.runCurrent()
+                Thread.sleep(5)
+            }
+            assertEquals(0, ReaderPageImageView.foregroundWork.value)
+            unmockkConstructor(Decoder::class)
+            displayDecoderPixels.values.filter { !it.isRecycled }.forEach { it.recycle() }
+            displayDecoderPixels.clear()
+        }
     }
 
     @Test

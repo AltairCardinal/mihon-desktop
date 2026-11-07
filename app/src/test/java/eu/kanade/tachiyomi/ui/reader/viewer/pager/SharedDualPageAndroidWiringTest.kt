@@ -541,6 +541,43 @@ class SharedDualPageAndroidWiringTest {
     }
 
     @Test
+    fun `unchanged native rebuild retains the bounded normal pairing memo`() {
+        val chapter = gestureChapter()
+        viewer.moveToPage(requireNotNull(chapter.pages)[3])
+        val owner = requireNotNull(viewer.adapter.session(chapter))
+        viewer.adapter.refreshPairing()
+        val before = owner.certificationMetrics.engineRuns
+        viewer.adapter.refreshPairing()
+        assertEquals(
+            "The same unchanged near window must not thrash the four-entry certification memo",
+            before,
+            owner.certificationMetrics.engineRuns,
+        )
+    }
+
+    @Test
+    fun `cancelled reverse selection preserves last successful forward preparation direction`() {
+        val chapter = gestureChapter()
+        val pages = requireNotNull(chapter.pages)
+        val listener = gestureListener()
+        viewer.moveToPage(pages[3])
+        lockNativeSelection(chapter)
+        assertEquals(true, ReflectionHelpers.getField<Boolean>(viewer.adapter, "lastNavigationForward"))
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_DRAGGING)
+        selectNative(pages[1])
+        lockNativeSelection(chapter)
+        selectNative(pages[3])
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_IDLE)
+        assertEquals(true, ReflectionHelpers.getField<Boolean>(viewer.adapter, "lastNavigationForward"))
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_DRAGGING)
+        selectNative(pages[5])
+        lockNativeSelection(chapter)
+        selectNative(pages[3])
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_IDLE)
+        assertEquals(true, ReflectionHelpers.getField<Boolean>(viewer.adapter, "lastNavigationForward"))
+    }
+
+    @Test
     fun `late native facts publish only after the final gesture anchor and deferred chapter window`() {
         val chapter = gestureChapter()
         val pages = requireNotNull(chapter.pages)

@@ -25,6 +25,7 @@ import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.widget.ViewPagerAdapter
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.collectLatest
@@ -37,7 +38,6 @@ import mihon.domain.reader.SharedDualPageSession
 import mihon.domain.reader.session.ReaderPageId
 import okio.Buffer
 import tachiyomi.core.common.i18n.stringResource
-import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.ImageUtil
@@ -132,6 +132,7 @@ class DualPagerPageHolder(
     private val errorLayouts = mutableMapOf<Side, ReaderErrorBinding>()
     private val errorPages = mutableMapOf<Side, ReaderPage>()
     private val renderedPages = mutableMapOf<ReaderPage, String>()
+    private val diagnosedDrawTickets = mutableMapOf<ReaderPage, ReaderDualPageViewportTicket>()
     private val boundContents = mutableMapOf<ReaderPage, String>()
     private val boundEncodedContents = mutableMapOf<ReaderPage, String>()
     private val boundRetries = mutableMapOf<ReaderPage, Long>()
@@ -168,6 +169,16 @@ class DualPagerPageHolder(
     private var attachmentGeneration = 0L
 
     internal fun beginPresentation() {
+        presentationScope?.let { (owner, ticket) ->
+            if (displayPage.visiblePages.none(viewer.imagePreparation::contains) &&
+                !viewer.isCurrentPresentation(this, owner, ticket) && getGlobalVisibleRect(Rect()) &&
+                owner.frame(ticket)?.drawnPageIds?.isNotEmpty() == true
+            ) {
+                // An outgoing animated image may repaint its already exposed pixels with its
+                // original capability, without recertifying or granting a new off-window ticket.
+                return
+            }
+        }
         val next = viewer.capturePresentation(displayPage, presentationLeaseOwner)
         if (presentationScope?.second === next?.second) return
         if (presentationScope?.first !== next?.first ||
@@ -192,11 +203,13 @@ class DualPagerPageHolder(
 
     internal fun onViewportMoved() {
         if (isAttachedToWindow && !getGlobalVisibleRect(Rect()) &&
+            displayPage.visiblePages.none(viewer.imagePreparation::contains) &&
             presentationScope?.let { (owner, ticket) -> ticket.frameId == owner.targetFrameId } != true
         ) {
             presentationScope?.let(viewer::releasePresentation)
             presentationScope = null
             visibleContentLeases.clear()
+            onPreparationWindowChanged()
             viewer.adapter.releaseContent(displayPage.firstPage.chapter)
             if (!isAttachedToWindow) return
             displayPage.pageSides().forEach { (page, side) ->
@@ -231,6 +244,7 @@ class DualPagerPageHolder(
 
     private fun clearRendered(page: ReaderPage): Long {
         renderedPages.remove(page)
+        diagnosedDrawTickets.remove(page)
         val generation = (decodeGenerations[page] ?: 0L) + 1L
         decodeGenerations[page] = generation
         viewer.onHolderDisplayStateChanged(this)
@@ -241,6 +255,14 @@ class DualPagerPageHolder(
 
     private val scope = MainScope()
     private val pageLoadJobs = mutableMapOf<ReaderPage, Job>()
+    private val preparationLeases = mutableMapOf<ReaderPage, ReaderImagePreparationQueue.Lease>()
+
+    private suspend fun acquirePreparation(page: ReaderPage): ReaderImagePreparationQueue.Lease =
+        preparationLeases[page] ?: viewer.imagePreparation.acquire(page).also { preparationLeases[page] = it }
+
+    private fun finishPreparation(page: ReaderPage) {
+        preparationLeases.remove(page)?.close()
+    }
 
     // ── Zoom / pan state (all physical half-slot frames) ────────────────────
 
@@ -362,12 +384,15 @@ class DualPagerPageHolder(
         presentationScope?.let(viewer::releasePresentation)
         presentationScope = null
         renderedPages.clear()
+        diagnosedDrawTickets.clear()
         visibleContentLeases.clear()
         decodedImages.clear()
         contentReloadJobs.values.forEach(Job::cancel)
         contentReloadJobs.clear()
         pageLoadJobs.values.forEach(Job::cancel)
         pageLoadJobs.clear()
+        preparationLeases.values.forEach { it.close() }
+        preparationLeases.clear()
         leftHolder?.recycle()
         rightHolder?.recycle()
     }
@@ -448,9 +473,41 @@ class DualPagerPageHolder(
         )
     }
 
+    internal fun preparedPages(): Set<ReaderPage> = decodedImages.filterValues { it.callbackIsCurrent() }.keys
+
+    /** Keep real outgoing pixels through a transition; retire hidden images outside the source window. */
+    internal fun onPreparationWindowChanged() {
+        if (!getGlobalVisibleRect(Rect())) {
+            displayPage.pageSides().forEach { (page, side) ->
+                if (viewer.imagePreparation.contains(page)) return@forEach
+                pageLoadJobs.remove(page)?.cancel()
+                contentReloadJobs.remove(page)?.cancel()
+                finishPreparation(page)
+                decodedImages.remove(page)
+                boundContents.remove(page)
+                boundEncodedContents.remove(page)
+                visibleContentLeases.remove(page)
+                clearRendered(page)
+                if (side == Side.LEFT) leftHolder?.recycle() else rightHolder?.recycle()
+            }
+        }
+        loadPages()
+    }
+
     private fun loadPages() {
         displayPage.pageSides().forEach { (page, side) ->
-            if (page !in pageLoadJobs) pageLoadJobs[page] = scope.launch { loadSinglePage(page, side) }
+            if (!viewer.imagePreparation.contains(page)) return@forEach
+            if (page !in pageLoadJobs) {
+                pageLoadJobs[page] = scope.launch {
+                    val preparation = acquirePreparation(page)
+                    try {
+                        loadSinglePage(page, side)
+                    } finally {
+                        preparation.close()
+                        if (preparationLeases[page] === preparation) preparationLeases.remove(page)
+                    }
+                }
+            }
         }
     }
 
@@ -497,6 +554,7 @@ class DualPagerPageHolder(
 
     private suspend fun loadSinglePage(page: ReaderPage, side: Side) {
         recordLatency("TARGET_LOAD_ENTER", page)
+        diagnose("normal_admitted", page)
         val loader = page.chapter.pageLoader ?: return
         val loaderType = when (loader) {
             is eu.kanade.tachiyomi.ui.reader.loader.DownloadPageLoader -> "DOWNLOAD"
@@ -508,7 +566,9 @@ class DualPagerPageHolder(
         }
         diagnose("loader_start", page, "loader" to loaderType, "attachment" to attachmentGeneration)
         supervisorScope {
-            launchIO { loader.loadPage(page) }
+            // Loaders dispatch their own blocking work; enter the ordinary request in admission
+            // order before starting this slot's independent status collector.
+            launch(start = CoroutineStart.UNDISPATCHED) { loader.loadPage(page) }
             launch {
                 var observed = page.contentFact.value.version
                 page.contentFact.collect { captured ->
@@ -595,6 +655,24 @@ class DualPagerPageHolder(
     private suspend fun setImage(page: ReaderPage, side: Side) {
         recordLatency("TARGET_IMAGE_ENTER", page)
         if (retainsVisibleContent(page)) return
+        val preparation = acquirePreparation(page)
+        var submitted = false
+        try {
+            bindPreparedImage(page, side, preparation) { submitted = true }
+        } finally {
+            if (!submitted) {
+                preparation.close()
+                if (preparationLeases[page] === preparation) preparationLeases.remove(page)
+            }
+        }
+    }
+
+    private suspend fun bindPreparedImage(
+        page: ReaderPage,
+        side: Side,
+        preparation: ReaderImagePreparationQueue.Lease,
+        onSubmitted: () -> Unit,
+    ) {
         val generation = clearRendered(page)
         val started = System.nanoTime()
         diagnose("header_start", page, "generation" to generation)
@@ -704,6 +782,7 @@ class DualPagerPageHolder(
                         page.status == Page.State.Ready &&
                         (page.contentIdentity() == content || retainsVisibleContent(page))
                 }
+                holder.retainPreparationWork = preparation::retainWork
                 holder.onImageLoaded = {
                     diagnose(
                         "decode_ready",
@@ -713,6 +792,7 @@ class DualPagerPageHolder(
                         "elapsedMs" to (System.nanoTime() - started) / 1_000_000,
                     )
                     if (callbackIsCurrent()) {
+                        finishPreparation(page)
                         if (errorPages[side] === page) {
                             errorLayouts[side]?.root?.isVisible = false
                             errorPages.remove(side)
@@ -822,28 +902,38 @@ class DualPagerPageHolder(
                     if (callbackIsCurrent()) {
                         presentationScope?.let { (owner, ticket) ->
                             val pageId = owner.identity.pageIds.getOrNull(page.index)
-                            if (pageId != null && owner.reportDrawn(ticket, setOf(pageId)) &&
-                                renderedPages[page] != content
-                            ) {
-                                renderedPages[page] = content
-                                visibleContentLeases[page] = content
-                                recordUnitDrawn(owner, ticket)
-                                removeProgressIndicator(side)
-                                diagnose(
-                                    "drawn",
-                                    page,
-                                    "generation" to generation,
-                                    "serial" to ticket.frameId.serial,
-                                    "reason" to "PROGRESS_HIDDEN",
-                                    "elapsedMs" to (System.nanoTime() - started) / 1_000_000,
-                                    "rendered" to renderedPages.keys.joinToString(",") { it.index.toString() },
-                                )
-                                post { viewer.onHolderDisplayStateChanged(this@DualPagerPageHolder) }
+                            if (pageId != null && owner.reportDrawn(ticket, setOf(pageId))) {
+                                if (renderedPages[page] != content) {
+                                    renderedPages[page] = content
+                                    visibleContentLeases[page] = content
+                                    recordUnitDrawn(owner, ticket)
+                                    removeProgressIndicator(side)
+                                    post { viewer.onHolderDisplayStateChanged(this@DualPagerPageHolder) }
+                                }
+                                // A revisited prepared image keeps its bitmap and rendered state. Still
+                                // observe its first actual draw under the new capability, once per ticket.
+                                if (diagnosedDrawTickets[page] !== ticket) {
+                                    diagnosedDrawTickets[page] = ticket
+                                    diagnose(
+                                        "drawn",
+                                        page,
+                                        "generation" to generation,
+                                        "serial" to ticket.frameId.serial,
+                                        "sequence" to ticket.locationSequence,
+                                        "current" to
+                                            viewer.isCurrentPresentation(this@DualPagerPageHolder, owner, ticket),
+                                        "reason" to "PROGRESS_HIDDEN",
+                                        "elapsedMs" to (System.nanoTime() - started) / 1_000_000,
+                                        "rendered" to renderedPages.keys.joinToString(",") { it.index.toString() },
+                                    )
+                                }
                             }
                         }
                     }
                 }
                 holder.onImageLoadError = { error ->
+                    preparation.close()
+                    if (preparationLeases[page] === preparation) preparationLeases.remove(page)
                     diagnose("decode_error", page, "error" to error?.javaClass?.simpleName, "generation" to generation)
                     if (callbackIsCurrent()) {
                         setError(error, page, side)
@@ -853,6 +943,7 @@ class DualPagerPageHolder(
                 slot(side)?.applyTransform()
                 diagnose("decode_start", page, "generation" to generation)
                 holder.setImage(source, isAnimated, config, page.index, callbackIsCurrent = callbackIsCurrent)
+                onSubmitted()
                 if (!isAnimated) holder.pageBackground = background
             }
         } catch (e: CancellationException) {
@@ -862,8 +953,12 @@ class DualPagerPageHolder(
                 "generation" to generation,
                 "elapsedMs" to (System.nanoTime() - started) / 1_000_000,
             )
+            preparation.close()
+            if (preparationLeases[page] === preparation) preparationLeases.remove(page)
             throw e
         } catch (e: Throwable) {
+            preparation.close()
+            if (preparationLeases[page] === preparation) preparationLeases.remove(page)
             diagnose("load_error", page, "error" to e.javaClass.simpleName, "generation" to generation)
             logcat(LogPriority.ERROR, e)
             withUIContext {
@@ -982,6 +1077,7 @@ class DualPagerPageHolder(
     }
 
     private fun setError(error: Throwable?, page: ReaderPage, side: Side) {
+        finishPreparation(page)
         clearRendered(page)
         removeProgressIndicator(side)
         val binding = errorLayouts.getOrPut(side) {

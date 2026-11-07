@@ -218,6 +218,10 @@ class SharedDualPageSession(
         return captureViewport(pageId, preparingPageIds = emptySet(), unitId, frameId, activate, leaseOwner)
     }
 
+    /** Read the same presentable candidate used by frame preparation, without certification or I/O. */
+    fun presentationUnitForPage(pageId: ReaderPageId): ReaderDualPageUnit? =
+        pageId.takeIf { !closed && it in identity.pageIds }?.let(presentation::presentationUnit)
+
     /** Allocate identity before a native mount is published, without granting pixel or reading authority. */
     fun preparePresentationFrame(
         pageId: ReaderPageId? = location?.pageId,

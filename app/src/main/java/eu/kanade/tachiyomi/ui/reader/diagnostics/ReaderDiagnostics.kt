@@ -19,7 +19,7 @@ internal object ReaderDiagnostics {
         "sample", "matching", "sideEnabled", "crop", "bounded", "animated", "actual", "proposed",
         "proposedBefore", "reasonBefore", "lockedBefore", "locked", "accepted", "prepared", "outcome",
         "neighbors", "storage", "position", "forward", "target", "rendered", "layoutRevision", "factState",
-        "gesture", "idle", "holder",
+        "gesture", "idle", "holder", "current",
     )
 
     fun initialize(context: Context) {
