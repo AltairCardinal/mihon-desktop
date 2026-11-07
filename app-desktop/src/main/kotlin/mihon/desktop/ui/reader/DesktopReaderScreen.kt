@@ -366,6 +366,22 @@ data class DesktopReaderScreen(
             readerNav = readerNav,
             onPrevChapter = onPrevChapter,
             onNextChapter = onNextChapter,
+            onPrevChapterButton = {
+                requestAdjacentChapterTransition(
+                    ReaderTransitionDirection.PREVIOUS,
+                    model,
+                    readerNav,
+                    initialPage = ReaderInitialPage.FIRST,
+                )
+            },
+            onNextChapterButton = {
+                requestAdjacentChapterTransition(
+                    ReaderTransitionDirection.NEXT,
+                    model,
+                    readerNav,
+                    initialPage = ReaderInitialPage.FIRST,
+                )
+            },
         )
     }
 
@@ -373,6 +389,7 @@ data class DesktopReaderScreen(
         direction: ReaderTransitionDirection,
         model: ReaderScreenModel,
         readerNavigator: ReaderNavigator?,
+        initialPage: Int? = null,
     ): Boolean {
         val target = when (direction) {
             ReaderTransitionDirection.PREVIOUS -> readerNavigator?.previousRead
@@ -385,7 +402,7 @@ data class DesktopReaderScreen(
             return false
         }
         model.clearChapterTransition()
-        model.activateChapter(chapterContext(target, direction, model.state.value.chapterRefs))
+        model.activateChapter(chapterContext(target, direction, model.state.value.chapterRefs, initialPage))
         return true
     }
 
@@ -410,6 +427,7 @@ data class DesktopReaderScreen(
         target: ReaderChapterRef,
         direction: ReaderTransitionDirection,
         refs: List<ReaderChapterRef> = chapters,
+        initialPage: Int? = null,
     ) = DesktopReaderChapterContext(
         chapterId = target.id,
         sourceId = sourceId,
@@ -418,7 +436,7 @@ data class DesktopReaderScreen(
         chapterTitle = target.name,
         chapterNumber = target.chapterNumber,
         chapterIndex = ReaderNavigator.indexForId(refs, target.id),
-        initialPage = initialPageForChapterNavigation(
+        initialPage = initialPage ?: initialPageForChapterNavigation(
             if (direction == ReaderTransitionDirection.PREVIOUS) {
                 ReaderChapterNavigationDirection.Previous
             } else {
@@ -575,6 +593,8 @@ internal fun ReaderViewport(
     readerNav: ReaderNavigator?,
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
+    onPrevChapterButton: () -> Unit = onPrevChapter,
+    onNextChapterButton: () -> Unit = onNextChapter,
 ) {
     val appPreferences = LocalDesktopUiDependencies.current.appPreferences
     val tutorials = remember(appPreferences) { DesktopTutorialState(appPreferences.acknowledgedTutorials) }
@@ -745,8 +765,8 @@ internal fun ReaderViewport(
                             currentPage = state.currentPage, totalPages = state.session.activeChapter.pages.size,
                             onPageChange = { model.goToPage(it) }, isRtl = state.readingMode == ReadingMode.RTL,
                             isDualPage = state.dualPageMode, hasPrevChapter = readerNav?.previousRead != null,
-                            hasNextChapter = readerNav?.nextToRead != null, onPrevChapter = onPrevChapter,
-                            onNextChapter = onNextChapter,
+                            hasNextChapter = readerNav?.nextToRead != null, onPrevChapter = onPrevChapterButton,
+                            onNextChapter = onNextChapterButton,
                             onAdjustSpread = adjustSpread,
                             adjustSaving = state.pairingSaving,
                             adjustEnabled = state.pairingLoad == PairingLoad.READY,

@@ -3,6 +3,9 @@ package mihon.desktop.ui.reader
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
 import cafe.adriel.voyager.navigator.Navigator
 import dev.mihon.injekt.patchInjekt
 import io.mockk.every
@@ -60,6 +63,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
 import java.io.File
@@ -71,7 +75,13 @@ class DesktopReaderChapterTransitionIntegrationTest {
     fun `next chapter activates inside the same core at zero pages without a replacement screen`() {
         val chapters = chapters()
         val core = ReaderSessionCore(ReaderChapterId(1L), sessionId = "transition-test")
-        val initialContext = context(chapters[1], chapterIndex = 1, initialPage = 0)
+        core.openChapter(ReaderChapterId(1L))
+        core.acceptChapterMaterialization(
+            chapterId = ReaderChapterId(1L),
+            generation = core.snapshot.generation,
+            result = ReaderChapterMaterializeResult.Loaded(List(34) { ReaderPageDescriptor(it, url = "/1/$it") }),
+        )
+        val initialContext = context(chapters[1], chapterIndex = 1, initialPage = 33)
         lateinit var model: ReaderScreenModel
         val activations = mutableListOf<DesktopReaderChapterContext>()
         model = ReaderScreenModel(
@@ -109,6 +119,13 @@ class DesktopReaderChapterTransitionIntegrationTest {
             model.state.value.session.activeChapter.loadState,
         )
         assertNull(model.state.value.chapterTransition)
+        val loaded = core.acceptChapterMaterialization(
+            chapterId = ReaderChapterId(2L),
+            generation = core.snapshot.generation,
+            result = ReaderChapterMaterializeResult.Loaded(List(48) { ReaderPageDescriptor(it, url = "/2/$it") }),
+        ).snapshot
+        model.acceptSessionState(DesktopReaderSessionState(model.state.value.context, loaded))
+        assertEquals(0, model.state.value.currentPage, "A longer next chapter must not inherit the outgoing page")
     }
 
     @Test
@@ -254,10 +271,28 @@ class DesktopReaderChapterTransitionIntegrationTest {
 
     @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
     @Test
-    fun `mounted production screen wires prefetch and retains runtime through outgoing composition`(@TempDir tempDir: File) = runTest {
+    fun `mounted production screen wires prefetch and retains runtime through outgoing composition`(@TempDir tempDir: File) =
+        mountedReaderScenario(tempDir, toolbarNavigation = false)
+
+    @Test
+    fun `mounted previous chapter toolbar button opens the first page instead of the last`(@TempDir tempDir: File) =
+        mountedReaderScenario(tempDir, toolbarNavigation = true)
+
+    @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
+    private fun mountedReaderScenario(tempDir: File, toolbarNavigation: Boolean) = runTest {
         val chapters = chapters()
-        val initialContext = context(chapters[1], chapterIndex = 1, initialPage = 0)
-        val core = ReaderSessionCore(ReaderChapterId(1L), sessionId = "mounted-prefetch-wiring-test")
+        val index = if (toolbarNavigation) 0 else 1
+        val initialContext = context(chapters[index], chapterIndex = index, initialPage = if (toolbarNavigation) 3 else 0)
+        val core = ReaderSessionCore(ReaderChapterId(initialContext.chapterId), sessionId = "mounted-prefetch-wiring-test")
+        if (toolbarNavigation) {
+            core.openChapter(ReaderChapterId(initialContext.chapterId))
+            core.acceptChapterMaterialization(
+                chapterId = core.snapshot.activeChapter.id,
+                generation = core.snapshot.generation,
+                result = ReaderChapterMaterializeResult.Loaded(List(5) { ReaderPageDescriptor(it, url = "/2/$it") }),
+            )
+            assertEquals(5, core.snapshot.activeChapter.pages.size)
+        }
         val store = DesktopReaderEncodedPageStore(tempDir.resolve("encoded"))
         val legacy = Preferences.userRoot().node("/mihon/mounted-prefetch/${System.nanoTime()}")
         val session = DesktopReaderSession(
@@ -274,6 +309,7 @@ class DesktopReaderChapterTransitionIntegrationTest {
             parentScope = this,
         )
         val prefs = ReaderPreferences(InMemoryPreferenceStore(), legacy)
+        if (toolbarNavigation) prefs.readingMode = ReadingMode.LTR
         val ioReporter = ReaderIoReporter(clock = ReaderMonotonicClock(System::nanoTime))
         val pageContentOwner = DesktopReaderPageContentOwner(
             scope = this,
@@ -299,6 +335,7 @@ class DesktopReaderChapterTransitionIntegrationTest {
             prefetchPreferenceJob = Job(),
         )
         val updates = mutableListOf<Pair<DesktopReaderChapterContext?, Int>>()
+        val activations = mutableListOf<DesktopReaderChapterContext>()
         var screenProductionClosedCallbacks = 0
         val model = ReaderScreenModel(
             prefs = prefs,
@@ -306,9 +343,22 @@ class DesktopReaderChapterTransitionIntegrationTest {
             onNextChapterPrefetchChanged = { target, firstViewportPageCount ->
                 updates += target to firstViewportPageCount
             },
+            onChapterActivated = { target ->
+                activations += target
+                core.openChapter(ReaderChapterId(target.chapterId))
+                core.acceptChapterMaterialization(
+                    chapterId = core.snapshot.activeChapter.id,
+                    generation = core.snapshot.generation,
+                    result = ReaderChapterMaterializeResult.Loaded(
+                        List(if (target.chapterId == 1L) 11 else 5) { ReaderPageDescriptor(it, url = "/${target.chapterId}/$it") },
+                    ),
+                )
+                DesktopReaderSessionState(target, core.snapshot)
+            },
             runtime = runtime,
         )
         model.attachCatalog(chapters, null, null) { emptyList() }
+        if (toolbarNavigation) model.toggleUI()
         val productionClosedCallback = slot<() -> Unit>()
         val factory = mockk<DesktopReaderRuntimeFactory> {
             every {
@@ -316,15 +366,15 @@ class DesktopReaderChapterTransitionIntegrationTest {
             } returns model
         }
         val screen = DesktopReaderScreen(
-            chapterTitle = "Chapter 1",
+            chapterTitle = initialContext.chapterTitle,
             mangaTitle = "Manga",
-            chapterId = 1L,
-            chapterUrl = "/1",
-            chapterNumber = 1.0,
+            chapterId = initialContext.chapterId,
+            chapterUrl = initialContext.chapterUrl,
+            chapterNumber = initialContext.chapterNumber,
             sourceId = 9L,
             mangaId = 44L,
             chapters = chapters,
-            currentChapterIndex = 1,
+            currentChapterIndex = index,
             onProductionClosed = { screenProductionClosedCallbacks += 1 },
         )
         val previousInjekt = Injekt
@@ -346,9 +396,43 @@ class DesktopReaderChapterTransitionIntegrationTest {
                 runCurrent()
             }
 
-            assertEquals(listOf(1), updates.map { it.second })
-            assertEquals(listOf(2L), updates.map { it.first?.chapterId })
-            assertEquals(listOf(44L), updates.map { it.first?.mangaId })
+            if (toolbarNavigation) {
+                fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+                fun clickChapterButton(label: String) {
+                    val button = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.single {
+                        it.config.contains(SemanticsProperties.ContentDescription) &&
+                            label in it.config[SemanticsProperties.ContentDescription]
+                    }
+                    val position = button.boundsInRoot.center
+                    scene.sendPointerEvent(PointerEventType.Press, position)
+                    scene.sendPointerEvent(PointerEventType.Release, position)
+                }
+                clickChapterButton(MR.strings.desktop_ui_previous_chapter.localized())
+                repeat(3) {
+                    scene.render()
+                    runCurrent()
+                }
+                assertEquals(1L, model.state.value.context.chapterId)
+                assertEquals(ReaderInitialPage.FIRST, activations.single().initialPage)
+                assertEquals(0, model.state.value.currentPage)
+                model.goToPage(10)
+                repeat(3) {
+                    scene.render()
+                    runCurrent()
+                }
+                clickChapterButton(MR.strings.desktop_ui_next_chapter.localized())
+                repeat(3) {
+                    scene.render()
+                    runCurrent()
+                }
+                assertEquals(2L, model.state.value.context.chapterId)
+                assertEquals(ReaderInitialPage.FIRST, activations.last().initialPage)
+                assertEquals(0, model.state.value.currentPage)
+            } else {
+                assertEquals(listOf(1), updates.map { it.second })
+                assertEquals(listOf(2L), updates.map { it.first?.chapterId })
+                assertEquals(listOf(44L), updates.map { it.first?.mangaId })
+            }
             productionClosedCallback.captured()
             assertEquals(1, screenProductionClosedCallbacks)
 

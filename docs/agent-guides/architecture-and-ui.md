@@ -86,6 +86,14 @@ Mihon 是由 Android 应用、Mihon Desktop 和共享 Kotlin 模块组成的多�
 
 依赖版本由 `gradle/*.versions.toml` 管理。
 
+### Desktop 阅读器的章节入口
+
+章节位置必须区分初次打开、恢复和阅读中跨章。新开已读章节从首页开始，未读章节沿用共享原子打开结果；恢复位置仍绑定目标章节及其同步快照。阅读区域、键盘或滚轮翻页越界进入上一章末页／下一章首页，不能继承离开章节的页码。页列表尚未到达时保留入口意图，加载后再解析末页。
+
+底栏上一章／下一章按钮与原版 Android 工具栏一致，明确进入目标章首页。`DesktopReaderScreen` 为按钮提供独立回调，`ReaderViewport` 不得把它们与阅读流的越界回调合并。两类入口复用既有章节筛选、身份和激活链路；无目标章节时不激活，加载失败沿用原有重试。不能在章节状态发布后再次套用“已读重开”的规则覆盖已选位置。
+
+`DesktopReaderChapterTransitionIntegrationTest` 覆盖真实挂载 Screen 的底栏按钮点击、异步页列表到达及长短章节交接；`HistoryReaderOpenContextIntegrationTest` 覆盖已读／未读的新开页码和原子同步基线。键盘／滚轮仍沿用阅读流越界语义，方向与分组回归位于 `ReaderKeyboardNavigationPositionTest`。
+
 ### Desktop 阅读器放大平移边界
 
 Desktop 的 `ReaderPanBounds` 是阅读器视口交互策略：放大后，拖动产生的单侧留白最多为对应视口尺寸的三分之一；小图或偏置布局原本不可避免的留白保留，不能继续向该方向扩大。边界复用 `resolveReaderRegionDrawGeometry` 的实际绘制范围，包含适配比例、对齐、裁白边及分割后的图片尺寸，不能以图片容器空白代替漫画边缘。
