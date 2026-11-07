@@ -177,6 +177,94 @@ class DesktopReaderWindowsMinizTest {
     }
 
     @Test
+    fun `numeric names above nineteen digits retain Commons unsigned ordering`() = runBlocking {
+        val archive = tempDir.resolve("unsigned-overflow.cbz")
+        writeArchive(archive, listOf("18446744073709551616.webp" to image(1), "00000000000000000002.webp" to image(2)))
+        assertParity(archive, "CommonsZipArchiveLease")
+    }
+
+    @Test
+    fun `image signatures in ComicInfo retain the page and unsupported headers stay metadata`() = runBlocking {
+        val signatures = listOf(
+            byteArrayOf(0xFF.toByte(), 0xD8.toByte()),
+            byteArrayOf(0x89.toByte(), 80, 78, 71, 13, 10, 26, 10),
+            "GIF87a".toByteArray(), "GIF89a".toByteArray(), image(7),
+            byteArrayOf(0xFF.toByte(), 10),
+            byteArrayOf(0, 0, 0, 12, 74, 88, 76, 32, 13, 10, 0x87.toByte(), 10),
+            byteArrayOf(0, 0, 0, 12, 106, 80, 32, 32, 13, 10, 0x87.toByte(), 10),
+            byteArrayOf(0xFF.toByte(), 79, 0xFF.toByte(), 81),
+        ) + listOf(
+            "avif", "avis", "heic", "heix", "hevc", "hevx", "heim", "heis", "hevm", "hevs", "mif1", "msf1",
+        ).flatMap { brand ->
+            listOf(8, 16, 20, 24, 28).map { offset ->
+                ByteArray(32).also { header ->
+                    "ftyp".toByteArray().copyInto(header, 4)
+                    brand.toByteArray().copyInto(header, offset)
+                }
+            }
+        }
+        val nonImages = listOf("<ComicInfo/>".toByteArray(), "RIFFxxxxWAVE".toByteArray(), byteArrayOf())
+        for (method in listOf(ZipEntry.STORED, ZipEntry.DEFLATED)) {
+            (signatures + nonImages).forEachIndexed { index, header ->
+                val archive = tempDir.resolve("comic-info-$method-$index.cbz")
+                writeArchive(archive, listOf("001.webp" to image(1), "ComicInfo.xml" to header), method)
+                val isImage = DesktopReaderImageSignature.matches(header.inputStream())
+                assertParity(archive, if (isImage) "CommonsZipArchiveLease" else "MinizZipArchiveLease")
+            }
+        }
+    }
+
+    @Test
+    fun `central directory allocation exceeding budget falls back without retaining a handle`() = runBlocking {
+        val archive = tempDir.resolve("large-directory.cbz")
+        ZipArchiveOutputStream(archive).use { output ->
+            repeat(280) { index ->
+                output.putArchiveEntry(
+                    ZipArchiveEntry("%03d.webp".format(index)).apply {
+                        comment = "x".repeat(60_000)
+                        size = image(index).size.toLong()
+                        crc = CRC32().apply { update(image(index)) }.value
+                    },
+                )
+                output.write(image(index))
+                output.closeArchiveEntry()
+            }
+        }
+        val handle = DesktopWindowsMinizNative.open(archive.absolutePath)
+        try {
+            assertEquals(0L, handle, "Native initialization must reject the directory before unbounded allocation")
+        } finally {
+            if (handle != 0L) DesktopWindowsMinizNative.close(handle)
+        }
+        assertParity(archive, "CommonsZipArchiveLease")
+        val ordinary = tempDir.resolve("after-budget.cbz")
+        writeArchive(ordinary, listOf("001.webp" to image(1)))
+        assertParity(ordinary, "MinizZipArchiveLease")
+    }
+
+    @Test
+    fun `accepted near budget directory retains space for deflate page extraction`() = runBlocking {
+        val archive = tempDir.resolve("near-budget-directory.cbz")
+        val bytes = ByteArray(256 * 1024).also { java.util.Random(19).nextBytes(it) }
+        image(1).copyInto(bytes)
+        ZipArchiveOutputStream(archive).use { output ->
+            repeat(279) { index ->
+                val page = if (index == 0) bytes else image(index)
+                output.putArchiveEntry(
+                    ZipArchiveEntry("%03d.webp".format(index)).apply {
+                        comment = "x".repeat(60_000)
+                        size = page.size.toLong()
+                        crc = CRC32().apply { update(page) }.value
+                    },
+                )
+                output.write(page)
+                output.closeArchiveEntry()
+            }
+        }
+        assertParity(archive, "MinizZipArchiveLease")
+    }
+
+    @Test
     fun `not started loading and failed library fall back immediately and ready later selects miniz`() = runBlocking {
         val archive = tempDir.resolve("loading.cbz")
         writeArchive(archive, listOf("001.webp" to image(1)))

@@ -7,6 +7,9 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <cstddef>
+#include <cstdlib>
+#include <limits>
 #include <cstdio>
 #include <memory>
 #include <mutex>
@@ -19,8 +22,40 @@
 namespace {
 constexpr const char* VERSION = "miniz/174573d60290f447c13a2b1b3405de2b96e27d6c;abi=1;x64";
 struct Page { std::string name; mz_uint index; std::string stamp; };
+// All miniz allocations, including the central directory allocated during init,
+// share one live budget. Allocation headers count toward it; overflow is refusal.
+struct AllocationBudget {
+    static constexpr size_t limit = 16 * 1024 * 1024;
+    struct alignas(std::max_align_t) Header { size_t bytes; };
+    size_t used = 0;
+    bool bounded = true;
+    static void* resize(void* opaque, void* address, size_t items, size_t size) {
+        auto& budget = *static_cast<AllocationBudget*>(opaque);
+        if (size && items > (std::numeric_limits<size_t>::max)() / size) return nullptr;
+        auto bytes = items * size;
+        const auto maximum = budget.bounded ? limit : (std::numeric_limits<size_t>::max)();
+        if (bytes > maximum - sizeof(Header)) return nullptr;
+        auto previous = address ? static_cast<Header*>(address) - 1 : nullptr;
+        auto oldBytes = previous ? previous->bytes : 0;
+        auto allocation = bytes + sizeof(Header);
+        if (allocation > maximum - (budget.used - oldBytes)) return nullptr;
+        auto block = static_cast<Header*>(realloc(previous, allocation));
+        if (!block) return nullptr;
+        block->bytes = allocation;
+        budget.used = budget.used - oldBytes + allocation;
+        return block + 1;
+    }
+    static void* allocate(void* opaque, size_t items, size_t size) { return resize(opaque, nullptr, items, size); }
+    static void release(void* opaque, void* address) {
+        if (!address) return;
+        auto block = static_cast<Header*>(address) - 1;
+        static_cast<AllocationBudget*>(opaque)->used -= block->bytes;
+        free(block);
+    }
+};
 struct Lease {
     FILE* file = nullptr;
+    AllocationBudget allocation;
     mz_zip_archive zip{};
     bool initialized = false;
     std::vector<Page> pages;
@@ -117,7 +152,37 @@ bool validateHeaders(Lease& lease, const mz_zip_archive_file_stat& stat, const s
     }
     return true;
 }
-bool snapshot(Lease& lease) {
+// Read only the same 32-byte, zero-padded prefix as the existing Commons reader.
+// Keep the signature authority in Kotlin, including all compatible BMFF brands.
+bool isMetadata(JNIEnv* env, Lease& lease, mz_uint index, mz_uint64 size) {
+    auto iterator = std::unique_ptr<mz_zip_reader_extract_iter_state, decltype(&mz_zip_reader_extract_iter_free)>(
+        mz_zip_reader_extract_iter_new(&lease.zip, index, 0), mz_zip_reader_extract_iter_free);
+    if (!iterator) return false;
+    unsigned char header[32]{};
+    auto count = mz_zip_reader_extract_iter_read(iterator.get(), header, sizeof header);
+    if (count != (std::min)(size, static_cast<mz_uint64>(sizeof header))) return false;
+    auto streamClass = env->FindClass("java/io/ByteArrayInputStream");
+    auto signatureClass = env->FindClass("mihon/desktop/reader/DesktopReaderImageSignature");
+    if (!streamClass || !signatureClass) return false;
+    auto constructor = env->GetMethodID(streamClass, "<init>", "([B)V");
+    auto instanceField = env->GetStaticFieldID(signatureClass, "INSTANCE", "Lmihon/desktop/reader/DesktopReaderImageSignature;");
+    auto matches = env->GetMethodID(signatureClass, "matches", "(Ljava/io/InputStream;)Z");
+    if (!constructor || !instanceField || !matches) return false;
+    auto bytes = env->NewByteArray(sizeof header);
+    if (!bytes) return false;
+    env->SetByteArrayRegion(bytes, 0, sizeof header, reinterpret_cast<jbyte*>(header));
+    auto stream = env->NewObject(streamClass, constructor, bytes);
+    auto instance = env->GetStaticObjectField(signatureClass, instanceField);
+    if (!stream || !instance || env->ExceptionCheck()) return false;
+    auto image = env->CallBooleanMethod(instance, matches, stream);
+    env->DeleteLocalRef(instance);
+    env->DeleteLocalRef(stream);
+    env->DeleteLocalRef(bytes);
+    env->DeleteLocalRef(signatureClass);
+    env->DeleteLocalRef(streamClass);
+    return !env->ExceptionCheck() && !image;
+}
+bool snapshot(JNIEnv* env, Lease& lease) {
     auto count = mz_zip_reader_get_num_files(&lease.zip);
     if (!count || count > 65535 || mz_zip_is_zip64(&lease.zip)) return false;
     size_t digits = 0, metadataCount = 0;
@@ -131,10 +196,12 @@ bool snapshot(Lease& lease) {
         std::string name = stat.m_filename;
         if (name.size() + 1 != mz_zip_reader_get_filename(&lease.zip, index, nullptr, 0) ||
             !validateHeaders(lease, stat, name)) return false;
-        if (name == "ComicInfo.xml") { if (++metadataCount > 1) return false; }
+        if (name == "ComicInfo.xml") {
+            if (++metadataCount > 1 || !isMetadata(env, lease, index, stat.m_uncomp_size)) return false;
+        }
         else {
             auto dot = name.find('.');
-            if (dot == std::string::npos || dot == 0 || dot > 32 || (digits && digits != dot) ||
+            if (dot == std::string::npos || dot == 0 || dot > 19 || (digits && digits != dot) ||
                 name.substr(dot) != ".webp" || name.find_first_not_of("0123456789") != dot) return false;
             digits = dot;
             lease.pages.push_back({name, index, {}});
@@ -192,9 +259,16 @@ extern "C" JNIEXPORT jlong JNICALL Java_mihon_desktop_reader_DesktopWindowsMiniz
         if (fd == -1) { CloseHandle(raw); return 0; }
         lease->file = _fdopen(fd, "rb");
         if (!lease->file) { _close(fd); return 0; }
+        lease->zip.m_pAlloc = AllocationBudget::allocate;
+        lease->zip.m_pRealloc = AllocationBudget::resize;
+        lease->zip.m_pFree = AllocationBudget::release;
+        lease->zip.m_pAlloc_opaque = &lease->allocation;
         if (!mz_zip_reader_init_cfile(&lease->zip, lease->file, 0, MZ_ZIP_FLAG_DO_NOT_SORT_CENTRAL_DIRECTORY)) return 0;
         lease->initialized = true;
-        if (!snapshot(*lease)) return 0;
+        if (!snapshot(env, *lease)) return 0;
+        // The acceptance budget guards directory/header discovery. Once identities
+        // are published, preserve the existing streaming extraction allocation policy.
+        lease->allocation.bounded = false;
         auto handle = nextHandle.fetch_add(1);
         if (handle <= 0) throw std::runtime_error("Archive handle space exhausted");
         std::lock_guard<std::mutex> lock(registryMutex);

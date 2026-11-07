@@ -20,9 +20,11 @@ Gradle 的 `buildWindowsReaderMiniz` 为 JVM 定向测试和 `prepareAppResource
 
 ## 格式和身份边界
 
-只处理本地下载 CBZ、Store/Deflate、根目录等宽纯数字小写 `.webp` 页名，可有一个 `ComicInfo.xml`。按中央目录原序计算现有指纹，以带符号 CRC、原方法名和分隔符保持旧 URL 身份；排序后的名称和 SHA 标识批量返回，真实 `ReaderPageDescriptor` 由 Kotlin 创建。
+只处理本地下载 CBZ、Store/Deflate、根目录等宽纯数字小写 `.webp` 页名，可有一个真正非图片的 `ComicInfo.xml`。按中央目录原序计算现有指纹，以带符号 CRC、原方法名和分隔符保持旧 URL 身份；排序后的名称和 SHA 标识批量返回，真实 `ReaderPageDescriptor` 由 Kotlin 创建。
 
-全档接受前检查中央目录和 local header 的名称、flags、方法及 extra；拒绝目录、重复条目、加密、非标准名称、ZIP64、可改变名称解释或未知的 extra。仅容许结构有效的 UT 时间戳 `0x5455` 和 ux UID/GID `0x7875`，因为目标实物含这两类不改变名称的字段。条目数最多 65535，原始页名字数最多 32，元数据最多 16 MiB、单条 extra 最多 4096 字节；不满足时整档回退。没有每页 64 MiB 解压限制。
+全档接受前检查中央目录和 local header 的名称、flags、方法及 extra；拒绝目录、重复条目、加密、非标准名称、ZIP64、可改变名称解释或未知的 extra。仅容许结构有效的 UT 时间戳 `0x5455` 和 ux UID/GID `0x7875`，因为目标实物含这两类不改变名称的字段。条目数最多 65535，原始页名字数最多 19（保证与旧 ULong 自然排序一致），身份元数据最多 16 MiB、单条 extra 最多 4096 字节；不满足时整档回退。miniz 从初始化前便使用每 lease 总计 16 MiB 的实时 allocator 预算，包含中央目录、头部识别缓冲及分配头；乘法溢出或超限正常返回整档回退，初始化失败亦释放已分配内存。页表验收成功、发布前解除发现期预算，提取期沿用流式缓冲策略，仍检查所有分配乘加溢出，避免临界目录挤占后续解压空间。预算不按归档或单页文件长度拒绝正常大文件，没有每页 64 MiB 解压限制。
+
+`ComicInfo.xml` 通过 miniz iterator 最多读取 32 字节解压输出，使用有界的 miniz 输入/字典缓冲；不足 32 字节按旧实现补零，再由 JNI 调用现有 `DesktopReaderImageSignature.matches`，不复制签名表。其实际为图片或头部读取失败时整档回退，避免丢失 Commons 会保留的图片；普通 XML 仍使用 miniz。
 
 ## 加载、句柄与失败处理
 
