@@ -1,6 +1,6 @@
 # D10　Windows 下载章节首开优化设计与执行路线
 
-供新 Sol 会话直接实施。首个未勾选任务是当前任务。研究基线 `c34fbccf92db` 含 [D9 归因](../evidence/desktop-reader-d9-first-open-causes-2026-11-07.md) 和[两项合用实测](../evidence/desktop-reader-cbz-slot-feasibility-2026-11-07.md)。交接时核对的最新产品基线为本地 main `ae5bb3bb5aca9e84e6616a1183129e6f0a25e77b`，已含新的章节入口修复。本页是[父路线图](2026-11-05-desktop-reader-first-open.md)的执行入口。以下方框均为待实施项。
+供新 Sol 会话直接实施。首个未勾选任务是当前任务。研究基线 `c34fbccf92db` 含 [D9 归因](../evidence/desktop-reader-d9-first-open-causes-2026-11-07.md) 和[两项合用实测](../evidence/desktop-reader-cbz-slot-feasibility-2026-11-07.md)。交接时核对的最新产品基线为本地 main `ae5bb3bb5aca9e84e6616a1183129e6f0a25e77b`，已含新的章节入口修复。本页是[父路线图](2026-11-05-desktop-reader-first-open.md)的执行入口。进度按首个未勾选项继续，当前组件测试与尚未测量的窗口端点见 [D10 证据](../evidence/desktop-reader-d10-2026-11-07.md)。
 
 ## 目标、成本和采用口径
 
@@ -22,7 +22,7 @@
 
 ### 1. 固定输入与对照
 
-- [ ] 对齐产品基线、实验提交、真实原档、地图页与控制配置。
+- [x] 对齐产品基线、实验提交、真实原档、地图页与控制配置。
 
 - 主干工作树在 `D:/Codex/worktrees/mihon-main-reader-delivery-20261106`。先检查分支、HEAD、未提交工作、两份实验提交以及它们到当前主干的差异；如主干已前进，核对涉及路径后从实际主干继续。旧项目入口 `D:/Shell/Github/mihon` 在设计时检出扩展兼容分支。控制样本和候选使用同一基线、运行时、显示器、视口大小、DPI、截图负载与设置。正常走详情章行，无在线取图或提前读目标 CBZ。
 - 归档实验[源码与组件包](D:/Codex/worktrees/mihon-main-reader-delivery-20261106/app-desktop/artifacts/diagnostics/reader-cbz-slot-20261107/windows-reader-cbz-prototype.zip)的 SHA-256 为 `716d54e3515b33a1dd8afe06252879556acb8837204b215365a688c9757f6733`。容器参考依次为 `904bc8d34308459b69cdfd8dd8c7dafe893d2d32`、`3b2040111964d4cbedca029269ada10e4a09959b`。从包取源和对照数据，从 Git 取 UI 差异；将产品所需内容纳入仓库后，从干净快照可重建。普通预览须能独立运行。

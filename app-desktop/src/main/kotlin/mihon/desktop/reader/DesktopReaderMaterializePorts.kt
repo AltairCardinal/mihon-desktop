@@ -185,6 +185,7 @@ class DesktopReaderChapterContentPort(
                 chapterId = context.chapterId,
                 archive = artifact,
                 leaseGeneration = leaseGeneration,
+                preferWindowsMiniz = true,
             )
         }
     }

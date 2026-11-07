@@ -971,8 +971,13 @@ class DesktopReaderMaterializePortsIntegrationTest {
                             ).body(Buffer().write(pngBytes(Color.CYAN))).build(),
                         )
                         model.requestRetry()
+                        // The background mirror publishes raw pages before the matching derived viewport location.
                         val materialized = withTimeout(10_000) {
-                            model.state.first { it.session.activeChapter.pages.size == 1 }
+                            model.state.first {
+                                it.session.activeChapter.pages.size == 1 &&
+                                    it.dualPageIdentity?.generation == it.session.generation &&
+                                    it.dualPageLocation?.pageId == it.session.activeChapter.pages.single().id
+                            }
                         }
                         val selected = SinglePagedPresentation.present(
                             ReaderPresentationRequest(
