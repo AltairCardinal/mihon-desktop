@@ -132,6 +132,7 @@ class DualPagerPageHolder(
     private val errorLayouts = mutableMapOf<Side, ReaderErrorBinding>()
     private val errorPages = mutableMapOf<Side, ReaderPage>()
     private val renderedPages = mutableMapOf<ReaderPage, String>()
+    private val exposedImages = mutableSetOf<ReaderPageImageView>()
     private val diagnosedDrawTickets = mutableMapOf<ReaderPage, ReaderDualPageViewportTicket>()
     private val boundContents = mutableMapOf<ReaderPage, String>()
     private val boundEncodedContents = mutableMapOf<ReaderPage, String>()
@@ -209,6 +210,7 @@ class DualPagerPageHolder(
             presentationScope?.let(viewer::releasePresentation)
             presentationScope = null
             visibleContentLeases.clear()
+            exposedImages.clear()
             onPreparationWindowChanged()
             viewer.adapter.releaseContent(displayPage.firstPage.chapter)
             if (!isAttachedToWindow) return
@@ -221,9 +223,20 @@ class DualPagerPageHolder(
             }
             return
         }
-        listOfNotNull(rightHolder, leftHolder).forEach { image ->
-            if ((presentationScope == null || renderedPages[image.page] != boundContents[image.page]) &&
-                image.isShown && image.getGlobalVisibleRect(Rect())
+        val images = listOfNotNull(rightHolder, leftHolder)
+        exposedImages.retainAll(images.toSet())
+        images.forEach { image ->
+            val exposed = image.isShown && image.getGlobalVisibleRect(Rect()) && image.hasVisibleImageArea()
+            val newlyExposed = if (exposed) {
+                exposedImages.add(image)
+            } else {
+                exposedImages.remove(image)
+                false
+            }
+            if (exposed && (
+                    newlyExposed || presentationScope == null ||
+                        renderedPages[image.page] != boundContents[image.page]
+                    )
             ) {
                 image.invalidateImageDraw()
             }
@@ -384,6 +397,7 @@ class DualPagerPageHolder(
         presentationScope?.let(viewer::releasePresentation)
         presentationScope = null
         renderedPages.clear()
+        exposedImages.clear()
         diagnosedDrawTickets.clear()
         visibleContentLeases.clear()
         decodedImages.clear()

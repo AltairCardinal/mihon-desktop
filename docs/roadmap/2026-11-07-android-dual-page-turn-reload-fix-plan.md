@@ -226,3 +226,37 @@ C／B 的构建清单逐记录比较，只有 `gradle/android-release.properties
 测量原件在 `D:/Shell/Github/mihon/.test-tmp/dual-turn-fix-20261107/`，包括 `control138/`、`serial139/`、`async140/` 的 before／after 日志、逐步 PNG、内存和 OAT、原始 summary 及经目标帧筛选的 `verified-summary.json`，初始准备观察为 `initial-preparation-comparison.json`。原始 summary 的候选部分含同页后续重绘，报告采用 verified 结果。Reader 初始恢复位置不符的准备尝试保留为 `*-reader.xml`／`*-normalized*.xml`，未进入性能样本；最终使用已核对的相同起点。
 
 结束时通过可见阅读器进度条明确选回 16/166，确认原左右漫画内容，保留 `final.png` 和 `final-restored.xml` 后熄屏。准备阶段菜单尚未就绪的输入及内存观察后的落点调整均未用于耗时样本。用户原有数据保留，最后安装身份为 B140。
+
+## 10. 人工滑动后残留半屏黑：现场证据与后续回归
+
+用户在同卷 24／25 页附近左右滑动，报告一侧短暂黑屏，并在第二次人工复现后留下不恢复的左半屏黑。自动点击、慢滑及每约 150 ms 一次的连续 ADB 滑动未证明覆盖此人工输入条件；此前目标图片的 `drawn` 时间不能用来否定这次故障。
+
+2026-11-07 13:57:54–13:58:48（本机时间）只读采集了 58 张原始屏幕 PNG，期间没有发送输入、唤醒或熄屏。`frame-000` 至 `frame-034` 持续左黑右有漫画；再次人工翻动后，`frame-039` 至 `frame-057` 又留下同类状态。13:59:58 与 14:00:28 的两张独立原图完全同字节，SHA-256 均为 `33b097d37678b74721a266d4277530b0ecfd7c01f6453f6922a5e0c325dade5b`，显示 25/166、左半全黑、右半正常。这证明存在停稳后残留故障，不能把它描述为普通翻页过渡。
+
+同批最终日志为 `sequence=74`、`idle=true`、源页 `[24,25]`（零起算）、holder 194／frame serial 37。右页 24 在新票据下有实际 `drawn`；左页 25 最后一次新票据实际绘制为 sequence 70，72／74 没有。日志 `rendered=25,24` 是沿用的历史集合，不是当前两侧屏幕像素；旧 bitmap 绑定未变化也不能排除后续瓦片任务或显示列表录制问题。此时只证实表现与回调缺口，尚不能仅凭日志认定缓存、配对或解码为根因。
+
+原件：`D:/Shell/Github/mihon/.test-tmp/dual-turn-boundary-20261107/human-observe/`，含上述 PNG、`reported-now.log`、`after.log`、`persistent-black-now.log` 和 `persistent-black-evidence.json`。ADB `screencap` 采样约每秒一张，不能据此给出短暂黑屏的精确毫秒耗时。后续回归须沿用同一已加载原生 child，覆盖离屏、快速反向重曝及停稳，不可用重新 `setImage` 或历史 rendered 集合代替当前绘制验证。
+
+### 已验证的漏绘机制与最小修复
+
+精确回归 `DualPageViewportZoomTest.alreadyDrawnNativeHalfRepaintsAfterOffscreenTicketRenewalAndRapidReverseBeforeIdle` 在旧实现上失败于“重新曝光须 invalidate 原 native child”。此前断言已确认：整个 image View 仍部分可见，但其中一侧真实漫画 fit 区域已不可见；更换同 frame 的呈现票据曾使两 child 都失效；此时离屏侧的原 native `draw` 输出为空。反向露出后，旧 `onViewportMoved` 因历史 `renderedPages` 仍有效而没有再次 invalidate。这解释了为何有图片、有旧绘制历史，却能残留黑侧。
+
+首两次尝试分别卡在重复 holder 的准备队列、初始化 child 未到达，属于夹具失败，不计行为 RED。有效 RED 为 `dual-exposure-red3`（1 条失败）；最小实现后 `dual-exposure-green` 同一条通过。回归仅在初始供图时使用既有 codec seam，曝光阶段不重新 `setImage`，并核对原 child、bitmap、解码 generation 和绑定身份不变。该宿主测试证明缺失失效请求与原 draw 路径，不替代平板硬件显示列表验收。
+
+修复共用 `ReaderPageImageView` 原有真实漫画可见区域查询；holder 每侧记录是否实际曝光，在不可见变为可见时 invalidate 原 child。连续可见的已绘图片不因普通 scroll 回调重复重画。原 frame／ticket 门禁、加载队列和六源窗口不变，不通过重读图片解决黑屏。源码追溯显示历史 rendered 条件来自 `dec006e7d37`（保持双页首帧稳定），全屏 child 内的真实 fit 区域裁剪来自 `e32e73ee63d`（双页孤页跨视口缩放）；这是相关机制来源，未逐个历史 APK 复现，不将其等同于首次出现故障的版本证明。
+
+最终定向验证：
+
+| 范围 | 结果与边界 |
+| --- | --- |
+| 新回归 `dual-exposure-wiring2` | 1/1 通过。前半对称覆盖左右侧；后半以真实 MotionEvent 触发 ViewPager 原 `onPageScrolled`，右侧两次反向曝光均未 IDLE，并以 ACTION_CANCEL 结束。曝光后原 native 实际输出像素，child／bitmap／generation／绑定身份不变 |
+| 两条原权限及反向回归 | `realPagerCancelledMovementAndRapidReverseKeepExactLogicalFramesWithoutUndrawnReading`、`temporarilyHiddenCurrentNativeFrameRetainsItsLockedPixelsForCancelledMovement` 均通过 |
+| 格式 | `dual-exposure-format2` 仅三个变更 Kotlin 文件 Apply／Check 通过，`git diff --check` 通过 |
+
+补充真实触摸段时，一次精简初始化供图造成夹具像素断言失败；恢复原绿色的初始供图顺序后，新方法单独通过。上述旧方法在同一生产代码下已通过，后续只改测试初始化和机械格式，未扩大至整个测试类或模块。XML 留存在主干工作树 `.test-tmp/dual-preload/exposure-wiring-green.xml`、`exposure-green.xml`；协调器日志为 `.gradle-coordinator/dual-exposure-*`。
+
+### 修复候选及真机边界
+
+`scripts/build-android.py candidate --offline` 经唯一协调器成功（14:18:17–14:23:13，约 296 秒）。[141 修复 APK](../../app/artifacts/android/0.19.4-aex.123-vc141-4b35f259ca-release/Mihon-Fork-0.19.4-aex.123-vc141-release-universal.apk) 为 `app.mihon.desktop.fork`、`0.19.4-aex.123`，保留原证书、R8 和资源压缩；SHA-256 `09b7ff9347223047460bf1b7435971b246e120558b63a1c638e4e40e9c685c83`。清单源码为 `4b35f259ca6f750f3f06b537d1ed902727c72a21` 加本批冻结差异，`sourceDiffSha256=45a0795c43e550cc60bd7ea7b5892afa64859ee4ebb7b2255d491438533b7b2f`，`productionInputsSha256=4796b63ac1091c18d4b768ac10b08031c0c1c7cf06d55f0c0a28fe64bff959db`。原位安装与人工复验不由构建成功隐含，须另记。
+
+本次没有混入 `4bdca36f34` 的章节恢复修复；该提交既不在基线祖先中，也未移植其逻辑。用户接管平板人工翻页期间只读观察，不替用户发手势或熄屏。修复前已捕获持续数十秒的黑侧，修复后同条件人工时序和耗时尚待新包真机复验；不以宿主测试或上一轮 16 页附近的中位数替代此次测量。

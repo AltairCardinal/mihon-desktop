@@ -359,11 +359,14 @@ open class ReaderPageImageView @JvmOverloads constructor(
      */
     var pageBackground: Drawable? = null
 
+    internal fun hasVisibleImageArea(): Boolean {
+        val bounds = viewportImageBounds() ?: return true
+        val visible = Rect()
+        return getLocalVisibleRect(visible) && RectF.intersects(bounds, RectF(visible))
+    }
+
     private fun prepareNativeImageDraw(width: Int, height: Int): Boolean {
-        viewportImageBounds()?.let { bounds ->
-            val visible = Rect()
-            if (!getLocalVisibleRect(visible) || !RectF.intersects(bounds, RectF(visible))) return false
-        }
+        if (!hasVisibleImageArea()) return false
         if (beforeImageDraw == null && onImageDrawn == null) return true
         return imageCallbackIsCurrent() && width > 0 && height > 0 && getGlobalVisibleRect(Rect()) &&
             beforeImageDraw?.invoke(width, height) != false

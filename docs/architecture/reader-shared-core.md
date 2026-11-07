@@ -934,6 +934,12 @@ Android 的 trim 回调设置 pressure，而原普通 HTTP／native 工作转 id
 
 原生观察器只可包装已有非空回调并转发原函数；重绑定清空回调后，不得补造 Ready、绘制或 prepare 回调。ReaderPageImageView 在 beforeImageDraw 与 onImageDrawn 都为空时直接允许原绘制，补入观察函数会改变此分支，因而不能称为透明观测。回调修正后的定向绿色仅证明实际执行场景，不能自动解释旧图片 Error 或旧上下文下未绘制的失败；完整对照、原异常原因和正式运行须分别记录。
 
+### Android 双页原生图片重新曝光
+
+双页左右图片的原生 child 可覆盖整个视口，但实际漫画区域只占其中一侧。新呈现票据使两侧 child 失效时，某侧漫画可能仍在裁剪区外；该侧原生绘制会按原门禁返回，留下空绘制记录。历史 `renderedPages` 仅证明对应内容曾绘制，不能代替当前曝光状态，也不能据此跳过重新录制。
+
+`DualPagerPageHolder.onViewportMoved` 沿原 ViewPager 滚动回调逐侧跟踪真实漫画区域的曝光转换。该判断与 `ReaderPageImageView.prepareNativeImageDraw` 共用 `viewportImageBounds` 和 `getLocalVisibleRect` 交集；从不可见变为可见时，直接使原 child 绘制失效，持续可见的已绘图片不反复失效。跟踪仅保留当前两侧图片，卸载或释放窗口外内容时清理，不增加图片缓存、读取或解码。重画仍须通过原 frame／ticket／内容身份门禁；曝光通知本身不授予呈现能力或产生阅读进度。
+
 ### Desktop 预取页进入视口时的绘制失效
 
 Pager 的已解码预取页可能在离屏时记录空绘制；父层把同一节点移入视口，并不保证重新录制该绘制。带准备门禁的图片由同一个 DrawModifierNode 接收全局布局回调并直接 invalidateDraw，绘制时读取该节点当前 LayoutCoordinates，避免依赖外部坐标缓存或跨阶段的 Snapshot 通知。未附着、空裁剪、无可见源区域及失效的原呈现能力仍拒绝绘制；仅在原 prepare 成功后画图并发出一次原 acknowledge。布局失效本身不授予票据或产生阅读进度。

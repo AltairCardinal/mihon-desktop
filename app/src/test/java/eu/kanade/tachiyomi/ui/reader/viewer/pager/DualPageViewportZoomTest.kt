@@ -1243,6 +1243,170 @@ class DualPageViewportZoomTest {
     }
 
     @Test
+    fun alreadyDrawnNativeHalfRepaintsAfterOffscreenTicketRenewalAndRapidReverseBeforeIdle() = runTest {
+        useOriginalDisplayDecoder()
+        val prepared = subject(ReaderPortraitSingleSlot.RIGHT, provisionalPair = true, actualPairFrame = true)
+        val viewer = viewer()
+        val frame = prepared.holder.displayPage.frameId
+        val holder = viewer.pager.children.filterIsInstance<DualPagerPageHolder>()
+            .single { it.displayPage.frameId == frame }
+        val pair = holder.displayPage as DisplayPage.Double
+        invokeFixture("detach", prepared.holder)
+        invokeFixture("measure", viewer.pager, 1400, 1000)
+        for ((page, side, encoded) in listOf(
+            Triple(pair.rightPage, "RIGHT", prepared.encoded),
+            Triple(pair.leftPage, "LEFT", prepared.partnerEncoded),
+        )) {
+            val binding = backgroundScope.async { load(holder, page, side) }
+            awaitProduction({ "Initial $side binding did not complete" }) { binding.isCompleted }
+            binding.await()
+            invokeFixture("measure", viewer.pager, 1400, 1000)
+            val image = ReflectionHelpers.getField<ReaderPageImageView>(
+                holder,
+                if (side ==
+                    "RIGHT"
+                ) {
+                    "rightHolder"
+                } else {
+                    "leftHolder"
+                },
+            )
+            paintReaderImage(image, encoded)
+        }
+        val right = ReflectionHelpers.getField<ReaderPageImageView>(holder, "rightHolder")
+        val left = ReflectionHelpers.getField<ReaderPageImageView>(holder, "leftHolder")
+        // Both measured halves must finish their initial viewport transform before tracking identity.
+        paintReaderImage(right, prepared.encoded)
+        paintReaderImage(left, prepared.partnerEncoded)
+        val owner = requireNotNull(holder.presentationScope).first
+        val natives = listOf(left, right).associateWith { it.getChildAt(0) as SubsamplingScaleImageView }
+        val bitmaps = natives.mapValues { ReflectionHelpers.getField<Bitmap>(it.value, "bitmap") }
+        val generations = ReflectionHelpers.getField<Map<ReaderPage, Long>>(holder, "decodeGenerations").toMap()
+        val bindings = ReflectionHelpers.getField<Map<ReaderPage, Any>>(holder, "decodedImages").toMap()
+        val listener = ReflectionHelpers.getField<androidx.viewpager.widget.ViewPager.SimpleOnPageChangeListener>(
+            viewer,
+            "pagerListener",
+        )
+        val origin = viewer.pager.scrollX
+        fun moved(offset: Int) {
+            viewer.pager.scrollTo(origin + offset, 0)
+            listener.onPageScrolled(viewer.pager.currentItem, 0f, kotlin.math.abs(offset))
+        }
+        fun visiblePixels(image: ReaderPageImageView): Boolean {
+            val visible = Rect()
+            return image.getLocalVisibleRect(visible) && android.graphics.RectF.intersects(
+                requireNotNull(image.viewportImageBounds()),
+                android.graphics.RectF(visible),
+            )
+        }
+        val output = Bitmap.createBitmap(1400, 1000, Bitmap.Config.ARGB_8888)
+        fun redPixels(native: SubsamplingScaleImageView): Int {
+            output.eraseColor(Color.TRANSPARENT)
+            native.draw(Canvas(output))
+            val colors = IntArray(output.width * output.height)
+            output.getPixels(colors, 0, output.width, 0, 0, output.width, output.height)
+            return colors.count { it == Color.RED }
+        }
+        try {
+            holder.onViewportMoved()
+            listener.onPageScrollStateChanged(androidx.viewpager.widget.ViewPager.SCROLL_STATE_DRAGGING)
+            for ((offset, hidden, stillVisible) in listOf(1000 to left, -1000 to right).map {
+                Triple(it.first, it.second, if (it.second === left) right else left)
+            }) {
+                listener.onPageScrollStateChanged(androidx.viewpager.widget.ViewPager.SCROLL_STATE_SETTLING)
+                listener.onPageScrollStateChanged(androidx.viewpager.widget.ViewPager.SCROLL_STATE_DRAGGING)
+                moved(offset)
+                assertTrue("The whole native view is still partially exposed", hidden.getGlobalVisibleRect(Rect()))
+                assertTrue("Only this comic half leaves the real pixel viewport", !visiblePixels(hidden))
+                assertTrue(visiblePixels(stillVisible))
+                val previous = requireNotNull(holder.presentationScope).second
+                assertTrue(owner.goToPage(requireNotNull(owner.location).pageId))
+                natives.values.forEach { shadowOf(it).clearWasInvalidated() }
+                holder.beginPresentation()
+                val renewed = requireNotNull(holder.presentationScope).second
+                assertTrue(previous !== renewed)
+                assertEquals(previous.frameId, renewed.frameId)
+                assertTrue(
+                    "Both original children are invalidated for the new capability",
+                    natives.values.all { shadowOf(it).wasInvalidated() },
+                )
+                assertEquals(
+                    "Recording the original child while its comic area is offscreen is empty",
+                    0,
+                    redPixels(natives.getValue(hidden)),
+                )
+                natives.values.forEach { shadowOf(it).clearWasInvalidated() }
+                moved(0)
+                assertTrue(visiblePixels(hidden))
+                assertTrue(
+                    "Re-exposing already-drawn pixels must invalidate the original native child",
+                    shadowOf(natives.getValue(hidden)).wasInvalidated(),
+                )
+                assertTrue(
+                    "An already visible partner does not need another recording",
+                    !shadowOf(natives.getValue(stillVisible)).wasInvalidated(),
+                )
+                assertTrue(
+                    "The same native bitmap can repaint through its real draw path",
+                    redPixels(natives.getValue(hidden)) > 0,
+                )
+                natives.values.forEach { shadowOf(it).clearWasInvalidated() }
+                holder.onViewportMoved()
+                assertTrue(
+                    "Ordinary scroll callbacks must not invalidate continuously visible images",
+                    natives.values.none { shadowOf(it).wasInvalidated() },
+                )
+                assertEquals(
+                    generations,
+                    ReflectionHelpers.getField<Map<ReaderPage, Long>>(holder, "decodeGenerations"),
+                )
+                assertEquals(bindings, ReflectionHelpers.getField<Map<ReaderPage, Any>>(holder, "decodedImages"))
+                natives.forEach { (image, native) ->
+                    assertSame(native, image.getChildAt(0))
+                    assertSame(bitmaps.getValue(image), ReflectionHelpers.getField<Bitmap>(native, "bitmap"))
+                }
+            }
+            // Real touch dispatch must reach the same exposure callback without replacing pixels.
+            listener.onPageScrollStateChanged(androidx.viewpager.widget.ViewPager.SCROLL_STATE_IDLE)
+            val down = SystemClock.uptimeMillis()
+            send(viewer.pager, down, down, MotionEvent.ACTION_DOWN, 250f, 500f)
+            send(viewer.pager, down, down + 20, MotionEvent.ACTION_MOVE, 700f, 500f)
+            send(viewer.pager, down, down + 40, MotionEvent.ACTION_MOVE, 1390f, 500f)
+            assertTrue("The real pager must actually scroll", viewer.pager.scrollX != origin)
+            assertTrue("Real touch must hide the right comic area", !visiblePixels(right))
+            assertTrue(owner.goToPage(requireNotNull(owner.location).pageId))
+            holder.beginPresentation()
+            assertEquals(0, redPixels(natives.getValue(right)))
+            repeat(2) { reversal ->
+                natives.values.forEach { shadowOf(it).clearWasInvalidated() }
+                send(viewer.pager, down, down + 60 + reversal * 40L, MotionEvent.ACTION_MOVE, 700f, 500f)
+                assertTrue(visiblePixels(right))
+                assertTrue(
+                    "Real onPageScrolled must invalidate the original exposed child",
+                    shadowOf(natives.getValue(right)).wasInvalidated(),
+                )
+                assertTrue(redPixels(natives.getValue(right)) > 0)
+                assertTrue("Reversal happens before pager IDLE", !ReflectionHelpers.getField<Boolean>(viewer, "isIdle"))
+                if (reversal == 0) {
+                    send(viewer.pager, down, down + 80, MotionEvent.ACTION_MOVE, 1390f, 500f)
+                    assertTrue(!visiblePixels(right))
+                    assertEquals(0, redPixels(natives.getValue(right)))
+                }
+            }
+            send(viewer.pager, down, down + 160, MotionEvent.ACTION_CANCEL, 700f, 500f)
+            assertEquals(generations, ReflectionHelpers.getField<Map<ReaderPage, Long>>(holder, "decodeGenerations"))
+            assertEquals(bindings, ReflectionHelpers.getField<Map<ReaderPage, Any>>(holder, "decodedImages"))
+            natives.forEach { (image, native) ->
+                assertSame(native, image.getChildAt(0))
+                assertSame(bitmaps.getValue(image), ReflectionHelpers.getField<Bitmap>(native, "bitmap"))
+            }
+        } finally {
+            moved(0)
+            output.recycle()
+        }
+    }
+
+    @Test
     fun temporarilyHiddenCurrentNativeFrameRetainsItsLockedPixelsForCancelledMovement() = runTest {
         val viewer = viewer()
         useEncodedOriginalProducer(viewer)
