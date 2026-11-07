@@ -9,12 +9,13 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
-## November 7, 2026 — Android chapter progress isolation
+## November 7, 2026 — Android and Windows chapter entry
 
-**Accepted fix documentation · no public product release**
+**Accepted candidate documentation · no public product release**
 
-- The reported forward chapter transition no longer inherits the outgoing chapter's page index. Implementation: `4bdca36f34`.
-- Acceptance basis: the project owner confirmed the reported fix on Android on November 7, 2026, in a private conversation. Backward chapter entry was reported separately and is outside this acceptance. This does not establish Windows or macOS runtime acceptance or publish a product release.
+- Android keeps the selected last page when activating the previous chapter and no longer carries the outgoing chapter's page index into the next chapter. Windows separates toolbar chapter buttons, which open the first page, from backward page turns, which enter the previous chapter's last page. Read-chapter reopening and unread continuation are retained.
+- Accepted candidates: Android `0.19.4-aex.125` (code 143, installed on the reporting tablet) and Windows `0.11.24.6.ae5bb3b`; both were built from `ae5bb3bb5aca9e84e6616a1183129e6f0a25e77b`. Main implementations: Android `dc5f4c4c77` and Windows `011681faac`, following the earlier page-isolation fix `4bdca36f34`. The integrated source passed 49 focused tests.
+- Acceptance basis: the project owner confirmed the chapter-entry fixes on both delivered candidates on November 7, 2026 in a private conversation and authorized main commit/push. The Windows optional CDS archive was unavailable; runtime checks passed. This acceptance does not establish macOS runtime behavior or a new startup-performance result and does not publish a product release.
 
 ## November 6, 2026 — Windows reader preparation
 

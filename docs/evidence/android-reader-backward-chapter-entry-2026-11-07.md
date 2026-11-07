@@ -8,7 +8,7 @@
 
 回归测试执行真实 `ReaderViewModel`、`ChapterLoader`、章节窗口及 `DualPagePairingStore`/共享双页 owner：预加载 11 页的已读前章，选中其末页，再通过双页 viewer 使用的 `onPageSelected(..., recordProgress = false)` 激活它。修复前，owner 的源页下标从预期 `10` 变为 `0`；修复后保持 `10`，`requestedPage` 和 SavedState 的章节/页码也与该末页一致。未呈现、未结算的页面不写阅读进度。
 
-本次自动化覆盖了生产状态与 viewer 接线，尚未生成新 APK 或完成本轮平板手势人工验收。不能将代码通过称为用户当前安装包已经更新。
+初始修复阶段的自动化覆盖生产状态与 viewer 接线；后续构建、安装与用户双端验收结果见文末。
 
 ## 引入时机
 
@@ -62,4 +62,13 @@ gradlew.bat :app:testReleaseUnitTest
   --tests eu.kanade.tachiyomi.ui.reader.viewer.ReaderAdjacentChapterViewerProductionWiringTest
 ```
 
-没有运行完整模块/全量测试，没有构建、安装或推送候选。
+上述初始修复阶段没有运行完整模块/全量测试，也未构建或安装候选。后续交付没有重复全量测试。
+
+
+## 双端候选交付与用户验收
+
+2026-11-07，以主干 `c34fbccf92` 为基础合入 Android `dc5f4c4c77` 和 Windows `011681faac`，分配 Android code 143，冻结包源码为 `ae5bb3bb5aca9e84e6616a1183129e6f0a25e77b`。原工作区未提交的性能探针改动未纳入构建。整合后 Android 24 项和 Desktop 25 项定向测试全部通过，双语网站构建及差异空白检查通过。
+
+- Android 正式候选 `0.19.4-aex.125`（143），R8/资源压缩开启，包名和正式证书保持连续。APK SHA-256：`71c659cd96216eea65cb7474214f8bcf0b16b9a6d34e867f96ec228b6772b7b1`。通过统一安装入口对 PCE-W30 原位升级，安装后 APK 哈希、版本、包名与证书核验一致，未清数据。
+- Windows 主干预览 `0.11.24.6.ae5bb3b`，清单 `app-desktop/artifacts/preview/windows/main-077aa1a94b704520b1a0b00ab6854bc1/preview-manifest.json`；隔离工作树、源码完整性和 production runtime 检查通过。可选 CDS 归档因命令行长度限制跳过，未据此报告启动性能改善。
+- 用户明确确认双端验收通过、章节问题已修复，并授权提交推送。验收范围包括跨章不继承旧页码、反向翻页进入前章末页、工具栏切章进入首页；不外推 macOS 或完整发布矩阵。此后仅更新验收文档，不重新构建相同产品输入。
