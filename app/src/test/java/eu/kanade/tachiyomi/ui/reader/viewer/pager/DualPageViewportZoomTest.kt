@@ -25,6 +25,7 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.model.publishLoadedPageListForTest
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
+import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
 import io.mockk.every
 import io.mockk.mockkConstructor
 import io.mockk.unmockkConstructor
@@ -204,9 +205,21 @@ class DualPageViewportZoomTest {
         preparedNeighboursSurviveRealKeys(shifted = true, rapidTouch = true)
     }
 
+    @Test
+    fun automaticShellRegroupingRemovesAllLoadingFeedbackAfterActualNativeDraw() = runTest {
+        preparedNeighboursSurviveRealKeys(shifted = true, rapidTouch = true, assertFeedback = true)
+    }
+
+    @Test
+    fun lateUnpreparedRegroupingKeepsReverseTouchIntentBeforeIdle() = runTest {
+        preparedNeighboursSurviveRealKeys(shifted = false, rapidTouch = true, lateRegroupReverse = true)
+    }
+
     private suspend fun kotlinx.coroutines.test.TestScope.preparedNeighboursSurviveRealKeys(
         shifted: Boolean,
         rapidTouch: Boolean = false,
+        assertFeedback: Boolean = false,
+        lateRegroupReverse: Boolean = false,
     ) {
         useOriginalDisplayDecoder()
         val viewer = viewer()
@@ -251,6 +264,8 @@ class DualPageViewportZoomTest {
         viewer.moveToPage(pages[6])
         val owner = requireNotNull(viewer.adapter.session(chapter))
         val expectedStart = if (shifted) 6 else 5
+        val drawCallbacks = mutableListOf<Pair<ReaderPageImageView, () -> Unit>>()
+        val errorCallbacks = mutableListOf<Pair<ReaderPageImageView, (Throwable?) -> Unit>>()
         assertEquals(listOf(expectedStart, expectedStart + 1), owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
         invokeFixture("measure", viewer.pager, 1400, 1000)
         settleOriginalPager(viewer)
@@ -289,6 +304,14 @@ class DualPageViewportZoomTest {
                     )
                 }
                 image.onImageLoaded()
+                if (assertFeedback && holder.displayPage.containsPage(pages[expectedStart + 4])) {
+                    image.onImageDrawn?.let { callback ->
+                        if (drawCallbacks.none { it.second === callback }) drawCallbacks += image to callback
+                    }
+                    image.onImageLoadError?.let { callback ->
+                        if (errorCallbacks.none { it.second === callback }) errorCallbacks += image to callback
+                    }
+                }
             }
             return complete
         }
@@ -313,6 +336,32 @@ class DualPageViewportZoomTest {
         }) {
             holders().isNotEmpty() && holders().all(::ready)
         }
+        fun assertNoLoadingFeedback(holder: DualPagerPageHolder) {
+            if (!assertFeedback) return
+            val indicators = descendants(holder).filterIsInstance<ReaderProgressIndicator>().toList()
+            val managed = ReflectionHelpers.getField<Map<Any, ReaderProgressIndicator>>(holder, "progressIndicators")
+            assertTrue(
+                "Managed indicators must hide only after valid native draw",
+                managed.values.none {
+                    it.visibility ==
+                        View.VISIBLE
+                },
+            )
+            assertTrue(
+                "A real completed pair must not retain any old or current loading indicator: " +
+                    indicators.map { "${it.visibility}:${it.parent}" },
+                indicators.none { it.visibility == View.VISIBLE },
+            )
+            val containers = ReflectionHelpers.getField<Map<Any, android.widget.FrameLayout>>(
+                holder,
+                "feedbackContainers",
+            ).values.toSet()
+            assertEquals(
+                "Every outer feedback view, including errors, must have a live owner",
+                containers,
+                holder.children.filterIsInstance<android.widget.FrameLayout>().toSet(),
+            )
+        }
         fun drawCurrent() {
             invokeFixture("measure", viewer.pager, 1400, 1000)
             val current = holders().single { it.displayPage.frameId == owner.targetFrameId }
@@ -323,6 +372,7 @@ class DualPageViewportZoomTest {
             }
             invokeFixture("measure", viewer.pager, 1400, 1000)
             settleOriginalPager(viewer)
+            assertNoLoadingFeedback(current)
         }
         drawCurrent()
         val targetBefore = owner.location
@@ -378,6 +428,7 @@ class DualPageViewportZoomTest {
                                 owner.frame(ticket)?.drawnPageIds?.containsAll(owner.targetUnit!!.pageIds) == true
                             ) {
                                 assertTrue("Both B images draw before any IDLE", viewer.hasActiveGesture)
+                                assertNoLoadingFeedback(current)
                                 return
                             }
                         }
@@ -403,6 +454,26 @@ class DualPageViewportZoomTest {
                 fastTouch(true)
                 assertTrue("First touch must still be a live gesture", viewer.hasActiveGesture)
                 assertEquals(nextPage, owner.targetUnit!!.pageIds.minOf { it.sourcePageIndex })
+                if (lateRegroupReverse) {
+                    val before = viewer.adapter.items[viewer.pager.currentItem]
+                    val location = requireNotNull(owner.location)
+                    // The current B has no pixel lock yet. A late hard geometry fact may
+                    // remove its partner while its original native animation is still live.
+                    // Deliver the late native geometry through its production callback port;
+                    // source loading and both pointer gestures remain production behavior.
+                    viewer.adapter.updatePageDimensions(pages[nextPage + 1], 1200, 800)
+                    awaitProduction({ "Late geometry must replace the selected empty descriptor" }) {
+                        before != viewer.adapter.items[viewer.pager.currentItem]
+                    }
+                    assertTrue("The original gesture must still be active", viewer.hasActiveGesture)
+                    fastTouch(false)
+                    assertEquals(
+                        "Reverse input after a selected shell replacement must reach the shared owner",
+                        location.pageId.sourcePageIndex - 1,
+                        owner.location!!.pageId.sourcePageIndex,
+                    )
+                    return
+                }
                 assertTrue(
                     "Selecting B must admit C before any IDLE",
                     viewer.imagePreparation.contains(pages[secondTarget]),
@@ -422,6 +493,50 @@ class DualPageViewportZoomTest {
                     ReflectionHelpers.getField<List<ReaderPage>>(viewer.imagePreparation, "priority").map { it.index },
                 )
                 val secondPrepared = holders().single { it.displayPage.containsPage(pages[secondTarget]) }
+                if (assertFeedback) {
+                    val managed = ReflectionHelpers.getField<Map<Any, ReaderProgressIndicator>>(
+                        secondPrepared,
+                        "progressIndicators",
+                    ).values.toList()
+                    assertEquals(2, managed.size)
+                    assertTrue(
+                        "Native-ready without actual draw must keep both loading indicators",
+                        managed.all {
+                            it.visibility ==
+                                View.VISIBLE
+                        },
+                    )
+                    val currentImages = descendants(secondPrepared).filterIsInstance<ReaderPageImageView>().toSet()
+                    val retired = drawCallbacks.filter { (image, callback) ->
+                        image !in currentImages ||
+                            image.onImageDrawn !== callback
+                    }
+                    if (cycle >
+                        0
+                    ) {
+                        assertTrue(
+                            "The second round must exercise callbacks from a retired native binding",
+                            retired.isNotEmpty(),
+                        )
+                    }
+                    retired.forEach { it.second.invoke() }
+                    errorCallbacks.filter { (image, callback) ->
+                        image !in currentImages ||
+                            image.onImageLoadError !== callback
+                    }
+                        .forEach { it.second.invoke(java.io.IOException("Retired native failure")) }
+                    assertTrue(
+                        "Retired callbacks cannot hide the current pair's loading feedback",
+                        managed.all {
+                            it.visibility ==
+                                View.VISIBLE
+                        },
+                    )
+                    assertTrue(
+                        "A retired failure cannot install an error over the current pair",
+                        ReflectionHelpers.getField<Map<Any, ReaderPage>>(secondPrepared, "errorPages").isEmpty(),
+                    )
+                }
                 val secondNatives = descendants(secondPrepared).filterIsInstance<ReaderPageImageView>().map {
                     it.getChildAt(0)
                 }.toList()

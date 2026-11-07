@@ -595,6 +595,8 @@ class DualPagerPageHolder(
         visibleContentLeases.clear()
         diagnosedDrawTickets.clear()
         exposedImages.clear()
+        // Feedback lives on this outer holder, separately from the image slot container.
+        feedbackContainers.values.forEach { removeView(it) }
         progressIndicators.clear()
         feedbackContainers.clear()
         errorLayouts.clear()

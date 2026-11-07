@@ -463,6 +463,12 @@ class DualPageR2LPagerViewer(
 
     // ── Page change handling ─────────────────────────────────────────────────
 
+    internal fun onPreparationSlotReplaced(position: Int, previous: DisplayPage, replacement: DisplayPage) {
+        // Metadata can redescribe the selected empty slot without a native selection event.
+        // Keep its reference current without replaying navigation, progress or zoom resets.
+        if (position == pager.currentItem && currentPage == previous) currentPage = replacement
+    }
+
     private fun onPageChange(position: Int, layoutOnly: Boolean = false) {
         val item = adapter.items.getOrNull(position)
         // A window rebuild can keep the same selected pair while an adjacent chapter loads.

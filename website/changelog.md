@@ -9,6 +9,13 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## November 7, 2026 — Android rapid two-page turns
+
+**Accepted candidate documentation · no public product release**
+
+- Downloaded two-page reading starts preparation during consecutive swipes and preserves prepared native images through eligible empty-slot regrouping. Replacing a slot also removes its retired loading and error overlays, preventing a spinner from remaining over an already drawn comic. The six-image preparation window and bounded concurrency are retained.
+- Accepted tablet candidate: `0.19.4-aex.128` (code 146), based on implementation `f77d44627e` with the loading-overlay follow-up. On November 7, 2026 the project owner confirmed that the spinners disappeared and no visible delay was currently observed, then authorized implementation review and main integration/push. Acceptance covers this downloaded Android two-page case, without a universal latency claim or public product release.
+
 ## November 7, 2026 — Android and Windows chapter entry
 
 **Accepted candidate documentation · no public product release**

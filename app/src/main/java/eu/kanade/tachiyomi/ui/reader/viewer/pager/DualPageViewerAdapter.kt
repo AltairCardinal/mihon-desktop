@@ -1137,6 +1137,7 @@ class DualPageViewerAdapter(
             if (holders.size > 1) return
             if (holders.singleOrNull()?.replaceUnexposedPreparationFrame(replacement) == false) return
             items[position] = replacement
+            viewer.onPreparationSlotReplaced(position, old, replacement)
         }
         replace(center, target, owner.targetFrameId)
         for (forward in listOf(true, false)) {

@@ -81,6 +81,8 @@ Read adjacent pages side by side, display landscape pages, and adjust pairing ma
 
 **Android boundary:** this fork’s Android reader supports two-page reading and manual pairing. Android automatic matching is available in the accepted reader settings and continuity scope; complete recognition of all layouts is not guaranteed.
 
+**Android rapid page turns:** in the accepted downloaded two-page tablet case, preparation follows each selected page during a swipe, so two quick forward turns followed by two reverse turns no longer wait for the intermediate animation to settle. Loading indicators clear after the images are drawn. Preparation remains limited to the current two images and two images on either side; this does not guarantee the same latency for every device or chapter.
+
 
 **Accepted Android reader improvements:** Settings → Reader → **Ripple on page change** offers **Classic (stepped)**, **Scheme A (smooth)** and the retained **Clean (no shadow)** option for single-page and two-page reading. Existing explicit preferences are preserved. Original tiled two-page images stay joined across the tested odd viewport sizes and resize-back cases; the delivered Android candidate passed emulator pixel checks. Physical e-ink refresh behavior depends on the device.
 
