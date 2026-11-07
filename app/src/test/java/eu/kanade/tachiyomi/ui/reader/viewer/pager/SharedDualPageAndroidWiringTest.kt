@@ -578,20 +578,69 @@ class SharedDualPageAndroidWiringTest {
     }
 
     @Test
+    fun `explicit jump during drag discards the obsolete physical direction snapshot`() {
+        val chapter = gestureChapter()
+        val pages = chapter.pages!!
+        viewer.moveToPage(pages[3])
+        lockNativeSelection(chapter)
+        val listener = gestureListener()
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_DRAGGING)
+        selectNative(pages[5])
+        viewer.moveToPage(pages[0])
+        assertTrue("Explicit source intent replaces the in-flight drag", !viewer.hasActiveGesture)
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_IDLE)
+        assertEquals(0, viewer.adapter.session(chapter)!!.location!!.pageId.sourcePageIndex)
+        assertEquals(true, ReflectionHelpers.getField<Boolean>(viewer.adapter, "lastNavigationForward"))
+    }
+
+    @Test
     fun `late native facts publish only after the final gesture anchor and deferred chapter window`() {
         val chapter = gestureChapter()
         val pages = requireNotNull(chapter.pages)
         val listener = gestureListener()
         listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_DRAGGING)
         selectNative(pages[1])
+        lockNativeSelection(chapter)
         val frozen = viewer.adapter.items.toList()
+        val position = viewer.pager.currentItem
+        val notifications = java.util.concurrent.atomic.AtomicInteger()
+        val observer = object : android.database.DataSetObserver() {
+            override fun onChanged() {
+                notifications.incrementAndGet()
+            }
+        }
+        viewer.adapter.registerDataSetObserver(observer)
         viewer.adapter.updatePageDimensions(pages[3], 300, 100)
-        assertEquals(frozen, viewer.adapter.items)
-        selectNative(pages[5])
-        viewer.setChapters(ViewerChapters(chapter, null, chapter(3)))
+        assertEquals(
+            "Only unexposed shell descriptions may change during a drag",
+            frozen.size,
+            viewer.adapter.items.size,
+        )
+        assertEquals(position, viewer.pager.currentItem)
+        assertEquals(frozen[position], viewer.adapter.items[position])
+        assertEquals(0, notifications.get())
+        assertEquals(
+            frozen.withIndex().filter { it.value is eu.kanade.tachiyomi.ui.reader.model.ChapterTransition },
+            viewer.adapter.items.withIndex().filter {
+                it.value is eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
+            },
+        )
+        viewer.adapter.unregisterDataSetObserver(observer)
+        selectNative(pages[3])
+        assertEquals(
+            "A drawn B advances to the actual next wide source",
+            3,
+            viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex,
+        )
+        val deferredNext = chapter(3, 8002)
+        viewer.setChapters(ViewerChapters(chapter, null, deferredNext))
+        assertTrue(viewer.adapter.items.filterIsInstance<DisplayPage>().none { it.firstPage.chapter === deferredNext })
         listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_IDLE)
-        assertEquals(5, viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex)
-        assertTrue((viewer.adapter.items[viewer.pager.currentItem] as DisplayPage).containsPage(pages[5]))
+        assertEquals(3, viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex)
+        val selected = viewer.adapter.items[viewer.pager.currentItem] as DisplayPage.Single
+        assertSame(pages[3], selected.page)
+        assertEquals(mihon.domain.reader.ReaderPortraitSingleSlot.FULL, selected.slot)
+        assertTrue(viewer.adapter.items.filterIsInstance<DisplayPage>().any { it.firstPage.chapter === deferredNext })
         assertTrue(
             viewer.adapter.items.filterIsInstance<DisplayPage>().any {
                 it.visiblePages == listOf(pages[3])
@@ -619,6 +668,31 @@ class SharedDualPageAndroidWiringTest {
         assertEquals(position, viewer.pager.currentItem)
         assertTrue((viewer.adapter.items[position] as DisplayPage).containsPage(pages[5]))
         assertTrue(viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex in 5..6)
+    }
+
+    @Test
+    fun `gesture entering next chapter admits the selected chapter before current chapter changes`() {
+        val current = gestureChapter()
+        val next = chapter(9, 8001)
+        viewer.setChapters(ViewerChapters(current, null, next))
+        next.pages!!.forEach { viewer.adapter.updatePageDimensions(it, 100, 200) }
+        val origin = viewer.adapter.items.filterIsInstance<DisplayPage>().last { it.firstPage.chapter === current }
+        val selected = viewer.adapter.items.filterIsInstance<DisplayPage>().first { it.firstPage.chapter === next }
+        assertSame(current, viewer.adapter.currentChapter)
+        viewer.adapter.selectGesturePage(selected, forward = true, origin)
+        val owner = requireNotNull(viewer.adapter.session(next))
+        val targets = owner.targetUnit!!.pageIds.map { next.pages!![it.sourcePageIndex] }
+        assertTrue(
+            "New chapter target images must enter normal preparation immediately",
+            targets.all(viewer.imagePreparation::contains),
+        )
+        val actualCurrent = ReflectionHelpers.getField<Set<ReaderPage>>(viewer.imagePreparation, "current")
+        assertEquals(targets.toSet(), actualCurrent)
+        assertSame(
+            "The admission runs before onPageChange switches native chapter",
+            current,
+            viewer.adapter.currentChapter,
+        )
     }
 
     private fun gestureChapter(): ReaderChapter {

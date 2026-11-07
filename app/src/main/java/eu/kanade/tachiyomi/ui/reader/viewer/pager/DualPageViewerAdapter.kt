@@ -74,6 +74,8 @@ class DualPageViewerAdapter(
     private var chapters: ViewerChapters? = null
     private var pendingPairing = false
     private var lastNavigationForward = true
+    private var gesturePreparationForward: Boolean? = null
+    private var gesturePreparationChapter: ReaderChapter? = null
     private data class FactProjectionInput(
         val layout: Long,
         val facts: Long,
@@ -221,12 +223,29 @@ class DualPageViewerAdapter(
         preparationTargets.remove(chapter)
         if (matchingSession === owner) matchingJob?.cancel()
         pendingPairing = true
+        gesturePreparationForward = forward
+        gesturePreparationChapter = chapter
+        // Native positions stay fixed during the drag. Resolve unexposed preparation shells
+        // before admitting their images, so the next turn need not wait for this animation.
+        chapters?.let { updateNormalPreparationWindow(it, forward, centerChapter = chapter, reconcileSlots = true) }
         startMatching()
     }
 
-    internal fun completeGestureNavigation(origin: Any?, selected: Any?) {
-        val from = positionOf(origin)
-        val to = positionOf(selected)
+    internal fun discardGesturePreparation() {
+        gesturePreparationForward = null
+        gesturePreparationChapter = null
+    }
+
+    internal fun completeGestureNavigation(
+        origin: Any?,
+        selected: Any?,
+        originPosition: Int? = null,
+        selectedPosition: Int? = null,
+    ) {
+        discardGesturePreparation()
+        // Descriptor frame identities may change while their physical positions stay fixed.
+        val from = originPosition ?: positionOf(origin)
+        val to = selectedPosition ?: positionOf(selected)
         if (from >= 0 && to >= 0 && from != to) {
             lastNavigationForward = if (viewer.isRtl) to < from else to > from
         }
@@ -526,6 +545,16 @@ class DualPageViewerAdapter(
         if (targetPage == null && viewer.hasActiveGesture) {
             // Facts update the owner immediately, while native slots retain their held positions.
             pendingPairing = true
+            val window = chapters
+            val center = gesturePreparationChapter
+            if (window != null && center != null) {
+                updateNormalPreparationWindow(
+                    window,
+                    gesturePreparationForward ?: lastNavigationForward,
+                    centerChapter = center,
+                    reconcileSlots = true,
+                )
+            }
             return
         }
         pendingPairing = false
@@ -1037,8 +1066,13 @@ class DualPageViewerAdapter(
         chapter?.state is ReaderChapter.State.Loaded
 
     /** Ordinary image work follows source distance, independently of ViewPager construction order. */
-    private fun updateNormalPreparationWindow(chapters: ViewerChapters) {
-        val entry = chapterPairings[chapters.currChapter] ?: return
+    private fun updateNormalPreparationWindow(
+        chapters: ViewerChapters,
+        forward: Boolean = lastNavigationForward,
+        centerChapter: ReaderChapter = chapters.currChapter,
+        reconcileSlots: Boolean = false,
+    ) {
+        val entry = chapterPairings[centerChapter] ?: return
         // Select and prepare the current candidate before deriving its source window. A newly
         // available proof may change an unexposed fallback's phase in this very publication.
         entry.session.certifyPairing()
@@ -1051,7 +1085,7 @@ class DualPageViewerAdapter(
         if (indices.isEmpty()) return
         val before = (1..2).mapNotNull { story.getOrNull(indices.min() - it) }
         val after = (1..2).mapNotNull { story.getOrNull(indices.max() + it) }
-        val neighbours = if (lastNavigationForward) after + before else before + after
+        val neighbours = if (forward) after + before else before + after
         val preparing = current + neighbours
         // Freeze exact candidate identities before publishing descriptors or constructing holders.
         // Offscreen frames have independent leases and never activate the reading location.
@@ -1072,35 +1106,95 @@ class DualPageViewerAdapter(
         }
         val holders = viewer.pager.children.filterIsInstance<DualPagerPageHolder>().toList()
         val prepared = holders.flatMap { it.preparedPages() }.toSet()
+        // Admission schedules asynchronously. Publish the window first so new exact frames may
+        // obtain capabilities, then repair shells before any of their load collectors can start.
         viewer.imagePreparation.updateWindow(preparing, current.toSet(), prepared)
+        if (reconcileSlots) reconcileUnexposedPreparationSlots(entry.session, entry.pages, preparing.toSet())
         holders.forEach { it.onPreparationWindowChanged() }
+    }
+
+    /** Keep native positions/scroll state fixed, but do not feed images to a clipped fallback unit. */
+    private fun reconcileUnexposedPreparationSlots(
+        owner: SharedDualPageSession,
+        pages: List<ReaderPage>,
+        preparing: Set<ReaderPage>,
+    ) {
+        val target = owner.targetUnit ?: return
+        val center = viewer.pager.currentItem
+        fun replace(
+            position: Int,
+            unit: mihon.domain.reader.ReaderDualPageUnit,
+            frame: mihon.domain.reader.ReaderDualPageFrameId?,
+        ) {
+            val old = items.getOrNull(position) as? DisplayPage ?: return
+            if (old.firstPage.chapter !== pages.firstOrNull()?.chapter) return
+            val replacement = displayPage(unit, frame, pages)
+            if (old == replacement) return
+            val holders = viewer.pager.children.filterIsInstance<DualPagerPageHolder>().filter {
+                it.displayPage == old
+            }.toList()
+            // One native object owns one position. Do not partially update equal duplicate mounts.
+            if (holders.size > 1) return
+            if (holders.singleOrNull()?.replaceUnexposedPreparationFrame(replacement) == false) return
+            items[position] = replacement
+        }
+        replace(center, target, owner.targetFrameId)
+        for (forward in listOf(true, false)) {
+            var cursor = if (forward) {
+                target.pageIds.maxOf { it.sourcePageIndex } + 1
+            } else {
+                target.pageIds.minOf { it.sourcePageIndex } -
+                    1
+            }
+            for (distance in 1..viewer.pager.offscreenPageLimit) {
+                val page = pages.getOrNull(cursor) ?: break
+                val id = owner.identity.pageIds[cursor]
+                val admitted = page in preparing
+                if (admitted) owner.certifyPairing(id)
+                val candidate = owner.presentationUnitForPage(id) ?: break
+                // Outside the source window only move an empty placeholder forward in story
+                // order. It gets no frame, image work or capability until a later selection.
+                val slots = candidate.slots.filter {
+                    if (forward) it.pageId.sourcePageIndex >= cursor else it.pageId.sourcePageIndex <= cursor
+                }
+                if (slots.isEmpty()) break
+                val unit = if (slots == candidate.slots) candidate else candidate.copy(slots = slots)
+                val frame = if (admitted &&
+                    unit == candidate
+                ) {
+                    owner.preparePresentationFrame(id, unit.id, activate = false)
+                } else {
+                    null
+                }
+                val position = center + distance * if (forward == viewer.isRtl) -1 else 1
+                replace(position, unit, frame)
+                cursor =
+                    if (forward) {
+                        unit.pageIds.maxOf { it.sourcePageIndex } + 1
+                    } else {
+                        unit.pageIds.minOf { it.sourcePageIndex } -
+                            1
+                    }
+            }
+        }
+    }
+
+    private fun displayPage(
+        unit: mihon.domain.reader.ReaderDualPageUnit,
+        frame: mihon.domain.reader.ReaderDualPageFrameId?,
+        pages: List<ReaderPage>,
+    ): DisplayPage = if (unit.pageIds.size == 1) {
+        DisplayPage.Single(pages[unit.pageIds.single().sourcePageIndex], unit.slots.single().position, frame)
+    } else {
+        DisplayPage.Double(
+            pages[unit.slots.single { it.position == ReaderPortraitSingleSlot.RIGHT }.pageId.sourcePageIndex],
+            pages[unit.slots.single { it.position == ReaderPortraitSingleSlot.LEFT }.pageId.sourcePageIndex],
+            frame,
+        )
     }
 
     private fun buildDisplayPages(pages: List<ReaderPage>, session: SharedDualPageSession): List<DisplayPage> {
         session.preparePresentationFrame()
-        return session.presentationFrames.map { frame ->
-            val unit = frame.unit
-            if (unit.pageIds.size == 1) {
-                DisplayPage.Single(
-                    pages[unit.pageIds.single().sourcePageIndex],
-                    unit.slots.single().position,
-                    frame.frameId,
-                )
-            } else {
-                DisplayPage.Double(
-                    rightPage = pages[
-                        unit.slots.single {
-                            it.position == mihon.domain.reader.ReaderPortraitSingleSlot.RIGHT
-                        }.pageId.sourcePageIndex,
-                    ],
-                    leftPage = pages[
-                        unit.slots.single {
-                            it.position == mihon.domain.reader.ReaderPortraitSingleSlot.LEFT
-                        }.pageId.sourcePageIndex,
-                    ],
-                    frameId = frame.frameId,
-                )
-            }
-        }
+        return session.presentationFrames.map { displayPage(it.unit, it.frameId, pages) }
     }
 }

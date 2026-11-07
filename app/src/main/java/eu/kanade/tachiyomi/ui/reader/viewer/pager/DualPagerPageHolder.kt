@@ -132,6 +132,9 @@ class DualPagerPageHolder(
     private val errorLayouts = mutableMapOf<Side, ReaderErrorBinding>()
     private val errorPages = mutableMapOf<Side, ReaderPage>()
     private val renderedPages = mutableMapOf<ReaderPage, String>()
+
+    // Unlike renderedPages this evidence is never cleared by a retry/content notification.
+    private var nativePixelsWerePrepared = false
     private val exposedImages = mutableSetOf<ReaderPageImageView>()
     private val diagnosedDrawTickets = mutableMapOf<ReaderPage, ReaderDualPageViewportTicket>()
     private val boundContents = mutableMapOf<ReaderPage, String>()
@@ -181,6 +184,10 @@ class DualPagerPageHolder(
             }
         }
         val next = viewer.capturePresentation(displayPage, presentationLeaseOwner)
+        replacePresentationScope(next)
+    }
+
+    private fun replacePresentationScope(next: Pair<SharedDualPageSession, ReaderDualPageViewportTicket>?) {
         if (presentationScope?.second === next?.second) return
         if (presentationScope?.first !== next?.first ||
             presentationScope?.second?.frameId != next?.second?.frameId
@@ -378,6 +385,11 @@ class DualPagerPageHolder(
 
     init {
         latencyTarget?.let { recordLatency("TARGET_HOLDER_CREATED", it) }
+        createEmptySlots()
+        loadPages()
+    }
+
+    private fun createEmptySlots() {
         if (containerGestures) {
             leftSlot = PageSlot(readerThemedContext, alignRight = true).also {
                 pageContainer.addView(it, LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
@@ -386,7 +398,6 @@ class DualPagerPageHolder(
                 pageContainer.addView(it, LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
             }
         }
-        loadPages()
     }
 
     override fun onDetachedFromWindow() {
@@ -504,6 +515,13 @@ class DualPagerPageHolder(
                 clearRendered(page)
                 if (side == Side.LEFT) leftHolder?.recycle() else rightHolder?.recycle()
             }
+            if (nativePixelsWerePrepared && decodedImages.isEmpty() && boundContents.isEmpty()) {
+                // All original pixels were physically recycled at this hidden window boundary.
+                // A future shell description must acquire a new capability and native generation.
+                nativePixelsWerePrepared = false
+                presentationScope?.let(viewer::releasePresentation)
+                presentationScope = null
+            }
         }
         loadPages()
     }
@@ -523,6 +541,76 @@ class DualPagerPageHolder(
                 }
             }
         }
+    }
+
+    /** Re-describe an unexposed paging shell before admitting its new ordinary image work. */
+    internal fun replaceUnexposedPreparationFrame(replacement: DisplayPage): Boolean {
+        if (displayPage == replacement) return true
+        if (nativePixelsWerePrepared || renderedPages.isNotEmpty() ||
+            displayPage.firstPage.chapter !== replacement.firstPage.chapter ||
+            (displayPage as? DisplayPage.Single)?.slot == ReaderPortraitSingleSlot.FULL ||
+            (replacement as? DisplayPage.Single)?.slot == ReaderPortraitSingleSlot.FULL
+        ) {
+            return false
+        }
+        val previous = presentationScope
+        if (previous?.let { (owner, ticket) ->
+                owner.frame(ticket)?.let { it.lockedPageIds.isNotEmpty() || it.drawnPageIds.isNotEmpty() }
+            } == true
+        ) {
+            return false
+        }
+        if (decodedImages.values.any { !it.callbackIsCurrent() }) return false
+        // Window images require a shared exact-frame capability. Outside the window only an
+        // empty placeholder may move; no old decoder crosses slots or presentation contexts.
+        val outsideWindow = replacement.visiblePages.none(viewer.imagePreparation::contains)
+        if (replacement.frameId == null && !outsideWindow) return false
+        val next = if (replacement.frameId !=
+            null
+        ) {
+            viewer.capturePresentation(replacement, presentationLeaseOwner)
+        } else {
+            null
+        }
+        if (next == null && !outsideWindow) return false
+        if (next != null && next.second.frameId != replacement.frameId) {
+            viewer.releasePresentation(next)
+            return false
+        }
+        attachmentGeneration++
+        pageLoadJobs.values.forEach(Job::cancel)
+        pageLoadJobs.clear()
+        contentReloadJobs.values.forEach(Job::cancel)
+        contentReloadJobs.clear()
+        preparationLeases.values.forEach { it.close() }
+        preparationLeases.clear()
+        rightHolder?.recycle()
+        leftHolder?.recycle()
+        rightHolder = null
+        leftHolder = null
+        decodedImages.clear()
+        boundContents.clear()
+        boundEncodedContents.clear()
+        boundRetries.clear()
+        visibleContentLeases.clear()
+        diagnosedDrawTickets.clear()
+        exposedImages.clear()
+        progressIndicators.clear()
+        feedbackContainers.clear()
+        errorLayouts.clear()
+        errorPages.clear()
+        errorPage = null
+        errorLayout = null
+        pageContainer.removeAllViews()
+        leftSlot = null
+        rightSlot = null
+        displayPage = replacement
+        presentationDiagnostics.retainSources(replacement.visiblePages.map { it.index })
+        diagnosticStates.clear()
+        createEmptySlots()
+        replacePresentationScope(next)
+        requestLayout()
+        return true
     }
 
     /** A candidate partner can leave or enter without replacing an unchanged physical image slot. */
@@ -854,6 +942,7 @@ class DualPagerPageHolder(
                                     prepared = true,
                                     outcome = "ALREADY_LOCKED",
                                 )
+                                nativePixelsWerePrepared = true
                                 true
                             } else {
                                 val beforeRevision = owner.layoutRevision
@@ -907,6 +996,7 @@ class DualPagerPageHolder(
                                     prepared = prepared,
                                     outcome = outcome,
                                 )
+                                if (prepared) nativePixelsWerePrepared = true
                                 prepared
                             }
                         } == true

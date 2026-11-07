@@ -72,6 +72,7 @@ class DualPageR2LPagerViewer(
     private var destroyed = false
     private var gestureInProgress = false
     private var gestureOrigin: Any? = null
+    private var gestureOriginPosition: Int? = null
     internal val hasActiveGesture: Boolean get() = gestureInProgress
     private var viewportSize: Pair<Int, Int>? = null
     private fun geometrySettings() = listOf(
@@ -150,15 +151,24 @@ class DualPageR2LPagerViewer(
                 return
             }
             if (state == ViewPager.SCROLL_STATE_DRAGGING) {
-                if (!gestureInProgress) gestureOrigin = currentPage
+                if (!gestureInProgress) {
+                    gestureOrigin = currentPage
+                    gestureOriginPosition = pager.currentItem
+                }
                 gestureInProgress = true
             }
             if (state == ViewPager.SCROLL_STATE_IDLE) {
                 val completedGesture = gestureInProgress
                 gestureInProgress = false
                 if (completedGesture) {
-                    adapter.completeGestureNavigation(gestureOrigin, currentPage)
+                    adapter.completeGestureNavigation(
+                        gestureOrigin,
+                        currentPage,
+                        gestureOriginPosition,
+                        pager.currentItem,
+                    )
                     gestureOrigin = null
+                    gestureOriginPosition = null
                     val chapter = (currentPage as? DisplayPage)?.firstPage?.chapter
                     val anchor = chapter?.let { adapter.session(it)?.location?.pageId?.sourcePageIndex }
                         ?.let { chapter?.pages?.getOrNull(it) }
@@ -301,6 +311,7 @@ class DualPageR2LPagerViewer(
     }
 
     override fun moveToPage(page: ReaderPage) {
+        discardInterruptedGesture()
         eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.record("jump", page, activity.diagnosticSession)
         adapter.selectPage(page, publishLayout = true)
         positionPage(page)
@@ -765,12 +776,23 @@ class DualPageR2LPagerViewer(
 
     fun refreshPairing() = adapter.refreshPairing()
 
+    private fun discardInterruptedGesture() {
+        if (!gestureInProgress) return
+        gestureInProgress = false
+        gestureOrigin = null
+        gestureOriginPosition = null
+        adapter.discardGesturePreparation()
+    }
+
     internal fun replacePairing(
         anchor: ReaderPage?,
         layoutOnly: Boolean,
         transition: ChapterTransition? = null,
         replace: () -> Unit,
     ) {
+        // Whole-window replacement invalidates the fixed-position drag snapshot. Explicit
+        // source/settings intent must not later be committed as the interrupted physical drag.
+        discardInterruptedGesture()
         val wasReplacing = replacingPairing
         replacingPairing = true
         try {

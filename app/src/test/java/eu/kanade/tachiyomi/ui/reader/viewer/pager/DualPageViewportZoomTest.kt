@@ -194,7 +194,20 @@ class DualPageViewportZoomTest {
         preparedNeighboursSurviveRealKeys(shifted = false)
     }
 
-    private suspend fun kotlinx.coroutines.test.TestScope.preparedNeighboursSurviveRealKeys(shifted: Boolean) {
+    @Test
+    fun normalImagesFollowTwoRealTouchTurnsBeforeIdle() = runTest {
+        preparedNeighboursSurviveRealKeys(shifted = false, rapidTouch = true)
+    }
+
+    @Test
+    fun shiftedNormalImagesFollowTwoRealTouchTurnsBeforeIdleWithoutLosingPreparedNativeResults() = runTest {
+        preparedNeighboursSurviveRealKeys(shifted = true, rapidTouch = true)
+    }
+
+    private suspend fun kotlinx.coroutines.test.TestScope.preparedNeighboursSurviveRealKeys(
+        shifted: Boolean,
+        rapidTouch: Boolean = false,
+    ) {
         useOriginalDisplayDecoder()
         val viewer = viewer()
         useEncodedOriginalProducer(viewer)
@@ -213,8 +226,12 @@ class DualPageViewportZoomTest {
         }
         val chapter = ReaderChapter(Chapter.create().copy(id = if (shifted) 74101 else 74102, mangaId = 1))
             .apply { requestedPage = 6 }
+        val normalOpens = java.util.concurrent.atomic.AtomicIntegerArray(16)
         val pages = List(16) { index ->
-            ReaderPage(index, stream = { encoded[index].inputStream() }).apply {
+            ReaderPage(index, stream = {
+                normalOpens.incrementAndGet(index)
+                encoded[index].inputStream()
+            }).apply {
                 this.chapter = chapter
                 status = Page.State.Ready
                 publishHeaderFact()
@@ -239,6 +256,12 @@ class DualPageViewportZoomTest {
         settleOriginalPager(viewer)
         fun holders() = viewer.pager.children.filterIsInstance<DualPagerPageHolder>().toList()
         fun ready(holder: DualPagerPageHolder): Boolean {
+            if (rapidTouch) {
+                assertTrue(
+                    "Initial native preparation remains bounded to two admissions",
+                    ReflectionHelpers.getField<Map<Any, ReaderPage>>(viewer.imagePreparation, "active").size <= 2,
+                )
+            }
             val bound = ReflectionHelpers.getField<Map<ReaderPage, Any>>(holder, "decodedImages")
             val needed = holder.displayPage.visiblePages.filter { viewer.imagePreparation.contains(it) }
             if (needed.isEmpty()) return true
@@ -314,6 +337,192 @@ class DualPageViewportZoomTest {
             it.getChildAt(0)
         }.toList()
         assertEquals(targetBefore, owner.location)
+        if (rapidTouch) {
+            fun fastTouch(forward: Boolean) {
+                val time = SystemClock.uptimeMillis() + 1000
+                val from = if (forward) 100f else 1300f
+                val to = if (forward) 1300f else 100f
+                send(viewer.pager, time, time, MotionEvent.ACTION_DOWN, from, 500f)
+                for (step in 1..6) {
+                    send(
+                        viewer.pager,
+                        time,
+                        time + step * 15,
+                        MotionEvent.ACTION_MOVE,
+                        from + (to - from) * step / 6,
+                        500f,
+                    )
+                }
+                send(viewer.pager, time, time + 105, MotionEvent.ACTION_UP, to, 500f)
+                runCurrent()
+                println(
+                    "RAPID_TOUCH forward=$forward item=${viewer.pager.currentItem} " +
+                        "scroll=${viewer.pager.scrollX} " +
+                        "target=${owner.targetUnit?.pageIds?.map { it.sourcePageIndex }} " +
+                        "drawn=${owner.displayedHistory.flatMap { it.drawnPageIds }}",
+                )
+            }
+            fun progressWithoutIdle() {
+                val output = Bitmap.createBitmap(viewer.pager.width, viewer.pager.height, Bitmap.Config.ARGB_8888)
+                try {
+                    repeat(24) {
+                        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+                        viewer.pager.computeScroll()
+                        viewer.pager.draw(Canvas(output))
+                        holders().filter { it.displayPage.frameId == owner.targetFrameId }.forEach { current ->
+                            descendants(current).filterIsInstance<ReaderPageImageView>().forEach { image ->
+                                if (image.childCount > 0) image.getChildAt(0).draw(Canvas(output))
+                            }
+                            val ticket = current.presentationScope?.second
+                            if (ticket != null &&
+                                owner.frame(ticket)?.drawnPageIds?.containsAll(owner.targetUnit!!.pageIds) == true
+                            ) {
+                                assertTrue("Both B images draw before any IDLE", viewer.hasActiveGesture)
+                                return
+                            }
+                        }
+                        runCurrent()
+                    }
+                    throw AssertionError("The original target children did not draw before IDLE")
+                } finally {
+                    output.recycle()
+                }
+            }
+            repeat(if (shifted) 2 else 1) { cycle ->
+                val secondTarget = expectedStart + 4
+                if (shifted && cycle == 0) {
+                    assertTrue(
+                        "The real shifted projection starts C as a clipped singleton",
+                        holders().any {
+                            it.displayPage is DisplayPage.Single &&
+                                it.displayPage.containsPage(pages[secondTarget])
+                        },
+                    )
+                }
+                val beforeOpens = normalOpens.get(secondTarget)
+                fastTouch(true)
+                assertTrue("First touch must still be a live gesture", viewer.hasActiveGesture)
+                assertEquals(nextPage, owner.targetUnit!!.pageIds.minOf { it.sourcePageIndex })
+                assertTrue(
+                    "Selecting B must admit C before any IDLE",
+                    viewer.imagePreparation.contains(pages[secondTarget]),
+                )
+                awaitProduction({ "C must physically prepare while B is still settling" }) {
+                    holders().forEach(::ready)
+                    normalOpens.get(secondTarget) > beforeOpens &&
+                        holders().any {
+                            it.displayPage.visiblePages.map { p -> p.index } ==
+                                listOf(secondTarget, secondTarget + 1) &&
+                                ready(it)
+                        }
+                }
+                assertTrue("Preparing C cannot wait for B's IDLE", viewer.hasActiveGesture)
+                assertEquals(
+                    listOf(nextPage, nextPage + 1, nextPage + 2, nextPage + 3, nextPage - 1, nextPage - 2),
+                    ReflectionHelpers.getField<List<ReaderPage>>(viewer.imagePreparation, "priority").map { it.index },
+                )
+                val secondPrepared = holders().single { it.displayPage.containsPage(pages[secondTarget]) }
+                val secondNatives = descendants(secondPrepared).filterIsInstance<ReaderPageImageView>().map {
+                    it.getChildAt(0)
+                }.toList()
+                val secondGenerations = ReflectionHelpers.getField<Map<ReaderPage, Long>>(
+                    secondPrepared,
+                    "decodeGenerations",
+                ).toMap()
+                val preparedOpens = normalOpens.get(secondTarget)
+                progressWithoutIdle()
+                assertTrue(viewer.hasActiveGesture)
+                fastTouch(true)
+                assertTrue("Second real touch is accepted before the previous IDLE", viewer.hasActiveGesture)
+                assertEquals(secondTarget, owner.targetUnit!!.pageIds.minOf { it.sourcePageIndex })
+                if (!shifted) settleOriginalPager(viewer)
+                awaitProduction { holders().all(::ready) }
+                assertSame(secondPrepared, holders().single { it.displayPage.frameId == owner.targetFrameId })
+                assertEquals(
+                    secondNatives,
+                    descendants(secondPrepared).filterIsInstance<ReaderPageImageView>().map {
+                        it.getChildAt(0)
+                    }.toList(),
+                )
+                assertEquals(
+                    secondGenerations,
+                    ReflectionHelpers.getField<Map<ReaderPage, Long>>(secondPrepared, "decodeGenerations"),
+                )
+                assertEquals(preparedOpens, normalOpens.get(secondTarget))
+                if (shifted) {
+                    // The old [C partner,next] placeholder must not turn the third touch into C again.
+                    progressWithoutIdle()
+                    awaitProduction { holders().all(::ready) }
+                    assertTrue(viewer.hasActiveGesture)
+                    fastTouch(true)
+                    assertEquals(
+                        "The third real touch advances beyond both drawn C sources",
+                        secondTarget + 2,
+                        owner.location!!.pageId.sourcePageIndex,
+                    )
+                    assertTrue(owner.targetUnit!!.pageIds.any { it.sourcePageIndex == secondTarget + 2 })
+                    assertTrue(
+                        owner.targetUnit!!.pageIds.map {
+                            it.sourcePageIndex
+                        } != listOf(secondTarget, secondTarget + 1),
+                    )
+                    settleOriginalPager(viewer)
+                    awaitProduction { holders().all(::ready) }
+                    drawCurrent()
+                    fastTouch(false)
+                    assertEquals(secondTarget, owner.targetUnit!!.pageIds.minOf { it.sourcePageIndex })
+                    awaitProduction { holders().all(::ready) }
+                    assertSame(secondPrepared, holders().single { it.displayPage.frameId == owner.targetFrameId })
+                    assertEquals(
+                        secondNatives,
+                        descendants(secondPrepared).filterIsInstance<ReaderPageImageView>().map {
+                            it.getChildAt(0)
+                        }.toList(),
+                    )
+                    assertEquals(
+                        secondGenerations,
+                        ReflectionHelpers.getField<Map<ReaderPage, Long>>(secondPrepared, "decodeGenerations"),
+                    )
+                    progressWithoutIdle()
+                } else {
+                    drawCurrent()
+                }
+                assertEquals(secondTarget, owner.targetUnit!!.pageIds.minOf { it.sourcePageIndex })
+                fastTouch(false)
+                assertTrue(viewer.hasActiveGesture)
+                assertEquals(nextPage, owner.targetUnit!!.pageIds.minOf { it.sourcePageIndex })
+                assertEquals(
+                    listOf(nextPage, nextPage + 1, nextPage - 1, nextPage - 2, nextPage + 2, nextPage + 3),
+                    ReflectionHelpers.getField<List<ReaderPage>>(viewer.imagePreparation, "priority").map { it.index },
+                )
+                val previousTarget = expectedStart
+                assertTrue(
+                    "Reverse selection must admit the second reverse target before IDLE",
+                    viewer.imagePreparation.contains(pages[previousTarget]),
+                )
+                awaitProduction { holders().all(::ready) }
+                progressWithoutIdle()
+                assertTrue(viewer.hasActiveGesture)
+                fastTouch(false)
+                assertEquals(previousTarget, owner.targetUnit!!.pageIds.minOf { it.sourcePageIndex })
+                settleOriginalPager(viewer)
+                awaitProduction { holders().all(::ready) }
+                drawCurrent()
+                assertEquals(previousTarget, owner.targetUnit!!.pageIds.minOf { it.sourcePageIndex })
+                assertEquals(false, ReflectionHelpers.getField<Boolean>(viewer.adapter, "lastNavigationForward"))
+                val beforeCancel = owner.location
+                val down = SystemClock.uptimeMillis() + 1000
+                send(viewer.pager, down, down, MotionEvent.ACTION_DOWN, 700f, 500f)
+                send(viewer.pager, down, down + 15, MotionEvent.ACTION_MOVE, 950f, 500f)
+                send(viewer.pager, down, down + 30, MotionEvent.ACTION_MOVE, 650f, 500f)
+                assertTrue("The reversed drag is real and not yet idle", viewer.hasActiveGesture)
+                send(viewer.pager, down, down + 45, MotionEvent.ACTION_CANCEL, 650f, 500f)
+                settleOriginalPager(viewer)
+                assertEquals(beforeCancel, owner.location)
+                assertEquals(false, ReflectionHelpers.getField<Boolean>(viewer.adapter, "lastNavigationForward"))
+            }
+            return
+        }
         val directory = kotlin.io.path.createTempDirectory("dual-prepared-normal-work").toFile()
         val sink = eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnosticSink({ directory })
         val previousSink = eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.sink
