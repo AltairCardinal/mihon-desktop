@@ -397,8 +397,10 @@ class ReaderViewModel @JvmOverloads constructor(
                 currentChapter.requestedPage = resolveReaderChapterEntryPage(
                     isRead = currentChapter.chapter.read,
                     lastPageRead = currentChapter.chapter.last_page_read.toLong(),
-                    restoredPage = chapterPageIndex.takeIf { it >= 0 },
+                    // Activity restoration belongs to the chapter saved with this page index.
+                    restoredPage = chapterPageIndex.takeIf { it >= 0 && currentChapter.chapter.id == chapterId },
                 )
+                chapterPageIndex = currentChapter.requestedPage
                 dualPagePairings.chapters[currentChapter]?.session?.let { owner ->
                     owner.identity.pageIds.getOrNull(currentChapter.requestedPage)
                         ?.takeIf { it != owner.location?.pageId }?.let(owner::goToPage)

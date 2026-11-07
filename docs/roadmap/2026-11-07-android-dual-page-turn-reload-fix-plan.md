@@ -259,4 +259,12 @@ C／B 的构建清单逐记录比较，只有 `gradle/android-release.properties
 
 `scripts/build-android.py candidate --offline` 经唯一协调器成功（14:18:17–14:23:13，约 296 秒）。[141 修复 APK](../../app/artifacts/android/0.19.4-aex.123-vc141-4b35f259ca-release/Mihon-Fork-0.19.4-aex.123-vc141-release-universal.apk) 为 `app.mihon.desktop.fork`、`0.19.4-aex.123`，保留原证书、R8 和资源压缩；SHA-256 `09b7ff9347223047460bf1b7435971b246e120558b63a1c638e4e40e9c685c83`。清单源码为 `4b35f259ca6f750f3f06b537d1ed902727c72a21` 加本批冻结差异，`sourceDiffSha256=45a0795c43e550cc60bd7ea7b5892afa64859ee4ebb7b2255d491438533b7b2f`，`productionInputsSha256=4796b63ac1091c18d4b768ac10b08031c0c1c7cf06d55f0c0a28fe64bff959db`。原位安装与人工复验不由构建成功隐含，须另记。
 
-本次没有混入 `4bdca36f34` 的章节恢复修复；该提交既不在基线祖先中，也未移植其逻辑。用户接管平板人工翻页期间只读观察，不替用户发手势或熄屏。修复前已捕获持续数十秒的黑侧，修复后同条件人工时序和耗时尚待新包真机复验；不以宿主测试或上一轮 16 页附近的中位数替代此次测量。
+141 未包含 `4bdca36f34` 的章节恢复修复，因此未安装。用户随后明确要求更新时包含该提交，并自行验收；改为保留原提交身份合并，生成新的 142 候选。合并的两个文件补丁与原提交的稳定 patch-id 均为 `973bc114477f4c84fcb59652ef089ec8dedc3997`，没有夹带该支线的其他独有提交。
+
+合入前仅加入原提交两条真实回归，`chapter-restore-integration-red` 2/2 失败：下一章应为 0 却为 33，相邻章应为 1 却为 2。合入后 `chapter-restore-integration-green` 四条通过：上述两条、明确章节／Activity 恢复、普通继续阅读使用本章进度；两个受影响 Kotlin 文件限定格式检查通过。半屏黑修复相关生产文件未再改动，复用前述三条有效定向证据，不重跑全类或模块。
+
+用户接管平板人工翻页期间只读观察，不替用户发手势或熄屏。修复前已捕获持续数十秒的黑侧；按用户要求，新包更新后由其自行验收，当前没有同条件修复后耗时数据。不以宿主测试或上一轮 16 页附近的中位数替代此次测量。
+
+142 最终候选经同一离线入口成功（14:27:33–14:30:12，约 159 秒），[APK](../../app/artifacts/android/0.19.4-aex.124-vc142-67c9934001-release/Mihon-Fork-0.19.4-aex.124-vc142-release-universal.apk) 为 `0.19.4-aex.124`，SHA-256 `6050dcd068a2b7a282dcc2361c43fcc14ba48ac8280aa7c0d969a6fa0b4dd234`。清单基线为半屏修复提交 `67c99340014fae029b8b73d1584db57ba6c87524` 加已冻结的合入内容／版本差异，`sourceDiffSha256=321fbf2f711ffd1c25f047c6362f1f5c53476101574a8f415dde8e49110fcb8e`、`productionInputsSha256=1079a5eb815f90d43d387b25ac33502764679e96dc49a961131b65a6d592acc4`，原证书不变。
+
+已用统一 install 入口对 USB `5JB0224111000992` 原位更新并验证，独立读回 `versionCode=142`／`versionName=0.19.4-aex.124`，设备 `base.apk` SHA-256 与上述候选完全一致。用户数据保留，141 从未安装。更新后未启动阅读器、未发翻页或锁屏输入；按用户要求留待其自行验收，不宣称平板黑屏已由人工验收确认消除。安装日志 `.test-tmp/dual-preload/dual-exposure-install142.log`；没有推送远端或发布。
