@@ -120,6 +120,17 @@ Desktop 的 `ReaderPanBounds` 是阅读器视口交互策略：放大后，拖�
 
 有效令牌只在内存中复用，临近到期或 `PersistentGitHubCredentialStore.tokenRefreshEpoch` 改变时才重新读取并续期，避免每个请求都启动 Windows DPAPI 解密子进程。刷新 epoch 仅在新凭据成功持久化后更新；续期失败仍保留原凭据，并沿用网络重试或确认失效后的授权恢复路径。身份确认使用授权 epoch，不能把正常令牌轮换当作账号变更。相关行为由 `SyncRuntimeWiringTest` 的会话续期、缓存和身份隔离用例覆盖。
 
+### 书架分类标签排序
+
+书架分类标签的长按拖动由 `LibraryCategoryTabs` 适配 Desktop 指针，保留 Material
+`SecondaryScrollableTabRow`、普通点击、滚轮与现有分类数量显示。拖动期间仅投影标签顺序，
+边缘停留可横向滚动；松手才调用现有 `LibraryScreenModel.reorderCategory` / 共享
+`ReorderCategory` 保存，索引只计算自定义分类，系统默认分类固定在最前。
+选中分类按稳定 ID 保留；保存期间禁止重复操作，失败清除投影、显示原有错误反馈并允许重试。
+手势取消、离页或拖动期间收到分类仓库变化时放弃未保存投影。该适配器使用标签实测位置，
+不将分类管理页的 LazyColumn 拖动状态套用到 Material TabRow，也不新增排序权威。
+`LibraryCategoryDragTest` 通过真实书架指针和 SQLite 覆盖保存、重开、失败恢复、默认分类及窄窗口边缘拖动。
+
 ### 书架下载反馈与更新摘要
 
 书架下载数量不使用 `batchCategoryResultMessage`，该字段只负责分类操作反馈。下载结果由 `downloadResultMessage` 保留最近一次文案供离页通知使用，页面通过无 replay 的 `downloadMessages` 事件显示 Material Snackbar；连续请求替换当前气泡，关闭、超时或返回书架不能重播旧事件。下载数量以真实入队接受结果为准；原始目录没有未读时提示没有未读，有未读但被筛选、已下载或已排队时提示没有可添加的未读。部分失败和源不可用保留错误信息，不伪装成没有未读；书签下载为空仍使用章节不可用提示。
