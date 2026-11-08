@@ -1,6 +1,8 @@
 # Windows 已下载章节首次打开优化执行计划
 
-日期2026-11-05，2026-11-08收口。active-child-plan：无（D10已收口，整体体验目标仍未通过）。[D10　Windows 下载CBZ与首次视口的执行记录](2026-11-07-windows-reader-cbz-first-page.md)。D9 已完成[两段归因](../evidence/desktop-reader-d9-first-open-causes-2026-11-07.md)和[联合原型验证](../evidence/desktop-reader-cbz-slot-feasibility-2026-11-07.md)。D0–D8 的采用与撤回结论见下文。D10原轮次仅采用miniz后端；2026-11-08后续采用条件性的首次组合/最终入口复读及同holder交接。第二轮正反窗口对照有可辨地图首见收益，但副屏后续两次均未命中提前准入，整体体验预算仍未通过。当前阶段关闭，后续研究见[主干整合与研究收口](../evidence/desktop-reader-startup-closeout-2026-11-08.md)。
+日期2026-11-05，2026-11-09规划更新。active-child-plan：[源码调查驱动的优化方案](2026-11-09-windows-reader-source-driven-optimization.md)。新阶段完成设计，首项P0待执行。
+
+D0–D10与11月8日后续实现已完成[主干整合及研究收口](../evidence/desktop-reader-startup-closeout-2026-11-08.md)。已采用miniz与条件性提前挂载；整体体验预算仍未通过。11月9日调查补充了隔离偏好读取开销、Ready交接串联、no-op变换异步往返及fullscreen初始化边界，新子计划据此安排P0–P3和一次联合候选验收。历史[归因](../evidence/desktop-reader-d9-first-open-causes-2026-11-07.md)、[原型](../evidence/desktop-reader-cbz-slot-feasibility-2026-11-07.md)及[D10](2026-11-07-windows-reader-cbz-first-page.md)保留为阶段记录。
 
 ## 基线与工作边界
 
@@ -135,3 +137,7 @@ Sol medium 负责 production 调用归因、真实失败测试、一个最小候
 ## 交接入口
 
 执行前读取仓库AGENTS及其架构、验证、Desktop构建/原生验收和适用研究索引。Windows文本/脚本UTF-8，后台创建时禁止分配控制台；重型Gradle统一协调器串行。工具、系统或断联失败先定位，不因失败增加代理或全量测试。D6原件在本树.test-tmp/desktop-first-open-d6-20261106/，旧轮原件按各报告保留；当前采用结论以D3/D4/D6/D8局部采用、D7撤回及D10本地归档B采用/容器C撤回结果共同为准；D7原件位于main交付工作树的.test-tmp/desktop-first-open-d7-20261106/。
+
+## D11　源码调查驱动的首开优化
+
+- [ ] 按[11月9日子计划](2026-11-09-windows-reader-source-driven-optimization.md)完成偏好校准、稳定轻量首屏、no-op直接呈现、fullscreen按需初始化和联合候选裁决，再依据新数据评估后续方向。各任务的定向测试与采用范围以子计划为准，整体体验预算单列。
