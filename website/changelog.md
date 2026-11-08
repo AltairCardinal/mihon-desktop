@@ -9,6 +9,12 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## November 8, 2026 — Android rapid-turn review follow-up accepted
+
+**Accepted candidate documentation · no public product release**
+
+The project owner accepted tablet candidate `0.19.4-aex.129` (code 147) on November 8, 2026 in a private conversation. Source: `88103320e54da29d8cc43bc8a81f67d8cd04169f`, already integrated into main. This candidate includes the rapid-turn and loading-overlay fixes and the review follow-up that preserves reverse navigation when late geometry redescribes the selected empty slot. Acceptance remains limited to the reported downloaded Android two-page case; no new universal timing claim or public release is implied.
+
 ## November 7, 2026 — Android rapid two-page turns
 
 **Accepted candidate documentation · no public product release**
