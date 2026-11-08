@@ -106,3 +106,11 @@ B/C必须使用相同真实图片字节、页码、模式、存储访问方式�
 当前状态：已确定共同指标和初始工程预算，历史官方原版参考三份保留；后续已补齐联合采集条件下的官方源PTS首漫画参考、设备时钟关联及采集扰动初筛，见[时钟与GPU证据](reader-startup-clock-gpu-2026-11-02.md)。无采集真机日常耗时、物理显示端点、充分控制的探针开销校准、同条件Android fork及Desktop双端对照仍未完成。没有放宽原门槛、宣布两端达标或修复完成，不更新公共功能说明。
 
 本机原件位于仓库忽略目录 `.test-tmp/upstream-original-trace-20261102/`（REPORT、原视频、trace、SQL、帧PTS、工具来源及哈希）；目录可能不随克隆分发，使用前验证存在。仓库仅保存精简系统事件/帧边界和来源文件SHA256，不提交含个人阅读内容的视频、截图或系统完整trace。原件不可得时，本页数值保留为历史参考，必须重新取得可复核原件才能做新的达标裁决。
+
+## 2026-11-09 Windows隔离配置的性能条件
+
+此前Windows性能采集使用 --test-profile。其PreferencesFactory为IsolatedDesktopPreferencesFactory，每次getSpi都会打开并解析整份values.properties。DesktopPreference.get没有缓存该值，initialReaderState、model初始投影和复读设置校验会在AWT反复执行此链。普通Windows默认Preferences注册表后端与其性能条件不同。
+
+因此现有Windows A/B结果继续限定于共同隔离环境。不能据这些记录直接确认普通启动的绝对延迟、相对官方的净差或提前准入命中率。下一次性能采集应先量化/对齐偏好后端，记录实际Factory、启动参数、持久设置和读取次数；不能从原有数字减掉一个假定的固定开销。设置语义正确性测试不证明性能开销等价。
+
+函数调用、实际解析库版本、第三方调度实现与新确认的交接依赖见[2026-11-09源码调查](desktop-reader-call-chain-source-analysis-2026-11-09.md)。本次仅修正测量解释，未新增性能对照。
