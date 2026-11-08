@@ -50,7 +50,7 @@ import java.util.prefs.Preferences
 @Isolated
 class LibraryCategoryDragTest {
     @Test
-    fun `long press reorders tabs on release preserves selection and survives reopening`(
+    fun `immediate drag reorders tabs on release preserves selection and survives reopening`(
         @TempDir root: File,
     ) = runBlocking {
         withLibrary(root) { scene, repository, model ->
@@ -62,7 +62,6 @@ class LibraryCategoryDragTest {
             val start = tab(scene, "First").boundsInWindow.center
             val end = tab(scene, "Third").boundsInWindow.center
             press(scene, start)
-            delay(650)
             render(scene)
             move(scene, start, end)
             assertEquals(
@@ -89,21 +88,22 @@ class LibraryCategoryDragTest {
     }
 
     @Test
-    fun `short drag does not save and repository changes cancel a pending drag`(@TempDir root: File) = runBlocking {
+    fun `small pointer jitter does not reorder and repository changes cancel a pending drag`(
+        @TempDir root: File,
+    ) = runBlocking {
         withLibrary(root) { scene, repository, _ ->
             seed(repository)
             render(scene)
             var start = tab(scene, "First").boundsInWindow.center
             var end = tab(scene, "Third").boundsInWindow.center
             press(scene, start)
-            move(scene, start, end)
-            release(scene, end)
+            move(scene, start, start + Offset(2f, 0f))
+            release(scene, start + Offset(2f, 0f))
             render(scene)
             assertEquals(listOf("First", "Second", "Third"), names(repository))
             start = tab(scene, "First").boundsInWindow.center
             end = tab(scene, "Third").boundsInWindow.center
             press(scene, start)
-            delay(650)
             move(scene, start, end)
             repository.insert(Category(0, "Fourth", 3, 0))
             render(scene)
@@ -159,7 +159,6 @@ class LibraryCategoryDragTest {
                     text(it).contains(tachiyomi.i18n.MR.strings.desktop_library_default_category.localized())
             }.boundsInWindow.center
             press(scene, defaultCenter)
-            delay(650)
             move(scene, defaultCenter, tab(scene, "Third").boundsInWindow.center)
             release(scene, tab(scene, "Third").boundsInWindow.center)
             render(scene)
@@ -178,7 +177,6 @@ class LibraryCategoryDragTest {
             val start = tab(scene, "Category 0").boundsInWindow.center
             val edge = Offset(475f, start.y)
             press(scene, start)
-            delay(650)
             move(scene, start, edge)
             repeat(100) {
                 scene.render()
@@ -300,7 +298,6 @@ class LibraryCategoryDragTest {
         val start = tab(scene, from).boundsInWindow.center
         val end = tab(scene, to).boundsInWindow.center
         press(scene, start)
-        delay(650)
         render(scene)
         move(scene, start, end)
         release(scene, end)

@@ -122,7 +122,7 @@ Desktop 的 `ReaderPanBounds` 是阅读器视口交互策略：放大后，拖�
 
 ### 书架分类标签排序
 
-书架分类标签的长按拖动由 `LibraryCategoryTabs` 适配 Desktop 指针，保留 Material
+书架分类标签的直接拖动由 `LibraryCategoryTabs` 适配 Desktop 指针，越过 Compose 水平移动阈值即开始，无需长按；保留 Material
 `SecondaryScrollableTabRow`、普通点击、滚轮与现有分类数量显示。拖动期间仅投影标签顺序，
 边缘停留可横向滚动；松手才调用现有 `LibraryScreenModel.reorderCategory` / 共享
 `ReorderCategory` 保存，索引只计算自定义分类，系统默认分类固定在最前。

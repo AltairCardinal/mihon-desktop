@@ -1,7 +1,7 @@
 package mihon.desktop.ui.library
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
@@ -41,7 +41,7 @@ import kotlin.math.abs
 
 private data class CategoryTabDrag(val id: Long, val pointerX: Float, val grabOffsetX: Float)
 
-/** Material tabs retain their click/wheel behavior; only the Desktop long-press adapter is local. */
+/** Material tabs retain their click/wheel behavior; only the Desktop horizontal-drag adapter is local. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 internal fun LibraryCategoryTabs(
@@ -180,16 +180,16 @@ internal fun LibraryCategoryTabs(
                             } else {
                                 Modifier.pointerInput(category.id, saving) {
                                     if (!saving) {
-                                        detectDragGesturesAfterLongPress(
+                                        detectHorizontalDragGestures(
                                             onDragStart = { point ->
                                                 bounds[category.id]?.let { rect ->
                                                     preview = authoritative
                                                     drag = CategoryTabDrag(category.id, rect.left + point.x, point.x)
                                                 }
                                             },
-                                            onDrag = { change, amount ->
+                                            onHorizontalDrag = { change, amount ->
                                                 change.consume()
-                                                drag = drag?.let { it.copy(pointerX = it.pointerX + amount.x) }
+                                                drag = drag?.let { it.copy(pointerX = it.pointerX + amount) }
                                                 project()
                                             },
                                             onDragEnd = ::finish,
