@@ -9,6 +9,10 @@ Read [Current features](./features.md) for what the project currently documents.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
 
+## November 8, 2026 — Windows library category dragging
+
+The project owner accepted Windows preview `0.11.24.6.79412b6` on November 8, 2026 in a private conversation and authorized main integration and push. Implementations: `ebf5ffe7be` and `79412b6106`. Custom library categories can be dragged immediately, without a long press; releasing saves the order, while clicking still switches categories. The default category remains fixed, with edge scrolling and failed-save recovery. Acceptance covers Windows only; no public product release is implied.
+
 ## November 8, 2026 — Android rapid-turn review follow-up accepted
 
 **Accepted candidate documentation · no public product release**
