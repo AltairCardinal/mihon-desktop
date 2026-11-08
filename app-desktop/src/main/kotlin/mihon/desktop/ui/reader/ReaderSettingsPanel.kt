@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.FlowRowScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,13 +16,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
@@ -36,6 +39,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import mihon.desktop.reader.ReaderBackgroundTheme
@@ -212,20 +218,22 @@ internal fun GeneralTab(
 ) {
     // Reading mode
     SettingsSection(MR.strings.desktop_ui_reading_mode.localized()) {
-        RadioRow(MR.strings.label_default.localized(), followsGlobal, onFollowGlobal)
-        listOf(ReadingMode.AUTO, ReadingMode.LTR, ReadingMode.WEBTOON).forEach { mode ->
-            val pagerMode = mode == ReadingMode.LTR
-            RadioRow(
-                label = if (pagerMode) MR.strings.desktop_reader_paged_mode.localized() else readingModeLabel(mode),
-                selected = !followsGlobal && if (pagerMode) {
-                    currentMode == ReadingMode.LTR || currentMode == ReadingMode.RTL
-                } else {
-                    currentMode == mode
-                },
-                onClick = {
-                    onModeChange(if (pagerMode && currentMode == ReadingMode.RTL) ReadingMode.RTL else mode)
-                },
-            )
+        ChoiceRow {
+            ChoiceChip(MR.strings.label_default.localized(), followsGlobal, onFollowGlobal)
+            listOf(ReadingMode.AUTO, ReadingMode.LTR, ReadingMode.WEBTOON).forEach { mode ->
+                val pagerMode = mode == ReadingMode.LTR
+                ChoiceChip(
+                    label = if (pagerMode) MR.strings.desktop_reader_paged_mode.localized() else readingModeLabel(mode),
+                    selected = !followsGlobal && if (pagerMode) {
+                        currentMode == ReadingMode.LTR || currentMode == ReadingMode.RTL
+                    } else {
+                        currentMode == mode
+                    },
+                    onClick = {
+                        onModeChange(if (pagerMode && currentMode == ReadingMode.RTL) ReadingMode.RTL else mode)
+                    },
+                )
+            }
         }
         if (currentMode == ReadingMode.AUTO) {
             Text(
@@ -254,18 +262,20 @@ internal fun GeneralTab(
     } else {
         // Pager settings
         SettingsSection(MR.strings.desktop_ui_pager.localized()) {
-            RadioRow(
-                label = MR.strings.desktop_reader_direction_ltr.localized(),
-                selected = currentMode == ReadingMode.LTR,
-                onClick = { onModeChange(ReadingMode.LTR) },
-                enabled = currentMode != ReadingMode.AUTO,
-            )
-            RadioRow(
-                label = MR.strings.desktop_reader_direction_rtl.localized(),
-                selected = currentMode == ReadingMode.RTL || currentMode == ReadingMode.AUTO,
-                onClick = { onModeChange(ReadingMode.RTL) },
-                enabled = currentMode != ReadingMode.AUTO,
-            )
+            ChoiceRow {
+                ChoiceChip(
+                    label = MR.strings.desktop_reader_direction_ltr.localized(),
+                    selected = currentMode == ReadingMode.LTR,
+                    onClick = { onModeChange(ReadingMode.LTR) },
+                    enabled = currentMode != ReadingMode.AUTO,
+                )
+                ChoiceChip(
+                    label = MR.strings.desktop_reader_direction_rtl.localized(),
+                    selected = currentMode == ReadingMode.RTL || currentMode == ReadingMode.AUTO,
+                    onClick = { onModeChange(ReadingMode.RTL) },
+                    enabled = currentMode != ReadingMode.AUTO,
+                )
+            }
             CheckboxRow(
                 label = MR.strings.desktop_ui_split_wide_pages.localized(),
                 checked = autoSplitPages,
@@ -292,12 +302,14 @@ internal fun GeneralTab(
     // Navigation mode (pager only)
     if (currentMode != ReadingMode.WEBTOON) {
         SettingsSection(MR.strings.desktop_ui_tap_navigation.localized()) {
-            NavigationMode.entries.forEach { mode ->
-                RadioRow(
-                    label = navigationModeLabel(mode),
-                    selected = navigationMode == mode,
-                    onClick = { onNavigationModeChange(mode) },
-                )
+            ChoiceRow {
+                NavigationMode.entries.forEach { mode ->
+                    ChoiceChip(
+                        label = navigationModeLabel(mode),
+                        selected = navigationMode == mode,
+                        onClick = { onNavigationModeChange(mode) },
+                    )
+                }
             }
         }
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -358,12 +370,14 @@ private fun DisplayTab(
     onScaleTypeChange: (ScaleType) -> Unit = {},
 ) {
     SettingsSection(MR.strings.desktop_ui_scale_type.localized()) {
-        ScaleType.entries.forEach { type ->
-            RadioRow(
-                label = scaleTypeLabel(type),
-                selected = scaleType == type,
-                onClick = { onScaleTypeChange(type) },
-            )
+        ChoiceRow {
+            ScaleType.entries.forEach { type ->
+                ChoiceChip(
+                    label = scaleTypeLabel(type),
+                    selected = scaleType == type,
+                    onClick = { onScaleTypeChange(type) },
+                )
+            }
         }
     }
 
@@ -385,12 +399,14 @@ private fun DisplayTab(
     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
     SettingsSection(MR.strings.desktop_ui_webtoon_side_padding.localized()) {
-        WebtoonSidePadding.entries.forEach { padding ->
-            RadioRow(
-                label = webtoonSidePaddingLabel(padding),
-                selected = webtoonSidePadding == padding,
-                onClick = { onWebtoonSidePaddingChange(padding) },
-            )
+        ChoiceRow {
+            WebtoonSidePadding.entries.forEach { padding ->
+                ChoiceChip(
+                    label = webtoonSidePaddingLabel(padding),
+                    selected = webtoonSidePadding == padding,
+                    onClick = { onWebtoonSidePaddingChange(padding) },
+                )
+            }
         }
     }
 
@@ -403,12 +419,14 @@ private fun DisplayTab(
             onCheckedChange = onWebtoonAutoScrollChange,
         )
         if (webtoonAutoScroll) {
-            WebtoonAutoScrollSpeed.entries.forEach { speed ->
-                RadioRow(
-                    label = webtoonAutoScrollSpeedLabel(speed),
-                    selected = webtoonAutoScrollSpeed == speed,
-                    onClick = { onWebtoonAutoScrollSpeedChange(speed) },
-                )
+            ChoiceRow {
+                WebtoonAutoScrollSpeed.entries.forEach { speed ->
+                    ChoiceChip(
+                        label = webtoonAutoScrollSpeedLabel(speed),
+                        selected = webtoonAutoScrollSpeed == speed,
+                        onClick = { onWebtoonAutoScrollSpeedChange(speed) },
+                    )
+                }
             }
         }
     }
@@ -499,14 +517,24 @@ private fun SettingsSection(title: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun RadioRow(label: String, selected: Boolean, onClick: () -> Unit, enabled: Boolean = true) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick),
-    ) {
-        RadioButton(selected = selected, onClick = onClick, enabled = enabled)
-        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 4.dp))
-    }
+private fun ChoiceRow(content: @Composable FlowRowScope.() -> Unit) {
+    // Android's SettingsChipRow uses the same wrapping layout; keep the dialog's own padding.
+    FlowRow(
+        modifier = Modifier.fillMaxWidth().selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        content = content,
+    )
+}
+
+@Composable
+private fun ChoiceChip(label: String, selected: Boolean, onClick: () -> Unit, enabled: Boolean = true) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) },
+        enabled = enabled,
+        modifier = Modifier.semantics { role = Role.RadioButton },
+    )
 }
 
 @Composable
