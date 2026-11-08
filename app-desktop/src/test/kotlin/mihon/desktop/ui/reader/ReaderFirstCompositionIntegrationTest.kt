@@ -7,6 +7,7 @@ import cafe.adriel.voyager.navigator.Navigator
 import dev.mihon.injekt.patchInjekt
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.spyk
 import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -72,9 +73,44 @@ class ReaderFirstCompositionIntegrationTest {
     ) =
         screenScenario(dir, loadedInitially = false)
 
-    private fun screenScenario(dir: File, loadedInitially: Boolean) = runTest {
+    @Test
+    fun `final selection consumes same generation page list published after initial snapshot before full model`(
+        @TempDir dir: File,
+    ) = screenScenario(dir, loadedInitially = false, publishDuringInitialProjection = true)
+
+    @Test
+    fun `reread rejects a different active chapter generation published during initial projection`(
+        @TempDir dir: File,
+    ) = screenScenario(dir, loadedInitially = false, publishDuringInitialProjection = true, switchGeneration = true)
+
+    @Test
+    fun `reread rejects presentation settings changed after the initial projection`(
+        @TempDir dir: File,
+    ) = screenScenario(dir, loadedInitially = false, publishDuringInitialProjection = true, changeSettings = true)
+
+    private fun screenScenario(
+        dir: File,
+        loadedInitially: Boolean,
+        publishDuringInitialProjection: Boolean = false,
+        switchGeneration: Boolean = false,
+        changeSettings: Boolean = false,
+    ) = runTest {
         val legacy = Preferences.userRoot().node("/mihon/first-composition/${System.nanoTime()}")
-        val prefs = ReaderPreferences(InMemoryPreferenceStore(), legacy).apply { readingMode = ReadingMode.RTL }
+        val prefs = spyk(ReaderPreferences(InMemoryPreferenceStore(), legacy).apply { readingMode = ReadingMode.RTL })
+        var publishPageList: (() -> Unit)? = null
+        if (publishDuringInitialProjection) {
+            every { prefs.readingMode } answers {
+                publishPageList?.also { publishPageList = null }?.invoke()
+                ReadingMode.RTL
+            }
+        }
+        if (changeSettings) {
+            every { prefs.skipDuplicateChapters } answers {
+                val original = callOriginal() as Boolean
+                prefs.autoSplitPages = true
+                original
+            }
+        }
         val context = desktopReaderSessionState(chapterId = 41, pageCount = 187, initialPage = 4).context.copy(
             isDownloaded = true,
             mangaId = 7,
@@ -161,6 +197,18 @@ class ReaderFirstCompositionIntegrationTest {
                 runCurrent()
                 assertEquals(187, session.state.value.snapshot.activeChapter.pages.size)
             }
+            if (publishDuringInitialProjection) {
+                publishPageList = {
+                    assertTrue(session.state.value.snapshot.activeChapter.pages.isEmpty())
+                    runCurrent()
+                    assertEquals(187, session.state.value.snapshot.activeChapter.pages.size)
+                    if (switchGeneration) {
+                        session.activate(context.copy(chapterId = 42, chapterUrl = "/chapter/42"))
+                        runCurrent()
+                        assertEquals(42, session.state.value.context.chapterId)
+                    }
+                }
+            }
             ReaderStartupTrace.install(observation)
             patchInjekt()
             Injekt.addSingleton(factory)
@@ -178,16 +226,43 @@ class ReaderFirstCompositionIntegrationTest {
             val events = observation.snapshot().events
             val applied = events.indexOfFirst { it.stage == "COMPOSE_SLOT_APPLY" && it.pageIndex == 4 }
             val fullModel = events.indexOfFirst { it.stage == "COMPOSE_MODEL_CREATE" }
-            if (loadedInitially) {
-                val success = events.single { it.stage == "FIRST_COMPOSITION_SNAPSHOT_READY" }
+            val rereadAccepted = publishDuringInitialProjection && !switchGeneration && !changeSettings
+            if (loadedInitially || rereadAccepted) {
+                val expectedStage = if (loadedInitially) {
+                    "FIRST_COMPOSITION_SNAPSHOT_READY"
+                } else {
+                    "FIRST_COMPOSITION_REREAD_READY"
+                }
+                val success = events.singleOrNull { it.stage == expectedStage }
+                assertTrue(
+                    success != null,
+                    "The final production selection must consume the already published same-generation page table",
+                )
+                requireNotNull(success)
+                if (rereadAccepted) {
+                    val first = events.single { it.stage == "FIRST_COMPOSITION_INITIAL_NOT_READY" }
+                    assertEquals(0, first.detail)
+                    assertEquals(187, success.detail)
+                    assertEquals(first.generation, success.generation)
+                    val decision = events.indexOfFirst { it.stage == "FIRST_COMPOSITION_FULL_MODEL_DECISION" }
+                    val reread = events.indexOfFirst { it.stage == "FIRST_COMPOSITION_REREAD_READY" }
+                    assertTrue(
+                        decision >= 0 && reread > decision,
+                        "Reread must occur inside the actual full-model branch after common providers and host setup",
+                    )
+                }
                 assertEquals(4, success.pageIndex)
                 assertEquals(session.state.value.snapshot.generation, success.generation)
                 assertTrue(
                     applied >= 0 && fullModel > applied,
-                    "Actual target holder must apply before actual full model constructor",
+                    "Actual target holder must apply before actual full model constructor: " +
+                        "holder=$applied model=$fullModel events=" + events.joinToString {
+                            "${it.stage}:${it.pageIndex}:${it.detail}"
+                        },
                 )
             } else {
-                assertEquals(1, events.count { it.stage == "FIRST_COMPOSITION_FALLBACK" })
+                assertEquals(1, events.count { it.stage == "FIRST_COMPOSITION_INITIAL_NOT_READY" })
+                assertEquals(1, events.count { it.stage == "FIRST_COMPOSITION_REREAD_FALLBACK" })
                 assertEquals(0, events.count { it.stage == "FIRST_COMPOSITION_SNAPSHOT_READY" })
                 assertEquals(0, events.count { it.stage == "STARTUP_SINGLE_VIEWPORT_APPLY" })
                 assertTrue(
@@ -195,6 +270,21 @@ class ReaderFirstCompositionIntegrationTest {
                     "Unready first composition must keep the original model-first path",
                 )
             }
+            if (!loadedInitially) {
+                assertEquals(1, events.count { it.stage == "FIRST_COMPOSITION_INITIAL_NOT_READY" })
+                assertEquals(
+                    1,
+                    events.count { it.stage.startsWith("FIRST_COMPOSITION_REREAD_") },
+                    "The final selection must reread once; a later Loaded state cannot retry admission",
+                )
+            } else {
+                assertEquals(0, events.count { it.stage.startsWith("FIRST_COMPOSITION_REREAD_") })
+            }
+            val modelBegin = events.single { it.stage == "COMPOSE_MODEL_CREATE" }
+            val modelEnd = events.single { it.stage == "COMPOSE_MODEL_CREATE_END" }
+            assertTrue(modelEnd.monotonicNanos >= modelBegin.monotonicNanos)
+            assertEquals(session.state.value.snapshot.generation, modelBegin.generation)
+            assertEquals(modelBegin.generation, modelEnd.generation)
             assertEquals(1, events.count { it.stage == "HOLDER_CREATE_BEGIN" && it.pageIndex == 4 })
             assertEquals(
                 1,
@@ -251,6 +341,41 @@ class ReaderFirstCompositionIntegrationTest {
         assertEquals(1, creations)
         assertEquals(0, unclaimedCloses)
         verify(exactly = 1) { model.onDispose() }
+    }
+
+    @Test
+    fun `reread guard rejects a changed restore target or opening identity even in the same generation`() {
+        val legacy = Preferences.userRoot().node("/mihon/reread-identity/${System.nanoTime()}")
+        val prefs = ReaderPreferences(InMemoryPreferenceStore(), legacy).apply { readingMode = ReadingMode.RTL }
+        val reader = desktopReaderSessionState(pageCount = 187, initialPage = 4).let {
+            it.copy(context = it.context.copy(isDownloaded = true))
+        }
+        val before = reader.copy(
+            snapshot = reader.snapshot.copy(
+                activeChapter = reader.snapshot.activeChapter.copy(
+                    pages = emptyList(),
+                    loadState = mihon.domain.reader.session.ReaderChapterLoadState.LoadingPageList,
+                ),
+            ),
+        )
+        val initial = initialReaderState(prefs, before, false, 0, null, false)
+        try {
+            org.junit.jupiter.api.Assertions.assertNotNull(
+                rereadFirstCompositionState(initial, reader, prefs, false, 0, null),
+            )
+            listOf(
+                reader.copy(context = reader.context.copy(initialPage = 186)),
+                reader.copy(context = reader.context.copy(mangaId = 99)),
+                reader.copy(context = reader.context.copy(chapterUrl = "/changed")),
+                reader.copy(context = reader.context.copy(sourceId = 99)),
+            ).forEach { latest ->
+                org.junit.jupiter.api.Assertions.assertNull(
+                    rereadFirstCompositionState(initial, latest, prefs, false, 0, null),
+                )
+            }
+        } finally {
+            legacy.removeNode()
+        }
     }
 
     @Test

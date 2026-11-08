@@ -3286,6 +3286,21 @@ private fun resolveInitialPage(requestedPage: Int, pageCount: Int): Int = when {
 private fun invalidSavedPage(requestedPage: Int, pageCount: Int): Boolean =
     pageCount > 0 && requestedPage != ReaderInitialPage.LAST && requestedPage !in 0 until pageCount
 
+internal fun initialReaderMode(
+    prefs: ReaderPreferences,
+    isWebtoon: Boolean,
+    mangaViewerFlags: Long,
+    dualPageOverride: Boolean?,
+): ReadingMode =
+    when {
+        isWebtoon -> ReadingMode.WEBTOON
+        readingModeFromViewerFlags(mangaViewerFlags) == null && prefs.readingMode == ReadingMode
+            .AUTO &&
+            (dualPageFromViewerFlags(mangaViewerFlags) != null || dualPageOverride != null) ->
+            ReadingMode.RTL
+        else -> readingModeFromViewerFlags(mangaViewerFlags) ?: prefs.readingMode
+    }
+
 internal fun initialReaderState(
     prefs: ReaderPreferences,
     reader: DesktopReaderSessionState,
@@ -3294,14 +3309,7 @@ internal fun initialReaderState(
     dualPageOverride: Boolean?,
     hasPairingCoordinator: Boolean,
 ): ReaderState {
-    val resolvedMode = when {
-        isWebtoon -> ReadingMode.WEBTOON
-        readingModeFromViewerFlags(mangaViewerFlags) == null && prefs.readingMode == ReadingMode
-            .AUTO &&
-            (dualPageFromViewerFlags(mangaViewerFlags) != null || dualPageOverride != null) ->
-            ReadingMode.RTL
-        else -> readingModeFromViewerFlags(mangaViewerFlags) ?: prefs.readingMode
-    }
+    val resolvedMode = initialReaderMode(prefs, isWebtoon, mangaViewerFlags, dualPageOverride)
     return ReaderState(
         context = reader.context,
         session = reader.snapshot,

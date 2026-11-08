@@ -185,8 +185,19 @@ data class DesktopReaderScreen(
         earlyToggleUI: Boolean,
     ) {
         val model = remember(entry) {
-            mihon.desktop.reader.ReaderStartupTrace.markChapter("COMPOSE_MODEL_CREATE", chapterId)
+            val beforeModel = entry.runtime.session.state.value
+            mihon.desktop.reader.ReaderStartupTrace.mark(
+                "COMPOSE_MODEL_CREATE",
+                beforeModel.snapshot.activeChapter.pages.getOrNull(beforeModel.context.initialPage)?.id,
+                beforeModel.snapshot.generation,
+            )
             entry.model().also { model ->
+                val afterModel = model.state.value
+                mihon.desktop.reader.ReaderStartupTrace.mark(
+                    "COMPOSE_MODEL_CREATE_END",
+                    afterModel.session.activeChapter.pages.getOrNull(afterModel.currentPage)?.id,
+                    afterModel.session.generation,
+                )
                 earlyPage?.let { page ->
                     val current = model.state.value
                     when {
@@ -1281,7 +1292,7 @@ internal fun ReaderContent(
                         pagerPresentationBinding = pagerBinding,
                         pageTurnAnimation = pageTurnAnimation,
                         allowAdjacentViewport = firstPresentedGeneration == state.session.generation,
-                        startupSingleViewport = LocalReaderFirstCompositionReady.current &&
+                        startupSingleViewport = LocalReaderFirstCompositionReady.current?.ready == true &&
                             firstPresentedGeneration != state.session.generation,
                         chapter = state.session.activeChapter, currentPage = state.currentPage,
                         currentDisplayUnitId = state.currentDisplayUnitId, isRtl = rtl,

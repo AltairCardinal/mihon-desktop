@@ -1,6 +1,6 @@
 # Desktop 首次组合直接消费已发布页表实验
 
-本页记录单一实验候选，不表示采用或首开性能通过。窗口指标及最终裁决由协调者另外核验；本实施者不控制窗口，不提交漫画、截图或采样视频。
+本页前文保留初候选 `44edd09def` 的实施历史；当前唯一追加候选见末节“一次非阻塞复读”。本页不表示采用或首开性能通过。窗口指标及最终裁决由协调者另外核验；本实施者不控制窗口，不提交漫画、截图或采样视频。
 
 ## 固定输入与假设
 
@@ -41,3 +41,24 @@ Voyager 的轻量 `DesktopReaderScreenEntry` 保留既有同一个 runtime、ses
 新文件及修改行按 ktlint 1.8.0 检查为零诊断，`git diff --check` 通过；既有未修改行的格式诊断保留，不作无关格式化。仅进行对应 Desktop focused 验证及普通 preview，不执行全模块／全量、Android、正式发布、版本分配、推送或合并。
 
 候选构建只证明可体验产物与既有 production runtime 检查，窗口原生交互、成功分支是否在真实首开命中，以及外部响应／无内容／正确首漫画时间仍须独立验收。若真实第一轮页表未就绪，必须报告 fallback；不能用后续模型之后的容器命中替代假设。
+
+
+## 一次非阻塞复读（在最终完整模型分支）
+
+本增量以干净 `44edd09defc7e62d12c4a9753097c8a5b55ae25e` 为基线，继续同一独立树和目标场景。只扩大一次准入观察机会，不改页表发布、请求链、图片质量、进度、归档或首绘端点。
+
+首读快照和初始投影仍只生成一次。共用 registry 与准入 owner 先进入实际外层 `CompositionLocalProvider`，然后 `ReaderFirstCompositionHost` 在原本即将调用 `fullContent` 的最终普通选择分支中，非阻塞读取同一个 session 的最新值一次。该读取之后只有结果判断和统一的 startup／fullContent 选择，没有新的 provider 或 Composable 初始化层；统一 startup 调用点保留活动手势的 owner。没有等待、循环重读、提前开章或额外预热。
+
+复读必须同时满足 Loaded、同 session 代次、同章节以及相同 opening context／恢复目标；只允许 materialization 补齐下载路由事实。还核对解析后的阅读模式、单双页、拆页、匹配、裁边、缩放方式、导航、背景与滤镜设置。初始模式解析抽为同一小函数复用，不再运行整份 `initialReaderState`；通过后仅把已验证页表、context 与原请求恢复页补入既有投影。章／代次／目标／设置变化、尚未发布或身份不明均立即走原完整模型，之后到达也不重新准入。
+
+准入 owner 只保留本次组合的有界决定，不建立新的持久化或请求状态系统。真实 holder apply 才触发下一组合交给完整模型，不能等首绘；late 路径也无条件观察交接状态，保证 Compose 能调度这一接手。实际绘出继续负责正常进度。
+
+诊断分别报告首读结果 `FIRST_COMPOSITION_SNAPSHOT_READY`／`FIRST_COMPOSITION_INITIAL_NOT_READY`、实际最终分支 `FIRST_COMPOSITION_FULL_MODEL_DECISION`、复读结果 `FIRST_COMPOSITION_REREAD_READY`／`FIRST_COMPOSITION_REREAD_FALLBACK`，以及真实 `COMPOSE_MODEL_CREATE` begin 与 `COMPOSE_MODEL_CREATE_END`。首读结果事件在初始投影后记录其已捕获快照，不能把这个结果时间冒充最早读取瞬间；没有伪造提前时间戳。复读成功与实际 holder apply、完整模型开始／结束均保留真实页码和代次证据。
+
+验证证据：
+
+- `first-compose-reread-red`：真实 Screen 首读 Loading 后，测试在初始偏好读取中推进真实 session 发布同代 187 页；旧产品最终选择未消费它，`The final production selection must consume the already published same-generation page table` 断言失败。失败 XML 保留在 `.test-tmp/first-compose-reread-red.xml`。
+- `first-compose-reread-placement-red`：最初把复读放在 provider／Host 之前时，真实分支顺序断言失败。按要求移至上述最终分支；失败 XML 保留在 `.test-tmp/first-compose-reread-placement-red.xml`。
+- 后移时测试另捕获 holder 已 apply、模型仍未创建（`holder=14 model=-1`）的交接缺陷：late 分支首轮未读取交接状态，使 Compose 没有相应观察者。无条件读取同一 `applied` 状态后复验；没有用等待首绘或修改断言绕过。
+- 最终 `first-compose-reread-late-final`：7 类 46/46 通过，0 失败、0 错误、0 跳过。真实集成覆盖首读就绪、最终分支复读命中、截止选择仍未就绪、换章换代、设置变化、同代恢复目标／opening identity 拒收，并验证同对象首绘、apply 早于真实模型 begin、模型真实 end、正常进度及一次准入。原 holder、手势、章节导航、键盘与单页身份回归保留。
+- 本增量修改行 ktlint 1.8.0 零诊断，`git diff --check` 通过。普通 preview 在干净提交上只构建一次；窗口成功分支是否实际命中、外部 R/F/K 与采用裁决仍由独立验收确认，不以测试或构建成功替代。
