@@ -1,6 +1,6 @@
 # Windows 已下载章节首次打开优化执行计划
 
-日期2026-11-05，2026-11-07更新。active-child-plan：无（D10已收口，整体体验目标仍未通过）。[D10　Windows 下载CBZ与首次视口的执行记录](2026-11-07-windows-reader-cbz-first-page.md)。D9 已完成[两段归因](../evidence/desktop-reader-d9-first-open-causes-2026-11-07.md)和[联合原型验证](../evidence/desktop-reader-cbz-slot-feasibility-2026-11-07.md)。D0–D8 的采用与撤回结论见下文。D10已完成，仅采用miniz后端；容器因严格目标未达且独立可见收益未复现而撤回，详见末节。
+日期2026-11-05，2026-11-08收口。active-child-plan：无（D10已收口，整体体验目标仍未通过）。[D10　Windows 下载CBZ与首次视口的执行记录](2026-11-07-windows-reader-cbz-first-page.md)。D9 已完成[两段归因](../evidence/desktop-reader-d9-first-open-causes-2026-11-07.md)和[联合原型验证](../evidence/desktop-reader-cbz-slot-feasibility-2026-11-07.md)。D0–D8 的采用与撤回结论见下文。D10原轮次仅采用miniz后端；2026-11-08后续采用条件性的首次组合/最终入口复读及同holder交接。第二轮正反窗口对照有可辨地图首见收益，但副屏后续两次均未命中提前准入，整体体验预算仍未通过。当前阶段关闭，后续研究见[主干整合与研究收口](../evidence/desktop-reader-startup-closeout-2026-11-08.md)。
 
 ## 基线与工作边界
 

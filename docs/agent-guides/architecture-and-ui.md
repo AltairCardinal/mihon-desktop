@@ -144,3 +144,9 @@ Desktop 的 `ReaderPanBounds` 是阅读器视口交互策略：放大后，拖�
 `LibraryScreenModel.updateBannerVisible` 是内存中的展示状态，与持久化任务及恢复数据分离。首次观察到真实运行任务可展示，历史终态不能恢复提示。状态栏归属于触发更新时的稳定分类 ID（`updateBannerCategoryId`），与任务的 ALL/CATEGORY 处理范围分离。其他分类不展示此任务反馈；运行中切走不清理原分类的反馈，返回原分类继续显示实时状态。分类重排不改变归属，重复运行请求不得将已有任务反馈转移到其他分类；实际新任务、重试或恢复从当前发起分类捕获归属。首次恢复仅复用任务已有的明确 categoryId，全局恢复没有分类信息时不猜测归属、不跨分类展示。更新在根书架可见期间完成时保留反馈，直到完成后的下一次分类或页面切换；离开根书架或停留在其他分类期间收到完成、失败或取消终态则隐藏，返回时不重播。`enterUpdateBannerHost`/`leaveUpdateBannerHost` 由根页的 composition 生命周期接线，任务观察流仍持续跟踪真实状态。隐藏后迟到结果以及后台调度不能自行解除隐藏，用户再次显式触发更新、重试或恢复时才重新展示，已有运行任务不能重复启动。结果弹窗、主题及窗口尺寸变化不清理提示。隐藏只影响反馈，不取消后台任务、不删除检查点；启动失败仍在可见状态行反馈，任务失败的原因和恢复路径留在结果弹窗。
 
 回归由 `LibraryPageCompositionTest` 覆盖真实分类点击、详情返回、主导航切换、栏位及结果弹窗接线，`NotificationServiceTest` 与 `LibraryUpdateRecoveryIntegrationTest` 覆盖通知归属和真实任务结果。
+
+### Windows 下载单页首次组合
+
+Windows 的已下载、固定 RTL/LTR 单页、无自动布局及自动拆页入口可在首次组合及完整模型即将创建时读取同一 session 的已发布页表。只有章、代次、恢复位置及显示设置均可确定时，才先挂载真实 Queued holder，实际 apply 后创建完整模型；同一 runtime 与 movable-content registry 保留该 holder，再经原有 Ready、内容认证、解码与真实绘制链路呈现。进度由实际绘制确认。
+
+最终选择仍未就绪或身份/设置无法确认时沿完整模型原链；准入只决策一次，后到页表不再次尝试。这项时序限制可能使正常首开不命中，不能以命中样本宣称每次都达到 Android 耗时。完整模型创建前取消由轻 entry 释放 runtime，创建后由原模型释放，均只释放一次。双页、条漫和自动拆页沿其现有路径。实现与证据见[首开收口记录](../evidence/desktop-reader-startup-closeout-2026-11-08.md)。

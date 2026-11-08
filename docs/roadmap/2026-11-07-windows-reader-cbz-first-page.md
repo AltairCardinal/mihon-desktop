@@ -1,6 +1,6 @@
 # D10　Windows 下载章节首开优化设计与执行路线
 
-本轮已完成，采用miniz归档B，撤回未达到采用门槛的两阶段容器C。归档严格目标达到；holder与整体体验目标仍未达到，不把任务收口写成性能全达标。以下保留原执行要求和逐项结果。研究基线 `c34fbccf92db` 含 [D9 归因](../evidence/desktop-reader-d9-first-open-causes-2026-11-07.md) 和[两项合用实测](../evidence/desktop-reader-cbz-slot-feasibility-2026-11-07.md)。交接时核对的最新产品基线为本地 main `ae5bb3bb5aca9e84e6616a1183129e6f0a25e77b`，已含新的章节入口修复。本页是[父路线图](2026-11-05-desktop-reader-first-open.md)的执行入口。已完成联合候选与最终B窗口对照、两个最终内部首次和双页往返。组件及窗口端点见 [D10 证据](../evidence/desktop-reader-d10-2026-11-07.md)。
+D10原轮次已完成，采用miniz归档B，撤回当时未达到采用门槛的两阶段容器C。2026-11-08后续首次组合/最终入口复读另有条件性收益，已进入本次主干整合。后续采用、限制、研究数据和待研究方向统一见[收口记录](../evidence/desktop-reader-startup-closeout-2026-11-08.md)。归档严格目标达到；holder与整体体验目标仍未达到，不把任务收口写成性能全达标。以下保留原执行要求和逐项结果。研究基线 `c34fbccf92db` 含 [D9 归因](../evidence/desktop-reader-d9-first-open-causes-2026-11-07.md) 和[两项合用实测](../evidence/desktop-reader-cbz-slot-feasibility-2026-11-07.md)。交接时核对的最新产品基线为本地 main `ae5bb3bb5aca9e84e6616a1183129e6f0a25e77b`，已含新的章节入口修复。本页是[父路线图](2026-11-05-desktop-reader-first-open.md)的执行入口。已完成联合候选与最终B窗口对照、两个最终内部首次和双页往返。组件及窗口端点见 [D10 证据](../evidence/desktop-reader-d10-2026-11-07.md)。
 
 ## 目标、成本和采用口径
 
