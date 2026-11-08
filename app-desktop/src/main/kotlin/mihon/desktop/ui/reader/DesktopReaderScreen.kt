@@ -146,10 +146,9 @@ data class DesktopReaderScreen(
         val navigator = LocalNavigator.currentOrThrow
         val scope = rememberCoroutineScope()
         val runtimeFactory = remember { desktopReaderRuntimeFactory() }
-        val model = rememberScreenModel {
-            mihon.desktop.reader.ReaderStartupTrace.markChapter("COMPOSE_MODEL_CREATE", chapterId)
+        val entry = rememberScreenModel {
             mihon.desktop.test.http.ReaderIoTestModeBridge.withDetailClick(testDetailClickSequence) {
-                runtimeFactory.createScreenModel(
+                runtimeFactory.createScreenEntry(
                     initialContext = initialContext(),
                     isWebtoon = isWebtoon,
                     mangaViewerFlags = mangaViewerFlags,
@@ -162,7 +161,56 @@ data class DesktopReaderScreen(
                 )
             }
         }
-        val runtime = checkNotNull(model.runtime)
+        ReaderFirstComposition(
+            runtime = entry.runtime,
+            allowStartup = !entry.hasModel,
+            isWebtoon = isWebtoon,
+            mangaViewerFlags = mangaViewerFlags,
+            dualPageOverride = isDualPage,
+            contextMenuScope = scope,
+            onBack = { navigator.pop() },
+        ) { earlyPage, earlyZoom, earlyToggleUI ->
+            FullContent(entry, navigator, scope, earlyPage, earlyZoom, earlyToggleUI)
+        }
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Composable
+    private fun FullContent(
+        entry: mihon.desktop.reader.DesktopReaderScreenEntry,
+        navigator: Navigator,
+        scope: kotlinx.coroutines.CoroutineScope,
+        earlyPage: Int?,
+        earlyZoom: ZoomState,
+        earlyToggleUI: Boolean,
+    ) {
+        val model = remember(entry) {
+            mihon.desktop.reader.ReaderStartupTrace.markChapter("COMPOSE_MODEL_CREATE", chapterId)
+            entry.model().also { model ->
+                earlyPage?.let { page ->
+                    val current = model.state.value
+                    when {
+                        page in current.session.activeChapter.pages.indices -> model.goToPage(page)
+                        else -> requestAdjacentChapterTransition(
+                            if (page < 0) ReaderTransitionDirection.PREVIOUS else ReaderTransitionDirection.NEXT,
+                            model,
+                            chapters.takeIf { it.isNotEmpty() }?.let {
+                                ReaderNavigator(
+                                    it,
+                                    current.context.chapterIndex,
+                                    current.skipReadChapters,
+                                    current.skipFilteredChapters,
+                                    current.skipDuplicateChapters,
+                                )
+                            },
+                        )
+                    }
+                }
+                if (earlyToggleUI) model.toggleUI()
+                if (earlyZoom != ZoomState()) model.setZoomState(earlyZoom)
+            }
+        }
+        val runtime = entry.runtime
         DisposableEffect(runtime) {
             val binding = if (progressTracker == null) {
                 mihon.desktop.test.http.ProductionReaderBinding(
@@ -232,7 +280,7 @@ data class DesktopReaderScreen(
         }
 
         // Compute: zoom reset, focus, edge-scan, virtual pages
-        ReaderSideEffects(state, model, focusRequester)
+        ReaderSideEffects(state, model, focusRequester, preserveInitialZoom = earlyZoom != ZoomState())
 
         // Chapter navigation lambdas
         val skipRead = state.skipReadChapters
@@ -548,8 +596,13 @@ private fun ReaderSideEffects(
     state: ReaderState,
     model: ReaderScreenModel,
     focusRequester: FocusRequester,
+    preserveInitialZoom: Boolean = false,
 ) {
-    LaunchedEffect(state.currentPage) { model.setZoomState(ZoomState()) }
+    var firstZoomEffect by remember(model) { mutableStateOf(true) }
+    LaunchedEffect(state.currentPage) {
+        if (!firstZoomEffect || !preserveInitialZoom) model.setZoomState(ZoomState())
+        firstZoomEffect = false
+    }
     LaunchedEffect(state.showSettings) { if (!state.showSettings) focusRequester.requestFocus() }
     LaunchedEffect(
         state.session.activeChapter.pages.size,
@@ -1167,7 +1220,10 @@ internal fun ReaderContent(
     onNextChapter: () -> Unit,
     renderTrace: mihon.desktop.diagnostics.ReaderRenderTrace? = null,
 ) {
-    val imageContent = remember(presentationImageOwner, state.session.generation) { ReaderPageImageContentRegistry() }
+    val inheritedImageContent = LocalReaderPageImageContent.current
+    val imageContent =
+        inheritedImageContent
+            ?: remember(presentationImageOwner, state.session.generation) { ReaderPageImageContentRegistry() }
     Box(Modifier.fillMaxSize().adaptiveReaderViewport(model, contextMenuScope)) {
         CompositionLocalProvider(
             LocalReaderRenderTrace provides renderTrace,
@@ -1225,6 +1281,8 @@ internal fun ReaderContent(
                         pagerPresentationBinding = pagerBinding,
                         pageTurnAnimation = pageTurnAnimation,
                         allowAdjacentViewport = firstPresentedGeneration == state.session.generation,
+                        startupSingleViewport = LocalReaderFirstCompositionReady.current &&
+                            firstPresentedGeneration != state.session.generation,
                         chapter = state.session.activeChapter, currentPage = state.currentPage,
                         currentDisplayUnitId = state.currentDisplayUnitId, isRtl = rtl,
                         isDualPage = state.dualPageMode, autoSplitPages = state.autoSplitPages,

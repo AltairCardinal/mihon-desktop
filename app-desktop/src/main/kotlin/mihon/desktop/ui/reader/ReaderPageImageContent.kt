@@ -17,7 +17,7 @@ internal val LocalReaderPageImageContent = staticCompositionLocalOf<ReaderPageIm
 internal class ReaderPageImageContentRegistry {
     private data class Key(
         val identity: DesktopReaderPresentationImageSlotIdentity,
-        val decodeKey: ReaderPageDecodeKey,
+        val decodeKey: ReaderPageDecodeKey?,
     )
 
     private val entries = mutableMapOf<Key, Entry>()
@@ -32,12 +32,19 @@ internal class ReaderPageImageContentRegistry {
                 splitHalf = arguments.splitHalf,
                 sourceBounds = arguments.sourceBounds,
             ),
-            readerPresentationDecodeKey(arguments.page, arguments.generation),
+            arguments.page.takeIf { it.loadState is mihon.domain.reader.session.ReaderPageLoadState.Ready }
+                ?.let { readerPresentationDecodeKey(it, arguments.generation) },
         )
+        if (key.decodeKey != null && key !in entries) {
+            entries.remove(key.copy(decodeKey = null))?.let { pending ->
+                pending.key = key
+                entries[key] = pending
+            }
+        }
         entries.getOrPut(key) { Entry(key) }.content(arguments)
     }
 
-    private inner class Entry(key: Key) {
+    private inner class Entry(var key: Key) {
         val content = movableContentOf<ReaderPageImageContentArguments> { arguments ->
             DisposableEffect(this@Entry) {
                 onDispose {
@@ -45,7 +52,7 @@ internal class ReaderPageImageContentRegistry {
                     if (entries[key] === this@Entry) entries.remove(key)
                 }
             }
-            ReaderPageImageContentBody(arguments)
+            ReaderPageImageContentBody(arguments, this@Entry)
         }
     }
 }
@@ -88,13 +95,14 @@ internal fun ReaderPageImageContent(
 }
 
 @Composable
-private fun ReaderPageImageContentBody(arguments: ReaderPageImageContentArguments) {
+private fun ReaderPageImageContentBody(arguments: ReaderPageImageContentArguments, bindingLifetime: Any? = null) {
     val image = rememberReaderPresentationImage(
         arguments.owner,
         arguments.page,
         arguments.generation,
         arguments.splitHalf,
         arguments.sourceBounds,
+        bindingLifetime,
     )
     val renderedImage = rememberReaderPresentationRenderedImage(image, arguments.cropBorders)
     arguments.content(image, renderedImage)

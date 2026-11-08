@@ -6,10 +6,10 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import mihon.domain.reader.PageDecodePurpose
 import mihon.domain.reader.PageSplitHalf
@@ -181,21 +181,10 @@ class DesktopReaderPresentationImageOwner internal constructor(
 
     internal fun createHolder(
         identity: DesktopReaderPresentationImageSlotIdentity,
-        decodeKey: ReaderPageDecodeKey,
+        decodeKey: ReaderPageDecodeKey?,
     ): DesktopReaderPresentationImageHolder {
         ReaderStartupTrace.mark("HOLDER_CREATE_BEGIN", identity.pageId, identity.generation)
-        require(identity.pageId == decodeKey.contentKey.pageId) {
-            "Presentation and decode page identities must match"
-        }
-        require(identity.generation == decodeKey.generation) {
-            "Presentation and decode generations must match"
-        }
-        require(identity.attemptGeneration == decodeKey.contentKey.attemptGeneration) {
-            "Presentation and decode attempts must match"
-        }
-        require(decodeKey.purpose == PageDecodePurpose.FULL_PAGE) {
-            "Presentation holders must share a full-page decode"
-        }
+        if (decodeKey != null) validateBinding(identity, decodeKey)
         val observedGeneration = synchronized(lock) {
             check(!closed) { "Desktop reader presentation image owner is closed" }
             minimumGeneration
@@ -213,9 +202,7 @@ class DesktopReaderPresentationImageOwner internal constructor(
         }
         return synchronized(lock) {
             check(!closed) { "Desktop reader presentation image owner is closed" }
-            check(identity.generation == minimumGeneration) {
-                "Presentation holder generation must be current"
-            }
+            check(identity.generation == minimumGeneration) { "Presentation holder generation must be current" }
             check(identity.attemptGeneration == currentAttemptLocked(identity)) {
                 "Presentation holder attempt must be current"
             }
@@ -224,14 +211,43 @@ class DesktopReaderPresentationImageOwner internal constructor(
                 identity = identity,
                 decodeKey = decodeKey,
                 scope = scope,
-                regionHolder = regionOwner.createHolder(identity, decodeKey),
+                regionHolder = decodeKey?.let { regionOwner.createHolder(identity, it) },
                 pageIoObserver = pageIoObserver,
                 owner = this,
             ).also {
                 holders.add(it)
-                ReaderStartupTrace.mark("HOLDER_CREATED", identity.pageId, identity.generation)
+                ReaderStartupTrace.mark(
+                    "HOLDER_CREATED",
+                    identity.pageId,
+                    identity.generation,
+                    System.identityHashCode(it),
+                )
             }
         }
+    }
+
+    private fun validateBinding(identity: DesktopReaderPresentationImageSlotIdentity, decodeKey: ReaderPageDecodeKey) {
+        require(identity.pageId == decodeKey.contentKey.pageId) {
+            "Presentation and decode page identities must match"
+        }
+        require(identity.generation == decodeKey.generation) {
+            "Presentation and decode generations must match"
+        }
+        require(identity.attemptGeneration == decodeKey.contentKey.attemptGeneration) {
+            "Presentation and decode attempts must match"
+        }
+        require(decodeKey.purpose == PageDecodePurpose.FULL_PAGE) {
+            "Presentation holders must share a full-page decode"
+        }
+    }
+
+    internal fun bindHolder(
+        holder: DesktopReaderPresentationImageHolder,
+        key: ReaderPageDecodeKey,
+    ): Boolean = synchronized(lock) {
+        if (closed || holder !in holders || !isCurrentAttemptLocked(holder.identity)) return false
+        validateBinding(holder.identity, key)
+        holder.bindWhileOwnerCurrent(key) { regionOwner.createHolder(holder.identity, key) }
     }
 
     internal fun createAnimatedHolder(
@@ -414,13 +430,22 @@ class DesktopReaderPresentationImageOwner internal constructor(
 /** One presentation slot and its independently closeable decoded-image lease. */
 internal class DesktopReaderPresentationImageHolder internal constructor(
     val identity: DesktopReaderPresentationImageSlotIdentity,
-    val decodeKey: ReaderPageDecodeKey,
+    decodeKey: ReaderPageDecodeKey?,
     private val scope: CoroutineScope,
-    internal val regionHolder: DesktopReaderRegionPresentationHolder,
+    regionHolder: DesktopReaderRegionPresentationHolder?,
     private val pageIoObserver: ReaderPageIoObserver,
     private val owner: DesktopReaderPresentationImageOwner,
 ) : AutoCloseable {
     private val lock = Any()
+    private var boundDecodeKey = decodeKey
+    private var boundRegionHolder = regionHolder
+    val decodeKey: ReaderPageDecodeKey get() = synchronized(lock) { requireNotNull(boundDecodeKey) }
+    internal val regionHolder: DesktopReaderRegionPresentationHolder get() = synchronized(lock) {
+        requireNotNull(boundRegionHolder)
+    }
+    internal val optionalRegionHolder: DesktopReaderRegionPresentationHolder? get() = synchronized(lock) {
+        boundRegionHolder
+    }
     private val mutableState = MutableStateFlow<DesktopReaderPresentationImageState>(
         DesktopReaderPresentationImageState.Idle(identity),
     )
@@ -433,12 +458,35 @@ internal class DesktopReaderPresentationImageHolder internal constructor(
     internal val memoryAuthority: DesktopReaderImageMemoryAuthority
         get() = owner.memoryAuthority
 
+    internal fun bindContent(key: ReaderPageDecodeKey): Boolean = owner.bindHolder(this, key)
+
+    internal fun bindWhileOwnerCurrent(
+        key: ReaderPageDecodeKey,
+        createRegion: () -> DesktopReaderRegionPresentationHolder,
+    ): Boolean = synchronized(lock) {
+        if (closed) return false
+        if (boundDecodeKey != null) return boundDecodeKey == key
+        boundRegionHolder = createRegion()
+        boundDecodeKey = key
+        ReaderStartupTrace.mark(
+            "HOLDER_CONTENT_BOUND",
+            identity.pageId,
+            identity.generation,
+            System.identityHashCode(this),
+        )
+        true
+    }
+
     fun acquire() {
         ReaderStartupTrace.mark("HOLDER_ACQUIRE_REQUEST", identity.pageId, identity.generation)
         if (!owner.isCurrent(this)) return
         var jobToStart: Job? = null
         synchronized(lock) {
-            if (closed || acquireJob != null || mutableState.value is DesktopReaderPresentationImageState.Ready) return
+            if (closed || boundRegionHolder == null || acquireJob != null ||
+                mutableState.value is DesktopReaderPresentationImageState.Ready
+            ) {
+                return
+            }
             mutableState.value = DesktopReaderPresentationImageState.Loading(identity)
             jobToStart = scope.launch(start = CoroutineStart.LAZY) { acquirePresentationLease() }
             acquireJob = jobToStart
@@ -553,7 +601,7 @@ internal class DesktopReaderPresentationImageHolder internal constructor(
         runResourceActions(
             buildList {
                 jobToCancel?.let { job -> add(job::cancel) }
-                add(regionHolder::close)
+                boundRegionHolder?.let { region -> add(region::close) }
                 if (unregister) add { owner.unregister(this@DesktopReaderPresentationImageHolder) }
             },
         )

@@ -23,7 +23,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -153,8 +157,61 @@ internal fun ZoomablePagerViewer(
     hasNextChapter: Boolean = true,
     pageTurnAnimation: Boolean = true,
     allowAdjacentViewport: Boolean = true,
+    startupSingleViewport: Boolean = false,
+    onStartupInputActiveChanged: (Boolean) -> Unit = {},
 ) {
     if (chapter.pages.isEmpty()) return
+    val startupTarget = remember(presentationImageOwner, chapter.generation) {
+        chapter.pages[currentPage.coerceIn(chapter.pages.indices)].id
+    }
+    var startupRetired by remember(presentationImageOwner, chapter.generation) { mutableStateOf(false) }
+    var startupGestureActive by remember(presentationImageOwner, chapter.generation) { mutableStateOf(false) }
+    val useStartup = (startupSingleViewport || startupGestureActive) &&
+        !startupRetired && !isDualPage && !autoSplitPages &&
+        chapter.pages[currentPage.coerceIn(chapter.pages.indices)].id == startupTarget &&
+        currentDisplayUnitId?.slots?.none { it.transitionDirection != null } != false
+    SideEffect {
+        // A user move or mode switch hands control to the pager even before the first image is ready.
+        if (!useStartup) startupRetired = true
+    }
+    if (useStartup) {
+        StartupSinglePageViewport(
+            page = chapter.pages[currentPage.coerceIn(chapter.pages.indices)],
+            generation = chapter.generation,
+            pagerPresentationBinding = pagerPresentationBinding,
+            presentationImageOwner = presentationImageOwner,
+            zoomState = zoomState,
+            onZoomChange = onZoomChange,
+            cropBorders = cropBorders,
+            contextMenuScope = contextMenuScope,
+            mangaTitle = mangaTitle,
+            chapterTitle = chapterTitle,
+            scaleType = scaleType,
+            navigationMode = navigationMode,
+            isRtl = isRtl,
+            onRetryPage = { onRetryPage?.invoke(it) },
+            onInputActiveChanged = {
+                startupGestureActive = it
+                onStartupInputActiveChanged(it)
+            },
+            onTapCenter = onTapCenter,
+            onTapPrevious = { if (currentPage > 0) onPageChange(currentPage - 1) else onPrevChapter?.invoke() },
+            onTapNext = {
+                if (currentPage <
+                    chapter.pages.lastIndex
+                ) {
+                    onPageChange(currentPage + 1)
+                } else {
+                    onNextChapter?.invoke()
+                }
+            },
+            onVisiblePagesChanged = { visible ->
+                onSingleVisiblePagesChanged?.invoke(visible)
+                    ?: visible.activePageId?.let { onPageChange(it.sourcePageIndex) }
+            },
+        )
+        return
+    }
     val direction = if (isRtl) ReaderDirection.RTL else ReaderDirection.LTR
     if (isDualPage) {
         val request = remember(

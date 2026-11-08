@@ -31,13 +31,19 @@ import mihon.desktop.reader.DesktopReaderRuntime
 import mihon.desktop.reader.DesktopReaderRuntimeFactory
 import mihon.desktop.reader.DesktopReaderSession
 import mihon.desktop.reader.DesktopReaderSessionState
-import mihon.desktop.reader.desktopReaderSessionState
 import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderNavigator
 import mihon.desktop.reader.ReaderPageIoObserver
 import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.reader.ReadingMode
+import mihon.desktop.reader.desktopReaderSessionState
 import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.ui.reader.presentation.DisplaySlotId
+import mihon.desktop.ui.reader.presentation.DisplayUnitId
+import mihon.desktop.ui.reader.presentation.ReaderPresentationMode
+import mihon.desktop.ui.reader.presentation.VisiblePageSet
+import mihon.desktop.ui.reader.presentation.WebtoonScrollAnchor
+import mihon.desktop.ui.reader.presentation.WebtoonViewportUpdate
 import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.materialize.ReaderChapterContentPort
 import mihon.domain.reader.materialize.ReaderChapterMaterializeResult
@@ -47,12 +53,6 @@ import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderChapterLoadState
 import mihon.domain.reader.session.ReaderPageDescriptor
 import mihon.domain.reader.session.ReaderSessionCore
-import mihon.desktop.ui.reader.presentation.DisplaySlotId
-import mihon.desktop.ui.reader.presentation.DisplayUnitId
-import mihon.desktop.ui.reader.presentation.ReaderPresentationMode
-import mihon.desktop.ui.reader.presentation.VisiblePageSet
-import mihon.desktop.ui.reader.presentation.WebtoonScrollAnchor
-import mihon.desktop.ui.reader.presentation.WebtoonViewportUpdate
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
@@ -362,8 +362,8 @@ class DesktopReaderChapterTransitionIntegrationTest {
         val productionClosedCallback = slot<() -> Unit>()
         val factory = mockk<DesktopReaderRuntimeFactory> {
             every {
-                createScreenModel(any(), any(), any(), any(), any(), capture(productionClosedCallback), chapters, null)
-            } returns model
+                createScreenEntry(any(), any(), any(), any(), any(), capture(productionClosedCallback), chapters, null)
+            } returns mihon.desktop.reader.DesktopReaderScreenEntry(runtime, { runtime.close() }, { model })
         }
         val screen = DesktopReaderScreen(
             chapterTitle = initialContext.chapterTitle,
