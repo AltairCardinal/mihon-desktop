@@ -1,6 +1,6 @@
-# Windows 首开 R4：原件复算与采集准备（草稿）
+# Windows 首开 R4：机制、调用归因与外测裁决
 
-日期：2026-11-10。状态：实现、focused、冻结及四份ON机制/调用归因完成；OFF仅一份控制，续测遇目标窗口用户输入后停止，尚无采用结论。
+日期：2026-11-10。状态：四份ON与十二份OFF及正确性核验完成，不采用E1；R4.5待精确撤回和局部补验。
 
 ## 固定输入与区间复算
 
@@ -89,7 +89,7 @@ coordinator分别在两个独立worktree**串行**调用 `powershell.exe -NoProf
 
 新profile均从同一合法seed复制，marker精确LF、同文件PreferencesFactory、等价独立数据库、同一CBZ和全部阅读设置。主屏当前只读元数据为3840×2160、DPI144/150%；副屏bounds(3840,1296,1920,1080)、DPI96/100%。各profile初始化窗口设置为x4488/y1344/1024×768，仍须启动后逐窗口核对身份和实际bounds。最初建议497xx端口因本机排除范围49672–49971在bind时收到10013，未启动应用；改为已逐个bind核验的49220–49245，QPC49260，未修改系统保留范围。
 
-四份ON为B0i1/C4i1/B0i2/C4i2；只有机制成立才启用OFF顺序B01/C41、C42/B02、B03/C43，每进程first/warm两次，共12条。另备C4off/C4on作限定正确性，不计性能样本。材料和精确归属在各process.json与sample-plan.json；当前尚未启动这些GUI实例。前台操作前已备齐采样、时钟、健康门控、原帧联系表/区间提取及精确退出工具。区间分析在复制的R3 B1原件上复核R784/F790及F/K相同，原件未改；实际新端点仍由主代理目视确认，不能只凭机器候选。
+四份ON为B0i1/C4i1/B0i2/C4i2；只有机制成立才启用OFF顺序B01/C41、C42/B02、B03/C43，每进程first/warm两次，共12条。另备C4off/C4on作限定正确性，不计性能样本。材料和精确归属在各process.json与sample-plan.json；实际启动与停止结果见以下批次记录。前台操作前已备齐采样、时钟、健康门控、原帧联系表/区间提取及精确退出工具。区间分析在复制的R3 B1原件上复核R784/F790及F/K相同，原件未改；实际新端点仍由主代理目视确认，不能只凭机器候选。
 
 ## 副屏中断与当前交付
 
@@ -117,3 +117,98 @@ entry同步前段为ENTRY_ELIGIBILITY_BEGIN至RUNTIME_CREATE_END，不冒充完�
 B01暖态采集健康后，sky.click报告 `user input was detected in this window; call get_window_state before continuing`。没有重发输入或继续激活，点击是否已经送达未知；暖态原始WGC保留、不得计为有效样本。随后精确停止本份WGC、通过已核EXE/profile/端口关闭B01并核launcher/runtime退出，按本次路径/端口核身份停止QPC helper57072；其余预备实例未启动。记录native-batch-resume-interrupted.json。
 
 R4.0调用区间归因完成；R4.4正式配对矩阵和限定正确性仍未完成，R4.5采用/撤回待续。下一批从新的完整B0/C4配对开始，保留本次B01首次作为额外控制原件，不将远隔补样伪装紧邻正反对照；不重跑已适用focused或重建两包。当前E1仍是未采用实验，不推送、不发布。
+
+## 本轮副屏批次与内部机制
+
+本轮完整顺序为B01r、C41、C42、B02、B03、C43，各含首次和同进程暖开，共12次；配对为B01r/C41、C42/B02、B03/C43。先前被用户输入中断的B01暖开不计入，额外B01首次及全部中断原件保留。四份ON仅作机制/归因，正式计时细诊断OFF。
+
+| 样本 | eligibility读取 | entry同步前段 | eligibility重判 | runner早于UI | 同ref接用 | 实际请求页集合 |
+| --- | ---: | ---: | ---: | --- | --- | --- |
+| B0i1r | 0.008 | 33.245 | — | False | True | [3, 4, 5, 6, 7, 8] |
+| C4i1 | 2.866 | 39.915 | 0.522 | True | True | [3, 4, 5, 6, 7, 8] |
+| B0i2 | 0.011 | 39.143 | — | False | True | [3, 4, 5, 6, 7, 8] |
+| C4i2 | 2.705 | 31.327 | 0.515 | True | True | [3, 4, 5, 6, 7, 8] |
+
+entry同步前段是ENTRY_ELIGIBILITY_BEGIN至RUNTIME_CREATE_END，包含新增资格读取与正常runtime构建，未冒充entry返回后工作；首回调到外部端点包含全部新增前置成本，不从测量结果中扣除。章节代与runner代通过ACCEPTED双代桥核对。旧copy/compose/OPEN没有完整token时按本次正常callback/open窗口和实际ref关联，不假称所有旧事件直接join。
+
+| 调用区间(ms) | B0i1r | C4i1 | B0i2 | C4i2 |
+| --- | ---: | ---: | ---: | ---: |
+| PREPARE_END -> ENCODED_FIND_BEGIN | 0.104 | 2.212 | 1.772 | 2.047 |
+| ENCODED_FIND_BEGIN -> ENCODED_FIND_RETURN | 4.318 | 4.399 | 3.451 | 2.533 |
+| ENCODED_FIND_RETURN -> ENCODED_FETCH_BEGIN | 0.102 | 0.098 | 1.134 | 0.730 |
+| ENCODED_FETCH_BEGIN -> ENCODED_STORE_CALL | 0.127 | 0.083 | 0.140 | 0.094 |
+| ENCODED_STORE_CALL -> ENCODED_WRITER_BEGIN | 2.017 | 2.776 | 3.112 | 2.389 |
+| ENCODED_WRITER_BEGIN -> ENCODED_STORE_RETURN | 5.534 | 5.411 | 4.684 | 6.226 |
+| writer -> copy begin (time-window) | 0.032 | 1.108 | 0.668 | 1.112 |
+| copy (time-window) | 3.205 | 3.001 | 2.750 | 4.599 |
+| copy end -> store return (time-window) | 2.297 | 1.301 | 1.266 | 0.515 |
+
+已有调用区间仅证明本次路径时间分布，不推断CPU、单一系统API或无故障情况下的因果；完整DLL元数据差异已记录。
+
+实际归档lease/backend路径：
+
+- B0i1r: `MinizZipArchiveLease:file:/D:/Codex/worktrees/mihon-windows-reader-source-driven-20261109/.test-tmp/r4/B0i1r/profile/home/AppData/Local/Mihon/downloads/0/Slime%20First%20Open/Volume%2004_2081d3.cbz`。
+- C4i1: `MinizZipArchiveLease:file:/D:/Codex/worktrees/mihon-windows-reader-source-driven-20261109/.test-tmp/r4/C4i1/profile/home/AppData/Local/Mihon/downloads/0/Slime%20First%20Open/Volume%2004_2081d3.cbz`。
+- B0i2: `MinizZipArchiveLease:file:/D:/Codex/worktrees/mihon-windows-reader-source-driven-20261109/.test-tmp/r4/B0i2/profile/home/AppData/Local/Mihon/downloads/0/Slime%20First%20Open/Volume%2004_2081d3.cbz`。
+- C4i2: `MinizZipArchiveLease:file:/D:/Codex/worktrees/mihon-windows-reader-source-driven-20261109/.test-tmp/r4/C4i2/profile/home/AppData/Local/Mihon/downloads/0/Slime%20First%20Open/Volume%2004_2081d3.cbz`。
+
+两份候选均证明runner普通encoded需求早于UI需求，UI接用同一ref，dropped=0；实际请求页集合为3至8，并发3，没有提前解码。
+
+## 正式OFF外部区间
+
+单位ms，主起点为正常章行callback；工具输入包络结果另列。相邻实采原帧给区间，不插值，不当物理扫描，不报告P95。process-cold未清OS文件缓存。
+
+| 样本 | 状态 | R | F | 最长K | 累计K | 最大gap | R/F原帧 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| B01r | initial | 49.105–99.104 | 240.767–257.433 | 141.663–208.328 | 141.663–208.328 | 74.998 | 769/777 |
+| B01r | warm | 50.089–66.755 | 133.422–158.421 | 66.666–108.332 | 66.666–108.332 | 66.666 | 1354/1358 |
+| C41 | initial | 31.538–114.870 | 256.537–289.870 | 141.667–258.331 | 141.667–258.331 | 83.332 | 361/369 |
+| C41 | warm | 32.150–48.816 | 107.148–132.148 | 58.333–99.998 | 58.333–99.998 | 25.000 | 363/367 |
+| C42 | initial | 40.942–90.939 | 240.935–257.602 | 149.996–216.660 | 149.996–216.660 | 83.331 | 363/370 |
+| C42 | warm | 39.412–64.411 | 106.077–131.076 | 41.666–91.664 | 41.666–91.664 | 25.000 | 360/363 |
+| B02 | initial | 32.608–107.605 | 265.934–282.600 | 158.329–249.993 | 158.329–249.993 | 74.997 | 365/374 |
+| B02 | warm | 42.033–58.700 | 125.367–142.033 | 66.668–100.001 | 66.668–100.001 | 25.000 | 368/373 |
+| B03 | initial | 56.974–90.305 | 248.636–265.301 | 158.330–208.328 | 158.330–208.328 | 74.997 | 366/375 |
+| B03 | warm | 32.084–48.749 | 115.415–132.083 | 66.666–99.999 | 66.666–99.999 | 25.000 | 364/369 |
+| C43 | initial | 38.739–105.404 | 263.732–280.398 | 158.327–241.659 | 158.327–241.659 | 66.666 | 356/365 |
+| C43 | warm | 38.996–55.663 | 122.327–138.993 | 66.665–99.997 | 66.665–99.997 | 25.000 | 363/368 |
+
+| 样本 | 状态 | 工具包络宽 | 输入包络→R | 输入包络→F | F后至少1秒覆盖/再黑 |
+| --- | --- | ---: | ---: | ---: | --- |
+| B01r | initial | 95.717 | 52.299–198.015 | 243.961–356.344 | True/False |
+| B01r | warm | 103.100 | 51.605–171.371 | 134.938–263.037 | True/False |
+| C41 | initial | 109.995 | 35.750–229.077 | 260.749–404.076 | True/False |
+| C41 | warm | 102.265 | 35.020–153.951 | 110.018–237.284 | True/False |
+| C42 | initial | 104.147 | 43.717–197.861 | 243.710–364.523 | True/False |
+| C42 | warm | 111.741 | 42.865–179.605 | 109.530–246.270 | True/False |
+| B02 | initial | 106.008 | 36.478–217.483 | 269.804–392.479 | True/False |
+| B02 | warm | 106.197 | 44.053–166.917 | 127.387–250.251 | True/False |
+| B03 | initial | 103.351 | 59.537–196.220 | 251.199–371.216 | True/False |
+| B03 | warm | 99.896 | 35.165–151.727 | 118.496–235.060 | True/False |
+| C43 | initial | 103.632 | 43.163–213.462 | 268.156–388.455 | True/False |
+| C43 | warm | 98.726 | 41.934–157.326 | 125.265–240.657 | True/False |
+
+配对差为C−B：[C下界−B上界,C上界−B下界]，跨0未分辨。
+
+| 对照 | 状态 | R差 | F差 | K差 |
+| --- | --- | ---: | ---: | ---: |
+| B01r/C41 | initial | -67.566–65.765 | -0.896–49.102 | -66.661–116.668 |
+| B01r/C41 | warm | -34.605–-1.273 | -51.273–-1.273 | -50.000–33.332 |
+| B02/C42 | initial | -66.663–58.331 | -41.665–-8.332 | -99.996–58.331 |
+| B02/C42 | warm | -19.288–22.378 | -35.957–5.709 | -58.335–24.997 |
+| B03/C43 | initial | -51.567–48.431 | -1.569–31.762 | -50.000–83.329 |
+| B03/C43 | warm | -9.753–23.579 | -9.755–23.578 | -33.334–33.331 |
+
+12份原帧端点均已逐份目视确认，received=written且missing=0，F后覆盖至少1秒且无再黑。主动停止后的采集清单为PARTIAL/native-capture-exit:1，保留原始警告；区间含实采gap，不插值。两组正向首次F与K差均跨0，反向首次F可分辨改善；暖态部分改善不能替代首次正反顺序门槛。未清OS文件缓存，不作P95、物理扫描、官方对比或整体预算达标声明。
+
+## 裁决、正确性与交付状态
+
+不采用E1：机制成立且本次正确性检查通过，但首次打开改善未同时在正反顺序分辨。候选源码目前仍在实验分支，尚未撤回；R4.5与父D14保持未完成。按原生验收收尾规则，下一轮只精确撤回E1并补受影响focused，不再重跑本轮性能矩阵。
+
+C43单页[4]→[5]→[4]，前后图像与mountedReader一致，F11进出均保持index4，窗口全屏及恢复均完全位于副屏。C4off双页RTL、autoSpreadMatching=false：[4,3]→[6,5]→[4,3]；C4on双页RTL、autoSpreadMatching=true：[5,4]→[7,6]→[5,4]。三组chapterId=906004、generation=1，pairingStatus=READY、图像尝试Ready，locationSequence=0/1/2正常增长；ON的sharedUnits按既有配对动态修订，最终currentPage=5（同一[4,5]组锚点），不误报为index4不变。进度持久化及进程退出另存cleanup-final.json。
+
+所有本轮实例均经自身shutdown确认归属并退出；所有WGC已停止，QPC时钟已请求退出并核验。未关闭用户其他终端或程序。
+
+只提交本任务源码、真实测试及内部文档，不推送、不发布、不更新公共能力说明。原始profile、帧与大型过程材料留在本机.test-tmp/r4；固定快照仅为实验来源，不冒充主干交付。
+
+最终只读进度核对：六份正式样本与C4off均持久化last_page_read=4；C4on为5（相同[4,5]配对组的既有锚点）。八份process均有closedAt，QPC PID25832已退出，见本机cleanup-final.json。全屏检查含已有桌面叠层，仅对目标地图、阅读位置及副屏边界作正确性判定，不计入性能矩阵。

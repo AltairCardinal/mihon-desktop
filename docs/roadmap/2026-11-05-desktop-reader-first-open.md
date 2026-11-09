@@ -1,6 +1,6 @@
 # Windows 已下载章节首次打开优化执行计划
 
-日期2026-11-05，2026-11-10规划更新。active-child-plan：[R4：入口需求前移与准备前段归因](2026-11-10-windows-reader-startup-r4.md)，实现、34项focused与两包冻结完成；副屏被用户Escape中断，四份ON机制已成立，OFF仅一份控制、尚无采用裁决。[R3](2026-11-10-windows-reader-startup-r3.md)已收口，机制实际触发但冷态正反对照未达到采用门槛，性能候选已撤回；保留诊断及缓存缺失反馈修复，见[唯一报告](../evidence/windows-reader-startup-r3-2026-11-10.md)。P0–P3与V1/R1有限采用、R2输入修复保持；整体体验预算未通过。
+日期2026-11-05，2026-11-10规划更新。active-child-plan：[R4：入口需求前移与准备前段归因](2026-11-10-windows-reader-startup-r4.md)，R4.0–4完成；34项focused、两包冻结、四份ON与十二份OFF及正确性已核验，E1未达采用门槛，待R4.5撤回与局部补验，D14未完成。[R3](2026-11-10-windows-reader-startup-r3.md)已收口，机制实际触发但冷态正反对照未达到采用门槛，性能候选已撤回；保留诊断及缓存缺失反馈修复，见[唯一报告](../evidence/windows-reader-startup-r3-2026-11-10.md)。P0–P3与V1/R1有限采用、R2输入修复保持；整体体验预算未通过。
 
 D0–D10与11月8日后续实现已完成[主干整合及研究收口](../evidence/desktop-reader-startup-closeout-2026-11-08.md)。已采用miniz与条件性提前挂载；整体体验预算仍未通过。11月9日调查补充了隔离偏好读取开销、Ready交接串联、no-op变换异步往返及fullscreen初始化边界，新子计划据此安排P0–P3和一次联合候选验收。历史[归因](../evidence/desktop-reader-d9-first-open-causes-2026-11-07.md)、[原型](../evidence/desktop-reader-cbz-slot-feasibility-2026-11-07.md)及[D10](2026-11-07-windows-reader-cbz-first-page.md)保留为阶段记录。
 
