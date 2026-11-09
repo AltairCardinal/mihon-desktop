@@ -1,6 +1,6 @@
 # Windows 首开 R4：原件复算与采集准备（草稿）
 
-日期：2026-11-10。状态：实现、focused与两包冻结已完成；副屏批次被用户Escape中断，尚无新内部/正式样本，不作采用结论。
+日期：2026-11-10。状态：实现、focused、冻结及四份ON机制/调用归因完成；OFF仅一份控制，续测遇目标窗口用户输入后停止，尚无采用结论。
 
 ## 固定输入与区间复算
 
@@ -96,3 +96,24 @@ coordinator分别在两个独立worktree**串行**调用 `powershell.exe -NoProf
 仅启动B0i1，已核launcher36380/runtime54992、精确EXE/profile及副屏bounds。首次截图出现其他应用残影，按既有流程只读取目标窗口可访问性并最小化自己的窗口；随后恢复时Computer Use明确报告用户physical Escape，立即停止全部输入/截图/激活。尚未点击书架作品或章节，无新ON机制样本、无WGC、无正式OFF样本，不能裁决收益或采用。其他11份预备profile均未启动。
 
 B0i1经精确HTTP shutdown正常退出，时钟helper按本任务命令行/端口核身份后停止；没有全局关闭Java或用户应用。记录 `.test-tmp/r4/native-batch-interrupted.json`。R4.0尚缺真实新样本归因，R4.4/5未完成；E1保留在隔离研究分支和C4实验包，**尚未采用、未推送、未发布**。后续须用户明确恢复原生操作后，从新的未启动profile继续四份ON机制核验，再按门槛决定OFF外测；不重做已适用的34项focused或两包构建。
+
+## 用户恢复后的续测批次
+
+用户明确恢复后复核两包完整artifact hash未变，开发树干净、HEAD为7d7f638281。旧B0i1原件保持，使用未进入阅读器的新B0i1r替代；随后按B0i1r/C4i1/B0i2/C4i2顺序完成四份新进程ON，均dropped=0、实际下载副本的Miniz后端、地图第5/187页正确，同encoded ref接用。每份真实普通请求集合均为{3,4,5,6,7,8}，不是只读一张图。精确关联opening/request/runner代，旧copy与compose按实际ref/正常点击时间窗关联。
+
+| 样本 | entry资格读取ms | entry同步前段ms | 设置重判ms | runner取出早于真实UI需求ms | find查询ms | store→writer ms | copy ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| B0i1r | 0.0082 | 33.2446 | — | -3.8017 | 4.3178 | 2.0167 | 3.2055 |
+| C4i1 | 2.8658 | 39.9153 | 0.5225 | 44.0631 | 4.3994 | 2.7761 | 3.0013 |
+| B0i2 | 0.0109 | 39.1426 | — | -4.9359 | 3.4509 | 3.1121 | 2.7498 |
+| C4i2 | 2.7049 | 31.3268 | 0.5152 | 50.2605 | 2.5333 | 2.3885 | 4.5989 |
+
+entry同步前段为ENTRY_ELIGIBILITY_BEGIN至RUNTIME_CREATE_END，不冒充完整entry返回；所有新增资格工作计入正常章行callback之后总时间，不扣除。两份候选分别早44.0631/50.2605ms，资格及重判合计3.3883/3.2201ms；机制与同ref成立，允许进入预定OFF外测，但不等于外部净收益。目标OPEN/decoder均晚于首次真实UI需求，非挂载前后台解码；物理准备沿原scheduler。
+
+本轮copy前空档已定位到原findEncodedPage内缓存ref/查询、fetch前置及原store写门/staging调用区间：prepare退出→find约0.104–2.212ms，find约2.533–4.399ms，find返回→fetch约0.098–1.134ms，fetch→store约0.083–0.140ms，store→writer约2.017–3.112ms，writer→copy约0.032–1.112ms。copy本身2.750–4.599ms，copy后至store返回0.515–2.297ms。区间与完整边界在四份r4-mechanism.json中；这是调用级inclusive wall归因，不能判某文件API/门锁/解压的单独CPU原因，不修改缓存协议或追加探针。
+
+正式OFF先完成B01首次：主代理检查原帧联系表，358仍详情、359首次阅读器加载反馈，367仍无漫画、368为正确地图；F后至少1秒覆盖且未观测到再黑。R=[40.0191, 115.0173]ms、F=[281.6788, 323.3441]ms，最长/累计K=[166.6615, 283.325]ms，最大gap=74.9982ms。工具输入包络宽101.0293ms；输入包络→R/F另在metrics.json中。received=written=1549、missing=0，保留PARTIAL/native-capture-exit:1，不称完整扫描。单份控制没有配对候选，不能计算收益。
+
+B01暖态采集健康后，sky.click报告 `user input was detected in this window; call get_window_state before continuing`。没有重发输入或继续激活，点击是否已经送达未知；暖态原始WGC保留、不得计为有效样本。随后精确停止本份WGC、通过已核EXE/profile/端口关闭B01并核launcher/runtime退出，按本次路径/端口核身份停止QPC helper57072；其余预备实例未启动。记录native-batch-resume-interrupted.json。
+
+R4.0调用区间归因完成；R4.4正式配对矩阵和限定正确性仍未完成，R4.5采用/撤回待续。下一批从新的完整B0/C4配对开始，保留本次B01首次作为额外控制原件，不将远隔补样伪装紧邻正反对照；不重跑已适用focused或重建两包。当前E1仍是未采用实验，不推送、不发布。
