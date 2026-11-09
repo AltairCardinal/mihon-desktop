@@ -27,7 +27,7 @@
 | 事件 | 实际边界与关联 |
 | --- | --- |
 | INITIAL_PROJECTION_BEGIN/END | 初始设置/状态投影前后；目标准入沿用原事件 |
-| RUNNER_WORK_TAKEN、PREPARE_BEGIN/END | Desktop port 取出工作及 prepare；早退不伪造结束 |
+| RUNNER_WORK_TAKEN、PREPARE_BEGIN/END | Desktop port取出工作及prepare；END在finally记录，包含早退、异常和取消，表示退出而非准备成功 |
 | ENCODED_STORE_RETURN | 已验证 store 返回 Stored ref，晚于原子提交及收尾 |
 | READY_PUBLISH_BEGIN/END | session 正常 materialization Ready 的 StateFlow 发布前后 |
 | COMPOSE_READY_SEEN | 原 presentation composable 首次计算该完整 decode key |

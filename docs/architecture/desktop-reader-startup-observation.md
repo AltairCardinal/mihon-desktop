@@ -10,7 +10,7 @@ AWT DOWN/UP 是自有 ComposeWindow 的 EDT 监听执行时刻；CHAPTER_CLICK �
 
 ### R3：准备与 Ready 交接边界
 
-默认关闭观测补充 `INITIAL_PROJECTION_BEGIN/END`、`RUNNER_WORK_TAKEN`、`PREPARE_BEGIN/END`、`ENCODED_STORE_RETURN`、`READY_PUBLISH_BEGIN/END` 与 `COMPOSE_READY_SEEN`。prepare 早退时可能没有 END，不将缺席事件解释为完成。store return 位于原子缓存提交及收尾返回之后；Ready 发布前后包围 session StateFlow 发布，不能把 copy end 至 store return 算作 Ready 后的界面等待。
+默认关闭观测补充 `INITIAL_PROJECTION_BEGIN/END`、`RUNNER_WORK_TAKEN`、`PREPARE_BEGIN/END`、`ENCODED_STORE_RETURN`、`READY_PUBLISH_BEGIN/END` 与 `COMPOSE_READY_SEEN`。PREPARE_END在finally记录，早退、异常和取消也会经过；它表示prepare退出，不代表准备成功。观测关闭或事件丢弃等造成缺席时也不能推定工作状态。store return 位于原子缓存提交及收尾返回之后；Ready 发布前后包围 session StateFlow 发布，不能把 copy end 至 store return 算作 Ready 后的界面等待。
 
 session 分配进程内递增 `openingToken`，结合章、generation、目标页和 attempt 区分同进程再次打开；其 generation 仍可能重新为1。带 `contentIdentity` 的解码事件在观测开启时记录完整 decode key，包含 ref、provenance 和尺寸；关闭时不构造该字符串、不读诊断时钟或写文件。旧 copy、OPEN 等没有 token 的事件只能结合最新正常点击/OPEN 时间窗口及可核对的 ref 关联，不声称全部事件都能直接 join。
 
