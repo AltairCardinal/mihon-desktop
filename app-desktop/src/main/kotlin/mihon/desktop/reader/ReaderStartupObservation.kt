@@ -16,6 +16,7 @@ internal data class ReaderStartupEvent(
     val pageIndex: Int? = null,
     val generation: Long? = null,
     val detail: Int? = null,
+    val attemptGeneration: Long? = null,
 )
 
 @Serializable
@@ -36,14 +37,23 @@ internal class ReaderStartupObservation(private val capacity: Int = 1024) {
 
     init { require(capacity in 1..4096) }
 
-    fun record(stage: String, page: ReaderPageId? = null, generation: Long? = null, detail: Int? = null, chapterId: Long? = null) {
+    fun record(
+        stage: String,
+        page: ReaderPageId? = null,
+        generation: Long? = null,
+        detail: Int? = null,
+        chapterId: Long? = null,
+        attemptGeneration: Long? = null,
+    ) {
         val thread = Thread.currentThread()
         val event = ReaderStartupEvent(
             stage, System.nanoTime(), thread.id, thread.name,
             if (threadBean.isCurrentThreadCpuTimeSupported && threadBean.isThreadCpuTimeEnabled) {
                 threadBean.currentThreadCpuTime.takeIf { it >= 0 }
-            } else null,
-            page?.chapterId?.value ?: chapterId, page?.sourcePageIndex, generation, detail,
+            } else {
+                null
+            },
+            page?.chapterId?.value ?: chapterId, page?.sourcePageIndex, generation, detail, attemptGeneration,
         )
         synchronized(lock) {
             if (events.size == capacity) {
@@ -67,7 +77,13 @@ internal object ReaderStartupTrace {
     fun markChapter(stage: String, chapterId: Long, detail: Int? = null) {
         active.get()?.record(stage, detail = detail, chapterId = chapterId)
     }
-    fun mark(stage: String, page: ReaderPageId? = null, generation: Long? = null, detail: Int? = null) {
-        active.get()?.record(stage, page, generation, detail)
+    fun mark(
+        stage: String,
+        page: ReaderPageId? = null,
+        generation: Long? = null,
+        detail: Int? = null,
+        attemptGeneration: Long? = null,
+    ) {
+        active.get()?.record(stage, page, generation, detail, attemptGeneration = attemptGeneration)
     }
 }

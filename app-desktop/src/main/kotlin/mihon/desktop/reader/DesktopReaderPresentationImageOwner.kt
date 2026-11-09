@@ -574,8 +574,13 @@ internal class DesktopReaderPresentationImageHolder internal constructor(
         asset: DesktopReaderImageAsset,
     ): Boolean = synchronized(lock) {
         if (closed || acquireJob !== runningJob) return false
-        ReaderStartupTrace.mark("HOLDER_READY", identity.pageId, identity.generation)
         mutableState.value = DesktopReaderPresentationImageState.Ready(identity, asset)
+        ReaderStartupTrace.mark(
+            "HOLDER_READY",
+            identity.pageId,
+            identity.generation,
+            attemptGeneration = identity.attemptGeneration,
+        )
         true
     }
 

@@ -1,6 +1,6 @@
 # Windows 首开优化方案与 roadmap
 
-日期 2026-11-09。依据[源码与第三方实现调查](../evidence/desktop-reader-call-chain-source-analysis-2026-11-09.md)，产品基线为 `1c9e511257`，调查文档提交为 `230d307c6a`。实施时核对最新 main 的产品差异，保留其已验收功能。当前文件完成设计，以下执行项尚未开始，首项为 P0。
+日期 2026-11-09。依据[源码与第三方实现调查](../evidence/desktop-reader-call-chain-source-analysis-2026-11-09.md)，产品基线为 `1c9e511257`，调查文档提交为 `230d307c6a`。实施时核对最新 main 的产品差异，保留其已验收功能。P0–P3已完成实现、独立审查及定向验证，随本批提交固定为候选；当前待执行V1集中B/C外测，尚不代表性能采用。校准见[组件记录](../evidence/desktop-reader-p0-preferences-calibration-2026-11-09.md)，实现与组合验证见[首批证据](../evidence/windows-reader-source-driven-implementation-2026-11-09.md)。
 
 ## 目标与收益依据
 
@@ -129,10 +129,10 @@ P0为小组件校准；主要工程成本在P1状态交接与P2 lease生命周�
 
 ## Roadmap
 
-- [ ] **P0 测量校准**。完成四个组件子进程及一次读取计数，输出后端/设置/线程/次数/耗时记录，固定首批B/C协议。
-- [ ] **P1 稳定轻量首屏**。通过晚到页表、真实draw早于完整model、持续Ready消费、同holder交接、首图后无新增黑屏、早期输入与退出等focused。
-- [ ] **P2 no-op直接呈现**。通过首个Ready组合可绘、无额外变换任务、lease放弃/替换/关闭和原异步分支回归。
-- [ ] **P3 按需fullscreen adapter**。通过provider实际调用次数及切换生命周期focused。
+- [x] **P0 测量校准**。完成四个组件子进程及一次读取计数，输出后端/设置/线程/次数/耗时记录，固定首批B/C协议。
+- [x] **P1 稳定轻量首屏**。通过晚到页表、真实draw早于完整model、持续Ready消费、同holder交接、首图后无新增黑屏、早期输入与退出等focused。
+- [x] **P2 no-op直接呈现**。通过首个Ready组合可绘、无额外变换任务、lease放弃/替换/关闭和原异步分支回归。
+- [x] **P3 按需fullscreen adapter**。通过provider实际调用次数及切换生命周期focused。
 - [ ] **V1 联合采用裁决**。完成一次B/C双包、副屏两份内部和正反四份外部、必要模式/全屏正确性核对；报告通过项、实际收益及剩余预算。
 - [ ] **R1 剩余方向评估**。按新基线决定P4/P5的实施或暂缓，记录原因和下一项具体失败条件。
 

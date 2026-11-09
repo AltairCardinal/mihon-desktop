@@ -3,6 +3,7 @@ package mihon.desktop.ui.reader
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -308,6 +309,20 @@ internal suspend fun createReaderPresentationTransformLease(
     }
 }
 
+/** A composition-acquired lease must also close if the composition is abandoned before apply. */
+internal class ReaderCompositionBitmapLease(
+    val lease: DesktopReaderImageAssetLease?,
+) : RememberObserver {
+    private val closed = AtomicBoolean()
+    val isClosed: Boolean get() = closed.get()
+    override fun onRemembered() = Unit
+    override fun onForgotten() = close()
+    override fun onAbandoned() = close()
+    private fun close() {
+        if (closed.compareAndSet(false, true)) lease?.close()
+    }
+}
+
 /** Retains the base asset through transform and owns any derived native bitmap through detach. */
 @Composable
 internal fun rememberReaderPresentationRenderedImage(
@@ -325,6 +340,42 @@ internal fun rememberReaderPresentationRenderedImage(
     val key = remember(identity, cropBorders, animationFrameIndex) {
         ReaderPresentationTransformKey(identity, cropBorders, animationFrameIndex)
     }
+    if (ready != null && sourceAsset === ready.asset && animationFrameIndex == null &&
+        ready.asset.animationMetadata == null && identity.splitHalf == null && identity.sourceBounds == null &&
+        !cropBorders
+    ) {
+        val retained = remember(presentationImage.holder, identity, sourceAsset) {
+            val lease = presentationImage.holder.retainReadyAssetForRender(identity)
+            mihon.desktop.reader.ReaderStartupTrace.mark(
+                "TRANSFORM_DIRECT",
+                identity.pageId,
+                identity.generation,
+                attemptGeneration = identity.attemptGeneration,
+            )
+            ReaderCompositionBitmapLease(
+                lease?.takeIf { it.asset === sourceAsset }.also {
+                    if (it == null) lease?.close()
+                },
+            )
+        }
+        val lease = retained.lease ?: return null
+        fun currentPixels(): Boolean {
+            if (retained.isClosed) return false
+            val current = presentationImage.holder.retainReadyAssetForRender(identity) ?: return false
+            return try {
+                current.asset === sourceAsset
+            } finally {
+                current.close()
+            }
+        }
+        return ReaderPresentationRenderedImage(
+            key,
+            lease.asset.bitmap,
+            PixelBounds(0, 0, sourceAsset.sourceWidth, sourceAsset.sourceHeight),
+            acknowledgeDraw = { currentPixels() && presentationImage.holder.acknowledgeDraw(identity) },
+            currentPixels = ::currentPixels,
+        )
+    }
     val scope = rememberCoroutineScope()
     val transformOwner = remember(scope, key, sourceAsset) {
         ReaderPresentationTransformOwner(scope)
@@ -337,6 +388,12 @@ internal fun rememberReaderPresentationRenderedImage(
             transformOwner.clear()
             return@LaunchedEffect
         }
+        mihon.desktop.reader.ReaderStartupTrace.mark(
+            "TRANSFORM_ASYNC",
+            identity.pageId,
+            identity.generation,
+            attemptGeneration = identity.attemptGeneration,
+        )
         transformOwner.submit(key) {
             val baseLease = if (animationFrameIndex == null) {
                 presentationImage.holder.retainReadyAssetForRender(identity)
@@ -344,6 +401,10 @@ internal fun rememberReaderPresentationRenderedImage(
                 presentationImage.animatedHolder?.retainReadyFrameForRender(requireNotNull(animationReadyKey))
             }
             requireNotNull(baseLease) { "Ready presentation image lost its render lease: $identity" }
+            if (baseLease.asset !== sourceAsset) {
+                baseLease.close()
+                error("Ready presentation asset changed before transform: $identity")
+            }
             createReaderPresentationTransformLease(
                 baseLease = baseLease,
                 identity = identity,
@@ -360,17 +421,31 @@ internal fun rememberReaderPresentationRenderedImage(
         bitmap = transformed.bitmap,
         renderedSourceBounds = transformed.lease.renderedSourceBounds,
         acknowledgeDraw = {
-            transformOwner.acknowledgeDraw(key) && presentationImage.holder.acknowledgeDraw(identity)
+            val current = if (animationReadyKey == null) {
+                presentationImage.holder.retainReadyAssetForRender(identity)
+            } else {
+                presentationImage.animatedHolder?.retainReadyFrameForRender(animationReadyKey)
+            }
+            val matches = try {
+                current?.asset === sourceAsset
+            } finally {
+                current?.close()
+            }
+            matches && transformOwner.acknowledgeDraw(key) && presentationImage.holder.acknowledgeDraw(identity)
         },
         currentPixels = {
             // The existing I/O observer acknowledges only the first draw. A newly selected viewport
             // may present an already-drawn offscreen image; validate its live leases independently.
-            val current = presentationImage.holder.retainReadyAssetForRender(identity)
+            val current = if (animationReadyKey == null) {
+                presentationImage.holder.retainReadyAssetForRender(identity)
+            } else {
+                presentationImage.animatedHolder?.retainReadyFrameForRender(animationReadyKey)
+            }
             if (current == null) {
                 false
             } else {
                 try {
-                    transformOwner.acknowledgeDraw(key)
+                    current.asset === sourceAsset && transformOwner.acknowledgeDraw(key)
                 } finally {
                     current.close()
                 }

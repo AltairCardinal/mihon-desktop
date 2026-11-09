@@ -147,6 +147,12 @@ Desktop 的 `ReaderPanBounds` 是阅读器视口交互策略：放大后，拖�
 
 ### Windows 下载单页首次组合
 
-Windows 的已下载、固定 RTL/LTR 单页、无自动布局及自动拆页入口可在首次组合及完整模型即将创建时读取同一 session 的已发布页表。只有章、代次、恢复位置及显示设置均可确定时，才先挂载真实 Queued holder，实际 apply 后创建完整模型；同一 runtime 与 movable-content registry 保留该 holder，再经原有 Ready、内容认证、解码与真实绘制链路呈现。进度由实际绘制确认。
+已确认下载、固定 RTL/LTR 单页、无自动布局和拆页的 opening context 在 runtime 边界捕获资格，不再以两次即时读取是否恰好拿到页表决定永久回退。`ReaderFirstComposition` 持续订阅同一 session；页表未到时保留加载反馈，Loaded 后复用 `resolveInitialPage` 与恢复校验，再挂载真实 Queued holder 并提交当前页需求。章、代次或打开身份改变、页表失败、非法恢复或准入时设置不一致均进入既有完整阅读器。在线、条漫、双页、AUTO 和拆页仍沿完整入口。
 
-最终选择仍未就绪或身份/设置无法确认时沿完整模型原链；准入只决策一次，后到页表不再次尝试。这项时序限制可能使正常首开不命中，不能以命中样本宣称每次都达到 Android 耗时。完整模型创建前取消由轻 entry 释放 runtime，创建后由原模型释放，均只释放一次。双页、条漫和自动拆页沿其现有路径。实现与证据见[首开收口记录](../evidence/desktop-reader-startup-closeout-2026-11-08.md)。
+真实目标 draw 解锁完整模型创建，不直接表示完整视口可接手。模型创建后立即连接 session 的 `acceptSessionState` 桥，沿原有原子状态与派生呈现协议发布；配对恢复等待时轻量视口继续持有正确像素。视觉交接须核对同章、同代次、目标位置、页 attempt 与 encoded ref、完整内容状态及配对准备。runtime 捕获的首屏资格不会因 `entry.hasModel` 改变后的父级重组失效。活动手势保留原组合 owner，直到 release/cancel；交接复用同一 movable-content registry 中唯一挂载的 holder 和 lease。
+
+用户提前请求完整控件、按键、滚轮或翻页会解锁模型。键鼠事件和相对翻页意图交给既有 handler 一次性消费；页表仍未到时保留这些意图，Loaded 后以真实恢复位置解析，不能把空页表当作章节边界。缩放与控件意图在完整视口挂载时移交。退出在无模型时由轻 entry 关闭 runtime，有模型后沿原模型释放，均只释放一次。`ReaderFirstCompositionIntegrationTest` 使用真实 session、encoded store 原子写/读、Skia 与 Screen，并覆盖晚到页表、恢复/失败、逐帧像素、父重组、早期输入和跨首绘 pinch/pan；内部绘出与物理屏幕呈现仍分别验收。
+
+静态整页在无 split/source bounds/裁边时，由 `rememberReaderPresentationRenderedImage` 在 Ready 组合直接保留原资产。`ReaderCompositionBitmapLease` 同时处理 forgotten 和 abandoned；捕获的 draw/currentPixels 回调须检查 composition lease 尚有效及实际 Ready asset 身份。裁边、拆页和动画仍使用异步 transform，保留原 prepare/draw/进度契约及内存预算。`ReaderPresentationTransformOwnerTest` 覆盖第一组合可绘、abandon/忘记及同身份替换，动画和单双页接线沿对应 production 呈现测试验证。
+
+`DesktopReaderFullscreenController` 仅在真实 placement mutation 前求值 factory，并缓存 adapter、null 或初始化失败的 fallback；普通 windowed 创建、同步与关闭不初始化 JNA。所有注入均使用 factory，禁用 native 明确传 `{ null }`。初始化、prepare、enter/exit 及 retained frame 清理继续在原 controller 生命周期内完成。

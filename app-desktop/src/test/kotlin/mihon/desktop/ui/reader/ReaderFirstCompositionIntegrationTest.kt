@@ -1,14 +1,29 @@
 package mihon.desktop.ui.reader
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.asSkiaBitmap
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.scene.ComposeScenePointer
+import androidx.compose.ui.semantics.SemanticsNode
 import cafe.adriel.voyager.navigator.Navigator
 import dev.mihon.injekt.patchInjekt
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.spyk
 import io.mockk.verify
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -17,6 +32,7 @@ import kotlinx.coroutines.test.runTest
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.DesktopNotificationService
+import mihon.desktop.reader.DesktopChapterPairingCoordinator
 import mihon.desktop.reader.DesktopReaderChapterContentPortFactory
 import mihon.desktop.reader.DesktopReaderEncodedPageStore
 import mihon.desktop.reader.DesktopReaderPageContentOwner
@@ -35,6 +51,8 @@ import mihon.desktop.reader.ReaderStartupTrace
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.desktopReaderSessionState
 import mihon.desktop.settings.DesktopAppPreferences
+import mihon.domain.reader.ChapterPairingRepository
+import mihon.domain.reader.ChapterPairingSnapshot
 import mihon.domain.reader.materialize.ReaderChapterContentPort
 import mihon.domain.reader.materialize.ReaderPageFetchPort
 import mihon.domain.reader.materialize.ReaderPageFetchRequest
@@ -68,7 +86,7 @@ class ReaderFirstCompositionIntegrationTest {
         screenScenario(dir, loadedInitially = true)
 
     @Test
-    fun `first composition without published page list stays on original path when it later arrives`(
+    fun `late page list stays on lightweight path until the actual target draw`(
         @TempDir dir: File,
     ) =
         screenScenario(dir, loadedInitially = false)
@@ -88,15 +106,79 @@ class ReaderFirstCompositionIntegrationTest {
         @TempDir dir: File,
     ) = screenScenario(dir, loadedInitially = false, publishDuringInitialProjection = true, changeSettings = true)
 
+    @Test
+    fun `late pairing preserves target pixels until visual handoff`(@TempDir dir: File) =
+        screenScenario(dir, loadedInitially = false, delayedPairing = true)
+
+    @Test
+    fun `early fullscreen and repeated page keys are replayed once through the production reader`(@TempDir dir: File) =
+        screenScenario(dir, loadedInitially = true, earlyKeyboard = true)
+
+    @Test
+    fun `early navigation waits for the real late page table before consuming its restore target`(@TempDir dir: File) =
+        screenScenario(dir, loadedInitially = false, earlyKeyboard = true, pendingInput = true)
+
+    @Test
+    fun `last page opening intent resolves only after the real late page table`(@TempDir dir: File) =
+        screenScenario(dir, loadedInitially = false, restorePage = ReaderInitialPage.LAST)
+
+    @Test
+    fun `invalid saved page enters the full recovery reader`(@TempDir dir: File) =
+        screenScenario(dir, loadedInitially = false, restorePage = 999)
+
+    @Test
+    fun `page table failure reaches the existing error reader without waiting for first draw`(@TempDir dir: File) =
+        screenScenario(dir, loadedInitially = false, pageTableFailure = true)
+
+    @Test
+    fun `closing during page table wait releases runtime without full model`(
+        @TempDir dir: File,
+    ) =
+        screenScenario(dir, loadedInitially = false, closePending = true)
+
+    @Test
+    fun `online webtoon dual automatic and split modes retain the full screen entry`(@TempDir dir: File) {
+        screenScenario(dir.resolve("online"), loadedInitially = false, downloaded = false)
+        screenScenario(dir.resolve("webtoon"), loadedInitially = false, mode = ReadingMode.WEBTOON)
+        screenScenario(dir.resolve("dual"), loadedInitially = false, dual = true)
+        screenScenario(dir.resolve("auto"), loadedInitially = false, mode = ReadingMode.AUTO)
+        screenScenario(dir.resolve("split"), loadedInitially = false, split = true)
+    }
+
+    @Test
+    fun `active pinch and pan retain the actual screen holder across first draw until release`(@TempDir dir: File) =
+        screenScenario(dir, loadedInitially = true, activeGesture = true)
+
     private fun screenScenario(
         dir: File,
         loadedInitially: Boolean,
         publishDuringInitialProjection: Boolean = false,
         switchGeneration: Boolean = false,
         changeSettings: Boolean = false,
+        delayedPairing: Boolean = false,
+        earlyKeyboard: Boolean = false,
+        pendingInput: Boolean = false,
+        restorePage: Int = 4,
+        pageTableFailure: Boolean = false,
+        closePending: Boolean = false,
+        downloaded: Boolean = true,
+        mode: ReadingMode = ReadingMode.RTL,
+        dual: Boolean = false,
+        split: Boolean = false,
+        activeGesture: Boolean = false,
     ) = runTest {
+        val expectedPage = if (restorePage == ReaderInitialPage.LAST) 186 else restorePage.takeIf { it in 0..186 } ?: 0
+        val expectStartup = !pageTableFailure &&
+            (restorePage == ReaderInitialPage.LAST || restorePage in 0..186) && downloaded &&
+            mode in setOf(ReadingMode.RTL, ReadingMode.LTR) && !dual && !split
         val legacy = Preferences.userRoot().node("/mihon/first-composition/${System.nanoTime()}")
-        val prefs = spyk(ReaderPreferences(InMemoryPreferenceStore(), legacy).apply { readingMode = ReadingMode.RTL })
+        val prefs = spyk(
+            ReaderPreferences(InMemoryPreferenceStore(), legacy).apply {
+                readingMode = mode
+                isDualPage = dual
+                autoSplitPages = split
+            },
+        )
         var publishPageList: (() -> Unit)? = null
         if (publishDuringInitialProjection) {
             every { prefs.readingMode } answers {
@@ -111,17 +193,28 @@ class ReaderFirstCompositionIntegrationTest {
                 original
             }
         }
-        val context = desktopReaderSessionState(chapterId = 41, pageCount = 187, initialPage = 4).context.copy(
-            isDownloaded = true,
+        val context = desktopReaderSessionState(
+            chapterId = 41,
+            pageCount = 187,
+            initialPage = restorePage,
+        ).context.copy(
+            isDownloaded = downloaded,
             mangaId = 7,
         )
         val core = ReaderSessionCore(ReaderChapterId(41), sessionId = "first-composition-screen")
         val reporter = ReaderIoReporter(clock = ReaderMonotonicClock(System::nanoTime))
-        val png = ByteArrayOutputStream().also { out ->
+        fun pageColor(index: Int) = if (index ==
+            4
+        ) {
+            Color.BLUE
+        } else {
+            Color((index * 73) % 255, (index * 151) % 255, (index * 197) % 255)
+        }
+        fun png(index: Int) = ByteArrayOutputStream().also { out ->
             ImageIO.write(
                 BufferedImage(8, 8, BufferedImage.TYPE_INT_RGB).apply {
                     createGraphics().apply {
-                        color = Color.BLUE
+                        color = pageColor(index)
                         fillRect(0, 0, 8, 8)
                         dispose()
                     }
@@ -130,17 +223,24 @@ class ReaderFirstCompositionIntegrationTest {
                 out,
             )
         }.toByteArray()
-        val contentOwner = DesktopReaderPageContentOwner(this, { png }, reporter)
+        val store = DesktopReaderEncodedPageStore(dir.resolve("encoded"))
+        val encodedReads = java.util.concurrent.ConcurrentHashMap<EncodedPageRef, Int>()
+        val contentOwner = DesktopReaderPageContentOwner(this, { ref ->
+            encodedReads.merge(ref, 1) { a, b -> a + b }
+            store.read(ref)
+        }, reporter)
         val pipeline = DesktopReaderPageImagePipeline(this, contentOwner, reporter)
         val owner = DesktopReaderPresentationImageOwner(this, pipeline, ReaderPageIoObserver(reporter))
-        val store = DesktopReaderEncodedPageStore(dir.resolve("encoded"))
         val progress = mutableListOf<Int>()
+        val pageTableRelease = CompletableDeferred<Unit>()
         val session = DesktopReaderSession(
             initialContext = context,
             core = core,
             encodedPageStore = store,
             chapterContentPortFactory = DesktopReaderChapterContentPortFactory { _, _ ->
                 ReaderChapterContentPort {
+                    if (pendingInput || closePending) pageTableRelease.await()
+                    if (pageTableFailure) error("page table fixture failed")
                     List(187) { ReaderPageDescriptor(it, url = "/page/$it", imageUrl = "https://fixture.test/$it.png") }
                 }
             },
@@ -149,10 +249,19 @@ class ReaderFirstCompositionIntegrationTest {
                     override suspend fun resolveImageUrl(
                         request: ReaderPageFetchRequest,
                     ) = requireNotNull(request.imageUrl)
-                    override suspend fun findEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef? = null
-                    override suspend fun fetchEncodedPage(
-                        request: ReaderPageFetchRequest,
-                    ) = EncodedPageRef("fixture:${descriptor.sourcePageIndex}")
+                    override suspend fun findEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef? {
+                        val ref = store.cacheRef(request.pageId, "fixture:${descriptor.sourcePageIndex}")
+                        return ref.takeIf { store.contains(it) }
+                    }
+                    override suspend fun fetchEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef {
+                        val ref = store.cacheRef(request.pageId, "fixture:${descriptor.sourcePageIndex}")
+                        val bytes = png(descriptor.sourcePageIndex)
+                        store.store(ref) {
+                            store.destinationFile(ref).writeBytes(bytes)
+                            bytes.size.toLong()
+                        }
+                        return ref
+                    }
                 }
             },
             progressPort = DesktopReaderProgressPort { _, effect -> progress += effect.lastPageRead },
@@ -160,6 +269,13 @@ class ReaderFirstCompositionIntegrationTest {
             onGenerationPublished = owner::beginGeneration,
         )
         val runtime = DesktopReaderRuntime(prefs, pipeline, owner, contentOwner, session, store, Job())
+        val pairingRelease = CompletableDeferred<Unit>()
+        val pairingRepository = mockk<ChapterPairingRepository> {
+            coEvery { load(any(), any()) } coAnswers {
+                pairingRelease.await()
+                ChapterPairingSnapshot(null, 0)
+            }
+        }
         val realFactory = DesktopReaderRuntimeFactory(
             prefs,
             mockk(),
@@ -168,9 +284,23 @@ class ReaderFirstCompositionIntegrationTest {
             mockk(),
             null,
             dir.resolve("factory-cache"),
+            pairingCoordinator = if (delayedPairing) {
+                DesktopChapterPairingCoordinator(
+                    pairingRepository,
+                    backgroundScope,
+                )
+            } else {
+                null
+            },
         )
         var model: ReaderScreenModel? = null
         val entry = DesktopReaderScreenEntry(runtime, runtime::close) {
+            if (!switchGeneration && !changeSettings && !earlyKeyboard && expectStartup) {
+                check(owner.firstPresentedGeneration.value == session.state.value.snapshot.generation) {
+                    "Full model must start after actual target draw"
+                }
+                check(progress.contains(expectedPage)) { "Full model must start after normal progress callback" }
+            }
             realFactory.createModel(runtime, false, 0L, null).also { model = it }
         }
         val factory = mockk<DesktopReaderRuntimeFactory> {
@@ -185,9 +315,10 @@ class ReaderFirstCompositionIntegrationTest {
             mangaTitle = "Fixture",
             chapterId = 41,
             mangaId = 7,
-            initialPage = 4,
+            initialPage = restorePage,
             isRtl = true,
         )
+        var activeScreen by mutableStateOf(screen)
         val observation = ReaderStartupObservation()
         val previous = Injekt
         val scene = ImageComposeScene(640, 480, coroutineContext = currentCoroutineContext()) {}
@@ -214,87 +345,162 @@ class ReaderFirstCompositionIntegrationTest {
             Injekt.addSingleton(factory)
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
-                    Navigator(screen) { screen.Content() }
+                    Navigator(screen) { activeScreen.Content() }
                 }
             }
             scene.render(System.nanoTime()).close()
-            repeat(50) {
-                scene.render(System.nanoTime()).close()
+            fun pointer(id: Long, x: Float, pressed: Boolean = true) = ComposeScenePointer(
+                id = PointerId(id),
+                position = Offset(x, 240f),
+                pressed = pressed,
+                type = PointerType.Touch,
+            )
+            fun nodes(): List<SemanticsNode> {
+                fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+                return scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+            }
+            val gestureHolder = if (activeGesture) {
+                nodes().single {
+                    it.config.contains(ReaderPresentationHolderKey)
+                }.config[ReaderPresentationHolderKey]
+            } else {
+                null
+            }
+            if (activeGesture) {
+                scene.sendPointerEvent(PointerEventType.Press, listOf(pointer(1, 200f), pointer(2, 400f)))
+                scene.render().close()
+                scene.sendPointerEvent(PointerEventType.Move, listOf(pointer(1, 100f), pointer(2, 500f)))
+                scene.render().close()
+                scene.sendPointerEvent(PointerEventType.Release, listOf(pointer(1, 100f, false), pointer(2, 500f)))
+                scene.render().close()
+                scene.sendPointerEvent(PointerEventType.Move, listOf(pointer(2, 530f)))
+                scene.render().close()
+            }
+            if (closePending) {
                 runCurrent()
+                assertFalse(entry.hasModel)
+                entry.onDispose()
+                scene.close()
+                assertTrue(owner.isClosed())
+                assertFalse(entry.hasModel)
+                return@runTest
+            }
+            if (earlyKeyboard) {
+                runCurrent()
+                listOf(Key.F11, Key.DirectionLeft, Key.DirectionLeft).forEach { key ->
+                    scene.sendKeyEvent(keyEvent(key))
+                }
+                if (pendingInput) {
+                    scene.render().close()
+                    runCurrent()
+                    assertTrue(session.state.value.snapshot.activeChapter.pages.isEmpty())
+                    assertTrue(
+                        entry.hasModel,
+                        "Early controls must initialize the full reader without waiting for page table",
+                    )
+                    pageTableRelease.complete(Unit)
+                }
+            }
+            var hadTargetPixels = false
+            var heldPairingFrames = 0
+            var heldGestureFrames = 0
+            repeat(100) {
+                scene.render(System.nanoTime()).use { image ->
+                    val pixels = image.toComposeImageBitmap().asSkiaBitmap()
+                    val blue = pixels.getColor(320, 240) == pageColor(if (earlyKeyboard) 6 else expectedPage).rgb
+                    if (hadTargetPixels && expectStartup) {
+                        assertTrue(
+                            blue,
+                            "Target pixels must survive model initialization and viewport handoff",
+                        )
+                    }
+                    hadTargetPixels = hadTargetPixels || blue
+                }
+                runCurrent()
+                if (activeGesture && model != null && heldGestureFrames < 4) {
+                    assertTrue(nodes().any { it.config.contains(ReaderStartupSingleViewportKey) })
+                    org.junit.jupiter.api.Assertions.assertSame(
+                        gestureHolder,
+                        nodes().single {
+                            it.config.contains(ReaderPresentationHolderKey)
+                        }.config[ReaderPresentationHolderKey],
+                    )
+                    heldGestureFrames++
+                    if (heldGestureFrames == 4) {
+                        scene.sendPointerEvent(PointerEventType.Release, listOf(pointer(2, 530f, false)))
+                    }
+                }
+                if (delayedPairing && model != null && !pairingRelease.isCompleted) {
+                    assertEquals(PairingLoad.LOADING, model!!.state.value.pairingLoad)
+                    assertTrue(hadTargetPixels)
+                    heldPairingFrames++
+                    if (heldPairingFrames ==
+                        2
+                    ) {
+                        activeScreen = screen.copy(chapterTitle = "Recomposed while pairing waits")
+                    }
+                    if (heldPairingFrames == 4) pairingRelease.complete(Unit)
+                }
                 Thread.sleep(2)
             }
-            val events = observation.snapshot().events
-            val applied = events.indexOfFirst { it.stage == "COMPOSE_SLOT_APPLY" && it.pageIndex == 4 }
-            val fullModel = events.indexOfFirst { it.stage == "COMPOSE_MODEL_CREATE" }
-            val rereadAccepted = publishDuringInitialProjection && !switchGeneration && !changeSettings
-            if (loadedInitially || rereadAccepted) {
-                val expectedStage = if (loadedInitially) {
-                    "FIRST_COMPOSITION_SNAPSHOT_READY"
-                } else {
-                    "FIRST_COMPOSITION_REREAD_READY"
-                }
-                val success = events.singleOrNull { it.stage == expectedStage }
-                assertTrue(
-                    success != null,
-                    "The final production selection must consume the already published same-generation page table",
-                )
-                requireNotNull(success)
-                if (rereadAccepted) {
-                    val first = events.single { it.stage == "FIRST_COMPOSITION_INITIAL_NOT_READY" }
-                    assertEquals(0, first.detail)
-                    assertEquals(187, success.detail)
-                    assertEquals(first.generation, success.generation)
-                    val decision = events.indexOfFirst { it.stage == "FIRST_COMPOSITION_FULL_MODEL_DECISION" }
-                    val reread = events.indexOfFirst { it.stage == "FIRST_COMPOSITION_REREAD_READY" }
-                    assertTrue(
-                        decision >= 0 && reread > decision,
-                        "Reread must occur inside the actual full-model branch after common providers and host setup",
-                    )
-                }
-                assertEquals(4, success.pageIndex)
-                assertEquals(session.state.value.snapshot.generation, success.generation)
-                assertTrue(
-                    applied >= 0 && fullModel > applied,
-                    "Actual target holder must apply before actual full model constructor: " +
-                        "holder=$applied model=$fullModel events=" + events.joinToString {
-                            "${it.stage}:${it.pageIndex}:${it.detail}"
-                        },
-                )
-            } else {
-                assertEquals(1, events.count { it.stage == "FIRST_COMPOSITION_INITIAL_NOT_READY" })
-                assertEquals(1, events.count { it.stage == "FIRST_COMPOSITION_REREAD_FALLBACK" })
-                assertEquals(0, events.count { it.stage == "FIRST_COMPOSITION_SNAPSHOT_READY" })
-                assertEquals(0, events.count { it.stage == "STARTUP_SINGLE_VIEWPORT_APPLY" })
-                assertTrue(
-                    fullModel >= 0 && applied > fullModel,
-                    "Unready first composition must keep the original model-first path",
-                )
+            if (delayedPairing) assertEquals(4, heldPairingFrames)
+            if (activeGesture) {
+                assertEquals(4, heldGestureFrames)
+                assertFalse(nodes().any { it.config.contains(ReaderStartupSingleViewportKey) })
+                assertTrue(model!!.state.value.zoomState.scale > 1f)
+                assertTrue(model!!.state.value.zoomState.offsetX != 0f)
             }
-            if (!loadedInitially) {
-                assertEquals(1, events.count { it.stage == "FIRST_COMPOSITION_INITIAL_NOT_READY" })
-                assertEquals(
-                    1,
-                    events.count { it.stage.startsWith("FIRST_COMPOSITION_REREAD_") },
-                    "The final selection must reread once; a later Loaded state cannot retry admission",
-                )
+            if (!expectStartup && !pageTableFailure && restorePage != 999) {
+                assertTrue(entry.hasModel)
+                assertTrue(observation.snapshot().events.none { it.stage == "FIRST_COMPOSITION_TARGET_ADMITTED" })
+                return@runTest
+            }
+            if (pageTableFailure) {
+                val loadState = model!!.state.value.session.activeChapter.loadState
+                assertTrue(loadState is mihon.domain.reader.session.ReaderChapterLoadState.Error)
+                return@runTest
+            }
+            if (restorePage == 999) {
+                assertTrue(model!!.state.value.resumePageUnavailable)
+                assertEquals(0, model!!.state.value.currentPage)
+                return@runTest
+            }
+            val events = observation.snapshot().events
+            val applied = events.indexOfFirst { it.stage == "COMPOSE_SLOT_APPLY" && it.pageIndex == expectedPage }
+            val fullModel = events.indexOfFirst { it.stage == "COMPOSE_MODEL_CREATE" }
+            if (!switchGeneration && !changeSettings && !earlyKeyboard) {
+                assertTrue(applied >= 0 && fullModel > applied, "Target holder must precede full model")
+                assertTrue(events.any { it.stage == "STARTUP_SINGLE_VIEWPORT_APPLY" })
             } else {
-                assertEquals(0, events.count { it.stage.startsWith("FIRST_COMPOSITION_REREAD_") })
+                assertTrue(fullModel >= 0, "An invalid opening must reach the original full reader")
             }
             val modelBegin = events.single { it.stage == "COMPOSE_MODEL_CREATE" }
             val modelEnd = events.single { it.stage == "COMPOSE_MODEL_CREATE_END" }
             assertTrue(modelEnd.monotonicNanos >= modelBegin.monotonicNanos)
             assertEquals(session.state.value.snapshot.generation, modelBegin.generation)
             assertEquals(modelBegin.generation, modelEnd.generation)
-            assertEquals(1, events.count { it.stage == "HOLDER_CREATE_BEGIN" && it.pageIndex == 4 })
+            assertEquals(1, events.count { it.stage == "HOLDER_CREATE_BEGIN" && it.pageIndex == expectedPage })
             assertEquals(
                 1,
                 events.filter {
-                    it.stage == "COMPOSE_HOLDER_BOUND" && it.pageIndex == 4
+                    it.stage == "COMPOSE_HOLDER_BOUND" && it.pageIndex == expectedPage
                 }.map { it.detail }.distinct().size,
             )
             assertEquals(session.state.value.snapshot.generation, owner.firstPresentedGeneration.value)
-            assertEquals(4, requireNotNull(model).state.value.currentPage)
-            assertTrue(progress.contains(4), "Actual draw must keep normal progress reporting")
+            assertEquals(if (earlyKeyboard) 6 else expectedPage, requireNotNull(model).state.value.currentPage)
+            if (earlyKeyboard) assertTrue(model!!.state.value.isFullscreen)
+            assertTrue(
+                progress.contains(if (earlyKeyboard) 6 else expectedPage),
+                "Actual draw must keep normal progress reporting",
+            )
+            if (!earlyKeyboard) {
+                val ref = store.cacheRef(
+                    session.state.value.snapshot.activeChapter.pages[expectedPage].id,
+                    "fixture:$expectedPage",
+                )
+                assertTrue(store.contains(ref))
+                assertEquals(1, encodedReads[ref], "Visual handoff must reuse the original encoded read and decode")
+            }
             entry.onDispose()
             scene.close()
             assertTrue(owner.isClosed())
@@ -306,6 +512,16 @@ class ReaderFirstCompositionIntegrationTest {
             ReaderStartupTrace.clear(observation)
             legacy.removeNode()
         }
+    }
+
+    private fun keyEvent(key: Key): KeyEvent {
+        val events = Class.forName("androidx.compose.ui.input.key.KeyEvent_desktopKt")
+        val eventType = Class.forName("androidx.compose.ui.input.key.KeyEventType")
+            .getMethod("access\$getKeyDown\$cp").invoke(null)
+        val factory = events.declaredMethods.single {
+            it.name.startsWith("KeyEvent-") && !it.name.endsWith("\$default")
+        }
+        return KeyEvent(factory.invoke(null, key.keyCode, eventType, 0, false, false, false, false, null))
     }
 
     @Test

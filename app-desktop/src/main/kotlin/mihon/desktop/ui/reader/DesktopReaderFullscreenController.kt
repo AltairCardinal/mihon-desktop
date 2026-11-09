@@ -26,10 +26,12 @@ internal class DesktopReaderFullscreenController(
     private val getWindow: () -> ComposeWindow?,
     private val dispatch: (Runnable) -> Unit = SwingUtilities::invokeLater,
     private val transitions: DesktopWindowTransitions = WindowsWindowTransitions,
-    private val fullscreenAdapter: DesktopFullscreenAdapter? = defaultFullscreenAdapter(),
+    private val fullscreenAdapterFactory: () -> DesktopFullscreenAdapter? = ::defaultFullscreenAdapter,
     private val setNativeFullscreen: (ComposeWindow, Boolean) -> Boolean = ::defaultSetNativeFullscreen,
     private val trace: ReaderRenderTrace? = null,
 ) {
+    private val fullscreenAdapter by lazy { runCatching(fullscreenAdapterFactory).getOrNull() }
+
     var previousPlacement: WindowPlacement = WindowPlacement.Floating
         internal set
     private var disposed = false
@@ -48,7 +50,7 @@ internal class DesktopReaderFullscreenController(
                     if (isFullscreen) {
                         if (!isAdapterFullscreen) {
                             changePlacement(window, true) {
-                                if (fullscreenAdapter != null && fullscreenAdapter.enter(window)) {
+                                if (fullscreenAdapter?.enter(window) == true) {
                                     isAdapterFullscreen = true
                                 } else {
                                     val current = window.placement
@@ -92,6 +94,8 @@ internal class DesktopReaderFullscreenController(
     }
 
     private fun changePlacement(window: ComposeWindow, fullscreen: Boolean, change: () -> Unit) {
+        // Resolve once, before prepare/placement mutation; failures retain the Compose fallback.
+        fullscreenAdapter
         val revision = ++transitionRevision
         transitions.setDisabled(window, true)
         var posted = false

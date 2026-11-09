@@ -2,6 +2,9 @@ package mihon.desktop.ui.reader.presentation
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import kotlinx.coroutines.currentCoroutineContext
@@ -37,12 +40,13 @@ class ReaderFirstCompositionTest {
         val fixture = PresentationImageOwnerFixture(this)
         fixture.owner.beginGeneration(11)
         val registry = ReaderPageImageContentRegistry()
+        var startup by mutableStateOf(true)
         val scene = ImageComposeScene(640, 480, coroutineContext = currentCoroutineContext()) {}
         try {
             scene.setContent {
                 MaterialTheme {
                     CompositionLocalProvider(LocalReaderPageImageContent provides registry) {
-                        ReaderFirstCompositionHost(snapshotReady = true, startupContent = {
+                        ReaderFirstCompositionHost(useStartup = startup, startupContent = {
                             ZoomablePagerViewer(
                                 chapter = chapter, currentPage = 4, isRtl = true, isDualPage = false,
                                 zoomState = ZoomState(), presentationImageOwner = fixture.owner,
@@ -55,6 +59,8 @@ class ReaderFirstCompositionTest {
                     }
                 }
             }
+            scene.render().close()
+            startup = false
             repeat(8) {
                 scene.render().close()
                 yield()

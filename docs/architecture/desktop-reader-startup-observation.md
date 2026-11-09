@@ -49,3 +49,15 @@ Desktop `ReaderScreenModel.ensureDualSession` 在同作品、同generation、同
 初始化和页表摄入在model生命周期锁内准备当前SharedDualPageSession后，可将本次owner直接传给私有恢复helper，避免进入恢复时再次构建身份/投影。preparedOwner不保存在字段中、不跨调用/异步边界复用；helper仍检查dispose、owner对象当前性及关闭状态。独立重试和保存冲突恢复不传该参数，沿原入口重新ensure当前owner。
 
 恢复请求建立后的RESTORING发布及成功/失败回调发布仍为必要操作，不能随重复准备一起删除。内容/代次/恢复请求的原有失效与迟到处理保持。真实模型/coordinator回归确认两个入口准备2→1、held阶段投影3→2、读取仍1且保存布局正确；这是局部工作量优化，没有证明外部首开毫秒收益。证据及验证边界见[D8结果](../evidence/desktop-reader-d8-2026-11-07.md)。
+
+## 2026-11-09：持续轻量首屏与模型交接
+
+已确认下载的固定 RTL/LTR 单页（非 AUTO、双页或拆页）由 `ReaderFirstComposition` 在同一 runtime 捕获入口资格并持续观察 session。页表尚未发布时保留加载反馈；Loaded 后复用既有恢复解析和设置核对，挂载真实 Queued holder 并提交当前页需求。旧章、旧代、页表失败或恢复位置不可用转入原完整阅读器反馈，不依赖两个即时采样是否恰好遇到 Loaded。
+
+目标实际 draw 只解锁完整 model 创建。创建时即在当前 Screen composition 接上 `acceptSessionState` 桥；配对恢复/初始投影未准备好时，轻量视口仍唯一持有当前正确图片。视觉交接另外核对章、代次、目标页、attempt、encoded ref、内容状态和配对准备，并通过同一 movable-content registry 移交同 holder/lease。父级重组不重置 runtime 捕获的资格；活动 pinch/pan 或拖动在 release/cancel 前保留原 owner。此桥仍属于现有 Screen composition，不恢复 D7 的 IO 订阅迁移，也不拆开 raw session 与派生呈现发布。
+
+早期控件、键盘、滚轮及相对翻页可提前创建 model。页表未到时先保留输入，Loaded 后交给既有 handler 一次性消费，避免把空页表误判为跨章边界；缩放和控件意图在完整视口挂载时移交。无 model 退出仍由 entry 释放 runtime，有 model 后由 model 释放，不双重关闭。
+
+静态整页无 split/source bounds/裁边时，Ready 组合直接 retain 原位图；组合 lease 同时在 forgotten 和 abandoned 释放。捕获的 draw/currentPixels 回调检查 composition lease 及实际资产身份，不能借同 identity 的新资产确认旧图。裁边、拆页和动画继续走异步 transform 与原 prepare/draw 协议。
+
+默认关闭的细事件补充 `FIRST_COMPOSITION_WAIT_PAGE_LIST`、`FIRST_COMPOSITION_TARGET_ADMITTED`、`FIRST_COMPOSITION_MODEL_UNLOCK`、`FIRST_COMPOSITION_VISUAL_HANDOFF`、`TRANSFORM_DIRECT`/`TRANSFORM_ASYNC`。`HOLDER_READY` 在实际 Ready 赋值后记录；适用事件带可选 `attemptGeneration`，并沿用真实页、章和 generation。无页表的等待事件仅有章身份，不能伪造目标页。模型创建和绘图确认均不代表物理显示；本批未作端到端性能采用承诺，外部 B/C 裁决另记。

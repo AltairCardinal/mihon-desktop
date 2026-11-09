@@ -169,8 +169,21 @@ data class DesktopReaderScreen(
             dualPageOverride = isDualPage,
             contextMenuScope = scope,
             onBack = { navigator.pop() },
-        ) { earlyPage, earlyZoom, earlyToggleUI ->
-            FullContent(entry, navigator, scope, earlyPage, earlyZoom, earlyToggleUI)
+            createModel = {
+                val before = entry.runtime.session.state.value
+                mihon.desktop.reader.ReaderStartupTrace.mark(
+                    "COMPOSE_MODEL_CREATE",
+                    generation = before.snapshot.generation,
+                )
+                entry.model().also {
+                    mihon.desktop.reader.ReaderStartupTrace.mark(
+                        "COMPOSE_MODEL_CREATE_END",
+                        generation = it.state.value.session.generation,
+                    )
+                }
+            },
+        ) { model, earlyZoom, earlyToggleUI, earlyInputs ->
+            FullContent(entry, model, navigator, scope, earlyZoom, earlyToggleUI, earlyInputs)
         }
     }
 
@@ -178,45 +191,15 @@ data class DesktopReaderScreen(
     @Composable
     private fun FullContent(
         entry: mihon.desktop.reader.DesktopReaderScreenEntry,
+        model: ReaderScreenModel,
         navigator: Navigator,
         scope: kotlinx.coroutines.CoroutineScope,
-        earlyPage: Int?,
         earlyZoom: ZoomState,
         earlyToggleUI: Boolean,
+        earlyInputs: List<ReaderEarlyInput>,
     ) {
-        val model = remember(entry) {
-            val beforeModel = entry.runtime.session.state.value
-            mihon.desktop.reader.ReaderStartupTrace.mark(
-                "COMPOSE_MODEL_CREATE",
-                beforeModel.snapshot.activeChapter.pages.getOrNull(beforeModel.context.initialPage)?.id,
-                beforeModel.snapshot.generation,
-            )
-            entry.model().also { model ->
-                val afterModel = model.state.value
-                mihon.desktop.reader.ReaderStartupTrace.mark(
-                    "COMPOSE_MODEL_CREATE_END",
-                    afterModel.session.activeChapter.pages.getOrNull(afterModel.currentPage)?.id,
-                    afterModel.session.generation,
-                )
-                earlyPage?.let { page ->
-                    val current = model.state.value
-                    when {
-                        page in current.session.activeChapter.pages.indices -> model.goToPage(page)
-                        else -> requestAdjacentChapterTransition(
-                            if (page < 0) ReaderTransitionDirection.PREVIOUS else ReaderTransitionDirection.NEXT,
-                            model,
-                            chapters.takeIf { it.isNotEmpty() }?.let {
-                                ReaderNavigator(
-                                    it,
-                                    current.context.chapterIndex,
-                                    current.skipReadChapters,
-                                    current.skipFilteredChapters,
-                                    current.skipDuplicateChapters,
-                                )
-                            },
-                        )
-                    }
-                }
+        remember(model) {
+            model.also {
                 if (earlyToggleUI) model.toggleUI()
                 if (earlyZoom != ZoomState()) model.setZoomState(earlyZoom)
             }
@@ -286,9 +269,6 @@ data class DesktopReaderScreen(
         androidx.compose.runtime.SideEffect {
             mihon.desktop.reader.ReaderStartupTrace.mark("COMPOSE_READER_APPLY", generation = state.session.generation)
         }
-        LaunchedEffect(runtime.session) {
-            runtime.session.state.collect(model::acceptSessionState)
-        }
 
         // Compute: zoom reset, focus, edge-scan, virtual pages
         ReaderSideEffects(state, model, focusRequester, preserveInitialZoom = earlyZoom != ZoomState())
@@ -335,6 +315,63 @@ data class DesktopReaderScreen(
                 model,
                 readerNav,
             )
+        }
+
+        var earlyInputsConsumed by remember(model) { mutableStateOf(false) }
+        LaunchedEffect(model, state.session.activeChapter.loadState) {
+            if (earlyInputsConsumed ||
+                state.session.activeChapter.loadState !is ReaderChapterLoadState.Loaded
+            ) {
+                return@LaunchedEffect
+            }
+            earlyInputsConsumed = true
+            earlyInputs.forEach { input ->
+                when (input) {
+                    is ReaderEarlyInput.Keyboard -> handleReaderKeyEvent(
+                        input.event,
+                        model.state.value,
+                        model,
+                        navigator,
+                        readerNav,
+                        onPrevChapter,
+                        onNextChapter,
+                    )
+                    is ReaderEarlyInput.PageTurn -> {
+                        val current = model.state.value
+                        val position = readerKeyboardNavigationPosition(
+                            current,
+                            readerNav?.previousRead != null,
+                            readerNav?.nextToRead != null,
+                        )
+                        val action = if (input.forward) {
+                            ReaderKeyboardAction.forNext(
+                                position.current,
+                                position.total,
+                            )
+                        } else {
+                            ReaderKeyboardAction.forPrevious(position.current)
+                        }
+                        applyReaderPageAction(
+                            action,
+                            current,
+                            model,
+                            onPrevChapter,
+                            onNextChapter,
+                            readerNav?.previousRead != null,
+                            readerNav?.nextToRead != null,
+                        )
+                    }
+                    is ReaderEarlyInput.Wheel -> handleReaderWheelEvent(
+                        input.event,
+                        model.state.value,
+                        model,
+                        onPrevChapter,
+                        onNextChapter,
+                        readerNav?.previousRead != null,
+                        readerNav?.nextToRead != null,
+                    )
+                }
+            }
         }
 
         // Settings dialog

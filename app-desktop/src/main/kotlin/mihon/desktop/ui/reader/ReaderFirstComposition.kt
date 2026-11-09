@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -19,10 +20,13 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.onPointerEvent
 import kotlinx.coroutines.CoroutineScope
 import mihon.desktop.reader.DesktopReaderRuntime
 import mihon.desktop.reader.DesktopReaderSessionState
@@ -34,21 +38,21 @@ import mihon.desktop.reader.ZoomState
 import mihon.desktop.reader.dualPageFromViewerFlags
 import mihon.domain.reader.session.ReaderChapterLoadState
 
-/** One bounded choice; the same owner is installed before the final full-model branch. */
+/** Captured opening admission shared with the full viewport during the same runtime. */
 internal class ReaderFirstCompositionAdmission(val initialReady: Boolean) {
-    var rereadChecked = false
     var selected: ReaderState? = null
     val ready: Boolean get() = initialReady || selected != null
 }
 
 internal val LocalReaderFirstCompositionReady = staticCompositionLocalOf<ReaderFirstCompositionAdmission?> { null }
 
-/** Both bounded samples must resolve a downloaded target with a fixed single-page presentation. */
+/** A loaded target must resolve the captured downloaded fixed single-page opening intent. */
 internal fun firstCompositionSnapshotReady(state: ReaderState): Boolean =
     state.context.isDownloaded && state.session.activeChapter.loadState is ReaderChapterLoadState.Loaded &&
         state.session.activeChapter.id.value == state.context.chapterId &&
         state.currentPage in state.session.activeChapter.pages.indices &&
-        state.context.initialPage == state.currentPage && !state.resumePageUnavailable &&
+        resolveInitialPage(state.context.initialPage, state.session.activeChapter.pages.size) == state.currentPage &&
+        !state.resumePageUnavailable &&
         state.readingMode in setOf(ReadingMode.RTL, ReadingMode.LTR) &&
         !state.automaticLayout && !state.dualPageMode && !state.autoSplitPages
 
@@ -71,8 +75,8 @@ internal fun rereadFirstCompositionState(
     val candidate = initial.copy(
         context = latest.context,
         session = latest.snapshot,
-        currentPage = latest.context.initialPage,
-        resumePageUnavailable = false,
+        currentPage = resolveInitialPage(latest.context.initialPage, latest.snapshot.activeChapter.pages.size),
+        resumePageUnavailable = invalidSavedPage(latest.context.initialPage, latest.snapshot.activeChapter.pages.size),
     )
     if (!firstCompositionSnapshotReady(candidate)) return null
     if (initialReaderMode(prefs, isWebtoon, mangaViewerFlags, dualPageOverride) != initial.readingMode ||
@@ -90,39 +94,22 @@ internal fun rereadFirstCompositionState(
 
 @Composable
 internal fun ReaderFirstCompositionHost(
-    snapshotReady: Boolean,
-    handoffBlocked: Boolean = false,
-    admission: ReaderFirstCompositionAdmission? = null,
-    rereadBeforeFullContent: (() -> ReaderState?)? = null,
+    useStartup: Boolean,
     startupContent: @Composable () -> Unit,
     fullContent: @Composable () -> Unit,
 ) {
-    var applied by remember { mutableStateOf(false) }
-    val finalAdmission = admission ?: remember { ReaderFirstCompositionAdmission(snapshotReady) }
-    // Observe this even on the first late-admission branch so apply schedules the handoff.
-    val alreadyApplied = applied
-    val useStartup = if (finalAdmission.ready) {
-        !alreadyApplied || handoffBlocked
-    } else {
-        // Common providers and host setup have already run. This branch was about
-        // to call fullContent; take its only nonblocking reread immediately here.
-        if (!finalAdmission.rereadChecked) {
-            ReaderStartupTrace.mark("FIRST_COMPOSITION_FULL_MODEL_DECISION")
-            finalAdmission.rereadChecked = true
-            finalAdmission.selected = rereadBeforeFullContent?.invoke()
-        }
-        finalAdmission.ready
-    }
-    // Keep one startup call site so an active gesture never changes composition owner.
-    if (useStartup) {
-        startupContent()
-        SideEffect { applied = true }
-    } else {
-        fullContent()
-    }
+    // A single startup call site preserves the active gesture and image content owners.
+    if (useStartup) startupContent() else fullContent()
+}
+
+internal sealed interface ReaderEarlyInput {
+    data class Keyboard(val event: KeyEvent) : ReaderEarlyInput
+    data class Wheel(val event: java.awt.event.MouseWheelEvent) : ReaderEarlyInput
+    data class PageTurn(val forward: Boolean) : ReaderEarlyInput
 }
 
 /** The registry and the runtime survive the lightweight viewport and full model boundary. */
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 internal fun ReaderFirstComposition(
     runtime: DesktopReaderRuntime,
@@ -132,8 +119,10 @@ internal fun ReaderFirstComposition(
     dualPageOverride: Boolean?,
     contextMenuScope: CoroutineScope,
     onBack: () -> Unit,
-    fullContent: @Composable (Int?, ZoomState, Boolean) -> Unit,
+    createModel: () -> ReaderScreenModel,
+    fullContent: @Composable (ReaderScreenModel, ZoomState, Boolean, List<ReaderEarlyInput>) -> Unit,
 ) {
+    val startupAllowed = remember(runtime) { allowStartup }
     val initial = remember(runtime) {
         val published = runtime.session.state.value
         initialReaderState(
@@ -161,47 +150,89 @@ internal fun ReaderFirstComposition(
     }
     val registry = remember(runtime) { ReaderPageImageContentRegistry() }
     var inputActive by remember(runtime) { mutableStateOf(false) }
-    var requestedPage by remember(runtime) { mutableStateOf<Int?>(null) }
     var toggleUI by remember(runtime) { mutableStateOf(false) }
     var zoom by remember(runtime) { mutableStateOf(ZoomState()) }
-    val admission = remember(runtime) {
-        ReaderFirstCompositionAdmission(allowStartup && firstCompositionSnapshotReady(initial))
+    val published by runtime.session.state.collectAsState()
+    val presentedGeneration by runtime.presentationImageOwner.firstPresentedGeneration.collectAsState()
+    val initialEligible = initial.context.isDownloaded &&
+        initial.readingMode in setOf(ReadingMode.RTL, ReadingMode.LTR) &&
+        !initial.automaticLayout && !initial.dualPageMode && !initial.autoSplitPages
+    val selected = remember(runtime, published.snapshot.generation, published.snapshot.activeChapter.loadState) {
+        if (startupAllowed && initialEligible) {
+            rereadFirstCompositionState(
+                initial,
+                published,
+                runtime.prefs,
+                isWebtoon,
+                mangaViewerFlags,
+                dualPageOverride,
+            ).also { accepted ->
+                if (accepted != null) {
+                    val page = accepted.session.activeChapter.pages[accepted.currentPage]
+                    ReaderStartupTrace.mark(
+                        "FIRST_COMPOSITION_TARGET_ADMITTED",
+                        page.id,
+                        accepted.session.generation,
+                        attemptGeneration = page.attemptGeneration,
+                    )
+                } else if (published.snapshot.activeChapter.pages.isEmpty()) {
+                    ReaderStartupTrace.markChapter("FIRST_COMPOSITION_WAIT_PAGE_LIST", published.context.chapterId)
+                }
+            }
+        } else {
+            null
+        }
     }
+    val sameOpening = published.snapshot.generation == initial.session.generation &&
+        published.snapshot.activeChapter.id == initial.session.activeChapter.id &&
+        initial.context.copy(isDownloaded = published.context.isDownloaded) == published.context
+    val pending = published.snapshot.activeChapter.loadState is ReaderChapterLoadState.LoadingPageList ||
+        published.snapshot.activeChapter.loadState is ReaderChapterLoadState.Wait
+    val qualified = startupAllowed && initialEligible && sameOpening && (pending || selected != null)
+    var requestedFullContent by remember(runtime) { mutableStateOf(false) }
+    var earlyInputs by remember(runtime) { mutableStateOf(emptyList<ReaderEarlyInput>()) }
+    val mustCreateModel = !qualified || requestedFullContent || toggleUI ||
+        presentedGeneration == published.snapshot.generation
+    var model by remember(runtime) { mutableStateOf<ReaderScreenModel?>(null) }
+    if (mustCreateModel && model == null) {
+        val page = selected?.currentPage?.let { published.snapshot.activeChapter.pages.getOrNull(it) }
+        ReaderStartupTrace.mark(
+            "FIRST_COMPOSITION_MODEL_UNLOCK",
+            page?.id,
+            published.snapshot.generation,
+            attemptGeneration = page?.attemptGeneration,
+        )
+        model = createModel()
+    }
+    val activeModel = model
+    // Connect the bridge as soon as the model exists, while the lightweight viewport still owns pixels.
+    LaunchedEffect(runtime, activeModel) {
+        if (activeModel != null) runtime.session.state.collect(activeModel::acceptSessionState)
+    }
+    val fullState = activeModel?.state?.collectAsState()?.value
+    val target = selected?.currentPage
+    val startupPage = target?.let { published.snapshot.activeChapter.pages.getOrNull(it) }
+    val fullPage = target?.let { fullState?.session?.activeChapter?.pages?.getOrNull(it) }
+    val fullReady = fullState != null && fullState.session.generation == published.snapshot.generation &&
+        fullState.context.chapterId == published.context.chapterId && fullState.currentPage == target &&
+        fullState.pairingLoad != PairingLoad.LOADING && readerViewportBody(fullState) == ReaderViewportBody.CONTENT &&
+        fullPage?.id == startupPage?.id && fullPage?.attemptGeneration == startupPage?.attemptGeneration &&
+        fullPage?.encodedPageRef == startupPage?.encodedPageRef
+    var handedOff by remember(runtime) { mutableStateOf(false) }
+    val awaitingFullReady = activeModel == null || (!fullReady && !requestedFullContent && !toggleUI)
+    val useStartup = !handedOff && (inputActive || (qualified && awaitingFullReady))
+    val admission = remember(runtime) { ReaderFirstCompositionAdmission(initialEligible) }
+    admission.selected = selected
     CompositionLocalProvider(
         LocalReaderPageImageContent provides registry,
         LocalReaderFirstCompositionReady provides admission,
     ) {
         ReaderFirstCompositionHost(
-            snapshotReady = admission.initialReady,
-            handoffBlocked = inputActive,
-            admission = admission,
-            rereadBeforeFullContent = {
-                val latest = runtime.session.state.value
-                val accepted = if (allowStartup) {
-                    rereadFirstCompositionState(
-                        initial,
-                        latest,
-                        runtime.prefs,
-                        isWebtoon,
-                        mangaViewerFlags,
-                        dualPageOverride,
-                    )
-                } else {
-                    null
-                }
-                ReaderStartupTrace.mark(
-                    if (accepted != null) "FIRST_COMPOSITION_REREAD_READY" else "FIRST_COMPOSITION_REREAD_FALLBACK",
-                    latest.snapshot.activeChapter.pages.getOrNull(latest.context.initialPage)?.id,
-                    latest.snapshot.generation,
-                    latest.snapshot.activeChapter.pages.size,
-                )
-                accepted
-            },
+            useStartup = useStartup,
             startupContent = {
-                val startup = admission.selected ?: initial
-                val published by runtime.session.state.collectAsState()
+                val startup = selected ?: initial
                 val chapter = published.snapshot.activeChapter
-                val target = startup.currentPage
+                val target = resolveInitialPage(published.context.initialPage, chapter.pages.size)
                 val sameChapter = published.snapshot.generation == startup.session.generation &&
                     chapter.id == startup.session.activeChapter.id
                 val page = chapter.pages.getOrNull(target).takeIf { sameChapter }
@@ -219,8 +250,18 @@ internal fun ReaderFirstComposition(
                         if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
                             onBack()
                             true
+                        } else if (event.type == KeyEventType.KeyDown) {
+                            earlyInputs = earlyInputs + ReaderEarlyInput.Keyboard(event)
+                            requestedFullContent = true
+                            true
                         } else {
                             false
+                        }
+                    }.onPointerEvent(PointerEventType.Scroll) { event ->
+                        val native = event.nativeEvent as? java.awt.event.MouseWheelEvent
+                        if (native != null) {
+                            earlyInputs = earlyInputs + ReaderEarlyInput.Wheel(native)
+                            requestedFullContent = true
                         }
                     },
                 ) {
@@ -236,8 +277,16 @@ internal fun ReaderFirstComposition(
                                 navigationMode = startup.navigationMode, isRtl = startup.readingMode == ReadingMode.RTL,
                                 onRetryPage = runtime.session::retryPage,
                                 onTapCenter = { toggleUI = !toggleUI },
-                                onTapPrevious = { requestedPage = target - 1 },
-                                onTapNext = { requestedPage = target + 1 },
+                                onTapPrevious = {
+                                    earlyInputs = earlyInputs + ReaderEarlyInput.PageTurn(false)
+                                    requestedFullContent =
+                                        true
+                                },
+                                onTapNext = {
+                                    earlyInputs = earlyInputs + ReaderEarlyInput.PageTurn(true)
+                                    requestedFullContent =
+                                        true
+                                },
                                 onInputActiveChanged = { inputActive = it },
                                 onVisiblePagesChanged = { visible ->
                                     visible.activePageId?.let { runtime.session.settleViewport(visible.pageIds, it) }
@@ -245,11 +294,24 @@ internal fun ReaderFirstComposition(
                             )
                         }
                         SideEffect { runtime.session.scheduleViewportWithoutProgress(setOf(page.id), page.id) }
+                    } else {
+                        LoadingState()
                     }
                 }
             },
-        ) {
-            fullContent(requestedPage, zoom, toggleUI)
-        }
+            fullContent = {
+                SideEffect {
+                    if (!handedOff) {
+                        ReaderStartupTrace.mark(
+                            "FIRST_COMPOSITION_VISUAL_HANDOFF",
+                            startupPage?.id,
+                            published.snapshot.generation,
+                        )
+                    }
+                    handedOff = true
+                }
+                fullContent(requireNotNull(activeModel), zoom, toggleUI, earlyInputs)
+            },
+        )
     }
 }

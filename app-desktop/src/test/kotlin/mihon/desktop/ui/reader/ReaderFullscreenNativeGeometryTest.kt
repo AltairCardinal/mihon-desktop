@@ -80,7 +80,7 @@ class ReaderFullscreenNativeGeometryTest {
             controller = DesktopReaderFullscreenController(
                 { window },
                 transitions = transitions,
-                fullscreenAdapter = adapter,
+                fullscreenAdapterFactory = { adapter },
             )
             fun switch(fullscreen: Boolean) {
                 val completion = CountDownLatch(1)

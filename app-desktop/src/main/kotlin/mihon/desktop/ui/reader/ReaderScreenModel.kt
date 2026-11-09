@@ -3277,13 +3277,13 @@ private data class SettledViewportIdentity(
     val activePageId: ReaderPageId,
 )
 
-private fun resolveInitialPage(requestedPage: Int, pageCount: Int): Int = when {
+internal fun resolveInitialPage(requestedPage: Int, pageCount: Int): Int = when {
     pageCount <= 0 -> 0
     requestedPage == ReaderInitialPage.LAST -> pageCount - 1
     else -> requestedPage.takeIf { it in 0 until pageCount } ?: 0
 }
 
-private fun invalidSavedPage(requestedPage: Int, pageCount: Int): Boolean =
+internal fun invalidSavedPage(requestedPage: Int, pageCount: Int): Boolean =
     pageCount > 0 && requestedPage != ReaderInitialPage.LAST && requestedPage !in 0 until pageCount
 
 internal fun initialReaderMode(

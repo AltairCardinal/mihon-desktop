@@ -127,9 +127,11 @@ class ReaderFullscreenRetainedFrameTest {
         val controller = DesktopReaderFullscreenController(
             getWindow = { window },
             dispatch = { pending += it },
-            fullscreenAdapter = WindowsBorderlessFullscreenAdapter(
-                bounds = { _, _ -> WindowsFullscreenBounds(physical) { target } },
-            ),
+            fullscreenAdapterFactory = {
+                WindowsBorderlessFullscreenAdapter(
+                    bounds = { _, _ -> WindowsFullscreenBounds(physical) { target } },
+                )
+            },
         )
         try {
             repeat(4) {
