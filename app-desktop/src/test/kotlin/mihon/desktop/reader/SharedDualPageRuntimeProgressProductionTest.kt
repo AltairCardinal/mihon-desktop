@@ -974,6 +974,7 @@ class SharedDualPageRuntimeProgressProductionTest {
             val deadline = System.nanoTime() + 5_000_000_000L
             do {
                 fixture.scene.render().close()
+                advanceTimeBy(16)
                 runCurrent()
                 if (done()) return
                 Thread.sleep(5)
@@ -1153,12 +1154,12 @@ class SharedDualPageRuntimeProgressProductionTest {
                     "The actual bounded header callback cannot consume the old physical content",
                 )
             } else {
-                releaseFirst.complete(Unit)
-                releaseSecond.complete(Unit)
                 val job = model.javaClass.getDeclaredField("spreadPublisherJob").run {
                     isAccessible = true
                     get(model) as Job
                 }
+                releaseFirst.complete(Unit)
+                releaseSecond.complete(Unit)
                 pumpUntil { job.isCompleted }
             }
             if (!previousAccepted) {
@@ -1199,6 +1200,7 @@ class SharedDualPageRuntimeProgressProductionTest {
                     .nanoTime() < recoveryDeadline
             ) {
                 fixture.scene.render().close()
+                advanceTimeBy(16)
                 runCurrent()
                 Thread.sleep(5)
             }

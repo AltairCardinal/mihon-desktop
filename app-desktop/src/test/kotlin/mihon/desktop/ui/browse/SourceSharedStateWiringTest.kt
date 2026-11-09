@@ -777,6 +777,8 @@ class SourceSharedStateWiringTest {
                 every { sourceMangaSearchService } returns SourceMangaSearchService()
                 every { extensionPresentationService } returns mockk {
                     every { installedExtensions } returns MutableStateFlow(emptyList())
+                    every { runtimeSnapshot } returns
+                        MutableStateFlow(mihon.desktop.extension.DesktopExtensionRuntimeSnapshot())
                 }
                 every { saveSourceMangaForDetails } returns canonicalSaver()
                 every { getManga } returns staticGetManga()
@@ -866,8 +868,14 @@ class SourceSharedStateWiringTest {
                 scene.render()
                 assertSame(child, requireNotNull(coordinator).coordinatorFor(source.id))
                 assertEquals(failed, requireNotNull(coordinator).state.queryStates.getValue(source.id).request)
-                assertEquals(null, server.takeRequest().headers["Cookie"])
-                assertEquals("session=secret", server.takeRequest().headers["Cookie"])
+                assertEquals(
+                    null,
+                    requireNotNull(server.takeRequest(5, java.util.concurrent.TimeUnit.SECONDS)).headers["Cookie"],
+                )
+                assertEquals(
+                    "session=secret",
+                    requireNotNull(server.takeRequest(5, java.util.concurrent.TimeUnit.SECONDS)).headers["Cookie"],
+                )
                 assertTrue(nodes().joinToString { it.config.toString() }.contains("Routed (1)"))
             } finally {
                 scene.close()
@@ -904,6 +912,7 @@ class SourceSharedStateWiringTest {
             every { appPreferences } returns sourcePreferences(
                 pinnedSources = setOf(first.id.toString(), second.id.toString()),
             )
+            every { extensionPresentationService } returns sourceBrowseExtensionPresentationService()
             every { sourceMangaSearchService } returns SourceMangaSearchService()
             every { saveSourceMangaForDetails } returns canonicalSaver()
             every { getManga } returns staticGetManga()
@@ -923,50 +932,60 @@ class SourceSharedStateWiringTest {
         fun nodes(): List<SemanticsNode> = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
         fun semantics(): String = nodes().joinToString { it.config.toString() }
 
-        scene.setContent {
-            CompositionLocalProvider(
-                LocalDesktopUiDependencies provides dependencies,
-                LocalGlobalSearchCoordinatorFactory provides factory,
-            ) {
-                Navigator(SourceSharedStateRootScreen) {
-                    navigator = LocalNavigator.currentOrThrow
-                    navigator.push(GlobalSearchScreen("visible"))
-                    CurrentScreen()
+        try {
+            scene.setContent {
+                CompositionLocalProvider(
+                    LocalDesktopUiDependencies provides dependencies,
+                    LocalGlobalSearchCoordinatorFactory provides factory,
+                ) {
+                    Navigator(SourceSharedStateRootScreen) {
+                        navigator = LocalNavigator.currentOrThrow
+                        navigator.push(GlobalSearchScreen("visible"))
+                        CurrentScreen()
+                    }
                 }
             }
-        }
-        scene.render()
-        withTimeout(2_000) { firstCompleted.await() }
-        withTimeout(2_000) { requireNotNull(coordinator).states.first { it.generation == 1L && !it.isSearching } }
-        scene.render()
-        dynamicSourceManager.sources = listOf(second)
-        val input = nodes().first { it.config.contains(SemanticsActions.SetText) }
-        assertTrue(requireNotNull(input.config[SemanticsActions.SetText].action).invoke(AnnotatedString("second")))
-        scene.render()
-        val button = nodes().first {
-            it.config.contains(SemanticsActions.OnClick) &&
-                it.config.toString().contains("Search")
-        }
-        assertTrue(requireNotNull(button.config[SemanticsActions.OnClick].action).invoke())
-        withTimeout(2_000) { started.await() }
-        scene.render()
-        assertTrue(semantics().contains("Searching"))
+            scene.render().close()
+            withTimeout(2_000) { firstCompleted.await() }
+            withTimeout(2_000) { requireNotNull(coordinator).states.first { it.generation == 1L && !it.isSearching } }
+            scene.render().close()
+            dynamicSourceManager.sources = listOf(second)
+            val input = nodes().first { it.config.contains(SemanticsActions.SetText) }
+            assertTrue(requireNotNull(input.config[SemanticsActions.SetText].action).invoke(AnnotatedString("second")))
+            scene.render().close()
+            val button = nodes().first {
+                it.config.contains(SemanticsActions.OnClick) &&
+                    it.config.toString().contains("Search")
+            }
+            assertTrue(requireNotNull(button.config[SemanticsActions.OnClick].action).invoke())
+            withTimeout(2_000) { started.await() }
+            scene.render().close()
+            assertTrue(semantics().contains("Searching"))
 
-        release.complete(Unit)
-        withTimeout(2_000) { requireNotNull(coordinator).states.first { it.generation == 2L && !it.isSearching } }
-        scene.render()
-        scene.render()
-        assertEquals(listOf("visible"), first.queries)
-        assertEquals(listOf("second"), second.queries)
-        assertTrue(semantics().contains("Second source (1)"))
+            release.complete(Unit)
+            withTimeout(2_000) { requireNotNull(coordinator).states.first { it.generation == 2L && !it.isSearching } }
+            scene.render().close()
+            scene.render().close()
+            assertEquals(listOf("visible"), first.queries)
+            assertEquals(listOf("second"), second.queries)
+            withTimeout(2_000) {
+                while (!semantics().contains("Second source (1)")) {
+                    scene.render().close()
+                    delay(10)
+                }
+            }
+            assertTrue(semantics().contains("Second source (1)"))
 
-        // The coordinator survives navigation so the results stay cached, and is only released
-        // once the screen itself leaves the navigator.
-        requireNotNull(navigator).pop()
-        scene.render()
-        scene.render()
-        assertEquals(null, requireNotNull(coordinator).coordinatorFor(second.id))
-        scene.close()
+            // The coordinator survives navigation so the results stay cached, and is only released
+            // once the screen itself leaves the navigator.
+            requireNotNull(navigator).pop()
+            scene.render().close()
+            scene.render().close()
+            assertEquals(null, requireNotNull(coordinator).coordinatorFor(second.id))
+        } finally {
+            release.complete(Unit)
+            scene.close()
+        }
     }
 
     @Test
@@ -1492,7 +1511,7 @@ class SourceSharedStateWiringTest {
     @Test
     fun `cookie header commits through the real jar before exact source retry`() = runBlocking {
         MockWebServer().use { server ->
-            server.enqueue(MockResponse(code = 403))
+            server.enqueue(MockResponse(code = 401))
             server.enqueue(MockResponse(code = 200))
             server.start()
             val jar = DesktopCookieJar()
@@ -1519,8 +1538,14 @@ class SourceSharedStateWiringTest {
             assertTrue(controller.submitCookies(attempt, "session=secret; auth_token=token"))
 
             assertEquals(SourceLoginState.Authenticated(setOf("auth_token", "session"), 2), login.await())
-            assertEquals(null, server.takeRequest().headers["Cookie"])
-            assertEquals("auth_token=token; session=secret", server.takeRequest().headers["Cookie"])
+            assertEquals(
+                null,
+                requireNotNull(server.takeRequest(5, java.util.concurrent.TimeUnit.SECONDS)).headers["Cookie"],
+            )
+            assertEquals(
+                "auth_token=token; session=secret",
+                requireNotNull(server.takeRequest(5, java.util.concurrent.TimeUnit.SECONDS)).headers["Cookie"],
+            )
             assertEquals(listOf(1, 1), source.requests.map { it.page })
             assertEquals(listOf("captured", "captured"), source.requests.map { (it.query as SourceQuery.Search).query })
             assertSame((captured.query as SourceQuery.Search).filters, source.filters.last())
@@ -1866,7 +1891,7 @@ class SourceSharedStateWiringTest {
         ).use { helper ->
             MockWebServer().use { server ->
                 server.start()
-                server.enqueue(MockResponse(code = 403, body = "authentication required"))
+                server.enqueue(MockResponse(code = 401, body = "authentication required"))
                 val source = RoutedHttpSource(server.url("/").toString().removeSuffix("/"), helper.client)
                 val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
                 coordinator.load(source, 1, SourceQuery.Popular)

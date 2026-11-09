@@ -23,6 +23,7 @@ import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.extension.DesktopExtensionManager
+import mihon.desktop.extension.DesktopExtensionPresentationService
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.desktop.source.FakeSource
@@ -60,6 +61,23 @@ internal fun sourceBrowseRecentSearchesPreference() =
         defaultValue = emptyList<String>(),
     )
 internal fun sourceBrowseExtensionManager() = mockk<DesktopExtensionManager>(relaxed = true)
+
+internal fun sourceBrowseExtensionPresentationService() = object : DesktopExtensionPresentationService {
+    override val installedExtensions = kotlinx.coroutines.flow.MutableStateFlow(
+        emptyList<mihon.desktop.extension.InstalledExtension>(),
+    )
+    override val extensionsDirectory = java.io.File(System.getProperty("java.io.tmpdir"))
+    override fun installExtensionStates(
+        artifact: mihon.domain.extension.model.ExtensionArtifact,
+        beforeCommit: (() -> Unit)?,
+    ): kotlinx.coroutines.flow.Flow<mihon.domain.extension.service.ExtensionInstallState> = error(
+        "No installation in this browse fixture",
+    )
+    override fun removeExtensionWithMeta(
+        extension: mihon.desktop.extension.InstalledExtension,
+    ): Boolean = error("No removal in this browse fixture")
+    override fun reloadAll() = Unit
+}
 
 @OptIn(ExperimentalComposeUiApi::class)
 class SourceLastUsedWiringTest {

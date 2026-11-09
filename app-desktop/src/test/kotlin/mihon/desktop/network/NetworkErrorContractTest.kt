@@ -29,8 +29,14 @@ class NetworkErrorContractTest {
     }
 
     @Test fun `empty response maps to malformed data`() = assertError<AppError.MalformedData>(200, "")
-    @Test fun `missing required data maps to malformed data`() = assertError<AppError.MalformedData>(200, """{"baseUrl":"x"}""")
-    @Test fun `403 maps to authentication`() = assertError<AppError.Authentication>(403, "forbidden")
+
+    @Test fun `missing required data maps to malformed data`() = assertError<AppError.MalformedData>(
+        200,
+        """{"baseUrl":"x"}""",
+    )
+
+    @Test fun `403 maps to access denied`() = assertError<AppError.Forbidden>(403, "forbidden")
+
     @Test fun `429 preserves retry after`() = runTest {
         enqueue(429, "slow", "12")
         val thrown = assertThrows(AppErrorException::class.java) { kotlinx.coroutines.runBlocking { source.getPageList(chapter) } }

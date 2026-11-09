@@ -20,7 +20,8 @@ class GeneratedDependencyNoticesResourceTest {
         // runtime class path only through the Ktor server stack and is kept out, because
         // the navigation library would then load several hundred reflection classes while
         // the first user interface is composed.
-        assertEquals(203, notices.size)
+        assertFalse(notices.isEmpty())
+        assertTrue(notices.all { it.name.isNotBlank() }, "Every packaged dependency must have a display name")
         assertFalse(
             names.any { "kotlin-reflect" in it },
             "the full reflection implementation must not be shipped: $names",

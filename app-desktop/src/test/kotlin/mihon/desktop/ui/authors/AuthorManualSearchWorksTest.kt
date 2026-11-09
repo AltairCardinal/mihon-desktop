@@ -86,7 +86,7 @@ class AuthorManualSearchWorksTest {
                 CreatorWorkArchive(emptyList(), emptyList(), emptyList()),
             )
         }
-        val searchedQueries = mutableListOf<String>()
+        val searchedQueries = java.util.concurrent.CopyOnWriteArrayList<String>()
         val source = mockk<CatalogueSource> {
             every { id } returns 42L
             every { lang } returns "en"
@@ -100,6 +100,7 @@ class AuthorManualSearchWorksTest {
         val sourceManagerMock = object : SourceManager {
             override val isInitialized: StateFlow<Boolean> = MutableStateFlow(true)
             override val catalogueSources: Flow<List<CatalogueSource>> = flowOf(listOf(source))
+            override fun getRegisteredSourceId(candidate: Source): Long? = if (candidate === source) 42L else null
             override fun get(sourceKey: Long): Source? = source.takeIf { it.id == sourceKey }
             override fun getOrStub(sourceKey: Long): Source = source
             override fun getOnlineSources(): List<HttpSource> = emptyList()
@@ -125,6 +126,8 @@ class AuthorManualSearchWorksTest {
             every { creatorDiscoveryScheduler } returns null
             every { libraryPreferences } returns null
             every { this@mockk.appPreferences } returns appPreferences
+            every { extensionPresentationService } returns
+                mihon.desktop.ui.browse.sourceBrowseExtensionPresentationService()
             every { sourceMangaSearchService } returns SourceMangaSearchService()
             every { getManga } returns mockk(relaxed = true)
             every { sourceLoginSessionFactory } returns mockk(relaxed = true)
@@ -144,7 +147,7 @@ class AuthorManualSearchWorksTest {
             }
             withTimeout(5_000) {
                 while (MR.strings.desktop_ui_check_new_works.localized() !in texts(scene)) {
-                    scene.render()
+                    scene.render().close()
                     kotlinx.coroutines.delay(10)
                 }
             }
@@ -154,10 +157,10 @@ class AuthorManualSearchWorksTest {
             assertEquals(check.boundsInRoot.top, manualSearch.boundsInRoot.top, 1f)
 
             val currentNavigator = checkNotNull(navigator)
-            manualSearch.config[SemanticsActions.OnClick].action?.invoke()
+            assertTrue(requireNotNull(manualSearch.config[SemanticsActions.OnClick].action).invoke())
             withTimeout(5_000) {
                 while (searchedQueries.isEmpty()) {
-                    scene.render()
+                    scene.render().close()
                     kotlinx.coroutines.delay(10)
                 }
             }
@@ -180,7 +183,7 @@ class AuthorManualSearchWorksTest {
             )
 
             currentNavigator.pop()
-            scene.render()
+            scene.render().close()
             assertTrue(currentNavigator.items.last() is AuthorDetailScreen)
         } finally {
             scene.close()

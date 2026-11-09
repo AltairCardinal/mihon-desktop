@@ -62,6 +62,8 @@ import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
@@ -270,16 +272,12 @@ class DesktopReaderChapterTransitionIntegrationTest {
     }
 
     @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
-    @Test
-    fun `mounted production screen wires prefetch and retains runtime through outgoing composition`(@TempDir tempDir: File) =
-        mountedReaderScenario(tempDir, toolbarNavigation = false)
-
-    @Test
-    fun `mounted previous chapter toolbar button opens the first page instead of the last`(@TempDir tempDir: File) =
-        mountedReaderScenario(tempDir, toolbarNavigation = true)
-
-    @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
-    private fun mountedReaderScenario(tempDir: File, toolbarNavigation: Boolean) = runTest {
+    @ParameterizedTest
+    @ValueSource(booleans = [false, true])
+    fun `mounted production screen wires prefetch and retains runtime through outgoing composition`(
+        toolbarNavigation: Boolean,
+        @TempDir tempDir: File,
+    ) = runTest {
         val chapters = chapters()
         val index = if (toolbarNavigation) 0 else 1
         val initialContext = context(chapters[index], chapterIndex = index, initialPage = if (toolbarNavigation) 3 else 0)

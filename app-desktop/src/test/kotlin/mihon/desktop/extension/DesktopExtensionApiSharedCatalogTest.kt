@@ -44,6 +44,8 @@ class DesktopExtensionApiSharedCatalogTest {
         }
         val manager = io.mockk.mockk<DesktopExtensionPresentationService> {
             io.mockk.every { installedExtensions } returns kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+            io.mockk.every { runtimeSnapshot } returns
+                kotlinx.coroutines.flow.MutableStateFlow(mihon.desktop.extension.DesktopExtensionRuntimeSnapshot())
             io.mockk.every { extensionsDirectory } returns tempDir.toFile()
         }
         val port = mihon.desktop.ui.extension.DesktopExtensionPresentationPort(api, manager)
@@ -331,7 +333,7 @@ class DesktopExtensionApiSharedCatalogTest {
     @Test
     fun `Desktop production API maps malformed and HTTP repository failures`() = runBlocking {
         assertFailure(MockResponse(body = "not-json"), AppError.MalformedData::class.java)
-        assertFailure(MockResponse(code = 403, body = "forbidden"), AppError.Authentication::class.java)
+        assertFailure(MockResponse(code = 403, body = "forbidden"), AppError.Forbidden::class.java)
         assertFailure(MockResponse(code = 429, body = "slow down"), AppError.RateLimited::class.java)
         assertFailure(MockResponse(code = 500, body = "server error"), AppError.Server::class.java)
     }

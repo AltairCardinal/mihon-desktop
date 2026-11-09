@@ -49,13 +49,13 @@ class SourceHttpParityIntegrationTest {
     }
 
     @Test
-    fun `real HttpSource 403 returns open login`() = withServer(
+    fun `real HttpSource 403 returns access denied with retry`() = withServer(
         MockResponse(code = 403, body = "forbidden"),
     ) { source ->
         val result = load(source) as SourcePageResult.Failure
 
-        assertInstanceOf(AppError.Authentication::class.java, result.error)
-        assertEquals(SourceRecoveryAction.OpenLogin, result.recoveryAction)
+        assertInstanceOf(AppError.Forbidden::class.java, result.error)
+        assertEquals(SourceRecoveryAction.Retry, result.recoveryAction)
     }
 
     @Test
