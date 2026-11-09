@@ -53,7 +53,6 @@ import mihon.domain.reader.session.ReaderPageDescriptor
 import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageLoadState
 import mihon.domain.reader.session.ReaderSessionCore
-import mihon.domain.reader.session.ReaderSessionCoreUpdate
 import mihon.domain.reader.session.ReaderSessionSnapshot
 
 fun interface DesktopReaderChapterContentPortFactory {
@@ -157,13 +156,6 @@ class DesktopReaderSession(
     private val readChapterIds = mutableSetOf<Long>().apply {
         if (initialContext.wasRead) add(initialContext.chapterId)
     }
-    private class OpeningViewportDemand(
-        val generation: Long,
-        val chapterId: ReaderChapterId,
-        val resolvePage: (DesktopReaderSessionState) -> ReaderPageId?,
-    )
-
-    private var openingViewportDemand: OpeningViewportDemand? = null
     private var chapterJob: Job? = null
     private var adjacentChapterJob: Job? = null
     private var progressTail: Job? = null
@@ -249,7 +241,6 @@ class DesktopReaderSession(
         val reserveMaterializationLease: Boolean
         synchronized(lock) {
             check(!closed) { "Reader session is closed" }
-            openingViewportDemand = null
             val cachedAdjacentContext = adjacentContext
                 ?.takeIf { it.chapterId == target.chapterId && adjacentPages != null }
             cachedAdjacentPages = adjacentPages
@@ -364,7 +355,6 @@ class DesktopReaderSession(
                 }
                 val target = update.snapshot.activeChapter.pages.getOrNull(materializationContext.initialPage)
                 ReaderStartupTrace.mark("PAGE_LIST_PUBLISH_BEGIN", target?.id, request.generation)
-                triggerOpeningViewportDemandLocked()
                 publishStateLocked()
                 enqueueAdjacentImagesLocked()
                 val adjacent = maybeStartAdjacentPageListLocked()
@@ -442,60 +432,6 @@ class DesktopReaderSession(
         pumpPageRequests()
     }
 
-    /** An applied lightweight waiting viewport may request its opening content once. */
-    internal fun registerOpeningViewportDemand(
-        opening: DesktopReaderSessionState,
-        resolvePage: (DesktopReaderSessionState) -> ReaderPageId?,
-    ): AutoCloseable {
-        val demand = OpeningViewportDemand(opening.snapshot.generation, opening.snapshot.activeChapter.id, resolvePage)
-        val triggered = synchronized(lock) {
-            if (!closed && core.snapshot.generation == demand.generation &&
-                core.snapshot.activeChapter.id == demand.chapterId
-            ) {
-                openingViewportDemand = demand
-                ReaderStartupTrace.markChapter(
-                    "FIRST_COMPOSITION_DEMAND_ARMED",
-                    demand.chapterId.value,
-                    generation = demand.generation,
-                )
-                triggerOpeningViewportDemandLocked()
-            } else {
-                false
-            }
-        }
-        if (triggered) pumpPageRequests()
-        return AutoCloseable {
-            synchronized(lock) {
-                if (openingViewportDemand === demand) openingViewportDemand = null
-            }
-        }
-    }
-
-    private fun triggerOpeningViewportDemandLocked(): Boolean {
-        val demand = openingViewportDemand ?: return false
-        val snapshot = core.snapshot
-        if (closed || snapshot.generation != demand.generation || snapshot.activeChapter.id != demand.chapterId ||
-            snapshot.activeChapter.loadState is ReaderChapterLoadState.Error
-        ) {
-            openingViewportDemand = null
-            return false
-        }
-        if (snapshot.activeChapter.loadState !is ReaderChapterLoadState.Loaded) return false
-        openingViewportDemand = null
-        val target = try {
-            demand.resolvePage(DesktopReaderSessionState(context, snapshot))
-        } catch (error: CancellationException) {
-            throw error
-        } catch (_: Exception) {
-            // Optional admission cannot prevent the normal page-list publication.
-            null
-        } ?: return false
-        val page = snapshot.activeChapter.pages.firstOrNull { it.id == target } ?: return false
-        ReaderStartupTrace.mark("FIRST_COMPOSITION_DEMAND_TRIGGERED", page.id, snapshot.generation)
-        settleViewportLocked(setOf(page.id), page.id, recordProgress = false)
-        return true
-    }
-
     fun settleViewport(
         visiblePageIds: Set<ReaderPageId>,
         anchorPageId: ReaderPageId,
@@ -519,12 +455,19 @@ class DesktopReaderSession(
             if (closed) return
             scheduledGeneration = core.snapshot.generation
             ReaderStartupTrace.mark("VIEWPORT_SCHEDULE_LOCKED", anchorPageId, scheduledGeneration)
-            val update = settleViewportLocked(visiblePageIds, anchorPageId, recordProgress)
+            val update = core.settleViewport(
+                visiblePageIds = visiblePageIds,
+                anchorPageId = anchorPageId,
+                wasRead = context.wasRead,
+                recordProgress = recordProgress,
+            )
+            applySchedulePlanLocked(update.schedulePlan)
             val progress = update.progressEffect
             if (progress?.isRead == true) {
                 readChapterIds += context.chapterId
                 context = context.copy(wasRead = true)
             }
+            lastSettledAnchorPageIndex = anchorPageId.sourcePageIndex
             progressJob = progress?.let { enqueueProgressLocked(context, it) }
             adjacentPageListJob = maybeStartAdjacentPageListLocked()
             enqueueAdjacentImagesLocked()
@@ -533,22 +476,6 @@ class DesktopReaderSession(
         progressJob?.start()
         adjacentPageListJob?.start()
         pumpPageRequests()
-    }
-
-    private fun settleViewportLocked(
-        visiblePageIds: Set<ReaderPageId>,
-        anchorPageId: ReaderPageId,
-        recordProgress: Boolean,
-    ): ReaderSessionCoreUpdate {
-        val update = core.settleViewport(
-            visiblePageIds = visiblePageIds,
-            anchorPageId = anchorPageId,
-            wasRead = context.wasRead,
-            recordProgress = recordProgress,
-        )
-        applySchedulePlanLocked(update.schedulePlan)
-        lastSettledAnchorPageIndex = anchorPageId.sourcePageIndex
-        return update
     }
 
     fun retryPage(pageId: ReaderPageId) {
@@ -691,7 +618,6 @@ class DesktopReaderSession(
         synchronized(lock) {
             if (closed) return
             closed = true
-            openingViewportDemand = null
             lifecycleClosed.value = true
             leaseOwnersToRelease = buildSet {
                 activeLeaseOwnerOrNull()?.let(::add)

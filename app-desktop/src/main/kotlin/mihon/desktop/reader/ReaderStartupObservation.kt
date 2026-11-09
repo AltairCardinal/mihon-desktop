@@ -74,8 +74,8 @@ internal object ReaderStartupTrace {
     private val active = AtomicReference<ReaderStartupObservation?>()
     fun install(observation: ReaderStartupObservation?) { active.set(observation) }
     fun clear(observation: ReaderStartupObservation?) { active.compareAndSet(observation, null) }
-    fun markChapter(stage: String, chapterId: Long, detail: Int? = null, generation: Long? = null) {
-        active.get()?.record(stage, generation = generation, detail = detail, chapterId = chapterId)
+    fun markChapter(stage: String, chapterId: Long, detail: Int? = null) {
+        active.get()?.record(stage, detail = detail, chapterId = chapterId)
     }
     fun mark(
         stage: String,
