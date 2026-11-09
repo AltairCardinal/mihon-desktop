@@ -221,6 +221,23 @@ internal fun ReaderFirstComposition(
     var handedOff by remember(runtime) { mutableStateOf(false) }
     val awaitingFullReady = activeModel == null || (!fullReady && !requestedFullContent && !toggleUI)
     val useStartup = !handedOff && (inputActive || (qualified && awaitingFullReady))
+    if (useStartup && qualified && pending) {
+        DisposableEffect(runtime) {
+            val demand = runtime.session.registerOpeningViewportDemand(
+                DesktopReaderSessionState(initial.context, initial.session),
+            ) { latest ->
+                rereadFirstCompositionState(
+                    initial,
+                    latest,
+                    runtime.prefs,
+                    isWebtoon,
+                    mangaViewerFlags,
+                    dualPageOverride,
+                )?.let { accepted -> accepted.session.activeChapter.pages[accepted.currentPage].id }
+            }
+            onDispose { demand.close() }
+        }
+    }
     val admission = remember(runtime) { ReaderFirstCompositionAdmission(initialEligible) }
     admission.selected = selected
     CompositionLocalProvider(

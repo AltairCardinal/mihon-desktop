@@ -61,3 +61,9 @@ Desktop `ReaderScreenModel.ensureDualSession` 在同作品、同generation、同
 静态整页无 split/source bounds/裁边时，Ready 组合直接 retain 原位图；组合 lease 同时在 forgotten 和 abandoned 释放。捕获的 draw/currentPixels 回调检查 composition lease 及实际资产身份，不能借同 identity 的新资产确认旧图。裁边、拆页和动画继续走异步 transform 与原 prepare/draw 协议。
 
 默认关闭的细事件补充 `FIRST_COMPOSITION_WAIT_PAGE_LIST`、`FIRST_COMPOSITION_TARGET_ADMITTED`、`FIRST_COMPOSITION_MODEL_UNLOCK`、`FIRST_COMPOSITION_VISUAL_HANDOFF`、`TRANSFORM_DIRECT`/`TRANSFORM_ASYNC`。`HOLDER_READY` 在实际 Ready 赋值后记录；适用事件带可选 `attemptGeneration`，并沿用真实页、章和 generation。无页表的等待事件仅有章身份，不能伪造目标页。模型创建和绘图确认均不代表物理显示；本批未作端到端性能采用承诺，外部 B/C 裁决另记。
+
+### R2：已提交轻量等待的普通内容需求实验
+
+仅该固定单页 opening 的 pending 分支在 DisposableEffect 注册一次需求；不在未提交 composition 内调度。session 在同锁 Loaded 接收或已 Loaded 注册竞态中重新解析完整 opening 身份和目标，复用无进度 settle 与现有 scheduler，保留原预取/并发预算。onDispose 同步撤销尚未触发的 token，activate/close 清除；旧 token 不能删除新注册。可选 resolver 的普通异常拒绝本次优化而继续正常页表发布，取消仍沿原语义传播。
+
+`FIRST_COMPOSITION_DEMAND_ARMED` 带真实章/代次，`FIRST_COMPOSITION_DEMAND_TRIGGERED` 带实际目标页/代次；两者只用于诊断，不代表图片已解码或呈现。真实视口继续持有原 holder 和呈现/进度权威。D5全路由提前准备的反例仍有效，此处仅在P1稳定轻量单页的新条件下实验，采用结果见[R2证据](../evidence/windows-reader-startup-r2-2026-11-09.md)。

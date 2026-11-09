@@ -170,6 +170,67 @@ class ReaderFirstCompositionIntegrationTest {
     fun `closing after an early control discards deferred turns`(@TempDir dir: File) =
         screenScenario(dir, loadedInitially = false, pendingControl = Key.F11, closeAfterControl = true)
 
+    @Test
+    fun `committed lightweight wait prepares the restored content before another viewport apply`(@TempDir dir: File) =
+        screenScenario(dir, loadedInitially = false, demandBeforeApply = true)
+
+    @Test
+    fun `early demand keeps last page restore and rejects ineligible opening paths`(@TempDir dir: File) {
+        screenScenario(
+            dir.resolve("last"),
+            loadedInitially = false,
+            demandBeforeApply = true,
+            restorePage = ReaderInitialPage.LAST,
+        )
+        screenScenario(dir.resolve("online"), loadedInitially = false, demandBeforeApply = true, downloaded = false)
+        screenScenario(
+            dir.resolve("webtoon"),
+            loadedInitially = false,
+            demandBeforeApply = true,
+            mode = ReadingMode.WEBTOON,
+        )
+        screenScenario(dir.resolve("dual"), loadedInitially = false, demandBeforeApply = true, dual = true)
+        screenScenario(dir.resolve("auto"), loadedInitially = false, demandBeforeApply = true, mode = ReadingMode.AUTO)
+        screenScenario(dir.resolve("split"), loadedInitially = false, demandBeforeApply = true, split = true)
+        screenScenario(dir.resolve("invalid"), loadedInitially = false, demandBeforeApply = true, restorePage = 999)
+        screenScenario(
+            dir.resolve("failure"),
+            loadedInitially = false,
+            demandBeforeApply = true,
+            pageTableFailure = true,
+        )
+    }
+
+    @Test
+    fun `early demand is revoked by full entry settings or a replacement generation`(@TempDir dir: File) {
+        screenScenario(dir.resolve("full"), loadedInitially = false, demandBeforeApply = true, leaveDemand = "full")
+        screenScenario(
+            dir.resolve("settings"),
+            loadedInitially = false,
+            demandBeforeApply = true,
+            leaveDemand = "settings",
+        )
+        screenScenario(
+            dir.resolve("generation"),
+            loadedInitially = false,
+            demandBeforeApply = true,
+            leaveDemand = "generation",
+        )
+    }
+
+    @Test
+    fun `registration handles page table arriving just before registration and explicit cancellation`(
+        @TempDir dir: File,
+    ) {
+        screenScenario(dir.resolve("race"), loadedInitially = false, directDemand = "race")
+        screenScenario(dir.resolve("cancel"), loadedInitially = false, directDemand = "cancel")
+        screenScenario(dir.resolve("replace"), loadedInitially = false, directDemand = "replace")
+    }
+
+    @Test
+    fun `optional admission failure still publishes pages for normal viewport scheduling`(@TempDir dir: File) =
+        screenScenario(dir, loadedInitially = false, directDemand = "resolver-error")
+
     private fun screenScenario(
         dir: File,
         loadedInitially: Boolean,
@@ -179,6 +240,9 @@ class ReaderFirstCompositionIntegrationTest {
         delayedPairing: Boolean = false,
         earlyKeyboard: Boolean = false,
         pendingInput: Boolean = false,
+        demandBeforeApply: Boolean = false,
+        leaveDemand: String? = null,
+        directDemand: String? = null,
         pendingControl: Key? = null,
         replacePendingChapter: Boolean = false,
         closeAfterControl: Boolean = false,
@@ -256,6 +320,7 @@ class ReaderFirstCompositionIntegrationTest {
         val pipeline = DesktopReaderPageImagePipeline(this, contentOwner, reporter)
         val owner = DesktopReaderPresentationImageOwner(this, pipeline, ReaderPageIoObserver(reporter))
         val progress = mutableListOf<Int>()
+        val fetchedPages = mutableListOf<Int>()
         val pageTableRelease = CompletableDeferred<Unit>()
         val session = DesktopReaderSession(
             initialContext = context,
@@ -263,7 +328,11 @@ class ReaderFirstCompositionIntegrationTest {
             encodedPageStore = store,
             chapterContentPortFactory = DesktopReaderChapterContentPortFactory { _, _ ->
                 ReaderChapterContentPort {
-                    if (pendingInput || closePending || pendingControl != null) pageTableRelease.await()
+                    if (pendingInput || closePending || pendingControl != null || demandBeforeApply ||
+                        directDemand != null
+                    ) {
+                        pageTableRelease.await()
+                    }
                     if (pageTableFailure) error("page table fixture failed")
                     List(187) { ReaderPageDescriptor(it, url = "/page/$it", imageUrl = "https://fixture.test/$it.png") }
                 }
@@ -278,6 +347,7 @@ class ReaderFirstCompositionIntegrationTest {
                         return ref.takeIf { store.contains(it) }
                     }
                     override suspend fun fetchEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef {
+                        fetchedPages += descriptor.sourcePageIndex
                         val ref = store.cacheRef(request.pageId, "fixture:${descriptor.sourcePageIndex}")
                         val bytes = png(descriptor.sourcePageIndex)
                         store.store(ref) {
@@ -319,7 +389,10 @@ class ReaderFirstCompositionIntegrationTest {
         )
         var model: ReaderScreenModel? = null
         val entry = DesktopReaderScreenEntry(runtime, runtime::close) {
-            if (!switchGeneration && !changeSettings && !earlyKeyboard && pendingControl == null && expectStartup) {
+            if (!switchGeneration && !changeSettings && !earlyKeyboard && pendingControl == null &&
+                leaveDemand != "full" &&
+                expectStartup
+            ) {
                 check(owner.firstPresentedGeneration.value == session.state.value.snapshot.generation) {
                     "Full model must start after actual target draw"
                 }
@@ -364,6 +437,49 @@ class ReaderFirstCompositionIntegrationTest {
                     }
                 }
             }
+            if (directDemand != null) {
+                runCurrent()
+                val opening = session.state.value
+                fun register() = session.registerOpeningViewportDemand(opening) { latest ->
+                    if (directDemand == "resolver-error") error("Optional admission failed")
+                    latest.snapshot.activeChapter.pages.getOrNull(expectedPage)?.id
+                }
+                var activeDemand: AutoCloseable? = null
+                if (directDemand == "cancel") register().close()
+                if (directDemand == "replace") {
+                    val previousDemand = register()
+                    activeDemand = register()
+                    previousDemand.close()
+                }
+                if (directDemand == "resolver-error") activeDemand = register()
+                pageTableRelease.complete(Unit)
+                runCurrent()
+                assertEquals(187, session.state.value.snapshot.activeChapter.pages.size)
+                if (directDemand == "replace") {
+                    assertEquals(1, fetchedPages.count { it == expectedPage })
+                } else {
+                    assertTrue(fetchedPages.isEmpty())
+                }
+                activeDemand?.close()
+                if (directDemand == "race") {
+                    register().close()
+                    runCurrent()
+                    assertEquals(1, fetchedPages.count { it == expectedPage })
+                }
+                if (directDemand == "resolver-error") {
+                    val target = session.state.value.snapshot.activeChapter.pages[expectedPage]
+                    session.scheduleViewportWithoutProgress(setOf(target.id), target.id)
+                    runCurrent()
+                    assertEquals(1, fetchedPages.count { it == expectedPage })
+                    val loadState = session.state.value.snapshot.activeChapter.pages[expectedPage].loadState
+                    assertTrue(loadState is mihon.domain.reader.session.ReaderPageLoadState.Ready)
+                }
+                assertTrue(encodedReads.isEmpty())
+                assertTrue(progress.isEmpty())
+                entry.onDispose()
+                scene.close()
+                return@runTest
+            }
             ReaderStartupTrace.install(observation)
             patchInjekt()
             Injekt.addSingleton(factory)
@@ -400,6 +516,54 @@ class ReaderFirstCompositionIntegrationTest {
                 scene.sendPointerEvent(PointerEventType.Move, listOf(pointer(2, 530f)))
                 scene.render().close()
             }
+            if (demandBeforeApply) {
+                runCurrent()
+                assertTrue(session.state.value.snapshot.activeChapter.pages.isEmpty())
+                when (leaveDemand) {
+                    "full" -> {
+                        scene.sendKeyEvent(keyEvent(Key.F11))
+                        repeat(4) {
+                            scene.render().close()
+                            runCurrent()
+                        }
+                    }
+                    "settings" -> prefs.autoSplitPages = true
+                    "generation" -> session.activate(context.copy(chapterId = 42))
+                }
+                pageTableRelease.complete(Unit)
+                runCurrent()
+                val loaded = session.state.value.snapshot.activeChapter
+                val shouldPrepare = expectStartup && leaveDemand == null
+                if (shouldPrepare) {
+                    val target = loaded.pages[expectedPage]
+                    assertTrue(
+                        target.loadState is mihon.domain.reader.session.ReaderPageLoadState.Ready,
+                        "The committed lightweight wait must prepare ordinary content before a second viewport apply",
+                    )
+                    assertTrue(store.contains(requireNotNull(target.encodedPageRef)))
+                    assertEquals(1, fetchedPages.count { it == expectedPage })
+                    val armed = observation.snapshot().events.single { it.stage == "FIRST_COMPOSITION_DEMAND_ARMED" }
+                    val triggered = observation.snapshot().events.single {
+                        it.stage ==
+                            "FIRST_COMPOSITION_DEMAND_TRIGGERED"
+                    }
+                    assertEquals(41L, armed.chapterId)
+                    assertEquals(triggered.generation, armed.generation)
+                    assertEquals(expectedPage, triggered.pageIndex)
+                    assertTrue(armed.monotonicNanos <= triggered.monotonicNanos)
+                    assertFalse(entry.hasModel)
+                } else {
+                    assertTrue(fetchedPages.isEmpty(), "An ineligible or revoked opening must not prepare content")
+                    assertTrue(observation.snapshot().events.none { it.stage == "FIRST_COMPOSITION_DEMAND_TRIGGERED" })
+                }
+                assertTrue(encodedReads.isEmpty(), "Preparing encoded content must not decode")
+                assertTrue(progress.isEmpty(), "Only the actual draw may record progress")
+                if (!shouldPrepare) {
+                    entry.onDispose()
+                    scene.close()
+                    return@runTest
+                }
+            }
             if (closePending) {
                 runCurrent()
                 assertFalse(entry.hasModel)
@@ -407,6 +571,9 @@ class ReaderFirstCompositionIntegrationTest {
                 scene.close()
                 assertTrue(owner.isClosed())
                 assertFalse(entry.hasModel)
+                pageTableRelease.complete(Unit)
+                runCurrent()
+                assertTrue(fetchedPages.isEmpty())
                 return@runTest
             }
             if (pendingControl != null) {
