@@ -82,7 +82,9 @@ internal fun rememberReaderPresentationImage(
     }
     val decodeKey = remember(page.id, page.encodedPageRef, page.loadState, generation, page.attemptGeneration) {
         if (page.loadState is mihon.domain.reader.session.ReaderPageLoadState.Ready) {
-            readerPresentationDecodeKey(page, generation)
+            readerPresentationDecodeKey(page, generation).also {
+                mihon.desktop.reader.ReaderStartupTrace.markDecode("COMPOSE_READY_SEEN", it)
+            }
         } else {
             null
         }

@@ -8,6 +8,16 @@ AWT DOWN/UP 是自有 ComposeWindow 的 EDT 监听执行时刻；CHAPTER_CLICK �
 
 线程 CPU 累计值仅适用于同线程区间，Windows 量化可使短区间的 CPU 差大于墙钟差；不得将跨线程或嵌套区间相加为端到端耗时。字段缺席可能是调用分支未覆盖；dropped 非零时也不能声称全程完整。正式 C/D 性能对照关闭细观测，避免把诊断负担混入收益。
 
+### R3：准备与 Ready 交接边界
+
+默认关闭观测补充 `INITIAL_PROJECTION_BEGIN/END`、`RUNNER_WORK_TAKEN`、`PREPARE_BEGIN/END`、`ENCODED_STORE_RETURN`、`READY_PUBLISH_BEGIN/END` 与 `COMPOSE_READY_SEEN`。prepare 早退时可能没有 END，不将缺席事件解释为完成。store return 位于原子缓存提交及收尾返回之后；Ready 发布前后包围 session StateFlow 发布，不能把 copy end 至 store return 算作 Ready 后的界面等待。
+
+session 分配进程内递增 `openingToken`，结合章、generation、目标页和 attempt 区分同进程再次打开；其 generation 仍可能重新为1。带 `contentIdentity` 的解码事件在观测开启时记录完整 decode key，包含 ref、provenance 和尺寸；关闭时不构造该字符串、不读诊断时钟或写文件。旧 copy、OPEN 等没有 token 的事件只能结合最新正常点击/OPEN 时间窗口及可核对的 ref 关联，不声称全部事件都能直接 join。
+
+以下仅为已撤回候选的历史事件定义；现行production没有该运行时接续注册或collector。R3 候选的 `RUNTIME_READY_REGISTERED` 只证明真实 composition 注册生效；`RUNTIME_READY_SEEN` 是运行时消费合法 Ready，`RUNTIME_READY_LAUNCHED` 与 `RUNTIME_READY_REUSED` 分别区分本次启动原 holder 任务和幂等接用，撤销/拒绝另记。机制仍须与同目标实际 OPEN/解码和外部正确漫画核对；候选因冷态净收益未分辨已精确撤回，不表示体验达标。执行与最终裁决见 [R3 证据](../evidence/windows-reader-startup-r3-2026-11-10.md)。
+
+共享 Desktop 图片内容读取 await 返回 null 时，先在原锁下复核关闭状态，再报告普通“内容不可用”失败，沿 region/presentation holder 的既有 Failed 反馈。真正的读取取消及关闭仍传播 CancellationException；缺失缓存不再冒充取消而使挂载 holder 一直 Loading。该错误分类不改变解码、共享内容租约或配对规则。
+
 ## Desktop 发布器的无进展终止
 
 真实 187 页 CBZ 在固定位置、持续正常 Compose 帧且没有新 I/O、fact 或 sample revision 时，可反复启动没有结果的 pairing capability。若当前轮没有发布结果、没有活动任务及待消费完成项，完成本身不能成为下一轮的输入，否则持续争抢 ReaderScreenModel 生命周期锁。

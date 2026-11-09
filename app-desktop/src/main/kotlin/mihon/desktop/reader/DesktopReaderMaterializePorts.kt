@@ -298,7 +298,15 @@ class DesktopReaderPageFetchPort(
         } catch (error: Throwable) {
             throw AppErrorException(AppError.Storage(error))
         }
-        return result.requireStoredRef()
+        return result.requireStoredRef().also {
+            ReaderStartupTrace.mark(
+                "ENCODED_STORE_RETURN",
+                request.pageId,
+                request.generation,
+                attemptGeneration = request.attemptGeneration,
+                contentIdentity = it.value,
+            )
+        }
     }
 
     override fun materializedImageUrl(request: ReaderPageFetchRequest, ref: EncodedPageRef): String =

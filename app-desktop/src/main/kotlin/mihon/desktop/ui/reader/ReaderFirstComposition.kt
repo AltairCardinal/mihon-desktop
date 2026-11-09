@@ -125,6 +125,11 @@ internal fun ReaderFirstComposition(
     val startupAllowed = remember(runtime) { allowStartup }
     val initial = remember(runtime) {
         val published = runtime.session.state.value
+        ReaderStartupTrace.mark(
+            "INITIAL_PROJECTION_BEGIN",
+            generation = published.snapshot.generation,
+            openingToken = runtime.session.startupObservationToken,
+        )
         initialReaderState(
             runtime.prefs,
             published,
@@ -133,6 +138,11 @@ internal fun ReaderFirstComposition(
             dualPageOverride,
             false,
         ).also { state ->
+            ReaderStartupTrace.mark(
+                "INITIAL_PROJECTION_END",
+                generation = state.session.generation,
+                openingToken = runtime.session.startupObservationToken,
+            )
             val target = state.session.activeChapter.pages.getOrNull(state.currentPage)?.id
             ReaderStartupTrace.mark(
                 if (allowStartup &&

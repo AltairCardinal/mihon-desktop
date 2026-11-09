@@ -29,9 +29,56 @@ class ReaderStartupObservationTest {
     }
 
     @Test
+    fun `warm session tokens and full decode identity respect disabled observation`() = runTest {
+        fun session() = DesktopReaderSession(
+            initialContext = desktopReaderSessionState(chapterId = 41, pageCount = 1).context,
+            core = mihon.domain.reader.session.ReaderSessionCore(
+                mihon.domain.reader.session.ReaderChapterId(41),
+                sessionId = "diagnostic-warm",
+            ),
+            encodedPageStore = DesktopReaderEncodedPageStore(tempDir),
+            chapterContentPortFactory = io.mockk.mockk(),
+            pageFetchPortFactory = io.mockk.mockk(),
+            progressPort = io.mockk.mockk(),
+            parentScope = this,
+        )
+        val first = session()
+        val second = session()
+        try {
+            assertEquals(first.state.value.snapshot.generation, second.state.value.snapshot.generation)
+            org.junit.jupiter.api.Assertions.assertNotEquals(
+                first.startupObservationToken,
+                second.startupObservationToken,
+            )
+            val page = readerChapterSession(41, 1, 1) { mihon.domain.reader.session.ReaderPageLoadState.Ready }
+                .pages.single().copy(encodedPageRef = mihon.domain.reader.session.EncodedPageRef("diagnostic-ref"))
+            val key = mihon.desktop.ui.reader.readerPresentationDecodeKey(page, 1)
+            val observation = ReaderStartupObservation()
+            ReaderStartupTrace.install(observation)
+            ReaderStartupTrace.clear(observation)
+            ReaderStartupTrace.markDecode("off", key, openingToken = first.startupObservationToken)
+            assertTrue(observation.snapshot().events.isEmpty())
+            ReaderStartupTrace.install(observation)
+            try {
+                ReaderStartupTrace.markDecode("on", key, openingToken = second.startupObservationToken)
+                val event = observation.snapshot().events.single()
+                assertEquals(second.startupObservationToken, event.openingToken)
+                assertEquals(key.toString(), event.contentIdentity)
+                assertEquals(page.attemptGeneration, event.attemptGeneration)
+            } finally {
+                ReaderStartupTrace.clear(observation)
+            }
+        } finally {
+            first.close()
+            second.close()
+        }
+    }
+
+    @Test
     fun `natural mounted production chain records read decode holder and apply boundaries`() = runTest {
         val fixture = MountedReaderPresentationFixture(
-            tempDir, currentCoroutineContext(),
+            tempDir,
+            currentCoroutineContext(),
             MountedReaderPresentationCase(MountedReaderPresentationMode.SINGLE, MountedReaderContentRoute.CBZ),
             observeStartup = true,
         )
@@ -46,8 +93,16 @@ class ReaderStartupObservationTest {
             val snapshot = fixture.startupSnapshot()!!
             assertEquals(0L, snapshot.dropped)
             val stages = snapshot.events.map { it.stage }
-            listOf("COMPOSE_SLOT_APPLY", "HOLDER_ACQUIRE_REQUEST", "CONTENT_IO_BEGIN", "CONTENT_IO_END",
-                "DECODER_CALL_BEGIN", "DECODER_CALL_END", "HOLDER_READY", "FIRST_PAGE_PRESENTED").forEach {
+            listOf(
+                "COMPOSE_SLOT_APPLY",
+                "HOLDER_ACQUIRE_REQUEST",
+                "CONTENT_IO_BEGIN",
+                "CONTENT_IO_END",
+                "DECODER_CALL_BEGIN",
+                "DECODER_CALL_END",
+                "HOLDER_READY",
+                "FIRST_PAGE_PRESENTED",
+            ).forEach {
                 assertTrue(it in stages, "Missing real production stage $it: $stages")
             }
             assertTrue(stages.indexOf("CONTENT_IO_BEGIN") < stages.indexOf("CONTENT_IO_END"))

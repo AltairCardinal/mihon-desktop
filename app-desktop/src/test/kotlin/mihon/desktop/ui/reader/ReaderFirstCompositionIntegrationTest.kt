@@ -170,6 +170,16 @@ class ReaderFirstCompositionIntegrationTest {
     fun `closing after an early control discards deferred turns`(@TempDir dir: File) =
         screenScenario(dir, loadedInitially = false, pendingControl = Key.F11, closeAfterControl = true)
 
+    @Test
+    fun `encoded commit failure keeps the existing page error without reporting progress`(@TempDir dir: File) =
+        screenScenario(dir, loadedInitially = true, encodedFailure = true)
+
+    @Test
+    fun `Ready target with a missing committed cache uses original holder failure without progress`(
+        @TempDir dir: File,
+    ) =
+        screenScenario(dir, loadedInitially = true, contentMissing = true)
+
     private fun screenScenario(
         dir: File,
         loadedInitially: Boolean,
@@ -190,6 +200,8 @@ class ReaderFirstCompositionIntegrationTest {
         dual: Boolean = false,
         split: Boolean = false,
         activeGesture: Boolean = false,
+        encodedFailure: Boolean = false,
+        contentMissing: Boolean = false,
     ) = runTest {
         val expectedPage = if (restorePage == ReaderInitialPage.LAST) 186 else restorePage.takeIf { it in 0..186 } ?: 0
         val expectStartup = !pageTableFailure &&
@@ -252,7 +264,7 @@ class ReaderFirstCompositionIntegrationTest {
         val contentOwner = DesktopReaderPageContentOwner(this, { ref ->
             encodedReads.merge(ref, 1) { a, b -> a + b }
             store.read(ref)
-        }, reporter)
+        }, reporter, store::readPrefix)
         val pipeline = DesktopReaderPageImagePipeline(this, contentOwner, reporter)
         val owner = DesktopReaderPresentationImageOwner(this, pipeline, ReaderPageIoObserver(reporter))
         val progress = mutableListOf<Int>()
@@ -282,7 +294,11 @@ class ReaderFirstCompositionIntegrationTest {
                         val bytes = png(descriptor.sourcePageIndex)
                         store.store(ref) {
                             store.destinationFile(ref).writeBytes(bytes)
-                            bytes.size.toLong()
+                            bytes.size.toLong() +
+                                if (encodedFailure && descriptor.sourcePageIndex == expectedPage) 1L else 0L
+                        }
+                        if (contentMissing && descriptor.sourcePageIndex == expectedPage) {
+                            store.destinationFile(ref).delete()
                         }
                         return ref
                     }
@@ -292,7 +308,8 @@ class ReaderFirstCompositionIntegrationTest {
             parentScope = this,
             onGenerationPublished = owner::beginGeneration,
         )
-        val runtime = DesktopReaderRuntime(prefs, pipeline, owner, contentOwner, session, store, Job())
+        val runtime =
+            DesktopReaderRuntime(prefs, pipeline, owner, contentOwner, session, store, Job(), presentationScope = this)
         val pairingRelease = CompletableDeferred<Unit>()
         val pairingRepository = mockk<ChapterPairingRepository> {
             coEvery { load(any(), any()) } coAnswers {
@@ -530,6 +547,31 @@ class ReaderFirstCompositionIntegrationTest {
                     if (heldPairingFrames == 4) pairingRelease.complete(Unit)
                 }
                 Thread.sleep(2)
+            }
+            if (contentMissing) {
+                assertTrue(
+                    session.state.value.snapshot.activeChapter.pages[expectedPage].loadState is
+                        mihon.domain.reader.session.ReaderPageLoadState.Ready,
+                )
+                val failed = nodes().single { it.config.contains(ReaderPresentationHolderKey) }
+                    .config[ReaderPresentationHolderKey]
+                assertTrue(
+                    failed.state.value is mihon.desktop.reader.DesktopReaderPresentationImageState.Failed,
+                    "Missing committed content must reach the original failure state: ${failed.state.value}",
+                )
+                assertTrue(progress.isEmpty())
+                assertFalse(entry.hasModel)
+                return@runTest
+            }
+            if (encodedFailure) {
+                assertTrue(
+                    session.state.value.snapshot.activeChapter.pages[expectedPage].loadState is
+                        mihon.domain.reader.session.ReaderPageLoadState.Error,
+                )
+                assertTrue(progress.isEmpty())
+                assertTrue(encodedReads.isEmpty())
+                assertFalse(entry.hasModel)
+                return@runTest
             }
             if (delayedPairing) assertEquals(4, heldPairingFrames)
             if (activeGesture) {
