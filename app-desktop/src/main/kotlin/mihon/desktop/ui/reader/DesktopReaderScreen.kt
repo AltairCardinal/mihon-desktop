@@ -317,15 +317,28 @@ data class DesktopReaderScreen(
             )
         }
 
-        var earlyInputsConsumed by remember(model) { mutableStateOf(false) }
-        LaunchedEffect(model, state.session.activeChapter.loadState) {
-            if (earlyInputsConsumed ||
-                state.session.activeChapter.loadState !is ReaderChapterLoadState.Loaded
-            ) {
-                return@LaunchedEffect
-            }
-            earlyInputsConsumed = true
-            earlyInputs.forEach { input ->
+        val earlyInputIdentity = remember(model) { state.session.generation to state.context.chapterId }
+        val consumedEarlyInputs = remember(model) { mutableSetOf<Int>() }
+        LaunchedEffect(
+            model,
+            state.session.generation,
+            state.context.chapterId,
+            state.session.activeChapter.loadState,
+        ) {
+            earlyInputs.forEachIndexed { index, input ->
+                if (index in consumedEarlyInputs) return@forEachIndexed
+                val current = model.state.value
+                if (earlyInputIdentity != (current.session.generation to current.context.chapterId)) {
+                    consumedEarlyInputs += index
+                    return@forEachIndexed
+                }
+                var deferred = false
+                val deferNavigation: (() -> Unit)? =
+                    if (current.session.activeChapter.loadState !is ReaderChapterLoadState.Loaded) {
+                        { deferred = true }
+                    } else {
+                        null
+                    }
                 when (input) {
                     is ReaderEarlyInput.Keyboard -> handleReaderKeyEvent(
                         input.event,
@@ -335,8 +348,13 @@ data class DesktopReaderScreen(
                         readerNav,
                         onPrevChapter,
                         onNextChapter,
+                        deferPageNavigation = deferNavigation,
                     )
                     is ReaderEarlyInput.PageTurn -> {
+                        if (deferNavigation != null) {
+                            deferNavigation()
+                            return@forEachIndexed
+                        }
                         val current = model.state.value
                         val position = readerKeyboardNavigationPosition(
                             current,
@@ -369,8 +387,10 @@ data class DesktopReaderScreen(
                         onNextChapter,
                         readerNav?.previousRead != null,
                         readerNav?.nextToRead != null,
+                        deferPageNavigation = deferNavigation,
                     )
                 }
+                if (!deferred) consumedEarlyInputs += index
             }
         }
 
@@ -1041,6 +1061,7 @@ internal fun handleReaderWheelEvent(
     onNextChapter: () -> Unit,
     hasPreviousChapter: Boolean = true,
     hasNextChapter: Boolean = true,
+    deferPageNavigation: (() -> Unit)? = null,
 ): Boolean {
     val intent = readerWheelIntent(event.preciseWheelRotation, event.isControlDown, state.readingMode)
     return when (intent) {
@@ -1056,6 +1077,10 @@ internal fun handleReaderWheelEvent(
         ReaderWheelIntent.PREVIOUS_PAGE,
         ReaderWheelIntent.NEXT_PAGE,
         -> {
+            if (deferPageNavigation != null) {
+                deferPageNavigation()
+                return true
+            }
             if (model.navigateDualPage(intent == ReaderWheelIntent.NEXT_PAGE)) return true
             val navPosition = readerKeyboardNavigationPosition(
                 state = state,
@@ -1090,6 +1115,7 @@ internal fun handleReaderKeyEvent(
     onNextChapter: () -> Unit,
     onAdjustSpread: () -> Unit = model::adjustSpread,
     beforeFullscreenToggle: ((Boolean) -> Unit)? = null,
+    deferPageNavigation: (() -> Unit)? = null,
 ): Boolean {
     if (event.type != KeyEventType.KeyDown) return false
     if (event.key == Key.F11) {
@@ -1143,7 +1169,6 @@ internal fun handleReaderKeyEvent(
         Key.PageDown -> true
         else -> null
     }
-    if (adjacentForward != null && model.navigateDualPage(adjacentForward)) return true
     val action = when (event.key) {
         Key.DirectionLeft, Key.A -> ReaderKeyboardAction.forLeft(isRtl, navCurrent, totalPages)
         Key.DirectionRight, Key.D -> ReaderKeyboardAction.forRight(isRtl, navCurrent, totalPages)
@@ -1171,6 +1196,11 @@ internal fun handleReaderKeyEvent(
         }
         else -> null
     } ?: return false
+    if (deferPageNavigation != null) {
+        deferPageNavigation()
+        return true
+    }
+    if (adjacentForward != null && model.navigateDualPage(adjacentForward)) return true
     return applyReaderPageAction(
         action,
         state,

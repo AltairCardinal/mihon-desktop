@@ -310,7 +310,7 @@ internal fun ReaderFirstComposition(
                     }
                     handedOff = true
                 }
-                fullContent(requireNotNull(activeModel), zoom, toggleUI, earlyInputs)
+                fullContent(requireNotNull(activeModel), zoom, toggleUI, earlyInputs.takeIf { sameOpening }.orEmpty())
             },
         )
     }

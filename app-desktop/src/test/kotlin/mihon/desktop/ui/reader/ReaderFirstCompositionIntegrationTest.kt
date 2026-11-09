@@ -149,6 +149,27 @@ class ReaderFirstCompositionIntegrationTest {
     fun `active pinch and pan retain the actual screen holder across first draw until release`(@TempDir dir: File) =
         screenScenario(dir, loadedInitially = true, activeGesture = true)
 
+    @Test
+    fun `early controls run before the page table and survive its failure`(@TempDir dir: File) {
+        listOf(Key.F11, Key.Spacebar, Key.Equals).forEachIndexed { index, key ->
+            screenScenario(dir.resolve("success-$index"), loadedInitially = false, pendingControl = key)
+            screenScenario(
+                dir.resolve("failure-$index"),
+                loadedInitially = false,
+                pendingControl = key,
+                pageTableFailure = true,
+            )
+        }
+    }
+
+    @Test
+    fun `deferred early turns cannot replay into a replacement chapter`(@TempDir dir: File) =
+        screenScenario(dir, loadedInitially = false, pendingControl = Key.F11, replacePendingChapter = true)
+
+    @Test
+    fun `closing after an early control discards deferred turns`(@TempDir dir: File) =
+        screenScenario(dir, loadedInitially = false, pendingControl = Key.F11, closeAfterControl = true)
+
     private fun screenScenario(
         dir: File,
         loadedInitially: Boolean,
@@ -158,6 +179,9 @@ class ReaderFirstCompositionIntegrationTest {
         delayedPairing: Boolean = false,
         earlyKeyboard: Boolean = false,
         pendingInput: Boolean = false,
+        pendingControl: Key? = null,
+        replacePendingChapter: Boolean = false,
+        closeAfterControl: Boolean = false,
         restorePage: Int = 4,
         pageTableFailure: Boolean = false,
         closePending: Boolean = false,
@@ -239,7 +263,7 @@ class ReaderFirstCompositionIntegrationTest {
             encodedPageStore = store,
             chapterContentPortFactory = DesktopReaderChapterContentPortFactory { _, _ ->
                 ReaderChapterContentPort {
-                    if (pendingInput || closePending) pageTableRelease.await()
+                    if (pendingInput || closePending || pendingControl != null) pageTableRelease.await()
                     if (pageTableFailure) error("page table fixture failed")
                     List(187) { ReaderPageDescriptor(it, url = "/page/$it", imageUrl = "https://fixture.test/$it.png") }
                 }
@@ -295,7 +319,7 @@ class ReaderFirstCompositionIntegrationTest {
         )
         var model: ReaderScreenModel? = null
         val entry = DesktopReaderScreenEntry(runtime, runtime::close) {
-            if (!switchGeneration && !changeSettings && !earlyKeyboard && expectStartup) {
+            if (!switchGeneration && !changeSettings && !earlyKeyboard && pendingControl == null && expectStartup) {
                 check(owner.firstPresentedGeneration.value == session.state.value.snapshot.generation) {
                     "Full model must start after actual target draw"
                 }
@@ -383,6 +407,70 @@ class ReaderFirstCompositionIntegrationTest {
                 scene.close()
                 assertTrue(owner.isClosed())
                 assertFalse(entry.hasModel)
+                return@runTest
+            }
+            if (pendingControl != null) {
+                runCurrent()
+                scene.sendKeyEvent(keyEvent(pendingControl, ctrl = pendingControl == Key.Equals))
+                repeat(2) { scene.sendKeyEvent(keyEvent(Key.DirectionLeft)) }
+                fun assertControl() {
+                    val current = requireNotNull(model).state.value
+                    when (pendingControl) {
+                        Key.F11 -> assertTrue(current.isFullscreen, "F11 must run without the page table")
+                        Key.Spacebar -> assertTrue(current.showUI, "Space must run without the page table")
+                        Key.Equals -> assertTrue(
+                            current.zoomState.scale > 1f,
+                            "Ctrl zoom must run without the page table",
+                        )
+                    }
+                }
+                repeat(4) {
+                    scene.render().close()
+                    runCurrent()
+                }
+                assertTrue(session.state.value.snapshot.activeChapter.pages.isEmpty())
+                assertControl()
+                assertEquals(0, model!!.state.value.currentPage)
+                if (closeAfterControl) {
+                    entry.onDispose()
+                    scene.close()
+                    pageTableRelease.complete(Unit)
+                    runCurrent()
+                    assertTrue(owner.isClosed())
+                    assertEquals(0, model!!.state.value.currentPage)
+                    assertTrue(progress.isEmpty())
+                    return@runTest
+                }
+                if (replacePendingChapter) {
+                    session.activate(context.copy(chapterId = 42))
+                    repeat(4) {
+                        scene.render().close()
+                        runCurrent()
+                    }
+                }
+                pageTableRelease.complete(Unit)
+                repeat(100) {
+                    scene.render().close()
+                    runCurrent()
+                    Thread.sleep(2)
+                }
+                if (pendingControl != Key.Equals || pageTableFailure) assertControl()
+                if (pageTableFailure) {
+                    assertTrue(
+                        model!!.state.value.session.activeChapter.loadState is
+                            mihon.domain.reader.session.ReaderChapterLoadState.Error,
+                    )
+                } else {
+                    assertEquals(if (replacePendingChapter) 42L else 41L, model!!.state.value.context.chapterId)
+                    assertEquals(
+                        if (replacePendingChapter) 4 else 6,
+                        model!!.state.value.currentPage,
+                        "Deferred turns must use their original restore target exactly once",
+                    )
+                }
+                entry.onDispose()
+                scene.close()
+                assertTrue(owner.isClosed())
                 return@runTest
             }
             if (earlyKeyboard) {
@@ -514,14 +602,14 @@ class ReaderFirstCompositionIntegrationTest {
         }
     }
 
-    private fun keyEvent(key: Key): KeyEvent {
+    private fun keyEvent(key: Key, ctrl: Boolean = false): KeyEvent {
         val events = Class.forName("androidx.compose.ui.input.key.KeyEvent_desktopKt")
         val eventType = Class.forName("androidx.compose.ui.input.key.KeyEventType")
             .getMethod("access\$getKeyDown\$cp").invoke(null)
         val factory = events.declaredMethods.single {
             it.name.startsWith("KeyEvent-") && !it.name.endsWith("\$default")
         }
-        return KeyEvent(factory.invoke(null, key.keyCode, eventType, 0, false, false, false, false, null))
+        return KeyEvent(factory.invoke(null, key.keyCode, eventType, 0, ctrl, false, false, false, null))
     }
 
     @Test

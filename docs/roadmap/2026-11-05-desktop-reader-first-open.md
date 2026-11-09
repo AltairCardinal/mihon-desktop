@@ -1,6 +1,6 @@
 # Windows 已下载章节首次打开优化执行计划
 
-日期2026-11-05，2026-11-09规划更新。active-child-plan：[源码调查驱动的优化方案](2026-11-09-windows-reader-source-driven-optimization.md)。新阶段完成设计，首项P0待执行。
+日期2026-11-05，2026-11-09规划更新。active-child-plan：[首开 R2 输入修复与单页需求实验](2026-11-09-windows-reader-startup-r2.md)。P0–P3 与 V1/R1 已完成有限采用裁决；当前执行 R2。
 
 D0–D10与11月8日后续实现已完成[主干整合及研究收口](../evidence/desktop-reader-startup-closeout-2026-11-08.md)。已采用miniz与条件性提前挂载；整体体验预算仍未通过。11月9日调查补充了隔离偏好读取开销、Ready交接串联、no-op变换异步往返及fullscreen初始化边界，新子计划据此安排P0–P3和一次联合候选验收。历史[归因](../evidence/desktop-reader-d9-first-open-causes-2026-11-07.md)、[原型](../evidence/desktop-reader-cbz-slot-feasibility-2026-11-07.md)及[D10](2026-11-07-windows-reader-cbz-first-page.md)保留为阶段记录。
 
@@ -140,4 +140,8 @@ Sol medium 负责 production 调用归因、真实失败测试、一个最小候
 
 ## D11　源码调查驱动的首开优化
 
-- [ ] 按[11月9日子计划](2026-11-09-windows-reader-source-driven-optimization.md)完成偏好校准、稳定轻量首屏、no-op直接呈现、fullscreen按需初始化和联合候选裁决，再依据新数据评估后续方向。各任务的定向测试与采用范围以子计划为准，整体体验预算单列。
+- [x] 按[11月9日子计划](2026-11-09-windows-reader-source-driven-optimization.md)完成偏好校准、稳定轻量首屏、no-op直接呈现、fullscreen按需初始化和联合候选裁决，并评估 P4/P5 暂缓。仅隔离后端和有限样本采用，整体体验预算未通过；V1 审查发现的早期控制事件问题在 R2 修复。
+
+## D12　早期输入修复与单页需求实验
+
+- [ ] 按 [R2 子计划](2026-11-09-windows-reader-startup-r2.md)修复早期控制队列，在稳定轻量单页的新条件下验证一次内容需求前移候选，完成定向回归、独立审查与副屏正反对照；无可辨收益则撤回性能差异，保留修复及研究结论。

@@ -56,7 +56,7 @@ Desktop `ReaderScreenModel.ensureDualSession` 在同作品、同generation、同
 
 目标实际 draw 只解锁完整 model 创建。创建时即在当前 Screen composition 接上 `acceptSessionState` 桥；配对恢复/初始投影未准备好时，轻量视口仍唯一持有当前正确图片。视觉交接另外核对章、代次、目标页、attempt、encoded ref、内容状态和配对准备，并通过同一 movable-content registry 移交同 holder/lease。父级重组不重置 runtime 捕获的资格；活动 pinch/pan 或拖动在 release/cancel 前保留原 owner。此桥仍属于现有 Screen composition，不恢复 D7 的 IO 订阅迁移，也不拆开 raw session 与派生呈现发布。
 
-早期控件、键盘、滚轮及相对翻页可提前创建 model。页表未到时先保留输入，Loaded 后交给既有 handler 一次性消费，避免把空页表误判为跨章边界；缩放和控件意图在完整视口挂载时移交。无 model 退出仍由 entry 释放 runtime，有 model 后由 model 释放，不双重关闭。
+早期控件、键盘、滚轮及相对翻页可提前创建 model。轻量入口捕获的队列沿既有 handler 按事件一次消费；原 handler 的非导航分支立即执行，只有依赖页表的导航延至 Loaded。全屏、显隐控件或缩放不因页表失败而丢失，已消费事件不再次执行；队列绑定原章与代次，退出或换代丢弃旧意图。无 model 退出仍由 entry 释放 runtime，有 model 后由 model 释放，不双重关闭。
 
 静态整页无 split/source bounds/裁边时，Ready 组合直接 retain 原位图；组合 lease 同时在 forgotten 和 abandoned 释放。捕获的 draw/currentPixels 回调检查 composition lease 及实际资产身份，不能借同 identity 的新资产确认旧图。裁边、拆页和动画继续走异步 transform 与原 prepare/draw 协议。
 

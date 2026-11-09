@@ -151,7 +151,7 @@ Desktop 的 `ReaderPanBounds` 是阅读器视口交互策略：放大后，拖�
 
 真实目标 draw 解锁完整模型创建，不直接表示完整视口可接手。模型创建后立即连接 session 的 `acceptSessionState` 桥，沿原有原子状态与派生呈现协议发布；配对恢复等待时轻量视口继续持有正确像素。视觉交接须核对同章、同代次、目标位置、页 attempt 与 encoded ref、完整内容状态及配对准备。runtime 捕获的首屏资格不会因 `entry.hasModel` 改变后的父级重组失效。活动手势保留原组合 owner，直到 release/cancel；交接复用同一 movable-content registry 中唯一挂载的 holder 和 lease。
 
-用户提前请求完整控件、按键、滚轮或翻页会解锁模型。键鼠事件和相对翻页意图交给既有 handler 一次性消费；页表仍未到时保留这些意图，Loaded 后以真实恢复位置解析，不能把空页表当作章节边界。缩放与控件意图在完整视口挂载时移交。退出在无模型时由轻 entry 关闭 runtime，有模型后沿原模型释放，均只释放一次。`ReaderFirstCompositionIntegrationTest` 使用真实 session、encoded store 原子写/读、Skia 与 Screen，并覆盖晚到页表、恢复/失败、逐帧像素、父重组、早期输入和跨首绘 pinch/pan；内部绘出与物理屏幕呈现仍分别验收。
+用户提前请求完整控件、按键、滚轮或翻页会解锁模型。轻量入口已捕获的输入交给既有 handler 按事件一次消费：F11、显隐控件及缩放不依赖页表，完整视口挂载后立即执行，页表失败也不吞掉；原 handler 判断需要页表的导航才延后至 Loaded，以真实恢复位置解析。队列绑定原章与代次，退出或身份改变不重放到新章节。缩放与控件意图沿原链移交。退出在无模型时由轻 entry 关闭 runtime，有模型后沿原模型释放，均只释放一次。`ReaderFirstCompositionIntegrationTest` 使用真实 session、encoded store 原子写/读、Skia 与 Screen，并覆盖晚到页表、恢复/失败、逐帧像素、父重组、早期输入和跨首绘 pinch/pan；内部绘出与物理屏幕呈现仍分别验收。
 
 静态整页在无 split/source bounds/裁边时，由 `rememberReaderPresentationRenderedImage` 在 Ready 组合直接保留原资产。`ReaderCompositionBitmapLease` 同时处理 forgotten 和 abandoned；捕获的 draw/currentPixels 回调须检查 composition lease 尚有效及实际 Ready asset 身份。裁边、拆页和动画仍使用异步 transform，保留原 prepare/draw/进度契约及内存预算。`ReaderPresentationTransformOwnerTest` 覆盖第一组合可绘、abandon/忘记及同身份替换，动画和单双页接线沿对应 production 呈现测试验证。
 
