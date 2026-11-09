@@ -49,3 +49,11 @@ focused8 原始 XML 已固定到 `.gradle-coordinator/source-p0123-focused8-xml/
 ## 协调者独立审查
 
 主协调者未参与production实现，已检查初始资格与持续订阅、模型解锁和视觉交接、早期输入与恢复、同holder/lease身份、组合放弃、实际资产替换及fullscreen factory/null/失败生命周期。审查发现的父重组提前退场、已释放direct lease旧回调仍有效及显式null注入口兼容风险均在本批修正，并由对应真实Screen/资产/controller回归覆盖。真实encoded store接线与不同页像素断言补齐后，复核focused8 XML为135项/1失败/零跳过，focused9为18项/零失败，production未再变化；本批所选范围的有效组合已通过。修改行ktlint0违规、P0新文件单独格式通过、diff空白检查通过。P0–P3可以固定为候选源码；性能采用仍须V1。
+
+## V1 准备与用户中止
+
+P0–P3候选提交为 `06287cf3c3c69b8a06a03135fa7519f6bbf3b523`。B源码为 `f85790f2f2fbf1b4b9bbb780368c9bc00b3c355a`，预览清单位于 `D:/Codex/worktrees/mihon-reader-source-baseline-20261109/app-desktop/artifacts/preview/windows/20261109T063013Z-2525c6b2/preview-manifest.json`；C最终清单位于本worktree的 `app-desktop/artifacts/preview/windows/20261109T065356Z-5e0abafe/preview-manifest.json`，source干净、production runtime验证通过。B/C均因既有命令行长度限制跳过可选CDS；不影响运行，也不宣称性能结论。此前中间候选预览 `20261109T065242Z-29bba423` 未用于测量；最终提交保留2107字节归档fixture及精确SHA，增加单文件Git属性避免换行转换。
+
+规范CBZ与profile已恢复到 `.test-tmp/source-driven-v1/`，使用共同隔离文件Preferences后端。只读AWT拓扑为副屏 bounds=(3840,1296,1920,1080)、scale=1、96DPI；预置逻辑窗口=(3888,1344,1024,768)。Computer Use健康且已看到本次精确候选窗口，经书架正常进入作品详情。首个内部样本Ci1尚未点击目标章行时，用户物理Escape停止Computer Use；没有首图内部样本、B/C外部计时、模式往返或全屏恢复证据。已停止输入，关停本次采集与精确候选进程。该次为用户中止，不是产品性能失败；不勾选V1，不宣称采用或达到预算。
+
+R1依赖新基线，当前仍待V1；P4/P5不启动，也不将本次中止替代为证据不足的永久结论。实现只提交在隔离分支，尚未整合/推送main。后续从固定候选及已准备数据续验，须重新核对显示拓扑和全新实例，不沿用旧窗口/PID。
