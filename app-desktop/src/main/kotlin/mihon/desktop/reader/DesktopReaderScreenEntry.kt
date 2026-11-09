@@ -18,7 +18,6 @@ internal class DesktopReaderScreenEntry(
     fun model(): ReaderScreenModel {
         check(!closed) { "Reader entry is closed" }
         return activeModel ?: try {
-            runtime.session.withdrawInitialEncodedDemand()
             createModel().also { activeModel = it }
         } catch (error: Throwable) {
             closed = true

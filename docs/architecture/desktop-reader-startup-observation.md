@@ -22,7 +22,9 @@ session 分配进程内递增 `openingToken`，结合章、generation、目标�
 
 默认关闭的观测增加 `ENCODED_FIND_BEGIN/RETURN`、`ENCODED_FETCH_BEGIN`、`ENCODED_STORE_CALL` 和 `ENCODED_WRITER_BEGIN`。FIND_RETURN 的 detail 为1表示命中、0表示未命中、−1表示异常退出；异常及取消仍原样传播。STORE_CALL 位于归档 cacheRef 已解析之后、原 store 调用之前；WRITER_BEGIN 是原写门、staging 建立后实际调用 writer 的入口。因此 prepare退出→find、find本身、Downloading发布/fetch前置、cacheRef、写门/staging与实际copy可以分别界定，不把copy前所有wall都归为归档解压。
 
-Desktop runner 只在观测开启时为实际 fetch port 绑定 `openingToken` 和原 scheduler 的 `runnerRequestId`；共享 fetch request 和调度协议不变，不使用跨协程 ThreadLocal。prepare/work-taken 与上述 port 事件同时携带章、页、generation、attempt，store和writer另带实际encoded ref。`ENCODED_ARCHIVE_ROUTE` 在同一次请求中引用已打开lease保存的backend和原归档URI；读取的只是既有绑定元数据，不新增下载查找、开流或预读。关闭时不生成上下文、关联字符串或路径摘要、不读观测时钟。旧copy等缺少完整请求身份的事件仍仅按时间窗关联。章节/session代与scheduler窗口代是两个既有身份：E1_ACCEPTED的generation保留章节代，runnerGeneration取真实计划代；WORK_TAKEN、prepare与port事件的generation沿用request窗口代。真实UI marker使用章节代。跨层join须通过这两个代、openingToken、page/attempt和runnerRequestId，不能因数值常常接近而断言两代相等。
+Desktop runner 只在观测开启时为实际 fetch port 绑定 `openingToken` 和原 scheduler 的 `runnerRequestId`；共享 fetch request 和调度协议不变，不使用跨协程 ThreadLocal。prepare/work-taken 与上述 port 事件同时携带章、页、generation、attempt，store和writer另带实际encoded ref。`ENCODED_ARCHIVE_ROUTE` 在同一次请求中引用已打开lease保存的backend和原归档URI；读取的只是既有绑定元数据，不新增下载查找、开流或预读。关闭时不生成上下文、关联字符串或路径摘要、不读观测时钟。旧copy等缺少完整请求身份的事件仍仅按时间窗关联。章节/session代与scheduler窗口代是两个既有身份：WORK_TAKEN、prepare与port事件的generation沿用request窗口代；真实UI marker使用章节代，不能因数值常常接近而断言两代相等。历史E1_ACCEPTED以generation和runnerGeneration桥接两代，再结合openingToken、page/attempt和runnerRequestId关联。
+
+E1入口初始需求已因正反顺序首次外测未同时分辨净收益而撤回；现行entry不安装授权、不在页表Loaded时提前提交内容需求，恢复解析回到原UI链路。正常视口仍沿原scheduler准备内容。保留默认关闭的调用归因、真实UI需求边界和历史事件字段；ENTRY_ELIGIBILITY_BEGIN/END在对照入口连续记录，不再执行候选资格读取。
 
 这些诊断只用于区间归因和候选是否真实重叠的判断，不授权绕过缓存、改变原子提交或追加性能候选；单个wall区间不能证明某函数的CPU耗时。具体样本和裁决见 [R4记录](../evidence/windows-reader-startup-r4-2026-11-10.md)。
 

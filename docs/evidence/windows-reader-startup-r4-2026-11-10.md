@@ -1,6 +1,6 @@
 # Windows 首开 R4：机制、调用归因与外测裁决
 
-日期：2026-11-10。状态：四份ON与十二份OFF及正确性核验完成，不采用E1；R4.5待精确撤回和局部补验。
+日期：2026-11-10。状态：R4全部完成；机制与调用归因已确认，十二份正式外测未达到采用门槛，E1已精确撤回；撤回后32项focused与格式通过。整体体验预算仍未通过。
 
 ## 固定输入与区间复算
 
@@ -201,7 +201,7 @@ entry同步前段是ENTRY_ELIGIBILITY_BEGIN至RUNTIME_CREATE_END，包含新增�
 
 12份原帧端点均已逐份目视确认，received=written且missing=0，F后覆盖至少1秒且无再黑。主动停止后的采集清单为PARTIAL/native-capture-exit:1，保留原始警告；区间含实采gap，不插值。两组正向首次F与K差均跨0，反向首次F可分辨改善；暖态部分改善不能替代首次正反顺序门槛。未清OS文件缓存，不作P95、物理扫描、官方对比或整体预算达标声明。
 
-## 裁决、正确性与交付状态
+## 裁决、正确性与交付状态（撤回前记录）
 
 不采用E1：机制成立且本次正确性检查通过，但首次打开改善未同时在正反顺序分辨。候选源码目前仍在实验分支，尚未撤回；R4.5与父D14保持未完成。按原生验收收尾规则，下一轮只精确撤回E1并补受影响focused，不再重跑本轮性能矩阵。
 
@@ -212,3 +212,21 @@ C43单页[4]→[5]→[4]，前后图像与mountedReader一致，F11进出均保�
 只提交本任务源码、真实测试及内部文档，不推送、不发布、不更新公共能力说明。原始profile、帧与大型过程材料留在本机.test-tmp/r4；固定快照仅为实验来源，不冒充主干交付。
 
 最终只读进度核对：六份正式样本与C4off均持久化last_page_read=4；C4on为5（相同[4,5]配对组的既有锚点）。八份process均有closedAt，QPC PID25832已退出，见本机cleanup-final.json。全屏检查含已有桌面叠层，仅对目标地图、阅读位置及副屏边界作正确性判定，不计入性能矩阵。
+
+## R4.5 最终撤回与验证
+
+本节取代前述各批次的“待撤回/待续”即时状态；历史中断和原件不删除。E1机制成立，但首次F或K未同时在正反顺序分辨改善，因此不采用，整体体验预算仍未通过。
+
+从干净HEAD `5f5e8a8acfc9b95ec8ebd60dfc78eacd3953b2f3` 精确撤回12个仅候选路径：entry资格读取/授权安装、session初始需求与取消接用分支、归档资格字段、纯恢复helper及其UI调用改写、候选专用测试与fixture。恢复既有恢复解析和正常视口调度；不回滚R2输入修复、R3缓存缺失反馈修复或默认关闭诊断。最终 `app-desktop/src/main` 与冻结B0 `773bd746c9d99ca67e1cc20a3a42daa6aacb29d5` 经Git内容比较无差异，唯一额外测试为本次真实撤回回归。路径较多源于同一候选贯穿factory/session/UI与接线测试，未扩大到共享core/scheduler或其他功能。
+
+撤回先写真实production回归 `DesktopReaderRuntimeFactoryTest.screen entry waits for viewport before preparing restored CBZ`：同一真实CBZ/文件store的正常entry在未挂载视口时不得准备恢复页；提交真实视口后通过原scheduler准备同一ref，copy一次且没有提前OPEN/DECODE/FIRST。`r4-withdraw-red` 退出1，唯一断言失败为Entry creation must not submit speculative encoded demand，实际已Ready；非编译或工具错误。RED XML留在 `.test-tmp/r4/withdraw-red`。
+
+最终 `r4-withdraw-green` 经协调器离线执行下列focused，退出0，32项全部通过：factory四项、session两项、ReaderFirstCompositionIntegrationTest 23项、ReaderStartupObservationTest三项。覆盖恢复页需求、原factory/core/model接线、store读取及单次开流解码、零页→视口/进度、切章/重试、真实轻量首屏与模型交接、早期键盘/控件、错误与退出。完整选择与日志为 `.gradle-coordinator/r4-withdraw-green.json/.log`，XML留在 `.test-tmp/r4/withdraw-green`。
+
+```text
+gradlew.bat :app-desktop:jvmTest --tests *DesktopReaderRuntimeFactoryTest.screen entry waits for viewport* --tests *DesktopReaderRuntimeFactoryTest.production factory creates one shared core* --tests *DesktopReaderRuntimeFactoryTest.production runtime image pipeline reads its own* --tests *DesktopReaderRuntimeFactoryTest.production visible consumers share one* --tests *DesktopReaderSessionIntegrationTest.one session opens at zero* --tests *DesktopReaderSessionIntegrationTest.adjacent activation reuses core* --tests *ReaderFirstCompositionIntegrationTest --tests *ReaderStartupObservationTest --offline --console=plain
+```
+
+14个现存相关Kotlin文件的ktlint检查退出0；仅复用原HEAD已登记问题并按未变行精确映射，不为新增代码豁免。映射及日志为 `.test-tmp/r4/withdraw-format-baseline.xml`、`withdraw-ktlint.args`、`withdraw-format.log`。`git diff --check`通过。本次未运行模块/仓库全量，未重新构建或重复原生性能矩阵：最终production与已冻结实测B0一致，32项补验针对撤回影响，旧C4原生结果仅保留作候选裁决，不冒充最终候选验收。
+
+前轮已精确关停应用、WGC与自建QPC，进度持久化见cleanup-final.json；本轮未启动应用。R4.0–5和父D14完成，active-child-plan清空；保留数据、可确认调用区间与反例，不追加第二候选、采样、缓存改造或公共能力说明。最终源码以包含本节的撤回提交为准，提交hash在交付回复报告；本次仅本地提交，不推送、不发布。

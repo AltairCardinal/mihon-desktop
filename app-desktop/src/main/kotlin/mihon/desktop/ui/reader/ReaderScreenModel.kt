@@ -3277,11 +3277,14 @@ private data class SettledViewportIdentity(
     val activePageId: ReaderPageId,
 )
 
-internal fun resolveInitialPage(requestedPage: Int, pageCount: Int): Int =
-    mihon.desktop.reader.ReaderInitialPageResolution.resolve(requestedPage, pageCount)
+internal fun resolveInitialPage(requestedPage: Int, pageCount: Int): Int = when {
+    pageCount <= 0 -> 0
+    requestedPage == ReaderInitialPage.LAST -> pageCount - 1
+    else -> requestedPage.takeIf { it in 0 until pageCount } ?: 0
+}
 
 internal fun invalidSavedPage(requestedPage: Int, pageCount: Int): Boolean =
-    mihon.desktop.reader.ReaderInitialPageResolution.invalidSavedPage(requestedPage, pageCount)
+    pageCount > 0 && requestedPage != ReaderInitialPage.LAST && requestedPage !in 0 until pageCount
 
 internal fun initialReaderMode(
     prefs: ReaderPreferences,

@@ -163,11 +163,6 @@ class DesktopReaderSession(
     private var activeProgressPort: DesktopReaderProgressPort? = null
     private var context = initialContext
     private var activationSequence = 0L
-    private var initialEncodedDemand: DesktopReaderInitialEncodedDemand? = null
-    private var initialDemandInstalled = false
-    private var initialDemandGeneration: Long? = null
-    private var initialContentRouteEligible = false
-    private var viewportDemandArrived = false
     private var adjacentSequence = 0L
     private var contentLeaseGeneration = 0L
     private var activeContentLeaseGeneration = 0L
@@ -229,142 +224,6 @@ class DesktopReaderSession(
     internal val foregroundRequestsIdle: Boolean
         get() = synchronized(lock) { schedulerIdleLocked() } && physicalWorkCount.value == 0
 
-    private data class InitialEncodedTarget(
-        val authorization: DesktopReaderInitialEncodedDemand,
-        val generation: Long,
-        val pageId: ReaderPageId?,
-    )
-
-    /** Install before start, or atomically catch an already loaded first activation. */
-    internal fun installInitialEncodedDemand(authorization: DesktopReaderInitialEncodedDemand) {
-        val loaded = synchronized(lock) {
-            if (closed || initialDemandInstalled || activationSequence > 1L || viewportDemandArrived ||
-                authorization.chapterId != initialContext.chapterId ||
-                authorization.requestedPage != initialContext.initialPage
-            ) {
-                return
-            }
-            initialDemandInstalled = true
-            initialEncodedDemand = authorization
-            if (activationSequence == 1L) {
-                initialDemandGeneration = core.snapshot.generation
-                traceInitialDemand("E1_ARMED")
-            }
-            core.snapshot.takeIf { it.activeChapter.loadState is ReaderChapterLoadState.Loaded }
-        } ?: return
-        val target = prepareInitialEncodedTarget(
-            loaded.activeChapter.pages.size,
-            loaded.generation,
-        ) { loaded.activeChapter.pages[it].id.sourcePageIndex }
-        synchronized(lock) { acceptInitialEncodedTargetLocked(target) }
-        pumpPageRequests()
-    }
-
-    internal fun withdrawInitialEncodedDemand() = synchronized(lock) {
-        if (initialEncodedDemand != null) traceInitialDemand("E1_REVOKED")
-        initialEncodedDemand = null
-    }
-
-    private fun traceInitialDemand(stage: String) {
-        if (!ReaderStartupTrace.enabled) return
-        ReaderStartupTrace.mark(
-            stage,
-            generation = initialDemandGeneration,
-            openingToken = startupObservationToken,
-            chapterId = context.chapterId,
-        )
-    }
-
-    private fun prepareInitialEncodedTarget(
-        pageCount: Int,
-        generation: Long,
-        sourcePageIndex: (Int) -> Int,
-    ): InitialEncodedTarget? {
-        val authorization = synchronized(lock) { initialEncodedDemand } ?: return null
-        ReaderStartupTrace.mark(
-            "E1_ELIGIBILITY_RECHECK_BEGIN",
-            generation = generation,
-            openingToken = startupObservationToken,
-            chapterId = authorization.chapterId,
-        )
-        val eligible = try {
-            authorization.stillEligible()
-        } catch (error: CancellationException) {
-            throw error
-        } catch (_: Exception) {
-            false
-        } finally {
-            ReaderStartupTrace.mark(
-                "E1_ELIGIBILITY_RECHECK_END",
-                generation = generation,
-                openingToken = startupObservationToken,
-                chapterId = authorization.chapterId,
-            )
-        }
-        val target = ReaderInitialPageResolution.resolve(authorization.requestedPage, pageCount)
-        val pageId = if (eligible &&
-            !ReaderInitialPageResolution.invalidSavedPage(authorization.requestedPage, pageCount)
-        ) {
-            if (target in 0 until pageCount) {
-                ReaderPageId(ReaderChapterId(authorization.chapterId), sourcePageIndex(target))
-            } else {
-                null
-            }
-        } else {
-            null
-        }
-        return InitialEncodedTarget(authorization, generation, pageId)
-    }
-
-    private fun acceptInitialEncodedTargetLocked(target: InitialEncodedTarget?) {
-        target ?: return
-        if (initialEncodedDemand !== target.authorization) return
-        if (closed || activationSequence != 1L || viewportDemandArrived ||
-            core.snapshot.generation != target.generation || initialDemandGeneration != target.generation
-        ) {
-            return
-        }
-        initialEncodedDemand = null
-        val page = core.snapshot.activeChapter.pages.firstOrNull { it.id == target.pageId }
-        if (!initialContentRouteEligible || page == null || page.attemptGeneration != 0L ||
-            core.snapshot.activeChapter.loadState !is ReaderChapterLoadState.Loaded
-        ) {
-            traceInitialDemand("E1_REJECTED")
-            return
-        }
-        if (page.loadState is ReaderPageLoadState.Ready) {
-            ReaderStartupTrace.mark(
-                "E1_REUSED_READY",
-                page.id,
-                target.generation,
-                attemptGeneration = page.attemptGeneration,
-                openingToken = startupObservationToken,
-            )
-            return
-        }
-        val update = core.settleViewport(
-            visiblePageIds = setOf(page.id),
-            anchorPageId = page.id,
-            wasRead = context.wasRead,
-            recordProgress = false,
-        )
-        if (ReaderStartupTrace.enabled) {
-            val request = core.schedulerSnapshot().let { scheduler ->
-                (scheduler.activeRequests + scheduler.pendingRequests).firstOrNull { it.pageId == page.id }
-            }
-            ReaderStartupTrace.mark(
-                if (request == null) "E1_REUSED_READY" else "E1_ACCEPTED",
-                page.id,
-                target.generation,
-                attemptGeneration = page.attemptGeneration,
-                openingToken = startupObservationToken,
-                runnerRequestId = request?.jobKey?.requestId,
-                runnerGeneration = request?.generation,
-            )
-        }
-        applySchedulePlanLocked(update.schedulePlan)
-    }
-
     fun start() {
         synchronized(lock) {
             if (started || closed) return
@@ -411,21 +270,12 @@ class DesktopReaderSession(
             )
             activeContentLeaseGeneration = materializationLeaseGeneration
             activationSequence++
-            initialContentRouteEligible = false
-            if (activationSequence != 1L && initialEncodedDemand != null) {
-                traceInitialDemand("E1_REVOKED")
-                initialEncodedDemand = null
-            }
             activeProgressPort = null
             sequence = activationSequence
             lastSettledAnchorPageIndex = null
             firstPagePresentedGeneration = null
             chapterJob?.cancel()
             val update = core.openChapter(ReaderChapterId(target.chapterId))
-            if (activationSequence == 1L && initialEncodedDemand != null) {
-                initialDemandGeneration = update.snapshot.generation
-                traceInitialDemand("E1_ARMED")
-            }
             ioReporter.report(
                 ReaderIoEventType.OPEN_READER_INTENT,
                 update.snapshot.activeChapter.id,
@@ -485,13 +335,6 @@ class DesktopReaderSession(
                     materializeExecutor.materializeChapter(request, requireNotNull(contentPort))
                 }
             val chapterDownloaded = (contentPort as? DesktopReaderChapterDownloadState)?.chapterDownloaded
-            val initialTarget = (result as? ReaderChapterMaterializeResult.Loaded)?.let {
-                prepareInitialEncodedTarget(it.pages.size, request.generation) { ordinal ->
-                    it.pages[ordinal].sourcePageIndex
-                }
-            }
-            val routeEligible =
-                (contentPort as? DesktopReaderChapterDownloadState)?.initialEncodedDemandEligible == true
             val adjacentPageListJob = synchronized(lock) {
                 if (closed || activationSequence != sequence) return@launch
                 val update = core.acceptChapterMaterialization(request.chapterId, request.generation, result)
@@ -501,8 +344,6 @@ class DesktopReaderSession(
                         update.snapshot.generation == request.generation &&
                         update.snapshot.activeChapter.loadState is ReaderChapterLoadState.Loaded
                 if (acceptedLoadedPageList) {
-                    initialContentRouteEligible = routeEligible
-                    acceptInitialEncodedTargetLocked(initialTarget)
                     chapterDownloaded?.let { downloaded ->
                         context = context.copy(isDownloaded = downloaded)
                     }
@@ -512,10 +353,6 @@ class DesktopReaderSession(
                         generation = request.generation,
                         purpose = ReaderIoPurpose.PAGE_LIST,
                     )
-                }
-                if (result is ReaderChapterMaterializeResult.Failed) {
-                    if (initialEncodedDemand != null) traceInitialDemand("E1_REVOKED")
-                    initialEncodedDemand = null
                 }
                 val target = update.snapshot.activeChapter.pages.getOrNull(materializationContext.initialPage)
                 ReaderStartupTrace.mark("PAGE_LIST_PUBLISH_BEGIN", target?.id, request.generation)
@@ -617,9 +454,6 @@ class DesktopReaderSession(
         ReaderStartupTrace.mark("VIEWPORT_SCHEDULE_WAIT", anchorPageId)
         synchronized(lock) {
             if (closed) return
-            viewportDemandArrived = true
-            if (initialEncodedDemand != null) traceInitialDemand("E1_REVOKED")
-            initialEncodedDemand = null
             scheduledGeneration = core.snapshot.generation
             if (ReaderStartupTrace.enabled) {
                 ReaderStartupTrace.mark(
@@ -795,8 +629,6 @@ class DesktopReaderSession(
         val leaseOwnersToRelease: Set<DesktopReaderChapterLeaseOwner>
         synchronized(lock) {
             if (closed) return
-            if (initialEncodedDemand != null) traceInitialDemand("E1_REVOKED")
-            initialEncodedDemand = null
             closed = true
             lifecycleClosed.value = true
             leaseOwnersToRelease = buildSet {

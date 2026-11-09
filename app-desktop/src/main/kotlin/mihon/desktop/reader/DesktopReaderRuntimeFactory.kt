@@ -1,7 +1,6 @@
 package mihon.desktop.reader
 
 import eu.kanade.tachiyomi.network.NetworkHelper
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -183,13 +182,6 @@ class DesktopReaderRuntimeFactory internal constructor(
         initialContext: DesktopReaderChapterContext,
         parentScope: CoroutineScope,
         progressTrackerOverride: ReaderProgressTracker? = null,
-    ): DesktopReaderRuntime = createRuntime(initialContext, parentScope, progressTrackerOverride, null)
-
-    private fun createRuntime(
-        initialContext: DesktopReaderChapterContext,
-        parentScope: CoroutineScope,
-        progressTrackerOverride: ReaderProgressTracker?,
-        initialEncodedDemand: DesktopReaderInitialEncodedDemand?,
     ): DesktopReaderRuntime {
         ReaderStartupTrace.markChapter("RUNTIME_CREATE_BEGIN", initialContext.chapterId)
         val normalizedInitialContext = normalizeDownloadIdentity(initialContext)
@@ -301,7 +293,6 @@ class DesktopReaderRuntimeFactory internal constructor(
                     session.invokeOnProgressDrained {
                         synchronized(lifecycleLock) { activeRuntimes -= runtime }
                     }
-                    initialEncodedDemand?.let(session::installInitialEncodedDemand)
                     session.start()
                     ReaderStartupTrace.markChapter("RUNTIME_CREATE_END", initialContext.chapterId)
                     true
@@ -366,7 +357,6 @@ class DesktopReaderRuntimeFactory internal constructor(
     ): ReaderScreenModel = createScreenEntry(
         initialContext, isWebtoon, mangaViewerFlags, dualPageOverride,
         progressTrackerOverride, onProductionClosed, chapters, opening, downloadedOnly,
-        initialEncodedDemandEnabled = false,
     ).model()
 
     internal fun createScreenEntry(
@@ -379,31 +369,12 @@ class DesktopReaderRuntimeFactory internal constructor(
         chapters: List<ReaderChapterRef> = emptyList(),
         opening: tachiyomi.domain.reader.model.ReaderOpenContext? = null,
         downloadedOnly: Boolean = false,
-        initialEncodedDemandEnabled: Boolean = true,
     ): DesktopReaderScreenEntry {
         ReaderStartupTrace.markChapter("ENTRY_ELIGIBILITY_BEGIN", initialContext.chapterId)
-        fun eligible(): Boolean =
-            initialContext.isDownloaded &&
-                mihon.desktop.ui.reader.initialReaderMode(prefs, isWebtoon, mangaViewerFlags, dualPageOverride) in
-                setOf(ReadingMode.RTL, ReadingMode.LTR) &&
-                !(dualPageFromViewerFlags(mangaViewerFlags) ?: dualPageOverride ?: prefs.isDualPage) &&
-                !prefs.autoSplitPages
-        val admitted = initialEncodedDemandEnabled && try {
-            eligible()
-        } catch (error: CancellationException) {
-            throw error
-        } catch (_: Exception) {
-            false
-        }
-        val initialEncodedDemand = if (admitted) {
-            DesktopReaderInitialEncodedDemand(initialContext.chapterId, initialContext.initialPage, ::eligible)
-        } else {
-            null
-        }
         ReaderStartupTrace.markChapter("ENTRY_ELIGIBILITY_END", initialContext.chapterId)
         val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val runtime = try {
-            createRuntime(initialContext, runtimeScope, progressTrackerOverride, initialEncodedDemand)
+            createRuntime(initialContext, runtimeScope, progressTrackerOverride)
         } catch (error: Throwable) {
             runtimeScope.cancel()
             throw error

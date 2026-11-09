@@ -363,15 +363,6 @@ class ReaderFirstCompositionIntegrationTest {
         val observation = ReaderStartupObservation()
         val previous = Injekt
         val scene = ImageComposeScene(640, 480, coroutineContext = currentCoroutineContext()) {}
-        var initialDemandChecks = 0
-        if (pendingControl != null) {
-            session.installInitialEncodedDemand(
-                mihon.desktop.reader.DesktopReaderInitialEncodedDemand(41, restorePage) {
-                    initialDemandChecks++
-                    true
-                },
-            )
-        }
         try {
             session.start()
             if (loadedInitially) {
@@ -480,7 +471,6 @@ class ReaderFirstCompositionIntegrationTest {
                     runCurrent()
                     Thread.sleep(2)
                 }
-                assertEquals(0, initialDemandChecks, "Claiming the full model must withdraw the pending initial demand")
                 if (pendingControl != Key.Equals || pageTableFailure) assertControl()
                 if (pageTableFailure) {
                     assertTrue(
@@ -685,7 +675,7 @@ class ReaderFirstCompositionIntegrationTest {
         val model = mockk<ReaderScreenModel>(relaxed = true)
         var creations = 0
         var unclaimedCloses = 0
-        val entry = DesktopReaderScreenEntry(mockk(relaxed = true), { unclaimedCloses++ }) {
+        val entry = DesktopReaderScreenEntry(mockk(), { unclaimedCloses++ }) {
             creations++
             model
         }

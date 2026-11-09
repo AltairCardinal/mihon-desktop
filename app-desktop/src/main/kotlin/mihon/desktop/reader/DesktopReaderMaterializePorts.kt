@@ -64,11 +64,7 @@ class DesktopReaderChapterContentPort(
     override var chapterDownloaded: Boolean? = null
         private set
 
-    override var initialEncodedDemandEligible: Boolean = false
-        private set
-
     override suspend fun loadChapterContent(request: ReaderChapterContentRequest): List<ReaderPageDescriptor> {
-        initialEncodedDemandEligible = false
         require(request.chapterId.value == context.chapterId) { "Chapter context does not match the request" }
         val downloadIdentity = context.downloadIdentity(sourceManager, disallowNonAsciiFilenames)
         val downloaded = downloadIdentity
@@ -102,12 +98,6 @@ class DesktopReaderChapterContentPort(
                 AppError.MalformedData(IllegalStateException("Unsupported reader source (id=${context.sourceId})")),
             )
         }.also { pages ->
-            initialEncodedDemandEligible =
-                (
-                    (route == ReaderChapterRoute.DOWNLOAD && downloaded?.candidate?.kind == DownloadArtifactKind.CBZ) ||
-                        (route == ReaderChapterRoute.LOCAL_ARCHIVE && localPath?.extension.equals("cbz", true))
-                    ) &&
-                pages.firstOrNull()?.let(contentAdapter::owns) == true
             if (ReaderStartupTrace.enabled) {
                 ReaderStartupTrace.mark(
                     "CHAPTER_CONTENT_ROUTE",
