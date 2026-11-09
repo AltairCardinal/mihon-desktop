@@ -1,6 +1,6 @@
 # Windows 已下载章节首次打开优化执行计划
 
-日期2026-11-05，2026-11-10规划更新。active-child-plan：[R4：入口需求前移与准备前段归因](2026-11-10-windows-reader-startup-r4.md)，仅设计完成、尚未实施。[R3](2026-11-10-windows-reader-startup-r3.md)已收口，机制实际触发但冷态正反对照未达到采用门槛，性能候选已撤回；保留诊断及缓存缺失反馈修复，见[唯一报告](../evidence/windows-reader-startup-r3-2026-11-10.md)。P0–P3与V1/R1有限采用、R2输入修复保持；整体体验预算未通过。
+日期2026-11-05，2026-11-10规划更新。active-child-plan：[R4：入口需求前移与准备前段归因](2026-11-10-windows-reader-startup-r4.md)，实现、34项focused与两包冻结完成；副屏被用户Escape中断，尚无新采样或采用裁决。[R3](2026-11-10-windows-reader-startup-r3.md)已收口，机制实际触发但冷态正反对照未达到采用门槛，性能候选已撤回；保留诊断及缓存缺失反馈修复，见[唯一报告](../evidence/windows-reader-startup-r3-2026-11-10.md)。P0–P3与V1/R1有限采用、R2输入修复保持；整体体验预算未通过。
 
 D0–D10与11月8日后续实现已完成[主干整合及研究收口](../evidence/desktop-reader-startup-closeout-2026-11-08.md)。已采用miniz与条件性提前挂载；整体体验预算仍未通过。11月9日调查补充了隔离偏好读取开销、Ready交接串联、no-op变换异步往返及fullscreen初始化边界，新子计划据此安排P0–P3和一次联合候选验收。历史[归因](../evidence/desktop-reader-d9-first-open-causes-2026-11-07.md)、[原型](../evidence/desktop-reader-cbz-slot-feasibility-2026-11-07.md)及[D10](2026-11-07-windows-reader-cbz-first-page.md)保留为阶段记录。
 
@@ -152,4 +152,4 @@ Sol medium 负责 production 调用归因、真实失败测试、一个最小候
 
 ## D14　入口普通内容需求前移与准备前段归因
 
-- [ ] 按[R4 子计划](2026-11-10-windows-reader-startup-r4.md)拆分约10–12ms归档copy前段，在entry/session初次生命周期授权一次固定单页普通encoded准备，覆盖首次已Loaded/投影期间到达/晚页表；保留原scheduler、预算、原子缓存与显示/进度链。只试一个候选，真实红绿和独立审查后副屏对照裁决；不恢复R3解码collector、不顺带改缓存协议或共享配对。当前仅设计完成，不记实现/性能改善或整体达标。
+- [ ] 按[R4 子计划](2026-11-10-windows-reader-startup-r4.md)拆分约10–12ms归档copy前段，在entry/session初次生命周期授权一次固定单页普通encoded准备，覆盖首次已Loaded/投影期间到达/晚页表；保留原scheduler、预算、原子缓存与显示/进度链。只试一个候选，真实红绿和独立审查后副屏对照裁决；不恢复R3解码collector、不顺带改缓存协议或共享配对。已完成真实RED、34项focused和两包冻结；副屏被用户Escape中断，尚无新样本，R4.0归因及R4.4/5待续。E1尚未采用，不记性能改善或整体达标。

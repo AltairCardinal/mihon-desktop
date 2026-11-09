@@ -22,5 +22,7 @@ data class DesktopReaderChapterContext(
 
 /** Exposes the resolved content route to the mounted reader without leaking I/O adapters into UI. */
 internal interface DesktopReaderChapterDownloadState {
+    val initialEncodedDemandEligible: Boolean get() = false
+
     val chapterDownloaded: Boolean?
 }

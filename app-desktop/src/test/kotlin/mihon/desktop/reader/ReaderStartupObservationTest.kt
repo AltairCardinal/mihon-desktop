@@ -94,6 +94,11 @@ class ReaderStartupObservationTest {
             assertEquals(0L, snapshot.dropped)
             val stages = snapshot.events.map { it.stage }
             listOf(
+                "ENCODED_FIND_BEGIN",
+                "ENCODED_FIND_RETURN",
+                "ENCODED_FETCH_BEGIN",
+                "ENCODED_STORE_CALL",
+                "ENCODED_WRITER_BEGIN",
                 "COMPOSE_SLOT_APPLY",
                 "HOLDER_ACQUIRE_REQUEST",
                 "CONTENT_IO_BEGIN",
@@ -105,6 +110,37 @@ class ReaderStartupObservationTest {
             ).forEach {
                 assertTrue(it in stages, "Missing real production stage $it: $stages")
             }
+            val writer = snapshot.events.first { it.stage == "ENCODED_WRITER_BEGIN" }
+            assertTrue(writer.openingToken != null)
+            assertTrue(writer.runnerRequestId != null)
+            assertTrue(writer.contentIdentity != null)
+            val taken = snapshot.events.single {
+                it.stage == "RUNNER_WORK_TAKEN" && it.runnerRequestId == writer.runnerRequestId &&
+                    it.openingToken == writer.openingToken
+            }
+            assertEquals(taken.generation, writer.generation)
+            assertEquals(taken.attemptGeneration, writer.attemptGeneration)
+            assertEquals(taken.pageIndex, writer.pageIndex)
+            val route = snapshot.events.single {
+                it.stage == "ENCODED_ARCHIVE_ROUTE" && it.runnerRequestId == writer.runnerRequestId &&
+                    it.openingToken == writer.openingToken
+            }
+            assertTrue(route.contentIdentity!!.contains(tempDir.toURI().toString()))
+            assertTrue(route.contentIdentity.endsWith("Chapter%201.cbz"))
+            val boundaries = listOf(
+                "ENCODED_FIND_BEGIN",
+                "ENCODED_FIND_RETURN",
+                "ENCODED_FETCH_BEGIN",
+                "ENCODED_STORE_CALL",
+                "ENCODED_WRITER_BEGIN",
+                "ENCODED_STORE_RETURN",
+            ).map { stage ->
+                snapshot.events.single {
+                    it.stage == stage && it.runnerRequestId == writer.runnerRequestId &&
+                        it.openingToken == writer.openingToken
+                }.monotonicNanos
+            }
+            assertEquals(boundaries.sorted(), boundaries)
             assertTrue(stages.indexOf("CONTENT_IO_BEGIN") < stages.indexOf("CONTENT_IO_END"))
             assertTrue(stages.indexOf("DECODER_CALL_BEGIN") < stages.indexOf("DECODER_CALL_END"))
             assertTrue(stages.indexOf("DECODER_CALL_END") < stages.indexOf("FIRST_PAGE_PRESENTED"))

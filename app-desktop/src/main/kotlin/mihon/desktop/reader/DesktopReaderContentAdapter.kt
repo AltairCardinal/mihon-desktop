@@ -136,6 +136,11 @@ class DesktopReaderContentAdapter internal constructor(
                         lease = lease,
                         pageRefs = descriptors.map(ReaderPageDescriptor::url),
                         leaseGeneration = leaseGeneration,
+                        startupIdentity = if (ReaderStartupTrace.enabled) {
+                            "${lease.javaClass.simpleName}:${archive.absoluteFile.toURI()}"
+                        } else {
+                            null
+                        },
                     ),
                 )
             }
@@ -149,6 +154,11 @@ class DesktopReaderContentAdapter internal constructor(
     }
 
     fun owns(descriptor: ReaderPageDescriptor): Boolean = descriptor.url.startsWith(OPAQUE_PREFIX)
+
+    /** Reads metadata from the actual existing lease; never searches or opens another copy. */
+    internal fun startupArchiveIdentity(descriptor: ReaderPageDescriptor): String? = synchronized(lock) {
+        archiveLeases.values.firstOrNull { descriptor.url in it.pageRefs }?.startupIdentity
+    }
 
     suspend fun copyArchivePage(
         chapterId: Long,
@@ -304,6 +314,7 @@ private data class ArchiveLeaseBinding(
     val lease: ArchiveLease,
     val pageRefs: List<String>,
     val leaseGeneration: Long,
+    val startupIdentity: String?,
 )
 
 private interface ArchiveLease {

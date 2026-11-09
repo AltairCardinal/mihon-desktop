@@ -64,7 +64,11 @@ class DesktopReaderChapterContentPort(
     override var chapterDownloaded: Boolean? = null
         private set
 
+    override var initialEncodedDemandEligible: Boolean = false
+        private set
+
     override suspend fun loadChapterContent(request: ReaderChapterContentRequest): List<ReaderPageDescriptor> {
+        initialEncodedDemandEligible = false
         require(request.chapterId.value == context.chapterId) { "Chapter context does not match the request" }
         val downloadIdentity = context.downloadIdentity(sourceManager, disallowNonAsciiFilenames)
         val downloaded = downloadIdentity
@@ -98,6 +102,20 @@ class DesktopReaderChapterContentPort(
                 AppError.MalformedData(IllegalStateException("Unsupported reader source (id=${context.sourceId})")),
             )
         }.also { pages ->
+            initialEncodedDemandEligible =
+                (
+                    (route == ReaderChapterRoute.DOWNLOAD && downloaded?.candidate?.kind == DownloadArtifactKind.CBZ) ||
+                        (route == ReaderChapterRoute.LOCAL_ARCHIVE && localPath?.extension.equals("cbz", true))
+                    ) &&
+                pages.firstOrNull()?.let(contentAdapter::owns) == true
+            if (ReaderStartupTrace.enabled) {
+                ReaderStartupTrace.mark(
+                    "CHAPTER_CONTENT_ROUTE",
+                    generation = request.generation,
+                    chapterId = context.chapterId,
+                    contentIdentity = "$route:${pages.firstOrNull()?.let(contentAdapter::startupArchiveIdentity)}",
+                )
+            }
             if (chapterDownloaded == true) {
                 DiagnosticEvents.record(
                     DiagnosticEvent(
@@ -213,7 +231,7 @@ class DesktopReaderChapterContentPort(
     )
 }
 
-class DesktopReaderPageFetchPort(
+internal class DesktopReaderPageFetchPort(
     private val context: DesktopReaderChapterContext,
     private val descriptor: ReaderPageDescriptor,
     private val sourceManager: SourceManager,
@@ -224,7 +242,32 @@ class DesktopReaderPageFetchPort(
     private val partialPageFallbackCoordinator: DesktopReaderPartialPageFallbackCoordinator =
         DesktopReaderPartialPageFallbackCoordinator(),
     partialPageCopyPort: DesktopReaderPartialPageCopyPort = DesktopReaderPartialPageFileCopyPort(),
-) : ReaderPageFetchPort {
+) : ReaderPageFetchPort, DesktopReaderStartupContextReceiver {
+
+    private var startupContext: DesktopReaderStartupContext? = null
+
+    override fun bindStartupContext(context: DesktopReaderStartupContext) {
+        startupContext = context
+    }
+
+    private fun traceStartup(
+        stage: String,
+        request: ReaderPageFetchRequest,
+        ref: EncodedPageRef? = null,
+        detail: Int? = null,
+    ) {
+        if (!ReaderStartupTrace.enabled) return
+        ReaderStartupTrace.mark(
+            stage,
+            request.pageId,
+            request.generation,
+            detail = detail,
+            attemptGeneration = request.attemptGeneration,
+            openingToken = startupContext?.openingToken,
+            runnerRequestId = startupContext?.runnerRequestId,
+            contentIdentity = ref?.value,
+        )
+    }
 
     private val partialPageInput = DesktopReaderPartialPageInput(
         chapterId = context.chapterId,
@@ -247,6 +290,18 @@ class DesktopReaderPageFetchPort(
     }
 
     override suspend fun findEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef? {
+        traceStartup("ENCODED_FIND_BEGIN", request)
+        return try {
+            findEncodedPageInternal(request).also { ref ->
+                traceStartup("ENCODED_FIND_RETURN", request, ref, if (ref == null) 0 else 1)
+            }
+        } catch (error: Throwable) {
+            traceStartup("ENCODED_FIND_RETURN", request, detail = -1)
+            throw error
+        }
+    }
+
+    private suspend fun findEncodedPageInternal(request: ReaderPageFetchRequest): EncodedPageRef? {
         descriptor.encodedPageRef?.let { ref ->
             return ref.takeIf { encodedPageStore.contains(it) }
         }
@@ -273,6 +328,7 @@ class DesktopReaderPageFetchPort(
     }
 
     override suspend fun fetchEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef {
+        traceStartup("ENCODED_FETCH_BEGIN", request)
         if (!contentAdapter.owns(descriptor)) {
             preferredPartialCandidate()?.let { candidate ->
                 try {
@@ -286,9 +342,22 @@ class DesktopReaderPageFetchPort(
             return fetchSourcePage(request)
         }
 
+        if (ReaderStartupTrace.enabled) {
+            ReaderStartupTrace.mark(
+                "ENCODED_ARCHIVE_ROUTE",
+                request.pageId,
+                request.generation,
+                attemptGeneration = request.attemptGeneration,
+                openingToken = startupContext?.openingToken,
+                runnerRequestId = startupContext?.runnerRequestId,
+                contentIdentity = contentAdapter.startupArchiveIdentity(descriptor),
+            )
+        }
         val ref = cacheRef(request, request.imageUrl ?: descriptor.url)
         val result = try {
+            traceStartup("ENCODED_STORE_CALL", request, ref)
             encodedPageStore.store(ref) {
+                traceStartup("ENCODED_WRITER_BEGIN", request, ref)
                 extractArchivePage(request, ref)
             }
         } catch (error: CancellationException) {
@@ -299,13 +368,7 @@ class DesktopReaderPageFetchPort(
             throw AppErrorException(AppError.Storage(error))
         }
         return result.requireStoredRef().also {
-            ReaderStartupTrace.mark(
-                "ENCODED_STORE_RETURN",
-                request.pageId,
-                request.generation,
-                attemptGeneration = request.attemptGeneration,
-                contentIdentity = it.value,
-            )
+            traceStartup("ENCODED_STORE_RETURN", request, it)
         }
     }
 

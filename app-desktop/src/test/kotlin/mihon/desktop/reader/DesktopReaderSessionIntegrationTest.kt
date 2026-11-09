@@ -70,6 +70,248 @@ class DesktopReaderSessionIntegrationTest {
     lateinit var tempDir: File
 
     @Test
+    fun `initial demand rejects empty failed and exceptional qualification without manufacturing content`() = runTest {
+        for (case in listOf("empty", "failed", "exception", "cancelled", "ready")) {
+            val release = CompletableDeferred<Unit>().apply { complete(Unit) }
+            val fetched = mutableListOf<ReaderPageFetchRequest>()
+            val session = initialDemandSession(
+                this,
+                release,
+                fetched,
+                4,
+                "boundary-$case",
+                pageCount = if (case == "empty") 0 else 8,
+                pageTableFailure = case == "failed",
+                initiallyReady = case == "ready",
+            )
+            try {
+                session.installInitialEncodedDemand(
+                    DesktopReaderInitialEncodedDemand(1, 4) {
+                        when (case) {
+                            "exception" -> error("preference unavailable")
+                            "cancelled" -> throw CancellationException("qualification cancelled")
+                            else -> true
+                        }
+                    },
+                )
+                session.start()
+                advanceUntilIdle()
+                assertTrue(fetched.isEmpty(), case)
+                val chapter = session.state.value.snapshot.activeChapter
+                if (case == "exception") assertInstanceOf(ReaderChapterLoadState.Loaded::class.java, chapter.loadState)
+                if (case ==
+                    "cancelled"
+                ) {
+                    assertInstanceOf(ReaderChapterLoadState.LoadingPageList::class.java, chapter.loadState)
+                }
+                if (case == "ready") assertEquals(EncodedPageRef("existing:1:4"), chapter.pages[4].encodedPageRef)
+            } finally {
+                session.close()
+            }
+        }
+    }
+
+    @Test
+    fun `retry after initial preparation stays on the original attempt and replacement path`() = runTest {
+        val release = CompletableDeferred<Unit>().apply { complete(Unit) }
+        val fetched = mutableListOf<ReaderPageFetchRequest>()
+        val session = initialDemandSession(this, release, fetched, 4, "initial-retry")
+        try {
+            session.installInitialEncodedDemand(DesktopReaderInitialEncodedDemand(1, 4) { true })
+            session.start()
+            advanceUntilIdle()
+            val page = session.state.value.snapshot.activeChapter.pages[4]
+            session.retryPage(page.id)
+            advanceUntilIdle()
+            val targetAttempts = fetched.filter { it.pageId == page.id }.map { it.attemptGeneration }
+            assertEquals(listOf(0L, 1L), targetAttempts)
+            assertEquals(1L, session.state.value.snapshot.activeChapter.pages[4].attemptGeneration)
+            session.installInitialEncodedDemand(DesktopReaderInitialEncodedDemand(1, 4) { true })
+            advanceUntilIdle()
+            assertEquals(2, fetched.count { it.pageId == page.id })
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
+    fun `initial encoded demand catches all load timings and restores only a valid initial target`() = runTest {
+        for (timing in 0..2) {
+            for (requested in listOf(0, 4, ReaderInitialPageResolution.LAST, -1, 9)) {
+                val release = CompletableDeferred<Unit>()
+                val fetched = mutableListOf<ReaderPageFetchRequest>()
+                val session = initialDemandSession(this, release, fetched, requested, "timing-$timing-$requested")
+                val authorization = DesktopReaderInitialEncodedDemand(1, requested) { true }
+                try {
+                    if (timing == 0) session.installInitialEncodedDemand(authorization)
+                    session.start()
+                    runCurrent()
+                    if (timing == 1) session.installInitialEncodedDemand(authorization)
+                    release.complete(Unit)
+                    advanceUntilIdle()
+                    if (timing == 2) session.installInitialEncodedDemand(authorization)
+                    advanceUntilIdle()
+                    session.installInitialEncodedDemand(authorization)
+                    advanceUntilIdle()
+                    val expected = if (requested == ReaderInitialPageResolution.LAST) 7 else requested
+                    if (expected in 0..7) {
+                        assertEquals(expected, fetched.first().pageId.sourcePageIndex)
+                        assertEquals(1, fetched.count { it.pageId.sourcePageIndex == expected })
+                    } else {
+                        assertTrue(
+                            fetched.isEmpty(),
+                            "An invalid restore must reach normal recovery without guessing page zero",
+                        )
+                    }
+                    assertTrue(
+                        fetched.all {
+                            it.generation == session.core.schedulerSnapshot().generation &&
+                                it.attemptGeneration == 0L
+                        },
+                    )
+                } finally {
+                    session.close()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `initial encoded demand yields to viewport model takeover settings and reactivation`() = runTest {
+        for (takeover in listOf("viewport", "withdraw", "settings", "reopen", "chapter", "close", "route")) {
+            val release = CompletableDeferred<Unit>()
+            val fetched = mutableListOf<ReaderPageFetchRequest>()
+            var eligible = true
+            val session = initialDemandSession(this, release, fetched, 4, takeover, routeEligible = takeover != "route")
+            try {
+                if (takeover != "viewport") {
+                    session.installInitialEncodedDemand(DesktopReaderInitialEncodedDemand(1, 4) { eligible })
+                }
+                session.start()
+                runCurrent()
+                when (takeover) {
+                    "withdraw" -> session.withdrawInitialEncodedDemand()
+                    "settings" -> eligible = false
+                    "reopen" -> session.activate(context(1).copy(initialPage = 4, isDownloaded = true))
+                    "chapter" -> session.activate(context(2).copy(isDownloaded = true))
+                    "close" -> session.close()
+                }
+                release.complete(Unit)
+                advanceUntilIdle()
+                if (takeover == "viewport") {
+                    val page = ReaderPageId(ReaderChapterId(1), 6)
+                    session.scheduleViewportWithoutProgress(setOf(page), page)
+                    session.installInitialEncodedDemand(DesktopReaderInitialEncodedDemand(1, 4) { eligible })
+                    advanceUntilIdle()
+                    assertEquals(listOf(6, 7), fetched.map { it.pageId.sourcePageIndex })
+                } else {
+                    assertTrue(fetched.isEmpty(), "Late initial demand must not override $takeover")
+                }
+            } finally {
+                session.close()
+            }
+        }
+    }
+
+    @Test
+    fun `initial request is adopted once and same chapter reopening cancels non cooperative late results`() = runTest {
+        val release = CompletableDeferred<Unit>().apply { complete(Unit) }
+        val fetched = mutableListOf<ReaderPageFetchRequest>()
+        val physicalRelease = CompletableDeferred<Unit>()
+        val session = initialDemandSession(this, release, fetched, 4, "late-result", physicalRelease = physicalRelease)
+        try {
+            session.installInitialEncodedDemand(DesktopReaderInitialEncodedDemand(1, 4) { true })
+            session.start()
+            runCurrent()
+            val initial = fetched.first()
+            val initialChapterGeneration = session.state.value.snapshot.generation
+            val page = initial.pageId
+            session.scheduleViewportWithoutProgress(setOf(page), page)
+            runCurrent()
+            assertEquals(1, fetched.count { it.pageId == page })
+            session.activate(context(1).copy(initialPage = 0, isDownloaded = true))
+            runCurrent()
+            val generation = session.state.value.snapshot.generation
+            assertTrue(generation > initialChapterGeneration)
+            physicalRelease.complete(Unit)
+            advanceUntilIdle()
+            assertEquals(generation, session.state.value.snapshot.generation)
+            assertTrue(session.state.value.snapshot.activeChapter.pages.all { it.encodedPageRef == null })
+            assertTrue(fetched.all { it.generation == initial.generation })
+        } finally {
+            physicalRelease.complete(Unit)
+            session.close()
+        }
+    }
+
+    private fun initialDemandSession(
+        scope: kotlinx.coroutines.CoroutineScope,
+        release: CompletableDeferred<Unit>,
+        fetched: MutableList<ReaderPageFetchRequest>,
+        requested: Int,
+        directory: String,
+        routeEligible: Boolean = true,
+        physicalRelease: CompletableDeferred<Unit>? = null,
+        pageCount: Int = 8,
+        pageTableFailure: Boolean = false,
+        initiallyReady: Boolean = false,
+    ): DesktopReaderSession {
+        val store = DesktopReaderEncodedPageStore(tempDir.resolve(directory))
+        return DesktopReaderSession(
+            initialContext = context(1).copy(initialPage = requested, isDownloaded = true),
+            core = core(1),
+            encodedPageStore = store,
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { _, _ ->
+                object : ReaderChapterContentPort, DesktopReaderChapterDownloadState {
+                    override val chapterDownloaded = true
+                    override val initialEncodedDemandEligible = routeEligible
+                    override suspend fun loadChapterContent(
+                        request: ReaderChapterContentRequest,
+                    ): List<ReaderPageDescriptor> {
+                        release.await()
+                        if (pageTableFailure) error("page table unavailable")
+                        return List(pageCount) {
+                            if (initiallyReady) {
+                                readyDescriptor(
+                                    1,
+                                    it,
+                                )
+                            } else {
+                                ReaderPageDescriptor(it, url = "/page/$it", imageUrl = "image:$it")
+                            }
+                        }
+                    }
+                }
+            },
+            pageFetchPortFactory = DesktopReaderPageFetchPortFactory { _, descriptor ->
+                object : ReaderPageFetchPort {
+                    override suspend fun resolveImageUrl(
+                        request: ReaderPageFetchRequest,
+                    ) = "image:${descriptor.sourcePageIndex}"
+                    override suspend fun findEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef? = null
+                    override suspend fun fetchEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef {
+                        fetched += request
+                        if (physicalRelease != null) withContext(NonCancellable) { physicalRelease.await() }
+                        val ref = store.cacheRef(
+                            request.pageId,
+                            "initial:${request.generation}:${descriptor.sourcePageIndex}",
+                        )
+                        store.store(ref) {
+                            store.destinationFile(ref).writeBytes(byteArrayOf(1, 2, 3))
+                            3L
+                        }
+                        return ref
+                    }
+                }
+            },
+            progressPort = DesktopReaderProgressPort { _, _ ->
+                error("Initial content demand must not record progress")
+            },
+            parentScope = scope,
+        )
+    }
+
+    @Test
     fun `expired optional consumer never cancels the original normal visible request`() = runTest {
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()

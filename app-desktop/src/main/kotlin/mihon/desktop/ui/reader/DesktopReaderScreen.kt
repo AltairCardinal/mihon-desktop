@@ -591,7 +591,7 @@ data class DesktopReaderScreen(
 
 internal object ReaderInitialPage {
     const val FIRST: Int = 0
-    const val LAST: Int = Int.MAX_VALUE
+    const val LAST: Int = mihon.desktop.reader.ReaderInitialPageResolution.LAST
 }
 
 internal enum class ReaderChapterNavigationDirection {

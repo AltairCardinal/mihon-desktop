@@ -107,6 +107,7 @@ internal class MountedReaderPresentationFixture(
     encodedPageBytes: ByteArray? = null,
     automaticLayout: Boolean = false,
     observeStartup: Boolean = false,
+    confirmedDownloaded: Boolean = false,
 ) : AutoCloseable {
     private val productionFixture = ReaderProductionTestFixture(
         root,
@@ -156,7 +157,12 @@ internal class MountedReaderPresentationFixture(
         mangaId = mangaId,
         initialPage = initialPage,
         isDualPage = case.mode.isDualPage.takeUnless { automaticLayout },
-        localChapterPath = localChapterPath,
+        localChapterPath = localChapterPath.takeUnless { confirmedDownloaded },
+        chapters = if (confirmedDownloaded) {
+            listOf(ReaderChapterRef(CHAPTER_ID, CHAPTER_URL, CHAPTER_TITLE, isDownloaded = true))
+        } else {
+            emptyList()
+        },
     )
     private val testPreferencesRoot = Preferences.userRoot().node("/mihon/test/mounted-reader/${UUID.randomUUID()}")
     private val testAppPreferences = DesktopAppPreferences(
@@ -191,6 +197,17 @@ internal class MountedReaderPresentationFixture(
             progressTracker = progressTracker,
             mangaRepository = null,
             encodedCacheDirectory = root.resolve("encoded"),
+            downloadArtifactProbeFactory = { context ->
+                if (confirmedDownloaded) {
+                    mihon.domain.reader.content.DownloadArtifactProbe { _, candidate ->
+                        localChapterPath.takeIf {
+                            candidate.kind == mihon.domain.reader.content.DownloadArtifactKind.CBZ
+                        }
+                    }
+                } else {
+                    DesktopDownloadProvider(root.resolve("downloads")).canonicalArtifactProbe()
+                }
+            },
             readerIoProbe = ReaderIoTestModeBridge,
             readerMonotonicClock = ReaderMonotonicClock { ++now },
             readerIoGate = if (observeStartup) object : ReaderIoGate {

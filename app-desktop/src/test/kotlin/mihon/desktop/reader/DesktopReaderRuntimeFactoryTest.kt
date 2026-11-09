@@ -36,6 +36,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
@@ -102,6 +103,244 @@ class DesktopReaderRuntimeFactoryTest {
 
     @TempDir
     lateinit var tempDir: File
+
+    @Test
+    fun `normal mounted screen installs initial demand and presents its original prepared ref`() = runTest {
+        val tracker = mockk<ReaderProgressTracker>(relaxed = true)
+        val fixture = MountedReaderPresentationFixture(
+            tempDir,
+            currentCoroutineContext(),
+            MountedReaderPresentationCase(MountedReaderPresentationMode.SINGLE, MountedReaderContentRoute.CBZ),
+            observeStartup = true,
+            confirmedDownloaded = true,
+            progressTracker = tracker,
+        )
+        try {
+            fixture.releaseBackgroundGates()
+            var pumps = 0
+            while (fixture.startupSnapshot()!!.events.none { it.stage == "FIRST_PAGE_PRESENTED" } && pumps++ < 200) {
+                fixture.scene.render().close()
+                runCurrent()
+                Thread.sleep(1)
+            }
+            assertTrue(fixture.renderContainsFixturePixels(), "The normal screen must draw the original fixture pixels")
+            val events = fixture.startupSnapshot()!!.events
+            val armed = events.single { it.stage == "E1_ARMED" }
+            val accepted = events.single { it.stage == "E1_ACCEPTED" }
+            assertEquals(armed.openingToken, accepted.openingToken)
+            assertEquals(armed.generation, accepted.generation)
+            assertNotNull(accepted.runnerRequestId)
+            val taken = events.single {
+                it.stage == "RUNNER_WORK_TAKEN" && it.runnerRequestId == accepted.runnerRequestId
+            }
+            assertEquals(accepted.runnerGeneration, taken.generation)
+            assertEquals(accepted.pageIndex, taken.pageIndex)
+            val stored = events.single {
+                it.stage == "ENCODED_STORE_RETURN" && it.runnerRequestId == accepted.runnerRequestId
+            }
+            val composed = events.first { it.stage == "COMPOSE_READY_SEEN" && it.pageIndex == accepted.pageIndex }
+            assertEquals(accepted.generation, composed.generation)
+            assertEquals(accepted.attemptGeneration, composed.attemptGeneration)
+            assertTrue(
+                composed.contentIdentity!!.contains(stored.contentIdentity!!),
+                "The actual composition must adopt the prepared encoded ref",
+            )
+            assertEquals(accepted.attemptGeneration, taken.attemptGeneration)
+            assertEquals(1, events.count { it.stage == "OPEN_PAGE" && it.pageIndex == accepted.pageIndex })
+            assertEquals(1, events.count { it.stage == "DECODER_CALL_BEGIN" && it.pageIndex == accepted.pageIndex })
+            assertTrue(events.any { it.stage == "FIRST_PAGE_PRESENTED" && it.pageIndex == accepted.pageIndex })
+            runCurrent()
+            coVerify(atLeast = 1) {
+                tracker.track(
+                    any(),
+                    any(),
+                    accepted.pageIndex!!,
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                )
+            }
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
+    fun `initial encoded demand stays disabled for full callers and ineligible screen openings`() = runBlocking {
+        val archive = archive("negative.cbz", 8)
+        val cases = listOf(
+            "runtime", "model", "unknown", "online", "dual-off", "dual-on", "auto", "split", "webtoon", "directory",
+        )
+        for (case in cases) {
+            val legacy = Preferences.userRoot().node("mihon-test/r4-negative-$case-${System.nanoTime()}")
+            val prefs = ReaderPreferences(InMemoryPreferenceStore(), legacy).apply {
+                readingMode = if (case == "auto") ReadingMode.AUTO else ReadingMode.RTL
+                autoSplitPages = case == "split"
+                isAutoSpreadMatching = case == "dual-on"
+            }
+            val networkRequests = java.util.concurrent.atomic.AtomicInteger()
+            val source = mockk<CatalogueSource>(relaxed = true) {
+                every { id } returns 42L
+                coEvery { getPageList(any()) } returns List(8) {
+                    Page(it, url = "/page/$it", imageUrl = "http://127.0.0.1:1/$it.png")
+                }
+            }
+            val operations = CopyOnWriteArrayList<DesktopReaderContentOperation>()
+            val factory = DesktopReaderRuntimeFactory(
+                prefs = prefs,
+                downloadProvider = DesktopDownloadProvider(tempDir.resolve("downloads-$case")),
+                sourceManager = sourceManager(listOf(source)),
+                networkHelper = NetworkHelper(
+                    OkHttpClient.Builder().eventListener(object : okhttp3.EventListener() {
+                        override fun callStart(call: okhttp3.Call) {
+                            networkRequests.incrementAndGet()
+                        }
+                    }).build(),
+                ),
+                progressTracker = mockk(relaxed = true),
+                mangaRepository = null,
+                encodedCacheDirectory = tempDir.resolve("encoded-$case"),
+                readerContentOperationProbe = DesktopReaderContentOperationProbe { operations += it },
+            )
+            val path = if (case == "directory") {
+                tempDir.resolve("directory").apply {
+                    mkdirs()
+                    resolve("001.png").writeBytes(pngBytes())
+                }
+            } else {
+                archive
+            }
+            val context = localContext(911, path).copy(
+                isDownloaded = case != "unknown",
+                localChapterPath = path.absolutePath.takeUnless { case == "online" },
+            )
+            val scope = CoroutineScope(SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+            var entry: DesktopReaderScreenEntry? = null
+            var model: ReaderScreenModel? = null
+            val runtime = when (case) {
+                "runtime" -> factory.createRuntime(context, scope)
+                "model" -> factory.createScreenModel(context, false, 0, false).also { model = it }.runtime!!
+                else -> factory.createScreenEntry(
+                    context,
+                    case == "webtoon",
+                    0,
+                    if (case == "auto") null else case.startsWith("dual-"),
+                ).also { entry = it }.runtime
+            }
+            try {
+                kotlinx.coroutines.withTimeout(5000) {
+                    runtime.session.state.first { it.snapshot.activeChapter.loadState is ReaderChapterLoadState.Loaded }
+                }
+                assertTrue(runtime.session.core.schedulerSnapshot().pendingRequests.isEmpty(), case)
+                assertTrue(runtime.session.core.schedulerSnapshot().activeRequests.isEmpty(), case)
+                assertTrue(operations.none { it.kind == DesktopReaderContentOperationKind.ARCHIVE_PAGE_COPY }, case)
+                assertEquals(0, networkRequests.get(), "No image HTTP before a real viewport: $case")
+            } finally {
+                entry?.onDispose() ?: model?.onDispose() ?: runtime.close()
+                scope.cancel()
+                legacy.removeNode()
+            }
+        }
+    }
+
+    @Test
+    fun `screen entry prepares restored CBZ before any viewport without opening pixels`() = runBlocking {
+        val events = CopyOnWriteArrayList<ReaderIoEvent>()
+        val operations = CopyOnWriteArrayList<DesktopReaderContentOperation>()
+        val legacy = Preferences.userRoot().node("mihon-test/r4-entry-${System.nanoTime()}")
+        val prefs = ReaderPreferences(InMemoryPreferenceStore(), legacy).apply { readingMode = ReadingMode.RTL }
+        val factory = DesktopReaderRuntimeFactory(
+            prefs = prefs,
+            downloadProvider = DesktopDownloadProvider(tempDir.resolve("r4-downloads")),
+            sourceManager = mockk(relaxed = true),
+            networkHelper = NetworkHelper(OkHttpClient()),
+            progressTracker = mockk(relaxed = true),
+            mangaRepository = null,
+            encodedCacheDirectory = tempDir.resolve("r4-store"),
+            readerIoProbe = ReaderIoProbe { events += it },
+            readerContentOperationProbe = DesktopReaderContentOperationProbe { operations += it },
+        )
+        val archive = tempDir.resolve("r4.cbz").also { file ->
+            ZipOutputStream(file.outputStream()).use { output ->
+                repeat(8) { index ->
+                    output.putNextEntry(ZipEntry("${index.toString().padStart(3, '0')}.png"))
+                    output.write(pngBytes())
+                    output.closeEntry()
+                }
+            }
+        }
+        val entry = factory.createScreenEntry(
+            localContext(910, archive).copy(initialPage = 4, isDownloaded = true),
+            isWebtoon = false,
+            mangaViewerFlags = 0,
+            dualPageOverride = false,
+        )
+        try {
+            val loaded = kotlinx.coroutines.withTimeout(5000) {
+                entry.runtime.session.state.first {
+                    it.snapshot.activeChapter.loadState is ReaderChapterLoadState.Loaded
+                }
+            }
+            assertFalse(entry.hasModel)
+            // The original factory leaves this real archive page queued indefinitely until a viewport arrives.
+            val prepared = kotlinx.coroutines.withTimeoutOrNull(3000) {
+                entry.runtime.session.state.first {
+                    it.snapshot.activeChapter.pages[4].loadState is ReaderPageLoadState.Ready
+                }
+            }
+            assertNotNull(prepared, "Normal screen entry must submit the initial ordinary content demand")
+            val page = prepared!!.snapshot.activeChapter.pages[4]
+            kotlinx.coroutines.withTimeout(5000) {
+                while (entry.runtime.session.core.schedulerSnapshot().let {
+                        it.pendingRequests.isNotEmpty() || it.activeRequests.isNotEmpty()
+                    }
+                ) {
+                    delay(1)
+                }
+            }
+            assertEquals(
+                setOf(3, 4, 5, 6, 7),
+                operations.filter {
+                    it.kind == DesktopReaderContentOperationKind.ARCHIVE_PAGE_COPY
+                }.map { it.pageIndex }.toSet(),
+                "The original forward4/back1 scheduler also prepares bounded neighbors",
+            )
+            assertEquals(3, entry.runtime.session.core.schedulerSnapshot().maxConcurrentRequests)
+            assertEquals(
+                1,
+                operations.count {
+                    it.kind == DesktopReaderContentOperationKind.ARCHIVE_PAGE_COPY &&
+                        it.pageIndex == 4
+                },
+            )
+            assertTrue(
+                events.none {
+                    it.type in
+                        setOf(
+                            ReaderIoEventType.OPEN_PAGE,
+                            ReaderIoEventType.DECODE,
+                            ReaderIoEventType.FIRST_PAGE_PRESENTED,
+                        )
+                },
+            )
+            assertEquals(loaded.snapshot.generation, prepared.snapshot.generation)
+            val ref = page.encodedPageRef
+            entry.runtime.session.scheduleViewportWithoutProgress(setOf(page.id), page.id)
+            assertEquals(ref, entry.runtime.session.state.value.snapshot.activeChapter.pages[4].encodedPageRef)
+        } finally {
+            entry.onDispose()
+            legacy.removeNode()
+        }
+    }
 
     @Test
     fun `explicit content read gates isolate owners ranges retries and cancelled reads`(@TempDir tempDir: File) =
