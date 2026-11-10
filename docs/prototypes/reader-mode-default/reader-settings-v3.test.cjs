@@ -48,9 +48,15 @@ test('纵向滚动方式互斥，只有连续显示页面有空隙且切换保�
     assert.equal(await host.locator('[data-paged-settings]').isVisible(), false);
     assert.equal(await host.locator('[data-setting="scroll"]').count(), 2);
     assert.equal(await host.locator('[data-segments="scroll"] .icon').count(), 2);
-    assert.equal(await host.locator('[data-segments="scroll"] use').nth(0).getAttribute('href'), '#i-strip', '连续滚动图标保持不变');
+    assert.equal(await host.locator('[data-segments="scroll"] use').nth(0).getAttribute('href'), '#i-scroll-continuous', '连续滚动采用框内上下箭头');
     assert.equal(await host.locator('[data-segments="scroll"] use').nth(1).getAttribute('href'), '#i-gallery-vertical', '逐页采用当前页与上下页边界图标');
     assert.notEqual(await host.locator('[data-segments="scroll"] use').nth(0).getAttribute('href'), await host.locator('[data-segments="scroll"] use').nth(1).getAttribute('href'));
+    const styles = await host.locator('[data-segments="scroll"] .icon').evaluateAll(icons => icons.map(icon => {
+      const s = getComputedStyle(icon);
+      return [s.width, s.height, s.strokeWidth, s.strokeLinecap, s.strokeLinejoin, s.fill];
+    }));
+    assert.deepEqual(styles[0], ['19px', '19px', '1.65px', 'round', 'round', 'none']);
+    assert.deepEqual(styles[0], styles[1], '图标尺寸、线宽、端点和转角一致');
     assert.equal(await host.locator('[data-setting="scroll"][value="continuous"]').isChecked(), true);
     await host.getByRole('switch', { name: '页面有空隙' }).check();
     await pick(host, 'scroll', 'paged');
