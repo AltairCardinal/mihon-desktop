@@ -1,187 +1,33 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mihon · 阅读模式交互审批</title>
-<style>:root{color-scheme:light dark}body{margin:0;padding:24px 20px;background:light-dark(#fefbff,#1b1b1f)}main{max-width:1024px;margin:auto}header{margin-bottom:20px;font:14px/1.6 "Segoe UI","Microsoft YaHei",sans-serif;color:light-dark(#45464f,#c5c5d0)}h1{margin:0 0 4px;font-size:20px;font-weight:500;color:light-dark(#1b1b1f,#e4e1e9)}</style>
-</head><body><main><header><h1>阅读模式 · 交互审批稿</h1>先选设置来源，再选阅读方式。默认状态直接显示当前实际模式。</header>
-<style>
-  #reader-mode-review { --rm-primary: light-dark(#0058ca, #b0c6ff); --rm-surface: light-dark(#fcf7ff, #292730); --rm-on-surface: light-dark(#1b1b1f, #e4e1e9); --rm-muted: light-dark(#45464f, #c5c5d0); --rm-line: light-dark(#c5c5d0, #45464f); --rm-selection: light-dark(#dbe2ff, #004398); --rm-on-selection: light-dark(#001a43, #dbe2ff); --rm-base: light-dark(#fefbff, #1b1b1f); font: 14px/1.55 "Segoe UI", "Microsoft YaHei", sans-serif; color: var(--rm-on-surface); }
-  #reader-mode-review *, #reader-mode-review *::before, #reader-mode-review *::after { box-sizing: border-box; }
-  #reader-mode-review [hidden] { display: none !important; }
-  #reader-mode-review h2, #reader-mode-review h3, #reader-mode-review p, #reader-mode-review fieldset { margin: 0; }
-  #reader-mode-review button, #reader-mode-review select, #reader-mode-review input { font: inherit; color: inherit; accent-color: var(--rm-primary); }
-  #reader-mode-review button, #reader-mode-review select { cursor: pointer; }
-  #reader-mode-review .rm-tools { display: flex; align-items: end; flex-wrap: wrap; gap: 12px 20px; padding: 0 0 20px; }
-  #reader-mode-review .rm-tools label { display: grid; gap: 5px; color: var(--rm-muted); font-size: 12px; min-width: 0; max-width: 100%; }
-  #reader-mode-review select { min-height: 38px; min-width: 0; width: 100%; max-width: 100%; padding: 6px 30px 6px 10px; border: 1px solid var(--rm-line); border-radius: 8px; background: var(--rm-base); font-size: 14px; }
-  #reader-mode-review .rm-stage { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 24px; align-items: start; }
-  #reader-mode-review .rm-device { min-width: 0; }
-  #reader-mode-review .rm-platform { margin: 0 0 10px 4px; font-size: 12px; color: var(--rm-muted); }
-  #reader-mode-review .rm-panel { background: var(--rm-surface); padding: 24px; border-radius: 28px; min-width: 0; }
-  #reader-mode-review .rm-panel h2 { font-size: 22px; font-weight: 400; margin-bottom: 16px; }
-  #reader-mode-review .rm-tabs { display: flex; border-bottom: 1px solid var(--rm-line); margin-bottom: 24px; }
-  #reader-mode-review .rm-tab { flex: 1; min-width: 0; min-height: 44px; border: 0; border-bottom: 3px solid transparent; padding: 8px 3px; background: transparent; font-size: 12px; color: var(--rm-muted); }
-  #reader-mode-review .rm-tab[aria-current] { color: var(--rm-primary); border-bottom-color: var(--rm-primary); }
-  #reader-mode-review .rm-tab:disabled { opacity: .55; cursor: not-allowed; }
-  #reader-mode-review fieldset { border: 0; padding: 0; min-width: 0; }
-  #reader-mode-review legend, #reader-mode-review .rm-section-label { color: var(--rm-primary); font-size: 12px; margin-bottom: 10px; padding: 0; }
-  #reader-mode-review .rm-picks { display: flex; flex-wrap: wrap; gap: 8px; }
-  #reader-mode-review .rm-pick { display: inline-flex; position: relative; min-height: 42px; align-items: center; cursor: pointer; }
-  #reader-mode-review .rm-pick input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-  #reader-mode-review .rm-pick span { display: flex; align-items: center; gap: 5px; border: 1px solid var(--rm-line); border-radius: 9px; padding: 8px 13px; min-height: 38px; }
-  #reader-mode-review .rm-pick span::before { content: "✓"; width: 12px; visibility: hidden; }
-  #reader-mode-review .rm-pick input:checked + span { background: var(--rm-selection); color: var(--rm-on-selection); border-color: transparent; }
-  #reader-mode-review .rm-pick input:checked + span::before { visibility: visible; }
-  #reader-mode-review .rm-pick:has(input:focus-visible) { outline: 2px solid var(--rm-primary); outline-offset: 2px; border-radius: 9px; }
-  #reader-mode-review .rm-custom { margin-top: 20px; }
-  #reader-mode-review .rm-detail { border-top: 1px solid var(--rm-line); margin-top: 18px; padding-top: 18px; display: grid; gap: 14px; }
-  #reader-mode-review .rm-check { display: flex; align-items: center; gap: 8px; min-height: 40px; }
-  #reader-mode-review .rm-check input { width: 18px; height: 18px; flex-shrink: 0; }
-  #reader-mode-review .rm-summary { margin-top: 22px; padding: 16px; border-radius: 14px; background: var(--rm-base); display: grid; gap: 3px; }
-  #reader-mode-review .rm-summary small { font-size: 12px; color: var(--rm-muted); }
-  #reader-mode-review .rm-effective { font-size: 18px; font-weight: 500; }
-  #reader-mode-review .rm-source, #reader-mode-review .rm-meta { font-size: 12px; color: var(--rm-muted); }
-  #reader-mode-review .rm-explanation { margin-top: 12px; font-size: 12px; color: var(--rm-muted); }
-  #reader-mode-review .rm-bottom { display: flex; justify-content: end; margin-top: 24px; }
-  #reader-mode-review .rm-text-button { border: 0; border-radius: 20px; min-height: 40px; padding: 8px 16px; color: var(--rm-primary); background: transparent; }
-  #reader-mode-review .rm-text-button:hover { background: var(--rm-selection); }
-  #reader-mode-review .rm-closed { padding: 30px 12px; background: var(--rm-surface); border-radius: 24px; display: grid; justify-items: center; gap: 12px; }
-  #reader-mode-review .rm-footer { margin-top: 16px; color: var(--rm-muted); font-size: 12px; }
-  @media (max-width: 760px) { #reader-mode-review .rm-stage { grid-template-columns: minmax(0, 1fr); gap: 24px; } }
-  @media (max-width: 380px) { #reader-mode-review .rm-panel { padding: 18px; } #reader-mode-review .rm-pick span { padding: 8px 10px; } }
-</style>
-<div id="reader-mode-review" lang="zh-CN" aria-label="阅读模式设置交互审批稿">
-  <div class="rm-tools" aria-label="演示环境">
-    <label>全局默认（演示）
+<html lang="zh-CN"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark"><title>Mihon · 阅读设置 v3 双端审阅</title>
+<link rel="stylesheet" href="preview-v3.css">
+<style>:root{color-scheme:dark}body{margin:0;padding:28px 20px;background:#191a22}main{max-width:960px;margin:auto}header{margin-bottom:24px;font:14px/1.6 "Segoe UI","Microsoft YaHei",sans-serif;color:#aeb4c7}h1{margin:0 0 4px;font-size:22px;font-weight:500;color:#eef0f8}@media(max-width:560px){body{padding:16px 10px}}</style>
+</head><body><main>
+<header><h1>阅读模式设置 · v3</h1>桌面与移动端使用相同的设置层级和交互。</header>
+<div id="reader-settings-v3-review" lang="zh-CN" aria-label="阅读器设置 v3 双端审批稿">
+  <div class="review-tools" aria-label="应用外演示场景">
+    <label>演示全局默认
       <select data-global aria-label="演示全局默认">
-        <option value="paged">翻页式 · 从右到左 · 单页</option>
-        <option value="webtoon">条漫</option>
-        <option value="auto">自动</option>
+        <option value="paged-auto">翻页 · 自动单双页 · 从右到左</option>
+        <option value="paged-single">翻页 · 单页 · 从右到左</option>
+        <option value="paged-double">翻页 · 双页 · 从右到左</option>
+        <option value="webtoon">条漫 · 页间有空隙</option>
       </select>
     </label>
-    <label>桌面窗口（演示）
-      <select data-window aria-label="演示桌面窗口"><option value="wide">宽窗口</option><option value="narrow">窄窗口</option></select>
-    </label>
   </div>
-  <div class="rm-stage viz-dotted-background" data-stage></div>
-  <div class="rm-footer">交互审批稿 · 本地模拟，不修改应用设置</div>
+  <div class="review-stage">
+    <section class="device" data-device="desktop" aria-label="桌面端预览">
+      <div class="platform">Windows Desktop</div>
+      <mihon-reader-settings storage-key="mihon.reader-settings.v3-review.desktop"></mihon-reader-settings>
+    </section>
+    <section class="device" data-device="android" aria-label="移动端预览">
+      <div class="platform">Android · 同一交互</div>
+      <mihon-reader-settings storage-key="mihon.reader-settings.v3-review.android"></mihon-reader-settings>
+    </section>
+  </div>
+  <p class="review-boundary">交互审批稿 · 只保存本浏览器的演示选择，不修改应用设置。</p>
 </div>
-<script>
-(() => {
-  const root = document.getElementById('reader-mode-review');
-  const stage = root.querySelector('[data-stage]');
-  const fresh = () => ({ source: 'default', mode: 'paged', direction: 'rtl', dual: false, open: true });
-  const state = { globalMode: 'paged', window: 'wide', desktop: fresh(), android: fresh() };
-  const platforms = ['desktop', 'android'];
-  const validModes = ['auto', 'paged', 'webtoon'];
-  function restore(saved) {
-    if (!saved || typeof saved !== 'object') return;
-    if (validModes.includes(saved.globalMode)) state.globalMode = saved.globalMode;
-    if (['wide', 'narrow'].includes(saved.window)) state.window = saved.window;
-    for (const id of platforms) {
-      const value = saved[id];
-      if (!value || !['default', 'custom'].includes(value.source) || !validModes.includes(value.mode)) continue;
-      state[id] = { source: value.source, mode: value.mode, direction: value.direction === 'ltr' ? 'ltr' : 'rtl', dual: value.dual === true, open: value.open !== false };
-    }
-  }
-  restore(window.openai?.widgetState?.modelContent);
-  function save() {
-    if (window.openai?.setWidgetState) window.openai.setWidgetState({ modelContent: JSON.parse(JSON.stringify(state)), privateContent: null }).catch(() => {});
-  }
-  const choices = (id, name, values) => values.map(([value, label]) => `<label class="rm-pick"><input type="radio" name="${id}-${name}" value="${value}" data-field="${name}"><span>${label}</span></label>`).join('');
-  for (const id of platforms) {
-    const device = document.createElement('section');
-    device.className = 'rm-device';
-    device.dataset.device = id;
-    device.setAttribute('aria-label', id === 'desktop' ? 'Desktop 预览' : 'Android 预览');
-    device.innerHTML = `
-      <div class="rm-platform">${id === 'desktop' ? 'Windows Desktop' : 'Android · 同一交互语义'}</div>
-      <section class="rm-panel" aria-label="阅读器设置">
-        <h2>阅读器设置</h2>
-        <nav class="rm-tabs" aria-label="设置分类">
-          <button class="rm-tab" type="button" aria-current="page">阅读模式</button>
-          <button class="rm-tab" type="button" disabled title="本次仅演示阅读模式">常规</button>
-          <button class="rm-tab" type="button" disabled title="本次仅演示阅读模式">滤镜</button>
-        </nav>
-        <fieldset><legend>本漫画的阅读模式</legend><div class="rm-picks">${choices(id, 'source', [['default', '跟随默认'], ['custom', '单独设置']])}</div></fieldset>
-        <div class="rm-custom" data-custom hidden>
-          <fieldset><legend>选择阅读模式</legend><div class="rm-picks">${choices(id, 'mode', [['auto', '自动'], ['paged', '翻页式'], ['webtoon', '条漫']])}</div></fieldset>
-          <div class="rm-detail" data-paged hidden>
-            <fieldset><legend>翻页方向</legend><div class="rm-picks">${choices(id, 'direction', [['ltr', '从左到右'], ['rtl', '从右到左']])}</div></fieldset>
-            <label class="rm-check"><input type="checkbox" data-field="dual">双页并排</label>
-          </div>
-        </div>
-        <div class="rm-summary" role="status" aria-live="polite" aria-atomic="true">
-          <small>当前生效</small><div class="rm-effective" data-effective></div>
-          <div class="rm-meta" data-meta></div><div class="rm-source" data-source></div>
-        </div>
-        <p class="rm-explanation" data-explanation></p>
-        <div class="rm-bottom"><button class="rm-text-button" type="button" data-close>关闭</button></div>
-      </section>
-      <div class="rm-closed" hidden><p data-closed-summary></p><button class="rm-text-button" type="button" data-open>打开阅读器设置</button></div>`;
-    stage.append(device);
-    device.addEventListener('change', event => {
-      const field = event.target.dataset.field;
-      if (!field) return;
-      const current = state[id];
-      if (field === 'source') {
-        current.source = event.target.value;
-        current.mode = state.globalMode;
-        current.direction = 'rtl';
-        current.dual = false;
-      } else if (current.source === 'custom') {
-        if (field === 'dual') current.dual = event.target.checked;
-        else current[field] = event.target.value;
-      }
-      render(); save();
-    });
-    const close = () => { state[id].open = false; render(); device.querySelector('[data-open]').focus(); save(); };
-    device.querySelector('[data-close]').addEventListener('click', close);
-    device.querySelector('[data-open]').addEventListener('click', () => {
-      state[id].open = true; render(); device.querySelector(`[data-field="source"][value="${state[id].source}"]`).focus(); save();
-    });
-    device.addEventListener('keydown', event => {
-      if (event.key === 'Escape' && state[id].open) { event.preventDefault(); event.stopPropagation(); close(); }
-    });
-  }
-  function render() {
-    root.querySelector('[data-global]').value = state.globalMode;
-    root.querySelector('[data-window]').value = state.window;
-    for (const id of platforms) {
-      const current = state[id];
-      const device = stage.querySelector(`[data-device="${id}"]`);
-      const inherited = current.source === 'default';
-      const mode = inherited ? state.globalMode : current.mode;
-      const automatic = mode === 'auto';
-      const dual = automatic ? id === 'desktop' && state.window === 'wide' : !inherited && current.dual;
-      const direction = inherited || automatic ? 'rtl' : current.direction;
-      const name = mode === 'webtoon' ? '条漫' : automatic ? '自动 → 翻页式' : '翻页式';
-      device.querySelector('.rm-panel').hidden = !current.open;
-      device.querySelector('.rm-closed').hidden = current.open;
-      device.querySelector('[data-custom]').hidden = inherited;
-      device.querySelector('[data-paged]').hidden = inherited || mode !== 'paged';
-      for (const input of device.querySelectorAll('[data-field]')) {
-        const field = input.dataset.field;
-        input.checked = field === 'dual' ? current.dual : input.value === current[field];
-        input.disabled = field !== 'source' && (inherited || (['dual', 'direction'].includes(field) && mode !== 'paged'));
-      }
-      device.querySelector('[data-effective]').textContent = name;
-      device.querySelector('[data-meta]').textContent = mode === 'webtoon' ? '纵向连续滚动' : `${direction === 'rtl' ? '从右到左' : '从左到右'} · ${dual ? '双页并排' : '单页'}${automatic ? ' · 随窗口自动调整' : ''}`;
-      device.querySelector('[data-source]').textContent = inherited ? '来自全局默认' : '仅用于本漫画';
-      device.querySelector('[data-explanation]').textContent = inherited ? '更改全局默认后，本漫画也会跟随。' : '不改变全局默认。随时可切回「跟随默认」。';
-      device.querySelector('[data-closed-summary]').textContent = `${inherited ? '跟随默认' : '单独设置'} · ${name}`;
-    }
-  }
-  root.querySelector('[data-global]').addEventListener('change', event => { state.globalMode = event.target.value; render(); save(); });
-  root.querySelector('[data-window]').addEventListener('change', event => { state.window = event.target.value; render(); save(); });
-  window.addEventListener('openai:set_globals', event => {
-    if (event.detail?.globals?.widgetState?.modelContent) { restore(event.detail.globals.widgetState.modelContent); render(); }
-  });
-  render();
-  if (globalThis.Tweak) {
-    const appearance = { theme: 'inherit' };
-    const tweak = new Tweak({ container: root, onChange: () => { root.style.colorScheme = appearance.theme; } });
-    tweak.addSelect(appearance, 'theme', { label: '主题', options: [{ label: '跟随系统', value: 'inherit' }, { label: '浅色', value: 'light' }, { label: '深色', value: 'dark' }] });
-  }
-})();
-</script>
-
+<script src="reader-settings-v3.js"></script><script src="preview-v3.js"></script>
 </main></body></html>

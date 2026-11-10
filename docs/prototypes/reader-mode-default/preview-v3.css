@@ -1,0 +1,14 @@
+#reader-settings-v3-review { font: 14px/1.6 "Segoe UI", "Microsoft YaHei", sans-serif; color: #eef0f8; }
+#reader-settings-v3-review * { box-sizing: border-box; }
+#reader-settings-v3-review .review-tools { display: flex; flex-wrap: wrap; gap: 12px 24px; padding-bottom: 24px; }
+#reader-settings-v3-review .review-tools label { display: grid; gap: 6px; max-width: 100%; min-width: 0; font-size: 12px; color: #aeb4c7; }
+#reader-settings-v3-review select { min-width: 0; max-width: 100%; padding: 8px 12px; border: 1px solid #424654; border-radius: 10px; background: #252630; color: #eef0f8; font: inherit; min-height: 42px; }
+#reader-settings-v3-review .review-stage { display: grid; grid-template-columns: minmax(0, 520px) minmax(0, 390px); gap: 28px; justify-content: center; align-items: start; }
+#reader-settings-v3-review .device { min-width: 0; }
+#reader-settings-v3-review .platform { color: #aeb4c7; font-size: 12px; margin: 0 0 12px 4px; }
+#reader-settings-v3-review mihon-reader-settings { display: block; width: 100%; }
+#reader-settings-v3-review .review-boundary { margin: 18px 0 0; font-size: 12px; color: #aeb4c7; }
+@media (max-width: 900px) {
+  #reader-settings-v3-review .review-stage { grid-template-columns: minmax(0, 520px); }
+  #reader-settings-v3-review .device[data-device="android"] { width: min(100%, 390px); justify-self: center; }
+}
