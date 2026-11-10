@@ -58,7 +58,9 @@ test('纵向滚动方式互斥，只有连续显示页面有空隙且切换保�
     assert.deepEqual(styles[0], ['19px', '19px', '1.65px', 'round', 'round', 'none']);
     assert.deepEqual(styles[0], styles[1], '图标尺寸、线宽、端点和转角一致');
     const glyphs = await host.locator('[data-segments="scroll"] use').evaluateAll(nodes => nodes.map(n => n.getBBox().width));
-    assert.equal(glyphs[0], glyphs[1], '实际图形占宽一致，不能仅比较 SVG 容器');
+    assert.deepEqual(glyphs, [18, 16], '连续滚动不变，逐页图形适度收窄');
+    const pagedBounds = await host.locator('[data-segments="scroll"] use').nth(1).evaluate(n => { const b = n.getBBox(); return { center: b.x + b.width / 2, height: b.height }; });
+    assert.deepEqual(pagedBounds, { center: 12, height: 20 }, '收窄后仍居中且高度不变');
     assert.equal(await host.locator('[data-gap-row] .toggle-state').count(), 0, '两端开关旁均无是/否文字');
     assert.equal(await host.locator('[data-setting="scroll"][value="continuous"]').isChecked(), true);
     await host.getByRole('switch', { name: '页面有空隙' }).check();
