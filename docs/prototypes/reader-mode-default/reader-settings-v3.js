@@ -15,13 +15,15 @@
     const clone = value => JSON.parse(JSON.stringify(value));
     const normalizePrefs = (value, fallback = DEFAULTS) => {
       const v = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-      return {
+      const prefs = {
         mode: ['paged', 'webtoon'].includes(v.mode) ? v.mode : fallback.mode,
         layout: ['auto', 'single', 'double'].includes(v.layout) ? v.layout : fallback.layout,
         match: typeof v.match === 'boolean' ? v.match : fallback.match,
         direction: ['ltr', 'rtl', 'vertical'].includes(v.direction) ? v.direction : fallback.direction,
         gap: typeof v.gap === 'boolean' ? v.gap : fallback.gap
       };
+      if (prefs.mode === 'paged' && prefs.layout === 'double' && prefs.direction === 'vertical') prefs.direction = 'rtl';
+      return prefs;
     };
     const svg = name => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-${name}"></use></svg>`;
     const radio = (name, value, content, type = 'segment') => `
@@ -423,6 +425,7 @@
         const key = input.dataset.setting;
         if (key === 'scope') this._state.scope = input.value;
         else this._state.custom[key] = input.type === 'checkbox' ? input.checked : input.value;
+        this._state.custom = normalizePrefs(this._state.custom);
         this._save();
         this._render(true);
         const c = this._state.custom;
@@ -463,10 +466,14 @@
         show('[data-webtoon-settings]', c.mode === 'webtoon');
         show('[data-match-row]', c.mode === 'paged' && c.layout !== 'single');
         show('[data-auto-tag]', c.layout === 'auto');
+        const vertical = root.querySelector('[data-setting="direction"][value="vertical"]');
+        vertical.closest('label').hidden = c.layout === 'double';
+        vertical.disabled = c.layout === 'double';
+        root.querySelector('.direction-grid').style.gridTemplateColumns = `repeat(${c.layout === 'double' ? 2 : 3}, minmax(0, 1fr))`;
         text('[data-scope-help]', s.scope === 'custom' ? '下方设置仅对当前作品生效' : '当前作品使用全局默认设置');
         text('[data-match-state]', c.match ? '开启' : '关闭');
         text('[data-gap-state]', c.gap ? '是' : '否');
-        text('[data-layout-help]', c.layout === 'auto' ? '根据可用阅读区域自动切换' : c.layout === 'single' ? '每次显示一页' : '每次显示两页');
+        text('[data-layout-help]', c.layout === 'auto' ? '根据可用阅读区域自动切换' : c.layout === 'single' ? '每次显示一页' : '每次显示两页，仅支持左右翻页');
         text('[data-default-mode]', d.mode === 'paged' ? '翻页' : '条漫');
         text('[data-default-layout]', LAYOUTS[d.layout]);
         text('[data-default-match]', d.match ? '开启' : '关闭');
