@@ -137,7 +137,7 @@ class ReaderFullscreenCompositorTest {
         val originalIgnoreRepaint = onEdt { canvas.ignoreRepaint }
         val controller = DesktopReaderFullscreenController(
             getWindow = { window },
-            fullscreenAdapter = adapter,
+            fullscreenAdapterFactory = { adapter },
             transitions = DesktopWindowTransitions { frame, disabled ->
                 if (disabled) gpuFrameCompleted.set(false)
                 WindowsWindowTransitions.setDisabled(frame, disabled).also {

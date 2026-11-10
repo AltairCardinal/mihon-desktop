@@ -20,6 +20,8 @@
 
 Android 复用已有 pager、vertical pager、webtoon viewer 和共享自适应布局。Desktop 的纵向逐页必须使用真实竖向 pager，不能将 flags 3 降级为横向单页。双端的匹配与间隙来自有效设置，不能只改变控件选中态。
 
+Desktop 的 `initialReaderSettings` 是启动投影与完整 `ReaderScreenModel` 的唯一设置解析入口。`ReaderFirstComposition` 接受晚到页表前，按完整有效设置重新校验，不能只比较旧全局单双页/匹配字段。提前请求设置沿主干既有链路解锁完整模型；页表到达后继续保留已选择的设置和作用域。纵向逐页不进入横向单页启动视图，保留原有 early 输入、当前页需求及图片交接机制。
+
 横向没有从上到下选项。自动与双页显示匹配选项，单页隐藏；连续纵向显示页面间隙开关，逐页隐藏。开关不附加是/否文字，辅助技术仍读取 checked 状态。图标沿用原型的 24×24 细线图形与主题颜色。逐页图标改编自 Lucide `gallery-vertical`，双端分别打包 `res/raw/reader_icons_license.txt` 与 `resources/icons/reader/LICENSE` 中的 ISC 声明。
 
 模式切换不另建章节加载、图像解码或进度权威；继续使用现有阅读器的呈现变更、进度和配对失效链路。读取旧数据不批量写回；用户显式修改设置时才保存规范化 flags。偏好保存失败沿用平台原有失败处理，不以临时 UI 选中态证明持久化成功。

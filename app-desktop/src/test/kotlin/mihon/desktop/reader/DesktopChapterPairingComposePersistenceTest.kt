@@ -672,10 +672,10 @@ class DesktopChapterPairingComposePersistenceTest {
             try {
                 fixture.releaseBackgroundGates(excluding = setOf(ReaderIoGatePoint.NON_CURRENT_PAGE))
                 awaitDecodedPages(fixture, completedDecodes, setOf(4, 5))
-                assertTrue(fixture.events().any { it.type == ReaderIoEventType.FIRST_PAGE_PRESENTED.name })
                 fixture.releaseBackgroundGates()
                 pump(fixture, "The reopened original record and original content must be available") {
                     mihon.desktop.test.state.readerState.mountedSnapshot()?.pairingLoad == PairingLoad.READY &&
+                        fixture.events().any { it.type == ReaderIoEventType.FIRST_PAGE_PRESENTED.name } &&
                         fixture.renderContainsFixturePixels(System.nanoTime())
                 }
                 val firstFrame = nativeSnapshot(fixture)

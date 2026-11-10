@@ -57,6 +57,7 @@ class BrowseSearchTestModeHttpTest {
         val currentRelease = CompletableDeferred<Unit>()
         val source = mockk<CatalogueSource> {
             every { id } returns 71L
+            every { lang } returns "en"
             every { name } returns "Search source"
             every { getFilterList() } returns FilterList()
             coEvery { getSearchManga(1, any(), any()) } coAnswers {
@@ -148,10 +149,11 @@ class BrowseSearchTestModeHttpTest {
     fun `http login completion reports rejection then retries captured search`() = runBlocking {
         val source = mockk<HttpSource> {
             every { id } returns 72L
+            every { lang } returns "en"
             every { name } returns "Login source"
             every { baseUrl } returns "https://login.example"
             every { getFilterList() } returns FilterList()
-            coEvery { getSearchManga(1, any(), any()) } throws HttpException(403) andThen
+            coEvery { getSearchManga(1, any(), any()) } throws HttpException(401) andThen
                 MangasPage(listOf(manga("/authenticated", "Authenticated result")), false)
         }
         val save = mockk<SaveSourceMangaForDetails>()
@@ -237,12 +239,13 @@ class BrowseSearchTestModeHttpTest {
         val commits = AtomicInteger()
         val source = mockk<HttpSource> {
             every { id } returns 73L
+            every { lang } returns "en"
             every { name } returns "Generation source"
             every { baseUrl } returns "https://generation.example"
             every { getFilterList() } returns FilterList()
             coEvery { getSearchManga(1, any(), any()) } coAnswers {
                 if (searchCalls.incrementAndGet() == 1) {
-                    throw HttpException(403)
+                    throw HttpException(401)
                 }
                 MangasPage(listOf(manga("/new", "New generation")), false)
             }
@@ -301,11 +304,12 @@ class BrowseSearchTestModeHttpTest {
         val providerCalls = AtomicInteger()
         val racingSource = mockk<HttpSource> {
             every { id } returns 74L
+            every { lang } returns "en"
             every { name } returns "Racing source"
             every { baseUrl } returns "https://racing.example"
             every { getFilterList() } returns FilterList()
             coEvery { getSearchManga(1, any(), any()) } coAnswers {
-                if (secondArg<String>() == "old") throw HttpException(403)
+                if (secondArg<String>() == "old") throw HttpException(401)
                 MangasPage(emptyList(), false)
             }
         }

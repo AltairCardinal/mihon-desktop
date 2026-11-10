@@ -45,8 +45,6 @@ import mihon.desktop.ui.reader.ReaderPagerNativePresentationKey
 import mihon.desktop.ui.reader.ReaderScreenModel
 import mihon.desktop.ui.reader.ReaderViewport
 import mihon.domain.reader.ReaderImageOrientation
-import mihon.domain.reader.content.ReaderPageContentOpenCoordinator
-import mihon.domain.reader.content.ReaderPageContentOpenPort
 import mihon.domain.reader.content.ReaderPageContentOpenRequest
 import mihon.domain.reader.observability.ReaderIoEvent
 import mihon.domain.reader.observability.ReaderIoEventType
@@ -90,8 +88,9 @@ class SharedDualPageLateExifProductionTest {
         val manager = object : SourceManager {
             override val isInitialized = MutableStateFlow(true)
             override val catalogueSources = flowOf(listOf(source))
-            override fun get(sourceKey: Long): eu.kanade.tachiyomi.source.Source? = null
-            override fun getOrStub(sourceKey: Long): eu.kanade.tachiyomi.source.Source = StubSource(sourceKey, "", "")
+            override fun get(sourceKey: Long): eu.kanade.tachiyomi.source.Source? = source.takeIf { it.id == sourceKey }
+            override fun getOrStub(sourceKey: Long): eu.kanade.tachiyomi.source.Source =
+                get(sourceKey) ?: StubSource(sourceKey, "", "")
             override fun getOnlineSources(): List<eu.kanade.tachiyomi.source.online.HttpSource> = emptyList()
             override fun getCatalogueSources(): List<CatalogueSource> = listOf(source)
             override fun getStubSources(): List<StubSource> = emptyList()
@@ -105,6 +104,28 @@ class SharedDualPageLateExifProductionTest {
             nextChapterPrefetchMode = NextChapterPrefetchMode.OFF
         }
         val events = CopyOnWriteArrayList<ReaderIoEvent>()
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val returned = CompletableDeferred<Unit>()
+        val contentGate = object : ReaderIoGate {
+            override suspend fun await(point: ReaderIoGatePoint) = Unit
+            override fun registerContentOwner() = 1L
+            override suspend fun awaitContentRead(ownerId: Long, request: ReaderPageContentOpenRequest) {
+                if (request.maxBytes != null && request.pageId.sourcePageIndex == 1) {
+                    entered.complete(Unit)
+                    release.await()
+                }
+            }
+            override fun contentReadCompleted(
+                ownerId: Long,
+                request: ReaderPageContentOpenRequest,
+                bytes: Int?,
+                failure: Throwable?,
+            ) {
+                if (request.maxBytes != null && request.pageId.sourcePageIndex == 1) returned.complete(Unit)
+            }
+        }
+
         val factory = DesktopReaderRuntimeFactory(
             prefs,
             DesktopDownloadProvider(directory.resolve("downloads")),
@@ -114,36 +135,13 @@ class SharedDualPageLateExifProductionTest {
             null,
             directory.resolve("encoded"),
             readerIoProbe = ReaderIoProbe(events::add),
+            readerIoGate = contentGate,
         )
         val originalRuntime = factory.createRuntime(
             DesktopReaderChapterContext(98, 42, "/chapter/98", "Manga", "EXIF", 98.0, 0, 1, false),
             scope,
         )
-        val coordinator = DesktopReaderPageContentOwner::class.java.getDeclaredField("coordinator")
-            .apply { isAccessible = true }
-        val authority = coordinator.get(originalRuntime.pageContentOwner)
-        val port = ReaderPageContentOpenCoordinator::class.java.getDeclaredField("port")
-            .apply { isAccessible = true }
-
-        @Suppress("UNCHECKED_CAST")
-        val originalPort = port.get(authority) as ReaderPageContentOpenPort<ByteArray>
-        val entered = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
-        val returned = CompletableDeferred<Unit>()
-        port.set(
-            authority,
-            ReaderPageContentOpenPort<ByteArray> { request ->
-                if (request.maxBytes != null && request.pageId.sourcePageIndex == 1) {
-                    entered.complete(Unit)
-                    release.await()
-                    originalPort.open(request).also { returned.complete(Unit) }
-                } else {
-                    originalPort.open(request)
-                }
-            },
-        )
         val runtime = originalRuntime
-        assertSame(authority, coordinator.get(runtime.pageContentOwner))
         val model = factory.createModel(runtime, false, 0, true)
         val collector = scope.launch { runtime.session.state.collect { model.acceptSessionState(it) } }
         val scene = mount(runtime, model, uiScope, legacy)
@@ -257,8 +255,6 @@ class SharedDualPageLateExifProductionTest {
             uiScope.cancel()
             server.close()
             assertTrue(originalRuntime.pageContentOwner.snapshot().activeLeaseCounts.isEmpty())
-            assertSame(authority, coordinator.get(runtime.pageContentOwner))
-            port.set(authority, originalPort)
             legacy.removeNode()
         }
     }

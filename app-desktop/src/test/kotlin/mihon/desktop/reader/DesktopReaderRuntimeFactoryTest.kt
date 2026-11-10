@@ -104,6 +104,104 @@ class DesktopReaderRuntimeFactoryTest {
     lateinit var tempDir: File
 
     @Test
+    fun `screen entry waits for viewport before preparing restored CBZ`() = runBlocking {
+        val events = CopyOnWriteArrayList<ReaderIoEvent>()
+        val operations = CopyOnWriteArrayList<DesktopReaderContentOperation>()
+        val legacy = Preferences.userRoot().node("mihon-test/r4-entry-${System.nanoTime()}")
+        val prefs = ReaderPreferences(InMemoryPreferenceStore(), legacy).apply { readingMode = ReadingMode.RTL }
+        val factory = DesktopReaderRuntimeFactory(
+            prefs = prefs,
+            downloadProvider = DesktopDownloadProvider(tempDir.resolve("r4-downloads")),
+            sourceManager = mockk(relaxed = true),
+            networkHelper = NetworkHelper(OkHttpClient()),
+            progressTracker = mockk(relaxed = true),
+            mangaRepository = null,
+            encodedCacheDirectory = tempDir.resolve("r4-store"),
+            readerIoProbe = ReaderIoProbe { events += it },
+            readerContentOperationProbe = DesktopReaderContentOperationProbe { operations += it },
+        )
+        val archive = tempDir.resolve("r4.cbz").also { file ->
+            ZipOutputStream(file.outputStream()).use { output ->
+                repeat(8) { index ->
+                    output.putNextEntry(ZipEntry("${index.toString().padStart(3, '0')}.png"))
+                    output.write(pngBytes())
+                    output.closeEntry()
+                }
+            }
+        }
+        val entry = factory.createScreenEntry(
+            localContext(910, archive).copy(initialPage = 4, isDownloaded = true),
+            isWebtoon = false,
+            mangaViewerFlags = 0,
+            dualPageOverride = false,
+        )
+        try {
+            val loaded = kotlinx.coroutines.withTimeout(5000) {
+                entry.runtime.session.state.first {
+                    it.snapshot.activeChapter.loadState is ReaderChapterLoadState.Loaded
+                }
+            }
+            assertFalse(entry.hasModel)
+            val premature = kotlinx.coroutines.withTimeoutOrNull(1000) {
+                entry.runtime.session.state.first {
+                    it.snapshot.activeChapter.pages[4].loadState is ReaderPageLoadState.Ready
+                }
+            }
+            assertEquals(null, premature, "Entry creation must not submit speculative encoded demand")
+            assertTrue(operations.none { it.kind == DesktopReaderContentOperationKind.ARCHIVE_PAGE_COPY })
+            val target = loaded.snapshot.activeChapter.pages[4]
+            assertEquals(ReaderPageLoadState.Queued, target.loadState)
+            entry.runtime.session.scheduleViewportWithoutProgress(setOf(target.id), target.id)
+            val prepared = kotlinx.coroutines.withTimeout(5000) {
+                entry.runtime.session.state.first {
+                    it.snapshot.activeChapter.pages[4].loadState is ReaderPageLoadState.Ready
+                }
+            }
+            val page = prepared.snapshot.activeChapter.pages[4]
+            kotlinx.coroutines.withTimeout(5000) {
+                while (entry.runtime.session.core.schedulerSnapshot().let {
+                        it.pendingRequests.isNotEmpty() || it.activeRequests.isNotEmpty()
+                    }
+                ) {
+                    delay(1)
+                }
+            }
+            assertEquals(
+                setOf(3, 4, 5, 6, 7),
+                operations.filter {
+                    it.kind == DesktopReaderContentOperationKind.ARCHIVE_PAGE_COPY
+                }.map { it.pageIndex }.toSet(),
+                "The original forward4/back1 scheduler also prepares bounded neighbors",
+            )
+            assertEquals(3, entry.runtime.session.core.schedulerSnapshot().maxConcurrentRequests)
+            assertEquals(
+                1,
+                operations.count {
+                    it.kind == DesktopReaderContentOperationKind.ARCHIVE_PAGE_COPY &&
+                        it.pageIndex == 4
+                },
+            )
+            assertTrue(
+                events.none {
+                    it.type in
+                        setOf(
+                            ReaderIoEventType.OPEN_PAGE,
+                            ReaderIoEventType.DECODE,
+                            ReaderIoEventType.FIRST_PAGE_PRESENTED,
+                        )
+                },
+            )
+            assertEquals(loaded.snapshot.generation, prepared.snapshot.generation)
+            val ref = page.encodedPageRef
+            entry.runtime.session.scheduleViewportWithoutProgress(setOf(page.id), page.id)
+            assertEquals(ref, entry.runtime.session.state.value.snapshot.activeChapter.pages[4].encodedPageRef)
+        } finally {
+            entry.onDispose()
+            legacy.removeNode()
+        }
+    }
+
+    @Test
     fun `explicit content read gates isolate owners ranges retries and cancelled reads`(@TempDir tempDir: File) =
         runBlocking {
             val controller = mihon.desktop.test.http.ReaderTestModeController()
@@ -306,11 +404,11 @@ class DesktopReaderRuntimeFactoryTest {
             }
         }
         try {
-            pumpUntil { entered.contains(6) }
+            pumpUntil { entered.containsAll(listOf(6, 8)) }
             assertEquals(
-                listOf(6),
-                entered.toList(),
-                "The original bounded header worker serializes optional reads",
+                listOf(6, 8),
+                entered.sorted(),
+                "Both visible pages own independent bounded header reads",
             )
             val location = model.state.value.dualPageLocation
             gates.getValue(6).complete(Unit)
@@ -522,7 +620,8 @@ class DesktopReaderRuntimeFactoryTest {
     @Test
     fun `cold tail keeps its canonical location while required prefix metadata resolves`() = runBlocking {
         val dispatcher = StandardTestDispatcher()
-        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val scope = CoroutineScope(SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+        val uiScope = CoroutineScope(SupervisorJob() + dispatcher)
         val dimensions =
             requireNotNull(javaClass.classLoader?.getResourceAsStream("reader/shared-dual-page-real-b1.csv"))
                 .bufferedReader(Charsets.UTF_8).useLines { lines ->
@@ -585,26 +684,33 @@ class DesktopReaderRuntimeFactoryTest {
         )
         val model = factory.createModel(runtime, false, 0, null)
         val collector = scope.launch { runtime.session.state.collect { model.acceptSessionState(it) } }
-        val scene = mountReaderScene(runtime, model, scope, legacy)
-        suspend fun pumpUntil(condition: () -> Boolean) {
-            val end = System.nanoTime() + 5_000_000_000L
+        val scene = mountReaderScene(runtime, model, uiScope, legacy)
+        suspend fun pumpUntil(stage: String, condition: () -> Boolean) {
+            val started = System.nanoTime()
+            val end = started + 10_000_000_000L
             while (!condition() && System.nanoTime() < end) {
                 dispatcher.scheduler.runCurrent()
                 scene.render(dispatcher.scheduler.currentTime * 1_000_000L).close()
                 dispatcher.scheduler.advanceTimeBy(16)
                 delay(10)
             }
+            assertTrue(
+                condition(),
+                "Cold-tail stage=$stage timed out after ${(System.nanoTime() - started) / 1_000_000}ms; " +
+                    "location=${model.state.value.dualPageLocation}; units=${model.state.value.dualPageUnits}; " +
+                    "paths=$paths; pages=${model.state.value.session.activeChapter.pages}",
+            )
         }
         try {
-            pumpUntil { model.state.value.session.activeChapter.pages.size == 17 }
+            pumpUntil("page list") { model.state.value.session.activeChapter.pages.size == 17 }
             val tail = model.state.value.session.activeChapter.pages.last().id
             // The selected tail needs earlier canonical facts; hold them and retain the logical target.
-            pumpUntil { enteredPrefix.count == 0L }
+            pumpUntil("prefix gate entered") { enteredPrefix.count == 0L }
             val location = model.state.value.dualPageLocation
             assertEquals(16, location?.pageId?.sourcePageIndex)
             assertEquals(1, paths.count { it == "/image/14" }, "Canonical pairing needs source fifteen's fact")
             releasePrefix.countDown()
-            pumpUntil {
+            pumpUntil("tail native presentation reported") {
                 sceneNodes(scene).any { node ->
                     node.config.contains(ReaderPagerNativePresentationKey) &&
                         node.config[ReaderPagerNativePresentationKey].describe().contains("reported=true")
@@ -617,13 +723,14 @@ class DesktopReaderRuntimeFactoryTest {
                 },
                 "The tail is presented after its required canonical facts arrive",
             )
+            pumpUntil("canonical spread boundary requested") { paths.any { it == "/image/9" } }
             val fetchedIndices = paths.map { it.substringAfterLast('/').toInt() }.toSet()
             assertTrue(9 in fetchedIndices, "The first spread boundary is part of the canonical proof; paths=$paths")
             assertTrue(
                 fetchedIndices.all { it in 9..16 },
                 "Canonical pairing stops at the first preceding spread; paths=$paths",
             )
-            pumpUntil {
+            pumpUntil("canonical tail right slot") {
                 model.state.value.dualPageUnits.singleOrNull {
                     it.pageIds.singleOrNull()?.sourcePageIndex == 16
                 }?.slots?.singleOrNull()?.position == mihon.domain.reader.ReaderPortraitSingleSlot.RIGHT
@@ -641,7 +748,7 @@ class DesktopReaderRuntimeFactoryTest {
                 "The required predecessor header is read once",
             )
             assertEquals(1, paths.count { it == "/image/16" }, "Metadata must not restart normal visible image work")
-            pumpUntil {
+            pumpUntil("mounted tail right geometry") {
                 sceneNodes(scene).any {
                     it.config.contains(DualPageSlotIdKey) &&
                         it.config[DualPageSlotIdKey].pageId == tail && it.boundsInRoot.width == 350f &&
@@ -662,6 +769,7 @@ class DesktopReaderRuntimeFactoryTest {
             model.onDispose()
             runtime.close()
             scope.cancel()
+            uiScope.cancel()
             server.close()
             legacy.removeNode()
         }

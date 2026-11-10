@@ -27,8 +27,10 @@ class CrashHandlerTest {
         val link = tempDir.resolve("redirected").toPath()
         try {
             if (System.getProperty("os.name").lowercase().contains("win")) {
-                fun quoted(value: String) = "'${value.replace("'", "''")}'"
-                val command = "New-Item -ItemType Junction -Path ${quoted(link.toString())} -Target ${quoted(target.toString())} | Out-Null"
+                fun quoted(value: String) = "'" + value.replace("'", "''") + "'"
+                val command = "New-Item -ItemType Junction -Path ${quoted(
+                    link.toString(),
+                )} -Target ${quoted(target.toString())} | Out-Null"
                 val process = ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command)
                     .redirectErrorStream(true).start()
                 val output = process.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }

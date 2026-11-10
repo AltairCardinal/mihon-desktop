@@ -42,6 +42,7 @@ class DesktopReaderContentAdapter internal constructor(
     private val archiveOperationProbe: DesktopReaderArchiveOperationProbe = DesktopReaderArchiveOperationProbe.None,
     private val contentOperationProbe: DesktopReaderContentOperationProbe = DesktopReaderContentOperationProbe.None,
     private val preferNativeZip: Boolean = false,
+    private val minizLibrary: DesktopWindowsMinizLibrary = DesktopWindowsMiniz.library,
 ) : AutoCloseable, DesktopReaderChapterLeasePort {
     private val lock = Any()
     private val archiveLeases = mutableMapOf<Long, ArchiveLeaseBinding>()
@@ -69,11 +70,13 @@ class DesktopReaderContentAdapter internal constructor(
         return pages.mapIndexed(::readyFileDescriptor)
     }
 
+    @JvmOverloads
     fun archiveDescriptors(
         chapterId: Long,
         archive: File,
         epub: Boolean = false,
         leaseGeneration: Long = 0L,
+        preferWindowsMiniz: Boolean = false,
     ): List<ReaderPageDescriptor> {
         val previous = synchronized(lock) {
             checkLeaseReservationLocked(chapterId, leaseGeneration)
@@ -83,9 +86,24 @@ class DesktopReaderContentAdapter internal constructor(
             ?.lease
             ?.releaseAndAwaitClosed()
         synchronized(lock) { checkLeaseReservationLocked(chapterId, leaseGeneration) }
+        ReaderStartupTrace.markChapter("ARCHIVE_BACKEND_SELECT_BEGIN", chapterId)
         val lease = try {
-            openArchive(archive, epub)
+            val miniz = if (preferWindowsMiniz && !preferNativeZip && !epub && archive.extension.equals("cbz", true)) {
+                MinizZipArchiveLease.tryOpen(archive, minizLibrary, archiveOperationProbe, contentOperationProbe)
+            } else {
+                null
+            }
+            (miniz ?: openArchive(archive, epub)).also {
+                val backend = when (it) {
+                    is MinizZipArchiveLease -> "MINIZ"
+                    is CommonsZipArchiveLease -> "COMMONS"
+                    else -> "SEVENZIP"
+                }
+                ReaderStartupTrace.markChapter("ARCHIVE_BACKEND_$backend", chapterId)
+            }
         } catch (error: AppErrorException) {
+            throw error
+        } catch (error: CancellationException) {
             throw error
         } catch (error: Throwable) {
             throw AppErrorException(AppError.Storage(error))
@@ -96,11 +114,17 @@ class DesktopReaderContentAdapter internal constructor(
             lease.release()
             throw error
         }
-        val descriptors = snapshot.pageNames.mapIndexed { index, name ->
-            ReaderPageDescriptor(
-                sourcePageIndex = index,
-                url = opaquePageRef(chapterId, index, snapshot.contentFingerprint, name),
-            )
+        val descriptors = try {
+            snapshot.pageNames.mapIndexed { index, name ->
+                ReaderPageDescriptor(
+                    sourcePageIndex = index,
+                    url = snapshot.pageStamps?.get(index)?.let { "$OPAQUE_PREFIX$chapterId/$index/$it" }
+                        ?: opaquePageRef(chapterId, index, snapshot.contentFingerprint, name),
+                )
+            }
+        } catch (failure: Throwable) {
+            lease.release()
+            throw failure
         }
         val replaced = synchronized(lock) {
             if (!acceptsLeaseLocked(chapterId, leaseGeneration)) {
@@ -112,6 +136,11 @@ class DesktopReaderContentAdapter internal constructor(
                         lease = lease,
                         pageRefs = descriptors.map(ReaderPageDescriptor::url),
                         leaseGeneration = leaseGeneration,
+                        startupIdentity = if (ReaderStartupTrace.enabled) {
+                            "${lease.javaClass.simpleName}:${archive.absoluteFile.toURI()}"
+                        } else {
+                            null
+                        },
                     ),
                 )
             }
@@ -125,6 +154,11 @@ class DesktopReaderContentAdapter internal constructor(
     }
 
     fun owns(descriptor: ReaderPageDescriptor): Boolean = descriptor.url.startsWith(OPAQUE_PREFIX)
+
+    /** Reads metadata from the actual existing lease; never searches or opens another copy. */
+    internal fun startupArchiveIdentity(descriptor: ReaderPageDescriptor): String? = synchronized(lock) {
+        archiveLeases.values.firstOrNull { descriptor.url in it.pageRefs }?.startupIdentity
+    }
 
     suspend fun copyArchivePage(
         chapterId: Long,
@@ -185,6 +219,14 @@ class DesktopReaderContentAdapter internal constructor(
 
     internal fun hasArchiveLease(chapterId: Long): Boolean = synchronized(lock) {
         chapterId in archiveLeases
+    }
+
+    internal fun archiveBackend(chapterId: Long): String? = synchronized(lock) {
+        archiveLeases[chapterId]?.lease?.javaClass?.simpleName
+    }
+
+    internal fun archiveLeaseGeneration(chapterId: Long): Long? = synchronized(lock) {
+        archiveLeases[chapterId]?.leaseGeneration
     }
 
     override fun close() {
@@ -265,12 +307,14 @@ class DesktopReaderContentAdapter internal constructor(
 private data class ArchiveSnapshot(
     val pageNames: List<String>,
     val contentFingerprint: String,
+    val pageStamps: List<String>? = null,
 )
 
 private data class ArchiveLeaseBinding(
     val lease: ArchiveLease,
     val pageRefs: List<String>,
     val leaseGeneration: Long,
+    val startupIdentity: String?,
 )
 
 private interface ArchiveLease {
@@ -335,6 +379,63 @@ private abstract class RefCountedArchiveLease : ArchiveLease {
                 closeBacking()
             } finally {
                 closedSignal.countDown()
+            }
+        }
+    }
+}
+
+private class MinizZipArchiveLease(
+    private val handle: Long,
+    private val operationProbe: DesktopReaderArchiveOperationProbe,
+    private val contentOperationProbe: DesktopReaderContentOperationProbe,
+) : RefCountedArchiveLease() {
+    private val operationLock = Any()
+
+    override fun readSnapshot(): ArchiveSnapshot = withOperation {
+        val metadata = DesktopWindowsMinizNative.snapshot(handle)
+        check(metadata.size in 3..131071 && metadata.size % 2 == 1) { "Invalid native archive metadata" }
+        ArchiveSnapshot(
+            pageNames = (1 until metadata.size step 2).map(metadata::get),
+            contentFingerprint = metadata[0],
+            pageStamps = (2 until metadata.size step 2).map(metadata::get),
+        )
+    }
+
+    override fun copyPageContent(pageIndex: Int, destination: File) = withOperation {
+        contentOperationProbe.record(DesktopReaderContentOperationKind.ARCHIVE_PAGE_COPY, pageIndex) { null }
+        DesktopWindowsMinizNative.copy(handle, pageIndex, destination.absolutePath)
+    }
+
+    override fun closeBacking() = DesktopWindowsMinizNative.close(handle)
+
+    private fun <T> withOperation(block: () -> T): T = synchronized(operationLock) {
+        operationProbe.onStart()
+        try {
+            block()
+        } finally {
+            operationProbe.onFinish()
+        }
+    }
+
+    companion object {
+        fun tryOpen(
+            file: File,
+            library: DesktopWindowsMinizLibrary,
+            operationProbe: DesktopReaderArchiveOperationProbe,
+            contentOperationProbe: DesktopReaderContentOperationProbe,
+        ): MinizZipArchiveLease? {
+            val handle = try {
+                library.openIfReady(file)
+            } catch (_: java.io.IOException) {
+                return null
+            }
+            if (handle == 0L) return null
+            return try {
+                if (Thread.currentThread().isInterrupted) throw CancellationException("Reader archive open interrupted")
+                MinizZipArchiveLease(handle, operationProbe, contentOperationProbe)
+            } catch (failure: Throwable) {
+                DesktopWindowsMinizNative.close(handle)
+                throw failure
             }
         }
     }

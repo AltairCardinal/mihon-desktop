@@ -69,6 +69,7 @@ internal fun rememberReaderPresentationImage(
     generation: Long,
     splitHalf: PageSplitHalf? = null,
     sourceBounds: PixelBounds? = null,
+    bindingLifetime: Any? = null,
 ): ReaderPresentationImage {
     val identity = remember(page.id, generation, page.attemptGeneration, splitHalf, sourceBounds) {
         DesktopReaderPresentationImageSlotIdentity(
@@ -79,19 +80,49 @@ internal fun rememberReaderPresentationImage(
             sourceBounds = sourceBounds,
         )
     }
-    val decodeKey = remember(page.id, page.encodedPageRef, generation, page.attemptGeneration) {
-        readerPresentationDecodeKey(page, generation)
+    val decodeKey = remember(page.id, page.encodedPageRef, page.loadState, generation, page.attemptGeneration) {
+        if (page.loadState is mihon.domain.reader.session.ReaderPageLoadState.Ready) {
+            readerPresentationDecodeKey(page, generation).also {
+                mihon.desktop.reader.ReaderStartupTrace.markDecode("COMPOSE_READY_SEEN", it)
+            }
+        } else {
+            null
+        }
     }
-    val holder = remember(owner, identity, decodeKey) {
+    val holder = remember(owner, identity, bindingLifetime ?: decodeKey) {
         mihon.desktop.reader.ReaderStartupTrace.mark("COMPOSE_SLOT_REMEMBER", page.id, generation)
         owner.createHolder(identity, decodeKey)
     }
+    androidx.compose.runtime.SideEffect {
+        mihon.desktop.reader.ReaderStartupTrace.mark(
+            "COMPOSE_HOLDER_BOUND",
+            page.id,
+            generation,
+            System.identityHashCode(holder),
+        )
+    }
     val state by key(holder) { holder.state.collectAsState() }
-    val regionState by key(holder.regionHolder) { holder.regionHolder.state.collectAsState() }
+    val region = remember(holder, decodeKey) {
+        if (decodeKey != null && holder.bindContent(decodeKey)) holder.optionalRegionHolder else null
+    }
+    val regionState = if (region != null) {
+        val observed by key(region) { region.state.collectAsState() }
+        observed
+    } else {
+        DesktopReaderRegionPresentationSnapshot()
+    }
     DisposableEffect(holder) {
-        mihon.desktop.reader.ReaderStartupTrace.mark("COMPOSE_SLOT_APPLY", page.id, generation)
-        holder.acquire()
+        mihon.desktop.reader.ReaderStartupTrace.mark(
+            "COMPOSE_SLOT_APPLY",
+            page.id,
+            generation,
+            System.identityHashCode(holder),
+        )
         onDispose(holder::close)
+    }
+    DisposableEffect(holder, decodeKey) {
+        if (decodeKey != null && region != null) holder.acquire()
+        onDispose {}
     }
     val animationMetadata = (state as? DesktopReaderPresentationImageState.Ready)?.asset?.animationMetadata
     val animatedHolder = remember(holder, animationMetadata) {
@@ -114,7 +145,7 @@ internal fun rememberReaderPresentationImage(
         state = state,
         animatedHolder = animatedHolder,
         animatedState = animatedState,
-        regionHolder = holder.regionHolder,
+        regionHolder = region,
         regionState = regionState,
     )
 }

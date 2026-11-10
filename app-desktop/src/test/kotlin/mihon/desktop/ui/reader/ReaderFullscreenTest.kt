@@ -14,10 +14,13 @@ import androidx.compose.ui.window.WindowPlacement
 import cafe.adriel.voyager.navigator.Navigator
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
 import io.mockk.verify
 import mihon.desktop.platform.DesktopFullscreenAdapter
 import mihon.desktop.platform.DesktopWindowTransitions
 import mihon.desktop.platform.WindowsBorderlessFullscreenAdapter
+import mihon.desktop.platform.defaultFullscreenAdapter
 import mihon.desktop.reader.desktopReaderSessionState
 import mihon.desktop.ui.tutorial.DesktopTutorial
 import mihon.desktop.ui.tutorial.DesktopTutorialState
@@ -35,6 +38,94 @@ import java.util.prefs.Preferences
 
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class, androidx.compose.ui.InternalComposeUiApi::class)
 class ReaderFullscreenTest {
+
+    @Test
+    fun `native adapter provider caches adapter null and failure across real placement changes`() {
+        listOf("adapter", "null", "failure").forEach { outcome ->
+            var creations = 0
+            var placement = WindowPlacement.Floating
+            val window = mockk<ComposeWindow>(relaxed = true)
+            every { window.isDisplayable } returns true
+            every { window.placement } answers { placement }
+            every { window.placement = any() } answers { placement = firstArg() }
+            val adapter = mockk<DesktopFullscreenAdapter>(relaxed = true)
+            every { adapter.enter(window) } returns true
+            every { adapter.exit(window) } returns true
+            val controller = DesktopReaderFullscreenController(
+                getWindow = { window },
+                dispatch = { it.run() },
+                transitions = mockk(relaxed = true),
+                fullscreenAdapterFactory = {
+                    creations++
+                    when (outcome) {
+                        "adapter" -> adapter
+                        "failure" -> error("native unavailable")
+                        else -> null
+                    }
+                },
+                setNativeFullscreen = { _, _ -> false },
+            )
+            controller.syncPlacement(false)
+            assertEquals(0, creations)
+            repeat(2) {
+                controller.syncPlacement(true)
+                controller.syncPlacement(false)
+            }
+            assertEquals(1, creations, outcome)
+            controller.onDispose(false)
+        }
+    }
+
+    @Test
+    fun `initial Compose fullscreen exit initializes adapter while stale queued intents do not`() {
+        var creations = 0
+        val queue = mutableListOf<Runnable>()
+        val window = mockk<ComposeWindow>(relaxed = true)
+        every { window.isDisplayable } returns true
+        every { window.placement } returns WindowPlacement.Fullscreen
+        val controller = DesktopReaderFullscreenController(
+            getWindow = { window },
+            dispatch = queue::add,
+            transitions = mockk(relaxed = true),
+            fullscreenAdapterFactory = {
+                creations++
+                null
+            },
+            setNativeFullscreen = { _, _ -> false },
+        )
+        controller.syncPlacement(true)
+        controller.syncPlacement(false)
+        queue.removeAt(0).run()
+        assertEquals(0, creations)
+        queue.removeAt(0).run()
+        assertEquals(1, creations)
+        while (queue.isNotEmpty()) queue.removeAt(0).run()
+    }
+
+    @Test
+    fun `ordinary window lifecycle does not construct native fullscreen adapter`() {
+        mockkStatic("mihon.desktop.platform.DesktopFullscreenAdapterKt")
+        var creations = 0
+        every { defaultFullscreenAdapter() } answers {
+            creations++
+            null
+        }
+        try {
+            val window = mockk<ComposeWindow>(relaxed = true)
+            every { window.isDisplayable } returns true
+            every { window.placement } returns WindowPlacement.Floating
+            val controller = DesktopReaderFullscreenController(
+                getWindow = { window },
+                dispatch = { it.run() },
+                transitions = mockk(relaxed = true),
+            )
+            controller.syncPlacement(false)
+            controller.onDispose(false)
+            assertEquals(0, creations)
+        } finally {
+            unmockkStatic("mihon.desktop.platform.DesktopFullscreenAdapterKt")
+        }
+    }
 
     @Test
     fun `reader state defaults to non-fullscreen`() {
@@ -196,7 +287,7 @@ class ReaderFullscreenTest {
             getWindow = { window },
             dispatch = { it.run() },
             transitions = transitions,
-            fullscreenAdapter = adapter,
+            fullscreenAdapterFactory = { adapter },
         )
 
         // Enter fullscreen
@@ -225,7 +316,7 @@ class ReaderFullscreenTest {
             getWindow = { window },
             dispatch = { it.run() },
             transitions = transitions,
-            fullscreenAdapter = adapter,
+            fullscreenAdapterFactory = { adapter },
         )
 
         controller.syncPlacement(isFullscreen = true)
@@ -254,7 +345,7 @@ class ReaderFullscreenTest {
             getWindow = { window },
             dispatch = { it.run() },
             transitions = transitions,
-            fullscreenAdapter = null,
+            fullscreenAdapterFactory = { null },
             setNativeFullscreen = { _, _ -> true },
         )
 
@@ -293,7 +384,7 @@ class ReaderFullscreenTest {
         val controller = DesktopReaderFullscreenController(
             getWindow = { window },
             dispatch = { it.run() },
-            fullscreenAdapter = null,
+            fullscreenAdapterFactory = { null },
             setNativeFullscreen = { _, _ -> false },
         )
 
@@ -323,7 +414,7 @@ class ReaderFullscreenTest {
             getWindow = { window },
             dispatch = { it.run() },
             transitions = transitions,
-            fullscreenAdapter = null,
+            fullscreenAdapterFactory = { null },
             setNativeFullscreen = { _, _ -> true },
         )
 
@@ -352,7 +443,7 @@ class ReaderFullscreenTest {
         val controller = DesktopReaderFullscreenController(
             getWindow = { window },
             dispatch = { it.run() },
-            fullscreenAdapter = null,
+            fullscreenAdapterFactory = { null },
             setNativeFullscreen = { _, _ -> false },
         )
 

@@ -142,6 +142,7 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
 
         val repos by getExtensionRepo.subscribeAll().collectAsState(initial = emptyList())
         var dialog by remember { mutableStateOf<RepoDialog?>(initialCreatePrompt()) }
+        var pendingCreateUrls by remember { mutableStateOf(emptyMap<Any, String>()) }
         val addRepoTitle = DesktopSettingsAnchorResources.extensionRepoAdd.localized()
         val deleteRepoTitle = DesktopSettingsAnchorResources.extensionRepoDelete.localized()
         val anchors = buildList {
@@ -173,11 +174,17 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
                     onDismiss = { dialog = null },
                     onCreate = { url ->
                         dialog = null
+                        val operation = Any()
+                        pendingCreateUrls = pendingCreateUrls + (operation to url)
                         scope.launch {
-                            when (val result = actions.create(url) {}) {
-                                is ExtensionRepoActionResult.FingerprintConflict ->
-                                    dialog = RepoDialog.Conflict(result.oldRepo, result.newRepo)
-                                else -> extensionRepoActionMessage(result, Locale.getDefault()).let(::showSnackbar)
+                            try {
+                                when (val result = actions.create(url) {}) {
+                                    is ExtensionRepoActionResult.FingerprintConflict ->
+                                        dialog = RepoDialog.Conflict(result.oldRepo, result.newRepo)
+                                    else -> extensionRepoActionMessage(result, Locale.getDefault()).let(::showSnackbar)
+                                }
+                            } finally {
+                                pendingCreateUrls = pendingCreateUrls - operation
                             }
                         }
                     },
@@ -237,7 +244,19 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
                         .desktopSettingsAnchor(addRepoTitle, "add-repo", anchorHost),
                 )
             },
-            snackbarHost = { SnackbarHost(snackbarHostState) },
+            snackbarHost = {
+                Column {
+                    pendingCreateUrls.values.forEach { url ->
+                        ElevatedCard(modifier = Modifier.padding(16.dp)) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(extensionRepoPendingTitle(url, Locale.getDefault()))
+                                Text(url, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                    SnackbarHost(snackbarHostState)
+                }
+            },
         ) { padding ->
             val showEmpty = repos.isEmpty()
             if (showEmpty) {

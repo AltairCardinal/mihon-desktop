@@ -1225,14 +1225,14 @@
           "kind": "PLATFORM_ADAPTER",
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "fun initDesktopDI",
-          "line": 253
+          "line": "262"
         }
       ],
       "DESKTOP_CONSUMER": [
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt",
           "symbol": "initDesktopDI(context.paths, context.preferenceStore, context.syncRepositoryScope)",
-          "line": 148
+          "line": "158"
         }
       ],
       "FIXTURE": [
@@ -3202,12 +3202,12 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt",
           "symbol": "class LibraryUpdateJob",
-          "line": 83
+          "line": "97"
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt",
           "symbol": "override suspend fun doWork(): Result {",
-          "line": 101
+          "line": "115"
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -4124,7 +4124,7 @@
             "corrupt store is quarantined and startup remains available"
           ],
           "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt": [
-            "real update emits progress and one terminal success event",
+            "real update retains its result without duplicate system notifications",
             "outer failure records failed state instead of being swallowed"
           ]
         }
@@ -4329,7 +4329,7 @@
             "resumed progress uses original workset after completed manga are filtered out",
             "initialized empty workset does not absorb manga added during recovery",
             "concurrent runNow calls share one occurrence",
-            "real update emits progress and one terminal success event",
+            "real update retains its result without duplicate system notifications",
             "failed manga is persisted as a structured failed unit",
             "outer failure records failed state instead of being swallowed"
           ],
@@ -4511,7 +4511,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)",
-          "line": 1524
+          "line": "1611"
         }
       ],
       "FIXTURE": [
@@ -5003,7 +5003,7 @@
             "falls back when system adapter throws"
           ],
           "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt": [
-            "real update emits progress and one terminal success event"
+            "real update retains its result without duplicate system notifications"
           ]
         }
       }
@@ -5082,19 +5082,19 @@
           "kind": "PLATFORM_ADAPTER",
           "path": "app-desktop/src/main/kotlin/mihon/desktop/CrashHandler.kt",
           "symbol": "object CrashHandler",
-          "line": 14
+          "line": "16"
         }
       ],
       "DESKTOP_CONSUMER": [
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt",
           "symbol": "CrashHandler.install()",
-          "line": 118
+          "line": "128"
         }
       ],
       "FIXTURE": [
         {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/CrashHandlerTest.kt#uncaught handler reports original exception when crash log write fails",
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/CrashHandlerTest.kt#uncaught handler preserves safe exception type when crash log write fails",
           "productionMarkers": [
             "CrashHandler.uncaughtException"
           ]
@@ -5592,7 +5592,7 @@
           "appendCrashReport creates parent directory and writes report",
           "appendCrashReport rotates existing oversized log before writing",
           "install registers the production default handler",
-          "uncaught handler reports original exception when crash log write fails"
+          "uncaught handler preserves safe exception type when crash log write fails"
         ]
       }
     },
@@ -5658,12 +5658,12 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt",
           "symbol": "override suspend fun doWork(): Result {",
-          "line": 101
+          "line": "115"
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/App.kt",
           "symbol": "internal fun startSync(scope: CoroutineScope) {",
-          "line": 96
+          "line": "95"
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -5684,7 +5684,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "private val createCategory",
-          "line": 103
+          "line": "105"
         }
       ],
       "FIXTURE": [
@@ -10289,17 +10289,17 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryTab.kt",
           "symbol": "internal fun librarySelectionActions(",
-          "line": 145
+          "line": "151"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "val available = tachiyomi.domain.library.selectManualDownloadChapters(",
-          "line": 1214
+          "line": "1281"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 1303
+          "line": "1382"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/library/LibraryScreenModelFactory.kt",
@@ -11952,12 +11952,12 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt",
           "symbol": "fun toggleFavorite(",
-          "line": 334
+          "line": "346"
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt",
           "symbol": "fun moveMangaToCategoriesAndAddToLibrary",
-          "line": 467
+          "line": "500"
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt",
@@ -11983,12 +11983,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt",
           "symbol": "categoryDialogMode = MangaCategoryDialogMode.ADD_TO_LIBRARY",
-          "line": 1154
+          "line": "1187"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
           "symbol": "suspend fun toggleLibrary",
-          "line": 498
+          "line": "530"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
@@ -11998,7 +11998,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 1303
+          "line": "1382"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailMembershipDialogs.kt",
@@ -12013,12 +12013,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/library/MangaDetailScreenModelFactory.kt",
           "symbol": "getDuplicateLibraryManga = Injekt.get",
-          "line": 96
+          "line": "99"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/library/MangaDetailScreenModelFactory.kt",
           "symbol": "captureMangaDownloadDeletion = if",
-          "line": 169
+          "line": "172"
         }
       ],
       "FIXTURE": [
@@ -21078,7 +21078,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt",
           "symbol": "fun bookmarkChapters",
-          "line": 829
+          "line": "862"
         },
         {
           "path": "app/src/main/java/eu/kanade/domain/chapter/model/ChapterFilter.kt",
@@ -21088,12 +21088,12 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt",
           "symbol": "fun markPreviousChapterRead(",
-          "line": 737
+          "line": "770"
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt",
           "symbol": "fun runDownloadAction(",
-          "line": 694
+          "line": "727"
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -21144,7 +21144,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
           "symbol": "suspend fun markSelectedBookmark",
-          "line": 472
+          "line": "485"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaChapterOptionsPanel.kt",
@@ -21154,7 +21154,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "initialChapterFlags = { Injekt.get<SetMangaDefaultChapterFlags>().initialFlags() },",
-          "line": 898
+          "line": "938"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
@@ -21194,17 +21194,17 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/library/MangaDetailScreenModelFactory.kt",
           "symbol": "captureDownloadDeletion = if",
-          "line": 98
+          "line": "101"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/library/MangaDetailScreenModelFactory.kt",
           "symbol": "enqueueAccepted = downloadManager",
-          "line": 75
+          "line": "78"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/DesktopUiDependencies.kt",
           "symbol": "val externalUrlOpener:",
-          "line": 146
+          "line": "147"
         }
       ],
       "FIXTURE": [
@@ -24484,12 +24484,12 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModel.kt",
           "symbol": "class BrowseSourceScreenModel(",
-          "line": 71
+          "line": "88"
         },
         {
           "path": "data/src/androidMain/kotlin/tachiyomi/data/source/SourcePagingSource.kt",
           "symbol": "abstract class BaseSourcePagingSource(",
-          "line": 37
+          "line": "46"
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -24497,13 +24497,13 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaSearchService.kt",
           "symbol": "class SourceMangaSearchService",
-          "line": 10
+          "line": "15"
         },
         {
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/manga/model/SManga.kt",
           "symbol": "fun SManga.toDomainManga",
-          "line": 6
+          "line": "8"
         },
         {
           "kind": "SHARED",
@@ -24516,12 +24516,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt",
           "symbol": "internal class DesktopSourceLastUsedRecorder(",
-          "line": 167
+          "line": "169"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceQueryCoordinators.kt",
           "symbol": "class SourceBrowseQueryCoordinator(",
-          "line": 73
+          "line": "93"
         }
       ],
       "FIXTURE": [
@@ -25292,7 +25292,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/SearchScreenModel.kt",
           "symbol": "private val sourceMangaSearchService",
-          "line": 53
+          "line": "72"
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -25300,14 +25300,14 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaSearchService.kt",
           "symbol": "class SourceMangaSearchService",
-          "line": 10
+          "line": "15"
         }
       ],
       "DESKTOP_CONSUMER": [
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceQueryCoordinators.kt",
           "symbol": "class DesktopGlobalSearchCoordinator",
-          "line": 249
+          "line": "416"
         }
       ],
       "FIXTURE": [
@@ -26013,7 +26013,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/ExtensionRepoScreen.kt",
           "symbol": "internal class DesktopExtensionRepoActions(",
-          "line": 89
+          "line": "88"
         }
       ],
       "FIXTURE": [
@@ -27179,7 +27179,7 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/extension/service/ExtensionInstallCoordinator.kt",
           "symbol": "class ExtensionInstallCoordinator",
-          "line": 31
+          "line": "33"
         },
         {
           "kind": "PLATFORM_ADAPTER",
@@ -27192,7 +27192,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt",
           "symbol": "private val installCoordinator = ExtensionInstallCoordinator",
-          "line": 53
+          "line": "59"
         }
       ],
       "FIXTURE": [
@@ -27457,7 +27457,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt",
           "symbol": "private suspend fun loadExtension",
-          "line": 282
+          "line": "296"
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -27477,7 +27477,7 @@
           "kind": "PLATFORM_ADAPTER",
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt",
           "symbol": "private fun loadFromJar",
-          "line": 67
+          "line": "74"
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -27489,7 +27489,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt",
           "symbol": "loader.loadExtensions",
-          "line": 62
+          "line": "70"
         }
       ],
       "FIXTURE": [
@@ -28497,7 +28497,7 @@
         {
           "path": "app/src/main/java/eu/kanade/domain/extension/interactor/GetExtensionsByType.kt",
           "symbol": "androidExtensionPresentationStore",
-          "line": 20
+          "line": "23"
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -28512,7 +28512,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/DesktopExtensionPresentationPort.kt",
           "symbol": "desktopExtensionPresentationStore =",
-          "line": 236
+          "line": "303"
         }
       ],
       "FIXTURE": [
@@ -29451,7 +29451,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt",
           "symbol": "fun recover()",
-          "line": 387
+          "line": "411"
         }
       ],
       "FIXTURE": [
@@ -29914,7 +29914,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopNetworkHelper.kt",
           "symbol": "class DesktopNetworkHelper(",
-          "line": 65
+          "line": "66"
         }
       ],
       "FIXTURE": [
@@ -30083,7 +30083,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPageViewerAdapter.kt",
           "symbol": "class DualPageViewerAdapter",
-          "line": 53
+          "line": "57"
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -30091,13 +30091,13 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageSession.kt",
           "symbol": "class SharedDualPageSession",
-          "line": 75
+          "line": "84"
         },
         {
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderDualPagePresentationOwner.kt",
           "symbol": "internal class ReaderDualPagePresentationOwner",
-          "line": 16
+          "line": "19"
         },
         {
           "kind": "SHARED",
@@ -30130,17 +30130,17 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentation.kt",
           "symbol": "object DualPagedPresentation",
-          "line": 23
+          "line": "25"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt",
           "symbol": "fun ZoomablePagerViewer(",
-          "line": 123
+          "line": "127"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/SinglePagePagerViewer.kt",
           "symbol": "fun SinglePagePagerViewer(",
-          "line": 60
+          "line": "209"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/WebtoonViewer.kt",
@@ -30150,12 +30150,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DualPagePagerViewer.kt",
           "symbol": "fun DualPagePagerViewer(",
-          "line": 225
+          "line": "226"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSpreadSampler.kt",
           "symbol": "object DesktopReaderSpreadSampler",
-          "line": 21
+          "line": "22"
         }
       ],
       "FIXTURE": [
@@ -30587,7 +30587,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderPageImageView.kt",
           "symbol": "setMaxTileSize",
-          "line": 583
+          "line": "689"
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -30607,12 +30607,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipeline.kt",
           "symbol": "internal fun openRegionSession(",
-          "line": 357
+          "line": "459"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipeline.kt",
           "symbol": "internal suspend fun acquireRegionTile(",
-          "line": 383
+          "line": "485"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRegionPresentationOwner.kt",
@@ -30891,7 +30891,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt",
           "symbol": "private val requestScheduler",
-          "line": 62
+          "line": "69"
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -30899,7 +30899,7 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/reader/scheduler/ReaderRequestScheduler.kt",
           "symbol": "class ReaderRequestScheduler",
-          "line": 109
+          "line": "125"
         },
         {
           "kind": "SHARED",
@@ -30911,20 +30911,20 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/reader/materialize/ReaderMaterializeExecutor.kt",
           "symbol": "object CanonicalReaderMaterializeExecutor",
-          "line": 102
+          "line": "103"
         },
         {
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderSessionCore.kt",
           "symbol": "fun enqueueAdjacentPage",
-          "line": 156
+          "line": "157"
         }
       ],
       "DESKTOP_CONSUMER": [
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipeline.kt",
-          "symbol": "private val decodePermits",
-          "line": 323
+          "symbol": "private val decodeLimit",
+          "line": "362"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderEncodedPageStore.kt",
@@ -30934,7 +30934,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderMaterializePorts.kt",
           "symbol": "class DesktopReaderPageFetchPort",
-          "line": 193
+          "line": "216"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt",
@@ -30949,7 +30949,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt",
           "symbol": "private fun enqueueAdjacentImagesLocked",
-          "line": 944
+          "line": "981"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/ReaderSettingsScreen.kt",
@@ -31429,12 +31429,12 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
           "symbol": "private suspend fun loadChapter",
-          "line": 555
+          "line": "570"
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoader.kt",
           "symbol": "internal suspend fun loadChapter",
-          "line": 59
+          "line": "58"
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt",
@@ -31480,14 +31480,14 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderSessionCore.kt",
           "symbol": "class ReaderSessionCore",
-          "line": 32
+          "line": "33"
         }
       ],
       "DESKTOP_CONSUMER": [
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt",
           "symbol": "class DesktopReaderSession",
-          "line": 126
+          "line": "125"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt",
@@ -31497,17 +31497,17 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt",
           "symbol": "fun acceptSessionState",
-          "line": 960
+          "line": "2038"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/ReaderPresentation.kt",
           "symbol": "fun chapterTransitionDisplayUnit",
-          "line": 148
+          "line": "162"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt",
           "symbol": "fun ReaderChapterTransitionItem",
-          "line": 375
+          "line": "442"
         }
       ],
       "FIXTURE": [
@@ -31888,7 +31888,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt",
           "symbol": "readerPreferences.grayscale().changes()",
-          "line": 1181
+          "line": "1289"
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderColorFilter.kt",
@@ -31908,22 +31908,22 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
           "symbol": "ReaderViewportColorLayer(state.colorFilter)",
-          "line": 613
+          "line": "812"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
           "symbol": "internal fun ReaderViewportColorLayer",
-          "line": 784
+          "line": "992"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt",
           "symbol": "internal fun Modifier.readerColorTransform",
-          "line": 95
+          "line": "99"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt",
           "symbol": "internal fun readerColorMatrix",
-          "line": 105
+          "line": "109"
         }
       ],
       "FIXTURE": [
@@ -32088,7 +32088,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
           "symbol": "val submission = handle.submit(",
-          "line": 1221
+          "line": "1283"
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderProgressCoordinator.kt",
@@ -32130,7 +32130,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt",
           "symbol": "class DesktopReaderSession",
-          "line": 126
+          "line": "125"
         }
       ],
       "FIXTURE": [
@@ -32404,7 +32404,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
           "symbol": "filterAndroidReaderChapters(",
-          "line": 344
+          "line": "347"
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/util/chapter/ChapterGetNextUnread.kt",
@@ -32446,12 +32446,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "private fun eligibleReaderChapters(",
-          "line": 1263
+          "line": "1342"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt",
           "symbol": "suspend fun persistViewerFlags(",
-          "line": 1961
+          "line": "3156"
         }
       ],
       "FIXTURE": [
@@ -34706,12 +34706,12 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/download/Downloader.kt",
           "symbol": "downloadPreferences.parallelSourceLimit().changes()",
-          "line": 203
+          "line": "208"
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/download/Downloader.kt",
-          "symbol": ".retryWhen { _, attempt ->",
-          "line": 544
+          "symbol": ".retryWhen { error, attempt ->",
+          "line": "575"
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -34732,27 +34732,27 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "stateMachine.schedule(",
-          "line": 825
+          "line": "862"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "val wait = stateMachine.retryDelayMillis(retryAttempt++) ?: break",
-          "line": 1267
+          "line": "1336"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "val wait = stateMachine.retryDelayMillis(publishAttempt++) ?: break",
-          "line": 1015
+          "line": "1051"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "fun startDownloadNow(",
-          "line": 714
+          "line": "751"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "suspend fun deleteCapturedDownloadFiles(",
-          "line": 369
+          "line": "394"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadProvider.kt",
@@ -35191,7 +35191,7 @@
         {
           "path": "app/src/main/java/eu/kanade/domain/chapter/interactor/SyncChaptersWithSource.kt",
           "symbol": "downloadManager.downloadDirectoryChapters(",
-          "line": 140
+          "line": "150"
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/download/DownloadStore.kt",
@@ -35211,7 +35211,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "downloadPolicy = { manga -> Injekt.get<FilterChaptersForDownload>().snapshot(manga) }",
-          "line": 900
+          "line": "940"
         }
       ],
       "FIXTURE": [
@@ -35327,7 +35327,7 @@
             "resumed progress uses original workset after completed manga are filtered out",
             "initialized empty workset does not absorb manga added during recovery",
             "concurrent runNow calls share one occurrence",
-            "real update emits progress and one terminal success event",
+            "real update retains its result without duplicate system notifications",
             "failed manga is persisted as a structured failed unit",
             "outer failure records failed state instead of being swallowed"
           ],
@@ -36588,17 +36588,17 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt",
           "symbol": "override suspend fun doWork",
-          "line": 101
+          "line": "115"
         },
         {
           "path": "app/src/main/java/eu/kanade/domain/chapter/interactor/SyncChaptersWithSource.kt",
           "symbol": "class SyncChaptersWithSource(",
-          "line": 24
+          "line": "26"
         },
         {
           "path": "app/src/main/java/eu/kanade/domain/manga/interactor/UpdateManga.kt",
-          "symbol": "return tachiyomi.domain.source.service.sourceMangaMetadata(",
-          "line": 190
+          "symbol": "val metadata = tachiyomi.domain.source.service.sourceMangaMetadata(",
+          "line": "186"
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -36629,7 +36629,7 @@
         {
           "path": "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaMetadata.kt",
           "symbol": "fun sourceMangaMetadata(",
-          "line": 8,
+          "line": "10",
           "kind": "SHARED"
         },
         {
@@ -36660,7 +36660,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateChecker.kt",
           "symbol": "class LibraryUpdateChecker(",
-          "line": 28
+          "line": "36"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/task/DesktopTaskScheduler.kt",
@@ -36680,7 +36680,7 @@
       ],
       "FIXTURE": [
         {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt#real update emits progress and one terminal success event",
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt#real update retains its result without duplicate system notifications",
           "productionMarkers": [
             "scheduler.runNow"
           ]
@@ -36712,7 +36712,7 @@
     ],
     "behaviorMethods": {
       "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt": [
-        "real update emits progress and one terminal success event"
+        "real update retains its result without duplicate system notifications"
       ]
     },
     "statusDecision": {
@@ -36722,7 +36722,7 @@
       "gap": "NONE",
       "behaviorMethods": {
         "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt": [
-          "real update emits progress and one terminal success event"
+          "real update retains its result without duplicate system notifications"
         ]
       }
     },
@@ -36811,7 +36811,7 @@
             "resumed progress uses original workset after completed manga are filtered out",
             "initialized empty workset does not absorb manga added during recovery",
             "concurrent runNow calls share one occurrence",
-            "real update emits progress and one terminal success event",
+            "real update retains its result without duplicate system notifications",
             "failed manga is persisted as a structured failed unit",
             "outer failure records failed state instead of being swallowed"
           ],
@@ -41262,7 +41262,7 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/migration/MigrationOrchestrator.kt",
           "symbol": "class MigrationOrchestrator",
-          "line": 51
+          "line": "52"
         },
         {
           "path": "domain/src/commonMain/kotlin/mihon/domain/migration/MigrationCommit.kt",
@@ -41286,7 +41286,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/migration/MigrationSearchScreen.kt",
           "symbol": "data class MigrationSearchScreen(",
-          "line": 89
+          "line": "91"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/domain/DesktopMigrationFiles.kt",
@@ -42152,19 +42152,19 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/migration/MigrationOrchestrator.kt",
           "symbol": "class MigrationOrchestrator",
-          "line": 51
+          "line": "52"
         }
       ],
       "DESKTOP_CONSUMER": [
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/migration/DesktopBatchMigrationController.kt",
           "symbol": "class DesktopBatchMigrationController(",
-          "line": 83
+          "line": "84"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/migration/DesktopBatchMigrationController.kt",
           "symbol": "fun checkpointAccepts(",
-          "line": 574
+          "line": "576"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/migration/MigrationBatchQueueScreen.kt",
@@ -45672,7 +45672,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreator.kt",
           "symbol": "BackupCodec.encode",
-          "line": 170
+          "line": "176"
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -45693,7 +45693,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupCreator.kt",
           "symbol": "suspend fun createFromDatabase",
-          "line": 105
+          "line": "121"
         }
       ],
       "FIXTURE": [
@@ -46457,7 +46457,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorer.kt",
           "symbol": "suspend fun restore",
-          "line": 65
+          "line": "68"
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -46478,7 +46478,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupRestorer.kt",
           "symbol": "suspend fun restore",
-          "line": 71
+          "line": "76"
         }
       ],
       "FIXTURE": [
@@ -47513,7 +47513,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreator.kt",
           "symbol": "BackupCodec.encode",
-          "line": 170
+          "line": "176"
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/BackupDecoder.kt",
@@ -47539,12 +47539,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupCreator.kt",
           "symbol": "fun encodeToBytes",
-          "line": 52
+          "line": "57"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupCreator.kt",
           "symbol": "fun decodeFromBytes",
-          "line": 59
+          "line": "64"
         }
       ],
       "FIXTURE": [
@@ -48035,7 +48035,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/main/MainActivity.kt",
           "symbol": "private fun handleIntentAction",
-          "line": 407
+          "line": "418"
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -48050,7 +48050,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt",
           "symbol": "internal fun wireDesktopOpenUriEvents",
-          "line": 860
+          "line": "871"
         }
       ],
       "FIXTURE": [
@@ -50043,7 +50043,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/updater/AppUpdateChecker.kt",
           "symbol": "class AppUpdateChecker(",
-          "line": 17
+          "line": "20"
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -50058,7 +50058,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateController.kt",
           "symbol": "class DesktopUpdateController(",
-          "line": 15
+          "line": "20"
         }
       ],
       "FIXTURE": [
@@ -50482,7 +50482,7 @@
           "kind": "SHARED",
           "path": "i18n/src/commonMain/moko-resources/base/strings.xml",
           "symbol": "pref_app_language",
-          "line": 259
+          "line": "260"
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -51728,7 +51728,7 @@
             "resumed progress uses original workset after completed manga are filtered out",
             "initialized empty workset does not absorb manga added during recovery",
             "concurrent runNow calls share one occurrence",
-            "real update emits progress and one terminal success event",
+            "real update retains its result without duplicate system notifications",
             "failed manga is persisted as a structured failed unit",
             "outer failure records failed state instead of being swallowed"
           ],
@@ -57223,7 +57223,7 @@
         {
           "path": "app/build.gradle.kts",
           "symbol": "implementation(projects.domain)",
-          "line": 329
+          "line": "340"
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -57901,7 +57901,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt",
           "symbol": "suspend fun loadExtensions",
-          "line": 176
+          "line": "182"
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -57922,12 +57922,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.initialize",
-          "line": 323
+          "line": "332"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.startApp",
-          "line": 325
+          "line": "334"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt",
@@ -57937,7 +57937,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt",
           "symbol": "ServiceLoader.load(Source::class.java",
-          "line": 82
+          "line": "92"
         }
       ],
       "FIXTURE": [

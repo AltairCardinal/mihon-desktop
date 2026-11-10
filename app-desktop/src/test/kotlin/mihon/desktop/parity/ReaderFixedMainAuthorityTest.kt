@@ -801,7 +801,7 @@ class ReaderFixedMainAuthorityTest {
         )
         assertFalse(singlePresentation.contains("LegacyDesktopReaderPresentationAdapter"))
         assertFalse(readerState.contains("resolvedUrls"))
-        assertTrue(readerScreen.contains("runtimeFactory.createScreenModel("))
+        assertTrue(readerScreen.contains("runtimeFactory.createScreenEntry("))
         assertFalse(readerScreen.contains("runtimeFactory.createRuntime("))
         assertFalse(readerScreen.contains("runtimeFactory.createModel("))
         assertTrue(
@@ -830,7 +830,7 @@ class ReaderFixedMainAuthorityTest {
 
         assertTrue(sharedScheduler.contains("class ReaderRequestScheduler"))
         assertFalse(legacyPageModel.contains("ReaderPreloadPlanner"))
-        assertTrue(androidAdapter.contains("requestScheduler.pollNext()"))
+        assertTrue(androidAdapter.contains("requestScheduler.pollNext(visiblePairAdmissionLocked())"))
         assertFalse(androidAdapter.contains("PriorityBlockingQueue"))
         assertTrue(desktopAdapter.contains("core.pollNextPageRequest()"))
         assertFalse(desktopAdapter.contains("ReaderPreloadPlanner"))

@@ -1314,11 +1314,12 @@ internal class DesktopReaderSharedPageContent(
             if (closed) throw CancellationException("Desktop reader shared content is closed")
             content.start()
         }
-        val lease = content.await() ?: throw CancellationException("Reader page content is unavailable")
-        synchronized(lock) {
+        val lease = content.await()
+        val readable = synchronized(lock) {
             if (closed) throw CancellationException("Desktop reader shared content is closed")
+            checkNotNull(lease) { "Reader page content is unavailable" }
         }
-        return block(lease.content)
+        return block(readable.content)
     }
 
     override fun close() {

@@ -260,7 +260,17 @@ class ReaderScreenModel(
     private val readViewerFlags: (suspend (Long) -> Long?)? = null,
 ) : ScreenModel {
     private val globalPreferences = prefs
-    private val _state = MutableStateFlow(buildInitialState(prefs, initialSessionState))
+    private val _state =
+        MutableStateFlow(
+            initialReaderState(
+                prefs,
+                initialSessionState,
+                isWebtoon,
+                mangaViewerFlags,
+                dualPageOverride,
+                pairingCoordinator != null,
+            ),
+        )
     val state: StateFlow<ReaderState> = _state.asStateFlow()
     private var lastSettledViewport: SettledViewportIdentity? = null
     private var lastLayoutScheduledViewport: SettledViewportIdentity? = null
@@ -2084,76 +2094,6 @@ class ReaderScreenModel(
         return SpreadPublisherTransition(oldJob, job)
     }
 
-    private fun buildInitialState(
-        prefs: ReaderPreferences,
-        reader: DesktopReaderSessionState,
-    ): ReaderState {
-        val defaults = prefs.loadReaderSettings()
-        val inherited = ReaderSettingsCodec.isFollowingDefault(mangaViewerFlags)
-        val webtoonHintApplied = inherited && mangaViewerFlags == 0L && isWebtoon
-        val settings = when {
-            webtoonHintApplied -> defaults.copy(
-                mode = ReaderSettingsMode.VERTICAL,
-                scroll = ReaderScrollMode.CONTINUOUS,
-            )
-            inherited && dualPageOverride != null -> defaults.copy(
-                mode = ReaderSettingsMode.HORIZONTAL,
-                layout = if (dualPageOverride) ReaderSettingsLayout.DOUBLE else ReaderSettingsLayout.SINGLE,
-            )
-            else -> ReaderSettingsCodec.effective(mangaViewerFlags, defaults)
-        }
-        return ReaderState(
-            context = reader.context,
-            session = reader.snapshot,
-            currentPage = resolveInitialPage(
-                reader.context.initialPage,
-                reader.snapshot
-                    .activeChapter.pages.size,
-            ),
-            resumePageUnavailable = invalidSavedPage(
-                reader.context.initialPage,
-                reader.snapshot.activeChapter.pages.size,
-            ),
-            readingMode = settings.desktopReadingMode(),
-            readerSettings = settings,
-            automaticLayout =
-            settings.mode == ReaderSettingsMode.HORIZONTAL && settings.layout == ReaderSettingsLayout.AUTO,
-            followsGlobalReadingMode = inherited && !webtoonHintApplied && dualPageOverride == null,
-            dualPageMode =
-            settings.mode == ReaderSettingsMode.HORIZONTAL && settings.layout == ReaderSettingsLayout.DOUBLE,
-            autoSplitPages = prefs.autoSplitPages,
-            autoSpreadMatching = settings.match,
-            backgroundTheme = prefs.backgroundTheme,
-            navigationMode = prefs.navigationMode,
-            cropBordersPager = prefs.cropBordersPager,
-            cropBordersWebtoon = prefs.cropBordersWebtoon,
-            webtoonSidePadding = prefs.webtoonSidePadding,
-            webtoonAutoScroll = prefs.webtoonAutoScroll,
-            webtoonAutoScrollSpeed = prefs.webtoonAutoScrollSpeed,
-            scaleType = prefs.scaleType,
-            colorFilter = prefs.loadColorFilter(),
-            skipReadChapters = prefs.skipReadChapters,
-            skipFilteredChapters = prefs.skipFilteredChapters,
-            skipDuplicateChapters = prefs.skipDuplicateChapters,
-            pairingLoad = if (pairingCoordinator != null && !reader.context
-                    .isTemporaryReaderFile()
-            ) {
-                PairingLoad.LOADING
-            } else {
-                PairingLoad.READY
-            },
-            pairingSessionOnly = pairingCoordinator != null && reader.context
-                .isTemporaryReaderFile(),
-            pairingNotice = if (pairingCoordinator != null && reader.context
-                    .isTemporaryReaderFile()
-            ) {
-                PairingNotice.SESSION_ONLY
-            } else {
-                null
-            },
-        )
-    }
-
     fun acceptSessionState(reader: DesktopReaderSessionState) {
         mihon.desktop.reader.ReaderStartupTrace.mark("SESSION_ACCEPT_WAIT", generation = reader.snapshot.generation)
         synchronized(productionRuntimeLifecycleLock) {
@@ -3434,11 +3374,108 @@ private data class SettledViewportIdentity(
     val activePageId: ReaderPageId,
 )
 
-private fun resolveInitialPage(requestedPage: Int, pageCount: Int): Int = when {
+internal fun resolveInitialPage(requestedPage: Int, pageCount: Int): Int = when {
     pageCount <= 0 -> 0
     requestedPage == ReaderInitialPage.LAST -> pageCount - 1
     else -> requestedPage.takeIf { it in 0 until pageCount } ?: 0
 }
 
-private fun invalidSavedPage(requestedPage: Int, pageCount: Int): Boolean =
+internal fun invalidSavedPage(requestedPage: Int, pageCount: Int): Boolean =
     pageCount > 0 && requestedPage != ReaderInitialPage.LAST && requestedPage !in 0 until pageCount
+
+internal fun initialReaderSettings(
+    prefs: ReaderPreferences,
+    isWebtoon: Boolean,
+    mangaViewerFlags: Long,
+    dualPageOverride: Boolean?,
+): ReaderSettings {
+    val defaults = prefs.loadReaderSettings()
+    val inherited = ReaderSettingsCodec.isFollowingDefault(mangaViewerFlags)
+    return when {
+        inherited && mangaViewerFlags == 0L && isWebtoon -> defaults.copy(
+            mode = ReaderSettingsMode.VERTICAL,
+            scroll = ReaderScrollMode.CONTINUOUS,
+        )
+        inherited && dualPageOverride != null -> defaults.copy(
+            mode = ReaderSettingsMode.HORIZONTAL,
+            layout = if (dualPageOverride) ReaderSettingsLayout.DOUBLE else ReaderSettingsLayout.SINGLE,
+        )
+        else -> ReaderSettingsCodec.effective(mangaViewerFlags, defaults)
+    }
+}
+
+internal fun initialReaderMode(
+    prefs: ReaderPreferences,
+    isWebtoon: Boolean,
+    mangaViewerFlags: Long,
+    dualPageOverride: Boolean?,
+): ReadingMode {
+    val settings = initialReaderSettings(prefs, isWebtoon, mangaViewerFlags, dualPageOverride)
+    return if (settings.mode == ReaderSettingsMode.HORIZONTAL && settings.layout == ReaderSettingsLayout.AUTO) {
+        ReadingMode.AUTO
+    } else {
+        settings.desktopReadingMode()
+    }
+}
+
+internal fun initialReaderState(
+    prefs: ReaderPreferences,
+    reader: DesktopReaderSessionState,
+    isWebtoon: Boolean,
+    mangaViewerFlags: Long,
+    dualPageOverride: Boolean?,
+    hasPairingCoordinator: Boolean,
+): ReaderState {
+    val settings = initialReaderSettings(prefs, isWebtoon, mangaViewerFlags, dualPageOverride)
+    val inherited = ReaderSettingsCodec.isFollowingDefault(mangaViewerFlags)
+    val webtoonHintApplied = inherited && mangaViewerFlags == 0L && isWebtoon
+    val automatic = settings.mode == ReaderSettingsMode.HORIZONTAL && settings.layout == ReaderSettingsLayout.AUTO
+    return ReaderState(
+        context = reader.context,
+        session = reader.snapshot,
+        currentPage = resolveInitialPage(
+            reader.context.initialPage,
+            reader.snapshot
+                .activeChapter.pages.size,
+        ),
+        resumePageUnavailable = invalidSavedPage(
+            reader.context.initialPage,
+            reader.snapshot.activeChapter.pages.size,
+        ),
+        readingMode = settings.desktopReadingMode(),
+        readerSettings = settings,
+        automaticLayout = automatic,
+        followsGlobalReadingMode = inherited && !webtoonHintApplied && dualPageOverride == null,
+        dualPageMode = settings.mode == ReaderSettingsMode.HORIZONTAL && settings.layout == ReaderSettingsLayout.DOUBLE,
+        autoSplitPages = prefs.autoSplitPages,
+        autoSpreadMatching = settings.match,
+        backgroundTheme = prefs.backgroundTheme,
+        navigationMode = prefs.navigationMode,
+        cropBordersPager = prefs.cropBordersPager,
+        cropBordersWebtoon = prefs.cropBordersWebtoon,
+        webtoonSidePadding = prefs.webtoonSidePadding,
+        webtoonAutoScroll = prefs.webtoonAutoScroll,
+        webtoonAutoScrollSpeed = prefs.webtoonAutoScrollSpeed,
+        scaleType = prefs.scaleType,
+        colorFilter = prefs.loadColorFilter(),
+        skipReadChapters = prefs.skipReadChapters,
+        skipFilteredChapters = prefs.skipFilteredChapters,
+        skipDuplicateChapters = prefs.skipDuplicateChapters,
+        pairingLoad = if (hasPairingCoordinator && !reader.context
+                .isTemporaryReaderFile()
+        ) {
+            PairingLoad.LOADING
+        } else {
+            PairingLoad.READY
+        },
+        pairingSessionOnly = hasPairingCoordinator && reader.context
+            .isTemporaryReaderFile(),
+        pairingNotice = if (hasPairingCoordinator && reader.context
+                .isTemporaryReaderFile()
+        ) {
+            PairingNotice.SESSION_ONLY
+        } else {
+            null
+        },
+    )
+}

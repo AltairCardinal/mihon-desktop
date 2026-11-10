@@ -1,14 +1,18 @@
 package mihon.desktop.ui.reader
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asComposeImageBitmap
 import androidx.compose.ui.graphics.asSkiaBitmap
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -17,6 +21,9 @@ import mihon.desktop.reader.DesktopReaderImageMemoryAuthority
 import mihon.desktop.reader.DesktopReaderImageMemoryKind
 import mihon.desktop.reader.DesktopReaderImageMemoryRetention
 import mihon.desktop.reader.DesktopReaderPresentationImageSlotIdentity
+import mihon.desktop.reader.DesktopReaderPresentationImageState
+import mihon.desktop.reader.readerChapterSession
+import mihon.desktop.ui.reader.presentation.PresentationImageOwnerFixture
 import mihon.domain.reader.PageDecodePurpose
 import mihon.domain.reader.PageSplitHalf
 import mihon.domain.reader.PixelBounds
@@ -25,6 +32,7 @@ import mihon.domain.reader.content.ReaderPageContentOpenRequest
 import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageId
+import mihon.domain.reader.session.ReaderPageLoadState
 import org.jetbrains.skia.Bitmap
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -32,9 +40,119 @@ import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.awt.Color
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import javax.imageio.ImageIO
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ReaderPresentationTransformOwnerTest {
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
+    fun `ready static whole page is drawable in its first composition`() = staticCompositionScenario(false)
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
+    fun `abandoned static composition releases lease and revokes draw callbacks`() = staticCompositionScenario(
+        true,
+    )
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
+    fun `same identity replacement rejects the old Ready asset and revokes its draw lease`() =
+        staticCompositionScenario(false, replace = true)
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    private fun staticCompositionScenario(abandon: Boolean, replace: Boolean = false) = runTest {
+        val png = ByteArrayOutputStream().also { output ->
+            ImageIO.write(
+                BufferedImage(8, 8, BufferedImage.TYPE_INT_RGB).apply {
+                    createGraphics().apply {
+                        color = Color.BLUE
+                        fillRect(0, 0, 8, 8)
+                        dispose()
+                    }
+                },
+                "png",
+                output,
+            )
+        }.toByteArray()
+        val fixture = PresentationImageOwnerFixture(this) { png }
+        fixture.owner.beginGeneration(11)
+        val page = readerChapterSession(41, 11, 1) { ReaderPageLoadState.Ready }.pages[0]
+            .copy(encodedPageRef = EncodedPageRef("static-direct"))
+        val identity = DesktopReaderPresentationImageSlotIdentity(page.id, 11)
+        val holder = fixture.owner.createHolder(identity, readerPresentationDecodeKey(page, 11))
+        val scene = ImageComposeScene(80, 80, coroutineContext = currentCoroutineContext()) {}
+        try {
+            holder.acquire()
+            repeat(100) {
+                runCurrent()
+                Thread.sleep(2)
+            }
+            val ready = assertInstanceOf(DesktopReaderPresentationImageState.Ready::class.java, holder.state.value)
+            val images = mutableListOf<ReaderPresentationRenderedImage?>()
+            var displayed by mutableStateOf(ReaderPresentationImage(holder, ready))
+            val composition = runCatching {
+                scene.setContent {
+                    images += rememberReaderPresentationRenderedImage(displayed, false)
+                    if (abandon) error("abandon after retaining production pixels")
+                }
+                scene.render().close()
+            }
+            if (abandon) assertTrue(composition.isFailure) else composition.getOrThrow()
+            assertTrue(images.isNotEmpty())
+            org.junit.jupiter.api.Assertions.assertNotNull(images.first())
+            val rendered = images.first()!!
+            assertSame(ready.asset.bitmap, rendered.bitmap)
+            assertEquals(
+                null,
+                fixture.owner.firstPresentedGeneration.value,
+                "Returning pixels does not confirm an actual draw",
+            )
+            if (!abandon) {
+                assertTrue(rendered.currentPixels())
+                if (replace) {
+                    val replacementPage = page.copy(encodedPageRef = EncodedPageRef("same-identity-replacement"))
+                    val replacement = fixture.owner.createHolder(
+                        identity,
+                        readerPresentationDecodeKey(replacementPage, 11),
+                    )
+                    replacement.acquire()
+                    repeat(100) {
+                        runCurrent()
+                        Thread.sleep(2)
+                    }
+                    val replacementReady =
+                        assertInstanceOf(DesktopReaderPresentationImageState.Ready::class.java, replacement.state.value)
+                    org.junit.jupiter.api.Assertions.assertNotSame(ready.asset, replacementReady.asset)
+                    displayed = ReaderPresentationImage(replacement, ready)
+                    scene.render().close()
+                    org.junit.jupiter.api.Assertions.assertNull(
+                        images.last(),
+                        "A stale Ready cannot borrow the new holder asset",
+                    )
+                    assertFalse(rendered.currentPixels())
+                    assertFalse(rendered.acknowledgeDraw())
+                    displayed = ReaderPresentationImage(replacement, replacementReady)
+                    scene.render().close()
+                    assertSame(replacementReady.asset.bitmap, images.last()!!.bitmap)
+                    assertTrue(images.last()!!.currentPixels())
+                }
+                scene.setContent {}
+                scene.render().close()
+            }
+            assertFalse(rendered.currentPixels(), "A released composition lease cannot authorize pixels")
+            assertFalse(rendered.acknowledgeDraw(), "A released composition lease cannot report progress")
+        } finally {
+            scene.close()
+            holder.close()
+            fixture.close()
+        }
+    }
 
     @Test
     fun `identity replacement hides the old bitmap before the new transform completes`() = runTest {

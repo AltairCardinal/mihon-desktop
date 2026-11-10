@@ -143,6 +143,7 @@ class DesktopReaderSession(
         DesktopReaderPartialPageFallbackCoordinator(),
     private val partialDecodeFailureCommitGate: suspend (ReaderPageContentOpenRequest) -> Unit = {},
 ) : AutoCloseable {
+    internal val startupObservationToken = startupObservationSequence.incrementAndGet()
     private val lock = Any()
     private val storeMutex = Mutex()
     private val sessionJob = SupervisorJob(parentScope.coroutineContext[Job])
@@ -454,6 +455,17 @@ class DesktopReaderSession(
         synchronized(lock) {
             if (closed) return
             scheduledGeneration = core.snapshot.generation
+            if (ReaderStartupTrace.enabled) {
+                ReaderStartupTrace.mark(
+                    "UI_VIEWPORT_DEMAND",
+                    anchorPageId,
+                    scheduledGeneration,
+                    attemptGeneration = core.snapshot.activeChapter.pages.firstOrNull {
+                        it.id == anchorPageId
+                    }?.attemptGeneration,
+                    openingToken = startupObservationToken,
+                )
+            }
             ReaderStartupTrace.mark("VIEWPORT_SCHEDULE_LOCKED", anchorPageId, scheduledGeneration)
             val update = core.settleViewport(
                 visiblePageIds = visiblePageIds,
@@ -760,7 +772,16 @@ class DesktopReaderSession(
                             attemptGeneration = scheduledPage.attemptGeneration,
                             factReadPermit = request.factPermit,
                         ),
-                        fetchPort = pageFetchPortFactory.create(scheduledPage.context, scheduledPage.descriptor),
+                        fetchPort = pageFetchPortFactory.create(
+                            scheduledPage.context,
+                            scheduledPage.descriptor,
+                        ).also { port ->
+                            if (ReaderStartupTrace.enabled) {
+                                (port as? DesktopReaderStartupContextReceiver)?.bindStartupContext(
+                                    DesktopReaderStartupContext(startupObservationToken, request.jobKey.requestId),
+                                )
+                            }
+                        },
                         binding = scheduledPage,
                     )
                 }
@@ -768,6 +789,7 @@ class DesktopReaderSession(
                 null
             }
             adjacentPageListJob?.start()
+            work?.let { traceMaterialize("RUNNER_WORK_TAKEN", it) }
             return work
         }
 
@@ -777,24 +799,40 @@ class DesktopReaderSession(
             }
 
         override suspend fun prepare(work: ReaderPageMaterializeWork<DesktopReaderScheduledPage>): Boolean {
-            val scheduledPage = work.binding
-            val request = work.request
-            request.gatePoint(scheduledPage.isAdjacentPrefetch)?.let { ioGate.await(it) }
-            if (!accepts(work)) return false
-            if (scheduledPage.descriptor.encodedPageRef == null && !ensureStoreWritable()) return false
-            return synchronized(lock) {
-                if (!acceptsLocked(work)) return@synchronized false
-                if (scheduledPage.isAdjacentPrefetch) {
-                    ioReporter.report(
-                        ReaderIoEventType.ADJACENT_IO,
-                        request.pageId.chapterId,
-                        request.pageId,
-                        request.generation,
-                        ReaderIoPurpose.ADJACENT_PREFETCH,
-                    )
+            traceMaterialize("PREPARE_BEGIN", work)
+            try {
+                val scheduledPage = work.binding
+                val request = work.request
+                request.gatePoint(scheduledPage.isAdjacentPrefetch)?.let { ioGate.await(it) }
+                if (!accepts(work)) return false
+                if (scheduledPage.descriptor.encodedPageRef == null && !ensureStoreWritable()) return false
+                return synchronized(lock) {
+                    if (!acceptsLocked(work)) return@synchronized false
+                    if (scheduledPage.isAdjacentPrefetch) {
+                        ioReporter.report(
+                            ReaderIoEventType.ADJACENT_IO,
+                            request.pageId.chapterId,
+                            request.pageId,
+                            request.generation,
+                            ReaderIoPurpose.ADJACENT_PREFETCH,
+                        )
+                    }
+                    true
                 }
-                true
+            } finally {
+                traceMaterialize("PREPARE_END", work)
             }
+        }
+
+        private fun traceMaterialize(stage: String, work: ReaderPageMaterializeWork<DesktopReaderScheduledPage>) {
+            ReaderStartupTrace.mark(
+                stage,
+                work.request.pageId,
+                work.request.generation,
+                attemptGeneration = work.fetchRequest.attemptGeneration,
+                openingToken = startupObservationToken,
+                runnerRequestId = work.request.jobKey.requestId,
+            )
         }
 
         private fun acceptsLocked(work: ReaderPageMaterializeWork<DesktopReaderScheduledPage>): Boolean {
@@ -826,7 +864,11 @@ class DesktopReaderSession(
                 }
             } else {
                 core.acceptPageMaterialization(work.request, event).also { accepted ->
-                    if (accepted) publishStateLocked()
+                    if (accepted) {
+                        if (event is ReaderPageMaterializeEvent.Ready) traceMaterialize("READY_PUBLISH_BEGIN", work)
+                        publishStateLocked()
+                        if (event is ReaderPageMaterializeEvent.Ready) traceMaterialize("READY_PUBLISH_END", work)
+                    }
                 }
             }
         }
@@ -1084,6 +1126,8 @@ class DesktopReaderSession(
     }
 
     private companion object {
+        val startupObservationSequence = java.util.concurrent.atomic.AtomicLong()
+
         const val MAX_STALE_PHYSICAL_REQUESTS = 1
     }
 }

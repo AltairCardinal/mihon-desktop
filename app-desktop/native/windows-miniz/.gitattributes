@@ -1,0 +1,2 @@
+# Preserve the pinned upstream input bytes, including original whitespace and line endings.
+miniz/* -text

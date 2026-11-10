@@ -16,6 +16,11 @@ internal data class ReaderStartupEvent(
     val pageIndex: Int? = null,
     val generation: Long? = null,
     val detail: Int? = null,
+    val attemptGeneration: Long? = null,
+    val openingToken: Long? = null,
+    val contentIdentity: String? = null,
+    val runnerRequestId: Long? = null,
+    val runnerGeneration: Long? = null,
 )
 
 @Serializable
@@ -34,16 +39,32 @@ internal class ReaderStartupObservation(private val capacity: Int = 1024) {
     }
     private var dropped = 0L
 
-    init { require(capacity in 1..4096) }
+    init {
+        require(capacity in 1..4096)
+    }
 
-    fun record(stage: String, page: ReaderPageId? = null, generation: Long? = null, detail: Int? = null, chapterId: Long? = null) {
+    fun record(
+        stage: String,
+        page: ReaderPageId? = null,
+        generation: Long? = null,
+        detail: Int? = null,
+        chapterId: Long? = null,
+        attemptGeneration: Long? = null,
+        openingToken: Long? = null,
+        contentIdentity: String? = null,
+        runnerRequestId: Long? = null,
+        runnerGeneration: Long? = null,
+    ) {
         val thread = Thread.currentThread()
         val event = ReaderStartupEvent(
             stage, System.nanoTime(), thread.id, thread.name,
             if (threadBean.isCurrentThreadCpuTimeSupported && threadBean.isThreadCpuTimeEnabled) {
                 threadBean.currentThreadCpuTime.takeIf { it >= 0 }
-            } else null,
+            } else {
+                null
+            },
             page?.chapterId?.value ?: chapterId, page?.sourcePageIndex, generation, detail,
+            attemptGeneration, openingToken, contentIdentity, runnerRequestId, runnerGeneration,
         )
         synchronized(lock) {
             if (events.size == capacity) {
@@ -62,12 +83,64 @@ internal class ReaderStartupObservation(private val capacity: Int = 1024) {
 /** Default-off observation never reads clocks, allocates events, or writes files. */
 internal object ReaderStartupTrace {
     private val active = AtomicReference<ReaderStartupObservation?>()
-    fun install(observation: ReaderStartupObservation?) { active.set(observation) }
-    fun clear(observation: ReaderStartupObservation?) { active.compareAndSet(observation, null) }
+    val enabled: Boolean get() = active.get() != null
+
+    fun install(observation: ReaderStartupObservation?) {
+        active.set(observation)
+    }
+    fun clear(observation: ReaderStartupObservation?) {
+        active.compareAndSet(observation, null)
+    }
     fun markChapter(stage: String, chapterId: Long, detail: Int? = null) {
         active.get()?.record(stage, detail = detail, chapterId = chapterId)
     }
-    fun mark(stage: String, page: ReaderPageId? = null, generation: Long? = null, detail: Int? = null) {
-        active.get()?.record(stage, page, generation, detail)
+    fun markDecode(
+        stage: String,
+        key: mihon.domain.reader.ReaderPageDecodeKey,
+        detail: Int? = null,
+        openingToken: Long? = null,
+    ) {
+        active.get()?.record(
+            stage,
+            key.contentKey.pageId,
+            key.generation,
+            detail,
+            attemptGeneration = key.contentKey.attemptGeneration,
+            openingToken = openingToken,
+            contentIdentity = key.toString(),
+        )
     }
+
+    fun mark(
+        stage: String,
+        page: ReaderPageId? = null,
+        generation: Long? = null,
+        detail: Int? = null,
+        attemptGeneration: Long? = null,
+        openingToken: Long? = null,
+        contentIdentity: String? = null,
+        runnerRequestId: Long? = null,
+        runnerGeneration: Long? = null,
+        chapterId: Long? = null,
+    ) {
+        active.get()?.record(
+            stage,
+            page,
+            generation,
+            detail,
+            attemptGeneration = attemptGeneration,
+            openingToken = openingToken,
+            chapterId = chapterId,
+            contentIdentity = contentIdentity,
+            runnerRequestId = runnerRequestId,
+            runnerGeneration = runnerGeneration,
+        )
+    }
+}
+
+/** Optional Desktop diagnostic binding; never changes the shared materialization request. */
+internal data class DesktopReaderStartupContext(val openingToken: Long, val runnerRequestId: Long)
+
+internal interface DesktopReaderStartupContextReceiver {
+    fun bindStartupContext(context: DesktopReaderStartupContext)
 }

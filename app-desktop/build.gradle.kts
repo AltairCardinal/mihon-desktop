@@ -295,8 +295,43 @@ tasks.withType<Test> {
     }
 }
 
+val windowsReaderMinizHost = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
+val readerMinizAppResources = layout.buildDirectory.dir("generated/reader-miniz-appResources")
+val buildWindowsReaderMiniz = tasks.register<Exec>("buildWindowsReaderMiniz") {
+    group = "build"
+    description = "Builds the pinned Windows x64 reader JNI library from vendored sources."
+    onlyIf { windowsReaderMinizHost }
+    inputs.dir(layout.projectDirectory.dir("native/windows-miniz"))
+    inputs.file(rootProject.file("scripts/build-windows-reader-miniz.py"))
+    val output = readerMinizAppResources.map { it.file("windows/mihon-reader-miniz.dll") }
+    outputs.file(output)
+    outputs.file(readerMinizAppResources.map { it.file("windows/mihon-reader-miniz.build.json") })
+    outputs.file(readerMinizAppResources.map { it.file("windows/miniz-LICENSE.txt") })
+    environment("PYTHONUTF8", "1")
+    environment("PYTHONIOENCODING", "utf-8")
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    workingDir(rootProject.projectDir)
+    commandLine("python", rootProject.file("scripts/build-windows-reader-miniz.py"), "--output", output.get().asFile)
+}
+val prepareReaderMinizAppResources = tasks.register<Copy>("prepareReaderMinizAppResources") {
+    onlyIf { windowsReaderMinizHost }
+    dependsOn(buildWindowsReaderMiniz)
+    from(layout.projectDirectory.dir("src/main/appResources"))
+    into(readerMinizAppResources)
+}
+tasks.matching { it.name == "prepareAppResources" }.configureEach {
+    if (windowsReaderMinizHost) dependsOn(prepareReaderMinizAppResources)
+}
+
 val jvmTestTask = tasks.named<Test>("jvmTest")
 jvmTestTask {
+    if (windowsReaderMinizHost) {
+        dependsOn(buildWindowsReaderMiniz)
+        systemProperty(
+            "compose.application.resources.dir",
+            readerMinizAppResources.get().dir("windows").asFile.absolutePath,
+        )
+    }
     doFirst {
         val main = kotlin.targets.getByName("jvm").compilations.getByName("main")
         val runtimeClasspath = layout.buildDirectory.file("tmp/production-runtime-classpath.txt").get().asFile
@@ -514,7 +549,13 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi)
             packageName = "Mihon Desktop"
             packageVersion = desktopNativePackageVersion
-            appResourcesRootDir.set(project.layout.projectDirectory.dir("src/main/appResources"))
+            appResourcesRootDir.set(
+                if (windowsReaderMinizHost) {
+                    readerMinizAppResources.get()
+                } else {
+                    project.layout.projectDirectory.dir("src/main/appResources")
+                },
+            )
 
             modules(
                 "java.sql",

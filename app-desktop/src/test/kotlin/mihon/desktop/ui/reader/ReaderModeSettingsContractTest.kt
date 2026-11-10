@@ -17,6 +17,36 @@ import java.util.prefs.Preferences
 
 class ReaderModeSettingsContractTest {
     @Test
+    fun `early projection uses the same complete effective settings as the full reader`() {
+        val root = Preferences.userRoot().node("/mihon/reader-settings-projection/${System.nanoTime()}")
+        val prefs = ReaderPreferences(DesktopPreferenceStore(root.node("store")), root.node("legacy"))
+        val settings =
+            ReaderSettings(
+                mode = ReaderSettingsMode.VERTICAL,
+                scroll = ReaderScrollMode.PAGED,
+                gap = true,
+                match = false,
+            )
+        val flags = ReaderSettingsCodec.setCustom(0L, settings)
+        try {
+            val initial =
+                initialReaderState(
+                    prefs,
+                    mihon.desktop.reader.desktopReaderSessionState(pageCount = 2),
+                    false,
+                    flags,
+                    null,
+                    false,
+                )
+            assertEquals(settings, initial.readerSettings)
+            assertEquals(ReadingMode.VERTICAL, initial.readingMode)
+            assertEquals(false, firstCompositionSnapshotReady(initial))
+        } finally {
+            root.removeNode()
+        }
+    }
+
+    @Test
     fun `global defaults retain hidden choices through preference reconstruction`() {
         val legacy = Preferences.userRoot().node("/mihon/reader-settings-defaults/${System.nanoTime()}")
         val store = DesktopPreferenceStore(legacy.node("store"))

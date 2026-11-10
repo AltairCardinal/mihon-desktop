@@ -7,6 +7,14 @@
 窗口操作留在 Desktop adapter 中：Android 的系统窗口 API 不能用于 AWT／Compose Desktop。
 Windows 优先保留原生窗口与绘制表面的无边框实现；其他平台或 adapter 不可用时，
 保留 Compose 的 `WindowPlacement` 路径和原窗口状态恢复逻辑。
+`DesktopReaderFullscreenController` 通过 factory 按需取得 adapter：只有首次真实 placement mutation 前才求值，
+并在 prepare/enter/exit 所需原生操作前完成。普通 windowed 创建、`syncPlacement(false)` 和普通关闭不求值；
+初始窗口已经处于 Compose Fullscreen、随后请求退出时也按这条边界初始化。
+同一 controller 只求值一次，实际 adapter、null 及初始化异常均缓存；null/异常沿既有 Compose fallback，
+不在后续切换中反复加载原生库。禁用 native 的注入明确使用 `fullscreenAdapterFactory = { null }`。
+过期排队请求、disposed 或不可显示窗口在求值之前被拒绝；原有 revision、placement 与 retained-frame 清理不变。
+`ReaderFullscreenTest` 覆盖求值次数、null/失败缓存和初始全屏退出，真实原生恢复仍需单独验收。
+
 无边框 adapter 必须同时更新 HWND 的物理边界和 AWT 的逻辑边界，退出时恢复两者；
 仅调用 Win32 改变边界会让 Skiko 的 heavyweight Canvas 继续消费旧 AWT 尺寸。
 

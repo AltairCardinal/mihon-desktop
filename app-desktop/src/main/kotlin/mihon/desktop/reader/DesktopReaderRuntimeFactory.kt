@@ -354,7 +354,24 @@ class DesktopReaderRuntimeFactory internal constructor(
         chapters: List<ReaderChapterRef> = emptyList(),
         opening: tachiyomi.domain.reader.model.ReaderOpenContext? = null,
         downloadedOnly: Boolean = false,
-    ): ReaderScreenModel {
+    ): ReaderScreenModel = createScreenEntry(
+        initialContext, isWebtoon, mangaViewerFlags, dualPageOverride,
+        progressTrackerOverride, onProductionClosed, chapters, opening, downloadedOnly,
+    ).model()
+
+    internal fun createScreenEntry(
+        initialContext: DesktopReaderChapterContext,
+        isWebtoon: Boolean,
+        mangaViewerFlags: Long,
+        dualPageOverride: Boolean?,
+        progressTrackerOverride: ReaderProgressTracker? = null,
+        onProductionClosed: () -> Unit = {},
+        chapters: List<ReaderChapterRef> = emptyList(),
+        opening: tachiyomi.domain.reader.model.ReaderOpenContext? = null,
+        downloadedOnly: Boolean = false,
+    ): DesktopReaderScreenEntry {
+        ReaderStartupTrace.markChapter("ENTRY_ELIGIBILITY_BEGIN", initialContext.chapterId)
+        ReaderStartupTrace.markChapter("ENTRY_ELIGIBILITY_END", initialContext.chapterId)
         val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val runtime = try {
             createRuntime(initialContext, runtimeScope, progressTrackerOverride)
@@ -362,31 +379,42 @@ class DesktopReaderRuntimeFactory internal constructor(
             runtimeScope.cancel()
             throw error
         }
-        return try {
-            createModel(
-                runtime = runtime,
-                isWebtoon = isWebtoon,
-                mangaViewerFlags = mangaViewerFlags,
-                dualPageOverride = dualPageOverride,
-                ownedRuntimeScope = runtimeScope,
-                onProductionClosed = onProductionClosed,
-            ).also { model ->
-                model.attachCatalog(chapters, opening, catalogPreparation) { completed ->
-                    mihon.desktop.reader.desktopReaderOpenContext(
-                        checkNotNull(opening).manga,
-                        completed,
-                        checkNotNull(opening).chapter,
-                        downloadedOnly = downloadedOnly,
-                    ) { chapter ->
-                        downloadProvider.isChapterDownloaded(opening.manga.source, opening.manga.title, chapter.name)
-                    }?.chapters.orEmpty()
+        return DesktopReaderScreenEntry(
+            runtime = runtime,
+            closeUnclaimed = {
+                try {
+                    runtime.close()
+                } finally {
+                    runtimeScope.cancel()
                 }
-            }
-        } catch (error: Throwable) {
-            runtime.close()
-            runtimeScope.cancel()
-            throw error
-        }
+                onProductionClosed()
+            },
+            createModel = {
+                createModel(
+                    runtime = runtime,
+                    isWebtoon = isWebtoon,
+                    mangaViewerFlags = mangaViewerFlags,
+                    dualPageOverride = dualPageOverride,
+                    ownedRuntimeScope = runtimeScope,
+                    onProductionClosed = onProductionClosed,
+                ).also { model ->
+                    model.attachCatalog(chapters, opening, catalogPreparation) { completed ->
+                        mihon.desktop.reader.desktopReaderOpenContext(
+                            checkNotNull(opening).manga,
+                            completed,
+                            checkNotNull(opening).chapter,
+                            downloadedOnly = downloadedOnly,
+                        ) { chapter ->
+                            downloadProvider.isChapterDownloaded(
+                                opening.manga.source,
+                                opening.manga.title,
+                                chapter.name,
+                            )
+                        }?.chapters.orEmpty()
+                    }
+                }
+            },
+        )
     }
 
     private companion object {

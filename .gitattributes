@@ -26,3 +26,6 @@
 *.woff binary
 *.pyc binary
 *.swp binary
+
+# Archived reader preference calibration fixture retains its verified source bytes.
+/app-desktop/src/test/resources/reader-p0-calibration/FC-C-reread1-values.properties -text -eol

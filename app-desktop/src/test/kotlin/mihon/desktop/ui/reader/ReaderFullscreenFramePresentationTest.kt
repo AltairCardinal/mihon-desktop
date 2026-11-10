@@ -24,7 +24,7 @@ class ReaderFullscreenFramePresentationTest {
         getWindow = { window },
         dispatch = { it.run() },
         transitions = transitions,
-        fullscreenAdapter = adapter,
+        fullscreenAdapterFactory = { adapter },
     )
 
     @Test
@@ -81,7 +81,7 @@ class ReaderFullscreenFramePresentationTest {
             getWindow = { window },
             dispatch = { pending += it },
             transitions = transitions,
-            fullscreenAdapter = adapter,
+            fullscreenAdapterFactory = { adapter },
         )
         queuedController.syncPlacement(true)
         pending.removeAt(0).run()
@@ -107,7 +107,7 @@ class ReaderFullscreenFramePresentationTest {
             getWindow = { window },
             dispatch = { pending += it },
             transitions = transitions,
-            fullscreenAdapter = adapter,
+            fullscreenAdapterFactory = { adapter },
         )
         every { adapter.enter(window) } answers {
             queuedController.syncPlacement(false)
@@ -145,7 +145,7 @@ class ReaderFullscreenFramePresentationTest {
             getWindow = { window },
             dispatch = { pending += it },
             transitions = transitions,
-            fullscreenAdapter = adapter,
+            fullscreenAdapterFactory = { adapter },
         )
         queuedController.syncPlacement(true)
         pending.removeAt(0).run()
@@ -161,7 +161,7 @@ class ReaderFullscreenFramePresentationTest {
             getWindow = { window },
             dispatch = { it.run() },
             transitions = transitions,
-            fullscreenAdapter = adapter,
+            fullscreenAdapterFactory = { adapter },
         )
         failedController.syncPlacement(true)
         verify(exactly = 0) { window.renderImmediately() }
@@ -176,7 +176,7 @@ class ReaderFullscreenFramePresentationTest {
             getWindow = { window },
             dispatch = { pending += it },
             transitions = transitions,
-            fullscreenAdapter = adapter,
+            fullscreenAdapterFactory = { adapter },
         )
         queuedController.syncPlacement(true)
         pending.removeAt(0).run()

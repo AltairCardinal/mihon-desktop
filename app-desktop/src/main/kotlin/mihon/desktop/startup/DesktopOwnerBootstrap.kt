@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CompletableDeferred
@@ -172,6 +173,7 @@ internal class DesktopOwnerBootstrapController(
 @Composable
 internal fun DesktopOwnerBootstrapContent(
     state: DesktopOwnerBootstrapState,
+    onFirstUiDrawn: () -> Unit = mihon.desktop.reader.DesktopWindowsMiniz::startAsync,
     content: @Composable (DesktopOwnerStartup) -> Unit,
 ) {
     when (state) {
@@ -185,8 +187,20 @@ internal fun DesktopOwnerBootstrapContent(
                 androidx.compose.runtime.remember {
                     DesktopStartupTrace.mark("ui-compose-start")
                 }
-                LaunchedEffect(owner) { DesktopStartupTrace.mark("ui-ready") }
-                content(owner)
+                LaunchedEffect(owner) {
+                    DesktopStartupTrace.mark("ui-ready")
+                }
+                val firstUiDrawn = androidx.compose.runtime.remember(owner) {
+                    java.util.concurrent.atomic.AtomicBoolean(false)
+                }
+                Box(
+                    Modifier.fillMaxSize().drawWithContent {
+                        drawContent()
+                        if (firstUiDrawn.compareAndSet(false, true)) onFirstUiDrawn()
+                    },
+                ) {
+                    content(owner)
+                }
             } else {
                 DesktopBootScreen()
             }

@@ -998,9 +998,12 @@ class DesktopExtensionInstallTransactionTest {
             assertNotNull(manager.getSource(FixtureOldSource.ID))
             assertNull(manager.getSource(FixtureNewSource.ID))
             assertEquals(
-                installedBefore.map { it.copy(sources = emptyList()) to it.sources.map { source -> source.id } },
+                installedBefore.map {
+                    it.copy(sources = emptyList(), registeredSources = emptyList()) to
+                        it.sources.map { source -> source.id }
+                },
                 manager.installedExtensions.value.map {
-                    it.copy(sources = emptyList()) to
+                    it.copy(sources = emptyList(), registeredSources = emptyList()) to
                         it.sources.map { source -> source.id }
                 },
             )

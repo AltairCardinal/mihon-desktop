@@ -120,6 +120,17 @@ Desktop 的 `ReaderPanBounds` 是阅读器视口交互策略：放大后，拖�
 
 有效令牌只在内存中复用，临近到期或 `PersistentGitHubCredentialStore.tokenRefreshEpoch` 改变时才重新读取并续期，避免每个请求都启动 Windows DPAPI 解密子进程。刷新 epoch 仅在新凭据成功持久化后更新；续期失败仍保留原凭据，并沿用网络重试或确认失效后的授权恢复路径。身份确认使用授权 epoch，不能把正常令牌轮换当作账号变更。相关行为由 `SyncRuntimeWiringTest` 的会话续期、缓存和身份隔离用例覆盖。
 
+### 书架分类标签排序
+
+书架分类标签的直接拖动由 `LibraryCategoryTabs` 适配 Desktop 指针，越过 Compose 水平移动阈值即开始，无需长按；保留 Material
+`SecondaryScrollableTabRow`、普通点击、滚轮与现有分类数量显示。拖动期间仅投影标签顺序，
+边缘停留可横向滚动；松手才调用现有 `LibraryScreenModel.reorderCategory` / 共享
+`ReorderCategory` 保存，索引只计算自定义分类，系统默认分类固定在最前。
+选中分类按稳定 ID 保留；保存期间禁止重复操作，失败清除投影、显示原有错误反馈并允许重试。
+手势取消、离页或拖动期间收到分类仓库变化时放弃未保存投影。该适配器使用标签实测位置，
+不将分类管理页的 LazyColumn 拖动状态套用到 Material TabRow，也不新增排序权威。
+`LibraryCategoryDragTest` 通过真实书架指针和 SQLite 覆盖保存、重开、失败恢复、默认分类及窄窗口边缘拖动。
+
 ### 书架下载反馈与更新摘要
 
 书架下载数量不使用 `batchCategoryResultMessage`，该字段只负责分类操作反馈。下载结果由 `downloadResultMessage` 保留最近一次文案供离页通知使用，页面通过无 replay 的 `downloadMessages` 事件显示 Material Snackbar；连续请求替换当前气泡，关闭、超时或返回书架不能重播旧事件。下载数量以真实入队接受结果为准；原始目录没有未读时提示没有未读，有未读但被筛选、已下载或已排队时提示没有可添加的未读。部分失败和源不可用保留错误信息，不伪装成没有未读；书签下载为空仍使用章节不可用提示。
@@ -133,3 +144,15 @@ Desktop 的 `ReaderPanBounds` 是阅读器视口交互策略：放大后，拖�
 `LibraryScreenModel.updateBannerVisible` 是内存中的展示状态，与持久化任务及恢复数据分离。首次观察到真实运行任务可展示，历史终态不能恢复提示。状态栏归属于触发更新时的稳定分类 ID（`updateBannerCategoryId`），与任务的 ALL/CATEGORY 处理范围分离。其他分类不展示此任务反馈；运行中切走不清理原分类的反馈，返回原分类继续显示实时状态。分类重排不改变归属，重复运行请求不得将已有任务反馈转移到其他分类；实际新任务、重试或恢复从当前发起分类捕获归属。首次恢复仅复用任务已有的明确 categoryId，全局恢复没有分类信息时不猜测归属、不跨分类展示。更新在根书架可见期间完成时保留反馈，直到完成后的下一次分类或页面切换；离开根书架或停留在其他分类期间收到完成、失败或取消终态则隐藏，返回时不重播。`enterUpdateBannerHost`/`leaveUpdateBannerHost` 由根页的 composition 生命周期接线，任务观察流仍持续跟踪真实状态。隐藏后迟到结果以及后台调度不能自行解除隐藏，用户再次显式触发更新、重试或恢复时才重新展示，已有运行任务不能重复启动。结果弹窗、主题及窗口尺寸变化不清理提示。隐藏只影响反馈，不取消后台任务、不删除检查点；启动失败仍在可见状态行反馈，任务失败的原因和恢复路径留在结果弹窗。
 
 回归由 `LibraryPageCompositionTest` 覆盖真实分类点击、详情返回、主导航切换、栏位及结果弹窗接线，`NotificationServiceTest` 与 `LibraryUpdateRecoveryIntegrationTest` 覆盖通知归属和真实任务结果。
+
+### Windows 下载单页首次组合
+
+已确认下载、固定 RTL/LTR 单页、无自动布局和拆页的 opening context 在 runtime 边界捕获资格，不再以两次即时读取是否恰好拿到页表决定永久回退。`ReaderFirstComposition` 持续订阅同一 session；页表未到时保留加载反馈，Loaded 后复用 `resolveInitialPage` 与恢复校验，再挂载真实 Queued holder 并提交当前页需求。章、代次或打开身份改变、页表失败、非法恢复或准入时设置不一致均进入既有完整阅读器。在线、条漫、双页、AUTO 和拆页仍沿完整入口。
+
+真实目标 draw 解锁完整模型创建，不直接表示完整视口可接手。模型创建后立即连接 session 的 `acceptSessionState` 桥，沿原有原子状态与派生呈现协议发布；配对恢复等待时轻量视口继续持有正确像素。视觉交接须核对同章、同代次、目标位置、页 attempt 与 encoded ref、完整内容状态及配对准备。runtime 捕获的首屏资格不会因 `entry.hasModel` 改变后的父级重组失效。活动手势保留原组合 owner，直到 release/cancel；交接复用同一 movable-content registry 中唯一挂载的 holder 和 lease。
+
+用户提前请求完整控件、按键、滚轮或翻页会解锁模型。轻量入口已捕获的输入交给既有 handler 按事件一次消费：F11、显隐控件及缩放不依赖页表，完整视口挂载后立即执行，页表失败也不吞掉；原 handler 判断需要页表的导航才延后至 Loaded，以真实恢复位置解析。队列绑定原章与代次，退出或身份改变不重放到新章节。缩放与控件意图沿原链移交。退出在无模型时由轻 entry 关闭 runtime，有模型后沿原模型释放，均只释放一次。`ReaderFirstCompositionIntegrationTest` 使用真实 session、encoded store 原子写/读、Skia 与 Screen，并覆盖晚到页表、恢复/失败、逐帧像素、父重组、早期输入和跨首绘 pinch/pan；内部绘出与物理屏幕呈现仍分别验收。
+
+静态整页在无 split/source bounds/裁边时，由 `rememberReaderPresentationRenderedImage` 在 Ready 组合直接保留原资产。`ReaderCompositionBitmapLease` 同时处理 forgotten 和 abandoned；捕获的 draw/currentPixels 回调须检查 composition lease 尚有效及实际 Ready asset 身份。裁边、拆页和动画仍使用异步 transform，保留原 prepare/draw/进度契约及内存预算。`ReaderPresentationTransformOwnerTest` 覆盖第一组合可绘、abandon/忘记及同身份替换，动画和单双页接线沿对应 production 呈现测试验证。
+
+`DesktopReaderFullscreenController` 仅在真实 placement mutation 前求值 factory，并缓存 adapter、null 或初始化失败的 fallback；普通 windowed 创建、同步与关闭不初始化 JNA。所有注入均使用 factory，禁用 native 明确传 `{ null }`。初始化、prepare、enter/exit 及 retained frame 清理继续在原 controller 生命周期内完成。
