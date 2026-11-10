@@ -48,6 +48,8 @@ test('纵向滚动方式互斥，只有连续显示页面有空隙且切换保�
     assert.equal(await host.locator('[data-paged-settings]').isVisible(), false);
     assert.equal(await host.locator('[data-setting="scroll"]').count(), 2);
     assert.equal(await host.locator('[data-segments="scroll"] .icon').count(), 2);
+    assert.equal(await host.locator('[data-segments="scroll"] use').nth(0).getAttribute('href'), '#i-strip', '连续滚动图标保持不变');
+    assert.equal(await host.locator('[data-segments="scroll"] use').nth(1).getAttribute('href'), '#i-gallery-vertical', '逐页采用当前页与上下页边界图标');
     assert.notEqual(await host.locator('[data-segments="scroll"] use').nth(0).getAttribute('href'), await host.locator('[data-segments="scroll"] use').nth(1).getAttribute('href'));
     assert.equal(await host.locator('[data-setting="scroll"][value="continuous"]').isChecked(), true);
     await host.getByRole('switch', { name: '页面有空隙' }).check();

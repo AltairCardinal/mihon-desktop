@@ -281,6 +281,7 @@
           <symbol id="i-strip" viewBox="0 0 24 24"><rect x="4" y="2.75" width="16" height="18.5" rx="2.5"/><path d="M4 8h16M4 16h16"/></symbol>
           <symbol id="i-auto" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m8 0h3a2 2 0 0 0 2-2v-3"/></symbol>
           <symbol id="i-single" viewBox="0 0 24 24"><rect x="6" y="2.75" width="12" height="18.5" rx="1.8"/></symbol>
+          <symbol id="i-gallery-vertical" viewBox="0 0 24 24"><path d="M3 2h18"/><rect width="18" height="12" x="3" y="6" rx="2"/><path d="M3 22h18"/></symbol>
           <symbol id="i-double" viewBox="0 0 24 24"><rect x="2.5" y="3.75" width="19" height="16.5" rx="1.8"/><path d="M12 3.75v16.5"/></symbol>
           <symbol id="i-right" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
           <symbol id="i-left" viewBox="0 0 24 24"><path d="M19 12H5m6-6-6 6 6 6"/></symbol>
@@ -337,7 +338,7 @@
               <legend>滚动方式</legend>
               <div class="segments" data-segments="scroll">
                 ${radio('scroll', 'continuous', `${svg('strip')}<span>连续滚动</span>`)}
-                ${radio('scroll', 'paged', `${svg('single')}<span>逐页翻动</span>`)}
+                ${radio('scroll', 'paged', `${svg('gallery-vertical')}<span>逐页翻动</span>`)}
               </div>
             </fieldset>
             <div class="dependent" data-gap-row>
