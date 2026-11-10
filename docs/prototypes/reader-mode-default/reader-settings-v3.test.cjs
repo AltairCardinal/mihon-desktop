@@ -21,6 +21,31 @@ const pick = (host, key, value) => host.locator(`input[data-setting="${key}"][va
 const value = host => host.evaluate(el => el.value);
 const shot = (page, name) => page.screenshot({ path: path.join(output, name + '.png'), fullPage: true });
 
+test('说明精简、双页方向保留空位、匹配开关位于方向下方', () => session(async (page, pc, mobile) => {
+  for (const host of [pc, mobile]) {
+    assert.equal(await host.locator('[data-layout-help]').textContent(), '在单页/双页之间自动选择，以合理利用阅读区域。');
+    assert.equal(await host.locator('[data-auto-tag]').count(), 0);
+    const before = await host.locator('[data-setting="direction"][value="rtl"]').boundingBox();
+    await pick(host, 'layout', 'double');
+    assert.equal(await host.locator('[data-layout-help]').textContent(), '每次显示两页');
+    const after = await host.locator('[data-setting="direction"][value="rtl"]').boundingBox();
+    assert.equal(before.x, after.x);
+    assert.equal(before.width, after.width);
+    assert.equal(await host.locator('[data-setting="direction"][value="vertical"]').isVisible(), false);
+    const gap = await host.evaluate(el => {
+      const root = el.shadowRoot;
+      const blank = root.querySelector('[data-setting="direction"][value="vertical"]').closest('label').getBoundingClientRect();
+      return { width: blank.width, matchTop: root.querySelector('[data-match-row]').getBoundingClientRect().top, directionBottom: root.querySelector('.direction-field').getBoundingClientRect().bottom };
+    });
+    assert.ok(gap.width > 0, '纵向按钮保持网格占位');
+    assert.ok(gap.matchTop >= gap.directionBottom, '匹配开关位于方向下方');
+    await pick(host, 'scope', 'default');
+    assert.equal(await host.locator('.inherited-footnote').count(), 0);
+    await pick(host, 'scope', 'custom');
+  }
+  await shot(page, 'refined-layout');
+}));
+
 test('双页不提供纵向，切换、键盘和旧配置均保持合法方向', () => session(async (page, pc, mobile) => {
   for (const host of [pc, mobile]) {
     await pick(host, 'layout', 'single');

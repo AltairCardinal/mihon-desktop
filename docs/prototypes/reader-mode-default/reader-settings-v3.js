@@ -174,12 +174,6 @@
         .layout-field { margin-top: 22px; }
         .layout-help { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
         .layout-help p { color: var(--secondary); font-size: 12px; line-height: 1.6; }
-        .adaptive-tag {
-          display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; color: #b6cbf8;
-          font-size: 11px; line-height: 1.7; padding: 0 7px; border-radius: 6px;
-          background: #9cbcff0b; border: 1px solid #9cbcff13;
-        }
-        .adaptive-tag::before { content: ''; width: 4px; height: 4px; border-radius: 50%; background: #a7c5ff; }
         .dependent { margin-top: 14px; }
         .toggle-row {
           min-height: 81px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -238,7 +232,6 @@
         .inherited dl > div { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 11px 0; border-top: 1px solid #ffffff0a; }
         .inherited dt { color: #b4bdd1; }
         .inherited dd { text-align: right; color: #edf2fc; font-weight: 500; }
-        .inherited-footnote { margin-top: 13px; font-size: 12px; line-height: 1.7; color: var(--secondary); }
         .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); clip-path: inset(50%); white-space: nowrap; }
         @container (max-width: 560px) {
           .panel { padding: 22px 20px 24px; border-radius: 23px; }
@@ -265,9 +258,7 @@
           .direction-grid { gap: 8px; }
           .direction-title { font-size: 12px; }
           .layout-help p { font-size: 11px; }
-          .adaptive-tag { font-size: 10px; padding: 0 5px; }
-        }
-        @media (prefers-reduced-motion: reduce) {
+          @media (prefers-reduced-motion: reduce) {
           *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
         }
         @media (forced-colors: active) {
@@ -318,16 +309,9 @@
                 ${radio('layout', 'double', `${svg('double')}<span>双页</span>`)}
               </div>
               <div class="layout-help">
-                <p data-layout-help>根据可用阅读区域自动切换</p>
-                <span class="adaptive-tag" data-auto-tag>自适应</span>
+                <p data-layout-help>在单页/双页之间自动选择，以合理利用阅读区域。</p>
               </div>
             </fieldset>
-            <div class="dependent" data-match-row>
-              <label class="toggle-row">
-                <span class="toggle-copy"><span class="toggle-title" id="match-title">双页自动匹配</span><span class="toggle-description" id="match-help">在双页显示时，自动调整页面配对</span></span>
-                <span class="toggle-control"><span class="toggle-state" data-match-state aria-hidden="true">开启</span><span class="switch"><input type="checkbox" role="switch" data-setting="match" aria-labelledby="match-title" aria-describedby="match-help"><span class="switch-track" aria-hidden="true"></span></span></span>
-              </label>
-            </div>
             <fieldset class="direction-field">
               <legend>翻页方向</legend>
               <div class="direction-grid">
@@ -336,6 +320,12 @@
                 ${radio('direction', 'vertical', `${svg('down')}<span class="direction-title">从上到下</span>`, 'direction')}
               </div>
             </fieldset>
+            <div class="dependent" data-match-row>
+              <label class="toggle-row">
+                <span class="toggle-copy"><span class="toggle-title" id="match-title">双页自动匹配</span><span class="toggle-description" id="match-help">在双页显示时，自动调整页面配对</span></span>
+                <span class="toggle-control"><span class="toggle-state" data-match-state aria-hidden="true">开启</span><span class="switch"><input type="checkbox" role="switch" data-setting="match" aria-labelledby="match-title" aria-describedby="match-help"><span class="switch-track" aria-hidden="true"></span></span></span>
+              </label>
+            </div>
           </div>
           <div class="webtoon-settings" data-webtoon-settings hidden>
             <label class="toggle-row">
@@ -351,12 +341,11 @@
             <dl>
               <div><dt>阅读模式</dt><dd data-default-mode>翻页</dd></div>
               <div data-default-layout-row><dt>单双页</dt><dd data-default-layout>自动</dd></div>
-              <div data-default-match-row><dt>双页自动匹配</dt><dd data-default-match>开启</dd></div>
               <div data-default-direction-row><dt>翻页方向</dt><dd data-default-direction>从右到左</dd></div>
+              <div data-default-match-row><dt>双页自动匹配</dt><dd data-default-match>开启</dd></div>
               <div data-default-gap-row hidden><dt>页间有空隙</dt><dd data-default-gap>否</dd></div>
             </dl>
           </div>
-          <p class="inherited-footnote">单独设置的值已保留，切回后可继续使用。</p>
         </div>
         <span class="sr-only" role="status" aria-live="polite" data-live></span>
       </section>`;
@@ -465,15 +454,13 @@
         show('[data-paged-settings]', c.mode === 'paged');
         show('[data-webtoon-settings]', c.mode === 'webtoon');
         show('[data-match-row]', c.mode === 'paged' && c.layout !== 'single');
-        show('[data-auto-tag]', c.layout === 'auto');
         const vertical = root.querySelector('[data-setting="direction"][value="vertical"]');
-        vertical.closest('label').hidden = c.layout === 'double';
+        vertical.closest('label').style.visibility = c.layout === 'double' ? 'hidden' : 'visible';
         vertical.disabled = c.layout === 'double';
-        root.querySelector('.direction-grid').style.gridTemplateColumns = `repeat(${c.layout === 'double' ? 2 : 3}, minmax(0, 1fr))`;
         text('[data-scope-help]', s.scope === 'custom' ? '下方设置仅对当前作品生效' : '当前作品使用全局默认设置');
         text('[data-match-state]', c.match ? '开启' : '关闭');
         text('[data-gap-state]', c.gap ? '是' : '否');
-        text('[data-layout-help]', c.layout === 'auto' ? '根据可用阅读区域自动切换' : c.layout === 'single' ? '每次显示一页' : '每次显示两页，仅支持左右翻页');
+        text('[data-layout-help]', c.layout === 'auto' ? '在单页/双页之间自动选择，以合理利用阅读区域。' : c.layout === 'single' ? '每次显示一页' : '每次显示两页');
         text('[data-default-mode]', d.mode === 'paged' ? '翻页' : '条漫');
         text('[data-default-layout]', LAYOUTS[d.layout]);
         text('[data-default-match]', d.match ? '开启' : '关闭');
