@@ -21,125 +21,64 @@ const pick = (host, key, value) => host.locator(`input[data-setting="${key}"][va
 const value = host => host.evaluate(el => el.value);
 const shot = (page, name) => page.screenshot({ path: path.join(output, name + '.png'), fullPage: true });
 
-test('自动也隐藏纵向并保留占位，仅单页允许纵向', () => session(async (page, pc, mobile) => {
+test('横向阅读只有左右方向，两个按钮铺满，自动说明准确', () => session(async (page, pc, mobile) => {
   for (const host of [pc, mobile]) {
-    await pick(host, 'layout', 'single');
-    await pick(host, 'direction', 'vertical');
-    const before = await host.locator('[data-setting="direction"][value="rtl"]').boundingBox();
-    await pick(host, 'layout', 'auto');
-    const vertical = host.locator('[data-setting="direction"][value="vertical"]');
-    assert.equal(await vertical.isVisible(), false);
-    assert.equal(await vertical.isDisabled(), true);
-    assert.equal((await value(host)).custom.direction, 'rtl');
-    const after = await host.locator('[data-setting="direction"][value="rtl"]').boundingBox();
-    assert.equal(before.x, after.x);
-    assert.equal(before.width, after.width);
-    assert.ok(await vertical.evaluate(el => el.closest('label').getBoundingClientRect().width > 0));
-    await host.locator('[data-setting="direction"][value="rtl"]').focus();
-    await page.keyboard.press('ArrowRight');
-    assert.equal((await value(host)).custom.direction, 'ltr');
-    await host.evaluate(el => { el.value = { scope: 'custom', custom: { mode: 'paged', layout: 'auto', direction: 'vertical' } }; });
-    assert.equal((await value(host)).custom.direction, 'rtl');
-    await host.evaluate(el => { el.defaultSettings = { mode: 'paged', layout: 'auto', direction: 'vertical' }; });
-    await pick(host, 'scope', 'default');
-    assert.equal(await host.locator('[data-default-direction]').textContent(), '从右到左');
-    await pick(host, 'scope', 'custom');
+    assert.equal(await host.locator('.mode-grid').getByText('横向阅读', { exact: true }).count(), 1);
+    assert.equal(await host.getByText('适合传统漫画', { exact: true }).count(), 1);
+    assert.equal(await host.getByText('适合条漫', { exact: true }).count(), 1);
+    assert.equal(await host.locator('[data-layout-help]').textContent(), '根据阅读区域宽高比自动切换单/双页');
+    assert.equal(await host.locator('[data-setting="direction"]').count(), 2);
+    for (const layout of ['auto', 'single', 'double']) {
+      await pick(host, 'layout', layout);
+      const boxes = await host.evaluate(el => {
+        const r = el.shadowRoot;
+        return [r.querySelector('.direction-grid'), ...r.querySelectorAll('.direction')].map(n => { const b=n.getBoundingClientRect(); return {left:b.left,right:b.right,width:b.width}; });
+      });
+      assert.equal(boxes[0].left, boxes[1].left);
+      assert.equal(boxes[0].right, boxes[2].right);
+      assert.ok(Math.abs(boxes[1].width-boxes[2].width)<1);
+    }
   }
-  await shot(page, 'auto-horizontal-only');
+  await shot(page, 'horizontal');
 }));
 
-test('说明精简、双页方向保留空位、匹配开关位于方向下方', () => session(async (page, pc, mobile) => {
+test('纵向滚动方式互斥，只有连续显示页面有空隙且切换保留值', () => session(async (page, pc, mobile) => {
   for (const host of [pc, mobile]) {
-    assert.equal(await host.locator('[data-layout-help]').textContent(), '在单页/双页之间自动选择，以合理利用阅读区域。');
-    assert.equal(await host.locator('[data-auto-tag]').count(), 0);
-    const before = await host.locator('[data-setting="direction"][value="rtl"]').boundingBox();
-    await pick(host, 'layout', 'double');
-    assert.equal(await host.locator('[data-layout-help]').textContent(), '每次显示两页');
-    const after = await host.locator('[data-setting="direction"][value="rtl"]').boundingBox();
-    assert.equal(before.x, after.x);
-    assert.equal(before.width, after.width);
-    assert.equal(await host.locator('[data-setting="direction"][value="vertical"]').isVisible(), false);
-    const gap = await host.evaluate(el => {
-      const root = el.shadowRoot;
-      const blank = root.querySelector('[data-setting="direction"][value="vertical"]').closest('label').getBoundingClientRect();
-      return { width: blank.width, matchTop: root.querySelector('[data-match-row]').getBoundingClientRect().top, directionBottom: root.querySelector('.direction-field').getBoundingClientRect().bottom };
-    });
-    assert.ok(gap.width > 0, '纵向按钮保持网格占位');
-    assert.ok(gap.matchTop >= gap.directionBottom, '匹配开关位于方向下方');
-    await pick(host, 'scope', 'default');
-    assert.equal(await host.locator('.inherited-footnote').count(), 0);
-    await pick(host, 'scope', 'custom');
-  }
-  await shot(page, 'refined-layout');
-}));
-
-test('双页不提供纵向，切换、键盘和旧配置均保持合法方向', () => session(async (page, pc, mobile) => {
-  for (const host of [pc, mobile]) {
-    await pick(host, 'layout', 'single');
-    await pick(host, 'direction', 'vertical');
-    await pick(host, 'layout', 'double');
-    assert.equal(await host.locator('[data-setting="direction"][value="vertical"]').isVisible(), false);
-    assert.equal((await value(host)).custom.direction, 'rtl');
-    await host.locator('[data-setting="direction"][value="rtl"]').focus();
-    await page.keyboard.press('ArrowRight');
-    assert.equal((await value(host)).custom.direction, 'ltr', '键盘跳过纵向选项');
-    await host.evaluate(el => { el.value = { scope: 'custom', custom: { mode: 'paged', layout: 'double', direction: 'vertical' } }; });
-    assert.equal((await value(host)).custom.direction, 'rtl');
-    await host.evaluate(el => { el.defaultSettings = { mode: 'paged', layout: 'double', direction: 'vertical' }; });
-    await pick(host, 'scope', 'default');
-    assert.equal(await host.locator('[data-default-direction]').textContent(), '从右到左');
-    await pick(host, 'scope', 'custom');
-    await pick(host, 'layout', 'single');
-    assert.equal(await host.locator('[data-setting="direction"][value="vertical"]').isVisible(), true);
-  }
-  await page.reload();
-  await pick(pc, 'layout', 'double');
-  await pick(mobile, 'layout', 'double');
-  await shot(page, 'double-horizontal-only');
-}));
-
-test('v3 双端同一交互：模式与单双页分层，隐藏项及选择值保留一致', () => session(async (page, pc, mobile) => {
-  assert.equal(await pc.locator('input[data-setting="mode"]').count(), 2, '阅读模式只有翻页和条漫');
-  for (const host of [pc, mobile]) {
-    assert.equal(await host.locator('[data-setting="scope"][value="custom"]').isChecked(), true);
-    await pick(host, 'layout', 'single');
-    assert.equal(await host.locator('[data-match-row]').isVisible(), false);
-    await pick(host, 'layout', 'double');
-    assert.equal(await host.locator('[data-match-row]').isVisible(), true);
-    await host.getByRole('switch', { name: '双页自动匹配' }).uncheck();
-    await pick(host, 'direction', 'ltr');
     await pick(host, 'mode', 'webtoon');
     assert.equal(await host.locator('[data-paged-settings]').isVisible(), false);
-    await host.getByRole('switch', { name: '页间有空隙' }).check();
+    assert.equal(await host.locator('[data-setting="scroll"]').count(), 2);
+    assert.equal(await host.locator('[data-setting="scroll"][value="continuous"]').isChecked(), true);
+    await host.getByRole('switch', { name: '页面有空隙' }).check();
+    await pick(host, 'scroll', 'paged');
+    assert.equal(await host.getByRole('switch', { name: '页面有空隙' }).isVisible(), false);
+    assert.equal((await value(host)).custom.scroll, 'paged');
     await pick(host, 'mode', 'paged');
-    assert.equal(await host.locator('[data-setting="layout"][value="double"]').isChecked(), true);
-    assert.equal(await host.locator('[data-setting="direction"][value="ltr"]').isChecked(), true);
-    assert.equal(await host.getByRole('switch', { name: '双页自动匹配' }).isChecked(), false);
+    await pick(host, 'mode', 'webtoon');
+    assert.equal(await host.locator('[data-setting="scroll"][value="paged"]').isChecked(), true);
+    await pick(host, 'scroll', 'continuous');
+    assert.equal(await host.getByRole('switch', { name: '页面有空隙' }).isChecked(), true);
   }
-  assert.deepEqual(await value(pc), await value(mobile));
-  await shot(page, 'both-paged');
+  await pick(mobile, 'scroll', 'paged');
+  await shot(page, 'vertical-scroll-methods');
 }));
 
-test('默认显示摘要，默认变化不覆盖自定义，切回后恢复且双端隔离', () => session(async (page, pc, mobile) => {
-  await pick(pc, 'mode', 'webtoon');
-  await pc.getByRole('switch', { name: '页间有空隙' }).check();
-  await pick(pc, 'scope', 'default');
-  assert.equal(await pc.locator('[data-custom-settings]').isVisible(), false);
-  assert.equal(await pc.locator('[data-default-mode]').textContent(), '翻页');
-  assert.equal(await pc.locator('[data-default-layout]').textContent(), '自动');
-  await page.getByLabel('演示全局默认').selectOption('webtoon');
-  assert.equal(await pc.locator('[data-default-mode]').textContent(), '条漫');
-  assert.equal(await pc.locator('[data-default-gap-row]').isVisible(), true);
-  assert.equal(await pc.locator('[data-default-direction-row]').isVisible(), false);
+test('默认摘要与旧纵向单页转换正确，恢复及双端状态隔离', () => session(async (page, pc, mobile) => {
+  await pc.evaluate(el => { el.value={scope:'custom',custom:{mode:'paged',layout:'single',direction:'vertical',gap:true}}; });
+  assert.equal((await value(pc)).custom.mode, 'webtoon');
+  assert.equal((await value(pc)).custom.scroll, 'paged');
   assert.equal((await value(mobile)).custom.mode, 'paged');
+  await pick(pc, 'scope', 'default');
+  await page.getByLabel('演示全局默认').selectOption('vertical-paged');
+  assert.equal(await pc.locator('[data-default-mode]').textContent(), '纵向阅读');
+  assert.equal(await pc.locator('[data-default-scroll]').textContent(), '逐页翻动');
+  assert.equal(await pc.locator('[data-default-gap-row]').isVisible(), false);
+  await page.getByLabel('演示全局默认').selectOption('webtoon');
+  assert.equal(await pc.locator('[data-default-scroll]').textContent(), '连续滚动');
+  assert.equal(await pc.locator('[data-default-gap-row]').isVisible(), true);
   await pick(pc, 'scope', 'custom');
-  assert.equal(await pc.getByRole('switch', { name: '页间有空隙' }).isChecked(), true);
-  await pick(mobile, 'scope', 'default');
-  await shot(page, 'custom-and-default');
-  const before = await value(pc);
-  await page.reload();
-  assert.deepEqual(await value(pc), before);
-  assert.equal(await page.getByLabel('演示全局默认').inputValue(), 'webtoon');
+  assert.equal((await value(pc)).custom.scroll, 'paged');
+  const before=await value(pc); await page.reload(); assert.deepEqual(await value(pc),before);
+  await shot(page, 'restored');
 }));
 
 test('移动宽度、键盘与大字可操作，无裁切，两端焦点不抢占', () => session(async (page, pc, mobile) => {

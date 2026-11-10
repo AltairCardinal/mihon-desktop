@@ -4,10 +4,11 @@
   const hosts = [...root.querySelectorAll('mihon-reader-settings')];
   const key = 'mihon.reader-settings.v3-review.defaults';
   const samples = {
-    'paged-auto': { mode: 'paged', layout: 'auto', match: true, direction: 'rtl', gap: false },
-    'paged-single': { mode: 'paged', layout: 'single', match: true, direction: 'rtl', gap: false },
-    'paged-double': { mode: 'paged', layout: 'double', match: true, direction: 'rtl', gap: false },
-    webtoon: { mode: 'webtoon', layout: 'auto', match: true, direction: 'rtl', gap: true },
+    'paged-auto': { mode: 'paged', layout: 'auto', match: true, direction: 'rtl', gap: false, scroll: 'continuous' },
+    'paged-single': { mode: 'paged', layout: 'single', match: true, direction: 'rtl', gap: false, scroll: 'continuous' },
+    'paged-double': { mode: 'paged', layout: 'double', match: true, direction: 'rtl', gap: false, scroll: 'continuous' },
+    'vertical-paged': { mode: 'webtoon', layout: 'single', match: true, direction: 'rtl', gap: false, scroll: 'paged' },
+    webtoon: { mode: 'webtoon', layout: 'auto', match: true, direction: 'rtl', gap: true, scroll: 'continuous' },
   };
   try {
     const stored = localStorage.getItem(key);

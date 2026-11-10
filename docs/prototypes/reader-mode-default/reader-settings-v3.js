@@ -2,15 +2,15 @@
    * Standalone prototype, no external dependencies.
    * This component edits preferences only; it does not implement a manga renderer.
    * Local defaults are a demo fixture. A host app can supply real defaults through
-   * element.defaultSettings = { mode, layout, match, direction, gap }.
+   * element.defaultSettings = { mode, layout, match, direction, gap, scroll }.
    * All presentation is scoped to Shadow DOM to preserve the theme when embedded.
    */
   (() => {
     'use strict';
     const DEFAULTS = Object.freeze({
-      mode: 'paged', layout: 'auto', match: true, direction: 'rtl', gap: false
+      mode: 'paged', layout: 'auto', match: true, direction: 'rtl', gap: false, scroll: 'continuous'
     });
-    const DIRECTIONS = Object.freeze({ ltr: '从左到右', rtl: '从右到左', vertical: '从上到下' });
+    const DIRECTIONS = Object.freeze({ ltr: '从左到右', rtl: '从右到左' });
     const LAYOUTS = Object.freeze({ auto: '自动', single: '单页', double: '双页' });
     const clone = value => JSON.parse(JSON.stringify(value));
     const normalizePrefs = (value, fallback = DEFAULTS) => {
@@ -20,9 +20,14 @@
         layout: ['auto', 'single', 'double'].includes(v.layout) ? v.layout : fallback.layout,
         match: typeof v.match === 'boolean' ? v.match : fallback.match,
         direction: ['ltr', 'rtl', 'vertical'].includes(v.direction) ? v.direction : fallback.direction,
-        gap: typeof v.gap === 'boolean' ? v.gap : fallback.gap
+        gap: typeof v.gap === 'boolean' ? v.gap : fallback.gap,
+        scroll: ['continuous', 'paged'].includes(v.scroll) ? v.scroll : (fallback.scroll || 'continuous')
       };
-      if (prefs.mode === 'paged' && prefs.layout !== 'single' && prefs.direction === 'vertical') prefs.direction = 'rtl';
+      if (prefs.mode === 'paged' && prefs.layout === 'single' && prefs.direction === 'vertical' && !Object.hasOwn(v, 'scroll')) {
+        prefs.mode = 'webtoon';
+        prefs.scroll = 'paged';
+      }
+      if (prefs.direction === 'vertical') prefs.direction = 'rtl';
       return prefs;
     };
     const svg = name => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-${name}"></use></svg>`;
@@ -147,9 +152,10 @@
         }
         .choice-icon { color: #c7cddc; display: flex; align-items: center; }
         .choice-icon .icon { width: 25px; height: 25px; }
+        .choice-surface { flex-wrap: wrap; }
         .choice-copy { display: grid; gap: 3px; min-width: 0; }
-        .choice-title { font-size: 17px; font-weight: 550; line-height: 1.4; }
-        .choice-detail { font-size: 12px; color: var(--secondary); white-space: nowrap; }
+        .choice-title { font-size: 17px; font-weight: 550; line-height: 1.4; overflow-wrap: anywhere; }
+        .choice-detail { font-size: 12px; color: var(--secondary); }
         .radio-dot {
           display: grid; place-items: center; margin-left: auto; flex-shrink: 0;
           width: 17px; height: 17px; border: 1.5px solid #798095; border-radius: 50%;
@@ -204,7 +210,7 @@
         .switch input:checked + .switch-track::before { background: #173d76; transform: translateX(20px); }
         .switch input:focus-visible + .switch-track { outline: 2px solid var(--accent); outline-offset: 4px; }
         .direction-field { margin-top: 22px; }
-        .direction-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+        .direction-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
         .direction-surface {
           display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 7px;
           min-height: 74px; border-radius: 14px; padding: 11px 4px;
@@ -296,8 +302,8 @@
           <fieldset>
             <legend>阅读模式选择</legend>
             <div class="mode-grid">
-              ${radio('mode', 'paged', `<span class="choice-icon">${svg('book')}</span><span class="choice-copy"><span class="choice-title">翻页</span><span class="choice-detail">按页切换</span></span><span class="radio-dot" aria-hidden="true"></span>`, 'choice')}
-              ${radio('mode', 'webtoon', `<span class="choice-icon">${svg('strip')}</span><span class="choice-copy"><span class="choice-title">条漫</span><span class="choice-detail">连续滚动</span></span><span class="radio-dot" aria-hidden="true"></span>`, 'choice')}
+              ${radio('mode', 'paged', `<span class="choice-icon">${svg('book')}</span><span class="choice-copy"><span class="choice-title">横向阅读</span><span class="choice-detail">适合传统漫画</span></span><span class="radio-dot" aria-hidden="true"></span>`, 'choice')}
+              ${radio('mode', 'webtoon', `<span class="choice-icon">${svg('strip')}</span><span class="choice-copy"><span class="choice-title">纵向阅读</span><span class="choice-detail">适合条漫</span></span><span class="radio-dot" aria-hidden="true"></span>`, 'choice')}
             </div>
           </fieldset>
           <div data-paged-settings>
@@ -309,7 +315,7 @@
                 ${radio('layout', 'double', `${svg('double')}<span>双页</span>`)}
               </div>
               <div class="layout-help">
-                <p data-layout-help>在单页/双页之间自动选择，以合理利用阅读区域。</p>
+                <p data-layout-help>根据阅读区域宽高比自动切换单/双页</p>
               </div>
             </fieldset>
             <fieldset class="direction-field">
@@ -317,7 +323,6 @@
               <div class="direction-grid">
                 ${radio('direction', 'ltr', `${svg('right')}<span class="direction-title">从左到右</span>`, 'direction')}
                 ${radio('direction', 'rtl', `${svg('left')}<span class="direction-title">从右到左</span>`, 'direction')}
-                ${radio('direction', 'vertical', `${svg('down')}<span class="direction-title">从上到下</span>`, 'direction')}
               </div>
             </fieldset>
             <div class="dependent" data-match-row>
@@ -328,10 +333,19 @@
             </div>
           </div>
           <div class="webtoon-settings" data-webtoon-settings hidden>
+            <fieldset>
+              <legend>滚动方式</legend>
+              <div class="segments" data-segments="scroll">
+                ${radio('scroll', 'continuous', '<span>连续滚动</span>')}
+                ${radio('scroll', 'paged', '<span>逐页翻动</span>')}
+              </div>
+            </fieldset>
+            <div class="dependent" data-gap-row>
             <label class="toggle-row">
-              <span class="toggle-copy"><span class="toggle-title" id="gap-title">页间有空隙</span><span class="toggle-description" id="gap-help">在相邻页面之间留出间隔</span></span>
+              <span class="toggle-copy"><span class="toggle-title" id="gap-title">页面有空隙</span><span class="toggle-description" id="gap-help">在相邻页面之间留出间隔</span></span>
               <span class="toggle-control"><span class="toggle-state" data-gap-state aria-hidden="true">否</span><span class="switch"><input type="checkbox" role="switch" data-setting="gap" aria-labelledby="gap-title" aria-describedby="gap-help"><span class="switch-track" aria-hidden="true"></span></span></span>
             </label>
+            </div>
           </div>
         </div>
         <div data-inherited-settings hidden>
@@ -343,7 +357,8 @@
               <div data-default-layout-row><dt>单双页</dt><dd data-default-layout>自动</dd></div>
               <div data-default-direction-row><dt>翻页方向</dt><dd data-default-direction>从右到左</dd></div>
               <div data-default-match-row><dt>双页自动匹配</dt><dd data-default-match>开启</dd></div>
-              <div data-default-gap-row hidden><dt>页间有空隙</dt><dd data-default-gap>否</dd></div>
+              <div data-default-scroll-row><dt>滚动方式</dt><dd data-default-scroll>连续滚动</dd></div>
+              <div data-default-gap-row hidden><dt>页面有空隙</dt><dd data-default-gap>否</dd></div>
             </dl>
           </div>
         </div>
@@ -420,10 +435,11 @@
         const c = this._state.custom;
         const messages = {
           scope: this._state.scope === 'default' ? '已跟随默认设置，单独设置的值已保留。' : '已恢复此作品的单独设置。',
-          mode: c.mode === 'paged' ? '已选择翻页模式。' : '已选择条漫模式。',
+          mode: c.mode === 'paged' ? '已选择横向阅读。' : '已选择纵向阅读。',
           layout: `已选择${LAYOUTS[c.layout]}布局。`,
           match: `双页自动匹配已${c.match ? '开启' : '关闭'}。`,
           direction: `翻页方向已设为${DIRECTIONS[c.direction]}。`,
+          scroll: c.scroll === 'paged' ? '已选择纵向逐页翻动。' : '已选择纵向连续滚动。',
           gap: c.gap ? '页面间隙已开启。' : '页面间隙已关闭。'
         };
         this.shadowRoot.querySelector('[data-live]').textContent = messages[key] || '设置已更新。';
@@ -453,15 +469,14 @@
         show('[data-inherited-settings]', s.scope === 'default');
         show('[data-paged-settings]', c.mode === 'paged');
         show('[data-webtoon-settings]', c.mode === 'webtoon');
+        show('[data-gap-row]', c.scroll === 'continuous');
+        root.querySelector('[data-segments="scroll"]').style.setProperty('--index', c.scroll === 'continuous' ? 0 : 1);
         show('[data-match-row]', c.mode === 'paged' && c.layout !== 'single');
-        const vertical = root.querySelector('[data-setting="direction"][value="vertical"]');
-        vertical.closest('label').style.visibility = c.layout !== 'single' ? 'hidden' : 'visible';
-        vertical.disabled = c.layout !== 'single';
         text('[data-scope-help]', s.scope === 'custom' ? '下方设置仅对当前作品生效' : '当前作品使用全局默认设置');
         text('[data-match-state]', c.match ? '开启' : '关闭');
         text('[data-gap-state]', c.gap ? '是' : '否');
-        text('[data-layout-help]', c.layout === 'auto' ? '在单页/双页之间自动选择，以合理利用阅读区域。' : c.layout === 'single' ? '每次显示一页' : '每次显示两页');
-        text('[data-default-mode]', d.mode === 'paged' ? '翻页' : '条漫');
+        text('[data-layout-help]', c.layout === 'auto' ? '根据阅读区域宽高比自动切换单/双页' : c.layout === 'single' ? '每次显示一页' : '每次显示两页');
+        text('[data-default-mode]', d.mode === 'paged' ? '横向阅读' : '纵向阅读');
         text('[data-default-layout]', LAYOUTS[d.layout]);
         text('[data-default-match]', d.match ? '开启' : '关闭');
         text('[data-default-direction]', DIRECTIONS[d.direction]);
@@ -469,7 +484,9 @@
         show('[data-default-layout-row]', d.mode === 'paged');
         show('[data-default-match-row]', d.mode === 'paged' && d.layout !== 'single');
         show('[data-default-direction-row]', d.mode === 'paged');
-        show('[data-default-gap-row]', d.mode === 'webtoon');
+        show('[data-default-scroll-row]', d.mode === 'webtoon');
+        text('[data-default-scroll]', d.scroll === 'paged' ? '逐页翻动' : '连续滚动');
+        show('[data-default-gap-row]', d.mode === 'webtoon' && d.scroll === 'continuous');
         const afterHeight = panel.getBoundingClientRect().height;
         if (animate && !this._reducedMotion.matches && Math.abs(beforeHeight - afterHeight) > 1) {
           this._heightAnimation = panel.animate(
