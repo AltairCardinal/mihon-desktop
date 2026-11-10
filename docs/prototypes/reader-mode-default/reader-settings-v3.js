@@ -281,7 +281,7 @@
           <symbol id="i-strip" viewBox="0 0 24 24"><rect x="4" y="2.75" width="16" height="18.5" rx="2.5"/><path d="M4 8h16M4 16h16"/></symbol>
           <symbol id="i-auto" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m8 0h3a2 2 0 0 0 2-2v-3"/></symbol>
           <symbol id="i-single" viewBox="0 0 24 24"><rect x="6" y="2.75" width="12" height="18.5" rx="1.8"/></symbol>
-          <symbol id="i-scroll-continuous" viewBox="0 0 24 24"><rect x="6" y="2.75" width="12" height="18.5" rx="1.8"/><path d="M12 6.75v10.5M9.5 9.25 12 6.75l2.5 2.5M9.5 14.75l2.5 2.5 2.5-2.5"/></symbol>
+          <symbol id="i-scroll-continuous" viewBox="0 0 24 24"><rect x="3" y="2" width="18" height="20" rx="2"/><path d="M12 6v12M9 9l3-3 3 3M9 15l3 3 3-3"/></symbol>
           <symbol id="i-gallery-vertical" viewBox="0 0 24 24"><path d="M3 2h18"/><rect width="18" height="12" x="3" y="6" rx="2"/><path d="M3 22h18"/></symbol>
           <symbol id="i-double" viewBox="0 0 24 24"><rect x="2.5" y="3.75" width="19" height="16.5" rx="1.8"/><path d="M12 3.75v16.5"/></symbol>
           <symbol id="i-right" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
@@ -345,7 +345,7 @@
             <div class="dependent" data-gap-row>
             <label class="toggle-row">
               <span class="toggle-copy"><span class="toggle-title" id="gap-title">页面有空隙</span><span class="toggle-description" id="gap-help">在相邻页面之间留出间隔</span></span>
-              <span class="toggle-control"><span class="toggle-state" data-gap-state aria-hidden="true">否</span><span class="switch"><input type="checkbox" role="switch" data-setting="gap" aria-labelledby="gap-title" aria-describedby="gap-help"><span class="switch-track" aria-hidden="true"></span></span></span>
+              <span class="toggle-control"><span class="switch"><input type="checkbox" role="switch" data-setting="gap" aria-labelledby="gap-title" aria-describedby="gap-help"><span class="switch-track" aria-hidden="true"></span></span></span>
             </label>
             </div>
           </div>
@@ -476,7 +476,6 @@
         show('[data-match-row]', c.mode === 'paged' && c.layout !== 'single');
         text('[data-scope-help]', s.scope === 'custom' ? '下方设置仅对当前作品生效' : '当前作品使用全局默认设置');
         text('[data-match-state]', c.match ? '开启' : '关闭');
-        text('[data-gap-state]', c.gap ? '是' : '否');
         text('[data-layout-help]', c.layout === 'auto' ? '根据阅读区域宽高比自动切换单/双页' : c.layout === 'single' ? '每次显示一页' : '每次显示两页');
         text('[data-default-mode]', d.mode === 'paged' ? '横向阅读' : '纵向阅读');
         text('[data-default-layout]', LAYOUTS[d.layout]);
