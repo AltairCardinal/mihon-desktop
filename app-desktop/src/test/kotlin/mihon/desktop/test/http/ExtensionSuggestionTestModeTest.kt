@@ -277,7 +277,10 @@ class ExtensionSuggestionTestModeTest {
         coEvery { api.refreshCatalog() } answers { catalog.value }
         val service = mockk<DesktopExtensionPresentationService> {
             every { installedExtensions } returns MutableStateFlow(emptyList())
-            every { extensionsDirectory } returns java.io.File(System.getProperty("java.io.tmpdir"), "eis05-testmode-empty")
+            every { runtimeSnapshot } returns
+                MutableStateFlow(mihon.desktop.extension.DesktopExtensionRuntimeSnapshot())
+            every { extensionsDirectory } returns
+                java.io.File(System.getProperty("java.io.tmpdir"), "eis05-testmode-empty")
             every { installExtensionStates(any(), any()) } answers {
                 started.complete(Unit)
                 val selected = firstArg<ExtensionArtifact>()

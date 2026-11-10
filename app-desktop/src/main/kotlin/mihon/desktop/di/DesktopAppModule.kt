@@ -1560,6 +1560,7 @@ internal suspend fun initUILayer(
             updateScreenModel = updateScreenModel,
         )
         runtime.attachCloseable(nativeSharePort)
+        runtime.attachCloseable(networkHelper)
         runtime.attachCloseable(
             AutoCloseable {
                 feedbackRuntime.memory.snapshot = null

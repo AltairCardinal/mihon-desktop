@@ -47,7 +47,7 @@ class SourceLoginTestModeWiringTest {
     @OptIn(ExperimentalComposeUiApi::class)
     fun `source browse installs observation after real open login recovery`() = runBlocking {
         MockWebServer().use { server ->
-            server.enqueue(MockResponse(code = 403))
+            server.enqueue(MockResponse(code = 401))
             server.start()
             val source = RoutedHttpSource(server.url("/").toString().removeSuffix("/"), OkHttpClient())
             val ticket = AtomicReference<DesktopBrowserLoginTicket?>()
@@ -182,6 +182,7 @@ class SourceLoginTestModeWiringTest {
             val extensionManager = sourceBrowseExtensionManager()
             io.mockk.every { this@mockk.extensionManager } returns extensionManager
             io.mockk.every { sourceExtensionLookup } returns extensionManager
+            io.mockk.every { extensionPresentationService } returns sourceBrowseExtensionPresentationService()
             io.mockk.every { sourceMangaSearchService } returns SourceMangaSearchService()
             io.mockk.every { saveSourceMangaForDetails } returns
                 io.mockk.mockk<SaveSourceMangaForDetails>(relaxed = true)

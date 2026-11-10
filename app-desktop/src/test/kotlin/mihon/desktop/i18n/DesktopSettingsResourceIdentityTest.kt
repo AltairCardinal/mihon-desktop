@@ -1144,8 +1144,15 @@ class DesktopSettingsResourceIdentityTest {
                 }
 
                 val pending = CompletableDeferred<CreateExtensionRepo.Result>()
+                val pendingStarted = CompletableDeferred<Unit>()
                 val pendingCreate =
-                    mockk<CreateExtensionRepo> { coEvery { await(any()) } coAnswers { pending.await() } }
+                    mockk<CreateExtensionRepo> {
+                        coEvery { await(any()) } coAnswers
+                            {
+                                pendingStarted.complete(Unit)
+                                pending.await()
+                            }
+                    }
                 val pendingUrl = "https://pending.example"
                 val pendingScene = extensionRepoScene(
                     ExtensionRepoScreen(pendingUrl),
@@ -1155,13 +1162,17 @@ class DesktopSettingsResourceIdentityTest {
                 try {
                     snapshot(pendingScene)
                     click(pendingScene, MR.strings.action_add.localized(locale))
+                    withTimeout(5_000) { pendingStarted.await() }
                     assertCopy(
                         snapshot(pendingScene).text,
                         MR.strings.desktop_extension_repo_pending.localized(locale),
                         pendingUrl,
                     )
                     pending.complete(CreateExtensionRepo.Result.Error)
-                    snapshot(pendingScene)
+                    assertNoCopy(
+                        snapshot(pendingScene).text,
+                        MR.strings.desktop_extension_repo_pending.localized(locale),
+                    )
                 } finally {
                     pendingScene.close()
                 }

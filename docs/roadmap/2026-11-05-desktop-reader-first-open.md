@@ -1,6 +1,6 @@
 # Windows 已下载章节首次打开优化执行计划
 
-日期2026-11-05，2026-11-10规划更新。active-child-plan：无。[R4：入口需求前移与准备前段归因](2026-11-10-windows-reader-startup-r4.md)已全部收口；机制成立，十二份OFF未达到采用门槛，E1已精确撤回，撤回后32项focused与格式通过，D14完成。[R3](2026-11-10-windows-reader-startup-r3.md)已收口，机制实际触发但冷态正反对照未达到采用门槛，性能候选已撤回；保留诊断及缓存缺失反馈修复，见[唯一报告](../evidence/windows-reader-startup-r3-2026-11-10.md)。P0–P3与V1/R1有限采用、R2输入修复保持；整体体验预算未通过。
+日期2026-11-05，2026-11-11研究停止。active-child-plan：无。用户验收保留版本当前性能OK；最终记录和归档见[研究收口](../evidence/windows-reader-research-closeout-2026-11-10.md)，不继续候选。[R4：入口需求前移与准备前段归因](2026-11-10-windows-reader-startup-r4.md)已全部收口；机制成立，十二份OFF未达到采用门槛，E1已精确撤回，撤回后32项focused与格式通过，D14完成。[R3](2026-11-10-windows-reader-startup-r3.md)已收口，机制实际触发但冷态正反对照未达到采用门槛，性能候选已撤回；保留诊断及缓存缺失反馈修复，见[唯一报告](../evidence/windows-reader-startup-r3-2026-11-10.md)。P0–P3与V1/R1有限采用、R2输入修复保持；整体体验预算未通过。
 
 D0–D10与11月8日后续实现已完成[主干整合及研究收口](../evidence/desktop-reader-startup-closeout-2026-11-08.md)。已采用miniz与条件性提前挂载；整体体验预算仍未通过。11月9日调查补充了隔离偏好读取开销、Ready交接串联、no-op变换异步往返及fullscreen初始化边界，新子计划据此安排P0–P3和一次联合候选验收。历史[归因](../evidence/desktop-reader-d9-first-open-causes-2026-11-07.md)、[原型](../evidence/desktop-reader-cbz-slot-feasibility-2026-11-07.md)及[D10](2026-11-07-windows-reader-cbz-first-page.md)保留为阶段记录。
 
@@ -153,3 +153,9 @@ Sol medium 负责 production 调用归因、真实失败测试、一个最小候
 ## D14　入口普通内容需求前移与准备前段归因
 
 - [x] 按[R4 子计划](2026-11-10-windows-reader-startup-r4.md)拆分约10–12ms归档copy前段，在entry/session初次生命周期授权一次固定单页普通encoded准备，覆盖首次已Loaded/投影期间到达/晚页表；保留原scheduler、预算、原子缓存与显示/进度链。只试一个候选，真实红绿和独立审查后副屏对照裁决；不恢复R3解码collector、不顺带改缓存协议或共享配对。已完成真实红绿、独立审查、两包冻结、四份ON机制/调用归因、十二份OFF及正确性；首次正反顺序未同时分辨改善，E1已精确撤回，32项受影响focused、格式及diff检查通过。保留诊断与既有修复，见[R4唯一报告](../evidence/windows-reader-startup-r4-2026-11-10.md)。不记性能改善或整体达标。
+
+## D15　完整链路诊断与研究停止（2026-11-11收口）
+
+- [x] 完成[R5历史计划](2026-11-10-windows-reader-startup-r5.md)的有界诊断和唯一SH实验；局部holder Ready→FIRST改善12.91ms，但本批普通ON整体慢27.61ms，未通过采用门槛，未执行后续OFF/双页矩阵。不得把上游34.43ms差异写成已确定代码原因。
+- [x] 用户验收 `eb58065b5d` 体验包性能OK，停止研究；交付排除R5新增诊断/JFR及SH路径，只保留已验收快照和远端既有修复。测试/推测及原始数据归档映射见[收口记录](../evidence/windows-reader-research-closeout-2026-11-10.md)。不新建候选，不重跑全量。
+- [ ] 官方整体延迟目标仍未证明达成。未来只有用户重新要求研究、固定同包受控条件且有新因果证据时再制定计划，不把历史跨度直接当可回收毫秒。

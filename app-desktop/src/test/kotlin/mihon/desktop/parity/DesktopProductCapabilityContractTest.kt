@@ -430,7 +430,7 @@ class DesktopProductCapabilityContractTest {
             61 to
                 mapOf(
                     "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt" to
-                        setOf("real update emits progress and one terminal success event"),
+                        setOf("real update retains its result without duplicate system notifications"),
                 ),
             62 to
                 mapOf(
@@ -585,7 +585,7 @@ class DesktopProductCapabilityContractTest {
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt" to
                         setOf(
-                            "real update emits progress and one terminal success event",
+                            "real update retains its result without duplicate system notifications",
                             "outer failure records failed state instead of being swallowed",
                         ),
                 ),
@@ -597,7 +597,7 @@ class DesktopProductCapabilityContractTest {
                             "falls back when system adapter throws",
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt" to
-                        setOf("real update emits progress and one terminal success event"),
+                        setOf("real update retains its result without duplicate system notifications"),
                 ),
             12 to
                 mapOf(
@@ -606,7 +606,7 @@ class DesktopProductCapabilityContractTest {
                             "appendCrashReport creates parent directory and writes report",
                             "appendCrashReport rotates existing oversized log before writing",
                             "install registers the production default handler",
-                            "uncaught handler reports original exception when crash log write fails",
+                            "uncaught handler preserves safe exception type when crash log write fails",
                         ),
                 ),
         )
@@ -893,7 +893,7 @@ class DesktopProductCapabilityContractTest {
             61 to
                 mapOf(
                     "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt" to
-                        setOf("real update emits progress and one terminal success event"),
+                        setOf("real update retains its result without duplicate system notifications"),
                 ),
             62 to
                 mapOf(
@@ -2209,7 +2209,7 @@ class DesktopProductCapabilityContractTest {
                     "app/src/main/java/eu/kanade/tachiyomi/data/coil/TachiyomiImageDecoder.kt" to
                         setOf("decodeWithSharedPageDecoder"),
                     "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipeline.kt" to
-                        setOf("SkiaDesktopReaderPageImageDecoder", "decodePermits.withPermit"),
+                        setOf("SkiaDesktopReaderPageImageDecoder", "activeDecodes.size < decodeLimit"),
                     "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderImageAsset.kt" to
                         setOf("class DesktopReaderImageCache", "maxBytes"),
                 ),
@@ -2277,7 +2277,7 @@ class DesktopProductCapabilityContractTest {
             45 to
                 mapOf(
                     "domain/src/commonMain/kotlin/mihon/domain/reader/scheduler/ReaderRequestScheduler.kt" to
-                        setOf("class ReaderRequestScheduler", "fun pollNext()", "fun accepts(jobKey"),
+                        setOf("class ReaderRequestScheduler", "fun pollNext(", "fun accepts(jobKey"),
                     "domain/src/commonMain/kotlin/mihon/domain/reader/storage/EncodedPageStore.kt" to
                         setOf("interface ReaderEncodedPageStore", "class ByteBudgetEncodedPageStoreIndex"),
                     "domain/src/commonMain/kotlin/mihon/domain/reader/materialize/ReaderMaterializeExecutor.kt" to
@@ -2344,7 +2344,7 @@ class DesktopProductCapabilityContractTest {
                         setOf("ReaderSessionCore(", "DesktopReaderSession("),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt" to
                         setOf(
-                            "runtimeFactory.createScreenModel(",
+                            "runtimeFactory.createScreenEntry(",
                             "state.session.activeChapter",
                             "model.activateChapter(",
                             "requestAdjacentChapterTransition",

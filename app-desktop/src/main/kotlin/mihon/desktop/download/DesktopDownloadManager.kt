@@ -923,7 +923,7 @@ class DesktopDownloadManager(
                     AppError.MalformedData(IllegalStateException("Source returned no downloadable pages")),
                 )
             }
-            val source = resolvedPages.source ?: sourceResolver(item.sourceId)
+            val source by lazy { resolvedPages.source ?: sourceResolver(item.sourceId) }
             val compatibilityUrls = pageTable.entries
                 .sortedBy(PartialPageTableEntry::readerOrdinal)
                 .map { entry -> entry.imageUrl?.takeIf(String::isNotBlank) ?: entry.pageUrl }

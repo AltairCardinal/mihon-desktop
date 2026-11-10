@@ -248,7 +248,7 @@ class LibraryUpdateRecoveryIntegrationTest {
         assertEquals(listOf(1L), calls, "Refused acceptance performs no source or directory operation")
         assertEquals(completed, scheduler.taskSnapshot())
         assertEquals(
-            1,
+            0,
             delivered.count {
                 it.title == "Library update failed"
             },
@@ -534,7 +534,7 @@ class LibraryUpdateRecoveryIntegrationTest {
         job.join()
 
         assertEquals(mihon.domain.task.TaskStatus.Cancelled, scheduler.taskSnapshot()?.status)
-        assertEquals(1, delivered.count { it.title == "Library update cancelled" })
+        assertTrue(delivered.isEmpty(), "Library banner is the sole feedback owner")
         assertEquals(0, delivered.count { it.title == "Library updated" })
     }
 
@@ -561,7 +561,7 @@ class LibraryUpdateRecoveryIntegrationTest {
         job.join()
 
         assertEquals(mihon.domain.task.TaskStatus.Cancelled, scheduler.taskSnapshot()?.status)
-        assertEquals(1, delivered.count { it.title == "Library update cancelled" })
+        assertTrue(delivered.isEmpty(), "Library banner is the sole feedback owner")
         assertEquals(0, delivered.count { it.title.contains("failed", ignoreCase = true) })
     }
 
@@ -597,7 +597,7 @@ class LibraryUpdateRecoveryIntegrationTest {
         // and its failure never leaks into the library terminal state.
         assertEquals(mihon.domain.task.TaskStatus.Completed, scheduler.taskSnapshot()?.status)
         assertEquals(mihon.domain.task.TaskStatus.Failed, discovery.taskSnapshot()?.status)
-        assertEquals(1, delivered.count { it.title == "Library updated" })
+        assertTrue(delivered.isEmpty(), "Library banner is the sole feedback owner")
         assertEquals(0, delivered.count { it.title.contains("failed", ignoreCase = true) })
         discovery.stop()
     }
@@ -772,7 +772,7 @@ class LibraryUpdateRecoveryIntegrationTest {
         scheduler.runNow().join()
 
         assertEquals(mihon.domain.task.TaskStatus.Failed, scheduler.taskSnapshot()?.status)
-        assertEquals(1, delivered.count { it.title == "Library update failed" })
+        assertTrue(delivered.isEmpty(), "Library banner is the sole feedback owner")
     }
 
     private fun seedPendingWorkset(file: Path) {

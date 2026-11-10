@@ -97,7 +97,11 @@ class WindowsReleaseConfigurationTest {
         assertFalse(text.contains("/private/tmp"), "Windows script must not depend on macOS temp paths")
 
         val validator = Files.readString(repoRoot.resolve("scripts/validate-windows-extension-runtime.ps1"))
-        assertTrue(validator.contains("Start-Process"), "Runtime acceptance must launch the real executable")
+        assertTrue(validator.contains("\$process.Start()"), "Runtime acceptance must launch the real executable")
+        assertTrue(
+            validator.contains("\$start.CreateNoWindow = \$true"),
+            "Runtime acceptance must preserve the user console",
+        )
         assertTrue(
             validator.contains("--test-extension-runtime"),
             "Runtime acceptance must enter the guarded production extension transaction",

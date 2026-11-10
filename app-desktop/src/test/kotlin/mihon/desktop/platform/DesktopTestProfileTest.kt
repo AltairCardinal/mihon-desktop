@@ -295,5 +295,9 @@ object DesktopTestProfileProbe {
         }
         failure.get()?.let { throw it }
         check(!application.isAlive) { "Production owner did not terminate" }
+        check(
+            uy.kohesive.injekt.Injekt.get<mihon.desktop.platform.DesktopNetworkHelper>()
+                .client.dispatcher.executorService.isShutdown,
+        ) { "Production owner left its network dispatcher running" }
     }
 }
