@@ -47,6 +47,8 @@ test('纵向滚动方式互斥，只有连续显示页面有空隙且切换保�
     await pick(host, 'mode', 'webtoon');
     assert.equal(await host.locator('[data-paged-settings]').isVisible(), false);
     assert.equal(await host.locator('[data-setting="scroll"]').count(), 2);
+    assert.equal(await host.locator('[data-segments="scroll"] .icon').count(), 2);
+    assert.notEqual(await host.locator('[data-segments="scroll"] use').nth(0).getAttribute('href'), await host.locator('[data-segments="scroll"] use').nth(1).getAttribute('href'));
     assert.equal(await host.locator('[data-setting="scroll"][value="continuous"]').isChecked(), true);
     await host.getByRole('switch', { name: '页面有空隙' }).check();
     await pick(host, 'scroll', 'paged');
@@ -60,6 +62,16 @@ test('纵向滚动方式互斥，只有连续显示页面有空隙且切换保�
   }
   await pick(mobile, 'scroll', 'paged');
   await shot(page, 'vertical-scroll-methods');
+  await page.setViewportSize({ width: 320, height: 1000 });
+  for (const host of [pc, mobile]) {
+    for (const icon of await host.locator('[data-segments="scroll"] .icon').all()) {
+      const bounds = await icon.boundingBox();
+      assert.ok(bounds.width >= 18 && bounds.x >= 0 && bounds.x + bounds.width <= 320);
+    }
+    await pick(host, 'scroll', 'continuous');
+    assert.equal(await host.locator('[data-segments="scroll"] .segment input:checked + span .icon').evaluate(el => getComputedStyle(el).color), 'rgb(175, 199, 255)');
+  }
+  await shot(page, 'vertical-icons-narrow');
 }));
 
 test('默认摘要与旧纵向单页转换正确，恢复及双端状态隔离', () => session(async (page, pc, mobile) => {

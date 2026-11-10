@@ -336,8 +336,8 @@
             <fieldset>
               <legend>滚动方式</legend>
               <div class="segments" data-segments="scroll">
-                ${radio('scroll', 'continuous', '<span>连续滚动</span>')}
-                ${radio('scroll', 'paged', '<span>逐页翻动</span>')}
+                ${radio('scroll', 'continuous', `${svg('strip')}<span>连续滚动</span>`)}
+                ${radio('scroll', 'paged', `${svg('single')}<span>逐页翻动</span>`)}
               </div>
             </fieldset>
             <div class="dependent" data-gap-row>
