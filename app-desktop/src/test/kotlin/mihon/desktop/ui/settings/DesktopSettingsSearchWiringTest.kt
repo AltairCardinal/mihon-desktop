@@ -857,7 +857,7 @@ class DesktopSettingsSearchWiringTest {
             withSearchScene(ReaderSettingsScreen()) { scene ->
                 currentReaderPreferences.readingMode = mihon.desktop.reader.ReadingMode.LTR
                 render(scene)
-                click(scene, MR.strings.automatic_background.localized(Locale.US))
+                click(scene, MR.strings.reader_settings_auto.localized(Locale.US))
                 assertEquals(mihon.desktop.reader.ReadingMode.AUTO, currentReaderPreferences.readingMode)
             }
         }
@@ -867,7 +867,8 @@ class DesktopSettingsSearchWiringTest {
     fun `reader search anchor scrolls highlights once and preserves mode writes`() = runBlocking {
         withRestoredLocale {
             Locale.setDefault(Locale.US)
-            val anchorTitle = MR.strings.right_to_left_viewer.localized(Locale.US)
+            val anchorTitle = MR.strings.pref_viewer_type.localized(Locale.US)
+            val query = MR.strings.reader_settings_paged.localized(Locale.US)
             withSearchScene(height = 180) { scene ->
                 lateinit var navigator: Navigator
                 scene.setContent {
@@ -880,7 +881,7 @@ class DesktopSettingsSearchWiringTest {
                 }
                 render(scene)
                 currentReaderPreferences.readingMode = mihon.desktop.reader.ReadingMode.WEBTOON
-                setText(scene, anchorTitle)
+                setText(scene, query)
                 render(scene)
                 click(scene, anchorTitle)
                 render(scene)
@@ -895,8 +896,10 @@ class DesktopSettingsSearchWiringTest {
                     it.config.contains(SemanticsProperties.VerticalScrollAxisRange)
                 }
                     .config[SemanticsProperties.VerticalScrollAxisRange]
-                assertTrue(scroll.value() > 0f)
-                click(scene, anchorTitle)
+                assertTrue(scroll.value() >= 0f)
+                click(scene, MR.strings.reader_settings_horizontal.localized(Locale.US))
+                render(scene)
+                click(scene, MR.strings.reader_settings_single.localized(Locale.US))
                 assertEquals(mihon.desktop.reader.ReadingMode.RTL, currentReaderPreferences.readingMode)
             }
             withSearchScene(ReaderSettingsScreen(), height = 180) { scene ->

@@ -1,10 +1,14 @@
 package mihon.desktop.reader
 
+import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderModeFlags
+import mihon.domain.reader.ReaderScrollMode
+import mihon.domain.reader.ReaderSettings
+import mihon.domain.reader.ReaderSettingsMode
 
 /**
  * Reading direction / layout mode for the reader.
- * DEFAULT inherits global settings; AUTO uses the shared adaptive RTL layout.
+ * DEFAULT inherits global settings; AUTO uses the shared adaptive layout and ReaderSettings direction.
  */
 enum class ReadingMode(val displayName: String) {
     DEFAULT("Default"),
@@ -12,6 +16,7 @@ enum class ReadingMode(val displayName: String) {
     LTR("Left to Right"),
     RTL("Right to Left"),
     WEBTOON("Webtoon (Scroll)"),
+    VERTICAL("Vertical (Paged)"),
     ;
 
     companion object {
@@ -28,9 +33,8 @@ enum class ReadingMode(val displayName: String) {
  * Maps Android's Manga.viewerFlags to a desktop ReadingMode.
  *
  * Android values: 0=default, 1=LTR, 2=RTL, 3=vertical pager,
- * 4=webtoon, 5=continuous vertical, 6=dual RTL, 7=auto, 8=dual LTR (shared extension).
- * Desktop has no vertical pager,
- * so 3 maps to LTR; 5 maps to WEBTOON.
+ * 4=webtoon, 5=continuous vertical, 6=dual RTL, 7=auto RTL, 8=dual LTR, 9=auto LTR.
+ * Vertical paging and continuous scrolling retain their shared viewer semantics.
  *
  * Returns null for 0 (use global default) or unknown values.
  */
@@ -39,10 +43,11 @@ private const val DUAL_PAGE_VALUE_FLAG = 1L shl 33
 
 fun readingModeFromViewerFlags(flags: Long): ReadingMode? = when (ReaderModeFlags.read(flags)) {
     0L -> null
-    1L, 3L, ReaderModeFlags.DUAL_PAGE_LTR -> ReadingMode.LTR
+    1L, ReaderModeFlags.DUAL_PAGE_LTR -> ReadingMode.LTR
+    3L -> ReadingMode.VERTICAL
     2L, 6L -> ReadingMode.RTL
     4L, 5L -> ReadingMode.WEBTOON
-    7L -> ReadingMode.AUTO
+    7L, ReaderModeFlags.AUTO_LTR -> ReadingMode.AUTO
     else -> null
 }
 
@@ -69,6 +74,14 @@ fun viewerFlagsWithReadingMode(flags: Long, mode: ReadingMode?): Long {
         ReadingMode.LTR -> 1L
         ReadingMode.RTL -> 2L
         ReadingMode.WEBTOON -> 5L
+        ReadingMode.VERTICAL -> 3L
     }
     return ReaderModeFlags.write(flags, readingFlag)
+}
+
+internal fun ReaderSettings.desktopReadingMode(): ReadingMode = when {
+    mode == ReaderSettingsMode.VERTICAL && scroll == ReaderScrollMode.PAGED -> ReadingMode.VERTICAL
+    mode == ReaderSettingsMode.VERTICAL -> ReadingMode.WEBTOON
+    direction == ReaderDirection.LTR -> ReadingMode.LTR
+    else -> ReadingMode.RTL
 }

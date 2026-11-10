@@ -11,6 +11,7 @@ import mihon.desktop.reader.ZoomState
 import mihon.desktop.ui.reader.presentation.DisplayUnitId
 import mihon.desktop.ui.reader.presentation.WebtoonScrollAnchor
 import mihon.domain.reader.ReaderChapterTransitionModel
+import mihon.domain.reader.ReaderSettings
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderSessionSnapshot
@@ -61,6 +62,7 @@ data class ReaderState(
 
     // ── Reading mode ─────────────────────────────────────────────────────────
     val readingMode: ReadingMode = ReadingMode.LTR,
+    val readerSettings: ReaderSettings = ReaderSettings(),
     val automaticLayout: Boolean = false,
     val followsGlobalReadingMode: Boolean = false,
     val dualPageMode: Boolean = false,

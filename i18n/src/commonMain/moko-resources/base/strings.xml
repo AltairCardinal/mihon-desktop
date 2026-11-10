@@ -1,5 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Shared reader settings -->
+    <string name="reader_settings_follow_default">Follow default</string>
+    <string name="reader_settings_custom">Customize</string>
+    <string name="reader_settings_horizontal">Horizontal reading</string>
+    <string name="reader_settings_horizontal_hint">For traditional manga</string>
+    <string name="reader_settings_vertical">Vertical reading</string>
+    <string name="reader_settings_vertical_hint">For webtoons</string>
+    <string name="reader_settings_layout">Page layout</string>
+    <string name="reader_settings_auto">Auto</string>
+    <string name="reader_settings_single">Single page</string>
+    <string name="reader_settings_dual">Double page</string>
+    <string name="reader_settings_auto_hint">Switch between single and double pages based on the reading area aspect ratio</string>
+    <string name="reader_settings_single_hint">Show one page at a time</string>
+    <string name="reader_settings_dual_hint">Show two pages at a time</string>
+    <string name="reader_settings_direction">Reading direction</string>
+    <string name="reader_settings_scroll">Scrolling method</string>
+    <string name="reader_settings_continuous">Continuous scrolling</string>
+    <string name="reader_settings_paged">Page by page</string>
+    <string name="reader_settings_page_gaps">Gaps between pages</string>
     <string name="extension_catalog_cached_failure">Repository refresh failed. Previously loaded extensions may still be shown.</string>
     <string name="extension_unsupported_api">Requires extension API %1$s; this app supports %2$s–%3$s. Installation and updates are unavailable.</string>
     <string name="app_name" translatable="false">Mihon</string>

@@ -5,6 +5,20 @@ import org.junit.jupiter.api.Test
 
 class ReaderModeFlagsContractTest {
     @Test
+    fun `automatic LTR survives flags and Android backup integer round trips`() {
+        val flags = ReaderModeFlags.write(0x38L, 9L)
+        assertEquals(9L, ReaderModeFlags.read(flags))
+        assertEquals(9L, ReaderModeFlags.read(flags.toInt().toLong()))
+        assertEquals(0x38L, flags and 0x38L)
+        for (mode in 0L..9L) {
+            val changed = ReaderModeFlags.write(flags, mode)
+            assertEquals(mode, ReaderModeFlags.read(changed))
+            assertEquals(0x38L, changed and 0x38L)
+            if (mode != 9L) assertEquals(0L, changed and (1L shl 29))
+        }
+    }
+
+    @Test
     fun `LTR dual mode preserves orientation and clears its marker on mode changes`() {
         val other = 0x38L or (1L shl 42)
         val encoded = ReaderModeFlags.write(other, 8L)

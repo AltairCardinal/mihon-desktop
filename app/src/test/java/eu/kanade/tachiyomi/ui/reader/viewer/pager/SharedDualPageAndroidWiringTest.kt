@@ -695,6 +695,43 @@ class SharedDualPageAndroidWiringTest {
         )
     }
 
+    @Test
+    fun `series matching snapshot reaches native config and global changes only affect inherited matching`() {
+        val preferences = Injekt.get<ReaderPreferences>()
+        val state = model.state as MutableStateFlow<ReaderViewModel.State>
+        val custom = mihon.domain.reader.ReaderSettings(
+            layout = mihon.domain.reader.ReaderSettingsLayout.DOUBLE,
+            match = true,
+        )
+        val flags = mihon.domain.reader.ReaderSettingsCodec.setCustom(6L, custom)
+        state.value = state.value.copy(manga = tachiyomi.domain.manga.model.Manga.create().copy(viewerFlags = flags))
+        viewer.destroy()
+        viewer = DualPageR2LPagerViewer(activity)
+        viewer.config.navigationModeChangedListener = null
+        assertTrue(viewer.config.automaticSpreadMatching)
+        preferences.automaticSpreadMatching().set(true)
+        mainDispatcher.scheduler.runCurrent()
+        preferences.automaticSpreadMatching().set(false)
+        mainDispatcher.scheduler.runCurrent()
+        assertTrue("An explicit series snapshot must override global matching", viewer.config.automaticSpreadMatching)
+
+        val inherited = mihon.domain.reader.ReaderSettingsCodec.followDefault(
+            flags,
+            preferences.defaultReaderSettings(),
+        )
+        state.value = state.value.copy(manga = state.value.manga!!.copy(viewerFlags = inherited))
+        viewer.destroy()
+        viewer = DualPageR2LPagerViewer(activity)
+        viewer.config.navigationModeChangedListener = null
+        assertFalse(viewer.config.automaticSpreadMatching)
+        preferences.automaticSpreadMatching().set(true)
+        mainDispatcher.scheduler.runCurrent()
+        assertTrue(
+            "An inherited series must still observe the legacy global preference",
+            viewer.config.automaticSpreadMatching,
+        )
+    }
+
     private fun gestureChapter(): ReaderChapter {
         Injekt.get<ReaderPreferences>().automaticSpreadMatching().set(true)
         Injekt.get<ReaderPreferences>().pageTransitions().set(false)

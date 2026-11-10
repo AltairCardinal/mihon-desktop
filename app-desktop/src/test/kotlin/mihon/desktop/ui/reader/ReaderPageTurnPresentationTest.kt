@@ -57,6 +57,31 @@ import org.jetbrains.skia.Image as SkiaImage
 class ReaderPageTurnPresentationTest {
     @ParameterizedTest
     @CsvSource("false", "true")
+    fun `vertical mode mounts a real vertical pager and keeps image progress wiring`(animated: Boolean) = runTest {
+        Fixture(this, false, false, vertical = true).use { fixture ->
+            fixture.preferences.pageTurnAnimation.set(animated)
+            fixture.frames(40)
+            assertTrue(fixture.hasVerticalPager(), "Mode 3 must mount vertical scrolling rather than horizontal paging")
+            fixture.page = 1
+            fixture.frames(40)
+            assertEquals(1, fixture.page)
+            assertTrue(1 in fixture.presented)
+            assertTrue(1 in fixture.reports)
+            fixture.verticalTap()
+            fixture.frames(40)
+            assertEquals(2, fixture.page)
+            fixture.key(forward = true, rtl = false, vertical = true)
+            fixture.frames(40)
+            assertEquals(3, fixture.page)
+            assertTrue(3 in fixture.reports)
+            fixture.key(forward = false, rtl = false, vertical = true)
+            fixture.frames(40)
+            assertEquals(2, fixture.page)
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource("false", "true")
     fun `settled feedback resumes after a blocked page becomes reportable without moving`(dual: Boolean) = runTest {
         val mode = if (dual) ReaderPresentationMode.DUAL_PAGED else ReaderPresentationMode.SINGLE_PAGED
         val presentation = DesktopReaderPresentationRegistry.require(mode).present(
@@ -433,6 +458,7 @@ class ReaderPageTurnPresentationTest {
         val dual: Boolean,
         rtl: Boolean,
         distinctPages: Boolean = false,
+        vertical: Boolean = false,
     ) : AutoCloseable {
         private val root = Preferences.userRoot().node("/mihon/page-turn-test/${System.nanoTime()}")
         private val store = DesktopPreferenceStore(root.node("store"))
@@ -445,11 +471,21 @@ class ReaderPageTurnPresentationTest {
         val reports = mutableListOf<Int>()
         private val model = ReaderScreenModel(
             prefs = readerPreferences,
+            mangaViewerFlags = if (vertical) 3L else 0L,
             dualPageOverride = dual,
             initialSessionState = desktopReaderSessionState(pageCount = 7, initialPage = if (dual) 1 else 0),
             onViewportSettled = { _, active -> reports += active.sourcePageIndex },
         )
         fun currentState() = model.state.value
+        fun hasVerticalPager(): Boolean {
+            fun flatten(
+                node: androidx.compose.ui.semantics.SemanticsNode,
+            ): List<androidx.compose.ui.semantics.SemanticsNode> =
+                listOf(node) + node.children.flatMap(::flatten)
+            return scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.any {
+                it.config.contains(androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange)
+            }
+        }
         fun matching(enabled: Boolean) = model.setAutoSpreadMatching(enabled, readerPreferences)
         var page: Int
             get() = model.state.value.currentPage
@@ -571,6 +607,11 @@ class ReaderPageTurnPresentationTest {
             press(forward, rtl)
             release(forward, rtl)
         }
+        fun verticalTap() {
+            val position = Offset(200f, 380f)
+            scene.sendPointerEvent(PointerEventType.Press, position, button = PointerButton.Primary)
+            scene.sendPointerEvent(PointerEventType.Release, position, button = PointerButton.Primary)
+        }
         fun press(forward: Boolean, rtl: Boolean) {
             val position = Offset(if (forward != rtl) 380f else 20f, 200f)
             scene.sendPointerEvent(PointerEventType.Press, position, button = PointerButton.Primary)
@@ -586,8 +627,14 @@ class ReaderPageTurnPresentationTest {
             )
             assertTrue(handleReaderWheelEvent(event, model.state.value, model, {}, {}))
         }
-        fun key(forward: Boolean, rtl: Boolean) {
-            val key = if (forward !=
+        fun key(forward: Boolean, rtl: Boolean, vertical: Boolean = false) {
+            val key = if (vertical) {
+                if (forward) {
+                    androidx.compose.ui.input.key.Key.DirectionDown
+                } else {
+                    androidx.compose.ui.input.key.Key.DirectionUp
+                }
+            } else if (forward !=
                 rtl
             ) {
                 androidx.compose.ui.input.key.Key.DirectionRight

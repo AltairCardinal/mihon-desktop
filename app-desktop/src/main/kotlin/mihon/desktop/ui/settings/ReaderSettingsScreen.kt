@@ -1,7 +1,5 @@
 package mihon.desktop.ui.settings
 
-import mihon.desktop.LocalDesktopUiDependencies
-
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -21,9 +19,9 @@ import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import mihon.desktop.reader.ReadingMode
-import mihon.desktop.ui.reader.readingModeLabel
+import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.reader.NextChapterPrefetchMode
+import mihon.desktop.ui.reader.ReaderModeChoices
 import tachiyomi.i18n.MR
 
 class ReaderSettingsScreen : Screen {
@@ -35,8 +33,10 @@ class ReaderSettingsScreen : Screen {
         val dependencies = LocalDesktopUiDependencies.current
         val prefs = dependencies.appPreferences
         val readerPreferences = dependencies.readerPreferences
-        val pageTurnAnimation by prefs.pageTurnAnimation.changes().collectAsState(initial = prefs.pageTurnAnimation.get())
-        var readerMode by remember { mutableStateOf(readerPreferences.readingMode) }
+        val pageTurnAnimation by prefs.pageTurnAnimation.changes().collectAsState(
+            initial = prefs.pageTurnAnimation.get(),
+        )
+        var readerSettings by remember { mutableStateOf(readerPreferences.loadReaderSettings()) }
         val nextChapterPrefetchMode by readerPreferences.nextChapterPrefetchPreference.changes().collectAsState(
             initial = readerPreferences.nextChapterPrefetchMode,
         )
@@ -61,25 +61,16 @@ class ReaderSettingsScreen : Screen {
                     text = viewerTypeTitle,
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.desktopSettingsAnchor(viewerTypeTitle).padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.desktopSettingsAnchor(
+                        viewerTypeTitle,
+                    ).padding(horizontal = 16.dp, vertical = 8.dp),
                 )
-                ReadingMode.entries.filter { it != ReadingMode.DEFAULT }.forEach { mode ->
-                    val modeTitle = readingModeLabel(mode)
-                    RadioSettingsItem(
-                        title = modeTitle,
-                        selected = readerMode == mode,
-                        onClick = {
-                            readerMode = mode
-                            readerPreferences.readingMode = mode
-                        },
-                        modifier = Modifier.desktopSettingsAnchor(modeTitle),
-                    )
+                androidx.compose.foundation.layout.Column(Modifier.padding(horizontal = 16.dp)) {
+                    ReaderModeChoices(readerSettings) {
+                        readerPreferences.saveReaderSettings(it)
+                        readerSettings = it
+                    }
                 }
-                Text(
-                    text = MR.strings.desktop_reader_default_summary.localized(),
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                )
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                 SwitchSettingsItem(
@@ -94,7 +85,9 @@ class ReaderSettingsScreen : Screen {
                     text = prefetchTitle,
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.desktopSettingsAnchor(prefetchTitle).padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.desktopSettingsAnchor(
+                        prefetchTitle,
+                    ).padding(horizontal = 16.dp, vertical = 8.dp),
                 )
                 Text(
                     text = MR.strings.desktop_reader_prefetch_summary.localized(),

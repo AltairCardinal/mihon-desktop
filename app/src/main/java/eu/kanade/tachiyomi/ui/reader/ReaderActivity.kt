@@ -241,12 +241,7 @@ open class ReaderActivity : BaseActivity() {
             .onEach(::setProgressDialog)
             .launchIn(lifecycleScope)
 
-        viewModel.state
-            .map { it.manga }
-            .distinctUntilChanged()
-            .filterNotNull()
-            .onEach { updateViewer() }
-            .launchIn(lifecycleScope)
+        subscribeReaderManga()
 
         viewModel.state
             .map { it.viewerChapters }
@@ -259,6 +254,13 @@ open class ReaderActivity : BaseActivity() {
     }
 
     internal fun subscribeReaderEvents() = viewModel.eventFlow.onEach(::handleReaderEvent).launchIn(lifecycleScope)
+
+    internal fun subscribeReaderManga() = viewModel.state
+        .map { it.manga }
+        .distinctUntilChanged()
+        .filterNotNull()
+        .onEach { updateViewer() }
+        .launchIn(lifecycleScope)
     private var resumeRecoveryVisible by mutableStateOf(false)
     private var resumeConfirmationVisible by mutableStateOf(false)
     private var resumeChapterMissing by mutableStateOf(false)
@@ -340,11 +342,7 @@ open class ReaderActivity : BaseActivity() {
             ReaderChapterErrorRetryHandler(viewModel::retryChapter)
         }
         val settingsScreenModel = remember {
-            ReaderSettingsScreenModel(
-                readerState = viewModel.state,
-                onChangeReadingMode = viewModel::setMangaReadingMode,
-                onChangeOrientation = viewModel::setMangaOrientationType,
-            )
+            createReaderSettingsScreenModel()
         }
 
         Box(modifier = Modifier.fillMaxSize()) {
@@ -431,12 +429,6 @@ open class ReaderActivity : BaseActivity() {
                 ReadingModeSelectDialog(
                     onDismissRequest = onDismissRequest,
                     screenModel = settingsScreenModel,
-                    onChange = { stringRes ->
-                        menuToggleToast?.cancel()
-                        if (!readerPreferences.showReadingMode().get()) {
-                            menuToggleToast = toast(stringRes)
-                        }
-                    },
                 )
             }
             is ReaderViewModel.Dialog.OrientationModeSelect -> {
@@ -460,6 +452,13 @@ open class ReaderActivity : BaseActivity() {
             null -> {}
         }
     }
+
+    internal fun createReaderSettingsScreenModel() = ReaderSettingsScreenModel(
+        readerState = viewModel.state,
+        onChangeReadingMode = viewModel::setMangaReadingMode,
+        onChangeOrientation = viewModel::setMangaOrientationType,
+        onChangeReaderSettings = viewModel::setMangaReaderSettings,
+    )
 
     @Composable
     internal fun ReaderSettingsControls(screenModel: ReaderSettingsScreenModel) {
@@ -703,7 +702,7 @@ open class ReaderActivity : BaseActivity() {
             },
             onClickSettings = viewModel::openSettingsDialog,
             isDualPageMode = state.viewer is DualPageR2LPagerViewer,
-            isAutomaticMode = viewModel.getMangaReadingMode() == ReadingMode.AUTO.flagValue,
+            isAutomaticMode = ReadingMode.isAutomatic(viewModel.getMangaReadingMode()),
             isPairingSaving = state.pairingSaving,
             isPairingRecordReady = state.pairingRecordReady,
             onClickAdjustPairing = {
@@ -752,11 +751,11 @@ open class ReaderActivity : BaseActivity() {
         val requestedMode = viewModel.getMangaReadingMode()
         val selection = viewModel.getMangaReadingMode(resolveDefault = false) to requestedMode
         showModeNavigation = displayedReadingMode != null && displayedReadingMode != selection
-        val automatic = requestedMode == ReadingMode.AUTO.flagValue
+        val automatic = ReadingMode.isAutomatic(requestedMode)
         val dual = viewportController().configure(automatic)
         val readingMode = if (automatic) {
             viewModel.automaticDualPage = dual
-            if (dual) ReadingMode.DUAL_PAGE_R2L.flagValue else ReadingMode.RIGHT_TO_LEFT.flagValue
+            ReadingMode.resolveAutomatic(requestedMode, dual)
         } else {
             requestedMode
         }

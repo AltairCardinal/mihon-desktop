@@ -1,8 +1,6 @@
 package eu.kanade.presentation.reader.settings
 
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -10,20 +8,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
 import eu.kanade.domain.manga.model.readerOrientation
-import eu.kanade.domain.manga.model.readingMode
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
-import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonViewer
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.CheckboxItem
 import tachiyomi.presentation.core.components.HeadingItem
 import tachiyomi.presentation.core.components.SettingsChipRow
-import tachiyomi.presentation.core.components.SettingsItemsPaddings
 import tachiyomi.presentation.core.components.SliderItem
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
@@ -38,64 +32,7 @@ internal fun ColumnScope.ReadingModePage(
     val manga by screenModel.mangaFlow.collectAsState()
 
     val viewer by screenModel.viewerFlow.collectAsState()
-    val globalMode by screenModel.preferences.defaultReadingMode().collectAsState()
-    val readingMode = remember(manga) { ReadingMode.fromPreference(manga?.readingMode?.toInt()) }
-    SettingsChipRow(MR.strings.pref_category_reading_mode) {
-        ReadingMode.entries.map {
-            FilterChip(
-                selected = it == readingMode,
-                onClick = { screenModel.onChangeReadingMode(it) },
-                label = {
-                    val label = it.stringRes
-                    Text(stringResource(label))
-                },
-            )
-        }
-    }
-
-    if (readingMode == ReadingMode.DEFAULT) {
-        Text(
-            text = stringResource(MR.strings.label_default) + " · " +
-                stringResource(ReadingMode.fromPreference(globalMode).stringRes),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = SettingsItemsPaddings.Horizontal),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodyMedium,
-        )
-    }
-    if (readingMode == ReadingMode.AUTO ||
-        (readingMode == ReadingMode.DEFAULT && globalMode == ReadingMode.AUTO.flagValue)
-    ) {
-        val status = if (viewer is DualPageR2LPagerViewer) {
-            MR.strings.desktop_reader_default_dual
-        } else {
-            MR.strings.desktop_reader_default_single
-        }
-        Text(
-            text = stringResource(status),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = SettingsItemsPaddings.Horizontal),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        Text(
-            text = stringResource(MR.strings.desktop_reader_default_summary),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = SettingsItemsPaddings.Horizontal),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodyMedium,
-        )
-    }
-
-    if (viewer is DualPageR2LPagerViewer) {
-        CheckboxItem(
-            label = stringResource(MR.strings.desktop_ui_auto_spread_matching),
-            pref = screenModel.preferences.automaticSpreadMatching(),
-        )
-    }
+    SeriesReaderSettings(screenModel)
     pairingRecovery()
 
     val orientation = remember(manga) { ReaderOrientation.fromPreference(manga?.readerOrientation?.toInt()) }

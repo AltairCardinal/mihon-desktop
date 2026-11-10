@@ -13,7 +13,14 @@ class PhaseEReaderTest {
     @Test
     fun `ReadingMode distinguishes DEFAULT inheritance from AUTO and manual values`() {
         assertEquals(
-            listOf(ReadingMode.DEFAULT, ReadingMode.AUTO, ReadingMode.LTR, ReadingMode.RTL, ReadingMode.WEBTOON),
+            listOf(
+                ReadingMode.DEFAULT,
+                ReadingMode.AUTO,
+                ReadingMode.LTR,
+                ReadingMode.RTL,
+                ReadingMode.WEBTOON,
+                ReadingMode.VERTICAL,
+            ),
             ReadingMode.entries,
         )
         assertNotNull(ReadingMode.LTR)

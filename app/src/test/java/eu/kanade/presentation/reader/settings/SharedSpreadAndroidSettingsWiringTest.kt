@@ -28,7 +28,7 @@ import eu.kanade.tachiyomi.ui.reader.viewer.pager.R2LPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonViewer
 import io.mockk.mockk
 import kotlinx.coroutines.flow.MutableStateFlow
-import org.junit.Assert.assertEquals
+import mihon.domain.reader.ReaderSettingsCodec
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -40,6 +40,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import tachiyomi.core.common.preference.AndroidPreferenceStore
+import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
 import java.io.File
 import java.util.Locale
@@ -60,7 +61,7 @@ class SharedSpreadAndroidSettingsWiringTest {
         preferences.defaultReadingMode().set(ReadingMode.AUTO.flagValue)
         val state = MutableStateFlow(ReaderViewModel.State(viewer = mockk<DualPageR2LPagerViewer>(relaxed = true)))
         val model = ReaderSettingsScreenModel(state, {}, {}, preferences)
-        val summary = MR.strings.desktop_reader_default_summary.getString(activity.get())
+        val summary = "Default · Horizontal reading · Auto · Double page · Right to left · Auto Spread Matching: Off"
         try {
             activity.get().setContent {
                 MaterialTheme(
@@ -90,8 +91,7 @@ class SharedSpreadAndroidSettingsWiringTest {
         preferences.defaultReadingMode().set(ReadingMode.LEFT_TO_RIGHT.flagValue)
         val state = MutableStateFlow(ReaderViewModel.State(viewer = mockk<DualPageR2LPagerViewer>(relaxed = true)))
         val model = ReaderSettingsScreenModel(state, {}, {}, preferences)
-        val fixedMode = "${MR.strings.label_default.getString(activity.get())} · " +
-            MR.strings.left_to_right_viewer.getString(activity.get())
+        val fixedMode = "Default · Horizontal reading · Single page · Left to right"
         val automaticSummary = MR.strings.desktop_reader_default_summary.getString(activity.get())
         try {
             activity.get().setContent {
@@ -114,41 +114,28 @@ class SharedSpreadAndroidSettingsWiringTest {
     }
 
     @Test
-    @Config(qualifiers = "zh-rCN")
-    fun `reading mode chips expose localized dual directions and dispatch the selected mode`() {
-        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
-        val shared = activity.get().getSharedPreferences("dual-direction-${System.nanoTime()}", 0)
-        val preferences = ReaderPreferences(AndroidPreferenceStore(activity.get(), shared))
-        val state = MutableStateFlow(ReaderViewModel.State())
-        var selected: Int? = null
-        val model = ReaderSettingsScreenModel(state, { selected = it.flagValue }, {}, preferences)
-        try {
-            activity.get().setContent {
-                MaterialTheme {
-                    Column(Modifier.verticalScroll(rememberScrollState())) {
-                        ReadingModePage(model)
-                    }
-                }
-            }
-            compose.onNodeWithText("双页式（从右到左）").performScrollTo().assertIsDisplayed().performClick()
-            assertEquals(6, selected)
-            compose.onNodeWithText("双页式（从左到右）").performScrollTo().assertIsDisplayed().performClick()
-            assertEquals(8, selected)
-        } finally {
-            activity.pause().stop().destroy()
-            shared.edit().clear().commit()
-        }
-    }
-
-    @Test
-    fun `existing reading mode page setting event persists automatic matching only for dual viewer`() {
+    fun `grouped matching writes series snapshot before rotation and is hidden for single and vertical layouts`() {
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         val shared = activity.get().getSharedPreferences("spread-settings-${System.nanoTime()}", 0)
         val store = AndroidPreferenceStore(activity.get(), shared)
         val preferences = ReaderPreferences(store)
         val preference = store.getBoolean("reader_auto_spread_matching", false)
-        val state = MutableStateFlow(ReaderViewModel.State(viewer = mockk<DualPageR2LPagerViewer>(relaxed = true)))
-        val model = ReaderSettingsScreenModel(state, {}, {}, preferences)
+        val state = MutableStateFlow(
+            ReaderViewModel.State(
+                manga = Manga.create().copy(viewerFlags = 6L),
+                viewer = mockk<DualPageR2LPagerViewer>(relaxed = true),
+            ),
+        )
+        val model = ReaderSettingsScreenModel(state, {}, {}, preferences, { settings, _ ->
+            state.value = state.value.copy(
+                manga = state.value.manga!!.copy(
+                    viewerFlags = ReaderSettingsCodec.setCustom(
+                        state.value.manga!!.viewerFlags,
+                        requireNotNull(settings),
+                    ),
+                ),
+            )
+        })
         try {
             assertFalse(preference.get())
             activity.get().setContent {
@@ -160,7 +147,9 @@ class SharedSpreadAndroidSettingsWiringTest {
             }
             compose.onNodeWithText(MR.strings.pager_viewer.getString(activity.get())).assertDoesNotExist()
             compose.onNodeWithText("Auto Spread Matching").performScrollTo().assertIsDisplayed().performClick()
-            assertTrue("The real checkbox must persist the shared semantic setting", preference.get())
+            assertFalse("A series override must preserve the global default", preference.get())
+            compose.waitForIdle()
+            assertTrue(ReaderSettingsCodec.custom(state.value.manga!!.viewerFlags).match)
             val matchingY = compose.onNodeWithText("Auto Spread Matching").fetchSemanticsNode().positionInRoot.y
             val rotationY = compose.onNodeWithText("Rotation").fetchSemanticsNode().positionInRoot.y
             assertTrue(
@@ -169,10 +158,16 @@ class SharedSpreadAndroidSettingsWiringTest {
             )
             compose.onNodeWithText("Auto Spread Matching").performClick()
             assertFalse(preference.get())
-            state.value = state.value.copy(viewer = mockk<R2LPagerViewer>(relaxed = true))
+            state.value = state.value.copy(
+                manga = state.value.manga!!.copy(viewerFlags = 2L),
+                viewer = mockk<R2LPagerViewer>(relaxed = true),
+            )
             compose.waitForIdle()
             compose.onNodeWithText("Auto Spread Matching").assertDoesNotExist()
-            state.value = state.value.copy(viewer = mockk<WebtoonViewer>(relaxed = true))
+            state.value = state.value.copy(
+                manga = state.value.manga!!.copy(viewerFlags = 4L),
+                viewer = mockk<WebtoonViewer>(relaxed = true),
+            )
             compose.waitForIdle()
             compose.onNodeWithText("Auto Spread Matching").assertDoesNotExist()
         } finally {

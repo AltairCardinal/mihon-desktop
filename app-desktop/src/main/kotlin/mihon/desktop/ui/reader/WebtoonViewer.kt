@@ -1,9 +1,8 @@
 package mihon.desktop.ui.reader
 
-import tachiyomi.i18n.MR
-
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
@@ -49,14 +48,15 @@ import mihon.desktop.ui.reader.presentation.DisplaySlot
 import mihon.desktop.ui.reader.presentation.DisplayUnit
 import mihon.desktop.ui.reader.presentation.DisplayUnitId
 import mihon.desktop.ui.reader.presentation.ReaderPresentationSnapshot
-import mihon.desktop.ui.reader.presentation.WebtoonScrollAnchor
 import mihon.desktop.ui.reader.presentation.WebtoonInitialViewportBootstrapGate
+import mihon.desktop.ui.reader.presentation.WebtoonScrollAnchor
 import mihon.desktop.ui.reader.presentation.WebtoonViewportUpdate
 import mihon.desktop.ui.reader.presentation.WebtoonVisibleItem
 import mihon.desktop.ui.reader.presentation.resolveWebtoonViewport
 import mihon.desktop.ui.reader.presentation.restoreWebtoonAnchorIndex
 import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageLoadState
+import tachiyomi.i18n.MR
 
 internal class WebtoonDisplayUnitCompositionIdentity
 
@@ -75,6 +75,7 @@ internal fun WebtoonViewer(
     currentPageId: ReaderPageId,
     currentDisplayUnitId: DisplayUnitId?,
     initialAnchor: WebtoonScrollAnchor?,
+    pageGaps: Boolean = false,
     cropBorders: Boolean = false,
     sidePadding: WebtoonSidePadding = WebtoonSidePadding.NONE,
     autoScroll: Boolean = false,
@@ -94,6 +95,7 @@ internal fun WebtoonViewer(
         currentPageId = currentPageId,
         currentDisplayUnitId = currentDisplayUnitId,
         initialAnchor = initialAnchor,
+        pageGaps = pageGaps,
         sidePadding = sidePadding,
         autoScroll = autoScroll,
         autoScrollSpeed = autoScrollSpeed,
@@ -122,6 +124,7 @@ internal fun WebtoonDisplayUnitList(
     currentPageId: ReaderPageId,
     currentDisplayUnitId: DisplayUnitId?,
     initialAnchor: WebtoonScrollAnchor?,
+    pageGaps: Boolean = false,
     sidePadding: WebtoonSidePadding,
     autoScroll: Boolean,
     autoScrollSpeed: WebtoonAutoScrollSpeed,
@@ -144,7 +147,8 @@ internal fun WebtoonDisplayUnitList(
         ?: presentation.firstDisplayUnitIndex(currentPageId).coerceAtLeast(0)
     val rememberedListState = rememberLazyListState(
         initialFirstVisibleItemIndex = initialIndex.coerceIn(displayUnits.indices),
-        initialFirstVisibleItemScrollOffset = initialAnchor?.scrollOffset?.takeIf { exactInitialAnchorIndex != null } ?: 0,
+        initialFirstVisibleItemScrollOffset =
+        initialAnchor?.scrollOffset?.takeIf { exactInitialAnchorIndex != null } ?: 0,
     )
     val listState = listStateOverride ?: rememberedListState
     val autoScrollGate = remember { WebtoonAutoScrollGate() }
@@ -302,6 +306,7 @@ internal fun WebtoonDisplayUnitList(
         state = listState,
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(if (pageGaps) 15.dp else 0.dp),
     ) {
         items(
             items = displayUnits,

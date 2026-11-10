@@ -50,6 +50,11 @@ import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.reader.ZoomState
+import mihon.domain.reader.ReaderDirection
+import mihon.domain.reader.ReaderScrollMode
+import mihon.domain.reader.ReaderSettings
+import mihon.domain.reader.ReaderSettingsLayout
+import mihon.domain.reader.ReaderSettingsMode
 import tachiyomi.i18n.MR
 
 /**
@@ -102,6 +107,9 @@ fun ReaderSettingsPanel(
     onDismiss: () -> Unit,
     feedback: String? = null,
     pairingRecovery: @Composable () -> Unit = {},
+    readerSettings: ReaderSettings? = null,
+    onReaderSettingsChange: ((ReaderSettings) -> Unit)? = null,
+    onCustomize: (() -> Unit)? = null,
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf(
@@ -158,6 +166,9 @@ fun ReaderSettingsPanel(
                             onSkipDuplicateChaptersChange = onSkipDuplicateChaptersChange,
                             onZoomChange = onZoomChange,
                             pairingRecovery = pairingRecovery,
+                            readerSettings = readerSettings,
+                            onReaderSettingsChange = onReaderSettingsChange,
+                            onCustomize = onCustomize,
                         )
                         1 -> DisplayTab(
                             cropBordersPager = cropBordersPager,
@@ -215,89 +226,59 @@ internal fun GeneralTab(
     onSkipDuplicateChaptersChange: (Boolean) -> Unit = {},
     onZoomChange: (ZoomState) -> Unit,
     pairingRecovery: @Composable () -> Unit = {},
+    readerSettings: ReaderSettings? = null,
+    onReaderSettingsChange: ((ReaderSettings) -> Unit)? = null,
+    onCustomize: (() -> Unit)? = null,
 ) {
-    // Reading mode
-    SettingsSection(MR.strings.desktop_ui_reading_mode.localized()) {
-        ChoiceRow {
-            ChoiceChip(MR.strings.label_default.localized(), followsGlobal, onFollowGlobal)
-            listOf(ReadingMode.AUTO, ReadingMode.LTR, ReadingMode.WEBTOON).forEach { mode ->
-                val pagerMode = mode == ReadingMode.LTR
-                ChoiceChip(
-                    label = if (pagerMode) MR.strings.desktop_reader_paged_mode.localized() else readingModeLabel(mode),
-                    selected = !followsGlobal && if (pagerMode) {
-                        currentMode == ReadingMode.LTR || currentMode == ReadingMode.RTL
-                    } else {
-                        currentMode == mode
-                    },
-                    onClick = {
-                        onModeChange(if (pagerMode && currentMode == ReadingMode.RTL) ReadingMode.RTL else mode)
-                    },
-                )
-            }
-        }
-        if (currentMode == ReadingMode.AUTO) {
-            Text(
-                if (isDualPage) {
-                    MR.strings.desktop_reader_default_dual.localized()
-                } else {
-                    MR.strings.desktop_reader_default_single.localized()
+    val settings = readerSettings ?: ReaderSettings(
+        mode = if (currentMode == ReadingMode.WEBTOON ||
+            currentMode == ReadingMode.VERTICAL
+        ) {
+            ReaderSettingsMode.VERTICAL
+        } else {
+            ReaderSettingsMode.HORIZONTAL
+        },
+        layout = when {
+            currentMode == ReadingMode.AUTO -> ReaderSettingsLayout.AUTO
+            isDualPage -> ReaderSettingsLayout.DOUBLE
+            else -> ReaderSettingsLayout.SINGLE
+        },
+        direction = if (currentMode == ReadingMode.LTR) ReaderDirection.LTR else ReaderDirection.RTL,
+        scroll = if (currentMode == ReadingMode.VERTICAL) ReaderScrollMode.PAGED else ReaderScrollMode.CONTINUOUS,
+        match = isAutoSpreadMatching,
+    )
+    ReaderModeSettingsContent(
+        settings = settings,
+        followsGlobal = followsGlobal,
+        onFollowGlobal = onFollowGlobal,
+        onCustomize = onCustomize ?: { onModeChange(currentMode) },
+        onChange = onReaderSettingsChange ?: { changed ->
+            onModeChange(
+                when {
+                    changed.mode == ReaderSettingsMode.VERTICAL && changed.scroll == ReaderScrollMode.PAGED ->
+                        ReadingMode.VERTICAL
+                    changed.mode == ReaderSettingsMode.VERTICAL -> ReadingMode.WEBTOON
+                    changed.layout == ReaderSettingsLayout.AUTO -> ReadingMode.AUTO
+                    changed.direction == ReaderDirection.LTR -> ReadingMode.LTR
+                    else -> ReadingMode.RTL
                 },
             )
-            Text(MR.strings.desktop_reader_default_summary.localized(), style = MaterialTheme.typography.bodySmall)
-        }
-        pairingRecovery()
-    }
-
+            if (changed.layout !=
+                ReaderSettingsLayout.AUTO
+            ) {
+                onDualPageChange(changed.layout == ReaderSettingsLayout.DOUBLE)
+            }
+            if (changed.match != isAutoSpreadMatching) onAutoSpreadMatchingChange(changed.match)
+        },
+        actualDualPage = isDualPage,
+    )
+    pairingRecovery()
+    CheckboxRow(
+        label = MR.strings.desktop_ui_split_wide_pages.localized(),
+        checked = autoSplitPages,
+        onCheckedChange = onAutoSplitPagesChange,
+    )
     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-    if (currentMode == ReadingMode.WEBTOON) {
-        SettingsSection(MR.strings.desktop_ui_webtoon.localized()) {
-            CheckboxRow(
-                label = MR.strings.desktop_ui_split_wide_pages.localized(),
-                checked = autoSplitPages,
-                onCheckedChange = onAutoSplitPagesChange,
-            )
-        }
-        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-    } else {
-        // Pager settings
-        SettingsSection(MR.strings.desktop_ui_pager.localized()) {
-            ChoiceRow {
-                ChoiceChip(
-                    label = MR.strings.desktop_reader_direction_ltr.localized(),
-                    selected = currentMode == ReadingMode.LTR,
-                    onClick = { onModeChange(ReadingMode.LTR) },
-                    enabled = currentMode != ReadingMode.AUTO,
-                )
-                ChoiceChip(
-                    label = MR.strings.desktop_reader_direction_rtl.localized(),
-                    selected = currentMode == ReadingMode.RTL || currentMode == ReadingMode.AUTO,
-                    onClick = { onModeChange(ReadingMode.RTL) },
-                    enabled = currentMode != ReadingMode.AUTO,
-                )
-            }
-            CheckboxRow(
-                label = MR.strings.desktop_ui_split_wide_pages.localized(),
-                checked = autoSplitPages,
-                onCheckedChange = onAutoSplitPagesChange,
-            )
-            CheckboxRow(
-                label = MR.strings.desktop_ui_dual_page_side_by_side.localized(),
-                checked = isDualPage,
-                onCheckedChange = onDualPageChange,
-                enabled = currentMode != ReadingMode.AUTO,
-            )
-            if (isDualPage) {
-                CheckboxRow(
-                    label = MR.strings.desktop_ui_auto_spread_matching.localized(),
-                    checked = isAutoSpreadMatching,
-                    onCheckedChange = onAutoSpreadMatchingChange,
-                    indented = true,
-                )
-            }
-        }
-        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-    }
 
     // Navigation mode (pager only)
     if (currentMode != ReadingMode.WEBTOON) {
@@ -632,6 +613,7 @@ internal fun readingModeLabel(mode: ReadingMode): String = when (mode) {
     ReadingMode.LTR -> MR.strings.left_to_right_viewer.localized()
     ReadingMode.RTL -> MR.strings.right_to_left_viewer.localized()
     ReadingMode.WEBTOON -> MR.strings.webtoon_viewer.localized()
+    ReadingMode.VERTICAL -> MR.strings.vertical_viewer.localized()
 }
 
 private fun navigationModeLabel(mode: NavigationMode): String = when (mode) {

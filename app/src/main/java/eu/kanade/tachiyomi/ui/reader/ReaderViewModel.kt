@@ -11,7 +11,6 @@ import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.chapter.model.toDbChapter
 import eu.kanade.domain.manga.interactor.SetMangaViewerFlags
 import eu.kanade.domain.manga.model.readerOrientation
-import eu.kanade.domain.manga.model.readingMode
 import eu.kanade.domain.source.interactor.GetIncognitoState
 import eu.kanade.domain.track.interactor.TrackChapter
 import eu.kanade.domain.track.service.TrackPreferences
@@ -74,6 +73,8 @@ import mihon.domain.reader.ReaderAdjacentChapterEffect
 import mihon.domain.reader.ReaderChapterEntry
 import mihon.domain.reader.ReaderChapterState
 import mihon.domain.reader.ReaderNavigationCommand
+import mihon.domain.reader.ReaderSettings
+import mihon.domain.reader.ReaderSettingsCodec
 import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.SharedDualPageSession
 import mihon.domain.reader.filterChaptersForReader
@@ -1413,12 +1414,11 @@ class ReaderViewModel @JvmOverloads constructor(
      * Returns the viewer position used by this manga or the default one.
      */
     fun getMangaReadingMode(resolveDefault: Boolean = true): Int {
-        val default = readerPreferences.defaultReadingMode().get()
-        val readingMode = ReadingMode.fromPreference(manga?.readingMode?.toInt())
-        return when {
-            resolveDefault && readingMode == ReadingMode.DEFAULT -> default
-            else -> manga?.readingMode?.toInt() ?: default
-        }
+        val flags = manga?.viewerFlags ?: return readerPreferences.defaultReadingMode().get()
+        if (!resolveDefault && ReaderSettingsCodec.isFollowingDefault(flags)) return ReadingMode.DEFAULT.flagValue
+        return ReaderSettingsCodec.mode(
+            ReaderSettingsCodec.effective(flags, readerPreferences.defaultReaderSettings()),
+        ).toInt()
     }
 
     /**
@@ -1443,6 +1443,26 @@ class ReaderViewModel @JvmOverloads constructor(
                 }
                 eventChannel.send(Event.ReloadViewerChapters)
             }
+        }
+    }
+
+    fun setMangaReaderSettings(settings: ReaderSettings?, followingDefault: Boolean) {
+        val manga = manga ?: return
+        viewModelScope.launchIO {
+            setMangaViewerFlags.awaitSetReaderSettings(
+                manga.id,
+                settings,
+                followingDefault,
+                readerPreferences.defaultReaderSettings(),
+            )
+            val updated = getManga.await(manga.id)
+            val chapters = state.value.viewerChapters
+            chapters?.currChapter?.let { chapter ->
+                chapter.requestedPage = currentReaderPage?.takeIf { it.chapter === chapter }?.index
+                    ?: chapter.requestedPage
+            }
+            mutableState.update { it.copy(manga = updated) }
+            if (chapters != null) eventChannel.send(Event.ReloadViewerChapters)
         }
     }
 

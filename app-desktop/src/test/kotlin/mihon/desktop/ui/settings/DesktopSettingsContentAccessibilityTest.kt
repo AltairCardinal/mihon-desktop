@@ -153,15 +153,15 @@ class DesktopSettingsContentAccessibilityTest {
         }
         val dependencies = dependencies(store, this, readerPreferences)
         withScene(ReaderSettingsScreen(), dependencies) { scene ->
-            assertToggle(scene, MR.strings.automatic_background.localized(), Role.RadioButton, selected = true)
-            assertToggle(scene, MR.strings.right_to_left_viewer.localized(), Role.RadioButton, selected = false)
+            assertToggle(scene, MR.strings.reader_settings_auto.localized(), Role.RadioButton, selected = true)
+            assertToggle(scene, MR.strings.reader_settings_single.localized(), Role.RadioButton, selected = false)
             requireNotNull(
-                semanticBranch(scene, MR.strings.right_to_left_viewer.localized(), Role.RadioButton)
+                semanticBranch(scene, MR.strings.reader_settings_single.localized(), Role.RadioButton)
                     .config[SemanticsActions.OnClick].action,
             ).invoke()
             render(scene)
-            assertToggle(scene, MR.strings.right_to_left_viewer.localized(), Role.RadioButton, selected = true)
-            assertToggle(scene, MR.strings.automatic_background.localized(), Role.RadioButton, selected = false)
+            assertToggle(scene, MR.strings.reader_settings_single.localized(), Role.RadioButton, selected = true)
+            assertToggle(scene, MR.strings.reader_settings_auto.localized(), Role.RadioButton, selected = false)
             assertEquals(mihon.desktop.reader.ReadingMode.RTL, readerPreferences.readingMode)
             assertToggle(
                 scene,
@@ -202,6 +202,40 @@ class DesktopSettingsContentAccessibilityTest {
             assertAction(scene, MR.strings.pref_create_backup.localized(), Role.Button)
             assertAction(scene, MR.strings.file_select_backup.localized(), Role.Button)
             assertToggle(scene, MR.strings.off.localized(), Role.RadioButton, selected = true)
+        }
+    }
+
+    @Test
+    fun `reader mode defaults preserve hidden settings through real global controls`() = runBlocking {
+        val root = Preferences.userRoot().node("/mihon/global-reader-controls/${System.nanoTime()}")
+        try {
+            val store = DesktopPreferenceStore(root.node("store"))
+            val prefs = ReaderPreferences(store, root.node("legacy"))
+            prefs.saveReaderSettings(mihon.domain.reader.ReaderSettings(gap = true))
+            val dependencies = dependencies(store, this, prefs)
+            withScene(ReaderSettingsScreen(), dependencies, 1600) { scene ->
+                suspend fun click(label: String) {
+                    requireNotNull(
+                        semanticBranch(scene, label, Role.RadioButton).config[SemanticsActions.OnClick].action,
+                    ).invoke()
+                    render(scene)
+                }
+                click(MR.strings.reader_settings_vertical.localized())
+                click(MR.strings.reader_settings_paged.localized())
+                click(MR.strings.reader_settings_horizontal.localized())
+                click(MR.strings.reader_settings_dual.localized())
+                click(MR.strings.desktop_reader_direction_ltr.localized())
+                click(MR.strings.reader_settings_vertical.localized())
+                assertToggle(scene, MR.strings.reader_settings_paged.localized(), Role.RadioButton, selected = true)
+                val restored = ReaderPreferences(store, root.node("legacy")).loadReaderSettings()
+                assertEquals(mihon.domain.reader.ReaderSettingsMode.VERTICAL, restored.mode)
+                assertEquals(mihon.domain.reader.ReaderScrollMode.PAGED, restored.scroll)
+                assertEquals(mihon.domain.reader.ReaderSettingsLayout.DOUBLE, restored.layout)
+                assertEquals(mihon.domain.reader.ReaderDirection.LTR, restored.direction)
+                assertTrue(restored.gap)
+            }
+        } finally {
+            root.removeNode()
         }
     }
 

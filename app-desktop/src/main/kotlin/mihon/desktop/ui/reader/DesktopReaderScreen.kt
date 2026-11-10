@@ -282,6 +282,15 @@ data class DesktopReaderScreen(
         if (state.showSettings) {
             ReaderSettingsPanel(
                 currentMode = if (state.automaticLayout) ReadingMode.AUTO else state.readingMode,
+                readerSettings = state.readerSettings,
+                onReaderSettingsChange = {
+                    model.setReaderSettings(it)
+                    scope.launch { model.persistViewerFlags(mangaId, model.currentViewerFlags()) }
+                },
+                onCustomize = {
+                    model.restoreCustomReadingMode()
+                    scope.launch { model.persistViewerFlags(mangaId, model.currentViewerFlags()) }
+                },
                 feedback = state.settingsFeedback,
                 pairingRecovery = {
                     val canReload = state.pairingLoad == PairingLoad.ERROR ||
@@ -1038,6 +1047,8 @@ internal fun handleReaderKeyEvent(
     val adjacentForward = when (event.key) {
         Key.DirectionLeft, Key.A -> isRtl
         Key.DirectionRight, Key.D -> !isRtl
+        Key.DirectionUp -> if (state.readingMode == ReadingMode.VERTICAL) false else null
+        Key.DirectionDown -> if (state.readingMode == ReadingMode.VERTICAL) true else null
         Key.PageUp -> false
         Key.PageDown -> true
         else -> null
@@ -1048,6 +1059,20 @@ internal fun handleReaderKeyEvent(
         Key.DirectionRight, Key.D -> ReaderKeyboardAction.forRight(isRtl, navCurrent, totalPages)
         Key.MoveHome -> ReaderKeyboardAction.forHome()
         Key.MoveEnd -> ReaderKeyboardAction.forEnd(totalPages)
+        Key.DirectionUp -> if (state.readingMode ==
+            ReadingMode.VERTICAL
+        ) {
+            ReaderKeyboardAction.forPrevious(navCurrent)
+        } else {
+            null
+        }
+        Key.DirectionDown -> if (state.readingMode ==
+            ReadingMode.VERTICAL
+        ) {
+            ReaderKeyboardAction.forNext(navCurrent, totalPages)
+        } else {
+            null
+        }
         Key.PageUp -> ReaderKeyboardAction.forPageUp(navCurrent, totalPages)
         Key.PageDown -> ReaderKeyboardAction.forPageDown(navCurrent, totalPages)
         Key.Zero -> ReaderKeyboardAction.forDigit(0, totalPages)
@@ -1182,6 +1207,7 @@ internal fun ReaderContent(
                     chapter = state.session.activeChapter, currentPage = state.currentPage,
                     currentDisplayUnitId = state.currentDisplayUnitId,
                     initialAnchor = state.webtoonScrollAnchor,
+                    pageGaps = state.readerSettings.gap,
                     autoSplitPages = state.autoSplitPages, splitPageIndices = state.spreadPages,
                     cropBorders = state.cropBordersWebtoon, sidePadding = state.webtoonSidePadding,
                     autoScroll = state.webtoonAutoScroll, autoScrollSpeed = state.webtoonAutoScrollSpeed,
@@ -1200,7 +1226,7 @@ internal fun ReaderContent(
                     hasNextChapter = readerNav?.nextToRead != null,
                     onNextChapter = if (readerNav?.nextToRead != null) onNextChapter else null,
                 )
-                ReadingMode.DEFAULT, ReadingMode.AUTO, ReadingMode.LTR, ReadingMode.RTL -> {
+                ReadingMode.DEFAULT, ReadingMode.AUTO, ReadingMode.LTR, ReadingMode.RTL, ReadingMode.VERTICAL -> {
                     val rtl = state.readingMode == ReadingMode.RTL
                     val animationPreference = LocalDesktopUiDependencies.current.appPreferences.pageTurnAnimation
                     val pageTurnAnimation by animationPreference.changes().collectAsState(
@@ -1227,7 +1253,9 @@ internal fun ReaderContent(
                         allowAdjacentViewport = firstPresentedGeneration == state.session.generation,
                         chapter = state.session.activeChapter, currentPage = state.currentPage,
                         currentDisplayUnitId = state.currentDisplayUnitId, isRtl = rtl,
-                        isDualPage = state.dualPageMode, autoSplitPages = state.autoSplitPages,
+                        isDualPage = state.dualPageMode,
+                        isVertical = state.readingMode == ReadingMode.VERTICAL,
+                        autoSplitPages = state.autoSplitPages,
                         cropBorders = state.cropBordersPager, contextMenuScope = contextMenuScope,
                         mangaTitle = mangaTitle, chapterTitle = chapterTitle, zoomState = state.zoomState,
                         splitPageIndices = state.spreadPages,

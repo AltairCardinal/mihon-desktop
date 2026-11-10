@@ -161,7 +161,7 @@ class AdaptiveReaderViewportTest {
     }
 
     @Test
-    fun `mounted reader settings separate inheritance default feedback and disabled manual layout`() = runTest {
+    fun `mounted reader settings separate inheritance from automatic layout and keep directions enabled`() = runTest {
         val root = Preferences.userRoot().node("/mihon/mode-controls-test/${System.nanoTime()}")
         val previousLocale = Locale.getDefault()
         Locale.setDefault(Locale.SIMPLIFIED_CHINESE)
@@ -193,6 +193,9 @@ class AdaptiveReaderViewportTest {
                         val state by model.state.collectAsState()
                         GeneralTab(
                             currentMode = if (state.automaticLayout) ReadingMode.AUTO else state.readingMode,
+                            readerSettings = state.readerSettings,
+                            onReaderSettingsChange = model::setReaderSettings,
+                            onCustomize = model::restoreCustomReadingMode,
                             followsGlobal = state.followsGlobalReadingMode,
                             onFollowGlobal = { model.followGlobalReadingMode(prefs) },
                             isDualPage = state.dualPageMode,
@@ -208,26 +211,27 @@ class AdaptiveReaderViewportTest {
                 }
             }
             render()
-            val inherited = MR.strings.label_default.localized()
-            val default = MR.strings.automatic_background.localized()
-            val dual = MR.strings.desktop_ui_dual_page_side_by_side.localized()
+            val inherited = MR.strings.reader_settings_follow_default.localized()
+            val custom = MR.strings.reader_settings_custom.localized()
+            val automatic = MR.strings.reader_settings_auto.localized()
             assertTrue(selected(inherited))
-            click(default)
-            assertTrue(selected(default))
+            click(custom)
+            assertTrue(selected(custom))
             assertFalse(selected(inherited))
-            assertTrue(nodes(scene).any { MR.strings.desktop_reader_default_dual.localized() in text(it) })
-            assertTrue(choice(dual).config.contains(SemanticsProperties.Disabled))
-            assertTrue(nodes(scene).any { "翻页式" in text(it) })
-            click("翻页式")
-            click("从左到右")
-            assertTrue(selected("从左到右"))
-            assertFalse(selected("从右到左"))
+            click(automatic)
+            assertTrue(selected(automatic))
+            val left = MR.strings.desktop_reader_direction_ltr.localized()
+            val right = MR.strings.desktop_reader_direction_rtl.localized()
+            assertFalse(choice(left).config.contains(SemanticsProperties.Disabled))
+            click(left)
+            assertTrue(selected(left))
+            assertFalse(selected(right))
             assertEquals(ReadingMode.LTR, model.state.value.readingMode)
-            click("从右到左")
-            assertTrue(selected("从右到左"))
-            assertFalse(selected("从左到右"))
+            assertTrue(model.state.value.automaticLayout)
+            click(right)
+            assertTrue(selected(right))
+            assertFalse(selected(left))
             assertEquals(ReadingMode.RTL, model.state.value.readingMode)
-            assertFalse(choice(dual).config.contains(SemanticsProperties.Disabled))
             click(inherited)
             assertTrue(selected(inherited))
             assertEquals(ReadingMode.LTR, model.state.value.readingMode)

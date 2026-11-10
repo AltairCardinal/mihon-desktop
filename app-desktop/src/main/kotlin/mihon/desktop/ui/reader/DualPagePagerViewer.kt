@@ -629,8 +629,9 @@ internal fun Modifier.readerPrimaryTapInput(
     navigationMode: NavigationMode,
     isRtl: Boolean,
     allowZoomedNavigation: Boolean = false,
+    isVertical: Boolean = false,
     onTap: (TapNavRegion) -> Unit,
-): Modifier = pointerInput(zoomScale, navigationMode, isRtl, allowZoomedNavigation) {
+): Modifier = pointerInput(zoomScale, navigationMode, isRtl, allowZoomedNavigation, isVertical) {
     awaitPointerEventScope {
         while (true) {
             val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -674,10 +675,10 @@ internal fun Modifier.readerPrimaryTapInput(
             if (isTap && !moved && (zoomScale <= 1f || allowZoomedNavigation)) {
                 tapNavRegionForPointerButton(
                     button = PointerButton.Primary,
-                    x = releasePos.x,
-                    y = releasePos.y,
-                    width = size.width.toFloat(),
-                    height = size.height.toFloat(),
+                    x = if (isVertical) releasePos.y else releasePos.x,
+                    y = if (isVertical) releasePos.x else releasePos.y,
+                    width = if (isVertical) size.height.toFloat() else size.width.toFloat(),
+                    height = if (isVertical) size.width.toFloat() else size.height.toFloat(),
                     mode = navigationMode,
                     isRtl = isRtl,
                 )?.let(onTap)

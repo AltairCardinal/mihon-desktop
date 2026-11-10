@@ -6,9 +6,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalView
 import eu.kanade.presentation.more.settings.Preference
+import eu.kanade.presentation.reader.settings.ReaderSettingsControls
+import eu.kanade.presentation.reader.settings.collectDefaultReaderSettings
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
-import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import eu.kanade.tachiyomi.util.system.hasDisplayCutout
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
@@ -33,20 +34,14 @@ object SettingsReaderScreen : SearchableSettings {
         val readerPref = remember { Injekt.get<ReaderPreferences>() }
 
         return listOf(
-            Preference.PreferenceItem.ListPreference(
-                preference = readerPref.defaultReadingMode(),
-                entries = ReadingMode.entries.filter { it != ReadingMode.DEFAULT }
-                    .associate { it.flagValue to stringResource(it.stringRes) }
-                    .toImmutableMap(),
+            Preference.PreferenceItem.CustomPreference(
                 title = stringResource(MR.strings.pref_viewer_type),
-                subtitleProvider = { value, entries ->
-                    if (value == ReadingMode.AUTO.flagValue) {
-                        entries[value] + "\n" + stringResource(MR.strings.desktop_reader_default_summary)
-                    } else {
-                        entries[value]
-                    }
-                },
-            ),
+            ) {
+                ReaderSettingsControls(
+                    settings = readerPref.collectDefaultReaderSettings(),
+                    onChange = readerPref::setDefaultReaderSettings,
+                )
+            },
             Preference.PreferenceItem.ListPreference(
                 preference = readerPref.doubleTapAnimSpeed(),
                 entries = persistentMapOf(

@@ -1,5 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Shared reader settings -->
+    <string name="reader_settings_follow_default">跟随默认</string>
+    <string name="reader_settings_custom">单独设置</string>
+    <string name="reader_settings_horizontal">横向阅读</string>
+    <string name="reader_settings_horizontal_hint">适合传统漫画</string>
+    <string name="reader_settings_vertical">纵向阅读</string>
+    <string name="reader_settings_vertical_hint">适合条漫</string>
+    <string name="reader_settings_layout">页面布局</string>
+    <string name="reader_settings_auto">自动</string>
+    <string name="reader_settings_single">单页</string>
+    <string name="reader_settings_dual">双页</string>
+    <string name="reader_settings_auto_hint">根据阅读区域宽高比自动切换单/双页</string>
+    <string name="reader_settings_single_hint">每次显示一页</string>
+    <string name="reader_settings_dual_hint">每次显示两页</string>
+    <string name="reader_settings_direction">阅读方向</string>
+    <string name="reader_settings_scroll">滚动方式</string>
+    <string name="reader_settings_continuous">连续滚动</string>
+    <string name="reader_settings_paged">逐页翻动</string>
+    <string name="reader_settings_page_gaps">页面有空隙</string>
     <string name="extension_catalog_cached_failure">仓库刷新失败，列表可能仍显示上次成功加载的扩展。</string>
     <string name="extension_unsupported_api">需要扩展 API %1$s；当前应用支持 %2$s–%3$s，无法安装或更新。</string>
     <string name="name">名称</string>
@@ -1328,7 +1347,7 @@
     <string name="desktop_ui_all_authors">全部作者</string>
     <string name="desktop_ui_archived_works">已归档作品</string>
     <string name="desktop_ui_authors">作者</string>
-    <string name="desktop_ui_auto_spread_matching">自动跨页匹配</string>
+    <string name="desktop_ui_auto_spread_matching">双页自动匹配</string>
     <string name="desktop_ui_background">背景</string>
     <string name="desktop_ui_bookmark_selected">已选择书签</string>
     <string name="desktop_ui_brightness">亮度</string>

@@ -50,7 +50,7 @@ import java.util.prefs.Preferences
 
 class ReaderScreenModelTest {
     @Test
-    fun `automatic invalid resume fallback does not write but explicit same page selection reaches production progress bridge`() {
+    fun `automatic invalid resume stays local until explicit selection reaches production progress bridge`() {
         val reader = desktopReaderSessionState(chapterId = 7L, pageCount = 3, initialPage = 10)
         val recorded = mutableListOf<ReaderPageId>()
         val model = ReaderScreenModel(
@@ -618,10 +618,11 @@ class ReaderScreenModelTest {
     }
 
     @Test
-    fun `webtoon mode is pinned`() {
+    fun `webtoon hint selects the initial mode and still permits an explicit horizontal choice`() {
         val webtoon = ReaderScreenModel(isWebtoon = true)
-        webtoon.setReadingMode(ReadingMode.LTR)
         assertEquals(ReadingMode.WEBTOON, webtoon.state.value.readingMode)
+        webtoon.setReadingMode(ReadingMode.LTR)
+        assertEquals(ReadingMode.LTR, webtoon.state.value.readingMode)
     }
 
     @Test

@@ -7,6 +7,20 @@ import org.junit.jupiter.api.Test
 
 class ReadingModeTest {
     @Test
+    fun `automatic LTR resolves to an automatic horizontal pager instead of inheritance`() {
+        val mode = ReadingMode.fromPreference(9)
+        assertEquals("AUTO_LTR", mode.name)
+        assertEquals(ReadingMode.Direction.Horizontal, mode.direction)
+        assertTrue(ReadingMode.isPagerType(9))
+        assertTrue(ReadingMode.isAutomatic(9))
+        assertEquals(8, ReadingMode.resolveAutomatic(9, dualPage = true))
+        assertEquals(1, ReadingMode.resolveAutomatic(9, dualPage = false))
+        assertEquals(6, ReadingMode.resolveAutomatic(7, dualPage = true))
+        assertEquals(2, ReadingMode.resolveAutomatic(7, dualPage = false))
+        assertEquals(3, ReadingMode.resolveAutomatic(3, dualPage = true))
+    }
+
+    @Test
     fun `LTR double page is a selectable horizontal pager mode`() {
         val mode = ReadingMode.fromPreference(8)
         assertEquals("DUAL_PAGE_L2R", mode.name)

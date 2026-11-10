@@ -71,12 +71,27 @@ enum class ReadingMode(
         Direction.Horizontal,
         ViewerType.Pager,
     ),
+    AUTO_LTR(
+        MR.strings.reader_settings_auto,
+        R.drawable.ic_reader_default_24dp,
+        9,
+        Direction.Horizontal,
+        ViewerType.Pager,
+    ),
     ;
 
     companion object {
         const val MASK = 0x00000007
 
         fun fromPreference(preference: Int?): ReadingMode = entries.find { it.flagValue == preference } ?: DEFAULT
+
+        fun isAutomatic(preference: Int): Boolean = preference == AUTO.flagValue || preference == AUTO_LTR.flagValue
+
+        fun resolveAutomatic(preference: Int, dualPage: Boolean): Int = when (fromPreference(preference)) {
+            AUTO -> if (dualPage) DUAL_PAGE_R2L.flagValue else RIGHT_TO_LEFT.flagValue
+            AUTO_LTR -> if (dualPage) DUAL_PAGE_L2R.flagValue else LEFT_TO_RIGHT.flagValue
+            else -> preference
+        }
 
         fun isPagerType(preference: Int): Boolean {
             val mode = fromPreference(preference)
@@ -96,6 +111,7 @@ enum class ReadingMode(
                     activity.viewModel.dualPagePairings,
                     ReaderDirection.LTR,
                 )
+                AUTO_LTR -> L2RPagerViewer(activity)
                 DEFAULT, AUTO -> R2LPagerViewer(activity)
             }
         }

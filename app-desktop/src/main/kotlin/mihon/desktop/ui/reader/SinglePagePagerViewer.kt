@@ -6,7 +6,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerScope
 import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -63,6 +65,7 @@ internal fun SinglePagePagerViewer(
     currentPageId: ReaderPageId,
     currentDisplayUnitId: DisplayUnitId? = null,
     isRtl: Boolean,
+    isVertical: Boolean = false,
     zoomState: ZoomState,
     cropBorders: Boolean = false,
     contextMenuScope: CoroutineScope? = null,
@@ -204,21 +207,16 @@ internal fun SinglePagePagerViewer(
         }
     }
 
-    HorizontalPager(
-        state = pagerState,
-        // Keep the neighboring viewports' image leases mounted so instant turns do not expose a decode gap.
-        beyondViewportPageCount = if (allowAdjacentViewport) 1 else 0,
-        modifier = Modifier.fillMaxSize().readerMountedGeometry(
-            pagerPresentationBinding,
-        ).readerPrimaryTapInput(zoomState.scale, navigationMode, isRtl) {
-            when (it) {
-                TapNavRegion.PREV -> executeTapCommand(ReaderNavigationCommand.Previous)
-                TapNavRegion.NEXT -> executeTapCommand(ReaderNavigationCommand.Next)
-                TapNavRegion.MENU -> onTapCenter?.invoke()
-            }
-        },
-        key = { pagerIndex -> displayUnits[pagerToPage(pagerIndex)].id },
-    ) { pagerIndex ->
+    val pagerModifier = Modifier.fillMaxSize().readerMountedGeometry(
+        pagerPresentationBinding,
+    ).readerPrimaryTapInput(zoomState.scale, navigationMode, isRtl, isVertical = isVertical) {
+        when (it) {
+            TapNavRegion.PREV -> executeTapCommand(ReaderNavigationCommand.Previous)
+            TapNavRegion.NEXT -> executeTapCommand(ReaderNavigationCommand.Next)
+            TapNavRegion.MENU -> onTapCenter?.invoke()
+        }
+    }
+    val pageContent: @Composable PagerScope.(Int) -> Unit = { pagerIndex ->
         val unit = displayUnits[pagerToPage(pagerIndex)]
         Box(
             modifier = Modifier.fillMaxSize().semantics {
@@ -282,6 +280,23 @@ internal fun SinglePagePagerViewer(
                 }
             }
         }
+    }
+    if (isVertical) {
+        VerticalPager(
+            state = pagerState,
+            beyondViewportPageCount = if (allowAdjacentViewport) 1 else 0,
+            modifier = pagerModifier,
+            key = { displayUnits[pagerToPage(it)].id },
+            pageContent = pageContent,
+        )
+    } else {
+        HorizontalPager(
+            state = pagerState,
+            beyondViewportPageCount = if (allowAdjacentViewport) 1 else 0,
+            modifier = pagerModifier,
+            key = { displayUnits[pagerToPage(it)].id },
+            pageContent = pageContent,
+        )
     }
 }
 

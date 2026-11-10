@@ -3,6 +3,8 @@ package eu.kanade.tachiyomi.ui.reader.setting
 import android.os.Build
 import androidx.compose.ui.graphics.BlendMode
 import dev.icerock.moko.resources.StringResource
+import mihon.domain.reader.ReaderSettings
+import mihon.domain.reader.ReaderSettingsCodec
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.preference.getEnum
@@ -69,6 +71,19 @@ class ReaderPreferences(
         "pref_default_reading_mode_key",
         ReadingMode.AUTO.flagValue,
     ).apply { if (get() == ReadingMode.DEFAULT.flagValue) set(ReadingMode.AUTO.flagValue) }
+
+    fun defaultReaderSettingsSnapshot() = preferenceStore.getLong("reader_default_settings_snapshot", 0L)
+
+    fun defaultReaderSettings(): ReaderSettings = ReaderSettingsCodec.fromMode(
+        defaultReadingMode().get().toLong(),
+        ReaderSettingsCodec.custom(defaultReaderSettingsSnapshot().get()),
+    ).copy(match = automaticSpreadMatching().get())
+
+    fun setDefaultReaderSettings(settings: ReaderSettings) {
+        defaultReaderSettingsSnapshot().set(ReaderSettingsCodec.setCustom(0L, settings))
+        automaticSpreadMatching().set(settings.match)
+        defaultReadingMode().set(ReaderSettingsCodec.mode(settings).toInt())
+    }
 
     fun defaultOrientationType() = preferenceStore.getInt(
         "pref_default_orientation_type_key",

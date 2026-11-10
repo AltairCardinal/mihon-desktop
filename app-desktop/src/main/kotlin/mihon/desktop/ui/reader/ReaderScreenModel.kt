@@ -35,11 +35,7 @@ import mihon.desktop.reader.SkiaImageDecoder
 import mihon.desktop.reader.VirtualPage
 import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.reader.ZoomState
-import mihon.desktop.reader.dualPageFromViewerFlags
-import mihon.desktop.reader.readingModeFromViewerFlags
-import mihon.desktop.reader.viewerFlagsFollowingGlobal
-import mihon.desktop.reader.viewerFlagsWithDualPage
-import mihon.desktop.reader.viewerFlagsWithReadingMode
+import mihon.desktop.reader.desktopReadingMode
 import mihon.desktop.ui.reader.presentation.DisplayUnitId
 import mihon.desktop.ui.reader.presentation.VisiblePageSet
 import mihon.desktop.ui.reader.presentation.WebtoonScrollAnchor
@@ -79,6 +75,11 @@ import mihon.domain.reader.ReaderPairingPersistenceNotice
 import mihon.domain.reader.ReaderPairingPersistenceStatus
 import mihon.domain.reader.ReaderPairingPrefetchPlan
 import mihon.domain.reader.ReaderPresentationMode
+import mihon.domain.reader.ReaderScrollMode
+import mihon.domain.reader.ReaderSettings
+import mihon.domain.reader.ReaderSettingsCodec
+import mihon.domain.reader.ReaderSettingsLayout
+import mihon.domain.reader.ReaderSettingsMode
 import mihon.domain.reader.ReaderSpreadSampleRequest
 import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.SharedDualPageSession
@@ -269,8 +270,13 @@ class ReaderScreenModel(
     private var pendingLayout: Boolean? = null
     private var pendingLayoutJob: Job? = null
     private var webtoonRestoreAnchor: ReaderPageId? = null
-    private var manualDualPage =
-        dualPageFromViewerFlags(mangaViewerFlags) ?: dualPageOverride ?: prefs.isDualPage
+    private var readerSettingsFlags = if (!_state.value.followsGlobalReadingMode &&
+        ReaderSettingsCodec.isFollowingDefault(mangaViewerFlags)
+    ) {
+        ReaderSettingsCodec.setCustom(mangaViewerFlags, _state.value.readerSettings)
+    } else {
+        mangaViewerFlags
+    }
     private val productionRuntimeLifecycleLock = Any()
     private val certificationTargets = linkedSetOf<ReaderPageId>()
     private val _certificationRounds = AtomicInteger(0)
@@ -396,7 +402,11 @@ class ReaderScreenModel(
             acceptedPhysicalContents.clear()
             return null
         }
-        mihon.desktop.reader.ReaderStartupTrace.mark("DUAL_IDENTITY_BEGIN", pages.getOrNull(current.currentPage)?.id, current.session.generation)
+        mihon.desktop.reader.ReaderStartupTrace.mark(
+            "DUAL_IDENTITY_BEGIN",
+            pages.getOrNull(current.currentPage)?.id,
+            current.session.generation,
+        )
         val ids = pages.map { it.id }
         val previous = dualSession
         val sameOrder = previous?.identity?.pageIds == ids &&
@@ -470,7 +480,11 @@ class ReaderScreenModel(
                 )
             }
         }
-        mihon.desktop.reader.ReaderStartupTrace.mark("DUAL_IDENTITY_END", pages.getOrNull(current.currentPage)?.id, current.session.generation)
+        mihon.desktop.reader.ReaderStartupTrace.mark(
+            "DUAL_IDENTITY_END",
+            pages.getOrNull(current.currentPage)?.id,
+            current.session.generation,
+        )
         val owner = requireNotNull(dualSession)
         owner.configure(
             dualDirection(current),
@@ -495,7 +509,11 @@ class ReaderScreenModel(
 
     private fun publishDualSession(owner: SharedDualPageSession) = synchronized(productionRuntimeLifecycleLock) {
         if (disposeRequested || dualSession !== owner) return@synchronized
-        mihon.desktop.reader.ReaderStartupTrace.mark("DUAL_PROJECTION_BEGIN", owner.location?.pageId, owner.identity.generation)
+        mihon.desktop.reader.ReaderStartupTrace.mark(
+            "DUAL_PROJECTION_BEGIN",
+            owner.location?.pageId,
+            owner.identity.generation,
+        )
         refreshCertificationTargetsLocked(owner)
         val pairing = owner.pairingState
         val status = pairing.status
@@ -555,7 +573,11 @@ class ReaderScreenModel(
                 }
             }
         }
-        mihon.desktop.reader.ReaderStartupTrace.mark("DUAL_PROJECTION_END", owner.location?.pageId, owner.identity.generation)
+        mihon.desktop.reader.ReaderStartupTrace.mark(
+            "DUAL_PROJECTION_END",
+            owner.location?.pageId,
+            owner.identity.generation,
+        )
     }
 
     private data class DualContentStamp(
@@ -602,6 +624,7 @@ class ReaderScreenModel(
 
     private var factPublisherJob: Job? = null
     private var spreadPublisherJob: Job? = null
+
     // Protected by productionRuntimeLifecycleLock; captures inputs arriving during a terminating round.
     private var publisherInputRevision = 0L
 
@@ -731,9 +754,15 @@ class ReaderScreenModel(
                 ) { current, _, _, _, _ ->
                     current
                 }.collect { current ->
-                    mihon.desktop.reader.ReaderStartupTrace.mark("PUBLISHER_LOCK_WAIT", generation = current.session.generation)
+                    mihon.desktop.reader.ReaderStartupTrace.mark(
+                        "PUBLISHER_LOCK_WAIT",
+                        generation = current.session.generation,
+                    )
                     val (transition, stuckToCancel, shouldRetry) = synchronized(productionRuntimeLifecycleLock) {
-                        mihon.desktop.reader.ReaderStartupTrace.mark("PUBLISHER_LOCKED", generation = current.session.generation)
+                        mihon.desktop.reader.ReaderStartupTrace.mark(
+                            "PUBLISHER_LOCKED",
+                            generation = current.session.generation,
+                        )
                         publisherInputRevision++
                         val owner = ensureDualSession() ?: return@synchronized Triple(null, null, false)
                         if (owner.location?.pageId != lastBindingAttemptLocation ||
@@ -793,11 +822,23 @@ class ReaderScreenModel(
                                 owner.ownsFactRequest(it)
                             } ?: owner.requestFact(item.request.pageId)
                             pendingHeaderTickets[item.request.pageId] = original
-                            mihon.desktop.reader.ReaderStartupTrace.mark("HEADER_ENQUEUE", item.request.pageId, item.request.generation)
+                            mihon.desktop.reader.ReaderStartupTrace.mark(
+                                "HEADER_ENQUEUE",
+                                item.request.pageId,
+                                item.request.generation,
+                            )
                             headerJobs[item] = scope.launch {
-                                mihon.desktop.reader.ReaderStartupTrace.mark("HEADER_SEMAPHORE_WAIT", item.request.pageId, item.request.generation)
+                                mihon.desktop.reader.ReaderStartupTrace.mark(
+                                    "HEADER_SEMAPHORE_WAIT",
+                                    item.request.pageId,
+                                    item.request.generation,
+                                )
                                 parallelism.acquire()
-                                mihon.desktop.reader.ReaderStartupTrace.mark("HEADER_ADMITTED", item.request.pageId, item.request.generation)
+                                mihon.desktop.reader.ReaderStartupTrace.mark(
+                                    "HEADER_ADMITTED",
+                                    item.request.pageId,
+                                    item.request.generation,
+                                )
                                 try {
                                     if (item.request.pageId != owner.location?.pageId &&
                                         !optionalWorkCanRun(runtime)
@@ -808,14 +849,26 @@ class ReaderScreenModel(
                                         item.request,
                                         mihon.domain.reader.observability.ReaderIoPurpose.NORMAL_NEIGHBOUR_HEADER,
                                     )
-                                    mihon.desktop.reader.ReaderStartupTrace.mark("HEADER_PARSE_BEGIN", item.request.pageId, item.request.generation)
+                                    mihon.desktop.reader.ReaderStartupTrace.mark(
+                                        "HEADER_PARSE_BEGIN",
+                                        item.request.pageId,
+                                        item.request.generation,
+                                    )
                                     val fact = lease?.use { originalHeader(it.content, original.content.rotation) }
                                         ?: ReaderPageFact(
                                             ReaderPageFactState.FAILED,
                                         )
-                                    mihon.desktop.reader.ReaderStartupTrace.mark("HEADER_PARSE_END", item.request.pageId, item.request.generation)
+                                    mihon.desktop.reader.ReaderStartupTrace.mark(
+                                        "HEADER_PARSE_END",
+                                        item.request.pageId,
+                                        item.request.generation,
+                                    )
                                     acceptDualFact(original, fact, item.request)
-                                    mihon.desktop.reader.ReaderStartupTrace.mark("HEADER_ACCEPTED", item.request.pageId, item.request.generation)
+                                    mihon.desktop.reader.ReaderStartupTrace.mark(
+                                        "HEADER_ACCEPTED",
+                                        item.request.pageId,
+                                        item.request.generation,
+                                    )
                                 } catch (_: DesktopReaderOptionalWorkPaused) {
                                     synchronized(productionRuntimeLifecycleLock) {
                                         headerJobs
@@ -867,7 +920,10 @@ class ReaderScreenModel(
                             Triple(null, stuck, retry)
                         }
                     }
-                    mihon.desktop.reader.ReaderStartupTrace.mark("PUBLISHER_UNLOCKED", generation = current.session.generation)
+                    mihon.desktop.reader.ReaderStartupTrace.mark(
+                        "PUBLISHER_UNLOCKED",
+                        generation = current.session.generation,
+                    )
                     stuckToCancel?.cancel()
                     transition?.applyOutsideLock()
                     if (shouldRetry) {
@@ -2010,7 +2066,10 @@ class ReaderScreenModel(
                 // bounded retry is controlled solely by the binding layer.
                 val canRearm = synchronized(productionRuntimeLifecycleLock) {
                     !waitsForRealEvent.get() ||
-                        (noProgressInputRevision.get() >= 0 && publisherInputRevision != noProgressInputRevision.get()) ||
+                        (
+                            noProgressInputRevision.get() >= 0 &&
+                                publisherInputRevision != noProgressInputRevision.get()
+                            ) ||
                         (waitsForBusyState.get() && !pairingBusyState(runtime, publisherOwnerKey))
                 }
                 if (!disposeRequested && !aborted && canRearm) {
@@ -2029,13 +2088,19 @@ class ReaderScreenModel(
         prefs: ReaderPreferences,
         reader: DesktopReaderSessionState,
     ): ReaderState {
-        val resolvedMode = when {
-            isWebtoon -> ReadingMode.WEBTOON
-            readingModeFromViewerFlags(mangaViewerFlags) == null && prefs.readingMode == ReadingMode
-                .AUTO &&
-                (dualPageFromViewerFlags(mangaViewerFlags) != null || dualPageOverride != null) ->
-                ReadingMode.RTL
-            else -> readingModeFromViewerFlags(mangaViewerFlags) ?: prefs.readingMode
+        val defaults = prefs.loadReaderSettings()
+        val inherited = ReaderSettingsCodec.isFollowingDefault(mangaViewerFlags)
+        val webtoonHintApplied = inherited && mangaViewerFlags == 0L && isWebtoon
+        val settings = when {
+            webtoonHintApplied -> defaults.copy(
+                mode = ReaderSettingsMode.VERTICAL,
+                scroll = ReaderScrollMode.CONTINUOUS,
+            )
+            inherited && dualPageOverride != null -> defaults.copy(
+                mode = ReaderSettingsMode.HORIZONTAL,
+                layout = if (dualPageOverride) ReaderSettingsLayout.DOUBLE else ReaderSettingsLayout.SINGLE,
+            )
+            else -> ReaderSettingsCodec.effective(mangaViewerFlags, defaults)
         }
         return ReaderState(
             context = reader.context,
@@ -2049,15 +2114,15 @@ class ReaderScreenModel(
                 reader.context.initialPage,
                 reader.snapshot.activeChapter.pages.size,
             ),
-            readingMode = if (resolvedMode == ReadingMode.AUTO) ReadingMode.RTL else resolvedMode,
-            automaticLayout = resolvedMode == ReadingMode.AUTO,
-            followsGlobalReadingMode = !isWebtoon &&
-                readingModeFromViewerFlags(mangaViewerFlags) == null &&
-                dualPageFromViewerFlags(mangaViewerFlags) == null && dualPageOverride == null,
-            dualPageMode = resolvedMode != ReadingMode.AUTO &&
-                (dualPageFromViewerFlags(mangaViewerFlags) ?: dualPageOverride ?: prefs.isDualPage),
+            readingMode = settings.desktopReadingMode(),
+            readerSettings = settings,
+            automaticLayout =
+            settings.mode == ReaderSettingsMode.HORIZONTAL && settings.layout == ReaderSettingsLayout.AUTO,
+            followsGlobalReadingMode = inherited && !webtoonHintApplied && dualPageOverride == null,
+            dualPageMode =
+            settings.mode == ReaderSettingsMode.HORIZONTAL && settings.layout == ReaderSettingsLayout.DOUBLE,
             autoSplitPages = prefs.autoSplitPages,
-            autoSpreadMatching = prefs.isAutoSpreadMatching,
+            autoSpreadMatching = settings.match,
             backgroundTheme = prefs.backgroundTheme,
             navigationMode = prefs.navigationMode,
             cropBordersPager = prefs.cropBordersPager,
@@ -2092,7 +2157,10 @@ class ReaderScreenModel(
     fun acceptSessionState(reader: DesktopReaderSessionState) {
         mihon.desktop.reader.ReaderStartupTrace.mark("SESSION_ACCEPT_WAIT", generation = reader.snapshot.generation)
         synchronized(productionRuntimeLifecycleLock) {
-            mihon.desktop.reader.ReaderStartupTrace.mark("SESSION_ACCEPT_LOCKED", generation = reader.snapshot.generation)
+            mihon.desktop.reader.ReaderStartupTrace.mark(
+                "SESSION_ACCEPT_LOCKED",
+                generation = reader.snapshot.generation,
+            )
             val previous = _state.value
             val sameContentList = previous.session.generation == reader.snapshot.generation &&
                 previous.context.chapterId == reader.context.chapterId &&
@@ -3034,47 +3102,44 @@ class ReaderScreenModel(
     }
 
     fun followGlobalReadingMode(prefs: ReaderPreferences) {
-        if (isWebtoon) return
-        manualDualPage = prefs.isDualPage
-        setReadingMode(prefs.readingMode)
-        _state.update { it.copy(followsGlobalReadingMode = true) }
-    }
-
-    fun currentViewerFlags(): Long {
-        val current = _state.value
-        if (current.followsGlobalReadingMode) return viewerFlagsFollowingGlobal(mangaViewerFlags)
-        return viewerFlagsWithReadingMode(
-            viewerFlagsWithDualPage(mangaViewerFlags, manualDualPage),
-            if (current.automaticLayout) ReadingMode.AUTO else current.readingMode,
-        )
-    }
-
-    fun setReadingMode(mode: ReadingMode, prefs: ReaderPreferences? = null) {
-        if (isWebtoon) return
-        if (mode == ReadingMode.DEFAULT) {
-            followGlobalReadingMode(prefs ?: globalPreferences)
-            return
+        if (!_state.value.followsGlobalReadingMode) {
+            readerSettingsFlags = ReaderSettingsCodec.setCustom(readerSettingsFlags, _state.value.readerSettings)
         }
+        readerSettingsFlags = ReaderSettingsCodec.followDefault(readerSettingsFlags, prefs.loadReaderSettings())
+        applyReaderSettings(prefs.loadReaderSettings(), followsGlobal = true)
+    }
+
+    fun restoreCustomReadingMode() {
+        readerSettingsFlags =
+            ReaderSettingsCodec.restoreCustom(readerSettingsFlags, globalPreferences.loadReaderSettings())
+        applyReaderSettings(ReaderSettingsCodec.custom(readerSettingsFlags), followsGlobal = false)
+    }
+
+    fun currentViewerFlags(): Long = readerSettingsFlags
+
+    fun setReaderSettings(settings: ReaderSettings) {
+        readerSettingsFlags = ReaderSettingsCodec.setCustom(readerSettingsFlags, settings)
+        applyReaderSettings(settings, followsGlobal = false)
+    }
+
+    private fun applyReaderSettings(settings: ReaderSettings, followsGlobal: Boolean) {
         cancelPendingLayout()
         adaptiveInitialized = false
-        val automatic = mode == ReadingMode.AUTO
-        val dual = if (automatic) {
-            viewportSize?.let { (width, height) ->
-                AdaptiveReaderLayout.dualPage(
-                    width,
-                    height,
-                )
-            } ?: false
+        val automatic = settings.mode == ReaderSettingsMode.HORIZONTAL && settings.layout == ReaderSettingsLayout.AUTO
+        val dual = settings.mode == ReaderSettingsMode.HORIZONTAL && if (automatic) {
+            viewportSize?.let { (width, height) -> AdaptiveReaderLayout.dualPage(width, height) } ?: false
         } else {
-            manualDualPage
+            settings.layout == ReaderSettingsLayout.DOUBLE
         }
         if (automatic && viewportSize != null) adaptiveInitialized = true
         changePresentation {
             it.copy(
-                readingMode = if (automatic) ReadingMode.RTL else mode,
+                readingMode = settings.desktopReadingMode(),
+                readerSettings = settings,
                 automaticLayout = automatic,
-                followsGlobalReadingMode = false,
+                followsGlobalReadingMode = followsGlobal,
                 dualPageMode = dual,
+                autoSpreadMatching = settings.match,
                 currentDisplayUnitId = null,
                 visiblePageIds = emptySet(),
                 webtoonScrollAnchor = null,
@@ -3082,22 +3147,58 @@ class ReaderScreenModel(
         }
     }
 
-    // ── Dual-page & spread management ─────────────────────────────────────────
+    @Suppress("UNUSED_PARAMETER")
+    fun setReadingMode(mode: ReadingMode, prefs: ReaderPreferences? = null) {
+        if (mode == ReadingMode.DEFAULT) {
+            followGlobalReadingMode(prefs ?: globalPreferences)
+            return
+        }
+        val settings = _state.value.readerSettings
+        setReaderSettings(
+            when (mode) {
+                ReadingMode.AUTO -> settings.copy(
+                    mode = ReaderSettingsMode.HORIZONTAL,
+                    layout = ReaderSettingsLayout.AUTO,
+                )
+                ReadingMode.LTR, ReadingMode.RTL -> settings.copy(
+                    mode = ReaderSettingsMode.HORIZONTAL,
+                    layout = if (settings.layout ==
+                        ReaderSettingsLayout.AUTO
+                    ) {
+                        ReaderSettingsLayout.SINGLE
+                    } else {
+                        settings.layout
+                    },
+                    direction = if (mode ==
+                        ReadingMode.LTR
+                    ) {
+                        mihon.domain.reader.ReaderDirection.LTR
+                    } else {
+                        mihon.domain.reader.ReaderDirection.RTL
+                    },
+                )
+                ReadingMode.WEBTOON -> settings.copy(
+                    mode = ReaderSettingsMode.VERTICAL,
+                    scroll = ReaderScrollMode.CONTINUOUS,
+                )
+                ReadingMode.VERTICAL -> settings.copy(
+                    mode = ReaderSettingsMode.VERTICAL,
+                    scroll = ReaderScrollMode.PAGED,
+                )
+                ReadingMode.DEFAULT -> error("Handled above")
+            },
+        )
+    }
 
+    // Legacy callers retain the explicit manual-layout operation; the new selector changes the snapshot directly.
+    @Suppress("UNUSED_PARAMETER")
     fun setDualPageMode(on: Boolean, prefs: ReaderPreferences? = null) {
         if (_state.value.automaticLayout) return
-        manualDualPage = on
-        changePresentation { state ->
-            state.copy(
-                dualPageMode = on,
-                followsGlobalReadingMode = false,
-                forcedSinglePages = state.forcedSinglePages,
-                currentDisplayUnitId = null,
-                visiblePageIds = emptySet(),
-                webtoonScrollAnchor = null,
-            )
-        }
-        prefs?.isDualPage = on
+        setReaderSettings(
+            _state.value.readerSettings.copy(
+                layout = if (on) ReaderSettingsLayout.DOUBLE else ReaderSettingsLayout.SINGLE,
+            ),
+        )
     }
 
     fun setAutoSplitPages(on: Boolean, prefs: ReaderPreferences? = null) {
@@ -3124,9 +3225,9 @@ class ReaderScreenModel(
         prefs?.autoSplitPages = on
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun setAutoSpreadMatching(on: Boolean, prefs: ReaderPreferences? = null) {
-        changePresentation { it.copy(autoSpreadMatching = on) }
-        prefs?.isAutoSpreadMatching = on
+        setReaderSettings(_state.value.readerSettings.copy(match = on))
     }
 
     fun setSpreadPages(pages: Set<Int>) {
@@ -3219,9 +3320,11 @@ class ReaderScreenModel(
             try {
                 val saved = readViewerFlags?.invoke(mangaId)
                 if (saved != null && currentViewerFlags() == flags) {
-                    manualDualPage = dualPageFromViewerFlags(saved) ?: globalPreferences.isDualPage
-                    val mode = readingModeFromViewerFlags(saved)
-                    if (mode == null) followGlobalReadingMode(globalPreferences) else setReadingMode(mode)
+                    readerSettingsFlags = saved
+                    applyReaderSettings(
+                        ReaderSettingsCodec.effective(saved, globalPreferences.loadReaderSettings()),
+                        followsGlobal = ReaderSettingsCodec.isFollowingDefault(saved),
+                    )
                 }
             } catch (canceled: CancellationException) {
                 throw canceled

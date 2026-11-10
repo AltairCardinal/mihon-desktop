@@ -234,6 +234,9 @@ class ReaderSharedParityWiringTest {
             coEvery { getChapters.await(manga.id, applyScanlatorFilter = true) } returns chapters
             val readerPreferences = mockk<ReaderPreferences>(relaxed = true)
             every { readerPreferences.defaultReadingMode().get() } returns 1
+            every { readerPreferences.defaultReaderSettings() } answers {
+                mihon.domain.reader.ReaderSettingsCodec.fromMode(readerPreferences.defaultReadingMode().get().toLong())
+            }
             every { readerPreferences.skipRead().get() } returns true
             every { readerPreferences.skipFiltered().get() } returns false
             every { readerPreferences.skipDupe().get() } returns false
@@ -298,6 +301,20 @@ class ReaderSharedParityWiringTest {
                 assertEquals(7, viewModel.getMangaReadingMode())
                 assertEquals(7, viewModel.getMangaReadingMode(resolveDefault = false))
             }
+
+            every { readerPreferences.defaultReadingMode().get() } returns 7
+            val legacyDual = (1L shl 32) or (1L shl 33)
+            for ((flags, expected) in listOf(legacyDual to 6, (legacyDual or 1L) to 8)) {
+                state.value = state.value.copy(manga = manga.copy(viewerFlags = flags))
+                assertEquals(expected, viewModel.getMangaReadingMode())
+                assertEquals(expected, viewModel.getMangaReadingMode(resolveDefault = false))
+            }
+            every { readerPreferences.defaultReadingMode().get() } returns 4
+            state.value = state.value.copy(manga = manga.copy(viewerFlags = legacyDual))
+            assertEquals(4, viewModel.getMangaReadingMode())
+            state.value = state.value.copy(manga = manga.copy(viewerFlags = 0L))
+            assertEquals(4, viewModel.getMangaReadingMode())
+            assertEquals(0, viewModel.getMangaReadingMode(resolveDefault = false))
 
             val visible = requireNotNull(viewModel.state.value.viewerChapters)
             assertEquals(3L, visible.currChapter.chapter.id)

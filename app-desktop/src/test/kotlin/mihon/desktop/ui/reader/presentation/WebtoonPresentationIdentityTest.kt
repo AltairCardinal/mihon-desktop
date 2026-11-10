@@ -31,8 +31,8 @@ import mihon.desktop.reader.readerChapterSession
 import mihon.desktop.ui.reader.WebtoonDisplayUnitCompositionIdentityKey
 import mihon.desktop.ui.reader.WebtoonDisplayUnitContainer
 import mihon.desktop.ui.reader.WebtoonDisplayUnitIdKey
-import mihon.desktop.ui.reader.WebtoonDisplayUnitLoadStateKey
 import mihon.desktop.ui.reader.WebtoonDisplayUnitList
+import mihon.desktop.ui.reader.WebtoonDisplayUnitLoadStateKey
 import mihon.desktop.ui.reader.WebtoonPresentationViewer
 import mihon.domain.error.AppError
 import mihon.domain.reader.ReaderDirection
@@ -49,6 +49,50 @@ import org.junit.jupiter.api.Test
 
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class WebtoonPresentationIdentityTest {
+    @Test
+    fun `page gaps change actual list spacing while retaining the current page`() = runTest {
+        val presentation = snapshot(split = false)
+        val listState = LazyListState()
+        var gaps by mutableStateOf(false)
+        val scene = ImageComposeScene(640, 480, coroutineContext = currentCoroutineContext()) {}
+        try {
+            scene.setContent {
+                WebtoonDisplayUnitList(
+                    presentation = presentation,
+                    currentPageId = pageId,
+                    currentDisplayUnitId = presentation.displayUnits.first().id,
+                    initialAnchor = null,
+                    pageGaps = gaps,
+                    sidePadding = WebtoonSidePadding.NONE,
+                    autoScroll = false,
+                    autoScrollSpeed = mihon.desktop.ui.reader.WebtoonAutoScrollSpeed.Normal,
+                    listStateOverride = listState,
+                    onViewportChanged = {},
+                    onRetryPage = {},
+                ) { _, modifier -> Box(modifier.height(100.dp)) }
+            }
+            fun frames() = repeat(6) {
+                scene.render().close()
+                runCurrent()
+            }
+            fun spacing(): Int {
+                val items = listState.layoutInfo.visibleItemsInfo
+                assertTrue(items.size >= 2)
+                return items[1].offset - items[0].offset - items[0].size
+            }
+            frames()
+            assertEquals(0, spacing())
+            gaps = true
+            frames()
+            assertEquals(15, spacing())
+            assertEquals(0, listState.firstVisibleItemIndex)
+            gaps = false
+            frames()
+            assertEquals(0, spacing())
+        } finally {
+            scene.close()
+        }
+    }
 
     @Test
     fun `webtoon item keeps composition identity while loading ready error and retry change in place`() = runTest {

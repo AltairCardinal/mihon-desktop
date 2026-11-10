@@ -13,6 +13,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import mihon.domain.reader.ReaderSettingsCodec
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -48,14 +49,20 @@ class PagerConfig(
     var landscapeZoom = false
         private set
 
-    var automaticSpreadMatching = readerPreferences.automaticSpreadMatching().get()
+    private fun effectiveMatching(preferences: ReaderPreferences): Boolean {
+        val flags = (viewer as? DualPageR2LPagerViewer)?.activity?.viewModel?.state?.value?.manga?.viewerFlags
+            ?: return preferences.automaticSpreadMatching().get()
+        return ReaderSettingsCodec.effective(flags, preferences.defaultReaderSettings()).match
+    }
+
+    var automaticSpreadMatching = effectiveMatching(readerPreferences)
         private set
 
     var automaticSpreadMatchingChangedListener: (() -> Unit)? = null
 
     init {
         readerPreferences.automaticSpreadMatching().register(
-            { automaticSpreadMatching = it },
+            { automaticSpreadMatching = effectiveMatching(readerPreferences) },
             { automaticSpreadMatchingChangedListener?.invoke() },
         )
         readerPreferences.readerTheme()

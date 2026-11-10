@@ -7,6 +7,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.os.Handler
 import android.os.Looper
 import android.view.KeyEvent
 import android.view.View
@@ -29,6 +30,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.core.view.children
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
@@ -74,6 +76,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.android.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
@@ -124,6 +127,7 @@ import tachiyomi.data.Mangas
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
 import tachiyomi.data.chapter.ChapterPairingRepositoryImpl
+import tachiyomi.data.manga.MangaRepositoryImpl
 import tachiyomi.data.reader.SqlDelightReadingProgressRepository
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.model.Chapter
@@ -171,6 +175,89 @@ class AndroidChapterPairingPersistenceWiringTest {
         ReaderOpenLatencyProbe.configure(false, -1, -1, "off")
         Injekt = previousInjekt
         Dispatchers.resetMain()
+    }
+
+    @Test
+    fun `actual activity settings persist full snapshot and reload the production viewer`() = runBlocking {
+        openDatabase(temporaryFolder.newFile("reader-settings-production.db"), create = true).use { fixture ->
+            seed(fixture.driver)
+            try {
+                session(fixture, readingMode = 6, productionSettingsWriter = true).use { reader ->
+                    Dispatchers.setMain(
+                        Handler(Looper.getMainLooper()).asCoroutineDispatcher("ReaderSettingsMain"),
+                    )
+                    val settingsHost = ScreenModelTestHost()
+                    val settings = settingsHost.create { reader.activity.createReaderSettingsScreenModel() }
+                    val chapter = requireNotNull(reader.model.state.value.currentChapter)
+                    // Reuse the foreground-busy fixture: this settings test does not require Android JNI sampling.
+                    chapter.pageLoader = object : eu.kanade.tachiyomi.ui.reader.loader.PageLoader() {
+                        override var isLocal = true
+                        override val hasForegroundWork = true
+                        override suspend fun getPages() = requireNotNull(chapter.pages)
+                    }
+                    val preferences = Injekt.get<ReaderPreferences>()
+                    preferences.showReadingMode().set(false)
+                    reader.activity.binding = ReaderActivityBinding.inflate(reader.host.layoutInflater)
+                    reader.activity.binding.viewerContainer.layout(0, 0, 900, 1600)
+                    // Keep the native viewer container unattached: image drawing and animations are separate tests.
+                    val mangaSubscription = reader.activity.subscribeReaderManga()
+                    val eventSubscription = reader.activity.subscribeReaderEvents()
+                    try {
+                        reader.host.setContent {
+                            val state by reader.model.state.collectAsState()
+                            MaterialTheme {
+                                reader.activity.AppBars(state.copy(menuVisible = true))
+                                if (state.dialog is ReaderViewModel.Dialog.Settings) {
+                                    reader.activity.ReaderSettingsControls(settings)
+                                }
+                            }
+                        }
+                        compose.mainClock.advanceTimeBy(500)
+                        compose.onNodeWithContentDescription(reader.host.stringResource(MR.strings.action_settings))
+                            .assertIsDisplayed().performClick()
+                        compose.onNodeWithText(reader.host.stringResource(MR.strings.desktop_reader_direction_ltr))
+                            .performSemanticsAction(SemanticsActions.OnClick) { it() }
+                        compose.waitUntil(5_000) {
+                            shadowOf(Looper.getMainLooper()).idle()
+                            reader.model.getMangaReadingMode() == 8 &&
+                                (reader.model.state.value.viewer as? DualPageR2LPagerViewer)?.isRtl == false
+                        }
+                        val beforeMatching = reader.model.state.value.viewer
+                        compose.onNodeWithText(reader.host.stringResource(MR.strings.desktop_ui_auto_spread_matching))
+                            .performSemanticsAction(SemanticsActions.OnClick) { it() }
+                        compose.waitUntil(5_000) {
+                            shadowOf(Looper.getMainLooper()).idle()
+                            val actual = reader.model.state.value.viewer as? DualPageR2LPagerViewer
+                            actual != null && actual !== beforeMatching && !actual.isRtl &&
+                                actual.config.automaticSpreadMatching
+                        }
+                        val persisted = MangaRepositoryImpl(fixture.handler, mockk(relaxed = true)).getMangaById(1)
+                        assertEquals(8L, mihon.domain.reader.ReaderModeFlags.read(persisted.viewerFlags))
+                        assertTrue(mihon.domain.reader.ReaderSettingsCodec.custom(persisted.viewerFlags).match)
+                        assertFalse(preferences.automaticSpreadMatching().get())
+                        assertEquals(2L, reader.model.state.value.currentChapter?.chapter?.id)
+                    } finally {
+                        mangaSubscription.cancelAndJoin()
+                        eventSubscription.cancelAndJoin()
+                        reader.host.setContent { }
+                        shadowOf(Looper.getMainLooper()).idle()
+                        settingsHost.close()
+                        reader.model.viewModelScope.cancel()
+                        val modelJob = requireNotNull(reader.model.viewModelScope.coroutineContext[Job])
+                        withTimeout(5_000) {
+                            while (!modelJob.isCompleted) {
+                                shadowOf(Looper.getMainLooper()).idle()
+                                kotlinx.coroutines.delay(1)
+                            }
+                        }
+                    }
+                }
+            } finally {
+                // Keep the Looper dispatcher until the real viewer and all queued native callbacks have closed.
+                shadowOf(Looper.getMainLooper()).idle()
+                Dispatchers.setMain(UnconfinedTestDispatcher())
+            }
+        }
     }
 
     @Test
@@ -2515,6 +2602,7 @@ class AndroidChapterPairingPersistenceWiringTest {
         coordinator: AndroidChapterPairingCoordinator = AndroidChapterPairingCoordinator(repository),
         onPageListLoaded: () -> Unit = {},
         onModelCreated: (ReaderViewModel) -> Unit = {},
+        productionSettingsWriter: Boolean = false,
     ): ReaderSession {
         Injekt = InjektScope(DefaultRegistrar())
         val preferences = InMemoryPreferenceStore(
@@ -2565,11 +2653,22 @@ class AndroidChapterPairingPersistenceWiringTest {
         }
         Injekt.addSingleton(sourceManager)
         var configuredManga = manga
-        val getManga = mockk<GetManga>()
-        coEvery { getManga.await(1) } coAnswers { configuredManga }
-        val viewerFlags = mockk<SetMangaViewerFlags>(relaxed = true)
-        coEvery { viewerFlags.awaitSetReadingMode(1, any()) } coAnswers {
-            configuredManga = configuredManga.copy(viewerFlags = secondArg())
+        val settingsRepository = MangaRepositoryImpl(database.handler, mockk(relaxed = true))
+        val getManga = if (productionSettingsWriter) {
+            GetManga(settingsRepository)
+        } else {
+            mockk<GetManga>().also {
+                coEvery { it.await(1) } coAnswers { configuredManga }
+            }
+        }
+        val viewerFlags = if (productionSettingsWriter) {
+            SetMangaViewerFlags(settingsRepository)
+        } else {
+            mockk<SetMangaViewerFlags>(relaxed = true).also {
+                coEvery { it.awaitSetReadingMode(1, any()) } coAnswers {
+                    configuredManga = configuredManga.copy(viewerFlags = secondArg())
+                }
+            }
         }
         val getChapters = mockk<GetChaptersByMangaId>()
         coEvery { getChapters.await(1, applyScanlatorFilter = true) } returns

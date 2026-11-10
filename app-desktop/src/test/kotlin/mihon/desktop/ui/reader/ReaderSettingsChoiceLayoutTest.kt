@@ -10,6 +10,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import kotlinx.coroutines.Dispatchers
 import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.reader.ReadingMode
@@ -27,13 +28,23 @@ import java.util.prefs.Preferences
 
 @OptIn(ExperimentalComposeUiApi::class)
 class ReaderSettingsChoiceLayoutTest {
+    private val frameTimes = java.util.IdentityHashMap<ImageComposeScene, Long>()
+
     @Test
-    fun `reading mode direction and navigation choices flow horizontally and stay exclusive`() = withPanel {
+    fun `reading mode direction and navigation choices flow horizontally and stay exclusive`() = withPanel(
+        locale = Locale.SIMPLIFIED_CHINESE,
+    ) {
             scene,
             model,
             _,
         ->
-        assertHorizontal(scene, MR.strings.label_default.localized(), MR.strings.automatic_background.localized())
+        assertHorizontal(
+            scene,
+            MR.strings.reader_settings_follow_default.localized(),
+            MR.strings.reader_settings_custom.localized(),
+        )
+        capture(scene, "default")
+        click(scene, MR.strings.reader_settings_custom.localized())
         assertHorizontal(
             scene,
             MR.strings.desktop_reader_direction_ltr.localized(),
@@ -46,21 +57,64 @@ class ReaderSettingsChoiceLayoutTest {
         assertEquals(ReadingMode.RTL, model.state.value.readingMode)
         assertSelected(scene, MR.strings.desktop_reader_direction_rtl.localized(), true)
         assertSelected(scene, MR.strings.desktop_reader_direction_ltr.localized(), false)
-        click(scene, MR.strings.desktop_reader_paged_mode.localized())
+        click(scene, MR.strings.reader_settings_horizontal.localized())
         assertEquals(ReadingMode.RTL, model.state.value.readingMode, "Paged mode retains the selected direction")
         click(scene, MR.strings.l_nav.localized())
         assertSelected(scene, MR.strings.l_nav.localized(), true)
         assertSelected(scene, MR.strings.right_and_left_nav.localized(), false)
 
-        click(scene, MR.strings.automatic_background.localized())
+        click(scene, MR.strings.reader_settings_auto.localized())
         val direction = option(scene, MR.strings.desktop_reader_direction_ltr.localized())
-        assertTrue(direction.config.contains(SemanticsProperties.Disabled))
+        assertFalse(direction.config.contains(SemanticsProperties.Disabled))
         click(scene, MR.strings.desktop_reader_direction_ltr.localized())
-        assertTrue(model.state.value.automaticLayout, "Disabled direction must not leave automatic mode")
-        click(scene, MR.strings.label_default.localized())
+        assertTrue(model.state.value.automaticLayout, "Choosing direction must keep automatic layout")
+        assertEquals(ReadingMode.LTR, model.state.value.readingMode)
+        click(scene, MR.strings.reader_settings_follow_default.localized())
         assertTrue(model.state.value.followsGlobalReadingMode)
-        assertSelected(scene, MR.strings.label_default.localized(), true)
-        assertSelected(scene, MR.strings.automatic_background.localized(), false)
+        assertSelected(scene, MR.strings.reader_settings_follow_default.localized(), true)
+        assertSelected(scene, MR.strings.reader_settings_custom.localized(), false)
+        click(scene, MR.strings.reader_settings_custom.localized())
+        assertTrue(model.state.value.automaticLayout)
+        assertEquals(ReadingMode.LTR, model.state.value.readingMode)
+    }
+
+    @Test
+    fun `vertical scrolling hides gaps for paging and preserves the hidden gap choice`() = withPanel(
+        locale = Locale.SIMPLIFIED_CHINESE,
+    ) {
+            scene,
+            model,
+            _,
+        ->
+        click(scene, MR.strings.reader_settings_custom.localized())
+        click(scene, MR.strings.reader_settings_vertical.localized())
+        val gapSwitch = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.first {
+            it.config.getOrNull(
+                SemanticsProperties.ContentDescription,
+            )?.contains(MR.strings.reader_settings_page_gaps.localized()) ==
+                true &&
+                it.config.contains(SemanticsActions.OnClick)
+        }
+        val position = gapSwitch.boundsInRoot.center
+        scene.sendPointerEvent(PointerEventType.Press, position)
+        scene.sendPointerEvent(PointerEventType.Release, position)
+        render(scene)
+        assertTrue(model.state.value.readerSettings.gap)
+        capture(scene, "vertical")
+        click(scene, MR.strings.reader_settings_paged.localized())
+        assertEquals(ReadingMode.VERTICAL, model.state.value.readingMode)
+        assertTrue(model.state.value.readerSettings.gap)
+        assertFalse(
+            scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.any {
+                it.config.getOrNull(
+                    SemanticsProperties.ContentDescription,
+                )?.contains(MR.strings.reader_settings_page_gaps.localized()) ==
+                    true
+            },
+        )
+        click(scene, MR.strings.reader_settings_continuous.localized())
+        assertEquals(ReadingMode.WEBTOON, model.state.value.readingMode)
+        assertTrue(model.state.value.readerSettings.gap)
     }
 
     @Test
@@ -95,7 +149,7 @@ class ReaderSettingsChoiceLayoutTest {
         click(scene, MR.strings.action_close.localized())
         assertFalse(model.state.value.showSettings)
         model.toggleSettings()
-        scene.render().close()
+        render(scene)
         click(scene, MR.strings.pref_category_general.localized())
         assertSelected(scene, MR.strings.scale_type_fit_width.localized(), true)
         assertSelected(scene, "10%", true)
@@ -159,6 +213,9 @@ class ReaderSettingsChoiceLayoutTest {
                     if (state.showSettings) {
                         ReaderSettingsPanel(
                             currentMode = if (state.automaticLayout) ReadingMode.AUTO else state.readingMode,
+                            readerSettings = state.readerSettings,
+                            onReaderSettingsChange = model::setReaderSettings,
+                            onCustomize = model::restoreCustomReadingMode,
                             followsGlobal = state.followsGlobalReadingMode,
                             onFollowGlobal = { model.followGlobalReadingMode(prefs) },
                             isDualPage = state.dualPageMode,
@@ -193,10 +250,11 @@ class ReaderSettingsChoiceLayoutTest {
                     }
                 }
             }
-            scene.render().close()
+            render(scene)
             test(scene, model, prefs)
         } finally {
             scene.close()
+            frameTimes.remove(scene)
             model.onDispose()
             legacy.removeNode()
             Locale.setDefault(previousLocale)
@@ -216,17 +274,26 @@ class ReaderSettingsChoiceLayoutTest {
     }
 
     private fun capture(scene: ImageComposeScene, name: String) {
-        val directory = File("build/reports/reader-settings").apply { mkdirs() }
-        scene.render().use { image ->
+        val directory = File("../.gradle-coordinator/reader-settings-native").apply { mkdirs() }
+        repeat(2) { frame(scene, 1_000_000_000L).close() }
+        frame(scene).use { image ->
             requireNotNull(image.encodeToData()).use { File(directory, "$name.png").writeBytes(it.bytes) }
         }
     }
+
+    private fun frame(scene: ImageComposeScene, stepNanos: Long = 16_000_000L): org.jetbrains.skia.Image {
+        val time = (frameTimes[scene] ?: 0L) + stepNanos
+        frameTimes[scene] = time
+        return scene.render(time)
+    }
+
+    private fun render(scene: ImageComposeScene) = frame(scene).close()
 
     private fun click(scene: ImageComposeScene, label: String) {
         val position = option(scene, label).boundsInRoot.center
         scene.sendPointerEvent(PointerEventType.Press, position)
         scene.sendPointerEvent(PointerEventType.Release, position)
-        scene.render().close()
+        render(scene)
     }
 
     private fun option(scene: ImageComposeScene, label: String): SemanticsNode = scene.semanticsOwners

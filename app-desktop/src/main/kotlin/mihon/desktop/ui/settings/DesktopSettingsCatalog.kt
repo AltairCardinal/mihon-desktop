@@ -149,16 +149,28 @@ object DesktopSettingsCatalog {
                 }
                 ),
         ),
-        screen(
-            route(ReaderSettingsScreen::class),
-            MR.strings.pref_category_reader,
-            MR.strings.pref_viewer_type,
-            MR.strings.label_default,
-            MR.strings.left_to_right_viewer,
-            MR.strings.right_to_left_viewer,
-            MR.strings.webtoon_viewer,
-            MR.strings.pref_page_transitions,
-            MR.strings.desktop_reader_prefetch_next_chapter,
+        SearchableSettingsScreen(
+            route = route(ReaderSettingsScreen::class),
+            title = MR.strings.pref_category_reader.localized(),
+            preferences = listOf(
+                SearchablePreference.Entry(
+                    title = MR.strings.pref_viewer_type.localized(),
+                    summary = listOf(
+                        MR.strings.reader_settings_horizontal,
+                        MR.strings.reader_settings_vertical,
+                        MR.strings.reader_settings_auto,
+                        MR.strings.reader_settings_single,
+                        MR.strings.reader_settings_dual,
+                        MR.strings.desktop_reader_direction_ltr,
+                        MR.strings.desktop_reader_direction_rtl,
+                        MR.strings.reader_settings_continuous,
+                        MR.strings.reader_settings_paged,
+                        MR.strings.reader_settings_page_gaps,
+                    ).joinToString(" · ") { it.localized() },
+                ),
+                SearchablePreference.Entry(MR.strings.pref_page_transitions.localized()),
+                SearchablePreference.Entry(MR.strings.desktop_reader_prefetch_next_chapter.localized()),
+            ),
         ),
         SearchableSettingsScreen(
             route = route(DownloadSettingsScreen::class),
