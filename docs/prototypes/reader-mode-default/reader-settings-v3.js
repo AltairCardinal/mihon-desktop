@@ -22,7 +22,7 @@
         direction: ['ltr', 'rtl', 'vertical'].includes(v.direction) ? v.direction : fallback.direction,
         gap: typeof v.gap === 'boolean' ? v.gap : fallback.gap
       };
-      if (prefs.mode === 'paged' && prefs.layout === 'double' && prefs.direction === 'vertical') prefs.direction = 'rtl';
+      if (prefs.mode === 'paged' && prefs.layout !== 'single' && prefs.direction === 'vertical') prefs.direction = 'rtl';
       return prefs;
     };
     const svg = name => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-${name}"></use></svg>`;
@@ -455,8 +455,8 @@
         show('[data-webtoon-settings]', c.mode === 'webtoon');
         show('[data-match-row]', c.mode === 'paged' && c.layout !== 'single');
         const vertical = root.querySelector('[data-setting="direction"][value="vertical"]');
-        vertical.closest('label').style.visibility = c.layout === 'double' ? 'hidden' : 'visible';
-        vertical.disabled = c.layout === 'double';
+        vertical.closest('label').style.visibility = c.layout !== 'single' ? 'hidden' : 'visible';
+        vertical.disabled = c.layout !== 'single';
         text('[data-scope-help]', s.scope === 'custom' ? '下方设置仅对当前作品生效' : '当前作品使用全局默认设置');
         text('[data-match-state]', c.match ? '开启' : '关闭');
         text('[data-gap-state]', c.gap ? '是' : '否');

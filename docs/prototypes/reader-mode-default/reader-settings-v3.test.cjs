@@ -21,6 +21,33 @@ const pick = (host, key, value) => host.locator(`input[data-setting="${key}"][va
 const value = host => host.evaluate(el => el.value);
 const shot = (page, name) => page.screenshot({ path: path.join(output, name + '.png'), fullPage: true });
 
+test('自动也隐藏纵向并保留占位，仅单页允许纵向', () => session(async (page, pc, mobile) => {
+  for (const host of [pc, mobile]) {
+    await pick(host, 'layout', 'single');
+    await pick(host, 'direction', 'vertical');
+    const before = await host.locator('[data-setting="direction"][value="rtl"]').boundingBox();
+    await pick(host, 'layout', 'auto');
+    const vertical = host.locator('[data-setting="direction"][value="vertical"]');
+    assert.equal(await vertical.isVisible(), false);
+    assert.equal(await vertical.isDisabled(), true);
+    assert.equal((await value(host)).custom.direction, 'rtl');
+    const after = await host.locator('[data-setting="direction"][value="rtl"]').boundingBox();
+    assert.equal(before.x, after.x);
+    assert.equal(before.width, after.width);
+    assert.ok(await vertical.evaluate(el => el.closest('label').getBoundingClientRect().width > 0));
+    await host.locator('[data-setting="direction"][value="rtl"]').focus();
+    await page.keyboard.press('ArrowRight');
+    assert.equal((await value(host)).custom.direction, 'ltr');
+    await host.evaluate(el => { el.value = { scope: 'custom', custom: { mode: 'paged', layout: 'auto', direction: 'vertical' } }; });
+    assert.equal((await value(host)).custom.direction, 'rtl');
+    await host.evaluate(el => { el.defaultSettings = { mode: 'paged', layout: 'auto', direction: 'vertical' }; });
+    await pick(host, 'scope', 'default');
+    assert.equal(await host.locator('[data-default-direction]').textContent(), '从右到左');
+    await pick(host, 'scope', 'custom');
+  }
+  await shot(page, 'auto-horizontal-only');
+}));
+
 test('说明精简、双页方向保留空位、匹配开关位于方向下方', () => session(async (page, pc, mobile) => {
   for (const host of [pc, mobile]) {
     assert.equal(await host.locator('[data-layout-help]').textContent(), '在单页/双页之间自动选择，以合理利用阅读区域。');
