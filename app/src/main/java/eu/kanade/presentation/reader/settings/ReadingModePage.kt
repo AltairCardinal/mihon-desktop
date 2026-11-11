@@ -98,7 +98,8 @@ private fun ColumnScope.PagerViewerSettings(screenModel: ReaderSettingsScreenMod
 
     val manga by screenModel.mangaFlow.collectAsState()
     val defaults = screenModel.preferences.collectDefaultReaderSettings()
-    val singlePage = ReaderSettingsCodec.effective(manga?.viewerFlags ?: 0L, defaults).singlePageExtrasEnabled
+    val singlePage = ReaderSettingsCodec.effective(manga?.viewerFlags ?: 0L, defaults)
+        .singlePageExtrasEnabled(viewer is DualPageR2LPagerViewer)
     if (singlePage) {
         CheckboxItem(
             label = stringResource(MR.strings.pref_landscape_zoom),

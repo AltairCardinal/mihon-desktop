@@ -13,6 +13,9 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.state.ToggleableState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.ScaleType
@@ -57,7 +60,11 @@ class ReaderSettingsChoiceLayoutTest {
             MR.strings.reader_settings_vertical,
         )) {
             click(scene, mode.localized())
-            assertEquals(mode == MR.strings.reader_settings_single, hasText(label))
+            assertEquals(
+                mode == MR.strings.reader_settings_single ||
+                    (mode == MR.strings.reader_settings_auto && !model.state.value.dualPageMode),
+                hasText(label),
+            )
             assertFalse(hasText(hint))
             assertTrue(prefs.autoSplitPages)
         }
@@ -264,6 +271,56 @@ class ReaderSettingsChoiceLayoutTest {
         click(scene, MR.strings.pref_double_tap_zoom.localized())
         assertFalse(prefs.loadDisplayOptions().webtoonDoubleTapZoom)
         capture(scene, "webtoon-extensions")
+    }
+
+    @Test
+    fun `automatic actual single page shows image checkboxes and resizing retains saved values`() = runTest {
+        val layoutScope = this
+        withPanel(locale = Locale.SIMPLIFIED_CHINESE) { scene, model, prefs ->
+            click(scene, MR.strings.reader_settings_custom.localized())
+            click(scene, MR.strings.reader_settings_auto.localized())
+            model.updateViewportSize(400, 900, layoutScope)
+            render(scene)
+            assertTrue(model.state.value.automaticLayout)
+            assertFalse(model.state.value.dualPageMode)
+            model.setDisplayOptions(
+                model.state.value.displayOptions.copy(rotateWide = true, rotateInvert = true),
+                prefs,
+            )
+            render(scene)
+            val labels = listOf(
+                MR.strings.pref_landscape_zoom,
+                MR.strings.pref_dual_page_split,
+                MR.strings.pref_page_rotate,
+                MR.strings.pref_page_rotate_invert,
+            ).map { it.localized() }
+            fun hasText(label: String) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.any {
+                it.config.getOrNull(SemanticsProperties.Text)?.any { t -> t.text == label } == true
+            }
+            labels.forEach { assertTrue(hasText(it), "Automatic single must show $it") }
+            capture(scene, "automatic-single-checkboxes")
+            model.updateViewportSize(1600, 900, layoutScope)
+            advanceTimeBy(mihon.domain.reader.AdaptiveReaderLayout.STABILITY_MILLIS + 1)
+            runCurrent()
+            render(scene)
+            assertTrue(model.state.value.dualPageMode)
+            labels.forEach { assertFalse(hasText(it), "Automatic dual must hide $it") }
+            assertTrue(prefs.loadDisplayOptions().rotateWide && prefs.loadDisplayOptions().rotateInvert)
+            model.updateViewportSize(400, 900, layoutScope)
+            advanceTimeBy(mihon.domain.reader.AdaptiveReaderLayout.STABILITY_MILLIS + 1)
+            runCurrent()
+            render(scene)
+            labels.forEach { assertTrue(hasText(it)) }
+            click(scene, MR.strings.pref_dual_page_split.localized())
+            assertTrue(model.state.value.effectiveAutoSplitPages)
+            assertTrue(prefs.autoSplitPages)
+            model.updateViewportSize(1600, 900, layoutScope)
+            advanceTimeBy(mihon.domain.reader.AdaptiveReaderLayout.STABILITY_MILLIS + 1)
+            runCurrent()
+            render(scene)
+            assertFalse(model.state.value.effectiveAutoSplitPages)
+            assertTrue(prefs.autoSplitPages)
+        }
     }
 
     private fun withPanel(

@@ -15,8 +15,8 @@ data class ReaderSettings(
     val match: Boolean = true,
     val gap: Boolean = false,
 ) {
-    val singlePageExtrasEnabled: Boolean
-        get() = mode == ReaderSettingsMode.HORIZONTAL && layout == ReaderSettingsLayout.SINGLE
+    fun singlePageExtrasEnabled(actualDualPage: Boolean): Boolean =
+        mode == ReaderSettingsMode.HORIZONTAL && layout != ReaderSettingsLayout.DOUBLE && !actualDualPage
 }
 
 /**

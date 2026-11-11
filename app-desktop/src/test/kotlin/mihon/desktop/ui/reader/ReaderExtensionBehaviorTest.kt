@@ -76,13 +76,14 @@ class ReaderExtensionBehaviorTest {
     }
 
     @Test
-    fun `saved split is inactive outside explicit single page and returns without losing value`() {
+    fun `saved split follows actual automatic layout and returns without losing value`() {
         val saved =
             ReaderState(autoSplitPages = true, readerSettings = ReaderSettings(layout = ReaderSettingsLayout.SINGLE))
         assertTrue(saved.effectiveAutoSplitPages)
-        assertFalse(
-            saved.copy(readerSettings = ReaderSettings(layout = ReaderSettingsLayout.AUTO)).effectiveAutoSplitPages,
-        )
+        val automatic = saved.copy(readerSettings = ReaderSettings(layout = ReaderSettingsLayout.AUTO))
+        assertTrue(automatic.effectiveAutoSplitPages)
+        assertFalse(automatic.copy(dualPageMode = true).effectiveAutoSplitPages)
+        assertTrue(automatic.autoSplitPages)
         assertFalse(
             saved.copy(readerSettings = ReaderSettings(layout = ReaderSettingsLayout.DOUBLE)).effectiveAutoSplitPages,
         )

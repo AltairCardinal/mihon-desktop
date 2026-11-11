@@ -1338,7 +1338,7 @@ internal fun ReaderContent(
             LocalReaderViewportOptions provides
                 ReaderViewportOptions(
                     state.displayOptions,
-                    state.readerSettings.singlePageExtrasEnabled,
+                    state.readerSettings.singlePageExtrasEnabled(state.dualPageMode),
                     state.readingMode == ReadingMode.WEBTOON,
                     state.readingMode == ReadingMode.RTL,
                     configured = true,

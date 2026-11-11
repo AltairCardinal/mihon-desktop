@@ -31,7 +31,8 @@ class PagerConfig(
             val activity = (viewer as? ViewerWithPager)?.activity
             val flags = activity?.viewModel?.state?.value?.manga?.viewerFlags
             return if (flags != null) {
-                ReaderSettingsCodec.effective(flags, readerPreferences.defaultReaderSettings()).singlePageExtrasEnabled
+                ReaderSettingsCodec.effective(flags, readerPreferences.defaultReaderSettings())
+                    .singlePageExtrasEnabled(viewer is DualPageR2LPagerViewer)
             } else {
                 viewer is L2RPagerViewer || viewer is R2LPagerViewer
             }

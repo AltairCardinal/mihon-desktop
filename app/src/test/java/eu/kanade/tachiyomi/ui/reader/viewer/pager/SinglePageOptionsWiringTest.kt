@@ -38,6 +38,9 @@ class SinglePageOptionsWiringTest {
         val viewer = mockk<L2RPagerViewer>(relaxed = true)
         every { viewer.activity.viewModel.state } returns state
         val config = PagerConfig(viewer, backgroundScope, preferences)
+        val dualViewer = mockk<DualPageR2LPagerViewer>(relaxed = true)
+        every { dualViewer.activity.viewModel.state } returns state
+        val dualConfig = PagerConfig(dualViewer, backgroundScope, preferences)
         runCurrent()
         assertTrue(
             config.landscapeZoom && config.dualPageSplit && config.dualPageRotateToFit &&
@@ -48,10 +51,21 @@ class SinglePageOptionsWiringTest {
                 state.value.copy(
                     manga = state.value.manga!!.copy(viewerFlags = mihon.domain.reader.ReaderModeFlags.write(0L, mode)),
                 )
+            if (mode == 7L || mode == mihon.domain.reader.ReaderModeFlags.AUTO_LTR) {
+                assertTrue(
+                    config.landscapeZoom && config.dualPageSplit && config.dualPageRotateToFit &&
+                        config.dualPageRotateToFitInvert,
+                )
+            } else {
+                assertFalse(
+                    "mode=$mode",
+                    config.landscapeZoom || config.dualPageSplit || config.dualPageRotateToFit ||
+                        config.dualPageRotateToFitInvert,
+                )
+            }
             assertFalse(
-                "mode=$mode",
-                config.landscapeZoom || config.dualPageSplit || config.dualPageRotateToFit ||
-                    config.dualPageRotateToFitInvert,
+                dualConfig.landscapeZoom || dualConfig.dualPageSplit || dualConfig.dualPageRotateToFit ||
+                    dualConfig.dualPageRotateToFitInvert,
             )
         }
         state.value = state.value.copy(manga = state.value.manga!!.copy(viewerFlags = 2L))
@@ -65,7 +79,8 @@ class SinglePageOptionsWiringTest {
         preferences.setDefaultReaderSettings(
             mihon.domain.reader.ReaderSettings(layout = mihon.domain.reader.ReaderSettingsLayout.AUTO),
         )
-        assertFalse(config.landscapeZoom || config.dualPageSplit || config.dualPageRotateToFit)
+        assertTrue(config.landscapeZoom && config.dualPageSplit && config.dualPageRotateToFit)
+        assertFalse(dualConfig.landscapeZoom || dualConfig.dualPageSplit || dualConfig.dualPageRotateToFit)
         assertTrue(preferences.dualPageSplitPaged().get())
         preferences.dualPageSplitWebtoon().set(true)
         preferences.dualPageRotateToFitWebtoon().set(true)

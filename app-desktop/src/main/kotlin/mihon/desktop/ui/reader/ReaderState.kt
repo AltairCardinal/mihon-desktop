@@ -96,7 +96,7 @@ data class ReaderState(
     val showUI: Boolean = false,
     val isFullscreen: Boolean = false,
 ) {
-    val effectiveAutoSplitPages: Boolean get() = autoSplitPages && readerSettings.singlePageExtrasEnabled
+    val effectiveAutoSplitPages: Boolean get() = autoSplitPages && readerSettings.singlePageExtrasEnabled(dualPageMode)
 }
 
 enum class PairingLoad { READY, LOADING, ERROR, DEFAULT_UNVERIFIED }

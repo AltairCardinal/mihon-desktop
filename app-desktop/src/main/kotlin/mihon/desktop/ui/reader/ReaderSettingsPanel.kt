@@ -287,7 +287,7 @@ internal fun GeneralTab(
     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
     ReaderModeExtensions(
-        settings, navigationMode, onNavigationModeChange, scaleType, onScaleTypeChange,
+        settings, isDualPage, navigationMode, onNavigationModeChange, scaleType, onScaleTypeChange,
         autoSplitPages, onAutoSplitPagesChange, cropBordersPager, cropBordersWebtoon,
         onCropBordersPagerChange, onCropBordersWebtoonChange, displayOptions, onDisplayOptionsChange,
     )
@@ -296,6 +296,7 @@ internal fun GeneralTab(
 @Composable
 private fun ReaderModeExtensions(
     settings: ReaderSettings,
+    actualDualPage: Boolean,
     navigationMode: NavigationMode,
     onNavigationModeChange: (NavigationMode) -> Unit,
     scaleType: ScaleType,
@@ -386,7 +387,7 @@ private fun ReaderModeExtensions(
     CheckboxRow(MR.strings.pref_crop_borders.localized(), if (webtoon) cropWebtoon else cropPager, {
         if (webtoon) onCropWebtoonChange(it) else onCropPagerChange(it)
     })
-    if (settings.singlePageExtrasEnabled) {
+    if (settings.singlePageExtrasEnabled(actualDualPage)) {
         CheckboxRow(MR.strings.pref_landscape_zoom.localized(), options.landscapeZoom, {
             onChange(options.copy(landscapeZoom = it))
         })
@@ -396,7 +397,7 @@ private fun ReaderModeExtensions(
             onChange(options.copy(navigateToPan = it))
         })
     }
-    if (settings.singlePageExtrasEnabled) {
+    if (settings.singlePageExtrasEnabled(actualDualPage)) {
         CheckboxRow(MR.strings.pref_dual_page_split.localized(), split, {
             if (it && options.rotateWide) onChange(options.copy(rotateWide = false))
             onSplitChange(it)

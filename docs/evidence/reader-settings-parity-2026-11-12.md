@@ -27,3 +27,15 @@
 查看实际 Compose 离屏图：`.gradle-coordinator/reader-settings-native/general-parity.png`、`general-options-enabled.png`、`split-checkbox-restored.png`、`webtoon-extensions.png`；Android 原生绘图沿 `app/build/reader-settings-parity/`。这些不是物理设备或 Windows 原生窗口验收，不宣称逐像素一致。
 
 本批跨约 40 个文件，是设置入口、既有偏好/状态适配、图片/输入/章节呈现消费、双端生产接线测试及内部边界说明组成的同一能力；没有无关重构。Windows 使用 preview，不分配正式版本；Android 递增正式签名候选版本。两端产物来源和安装检查由各自清单记录，用户体验待验收。没有推送、更新网站公共能力声明或运行完整模块/全量测试。
+
+
+## 后续：自动模式实际单页也启用单页图片项
+
+基线 `7d7ab196f672dbbe3d333371659a53c911461cf8`。用户后续修正规则：自动布局实际为单页时，也显示并启用单页图片勾选项；实际变为双页时隐藏、停用并保留原值。本节取代上文历史批次对“显式单页”的限制，原批次测试记录保留。
+
+- 共享规则改为要求实际单双页参数：横向、非显式双页、当前实际非双页时启用。Desktop 的设置 UI、实际拆页状态及图片绘图选项都读取既有 dualPageMode；Android 设置 UI 与 PagerConfig 都读取当前 viewer 类型，纵向仍不启用。复用现有自适应稳定时间及 viewer 切换，不另建宽高比判断或状态权威。
+- `automatic-single-extras-red` 的 Android 原生 UI 复现自动实际单页没有宽图勾选项；Desktop 夹具初次引用自适应常量路径错误，改正后 `automatic-single-desktop-red` 复现相同缺口。均先验证真实失败再修改生产规则。
+- `automatic-single-extras-green`：共享契约 6、Desktop 设置/持久化/图片策略 17、Android 设置 UI/实际 Config 13，共 36 项通过；该组合唯一剩余失败是 ktlint 的测试函数声明长行。缩短引用并由 `automatic-single-extras-close` 完成定向格式检查和 1 项真实 Activity→VM→SQLite→viewer 集成，组合共 37 项 focused 证据；不表示全量或全模块重跑。
+- 新 Desktop 用例执行真实菜单点击、自适应窗口宽窄切换与稳定时间、勾选保存、实际拆页状态停用和恢复；新 Android UI 用例替换实际类型的单/双页 viewer 投影，Config 用例同时校验实际单/双页及默认继承。旋转/拆分互斥保持，隐藏不重置值。
+- 查看 `.gradle-coordinator/reader-settings-native/automatic-single-checkboxes.png`：自动模式下宽图四项可见。该图为 Compose 离屏绘图，不是 Windows 实体窗口验收。
+- 修改跨共享规则、双端消费与对应测试，超过八文件属于同一显隐/生效修复；没有数据库、flags、配对或分切算法变更。体验包和 Android Release 升级由项目入口构建并检查清单，不更新未验收的公共功能承诺。

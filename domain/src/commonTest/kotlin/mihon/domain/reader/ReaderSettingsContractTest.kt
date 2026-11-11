@@ -7,13 +7,15 @@ import org.junit.jupiter.api.Test
 
 class ReaderSettingsContractTest {
     @Test
-    fun `single page image extensions are excluded from automatic dual and vertical layouts`() {
+    fun `single page image extensions follow actual automatic layout and exclude vertical readers`() {
         for (mode in ReaderSettingsMode.entries) {
             for (layout in ReaderSettingsLayout.entries) {
-                assertEquals(
-                    mode == ReaderSettingsMode.HORIZONTAL && layout == ReaderSettingsLayout.SINGLE,
-                    ReaderSettings(mode = mode, layout = layout).singlePageExtrasEnabled,
-                )
+                for (actualDual in listOf(false, true)) {
+                    assertEquals(
+                        mode == ReaderSettingsMode.HORIZONTAL && layout != ReaderSettingsLayout.DOUBLE && !actualDual,
+                        ReaderSettings(mode = mode, layout = layout).singlePageExtrasEnabled(actualDual),
+                    )
+                }
             }
         }
     }

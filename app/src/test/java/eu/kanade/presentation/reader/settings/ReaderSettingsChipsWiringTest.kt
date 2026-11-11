@@ -130,7 +130,12 @@ class ReaderSettingsChipsWiringTest {
                 MR.strings.pref_page_rotate,
                 MR.strings.pref_page_rotate_invert,
             )) {
-                compose.onNodeWithText(resource.getString(RuntimeEnvironment.getApplication())).assertDoesNotExist()
+                val node = compose.onNodeWithText(resource.getString(RuntimeEnvironment.getApplication()))
+                if (mode == "自动" && resource != MR.strings.pref_page_rotate_invert) {
+                    node.performScrollTo().assertIsDisplayed()
+                } else {
+                    node.assertDoesNotExist()
+                }
             }
             assertTrue(fixture.preferences.dualPageSplitPaged().get())
         }
@@ -143,7 +148,7 @@ class ReaderSettingsChipsWiringTest {
         assertFalse(fixture.preferences.dualPageSplitPaged().get())
         assertTrue(fixture.preferences.dualPageInvertPaged().get())
         click("跟随默认")
-        compose.onNodeWithText(label).assertDoesNotExist()
+        compose.onNodeWithText(label).performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -409,6 +414,40 @@ class ReaderSettingsChipsWiringTest {
             val headingY = compose.onNodeWithText("E-Ink").fetchSemanticsNode().positionInRoot.y
             assertTrue(node.fetchSemanticsNode().positionInRoot.y > headingY)
         }
+    }
+
+    @Test
+    fun `automatic actual single shows checkboxes and viewer changes preserve their preferences`() = withPage(
+        7L,
+    ) { fixture ->
+        val single = mockk<eu.kanade.tachiyomi.ui.reader.viewer.pager.R2LPagerViewer>(relaxed = true)
+        val dual = mockk<eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer>(relaxed = true)
+        fixture.preferences.dualPageRotateToFit().set(true)
+        fixture.preferences.dualPageRotateToFitInvert().set(true)
+        fixture.state.value = fixture.state.value.copy(viewer = single)
+        compose.waitUntil(5_000) { fixture.model.viewerFlow.value === single }
+        compose.waitForIdle()
+        val labels = listOf(
+            MR.strings.pref_landscape_zoom,
+            MR.strings.pref_dual_page_split,
+            MR.strings.pref_page_rotate,
+            MR.strings.pref_page_rotate_invert,
+        ).map {
+            it.getString(RuntimeEnvironment.getApplication())
+        }
+        labels.forEach { compose.onNodeWithText(it).performScrollTo().assertIsDisplayed() }
+        fixture.state.value = fixture.state.value.copy(viewer = dual)
+        compose.waitUntil(5_000) { fixture.model.viewerFlow.value === dual }
+        compose.waitForIdle()
+        labels.forEach { compose.onNodeWithText(it).assertDoesNotExist() }
+        assertTrue(fixture.preferences.dualPageRotateToFit().get())
+        fixture.state.value = fixture.state.value.copy(viewer = single)
+        compose.waitUntil(5_000) { fixture.model.viewerFlow.value === single }
+        compose.waitForIdle()
+        labels.forEach { compose.onNodeWithText(it).performScrollTo().assertIsDisplayed() }
+        click("拆分双页")
+        assertTrue(fixture.preferences.dualPageSplitPaged().get())
+        assertFalse(fixture.preferences.dualPageRotateToFit().get())
     }
 
     private fun withPage(
