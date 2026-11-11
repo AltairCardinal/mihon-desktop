@@ -5,7 +5,11 @@ description: 从源码构建本地体验版，走通一条阅读流程。
 
 # 开始体验
 
-Mihon Desktop 处于早期开发阶段，**目前尚无公开发行包**。现阶段可以从源码构建体验版；未来公开构建将在本分支的 [Releases 页面](https://github.com/AltairCardinal/mihon-desktop/releases)提供。
+Mihon Desktop 处于早期开发阶段。可下载 [Windows x64 与 Android 阅读设置预发布](https://github.com/AltairCardinal/mihon-desktop/releases/tag/reader-settings-preview-20261112)，也可按下文从源码构建。此包不是稳定版：完整 Desktop 测试尚未完成，发布说明列有未关闭的测试问题。本次安装包未加入应用内自动更新源。
+
+- **Windows x64：** 下载预览 ZIP，完整解压后运行目录内的 `Mihon Desktop.exe`，保留全部应用文件及运行时。
+- **Android 8.0+：** 安装签名的 `0.19.4-aex.136` / versionCode 154 通用 APK，沿用本 fork 原应用身份和证书。
+- 可使用发布页的 `SHA256SUMS.txt` 核对下载。此次复用已验收的 `787f06b` 原始安装包，不含后续 `14c7ba5aa1` 的测试计时修复。
 
 ## 选择平台
 

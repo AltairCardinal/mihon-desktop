@@ -33,7 +33,7 @@ Mihon Desktop is an independently maintained, open-source project based on [Miho
 
 Windows is the primary desktop target. This repository also includes macOS builds and its own Android app, with shared Kotlin code across platforms.
 
-> **Early development:** This is a development project, not a stable release. Public release packages have not been published yet. You can build a preview from source, and early feedback and contributions are welcome.
+> **Early development:** This is a development project, not a stable release. [Windows and Android preview downloads](https://github.com/AltairCardinal/mihon-desktop/releases/tag/reader-settings-preview-20261112) are available for manual installation; see the release notes for known issues and validation limits. Source builds, early feedback, and contributions remain welcome.
 
 <a id="features"></a>
 
@@ -57,7 +57,7 @@ The [feature guide](https://altaircardinal.github.io/mihon-desktop/features.html
 
 ### Release status
 
-There are currently **no public release packages**. The [Releases page](https://github.com/AltairCardinal/mihon-desktop/releases) is the place to check for published builds. For now, use the source-build instructions below.
+Download the [reader-settings preview for Windows x64 and Android](https://github.com/AltairCardinal/mihon-desktop/releases/tag/reader-settings-preview-20261112), or build from source below. This is a prerelease with known test failures, not a stable release, and it is not added to the in-app update feed. Extract the entire Windows ZIP before running the EXE; Android uses the signed aex.136 / versionCode 154 APK.
 
 | Platform | Current scope |
 | --- | --- |

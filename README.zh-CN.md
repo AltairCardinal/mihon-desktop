@@ -33,7 +33,7 @@ Mihon Desktop 是基于 [Mihon](https://github.com/mihonapp/mihon) 独立维护�
 
 Windows 是主要桌面目标平台。仓库同时维护 macOS 构建和本项目的 Android 应用，并通过 Kotlin 共享部分业务逻辑。
 
-> **早期开发阶段：** 本项目仍在开发中，尚未达到稳定发布阶段，也尚无公开发行包。目前可以从源码构建体验版，欢迎参与试用、反馈问题和贡献代码。
+> **早期开发阶段：** 本项目尚未达到稳定发布阶段。现已提供 [Windows 与 Android 预发布下载](https://github.com/AltairCardinal/mihon-desktop/releases/tag/reader-settings-preview-20261112)，请先阅读发布说明中的已知问题与验证边界。也可继续从源码构建，欢迎试用、反馈和贡献代码。
 
 <a id="features"></a>
 
@@ -57,7 +57,7 @@ Windows 是主要桌面目标平台。仓库同时维护 macOS 构建和本项�
 
 ### 发布状态
 
-目前**尚无公开发行包**。发布后的构建可在 [Releases 页面](https://github.com/AltairCardinal/mihon-desktop/releases)查找；现阶段请按下述步骤从源码构建。
+可下载 [Windows x64 与 Android 阅读设置预发布](https://github.com/AltairCardinal/mihon-desktop/releases/tag/reader-settings-preview-20261112)，或按下述步骤从源码构建。此包仍有已知测试失败，不是稳定版，也未加入应用内自动更新源。Windows 须完整解压 ZIP 后运行 EXE；Android 使用签名的 aex.136 / versionCode 154 APK。
 
 | 平台 | 当前范围 |
 | --- | --- |

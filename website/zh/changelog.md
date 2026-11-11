@@ -5,6 +5,10 @@ description: 公开功能说明的演进记录，与唯一的当前功能说明�
 
 # 变更历史
 
+## 2026 年 11 月 12 日 — 阅读设置预发布下载
+
+[Windows x64 预览包与 Android aex.136 / vc154 签名 APK](https://github.com/AltairCardinal/mihon-desktop/releases/tag/reader-settings-preview-20261112) 已公开下载。此次复用已验收的 `787f06b` 原始文件，没有重新构建，不是稳定版。Windows ZIP 保留预览身份，包含完整应用与运行时。上传资产的大小和 GitHub SHA-256 均与本地文件一致。完整 Desktop 测试尚未完成，冷启动尾页配对和时序敏感测试仍有未关闭问题，详见发布说明。安装包不含后续 `14c7ba5aa1` 的计时修复；应用内自动更新源保持不变。
+
 ## 2026 年 11 月 12 日 — Android 与 Windows 阅读器设置验收
 
 项目所有者于 2026 年 11 月 12 日在私有会话中验收 Android `0.19.4-aex.136` 与 Windows `0.11.24.10.787f06b` 候选。范围包括双端阅读模式控件、点击摘要行打开全局默认设置弹窗、图片与常规设置以及 E-Ink 分组。横向自动模式实际为单页时启用单页图片勾选项；实际双页时隐藏并停用，保留原值。源码：`787f06b`（Android 候选使用对应的 Android 输入）。本次仅验收 Android 和 Windows 的上述设置，不扩展至 macOS 或完整稳定发布矩阵。

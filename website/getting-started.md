@@ -5,7 +5,11 @@ description: Build a local preview and try the reading workflow.
 
 # Get started
 
-Mihon Desktop is in early development. **There is no public release package yet.** The current way to try it is to build from source. Published packages, when available, will appear on this fork’s [Releases page](https://github.com/AltairCardinal/mihon-desktop/releases).
+Mihon Desktop is in early development. Download the [reader-settings prerelease for Windows x64 and Android](https://github.com/AltairCardinal/mihon-desktop/releases/tag/reader-settings-preview-20261112), or build a local preview below. This is not a stable release: the complete Desktop test run has not finished, and the release notes list unresolved tests. These packages are not added to the in-app update feed.
+
+- **Windows x64:** download the preview ZIP, extract the entire directory, and run `Mihon Desktop.exe` inside it. Keep the bundled application files and runtime together.
+- **Android 8.0+:** install the signed `0.19.4-aex.136` / versionCode 154 universal APK. It uses this fork's existing app identity and certificate.
+- Check downloads against `SHA256SUMS.txt` on the release page. The packages reuse the accepted `787f06b` artifacts; they do not include the later `14c7ba5aa1` test-timing repair.
 
 ## Choose a platform
 

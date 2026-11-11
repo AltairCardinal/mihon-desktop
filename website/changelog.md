@@ -5,6 +5,10 @@ description: A traceable history of public feature documentation, separate from 
 
 # Changelog
 
+## 2026-11-12 — Reader settings prerelease downloads
+
+[Windows x64 preview and signed Android aex.136 / vc154 downloads](https://github.com/AltairCardinal/mihon-desktop/releases/tag/reader-settings-preview-20261112) are now public. These are the accepted `787f06b` artifacts, not rebuilt packages or a stable release. The Windows ZIP retains its preview identity and includes the complete app/runtime. Asset sizes and GitHub SHA-256 digests match the local files. The full Desktop test run remains incomplete; cold-tail pairing and timing-sensitive tests remain unresolved as described in the release notes. The later `14c7ba5aa1` timing repair is not included in these binaries. The in-app update feed is unchanged.
+
 ## 2026-11-12 — Android and Windows reader settings accepted
 
 The project owner accepted the Android `0.19.4-aex.136` and Windows `0.11.24.10.787f06b` candidates in a private review on 2026-11-12. The accepted scope includes the shared reading-mode controls, a global default summary row opening a dialog, image and general settings, and grouped E-Ink options. Horizontal Auto enables the single-page image checkboxes when the actual layout is single-page; a two-page layout hides and disables them while preserving their values. Source: `787f06b` (the Android candidate uses the corresponding Android inputs). This acceptance covers these settings on Android and Windows, not macOS or a complete stable-release matrix.

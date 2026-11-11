@@ -13,7 +13,7 @@ hero:
       text: Explore the features
       link: /features
     - theme: alt
-      text: Build a preview
+      text: Download or build a preview
       link: /getting-started
 features:
   - title: A wider reading experience
@@ -33,7 +33,7 @@ features:
 <div class="home-body">
   <div class="home-status">
     <strong>Early development</strong>
-    <span>No public release yet. Explore the source, build a preview, and help shape what comes next.</span>
+    <span>Windows and Android previews are available for manual download. Read the known issues before trying them.</span>
     <a href="./getting-started.html">Get started →</a>
   </div>
   <div class="home-story">

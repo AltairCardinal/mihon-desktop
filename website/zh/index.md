@@ -13,7 +13,7 @@ hero:
       text: 了解功能
       link: /zh/features
     - theme: alt
-      text: 构建体验版
+      text: 下载或构建体验版
       link: /zh/getting-started
 features:
   - title: 更宽广的阅读体验
@@ -33,7 +33,7 @@ features:
 <div class="home-body">
   <div class="home-status">
     <strong>早期开发阶段</strong>
-    <span>目前尚无公开发行包。欢迎阅读源码、构建体验版，一起决定下一步。</span>
+    <span>已提供 Windows 与 Android 预发布下载。手动安装前请先阅读已知问题与验证边界。</span>
     <a href="./getting-started.html">开始体验 →</a>
   </div>
   <div class="home-story">
