@@ -634,7 +634,7 @@ internal fun Modifier.readerPrimaryTapInput(
     onTap: (TapNavRegion) -> Unit,
 ): Modifier {
     val viewport = LocalReaderViewportOptions.current
-    val effectiveNavigationMode = if (viewport.webtoon &&
+    val effectiveNavigationMode = if ((viewport.webtoon || isVertical) &&
         navigationMode == NavigationMode.Default
     ) {
         NavigationMode.L
@@ -686,10 +686,10 @@ internal fun Modifier.readerPrimaryTapInput(
                 if (isTap && !moved && (zoomScale <= 1f || allowZoomedNavigation)) {
                     tapNavRegionForPointerButton(
                         button = PointerButton.Primary,
-                        x = if (isVertical) releasePos.y else releasePos.x,
-                        y = if (isVertical) releasePos.x else releasePos.y,
-                        width = if (isVertical) size.height.toFloat() else size.width.toFloat(),
-                        height = if (isVertical) size.width.toFloat() else size.height.toFloat(),
+                        x = releasePos.x,
+                        y = releasePos.y,
+                        width = size.width.toFloat(),
+                        height = size.height.toFloat(),
                         mode = effectiveNavigationMode,
                         isRtl = isRtl,
                         inversion = inversion,

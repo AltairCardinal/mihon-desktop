@@ -280,17 +280,7 @@ internal fun ZoomablePageBox(
 ) {
     val viewportOptions = LocalReaderViewportOptions.current
     val options = viewportOptions.display
-    val preferredAlignment = if (viewportOptions.singlePage) {
-        when (options.zoomStart) {
-            mihon.desktop.reader.ReaderZoomStart.LEFT -> Alignment.CenterStart
-            mihon.desktop.reader.ReaderZoomStart.RIGHT -> Alignment.CenterEnd
-            mihon.desktop.reader.ReaderZoomStart.CENTER -> Alignment.Center
-            mihon.desktop.reader.ReaderZoomStart.AUTO ->
-                if (viewportOptions.rtl) Alignment.CenterEnd else Alignment.CenterStart
-        }
-    } else {
-        imageAlignment
-    }
+    val preferredAlignment = readerZoomStartAlignment(viewportOptions, imageAlignment)
     val gestureCapabilities = zoomableGestureCapabilities(
         handlesTapNavigation = handlesTapNavigation,
         hasNavigationCallbacks = onTapPrevious != null || onTapNext != null || onTapCenter != null,
@@ -303,14 +293,12 @@ internal fun ZoomablePageBox(
     val readyState = presentationState as? DesktopReaderPresentationImageState.Ready
     val asset = readyState?.asset
     var layoutSize by remember { mutableStateOf(IntSize.Zero) }
-    val effectiveScaleType = if (viewportOptions.singlePage && options.landscapeZoom &&
-        asset != null && asset.sourceWidth > asset.sourceHeight &&
-        layoutSize.height > layoutSize.width
-    ) {
-        ScaleType.FIT_HEIGHT
-    } else {
-        scaleType
-    }
+    val effectiveScaleType = readerImageScaleType(
+        scaleType,
+        viewportOptions,
+        IntSize(asset?.sourceWidth ?: 0, asset?.sourceHeight ?: 0),
+        layoutSize,
+    )
     val resolvedScale = when (effectiveScaleType) {
         ScaleType.STRETCH -> ContentScale.FillBounds
         ScaleType.FIT_SCREEN -> ContentScale.Fit

@@ -1341,6 +1341,8 @@ internal fun ReaderContent(
                     state.readerSettings.singlePageExtrasEnabled,
                     state.readingMode == ReadingMode.WEBTOON,
                     state.readingMode == ReadingMode.RTL,
+                    configured = true,
+                    verticalPaged = state.readingMode == ReadingMode.VERTICAL,
                     previousChapter = readerNav?.previousRead,
                     nextChapter = readerNav?.nextToRead,
                 ),

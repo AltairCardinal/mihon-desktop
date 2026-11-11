@@ -210,6 +210,8 @@ class ReaderExtensionBehaviorTest {
     @Test
     fun `native pointer navigation observes reader inversion options`() {
         var inversion by androidx.compose.runtime.mutableStateOf(NavigationInversion.NONE)
+        var vertical by androidx.compose.runtime.mutableStateOf(false)
+        var mode by androidx.compose.runtime.mutableStateOf(NavigationMode.RightAndLeft)
         val actions = mutableListOf<TapNavRegion>()
         val scene = androidx.compose.ui.ImageComposeScene(
             300,
@@ -223,19 +225,19 @@ class ReaderExtensionBehaviorTest {
             ) {
                 androidx.compose.foundation.layout.Box(
                     androidx.compose.ui.Modifier.fillMaxSize()
-                        .readerPrimaryTapInput(1f, NavigationMode.RightAndLeft, false) { actions += it },
+                        .readerPrimaryTapInput(1f, mode, false, isVertical = vertical) { actions += it },
                 )
             }
         }
-        fun click() {
+        fun click(point: androidx.compose.ui.geometry.Offset = androidx.compose.ui.geometry.Offset(20f, 150f)) {
             scene.sendPointerEvent(
                 androidx.compose.ui.input.pointer.PointerEventType.Press,
-                androidx.compose.ui.geometry.Offset(20f, 150f),
+                point,
                 button = androidx.compose.ui.input.pointer.PointerButton.Primary,
             )
             scene.sendPointerEvent(
                 androidx.compose.ui.input.pointer.PointerEventType.Release,
-                androidx.compose.ui.geometry.Offset(20f, 150f),
+                point,
                 button = androidx.compose.ui.input.pointer.PointerButton.Primary,
             )
             scene.render().close()
@@ -247,8 +249,79 @@ class ReaderExtensionBehaviorTest {
             scene.render().close()
             click()
             assertEquals(listOf(TapNavRegion.PREV, TapNavRegion.NEXT), actions)
+            actions.clear()
+            vertical = true
+            inversion = NavigationInversion.NONE
+            scene.render().close()
+            click()
+            inversion = NavigationInversion.HORIZONTAL
+            scene.render().close()
+            click()
+            assertEquals(
+                listOf(TapNavRegion.PREV, TapNavRegion.NEXT),
+                actions,
+                "Horizontal tap inversion refers to physical left/right in vertical paged mode too",
+            )
+            actions.clear()
+            mode = NavigationMode.Default
+            inversion = NavigationInversion.NONE
+            scene.render().close()
+            click(androidx.compose.ui.geometry.Offset(150f, 20f))
+            assertEquals(listOf(TapNavRegion.PREV), actions, "Vertical default uses Android's L navigation")
         } finally {
             scene.close()
         }
+    }
+
+    @Test
+    fun `zoom start remains active for automatic dual and vertical paged readers`() {
+        val options = ReaderViewportOptions(
+            configured = true,
+            singlePage = false,
+            display = ReaderDisplayOptions(zoomStart = ReaderZoomStart.RIGHT),
+        )
+        assertEquals(
+            androidx.compose.ui.Alignment.CenterEnd,
+            readerZoomStartAlignment(options, androidx.compose.ui.Alignment.Center),
+        )
+        assertEquals(
+            androidx.compose.ui.Alignment.Center,
+            readerZoomStartAlignment(options.copy(webtoon = true), androidx.compose.ui.Alignment.Center),
+        )
+        assertEquals(
+            androidx.compose.ui.Alignment.Center,
+            readerZoomStartAlignment(
+                options.copy(
+                    verticalPaged = true,
+                    display = options.display.copy(zoomStart = ReaderZoomStart.AUTO),
+                ),
+                androidx.compose.ui.Alignment.Center,
+            ),
+        )
+    }
+
+    @Test
+    fun `wide page auto zoom preserves explicit scaling and works in a wide viewport`() {
+        val options = ReaderViewportOptions(configured = true, singlePage = true)
+        val wide = androidx.compose.ui.unit.IntSize(1200, 400)
+        val portrait = androidx.compose.ui.unit.IntSize(400, 800)
+        val landscape = androidx.compose.ui.unit.IntSize(800, 600)
+        assertEquals(
+            mihon.desktop.reader.ScaleType.FIT_WIDTH,
+            readerImageScaleType(mihon.desktop.reader.ScaleType.FIT_WIDTH, options, wide, portrait),
+        )
+        assertEquals(
+            mihon.desktop.reader.ScaleType.FIT_HEIGHT,
+            readerImageScaleType(mihon.desktop.reader.ScaleType.FIT_SCREEN, options, wide, landscape),
+        )
+        assertEquals(
+            mihon.desktop.reader.ScaleType.FIT_SCREEN,
+            readerImageScaleType(
+                mihon.desktop.reader.ScaleType.FIT_SCREEN,
+                options.copy(singlePage = false),
+                wide,
+                portrait,
+            ),
+        )
     }
 }
