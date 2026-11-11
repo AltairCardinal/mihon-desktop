@@ -5,11 +5,15 @@ description: A traceable history of public feature documentation, separate from 
 
 # Changelog
 
+## 2026-11-12 — Android and Windows reader settings accepted
+
+The project owner accepted the Android `0.19.4-aex.136` and Windows `0.11.24.10.787f06b` candidates in a private review on 2026-11-12. The accepted scope includes the shared reading-mode controls, a global default summary row opening a dialog, image and general settings, and grouped E-Ink options. Horizontal Auto enables the single-page image checkboxes when the actual layout is single-page; a two-page layout hides and disables them while preserving their values. Source: `787f06b` (the Android candidate uses the corresponding Android inputs). This acceptance covers these settings on Android and Windows, not macOS or a complete stable-release matrix.
+
 ## 2026-11-11 — Windows reader settings design accepted
 
 **Accepted local preview · not a public product release**
 
-The project owner accepted Windows preview `0.11.24.10.c95438e` in a private review on 2026-11-11. The grouped default/custom controls, horizontal and vertical reading, default summary, mode-dependent options, and the single-page Split wide pages trailing switch were accepted. Source: `c95438e394e0e6b2a3ac1d7d1e1c9260cd6a2534` (including the preceding visual refinements). This acceptance covers Windows; Android visual alignment remains pending user acceptance.
+The project owner accepted Windows preview `0.11.24.10.c95438e` in a private review on 2026-11-11. The grouped default/custom controls, horizontal and vertical reading, default summary, mode-dependent options, and the then-current single-page Split wide pages control were accepted. Source: `c95438e394e0e6b2a3ac1d7d1e1c9260cd6a2534` (including the preceding visual refinements). Android and the later settings changes were accepted on November 12 as recorded above.
 
 Read [Current features](./features.md) for what the project currently documents. This page records changes to that baseline; it does not accumulate full copies of the guide.
 
