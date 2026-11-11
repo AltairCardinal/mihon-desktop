@@ -1254,16 +1254,12 @@ class DesktopSettingsResourceIdentityTest {
         val previousLocale = Locale.getDefault()
         try {
             listOf(english, chinese).forEach { locale ->
+                readerPrefs.readingMode = mihon.desktop.reader.ReadingMode.AUTO
                 val reader = render(ReaderSettingsScreen(), dependencies, locale)
                 assertCopy(
                     reader.text,
                     MR.strings.pref_category_reader.localized(locale),
-                    MR.strings.pref_viewer_type.localized(locale),
-                    MR.strings.automatic_background.localized(locale),
-                    MR.strings.left_to_right_viewer.localized(locale),
-                    MR.strings.right_to_left_viewer.localized(locale),
-                    MR.strings.webtoon_viewer.localized(locale),
-                    MR.strings.desktop_reader_default_summary.localized(locale),
+                    MR.strings.reader_settings_default_mode_title.localized(locale),
                     MR.strings.desktop_reader_prefetch_next_chapter.localized(locale),
                     MR.strings.desktop_reader_prefetch_summary.localized(locale),
                     MR.strings.desktop_reader_prefetch_first_viewport.localized(locale),
@@ -1274,7 +1270,30 @@ class DesktopSettingsResourceIdentityTest {
                     MR.strings.pref_page_transitions.localized(locale),
                     MR.strings.desktop_general_page_transition_summary.localized(locale),
                 )
-                assertSelectedEntry(reader, MR.strings.automatic_background.localized(locale))
+                val modeDialog = renderAfterClicks(
+                    ReaderSettingsScreen(), dependencies, locale,
+                    MR.strings.reader_settings_default_mode_title.localized(locale),
+                )
+                assertCopy(
+                    modeDialog.text,
+                    MR.strings.reader_settings_horizontal.localized(locale),
+                    MR.strings.reader_settings_vertical.localized(locale),
+                    MR.strings.reader_settings_auto.localized(locale),
+                    MR.strings.reader_settings_single.localized(locale),
+                    MR.strings.reader_settings_dual.localized(locale),
+                    MR.strings.desktop_reader_direction_ltr.localized(locale),
+                    MR.strings.desktop_reader_direction_rtl.localized(locale),
+                    MR.strings.action_close.localized(locale),
+                )
+                val reopenedModeDialog = renderAfterClicks(
+                    ReaderSettingsScreen(), dependencies, locale,
+                    MR.strings.reader_settings_default_mode_title.localized(locale),
+                    MR.strings.reader_settings_single.localized(locale),
+                    MR.strings.action_close.localized(locale),
+                    MR.strings.reader_settings_default_mode_title.localized(locale),
+                )
+                assertSelectedEntry(reopenedModeDialog, MR.strings.reader_settings_single.localized(locale))
+                assertEquals(mihon.domain.reader.ReaderSettingsLayout.SINGLE, readerPrefs.loadReaderSettings().layout)
                 assertCopy(reader.descriptions, MR.strings.action_bar_up_description.localized(locale))
 
                 val library = render(LibrarySettingsScreen(), dependencies, locale, height = 3_200)

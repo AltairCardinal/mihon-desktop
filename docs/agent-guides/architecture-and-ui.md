@@ -156,3 +156,7 @@ Desktop 的 `ReaderPanBounds` 是阅读器视口交互策略：放大后，拖�
 静态整页在无 split/source bounds/裁边时，由 `rememberReaderPresentationRenderedImage` 在 Ready 组合直接保留原资产。`ReaderCompositionBitmapLease` 同时处理 forgotten 和 abandoned；捕获的 draw/currentPixels 回调须检查 composition lease 尚有效及实际 Ready asset 身份。裁边、拆页和动画仍使用异步 transform，保留原 prepare/draw/进度契约及内存预算。`ReaderPresentationTransformOwnerTest` 覆盖第一组合可绘、abandon/忘记及同身份替换，动画和单双页接线沿对应 production 呈现测试验证。
 
 `DesktopReaderFullscreenController` 仅在真实 placement mutation 前求值 factory，并缓存 adapter、null 或初始化失败的 fallback；普通 windowed 创建、同步与关闭不初始化 JNA。所有注入均使用 factory，禁用 native 明确传 `{ null }`。初始化、prepare、enter/exit 及 retained frame 清理继续在原 controller 生命周期内完成。
+
+### 阅读器屏幕常亮的计时边界
+
+`ReaderKeepScreenOn` 的原生电源管理与周期保活使用 `Dispatchers.IO` 的实际时间，不能占用 Compose UI 的虚拟帧时钟。任务仍由原 `LaunchedEffect` 管理，关闭选项或离开阅读器时取消；macOS 的 caffeinate 子进程在 finally 中释放。Windows 使用非持续标志定期刷新系统空闲计时，不保留线程级持续请求。`ReaderIoProductionWiringTest` 挂载真实阅读器并执行 `advanceUntilIdle()`，覆盖后台任务不阻塞 UI 测试调度及场景释放。

@@ -2250,7 +2250,7 @@ class DesktopProductCapabilityContractTest {
                             "ReaderPresentationMode.DUAL_PAGED",
                         ),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/SinglePagePagerViewer.kt" to
-                        setOf("key = { pagerIndex", "ReaderDisplayUnitCompositionIdentityKey"),
+                        setOf("key = { displayUnits[pagerToPage(it)].id }", "ReaderDisplayUnitCompositionIdentityKey"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/WebtoonViewer.kt" to
                         setOf("key = DisplayUnit::id", "WebtoonSettledViewportReporter", "WebtoonDisplayUnitCompositionIdentityKey"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DualPagePagerViewer.kt" to

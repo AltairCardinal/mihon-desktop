@@ -20,7 +20,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import mihon.desktop.reader.ReaderDisplayOptions
 import mihon.desktop.reader.ReaderFlashColor
 import mihon.desktop.reader.ReaderRippleStyle
@@ -135,17 +137,20 @@ internal fun ReaderGeneralEffects(state: ReaderState) {
 private fun ReaderKeepScreenOn(enabled: Boolean) {
     LaunchedEffect(enabled) {
         if (!enabled) return@LaunchedEffect
-        if (com.sun.jna.Platform.isWindows()) {
-            while (true) {
-                com.sun.jna.platform.win32.Kernel32.INSTANCE.SetThreadExecutionState(0x00000003)
-                delay(30_000)
-            }
-        } else if (com.sun.jna.Platform.isMac()) {
-            val process = ProcessBuilder("/usr/bin/caffeinate", "-d", "-i").start()
-            try {
-                kotlinx.coroutines.awaitCancellation()
-            } finally {
-                process.destroy()
+        // Native power management uses wall time, independently of the UI frame clock.
+        withContext(Dispatchers.IO) {
+            if (com.sun.jna.Platform.isWindows()) {
+                while (true) {
+                    com.sun.jna.platform.win32.Kernel32.INSTANCE.SetThreadExecutionState(0x00000003)
+                    delay(30_000)
+                }
+            } else if (com.sun.jna.Platform.isMac()) {
+                val process = ProcessBuilder("/usr/bin/caffeinate", "-d", "-i").start()
+                try {
+                    kotlinx.coroutines.awaitCancellation()
+                } finally {
+                    process.destroy()
+                }
             }
         }
     }

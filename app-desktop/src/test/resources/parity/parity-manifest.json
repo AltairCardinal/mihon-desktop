@@ -30140,12 +30140,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/SinglePagePagerViewer.kt",
           "symbol": "fun SinglePagePagerViewer(",
-          "line": "209"
+          "line": "211"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/WebtoonViewer.kt",
           "symbol": "fun WebtoonViewer(",
-          "line": 73
+          "line": 77
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DualPagePagerViewer.kt",
@@ -30934,7 +30934,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderMaterializePorts.kt",
           "symbol": "class DesktopReaderPageFetchPort",
-          "line": "216"
+          "line": "224"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt",
@@ -30944,17 +30944,17 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderPreferences.kt",
           "symbol": "enum class NextChapterPrefetchMode",
-          "line": 16
+          "line": 21
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt",
           "symbol": "private fun enqueueAdjacentImagesLocked",
-          "line": "981"
+          "line": "1023"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/ReaderSettingsScreen.kt",
           "symbol": "NextChapterPrefetchMode.entries.forEach",
-          "line": 105
+          "line": 90
         }
       ],
       "FIXTURE": [
@@ -31429,7 +31429,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
           "symbol": "private suspend fun loadChapter",
-          "line": "570"
+          "line": "571"
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoader.kt",
@@ -31497,17 +31497,17 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt",
           "symbol": "fun acceptSessionState",
-          "line": "2038"
+          "line": "2097"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/ReaderPresentation.kt",
           "symbol": "fun chapterTransitionDisplayUnit",
-          "line": "162"
+          "line": "164"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt",
           "symbol": "fun ReaderChapterTransitionItem",
-          "line": "442"
+          "line": "464"
         }
       ],
       "FIXTURE": [
@@ -31770,7 +31770,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/TapZone.kt",
           "symbol": "ReaderNavigation.commandAt",
-          "line": 57
+          "line": 59
         }
       ],
       "FIXTURE": [
@@ -31888,7 +31888,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt",
           "symbol": "readerPreferences.grayscale().changes()",
-          "line": "1289"
+          "line": "1288"
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderColorFilter.kt",
@@ -31908,12 +31908,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
           "symbol": "ReaderViewportColorLayer(state.colorFilter)",
-          "line": "812"
+          "line": "884"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
           "symbol": "internal fun ReaderViewportColorLayer",
-          "line": "992"
+          "line": "1064"
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt",
@@ -32088,7 +32088,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
           "symbol": "val submission = handle.submit(",
-          "line": "1283"
+          "line": "1284"
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderProgressCoordinator.kt",
@@ -32404,7 +32404,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
           "symbol": "filterAndroidReaderChapters(",
-          "line": "347"
+          "line": "348"
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/util/chapter/ChapterGetNextUnread.kt",
@@ -32451,7 +32451,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt",
           "symbol": "suspend fun persistViewerFlags(",
-          "line": "3156"
+          "line": "3262"
         }
       ],
       "FIXTURE": [
@@ -50482,7 +50482,7 @@
           "kind": "SHARED",
           "path": "i18n/src/commonMain/moko-resources/base/strings.xml",
           "symbol": "pref_app_language",
-          "line": "260"
+          "line": "291"
         }
       ],
       "DESKTOP_CONSUMER": [

@@ -37,6 +37,7 @@ import tachiyomi.data.Mangas
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
 import tachiyomi.data.chapter.ChapterPairingRepositoryImpl
+import tachiyomi.i18n.MR
 import java.awt.image.BufferedImage
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -300,7 +301,7 @@ class DesktopChapterPairingComposePersistenceTest {
                     }
                     assertEquals(count + 1, reads.get())
                     if (mode == MountedReaderPresentationMode.SINGLE && succeeds) {
-                        clickText(fixture, "Dual Page (side-by-side)")
+                        selectPageLayout(fixture, dual = false)
                         pump(fixture, "Changing mode during reload must retain the pending owner action") {
                             mihon.desktop.test.state.readerState.mountedSnapshot()?.dualPageMode == false &&
                                 readerActionNodes(fixture, "Reload page pairing").singleOrNull()
@@ -347,7 +348,7 @@ class DesktopChapterPairingComposePersistenceTest {
                             } == true
                         }
                         if (mode == MountedReaderPresentationMode.SINGLE) {
-                            clickText(fixture, "Dual Page (side-by-side)")
+                            selectPageLayout(fixture, dual = true)
                             pump(fixture, "Actual mode change after failure must preserve the anchor") {
                                 mihon.desktop.test.state.readerState.mountedSnapshot()?.dualPageMode == true
                             }
@@ -527,6 +528,45 @@ class DesktopChapterPairingComposePersistenceTest {
         assertTrue(requireNotNull(button.config[SemanticsActions.OnClick].action).invoke())
     }
 
+    private suspend fun selectPageLayout(fixture: MountedReaderPresentationFixture, dual: Boolean) {
+        clickSettingsChoice(fixture, MR.strings.reader_settings_custom.localized())
+        clickSettingsChoice(fixture, MR.strings.reader_settings_horizontal.localized())
+        clickSettingsChoice(
+            fixture,
+            if (dual) MR.strings.reader_settings_dual.localized() else MR.strings.reader_settings_single.localized(),
+        )
+    }
+
+    private suspend fun clickSettingsChoice(fixture: MountedReaderPresentationFixture, label: String) {
+        fixture.scene.render(System.nanoTime()).close()
+        val scroll = nodes(fixture).last { it.config.contains(SemanticsActions.ScrollBy) }
+        requireNotNull(scroll.config[SemanticsActions.ScrollBy].action).invoke(0f, -10_000f)
+        settleSettingsScroll(fixture)
+        repeat(30) {
+            fixture.scene.render(System.nanoTime()).close()
+            val action = nodes(fixture).firstOrNull { node ->
+                node.config.contains(SemanticsActions.OnClick) &&
+                    flatten(node).any { label in textsFrom(it) }
+            }
+            if (action != null && action.boundsInRoot.height > 0f && action.boundsInRoot.width > 0f) {
+                tap(fixture, action.boundsInRoot.center)
+                fixture.scene.render(System.nanoTime()).close()
+                delay(5)
+                return
+            }
+            requireNotNull(scroll.config[SemanticsActions.ScrollBy].action).invoke(0f, 80f)
+            settleSettingsScroll(fixture)
+        }
+        error("Settings choice '$label' unavailable; ${readerActionSummary(fixture)}")
+    }
+
+    private suspend fun settleSettingsScroll(fixture: MountedReaderPresentationFixture) {
+        repeat(24) {
+            fixture.scene.render(System.nanoTime()).close()
+            delay(16)
+        }
+    }
+
     private fun textsFrom(node: SemanticsNode): List<String> =
         (
             if (node.config.contains(SemanticsProperties.Text)) {
@@ -687,13 +727,13 @@ class DesktopChapterPairingComposePersistenceTest {
                 awaitAdjustButton(fixture)
                 clickDescription(fixture, "Reader Settings")
                 pump(fixture, "The original settings dialog must open") {
-                    nodes(fixture).any { textsFrom(it).contains("Dual Page (side-by-side)") }
+                    mihon.desktop.test.state.readerState.mountedSnapshot()?.showSettings == true
                 }
-                clickText(fixture, "Dual Page (side-by-side)")
+                selectPageLayout(fixture, dual = false)
                 pump(fixture, "Original Dual off must change the reader mode") {
                     mihon.desktop.test.state.readerState.mountedSnapshot()?.dualPageMode == false
                 }
-                clickText(fixture, "Dual Page (side-by-side)")
+                selectPageLayout(fixture, dual = true)
                 pump(fixture, "Original Dual on must retain the source target") {
                     mihon.desktop.test.state.readerState.mountedSnapshot()?.dualPageMode == true
                 }
