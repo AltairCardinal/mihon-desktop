@@ -28,7 +28,6 @@ internal fun ColumnScope.ReadingModePage(
     screenModel: ReaderSettingsScreenModel,
     pairingRecovery: @Composable () -> Unit = {},
 ) {
-    HeadingItem(MR.strings.pref_category_for_this_series)
     val manga by screenModel.mangaFlow.collectAsState()
 
     val viewer by screenModel.viewerFlow.collectAsState()
@@ -106,23 +105,15 @@ private fun ColumnScope.PagerViewerSettings(screenModel: ReaderSettingsScreenMod
         pref = screenModel.preferences.navigateToPan(),
     )
 
-    val dualPageSplitPaged by screenModel.preferences.dualPageSplitPaged().collectAsState()
-    CheckboxItem(
-        label = stringResource(MR.strings.pref_dual_page_split),
-        pref = screenModel.preferences.dualPageSplitPaged(),
-    )
-
-    if (dualPageSplitPaged) {
-        CheckboxItem(
-            label = stringResource(MR.strings.pref_dual_page_invert),
-            pref = screenModel.preferences.dualPageInvertPaged(),
-        )
-    }
-
     val dualPageRotateToFit by screenModel.preferences.dualPageRotateToFit().collectAsState()
     CheckboxItem(
         label = stringResource(MR.strings.pref_page_rotate),
-        pref = screenModel.preferences.dualPageRotateToFit(),
+        checked = dualPageRotateToFit,
+        onClick = {
+            val enabled = !dualPageRotateToFit
+            if (enabled) screenModel.preferences.dualPageSplitPaged().set(false)
+            screenModel.preferences.dualPageRotateToFit().set(enabled)
+        },
     )
 
     if (dualPageRotateToFit) {

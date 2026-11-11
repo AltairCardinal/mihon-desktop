@@ -24,15 +24,17 @@ Desktop 的 `initialReaderSettings` 是启动投影与完整 `ReaderScreenModel`
 
 横向没有从上到下选项。自动与双页显示匹配选项，单页隐藏；连续纵向显示页面间隙开关，逐页隐藏。开关不附加是/否文字，辅助技术仍读取 checked 状态。图标沿用原型的 24×24 细线图形与主题颜色。逐页图标改编自 Lucide `gallery-vertical`，双端分别打包 `res/raw/reader_icons_license.txt` 与 `resources/icons/reader/LICENSE` 中的 ISC 声明。
 
-Desktop 的原型视觉由 `ReaderModeSettingsContent` / `ReaderModeChoices` 统一承担，作品弹层和全局设置复用同一套视图。作用域、单双页、滚动方式采用完整底槽的等宽分段控件；模式采用图标、说明和单选标记卡片，方向采用箭头卡片，开关采用带说明的整行卡片；默认继承使用分行摘要，自动布局继续附带当前实际单/双页信息。选中填色从当前 MaterialTheme 的 surface 与 primaryContainer 混合，保留原型的柔和层次而不锁定深色或蓝色主题。装饰图标不重复朗读；整个选项承担 RadioButton/Switch 语义、焦点提示以及 Enter/空格操作，更新仍调用原有状态与保存入口。文本允许随窄窗口和字号换行；不以截断说明或固定整行高度维持卡片外观。本次视觉补齐仅交付 Windows，Android 的原生视觉还原需另行完成；离屏 Compose 图像不能代替用户对实际 Windows 包的验收。
+Android 与 Desktop 的原型视觉由 `presentation-theme/src/commonMain/kotlin/tachiyomi/presentation/reader/settings/` 的 `ReaderModeSettingsContent` / `ReaderModeChoices` 统一承担，作品弹层、快捷入口和全局设置复用同一套真实视图。现有 KMP 表示模块已具备 Compose、domain 与 i18n 依赖，因此不另建模块或视觉副本；平台 adapter 只提供本地化字符串、外层容器和既有偏好/作品保存回调。作用域、单双页、滚动方式采用完整底槽的等宽分段控件；模式采用图标、说明和单选标记卡片，方向采用箭头卡片，开关采用带说明的整行卡片；默认继承使用分行摘要，自动布局继续附带当前实际单/双页信息。选中填色从当前 MaterialTheme 的 surface 与 primaryContainer 混合，保留原型的柔和层次而不锁定深色或蓝色主题。装饰图标不重复朗读；整个选项承担 RadioButton/Switch 语义、焦点提示以及 Enter/空格操作，更新仍调用原有状态与保存入口。文本允许随窄窗口和字号换行；不以截断说明或固定整行高度维持卡片外观。Windows 体验包 `0.11.24.10.c95438e` 已经用户验收；Android 接入同一控件后的组件测试和原生绘图证据，不等同于用户对 APK 的体验验收。
 
 模式切换不另建章节加载、图像解码或进度权威；继续使用现有阅读器的呈现变更、进度和配对失效链路。读取旧数据不批量写回；用户显式修改设置时才保存规范化 flags。偏好保存失败沿用平台原有失败处理，不以临时 UI 选中态证明持久化成功。
 
 Windows 阅读器的「分割宽页」只在「单独设置 → 横向阅读 → 单页」的翻页方向下方显示，说明为「将宽页分切为两个单页显示，适合在竖屏阅读图源为单张跨页的漫画」。切换默认、自动、双页或纵向模式时隐藏控件，不清空已保存值。该选项仍沿用既有 `autoSplitPages` 阅读器偏好与分切链路，不增加作品 flags 字段或改变分切算法；这是阅读器扩展设置，并非新建的作品级持久化字段。
 
+Android 的单页分割入口使用既有 `dualPageSplitPaged()`，不映射到条漫的独立分割键。开启分页分割时关闭宽页旋转，开启旋转时关闭分页分割，避免旋转优先的图像链路忽略已启用的分割；两项反转偏好仍保留。分页拆分反转随单页分割显示，条漫独立处理、屏幕方向、触控区域和缩放等 Android 专有能力继续保留，不把这些扩展项写入共享作品快照。全局模式控件不展示作品作用域或单页附加 slot，既有全局分页偏好入口保留。
+
 ## 维护与验证
 
-Desktop 的「分割宽页」「双页自动匹配」「页面有空隙」共用 `ReaderModeSwitch` 的右侧椭圆开关、说明卡片、焦点与键盘行为；该组件以模块内可见性供阅读器弹层复用，不为分割选项维护另一套复选框或开关绘制。分割选项仍不附加是/否文字，开关状态由图形及辅助技术的 Switch/checked 状态表达。
+双端的「分割宽页」「双页自动匹配」「页面有空隙」共用 `ReaderModeSwitch` 的右侧椭圆开关、说明卡片、焦点与键盘行为，不为分割选项维护另一套复选框或开关绘制。共享控件需要由平台 adapter 提供 `ReaderSettingsTextScope`；遗漏接线时明确失败，不回退为空字符串或错误语言。分割选项仍不附加是/否文字，开关状态由图形及辅助技术的 Switch/checked 状态表达。
 
 共享契约测试为 `ReaderModeFlagsContractTest` 与 `ReaderSettingsContractTest`，覆盖旧模式、隐藏值、默认恢复及 Int 格式往返。平台回归必须覆盖真实设置入口点击、保存/重开、默认摘要以及实际 viewer 选择；共享模型测试不能替代平台接线。
 

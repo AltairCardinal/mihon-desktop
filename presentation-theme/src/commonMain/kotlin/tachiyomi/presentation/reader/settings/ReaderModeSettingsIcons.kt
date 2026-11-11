@@ -1,4 +1,4 @@
-package mihon.desktop.ui.reader
+package tachiyomi.presentation.reader.settings
 
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor

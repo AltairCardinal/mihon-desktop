@@ -48,6 +48,20 @@
 
 ## 视觉与测试边界
 
+### Android 对齐已验收 Windows 的共享控件
+
+用户于 2026-11-11 验收 Windows `0.11.24.10.c95438e`，并要求移动端一致后构建 APK。本轮基线为 `c95438e394e0e6b2a3ac1d7d1e1c9260cd6a2534`。
+
+- 将已验收的 Compose 控件及 24 网格图标提取到 `presentation-theme/src/commonMain/kotlin/tachiyomi/presentation/reader/settings/`。该 KMP 模块原本已依赖 Compose、domain 和 i18n；未增加模块或构建依赖。Windows 保留薄资源 adapter；Android 的作品设置、快捷 sheet 和全局设置共用相同真实控件，避免两套视觉副本。
+- Android 单页分割开关使用原 `dualPageSplitPaged()`；不新增作品 flags。保留原拆页反转和条漫独立处理，移除分页设置中的重复拆页复选框。分页拆分与宽页旋转互斥，保留反转偏好，不修改图片分切算法、章节加载或保存权威。
+- 红测 `reader-android-parity-red` 复现三项差异：分行默认摘要缺失、模式/方向卡尺寸与分段布局缺失、单页分割开关缺失。`reader-android-rotation-red` 使用原旋转入口复现开启旋转后拆页仍开启；恢复互斥回调后同一用例通过。旧摘要断言已按真实分行键值和滚动定位更新，没有放宽保存/状态断言。
+- `reader-parity-both-green`：Desktop 13 项通过，包含实际弹层、指针与键盘、模式显隐、保存重开及 runtime/repository；后续 production 改动仅为 Android 旋转回调，未改共享控件或 Windows adapter。`reader-parity-final`：共享 flags/设置契约 8 项、Android 控件与入口 12 项、Activity factory→真实 VM→SQLite→viewer 重建 1 项通过。组合共 34 项定向证据，不表示全模块或最终代码重新全量通过。
+- Android 图像来自 Robolectric SDK35 的 NATIVE 绘图后端和真实 rootView：`app/build/reader-settings-parity/` 下横向自动/单页/双页、纵向连续/逐页、横纵默认摘要，以及 320dp/1.6 字号浅色图。430dp 深色核心控件由独立只读核对，结构、文字、图标、开关和显隐与 Windows 对应；Android 旋转/拆页反转等扩展继续保留。窄屏末尾说明由追加的 `narrow-large-text-scrolled.png` 核对完整文字及滚动可达，不声称整个长页面同时处于一个视口内。
+- Activity 集成沿用已验证的未附着 viewer 容器与 foreground-busy 夹具，验证真实配置/保存和重建，不把 Windows JVM 缺少原图采样 JNI 的边界伪装成图片解码或实机翻页通过。未安装或操作用户设备；NATIVE 绘图图像不是物理设备截图，也不是用户对新 APK 的验收。
+- 对已有明确 Windows 验收同步更新双语功能说明和 changelog，固定候选与源码，只宣传 Windows 已验收范围。网站使用已有离线缓存安装依赖，`npm --prefix website run docs:build` 通过；未推送、部署网站或分配产品版本。Android 交付为独立 `.dev` Debug 测试身份，正式版数据与签名身份不变；APK 的本轮来源、哈希、身份与检查结果由 `app/artifacts/android/` 的 `artifact.json` 记录，不把调试构建等同 Release/R8/升级验收。
+
+本次超过八文件的变化来自共享视图提取、两端资源/偏好 adapter、对应真实行为测试及用户验收后的四份双语公共说明；没有引入第二套设置存储、UI 框架或后台服务。全部重型 Gradle 使用同一 worktree 的协调器串行执行，限定测试类/方法、离线缓存和两个 worker。
+
 ### 后续 Windows 原型视觉补齐
 
 用户提供实际 Windows 截图后，确认此前控件仅还原了设置结构，缺少原型的分段底槽、模式单选标记、单双页/方向图标、开关说明卡和分行默认摘要。原先截图核对不能作为原型完整视觉还原的通过证据。

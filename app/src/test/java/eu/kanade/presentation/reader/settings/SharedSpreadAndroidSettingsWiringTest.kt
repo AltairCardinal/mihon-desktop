@@ -61,7 +61,7 @@ class SharedSpreadAndroidSettingsWiringTest {
         preferences.defaultReadingMode().set(ReadingMode.AUTO.flagValue)
         val state = MutableStateFlow(ReaderViewModel.State(viewer = mockk<DualPageR2LPagerViewer>(relaxed = true)))
         val model = ReaderSettingsScreenModel(state, {}, {}, preferences)
-        val summary = "Default · Horizontal reading · Auto · Double page · Right to left · Auto Spread Matching: Off"
+        val summary = MR.strings.desktop_reader_default_description.getString(activity.get())
         try {
             activity.get().setContent {
                 MaterialTheme(
@@ -73,6 +73,7 @@ class SharedSpreadAndroidSettingsWiringTest {
                 }
             }
             assertStyledDefaultExplanation(activity.get(), summary, "default-summary.png")
+            compose.onNodeWithText("Auto · Double page").assertIsDisplayed()
         } finally {
             activity.pause().stop().destroy()
             shared.edit().clear().commit()
@@ -91,7 +92,7 @@ class SharedSpreadAndroidSettingsWiringTest {
         preferences.defaultReadingMode().set(ReadingMode.LEFT_TO_RIGHT.flagValue)
         val state = MutableStateFlow(ReaderViewModel.State(viewer = mockk<DualPageR2LPagerViewer>(relaxed = true)))
         val model = ReaderSettingsScreenModel(state, {}, {}, preferences)
-        val fixedMode = "Default · Horizontal reading · Single page · Left to right"
+        val fixedMode = MR.strings.desktop_reader_default_description.getString(activity.get())
         val automaticSummary = MR.strings.desktop_reader_default_summary.getString(activity.get())
         try {
             activity.get().setContent {
@@ -105,6 +106,7 @@ class SharedSpreadAndroidSettingsWiringTest {
             }
 
             assertStyledDefaultExplanation(activity.get(), fixedMode, "fixed-default-mode.png")
+            compose.onNodeWithText("Single page").assertIsDisplayed()
             compose.onNodeWithText(automaticSummary).assertDoesNotExist()
         } finally {
             activity.pause().stop().destroy()
