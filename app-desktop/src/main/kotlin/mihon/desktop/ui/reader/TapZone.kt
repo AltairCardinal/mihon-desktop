@@ -23,6 +23,7 @@ enum class TapNavRegion { PREV, NEXT, MENU }
  * - [Disabled]: All taps open the MENU.
  */
 enum class NavigationMode(val displayName: String) {
+    Default("Default"),
     RightAndLeft("Right and Left"),
     L("L"),
     Kindle("Kindle-ish"),
@@ -45,10 +46,11 @@ fun tapNavRegion(
     height: Float,
     mode: NavigationMode,
     isRtl: Boolean = false,
+    inversion: NavigationInversion = NavigationInversion.NONE,
 ): TapNavRegion {
     if (width <= 0f || height <= 0f) return TapNavRegion.MENU
     val preset = when (mode) {
-        NavigationMode.RightAndLeft -> NavigationPreset.RIGHT_AND_LEFT
+        NavigationMode.Default, NavigationMode.RightAndLeft -> NavigationPreset.RIGHT_AND_LEFT
         NavigationMode.L -> NavigationPreset.L
         NavigationMode.Kindle -> NavigationPreset.KINDLE
         NavigationMode.Edge -> NavigationPreset.EDGE
@@ -58,7 +60,7 @@ fun tapNavRegion(
         x = x / width,
         y = y / height,
         preset = preset,
-        inversion = NavigationInversion.NONE,
+        inversion = inversion,
         direction = if (isRtl) ReaderDirection.RTL else ReaderDirection.LTR,
     )
     return when (command) {
@@ -84,9 +86,10 @@ fun tapNavRegionForPointerButton(
     height: Float,
     mode: NavigationMode,
     isRtl: Boolean = false,
+    inversion: NavigationInversion = NavigationInversion.NONE,
 ): TapNavRegion? =
     if (isReaderPrimaryClick(button)) {
-        tapNavRegion(x, y, width, height, mode, isRtl)
+        tapNavRegion(x, y, width, height, mode, isRtl, inversion)
     } else {
         null
     }

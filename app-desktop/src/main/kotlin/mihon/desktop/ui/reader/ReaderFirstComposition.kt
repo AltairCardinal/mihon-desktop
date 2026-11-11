@@ -53,7 +53,8 @@ internal fun firstCompositionSnapshotReady(state: ReaderState): Boolean =
         resolveInitialPage(state.context.initialPage, state.session.activeChapter.pages.size) == state.currentPage &&
         !state.resumePageUnavailable &&
         state.readingMode in setOf(ReadingMode.RTL, ReadingMode.LTR) &&
-        !state.automaticLayout && !state.dualPageMode && !state.autoSplitPages
+        !state.automaticLayout && !state.dualPageMode && !state.autoSplitPages &&
+        state.displayOptions == mihon.desktop.reader.ReaderDisplayOptions()
 
 /** Reuse the projection; admit only a newly published page list for the identical opening intent. */
 internal fun rereadFirstCompositionState(
@@ -79,7 +80,7 @@ internal fun rereadFirstCompositionState(
     )
     if (!firstCompositionSnapshotReady(candidate)) return null
     val settings = initialReaderSettings(prefs, isWebtoon, mangaViewerFlags, dualPageOverride)
-    if (settings != initial.readerSettings ||
+    if (settings != initial.readerSettings || prefs.loadDisplayOptions() != initial.displayOptions ||
         prefs.autoSplitPages != initial.autoSplitPages ||
         prefs.cropBordersPager != initial.cropBordersPager || prefs.scaleType != initial.scaleType ||
         prefs.navigationMode != initial.navigationMode || prefs.backgroundTheme != initial.backgroundTheme ||
@@ -164,7 +165,8 @@ internal fun ReaderFirstComposition(
     val presentedGeneration by runtime.presentationImageOwner.firstPresentedGeneration.collectAsState()
     val initialEligible = initial.context.isDownloaded &&
         initial.readingMode in setOf(ReadingMode.RTL, ReadingMode.LTR) &&
-        !initial.automaticLayout && !initial.dualPageMode && !initial.autoSplitPages
+        !initial.automaticLayout && !initial.dualPageMode && !initial.autoSplitPages &&
+        initial.displayOptions == mihon.desktop.reader.ReaderDisplayOptions()
     val selected = remember(runtime, published.snapshot.generation, published.snapshot.activeChapter.loadState) {
         if (startupAllowed && initialEligible) {
             rereadFirstCompositionState(

@@ -24,6 +24,8 @@ class WebtoonConfig(
     readerPreferences: ReaderPreferences = Injekt.get(),
 ) : ViewerConfig(readerPreferences, scope) {
 
+    override val singlePageExtrasEnabled: Boolean get() = false
+
     var themeChangedListener: (() -> Unit)? = null
 
     var imageCropBorders = false

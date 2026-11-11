@@ -36,7 +36,9 @@ internal object DualPagedPresentation : ReaderPresentationStrategy {
         return ReaderPresentationSnapshot(
             mode = mode,
             displayUnits = buildList {
-                if (readerChapterBoundary(request.hasPreviousChapter) == ReaderChapterBoundary.TERMINAL) {
+                if (request.alwaysShowChapterTransition ||
+                    readerChapterBoundary(request.hasPreviousChapter) == ReaderChapterBoundary.TERMINAL
+                ) {
                     add(chapterTransitionDisplayUnit(mode, ReaderTransitionDirection.PREVIOUS))
                 }
                 val pagesById = pages.associateBy(ReaderPageSession::id)
@@ -45,7 +47,9 @@ internal object DualPagedPresentation : ReaderPresentationStrategy {
                         request.toDisplayUnit(group.unit, pagesById, group.frameId)
                     },
                 )
-                if (readerChapterBoundary(request.hasNextChapter) == ReaderChapterBoundary.TERMINAL) {
+                if (request.alwaysShowChapterTransition ||
+                    readerChapterBoundary(request.hasNextChapter) == ReaderChapterBoundary.TERMINAL
+                ) {
                     add(chapterTransitionDisplayUnit(mode, ReaderTransitionDirection.NEXT))
                 }
             },
@@ -63,7 +67,7 @@ internal object DualPagedPresentation : ReaderPresentationStrategy {
         val slots = when {
             pages.size == 2 ->
                 pages
-                    .let { if (direction == ReaderDirection.RTL) it.asReversed() else it }
+                    .let { if ((direction == ReaderDirection.RTL) != invertSplitPages) it.asReversed() else it }
                     .map { page -> pageSlot(page) }
 
             pages.single().id in dualPagedOptions.spreadPageIds -> spreadSlots(pages.single())
@@ -77,7 +81,7 @@ internal object DualPagedPresentation : ReaderPresentationStrategy {
 
     private fun ReaderPresentationRequest.spreadSlots(page: ReaderPageSession): List<DisplaySlot> {
         if (page.id.sourcePageIndex == 0 || page.id !in splitPageIds) return listOf(pageSlot(page))
-        val halves = if (direction == ReaderDirection.RTL) {
+        val halves = if ((direction == ReaderDirection.RTL) != invertSplitPages) {
             listOf(PageSplitHalf.RIGHT, PageSplitHalf.LEFT)
         } else {
             listOf(PageSplitHalf.LEFT, PageSplitHalf.RIGHT)

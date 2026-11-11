@@ -122,12 +122,18 @@ class ReaderSettingsChipsWiringTest {
         val rotateY = compose.onNodeWithText(MR.strings.pref_page_rotate.getString(RuntimeEnvironment.getApplication()))
             .fetchSemanticsNode().positionInRoot.y
         assertTrue(panY < splitY && splitY < rotateY)
-        click("双页")
-        compose.onNodeWithText(label).performScrollTo().assertIsOn()
-        click("自动")
-        compose.onNodeWithText(label).performScrollTo().assertIsOn()
-        click("纵向阅读")
-        compose.onNodeWithText(label).performScrollTo().assertIsOn()
+        for (mode in listOf("双页", "自动", "纵向阅读")) {
+            click(mode)
+            for (resource in listOf(
+                MR.strings.pref_landscape_zoom,
+                MR.strings.pref_dual_page_split,
+                MR.strings.pref_page_rotate,
+                MR.strings.pref_page_rotate_invert,
+            )) {
+                compose.onNodeWithText(resource.getString(RuntimeEnvironment.getApplication())).assertDoesNotExist()
+            }
+            assertTrue(fixture.preferences.dualPageSplitPaged().get())
+        }
         click("横向阅读")
         click("单页")
         compose.onNodeWithText(label).performScrollTo().assertIsOn()
@@ -137,7 +143,7 @@ class ReaderSettingsChipsWiringTest {
         assertFalse(fixture.preferences.dualPageSplitPaged().get())
         assertTrue(fixture.preferences.dualPageInvertPaged().get())
         click("跟随默认")
-        compose.onNodeWithText(label).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(label).assertDoesNotExist()
     }
 
     @Test
@@ -394,10 +400,22 @@ class ReaderSettingsChipsWiringTest {
         }
     }
 
+    @Test
+    fun `general page groups flash and ripple below eink heading`() = withPage(1L, generalTab = true) {
+        compose.onNodeWithText("E-Ink").performScrollTo().assertIsDisplayed()
+        for (resource in listOf(MR.strings.pref_flash_page, MR.strings.pref_page_turn_ripple)) {
+            val node = compose.onNodeWithText(resource.getString(RuntimeEnvironment.getApplication()))
+            node.performScrollTo().assertIsDisplayed()
+            val headingY = compose.onNodeWithText("E-Ink").fetchSemanticsNode().positionInRoot.y
+            assertTrue(node.fetchSemanticsNode().positionInRoot.y > headingY)
+        }
+    }
+
     private fun withPage(
         flags: Long,
         quick: Boolean = false,
         global: Boolean = false,
+        generalTab: Boolean = false,
         fontScale: Float = 1f,
         dark: Boolean = false,
         block: (Fixture) -> Unit,
@@ -424,7 +442,7 @@ class ReaderSettingsChipsWiringTest {
                                         require(entry is Preference.PreferenceItem.CustomPreference)
                                         entry.content()
                                     } else {
-                                        ReadingModePage(fixture.model)
+                                        if (generalTab) GeneralPage(fixture.model) else ReadingModePage(fixture.model)
                                     }
                                 }
                             }

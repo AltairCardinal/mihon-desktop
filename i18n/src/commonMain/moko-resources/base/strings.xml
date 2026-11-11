@@ -2681,4 +2681,5 @@
     <string name="desktop_library_update_banner_completed">Update complete</string>
     <string name="desktop_library_update_banner_chapters">%1$d works updated, %2$d new chapters total</string>
     <string name="desktop_library_update_banner_failures">%1$d works failed to update</string>
+    <string name="pref_reader_eink">E-Ink</string>
 </resources>

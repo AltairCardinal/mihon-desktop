@@ -75,6 +75,7 @@ data class ReaderState(
     val virtualPages: List<VirtualPage>? = null,
 
     // ── Display settings ─────────────────────────────────────────────────────
+    val displayOptions: mihon.desktop.reader.ReaderDisplayOptions = mihon.desktop.reader.ReaderDisplayOptions(),
     val backgroundTheme: ReaderBackgroundTheme = ReaderBackgroundTheme.DEFAULT,
     val navigationMode: NavigationMode = NavigationMode.RightAndLeft,
     val cropBordersPager: Boolean = false,
@@ -94,7 +95,9 @@ data class ReaderState(
     val settingsFeedback: String? = null,
     val showUI: Boolean = false,
     val isFullscreen: Boolean = false,
-)
+) {
+    val effectiveAutoSplitPages: Boolean get() = autoSplitPages && readerSettings.singlePageExtrasEnabled
+}
 
 enum class PairingLoad { READY, LOADING, ERROR, DEFAULT_UNVERIFIED }
 

@@ -26,7 +26,7 @@ enum class NextChapterPrefetchMode {
 
 /** Reader preferences eagerly migrate every public setting during construction. */
 class ReaderPreferences(
-    store: PreferenceStore = DesktopPreferenceStore(),
+    private val store: PreferenceStore = DesktopPreferenceStore(),
     private val legacy: Preferences = Preferences.userRoot().node("mihon/desktop/reader"),
 ) {
     private fun <T> Preference<T>.legacy(key: String, read: () -> T?): Preference<T> =
@@ -136,6 +136,43 @@ class ReaderPreferences(
     private val invertPref = store.getBoolean("reader_color_filter_invert", false).legacy("colorFilterInvert") {
         legacy.getBoolean("colorFilterInvert", false)
     }
+    private val displayWebtoonNavigationPref = store.getEnum("reader_display_webtoonNavigation", NavigationMode.Default)
+    private val displayZoomStartPref = store.getEnum("reader_display_zoomStart", ReaderZoomStart.AUTO)
+    private val displayLandscapeZoomPref = store.getBoolean("reader_display_landscapeZoom", true)
+    private val displayNavigateToPanPref = store.getBoolean("reader_display_navigateToPan", true)
+    private val displaySplitInvertPref = store.getBoolean("reader_display_splitInvert", false)
+    private val displayRotateWidePref = store.getBoolean("reader_display_rotateWide", false)
+    private val displayRotateInvertPref = store.getBoolean("reader_display_rotateInvert", false)
+    private val displayWebtoonPaddingPref = store.getInt(
+        "reader_display_webtoonPadding",
+        (paddingPref.get().ratio * 100).toInt(),
+    )
+    private val displayWebtoonDoubleTapZoomPref = store.getBoolean("reader_display_webtoonDoubleTapZoom", true)
+    private val displayWebtoonDisableZoomOutPref = store.getBoolean("reader_display_webtoonDisableZoomOut", false)
+    private val displayShowPageNumberPref = store.getBoolean("reader_display_showPageNumber", true)
+    private val displayFullscreenPref = store.getBoolean("reader_display_fullscreen", false)
+    private val displayKeepScreenOnPref = store.getBoolean("reader_display_keepScreenOn", true)
+    private val displayLongTapPref = store.getBoolean("reader_display_longTap", true)
+    private val displayAlwaysShowChapterTransitionPref = store.getBoolean(
+        "reader_display_alwaysShowChapterTransition",
+        true,
+    )
+    private val displayPageTransitionsPref = store.getBoolean("page_turn_animation", true)
+    private val displayFlashPref = store.getBoolean("reader_display_flash", false)
+    private val displayFlashMillisPref = store.getInt("reader_display_flashMillis", 100)
+    private val displayFlashIntervalPref = store.getInt("reader_display_flashInterval", 1)
+    private val displayFlashColorPref = store.getEnum("reader_display_flashColor", ReaderFlashColor.BLACK)
+    private val displayRipplePref = store.getBoolean("reader_display_ripple", false)
+    private val displayRippleStylePref = store.getEnum("reader_display_rippleStyle", ReaderRippleStyle.SHADOW_LINE)
+
+    private val displayPagerInversionPref = store.getEnum(
+        "reader_display_pagerInversion",
+        mihon.domain.reader.NavigationInversion.NONE,
+    )
+    private val displayWebtoonInversionPref = store.getEnum(
+        "reader_display_webtoonInversion",
+        mihon.domain.reader.NavigationInversion.NONE,
+    )
     private val settingsSnapshotPref = store.getLong("reader_settings_snapshot", 0L)
 
     var readingMode by readingModePref
@@ -163,6 +200,60 @@ class ReaderPreferences(
     var colorFilterAlpha by alphaPref
     var colorFilterGrayscale by grayscalePref
     var colorFilterInvert by invertPref
+
+    fun loadDisplayOptions(): ReaderDisplayOptions = ReaderDisplayOptions(
+        pagerInversion = displayPagerInversionPref.get(),
+        webtoonNavigation = displayWebtoonNavigationPref.get(),
+        webtoonInversion = displayWebtoonInversionPref.get(),
+        zoomStart = displayZoomStartPref.get(),
+        landscapeZoom = displayLandscapeZoomPref.get(),
+        navigateToPan = displayNavigateToPanPref.get(),
+        splitInvert = displaySplitInvertPref.get(),
+        rotateWide = displayRotateWidePref.get(),
+        rotateInvert = displayRotateInvertPref.get(),
+        webtoonPadding = displayWebtoonPaddingPref.get(),
+        webtoonDoubleTapZoom = displayWebtoonDoubleTapZoomPref.get(),
+        webtoonDisableZoomOut = displayWebtoonDisableZoomOutPref.get(),
+        showPageNumber = displayShowPageNumberPref.get(),
+        fullscreen = displayFullscreenPref.get(),
+        keepScreenOn = displayKeepScreenOnPref.get(),
+        longTap = displayLongTapPref.get(),
+        alwaysShowChapterTransition = displayAlwaysShowChapterTransitionPref.get(),
+        pageTransitions = displayPageTransitionsPref.get(),
+        flash = displayFlashPref.get(),
+        flashMillis = displayFlashMillisPref.get(),
+        flashInterval = displayFlashIntervalPref.get(),
+        flashColor = displayFlashColorPref.get(),
+        ripple = displayRipplePref.get(),
+        rippleStyle = displayRippleStylePref.get(),
+    )
+
+    fun saveDisplayOptions(options: ReaderDisplayOptions) {
+        displayPagerInversionPref.set(options.pagerInversion)
+        displayWebtoonNavigationPref.set(options.webtoonNavigation)
+        displayWebtoonInversionPref.set(options.webtoonInversion)
+        displayZoomStartPref.set(options.zoomStart)
+        displayLandscapeZoomPref.set(options.landscapeZoom)
+        displayNavigateToPanPref.set(options.navigateToPan)
+        displaySplitInvertPref.set(options.splitInvert)
+        displayRotateWidePref.set(options.rotateWide)
+        displayRotateInvertPref.set(options.rotateInvert)
+        displayWebtoonPaddingPref.set(options.webtoonPadding)
+        displayWebtoonDoubleTapZoomPref.set(options.webtoonDoubleTapZoom)
+        displayWebtoonDisableZoomOutPref.set(options.webtoonDisableZoomOut)
+        displayShowPageNumberPref.set(options.showPageNumber)
+        displayFullscreenPref.set(options.fullscreen)
+        displayKeepScreenOnPref.set(options.keepScreenOn)
+        displayLongTapPref.set(options.longTap)
+        displayAlwaysShowChapterTransitionPref.set(options.alwaysShowChapterTransition)
+        displayPageTransitionsPref.set(options.pageTransitions)
+        displayFlashPref.set(options.flash)
+        displayFlashMillisPref.set(options.flashMillis)
+        displayFlashIntervalPref.set(options.flashInterval)
+        displayFlashColorPref.set(options.flashColor)
+        displayRipplePref.set(options.ripple)
+        displayRippleStylePref.set(options.rippleStyle)
+    }
 
     fun loadReaderSettings(): ReaderSettings {
         val saved = ReaderSettingsCodec.custom(settingsSnapshotPref.get())

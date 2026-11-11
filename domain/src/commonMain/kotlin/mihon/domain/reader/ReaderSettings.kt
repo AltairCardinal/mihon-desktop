@@ -14,7 +14,10 @@ data class ReaderSettings(
     val scroll: ReaderScrollMode = ReaderScrollMode.CONTINUOUS,
     val match: Boolean = true,
     val gap: Boolean = false,
-)
+) {
+    val singlePageExtrasEnabled: Boolean
+        get() = mode == ReaderSettingsMode.HORIZONTAL && layout == ReaderSettingsLayout.SINGLE
+}
 
 /**
  * Stores the complete custom choice in previously unused bits 6–12 and marker bit 18.

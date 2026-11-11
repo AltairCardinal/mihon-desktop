@@ -6,6 +6,7 @@ package mihon.desktop.reader
  */
 enum class ScaleType(val displayName: String) {
     FIT_SCREEN("Fit Screen"),
+    STRETCH("Stretch"),
     FIT_WIDTH("Fit Width"),
     FIT_HEIGHT("Fit Height"),
     ORIGINAL_SIZE("Original Size"),

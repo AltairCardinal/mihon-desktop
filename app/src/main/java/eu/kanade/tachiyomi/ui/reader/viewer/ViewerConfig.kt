@@ -34,16 +34,21 @@ abstract class ViewerConfig(readerPreferences: ReaderPreferences, private val sc
 
     var navigationOverlayOnStart = false
 
+    protected open val singlePageExtrasEnabled: Boolean get() = true
+
     var dualPageSplit = false
+        get() = field && singlePageExtrasEnabled
         protected set
 
     var dualPageInvert = false
         protected set
 
     var dualPageRotateToFit = false
+        get() = field && singlePageExtrasEnabled
         protected set
 
     var dualPageRotateToFitInvert = false
+        get() = field && singlePageExtrasEnabled
         protected set
 
     abstract var navigator: ViewerNavigation

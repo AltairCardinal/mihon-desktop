@@ -98,6 +98,7 @@ class ReaderKeyboardNavigationPositionTest {
             prefs = ReaderPreferences(InMemoryPreferenceStore()).apply { isAutoSpreadMatching = false },
         )
         try {
+            model.setDisplayOptions(model.state.value.displayOptions.copy(alwaysShowChapterTransition = false))
             reader.snapshot.activeChapter.pages.forEach { page ->
                 assertEquals(
                     true,
@@ -120,6 +121,28 @@ class ReaderKeyboardNavigationPositionTest {
                     totalPages = position.total,
                 ),
             )
+        } finally {
+            model.onDispose()
+        }
+    }
+
+    @Test
+    fun `enabled chapter transition is selected before keyboard advances to the adjacent chapter`() {
+        val reader = desktopReaderSessionState(pageCount = 3)
+        val model =
+            ReaderScreenModel(initialSessionState = reader, prefs = ReaderPreferences(InMemoryPreferenceStore()))
+        var next = 0
+        try {
+            model.goToPage(2)
+            val state = model.state.value
+            val position = readerKeyboardNavigationPosition(state)
+            assertEquals(5, position.total)
+            assertEquals(3, position.current)
+            applyReaderPageAction(ReaderPageAction.GoToPage(4), state, model, {}, { next++ }, true, true)
+            assertEquals(4, readerKeyboardNavigationPosition(model.state.value).current)
+            assertEquals(0, next)
+            applyReaderPageAction(ReaderPageAction.NoNextPage, model.state.value, model, {}, { next++ }, true, true)
+            assertEquals(1, next)
         } finally {
             model.onDispose()
         }

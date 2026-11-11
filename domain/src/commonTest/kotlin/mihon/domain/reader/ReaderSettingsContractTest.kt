@@ -6,6 +6,18 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class ReaderSettingsContractTest {
+    @Test
+    fun `single page image extensions are excluded from automatic dual and vertical layouts`() {
+        for (mode in ReaderSettingsMode.entries) {
+            for (layout in ReaderSettingsLayout.entries) {
+                assertEquals(
+                    mode == ReaderSettingsMode.HORIZONTAL && layout == ReaderSettingsLayout.SINGLE,
+                    ReaderSettings(mode = mode, layout = layout).singlePageExtrasEnabled,
+                )
+            }
+        }
+    }
+
     private val defaults = ReaderSettings()
 
     @Test

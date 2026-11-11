@@ -74,13 +74,10 @@ class ReaderSettingsPanelTest {
                 },
             )
 
-            assertTrue(currentText.contains(MR.strings.pref_dual_page_split.localized()))
-            click(scene, MR.strings.pref_dual_page_split.localized())
-            assertTrue(autoSplitPages)
+            assertFalse(currentText.contains(MR.strings.pref_dual_page_split.localized()))
             click(scene, MR.strings.desktop_ui_auto_spread_matching.localized())
             assertTrue(autoSpreadMatching)
-            click(scene, MR.strings.white_background.localized())
-            assertEquals(ReaderBackgroundTheme.WHITE, changedTheme)
+            assertFalse(currentText.contains(MR.strings.pref_reader_theme.localized()))
             assertEquals(0, zoomChanges, "The panel exposes no zoom action")
         } finally {
             scene.close()
@@ -137,7 +134,6 @@ class ReaderSettingsPanelTest {
                         }
                     }
                     scene.render().close()
-                    click(scene, MR.strings.pref_category_general.localized())
                     assertTrue(
                         nodes(scene).flatMap(::text).any { it == expectedLabel },
                         "Expected '$expectedLabel' for $locale",

@@ -1,6 +1,7 @@
 package mihon.desktop.ui.reader
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -30,6 +32,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.SemanticsPropertyKey
@@ -40,6 +43,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import mihon.desktop.reader.DesktopReaderPresentationImageOwner
 import mihon.desktop.reader.DesktopReaderPresentationImageState
 import mihon.desktop.reader.WebtoonSidePadding
@@ -88,6 +92,7 @@ internal fun WebtoonViewer(
     onRetryPage: (ReaderPageId) -> Unit,
     onSpreadDetected: ((Int) -> Unit)? = null,
     onNextChapter: (() -> Unit)? = null,
+    onTapCenter: (() -> Unit)? = null,
     generation: Long = 0L,
 ) {
     WebtoonDisplayUnitList(
@@ -102,6 +107,7 @@ internal fun WebtoonViewer(
         onViewportChanged = onViewportChanged,
         onRetryPage = onRetryPage,
         onNextChapter = onNextChapter,
+        onTapCenter = onTapCenter,
     ) { slot, modifier ->
         WebtoonPageItem(
             slot = slot,
@@ -132,6 +138,7 @@ internal fun WebtoonDisplayUnitList(
     onViewportChanged: (WebtoonViewportUpdate) -> Unit,
     onRetryPage: (ReaderPageId) -> Unit,
     onNextChapter: (() -> Unit)? = null,
+    onTapCenter: (() -> Unit)? = null,
     readyContent: @Composable (DisplaySlot, Modifier) -> Unit,
 ) {
     val displayUnits = presentation.displayUnits
@@ -302,9 +309,24 @@ internal fun WebtoonDisplayUnitList(
         }
     }
 
+    val viewportOptions = LocalReaderViewportOptions.current
+    val tapScope = rememberCoroutineScope()
     LazyColumn(
         state = listState,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().readerPrimaryTapInput(
+            1f,
+            viewportOptions.display.webtoonNavigation,
+            false,
+        ) { region ->
+            when (region) {
+                TapNavRegion.MENU -> onTapCenter?.invoke()
+                else -> tapScope.launch {
+                    val distance =
+                        (listState.layoutInfo.viewportEndOffset - listState.layoutInfo.viewportStartOffset) * 0.8f
+                    listState.animateScrollBy(if (region == TapNavRegion.NEXT) distance else -distance)
+                }
+            }
+        },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(if (pageGaps) 15.dp else 0.dp),
     ) {
@@ -400,14 +422,25 @@ internal fun WebtoonDisplayUnitContainer(
     }
     val slot = unit.slots.single()
     val page = requireNotNull(slot.page)
-    val paddingFraction = sidePadding.ratio
+    val viewportOptions = LocalReaderViewportOptions.current
+    val paddingFraction =
+        if (viewportOptions.webtoon) viewportOptions.display.webtoonPadding / 100f else sidePadding.ratio
     val widthModifier = if (paddingFraction > 0f) {
         Modifier.fillMaxWidth(1f - 2f * paddingFraction)
     } else {
         Modifier.fillMaxWidth()
     }
     val compositionIdentity = remember(unit.id) { WebtoonDisplayUnitCompositionIdentity() }
+    var imageZoom by remember(unit.id) { androidx.compose.runtime.mutableStateOf(mihon.desktop.reader.ZoomState()) }
     val itemModifier = widthModifier
+        .readerZoomInput(imageZoom, { imageZoom = it })
+        .graphicsLayer {
+            scaleX = imageZoom.scale
+            scaleY = imageZoom.scale
+            translationX = imageZoom.offsetX
+            translationY =
+                imageZoom.offsetY
+        }
         .onSizeChanged { size -> if (size.height > 0) onMeasured(size.height) }
         .semantics {
             this[WebtoonDisplayUnitCompositionIdentityKey] = compositionIdentity

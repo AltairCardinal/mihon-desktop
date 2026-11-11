@@ -356,9 +356,16 @@ internal fun SinglePagePagerViewer(
         }
     }
 
+    val viewportOptions = LocalReaderViewportOptions.current
     val pagerModifier = Modifier.fillMaxSize().readerMountedGeometry(
         pagerPresentationBinding,
-    ).readerPrimaryTapInput(zoomState.scale, navigationMode, isRtl, isVertical = isVertical) {
+    ).readerPrimaryTapInput(
+        zoomState.scale,
+        navigationMode,
+        isRtl,
+        allowZoomedNavigation = !viewportOptions.display.navigateToPan,
+        isVertical = isVertical,
+    ) {
         when (it) {
             TapNavRegion.PREV -> executeTapCommand(ReaderNavigationCommand.Previous)
             TapNavRegion.NEXT -> executeTapCommand(ReaderNavigationCommand.Next)

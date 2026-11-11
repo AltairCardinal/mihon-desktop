@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asComposeImageBitmap
 import androidx.compose.ui.graphics.asSkiaBitmap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -36,6 +37,7 @@ internal data class ReaderPresentationTransformKey(
     val presentationIdentity: DesktopReaderPresentationImageSlotIdentity,
     val cropBorders: Boolean,
     val animationFrameIndex: Int? = null,
+    val rotation: Int = 0,
 )
 
 internal interface ReaderPresentationBitmapLease : AutoCloseable {
@@ -226,6 +228,7 @@ internal suspend fun createReaderPresentationTransformLease(
     identity: DesktopReaderPresentationImageSlotIdentity,
     cropBorders: Boolean,
     memoryAuthority: DesktopReaderImageMemoryAuthority,
+    rotation: Int = 0,
     nativeBitmapDisposer: (org.jetbrains.skia.Bitmap) -> Unit = { bitmap -> bitmap.close() },
 ): ReaderPresentationBitmapLease {
     val baseBitmap = baseLease.asset.bitmap
@@ -234,7 +237,7 @@ internal suspend fun createReaderPresentationTransformLease(
             splitBounds(baseLease.asset.sourceWidth, baseLease.asset.sourceHeight, half)
         }
         ?: PixelBounds(0, 0, baseLease.asset.sourceWidth, baseLease.asset.sourceHeight)
-    if (identity.splitHalf == null && identity.sourceBounds == null && !cropBorders) {
+    if (identity.splitHalf == null && identity.sourceBounds == null && !cropBorders && rotation == 0) {
         return CloseableReaderPresentationBitmapLease(
             bitmap = baseBitmap,
             renderedSourceBounds = baseSourceBounds,
@@ -243,7 +246,7 @@ internal suspend fun createReaderPresentationTransformLease(
     }
     try {
         val transformed = withContext(Dispatchers.Default + NonCancellable) {
-            transformCachedPageBitmapWithSourceBounds(
+            val image = transformCachedPageBitmapWithSourceBounds(
                 bitmap = baseBitmap,
                 splitHalf = identity.splitHalf,
                 sourceBounds = identity.sourceBounds,
@@ -251,6 +254,13 @@ internal suspend fun createReaderPresentationTransformLease(
                 sourceWidth = baseLease.asset.sourceWidth,
                 sourceHeight = baseLease.asset.sourceHeight,
             )
+            if (rotation == 0) {
+                image
+            } else {
+                val rotated = rotateReaderBitmap(image.bitmap, rotation)
+                if (image.bitmap !== baseBitmap) image.bitmap.asSkiaBitmap().close()
+                image.copy(bitmap = rotated)
+            }
         }
         if (transformed.bitmap === baseBitmap) {
             return CloseableReaderPresentationBitmapLease(
@@ -337,12 +347,20 @@ internal fun rememberReaderPresentationRenderedImage(
     val animationReadyKey = animatedReady?.readyKey
     val animationFrameIndex = animationReadyKey?.frameIndex
     val sourceAsset = animatedReady?.readyAsset ?: ready?.asset
-    val key = remember(identity, cropBorders, animationFrameIndex) {
-        ReaderPresentationTransformKey(identity, cropBorders, animationFrameIndex)
+    val viewport = LocalReaderViewportOptions.current
+    val rotation = if (viewport.singlePage && viewport.display.rotateWide && sourceAsset != null &&
+        sourceAsset.sourceWidth > sourceAsset.sourceHeight
+    ) {
+        if (viewport.display.rotateInvert) -90 else 90
+    } else {
+        0
+    }
+    val key = remember(identity, cropBorders, animationFrameIndex, rotation) {
+        ReaderPresentationTransformKey(identity, cropBorders, animationFrameIndex, rotation)
     }
     if (ready != null && sourceAsset === ready.asset && animationFrameIndex == null &&
         ready.asset.animationMetadata == null && identity.splitHalf == null && identity.sourceBounds == null &&
-        !cropBorders
+        !cropBorders && rotation == 0
     ) {
         val retained = remember(presentationImage.holder, identity, sourceAsset) {
             val lease = presentationImage.holder.retainReadyAssetForRender(identity)
@@ -383,7 +401,7 @@ internal fun rememberReaderPresentationRenderedImage(
     DisposableEffect(transformOwner) {
         onDispose(transformOwner::close)
     }
-    LaunchedEffect(transformOwner, sourceAsset) {
+    LaunchedEffect(transformOwner, sourceAsset, rotation) {
         if (ready == null || sourceAsset == null) {
             transformOwner.clear()
             return@LaunchedEffect
@@ -410,6 +428,7 @@ internal fun rememberReaderPresentationRenderedImage(
                 identity = identity,
                 cropBorders = cropBorders,
                 memoryAuthority = presentationImage.memoryAuthority,
+                rotation = rotation,
             )
         }
     }
@@ -455,3 +474,16 @@ internal fun rememberReaderPresentationRenderedImage(
 }
 
 private const val BYTES_PER_PIXEL = 4L
+
+internal fun rotateReaderBitmap(bitmap: ImageBitmap, rotation: Int): ImageBitmap {
+    require(rotation == 90 || rotation == -90)
+    val target = org.jetbrains.skia.Bitmap().apply { allocN32Pixels(bitmap.height, bitmap.width) }
+    org.jetbrains.skia.Canvas(target).use { canvas ->
+        canvas.translate(target.width / 2f, target.height / 2f)
+        canvas.rotate(rotation.toFloat())
+        org.jetbrains.skia.Image.makeFromBitmap(bitmap.asSkiaBitmap()).use {
+            canvas.drawImage(it, -bitmap.width / 2f, -bitmap.height / 2f)
+        }
+    }
+    return target.asComposeImageBitmap()
+}

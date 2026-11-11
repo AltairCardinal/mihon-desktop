@@ -16,11 +16,15 @@ internal object SinglePagedPresentation : ReaderPresentationStrategy {
         ReaderPresentationSnapshot(
             mode = mode,
             displayUnits = buildList {
-                if (readerChapterBoundary(request.hasPreviousChapter) == ReaderChapterBoundary.TERMINAL) {
+                if (request.alwaysShowChapterTransition ||
+                    readerChapterBoundary(request.hasPreviousChapter) == ReaderChapterBoundary.TERMINAL
+                ) {
                     add(chapterTransitionDisplayUnit(mode, ReaderTransitionDirection.PREVIOUS))
                 }
                 addAll(request.chapter.pages.flatMap { page -> request.unitsFor(page) })
-                if (readerChapterBoundary(request.hasNextChapter) == ReaderChapterBoundary.TERMINAL) {
+                if (request.alwaysShowChapterTransition ||
+                    readerChapterBoundary(request.hasNextChapter) == ReaderChapterBoundary.TERMINAL
+                ) {
                     add(chapterTransitionDisplayUnit(mode, ReaderTransitionDirection.NEXT))
                 }
             },
@@ -28,7 +32,7 @@ internal object SinglePagedPresentation : ReaderPresentationStrategy {
 
     private fun ReaderPresentationRequest.unitsFor(page: ReaderPageSession): List<DisplayUnit> {
         val halves = if (page.id in splitPageIds) {
-            if (direction == ReaderDirection.RTL) {
+            if ((direction == ReaderDirection.RTL) != invertSplitPages) {
                 listOf(PageSplitHalf.RIGHT, PageSplitHalf.LEFT)
             } else {
                 listOf(PageSplitHalf.LEFT, PageSplitHalf.RIGHT)

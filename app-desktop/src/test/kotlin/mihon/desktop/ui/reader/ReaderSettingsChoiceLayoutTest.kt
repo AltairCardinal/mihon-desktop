@@ -48,12 +48,6 @@ class ReaderSettingsChoiceLayoutTest {
         assertTrue(model.state.value.autoSplitPages)
         assertTrue(prefs.autoSplitPages)
         assertEquals(ToggleableState.On, option(scene, label).config[SemanticsProperties.ToggleableState])
-        val lastBoolean = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.first {
-            it.config.getOrNull(SemanticsProperties.Text)?.any { t ->
-                t.text == MR.strings.pref_skip_dupe_chapters.localized()
-            } == true
-        }
-        assertTrue(option(scene, label).boundsInRoot.top >= lastBoolean.boundsInRoot.bottom)
         capture(scene, "split-checkbox-lower")
         click(scene, MR.strings.reader_settings_custom.localized())
         for (mode in listOf(
@@ -63,10 +57,12 @@ class ReaderSettingsChoiceLayoutTest {
             MR.strings.reader_settings_vertical,
         )) {
             click(scene, mode.localized())
-            assertTrue(hasText(label))
+            assertEquals(mode == MR.strings.reader_settings_single, hasText(label))
             assertFalse(hasText(hint))
             assertTrue(prefs.autoSplitPages)
         }
+        click(scene, MR.strings.reader_settings_horizontal.localized())
+        click(scene, MR.strings.reader_settings_single.localized())
         capture(scene, "split-checkbox-restored")
         click(scene, MR.strings.action_close.localized(), Role.Button)
         assertFalse(model.state.value.showSettings)
@@ -95,7 +91,7 @@ class ReaderSettingsChoiceLayoutTest {
             MR.strings.desktop_reader_direction_ltr.localized(),
             MR.strings.desktop_reader_direction_rtl.localized(),
         )
-        assertHorizontal(scene, MR.strings.right_and_left_nav.localized(), MR.strings.l_nav.localized())
+        assertHorizontal(scene, MR.strings.l_nav.localized(), MR.strings.right_and_left_nav.localized())
         capture(scene, "reading-mode")
 
         click(scene, MR.strings.desktop_reader_direction_rtl.localized())
@@ -163,47 +159,30 @@ class ReaderSettingsChoiceLayoutTest {
     }
 
     @Test
-    fun `display choices flow horizontally and pointer clicks persist through reopening`() = withPanel {
+    fun `reading extensions and general choices persist through real model reopening`() = withPanel {
             scene,
             model,
             prefs,
         ->
-        click(scene, MR.strings.pref_category_general.localized())
-        assertHorizontal(
-            scene,
-            MR.strings.scale_type_fit_screen.localized(),
-            MR.strings.scale_type_fit_width.localized(),
-        )
-        assertHorizontal(scene, MR.strings.none.localized(), "10%")
-        assertHorizontal(scene, MR.strings.desktop_ui_slowest.localized(), MR.strings.desktop_ui_slow.localized())
-
+        click(scene, MR.strings.reader_settings_custom.localized())
         click(scene, MR.strings.scale_type_fit_width.localized())
-        click(scene, "10%")
-        click(scene, MR.strings.desktop_ui_fast.localized())
-        assertSelected(scene, MR.strings.scale_type_fit_width.localized(), true)
-        assertSelected(scene, MR.strings.scale_type_fit_screen.localized(), false)
-        assertSelected(scene, "10%", true)
-        assertSelected(scene, MR.strings.none.localized(), false)
-        assertSelected(scene, MR.strings.desktop_ui_fast.localized(), true)
-        assertSelected(scene, MR.strings.desktop_ui_normal.localized(), false)
+        click(scene, MR.strings.zoom_start_right.localized())
         assertEquals(ScaleType.FIT_WIDTH, prefs.scaleType)
-        assertEquals(WebtoonSidePadding.SMALL, prefs.webtoonSidePadding)
-        assertEquals(WebtoonAutoScrollSpeed.Fast, prefs.webtoonAutoScrollSpeed)
-        capture(scene, "display")
-
-        click(scene, MR.strings.action_close.localized())
-        assertFalse(model.state.value.showSettings)
+        assertEquals(mihon.desktop.reader.ReaderZoomStart.RIGHT, prefs.loadDisplayOptions().zoomStart)
+        click(scene, MR.strings.pref_category_general.localized())
+        click(scene, MR.strings.pref_show_page_number.localized())
+        click(scene, MR.strings.pref_flash_page.localized())
+        click(scene, MR.strings.pref_page_turn_ripple.localized())
+        assertFalse(prefs.loadDisplayOptions().showPageNumber)
+        assertTrue(prefs.loadDisplayOptions().flash && prefs.loadDisplayOptions().ripple)
+        capture(scene, "general-options-enabled")
+        click(scene, MR.strings.action_close.localized(), Role.Button)
         model.toggleSettings()
         render(scene)
-        click(scene, MR.strings.pref_category_general.localized())
-        assertSelected(scene, MR.strings.scale_type_fit_width.localized(), true)
-        assertSelected(scene, "10%", true)
-        assertSelected(scene, MR.strings.desktop_ui_fast.localized(), true)
         val reopened = ReaderScreenModel(prefs = prefs)
         try {
+            assertEquals(model.state.value.displayOptions, reopened.state.value.displayOptions)
             assertEquals(ScaleType.FIT_WIDTH, reopened.state.value.scaleType)
-            assertEquals(WebtoonSidePadding.SMALL, reopened.state.value.webtoonSidePadding)
-            assertEquals(WebtoonAutoScrollSpeed.Fast, reopened.state.value.webtoonAutoScrollSpeed)
         } finally {
             reopened.onDispose()
         }
@@ -218,7 +197,6 @@ class ReaderSettingsChoiceLayoutTest {
             _,
             _,
         ->
-        click(scene, MR.strings.pref_category_general.localized())
         val labels = listOf(
             MR.strings.scale_type_fit_screen,
             MR.strings.scale_type_fit_width,
@@ -234,6 +212,58 @@ class ReaderSettingsChoiceLayoutTest {
         assertSelected(scene, labels.last(), true)
         assertSelected(scene, labels.first(), false)
         capture(scene, "narrow-chinese")
+    }
+
+    @Test
+    fun `reading and general tabs expose Android sections instead of old desktop groups`() = withPanel(
+        locale = Locale.SIMPLIFIED_CHINESE,
+    ) { scene, _, _ ->
+        fun texts() = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.flatMap {
+            it.config.getOrNull(SemanticsProperties.Text).orEmpty().map { t -> t.text }
+        }
+        assertFalse(texts().contains(MR.strings.desktop_ui_background.localized()))
+        assertFalse(texts().contains(MR.strings.desktop_ui_chapter_navigation.localized()))
+        assertTrue(texts().contains(MR.strings.pref_read_with_tapping_inverted.localized()))
+        assertTrue(texts().contains(MR.strings.pref_image_scale_type.localized()))
+        assertTrue(texts().contains(MR.strings.pref_zoom_start.localized()))
+        click(scene, MR.strings.pref_category_general.localized())
+        assertTrue(texts().contains(MR.strings.pref_reader_theme.localized()))
+        assertTrue(texts().contains(MR.strings.pref_show_page_number.localized()))
+        assertTrue(texts().contains(MR.strings.pref_keep_screen_on.localized()))
+        assertTrue(texts().contains(MR.strings.pref_read_with_long_tap.localized()))
+        assertTrue(texts().contains(MR.strings.pref_always_show_chapter_transition.localized()))
+        assertTrue(texts().contains(MR.strings.pref_page_transitions.localized()))
+        assertTrue(texts().contains("E-Ink"))
+        assertTrue(texts().contains(MR.strings.pref_flash_page.localized()))
+        assertTrue(texts().contains(MR.strings.pref_page_turn_ripple.localized()))
+        assertFalse(texts().contains(MR.strings.pref_image_scale_type.localized()))
+        capture(scene, "general-parity")
+    }
+
+    @Test
+    fun `continuous reader exposes its own tap zones padding slider and zoom checkboxes`() = withPanel {
+            scene,
+            _,
+            prefs,
+        ->
+        click(scene, MR.strings.reader_settings_custom.localized())
+        click(scene, MR.strings.reader_settings_vertical.localized())
+        click(scene, MR.strings.reader_settings_continuous.localized())
+        val texts = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.flatMap {
+            it.config.getOrNull(SemanticsProperties.Text).orEmpty().map { t -> t.text }
+        }
+        assertFalse(texts.contains(MR.strings.pref_zoom_start.localized()))
+        assertFalse(texts.contains(MR.strings.pref_dual_page_split.localized()))
+        assertTrue(texts.contains(MR.strings.pref_webtoon_side_padding.localized()))
+        val slider = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.first {
+            it.config.contains(SemanticsActions.SetProgress)
+        }
+        requireNotNull(slider.config[SemanticsActions.SetProgress].action).invoke(17f)
+        render(scene)
+        assertEquals(17, prefs.loadDisplayOptions().webtoonPadding)
+        click(scene, MR.strings.pref_double_tap_zoom.localized())
+        assertFalse(prefs.loadDisplayOptions().webtoonDoubleTapZoom)
+        capture(scene, "webtoon-extensions")
     }
 
     private fun withPanel(
@@ -257,6 +287,8 @@ class ReaderSettingsChoiceLayoutTest {
                     val state by model.state.collectAsState()
                     if (state.showSettings) {
                         ReaderSettingsPanel(
+                            displayOptions = state.displayOptions,
+                            onDisplayOptionsChange = { model.setDisplayOptions(it, prefs) },
                             currentMode = if (state.automaticLayout) ReadingMode.AUTO else state.readingMode,
                             readerSettings = state.readerSettings,
                             onReaderSettingsChange = model::setReaderSettings,
@@ -335,7 +367,19 @@ class ReaderSettingsChoiceLayoutTest {
     private fun render(scene: ImageComposeScene) = frame(scene).close()
 
     private fun click(scene: ImageComposeScene, label: String, role: Role? = null) {
-        val position = option(scene, label, role).boundsInRoot.center
+        var node = option(scene, label, role)
+        val scroller = scene.semanticsOwners.flatMap {
+            flatten(it.rootSemanticsNode)
+        }.firstOrNull { it.config.contains(SemanticsActions.ScrollBy) }
+        repeat(18) {
+            if (node.boundsInRoot.height <= 0f || node.boundsInRoot.top < 150 || node.boundsInRoot.bottom > 1430) {
+                val dy = if (node.boundsInRoot.top < 150 && node.boundsInRoot.height > 0f) -250f else 250f
+                scroller?.config?.get(SemanticsActions.ScrollBy)?.action?.invoke(0f, dy)
+                repeat(3) { render(scene) }
+                node = option(scene, label, role)
+            }
+        }
+        val position = node.boundsInRoot.center
         scene.sendPointerEvent(PointerEventType.Press, position)
         scene.sendPointerEvent(PointerEventType.Release, position)
         render(scene)

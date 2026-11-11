@@ -624,6 +624,7 @@ internal fun DualPageSettledVisiblePageReporter(
     }
 }
 
+@Composable
 internal fun Modifier.readerPrimaryTapInput(
     zoomScale: Float,
     navigationMode: NavigationMode,
@@ -631,57 +632,69 @@ internal fun Modifier.readerPrimaryTapInput(
     allowZoomedNavigation: Boolean = false,
     isVertical: Boolean = false,
     onTap: (TapNavRegion) -> Unit,
-): Modifier = pointerInput(zoomScale, navigationMode, isRtl, allowZoomedNavigation, isVertical) {
-    awaitPointerEventScope {
-        while (true) {
-            val event = awaitPointerEvent(PointerEventPass.Initial)
-            if (!event.isReaderPrimaryPress()) continue
+): Modifier {
+    val viewport = LocalReaderViewportOptions.current
+    val effectiveNavigationMode = if (viewport.webtoon &&
+        navigationMode == NavigationMode.Default
+    ) {
+        NavigationMode.L
+    } else {
+        navigationMode
+    }
+    val inversion = if (viewport.webtoon) viewport.display.webtoonInversion else viewport.display.pagerInversion
+    return pointerInput(zoomScale, effectiveNavigationMode, isRtl, allowZoomedNavigation, isVertical, inversion) {
+        awaitPointerEventScope {
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                if (!event.isReaderPrimaryPress()) continue
 
-            val down = event.changes.first()
-            val downPos = down.position
-            val downTime = System.currentTimeMillis()
-            var gestureComplete = false
-            var moved = false
-            var isTap = false
-            var releasePos = downPos
+                val down = event.changes.first()
+                val downPos = down.position
+                val downTime = System.currentTimeMillis()
+                var gestureComplete = false
+                var moved = false
+                var isTap = false
+                var releasePos = downPos
 
-            while (!gestureComplete) {
-                val nextEvent = awaitPointerEvent(PointerEventPass.Main)
-                // Respect consumed releases without cancelling taps when a pager consumes the press.
-                if (nextEvent.type == PointerEventType.Release && nextEvent.changes.any { it.isConsumed }) {
-                    gestureComplete = true
-                    continue
-                }
-                when (nextEvent.type) {
-                    PointerEventType.Move -> {
-                        val change = nextEvent.changes.first()
-                        val dx = change.position.x - downPos.x
-                        val dy = change.position.y - downPos.y
-                        if (dx * dx + dy * dy > 225f) {
-                            moved = true
+                while (!gestureComplete) {
+                    val nextEvent = awaitPointerEvent(PointerEventPass.Main)
+                    // Respect consumed releases without cancelling taps when a pager consumes the press.
+                    if (nextEvent.type == PointerEventType.Release && nextEvent.changes.any { it.isConsumed }) {
+                        gestureComplete = true
+                        continue
+                    }
+                    when (nextEvent.type) {
+                        PointerEventType.Move -> {
+                            val change = nextEvent.changes.first()
+                            val dx = change.position.x - downPos.x
+                            val dy = change.position.y - downPos.y
+                            if (dx * dx + dy * dy > 225f) {
+                                moved = true
+                                gestureComplete = true
+                            }
+                        }
+                        PointerEventType.Release -> {
+                            releasePos = nextEvent.changes.first().position
+                            if (System.currentTimeMillis() - downTime < 400) isTap = true
                             gestureComplete = true
                         }
+                        PointerEventType.Exit -> gestureComplete = true
                     }
-                    PointerEventType.Release -> {
-                        releasePos = nextEvent.changes.first().position
-                        if (System.currentTimeMillis() - downTime < 400) isTap = true
-                        gestureComplete = true
-                    }
-                    PointerEventType.Exit -> gestureComplete = true
                 }
-            }
 
-            // Dual readers opt into short clicks while zoomed; movement belongs to image panning.
-            if (isTap && !moved && (zoomScale <= 1f || allowZoomedNavigation)) {
-                tapNavRegionForPointerButton(
-                    button = PointerButton.Primary,
-                    x = if (isVertical) releasePos.y else releasePos.x,
-                    y = if (isVertical) releasePos.x else releasePos.y,
-                    width = if (isVertical) size.height.toFloat() else size.width.toFloat(),
-                    height = if (isVertical) size.width.toFloat() else size.height.toFloat(),
-                    mode = navigationMode,
-                    isRtl = isRtl,
-                )?.let(onTap)
+                // Dual readers opt into short clicks while zoomed; movement belongs to image panning.
+                if (isTap && !moved && (zoomScale <= 1f || allowZoomedNavigation)) {
+                    tapNavRegionForPointerButton(
+                        button = PointerButton.Primary,
+                        x = if (isVertical) releasePos.y else releasePos.x,
+                        y = if (isVertical) releasePos.x else releasePos.y,
+                        width = if (isVertical) size.height.toFloat() else size.width.toFloat(),
+                        height = if (isVertical) size.width.toFloat() else size.height.toFloat(),
+                        mode = effectiveNavigationMode,
+                        isRtl = isRtl,
+                        inversion = inversion,
+                    )?.let(onTap)
+                }
             }
         }
     }

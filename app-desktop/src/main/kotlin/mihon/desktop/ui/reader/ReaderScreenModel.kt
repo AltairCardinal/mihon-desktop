@@ -3182,6 +3182,17 @@ class ReaderScreenModel(
 
     // ── Display settings ──────────────────────────────────────────────────────
 
+    fun setDisplayOptions(options: mihon.desktop.reader.ReaderDisplayOptions, prefs: ReaderPreferences? = null) {
+        val normalized = options.copy(
+            webtoonPadding = options.webtoonPadding.coerceIn(0, 25),
+            flashMillis = options.flashMillis.coerceIn(100, 1500),
+            flashInterval = options.flashInterval.coerceIn(1, 10),
+        )
+        _state.update { it.copy(displayOptions = normalized) }
+        if (state.value.isFullscreen != normalized.fullscreen) setFullscreen(normalized.fullscreen)
+        prefs?.saveDisplayOptions(normalized)
+    }
+
     fun setBackgroundTheme(theme: ReaderBackgroundTheme, prefs: ReaderPreferences? = null) {
         _state.update { it.copy(backgroundTheme = theme) }
         prefs?.backgroundTheme = theme
@@ -3449,6 +3460,8 @@ internal fun initialReaderState(
         dualPageMode = settings.mode == ReaderSettingsMode.HORIZONTAL && settings.layout == ReaderSettingsLayout.DOUBLE,
         autoSplitPages = prefs.autoSplitPages,
         autoSpreadMatching = settings.match,
+        displayOptions = prefs.loadDisplayOptions(),
+        isFullscreen = prefs.loadDisplayOptions().fullscreen,
         backgroundTheme = prefs.backgroundTheme,
         navigationMode = prefs.navigationMode,
         cropBordersPager = prefs.cropBordersPager,

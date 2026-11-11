@@ -11,10 +11,14 @@ internal fun desktopReaderPresentationRequest(
     splitPageIndices: Set<Int> = emptySet(),
     spreadPageIndices: Set<Int> = emptySet(),
     splitWidePages: Boolean = true,
+    invertSplitPages: Boolean = false,
+    alwaysShowChapterTransition: Boolean = false,
 ): ReaderPresentationRequest {
     val pagesByIndex = chapter.pages.associateBy { it.id.sourcePageIndex }
     return ReaderPresentationRequest(
         chapter = chapter,
+        invertSplitPages = invertSplitPages,
+        alwaysShowChapterTransition = alwaysShowChapterTransition,
         direction = direction,
         hasPreviousChapter = hasPreviousChapter,
         hasNextChapter = hasNextChapter,

@@ -1,25 +1,33 @@
 package mihon.desktop.ui.reader
 
-import tachiyomi.i18n.MR
-
 import androidx.compose.foundation.ContextMenuArea
 import androidx.compose.foundation.ContextMenuItem
+import androidx.compose.foundation.ContextMenuState
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.asSkiaBitmap
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.platform.DesktopShareFailureReason
 import mihon.desktop.platform.DesktopShareResult
 import mihon.desktop.platform.DesktopShareService
 import mihon.desktop.platform.toDesktopNotification
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import mihon.desktop.reader.DesktopReaderImageAsset
 import mihon.desktop.reader.DesktopReaderImageAssetLease
 import mihon.desktop.reader.PageSaveHelper
 import mihon.domain.reader.PixelBounds
 import mihon.domain.reader.splitPageBounds
+import tachiyomi.i18n.MR
 import java.awt.image.BufferedImage
 import java.io.File
 import java.util.Locale
@@ -58,58 +66,93 @@ internal fun PageContextMenu(
     val dependencies = LocalDesktopUiDependencies.current
     val labels = pageContextMenuLabels(includeSetAsCover = onSetAsCover != null)
     val items = buildList {
-        add(ContextMenuItem(labels[0]) {
-            scope.launch(Dispatchers.IO) {
-                val sharedImage = imageLeaseProvider().useAsset(splitHalf, sourceBounds)
-                performPageContextMenuImageAction(
-                    PageContextMenuImageAction.SHARE,
-                    sharedImage,
-                    File("shared-page.png"),
-                    dependencies.shareService,
-                    dependencies.notificationService,
-                    shareMessage = MR.strings.share_page_info.localized(
-                        Locale.getDefault(),
-                        mangaTitle,
-                        chapterTitle,
-                        pageIndex + 1,
-                    ),
-                )
-            }
-        })
-        add(ContextMenuItem(labels[1]) {
-            scope.launch(Dispatchers.IO) {
-                val img = imageLeaseProvider().useAsset(splitHalf, sourceBounds)
-                performPageContextMenuImageAction(
-                    PageContextMenuImageAction.COPY,
-                    img,
-                    File("page.png"),
-                    dependencies.shareService,
-                    dependencies.notificationService,
-                )
-            }
-        })
-        add(ContextMenuItem(labels[2]) {
-            scope.launch(Dispatchers.IO) {
-                val img = imageLeaseProvider().useAsset(splitHalf, sourceBounds)
-                val destination = saveDirectoryProvider().resolve(
-                    PageSaveHelper.buildSaveFileName(mangaTitle, chapterTitle, pageIndex),
-                )
-                performPageContextMenuImageAction(
-                    PageContextMenuImageAction.SAVE,
-                    img,
-                    destination,
-                    dependencies.shareService,
-                    dependencies.notificationService,
-                )
-            }
-        })
+        add(
+            ContextMenuItem(labels[0]) {
+                scope.launch(Dispatchers.IO) {
+                    val sharedImage = imageLeaseProvider().useAsset(splitHalf, sourceBounds)
+                    performPageContextMenuImageAction(
+                        PageContextMenuImageAction.SHARE,
+                        sharedImage,
+                        File("shared-page.png"),
+                        dependencies.shareService,
+                        dependencies.notificationService,
+                        shareMessage = MR.strings.share_page_info.localized(
+                            Locale.getDefault(),
+                            mangaTitle,
+                            chapterTitle,
+                            pageIndex + 1,
+                        ),
+                    )
+                }
+            },
+        )
+        add(
+            ContextMenuItem(labels[1]) {
+                scope.launch(Dispatchers.IO) {
+                    val img = imageLeaseProvider().useAsset(splitHalf, sourceBounds)
+                    performPageContextMenuImageAction(
+                        PageContextMenuImageAction.COPY,
+                        img,
+                        File("page.png"),
+                        dependencies.shareService,
+                        dependencies.notificationService,
+                    )
+                }
+            },
+        )
+        add(
+            ContextMenuItem(labels[2]) {
+                scope.launch(Dispatchers.IO) {
+                    val img = imageLeaseProvider().useAsset(splitHalf, sourceBounds)
+                    val destination = saveDirectoryProvider().resolve(
+                        PageSaveHelper.buildSaveFileName(mangaTitle, chapterTitle, pageIndex),
+                    )
+                    performPageContextMenuImageAction(
+                        PageContextMenuImageAction.SAVE,
+                        img,
+                        destination,
+                        dependencies.shareService,
+                        dependencies.notificationService,
+                    )
+                }
+            },
+        )
         if (onSetAsCover != null) {
             add(ContextMenuItem(labels[3], onSetAsCover))
         }
     }
 
-    ContextMenuArea(items = { items }) {
-        content()
+    val menuState = remember { ContextMenuState() }
+    val longTap = LocalReaderViewportOptions.current.display.longTap
+    ContextMenuArea(items = { items }, state = menuState) {
+        Box(
+            Modifier.pointerInput(longTap) {
+                awaitPointerEventScope {
+                    var down: androidx.compose.ui.geometry.Offset? = null
+                    var started = 0L
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull() ?: continue
+                        if (event.type == PointerEventType.Press && change.type == PointerType.Touch) {
+                            down = change.position
+                            started = change.uptimeMillis
+                        } else if (event.type == PointerEventType.Move && down != null &&
+                            (change.position - down!!).getDistance() > viewConfiguration.touchSlop
+                        ) {
+                            down = null
+                        } else if (event.type == PointerEventType.Release) {
+                            val origin = down
+                            if (longTap && origin != null && !change.isConsumed &&
+                                change.uptimeMillis - started >= viewConfiguration.longPressTimeoutMillis
+                            ) {
+                                menuState.status = ContextMenuState.Status.Open(Rect(origin, Size.Zero))
+                            }
+                            down = null
+                        }
+                    }
+                }
+            },
+        ) { content() }
     }
 }
 
@@ -136,8 +179,8 @@ internal fun loadPageContextMenuImage(
         bounds.y < 0 ||
         bounds.width <= 0 ||
         bounds.height <= 0 ||
-            bounds.x.toLong() + bounds.width.toLong() > bitmap.width.toLong() ||
-            bounds.y.toLong() + bounds.height.toLong() > bitmap.height.toLong()
+        bounds.x.toLong() + bounds.width.toLong() > bitmap.width.toLong() ||
+        bounds.y.toLong() + bounds.height.toLong() > bitmap.height.toLong()
     ) {
         return null
     }

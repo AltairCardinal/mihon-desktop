@@ -23,8 +23,19 @@ import uy.kohesive.injekt.api.get
 class PagerConfig(
     private val viewer: Any,
     scope: CoroutineScope,
-    readerPreferences: ReaderPreferences = Injekt.get(),
+    private val readerPreferences: ReaderPreferences = Injekt.get(),
 ) : ViewerConfig(readerPreferences, scope) {
+
+    override val singlePageExtrasEnabled: Boolean
+        get() {
+            val activity = (viewer as? ViewerWithPager)?.activity
+            val flags = activity?.viewModel?.state?.value?.manga?.viewerFlags
+            return if (flags != null) {
+                ReaderSettingsCodec.effective(flags, readerPreferences.defaultReaderSettings()).singlePageExtrasEnabled
+            } else {
+                viewer is L2RPagerViewer || viewer is R2LPagerViewer
+            }
+        }
 
     var theme = readerPreferences.readerTheme().get()
         private set
@@ -47,6 +58,7 @@ class PagerConfig(
         private set
 
     var landscapeZoom = false
+        get() = field && singlePageExtrasEnabled
         private set
 
     private fun effectiveMatching(preferences: ReaderPreferences): Boolean {
@@ -104,7 +116,7 @@ class PagerConfig(
                 { dualPageSplit = it },
                 {
                     imagePropertyChangedListener?.invoke()
-                    dualPageSplitChangedListener?.invoke(it)
+                    dualPageSplitChangedListener?.invoke(dualPageSplit)
                 },
             )
 

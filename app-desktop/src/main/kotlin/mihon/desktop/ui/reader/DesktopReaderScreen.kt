@@ -397,6 +397,8 @@ data class DesktopReaderScreen(
         // Settings dialog
         if (state.showSettings) {
             ReaderSettingsPanel(
+                displayOptions = state.displayOptions.copy(fullscreen = state.isFullscreen),
+                onDisplayOptionsChange = { model.setDisplayOptions(it, runtime.prefs) },
                 currentMode = if (state.automaticLayout) ReadingMode.AUTO else state.readingMode,
                 readerSettings = state.readerSettings,
                 onReaderSettingsChange = {
@@ -625,7 +627,9 @@ internal fun ReaderState.dualPresentationSnapshot(
         hasPreviousChapter = hasPreviousChapter,
         hasNextChapter = hasNextChapter,
         spreadPageIndices = spreadPages,
-        splitWidePages = autoSplitPages,
+        splitWidePages = effectiveAutoSplitPages,
+        invertSplitPages = displayOptions.splitInvert,
+        alwaysShowChapterTransition = displayOptions.alwaysShowChapterTransition,
     ).copy(
         dualPageUnits = dualPageUnits.takeIf { dualPageIdentity != null },
         dualPageFrames = dualPageFrames.takeIf { dualPageIdentity != null },
@@ -646,7 +650,9 @@ internal fun ReaderState.singlePresentationSnapshot(
         hasPreviousChapter = hasPreviousChapter,
         hasNextChapter = hasNextChapter,
         splitPageIndices = spreadPages,
-        splitWidePages = autoSplitPages,
+        splitWidePages = effectiveAutoSplitPages,
+        invertSplitPages = displayOptions.splitInvert,
+        alwaysShowChapterTransition = displayOptions.alwaysShowChapterTransition,
     )
     return DesktopReaderPresentationRegistry.require(ReaderPresentationMode.SINGLE_PAGED).present(request)
 }
@@ -684,12 +690,12 @@ private fun ReaderSideEffects(
     LaunchedEffect(
         state.session.activeChapter.pages.size,
         state.spreadPages,
-        state.autoSplitPages,
+        state.effectiveAutoSplitPages,
         state.dualPageMode,
         state.readingMode,
     ) {
         model.setVirtualPages(
-            if (state.autoSplitPages && !state.dualPageMode && state.readingMode != ReadingMode.WEBTOON &&
+            if (state.effectiveAutoSplitPages && !state.dualPageMode && state.readingMode != ReadingMode.WEBTOON &&
                 state.spreadPages.isNotEmpty()
             ) {
                 buildVirtualPageList(
@@ -1329,6 +1335,15 @@ internal fun ReaderContent(
             ?: remember(presentationImageOwner, state.session.generation) { ReaderPageImageContentRegistry() }
     Box(Modifier.fillMaxSize().adaptiveReaderViewport(model, contextMenuScope)) {
         CompositionLocalProvider(
+            LocalReaderViewportOptions provides
+                ReaderViewportOptions(
+                    state.displayOptions,
+                    state.readerSettings.singlePageExtrasEnabled,
+                    state.readingMode == ReadingMode.WEBTOON,
+                    state.readingMode == ReadingMode.RTL,
+                    previousChapter = readerNav?.previousRead,
+                    nextChapter = readerNav?.nextToRead,
+                ),
             LocalReaderRenderTrace provides renderTrace,
             LocalReaderPageImageContent provides imageContent,
             LocalReaderChapterTransitionContext provides state.context,
@@ -1342,7 +1357,8 @@ internal fun ReaderContent(
                     currentDisplayUnitId = state.currentDisplayUnitId,
                     initialAnchor = state.webtoonScrollAnchor,
                     pageGaps = state.readerSettings.gap,
-                    autoSplitPages = state.autoSplitPages, splitPageIndices = state.spreadPages,
+                    onTapCenter = model::toggleUI,
+                    autoSplitPages = state.effectiveAutoSplitPages, splitPageIndices = state.spreadPages,
                     cropBorders = state.cropBordersWebtoon, sidePadding = state.webtoonSidePadding,
                     autoScroll = state.webtoonAutoScroll, autoScrollSpeed = state.webtoonAutoScrollSpeed,
                     contextMenuScope = contextMenuScope, mangaTitle = mangaTitle, chapterTitle = chapterTitle,
@@ -1383,7 +1399,7 @@ internal fun ReaderContent(
                         dualPageFrames = state.dualPageFrames,
                         dualPageTargetFrameId = state.dualPageTargetFrameId,
                         pagerPresentationBinding = pagerBinding,
-                        pageTurnAnimation = pageTurnAnimation,
+                        pageTurnAnimation = pageTurnAnimation && state.displayOptions.pageTransitions,
                         allowAdjacentViewport = firstPresentedGeneration == state.session.generation,
                         startupSingleViewport = LocalReaderFirstCompositionReady.current?.ready == true &&
                             firstPresentedGeneration != state.session.generation,
@@ -1391,7 +1407,7 @@ internal fun ReaderContent(
                         currentDisplayUnitId = state.currentDisplayUnitId, isRtl = rtl,
                         isDualPage = state.dualPageMode,
                         isVertical = state.readingMode == ReadingMode.VERTICAL,
-                        autoSplitPages = state.autoSplitPages,
+                        autoSplitPages = state.effectiveAutoSplitPages,
                         cropBorders = state.cropBordersPager, contextMenuScope = contextMenuScope,
                         mangaTitle = mangaTitle, chapterTitle = chapterTitle, zoomState = state.zoomState,
                         splitPageIndices = state.spreadPages,
@@ -1417,6 +1433,7 @@ internal fun ReaderContent(
                 }
             }
         }
+        ReaderGeneralEffects(state)
     }
 }
 

@@ -75,6 +75,19 @@ internal fun Modifier.readerZoomInput(
     val latestChange by rememberUpdatedState(onZoomChange)
     val latestTap by rememberUpdatedState(onTap)
     val latestBounds by rememberUpdatedState(panBounds)
+    val viewportOptions = LocalReaderViewportOptions.current
+    val minimumZoom by rememberUpdatedState(
+        if (viewportOptions.webtoon &&
+            !viewportOptions.display.webtoonDisableZoomOut
+        ) {
+            0.1f
+        } else {
+            1f
+        },
+    )
+    val doubleTapEnabled by rememberUpdatedState(
+        !viewportOptions.webtoon || viewportOptions.display.webtoonDoubleTapZoom,
+    )
     return pointerInput(Unit) {
         var lastTapTime = 0L
         var lastTapPosition = Offset.Zero
@@ -95,9 +108,20 @@ internal fun Modifier.readerZoomInput(
                     lastPanPosition = down.position
                     downTime = System.currentTimeMillis()
                     moved = false
-                    resetTap = downTime - lastTapTime < 300 &&
+                    resetTap = doubleTapEnabled && downTime - lastTapTime < 300 &&
                         (down.position - lastTapPosition).getDistance() < 50
-                    gestureZoom = if (resetTap) ZoomState() else latestZoom
+                    gestureZoom =
+                        if (resetTap) {
+                            if (viewportOptions.webtoon &&
+                                latestZoom.scale <= 1f
+                            ) {
+                                ZoomState(scale = 2f)
+                            } else {
+                                ZoomState()
+                            }
+                        } else {
+                            latestZoom
+                        }
                     if (resetTap) {
                         latestChange(gestureZoom)
                         lastTapTime = 0L
@@ -109,10 +133,10 @@ internal fun Modifier.readerZoomInput(
                     moved = true
                     val previousCentroid = event.calculateCentroid(useCurrent = false)
                     val pan = event.calculatePan()
-                    val scale = (gestureZoom.scale * event.calculateZoom()).coerceIn(1f, ZoomState.MAX_SCALE)
+                    val scale = (gestureZoom.scale * event.calculateZoom()).coerceIn(minimumZoom, ZoomState.MAX_SCALE)
                     val factor = scale / gestureZoom.scale
                     val center = Offset(size.width / 2f, size.height / 2f)
-                    gestureZoom = if (scale <= 1f) {
+                    gestureZoom = if (scale == 1f) {
                         ZoomState()
                     } else {
                         val focalOffset = previousCentroid - center
@@ -154,9 +178,7 @@ internal fun Modifier.readerZoomInput(
                     if (!consumed && !moved && !resetTap && System.currentTimeMillis() - downTime < 400) {
                         lastTapTime = System.currentTimeMillis()
                         lastTapPosition = event.changes.first().position
-                        if (gestureZoom.scale <= 1f) {
-                            latestTap?.invoke(lastTapPosition, size.width.toFloat(), size.height.toFloat())
-                        }
+                        latestTap?.invoke(lastTapPosition, size.width.toFloat(), size.height.toFloat())
                     }
                     downPosition = null
                 }
@@ -256,6 +278,19 @@ internal fun ZoomablePageBox(
     constrainZoom: Boolean = true,
     onPanGeometryChange: ((ReaderRegionDrawGeometry?) -> Unit)? = null,
 ) {
+    val viewportOptions = LocalReaderViewportOptions.current
+    val options = viewportOptions.display
+    val preferredAlignment = if (viewportOptions.singlePage) {
+        when (options.zoomStart) {
+            mihon.desktop.reader.ReaderZoomStart.LEFT -> Alignment.CenterStart
+            mihon.desktop.reader.ReaderZoomStart.RIGHT -> Alignment.CenterEnd
+            mihon.desktop.reader.ReaderZoomStart.CENTER -> Alignment.Center
+            mihon.desktop.reader.ReaderZoomStart.AUTO ->
+                if (viewportOptions.rtl) Alignment.CenterEnd else Alignment.CenterStart
+        }
+    } else {
+        imageAlignment
+    }
     val gestureCapabilities = zoomableGestureCapabilities(
         handlesTapNavigation = handlesTapNavigation,
         hasNavigationCallbacks = onTapPrevious != null || onTapNext != null || onTapCenter != null,
@@ -268,7 +303,16 @@ internal fun ZoomablePageBox(
     val readyState = presentationState as? DesktopReaderPresentationImageState.Ready
     val asset = readyState?.asset
     var layoutSize by remember { mutableStateOf(IntSize.Zero) }
-    val resolvedScale = when (scaleType) {
+    val effectiveScaleType = if (viewportOptions.singlePage && options.landscapeZoom &&
+        asset != null && asset.sourceWidth > asset.sourceHeight &&
+        layoutSize.height > layoutSize.width
+    ) {
+        ScaleType.FIT_HEIGHT
+    } else {
+        scaleType
+    }
+    val resolvedScale = when (effectiveScaleType) {
+        ScaleType.STRETCH -> ContentScale.FillBounds
         ScaleType.FIT_SCREEN -> ContentScale.Fit
         ScaleType.FIT_WIDTH -> ContentScale.FillWidth
         ScaleType.FIT_HEIGHT -> ContentScale.FillHeight
@@ -279,13 +323,24 @@ internal fun ZoomablePageBox(
             ContentScale.Fit
         }
     }
+    val needsHorizontalAnchor = renderedImage != null && layoutSize.width > 0 && layoutSize.height > 0 &&
+        (
+            zoomState.scale > 1f || renderedImage.bitmap.width * resolvedScale.computeScaleFactor(
+                androidx.compose.ui.geometry.Size(
+                    renderedImage.bitmap.width.toFloat(),
+                    renderedImage.bitmap.height.toFloat(),
+                ),
+                androidx.compose.ui.geometry.Size(layoutSize.width.toFloat(), layoutSize.height.toFloat()),
+            ).scaleX > layoutSize.width + 0.5f
+            )
+    val actualAlignment = if (needsHorizontalAnchor) preferredAlignment else imageAlignment
     val panGeometry = if (renderedImage != null && layoutSize.width > 0 && layoutSize.height > 0) {
         resolveReaderRegionDrawGeometry(
             layoutSize,
             IntSize(renderedImage.bitmap.width, renderedImage.bitmap.height),
             renderedImage.renderedSourceBounds,
             resolvedScale,
-            imageAlignment,
+            actualAlignment,
         ).let { imageViewport?.mapGeometry(it) ?: it }
     } else {
         null
@@ -322,12 +377,38 @@ internal fun ZoomablePageBox(
                 zoomState = displayZoom,
                 onZoomChange = onZoomChange,
                 panBounds = panBounds,
-                onTap = if (gestureCapabilities.tapNavigationEnabled) {
+                onTap = if (gestureCapabilities.tapNavigationEnabled ||
+                    (displayZoom.scale > 1f && options.navigateToPan)
+                ) {
                     { point, width, height ->
-                        when (tapNavRegion(point.x, point.y, width, height, navigationMode, isRtl)) {
-                            TapNavRegion.PREV -> onTapPrevious?.invoke()
-                            TapNavRegion.NEXT -> onTapNext?.invoke()
-                            TapNavRegion.MENU -> onTapCenter?.invoke()
+                        val region =
+                            tapNavRegion(point.x, point.y, width, height, navigationMode, isRtl, options.pagerInversion)
+                        val panned = if (displayZoom.scale > 1f && options.navigateToPan &&
+                            region != TapNavRegion.MENU
+                        ) {
+                            panBounds?.constrain(
+                                displayZoom.pan(
+                                    if (point.x <
+                                        width / 2
+                                    ) {
+                                        width * 0.8f
+                                    } else {
+                                        -width * 0.8f
+                                    },
+                                    0f,
+                                ),
+                            )
+                        } else {
+                            null
+                        }
+                        if (panned != null && panned != displayZoom) {
+                            onZoomChange(panned)
+                        } else {
+                            when (region) {
+                                TapNavRegion.PREV -> onTapPrevious?.invoke()
+                                TapNavRegion.NEXT -> onTapNext?.invoke()
+                                TapNavRegion.MENU -> onTapCenter?.invoke()
+                            }
                         }
                     }
                 } else {
@@ -342,7 +423,7 @@ internal fun ZoomablePageBox(
             modifier = modifier
                 .onSizeChanged { layoutSize = it }
                 .then(gestureModifier),
-            contentAlignment = imageAlignment,
+            contentAlignment = actualAlignment,
         ) {
             val fullDecodeFailed = presentationState is DesktopReaderPresentationImageState.Failed
             val presentationClosed = presentationState is DesktopReaderPresentationImageState.Closed
@@ -447,7 +528,7 @@ internal fun ZoomablePageBox(
                                         ),
                                         renderedSourceBounds = renderedImage.renderedSourceBounds,
                                         contentScale = resolvedScale,
-                                        alignment = imageAlignment,
+                                        alignment = actualAlignment,
                                     )
                                 }
                                 val geometry = localGeometry?.let { imageViewport?.mapGeometry(it) ?: it }
@@ -468,7 +549,7 @@ internal fun ZoomablePageBox(
                             Image(
                                 painter = observedPainter,
                                 contentDescription = pageLabel,
-                                alignment = imageAlignment,
+                                alignment = actualAlignment,
                                 modifier = Modifier.fillMaxSize().onGloballyPositioned {
                                     observedCoordinates?.set(0, it)
                                     observedPainter.lastLayoutCallbackMonotonicNanos = System.nanoTime()
@@ -479,20 +560,22 @@ internal fun ZoomablePageBox(
                             Image(
                                 bitmap = renderedImage.bitmap,
                                 contentDescription = pageLabel,
-                                alignment = imageAlignment,
+                                alignment = actualAlignment,
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = resolvedScale,
                             )
                         }
-                        ReaderRegionTileLayer(
-                            presentationImage = presentationImage,
-                            renderedImage = renderedImage,
-                            contentScale = resolvedScale,
-                            alignment = imageAlignment,
-                            zoomState = displayZoom,
-                            imageViewport = imageViewport,
-                            transformedByParent = true,
-                        )
+                        if (renderedImage.key.rotation == 0) {
+                            ReaderRegionTileLayer(
+                                presentationImage = presentationImage,
+                                renderedImage = renderedImage,
+                                contentScale = resolvedScale,
+                                alignment = actualAlignment,
+                                zoomState = displayZoom,
+                                imageViewport = imageViewport,
+                                transformedByParent = true,
+                            )
+                        }
                     }
                 }
                 Box(imageModifier) {

@@ -94,6 +94,8 @@ internal data class ReaderPresentationRequest(
     val direction: ReaderDirection,
     val hasPreviousChapter: Boolean = true,
     val hasNextChapter: Boolean = true,
+    val invertSplitPages: Boolean = false,
+    val alwaysShowChapterTransition: Boolean = false,
     val splitPageIds: Set<ReaderPageId> = emptySet(),
     val pageSizes: Map<ReaderPageId, ReaderPageSize> = emptyMap(),
     val pageRotations: Map<ReaderPageId, PageRotation> = emptyMap(),

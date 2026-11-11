@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -48,11 +49,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import mihon.desktop.reader.ReaderBackgroundTheme
 import mihon.desktop.reader.ReaderColorFilter
+import mihon.desktop.reader.ReaderDisplayOptions
+import mihon.desktop.reader.ReaderFlashColor
+import mihon.desktop.reader.ReaderRippleStyle
+import mihon.desktop.reader.ReaderZoomStart
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.reader.ZoomState
 import mihon.desktop.ui.settings.desktopSettingsActivationKeys
+import mihon.domain.reader.NavigationInversion
 import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderScrollMode
 import mihon.domain.reader.ReaderSettings
@@ -60,18 +66,12 @@ import mihon.domain.reader.ReaderSettingsLayout
 import mihon.domain.reader.ReaderSettingsMode
 import tachiyomi.i18n.MR
 
-/**
- * Reader settings dialog with three tabs, mirroring Android's reader bottom sheet:
- *  - General: Reading mode, dual-page, auto spread, background theme
- *  - Display : Crop borders
- *  - Filter  : Brightness, colour filter (RGB + alpha)
- *
- * Android reference: presentation/reader/settings/
- *   GeneralSettingsPage, ColorFilterPage, ReadingModePage
- */
+/** Reader settings mirror Android: reading mode/extensions, general/E-Ink, and filters. */
 @Composable
 fun ReaderSettingsPanel(
     currentMode: ReadingMode,
+    displayOptions: ReaderDisplayOptions = ReaderDisplayOptions(),
+    onDisplayOptionsChange: (ReaderDisplayOptions) -> Unit = {},
     followsGlobal: Boolean = false,
     onFollowGlobal: () -> Unit = {},
     isDualPage: Boolean,
@@ -172,20 +172,20 @@ fun ReaderSettingsPanel(
                             readerSettings = readerSettings,
                             onReaderSettingsChange = onReaderSettingsChange,
                             onCustomize = onCustomize,
-                        )
-                        1 -> DisplayTab(
+                            displayOptions = displayOptions,
+                            onDisplayOptionsChange = onDisplayOptionsChange,
+                            scaleType = scaleType,
+                            onScaleTypeChange = onScaleTypeChange,
                             cropBordersPager = cropBordersPager,
                             cropBordersWebtoon = cropBordersWebtoon,
-                            webtoonSidePadding = webtoonSidePadding,
-                            webtoonAutoScroll = webtoonAutoScroll,
-                            webtoonAutoScrollSpeed = webtoonAutoScrollSpeed,
-                            scaleType = scaleType,
                             onCropBordersPagerChange = onCropBordersPagerChange,
                             onCropBordersWebtoonChange = onCropBordersWebtoonChange,
-                            onWebtoonSidePaddingChange = onWebtoonSidePaddingChange,
-                            onWebtoonAutoScrollChange = onWebtoonAutoScrollChange,
-                            onWebtoonAutoScrollSpeedChange = onWebtoonAutoScrollSpeedChange,
-                            onScaleTypeChange = onScaleTypeChange,
+                        )
+                        1 -> ReaderGeneralTab(
+                            backgroundTheme,
+                            onBackgroundThemeChange,
+                            displayOptions,
+                            onDisplayOptionsChange,
                         )
                         2 -> FilterTab(
                             colorFilter = colorFilter,
@@ -232,6 +232,14 @@ internal fun GeneralTab(
     readerSettings: ReaderSettings? = null,
     onReaderSettingsChange: ((ReaderSettings) -> Unit)? = null,
     onCustomize: (() -> Unit)? = null,
+    displayOptions: ReaderDisplayOptions = ReaderDisplayOptions(),
+    onDisplayOptionsChange: (ReaderDisplayOptions) -> Unit = {},
+    scaleType: ScaleType = ScaleType.DEFAULT,
+    onScaleTypeChange: (ScaleType) -> Unit = {},
+    cropBordersPager: Boolean = false,
+    cropBordersWebtoon: Boolean = false,
+    onCropBordersPagerChange: (Boolean) -> Unit = {},
+    onCropBordersWebtoonChange: (Boolean) -> Unit = {},
 ) {
     val settings = readerSettings ?: ReaderSettings(
         mode = if (currentMode == ReadingMode.WEBTOON ||
@@ -278,142 +286,249 @@ internal fun GeneralTab(
     pairingRecovery()
     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-    // Navigation mode (pager only)
-    if (currentMode != ReadingMode.WEBTOON) {
-        SettingsSection(MR.strings.desktop_ui_tap_navigation.localized()) {
+    ReaderModeExtensions(
+        settings, navigationMode, onNavigationModeChange, scaleType, onScaleTypeChange,
+        autoSplitPages, onAutoSplitPagesChange, cropBordersPager, cropBordersWebtoon,
+        onCropBordersPagerChange, onCropBordersWebtoonChange, displayOptions, onDisplayOptionsChange,
+    )
+}
+
+@Composable
+private fun ReaderModeExtensions(
+    settings: ReaderSettings,
+    navigationMode: NavigationMode,
+    onNavigationModeChange: (NavigationMode) -> Unit,
+    scaleType: ScaleType,
+    onScaleTypeChange: (ScaleType) -> Unit,
+    split: Boolean,
+    onSplitChange: (Boolean) -> Unit,
+    cropPager: Boolean,
+    cropWebtoon: Boolean,
+    onCropPagerChange: (Boolean) -> Unit,
+    onCropWebtoonChange: (Boolean) -> Unit,
+    options: ReaderDisplayOptions,
+    onChange: (ReaderDisplayOptions) -> Unit,
+) {
+    val webtoon = settings.mode == ReaderSettingsMode.VERTICAL && settings.scroll == ReaderScrollMode.CONTINUOUS
+    val nav = if (webtoon) options.webtoonNavigation else navigationMode
+    SettingsSection(MR.strings.pref_viewer_nav.localized()) {
+        ChoiceRow {
+            listOf(
+                NavigationMode.Default,
+                NavigationMode.L,
+                NavigationMode.Kindle,
+                NavigationMode.Edge,
+                NavigationMode.RightAndLeft,
+                NavigationMode.Disabled,
+            ).forEach { mode ->
+                ChoiceChip(navigationModeLabel(mode), nav == mode, {
+                    if (webtoon) onChange(options.copy(webtoonNavigation = mode)) else onNavigationModeChange(mode)
+                })
+            }
+        }
+    }
+    if (nav != NavigationMode.Disabled) {
+        SettingsSection(MR.strings.pref_read_with_tapping_inverted.localized()) {
             ChoiceRow {
-                NavigationMode.entries.forEach { mode ->
-                    ChoiceChip(
-                        label = navigationModeLabel(mode),
-                        selected = navigationMode == mode,
-                        onClick = { onNavigationModeChange(mode) },
+                val inversion = if (webtoon) options.webtoonInversion else options.pagerInversion
+                val labels =
+                    listOf(
+                        MR.strings.tapping_inverted_none,
+                        MR.strings.tapping_inverted_horizontal,
+                        MR.strings.tapping_inverted_vertical,
+                        MR.strings.tapping_inverted_both,
                     )
+                NavigationInversion.entries.forEachIndexed { index, value ->
+                    ChoiceChip(labels[index].localized(), inversion == value, {
+                        onChange(
+                            if (webtoon) {
+                                options.copy(
+                                    webtoonInversion = value,
+                                )
+                            } else {
+                                options.copy(pagerInversion = value)
+                            },
+                        )
+                    })
                 }
             }
         }
-        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
     }
-
-    // Skip read chapters
-    SettingsSection(MR.strings.desktop_ui_chapter_navigation.localized()) {
-        SwitchRow(
-            label = MR.strings.desktop_ui_skip_read_chapters.localized(),
-            checked = skipReadChapters,
-            onCheckedChange = onSkipReadChaptersChange,
-        )
-        SwitchRow(
-            label = MR.strings.pref_skip_filtered_chapters.localized(),
-            checked = skipFilteredChapters,
-            onCheckedChange = onSkipFilteredChaptersChange,
-        )
-        SwitchRow(
-            label = MR.strings.pref_skip_dupe_chapters.localized(),
-            checked = skipDuplicateChapters,
-            onCheckedChange = onSkipDuplicateChaptersChange,
-        )
-    }
-
-    CheckboxRow(
-        label = MR.strings.pref_dual_page_split.localized(),
-        checked = autoSplitPages,
-        onCheckedChange = onAutoSplitPagesChange,
-    )
-
-    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-    // Background theme
-    SettingsSection(MR.strings.desktop_ui_background.localized()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            ReaderBackgroundTheme.entries.forEach { theme ->
-                BackgroundThemeChip(
-                    theme = theme,
-                    selected = backgroundTheme == theme,
-                    onClick = { onBackgroundThemeChange(theme) },
-                    modifier = Modifier.weight(1f),
+    if (webtoon) {
+        ReaderIntegerSlider(MR.strings.pref_webtoon_side_padding.localized(), options.webtoonPadding, 0..25, "%") {
+            onChange(options.copy(webtoonPadding = it))
+        }
+    } else {
+        SettingsSection(MR.strings.pref_image_scale_type.localized()) {
+            ChoiceRow {
+                ScaleType.entries.forEach { type ->
+                    ChoiceChip(scaleTypeLabel(type), scaleType == type, { onScaleTypeChange(type) })
+                }
+            }
+        }
+        SettingsSection(MR.strings.pref_zoom_start.localized()) {
+            val labels =
+                listOf(
+                    MR.strings.zoom_start_automatic,
+                    MR.strings.zoom_start_left,
+                    MR.strings.zoom_start_right,
+                    MR.strings.zoom_start_center,
                 )
+            ChoiceRow {
+                ReaderZoomStart.entries.forEachIndexed { i, value ->
+                    ChoiceChip(labels[i].localized(), options.zoomStart == value, {
+                        onChange(options.copy(zoomStart = value))
+                    })
+                }
+            }
+        }
+    }
+    CheckboxRow(MR.strings.pref_crop_borders.localized(), if (webtoon) cropWebtoon else cropPager, {
+        if (webtoon) onCropWebtoonChange(it) else onCropPagerChange(it)
+    })
+    if (settings.singlePageExtrasEnabled) {
+        CheckboxRow(MR.strings.pref_landscape_zoom.localized(), options.landscapeZoom, {
+            onChange(options.copy(landscapeZoom = it))
+        })
+    }
+    if (!webtoon) {
+        CheckboxRow(MR.strings.pref_navigate_pan.localized(), options.navigateToPan, {
+            onChange(options.copy(navigateToPan = it))
+        })
+    }
+    if (settings.singlePageExtrasEnabled) {
+        CheckboxRow(MR.strings.pref_dual_page_split.localized(), split, {
+            if (it && options.rotateWide) onChange(options.copy(rotateWide = false))
+            onSplitChange(it)
+        })
+        if (split) {
+            CheckboxRow(MR.strings.pref_dual_page_invert.localized(), options.splitInvert, {
+                onChange(options.copy(splitInvert = it))
+            }, indented = true)
+        }
+        CheckboxRow(MR.strings.pref_page_rotate.localized(), options.rotateWide, {
+            if (it && split) onSplitChange(false)
+            onChange(options.copy(rotateWide = it))
+        })
+        if (options.rotateWide) {
+            CheckboxRow(MR.strings.pref_page_rotate_invert.localized(), options.rotateInvert, {
+                onChange(options.copy(rotateInvert = it))
+            }, indented = true)
+        }
+    }
+    if (webtoon) {
+        CheckboxRow(MR.strings.pref_double_tap_zoom.localized(), options.webtoonDoubleTapZoom, {
+            onChange(options.copy(webtoonDoubleTapZoom = it))
+        })
+        CheckboxRow(MR.strings.pref_webtoon_disable_zoom_out.localized(), options.webtoonDisableZoomOut, {
+            onChange(options.copy(webtoonDisableZoomOut = it))
+        })
+    }
+}
+
+@Composable
+private fun ReaderGeneralTab(
+    background: ReaderBackgroundTheme,
+    onBackgroundChange: (ReaderBackgroundTheme) -> Unit,
+    options: ReaderDisplayOptions,
+    onChange: (ReaderDisplayOptions) -> Unit,
+) {
+    SettingsSection(MR.strings.pref_reader_theme.localized()) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ReaderBackgroundTheme.entries.forEach { theme ->
+                BackgroundThemeChip(theme, background == theme, { onBackgroundChange(theme) }, Modifier.weight(1f))
+            }
+        }
+    }
+    CheckboxRow(MR.strings.pref_show_page_number.localized(), options.showPageNumber, {
+        onChange(options.copy(showPageNumber = it))
+    })
+    CheckboxRow(MR.strings.pref_fullscreen.localized(), options.fullscreen, { onChange(options.copy(fullscreen = it)) })
+    CheckboxRow(MR.strings.pref_keep_screen_on.localized(), options.keepScreenOn, {
+        onChange(options.copy(keepScreenOn = it))
+    }, enabled = com.sun.jna.Platform.isWindows() || com.sun.jna.Platform.isMac())
+    CheckboxRow(MR.strings.pref_read_with_long_tap.localized(), options.longTap, {
+        onChange(options.copy(longTap = it))
+    })
+    CheckboxRow(MR.strings.pref_always_show_chapter_transition.localized(), options.alwaysShowChapterTransition, {
+        onChange(options.copy(alwaysShowChapterTransition = it))
+    })
+    CheckboxRow(MR.strings.pref_page_transitions.localized(), options.pageTransitions, {
+        onChange(options.copy(pageTransitions = it))
+    })
+    HorizontalDivider(Modifier.padding(vertical = 8.dp))
+    SettingsSection(MR.strings.pref_reader_eink.localized()) {
+        CheckboxRow(MR.strings.pref_flash_page.localized(), options.flash, { onChange(options.copy(flash = it)) })
+        CheckboxRow(MR.strings.pref_page_turn_ripple.localized(), options.ripple, {
+            onChange(options.copy(ripple = it))
+        })
+        if (options.ripple) {
+            SettingsSection(MR.strings.pref_page_turn_ripple_style.localized()) {
+                val labels =
+                    listOf(
+                        MR.strings.pref_page_turn_ripple_style_clean,
+                        MR.strings.pref_page_turn_ripple_style_shadow_line,
+                        MR.strings.pref_page_turn_ripple_style_smooth,
+                    )
+                ChoiceRow {
+                    ReaderRippleStyle.entries.forEachIndexed { i, value ->
+                        ChoiceChip(labels[i].localized(), options.rippleStyle == value, {
+                            onChange(options.copy(rippleStyle = value))
+                        })
+                    }
+                }
+            }
+        }
+        if (options.flash) {
+            ReaderIntegerSlider(
+                MR.strings.pref_flash_duration.localized(),
+                options.flashMillis,
+                100..1500,
+                " ms",
+                100,
+            ) {
+                onChange(options.copy(flashMillis = it))
+            }
+            ReaderIntegerSlider(MR.strings.pref_flash_page_interval.localized(), options.flashInterval, 1..10) {
+                onChange(options.copy(flashInterval = it))
+            }
+            SettingsSection(MR.strings.pref_flash_with.localized()) {
+                val labels =
+                    listOf(
+                        MR.strings.pref_flash_style_black,
+                        MR.strings.pref_flash_style_white,
+                        MR.strings.pref_flash_style_white_black,
+                    )
+                ChoiceRow {
+                    ReaderFlashColor.entries.forEachIndexed { i, value ->
+                        ChoiceChip(labels[i].localized(), options.flashColor == value, {
+                            onChange(options.copy(flashColor = value))
+                        })
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun DisplayTab(
-    cropBordersPager: Boolean,
-    cropBordersWebtoon: Boolean,
-    webtoonSidePadding: WebtoonSidePadding,
-    webtoonAutoScroll: Boolean,
-    webtoonAutoScrollSpeed: WebtoonAutoScrollSpeed,
-    scaleType: ScaleType = ScaleType.FIT_SCREEN,
-    onCropBordersPagerChange: (Boolean) -> Unit,
-    onCropBordersWebtoonChange: (Boolean) -> Unit,
-    onWebtoonSidePaddingChange: (WebtoonSidePadding) -> Unit,
-    onWebtoonAutoScrollChange: (Boolean) -> Unit,
-    onWebtoonAutoScrollSpeedChange: (WebtoonAutoScrollSpeed) -> Unit,
-    onScaleTypeChange: (ScaleType) -> Unit = {},
+private fun ReaderIntegerSlider(
+    label: String,
+    value: Int,
+    range: IntRange,
+    suffix: String = "",
+    step: Int = 1,
+    onChange: (Int) -> Unit,
 ) {
-    SettingsSection(MR.strings.desktop_ui_scale_type.localized()) {
-        ChoiceRow {
-            ScaleType.entries.forEach { type ->
-                ChoiceChip(
-                    label = scaleTypeLabel(type),
-                    selected = scaleType == type,
-                    onClick = { onScaleTypeChange(type) },
-                )
-            }
-        }
-    }
-
-    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-    SettingsSection(MR.strings.desktop_ui_crop_borders.localized()) {
-        SwitchRow(
-            label = MR.strings.desktop_ui_pager_ltr_rtl_dual.localized(),
-            checked = cropBordersPager,
-            onCheckedChange = onCropBordersPagerChange,
+    SettingsSection(label) {
+        Text("$value$suffix", style = MaterialTheme.typography.bodySmall)
+        Slider(
+            value.toFloat(),
+            { onChange((it / step).toInt() * step) },
+            valueRange =
+            range.first.toFloat()..range.last.toFloat(),
+            steps = ((range.last - range.first) / step - 1).coerceAtLeast(0),
         )
-        SwitchRow(
-            label = MR.strings.desktop_ui_webtoon.localized(),
-            checked = cropBordersWebtoon,
-            onCheckedChange = onCropBordersWebtoonChange,
-        )
-    }
-
-    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-    SettingsSection(MR.strings.desktop_ui_webtoon_side_padding.localized()) {
-        ChoiceRow {
-            WebtoonSidePadding.entries.forEach { padding ->
-                ChoiceChip(
-                    label = webtoonSidePaddingLabel(padding),
-                    selected = webtoonSidePadding == padding,
-                    onClick = { onWebtoonSidePaddingChange(padding) },
-                )
-            }
-        }
-    }
-
-    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-    SettingsSection(MR.strings.desktop_ui_webtoon_auto_scroll.localized()) {
-        SwitchRow(
-            label = MR.strings.desktop_ui_enable_auto_scroll.localized(),
-            checked = webtoonAutoScroll,
-            onCheckedChange = onWebtoonAutoScrollChange,
-        )
-        if (webtoonAutoScroll) {
-            ChoiceRow {
-                WebtoonAutoScrollSpeed.entries.forEach { speed ->
-                    ChoiceChip(
-                        label = webtoonAutoScrollSpeedLabel(speed),
-                        selected = webtoonAutoScrollSpeed == speed,
-                        onClick = { onWebtoonAutoScrollSpeedChange(speed) },
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -535,6 +650,7 @@ private fun CheckboxRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = if (indented) 24.dp else 0.dp)
+            .heightIn(min = 48.dp)
             .desktopSettingsActivationKeys(Role.Checkbox, enabled) { onCheckedChange(!checked) }
             .toggleable(value = checked, enabled = enabled, role = Role.Checkbox, onValueChange = onCheckedChange),
     ) {
@@ -628,6 +744,7 @@ internal fun readingModeLabel(mode: ReadingMode): String = when (mode) {
 }
 
 private fun navigationModeLabel(mode: NavigationMode): String = when (mode) {
+    NavigationMode.Default -> MR.strings.label_default.localized()
     NavigationMode.RightAndLeft -> MR.strings.right_and_left_nav.localized()
     NavigationMode.L -> MR.strings.l_nav.localized()
     NavigationMode.Kindle -> MR.strings.kindlish_nav.localized()
@@ -636,6 +753,7 @@ private fun navigationModeLabel(mode: NavigationMode): String = when (mode) {
 }
 
 private fun scaleTypeLabel(type: ScaleType): String = when (type) {
+    ScaleType.STRETCH -> MR.strings.scale_type_stretch.localized()
     ScaleType.FIT_SCREEN -> MR.strings.scale_type_fit_screen.localized()
     ScaleType.FIT_WIDTH -> MR.strings.scale_type_fit_width.localized()
     ScaleType.FIT_HEIGHT -> MR.strings.scale_type_fit_height.localized()

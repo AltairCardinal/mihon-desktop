@@ -161,6 +161,7 @@ internal fun ZoomablePagerViewer(
     startupSingleViewport: Boolean = false,
     onStartupInputActiveChanged: (Boolean) -> Unit = {},
 ) {
+    val viewportOptions = LocalReaderViewportOptions.current
     if (chapter.pages.isEmpty()) return
     val startupTarget = remember(presentationImageOwner, chapter.generation) {
         chapter.pages[currentPage.coerceIn(chapter.pages.indices)].id
@@ -221,6 +222,7 @@ internal fun ZoomablePagerViewer(
             hasPreviousChapter,
             hasNextChapter,
             splitPageIndices,
+            viewportOptions,
             autoSplitPages,
             dualPageUnits,
             dualPageFrames,
@@ -234,6 +236,8 @@ internal fun ZoomablePagerViewer(
                 hasNextChapter = hasNextChapter,
                 spreadPageIndices = splitPageIndices,
                 splitWidePages = autoSplitPages,
+                invertSplitPages = viewportOptions.singlePage && viewportOptions.display.splitInvert,
+                alwaysShowChapterTransition = viewportOptions.display.alwaysShowChapterTransition,
             ).copy(
                 dualPageUnits = dualPageUnits,
                 dualPageFrames = dualPageFrames,
@@ -278,6 +282,7 @@ internal fun ZoomablePagerViewer(
             hasNextChapter,
             autoSplitPages,
             splitPageIndices,
+            viewportOptions,
         ) {
             desktopReaderPresentationRequest(
                 chapter = chapter,
@@ -285,6 +290,8 @@ internal fun ZoomablePagerViewer(
                 hasPreviousChapter = hasPreviousChapter,
                 hasNextChapter = hasNextChapter,
                 splitPageIndices = if (autoSplitPages) splitPageIndices else emptySet(),
+                invertSplitPages = viewportOptions.singlePage && viewportOptions.display.splitInvert,
+                alwaysShowChapterTransition = viewportOptions.display.alwaysShowChapterTransition,
             )
         }
         val presentation = remember(request) {
@@ -342,17 +349,28 @@ internal fun WebtoonPresentationViewer(
     hasPreviousChapter: Boolean = true,
     hasNextChapter: Boolean = true,
     onNextChapter: (() -> Unit)? = null,
+    onTapCenter: (() -> Unit)? = null,
 ) {
+    val viewport = LocalReaderViewportOptions.current
     if (chapter.pages.isEmpty()) return
-    val request = remember(chapter, hasPreviousChapter, hasNextChapter, autoSplitPages, splitPageIndices) {
-        desktopReaderPresentationRequest(
-            chapter = chapter,
-            direction = ReaderDirection.RTL,
-            hasPreviousChapter = hasPreviousChapter,
-            hasNextChapter = hasNextChapter,
-            splitPageIndices = if (autoSplitPages) splitPageIndices else emptySet(),
-        )
-    }
+    val request =
+        remember(
+            chapter,
+            hasPreviousChapter,
+            hasNextChapter,
+            autoSplitPages,
+            splitPageIndices,
+            viewport.display.alwaysShowChapterTransition,
+        ) {
+            desktopReaderPresentationRequest(
+                chapter = chapter,
+                direction = ReaderDirection.RTL,
+                hasPreviousChapter = hasPreviousChapter,
+                hasNextChapter = hasNextChapter,
+                splitPageIndices = if (autoSplitPages) splitPageIndices else emptySet(),
+                alwaysShowChapterTransition = viewport.display.alwaysShowChapterTransition,
+            )
+        }
     val presentation = remember(request) {
         DesktopReaderPresentationRegistry
             .require(ReaderPresentationMode.WEBTOON)
@@ -377,6 +395,7 @@ internal fun WebtoonPresentationViewer(
         onRetryPage = { pageId -> onRetryPage?.invoke(pageId) },
         onSpreadDetected = onSpreadDetected,
         onNextChapter = onNextChapter,
+        onTapCenter = onTapCenter,
         generation = chapter.generation,
     )
 }
@@ -450,6 +469,36 @@ internal fun ReaderChapterTransitionItem(
     val contentColor = LocalReaderChapterTransitionContentColor.current
         .takeUnless { it == Color.Unspecified }
         ?: MaterialTheme.colorScheme.onSurface
+    val viewport = LocalReaderViewportOptions.current
+    val adjacent = if (direction == ReaderTransitionDirection.NEXT) viewport.nextChapter else viewport.previousChapter
+    if (adjacent != null) {
+        Column(modifier.widthIn(max = 460.dp).padding(32.dp)) {
+            context?.let {
+                ChapterText(
+                    MR.strings.transition_current.localized(),
+                    it.chapterTitle,
+                    it.scanlator,
+                    it.isDownloaded,
+                    contentColor,
+                )
+                Spacer(Modifier.height(24.dp))
+            }
+            ChapterText(
+                if (direction ==
+                    ReaderTransitionDirection.NEXT
+                ) {
+                    MR.strings.transition_next.localized()
+                } else {
+                    MR.strings.transition_previous.localized()
+                },
+                adjacent.name,
+                adjacent.scanlator,
+                adjacent.isDownloaded,
+                contentColor,
+            )
+        }
+        return
+    }
     val message = when (direction) {
         ReaderTransitionDirection.PREVIOUS -> MR.strings.transition_no_previous.localized()
         ReaderTransitionDirection.NEXT -> MR.strings.transition_no_next.localized()
