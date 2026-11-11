@@ -11,6 +11,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.state.ToggleableState
 import kotlinx.coroutines.Dispatchers
 import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.reader.ReadingMode
@@ -44,13 +45,23 @@ class ReaderSettingsChoiceLayoutTest {
         click(scene, MR.strings.reader_settings_single.localized())
         assertTrue(hasText(label))
         assertTrue(hasText(hint))
+        val splitSwitch = option(scene, label)
+        assertEquals(Role.Switch, splitSwitch.config.getOrNull(SemanticsProperties.Role))
+        assertEquals(ToggleableState.Off, splitSwitch.config[SemanticsProperties.ToggleableState])
         assertTrue(
             option(scene, label).boundsInRoot.top >=
                 option(scene, MR.strings.desktop_reader_direction_ltr.localized()).boundsInRoot.bottom,
         )
-        click(scene, label)
+        val switchPosition = androidx.compose.ui.geometry.Offset(
+            splitSwitch.boundsInRoot.right - 38f,
+            splitSwitch.boundsInRoot.center.y,
+        )
+        scene.sendPointerEvent(PointerEventType.Press, switchPosition)
+        scene.sendPointerEvent(PointerEventType.Release, switchPosition)
+        render(scene)
         assertTrue(model.state.value.autoSplitPages)
         assertTrue(prefs.autoSplitPages)
+        assertEquals(ToggleableState.On, option(scene, label).config[SemanticsProperties.ToggleableState])
         capture(scene, "single-page-split")
         for (other in listOf(
             MR.strings.reader_settings_auto,

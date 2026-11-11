@@ -385,7 +385,7 @@ private fun ReaderSelectable(
 }
 
 @Composable
-private fun ReaderModeSwitch(
+internal fun ReaderModeSwitch(
     title: String,
     hint: String,
     checked: Boolean,

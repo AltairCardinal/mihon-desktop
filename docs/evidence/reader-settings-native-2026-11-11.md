@@ -61,6 +61,8 @@
 
 ### 初次实现的历史检查范围
 
+补充（Windows 分割宽页开关统一，基线 `790cf83ca7d040860299932f0f6029499669a9e3`）：`reader-split-switch-red` 先确认现有分割控件不具备 Switch 语义（预期 Switch，实际 null）。改为直接复用匹配/间隙使用的 `ReaderModeSwitch`，移除先前仅服务该选项的复选框说明适配，位置、文案和保存入口不变。`reader-split-switch-green` 的 13 项 focused tests 通过，包括真实指针点击右侧开关、checked 状态、原偏好保存、其他模式隐藏和重开；同名截图已核对右侧椭圆开关及长说明。此为 Compose 离屏与 production 接线证据，实际 Windows 包仍由用户验收。
+
 补充（Windows 分割宽页位置，基线 `d34ec21a8087b7ec72c24ae9fa52c31d5f15a8c3`）：`reader-single-split-red` 先复现默认继承时仍出现独立分割控件。移入横向单页分支并加入用户指定说明后，`reader-single-split-verified-2` 的 13 项 focused tests 通过，覆盖实际弹层的显隐、选中值、原偏好保存及重开，并复验原型组件和 reader/runtime/repository 接线。中间的重开断言曾按「关闭」文案点到导航模式的同名 RadioButton，夹具改为明确选择弹层的 Button 角色后关闭和重开通过；未为此改变生产关闭逻辑。单页集成截图为 `.gradle-coordinator/reader-settings-native/single-page-split.png` 和 `single-page-split-restored.png`，系真实 Compose 控件离屏渲染，不替代用户对新 Windows 体验包的验收。
 
 - 人工核对实际 Compose 组件的默认、横向、纵向三种状态截图：`.gradle-coordinator/reader-settings-native/default.png`、`reading-mode.png`、`vertical.png`。中文、900×1600 离屏场景、测试 MaterialTheme；不是操作系统窗口或用户当前主题的验收。图标、方向等宽、说明、开关无是/否文字可见；截图推进动画时钟至稳定帧，纵向截图保留鼠标悬停反馈。
