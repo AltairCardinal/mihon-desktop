@@ -24,6 +24,8 @@ Desktop 的 `initialReaderSettings` 是启动投影与完整 `ReaderScreenModel`
 
 横向没有从上到下选项。自动与双页显示匹配选项，单页隐藏；连续纵向显示页面间隙开关，逐页隐藏。开关不附加是/否文字，辅助技术仍读取 checked 状态。图标沿用原型的 24×24 细线图形与主题颜色。逐页图标改编自 Lucide `gallery-vertical`，双端分别打包 `res/raw/reader_icons_license.txt` 与 `resources/icons/reader/LICENSE` 中的 ISC 声明。
 
+Desktop 的原型视觉由 `ReaderModeSettingsContent` / `ReaderModeChoices` 统一承担，作品弹层和全局设置复用同一套视图。作用域、单双页、滚动方式采用完整底槽的等宽分段控件；模式采用图标、说明和单选标记卡片，方向采用箭头卡片，开关采用带说明的整行卡片；默认继承使用分行摘要，自动布局继续附带当前实际单/双页信息。选中填色从当前 MaterialTheme 的 surface 与 primaryContainer 混合，保留原型的柔和层次而不锁定深色或蓝色主题。装饰图标不重复朗读；整个选项承担 RadioButton/Switch 语义、焦点提示以及 Enter/空格操作，更新仍调用原有状态与保存入口。文本允许随窄窗口和字号换行；不以截断说明或固定整行高度维持卡片外观。本次视觉补齐仅交付 Windows，Android 的原生视觉还原需另行完成；离屏 Compose 图像不能代替用户对实际 Windows 包的验收。
+
 模式切换不另建章节加载、图像解码或进度权威；继续使用现有阅读器的呈现变更、进度和配对失效链路。读取旧数据不批量写回；用户显式修改设置时才保存规范化 flags。偏好保存失败沿用平台原有失败处理，不以临时 UI 选中态证明持久化成功。
 
 ## 维护与验证

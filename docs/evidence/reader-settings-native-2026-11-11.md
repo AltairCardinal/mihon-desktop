@@ -48,6 +48,19 @@
 
 ## 视觉与测试边界
 
+### 后续 Windows 原型视觉补齐
+
+用户提供实际 Windows 截图后，确认此前控件仅还原了设置结构，缺少原型的分段底槽、模式单选标记、单双页/方向图标、开关说明卡和分行默认摘要。原先截图核对不能作为原型完整视觉还原的通过证据。
+
+- 基线为 `f6bb2143fc371afade9c5fec33a9b66c6d2b2563`，只调整 Desktop 视图和对应中英文资源；不改共享设置算法、作品 flags、持久化或 Android 视图，不分配正式发布版本。
+- `ReaderModePrototypeVisualTest` 首次执行 4 项，3 项按预期失败：模式卡/方向卡尺寸和分段结构、默认摘要、间隙说明；日志 `reader-settings-visual-red`。新增真实渲染、指针及几何断言，不以源码扫描代替行为。
+- 补齐同一 production 控件后，`reader-settings-visual-final` 通过 11 项：原型视觉/交互 5 项、实际设置弹层选择与重开 4 项、真实 reader→runtime→repository 保存与重开 1 项、全局设置入口及偏好重建 1 项。包含 Enter/空格完整按下/释放、单选与开关仅触发一次、隐藏值保留，以及自动/单页/双页、纵向连续/逐页和默认摘要。
+- 初次组合命令的参数拆分、ktlint 长行分别由后续命令和格式修正关闭；最终定向 ktlint 与测试通过，不把这些工具阶段错误归因于产品行为。全程使用协调器、JDK21、离线缓存与最多两个 Gradle worker；未运行完整模块或全量测试。
+- `.gradle-coordinator/reader-settings-visual/` 保存直接调用真实 Compose 控件的 Skia 图片：`horizontal-auto/single/double.png`、`vertical-continuous/paged.png`、`default-summary.png`、`vertical-default-paged.png` 和窄窗主题图。默认主题的深色、浅色、AMOLED，360px / 1.6 字号检查通过；图标实际像素、柔和选中底色、控件几何与键盘均有定向断言。
+- 独立只读核对所提供的八张离屏图，未发现阻塞视觉偏差。后续补图覆盖横向单页及纵向逐页的默认摘要；这些均为 production Compose 组件离屏图，不是完整 Windows 原生窗口或用户验收。Windows `preview` 体验包由本轮最终提交构建，源码身份与实际地址以对应 `preview-manifest.json` 和 `Final unpacked EXE:` 为准；用户验收仍待执行。
+
+### 初次实现的历史检查范围
+
 - 人工核对实际 Compose 组件的默认、横向、纵向三种状态截图：`.gradle-coordinator/reader-settings-native/default.png`、`reading-mode.png`、`vertical.png`。中文、900×1600 离屏场景、测试 MaterialTheme；不是操作系统窗口或用户当前主题的验收。图标、方向等宽、说明、开关无是/否文字可见；截图推进动画时钟至稳定帧，纵向截图保留鼠标悬停反馈。
 - Android 覆盖 320dp/1.6 字号、单选组语义、真实点击及持久化。补充生产入口测试使用已验证的 Dialog host，消费 Activity 与实际 overlay 共用的 factory；native viewer 容器未附着。synthetic PageLoader 按既有前台资源策略暂停 optional 原图采样，以隔离 Windows JVM 缺少 imagedecoder JNI 的边界；它验证 viewer/config 接线，不验证 JNI 采样、图像绘制或动画。
 - 原 overlay 尝试的取消、Looper/动画/JNI 失败日志保留；最终 factory 用例没有未捕获异常。测试线程夹具修正不改变产品线程策略。

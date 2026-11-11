@@ -1,38 +1,56 @@
 package mihon.desktop.ui.reader
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import mihon.desktop.ui.settings.desktopSettingsActivationKeys
 import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderScrollMode
@@ -41,7 +59,7 @@ import mihon.domain.reader.ReaderSettingsLayout
 import mihon.domain.reader.ReaderSettingsMode
 import tachiyomi.i18n.MR
 
-/** Shared Desktop controls for the global default and the per-manga settings panel. */
+/** The approved prototype's controls, shared by Desktop global and per-work settings. */
 @Composable
 internal fun ReaderModeSettingsContent(
     settings: ReaderSettings,
@@ -51,297 +69,485 @@ internal fun ReaderModeSettingsContent(
     onChange: (ReaderSettings) -> Unit,
     actualDualPage: Boolean,
 ) {
-    ReaderModeChoiceRow {
-        ReaderModeChoice(MR.strings.reader_settings_follow_default.localized(), followsGlobal, onFollowGlobal)
-        ReaderModeChoice(MR.strings.reader_settings_custom.localized(), !followsGlobal, onCustomize)
-    }
-    if (followsGlobal) {
-        val summary = buildList {
-            add(
-                if (settings.mode ==
-                    ReaderSettingsMode.HORIZONTAL
-                ) {
-                    MR.strings.reader_settings_horizontal.localized()
-                } else {
-                    MR.strings.reader_settings_vertical.localized()
-                },
+    Column(Modifier.fillMaxWidth()) {
+        ReaderModeLabel(MR.strings.desktop_reader_scope_title.localized())
+        ReaderSegments {
+            ReaderSegment(
+                MR.strings.reader_settings_follow_default.localized(),
+                followsGlobal,
+                ModeSettingsIcon.LINK,
+                onClick = onFollowGlobal,
             )
-            if (settings.mode == ReaderSettingsMode.HORIZONTAL) {
-                add(
-                    when (settings.layout) {
-                        ReaderSettingsLayout.AUTO -> MR.strings.reader_settings_auto.localized() + " · " +
-                            if (actualDualPage) {
-                                MR.strings.reader_settings_dual.localized()
-                            } else {
-                                MR.strings.reader_settings_single.localized()
-                            }
-                        ReaderSettingsLayout.SINGLE -> MR.strings.reader_settings_single.localized()
-                        ReaderSettingsLayout.DOUBLE -> MR.strings.reader_settings_dual.localized()
-                    },
-                )
-                add(
-                    if (settings.direction ==
-                        ReaderDirection.LTR
-                    ) {
-                        MR.strings.desktop_reader_direction_ltr.localized()
-                    } else {
-                        MR.strings.desktop_reader_direction_rtl.localized()
-                    },
-                )
-                if (settings.layout != ReaderSettingsLayout.SINGLE) {
-                    add(
-                        MR.strings.desktop_ui_auto_spread_matching.localized() + ": " +
-                            if (settings.match) MR.strings.on.localized() else MR.strings.off.localized(),
-                    )
-                }
+            ReaderSegment(
+                MR.strings.reader_settings_custom.localized(),
+                !followsGlobal,
+                ModeSettingsIcon.SLIDERS,
+                onClick = onCustomize,
+            )
+        }
+        ReaderHelp(
+            if (followsGlobal) {
+                MR.strings.desktop_reader_default_hint.localized()
             } else {
-                add(
-                    if (settings.scroll ==
-                        ReaderScrollMode.PAGED
-                    ) {
-                        MR.strings.reader_settings_paged.localized()
-                    } else {
-                        MR.strings.reader_settings_continuous.localized()
-                    },
-                )
-                if (settings.scroll == ReaderScrollMode.CONTINUOUS) {
-                    add(
-                        MR.strings.reader_settings_page_gaps.localized() + ": " +
-                            if (settings.gap) MR.strings.on.localized() else MR.strings.off.localized(),
-                    )
-                }
-            }
-        }.joinToString(" · ")
-        Text(
-            summary,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(vertical = 8.dp),
+                MR.strings.desktop_reader_custom_hint.localized()
+            },
         )
-    } else {
-        ReaderModeChoices(settings, onChange)
+        HorizontalDivider(
+            Modifier.padding(vertical = 22.dp),
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+        )
+        if (followsGlobal) ReaderDefaultSummary(settings, actualDualPage) else ReaderModeChoices(settings, onChange)
+        Spacer(Modifier.height(14.dp))
     }
 }
 
 @Composable
 internal fun ReaderModeChoices(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit) {
-    ReaderModeChoiceRow {
-        ReaderModeChoice(
-            MR.strings.reader_settings_horizontal.localized(),
-            settings.mode == ReaderSettingsMode.HORIZONTAL,
-            { onChange(settings.copy(mode = ReaderSettingsMode.HORIZONTAL)) },
-            hint = MR.strings.reader_settings_horizontal_hint.localized(),
-            modeIcon = ReaderSettingsMode.HORIZONTAL,
-        )
-        ReaderModeChoice(
-            MR.strings.reader_settings_vertical.localized(),
-            settings.mode == ReaderSettingsMode.VERTICAL,
-            { onChange(settings.copy(mode = ReaderSettingsMode.VERTICAL)) },
-            hint = MR.strings.reader_settings_vertical_hint.localized(),
-            modeIcon = ReaderSettingsMode.VERTICAL,
-        )
-    }
-    if (settings.mode == ReaderSettingsMode.HORIZONTAL) {
-        ReaderModeLabel(MR.strings.reader_settings_layout.localized())
-        ReaderModeChoiceRow {
-            ReaderSettingsLayout.entries.forEach { layout ->
-                val title = when (layout) {
-                    ReaderSettingsLayout.AUTO -> MR.strings.reader_settings_auto
-                    ReaderSettingsLayout.SINGLE -> MR.strings.reader_settings_single
-                    ReaderSettingsLayout.DOUBLE -> MR.strings.reader_settings_dual
-                }.localized()
-                ReaderModeChoice(title, settings.layout == layout, { onChange(settings.copy(layout = layout)) })
-            }
+    Column(Modifier.fillMaxWidth()) {
+        ReaderModeLabel(MR.strings.desktop_reader_mode_selection.localized())
+        Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            ReaderModeCard(
+                MR.strings.reader_settings_horizontal.localized(),
+                MR.strings.reader_settings_horizontal_hint.localized(),
+                ModeSettingsIcon.BOOK,
+                settings.mode == ReaderSettingsMode.HORIZONTAL,
+            ) { onChange(settings.copy(mode = ReaderSettingsMode.HORIZONTAL)) }
+            ReaderModeCard(
+                MR.strings.reader_settings_vertical.localized(),
+                MR.strings.reader_settings_vertical_hint.localized(),
+                ModeSettingsIcon.STRIP,
+                settings.mode == ReaderSettingsMode.VERTICAL,
+            ) { onChange(settings.copy(mode = ReaderSettingsMode.VERTICAL)) }
         }
-        Text(
-            when (settings.layout) {
-                ReaderSettingsLayout.AUTO -> MR.strings.reader_settings_auto_hint
-                ReaderSettingsLayout.SINGLE -> MR.strings.reader_settings_single_hint
-                ReaderSettingsLayout.DOUBLE -> MR.strings.reader_settings_dual_hint
-            }.localized(),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        ReaderModeLabel(MR.strings.reader_settings_direction.localized())
-        ReaderModeChoiceRow {
-            ReaderModeChoice(
-                MR.strings.desktop_reader_direction_ltr.localized(),
-                settings.direction == ReaderDirection.LTR,
-                { onChange(settings.copy(direction = ReaderDirection.LTR)) },
+        Spacer(Modifier.height(22.dp))
+        if (settings.mode == ReaderSettingsMode.HORIZONTAL) {
+            ReaderModeLabel(MR.strings.desktop_reader_page_layout.localized())
+            ReaderSegments {
+                ReaderSettingsLayout.entries.forEach { layout ->
+                    val (title, icon) = when (layout) {
+                        ReaderSettingsLayout.AUTO -> MR.strings.reader_settings_auto to ModeSettingsIcon.AUTO
+                        ReaderSettingsLayout.SINGLE -> MR.strings.reader_settings_single to ModeSettingsIcon.SINGLE
+                        ReaderSettingsLayout.DOUBLE -> MR.strings.reader_settings_dual to ModeSettingsIcon.DOUBLE
+                    }
+                    ReaderSegment(title.localized(), settings.layout == layout, icon, accent = true) {
+                        onChange(settings.copy(layout = layout))
+                    }
+                }
+            }
+            ReaderHelp(
+                when (settings.layout) {
+                    ReaderSettingsLayout.AUTO -> MR.strings.reader_settings_auto_hint
+                    ReaderSettingsLayout.SINGLE -> MR.strings.reader_settings_single_hint
+                    ReaderSettingsLayout.DOUBLE -> MR.strings.reader_settings_dual_hint
+                }.localized(),
             )
-            ReaderModeChoice(
-                MR.strings.desktop_reader_direction_rtl.localized(),
-                settings.direction == ReaderDirection.RTL,
-                { onChange(settings.copy(direction = ReaderDirection.RTL)) },
-            )
-        }
-        if (settings.layout != ReaderSettingsLayout.SINGLE) {
-            ReaderModeSwitch(MR.strings.desktop_ui_auto_spread_matching.localized(), settings.match) {
-                onChange(settings.copy(match = it))
+            Spacer(Modifier.height(22.dp))
+            ReaderModeLabel(MR.strings.desktop_reader_turn_direction.localized())
+            Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                ReaderDirectionCard(
+                    MR.strings.desktop_reader_direction_ltr.localized(),
+                    ModeSettingsIcon.RIGHT,
+                    settings.direction == ReaderDirection.LTR,
+                ) {
+                    onChange(settings.copy(direction = ReaderDirection.LTR))
+                }
+                ReaderDirectionCard(
+                    MR.strings.desktop_reader_direction_rtl.localized(),
+                    ModeSettingsIcon.LEFT,
+                    settings.direction == ReaderDirection.RTL,
+                ) {
+                    onChange(settings.copy(direction = ReaderDirection.RTL))
+                }
             }
-        }
-    } else {
-        ReaderModeLabel(MR.strings.reader_settings_scroll.localized())
-        ReaderModeChoiceRow {
-            ReaderScrollMode.entries.forEach { scroll ->
-                ReaderModeChoice(
-                    if (scroll ==
-                        ReaderScrollMode.CONTINUOUS
-                    ) {
-                        MR.strings.reader_settings_continuous.localized()
-                    } else {
-                        MR.strings.reader_settings_paged.localized()
-                    },
-                    settings.scroll == scroll,
-                    { onChange(settings.copy(scroll = scroll)) },
-                    scrollIcon = scroll,
-                )
+            if (settings.layout != ReaderSettingsLayout.SINGLE) {
+                Spacer(Modifier.height(14.dp))
+                ReaderModeSwitch(
+                    MR.strings.desktop_ui_auto_spread_matching.localized(),
+                    MR.strings.desktop_reader_match_hint.localized(),
+                    settings.match,
+                    showState = true,
+                ) { onChange(settings.copy(match = it)) }
             }
-        }
-        if (settings.scroll == ReaderScrollMode.CONTINUOUS) {
-            ReaderModeSwitch(MR.strings.reader_settings_page_gaps.localized(), settings.gap) {
-                onChange(settings.copy(gap = it))
+        } else {
+            ReaderModeLabel(MR.strings.reader_settings_scroll.localized())
+            ReaderSegments {
+                ReaderScrollMode.entries.forEach { scroll ->
+                    val continuous = scroll == ReaderScrollMode.CONTINUOUS
+                    ReaderSegment(
+                        if (continuous) {
+                            MR.strings.reader_settings_continuous.localized()
+                        } else {
+                            MR.strings.reader_settings_paged.localized()
+                        },
+                        settings.scroll == scroll,
+                        if (continuous) ModeSettingsIcon.CONTINUOUS else ModeSettingsIcon.PAGED,
+                    ) { onChange(settings.copy(scroll = scroll)) }
+                }
+            }
+            if (settings.scroll == ReaderScrollMode.CONTINUOUS) {
+                Spacer(Modifier.height(14.dp))
+                ReaderModeSwitch(
+                    MR.strings.reader_settings_page_gaps.localized(),
+                    MR.strings.desktop_reader_gap_hint.localized(),
+                    settings.gap,
+                ) {
+                    onChange(settings.copy(gap = it))
+                }
             }
         }
     }
+}
+
+/** Theme-derived fills keep the prototype's subdued hierarchy in light, dark and custom themes. */
+@Composable
+private fun readerSelectionColor(): Color = with(MaterialTheme.colorScheme) {
+    lerp(surfaceContainerHighest, primaryContainer, 0.4f)
 }
 
 @Composable
 private fun ReaderModeLabel(text: String) {
-    Text(text, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 12.dp))
+    Text(
+        text,
+        fontSize = 14.sp,
+        lineHeight = 21.sp,
+        fontWeight = FontWeight.Medium,
+        color = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.padding(bottom = 10.dp),
+    )
 }
 
 @Composable
-private fun ReaderModeChoiceRow(content: @Composable RowScope.() -> Unit) {
+private fun ReaderHelp(text: String) {
+    Text(
+        text,
+        fontSize = 12.sp,
+        lineHeight = 19.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 9.dp),
+    )
+}
+
+@Composable
+private fun ReaderSegments(content: @Composable RowScope.() -> Unit) {
+    val colors = MaterialTheme.colorScheme
     Row(
-        Modifier.fillMaxWidth().selectableGroup(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(colors.surfaceContainerLow)
+            .border(
+                1.dp,
+                colors.onSurface.copy(alpha = 0.025f),
+                RoundedCornerShape(15.dp),
+            ).padding(4.dp).selectableGroup(),
         content = content,
     )
 }
 
 @Composable
-private fun RowScope.ReaderModeChoice(
+private fun RowScope.ReaderSegment(
     title: String,
     selected: Boolean,
+    icon: ModeSettingsIcon,
+    accent: Boolean = false,
     onClick: () -> Unit,
-    hint: String? = null,
-    scrollIcon: ReaderScrollMode? = null,
-    modeIcon: ReaderSettingsMode? = null,
 ) {
-    val description = if (selected) MR.strings.selected.localized() else MR.strings.not_selected.localized()
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        colors = FilterChipDefaults.filterChipColors(selectedLabelColor = MaterialTheme.colorScheme.primary),
-        modifier = Modifier.weight(1f)
-            .desktopSettingsActivationKeys(Role.RadioButton, onClick = onClick)
-            .semantics {
-                role = Role.RadioButton
-                stateDescription = description
-            },
-        label = {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                scrollIcon?.let { ReaderScrollIcon(it) }
-                modeIcon?.let { ReaderModeIcon(it) }
-                Column(modifier = Modifier.padding(vertical = if (hint != null) 6.dp else 0.dp)) {
-                    Text(title)
-                    hint?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
-                }
-            }
+    val colors = MaterialTheme.colorScheme
+    val neutral = lerp(colors.surfaceContainerHighest, colors.primary, 0.07f)
+    ReaderSelectable(
+        selected,
+        onClick,
+        Modifier.weight(1f),
+        radius = 11,
+        fill = if (selected) {
+            if (accent) readerSelectionColor() else neutral
+        } else {
+            Color.Transparent
         },
-    )
+        border = if (selected) colors.onSurface.copy(alpha = 0.07f) else Color.Transparent,
+    ) {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 43.dp).padding(horizontal = 5.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ReaderModeIcon(icon, Modifier.size(19.dp), if (selected) colors.primary else colors.onSurfaceVariant)
+            Spacer(Modifier.width(7.dp))
+            Text(
+                title,
+                modifier = Modifier.weight(1f, fill = false),
+                textAlign = TextAlign.Center,
+                fontSize = 15.sp,
+                lineHeight = 22.sp,
+                fontWeight = FontWeight.Medium,
+                color = if (selected) colors.onSurface else colors.onSurfaceVariant,
+            )
+        }
+    }
 }
 
 @Composable
-private fun ReaderModeIcon(mode: ReaderSettingsMode) {
-    val color = LocalContentColor.current
-    Canvas(Modifier.padding(end = 6.dp).size(19.dp)) {
-        scale(size.width / 24f, size.height / 24f, pivot = Offset.Zero) {
-            val stroke = Stroke(
-                width = 1.65f,
-                cap = StrokeCap.Round,
-                join = androidx.compose.ui.graphics.StrokeJoin.Round,
-            )
-            if (mode == ReaderSettingsMode.VERTICAL) {
-                drawRoundRect(color, Offset(4f, 2.75f), Size(16f, 18.5f), CornerRadius(2.5f), style = stroke)
-                drawLine(color, Offset(4f, 8f), Offset(20f, 8f), 1.65f, StrokeCap.Round)
-                drawLine(color, Offset(4f, 16f), Offset(20f, 16f), 1.65f, StrokeCap.Round)
-            } else {
-                drawPath(
-                    Path().apply {
-                        moveTo(12f, 5.5f)
-                        cubicTo(9.1f, 3.3f, 5.9f, 3.3f, 3f, 4.5f)
-                        lineTo(3f, 18.5f)
-                        cubicTo(5.9f, 17.4f, 9.1f, 17.4f, 12f, 19.7f)
-                        cubicTo(14.9f, 17.4f, 18.1f, 17.4f, 21f, 18.5f)
-                        lineTo(21f, 4.5f)
-                        cubicTo(18.1f, 3.3f, 14.9f, 3.3f, 12f, 5.5f)
-                        close()
-                    },
-                    color,
-                    style = stroke,
+private fun RowScope.ReaderModeCard(
+    title: String,
+    hint: String,
+    icon: ModeSettingsIcon,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    ReaderSelectable(selected, onClick, Modifier.weight(1f), radius = 17) {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 82.dp).padding(horizontal = 12.dp, vertical = 13.dp),
+            horizontalArrangement = Arrangement.spacedBy(9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ReaderModeIcon(icon, Modifier.size(22.dp), if (selected) colors.primary else colors.onSurfaceVariant)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(title, fontSize = 16.sp, lineHeight = 23.sp, fontWeight = FontWeight.Medium)
+                Text(hint, fontSize = 12.sp, lineHeight = 18.sp, color = colors.onSurfaceVariant)
+            }
+            Canvas(Modifier.size(17.dp)) {
+                drawCircle(
+                    if (selected) colors.primary else colors.outline,
+                    radius =
+                    size.minDimension / 2 - 0.75.dp.toPx(),
+                    style = if (selected) androidx.compose.ui.graphics.drawscope.Fill else Stroke(1.5.dp.toPx()),
                 )
-                drawLine(color, Offset(12f, 5.5f), Offset(12f, 19.7f), 1.65f, StrokeCap.Round)
+                if (selected) drawCircle(colors.onPrimary, 3.dp.toPx())
             }
         }
     }
 }
 
 @Composable
-private fun ReaderModeSwitch(title: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    val description = if (checked) MR.strings.on.localized() else MR.strings.off.localized()
-    Row(
-        Modifier.fillMaxWidth().padding(vertical = 4.dp)
-            .desktopSettingsActivationKeys(Role.Switch) { onChange(!checked) }
-            .semantics(mergeDescendants = true) {
-                contentDescription = title
-                stateDescription = description
-            }
-            .toggleable(value = checked, role = Role.Switch, onValueChange = onChange),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        Switch(
-            checked = checked,
-            onCheckedChange = null,
-            modifier = Modifier.clearAndSetSemantics {},
-        )
+private fun RowScope.ReaderDirectionCard(
+    title: String,
+    icon: ModeSettingsIcon,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    ReaderSelectable(selected, onClick, Modifier.weight(1f), radius = 14) {
+        Column(
+            Modifier.fillMaxWidth().heightIn(min = 74.dp).padding(horizontal = 4.dp, vertical = 11.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            ReaderModeIcon(icon, Modifier.size(23.dp))
+            Text(
+                title,
+                fontSize = 13.sp,
+                lineHeight = 20.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }
 
-/** Decorative 24-unit paths from the approved prototype; selection inherits the chip's content color. */
 @Composable
-private fun ReaderScrollIcon(scroll: ReaderScrollMode) {
-    val color = LocalContentColor.current
-    Canvas(Modifier.padding(end = 6.dp).size(19.dp)) {
-        scale(size.width / 24f, size.height / 24f, pivot = Offset.Zero) {
-            val stroke =
-                Stroke(width = 1.65f, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round)
-            if (scroll == ReaderScrollMode.CONTINUOUS) {
-                drawRoundRect(color, Offset(3f, 2f), Size(18f, 20f), CornerRadius(2f), style = stroke)
-                drawPath(
-                    Path().apply {
-                        moveTo(12f, 6f)
-                        lineTo(12f, 18f)
-                        moveTo(9f, 9f)
-                        lineTo(12f, 6f)
-                        lineTo(15f, 9f)
-                        moveTo(9f, 15f)
-                        lineTo(12f, 18f)
-                        lineTo(15f, 15f)
-                    },
-                    color,
-                    style = stroke,
+private fun ReaderSelectable(
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    radius: Int,
+    fill: Color = if (selected) readerSelectionColor() else MaterialTheme.colorScheme.surfaceContainerHighest,
+    border: Color = if (selected) {
+        MaterialTheme.colorScheme.primary.copy(
+            alpha = 0.8f,
+        )
+    } else {
+        MaterialTheme.colorScheme.outlineVariant
+    },
+    content: @Composable () -> Unit,
+) {
+    val interactions = remember { MutableInteractionSource() }
+    val focused by interactions.collectIsFocusedAsState()
+    val hovered by interactions.collectIsHoveredAsState()
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(radius.dp)
+    val description = if (selected) MR.strings.selected.localized() else MR.strings.not_selected.localized()
+    Box(
+        modifier.clip(shape).background(fill)
+            .border(if (focused) 2.dp else 1.dp, if (focused || hovered) colors.primary else border, shape)
+            .desktopSettingsActivationKeys(Role.RadioButton, onClick = onClick)
+            .semantics(mergeDescendants = true) { stateDescription = description }
+            .hoverable(interactions)
+            .selectable(selected, interactions, indication = null, role = Role.RadioButton, onClick = onClick),
+    ) {
+        CompositionLocalProvider(LocalContentColor provides colors.onSurface, content = content)
+    }
+}
+
+@Composable
+private fun ReaderModeSwitch(
+    title: String,
+    hint: String,
+    checked: Boolean,
+    showState: Boolean = false,
+    onChange: (Boolean) -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val interactions = remember { MutableInteractionSource() }
+    val focused by interactions.collectIsFocusedAsState()
+    val shape = RoundedCornerShape(16.dp)
+    val state = if (checked) MR.strings.on.localized() else MR.strings.off.localized()
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val showStateLabel = showState && maxWidth > 390.dp
+        Row(
+            Modifier.fillMaxWidth().clip(shape).background(colors.surfaceContainerHighest)
+                .border(
+                    if (focused) 2.dp else 1.dp,
+                    if (focused) colors.primary else colors.onSurface.copy(alpha = 0.025f),
+                    shape,
                 )
+                .desktopSettingsActivationKeys(Role.Switch) { onChange(!checked) }
+                .semantics(mergeDescendants = true) {
+                    contentDescription = title
+                    stateDescription = state
+                }
+                .toggleable(checked, interactions, indication = null, role = Role.Switch, onValueChange = onChange)
+                .heightIn(min = 81.dp).padding(horizontal = 14.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(
+                    title,
+                    color = colors.onSurface,
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(hint, color = colors.onSurfaceVariant, fontSize = 12.sp, lineHeight = 19.sp)
+            }
+            if (showStateLabel) Text(state, color = colors.onSurfaceVariant, fontSize = 12.sp)
+            Canvas(Modifier.size(width = 48.dp, height = 44.dp)) {
+                val top = (size.height - 28.dp.toPx()) / 2
+                drawRoundRect(
+                    if (checked) colors.primary else colors.surfaceContainerLow,
+                    Offset(0f, top),
+                    Size(size.width, 28.dp.toPx()),
+                    CornerRadius(14.dp.toPx()),
+                )
+                if (!checked) {
+                    drawRoundRect(
+                        colors.outline,
+                        Offset(0f, top),
+                        Size(size.width, 28.dp.toPx()),
+                        CornerRadius(14.dp.toPx()),
+                        style = Stroke(1.5.dp.toPx()),
+                    )
+                }
+                drawCircle(
+                    if (checked) colors.onPrimary else colors.onSurfaceVariant,
+                    9.5.dp.toPx(),
+                    Offset(if (checked) 34.dp.toPx() else 13.dp.toPx(), size.height / 2),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReaderDefaultSummary(settings: ReaderSettings, actualDualPage: Boolean) {
+    val colors = MaterialTheme.colorScheme
+    val rows = buildList {
+        add(
+            MR.strings.pref_category_reading_mode.localized() to if (settings.mode == ReaderSettingsMode.HORIZONTAL) {
+                MR.strings.reader_settings_horizontal.localized()
             } else {
-                drawLine(color, Offset(4f, 2f), Offset(20f, 2f), 1.65f, StrokeCap.Round)
-                drawRoundRect(color, Offset(4f, 6f), Size(16f, 12f), CornerRadius(2f), style = stroke)
-                drawLine(color, Offset(4f, 22f), Offset(20f, 22f), 1.65f, StrokeCap.Round)
+                MR.strings.reader_settings_vertical.localized()
+            },
+        )
+        if (settings.mode == ReaderSettingsMode.HORIZONTAL) {
+            add(
+                MR.strings.desktop_reader_page_layout.localized() to when (settings.layout) {
+                    ReaderSettingsLayout.AUTO -> MR.strings.reader_settings_auto.localized() + " · " +
+                        if (actualDualPage) {
+                            MR.strings.reader_settings_dual.localized()
+                        } else {
+                            MR.strings.reader_settings_single.localized()
+                        }
+                    ReaderSettingsLayout.SINGLE -> MR.strings.reader_settings_single.localized()
+                    ReaderSettingsLayout.DOUBLE -> MR.strings.reader_settings_dual.localized()
+                },
+            )
+            add(
+                MR.strings.desktop_reader_turn_direction.localized() to if (settings.direction == ReaderDirection.LTR) {
+                    MR.strings.desktop_reader_direction_ltr.localized()
+                } else {
+                    MR.strings.desktop_reader_direction_rtl.localized()
+                },
+            )
+            if (settings.layout !=
+                ReaderSettingsLayout.SINGLE
+            ) {
+                add(
+                    MR.strings.desktop_ui_auto_spread_matching.localized() to
+                        if (settings.match) MR.strings.on.localized() else MR.strings.off.localized(),
+                )
+            }
+        } else {
+            add(
+                MR.strings.reader_settings_scroll.localized() to if (settings.scroll == ReaderScrollMode.CONTINUOUS) {
+                    MR.strings.reader_settings_continuous.localized()
+                } else {
+                    MR.strings.reader_settings_paged.localized()
+                },
+            )
+            if (settings.scroll == ReaderScrollMode.CONTINUOUS) {
+                add(
+                    MR.strings.reader_settings_page_gaps.localized() to
+                        if (settings.gap) MR.strings.on.localized() else MR.strings.off.localized(),
+                )
+            }
+        }
+    }
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = lerp(colors.surfaceContainerHigh, colors.primary, 0.06f),
+        border = BorderStroke(1.dp, colors.primary.copy(alpha = 0.17f)),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(19.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                ReaderModeIcon(ModeSettingsIcon.LINK, Modifier.size(20.dp), colors.primary)
+                Text(
+                    MR.strings.desktop_reader_default_title.localized(),
+                    color = colors.onSurface,
+                    fontSize = 15.sp,
+                    lineHeight = 23.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+            Text(
+                MR.strings.desktop_reader_default_description.localized(),
+                modifier = Modifier.padding(top = 8.dp),
+                color = colors.onSurfaceVariant,
+                fontSize = 12.sp,
+                lineHeight = 21.sp,
+            )
+            Spacer(Modifier.height(17.dp))
+            rows.forEach { (label, value) ->
+                HorizontalDivider(color = colors.onSurface.copy(alpha = 0.04f))
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 11.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        label,
+                        Modifier.weight(1f),
+                        color = colors.onSurfaceVariant,
+                        fontSize = 13.sp,
+                        lineHeight = 20.sp,
+                    )
+                    Text(
+                        value,
+                        Modifier.weight(1f),
+                        textAlign = TextAlign.End,
+                        color = colors.onSurface,
+                        fontSize = 13.sp,
+                        lineHeight = 20.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
             }
         }
     }

@@ -1,6 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Shared reader settings -->
+    <string name="desktop_reader_page_layout">Page layout</string>
+    <string name="desktop_reader_turn_direction">Page turning direction</string>
+    <string name="desktop_reader_scope_title">Reading mode settings</string>
+    <string name="desktop_reader_mode_selection">Reading mode</string>
+    <string name="desktop_reader_custom_hint">These settings apply only to this work</string>
+    <string name="desktop_reader_default_hint">This work uses the global defaults</string>
+    <string name="desktop_reader_match_hint">Automatically adjust page pairs when showing two pages</string>
+    <string name="desktop_reader_gap_hint">Leave a gap between adjacent pages</string>
+    <string name="desktop_reader_default_title">Follow global reading preferences</string>
+    <string name="desktop_reader_default_description">Changes to the defaults also apply to this work.</string>
     <string name="reader_settings_follow_default">Follow default</string>
     <string name="reader_settings_custom">Customize</string>
     <string name="reader_settings_horizontal">Horizontal reading</string>

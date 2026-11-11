@@ -1,6 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Shared reader settings -->
+    <string name="desktop_reader_page_layout">单双页</string>
+    <string name="desktop_reader_turn_direction">翻页方向</string>
+    <string name="desktop_reader_scope_title">阅读模式设置</string>
+    <string name="desktop_reader_mode_selection">阅读模式选择</string>
+    <string name="desktop_reader_custom_hint">下方设置仅对当前作品生效</string>
+    <string name="desktop_reader_default_hint">当前作品使用全局默认设置</string>
+    <string name="desktop_reader_match_hint">在双页显示时，自动调整页面配对</string>
+    <string name="desktop_reader_gap_hint">在相邻页面之间留出间隔</string>
+    <string name="desktop_reader_default_title">跟随全局阅读偏好</string>
+    <string name="desktop_reader_default_description">默认设置变更后，当前作品同步采用。</string>
     <string name="reader_settings_follow_default">跟随默认</string>
     <string name="reader_settings_custom">单独设置</string>
     <string name="reader_settings_horizontal">横向阅读</string>
