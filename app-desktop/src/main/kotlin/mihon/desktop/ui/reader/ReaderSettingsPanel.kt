@@ -271,13 +271,22 @@ internal fun GeneralTab(
             if (changed.match != isAutoSpreadMatching) onAutoSpreadMatchingChange(changed.match)
         },
         actualDualPage = isDualPage,
+        singlePageOptions = {
+            Column(
+                Modifier.fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(16.dp))
+                    .padding(horizontal = 8.dp, vertical = 10.dp),
+            ) {
+                CheckboxRow(
+                    label = MR.strings.desktop_ui_split_wide_pages.localized(),
+                    checked = autoSplitPages,
+                    onCheckedChange = onAutoSplitPagesChange,
+                    supportingText = MR.strings.desktop_reader_split_wide_hint.localized(),
+                )
+            }
+        },
     )
     pairingRecovery()
-    CheckboxRow(
-        label = MR.strings.desktop_ui_split_wide_pages.localized(),
-        checked = autoSplitPages,
-        onCheckedChange = onAutoSplitPagesChange,
-    )
     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
     // Navigation mode (pager only)
@@ -525,6 +534,7 @@ private fun CheckboxRow(
     onCheckedChange: (Boolean) -> Unit,
     indented: Boolean = false,
     enabled: Boolean = true,
+    supportingText: String? = null,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -534,7 +544,19 @@ private fun CheckboxRow(
             .clickable(enabled = enabled) { onCheckedChange(!checked) },
     ) {
         Checkbox(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
-        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 4.dp))
+        if (supportingText == null) {
+            Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 4.dp))
+        } else {
+            Column(Modifier.weight(1f).padding(start = 4.dp, end = 6.dp)) {
+                Text(label, style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    supportingText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 5.dp),
+                )
+            }
+        }
     }
 }
 

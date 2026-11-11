@@ -68,6 +68,7 @@ internal fun ReaderModeSettingsContent(
     onCustomize: () -> Unit,
     onChange: (ReaderSettings) -> Unit,
     actualDualPage: Boolean,
+    singlePageOptions: @Composable () -> Unit = {},
 ) {
     Column(Modifier.fillMaxWidth()) {
         ReaderModeLabel(MR.strings.desktop_reader_scope_title.localized())
@@ -96,7 +97,15 @@ internal fun ReaderModeSettingsContent(
             Modifier.padding(vertical = 22.dp),
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
         )
-        if (followsGlobal) ReaderDefaultSummary(settings, actualDualPage) else ReaderModeChoices(settings, onChange)
+        if (followsGlobal) {
+            ReaderDefaultSummary(settings, actualDualPage)
+        } else {
+            ReaderModeChoices(settings, onChange)
+            if (settings.mode == ReaderSettingsMode.HORIZONTAL && settings.layout == ReaderSettingsLayout.SINGLE) {
+                Spacer(Modifier.height(14.dp))
+                singlePageOptions()
+            }
+        }
         Spacer(Modifier.height(14.dp))
     }
 }

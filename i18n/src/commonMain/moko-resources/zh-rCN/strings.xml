@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Shared reader settings -->
+    <string name="desktop_reader_split_wide_hint">将宽页分切为两个单页显示，适合在竖屏阅读图源为单张跨页的漫画</string>
     <string name="desktop_reader_page_layout">单双页</string>
     <string name="desktop_reader_turn_direction">翻页方向</string>
     <string name="desktop_reader_scope_title">阅读模式设置</string>

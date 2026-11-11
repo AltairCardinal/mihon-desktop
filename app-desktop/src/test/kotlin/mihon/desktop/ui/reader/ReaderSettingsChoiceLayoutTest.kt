@@ -31,6 +31,57 @@ class ReaderSettingsChoiceLayoutTest {
     private val frameTimes = java.util.IdentityHashMap<ImageComposeScene, Long>()
 
     @Test
+    fun `single page split control hides in other modes and retains its saved value`() = withPanel(
+        locale = Locale.SIMPLIFIED_CHINESE,
+    ) { scene, model, prefs ->
+        val label = MR.strings.desktop_ui_split_wide_pages.localized()
+        val hint = "将宽页分切为两个单页显示，适合在竖屏阅读图源为单张跨页的漫画"
+        fun hasText(value: String) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.any {
+            it.config.getOrNull(SemanticsProperties.Text)?.any { text -> text.text == value } == true
+        }
+        assertFalse(hasText(label), "Inherited settings do not expose a standalone split control")
+        click(scene, MR.strings.reader_settings_custom.localized())
+        click(scene, MR.strings.reader_settings_single.localized())
+        assertTrue(hasText(label))
+        assertTrue(hasText(hint))
+        assertTrue(
+            option(scene, label).boundsInRoot.top >=
+                option(scene, MR.strings.desktop_reader_direction_ltr.localized()).boundsInRoot.bottom,
+        )
+        click(scene, label)
+        assertTrue(model.state.value.autoSplitPages)
+        assertTrue(prefs.autoSplitPages)
+        capture(scene, "single-page-split")
+        for (other in listOf(
+            MR.strings.reader_settings_auto,
+            MR.strings.reader_settings_dual,
+            MR.strings.reader_settings_vertical,
+        )) {
+            click(scene, other.localized())
+            assertFalse(hasText(label))
+            assertFalse(hasText(hint))
+            assertTrue(model.state.value.autoSplitPages, "Hiding the setting must preserve it")
+        }
+        click(scene, MR.strings.reader_settings_paged.localized())
+        assertFalse(hasText(label), "Vertical paging is not horizontal single page mode")
+        click(scene, MR.strings.reader_settings_horizontal.localized())
+        click(scene, MR.strings.reader_settings_single.localized())
+        assertTrue(hasText(hint))
+        capture(scene, "single-page-split-restored")
+        click(scene, MR.strings.action_close.localized(), Role.Button)
+        assertFalse(model.state.value.showSettings)
+        model.toggleSettings()
+        repeat(3) { render(scene) }
+        assertTrue(hasText(label))
+        val reopened = ReaderScreenModel(prefs = prefs)
+        try {
+            assertTrue(reopened.state.value.autoSplitPages, "The original saved preference survives reopening")
+        } finally {
+            reopened.onDispose()
+        }
+    }
+
+    @Test
     fun `reading mode direction and navigation choices flow horizontally and stay exclusive`() = withPanel(
         locale = Locale.SIMPLIFIED_CHINESE,
     ) {
@@ -289,20 +340,25 @@ class ReaderSettingsChoiceLayoutTest {
 
     private fun render(scene: ImageComposeScene) = frame(scene).close()
 
-    private fun click(scene: ImageComposeScene, label: String) {
-        val position = option(scene, label).boundsInRoot.center
+    private fun click(scene: ImageComposeScene, label: String, role: Role? = null) {
+        val position = option(scene, label, role).boundsInRoot.center
         scene.sendPointerEvent(PointerEventType.Press, position)
         scene.sendPointerEvent(PointerEventType.Release, position)
         render(scene)
     }
 
-    private fun option(scene: ImageComposeScene, label: String): SemanticsNode = scene.semanticsOwners
+    private fun option(
+        scene: ImageComposeScene,
+        label: String,
+        role: Role? = null,
+    ): SemanticsNode = scene.semanticsOwners
         .flatMap { flatten(it.rootSemanticsNode) }
         .first { node ->
-            node.config.contains(SemanticsActions.OnClick) && flatten(node).any {
-                it.config.contains(SemanticsProperties.Text) &&
-                    it.config[SemanticsProperties.Text].any { text -> text.text == label }
-            }
+            node.config.contains(SemanticsActions.OnClick) &&
+                (role == null || node.config.getOrNull(SemanticsProperties.Role) == role) && flatten(node).any {
+                    it.config.contains(SemanticsProperties.Text) &&
+                        it.config[SemanticsProperties.Text].any { text -> text.text == label }
+                }
         }
 
     private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
