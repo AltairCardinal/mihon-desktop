@@ -5,6 +5,12 @@ description: A traceable history of public feature documentation, separate from 
 
 # Changelog
 
+## 2026-11-11 — Windows reader settings design accepted
+
+**Accepted local preview · not a public product release**
+
+The project owner accepted Windows preview `0.11.24.10.c95438e` in a private review on 2026-11-11. The grouped default/custom controls, horizontal and vertical reading, default summary, mode-dependent options, and the single-page Split wide pages trailing switch were accepted. Source: `c95438e394e0e6b2a3ac1d7d1e1c9260cd6a2534` (including the preceding visual refinements). This acceptance covers Windows; Android visual alignment remains pending user acceptance.
+
 Read [Current features](./features.md) for what the project currently documents. This page records changes to that baseline; it does not accumulate full copies of the guide.
 
 Public product releases and documentation updates are different events. A date here is not a release version. Implementation work enters the public feature description only after explicit project-owner acceptance.
