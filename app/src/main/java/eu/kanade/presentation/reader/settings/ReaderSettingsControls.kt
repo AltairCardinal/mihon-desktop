@@ -24,6 +24,7 @@ import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.SettingsItemsPaddings
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
+import tachiyomi.presentation.reader.settings.DefaultReaderModePreference
 import tachiyomi.presentation.reader.settings.ReaderModeChoices
 import tachiyomi.presentation.reader.settings.ReaderModeSettingsContent
 import tachiyomi.presentation.reader.settings.ReaderModeSwitch
@@ -93,9 +94,14 @@ internal fun ReaderSettingsControls(
         { resource: dev.icerock.moko.resources.StringResource -> resource.getString(context) }
     }
     ReaderSettingsTextScope(resolve) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = SettingsItemsPaddings.Horizontal, vertical = 8.dp)) {
+        Column(
+            Modifier.fillMaxWidth().padding(
+                horizontal = if (followingDefault == null) 0.dp else SettingsItemsPaddings.Horizontal,
+                vertical = if (followingDefault == null) 0.dp else 8.dp,
+            ),
+        ) {
             if (followingDefault == null) {
-                ReaderModeChoices(settings, onChange)
+                DefaultReaderModePreference(settings, onChange)
             } else {
                 ReaderModeSettingsContent(
                     settings = if (followingDefault) defaults else settings,

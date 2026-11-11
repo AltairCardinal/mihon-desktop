@@ -576,7 +576,10 @@ class DesktopSettingsSearchWiringTest {
             click(scene, MR.strings.pref_category_reader.localized())
             render(scene)
             assertTrue(MR.strings.pref_category_library.localized() in text(scene), "directory stays mounted")
-            assertTrue(MR.strings.pref_viewer_type.localized() in text(scene), "real Reader settings must be mounted")
+            assertTrue(
+                MR.strings.reader_settings_default_mode_title.localized() in text(scene),
+                "real Reader settings must be mounted",
+            )
         }
     }
 
@@ -857,6 +860,8 @@ class DesktopSettingsSearchWiringTest {
             withSearchScene(ReaderSettingsScreen()) { scene ->
                 currentReaderPreferences.readingMode = mihon.desktop.reader.ReadingMode.LTR
                 render(scene)
+                click(scene, MR.strings.reader_settings_default_mode_title.localized(Locale.US))
+                render(scene)
                 click(scene, MR.strings.reader_settings_auto.localized(Locale.US))
                 assertEquals(mihon.desktop.reader.ReadingMode.AUTO, currentReaderPreferences.readingMode)
             }
@@ -867,7 +872,7 @@ class DesktopSettingsSearchWiringTest {
     fun `reader search anchor scrolls highlights once and preserves mode writes`() = runBlocking {
         withRestoredLocale {
             Locale.setDefault(Locale.US)
-            val anchorTitle = MR.strings.pref_viewer_type.localized(Locale.US)
+            val anchorTitle = MR.strings.reader_settings_default_mode_title.localized(Locale.US)
             val query = MR.strings.reader_settings_paged.localized(Locale.US)
             withSearchScene(height = 180) { scene ->
                 lateinit var navigator: Navigator
@@ -897,6 +902,8 @@ class DesktopSettingsSearchWiringTest {
                 }
                     .config[SemanticsProperties.VerticalScrollAxisRange]
                 assertTrue(scroll.value() >= 0f)
+                click(scene, MR.strings.reader_settings_default_mode_title.localized(Locale.US))
+                render(scene)
                 click(scene, MR.strings.reader_settings_horizontal.localized(Locale.US))
                 render(scene)
                 click(scene, MR.strings.reader_settings_single.localized(Locale.US))

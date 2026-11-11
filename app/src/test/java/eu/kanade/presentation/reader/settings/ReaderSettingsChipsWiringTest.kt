@@ -23,6 +23,7 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.Density
 import eu.kanade.domain.manga.interactor.SetMangaViewerFlags
 import eu.kanade.presentation.more.settings.Preference
@@ -252,9 +253,15 @@ class ReaderSettingsChipsWiringTest {
     }
 
     @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    @Config(qualifiers = "zh-rCN-w430dp-h1100dp")
     fun `global grouped settings persist hidden choices and observe legacy preferences`() =
-        withPage(0L, global = true) { fixture ->
+        withPage(0L, global = true, dark = true) { fixture ->
             compose.onNodeWithText("跟随默认").assertDoesNotExist()
+            compose.onNodeWithText("横向阅读").assertDoesNotExist()
+            capture(fixture, "global-summary", scrollToTop = false)
+            click("默认阅读模式设置")
+            capture(fixture, "global-dialog", scrollToTop = false)
             click("纵向阅读")
             click("页面有空隙")
             click("逐页翻动")
@@ -271,6 +278,18 @@ class ReaderSettingsChipsWiringTest {
             assertTrue(restored.defaultReaderSettings().gap)
             compose.onNodeWithText("单页").assertIsSelected()
             compose.onNodeWithText("从左到右").assertIsSelected()
+            compose.onNodeWithText("关闭").assertIsDisplayed().performClick()
+            compose.waitForIdle()
+            compose.onNodeWithText("横向阅读 · 单页 · 从左到右", substring = true).assertIsDisplayed()
+            val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+            compose.onNodeWithText("横向阅读 · 单页 · 从左到右", substring = true)
+                .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) {
+                    it(layouts)
+                }
+            assertEquals(1, layouts.single().lineCount)
+            capture(fixture, "global-summary-updated", scrollToTop = false)
+            click("默认阅读模式设置")
+            compose.onNodeWithText("单页").assertIsSelected()
         }
 
     @Test
@@ -299,7 +318,8 @@ class ReaderSettingsChipsWiringTest {
     private fun capture(fixture: Fixture, name: String, scrollToTop: Boolean = true) {
         if (scrollToTop) compose.onNodeWithText("跟随默认").performScrollTo()
         compose.waitForIdle()
-        val root = fixture.activity.findViewById<android.view.View>(android.R.id.content)
+        val root = org.robolectric.shadows.ShadowDialog.getLatestDialog()?.takeIf { it.isShowing }?.window?.decorView
+            ?: fixture.activity.findViewById<android.view.View>(android.R.id.content)
         assertTrue(root.width > 0 && root.height > 0)
         val bitmap = android.graphics.Bitmap.createBitmap(
             root.width,

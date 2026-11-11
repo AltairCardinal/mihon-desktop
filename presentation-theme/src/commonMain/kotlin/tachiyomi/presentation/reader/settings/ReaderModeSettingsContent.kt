@@ -76,14 +76,14 @@ fun ReaderSettingsTextScope(text: (StringResource) -> String, content: @Composab
 }
 
 @Composable
-private fun StringResource.readerText(): String = LocalReaderText.current(this)
+internal fun StringResource.readerText(): String = LocalReaderText.current(this)
 
-private fun Modifier.readerSettingsActivationKeys(
+internal fun Modifier.readerSettingsActivationKeys(
     role: Role,
     onClick: () -> Unit,
 ): Modifier = onPreviewKeyEvent { event ->
     val activates = event.key == Key.Enter || event.key == Key.NumPadEnter ||
-        (event.key == Key.Spacebar && role in setOf(Role.RadioButton, Role.Switch))
+        (event.key == Key.Spacebar && role in setOf(Role.RadioButton, Role.Switch, Role.Button))
     if (event.type == KeyEventType.KeyDown && activates) {
         onClick()
         true

@@ -21,7 +21,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.reader.NextChapterPrefetchMode
-import mihon.desktop.ui.reader.ReaderModeChoices
+import mihon.desktop.ui.reader.DefaultReaderModePreference
 import tachiyomi.i18n.MR
 
 class ReaderSettingsScreen : Screen {
@@ -40,7 +40,7 @@ class ReaderSettingsScreen : Screen {
         val nextChapterPrefetchMode by readerPreferences.nextChapterPrefetchPreference.changes().collectAsState(
             initial = readerPreferences.nextChapterPrefetchMode,
         )
-        val viewerTypeTitle = MR.strings.pref_viewer_type.localized()
+        val viewerTypeTitle = MR.strings.reader_settings_default_mode_title.localized()
         val prefetchTitle = MR.strings.desktop_reader_prefetch_next_chapter.localized()
 
         Scaffold(
@@ -57,16 +57,8 @@ class ReaderSettingsScreen : Screen {
                 route = this@ReaderSettingsScreen,
                 modifier = Modifier.fillMaxSize().padding(padding),
             ) {
-                Text(
-                    text = viewerTypeTitle,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.desktopSettingsAnchor(
-                        viewerTypeTitle,
-                    ).padding(horizontal = 16.dp, vertical = 8.dp),
-                )
-                androidx.compose.foundation.layout.Column(Modifier.padding(horizontal = 16.dp)) {
-                    ReaderModeChoices(readerSettings) {
+                androidx.compose.foundation.layout.Box(Modifier.desktopSettingsAnchor(viewerTypeTitle)) {
+                    DefaultReaderModePreference(readerSettings) {
                         readerPreferences.saveReaderSettings(it)
                         readerSettings = it
                     }

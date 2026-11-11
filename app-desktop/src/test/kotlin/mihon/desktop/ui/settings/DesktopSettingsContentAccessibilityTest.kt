@@ -153,6 +153,11 @@ class DesktopSettingsContentAccessibilityTest {
         }
         val dependencies = dependencies(store, this, readerPreferences)
         withScene(ReaderSettingsScreen(), dependencies) { scene ->
+            requireNotNull(
+                semanticBranch(scene, "Default reading mode settings", Role.Button)
+                    .config[SemanticsActions.OnClick].action,
+            ).invoke()
+            render(scene)
             assertToggle(scene, MR.strings.reader_settings_auto.localized(), Role.RadioButton, selected = true)
             assertToggle(scene, MR.strings.reader_settings_single.localized(), Role.RadioButton, selected = false)
             requireNotNull(
@@ -163,6 +168,11 @@ class DesktopSettingsContentAccessibilityTest {
             assertToggle(scene, MR.strings.reader_settings_single.localized(), Role.RadioButton, selected = true)
             assertToggle(scene, MR.strings.reader_settings_auto.localized(), Role.RadioButton, selected = false)
             assertEquals(mihon.desktop.reader.ReadingMode.RTL, readerPreferences.readingMode)
+            requireNotNull(
+                semanticBranch(scene, MR.strings.action_close.localized(), Role.Button)
+                    .config[SemanticsActions.OnClick].action,
+            ).invoke()
+            render(scene)
             assertToggle(
                 scene,
                 MR.strings.off.localized(),
@@ -214,6 +224,9 @@ class DesktopSettingsContentAccessibilityTest {
             prefs.saveReaderSettings(mihon.domain.reader.ReaderSettings(gap = true))
             val dependencies = dependencies(store, this, prefs)
             withScene(ReaderSettingsScreen(), dependencies, 1600) { scene ->
+                val entry = semanticBranch(scene, "Default reading mode settings", Role.Button)
+                assertTrue(requireNotNull(entry.config[SemanticsActions.OnClick].action).invoke())
+                render(scene)
                 suspend fun click(label: String) {
                     requireNotNull(
                         semanticBranch(scene, label, Role.RadioButton).config[SemanticsActions.OnClick].action,

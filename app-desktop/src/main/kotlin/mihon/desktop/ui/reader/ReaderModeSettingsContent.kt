@@ -3,11 +3,17 @@ package mihon.desktop.ui.reader
 import androidx.compose.runtime.Composable
 import mihon.domain.reader.ReaderSettings
 import tachiyomi.presentation.reader.settings.ReaderSettingsTextScope
+import tachiyomi.presentation.reader.settings.DefaultReaderModePreference as SharedDefaultReaderModePreference
 import tachiyomi.presentation.reader.settings.ReaderModeChoices as SharedReaderModeChoices
 import tachiyomi.presentation.reader.settings.ReaderModeSettingsContent as SharedReaderModeSettingsContent
 import tachiyomi.presentation.reader.settings.ReaderModeSwitch as SharedReaderModeSwitch
 
 /** Desktop resource adapter; Android and Desktop render the same approved controls. */
+@Composable
+internal fun DefaultReaderModePreference(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit) {
+    ReaderSettingsTextScope({ it.localized() }) { SharedDefaultReaderModePreference(settings, onChange) }
+}
+
 @Composable
 internal fun ReaderModeSettingsContent(
     settings: ReaderSettings,

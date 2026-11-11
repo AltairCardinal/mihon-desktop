@@ -35,7 +35,7 @@ object SettingsReaderScreen : SearchableSettings {
 
         return listOf(
             Preference.PreferenceItem.CustomPreference(
-                title = stringResource(MR.strings.pref_viewer_type),
+                title = stringResource(MR.strings.reader_settings_default_mode_title),
             ) {
                 ReaderSettingsControls(
                     settings = readerPref.collectDefaultReaderSettings(),

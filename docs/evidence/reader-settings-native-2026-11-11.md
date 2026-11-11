@@ -48,6 +48,10 @@
 
 ## 视觉与测试边界
 
+### 默认阅读模式设置的入口收纳
+
+用户要求设置 → 阅读内的模式组收纳为标题、一行当前值以及点击打开的完整窗口。双端通过共享 `DefaultReaderModePreference` 实现，继续调用原有平台偏好写入入口。`default-reader-dialog-red` 的 Desktop 入口用例先失败，`default-reader-android-red` 复现旧模式仍直接展开。`default-reader-dialog-final` 的 Desktop 10 项通过（角色/实际偏好、搜索导航与锚点、共享控件回归），Android 其余 8 项通过；新增全局窗口用例因夹具对关闭按钮调用了不存在的父级滚动而失败，改为点击可见关闭按钮后由 `default-reader-android-verified` 通过。后续补验仅覆盖全局入口最后的外边距和保存/重开；组合共 19 项定向证据，未运行完整模块或全量测试。Android NATIVE 图片 `global-summary.png`、`global-dialog.png`、`global-summary-updated.png` 核对收起入口及真实 Dialog decorView；同时通过 TextLayoutResult 的实际 lineCount=1 验证摘要单行。仅修改全局模式入口及其搜索定位，作品弹层保持原样；新行为待用户验收，未更新公共功能承诺。
+
 ### Android 对齐已验收 Windows 的共享控件
 
 用户于 2026-11-11 验收 Windows `0.11.24.10.c95438e`，并要求移动端一致后构建 APK。本轮基线为 `c95438e394e0e6b2a3ac1d7d1e1c9260cd6a2534`。

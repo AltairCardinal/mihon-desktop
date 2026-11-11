@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Shared reader settings -->
+    <string name="reader_settings_default_mode_title">Default reading mode settings</string>
     <string name="desktop_reader_split_wide_hint">Split a wide page into two single pages, suitable for portrait reading when the source stores a double-page spread as one image</string>
     <string name="desktop_reader_page_layout">Page layout</string>
     <string name="desktop_reader_turn_direction">Page turning direction</string>

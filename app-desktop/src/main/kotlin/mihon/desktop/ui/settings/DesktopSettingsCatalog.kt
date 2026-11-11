@@ -154,7 +154,7 @@ object DesktopSettingsCatalog {
             title = MR.strings.pref_category_reader.localized(),
             preferences = listOf(
                 SearchablePreference.Entry(
-                    title = MR.strings.pref_viewer_type.localized(),
+                    title = MR.strings.reader_settings_default_mode_title.localized(),
                     summary = listOf(
                         MR.strings.reader_settings_horizontal,
                         MR.strings.reader_settings_vertical,
