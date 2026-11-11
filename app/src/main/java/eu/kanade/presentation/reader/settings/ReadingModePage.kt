@@ -105,6 +105,8 @@ private fun ColumnScope.PagerViewerSettings(screenModel: ReaderSettingsScreenMod
         pref = screenModel.preferences.navigateToPan(),
     )
 
+    PagerSplitSettings(screenModel)
+
     val dualPageRotateToFit by screenModel.preferences.dualPageRotateToFit().collectAsState()
     CheckboxItem(
         label = stringResource(MR.strings.pref_page_rotate),

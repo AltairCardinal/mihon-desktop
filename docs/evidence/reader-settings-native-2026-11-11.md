@@ -48,6 +48,11 @@
 
 ## 视觉与测试边界
 
+### Android 拆分双页恢复原版布尔区位置
+
+用户后续要求安卓版「拆分双页」移出模式卡片，回到阅读模式下方原版布尔设置区。对照修改前历史实现的顺序，恢复为平移导航 → 拆分双页及交换顺序 → 宽页旋转及反转。保留椭圆开关、指定说明、原偏好与双向旋转互斥，不改 Windows 或条漫独立处理。`android-pager-split-placement-red` 先复现原位缺少「拆分双页」以及快捷模式 sheet 仍含旧入口；最小移动后 `android-pager-split-placement-green` 通过 14 项 Android focused 验证：原位几何顺序、偏好保存、单双页与默认切换、旋转互斥、快捷入口移除、共享设置及真实 Activity→SQLite→viewer 接线。`app/build/reader-settings-parity/pager-boolean-split.png` 是实际 NATIVE 控件渲染，核对拆页项位于三项原版布尔项之后；长页面仍可继续滚动查看下方交换顺序与旋转。未运行全量测试；Release 安装不等于用户体验验收。
+
+
 ### 默认阅读模式设置的入口收纳
 
 用户要求设置 → 阅读内的模式组收纳为标题、一行当前值以及点击打开的完整窗口。双端通过共享 `DefaultReaderModePreference` 实现，继续调用原有平台偏好写入入口。`default-reader-dialog-red` 的 Desktop 入口用例先失败，`default-reader-android-red` 复现旧模式仍直接展开。`default-reader-dialog-final` 的 Desktop 10 项通过（角色/实际偏好、搜索导航与锚点、共享控件回归），Android 其余 8 项通过；新增全局窗口用例因夹具对关闭按钮调用了不存在的父级滚动而失败，改为点击可见关闭按钮后由 `default-reader-android-verified` 通过。后续补验仅覆盖全局入口最后的外边距和保存/重开；组合共 19 项定向证据，未运行完整模块或全量测试。Android NATIVE 图片 `global-summary.png`、`global-dialog.png`、`global-summary-updated.png` 核对收起入口及真实 Dialog decorView；同时通过 TextLayoutResult 的实际 lineCount=1 验证摘要单行。仅修改全局模式入口及其搜索定位，作品弹层保持原样；新行为待用户验收，未更新公共功能承诺。

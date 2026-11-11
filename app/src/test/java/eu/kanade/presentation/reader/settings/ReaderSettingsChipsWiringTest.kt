@@ -97,10 +97,10 @@ class ReaderSettingsChipsWiringTest {
     }
 
     @Test
-    fun `single page split uses trailing switch and original preference without stale rotation`() = withPage(
+    fun `pager split stays in original boolean section and retains preference and rotation behavior`() = withPage(
         1L,
     ) { fixture ->
-        val label = "分割宽页"
+        val label = "拆分双页"
         val hint = "将宽页分切为两个单页显示，适合在竖屏阅读图源为单张跨页的漫画"
         fixture.preferences.dualPageRotateToFit().set(true)
         fixture.preferences.dualPageInvertPaged().set(true)
@@ -112,13 +112,22 @@ class ReaderSettingsChipsWiringTest {
         assertTrue(fixture.preferences.dualPageSplitPaged().get())
         assertFalse(fixture.preferences.dualPageRotateToFit().get())
         assertTrue(fixture.preferences.dualPageInvertPaged().get())
-        compose.onNodeWithText("拆分双页").assertDoesNotExist()
+        compose.onNodeWithText("分割宽页").assertDoesNotExist()
+        compose.onNodeWithText(
+            MR.strings.pref_page_rotate.getString(RuntimeEnvironment.getApplication()),
+        ).performScrollTo()
+        val panY = compose.onNodeWithText(MR.strings.pref_navigate_pan.getString(RuntimeEnvironment.getApplication()))
+            .fetchSemanticsNode().positionInRoot.y
+        val splitY = compose.onNodeWithText(label).fetchSemanticsNode().positionInRoot.y
+        val rotateY = compose.onNodeWithText(MR.strings.pref_page_rotate.getString(RuntimeEnvironment.getApplication()))
+            .fetchSemanticsNode().positionInRoot.y
+        assertTrue(panY < splitY && splitY < rotateY)
         click("双页")
-        compose.onNodeWithText(label).assertDoesNotExist()
+        compose.onNodeWithText(label).performScrollTo().assertIsOn()
         click("自动")
-        compose.onNodeWithText(label).assertDoesNotExist()
+        compose.onNodeWithText(label).performScrollTo().assertIsOn()
         click("纵向阅读")
-        compose.onNodeWithText(label).assertDoesNotExist()
+        compose.onNodeWithText(label).performScrollTo().assertIsOn()
         click("横向阅读")
         click("单页")
         compose.onNodeWithText(label).performScrollTo().assertIsOn()
@@ -128,7 +137,7 @@ class ReaderSettingsChipsWiringTest {
         assertFalse(fixture.preferences.dualPageSplitPaged().get())
         assertTrue(fixture.preferences.dualPageInvertPaged().get())
         click("跟随默认")
-        compose.onNodeWithText(label).assertDoesNotExist()
+        compose.onNodeWithText(label).performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -301,7 +310,8 @@ class ReaderSettingsChipsWiringTest {
     ) { fixture ->
         capture(fixture, "horizontal-double")
         click("单页")
-        click("分割宽页")
+        click("拆分双页")
+        capture(fixture, "pager-boolean-split", scrollToTop = false)
         capture(fixture, "horizontal-single")
         click("自动")
         capture(fixture, "horizontal-auto")
@@ -313,6 +323,12 @@ class ReaderSettingsChipsWiringTest {
         capture(fixture, "default-summary")
         fixture.preferences.setDefaultReaderSettings(ReaderSettings(mode = ReaderSettingsMode.VERTICAL))
         capture(fixture, "vertical-default")
+    }
+
+    @Test
+    fun `mode quick sheet excludes pager extension split options`() = withPage(1L, quick = true) {
+        compose.onNodeWithText("分割宽页").assertDoesNotExist()
+        compose.onNodeWithText("拆分双页").assertDoesNotExist()
     }
 
     private fun capture(fixture: Fixture, name: String, scrollToTop: Boolean = true) {

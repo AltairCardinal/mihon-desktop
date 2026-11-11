@@ -36,8 +36,6 @@ internal fun SeriesReaderSettings(screenModel: ReaderSettingsScreenModel) {
     val viewer by screenModel.viewerFlow.collectAsState()
     val defaults = screenModel.preferences.collectDefaultReaderSettings()
     val flags = manga?.viewerFlags ?: 0L
-    val split by screenModel.preferences.dualPageSplitPaged().collectAsState()
-    val invert by screenModel.preferences.dualPageInvertPaged().collectAsState()
     ReaderSettingsControls(
         settings = ReaderSettingsCodec.custom(flags, defaults),
         defaults = defaults,
@@ -45,26 +43,6 @@ internal fun SeriesReaderSettings(screenModel: ReaderSettingsScreenModel) {
         automaticDualPage = viewer is DualPageR2LPagerViewer,
         onChange = screenModel::changeReaderSettings,
         onFollowDefault = screenModel::followDefault,
-        singlePageOptions = {
-            ReaderModeSwitch(
-                title = stringResource(MR.strings.desktop_ui_split_wide_pages),
-                hint = stringResource(MR.strings.desktop_reader_split_wide_hint),
-                checked = split,
-                onChange = { enabled ->
-                    if (enabled) screenModel.preferences.dualPageRotateToFit().set(false)
-                    screenModel.preferences.dualPageSplitPaged().set(enabled)
-                },
-            )
-            if (split) {
-                Spacer(Modifier.height(14.dp))
-                ReaderModeSwitch(
-                    title = stringResource(MR.strings.pref_dual_page_invert),
-                    hint = stringResource(MR.strings.pref_dual_page_invert_summary),
-                    checked = invert,
-                    onChange = screenModel.preferences.dualPageInvertPaged()::set,
-                )
-            }
-        },
     )
 }
 
@@ -86,7 +64,6 @@ internal fun ReaderSettingsControls(
     defaults: ReaderSettings = settings,
     automaticDualPage: Boolean = false,
     onFollowDefault: (Boolean) -> Unit = {},
-    singlePageOptions: @Composable () -> Unit = {},
 ) {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
@@ -110,7 +87,6 @@ internal fun ReaderSettingsControls(
                     onCustomize = { onFollowDefault(false) },
                     onChange = onChange,
                     actualDualPage = automaticDualPage,
-                    singlePageOptions = singlePageOptions,
                 )
             }
         }
@@ -125,4 +101,35 @@ internal fun SettingsExplanation(text: String) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.bodyMedium,
     )
+}
+
+/** Android pager extensions stay in Mihon's lower boolean section, outside per-work mode choices. */
+@Composable
+internal fun PagerSplitSettings(screenModel: ReaderSettingsScreenModel) {
+    val preferences = screenModel.preferences
+    val split by preferences.dualPageSplitPaged().collectAsState()
+    val invert by preferences.dualPageInvertPaged().collectAsState()
+    val context = LocalContext.current
+    ReaderSettingsTextScope({ it.getString(context) }) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = SettingsItemsPaddings.Horizontal, vertical = 8.dp)) {
+            ReaderModeSwitch(
+                title = stringResource(MR.strings.pref_dual_page_split),
+                hint = stringResource(MR.strings.desktop_reader_split_wide_hint),
+                checked = split,
+                onChange = { enabled ->
+                    if (enabled) preferences.dualPageRotateToFit().set(false)
+                    preferences.dualPageSplitPaged().set(enabled)
+                },
+            )
+            if (split) {
+                Spacer(Modifier.height(14.dp))
+                ReaderModeSwitch(
+                    title = stringResource(MR.strings.pref_dual_page_invert),
+                    hint = stringResource(MR.strings.pref_dual_page_invert_summary),
+                    checked = invert,
+                    onChange = preferences.dualPageInvertPaged()::set,
+                )
+            }
+        }
+    }
 }
