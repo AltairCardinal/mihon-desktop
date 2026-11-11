@@ -44,6 +44,8 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.i18n.MR
 import java.util.prefs.Preferences
@@ -114,8 +116,11 @@ class ReaderScreenModelTest {
         }
     }
 
-    @Test
-    fun `invalid sync resume confirms the drawn partner while logical target is still loading`() = runTest {
+    @ParameterizedTest
+    @ValueSource(booleans = [false, true])
+    fun `invalid sync resume confirms the drawn partner while logical target is still loading`(
+        matching: Boolean,
+    ) = runTest {
         val initial = desktopReaderSessionState(chapterId = 7L, pageCount = 2, initialPage = 10)
         val reader = initial.copy(context = initial.context.copy(mangaId = 1))
         val repository = object : ChapterPairingRepository {
@@ -140,6 +145,12 @@ class ReaderScreenModelTest {
         val model = ReaderScreenModel(
             initialSessionState = reader,
             dualPageOverride = true,
+            prefs = testPreferences {
+                readingMode = ReadingMode.RTL
+                isDualPage = true
+                autoSplitPages = false
+                isAutoSpreadMatching = matching
+            },
             pairingCoordinator = DesktopChapterPairingCoordinator(repository, backgroundScope),
             onViewportSettled = { pages, active -> recorded += pages to active },
         )
@@ -159,7 +170,27 @@ class ReaderScreenModelTest {
         val native = ReaderPagerNativePresentation(unit, visible, ReaderPagerPresentationBinding(Any(), model), {})
         try {
             native.begin(userNavigation = false)
+            val beforeHiddenDraw = model.state.value.visiblePageIds
+            val shared = ReaderScreenModel::class.java.getDeclaredField("dualSession").apply { isAccessible = true }
+                .get(model) as mihon.domain.reader.SharedDualPageSession
             val partnerSlot = unit.slots.single { it.page?.id == partner }
+            assertEquals(matching, model.state.value.autoSpreadMatching)
+            assertFalse(native.prepare(partnerSlot.id, partnerSlot.page, 40, 60))
+            native.drawn(partnerSlot.id)
+            native.setIdle(true)
+            val afterHiddenDraw = model.state.value.visiblePageIds
+            println("EXPOSURE_GATE matching=$matching before=$beforeHiddenDraw after=$afterHiddenDraw")
+            assertEquals(beforeHiddenDraw, afterHiddenDraw, "Hidden draw callbacks cannot change candidate visibility")
+            assertTrue(
+                shared.displayedHistory.all {
+                    it.drawnPageIds.isEmpty()
+                },
+                "An unexposed mount cannot draw pages",
+            )
+            assertTrue(recorded.isEmpty(), "An unexposed mount cannot manufacture synchronized progress")
+            assertTrue(model.state.value.resumePageUnavailable)
+
+            native.setExposed(true)
             assertTrue(native.prepare(partnerSlot.id, partnerSlot.page, 40, 60))
             native.drawn(partnerSlot.id)
             native.setIdle(true)

@@ -37,6 +37,8 @@
 
 ## 两项已有失败
 
+**后续核对已关闭（2026-11-11）：** 用户随后要求区分测试过时与产品缺陷。按当前契约补齐真实像素、指针、曝光和进度正反对照后，确认两项均为过时测试，生产代码未改；最终 5 项 focused 验证通过。详见[契约与实际行为核对](reader-pairing-test-contract-audit-2026-11-11.md)。下文保留本轮最初发现时的原始失败记录。
+
 以下两个断言在未含本轮原生改动的独立 `c6ac535359` 快照中均复现相同失败；合流后的现象也相同：
 
 1. `AdaptiveReaderViewportTest.production reader resize preserves page and progress and real next tap resumes reporting`：期望 `[2, 3]`，实际 `[1, 2]`。

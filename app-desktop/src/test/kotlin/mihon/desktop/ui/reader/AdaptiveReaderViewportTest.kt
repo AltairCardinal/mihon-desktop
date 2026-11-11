@@ -14,6 +14,8 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asComposeImageBitmap
+import androidx.compose.ui.graphics.asSkiaBitmap
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.semantics.SemanticsActions
@@ -42,6 +44,7 @@ import mihon.domain.reader.observability.ReaderIoProbe
 import mihon.domain.reader.observability.ReaderIoReporter
 import mihon.domain.reader.observability.ReaderMonotonicClock
 import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.Canvas
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -58,7 +61,11 @@ class AdaptiveReaderViewportTest {
         val root = Preferences.userRoot().node("/mihon/viewport-test/${System.nanoTime()}")
         val prefs = ReaderPreferences(DesktopPreferenceStore(root.node("current")), root.node("legacy"))
         prefs.readingMode = ReadingMode.AUTO
+        prefs.isAutoSpreadMatching = false
         val reports = mutableListOf<Int>()
+        val reportedPages = mutableListOf<Set<Int>>()
+        val pageColors =
+            listOf(0xFFE53935.toInt(), 0xFF43A047.toInt(), 0xFF1E88E5.toInt(), 0xFF8E24AA.toInt(), 0xFFFFB300.toInt())
         lateinit var model: ReaderScreenModel
         model = ReaderScreenModel(
             prefs = prefs,
@@ -69,6 +76,7 @@ class AdaptiveReaderViewportTest {
                 assertTrue(active in pages)
                 assertTrue(shared.displayedHistory.any { frame -> pages.all { it in frame.drawnPageIds } })
                 reports += active.sourcePageIndex
+                reportedPages += pages.map { it.sourcePageIndex }.toSet()
             },
         )
         // This isolated renderer supplies its original dimensions through the real shared ticket.
@@ -86,8 +94,9 @@ class AdaptiveReaderViewportTest {
             this,
             content,
             reporter,
-            decoder = DesktopReaderPageImageDecoder { _, _ ->
+            decoder = DesktopReaderPageImageDecoder { _, key ->
                 val bitmap = Bitmap().apply { allocN32Pixels(10, 14) }
+                Canvas(bitmap).use { it.clear(pageColors[key.pageIndex]) }
                 DesktopReaderImageAsset(bitmap.asComposeImageBitmap(), 10, 14, 560L, false, disposer = bitmap::close)
             },
         )
@@ -111,30 +120,61 @@ class AdaptiveReaderViewportTest {
                 runCurrent()
                 advanceTimeBy(16)
             }
+            fun visibleSourcePages(): Set<Int> = scene.render(testScheduler.currentTime * 1_000_000).use { image ->
+                val bitmap = image.toComposeImageBitmap().asSkiaBitmap()
+                try {
+                    (0 until 160 step 2).flatMap { x ->
+                        (20..80 step 20).map { y -> bitmap.getColor(x, y) }
+                    }.mapNotNull { color -> pageColors.indexOf(color).takeIf { it >= 0 } }.toSet()
+                } finally {
+                    bitmap.close()
+                }
+            }
+            fun displayedFrame() = (
+                ReaderScreenModel::class.java.getDeclaredField("dualSession")
+                    .apply { isAccessible = true }.get(model) as mihon.domain.reader.SharedDualPageSession
+                )
+                .displayedHistory.single { it.id == model.state.value.dualPageTargetFrameId }
             frames()
             assertFalse(model.state.value.dualPageMode)
             assertEquals(2, model.state.value.currentPage)
             assertEquals(listOf(2), reports)
+            assertEquals(setOf(2), visibleSourcePages())
             width = 160.dp
             frames()
             assertTrue(model.state.value.dualPageMode)
+            val wideCanonical = model.state.value.dualPageUnits.single { unit ->
+                unit.pageIds.any { it.sourcePageIndex == 2 }
+            }.pageIds.map { it.sourcePageIndex }
+            // The canonical cover rule starts at the chapter, never at the restored page 2.
+            assertEquals(listOf(0), model.state.value.dualPageUnits.first().pageIds.map { it.sourcePageIndex })
             assertEquals(
-                listOf(2, 3),
-                model.state.value.dualPageUnits.single { unit ->
-                    unit.pageIds.any { it.sourcePageIndex == 2 }
-                }.pageIds.map { it.sourcePageIndex },
+                listOf(1, 2),
+                wideCanonical,
+                "Canonical pairing starts at the chapter, not at the restored target",
             )
+            assertEquals(setOf(1, 2), visibleSourcePages(), "Both actual page colors must be visible")
+            val wideFrame = displayedFrame()
+            assertEquals(setOf(1, 2), wideFrame.drawnPageIds.map { it.sourcePageIndex }.toSet())
             assertEquals(2, model.state.value.dualPageLocation?.pageId?.sourcePageIndex)
             assertEquals(2, model.state.value.currentPage)
-            assertEquals(listOf(2, 3), reports)
+            assertEquals(listOf(2), reports, "A layout-only resize cannot revive the consumed reading cause")
+            assertEquals(listOf(setOf(2)), reportedPages)
             model.toggleUI()
             frames()
             assertTrue(model.state.value.dualPageMode)
+            assertEquals(wideFrame.id, displayedFrame().id, "An overlay cannot replace the displayed frame")
+            assertEquals(setOf(1, 2), visibleSourcePages())
+            assertEquals(2, model.state.value.currentPage)
+            assertEquals(2, model.state.value.dualPageLocation?.pageId?.sourcePageIndex)
+            frames()
+            assertEquals(listOf(2), reports)
             width = 100.dp
             frames()
             assertFalse(model.state.value.dualPageMode)
             assertEquals(2, model.state.value.currentPage)
-            assertEquals(listOf(2, 3), reports)
+            assertEquals(listOf(2), reports)
+            assertEquals(setOf(2), visibleSourcePages())
             val pageBounds = scene.semanticsOwners.flatMap { flatten(it.unmergedRootSemanticsNode) }
                 .first { node ->
                     node.config.contains(ReaderDisplayUnitIdKey) &&
@@ -145,11 +185,15 @@ class AdaptiveReaderViewportTest {
             scene.sendPointerEvent(PointerEventType.Release, nextTap, button = PointerButton.Primary)
             frames()
             assertEquals(3, model.state.value.currentPage)
+            assertEquals(setOf(3), visibleSourcePages())
+            assertEquals(listOf(2, 3), reports)
             scene.sendPointerEvent(PointerEventType.Press, nextTap, button = PointerButton.Primary)
             scene.sendPointerEvent(PointerEventType.Release, nextTap, button = PointerButton.Primary)
             frames()
             assertEquals(4, model.state.value.currentPage)
-            assertEquals(listOf(2, 3, 3, 4), reports)
+            assertEquals(setOf(4), visibleSourcePages())
+            assertEquals(listOf(2, 3, 4), reports)
+            assertEquals(listOf(setOf(2), setOf(3), setOf(4)), reportedPages)
         } finally {
             scene.close()
             owner.close()
