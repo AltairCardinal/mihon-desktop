@@ -92,3 +92,13 @@
 - Android 覆盖 320dp/1.6 字号、单选组语义、真实点击及持久化。补充生产入口测试使用已验证的 Dialog host，消费 Activity 与实际 overlay 共用的 factory；native viewer 容器未附着。synthetic PageLoader 按既有前台资源策略暂停 optional 原图采样，以隔离 Windows JVM 缺少 imagedecoder JNI 的边界；它验证 viewer/config 接线，不验证 JNI 采样、图像绘制或动画。
 - 原 overlay 尝试的取消、Looper/动画/JNI 失败日志保留；最终 factory 用例没有未捕获异常。测试线程夹具修正不改变产品线程策略。
 - 未启动真实设备/模拟器或完整 GUI 应用窗口，未生成本轮 APK/安装包，未做正式发布验收。原生功能待用户体验验收后再更新公共功能说明。
+
+
+### 双端拆分双页恢复勾选框
+
+基线 `7941860cb991ee9d389dd89d3dcdbda2f0cc3fcb`。按用户新要求，双端统一使用「拆分双页」无说明勾选框；Desktop 移到章节跳过布尔项之后、背景之前，Android 保持原版平移导航与宽页旋转之间。保留原偏好、模式切换后的保存值及 Android 拆页/旋转互斥。
+
+- `split-checkbox-red` 与 `split-checkbox-android-red` 先复现 Desktop 下方入口缺失、Android 仍为 Switch；测试点击真实 production 控件并读取既有偏好，不以源码扫描替代行为。
+- `split-checkbox-green` 的 Desktop 13 项通过。Android 初次改回原生 CheckboxItem 后暴露父级状态语义未合并到可点击文字；为拆页提供单一、带 checked 和点击动作的辅助技术节点后，`split-checkbox-android-green2` 的 Android 14 项通过（控件/入口 10、共享布局接线 3、Activity→VM→SQLite→viewer 重建 1）。组合 27 项 focused 证据，不表示全模块或全量通过。格式检查覆盖本次五个 Kotlin 文件。
+- 查看 `.gradle-coordinator/reader-settings-native/split-checkbox-lower.png`、`split-checkbox-restored.png` 与 `app/build/reader-settings-parity/pager-boolean-split.png`：勾选框、无说明及下方位置符合要求。这些是实际 Compose 离屏/NATIVE 绘图，不等同物理设备或 Windows 原生窗口验收。
+- 交付 Windows preview 与 Android 正式签名候选；构建来源、签名和真实产物路径以各自产物清单为准，平板保留数据升级结果与用户体验验收分别记录。

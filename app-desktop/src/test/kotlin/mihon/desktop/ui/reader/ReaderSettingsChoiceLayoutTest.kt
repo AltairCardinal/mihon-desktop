@@ -32,64 +32,47 @@ class ReaderSettingsChoiceLayoutTest {
     private val frameTimes = java.util.IdentityHashMap<ImageComposeScene, Long>()
 
     @Test
-    fun `single page split control hides in other modes and retains its saved value`() = withPanel(
+    fun `split pages is a plain checkbox in lower settings and retains its saved value`() = withPanel(
         locale = Locale.SIMPLIFIED_CHINESE,
     ) { scene, model, prefs ->
-        val label = MR.strings.desktop_ui_split_wide_pages.localized()
+        val label = MR.strings.pref_dual_page_split.localized()
         val hint = "将宽页分切为两个单页显示，适合在竖屏阅读图源为单张跨页的漫画"
         fun hasText(value: String) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.any {
-            it.config.getOrNull(SemanticsProperties.Text)?.any { text -> text.text == value } == true
+            it.config.getOrNull(SemanticsProperties.Text)?.any { t -> t.text == value } == true
         }
-        assertFalse(hasText(label), "Inherited settings do not expose a standalone split control")
-        click(scene, MR.strings.reader_settings_custom.localized())
-        click(scene, MR.strings.reader_settings_single.localized())
         assertTrue(hasText(label))
-        assertTrue(hasText(hint))
-        val splitSwitch = option(scene, label)
-        assertEquals(Role.Switch, splitSwitch.config.getOrNull(SemanticsProperties.Role))
-        assertEquals(ToggleableState.Off, splitSwitch.config[SemanticsProperties.ToggleableState])
-        assertTrue(
-            option(scene, label).boundsInRoot.top >=
-                option(scene, MR.strings.desktop_reader_direction_ltr.localized()).boundsInRoot.bottom,
-        )
-        val switchPosition = androidx.compose.ui.geometry.Offset(
-            splitSwitch.boundsInRoot.right - 38f,
-            splitSwitch.boundsInRoot.center.y,
-        )
-        scene.sendPointerEvent(PointerEventType.Press, switchPosition)
-        scene.sendPointerEvent(PointerEventType.Release, switchPosition)
-        render(scene)
+        assertFalse(hasText(hint))
+        assertEquals(Role.Checkbox, option(scene, label).config[SemanticsProperties.Role])
+        assertEquals(ToggleableState.Off, option(scene, label).config[SemanticsProperties.ToggleableState])
+        click(scene, label)
         assertTrue(model.state.value.autoSplitPages)
         assertTrue(prefs.autoSplitPages)
         assertEquals(ToggleableState.On, option(scene, label).config[SemanticsProperties.ToggleableState])
-        capture(scene, "single-page-split")
-        for (other in listOf(
-            MR.strings.reader_settings_auto,
+        val lastBoolean = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.first {
+            it.config.getOrNull(SemanticsProperties.Text)?.any { t ->
+                t.text == MR.strings.pref_skip_dupe_chapters.localized()
+            } == true
+        }
+        assertTrue(option(scene, label).boundsInRoot.top >= lastBoolean.boundsInRoot.bottom)
+        capture(scene, "split-checkbox-lower")
+        click(scene, MR.strings.reader_settings_custom.localized())
+        for (mode in listOf(
+            MR.strings.reader_settings_single,
             MR.strings.reader_settings_dual,
+            MR.strings.reader_settings_auto,
             MR.strings.reader_settings_vertical,
         )) {
-            click(scene, other.localized())
-            assertFalse(hasText(label))
+            click(scene, mode.localized())
+            assertTrue(hasText(label))
             assertFalse(hasText(hint))
-            assertTrue(model.state.value.autoSplitPages, "Hiding the setting must preserve it")
+            assertTrue(prefs.autoSplitPages)
         }
-        click(scene, MR.strings.reader_settings_paged.localized())
-        assertFalse(hasText(label), "Vertical paging is not horizontal single page mode")
-        click(scene, MR.strings.reader_settings_horizontal.localized())
-        click(scene, MR.strings.reader_settings_single.localized())
-        assertTrue(hasText(hint))
-        capture(scene, "single-page-split-restored")
+        capture(scene, "split-checkbox-restored")
         click(scene, MR.strings.action_close.localized(), Role.Button)
         assertFalse(model.state.value.showSettings)
         model.toggleSettings()
         repeat(3) { render(scene) }
-        assertTrue(hasText(label))
-        val reopened = ReaderScreenModel(prefs = prefs)
-        try {
-            assertTrue(reopened.state.value.autoSplitPages, "The original saved preference survives reopening")
-        } finally {
-            reopened.onDispose()
-        }
+        assertEquals(ToggleableState.On, option(scene, label).config[SemanticsProperties.ToggleableState])
     }
 
     @Test

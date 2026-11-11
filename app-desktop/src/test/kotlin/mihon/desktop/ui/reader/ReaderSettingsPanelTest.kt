@@ -74,8 +74,9 @@ class ReaderSettingsPanelTest {
                 },
             )
 
-            assertFalse(currentText.contains(MR.strings.desktop_ui_split_wide_pages.localized()))
-            assertFalse(autoSplitPages, "Double page settings do not expose or change single-page splitting")
+            assertTrue(currentText.contains(MR.strings.pref_dual_page_split.localized()))
+            click(scene, MR.strings.pref_dual_page_split.localized())
+            assertTrue(autoSplitPages)
             click(scene, MR.strings.desktop_ui_auto_spread_matching.localized())
             assertTrue(autoSpreadMatching)
             click(scene, MR.strings.white_background.localized())

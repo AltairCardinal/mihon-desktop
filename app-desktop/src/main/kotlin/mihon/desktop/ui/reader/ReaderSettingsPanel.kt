@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -40,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -50,6 +52,7 @@ import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.reader.ZoomState
+import mihon.desktop.ui.settings.desktopSettingsActivationKeys
 import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderScrollMode
 import mihon.domain.reader.ReaderSettings
@@ -271,14 +274,6 @@ internal fun GeneralTab(
             if (changed.match != isAutoSpreadMatching) onAutoSpreadMatchingChange(changed.match)
         },
         actualDualPage = isDualPage,
-        singlePageOptions = {
-            ReaderModeSwitch(
-                title = MR.strings.desktop_ui_split_wide_pages.localized(),
-                hint = MR.strings.desktop_reader_split_wide_hint.localized(),
-                checked = autoSplitPages,
-                onChange = onAutoSplitPagesChange,
-            )
-        },
     )
     pairingRecovery()
     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -317,6 +312,12 @@ internal fun GeneralTab(
             onCheckedChange = onSkipDuplicateChaptersChange,
         )
     }
+
+    CheckboxRow(
+        label = MR.strings.pref_dual_page_split.localized(),
+        checked = autoSplitPages,
+        onCheckedChange = onAutoSplitPagesChange,
+    )
 
     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
@@ -534,9 +535,16 @@ private fun CheckboxRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = if (indented) 24.dp else 0.dp)
-            .clickable(enabled = enabled) { onCheckedChange(!checked) },
+            .desktopSettingsActivationKeys(Role.Checkbox, enabled) { onCheckedChange(!checked) }
+            .toggleable(value = checked, enabled = enabled, role = Role.Checkbox, onValueChange = onCheckedChange),
     ) {
-        Checkbox(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+        Checkbox(
+            checked = checked,
+            onCheckedChange = null,
+            enabled = enabled,
+            modifier = Modifier.clearAndSetSemantics {
+            },
+        )
         Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 4.dp))
     }
 }

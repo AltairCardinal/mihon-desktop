@@ -1,9 +1,7 @@
 package eu.kanade.presentation.reader.settings
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -14,6 +12,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
@@ -21,13 +27,12 @@ import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
 import mihon.domain.reader.ReaderSettings
 import mihon.domain.reader.ReaderSettingsCodec
 import tachiyomi.i18n.MR
+import tachiyomi.presentation.core.components.CheckboxItem
 import tachiyomi.presentation.core.components.SettingsItemsPaddings
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
 import tachiyomi.presentation.reader.settings.DefaultReaderModePreference
-import tachiyomi.presentation.reader.settings.ReaderModeChoices
 import tachiyomi.presentation.reader.settings.ReaderModeSettingsContent
-import tachiyomi.presentation.reader.settings.ReaderModeSwitch
 import tachiyomi.presentation.reader.settings.ReaderSettingsTextScope
 
 @Composable
@@ -103,33 +108,40 @@ internal fun SettingsExplanation(text: String) {
     )
 }
 
-/** Android pager extensions stay in Mihon's lower boolean section, outside per-work mode choices. */
+/** Native pager boolean options, outside per-work mode choices. */
 @Composable
 internal fun PagerSplitSettings(screenModel: ReaderSettingsScreenModel) {
     val preferences = screenModel.preferences
     val split by preferences.dualPageSplitPaged().collectAsState()
-    val invert by preferences.dualPageInvertPaged().collectAsState()
-    val context = LocalContext.current
-    ReaderSettingsTextScope({ it.getString(context) }) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = SettingsItemsPaddings.Horizontal, vertical = 8.dp)) {
-            ReaderModeSwitch(
-                title = stringResource(MR.strings.pref_dual_page_split),
-                hint = stringResource(MR.strings.desktop_reader_split_wide_hint),
+    val label = stringResource(MR.strings.pref_dual_page_split)
+    val toggleSplit = {
+        val enabled = !split
+        if (enabled) preferences.dualPageRotateToFit().set(false)
+        preferences.dualPageSplitPaged().set(enabled)
+    }
+    Column {
+        Column(
+            Modifier.clearAndSetSemantics {
+                text = AnnotatedString(label)
+                onClick {
+                    toggleSplit()
+                    true
+                }
+                role = Role.Checkbox
+                toggleableState = if (split) ToggleableState.On else ToggleableState.Off
+            },
+        ) {
+            CheckboxItem(
+                label = label,
                 checked = split,
-                onChange = { enabled ->
-                    if (enabled) preferences.dualPageRotateToFit().set(false)
-                    preferences.dualPageSplitPaged().set(enabled)
-                },
+                onClick = toggleSplit,
             )
-            if (split) {
-                Spacer(Modifier.height(14.dp))
-                ReaderModeSwitch(
-                    title = stringResource(MR.strings.pref_dual_page_invert),
-                    hint = stringResource(MR.strings.pref_dual_page_invert_summary),
-                    checked = invert,
-                    onChange = preferences.dualPageInvertPaged()::set,
-                )
-            }
+        }
+        if (split) {
+            CheckboxItem(
+                label = stringResource(MR.strings.pref_dual_page_invert),
+                pref = preferences.dualPageInvertPaged(),
+            )
         }
     }
 }
