@@ -1473,6 +1473,100 @@ class DualPageViewportZoomTest {
     }
 
     @Test
+    fun repeatedNativeSwipesKeepBothDirectionsAvailableAfterFrameReconciliation() = runTest {
+        repeatedNativeSwipeContract(automaticMatching = false)
+    }
+
+    @Test
+    fun repeatedNativeSwipesKeepBothDirectionsAvailableWhileAutomaticMatchingWaits() = runTest {
+        repeatedNativeSwipeContract(automaticMatching = true)
+    }
+
+    @Test
+    fun repeatedNativeLtrSwipesKeepBothDirectionsAvailableWhileAutomaticMatchingWaits() = runTest {
+        repeatedNativeSwipeContract(automaticMatching = true, direction = mihon.domain.reader.ReaderDirection.LTR)
+    }
+
+    private suspend fun kotlinx.coroutines.test.TestScope.repeatedNativeSwipeContract(
+        automaticMatching: Boolean,
+        direction: mihon.domain.reader.ReaderDirection = mihon.domain.reader.ReaderDirection.RTL,
+    ) {
+        val viewer = if (direction == mihon.domain.reader.ReaderDirection.RTL) {
+            viewer()
+        } else {
+            DualPageR2LPagerViewer(viewer().activity, direction = direction).apply {
+                config.navigationModeChangedListener = null
+            }
+        }
+        try {
+            val (chapter, original, _) = mountOriginalPagerWithOnlyEarlierPixels(73115, viewer)
+            uy.kohesive.injekt.Injekt.get<eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences>()
+                .automaticSpreadMatching().set(automaticMatching)
+            runCurrent()
+            val owner = requireNotNull(viewer.adapter.session(chapter))
+            val directions = listOf(true, true, true, false, false, false, true, true, false, true)
+            for ((turn, forward) in directions.withIndex()) {
+                val before = owner.location!!.pageId.sourcePageIndex
+                val rightward = forward == viewer.isRtl
+                swipe(viewer.pager, if (rightward) 100f else 1300f, if (rightward) 1300f else 100f, 500f)
+                settleOriginalPager(viewer)
+                val after = owner.location!!.pageId.sourcePageIndex
+                assertTrue(
+                    "Repeated native swipe forward=$forward must advance from source=$before; actual=$after " +
+                        "native=${viewer.pager.currentItem} items=${viewer.adapter.items}",
+                    if (forward) after > before else after < before,
+                )
+                val positions = ReflectionHelpers.getField<List<Any>>(viewer.pager, "mItems").map { item ->
+                    ReflectionHelpers.getField<Int>(item, "position")
+                }
+                assertEquals(
+                    "Native positions must stay unique after reconciliation: $positions",
+                    positions.toSet().size,
+                    positions.size,
+                )
+                if (turn == 0) {
+                    assertSame(
+                        "The drawn outgoing holder must win over a duplicate unpainted shell",
+                        original,
+                        viewer.pager.children.filterIsInstance<DualPagerPageHolder>().single {
+                            it.displayPage == viewer.adapter.items[viewer.pager.currentItem]
+                        },
+                    )
+                }
+            }
+        } finally {
+            if (viewer !== viewer()) viewer.destroy()
+        }
+    }
+
+    @Test
+    fun repeatedNativeSwipesKeepBothDirectionsAvailableAfterInterruptingSettlement() = runTest {
+        val (chapter, _, _) = mountOriginalPagerWithOnlyEarlierPixels(73118)
+        val viewer = viewer()
+        val owner = requireNotNull(viewer.adapter.session(chapter))
+        val time = SystemClock.uptimeMillis() + 1000
+        send(viewer.pager, time, time, MotionEvent.ACTION_DOWN, 100f, 500f)
+        for (step in 1..12) {
+            send(viewer.pager, time, time + step * 10, MotionEvent.ACTION_MOVE, 100f + step * 100f, 500f)
+        }
+        send(viewer.pager, time, time + 130, MotionEvent.ACTION_UP, 1300f, 500f)
+        assertTrue("The reverse drag must interrupt a real pending settlement", viewer.hasActiveGesture)
+        swipe(viewer.pager, 1300f, 100f, 500f)
+        settleOriginalPager(viewer)
+        for (forward in listOf(true, true, false, false, true, true, false, true)) {
+            val before = owner.location!!.pageId.sourcePageIndex
+            swipe(viewer.pager, if (forward) 100f else 1300f, if (forward) 1300f else 100f, 500f)
+            settleOriginalPager(viewer)
+            val after = owner.location!!.pageId.sourcePageIndex
+            assertTrue(
+                "After interrupted settling forward=$forward must advance from $before; actual=$after " +
+                    "native=${viewer.pager.currentItem} items=${viewer.adapter.items}",
+                if (forward) after > before else after < before,
+            )
+        }
+    }
+
+    @Test
     fun realPagerCancelledMovementAndRapidReverseKeepExactLogicalFramesWithoutUndrawnReading() = runTest {
         val (chapter, holder, _) = mountOriginalPagerWithOnlyEarlierPixels(73114)
         val viewer = viewer()
@@ -1533,8 +1627,8 @@ class DualPageViewportZoomTest {
 
     private suspend fun kotlinx.coroutines.test.TestScope.mountOriginalPagerWithOnlyEarlierPixels(
         id: Long,
+        viewer: DualPageR2LPagerViewer = viewer(),
     ): Triple<ReaderChapter, DualPagerPageHolder, ReaderPageImageView> {
-        val viewer = viewer()
         useEncodedOriginalProducer(viewer)
         val chapter = originalChapter(id, 8, 3)
         val pages = requireNotNull(chapter.pages)
@@ -1554,7 +1648,7 @@ class DualPageViewportZoomTest {
         runCurrent()
         val holder = descendants(viewer.pager).filterIsInstance<DualPagerPageHolder>()
             .first { it.displayPage.containsPage(pages[3]) }
-        load(holder, pages[3], "RIGHT")
+        load(holder, pages[3], if (viewer.isRtl) "RIGHT" else "LEFT")
         invokeFixture("measure", viewer.pager, 1400, 1000)
         val image = descendants(holder).filterIsInstance<ReaderPageImageView>().first { it.childCount > 0 }
         paintReaderImage(image, requireNotNull(pages[3].stream).invoke().use { it.readBytes() })
