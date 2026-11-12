@@ -50,6 +50,8 @@ jobs:
           python3 ../scripts/update-feed.py validate
       - name: Build and check documentation links
         run: npm run docs:build
+      - name: Test feature voting behavior
+        run: npm run test:voting
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.repository == 'AltairCardinal/mihon-desktop'
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3

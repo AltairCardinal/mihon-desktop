@@ -1,0 +1,15 @@
+{
+  "name": "mihon-feature-votes",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-11-13",
+  "workers_dev": true,
+  "vars": { "ALLOWED_ORIGIN": "https://altaircardinal.github.io" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mihon-feature-votes",
+      "database_id": "REPLACE_WITH_CREATED_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

@@ -7,6 +7,7 @@ function navigation(zh: boolean): DefaultTheme.NavItem[] {
   return [
     { text: zh ? '功能' : 'Features', link: `${prefix}/features` },
     { text: zh ? '开始体验' : 'Get started', link: `${prefix}/getting-started` },
+    { text: zh ? '规划新增功能投票' : 'Feature voting', link: `${prefix}/planned-features` },
     { text: zh ? '变更历史' : 'Changelog', link: `${prefix}/changelog` },
     { text: zh ? '参与贡献' : 'Contribute', link: `${prefix}/contributing` },
   ]
