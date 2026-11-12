@@ -26,6 +26,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -40,7 +42,6 @@ import mihon.domain.easteregg.PigEasterEggController
 import mihon.desktop.image.installDesktopImageLoader
 import mihon.desktop.platform.AwtDesktopOpenUriEventPort
 import mihon.desktop.platform.DesktopExternalActionBroker
-import mihon.desktop.platform.DesktopMainWindow
 import mihon.desktop.platform.DesktopOpenUriEventPort
 import mihon.desktop.platform.DesktopOpenUriInstallResult
 import mihon.desktop.platform.DesktopPlatformPaths
@@ -336,6 +337,8 @@ internal class DesktopApplicationCloseCoordinator(
     private val closeAndJoin: suspend () -> Unit,
     val awaitTestModeTermination: (() -> Unit)?,
 ) {
+    private val mutableClosing = MutableStateFlow(false)
+    val closing = mutableClosing.asStateFlow()
     private val closeRequested = AtomicBoolean()
     private val closeCompleted = CompletableDeferred<Unit>()
     private val applicationExitMutex = Mutex()
@@ -350,9 +353,13 @@ internal class DesktopApplicationCloseCoordinator(
 
     private suspend fun stopRuntime() {
         if (closeRequested.compareAndSet(false, true)) {
-            runCatching { closeAndJoin() }
-                .exceptionOrNull()
-                ?.let(::recordFailure)
+            // Carry the original throwable as a value across the dispatcher boundary.
+            val failure = try {
+                withContext(Dispatchers.IO) { runCatching { closeAndJoin() }.exceptionOrNull() }
+            } catch (failure: Throwable) {
+                failure
+            }
+            failure?.let(::recordFailure)
             closeCompleted.complete(Unit)
         } else {
             closeCompleted.await()
@@ -360,6 +367,7 @@ internal class DesktopApplicationCloseCoordinator(
     }
 
     suspend operator fun invoke(applicationExit: () -> Unit = {}) {
+        mutableClosing.value = true
         stopRuntime()
         applicationExitMutex.withLock {
             if (!applicationExited) {
@@ -410,13 +418,9 @@ private suspend fun runDesktopComposeWindowEventLoop(
                 }
             }
         }
-        DesktopMainWindow(
+        DesktopApplicationWindow(
             geometryStore = bootstrap.geometryStore,
-            onCloseRequest = {
-                applicationScope.launch {
-                    requestClose { exitApplication() }
-                }
-            },
+            requestClose = requestClose,
             title = "Mihon Desktop $APP_VERSION",
             icon = androidx.compose.runtime.remember {
                 androidx.compose.ui.graphics.painter.BitmapPainter(loadDesktopAppIcon())

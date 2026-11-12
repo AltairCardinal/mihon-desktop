@@ -21,6 +21,7 @@ internal fun ApplicationScope.DesktopMainWindow(
     icon: Painter? = null,
     onPreviewKeyEvent: (KeyEvent) -> Boolean = { false },
     windowTransitions: DesktopWindowTransitions = WindowsWindowTransitions,
+    visible: Boolean = true,
     content: @Composable FrameWindowScope.() -> Unit,
 ) {
     // The window is created before the dependency graph is ready, so the persisted
@@ -41,6 +42,7 @@ internal fun ApplicationScope.DesktopMainWindow(
         title = title,
         icon = icon,
         state = geometry?.windowState ?: defaultState,
+        visible = visible,
         onPreviewKeyEvent = onPreviewKeyEvent,
     ) {
         if (geometry != null) {

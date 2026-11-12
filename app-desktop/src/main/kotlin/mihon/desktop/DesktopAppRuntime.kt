@@ -59,6 +59,7 @@ class DesktopAppRuntime(
     )
     private val runningServices = BooleanArray(services.size)
     private var closeStarted = false
+    private var brokerReleaseDeferred = false
     @get:Synchronized
     var isRunning: Boolean = false
         private set
@@ -99,17 +100,20 @@ class DesktopAppRuntime(
     }
 
     @Synchronized
-    fun close() {
+    fun close() = close(releaseInstanceBroker = true)
+
+    @Synchronized
+    private fun close(releaseInstanceBroker: Boolean) {
         closeStarted = true
         val failures = CleanupFailures()
+        if (!releaseInstanceBroker) {
+            brokerReleaseDeferred = true
+            failures.attempt { instanceBroker?.stopAcceptingActions() }
+        }
         // An initialized reader can exist before application startup completes.
         if (!isRunning) failures.attempt(readerService::stop)
         failures.attempt(::stop)
-        failures.attempt {
-            val broker = instanceBroker
-            broker?.close()
-            instanceBroker = null
-        }
+        if (releaseInstanceBroker && !brokerReleaseDeferred) failures.attempt(::closeInstanceBroker)
         closeActions.toList().forEach { closeAction ->
             var closed = false
             failures.attempt {
@@ -126,7 +130,7 @@ class DesktopAppRuntime(
     suspend fun closeAndJoin() {
         var primaryFailure: Throwable? = null
         try {
-            close()
+            close(releaseInstanceBroker = false)
         } catch (failure: Throwable) {
             primaryFailure = failure
         }
@@ -134,9 +138,35 @@ class DesktopAppRuntime(
             awaitClosed()
         } catch (failure: Throwable) {
             val primary = primaryFailure
-            if (primary == null) primaryFailure = failure else if (failure !== primary) primary.addSuppressed(failure)
+            if (primary == null) {
+                primaryFailure = failure
+            } else if (failure !== primary) {
+                primary.addSuppressed(failure)
+            }
+        }
+        try {
+            finishInstanceBrokerClose()
+        } catch (failure: Throwable) {
+            val primary = primaryFailure
+            if (primary == null) {
+                primaryFailure = failure
+            } else if (failure !== primary) {
+                primary.addSuppressed(failure)
+            }
         }
         primaryFailure?.let { throw it }
+    }
+
+    @Synchronized
+    private fun finishInstanceBrokerClose() {
+        brokerReleaseDeferred = false
+        closeInstanceBroker()
+    }
+
+    @Synchronized
+    private fun closeInstanceBroker() {
+        instanceBroker?.close()
+        instanceBroker = null
     }
 
     suspend fun awaitClosed() {

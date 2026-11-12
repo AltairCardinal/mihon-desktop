@@ -114,6 +114,12 @@ Desktop 的 `ReaderPanBounds` 是阅读器视口交互策略：放大后，拖�
 
 本地决定完成后立即读取数据库局部快照并更新条目和计数，不重读 GitHub 凭据、加密空间记录或生成诊断报告。局部读取/发布与完整刷新最后的数据库快照读取/发布共用互斥锁，慢凭据和恢复读取不能持锁，避免旧快照重新显示已处理条目；选择引用等命令队列内部状态仍由原队列维护。数据库订阅使用同一局部刷新，授权、空间变更与同步结果仍走完整刷新。失败或失效的决定不得通过提前隐藏条目伪装成成功。`SyncPanelStorageContract` 覆盖完整安全存储读取挂起期间两种单条决定直接提交及刷新、零额外凭据读取和零 GitHub 请求，以及既有的批量确认、失败重试和空间切换回归；真实指针点击到 production controller 的 UI 集成测试覆盖单击即生效且没有确认窗。
 
+### Desktop 应用关闭与同步收尾
+
+主窗口关闭由 `DesktopApplicationCloseCoordinator` 先发布 closing，`DesktopApplicationWindow` 将生产窗口设为不可见，保留 composition 和 owner，直到清理结束再在原 UI 上下文调用 `exitApplication()`。清理通过 IO dispatcher 执行，不能让同步等待子进程、保存检查点等阻塞式实现占住 UI 线程。窗口隐藏只表示已接受关闭请求，不表示进程或同步清理已经结束；不通过强制超时跳过数据落盘。`stopForRecovery()` 不隐藏窗口，恢复实例启动失败时仍需原窗口反馈。
+
+`DesktopAppRuntime.closeAndJoin()` 在所有服务收尾期间保留单实例 profile 锁，同时让 broker 拒绝新启动和 URI，不能向停止中的导航链路确认接收。并发的普通 `close()` 不得提前释放该锁；等待结束后才允许关闭 broker。broker 关闭失败保留对象并恢复普通关闭的重试能力；清理和关闭异常按原有顺序聚合。无需等待的失败启动清理继续支持普通 `close()`。回归位于 `DesktopApplicationCloseResponsivenessTest`（UI 响应、退出线程、真实 broker 与失败重试）及 `DesktopApplicationWindowCloseNativeTest`（真实窗口关闭、composition 保留和最终释放），既有 `DesktopAppRuntimeTest` 保护重复关闭与异常传播。
+
 ### 同步授权与令牌续期
 
 同步的账户查询、仓库管理、恢复和 Git 数据交换通过 `SyncOnboarding` 的请求级 token provider 获取凭据，不能把会话开始时的访问令牌固定到整轮同步。provider 缓存绑定当前 `authorizationEpoch`；显式重新授权或清除凭据后，旧会话必须停止，不能自动跟随新账号。浏览器返回的候选令牌在身份验证期间固定使用，不得替换成当前已保存账号的令牌。

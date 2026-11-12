@@ -117,6 +117,12 @@ class DesktopExternalActionBroker(
         }
     }
 
+    /** Reject new launches and URIs while the owner still holds its profile for shutdown. */
+    @Synchronized
+    internal fun stopAcceptingActions() {
+        closeStarted = true
+    }
+
     @Synchronized
     override fun close() {
         if (terminal) return
