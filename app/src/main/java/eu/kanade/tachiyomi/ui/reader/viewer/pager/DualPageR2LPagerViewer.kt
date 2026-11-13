@@ -21,6 +21,7 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion
+import eu.kanade.tachiyomi.ui.reader.viewer.isSelectedReaderViewport
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import logcat.LogPriority
@@ -279,6 +280,15 @@ class DualPageR2LPagerViewer(
     }
 
     override fun getView(): View = pager
+
+    override fun isInitialPageFeedbackReady(chapter: ReaderChapter): Boolean {
+        if (destroyed || replacingPairing) return false
+        val selected = adapter.items.getOrNull(pager.currentItem) as? DisplayPage ?: return false
+        if (selected != currentPage || selected.firstPage.chapter !== chapter) return false
+        return pager.children.filterIsInstance<DualPagerPageHolder>().any {
+            it.displayPage == selected && it.isSelectedReaderViewport(pager) && it.hasInitialPageFeedback()
+        }
+    }
 
     override fun setChapters(chapters: ViewerChapters) {
         if (isIdle) {

@@ -15,11 +15,13 @@ import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
 import eu.kanade.tachiyomi.ui.reader.model.InsertPage
+import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.model.loadedEntryPage
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion
+import eu.kanade.tachiyomi.ui.reader.viewer.isSelectedReaderViewport
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
@@ -212,6 +214,15 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
      */
     override fun getView(): View {
         return pager
+    }
+
+    override fun isInitialPageFeedbackReady(chapter: ReaderChapter): Boolean {
+        if (destroyed) return false
+        val selected = adapter.items.getOrNull(pager.currentItem) as? ReaderPage ?: return false
+        if (selected !== currentPage || selected.chapter !== chapter) return false
+        return pager.children.filterIsInstance<PagerPageHolder>().any {
+            it.page === selected && it.isSelectedReaderViewport(pager) && it.hasInitialPageFeedback()
+        }
     }
 
     /**

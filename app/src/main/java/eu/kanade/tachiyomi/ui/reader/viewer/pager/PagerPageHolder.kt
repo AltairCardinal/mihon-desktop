@@ -11,6 +11,7 @@ import eu.kanade.tachiyomi.ui.reader.model.InsertPage
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
+import eu.kanade.tachiyomi.ui.reader.viewer.hasReaderFeedbackLayout
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.widget.ViewPagerAdapter
 import kotlinx.coroutines.CancellationException
@@ -81,6 +82,7 @@ class PagerPageHolder(
     private var presentationGeneration = 0L
     private var boundContent: String? = null
     private var renderedContent: String? = null
+    private var imageLoaded = false
     private var imageCallbackCurrent: () -> Boolean = { false }
     private var displayedRegionFile: java.io.File? = null
     internal var presentationScope: Pair<SharedDualPageSession, ReaderDualPageViewportTicket>? = null
@@ -97,6 +99,10 @@ class PagerPageHolder(
 
     internal fun hasRenderedPage(): Boolean =
         page.status == Page.State.Ready && renderedContent == page.contentIdentity()
+
+    internal fun hasInitialPageFeedback(): Boolean =
+        progressIndicator?.hasReaderFeedbackLayout() == true || errorLayout?.root?.hasReaderFeedbackLayout() == true ||
+            (imageLoaded && imageCallbackCurrent() && boundContent == page.contentIdentity())
 
     init {
         bindLatencyPage(page, viewer.activity.latencyRequestFor(page))
@@ -155,6 +161,7 @@ class PagerPageHolder(
     }
 
     private fun recycleImage() {
+        imageLoaded = false
         renderedContent = null
         boundContent = null
         imageCallbackCurrent = { false }
@@ -284,6 +291,9 @@ class PagerPageHolder(
             latencyChapter,
             latencyRequest,
         )
+        imageLoaded = false
+        initProgressIndicator()
+        progressIndicator?.show()
         progressIndicator?.setProgress(0)
         renderedContent = null
         beginPresentation()
@@ -520,6 +530,7 @@ class PagerPageHolder(
     override fun onImageLoaded() {
         if (!imageCallbackCurrent() || boundContent != page.contentIdentity()) return
         super.onImageLoaded()
+        imageLoaded = true
         progressIndicator?.hide()
     }
 

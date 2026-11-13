@@ -366,6 +366,12 @@ open class ReaderPageImageView @JvmOverloads constructor(
     }
 
     private fun prepareNativeImageDraw(width: Int, height: Int): Boolean {
+        // Hardware RenderNode recording can enter a transparent subtree before it is exposed.
+        var ancestor: View? = this
+        while (ancestor != null) {
+            if (ancestor.alpha <= 0f) return false
+            ancestor = ancestor.parent as? View
+        }
         if (!hasVisibleImageArea()) return false
         if (beforeImageDraw == null && onImageDrawn == null) return true
         return imageCallbackIsCurrent() && width > 0 && height > 0 && getGlobalVisibleRect(Rect()) &&

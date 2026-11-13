@@ -1193,15 +1193,21 @@ class DualPagerPageHolderLayoutTest {
     }
 
     @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
     fun `ordinary single page actual pixels settle each page through the activity`() = runTest {
         val activity = viewer.activity
+        ReflectionHelpers.setField(activity.binding, "readerContainer", FrameLayout(activity))
         val model = mockk<ReaderViewModel>(relaxed = true)
         every { model.dualPagePairings } returns DualPagePairingStore()
-        every { model.state } returns MutableStateFlow(ReaderViewModel.State())
+        val readerState = MutableStateFlow(ReaderViewModel.State())
+        every { model.state } returns readerState
         ReflectionHelpers.setField(activity, "viewModel\$delegate", lazyOf(model))
+        Injekt.get<ReaderPreferences>().readerTheme().set(1)
         val ordinary = R2LPagerViewer(activity)
+        readerState.value = readerState.value.copy(viewer = ordinary)
         ordinary.config.navigationModeChangedListener = null
         ordinary.config.usePageTransitions = false
+        runCurrent()
         val chapter = loadedChapter(62031, 3)
         withContext(Dispatchers.IO) {
             requireNotNull(chapter.pages).forEach {
@@ -1227,7 +1233,66 @@ class DualPagerPageHolderLayoutTest {
                 measure(holder, 720, 1280)
                 holder.onImageLoaded()
                 io.mockk.verify(exactly = 0) { model.onDualViewportSettled(page, any()) }
-                paintReaderImage(holder, requireNotNull(page.stream).invoke().use { it.readBytes() })
+                val (maskedOwner, maskedTicket) = requireNotNull(holder.presentationScope)
+                val native = ReflectionHelpers.getField<NativeImageView>(holder, "pageView")
+                val encoded = requireNotNull(page.stream).invoke().use { it.readBytes() }
+                native.setImage(
+                    com.davemorrissey.labs.subscaleview.ImageSource.bitmap(
+                        requireNotNull(android.graphics.BitmapFactory.decodeByteArray(encoded, 0, encoded.size)),
+                    ),
+                )
+                assertTrue(
+                    "The hardware probe must start before any page draw",
+                    maskedOwner.frame(maskedTicket)?.drawnPageIds.isNullOrEmpty(),
+                )
+                ReflectionHelpers.setField(activity, "installedViewer", ordinary)
+                ordinary.pager.alpha = 0f
+                val parent = ordinary.pager.parent as View
+                val recording = android.graphics.RenderNode("reader-initial-mask")
+                var maskedDrawn: Set<mihon.domain.reader.session.ReaderPageId> = emptySet()
+                var hardwareDrawCalls = 0
+                val originalPrepare = holder.beforeImageDraw
+                holder.beforeImageDraw = { width, height ->
+                    hardwareDrawCalls++
+                    originalPrepare?.invoke(width, height) != false
+                }
+                try {
+                    val canvas = recording.beginRecording(parent.width, parent.height)
+                    try {
+                        parent.draw(canvas)
+                    } finally {
+                        recording.endRecording()
+                    }
+                    maskedDrawn = maskedOwner.frame(maskedTicket)?.drawnPageIds.orEmpty()
+                } finally {
+                    recording.discardDisplayList()
+                }
+                val maskedPrepareCalls = hardwareDrawCalls
+                ReflectionHelpers.callInstanceMethod<Unit>(activity, "finishInitialLoading")
+                assertEquals(1f, ordinary.pager.alpha, 0f)
+                val visibleRecording = android.graphics.RenderNode("reader-visible-control")
+                try {
+                    val canvas = visibleRecording.beginRecording(parent.width, parent.height)
+                    try {
+                        parent.draw(canvas)
+                    } finally {
+                        visibleRecording.endRecording()
+                    }
+                    assertEquals(
+                        "Visible hardware recording must certify the same page",
+                        setOf(maskedOwner.identity.pageIds[page.index]),
+                        maskedOwner.frame(maskedTicket)?.drawnPageIds,
+                    )
+                } finally {
+                    visibleRecording.discardDisplayList()
+                }
+                assertTrue(
+                    "Visible hardware control must execute a real child prepare",
+                    hardwareDrawCalls > maskedPrepareCalls,
+                )
+                assertTrue("Masked hardware recording must not certify page pixels", maskedDrawn.isEmpty())
+                holder.beforeImageDraw = originalPrepare
+                paintReaderImage(holder, encoded)
                 val (owner, ticket) = requireNotNull(holder.presentationScope)
                 assertEquals(setOf(owner.identity.pageIds[page.index]), owner.frame(ticket)?.drawnPageIds)
                 shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
@@ -1237,6 +1302,8 @@ class DualPagerPageHolderLayoutTest {
                 io.mockk.verify(exactly = 1) { model.onDualViewportSettled(page, listOf(page)) }
             }
         } finally {
+            ReflectionHelpers.setField(activity, "installedViewer", null)
+            ordinary.pager.alpha = 1f
             ordinary.destroy()
         }
     }
@@ -1376,10 +1443,16 @@ class DualPagerPageHolderLayoutTest {
     fun `portrait cover keeps a left half slot while unique current remains the cover`() = runTest {
         val chapter = loadedChapter(11, 3)
         val page = requireNotNull(chapter.pages)[0]
+        runCurrent()
+        Injekt.get<ReaderPreferences>().readerTheme().set(1)
+        runCurrent()
+        viewer.imagePreparation.updateWindow(listOf(page), setOf(page))
         val holder =
             DualPagerPageHolder(viewer.activity, viewer, DisplayPage.Single(page, ReaderPortraitSingleSlot.LEFT))
         load(holder, page, "CENTER")
         measure(holder, 1400, 1000)
+        measure(holder, 1400, 1000)
+        assertTrue(holder.hasInitialPageFeedback())
         val image = descendants(holder).filterIsInstance<ReaderPageImageView>().single()
         assertEquals(700, (image.parent as View).width)
         assertEquals(0, (image.parent as View).left)
@@ -1392,9 +1465,12 @@ class DualPagerPageHolderLayoutTest {
 
     @Test
     fun `four portrait pages mount first on left and trailing single on right`() = runTest {
+        runCurrent()
+        Injekt.get<ReaderPreferences>().readerTheme().set(1)
+        runCurrent()
         val chapter = loadedChapter(11, 4)
-        viewer.adapter.setChapters(ViewerChapters(chapter, null, null), false)
-        for (page in requireNotNull(chapter.pages)) decodeForAdapter(page)
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        for (page in requireNotNull(chapter.pages)) viewer.adapter.updatePageDimensions(page, 100, 200)
         // Default AUTO opening has cover 0, pair 1/2, and the natural trailing single 3.
         // Invoking adjust here explicitly selects FIRST_PAIR and changes the topology being tested.
         val units = viewer.adapter.items.filterIsInstance<DisplayPage>().sortedBy { it.firstPage.index }
@@ -1403,9 +1479,14 @@ class DualPagerPageHolderLayoutTest {
 
         for ((unit, expectedLeft) in listOf(units.first() to 0, units.last() to 700)) {
             val single = unit as DisplayPage.Single
+            viewer.moveToPage(single.page)
+            runCurrent()
             val holder = DualPagerPageHolder(viewer.activity, viewer, single)
+            viewer.imagePreparation.updateWindow(listOf(single.page), setOf(single.page))
             load(holder, single.page, "CENTER")
             measure(holder, 1400, 1000)
+            measure(holder, 1400, 1000)
+            assertTrue(holder.hasInitialPageFeedback())
             val image = descendants(holder).filterIsInstance<ReaderPageImageView>().single()
             val slot = image.parent as View
             assertEquals(700, slot.width)
@@ -1416,14 +1497,20 @@ class DualPagerPageHolderLayoutTest {
 
     @Test
     fun `one portrait page keeps a centered full viewport`() = runTest {
+        runCurrent()
+        Injekt.get<ReaderPreferences>().readerTheme().set(1)
+        runCurrent()
         val chapter = loadedChapter(11, 1)
         viewer.adapter.setChapters(ViewerChapters(chapter, null, null), false)
-        decodeForAdapter(requireNotNull(chapter.pages).single())
+        viewer.adapter.updatePageDimensions(requireNotNull(chapter.pages).single(), 100, 200)
         viewer.adapter.adjustPairing()
         val single = viewer.adapter.items.filterIsInstance<DisplayPage>().single() as DisplayPage.Single
         val holder = DualPagerPageHolder(viewer.activity, viewer, single)
+        viewer.imagePreparation.updateWindow(listOf(single.page), setOf(single.page))
         load(holder, single.page, "CENTER")
         measure(holder, 1400, 1000)
+        measure(holder, 1400, 1000)
+        assertTrue(holder.hasInitialPageFeedback())
         val image = descendants(holder).filterIsInstance<ReaderPageImageView>().single()
         assertEquals(1400, image.parent.let { it as View }.width)
         detach(holder)

@@ -19,6 +19,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.View.LAYER_TYPE_HARDWARE
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
@@ -49,6 +50,7 @@ import androidx.core.transition.doOnEnd
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.view.descendants
 import androidx.lifecycle.lifecycleScope
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import com.google.android.material.transition.platform.MaterialContainerTransform
@@ -82,6 +84,7 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
+import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.R2LPagerViewer
@@ -204,6 +207,8 @@ open class ReaderActivity : BaseActivity() {
 
         binding = ReaderActivityBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        showInitialLoading()
+        binding.readerContainer.viewTreeObserver.addOnPreDrawListener(initialFeedbackPreDraw)
         binding.setComposeOverlay()
 
         if (viewModel.needsInit()) {
@@ -484,6 +489,7 @@ open class ReaderActivity : BaseActivity() {
     override fun onDestroy() {
         eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.record("reader_end", session = diagnosticSession)
         super.onDestroy()
+        binding.readerContainer.viewTreeObserver.removeOnPreDrawListener(initialFeedbackPreDraw)
         adaptiveViewport?.close()
         installedViewer?.let { viewer ->
             viewer.destroy()
@@ -726,6 +732,38 @@ open class ReaderActivity : BaseActivity() {
     private var displayedReadingMode: Pair<Int, Int>? = null
     private var showModeNavigation = false
     private var adaptiveViewport: AdaptiveReaderViewport? = null
+    private var initialFeedbackHandedOff = false
+    private val initialFeedbackPreDraw = android.view.ViewTreeObserver.OnPreDrawListener {
+        val state = viewModel.state.value
+        val viewer = installedViewer
+        val chapter = state.viewerChapters?.currChapter
+        if (loadingIndicator?.parent != null && state.dialog is ReaderViewModel.Dialog.ChapterError) {
+            finishInitialLoading()
+        } else if (!initialFeedbackHandedOff && state.dialog !is ReaderViewModel.Dialog.ChapterError &&
+            viewer != null && state.viewer === viewer && chapter != null && state.currentChapter === chapter &&
+            viewer.isInitialPageFeedbackReady(chapter)
+        ) {
+            initialFeedbackHandedOff = true
+            finishInitialLoading()
+        }
+        true
+    }
+
+    private fun showInitialLoading() {
+        val indicator = loadingIndicator ?: ReaderProgressIndicator(this).also { loadingIndicator = it }
+        if (indicator.parent == null) binding.readerContainer.addView(indicator)
+    }
+
+    private fun finishInitialLoading() {
+        val view = installedViewer?.getView()
+        val wasMasked = view?.alpha == 0f
+        view?.alpha = 1f
+        if (wasMasked && view is ViewGroup) {
+            view.descendants.filterIsInstance<ReaderPageImageView>().forEach { it.invalidateImageDraw() }
+        }
+        binding.readerContainer.removeView(loadingIndicator)
+    }
+
     private var installedViewer: eu.kanade.tachiyomi.ui.reader.viewer.Viewer? = null
     private var changingLayout = false
     private var protectedLayoutPage: ReaderPage? = null
@@ -810,9 +848,12 @@ open class ReaderActivity : BaseActivity() {
             prevViewer.destroy()
             binding.viewerContainer.removeAllViews()
         }
+        initialFeedbackHandedOff = false
         installedViewer = newViewer
         viewModel.onViewerLoaded(newViewer)
         updateViewerInset(readerPreferences.fullscreen().get(), readerPreferences.drawUnderCutout().get())
+        showInitialLoading()
+        newViewer.getView().alpha = 0f
         binding.viewerContainer.addView(newViewer.getView())
 
         if (
@@ -823,9 +864,6 @@ open class ReaderActivity : BaseActivity() {
         }
         displayedReadingMode = selection
 
-        if (loadingIndicator != null) binding.readerContainer.removeView(loadingIndicator)
-        loadingIndicator = ReaderProgressIndicator(this)
-        binding.readerContainer.addView(loadingIndicator)
         if (chapters != null) {
             changingLayout = anchor != null
             try {
@@ -896,8 +934,13 @@ open class ReaderActivity : BaseActivity() {
     @SuppressLint("RestrictedApi")
     private fun setChapters(viewerChapters: ViewerChapters) {
         recordLatencyChapters("ACTIVITY_CHAPTERS_RECEIVED", viewerChapters)
-        binding.readerContainer.removeView(loadingIndicator)
-        viewModel.state.value.viewer?.setChapters(viewerChapters)
+        val viewer = viewModel.state.value.viewer
+        if (!initialFeedbackHandedOff && viewer != null && viewer === installedViewer) {
+            // A successful first retry may dismiss its dialog before the new holder can lay out.
+            showInitialLoading()
+            viewer.getView().alpha = 0f
+        }
+        viewer?.setChapters(viewerChapters)
 
         lifecycleScope.launchIO {
             viewModel.getChapterUrl()?.let { url ->
@@ -964,7 +1007,7 @@ open class ReaderActivity : BaseActivity() {
     private fun setProgressDialog(show: Boolean) {
         if (show) {
             viewModel.showLoadingDialog()
-        } else {
+        } else if (viewModel.state.value.dialog is ReaderViewModel.Dialog.Loading) {
             viewModel.closeDialog()
         }
     }
