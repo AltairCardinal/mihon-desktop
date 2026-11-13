@@ -1311,14 +1311,11 @@ class ReaderViewModel @JvmOverloads constructor(
             .contains(LibraryPreferences.MARK_DUPLICATE_CHAPTER_READ_EXISTING)
         val slots = downloadPreferences.removeAfterReadSlots().get()
         val chapterList = chapterListCache.orEmpty()
-        val candidate = if (slots >= 0) {
-            chapterList.getOrNull(chapterList.indexOf(readerChapter) - slots)
-        } else {
-            null
-        }
-        val deleteCandidate = candidate?.takeIf {
-            it === readerChapter || it.chapter.read || acceptedReadState[it.chapter.id] == true
-        }
+        val deleteCandidate = tachiyomi.domain.download.service.readDownloadDeletionCandidate(
+            chapterList,
+            chapterList.indexOf(readerChapter),
+            slots,
+        ) { it.chapter.read || acceptedReadState[it.chapter.id] == true }
             ?.chapter?.toDomainChapter()?.copy(read = true)
         return ReaderProgressCompletionPlan(
             manga = manga,
@@ -1781,21 +1778,7 @@ internal fun filterAndroidReaderChapterEntries(
     currentChapterId: Long,
     skipPolicy: ChapterSkipPolicy,
 ): List<ReaderChapterEntry> {
-    val duplicateCandidates = filterChaptersForReader(
-        chapters = entries,
-        currentChapterId = currentChapterId,
-        skipPolicy = skipPolicy.copy(duplicate = false),
-    )
-    val markedEntries = if (skipPolicy.duplicate) {
-        markDuplicateChapters(duplicateCandidates, currentChapterId)
-    } else {
-        duplicateCandidates
-    }
-    return filterChaptersForReader(
-        chapters = markedEntries,
-        currentChapterId = currentChapterId,
-        skipPolicy = skipPolicy,
-    )
+    return tachiyomi.domain.download.service.readDownloadDeletionCatalog(entries, currentChapterId, skipPolicy)
 }
 
 internal fun duplicateChapterReadUpdates(

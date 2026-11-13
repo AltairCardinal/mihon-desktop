@@ -70,6 +70,8 @@ fun interface DesktopReaderPageFetchPortFactory {
 }
 
 fun interface DesktopReaderProgressPort {
+    suspend fun close() {}
+
     /** Called for actual activation, before page progress can be accepted; never for prefetch. */
     suspend fun open(context: DesktopReaderChapterContext): DesktopReaderProgressPort = this
 
@@ -621,6 +623,10 @@ class DesktopReaderSession(
 
     internal suspend fun awaitProgressDrained() = progressSupervisor.join()
 
+    internal suspend fun awaitAcceptedProgress() {
+        synchronized(lock) { progressTail }?.join()
+    }
+
     internal fun invokeOnProgressDrained(action: () -> Unit) {
         progressSupervisor.invokeOnCompletion { action() }
     }
@@ -640,6 +646,11 @@ class DesktopReaderSession(
             clearAdjacentPrefetchLocked()
             applySchedulePlanLocked(core.close().schedulePlan)
             if (storeStarted) encodedPageStore.endSession()
+            val predecessor = progressTail
+            progressScope.launch {
+                predecessor?.join()
+                progressPort.close()
+            }
             progressSupervisor.complete()
         }
         pageRunner.close()

@@ -182,6 +182,10 @@ object DesktopSettingsCatalog {
                 ),
                 SearchablePreference.Entry(DesktopSettingsAnchorResources.downloadNew.localized()),
                 SearchablePreference.Entry(DesktopSettingsAnchorResources.downloadAsCbz.localized()),
+                SearchablePreference.Entry(MR.strings.pref_remove_after_marked_as_read.localized()),
+                SearchablePreference.Entry(MR.strings.pref_remove_after_read.localized()),
+                SearchablePreference.Entry(MR.strings.pref_remove_bookmarked_chapters.localized()),
+                SearchablePreference.Entry(MR.strings.pref_remove_exclude_categories.localized()),
             ),
         ),
         screen(

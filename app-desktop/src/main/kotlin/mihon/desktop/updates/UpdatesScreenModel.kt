@@ -83,6 +83,8 @@ class UpdatesScreenModel(
     private val updatesPreferences: UpdatesPreferences,
     private val isChapterDownloaded: IsChapterDownloaded,
     private val enqueueDownload: EnqueueDownload,
+    private val setChapterReadStatus: tachiyomi.domain.chapter.interactor.SetChapterReadStatus? = null,
+    private val chapterRepository: tachiyomi.domain.chapter.repository.ChapterRepository? = null,
     private val downloadIdentity: (UpdatesWithRelations) -> DownloadChapterIdentity = { item ->
         DownloadChapterIdentity(
             sourceDisplayName = item.sourceId.toString(),
@@ -159,7 +161,7 @@ class UpdatesScreenModel(
             val unreadDiscoveries = state.value.creatorDiscoveries.filter {
                 it.state.readState == DiscoveryReadState.UNSEEN
             }
-            updateChapter.awaitAll(unreadItems.map { ChapterUpdate(id = it.chapterId, read = true) })
+            markChaptersRead(unreadItems.map { it.chapterId })
             if (state.value.unreadWorks.isNotEmpty()) {
                 state.value.unreadWorks.forEach { work ->
                     work.creatorIds.forEach { creatorId ->
@@ -230,10 +232,19 @@ class UpdatesScreenModel(
     }
 
     suspend fun markRead(item: UpdatesWithRelations) {
-        updateChapter.await(ChapterUpdate(id = item.chapterId, read = true))
+        markChaptersRead(listOf(item.chapterId))
         rawItems = rawItems.map { if (it.chapterId == item.chapterId) it.copy(read = true) else it }
         _state.update {
             it.copy(items = it.items.map { visible -> if (visible.chapterId == item.chapterId) visible.copy(read = true) else visible })
+        }
+    }
+
+    private suspend fun markChaptersRead(ids: List<Long>) {
+        val setter = setChapterReadStatus
+        if (setter == null) {
+            updateChapter.awaitAllOrThrow(ids.map { ChapterUpdate(id = it, read = true) })
+        } else {
+            setter.awaitOrThrow(ids.mapNotNull { requireNotNull(chapterRepository).getChapterById(it) }, true)
         }
     }
 
