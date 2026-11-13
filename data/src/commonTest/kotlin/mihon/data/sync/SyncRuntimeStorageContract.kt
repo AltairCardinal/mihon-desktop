@@ -27,6 +27,7 @@ import mihon.domain.sync.SyncEffectKind
 import mihon.domain.sync.SyncEventEnvelope
 import mihon.domain.sync.SyncField
 import mihon.domain.sync.SyncMutationContext
+import mihon.domain.sync.SyncObjectDescriptor
 import mihon.domain.sync.SyncObjectKey
 import mihon.domain.sync.SyncObjectType
 import mihon.domain.sync.SyncOrigin
@@ -63,6 +64,225 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 
 abstract class SyncRuntimeStorageContract {
+    @Test
+    fun `terminal summary counts invalid events only from this runs pending receipts`() = runBlocking {
+        open().use { storage ->
+            storage.connect("invalid-summary", repository)
+            val key = SyncObjectKey(SyncObjectType.MANGA, sourceId = "1", originalUrl = "/invalid")
+            val event = SyncEventEnvelope(
+                1, "space", 1, "remote", 1, 1, SyncCategory.FAVORITE,
+                listOf(SyncEffect("favorite", key, SyncField.FAVORITE, SyncEffectKind.ADD)),
+                SyncOrigin.USER, batchId = "invalid-batch",
+            )
+            val inbox = SyncInboxStore(storage.handler)
+            assertTrue(
+                inbox.ingest(
+                    SyncBatch(
+                        1,
+                        "space",
+                        1,
+                        "invalid-batch",
+                        listOf(event),
+                        listOf(SyncObjectDescriptor(key, "invalid")),
+                    ),
+                ).accepted,
+            )
+            storage.handler.await {
+                sync_inboxQueries.invalidateEvent("space", 1, event.eventId.stableKey, "invalid causal event")
+            }
+            val runs = SyncRunStore(storage.handler)
+            val run = runs.start("space", 1, SyncTrigger.MANUAL)
+            assertTrue(runs.claim(run.runId, "owner", 1))
+            runs.expectDownload(run.runId, "owner", "invalid-batch", 1)
+            assertEquals(1L, runs.terminalSummary(run.runId)!!.invalidEvents)
+            val other = runs.start("space", 1, SyncTrigger.MANUAL)
+            assertEquals(0L, runs.terminalSummary(other.runId)!!.invalidEvents)
+            assertTrue(runs.confirmReceived(run.runId, "owner").isEmpty())
+        }
+    }
+
+    @Test
+    fun `runtime startup recovery settles orphan receipt locally without network or changing run`() = runBlocking {
+        verifyLocalReceiptRecovery(orphan = true)
+    }
+
+    @Test
+    fun `runtime startup settles already applied receipt locally without network`() = runBlocking {
+        verifyLocalReceiptRecovery(orphan = false)
+    }
+
+    private suspend fun verifyLocalReceiptRecovery(orphan: Boolean) {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val runtime = setup.runtime
+                val key = SyncObjectKey(SyncObjectType.MANGA, sourceId = "1", originalUrl = "/runtime-orphan")
+                val add = SyncEventEnvelope(
+                    1, "space", 1, "remote", 1, 1, SyncCategory.FAVORITE,
+                    listOf(SyncEffect("favorite", key, SyncField.FAVORITE, SyncEffectKind.ADD)),
+                    SyncOrigin.USER, batchId = "runtime-add",
+                )
+                val remove = add.copy(
+                    seq = 2,
+                    batchId = "runtime-remove",
+                    effects = listOf(
+                        SyncEffect(
+                            "favorite",
+                            key,
+                            SyncField.FAVORITE,
+                            SyncEffectKind.REMOVE,
+                            listOf(add.ref("favorite")),
+                        ),
+                    ),
+                )
+                val inbox = SyncInboxStore(storage.handler)
+                for (event in listOf(add, remove)) {
+                    assertTrue(
+                        inbox.ingest(
+                            SyncBatch(
+                                1,
+                                "space",
+                                1,
+                                event.batchId!!,
+                                listOf(event),
+                                listOf(SyncObjectDescriptor(key, "orphan")),
+                            ),
+                        ).accepted,
+                    )
+                    runtime.projector.project("space", 1)
+                }
+                val pending = runtime.projector.pending("space", 1).single()
+                if (orphan) {
+                    storage.handler.await {
+                        sync_inboxQueries.insertDecision("space", 1, pending.binding, "CONFIRM")
+                        sync_inboxQueries.clearPendingField("space", 1, key.stableKey, "FAVORITE")
+                    }
+                } else {
+                    runtime.projector.decide("space", 1, pending, mihon.domain.sync.SyncCancellationDecision.CONFIRM)
+                }
+                val runs = runtime.runStore
+                val run = runs.start("space", 1, SyncTrigger.MANUAL)
+                assertTrue(runs.claim(run.runId, "previous-process", 1))
+                runs.expectDownload(run.runId, "previous-process", "runtime-remove", 1)
+                runs.freezePlan(run.runId, "previous-process", emptyList())
+                runs.finish(run.runId, SyncRunState.PARTIAL, "projection_pending", "previous-process")
+                val requests = setup.git.server.requestCount
+                assertTrue(runtime.resumeIfNeeded())
+                val settled = runs.latest("space", 1)!!
+                assertEquals(run.runId, settled.runId)
+                assertEquals(SyncRunState.SUCCEEDED, settled.state)
+                assertEquals(1L, settled.confirmedItems)
+                assertNull(settled.ownerSession)
+                assertEquals(requests, setup.git.server.requestCount)
+                assertTrue(!runtime.resumeIfNeeded())
+                assertEquals(1L, runs.get(run.runId)!!.confirmedItems)
+                assertEquals("space", runtime.connection()!!.spaceId)
+            }
+        }
+    }
+
+    @Test
+    fun `exchange retry repairs orphan decision and confirms durable receipt once`() = runBlocking {
+        SyncGitSafetyContractTest().GitFixture().use { git ->
+            val transport = git.transport()
+            transport.initialize(repository, "space", 1)
+            open().use { storage ->
+                storage.connect("orphan-retry", repository)
+                val key = SyncObjectKey(SyncObjectType.MANGA, sourceId = "1", originalUrl = "/orphan")
+                val add = SyncEventEnvelope(
+                    1, "space", 1, "remote", 1, 1, SyncCategory.FAVORITE,
+                    listOf(SyncEffect("favorite", key, SyncField.FAVORITE, SyncEffectKind.ADD)),
+                    SyncOrigin.USER, batchId = "remote-add",
+                )
+                val remove = add.copy(
+                    seq = 2,
+                    batchId = "remote-remove",
+                    effects = listOf(
+                        SyncEffect(
+                            "favorite",
+                            key,
+                            SyncField.FAVORITE,
+                            SyncEffectKind.REMOVE,
+                            listOf(add.ref("favorite")),
+                        ),
+                    ),
+                )
+                val inbox = SyncInboxStore(storage.handler)
+                for (event in listOf(add, remove)) {
+                    assertTrue(
+                        inbox.ingest(
+                            SyncBatch(
+                                1,
+                                "space",
+                                1,
+                                event.batchId!!,
+                                listOf(event),
+                                listOf(SyncObjectDescriptor(key, "orphan")),
+                            ),
+                        ).accepted,
+                    )
+                    storage.projector.project("space", 1)
+                }
+                val pending = storage.projector.pending("space", 1).single()
+                storage.handler.await(inTransaction = true) {
+                    sync_inboxQueries.insertDecision("space", 1, pending.binding, "CONFIRM")
+                    sync_inboxQueries.clearPendingField("space", 1, key.stableKey, "FAVORITE")
+                }
+                val runs = SyncRunStore(storage.handler)
+                val run = runs.start("space", 1, SyncTrigger.MANUAL)
+                assertTrue(runs.claim(run.runId, "owner", 1))
+                runs.expectDownload(run.runId, "owner", "remote-remove", 1)
+                runs.freezePlan(run.runId, "owner", emptyList())
+                val result = SyncDatabaseExchange(
+                    storage.handler,
+                    storage.baseline,
+                    storage.projector,
+                    transport,
+                    secret,
+                    progress = runs.reporter(run.runId, "owner"),
+                ).exchange("space", 1, repository)
+                assertEquals(SyncRunStatus.SUCCESS, result.status, result.toString())
+                assertEquals(1L, runs.get(run.runId)!!.confirmedItems)
+                assertTrue(runs.confirmReceived(run.runId, "owner").isEmpty())
+                assertEquals(false, storage.manga.getMangaByUrlAndSourceId("/orphan", 1)!!.favorite)
+            }
+        }
+    }
+
+    @Test
+    fun `claim persists fresh attempt facts without resetting frozen progress`() = runBlocking {
+        open().use { storage ->
+            storage.connect("attempt-clock", repository)
+            var now = 1_000L
+            val store = SyncRunStore(storage.handler, clock = { now })
+            val run = store.start("space", 1, SyncTrigger.MANUAL)
+            assertNull(store.get(run.runId)!!.attemptStartedAt)
+            assertTrue(store.claim(run.runId, "owner", 1))
+            assertEquals(1_000L, store.get(run.runId)!!.attemptStartedAt)
+            store.confirmed(run.runId, "owner", SyncProgressDirection.UPLOAD, "done", 3)
+            store.expectDownload(run.runId, "owner", "waiting", 2)
+            store.freezePlan(run.runId, "owner", emptyList())
+            now = 11_000
+            store.pause(run.runId)
+            now = 71_000
+            val reopened = SyncRunStore(storage.handler, clock = { now })
+            assertTrue(reopened.resumeIfAllowed(run.runId))
+            assertTrue(reopened.claim(run.runId, "replacement", 2))
+            val next = reopened.get(run.runId)!!
+            assertEquals(71_000L, next.attemptStartedAt)
+            assertEquals(3L, next.attemptConfirmedBaseline)
+            assertEquals(60_000L, next.attemptPausedMillis)
+            assertEquals(3L, next.confirmedItems)
+            assertEquals(5L, next.plannedItems)
+            assertEquals(1_000L, next.planStartedAt)
+            now = 81_000
+            assertTrue(!reopened.claim(run.runId, "wrong-owner", 3))
+            assertEquals(next, reopened.get(run.runId))
+        }
+    }
+
     @Test
     fun `plan timing excludes counting pauses and survives store reconstruction`() = runBlocking {
         open().use { storage ->
