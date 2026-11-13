@@ -114,6 +114,18 @@ Desktop 的 `ReaderPanBounds` 是阅读器视口交互策略：放大后，拖�
 
 本地决定完成后立即读取数据库局部快照并更新条目和计数，不重读 GitHub 凭据、加密空间记录或生成诊断报告。局部读取/发布与完整刷新最后的数据库快照读取/发布共用互斥锁，慢凭据和恢复读取不能持锁，避免旧快照重新显示已处理条目；选择引用等命令队列内部状态仍由原队列维护。数据库订阅使用同一局部刷新，授权、空间变更与同步结果仍走完整刷新。失败或失效的决定不得通过提前隐藏条目伪装成成功。`SyncPanelStorageContract` 覆盖完整安全存储读取挂起期间两种单条决定直接提交及刷新、零额外凭据读取和零 GitHub 请求，以及既有的批量确认、失败重试和空间切换回归；真实指针点击到 production controller 的 UI 集成测试覆盖单击即生效且没有确认窗。
 
+### 同步决定收尾、旧状态恢复与本次计时
+
+取消收藏/关注的本机决定必须在原事务内保存决定、完成实际操作、清除待确认条目并重新投影字段。重新投影复用当前 heads/binding 与既有本地成员状态规则；已经保存的决定不能冒充对新 binding 的许可。没有有效决定且仍需取消本地成员关系时恢复待确认；本地关系已不存在时不再要求无意义的确认。作者的 `INVALIDATED` 本地动作证据沿用原有规则。
+
+旧版可能遗留 `DECISION`、`dirty=0` 且没有待确认行的字段。仅将这种孤儿字段重新标脏并执行真实投影，保留仍有有效待确认条目的 ID 与 binding；不能直接将字段或整个批次标为完成。启动恢复复核连接、空间、run 与 owner 后在本地完成这项修复，不依赖启动时网络同步偏好。仅有已经可确认的接收回执也可通过 `settleLocalReceipts` 的数据库事务完成收尾；该路径不读取安全存储、不请求远端，不将所有待确认回执当作联网重试授权。单条及批量决定后立即调用此本地收尾，之后通过原局部快照锁发布 run、确认数和待确认列表。失败保留回执和检查点；仍有未完成内容时保留实际部分完成状态。
+
+整轮计划、累计确认与本次尝试的显示分别保存。成功 claim 在同一事务记录 `attemptStartedAt`、`attemptConfirmedBaseline` 和 `attemptPausedMillis`；重复/失败 claim 不覆盖现有 owner 的基线。当前尝试展示新增确认数及其耗时，总体进度保留旧检查点；暂停、等待、终态和恢复前按已保存边界冻结，不累计停机时间。schema 47 为既有 pause clock 增加这些字段；旧数据缺少尝试事实时保持未知，不把整个旧轮次年龄或累计确认冒充本次结果。迁移检查拒绝缺失、部分或畸形列组，保留事务回滚与原数据。
+
+共享面板将已接收但暂不能本地应用的数据展示为待恢复，并提供可选的“检查已保存数据”；图源暂不可用时保留内容清单。达到网络重试上限仍保留真实耗尽说明和手动恢复入口，不声称后台持续重试。无效事件由当前 run 待确认回执的真实计数识别，保留校验问题及诊断入口；用户待决定、授权问题和真实未完成结果不能被归为成功或普通待恢复。
+
+回归由共享 `SyncInboxStorageContract`、`SyncRuntimeStorageContract`、`SyncPanelStorageContract` 覆盖决定、旧状态恢复、纯本地收尾、身份及幂等；`SyncAttemptClockMigrationTest` 覆盖真实旧文件升级和结构拒绝，`SyncProgressPresentationTest`、`SyncPanelContentTest`、`SyncProgressControllerIntegrationTest` 覆盖计时/计数、状态分类与生产点击接线。各平台只执行本次受影响的定向范围。
+
 ### Desktop 应用关闭与同步收尾
 
 主窗口关闭由 `DesktopApplicationCloseCoordinator` 先发布 closing，`DesktopApplicationWindow` 将生产窗口设为不可见，保留 composition 和 owner，直到清理结束再在原 UI 上下文调用 `exitApplication()`。清理通过 IO dispatcher 执行，不能让同步等待子进程、保存检查点等阻塞式实现占住 UI 线程。窗口隐藏只表示已接受关闭请求，不表示进程或同步清理已经结束；不通过强制超时跳过数据落盘。`stopForRecovery()` 不隐藏窗口，恢复实例启动失败时仍需原窗口反馈。

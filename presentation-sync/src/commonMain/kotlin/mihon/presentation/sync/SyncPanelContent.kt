@@ -3062,14 +3062,33 @@ private fun SyncCompactProgressCard(
                     )
                 }
                 if (!counting) {
+                    presentation.attemptConfirmed?.let {
+                        Text(
+                            syncString(MR.strings.sync_attempt_confirmed, it),
+                            Modifier.fillMaxWidth().testTag("sync-attempt-confirmed"),
+                            style = textStyle,
+                        )
+                    }
+                    if (presentation.retainedConfirmed > 0) {
+                        Text(
+                            syncString(MR.strings.sync_retained_confirmed, presentation.retainedConfirmed),
+                            Modifier.fillMaxWidth().testTag("sync-retained-confirmed"),
+                            style = textStyle,
+                        )
+                    }
+                    val elapsedText = if (presentation.elapsedKnown) {
+                        syncClockDuration(presentation.elapsedSeconds)
+                    } else {
+                        "—"
+                    }
                     Text(
                         presentation.wholeEta?.let { eta ->
                             syncString(
                                 MR.strings.sync_round_time,
-                                syncClockDuration(presentation.elapsedSeconds),
+                                elapsedText,
                                 syncClockDuration(eta),
                             )
-                        } ?: syncString(MR.strings.sync_elapsed, syncClockDuration(presentation.elapsedSeconds)),
+                        } ?: syncString(MR.strings.sync_elapsed, elapsedText),
                         Modifier.fillMaxWidth().height(timeHeight).testTag("sync-round-time"),
                         style = textStyle,
                     )
@@ -3133,12 +3152,18 @@ private fun SyncProgressCard(
                     style = MaterialTheme.typography.titleLarge,
                 )
             }
-            val seconds = presentation.elapsedSeconds
+            val elapsedText = if (presentation.elapsedKnown) syncClockDuration(presentation.elapsedSeconds) else "—"
             BoxWithConstraints(Modifier.fillMaxWidth()) {
                 val text = syncString(
-                    MR.strings.sync_result_summary,
-                    presentation.confirmed ?: 0L,
-                    syncClockDuration(seconds),
+                    if (presentation.attemptConfirmed !=
+                        null
+                    ) {
+                        MR.strings.sync_attempt_summary
+                    } else {
+                        MR.strings.sync_result_summary
+                    },
+                    presentation.attemptConfirmed ?: presentation.confirmed ?: 0L,
+                    elapsedText,
                 )
                 Text(
                     text,
@@ -3152,7 +3177,16 @@ private fun SyncProgressCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (run?.state == SyncRunState.FAILED && run.stopReason == "retry_exhausted") {
+            if (presentation.attemptConfirmed != null && presentation.retainedConfirmed > 0) {
+                Text(
+                    syncString(MR.strings.sync_retained_confirmed, presentation.retainedConfirmed),
+                    Modifier.testTag("sync-retained-confirmed"),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (state.hasInvalidReceivedData) {
+                Text(syncString(MR.strings.sync_invalid_saved_hint), Modifier.testTag("sync-validation-reason"))
+            } else if (run?.state == SyncRunState.FAILED && run.stopReason == "retry_exhausted") {
                 Text(syncString(MR.strings.sync_retry_exhausted))
             } else if (run?.state == SyncRunState.BLOCKED ||
                 (run?.state in setOf(SyncRunState.FAILED, SyncRunState.PARTIAL) && state.problem != null)
@@ -3162,6 +3196,7 @@ private fun SyncProgressCard(
                 Text(
                     syncString(
                         when {
+                            state.waitingForLocalRestoration -> MR.strings.sync_local_restore_hint
                             run.stopReason == "projection_pending" -> MR.strings.sync_projection_pending
                             state.pendingTotal > 0 -> MR.strings.sync_pending_decisions_count
                             else -> MR.strings.sync_pending_decisions
@@ -3204,13 +3239,38 @@ private fun SyncProgressCard(
                     Text(syncString(MR.strings.sync_terminal_pending_explanation))
                 }
                 summary?.takeIf { it.sourceUnavailableFields > 0 }?.let {
-                    Text(syncString(MR.strings.sync_terminal_source_fields, it.sourceUnavailableFields))
-                    Text(syncString(MR.strings.sync_terminal_source_retry))
+                    Text(
+                        syncString(
+                            if (state.waitingForLocalRestoration) {
+                                MR.strings.sync_source_deferred_count
+                            } else {
+                                MR.strings.sync_terminal_source_fields
+                            },
+                            it.sourceUnavailableFields,
+                        ),
+                    )
+                    if (!state.waitingForLocalRestoration) Text(syncString(MR.strings.sync_terminal_source_retry))
                 }
                 when (val log = state.failureLog?.takeIf { it.runId == run.runId }) {
                     is SyncFailureLogStatus.Ready -> {
-                        Text(syncString(MR.strings.sync_failure_log_count, log.failedEntries))
-                        Action("sync-failure-log-open", MR.strings.sync_failure_log_open) {
+                        Text(
+                            syncString(
+                                if (state.waitingForLocalRestoration) {
+                                    MR.strings.sync_deferred_list_count
+                                } else {
+                                    MR.strings.sync_failure_log_count
+                                },
+                                log.failedEntries,
+                            ),
+                        )
+                        Action(
+                            "sync-failure-log-open",
+                            if (state.waitingForLocalRestoration) {
+                                MR.strings.sync_deferred_list_open
+                            } else {
+                                MR.strings.sync_failure_log_open
+                            },
+                        ) {
                             onOpenFailureLog(log.path)
                         }
                     }
@@ -3408,6 +3468,18 @@ private fun SyncMainOperation(
             ) {
                 dispatch(operation.action)
             }
+            state.hasInvalidReceivedData -> Action(
+                "sync-invalid-details",
+                MR.strings.sync_recovery_details,
+                shape = operationShape,
+                modifier = buttonModifier,
+            ) { dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS)) }
+            state.waitingForLocalRestoration -> Action(
+                "sync-check-saved",
+                MR.strings.sync_check_saved,
+                shape = operationShape,
+                modifier = buttonModifier,
+            ) { dispatch(SyncPanelAction.RetrySync) }
             run?.state == SyncRunState.PAUSED_USER -> SyncPauseResumeButton(
                 paused = true,
                 enabled = state.connection?.enabled == true,

@@ -60,6 +60,9 @@ data class SyncRunSnapshot(
     val pausedAt: Long? = null,
     val planStartedAt: Long? = null,
     val planPausedMillis: Long = 0,
+    val attemptStartedAt: Long? = null,
+    val attemptConfirmedBaseline: Long = 0,
+    val attemptPausedMillis: Long = 0,
 )
 
 data class SyncRunPlanBatch(
@@ -532,6 +535,15 @@ class SyncRunStore(
                     runId = runId,
                 ).executeAsOne()
             },
+            invalidEvents = if (pending.isEmpty()) {
+                0L
+            } else {
+                sync_runtimeQueries.countFailureReportInvalidEvents(
+                    spaceId = run.space_id,
+                    generation = run.generation,
+                    runId = runId,
+                ).executeAsOne()
+            },
         )
     }
 
@@ -711,10 +723,16 @@ class SyncRunStore(
     suspend fun claim(runId: String, ownerSession: String, attemptId: Long): Boolean = handler.await(
         inTransaction = true,
     ) {
-        sync_runtimeQueries.claimRuntimeRun(attemptId, ownerSession, clock(), runId, ownerSession)
-        sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull()?.let {
+        val startedAt = clock()
+        sync_runtimeQueries.claimRuntimeRun(attemptId, ownerSession, startedAt, runId, ownerSession)
+        val claimed = sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull()?.let {
             it.state == SyncRunState.RUNNING.name && it.owner_session == ownerSession && it.attempt_id == attemptId
         } == true
+        if (claimed) {
+            sync_runtimeQueries.ensureRuntimePauseClock(runId)
+            sync_runtimeQueries.startRuntimeAttemptClock(startedAt, runId)
+        }
+        claimed
     }
 
     suspend fun recordNetworkFailure(runId: String, ownerSession: String): Long =
@@ -950,6 +968,9 @@ private fun tachiyomi.data.Sync_runtime_runs.toSnapshot(
     pausedAt = pauseClock?.paused_at,
     planStartedAt = pauseClock?.planned_at,
     planPausedMillis = pauseClock?.planned_paused_millis ?: 0,
+    attemptStartedAt = pauseClock?.attempt_started_at,
+    attemptConfirmedBaseline = pauseClock?.attempt_confirmed_baseline ?: 0,
+    attemptPausedMillis = pauseClock?.attempt_paused_millis ?: 0,
     uploadedBaseline = uploaded_baseline,
     downloadedBaseline = downloaded_baseline,
     attemptId = attempt_id,

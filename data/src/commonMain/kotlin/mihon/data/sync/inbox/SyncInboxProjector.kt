@@ -141,7 +141,19 @@ class SyncInboxProjector(private val handler: DatabaseHandler, private val write
     }
 
     suspend fun retryUnavailable(spaceId: String, generation: Long) = handler.await(inTransaction = true) {
-        if (active(spaceId, generation)) sync_inboxQueries.retryUnavailable(spaceId, generation)
+        if (active(spaceId, generation)) {
+            sync_inboxQueries.retryUnavailable(spaceId, generation)
+            sync_inboxQueries.retryOrphanDecisions(spaceId, generation)
+        }
+    }
+
+    suspend fun hasOrphanDecisions(spaceId: String, generation: Long): Boolean = handler.await {
+        active(spaceId, generation) &&
+            sync_inboxQueries.hasOrphanDecisions(spaceId, generation).executeAsOneOrNull() != null
+    }
+
+    suspend fun retryOrphanDecisions(spaceId: String, generation: Long) = handler.await(inTransaction = true) {
+        if (active(spaceId, generation)) sync_inboxQueries.retryOrphanDecisions(spaceId, generation)
     }
 
     suspend fun pending(spaceId: String, generation: Long, limit: Int = 100, offset: Long = 0): List<SyncPendingItem> {
@@ -323,10 +335,16 @@ class SyncInboxProjector(private val handler: DatabaseHandler, private val write
                     }
                 } else if (projection.value == false && local == true) {
                     val request = SyncReceiver.pendingCancellation(reduced, key, field, true).singleOrNull()
-                    if (request != null &&
-                        sync_inboxQueries.getDecision(state.space_id, state.generation, request.binding)
-                            .executeAsOneOrNull() == null
-                    ) {
+                    val stored = request?.let {
+                        sync_inboxQueries.getDecision(state.space_id, state.generation, it.binding)
+                            .executeAsOneOrNull()
+                    }
+                    if (request != null && stored == "CONFIRM") {
+                        val decision = SyncReceiver.decide(request, SyncCancellationDecision.CONFIRM, reduced)
+                        if (decision.result == SyncReceiverDecisionResult.APPLIED) {
+                            writer.applyMembership(key, false, descriptionLookup(state.space_id, state.generation))
+                        }
+                    } else if (request != null && stored == null) {
                         val title = descriptionLookup(state.space_id, state.generation)(key)?.title
                             ?: key.originalUrl ?: requireNotNull(key.portableKey)
                         sync_inboxQueries.upsertPendingDecision(
@@ -463,6 +481,8 @@ class SyncInboxProjector(private val handler: DatabaseHandler, private val write
             sync_inboxQueries.insertDecision(spaceId, generation, item.binding, decision.name)
         }
         if (matches) sync_inboxQueries.clearPendingField(spaceId, generation, key.stableKey, field.name)
+        sync_inboxQueries.getFieldState(spaceId, generation, key.stableKey, field.name)
+            .executeAsOneOrNull()?.let { projectField(it) }
         return result.result
     }
 

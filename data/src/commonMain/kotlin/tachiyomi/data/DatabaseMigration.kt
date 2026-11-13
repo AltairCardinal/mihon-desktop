@@ -119,7 +119,7 @@ object DatabaseMigration {
             "Missing sync pause clock in published schema $recordedVersion; refusing to reconstruct lost clocks"
         }
         if (chaptersPresent) requirePublishedChapterIdentity(driver)
-        if (pausePresent) requirePublishedPauseClock(driver, recordedVersion >= 42)
+        if (pausePresent) requirePublishedPauseClock(driver, recordedVersion >= 42, recordedVersion >= 47)
 
         if (!chaptersPresent) {
             // Reuse the authoritative, unchanged chapter DDL. This repairs a missing physical
@@ -163,7 +163,11 @@ object DatabaseMigration {
             )
         }
         requirePublishedChapterIdentity(driver)
-        requirePublishedPauseClock(driver, requirePlanClock = pausePresent && recordedVersion >= 42)
+        requirePublishedPauseClock(
+            driver,
+            requirePlanClock = pausePresent && recordedVersion >= 42,
+            requireAttemptClock = recordedVersion >= 47,
+        )
     }
 
     private fun requireCompleteOrAbsentFamily(
@@ -227,12 +231,41 @@ object DatabaseMigration {
         ) { "Incompatible chapter directory identity" }
     }
 
-    private fun requirePublishedPauseClock(driver: SqlDriver, requirePlanClock: Boolean) {
+    private fun requirePublishedPauseClock(driver: SqlDriver, requirePlanClock: Boolean, requireAttemptClock: Boolean) {
         requireTable(driver, "sync_runtime_pause_clock", setOf("run_id", "paused_millis", "paused_at"))
         val planColumns = tableColumns(driver, "sync_runtime_pause_clock") intersect
             setOf("planned_at", "planned_paused_millis")
         require(planColumns.size == 2 || (!requirePlanClock && planColumns.isEmpty())) {
             "Incomplete sync pause plan clock; refusing partial repair"
+        }
+        val attemptColumns = tableColumns(driver, "sync_runtime_pause_clock") intersect
+            setOf("attempt_started_at", "attempt_confirmed_baseline", "attempt_paused_millis")
+        require(attemptColumns.size == 3 || (!requireAttemptClock && attemptColumns.isEmpty())) {
+            "Incomplete sync attempt clock; refusing partial repair"
+        }
+        if (attemptColumns.isNotEmpty()) {
+            require(
+                queryCount(
+                    driver,
+                    "SELECT COUNT(*) FROM pragma_table_info('sync_runtime_pause_clock') WHERE " +
+                        "(name='attempt_started_at' AND type='INTEGER' AND \"notnull\"=0 AND dflt_value IS NULL) OR " +
+                        "(name IN ('attempt_confirmed_baseline','attempt_paused_millis') " +
+                        "AND type='INTEGER' AND \"notnull\"=1 AND dflt_value='0')",
+                ) == 3L,
+            ) { "Incompatible sync attempt clock columns" }
+            val definition = driver.executeQuery(
+                null,
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='sync_runtime_pause_clock'",
+                { cursor ->
+                    cursor.next()
+                    app.cash.sqldelight.db.QueryResult.Value(requireNotNull(cursor.getString(0)))
+                },
+                0,
+            ).value.filterNot(Char::isWhitespace).replace("\"", "").uppercase()
+            require(
+                definition.contains("CHECK(ATTEMPT_CONFIRMED_BASELINE>=0)") &&
+                    definition.contains("CHECK(ATTEMPT_PAUSED_MILLIS>=0)"),
+            ) { "Incompatible sync attempt clock constraints" }
         }
         require(
             queryCount(

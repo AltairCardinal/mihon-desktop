@@ -2108,6 +2108,74 @@ class SyncPanelContentTest {
     }
 
     @Test
+    fun `system deferred projection explains saved data without asking for repeated retries`() = rendered(
+        connected().copy(
+            run = visualRun(SyncRunPhase.CONFIRMING).copy(
+                state = SyncRunState.PARTIAL,
+                stopReason = "projection_pending",
+                confirmedItems = 2170,
+                plannedItems = 2423,
+            ),
+            terminalSummary = SyncTerminalSummary("run-visual", 2, 253, 0),
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        assertTrue(texts().contains("同步数据已保存，部分内容待本机恢复"))
+        assertTrue(texts().contains("进度已保留，系统会在后续同步时继续核对，无需反复重试。"))
+        assertFalse(hasTag("sync-retry-run"))
+        assertFalse(texts().any { it.contains("请稍后重试同步") })
+        click("sync-check-saved")
+        assertEquals(SyncPanelAction.RetrySync, actions.last())
+    }
+
+    @Test
+    fun `attempt UI separates retained progress from new confirmations and its own timer`() = rendered(
+        connected().copy(
+            run = visualRun(SyncRunPhase.CONFIRMING).copy(
+                attemptId = 31,
+                attemptStartedAt = 9000,
+                attemptConfirmedBaseline = 2170,
+                confirmedItems = 2170,
+                plannedItems = 2423,
+            ),
+            nowMillis = 9000,
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        assertTrue(texts().any { it.contains("本次新增确认0条") })
+        assertTrue(texts().any { it.contains("已保留2170条") })
+        panel.state.value = panel.state.value.copy(
+            run = panel.state.value.run!!.copy(
+                state = SyncRunState.SUCCEEDED,
+                confirmedItems = 2423,
+                updatedAt = 11000,
+            ),
+        )
+        render()
+        assertTrue(texts().any { it.contains("本次新增确认253条 · 用时00:02") })
+    }
+
+    @Test
+    fun `invalid received events keep an explicit validation issue and diagnostics route`() = rendered(
+        connected().copy(
+            run = visualRun(SyncRunPhase.CONFIRMING).copy(
+                state = SyncRunState.PARTIAL,
+                stopReason = "projection_pending",
+            ),
+            terminalSummary = SyncTerminalSummary("run-visual", 1, 10, 0, invalidEvents = 1),
+            failureLog = SyncFailureLogStatus.Ready("run-visual", "C:/reports/invalid.txt", 1),
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        assertTrue(texts().contains("部分同步数据未通过校验，已保留其他进度"))
+        assertFalse(texts().contains("同步数据已保存，部分内容待本机恢复"))
+        assertFalse(hasTag("sync-check-saved"))
+        assertTrue(hasTag("sync-failure-log-open"))
+        click("sync-invalid-details")
+        assertEquals(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS), actions.last())
+    }
+
+    @Test
     fun `partial terminal run shows durable outcome instead of stale live stage`() = rendered(
         connected().copy(
             run = visualRun(SyncRunPhase.UPLOADING).copy(
@@ -2136,17 +2204,17 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-progress-card")
-        assertTrue(texts().contains("本次同步已结束，部分数据待处理"))
-        assertTrue(texts().any { it.contains("已完成26778条") })
+        assertTrue(texts().contains("同步数据已保存，部分内容等待漫画源恢复"))
+        assertTrue(texts().any { it.contains("本次新增确认26778条") })
         assertTrue(texts().contains("系统确认尚未完成：2 个下载批次，共 512 条变动"))
         assertTrue(texts().contains("无需逐批确认。需要你决定的内容会单独列出；批次尚未确认不代表其中的变动都已失败。"))
-        assertTrue(texts().contains("上次有 10 项核对内容因漫画源不可用而未能恢复"))
-        assertTrue(texts().contains("请重试同步，重新检查并恢复已保存的数据"))
+        assertTrue(texts().contains("有10项已保存内容等待漫画源恢复"))
+        assertTrue(texts().contains("进度已保留，系统会在后续同步时继续核对，无需反复重试。"))
         assertTrue(texts().any { it.contains("用时00:05") })
         assertFalse(hasTag("sync-progress"))
         assertFalse(texts().contains("正在接收并校验数据"))
         assertFalse(texts().any { it.contains("已确认 0 / 0") })
-        click("sync-retry-run")
+        click("sync-check-saved")
         assertEquals(SyncPanelAction.RetrySync, actions.last())
     }
 
@@ -4081,7 +4149,7 @@ class SyncPanelContentTest {
             )
         render()
         assertTrue(texts().contains("同步已完成"))
-        assertTrue(texts().any { it.contains("已完成7条") })
+        assertTrue(texts().any { it.contains("本次新增确认7条") })
         assertFalse(hasTag("sync-progress-details"))
     }
 
@@ -4412,6 +4480,7 @@ class SyncPanelContentTest {
         ownerSession = "session",
         createdAt = 1_000,
         updatedAt = 1_000,
+        attemptStartedAt = 1_000,
     )
 
     @Test

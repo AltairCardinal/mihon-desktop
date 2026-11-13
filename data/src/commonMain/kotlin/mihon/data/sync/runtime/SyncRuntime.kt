@@ -682,6 +682,8 @@ class SyncRuntime(
             completePendingSetupIfSettled()
         }
         val run = runStore.active(connection.spaceId, connection.generation) ?: return false
+        if (recoverLocalOrphanDecisions(connection, run)) return true
+        if (settleLocalReceipts(connection.spaceId, connection.generation)) return true
         if (!isResumable(run)) return false
         if (maxOf(run.nextRetryAt, scheduledAccountHttpNotBefore(connection)) > clock()) return true
         if (!coordinator.activity.value.running && run.state in setOf(
@@ -695,6 +697,82 @@ class SyncRuntime(
         coordinator.synchronize(SyncTrigger.RECOVERY)
         return true
     }
+
+    /** A local choice can complete an accepted receipt without loading connection secrets or contacting the server. */
+    internal suspend fun settleLocalReceipts(spaceId: String, generation: Long): Boolean =
+        handler.await(inTransaction = true) {
+            val active = sync_journalQueries.getActiveSpace().executeAsOneOrNull()
+            if (active?.space_id != spaceId || active.generation != generation) return@await false
+            val run = runStore.active(spaceId, generation)
+                ?.takeIf { it.state == SyncRunState.PARTIAL && it.ownerSession == null }
+                ?: return@await false
+            val confirmable = sync_runtimeQueries.getPendingRuntimeReceipts(run.runId).executeAsList().any {
+                sync_inboxQueries.canConfirmReceivedBatch(spaceId, generation, it.batch_id).executeAsOneOrNull() != null
+            }
+            if (!confirmable) return@await false
+            val owner = UUID.randomUUID().toString()
+            if (!runStore.claim(run.runId, owner, run.attemptId + 1)) return@await false
+            runStore.confirmReceived(run.runId, owner)
+            val pending = sync_inboxQueries.countPendingDecisions(spaceId, generation).executeAsOne() > 0
+            val unfinished = sync_runtimeQueries.hasUnfinishedRuntimePlan(run.runId).executeAsOneOrNull() != null ||
+                runStore.hasUnconfirmedDownloads(run.runId, owner)
+            sync_runtimeQueries.updateRuntimeStateOwned(
+                if (unfinished || pending) SyncRunState.PARTIAL.name else SyncRunState.SUCCEEDED.name,
+                if (pending) {
+                    "pending_decision"
+                } else if (unfinished) {
+                    "projection_pending"
+                } else {
+                    null
+                },
+                null,
+                clock(),
+                run.runId,
+                owner,
+            )
+            true
+        }
+
+    /** Repair only accepted local fields; a pending receipt alone never authorizes another network exchange. */
+    private suspend fun recoverLocalOrphanDecisions(connection: SyncConnection, run: SyncRunSnapshot): Boolean =
+        connectionMutex.withLock {
+            if (coordinator.activity.value.running || rawConnection() != connection) return@withLock false
+            val current = runStore.active(connection.spaceId, connection.generation)
+                ?.takeIf { it.runId == run.runId && it.state == SyncRunState.PARTIAL && it.ownerSession == null }
+                ?: return@withLock false
+            if (!projector.hasOrphanDecisions(connection.spaceId, connection.generation)) return@withLock false
+            val owner = UUID.randomUUID().toString()
+            if (!runStore.claim(current.runId, owner, current.attemptId + 1)) return@withLock false
+            try {
+                projector.retryOrphanDecisions(connection.spaceId, connection.generation)
+                while (projector.project(connection.spaceId, connection.generation) == 50) {
+                    kotlinx.coroutines.yield()
+                }
+                runStore.confirmReceived(current.runId, owner)
+                val pending = projector.pending(connection.spaceId, connection.generation, limit = 1).isNotEmpty()
+                val unfinished = runStore.hasUnconfirmedDownloads(current.runId, owner) ||
+                    runStore.hasPlannedWork(current.runId)
+                runStore.finish(
+                    current.runId,
+                    if (unfinished || pending) SyncRunState.PARTIAL else SyncRunState.SUCCEEDED,
+                    if (pending) {
+                        "pending_decision"
+                    } else if (unfinished) {
+                        "projection_pending"
+                    } else {
+                        null
+                    },
+                    owner,
+                )
+            } catch (cancelled: CancellationException) {
+                withContext(NonCancellable) { runStore.releaseForRecovery(current.runId) }
+                throw cancelled
+            } catch (failure: Exception) {
+                runStore.finish(current.runId, SyncRunState.PARTIAL, "projection_pending", owner)
+                throw failure
+            }
+            true
+        }
 
     suspend fun cancelSync() {
         connection()?.let { runStore.active(it.spaceId, it.generation)?.let { runStore.cancel(it.runId) } }

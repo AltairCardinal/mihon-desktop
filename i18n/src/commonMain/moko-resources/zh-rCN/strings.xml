@@ -2474,4 +2474,17 @@
     <string name="desktop_library_update_banner_chapters">%1$d个作品有更新，合计%2$d个新章节</string>
     <string name="desktop_library_update_banner_failures">%1$d个作品更新失败</string>
     <string name="pref_reader_eink">E-Ink</string>
+    <string name="sync_local_restore_pending">同步数据已保存，部分内容待本机恢复</string>
+    <string name="sync_local_restore_hint">进度已保留，系统会在后续同步时继续核对，无需反复重试。</string>
+    <string name="sync_source_restore_pending">同步数据已保存，部分内容等待漫画源恢复</string>
+    <string name="sync_attempt_confirmed">本次新增确认%1$d条</string>
+    <string name="sync_retained_confirmed">已保留%1$d条确认结果</string>
+    <string name="sync_attempt_summary">本次新增确认%1$d条 · 用时%2$s</string>
+    <string name="sync_connection_unavailable">暂时无法连接，进度已保留</string>
+    <string name="sync_check_saved">检查已保存数据</string>
+    <string name="sync_source_deferred_count">有%1$d项已保存内容等待漫画源恢复</string>
+    <string name="sync_deferred_list_count">待恢复的已保存内容：%1$d项</string>
+    <string name="sync_deferred_list_open">查看待恢复内容</string>
+    <string name="sync_invalid_saved_data">部分同步数据未通过校验，已保留其他进度</string>
+    <string name="sync_invalid_saved_hint">这部分数据尚未恢复，应用需要进一步检查。可在下方查看诊断记录。</string>
 </resources>

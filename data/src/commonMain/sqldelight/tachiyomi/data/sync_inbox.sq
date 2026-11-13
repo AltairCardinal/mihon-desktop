@@ -232,6 +232,24 @@ retryUnavailable:
 UPDATE sync_field_state SET dirty = 1, revision = revision + 1
 WHERE space_id = ? AND generation = ? AND status IN ('SOURCE', 'DESCRIPTION', 'IDENTITY');
 
+hasOrphanDecisions:
+SELECT 1 FROM sync_field_state s
+WHERE s.space_id = :spaceId AND s.generation = :generation AND s.status = 'DECISION' AND s.dirty = 0
+    AND NOT EXISTS (
+        SELECT 1 FROM sync_pending_decisions p
+        WHERE p.space_id = s.space_id AND p.generation = s.generation
+            AND p.object_key = s.object_key AND p.field = s.field
+    ) LIMIT 1;
+
+retryOrphanDecisions:
+UPDATE sync_field_state SET dirty = 1, revision = revision + 1
+WHERE space_id = :spaceId AND generation = :generation AND status = 'DECISION' AND dirty = 0
+    AND NOT EXISTS (
+        SELECT 1 FROM sync_pending_decisions p
+        WHERE p.space_id = sync_field_state.space_id AND p.generation = sync_field_state.generation
+            AND p.object_key = sync_field_state.object_key AND p.field = sync_field_state.field
+    );
+
 getFieldState:
 SELECT * FROM sync_field_state WHERE space_id = ? AND generation = ? AND object_key = ? AND field = ?;
 

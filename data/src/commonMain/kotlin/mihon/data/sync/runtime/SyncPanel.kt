@@ -126,6 +126,7 @@ data class SyncTerminalSummary(
     val pendingDownloadBatches: Long,
     val pendingDownloadEvents: Long,
     val sourceUnavailableFields: Long,
+    val invalidEvents: Long = 0,
 )
 
 sealed interface SyncFailureLogStatus {

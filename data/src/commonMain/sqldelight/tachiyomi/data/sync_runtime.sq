@@ -32,7 +32,10 @@ CREATE TABLE IF NOT EXISTS sync_runtime_pause_clock (
     paused_millis INTEGER NOT NULL DEFAULT 0 CHECK(paused_millis >= 0),
     paused_at INTEGER,
     planned_at INTEGER,
-    planned_paused_millis INTEGER NOT NULL DEFAULT 0 CHECK(planned_paused_millis >= 0)
+    planned_paused_millis INTEGER NOT NULL DEFAULT 0 CHECK(planned_paused_millis >= 0),
+    attempt_started_at INTEGER,
+    attempt_confirmed_baseline INTEGER NOT NULL DEFAULT 0 CHECK(attempt_confirmed_baseline >= 0),
+    attempt_paused_millis INTEGER NOT NULL DEFAULT 0 CHECK(attempt_paused_millis >= 0)
 );
 
 CREATE TRIGGER IF NOT EXISTS sync_runtime_pause_transition
@@ -86,6 +89,12 @@ INSERT OR IGNORE INTO sync_runtime_pause_clock(run_id) VALUES (?);
 startRuntimePlanClock:
 UPDATE sync_runtime_pause_clock SET planned_at = ?, planned_paused_millis = paused_millis
 WHERE run_id = ? AND planned_at IS NULL;
+
+startRuntimeAttemptClock:
+UPDATE sync_runtime_pause_clock SET attempt_started_at = :startedAt,
+    attempt_confirmed_baseline = (SELECT confirmed_items FROM sync_runtime_runs WHERE run_id = :runId),
+    attempt_paused_millis = paused_millis
+WHERE run_id = :runId;
 
 getRuntimeConfirmation:
 SELECT * FROM sync_runtime_confirmations

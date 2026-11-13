@@ -267,6 +267,7 @@ class SyncPanelController(
                         return@withLock
                     }
                     runtime.projector.decide(connection.spaceId, connection.generation, item, action.decision)
+                    runtime.settleLocalReceipts(connection.spaceId, connection.generation)
                     refreshPendingLocked(updateReferences = false)
                 }
                 queuePendingRefresh()
@@ -469,6 +470,9 @@ class SyncPanelController(
             references = queue.references
             selectedBindings = selectedBindings.filter { (id, binding) -> references[id] == binding }
         }
+        val activeRun = connection?.let { runtime.runStore.active(it.spaceId, it.generation) }
+        val localRun = activeRun ?: connection?.let { runtime.runStore.latest(it.spaceId, it.generation) }
+        val terminalSummary = localRun?.let { runtime.runStore.terminalSummary(it.runId) }
         mutableState.update {
             if (initial) {
                 if (it.loaded) return@update it
@@ -491,6 +495,13 @@ class SyncPanelController(
                     it.selected.filter { id -> queue.references[id] != null }.toSet()
                 },
                 bulk = queue.bulk,
+                run = localRun?.withObservedCounts(it.run),
+                runSource = when {
+                    activeRun != null -> SyncPanelRunSource.ACTIVE
+                    localRun != null -> SyncPanelRunSource.LATEST
+                    else -> null
+                },
+                terminalSummary = terminalSummary,
             )
         }
     }
@@ -3550,6 +3561,7 @@ class SyncPanelController(
                         break
                     }
                     val progress = runtime.projector.processBulk(id)
+                    runtime.settleLocalReceipts(job.space_id, job.generation)
                     enqueue {
                         refreshPending()
                         if (progress.queued == 0L && state.value.visible &&

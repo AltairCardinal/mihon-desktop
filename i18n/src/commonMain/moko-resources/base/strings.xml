@@ -2682,4 +2682,17 @@
     <string name="desktop_library_update_banner_chapters">%1$d works updated, %2$d new chapters total</string>
     <string name="desktop_library_update_banner_failures">%1$d works failed to update</string>
     <string name="pref_reader_eink">E-Ink</string>
+    <string name="sync_local_restore_pending">Sync data is saved; some content awaits local restoration</string>
+    <string name="sync_local_restore_hint">Your progress is saved. The system will check it during later syncs; repeated retries are unnecessary.</string>
+    <string name="sync_source_restore_pending">Sync data is saved; some content awaits its source</string>
+    <string name="sync_attempt_confirmed">Newly confirmed this attempt: %1$d items</string>
+    <string name="sync_retained_confirmed">Retained %1$d confirmed items</string>
+    <string name="sync_attempt_summary">Newly confirmed this attempt: %1$d items · Time %2$s</string>
+    <string name="sync_connection_unavailable">Temporarily unable to connect; progress is saved</string>
+    <string name="sync_check_saved">Check saved data</string>
+    <string name="sync_source_deferred_count">%1$d saved items await their source becoming available</string>
+    <string name="sync_deferred_list_count">Saved items awaiting restoration: %1$d</string>
+    <string name="sync_deferred_list_open">View items awaiting restoration</string>
+    <string name="sync_invalid_saved_data">Some sync data failed validation; other progress is retained</string>
+    <string name="sync_invalid_saved_hint">This data has not been restored and needs application investigation. Diagnostic details are available below.</string>
 </resources>
