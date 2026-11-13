@@ -105,6 +105,8 @@ The documented sync scope is:
 
 **Accepted Windows behavior:** the panel opens immediately while connection checks continue. Locally stored cancellation conflicts remain visible during those checks and in setup results; choosing to keep or cancel one item on this device applies directly, without a confirmation dialog or waiting for GitHub. Batch decisions still require confirmation. Download batches awaiting system confirmation are separate from these manual decisions. Active sync sessions renew renewable GitHub credentials automatically; revoked authorization still requires reconnecting.
 
+**Accepted Windows sync recovery:** confirmed keep/cancel decisions finish locally, including recovery of old saved decisions that left a batch awaiting confirmation. Retry timing and newly confirmed counts describe the current attempt while overall progress is retained. Saved content awaiting local or source recovery is distinguished from transport and validation issues, with diagnostics retained for invalid data. Closing the app hides its window promptly while safe cleanup keeps the profile locked until it finishes.
+
 **Compatibility boundary:** upstream Mihon for Android does not implement this fork’s sync protocol. Use compatible builds from this repository on both devices.
 
 **Content boundary:** downloaded chapter images are not synchronized. Each device still needs access to its reading content. Sync is for the documented library and reading state, not a transfer of every application file.
