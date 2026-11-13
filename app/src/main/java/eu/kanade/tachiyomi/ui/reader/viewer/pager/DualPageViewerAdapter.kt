@@ -73,6 +73,7 @@ class DualPageViewerAdapter(
     private val chapterPairings = store.chapters
     private var chapters: ViewerChapters? = null
     private var pendingPairing = false
+    private var nativePositionOwners: MutableMap<Int, Any>? = null
     private var lastNavigationForward = true
     private var gesturePreparationForward: Boolean? = null
     private var gesturePreparationChapter: ReaderChapter? = null
@@ -527,17 +528,52 @@ class DualPageViewerAdapter(
     override fun getItemPosition(view: Any): Int {
         if (view is DualPagerPageHolder) {
             val unchanged = items.indexOf(view.displayPage)
-            if (unchanged != -1) return unchanged
+            if (unchanged != -1) return claimNativePosition(view, unchanged)
             items.forEachIndexed { position, replacement ->
-                if (replacement is DisplayPage && view.updateDisplayPage(replacement)) return position
+                if (replacement is DisplayPage && canClaimNativePosition(view, position) &&
+                    view.updateDisplayPage(replacement)
+                ) {
+                    return claimNativePosition(view, position)
+                }
             }
         }
         if (view is ViewPagerAdapter.PositionableView) {
             val position = positionOf(view.item)
-            if (position != -1) return position
+            if (position != -1) return claimNativePosition(view, position)
             logcat { "Position for ${view.item} not found" }
         }
         return POSITION_NONE
+    }
+
+    private fun canClaimNativePosition(view: Any, position: Int): Boolean =
+        nativePositionOwners?.get(position)?.let { it === view } != false
+
+    private fun claimNativePosition(view: Any, position: Int): Int {
+        if (!canClaimNativePosition(view, position)) return POSITION_NONE
+        nativePositionOwners?.set(position, view)
+        return position
+    }
+
+    private fun publishNativeItems() {
+        val previousOwners = nativePositionOwners
+        val holders = viewer.pager.children.filterIsInstance<DualPagerPageHolder>().toList()
+        // Fixed-position preparation can temporarily give two shells the same frame. ViewPager
+        // requires an injective object-to-position mapping when the whole window is published.
+        // Reserve exact matches first, retaining painted pixels ahead of merely prepared images.
+        nativePositionOwners = items.mapIndexedNotNull { position, item ->
+            if (item !is DisplayPage) return@mapIndexedNotNull null
+            holders.filter { it.displayPage == item }.maxWithOrNull(
+                compareBy<DualPagerPageHolder>(
+                    { holder -> session(item.firstPage.chapter)?.let(holder::renderedPageIds)?.size ?: 0 },
+                    { holder -> holder.preparedPages().size },
+                ),
+            )?.let { position to it }
+        }.toMap(mutableMapOf())
+        try {
+            notifyDataSetChanged()
+        } finally {
+            nativePositionOwners = previousOwners
+        }
     }
 
     /** Assemble in story order; RTL reverses the entire window, including its boundaries. */
@@ -623,7 +659,7 @@ class DualPageViewerAdapter(
         viewer.replacePairing(anchor, layoutOnly, retainedTransition) {
             items = replacement
             recordProjectedFacts(consumedInputs)
-            notifyDataSetChanged()
+            publishNativeItems()
         }
         viewer.logNavigationState("rebuild")
     }
