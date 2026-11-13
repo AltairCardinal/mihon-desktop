@@ -13,24 +13,7 @@ These features are being planned and have not been implemented. Support each pro
 
 **Each public IP can vote once per feature. English and Chinese pages share the same totals.** People sharing a household, company, or campus public IP share that voting opportunity.
 
-## Desktop: complete read-chapter download deletion settings {#desktop-read-deletion-parity}
-
-**Platforms: Windows and macOS. Status: planned.**
-
-Bring Android's more detailed download cleanup choices to desktop, reducing repetitive manual management.
-
-The planned “Settings → Downloads → Delete chapters” section includes:
-
-- **Delete after manually marking as read**: remove the download when an unread chapter is manually marked read, if enabled.
-- **Automatically delete after reading**: disable deletion, delete the chapter just finished, or choose the second, third, fourth, or fifth most recently read chapter to keep recent reading available.
-- **Bookmark protection**: keep bookmarked chapters by default, with an option to allow deleting them.
-- **Excluded categories**: retain downloads for manga in selected categories.
-
-Existing desktop auto-delete preferences will migrate compatibly; an explicit existing shared setting takes priority. Deletion affects local downloads; manga and reading records remain.
-
-<FeatureVote feature-id="desktop-read-deletion-parity" />
-
-## Both platforms: defer deletion until the next launch {#deferred-read-deletion}
+## Read-chapter deletion: add an option to defer until the next launch {#deferred-read-deletion}
 
 **Platforms: Android, Windows, and macOS. Status: design archived; not implemented.**
 

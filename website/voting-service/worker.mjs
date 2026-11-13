@@ -1,4 +1,4 @@
-const features = ['desktop-read-deletion-parity', 'deferred-read-deletion']
+const features = ['deferred-read-deletion']
 
 function canonicalIp(raw) {
   if (!raw || raw !== raw.trim()) return null

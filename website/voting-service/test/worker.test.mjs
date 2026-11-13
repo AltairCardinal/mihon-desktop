@@ -5,8 +5,8 @@ import { test } from 'node:test'
 import worker from '../worker.mjs'
 
 const origin = 'https://altaircardinal.github.io'
-const parity = 'desktop-read-deletion-parity'
-const delayed = 'deferred-read-deletion'
+const feature = 'deferred-read-deletion'
+const retired = 'desktop-read-deletion-parity'
 
 function fixture() {
   const sqlite = new DatabaseSync(':memory:')
@@ -37,34 +37,44 @@ function fixture() {
   return { sqlite, env, request }
 }
 
-test('the first vote is persisted, a repeat is rejected and another feature stays independent', async () => {
+test('the first vote is persisted and a repeat is rejected', async () => {
   const { request, sqlite } = fixture()
-  const first = await request(`/votes/${parity}`, { method: 'POST' })
+  const first = await request(`/votes/${feature}`, { method: 'POST' })
   assert.equal(first.response.status, 201)
   assert.equal(first.data.count, 1)
   assert.equal(first.data.voted, true)
-  const duplicate = await request(`/votes/${parity}`, { method: 'POST' })
+  const duplicate = await request(`/votes/${feature}`, { method: 'POST' })
   assert.equal(duplicate.response.status, 409)
   assert.equal(duplicate.data.count, 1)
-  assert.equal((await request(`/votes/${delayed}`, { method: 'POST' })).response.status, 201)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM feature_votes').get().n, 1)
+})
+
+test('retired Desktop parity cannot receive votes while the remaining feature keeps its identity and stored votes', async () => {
+  const { request, sqlite } = fixture()
+  await request(`/votes/${feature}`, { method: 'POST' })
+  sqlite.prepare('INSERT INTO feature_votes (feature_id, voter_hash, created_at) VALUES (?, ?, ?)').run(retired, 'archived-voter-hash', 0)
+  assert.equal((await request(`/votes/${retired}`, { method: 'POST' })).response.status, 404)
+  const { data } = await request()
+  assert.deepEqual(data.features, [{ id: feature, count: 1, voted: true }])
+  assert.equal((await request(`/votes/${feature}`, { method: 'POST' })).response.status, 409)
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM feature_votes').get().n, 2)
 })
 
 test('simultaneous requests from the same IP cannot create extra votes', async () => {
   const { request } = fixture()
-  const results = await Promise.all(Array.from({ length: 16 }, () => request(`/votes/${parity}`, { method: 'POST' })))
+  const results = await Promise.all(Array.from({ length: 16 }, () => request(`/votes/${feature}`, { method: 'POST' })))
   assert.equal(results.filter(({ response }) => response.status === 201).length, 1)
   assert.equal(results.filter(({ response }) => response.status === 409).length, 15)
   const { data } = await request()
-  assert.deepEqual(data.features.find(({ id }) => id === parity), { id: parity, count: 1, voted: true })
+  assert.deepEqual(data.features.find(({ id }) => id === feature), { id: feature, count: 1, voted: true })
 })
 
 test('separate public IPs can vote and only keyed hashes are stored', async () => {
   const { request, sqlite } = fixture()
-  await request(`/votes/${parity}`, { method: 'POST' })
-  await request(`/votes/${parity}`, { method: 'POST', ip: '203.0.113.13' })
+  await request(`/votes/${feature}`, { method: 'POST' })
+  await request(`/votes/${feature}`, { method: 'POST', ip: '203.0.113.13' })
   const { data } = await request('/features', { ip: '203.0.113.14' })
-  assert.deepEqual(data.features.find(({ id }) => id === parity), { id: parity, count: 2, voted: false })
+  assert.deepEqual(data.features.find(({ id }) => id === feature), { id: feature, count: 2, voted: false })
   const rows = sqlite.prepare('SELECT * FROM feature_votes').all()
   assert.equal(rows[0].voter_hash.length, 64)
   assert.equal(JSON.stringify(rows).includes('203.0.113.'), false)
@@ -73,16 +83,16 @@ test('separate public IPs can vote and only keyed hashes are stored', async () =
 
 test('IPv6 representations and IPv4-mapped addresses share their canonical identity', async () => {
   const { request } = fixture()
-  assert.equal((await request(`/votes/${parity}`, { method: 'POST', ip: '2001:db8:0:0:0:0:0:1' })).response.status, 201)
-  assert.equal((await request(`/votes/${parity}`, { method: 'POST', ip: '2001:db8::1' })).response.status, 409)
-  assert.equal((await request(`/votes/${parity}`, { method: 'POST', ip: '::ffff:203.0.113.12' })).response.status, 201)
-  assert.equal((await request(`/votes/${parity}`, { method: 'POST', ip: '203.0.113.12' })).response.status, 409)
+  assert.equal((await request(`/votes/${feature}`, { method: 'POST', ip: '2001:db8:0:0:0:0:0:1' })).response.status, 201)
+  assert.equal((await request(`/votes/${feature}`, { method: 'POST', ip: '2001:db8::1' })).response.status, 409)
+  assert.equal((await request(`/votes/${feature}`, { method: 'POST', ip: '::ffff:203.0.113.12' })).response.status, 201)
+  assert.equal((await request(`/votes/${feature}`, { method: 'POST', ip: '203.0.113.12' })).response.status, 409)
 })
 
 test('client payloads and forwarded IP headers cannot bypass the trusted edge IP', async () => {
   const { request } = fixture()
-  await request(`/votes/${parity}`, { method: 'POST', body: JSON.stringify({ ip: '1.2.3.4' }) })
-  const second = await request(`/votes/${parity}`, {
+  await request(`/votes/${feature}`, { method: 'POST', body: JSON.stringify({ ip: '1.2.3.4' }) })
+  const second = await request(`/votes/${feature}`, {
     method: 'POST', headers: { 'X-Forwarded-For': '5.6.7.8', 'X-Real-IP': '9.10.11.12' },
   })
   assert.equal(second.response.status, 409)
@@ -91,11 +101,11 @@ test('client payloads and forwarded IP headers cannot bypass the trusted edge IP
 test('invalid feature, disallowed origin, absent IP and unavailable storage cannot record votes', async () => {
   const { request, env, sqlite } = fixture()
   assert.equal((await request('/votes/not-a-feature', { method: 'POST' })).response.status, 404)
-  assert.equal((await request(`/votes/${parity}`, { method: 'POST', headers: { Origin: 'https://other.example' } })).response.status, 403)
-  assert.equal((await request(`/votes/${parity}`, { method: 'POST', ip: '' })).response.status, 503)
-  assert.equal((await request(`/votes/${parity}`, { method: 'POST', ip: 'not-an-ip' })).response.status, 503)
+  assert.equal((await request(`/votes/${feature}`, { method: 'POST', headers: { Origin: 'https://other.example' } })).response.status, 403)
+  assert.equal((await request(`/votes/${feature}`, { method: 'POST', ip: '' })).response.status, 503)
+  assert.equal((await request(`/votes/${feature}`, { method: 'POST', ip: 'not-an-ip' })).response.status, 503)
   env.DB = { prepare() { throw new Error('private database failure') } }
-  const failed = await request(`/votes/${parity}`, { method: 'POST' })
+  const failed = await request(`/votes/${feature}`, { method: 'POST' })
   assert.equal(failed.response.status, 503)
   assert.equal(JSON.stringify(failed.data).includes('private database'), false)
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM feature_votes').get().n, 0)
@@ -103,7 +113,7 @@ test('invalid feature, disallowed origin, absent IP and unavailable storage cann
 
 test('CORS preflight and responses are uncached and restricted to the public documentation origin', async () => {
   const { env, request } = fixture()
-  const preflight = await worker.fetch(new Request('https://votes.example/votes/' + parity, {
+  const preflight = await worker.fetch(new Request('https://votes.example/votes/' + feature, {
     method: 'OPTIONS', headers: { Origin: origin, 'Access-Control-Request-Method': 'POST' },
   }), env)
   assert.equal(preflight.status, 204)
@@ -115,7 +125,7 @@ test('CORS preflight and responses are uncached and restricted to the public doc
 
 test('Cloudflare cross-zone Worker placeholder cannot be mistaken for a visitor IP', async () => {
   const { request, sqlite } = fixture()
-  const result = await request(`/votes/${parity}`, { method: 'POST', ip: '2a06:98c0:3600::103' })
+  const result = await request(`/votes/${feature}`, { method: 'POST', ip: '2a06:98c0:3600::103' })
   assert.equal(result.response.status, 503)
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM feature_votes').get().n, 0)
 })

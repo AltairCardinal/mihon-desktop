@@ -67,7 +67,7 @@ test('mounted Vue vote button reaches the real client, Worker and SQL, then disa
   }
   const mount = () => {
     const root = node('root')
-    const app = renderer.createApp(Component, { featureId: 'desktop-read-deletion-parity' })
+    const app = renderer.createApp(Component, { featureId: 'deferred-read-deletion' })
     app.provide('test-language', ref('zh-CN'))
     app.mount(root)
     return { root, app }

@@ -7,7 +7,8 @@
 - 中文：`/mihon-desktop/zh/planned-features.html`，标题“规划新增功能投票”。
 - 英文：`/mihon-desktop/planned-features.html`。
 - 导航/侧栏从既有 VitePress 配置生成；两端语言共用稳定 feature IDs 和真实服务端票数。
-- 本次只公布“Desktop 已读删除设置对齐”“双端延迟删除”两项，依据 [封存设计](../design/2026-11-13-read-download-deletion-frozen.md)。不将其他会话或未审核 roadmap 自动加入公开内容。
+- 当前只公布“已读删除：增加延迟到下次启动再删除”，依据 [封存设计](../design/2026-11-13-read-download-deletion-frozen.md)。Desktop 普通已读删除设置对齐已获实施授权，从规划投票中撤下；不据此宣称该产品功能已验收。
+- 更名保留 `deferred-read-deletion` ID、锚点、票数及按 IP 的去重身份。`desktop-read-deletion-parity` 已停止公开和接受新票（404）；已有数据库记录保留，不删除历史票或重置剩余规划的投票机会。
 
 ## 静态站点与动态服务
 
@@ -58,7 +59,7 @@ git diff --check
 - 本轮应用内浏览器核对了中英文页面、键盘 Enter 触发语言切换、深浅主题与 390px 窄屏布局；空 API 配置时，两项均显示尚未开放，不显示票数或投票按钮。
 - 本轮原生 Git 网络已恢复，`gh` 认证账号为 AltairCardinal，仓库管理员/推送权限已确认；实际远端 main 仍为上述父提交。上一节的 Git 失败为旧会话记录，不再作为当前阻塞。
 
-### 托管验收与资源边界（2026-11-13）
+### 首次托管验收与资源边界（2026-11-13，两项规划时的历史证据）
 
 - 通过官方 OAuth 完成最小所需授权，确认账号当前为免费套餐；CLI 凭据使用加密文件及 Windows Credential Manager，没有写入仓库。服务端随机 64 字符 HMAC secret 通过标准输入上传，仅保存为 Worker secret。
 - Wrangler 4.161.0 本地 dry-run 通过；生产 `0001_votes.sql` 迁移通过，生产 Worker 版本为 `4fd377b1-3c66-4a70-ad60-645a1fbf7841`。兼容日期使用已发生的 UTC 日期 `2026-11-12`，关闭版本预览 URL。
