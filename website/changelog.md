@@ -5,6 +5,10 @@ description: A traceable history of public feature documentation, separate from 
 
 # Changelog
 
+## 2026-11-13 — Android two-page swipe repair accepted
+
+The project owner accepted Android `0.19.4-aex.137 / vc155` in a private review on 2026-11-13. The candidate contains implementation `fffacab00c` and source `f22079950c`: two-page preparation-window reconciliation now retains one native holder per pager position, preserving drawn content and forward/reverse navigation while images load. Nine focused regressions passed, including RTL/LTR and interrupted settling. This is acceptance of the local Android candidate, not a new public release or acceptance of other platforms.
+
 ## 2026-11-12 — Reader settings prerelease downloads
 
 [Windows x64 preview and signed Android aex.136 / vc154 downloads](https://github.com/AltairCardinal/mihon-desktop/releases/tag/reader-settings-preview-20261112) are now public. These are the accepted `787f06b` artifacts, not rebuilt packages or a stable release. The Windows ZIP retains its preview identity and includes the complete app/runtime. Asset sizes and GitHub SHA-256 digests match the local files. The full Desktop test run remains incomplete; cold-tail pairing and timing-sensitive tests remain unresolved as described in the release notes. The later `14c7ba5aa1` timing repair is not included in these binaries. The in-app update feed is unchanged.
