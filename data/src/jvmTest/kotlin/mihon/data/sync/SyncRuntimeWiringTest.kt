@@ -72,6 +72,133 @@ import java.util.prefs.Preferences
 
 class SyncRuntimeWiringTest {
     @Test
+    fun `legacy upload block automatically reconciles a published batch without remote writes`() = runBlocking {
+        verifyLegacyUploadReconciliation(remotePresent = true)
+    }
+
+    @Test
+    fun `legacy upload block never publishes when remote confirmation is missing`() = runBlocking {
+        verifyLegacyUploadReconciliation(remotePresent = false)
+    }
+
+    @Test
+    fun `legacy upload block direct manual retry preserves read only proof`() = runBlocking {
+        verifyLegacyUploadReconciliation(remotePresent = false, directManual = true)
+    }
+
+    private suspend fun verifyLegacyUploadReconciliation(remotePresent: Boolean, directManual: Boolean = false) {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize("access-secret")
+                setup.begin()
+                val runtime = setup.runtime
+                f.storage.favorite("/legacy-upload")
+                val store = mihon.data.sync.journal.SyncOutboxStore(f.storage.handler)
+                val batch = requireNotNull(store.nextBatch("space", 1))
+                if (remotePresent) {
+                    val connection = runtime.onboarding.storage.connection("space", 1)!!
+                    val session = runtime.onboarding.session(connection.accountId)
+                    val material = connection.material.material()
+                    val transport = runtime.onboarding.transport(session.accessToken, material)
+                    val snapshot = transport.readSnapshot(setup.repository, "space", 1).getOrThrow()
+                    val result = mihon.data.sync.journal.SyncOutboxExchange(
+                        store,
+                        SyncBatchSyncService(transport, spaceMaterial = material),
+                    ).uploadNext(snapshot)
+                    assertEquals(mihon.domain.sync.transport.SyncPublishStatus.PUBLISHED, result?.publish?.status)
+                    f.storage.driver.execute(
+                        null,
+                        "UPDATE sync_batches SET status = 'SEALED', prepared_upload = NULL WHERE batch_id = ?",
+                        1,
+                    ) { bindString(0, batch.batchId) }
+                    f.storage.driver.execute(null, "UPDATE sync_outbox SET status = 'QUEUED' WHERE batch_id = ?", 1) {
+                        bindString(0, batch.batchId)
+                    }
+                }
+                val run = runtime.runStore.start("space", 1, SyncTrigger.MANUAL)
+                assertTrue(runtime.runStore.claim(run.runId, "previous-process", 1))
+                runtime.runStore.freezePlan(
+                    run.runId,
+                    "previous-process",
+                    listOf(
+                        mihon.data.sync.runtime.SyncRunPlanBatch(
+                            SyncProgressDirection.UPLOAD,
+                            batch.batchId,
+                            batch.events.size.toLong(),
+                        ),
+                    ),
+                )
+                runtime.runStore.progress(
+                    run.runId,
+                    mihon.data.sync.runtime.SyncRunPhase.UPLOADING,
+                    0,
+                    batch.events.size.toLong(),
+                    ownerSession = "previous-process",
+                )
+                runtime.runStore.finish(run.runId, SyncRunState.BLOCKED, "UNKNOWN", "previous-process")
+                val writes = AtomicInteger()
+                val delegate = setup.git.server.dispatcher
+                setup.git.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        if (request.method != "GET" && request.url.encodedPath.contains("/git/")) {
+                            writes.incrementAndGet()
+                        }
+                        return delegate.dispatch(request)
+                    }
+                }
+                if (directManual) {
+                    runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                    assertEquals(0, writes.get(), "initial manual retry must not bypass remote confirmation")
+                    val latest = runtime.runStore.latest("space", 1)!!
+                    assertEquals(SyncRunState.WAITING_RETRY, latest.state)
+                    assertTrue(runtime.runStore.requiresUploadReconciliation(latest.runId))
+                    return
+                }
+                assertTrue(runtime.resumeIfNeeded())
+                val result = runtime.runStore.get(run.runId)!!
+                assertEquals(run.runId, runtime.runStore.latest("space", 1)!!.runId)
+                assertEquals(0, writes.get())
+                if (remotePresent) {
+                    assertEquals(SyncRunState.SUCCEEDED, result.state)
+                    assertEquals(batch.events.size.toLong(), result.confirmedItems)
+                    assertTrue(
+                        f.storage.handler.await {
+                            sync_journalQueries.getBatch("space", 1, batch.batchId).executeAsOne().status == "PUBLISHED"
+                        },
+                    )
+                    assertFalse(runtime.runStore.requiresUploadReconciliation(run.runId))
+                    f.storage.favorite("/after-reconciliation")
+                    assertEquals(SyncRunStatus.SUCCESS, runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                    assertTrue(writes.get() > 0, "fresh publication is allowed only after the old plan was confirmed")
+                } else {
+                    assertEquals(SyncRunState.WAITING_RETRY, result.state)
+                    assertEquals(0L, result.confirmedItems)
+                    assertTrue(result.nextRetryAt > setup.now)
+                    val before = setup.git.server.requestCount
+                    assertTrue(runtime.resumeIfNeeded())
+                    assertEquals(before, setup.git.server.requestCount)
+                    setup.now = result.nextRetryAt
+                    val reopened = setup.runtime()
+                    assertTrue(reopened.resumeIfNeeded())
+                    assertEquals(SyncRunState.WAITING_RETRY, reopened.runStore.get(run.runId)!!.state)
+                    assertTrue(reopened.runStore.requiresUploadReconciliation(run.runId))
+                    assertEquals(0, writes.get())
+                    reopened.coordinator.synchronize(SyncTrigger.MANUAL)
+                    assertEquals(0, writes.get(), "manual retry must retain the read-only reconciliation boundary")
+                    var latest = reopened.runStore.latest("space", 1)!!
+                    assertTrue(reopened.runStore.requiresUploadReconciliation(latest.runId))
+                    reopened.cancelSync()
+                    reopened.coordinator.synchronize(SyncTrigger.MANUAL)
+                    assertEquals(0, writes.get(), "cancel then retry must retain the read-only reconciliation boundary")
+                    latest = reopened.runStore.latest("space", 1)!!
+                    assertTrue(reopened.runStore.requiresUploadReconciliation(latest.runId))
+                }
+            }
+        }
+    }
+
+    @Test
     fun `session authorization check accepts rotation while account verification is in flight`() = runBlocking {
         Fixture().use { f ->
             SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->

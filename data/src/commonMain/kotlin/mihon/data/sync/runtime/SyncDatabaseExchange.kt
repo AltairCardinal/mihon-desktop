@@ -56,6 +56,7 @@ class SyncDatabaseExchange(
     private val snapshotOwner: SyncSnapshotWriteOwner? = null,
     private val liveProgress: SyncLiveProgressSession? = null,
     private val diagnosticContext: SyncJournalContext? = null,
+    private val allowPublish: Boolean = true,
 ) {
     private val inboxStore = SyncInboxStore(handler)
     internal val snapshotEvidenceEvaluations: Long get() = inboxStore.remoteGuard.evidenceEvaluations
@@ -407,6 +408,7 @@ class SyncDatabaseExchange(
                     outbox.uploadNext(
                         snapshot,
                         ::observeSnapshot,
+                        allowPublish = allowPublish,
                         frozenBatchId = frozenBatchId,
                         onPreparingBatch = { batch ->
                             activeUploadBatchId = batch.batchId
@@ -658,6 +660,7 @@ internal fun Exception.syncProblem(): SyncRunProblem = when {
 }
 
 private fun Exception.syncNonDatabaseProblem(): SyncRunProblem = when (this) {
+    is mihon.data.sync.transport.SyncUploadReconciliationUnavailable -> SyncRunProblem.REMOTE_CHANGED
     is mihon.data.sync.transport.SyncRemoteDataInvalid -> SyncRunProblem.INVALID_DATA
     is mihon.data.sync.http.SyncRequiredResourceUnavailable -> SyncRunProblem.SPACE_UNAVAILABLE
     is mihon.domain.sync.crypto.SyncCryptoException -> SyncRunProblem.INVALID_DATA

@@ -482,6 +482,19 @@ class SyncRunStore(
         val now = clock()
         val runId = UUID.randomUUID().toString()
         handler.await(inTransaction = true) {
+            val previousRun = sync_runtimeQueries.getLatestRuntimeRun(spaceId, generation).executeAsOneOrNull()
+            val reconciliation = previousRun?.let {
+                sync_runtimeQueries.getRuntimeConfirmation(it.run_id, "RECOVERY", "upload-reconciliation")
+                    .executeAsOneOrNull()?.status == "PENDING"
+            } == true
+            val previousMembers = if (reconciliation) {
+                sync_runtimeQueries.getRuntimePlanMembers(requireNotNull(previousRun).run_id).executeAsList()
+            } else {
+                emptyList()
+            }
+            val protectedUploads = previousMembers.filter { it.direction == SyncProgressDirection.UPLOAD.name }
+            val inheritReconciliation = reconciliation &&
+                (protectedUploads.isEmpty() || protectedUploads.any { it.status != "CONFIRMED" })
             val uploadedBaseline = sync_journalQueries.countPublishedEvents(spaceId, generation).executeAsOne()
             val downloadedBaseline = sync_journalQueries.countRemoteEvents(spaceId, generation, spaceId, generation)
                 .executeAsOne()
@@ -498,6 +511,21 @@ class SyncRunStore(
                 now,
                 now,
             )
+            if (inheritReconciliation) {
+                sync_runtimeQueries.insertRuntimeConfirmation(runId, "RECOVERY", "upload-reconciliation", 0, "PENDING")
+                previousMembers.filter { it.status != "CONFIRMED" }.forEach { member ->
+                    sync_runtimeQueries.insertRuntimeConfirmation(
+                        runId,
+                        member.direction,
+                        member.batch_id,
+                        member.item_count,
+                        member.status,
+                    )
+                }
+                sync_runtimeQueries.insertRuntimeConfirmation(runId, "PLAN", "round", 0, "PLANNED")
+                sync_runtimeQueries.ensureRuntimePauseClock(runId)
+                sync_runtimeQueries.startRuntimePlanClock(now, runId)
+            }
         }
         diagnosticJournal?.record(
             SyncJournalEventKind.RUN_START,
@@ -734,6 +762,62 @@ class SyncRunStore(
         }
         claimed
     }
+
+    internal suspend fun hasLegacyUploadReconciliation(runId: String): Boolean = handler.await {
+        val run = sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull() ?: return@await false
+        if (run.state != SyncRunState.BLOCKED.name || run.phase != SyncRunPhase.UPLOADING.name ||
+            run.stop_reason != "UNKNOWN" || run.owner_session != null ||
+            sync_runtimeQueries.getRuntimePlanMarker(runId).executeAsOneOrNull() == null
+        ) {
+            return@await false
+        }
+        sync_runtimeQueries.getRuntimePlanMembers(runId).executeAsList().any { member ->
+            member.direction == SyncProgressDirection.UPLOAD.name && member.status != "CONFIRMED" &&
+                sync_journalQueries.getBatch(run.space_id, run.generation, member.batch_id)
+                    .executeAsOneOrNull()?.let { it.status == "SEALED" && it.prepared_upload == null } == true
+        }
+    }
+
+    /** Reopen only a frozen upload for authenticated remote confirmation, never fresh publication. */
+    internal suspend fun queueLegacyUploadReconciliation(runId: String): Boolean = handler.await(inTransaction = true) {
+        val active = sync_journalQueries.getActiveSpace().executeAsOneOrNull() ?: return@await false
+        val run = sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull() ?: return@await false
+        if (!active.exchange_enabled || run.space_id != active.space_id || run.generation != active.generation ||
+            !hasLegacyUploadReconciliation(runId)
+        ) {
+            return@await false
+        }
+        val marker = sync_runtimeQueries.getRuntimeConfirmation(runId, "RECOVERY", "upload-reconciliation")
+            .executeAsOneOrNull()
+        if (marker?.status == "CONFIRMED") return@await false
+        if (marker == null) {
+            sync_runtimeQueries.insertRuntimeConfirmation(runId, "RECOVERY", "upload-reconciliation", 0, "PENDING")
+        }
+        sync_runtimeQueries.updateRuntimeState(
+            SyncRunState.WAITING_SYSTEM.name,
+            "upload_reconciliation",
+            null,
+            clock(),
+            runId,
+        )
+        true
+    }
+
+    internal suspend fun requiresUploadReconciliation(runId: String): Boolean = handler.await {
+        sync_runtimeQueries.getRuntimeConfirmation(runId, "RECOVERY", "upload-reconciliation")
+            .executeAsOneOrNull()?.status == "PENDING"
+    }
+
+    internal suspend fun completeUploadReconciliation(runId: String, owner: String) =
+        handler.await(inTransaction = true) {
+            val run = sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull() ?: return@await
+            if (run.owner_session != owner) return@await
+            val uploads = sync_runtimeQueries.getRuntimePlanMembers(runId).executeAsList()
+                .filter { it.direction == SyncProgressDirection.UPLOAD.name }
+            if (uploads.isNotEmpty() && uploads.all { it.status == "CONFIRMED" }) {
+                sync_runtimeQueries.markRuntimeConfirmation(runId, "RECOVERY", "upload-reconciliation")
+            }
+        }
 
     internal suspend fun hasAcceptedLocalReceipts(runId: String): Boolean = handler.await {
         val run = sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull() ?: return@await false

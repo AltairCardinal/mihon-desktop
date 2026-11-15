@@ -46,4 +46,21 @@
 
 自验应用通过自身关闭入口正常退出。还原前再次取得原 profile 单实例文件锁，确认 actor/epoch/next_seq 与自验前一致；先保存自验后的独立数据库，再由 SQLite 完成空 WAL 检查点，防止旧 sidecar 被套用到还原文件。23:01 原数据库恢复至自验前最新快照，文件 SHA-256 与快照一致，完整性检查返回 `ok`；再次读取为 `BLOCKED/MERGING/UNKNOWN`、第 4 次尝试、0 项确认、11,920 个活动 dirty 字段，与备份现场一致。候选没有重新启动，留待用户验证自动恢复。
 
-本地还原不会撤销远端已经确认的上传。此次只补发已存在的稳定批次，actor 序号没有推进；重新同步依靠既有批次/事件身份进行幂等对账，不回滚新凭据。私人数据库、密封记录、备份清单、进程控制和详细采样保存在本机备份及忽略目录，不入库、不上传。用户原始备份、自验前最新快照和自验后副本均保留。
+本地还原不会撤销远端已经确认的上传。此前“还原后可依靠稳定批次身份幂等对账”的判断没有执行还原后重放验证，现撤回：上次自验仅覆盖还原前同步。用户复验发现旧任务继续卡在 `UPLOADING/UNKNOWN`；远端已有批次而本地 prepared upload 被数据库还原移除，普通 prepare 在 actor sequence 守卫处抛出异常，尚未进入幂等发布判断。这是已复现的第二处缺陷，不能用第一轮本地投影成功作为已覆盖证据。
+
+私人数据库、密封记录、备份清单、进程控制和详细采样保存在本机备份及忽略目录，不入库、不上传。用户原始备份、自验前最新快照和自验后副本均保留。
+
+## 还原后上传对账补修
+
+恢复原远端密文及认证前驱，只读确认 live ref，不重新发布；完整解密内容必须匹配本地批次。持久只读标记跨自动恢复、首次直接手动重试、取消和新轮次继承，原上传全部确认后才解除。缺远端证明自动低频复核，同 ID 异内容拒绝，不跳过 actor 序号或身份校验。
+
+- `sync-artifact-red`：真实文件备份还原的用例在 sequence 守卫失败；`sync-artifact-green-final`：9 项恢复、冲突拒绝、只读边界及限流回归通过。
+- `sync-reconciliation-runtime-red`、`sync-reconciliation-manual-red`：分别确认自动恢复未准入、手动/取消新轮次误写 Git 的行为失败。
+- `sync-reconciliation-runtime-green`：3 项生产 Runtime 恢复/权限传递及 1 项无证明 UNKNOWN 拒绝回归通过。
+- `sync-reconciliation-platform`：JVM 4 项、Android Debug 3 项通过，限定修改文件的真实 Spotless Apply/Check 通过。没有执行完整模块或全仓测试。
+- 本轮原 profile 正由另一个详情原型构建占用，因此先通过 SQLite 只读 backup 取得一致快照，再在隔离 profile 验证；原数据库、原实例和凭据不写入、不关闭。备份状态为 `BLOCKED/UPLOADING/UNKNOWN`、attempt 7、confirmed 12,212，SHA-256 为 `7e5e8208970396e930cd7479a981fb671902f0ef96ea224b81ada444adc9cb14`。
+- 新候选：`app-desktop/artifacts/preview/windows/20261115T153612Z-49b8a68f/Mihon-Desktop-0.11.24.10.e35afaa-unpacked/Mihon Desktop.exe`，协调器 `sync-reconciliation-preview` 构建和生产扩展运行时检查通过。CDS 优化因 Windows 命令长度跳过，应用正常启动；原生视觉及输入未执行。
+- manifest 记录 dirty 输入，生产输入摘要 `cf372aefcd3f548d90260aeae9a36737916bb1d18720a21b557c8d81d797bbff`，构建后与最终源码重新核对一致；产物树摘要 `986c77e629866bb173d14a47cf81c30d1259bc81a94bb941ac4146d1b517125c`。包标签保留构建时 HEAD，不将其改写成最终提交标签。
+- 23:37 第一轮隔离 headless Test Mode 自动接续原 run，未点击同步/重试，最终 `SUCCEEDED/COMPLETE`，11 个上传批次 2,643 项、54 份下载回执 12,212 项全部确认，总计 14,855，RECOVERY 标记 CONFIRMED，无待决定和同步错误。原冻结计划之外仍排队 176 项，不计入完成承诺。
+- 正常关闭候选并完成 WAL 检查点，保存结果副本后，精确还原相同故障快照（再次读到 attempt 7、`BLOCKED/UPLOADING/UNKNOWN`），随后第二轮同包启动。第二轮再次自动达到相同成功终态，当前空间 dirty 为零；两轮 journal 均无 EXCEPTION/HTTP_FAILURE，请求操作仅见账户、仓库、Git ref/blob 读取。零 Git 写权限另有真实 transport/wiring 测试断言，不根据其他设备可能改变的远端状态倒推。
+- 两轮使用的隔离实例均由自身 shutdown 正常退出；保存两轮结果后再次还原隔离副本。原用户数据库从未修改，不声称本轮还原过被用户实例占用的原文件。用户切换候选前须退出仍运行的旧版本，避免单实例转发仅激活旧 EXE；验收只需打开新包等待自动恢复，无需清库、换空间或手动修复。

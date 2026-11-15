@@ -654,7 +654,8 @@ class SyncRuntime(
 
     private suspend fun isResumable(run: SyncRunSnapshot): Boolean = run.state in RESUMABLE_STATES ||
         (run.state == SyncRunState.PARTIAL && runStore.hasPlannedWork(run.runId)) ||
-        (isLocalProjectionCandidate(run) && runStore.hasAcceptedLocalReceipts(run.runId))
+        (isLocalProjectionCandidate(run) && runStore.hasAcceptedLocalReceipts(run.runId)) ||
+        runStore.hasLegacyUploadReconciliation(run.runId)
 
     private fun isLocalProjectionCandidate(run: SyncRunSnapshot): Boolean =
         run.phase == SyncRunPhase.MERGING && (
@@ -738,9 +739,17 @@ class SyncRuntime(
             if (runStore.active(connection.spaceId, connection.generation) == null) {
                 completePendingSetupIfSettled()
             }
-            val run = runStore.active(connection.spaceId, connection.generation) ?: return false
+            var run = runStore.active(connection.spaceId, connection.generation) ?: return false
             if (localProjectionStoppedRunId == run.runId) return false
             if (isLocalProjectionCandidate(run)) return recoverLocalProjection(connection, run, localEpoch)
+            if (runStore.hasLegacyUploadReconciliation(run.runId)) {
+                if (!connection.enabled || connection.unsupportedFormat ||
+                    !runStore.queueLegacyUploadReconciliation(run.runId)
+                ) {
+                    return false
+                }
+                run = runStore.get(run.runId) ?: return false
+            }
             if (recoverLocalOrphanDecisions(connection, run)) return true
             if (settleLocalReceipts(connection.spaceId, connection.generation)) return true
             if (!isResumable(run)) return false
@@ -1340,6 +1349,11 @@ class SyncRuntime(
         }
         val active = runStore.active(connection.spaceId, connection.generation)
         if (trigger == SyncTrigger.MANUAL) localProjectionStoppedRunId = null
+        if (trigger == SyncTrigger.MANUAL && active != null && runStore.hasLegacyUploadReconciliation(active.runId)) {
+            if (!runStore.queueLegacyUploadReconciliation(active.runId)) {
+                return@withLock diagnosticSkip(SyncJournalCode.CLAIM_REJECTED, active.runId, trigger)
+            }
+        }
         if (trigger == SyncTrigger.STARTUP && active != null) {
             // Startup is a recovery probe. It must never create a second run over a
             // paused, blocked, or still owned run; the scheduler will resume an
@@ -1505,6 +1519,7 @@ class SyncRuntime(
                 reconcileTotalsOnStart = existing != null && existing.state != SyncRunState.QUEUED,
                 metrics = syncMetrics,
                 snapshotOwner = SyncSnapshotWriteOwner(run.runId, ownerSession, attemptId),
+                allowPublish = !runStore.requiresUploadReconciliation(run.runId),
                 liveProgress = progressSession,
                 diagnosticContext = diagnosticJournal?.let {
                     SyncJournalContext(it, SyncJournalStage.EXCHANGE, run.runId, attemptId, trigger)
@@ -1633,6 +1648,7 @@ class SyncRuntime(
                 )
             }
         }
+        if (result.problem == null) runStore.completeUploadReconciliation(run.runId, ownerSession)
         runStore.finish(
             run.runId,
             when {

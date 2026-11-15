@@ -586,6 +586,53 @@ class GitHubSyncTransport(
         return stored.toDomain()
     }
 
+    override suspend fun recoverPreparedUpload(snapshot: SyncSnapshot, batchId: String): SyncPreparedUpload? {
+        val entry = snapshot.batches.singleOrNull { it.batchId == batchId } ?: return null
+        val batch = readEncryptedBatch(snapshot, entry)
+        val indexFile = snapshot.tree.entries.singleOrNull { it.path == entry.indexPath }
+            ?: throw SyncRemoteDataInvalid("saved upload index is missing")
+        val indexBytes = getBlob(snapshot.repository, indexFile.sha, cache = false).content
+        requireRemoteData(indexEngine.sha256(indexBytes).toByteString().hex() == entry.indexCiphertextDigestHex) {
+            "saved upload index ciphertext changed"
+        }
+        val shard = decryptShard(indexBytes, entry.indexPath, snapshot.spaceId, snapshot.generation)
+        val predecessor = shard.previousPath?.let { previousPath ->
+            snapshot.batches.singleOrNull { it.indexPath == previousPath }
+                ?: throw SyncRemoteDataInvalid("saved upload predecessor is missing")
+        }
+        requireRemoteData(
+            predecessor == null ||
+                (predecessor.actorId == batch.actorId && predecessor.epoch == batch.epoch),
+        ) {
+            "saved upload predecessor belongs to another actor"
+        }
+        val headPath = ".mihon-sync/heads/${batch.actorId}/${batch.epoch}.bin"
+        val head = ManifestHead(
+            1, snapshot.spaceId, snapshot.generation, batch.actorId, batch.epoch,
+            entry.indexPath, batch.batchId, entry.digestHex, batch.lastSeq,
+        )
+        val upload = SyncPreparedUpload(
+            snapshot.repository,
+            snapshot.head,
+            batch,
+            shard.previousPath,
+            predecessor?.lastSeq ?: 0,
+            if (spaceMaterial == null) SyncAeadCiphertext(indexBytes) else SyncSpacePayload(indexBytes),
+            protect(
+                encodeManifestHead(head).encodeToByteArray(),
+                SyncCryptoBinding(
+                    1,
+                    snapshot.spaceId,
+                    snapshot.generation,
+                    "head-${batch.actorId}-${batch.epoch}",
+                    headPath,
+                ),
+            ),
+        )
+        validatePrepared(upload)
+        return upload
+    }
+
     override fun prepare(snapshot: SyncSnapshot, encryptedBatch: SyncEncryptedBatch): SyncPreparedUpload {
         val secret = spaceMaterial?.secret ?: indexSecret
         require(spaceMaterial != null || secret != null) { "sync index key is unavailable" }
@@ -653,6 +700,21 @@ class GitHubSyncTransport(
         snapshot: SyncSnapshot,
         upload: SyncPreparedUpload,
         observeSnapshot: suspend (SyncSnapshot) -> Unit,
+    ): SyncPublishResult = publishInternal(repository, snapshot, upload, observeSnapshot, allowPublish = true)
+
+    override suspend fun confirmPublished(
+        repository: SyncRepository,
+        snapshot: SyncSnapshot,
+        upload: SyncPreparedUpload,
+        observeSnapshot: suspend (SyncSnapshot) -> Unit,
+    ): SyncPublishResult = publishInternal(repository, snapshot, upload, observeSnapshot, allowPublish = false)
+
+    private suspend fun publishInternal(
+        repository: SyncRepository,
+        snapshot: SyncSnapshot,
+        upload: SyncPreparedUpload,
+        observeSnapshot: suspend (SyncSnapshot) -> Unit,
+        allowPublish: Boolean,
     ): SyncPublishResult {
         val batch = upload.encryptedBatch
         require(repository == snapshot.repository && repository == upload.repository) {
@@ -691,17 +753,33 @@ class GitHubSyncTransport(
         var blobs: List<SyncGitTreeEntry>? = null
         for (attempt in 1..MAX_PUBLISH_ATTEMPTS) {
             val existing = current.batches.firstOrNull { it.batchId == batch.batchId }
+            if (existing == null && !allowPublish) {
+                return SyncPublishResult(
+                    SyncPublishStatus.UNCONFIRMED,
+                    batch.batchId,
+                    error = "current snapshot does not contain the saved upload",
+                    failureClass = SyncPublishFailureClass.CONFLICT,
+                )
+            }
             if (existing != null) {
                 require(matches(current, upload)) { "sync batch id already contains different bytes" }
                 // A caller may pass a historical snapshot after a restart. Only the live ref can confirm delivery.
-                val observed = readSnapshot(repository, snapshot.spaceId, snapshot.generation).getOrNull()
+                val observedRead = readSnapshot(repository, snapshot.spaceId, snapshot.generation)
+                val observed = observedRead.getOrNull()
                 if (observed != null) observeSnapshot(observed)
-                if (observed == null || !suspendResult { matches(observed, upload) }.getOrDefault(false)) {
+                val matched = observed?.let { suspendResult { matches(it, upload) } }
+                val confirmationFailure = (observedRead.exceptionOrNull() ?: matched?.exceptionOrNull()) as? Exception
+                if (observed == null || matched?.getOrDefault(false) != true) {
                     return SyncPublishResult(
                         SyncPublishStatus.UNCONFIRMED,
                         batch.batchId,
                         error = "current ref could not confirm the saved upload",
                         attempts = attempt - 1,
+                        failureClass =
+                        confirmationFailure?.let(::publishFailureClass) ?: SyncPublishFailureClass.CONFLICT,
+                        retryAfterMillis = (confirmationFailure as? SyncHttpException)?.retryAfterMillis,
+                        networkPhase = (confirmationFailure as? SyncHttpException)?.networkPhase,
+                        httpStatus = (confirmationFailure as? SyncHttpException)?.code,
                     )
                 }
                 return SyncPublishResult(
