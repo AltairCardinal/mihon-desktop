@@ -178,3 +178,9 @@ Desktop 的 `ReaderPanBounds` 是阅读器视口交互策略：放大后，拖�
 ### 阅读器屏幕常亮的计时边界
 
 `ReaderKeepScreenOn` 的原生电源管理与周期保活使用 `Dispatchers.IO` 的实际时间，不能占用 Compose UI 的虚拟帧时钟。任务仍由原 `LaunchedEffect` 管理，关闭选项或离开阅读器时取消；macOS 的 caffeinate 子进程在 finally 中释放。Windows 使用非持续标志定期刷新系统空闲计时，不保留线程级持续请求。`ReaderIoProductionWiringTest` 挂载真实阅读器并执行 `advanceUntilIdle()`，覆盖后台任务不阻塞 UI 测试调度及场景释放。
+
+### Desktop 详情刷新作品身份
+
+`SaveSourceMangaForDetails` 在开始刷新时固定完整请求 URL。详情返回值只提供元数据，不能通过返回不同 URL 将入库目标切换到另一条作品；该语义与 Android 按本地作品 ID 更新远端元数据一致。URL 绑定使用宿主投影，不改写插件对象的 URL，复制投影也保留请求 URL。不得统一删除查询参数，不同查询参数可能代表不同作品。
+
+持久化前仍校验本地作品 ID、source 和 URL 与原快照一致；目录校验、事务、下载归属及异常分类沿用现有链路。真实网络或插件字段异常仍失败并保留重试反馈；成功后清除原请求键上的错误状态。回归由 `SaveSourceMangaForDetailsTest` 的 HTTP→图源解析→SQL 入库用例覆盖参数省略、查询参数作品隔离及失败后重试。

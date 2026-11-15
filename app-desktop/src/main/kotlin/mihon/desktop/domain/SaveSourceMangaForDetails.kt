@@ -125,11 +125,12 @@ class SaveSourceMangaForDetails(
                 }
                 return@synchronized existing
             }
+            val requestManga = mangaAtRequestUrl(listed, listedUrl)
             val next = RefreshFlight(fetchDetails, expectedManga, origin)
             updateRefreshState(key, SourceMangaRefreshState.Loading)
             val execution = refreshScope.async(start = CoroutineStart.LAZY) {
                 try {
-                    val call = safeSourceCall { fetchFromSource(source, listed, next) }
+                    val call = safeSourceCall { fetchFromSource(source, requestManga, next) }
                     val result = if (call is SourceCallResult.Error && call.error
                             .cause is SourceCatalogStorageException
                     ) {
@@ -719,25 +720,35 @@ data class ResolvedSourceChapter(
     val chapter: Chapter?,
 )
 
-internal fun mergeSourceMangaDetails(original: SManga, details: SManga): SManga = details.also { value ->
+/** Details update metadata of the requested work; a returned URL cannot retarget persistence. */
+internal fun mergeSourceMangaDetails(original: SManga, details: SManga): SManga {
     val phase = SourceOperationPhase.DETAILS
-    try {
-        guardSourceOperation(phase) { value.url }
+    val requestUrl = guardSourceOperation(phase) { original.url }
+    val returnedUrl = try {
+        guardSourceOperation(phase) { details.url }
     } catch (_: UninitializedPropertyAccessException) {
-        val url = guardSourceOperation(phase) { original.url }
-        guardSourceOperation(phase) { value.url = url }
+        null
     }
-    try {
-        guardSourceOperation(phase) { value.title }
-    } catch (_: UninitializedPropertyAccessException) {
-        val title = guardSourceOperation(phase) { original.title }
-        guardSourceOperation(phase) { value.title = title }
+    val merged = if (returnedUrl == requestUrl) details else mangaAtRequestUrl(details, requestUrl)
+    return merged.also { value ->
+        try {
+            guardSourceOperation(phase) { value.title }
+        } catch (_: UninitializedPropertyAccessException) {
+            val title = guardSourceOperation(phase) { original.title }
+            guardSourceOperation(phase) { value.title = title }
+        }
+        val thumbnail = guardSourceOperation(phase) { value.thumbnail_url }
+        if (thumbnail.isNullOrBlank()) {
+            val originalThumbnail = guardSourceOperation(phase) { original.thumbnail_url }
+            guardSourceOperation(phase) { value.thumbnail_url = originalThumbnail }
+        }
     }
-    val thumbnail = guardSourceOperation(phase) { value.thumbnail_url }
-    if (thumbnail.isNullOrBlank()) {
-        val originalThumbnail = guardSourceOperation(phase) { original.thumbnail_url }
-        guardSourceOperation(phase) { value.thumbnail_url = originalThumbnail }
-    }
+}
+
+/** Keep source-owned metadata/getGenres behavior without mutating the extension's URL. */
+private fun mangaAtRequestUrl(value: SManga, requestUrl: String): SManga = object : SManga by value {
+    override var url: String = requestUrl
+    override fun copy(): SManga = super<SManga>.copy()
 }
 
 private fun Throwable.hasSourceCompatibilityMarker(): Boolean =
