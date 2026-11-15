@@ -5,6 +5,10 @@ description: A traceable history of public feature documentation, separate from 
 
 # Changelog
 
+## 2026-11-15 — Android initial reader loading feedback accepted
+
+The project owner accepted signed Android candidate `0.19.4-aex.139 / vc157` on the tablet in a private review on November 15, 2026 and authorized main integration and push. Implementation: `ad7a30685d`; candidate source: `e6245f22ca`. Opening an online or undownloaded chapter now shows a centered indicator from the initial reader frame and hands over to the current page slots only when their feedback is ready. Initial retries restore feedback, and intentional empty slots remain empty. This acceptance covers the Android loading repair and retains the previously accepted two-page swipe repair; it does not establish acceptance on other platforms or a new public product release.
+
 ## 2026-11-13 — Windows sync recovery and close response accepted
 
 The project owner accepted Windows preview `0.11.24.6.6534682` on November 13, 2026 in a private conversation and authorized main integration and push. Candidate implementations: `3cd5a837d0` and `6534682a41`; main integrations: `ca12d6c324` and `9cb6f0afc5`. Confirmed local decisions now finish their fields and receipts, old orphaned confirmation state is checked automatically, and retries separate current-attempt timing/new confirmations from retained overall progress. Deferred local/source restoration is distinguished from real transport or validation problems. Window closing responds promptly while safe cleanup retains the profile lock. Acceptance covers this Windows candidate; Android shared-contract tests do not establish Android user acceptance, and no public product release is implied.

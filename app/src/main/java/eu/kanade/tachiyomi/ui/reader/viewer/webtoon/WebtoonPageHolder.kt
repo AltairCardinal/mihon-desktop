@@ -16,6 +16,7 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
+import eu.kanade.tachiyomi.ui.reader.viewer.hasReaderFeedbackLayout
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.util.system.dpToPx
 import kotlinx.coroutines.Job
@@ -72,6 +73,7 @@ class WebtoonPageHolder(
      * Page of a chapter.
      */
     private var page: ReaderPage? = null
+    private var imageLoaded = false
 
     private val scope = MainScope()
 
@@ -79,6 +81,12 @@ class WebtoonPageHolder(
      * Job for loading the page.
      */
     private var loadJob: Job? = null
+
+    internal fun hasInitialPageFeedback(selected: ReaderPage): Boolean = page === selected &&
+        (
+            progressIndicator.hasReaderFeedbackLayout() || errorLayout?.root?.hasReaderFeedbackLayout() == true ||
+                imageLoaded
+            )
 
     init {
         refreshLayoutParams()
@@ -92,6 +100,7 @@ class WebtoonPageHolder(
      * Binds the given [page] with this view holder, subscribing to its state.
      */
     fun bind(page: ReaderPage) {
+        imageLoaded = false
         this.page = page
         loadJob?.cancel()
         loadJob = scope.launch { loadPageAndProcessStatus() }
@@ -254,6 +263,7 @@ class WebtoonPageHolder(
      * Called when the image is decoded and going to be displayed.
      */
     private fun onImageDecoded() {
+        imageLoaded = true
         progressContainer.isVisible = false
         removeErrorLayout()
     }

@@ -22,6 +22,7 @@ import eu.kanade.tachiyomi.ui.reader.ReaderOpenLatencyProbe
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
+import eu.kanade.tachiyomi.ui.reader.viewer.hasReaderFeedbackLayout
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.widget.ViewPagerAdapter
 import kotlinx.coroutines.CancellationException
@@ -248,6 +249,15 @@ class DualPagerPageHolder(
                 image.invalidateImageDraw()
             }
         }
+    }
+
+    internal fun hasInitialPageFeedback(): Boolean = displayPage.pageSides().all { (page, side) ->
+        feedbackContainers[side]?.hasReaderFeedbackLayout() == true &&
+            (
+                progressIndicators[side]?.hasReaderFeedbackLayout() == true ||
+                    (errorPages[side] === page && errorLayouts[side]?.root?.hasReaderFeedbackLayout() == true) ||
+                    (renderedPages[page] != null && renderedPages[page] == boundContents[page])
+                )
     }
 
     internal fun hasRenderedVisiblePages(): Boolean =
@@ -482,6 +492,7 @@ class DualPagerPageHolder(
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         viewportWidth = MeasureSpec.getSize(widthMeasureSpec)
+        feedbackContainers.forEach(::positionFeedback)
         super.onMeasure(widthMeasureSpec, heightMeasureSpec)
     }
 
@@ -1165,11 +1176,14 @@ class DualPagerPageHolder(
             physicalSlot != null && physicalSlot === rightSlot -> Gravity.RIGHT
             else -> Gravity.CENTER
         }
-        container.layoutParams = LayoutParams(
-            if (physicalSlot == null) LayoutParams.MATCH_PARENT else width / 2,
-            LayoutParams.MATCH_PARENT,
-            gravity,
-        )
+        val feedbackWidth = if (physicalSlot == null) LayoutParams.MATCH_PARENT else viewportWidth / 2
+        val previous = container.layoutParams as? LayoutParams
+        if (previous?.width == feedbackWidth && previous.height == LayoutParams.MATCH_PARENT &&
+            previous.gravity == gravity
+        ) {
+            return
+        }
+        container.layoutParams = LayoutParams(feedbackWidth, LayoutParams.MATCH_PARENT, gravity)
     }
 
     private fun setQueued(side: Side) = withProgress(side) { show() }

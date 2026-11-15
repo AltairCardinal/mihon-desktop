@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import androidx.core.app.ActivityCompat
+import androidx.core.view.children
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
@@ -14,12 +15,14 @@ import androidx.recyclerview.widget.WebtoonLayoutManager
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
+import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.model.loadedEntryPage
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion
+import eu.kanade.tachiyomi.ui.reader.viewer.hasReaderFeedbackLayout
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import mihon.domain.reader.ReaderAdjacentChapterPolicy
@@ -196,6 +199,15 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
      */
     override fun getView(): View {
         return frame
+    }
+
+    override fun isInitialPageFeedbackReady(chapter: ReaderChapter): Boolean {
+        val selected = currentPage as? ReaderPage ?: return false
+        if (selected.chapter !== chapter || !recycler.hasReaderFeedbackLayout()) return false
+        return recycler.children.any { child ->
+            val holder = recycler.getChildViewHolder(child) as? WebtoonPageHolder
+            child.hasReaderFeedbackLayout() && holder?.hasInitialPageFeedback(selected) == true
+        }
     }
 
     /**
