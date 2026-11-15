@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { readVotes, castVote } from '../../.vitepress/theme/voting-client.mjs'
 
 const base = 'https://votes.example'
-const id = 'desktop-read-deletion-parity'
+const id = 'deferred-read-deletion'
 
 test('reads actual counts and IP voting state without local browser storage', async () => {
   const fetcher = async url => {

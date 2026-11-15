@@ -79,6 +79,8 @@ Read adjacent pages side by side, display landscape pages, and adjust pairing ma
 
 **Windows zoomed panning:** after zooming in, drag the comic to inspect its edges. In single-page and two-page reading, extra blank space on any side is limited to one third of the reading viewport's corresponding width or height. Two-page reading uses the whole spread's outer edges. Movement stops at the limit and responds immediately when reversed; changing the zoom or window size recalculates the limit. Unavoidable margins around small images are retained without allowing further outward movement. This acceptance covers Windows desktop reading only.
 
+**Android online two-page swipes:** with automatic matching enabled, repeated forward and reverse swipes remain available while images load, without the confirmed one-direction lock or backward turn. The project owner accepted Android aex.137 / vc155 on 2026-11-13. This acceptance covers Android; it does not extend the fix to other platforms.
+
 **Android boundary:** this fork’s Android reader supports two-page reading and manual pairing. Android automatic matching is available in the accepted reader settings and continuity scope; complete recognition of all layouts is not guaranteed.
 
 **Android rapid page turns:** in the accepted downloaded two-page tablet case, preparation follows each selected page during a swipe, so two quick forward turns followed by two reverse turns no longer wait for the intermediate animation to settle. Loading indicators clear after the images are drawn. Preparation remains limited to the current two images and two images on either side; this does not guarantee the same latency for every device or chapter. The accepted review follow-up also preserves reverse navigation when late image geometry updates the selected empty slot.
@@ -102,6 +104,8 @@ The documented sync scope is:
 **Try it:** connect GitHub from the sync panel on one device, create or join a sync space, then connect a compatible build on the other device to the same space. Use the panel’s status and feedback to follow the operation.
 
 **Accepted Windows behavior:** the panel opens immediately while connection checks continue. Locally stored cancellation conflicts remain visible during those checks and in setup results; choosing to keep or cancel one item on this device applies directly, without a confirmation dialog or waiting for GitHub. Batch decisions still require confirmation. Download batches awaiting system confirmation are separate from these manual decisions. Active sync sessions renew renewable GitHub credentials automatically; revoked authorization still requires reconnecting.
+
+**Accepted Windows sync recovery:** confirmed keep/cancel decisions finish locally, including recovery of old saved decisions that left a batch awaiting confirmation. Retry timing and newly confirmed counts describe the current attempt while overall progress is retained. Saved content awaiting local or source recovery is distinguished from transport and validation issues, with diagnostics retained for invalid data. Closing the app hides its window promptly while safe cleanup keeps the profile locked until it finishes.
 
 **Compatibility boundary:** upstream Mihon for Android does not implement this fork’s sync protocol. Use compatible builds from this repository on both devices.
 

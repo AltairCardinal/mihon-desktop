@@ -16,6 +16,78 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class SyncProgressPresentationTest {
+    @Test fun `attempt retry resets its clock and new confirmations while retaining the round`() {
+        val session = SyncProgressDisplaySession()
+        val retry = state().copy(
+            nowMillis = 1_000_000,
+            run = run.copy(
+                attemptId = 31,
+                attemptStartedAt = 1_000_000,
+                attemptConfirmedBaseline = 2170,
+                confirmedItems = 2170,
+                plannedItems = 2423,
+            ),
+        )
+        val initial = session.project(retry, 0)
+        assertEquals(0L, initial.elapsedSeconds)
+        assertEquals(0L, initial.attemptConfirmed)
+        assertEquals(2170L, initial.retainedConfirmed)
+        assertEquals(2170f / 2423, initial.fraction!!, 0.00001f)
+        val completed = retry.copy(
+            run = retry.run!!.copy(
+                state = SyncRunState.SUCCEEDED,
+                updatedAt = 1_002_000,
+                confirmedItems = 2423,
+            ),
+        )
+        assertEquals(2L, session.project(completed, 2000).elapsedSeconds)
+        assertEquals(253L, session.project(completed, 2000).attemptConfirmed)
+        val next = retry.copy(
+            nowMillis = 2_000_000,
+            run = retry.run!!.copy(
+                attemptId = 32,
+                attemptStartedAt = 2_000_000,
+            ),
+        )
+        assertEquals(0L, session.project(next, 1_000_000).elapsedSeconds)
+    }
+
+    @Test fun `attempt missing legacy timing is unknown and recovered downtime never advances it`() {
+        val legacy = state().copy(nowMillis = 1_000_000, run = run.copy(attemptId = 30, attemptStartedAt = null))
+        assertFalse(SyncProgressDisplaySession().project(legacy, 0).elapsedKnown)
+        assertNull(SyncProgressDisplaySession().project(legacy, 0).attemptConfirmed)
+        val stopped = legacy.copy(
+            run = legacy.run!!.copy(
+                attemptStartedAt = 10_000,
+                updatedAt = 12_000,
+                state = SyncRunState.WAITING_SYSTEM,
+            ),
+        )
+        val session = SyncProgressDisplaySession()
+        assertEquals(2L, session.project(stopped, 0).elapsedSeconds)
+        assertEquals(2L, session.project(stopped, 500_000).elapsedSeconds)
+        assertNull(session.project(stopped, 500_000).nextDeadlineMillis)
+    }
+
+    @Test fun `system deferred work and temporary connection failure have actionable distinct statuses`() {
+        val session = SyncProgressDisplaySession()
+        val deferred = state().copy(run = run.copy(state = SyncRunState.PARTIAL, stopReason = "projection_pending"))
+        assertEquals(tachiyomi.i18n.MR.strings.sync_local_restore_pending, session.project(deferred, 0).status)
+        val userDecision = deferred.copy(pendingTotal = 2)
+        assertEquals(tachiyomi.i18n.MR.strings.sync_terminal_partial, session.project(userDecision, 0).status)
+    }
+
+    @Test fun `temporary failed connection preserves recovery without claiming automatic retries`() {
+        val network = state().copy(
+            run = run.copy(state = SyncRunState.FAILED, stopReason = "retry_exhausted"),
+            problem = mihon.domain.sync.runtime.SyncRunProblem.NETWORK,
+        )
+        assertEquals(
+            tachiyomi.i18n.MR.strings.sync_connection_unavailable,
+            SyncProgressDisplaySession().project(network, 0).status,
+        )
+    }
+
     @Test fun `counting has no elapsed clock and frozen plan starts from its durable origin`() {
         val session = SyncProgressDisplaySession()
         val counting = state().copy(nowMillis = 50_000, run = run.copy(plannedItems = null))
@@ -23,7 +95,13 @@ class SyncProgressPresentationTest {
         assertEquals(0L, session.project(counting, 20_000).elapsedSeconds)
         val frozen = counting.copy(
             nowMillis = 70_000,
-            run = run.copy(planStartedAt = 70_000, planPausedMillis = 10_000, pausedMillis = 10_000),
+            run = run.copy(
+                planStartedAt = 70_000,
+                planPausedMillis = 10_000,
+                pausedMillis = 10_000,
+                attemptStartedAt = 70_000,
+                attemptPausedMillis = 10_000,
+            ),
         )
         assertEquals(0L, session.project(frozen, 20_000).elapsedSeconds)
         assertEquals(3L, session.project(frozen, 23_000).elapsedSeconds)
@@ -67,6 +145,7 @@ class SyncProgressPresentationTest {
         SyncRunPhase.UPLOADING, 0, 0, 0, 0, 0, attemptId = 1, nextRetryAt = 0,
         lastProgressAt = 0, stopReason = null, ownerSession = null, createdAt = 0, updatedAt = 0,
         plannedItems = 100,
+        attemptStartedAt = 0,
     )
     private val fact = SyncProgressFact(
         "run:a", SyncProgressStage.TRANSFERRING,
@@ -83,7 +162,7 @@ class SyncProgressPresentationTest {
         val counting = idle.copy(busy = true)
         assertEquals(0L, session.project(counting, 9_000_000).elapsedSeconds)
         assertEquals(0L, session.project(counting, 9_001_000).elapsedSeconds)
-        val durable = state().copy(nowMillis = 7000, run = run.copy(createdAt = 1000))
+        val durable = state().copy(nowMillis = 7000, run = run.copy(createdAt = 1000, attemptStartedAt = 1000))
         assertEquals(6L, session.project(durable, 9_002_000).elapsedSeconds)
         assertEquals(7L, session.project(durable.copy(nowMillis = -1000), 9_003_000).elapsedSeconds)
     }

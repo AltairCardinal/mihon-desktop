@@ -17,6 +17,7 @@ import mihon.data.sync.journal.SyncLocalJournal
 import mihon.data.sync.journal.SyncOutboxExchange
 import mihon.data.sync.journal.SyncOutboxStore
 import mihon.data.sync.projection.SyncRemoteProjectionWriter
+import mihon.data.sync.runtime.SyncRunStore
 import mihon.data.sync.transport.SyncBatchSyncService
 import mihon.domain.sync.SyncBatch
 import mihon.domain.sync.SyncCancellationDecision
@@ -32,6 +33,7 @@ import mihon.domain.sync.SyncObjectType
 import mihon.domain.sync.SyncOrigin
 import mihon.domain.sync.SyncReceiverDecisionResult
 import mihon.domain.sync.crypto.SyncSecret
+import mihon.domain.sync.runtime.SyncTrigger
 import mihon.domain.sync.transport.SyncPublishStatus
 import mihon.domain.sync.transport.SyncRepository
 import okio.ByteString.Companion.toByteString
@@ -296,9 +298,12 @@ abstract class SyncInboxStorageContract {
                 storage.driver.execute(null, "ALTER TABLE sync_import_entries DROP COLUMN snapshot_payload", 0)
                 storage.driver.execute(null, "DROP TABLE chapter_pairing_pairs", 0)
                 storage.driver.execute(null, "ALTER TABLE chapter_pairings DROP COLUMN opening_mode", 0)
+                for (column in listOf("attempt_started_at", "attempt_confirmed_baseline", "attempt_paused_millis")) {
+                    storage.driver.execute(null, "ALTER TABLE sync_runtime_pause_clock DROP COLUMN $column", 0)
+                }
                 storage.driver.execute(null, "PRAGMA user_version = 42", 0)
                 DatabaseMigration.migrateAtomically(storage.driver, 42, Database.Schema.version)
-                assertEquals(46L, Database.Schema.version)
+                assertEquals(47L, Database.Schema.version)
                 assertEquals(
                     2L,
                     SyncDataRepairService(storage.handler, storage.inbox, storage.projector)
@@ -619,6 +624,107 @@ abstract class SyncInboxStorageContract {
             listOf(event),
             listOf(SyncObjectDescriptor(key, "星海 $seq")),
         )
+    }
+
+    @Test
+    fun `receiver decision completes field and confirms receipt exactly once`() = runBlocking {
+        for (decision in SyncCancellationDecision.entries) {
+            open().use { s ->
+                s.connect(repository)
+                val add = membership(1, SyncEffectKind.ADD)
+                val remove = membership(2, SyncEffectKind.REMOVE, add.events.single())
+                s.inbox.ingest(add)
+                s.projectAll()
+                s.inbox.ingest(remove)
+                s.projectAll()
+                val runs = SyncRunStore(s.handler)
+                val run = runs.start("space", 1, SyncTrigger.MANUAL)
+                assertTrue(runs.claim(run.runId, "owner", 1))
+                runs.expectDownload(run.runId, "owner", remove.batchId, 1)
+                val pending = s.projector.pending("space", 1).single()
+                s.projector.decide("space", 1, pending, decision)
+                assertEquals(
+                    "APPLIED",
+                    s.handler.await {
+                        sync_inboxQueries.getFieldState("space", 1, manga.stableKey, "FAVORITE").executeAsOne().status
+                    },
+                )
+                assertEquals(listOf(remove.batchId to 1L), runs.confirmReceived(run.runId, "owner"))
+                assertTrue(runs.confirmReceived(run.runId, "owner").isEmpty())
+                assertEquals(1L, runs.get(run.runId)!!.confirmedItems)
+                assertEquals(decision == SyncCancellationDecision.KEEP_LOCAL, s.writer.localMembership(manga))
+            }
+        }
+    }
+
+    @Test
+    fun `retry reprojects orphan decisions but preserves live pending and identity fence`() = runBlocking {
+        for (decision in listOf("CONFIRM", "KEEP_LOCAL", "missing", "stale")) {
+            open().use { s ->
+                s.connect(repository)
+                val add = membership(1, SyncEffectKind.ADD)
+                val remove = membership(2, SyncEffectKind.REMOVE, add.events.single())
+                s.inbox.ingest(add)
+                s.projectAll()
+                s.inbox.ingest(remove)
+                s.projectAll()
+                val pending = s.projector.pending("space", 1).single()
+                s.projector.retryUnavailable("space", 1)
+                assertEquals(0, s.projector.project("space", 1))
+                assertEquals(pending, s.projector.pending("space", 1).single())
+                s.handler.await(inTransaction = true) {
+                    sync_inboxQueries.clearPendingField("space", 1, manga.stableKey, "FAVORITE")
+                    if (decision != "missing") {
+                        sync_inboxQueries.insertDecision(
+                            "space",
+                            1,
+                            if (decision == "stale") "obsolete-binding" else pending.binding,
+                            if (decision == "stale") "CONFIRM" else decision,
+                        )
+                    }
+                }
+                s.projector.retryUnavailable("space", 2)
+                assertEquals(0, s.projector.project("space", 1))
+                s.projector.retryUnavailable("space", 1)
+                s.projectAll()
+                val valid = decision == "CONFIRM" || decision == "KEEP_LOCAL"
+                assertEquals(if (valid) 0 else 1, s.projector.pending("space", 1).size)
+                assertEquals(decision != "CONFIRM", s.writer.localMembership(manga))
+                assertEquals(
+                    if (valid) "APPLIED" else "DECISION",
+                    s.handler.await {
+                        sync_inboxQueries.getFieldState("space", 1, manga.stableKey, "FAVORITE").executeAsOne().status
+                    },
+                )
+                assertTrue(s.journal.pendingEvents("space", 1).isEmpty())
+            }
+        }
+    }
+
+    @Test
+    fun `orphan without decision and absent local membership settles without inventing a decision`() = runBlocking {
+        open().use { s ->
+            s.connect(repository)
+            val add = membership(1, SyncEffectKind.ADD)
+            s.inbox.ingest(add)
+            s.projectAll()
+            s.inbox.ingest(membership(2, SyncEffectKind.REMOVE, add.events.single()))
+            s.projectAll()
+            val pending = s.projector.pending("space", 1).single()
+            s.writer.applyMembership(manga, false) { null }
+            s.handler.await {
+                sync_inboxQueries.clearPendingField("space", 1, manga.stableKey, "FAVORITE")
+            }
+            s.projector.retryUnavailable("space", 1)
+            s.projectAll()
+            assertTrue(s.projector.pending("space", 1).isEmpty())
+            assertEquals(false, s.writer.localMembership(manga))
+            assertEquals(
+                null,
+                s.handler.await { sync_inboxQueries.getDecision("space", 1, pending.binding).executeAsOneOrNull() },
+            )
+            assertTrue(s.journal.pendingEvents("space", 1).isEmpty())
+        }
     }
 
     @Test

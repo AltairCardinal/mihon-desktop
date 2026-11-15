@@ -13,24 +13,7 @@ import FeatureVote from '../.vitepress/theme/FeatureVote.vue'
 
 **每个公网 IP 对每项功能限投一票，中英文页面共用票数。** 同一家庭、公司或校园共享公网 IP 时，会共用该项投票机会。
 
-## Desktop：补齐已读章节下载删除设置 {#desktop-read-deletion-parity}
-
-**适用平台：Windows、macOS。状态：规划中。**
-
-希望桌面端也能像 Android 一样，更细致地决定读完后怎样清理下载，减少重复手动管理。
-
-计划在“设置 → 下载 → 删除章节”提供：
-
-- **手动标记为已读后删除**：开启后，手动把未读章节标为已读时，删除对应下载。
-- **读完自动删除**：可以关闭，也可以删除刚读完的章节，或选择倒数第二、第三、第四、第五个已读章节，让最近读过的内容继续保留。
-- **书签保护**：默认保留书签章节；可以选择允许自动删除。
-- **排除分类**：指定哪些分类中的作品保留下载。
-
-旧版桌面端已有的自动删除选择会兼容迁移；已有明确设置优先。删除只影响本机下载，作品和阅读记录继续保留。
-
-<FeatureVote feature-id="desktop-read-deletion-parity" />
-
-## 双端：延迟到下次启动再删除 {#deferred-read-deletion}
+## 已读删除：增加延迟到下次启动再删除 {#deferred-read-deletion}
 
 **适用平台：Android、Windows、macOS。状态：设计已封存，暂未实现。**
 
