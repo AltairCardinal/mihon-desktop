@@ -1391,6 +1391,62 @@ class DualPagerPageHolderLayoutTest {
     }
 
     @Test
+    fun `dual native exposure invalidates only once without scrolling or rebinding`() = runTest {
+        useOriginalPngDecoder()
+        val chapter = loadedChapter(76131, 5)
+        val pages = requireNotNull(chapter.pages)
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        viewer.moveToPage(pages[1])
+        val right = pages[1]
+        val left = pages[2]
+        val holder = DualPagerPageHolder(viewer.activity, viewer, DisplayPage.Double(right, left))
+        var reads = 0
+        listOf(right, left).forEach { page ->
+            val original = requireNotNull(page.stream)
+            page.stream = {
+                reads++
+                original()
+            }
+        }
+        try {
+            load(holder, right, "RIGHT")
+            load(holder, left, "LEFT")
+            measure(holder, 1440, 3120)
+            val images = descendants(holder).filterIsInstance<ReaderPageImageView>().toList()
+            assertEquals(2, images.size)
+            val natives = images.map { it.getChildAt(0) }
+            val beforeReads = reads
+            val scope = holder.presentationScope
+            holder.translationX = -20000f
+            holder.viewTreeObserver.dispatchOnPreDraw()
+            assertTrue(images.none { it.getGlobalVisibleRect(Rect()) })
+            natives.forEach { shadowOf(it).clearWasInvalidated() }
+            // Expose the same mounted native nodes, without a pager scroll/idle or a new layout.
+            holder.translationX = 0f
+            holder.invalidate()
+            assertTrue(images.all { it.getGlobalVisibleRect(Rect()) })
+            holder.viewTreeObserver.dispatchOnPreDraw()
+            assertTrue(
+                "The physical exposure traversal must dirty each cached native display list",
+                natives.all { shadowOf(it).wasInvalidated() },
+            )
+            natives.forEach { shadowOf(it).clearWasInvalidated() }
+            repeat(3) { holder.viewTreeObserver.dispatchOnPreDraw() }
+            assertFalse(
+                "Stable exposure must not create an invalidate loop",
+                natives.any {
+                    shadowOf(it).wasInvalidated()
+                },
+            )
+            assertEquals(beforeReads, reads)
+            assertEquals(scope, holder.presentationScope)
+            assertTrue(images.zip(natives).all { (image, native) -> image.getChildAt(0) === native })
+        } finally {
+            detach(holder)
+        }
+    }
+
+    @Test
     fun `ordinary pager invalidates a ready native child after the selected viewport settles`() = runTest {
         val activity = viewer.activity
         val model = mockk<ReaderViewModel>(relaxed = true)

@@ -15,6 +15,7 @@ import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import androidx.core.view.isVisible
@@ -141,6 +142,13 @@ class DualPagerPageHolder(
     // Unlike renderedPages this evidence is never cleared by a retry/content notification.
     private var nativePixelsWerePrepared = false
     private val exposedImages = mutableSetOf<ReaderPageImageView>()
+    private var exposureObserver: ViewTreeObserver? = null
+    private val exposureListener = ViewTreeObserver.OnPreDrawListener {
+        // Translation/ancestor alpha can expose a cached RenderNode without a pager scroll or
+        // another layout. Only an exposure transition dirties the actual native child.
+        notifyNativeImageExposure(retryUnrendered = false)
+        true
+    }
     private val diagnosedDrawTickets = mutableMapOf<ReaderPage, ReaderDualPageViewportTicket>()
     private val boundContents = mutableMapOf<ReaderPage, String>()
     private val boundEncodedContents = mutableMapOf<ReaderPage, String>()
@@ -235,10 +243,24 @@ class DualPagerPageHolder(
             }
             return
         }
+        notifyNativeImageExposure(retryUnrendered = true)
+    }
+
+    private fun notifyNativeImageExposure(retryUnrendered: Boolean) {
         val images = listOfNotNull(rightHolder, leftHolder)
         exposedImages.retainAll(images.toSet())
         images.forEach { image ->
-            val exposed = image.isShown && image.getGlobalVisibleRect(Rect()) && image.hasVisibleImageArea()
+            var ancestor: View? = image
+            var opaqueEnoughToDraw = true
+            while (ancestor != null) {
+                if (ancestor.alpha <= 0f) {
+                    opaqueEnoughToDraw = false
+                    break
+                }
+                ancestor = ancestor.parent as? View
+            }
+            val exposed = opaqueEnoughToDraw && image.isShown &&
+                image.getGlobalVisibleRect(Rect()) && image.hasVisibleImageArea()
             val newlyExposed = if (exposed) {
                 exposedImages.add(image)
             } else {
@@ -246,8 +268,11 @@ class DualPagerPageHolder(
                 false
             }
             if (exposed && (
-                    newlyExposed || presentationScope == null ||
-                        renderedPages[image.page] != boundContents[image.page]
+                    newlyExposed || (
+                        retryUnrendered && (
+                            presentationScope == null || renderedPages[image.page] != boundContents[image.page]
+                            )
+                        )
                     )
             ) {
                 image.invalidateImageDraw()
@@ -482,6 +507,8 @@ class DualPagerPageHolder(
     }
 
     override fun onDetachedFromWindow() {
+        exposureObserver?.takeIf { it.isAlive }?.removeOnPreDrawListener(exposureListener)
+        exposureObserver = null
         displayPage.visiblePages.forEach { diagnose("holder_detach", it, "attachment" to attachmentGeneration) }
         zoomAnimator?.cancel()
         blankLogoObservation?.cancel()
@@ -507,6 +534,7 @@ class DualPagerPageHolder(
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        exposureObserver = viewTreeObserver.also { it.addOnPreDrawListener(exposureListener) }
         observeBlankLogo()
         beginPresentation()
         loadPages()
