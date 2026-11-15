@@ -30,3 +30,10 @@ fun portraitSinglePageSlot(
         ReaderPortraitSingleSlot.LEFT
     }
 }
+
+/** Decorative paper is restricted to an internal source page occupying a physical half. */
+fun shouldFillReaderDualPageBlank(
+    sourcePageIndex: Int,
+    pageCount: Int,
+    occupiedSlot: ReaderPortraitSingleSlot,
+): Boolean = occupiedSlot != ReaderPortraitSingleSlot.FULL && sourcePageIndex > 0 && sourcePageIndex < pageCount - 1

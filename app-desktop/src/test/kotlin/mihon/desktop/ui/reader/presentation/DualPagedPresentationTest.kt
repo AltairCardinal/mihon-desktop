@@ -1,5 +1,16 @@
 package mihon.desktop.ui.reader.presentation
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.SemanticsNode
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import mihon.domain.reader.PageSplitHalf
 import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderTransitionDirection
@@ -16,6 +27,183 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class DualPagedPresentationTest {
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
+    fun `uncertified default half remains transparent even with a boundary reason`() = runTest {
+        val base = request(
+            pageCount = 6,
+            direction = ReaderDirection.RTL,
+            options = PresentationFixtureOptions(spreadPageIds = setOf(pageId(4))),
+            stateAt = { ReaderPageLoadState.Ready },
+        )
+        val request = base.copy(
+            pageSizes = base.pageSizes.filterKeys { it.sourcePageIndex in setOf(3, 4) },
+        ).withSharedOwner(projectFrames = true)
+        val sourceUnit = request.dualPageUnits!!.single { it.pageIds == listOf(pageId(3)) }
+        assertTrue(sourceUnit.singleReason != null)
+        val snapshot = DualPagedPresentation.present(request)
+        val unit = snapshot.displayUnits.single { it.slots.any { slot -> slot.page?.id == pageId(3) } }
+        assertEquals(2, unit.slots.size, "The default wide boundary must occupy one physical half: $sourceUnit")
+        val emptyIndex = unit.slots.indexOfFirst { it.page == null }
+        val scene = ImageComposeScene(400, 400, coroutineContext = coroutineContext) {
+            mihon.desktop.ui.reader.DualPageDisplayUnitFrame(unit, {}) { _, _ -> }
+        }
+        try {
+            scene.render(0).use { image ->
+                org.jetbrains.skia.Bitmap.makeFromImage(image).use { bitmap ->
+                    assertEquals(
+                        0,
+                        bitmap.getColor(if (emptyIndex == 0) 20 else 380, 100),
+                        "A default neighbour boundary is not certified intentional blank paper",
+                    )
+                }
+            }
+        } finally {
+            scene.close()
+        }
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
+    fun `internal empty physical slot draws white paper without adding a visible source page`() = runTest {
+        for (direction in listOf(ReaderDirection.LTR, ReaderDirection.RTL)) {
+            for (state in listOf(
+                ReaderPageLoadState.Ready,
+                ReaderPageLoadState.Queued,
+                ReaderPageLoadState.Error(mihon.domain.error.AppError.Network()),
+            )) {
+                val snapshot = DualPagedPresentation.present(
+                    request(
+                        pageCount = 7,
+                        direction = direction,
+                        options = PresentationFixtureOptions(forcedSinglePageIds = setOf(pageId(2), pageId(3))),
+                        stateAt = { state },
+                    ).withSharedOwner(forcedSingles = setOf(2, 3), projectFrames = true),
+                )
+                val units = snapshot.displayUnits.filter { unit ->
+                    unit.slots.size == 2 && unit.slots.count { it.page != null } == 1
+                }
+                assertTrue(units.any { it.slots.any { slot -> slot.page?.id == pageId(2) } })
+                for (unit in units) {
+                    val real = unit.slots.single { it.page != null }.page!!
+                    val internal = real.id.sourcePageIndex in setOf(2, 3)
+                    val emptyIndex = unit.slots.indexOfFirst { it.page == null }
+                    val scene = ImageComposeScene(400, 400, coroutineContext = coroutineContext) {
+                        mihon.desktop.ui.reader.DualPageDisplayUnitFrame(unit, {}) { _, _ -> }
+                    }
+                    try {
+                        val image = scene.render(0)
+                        val bitmap = org.jetbrains.skia.Bitmap.makeFromImage(image)
+                        assertEquals(
+                            if (internal) 0xFFFFFFFF.toInt() else 0,
+                            bitmap.getColor(if (emptyIndex == 0) 20 else 380, 100),
+                            "source=${real.id.sourcePageIndex} direction=$direction",
+                        )
+                        bitmap.close()
+                        image.close()
+                        assertEquals(setOf(real.id), snapshot.resolveDualVisiblePages(unit.id).pageIds)
+                    } finally {
+                        scene.close()
+                    }
+                }
+            }
+        }
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
+    fun `certified internal single draws paper from its published frame`() = runTest {
+        val input = request(
+            pageCount = 5,
+            direction = ReaderDirection.LTR,
+            options = PresentationFixtureOptions(spreadPageIds = setOf(pageId(2))),
+            stateAt = { ReaderPageLoadState.Ready },
+        ).withSharedOwner(projectFrames = true, certifyPage = 1)
+        val snapshot = DualPagedPresentation.present(input)
+        val unit = snapshot.displayUnits.single { it.slots.any { slot -> slot.page?.id == pageId(1) } }
+        assertEquals(1, unit.slots.count { it.page != null })
+        val emptyIndex = unit.slots.indexOfFirst { it.page == null }
+        val scene = ImageComposeScene(400, 400, coroutineContext = coroutineContext) {
+            mihon.desktop.ui.reader.DualPageDisplayUnitFrame(unit, {}) { _, _ -> }
+        }
+        try {
+            scene.render(0).use { image ->
+                org.jetbrains.skia.Bitmap.makeFromImage(image).use { bitmap ->
+                    assertEquals(0xFFFFFFFF.toInt(), bitmap.getColor(if (emptyIndex == 0) 20 else 380, 100))
+                }
+            }
+            assertEquals(setOf(pageId(1)), snapshot.resolveDualVisiblePages(unit.id).pageIds)
+        } finally {
+            scene.close()
+        }
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
+    @Test
+    fun `published blank flag redraws without rebuilding the physical frame`() = runTest {
+        val input = request(
+            pageCount = 5,
+            direction = ReaderDirection.LTR,
+            options = PresentationFixtureOptions(forcedSinglePageIds = setOf(pageId(2))),
+            stateAt = { ReaderPageLoadState.Ready },
+        ).withSharedOwner(forcedSingles = setOf(2), projectFrames = true, certifyPage = 2)
+        val hiddenInput = input.copy(
+            dualPageFrames = input.dualPageFrames!!.map { it.copy(blankPaperSlot = null) },
+        )
+        fun target(request: ReaderPresentationRequest) = DualPagedPresentation.present(request).displayUnits.single {
+            it.slots.any { slot -> slot.page?.id == pageId(2) }
+        }
+        val before = target(hiddenInput)
+        val after = target(input)
+        assertEquals(before.id, after.id)
+        assertEquals(before.slots.map(DisplaySlot::id), after.slots.map(DisplaySlot::id))
+        assertTrue(after.slots.any(DisplaySlot::isBlankPaper))
+        val displayed = mutableStateOf(before)
+        var realImageMount: Any? = null
+        val scene = ImageComposeScene(400, 400, coroutineContext = coroutineContext) {
+            mihon.desktop.ui.reader.DualPageDisplayUnitFrame(displayed.value, {}) { _, modifier ->
+                val mount = remember { Any() }
+                SideEffect { realImageMount = mount }
+                Canvas(modifier) { drawRect(Color.Red) }
+            }
+        }
+        fun frameIdentity(): Any {
+            fun descendants(node: SemanticsNode): List<SemanticsNode> =
+                listOf(node) + node.children.flatMap(::descendants)
+            val key = mihon.desktop.ui.reader.DualPageDisplayUnitCompositionIdentityKey
+            return scene.semanticsOwners.flatMap { descendants(it.rootSemanticsNode) }
+                .single { it.config.contains(key) }.config[key]
+        }
+        val emptyIndex = after.slots.indexOfFirst { it.page == null }
+        var time = 0L
+        fun paperPixel(): Int {
+            time += 16_000_000L
+            return scene.render(time).use { image ->
+                org.jetbrains.skia.Bitmap.makeFromImage(image).use { bitmap ->
+                    bitmap.getColor(if (emptyIndex == 0) 20 else 380, 100)
+                }
+            }
+        }
+        try {
+            assertEquals(0, paperPixel())
+            val frame = frameIdentity()
+            val realImage = realImageMount
+            assertTrue(realImage != null, "The real page child must be mounted before a flag update")
+            displayed.value = after
+            runCurrent()
+            assertEquals(0xFFFFFFFF.toInt(), paperPixel())
+            assertSame(frame, frameIdentity())
+            assertSame(realImage, realImageMount)
+            displayed.value = before
+            runCurrent()
+            assertEquals(0, paperPixel())
+            assertSame(frame, frameIdentity())
+            assertSame(realImage, realImageMount)
+        } finally {
+            scene.close()
+        }
+    }
 
     @Test
     fun `portrait first and trailing singles occupy opposite physical halves for each direction`() {

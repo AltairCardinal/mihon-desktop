@@ -5,9 +5,7 @@ import mihon.domain.reader.PageSplitHalf
 import mihon.domain.reader.PixelBounds
 import mihon.domain.reader.ReaderChapterBoundary
 import mihon.domain.reader.ReaderDirection
-import mihon.domain.reader.ReaderDualPageFrameId
 import mihon.domain.reader.ReaderDualPagePresentationFrame
-import mihon.domain.reader.ReaderDualPageUnit
 import mihon.domain.reader.ReaderPortraitSingleSlot
 import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.readerChapterBoundary
@@ -44,7 +42,7 @@ internal object DualPagedPresentation : ReaderPresentationStrategy {
                 val pagesById = pages.associateBy(ReaderPageSession::id)
                 addAll(
                     groups.map { group ->
-                        request.toDisplayUnit(group.unit, pagesById, group.frameId)
+                        request.toDisplayUnit(group, pagesById)
                     },
                 )
                 if (request.alwaysShowChapterTransition ||
@@ -59,10 +57,10 @@ internal object DualPagedPresentation : ReaderPresentationStrategy {
     }
 
     private fun ReaderPresentationRequest.toDisplayUnit(
-        unit: ReaderDualPageUnit,
+        frame: ReaderDualPagePresentationFrame,
         pagesById: Map<ReaderPageId, ReaderPageSession>,
-        frameId: ReaderDualPageFrameId?,
     ): DisplayUnit {
+        val unit = frame.unit
         val pages = unit.pageIds.map(pagesById::getValue)
         val slots = when {
             pages.size == 2 ->
@@ -71,10 +69,17 @@ internal object DualPagedPresentation : ReaderPresentationStrategy {
                     .map { page -> pageSlot(page) }
 
             pages.single().id in dualPagedOptions.spreadPageIds -> spreadSlots(pages.single())
-            else -> singlePageSlots(pages.single(), unit.slots.single().position)
+            else -> singlePageSlots(pages.single(), unit.slots.single().position, frame.blankPaperSlot)
         }
         return DisplayUnit(
-            id = DisplayUnitId(mode, slots.map(DisplaySlot::id), unit.id.takeIf { dualPageFrames != null }, frameId),
+            id = DisplayUnitId(
+                mode,
+                slots.map(DisplaySlot::id),
+                unit.id.takeIf {
+                    dualPageFrames != null
+                },
+                frame.frameId,
+            ),
             slots = slots,
         )
     }
@@ -92,11 +97,18 @@ internal object DualPagedPresentation : ReaderPresentationStrategy {
     private fun ReaderPresentationRequest.singlePageSlots(
         page: ReaderPageSession,
         slot: ReaderPortraitSingleSlot,
+        blankPaperSlot: ReaderPortraitSingleSlot?,
     ): List<DisplaySlot> {
         return when (slot) {
             ReaderPortraitSingleSlot.FULL -> listOf(pageSlot(page))
-            ReaderPortraitSingleSlot.LEFT -> listOf(pageSlot(page), emptySlot())
-            ReaderPortraitSingleSlot.RIGHT -> listOf(emptySlot(), pageSlot(page))
+            ReaderPortraitSingleSlot.LEFT -> listOf(
+                pageSlot(page),
+                emptySlot(blankPaperSlot == ReaderPortraitSingleSlot.RIGHT),
+            )
+            ReaderPortraitSingleSlot.RIGHT -> listOf(
+                emptySlot(blankPaperSlot == ReaderPortraitSingleSlot.LEFT),
+                pageSlot(page),
+            )
         }
     }
 
@@ -129,7 +141,8 @@ internal object DualPagedPresentation : ReaderPresentationStrategy {
         }
     }
 
-    private fun emptySlot(): DisplaySlot = DisplaySlot(DisplaySlotId(pageId = null), page = null)
+    private fun emptySlot(fill: Boolean): DisplaySlot =
+        DisplaySlot(DisplaySlotId(pageId = null), page = null, isBlankPaper = fill)
 }
 
 internal fun ReaderPresentationSnapshot.resolveDualVisiblePages(displayUnitId: DisplayUnitId): VisiblePageSet {

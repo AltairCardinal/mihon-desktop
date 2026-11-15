@@ -1329,12 +1329,14 @@ internal fun ReaderContent(
     onNextChapter: () -> Unit,
     renderTrace: mihon.desktop.diagnostics.ReaderRenderTrace? = null,
 ) {
+    val blankPaperLogo = rememberReaderBlankPaperLogo()
     val inheritedImageContent = LocalReaderPageImageContent.current
     val imageContent =
         inheritedImageContent
             ?: remember(presentationImageOwner, state.session.generation) { ReaderPageImageContentRegistry() }
     Box(Modifier.fillMaxSize().adaptiveReaderViewport(model, contextMenuScope)) {
         CompositionLocalProvider(
+            LocalReaderBlankPaperLogo provides blankPaperLogo,
             LocalReaderViewportOptions provides
                 ReaderViewportOptions(
                     state.displayOptions,

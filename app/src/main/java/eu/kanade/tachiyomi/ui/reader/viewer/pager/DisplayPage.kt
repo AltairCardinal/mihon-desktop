@@ -22,7 +22,10 @@ sealed class DisplayPage {
         val page: ReaderPage,
         val slot: ReaderPortraitSingleSlot = ReaderPortraitSingleSlot.FULL,
         override val frameId: ReaderDualPageFrameId? = null,
-    ) : DisplayPage()
+    ) : DisplayPage() {
+        /** Published decoration metadata is deliberately excluded from native identity. */
+        internal var blankPaperSlot: ReaderPortraitSingleSlot? = null
+    }
 
     data class Double(
         val rightPage: ReaderPage,

@@ -5,6 +5,19 @@ import org.junit.jupiter.api.Test
 
 class ReaderPortraitSingleSlotTest {
     @Test
+    fun `only internal physical half singles receive decorative paper`() {
+        for (slot in ReaderPortraitSingleSlot.entries) {
+            for (index in -1..7) {
+                assertEquals(
+                    slot != ReaderPortraitSingleSlot.FULL && index in 1..5,
+                    shouldFillReaderDualPageBlank(index, 7, slot),
+                    "$slot index=$index",
+                )
+            }
+        }
+    }
+
+    @Test
     fun `one page fills the viewport in both reading directions`() {
         for (direction in listOf(ReaderDirection.RTL, ReaderDirection.LTR)) {
             assertEquals(

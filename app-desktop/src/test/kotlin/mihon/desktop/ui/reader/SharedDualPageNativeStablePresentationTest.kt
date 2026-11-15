@@ -97,6 +97,47 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class SharedDualPageNativeStablePresentationTest {
     @Test
+    fun `internal blank paper mirrors real pixels and late logo leaves group camera unchanged`() = runTest {
+        for (mode in listOf(ReadingMode.LTR, ReadingMode.RTL)) {
+            val logoGate = CompletableDeferred<Unit>()
+            val logoStarts = AtomicInteger()
+            Fixture(this, mode = mode, blankLogoLoader = {
+                logoStarts.incrementAndGet()
+                logoGate.await()
+                loadReaderBlankPaperLogo()
+            }).use { fixture ->
+                fixture.partner.complete(Unit)
+                fixture.pump()
+                fixture.settle()
+                assertEquals(1, logoStarts.get(), "The reader starts loading before it has an internal blank")
+                fixture.adjustPairing()
+                fixture.jump(1)
+                fixture.pump()
+                val real = fixture.redRectangle()
+                val paper = listOf(400 - real[2] - 1, real[1], 400 - real[0] - 1, real[3])
+                fixture.assertWhitePaperRectangle(paper)
+                val zoom = ZoomState(scale = 2f, offsetX = 25f, offsetY = -20f)
+                fixture.setZoom(zoom)
+                fixture.settle()
+                fun x(value: Int) = (200 + (value - 200) * 2 + 25).coerceIn(0, 400)
+                fun y(value: Int) = (200 + (value - 200) * 2 - 20).coerceIn(0, 400)
+                fixture.assertWhitePaperRectangle(
+                    listOf(x(paper[0]), y(paper[1]), x(paper[2] + 1) - 1, y(paper[3] + 1) - 1)
+                        .mapIndexed { index, value -> if (index >= 2) value.coerceAtMost(399) else value },
+                )
+                val realBeforeLogo = fixture.redRectangle()
+                logoGate.complete(Unit)
+                fixture.pump(0xFFBDBDBD.toInt())
+                fixture.colorRectangle(0xFFBDBDBD.toInt())
+                assertEquals(zoom, fixture.zoomState)
+                assertEquals(realBeforeLogo, fixture.redRectangle())
+                assertEquals(1, fixture.page)
+                assertEquals(setOf(1), fixture.currentDrawnSources())
+            }
+        }
+    }
+
+    @Test
     fun `zoom pan limits blank space and immediately follows reverse movement`() = runTest {
         for (dual in listOf(false, true)) {
             for (type in listOf(PointerType.Mouse, PointerType.Touch)) {
@@ -1356,6 +1397,7 @@ class SharedDualPageNativeStablePresentationTest {
         private val nativeWindow: ComposeWindow? = null,
         heldDecodePages: Set<Int> = emptySet(),
         partnerImageWidth: Int? = null,
+        private val blankLogoLoader: (suspend () -> ReaderBlankPaperLogo?)? = null,
     ) : AutoCloseable {
         private val root = Preferences.userRoot().node("/mihon/native-stable/${System.nanoTime()}")
         private val store = DesktopPreferenceStore(root.node("store"))
@@ -1678,6 +1720,7 @@ class SharedDualPageNativeStablePresentationTest {
         }
         fun retry() = model.retryPage(model.state.value.session.activeChapter.pages[1].id)
         fun attempt(index: Int) = model.state.value.session.activeChapter.pages[index].attemptGeneration
+        fun adjustPairing() = model.adjustSpread()
         fun jump(index: Int) = model.goToPage(index)
         fun replacePage(index: Int, ready: Boolean = false) {
             val state = model.state.value
@@ -1775,6 +1818,8 @@ class SharedDualPageNativeStablePresentationTest {
             }
             scene.setContent {
                 CompositionLocalProvider(
+                    LocalReaderBlankPaperLogoLoader provides
+                        (blankLogoLoader ?: LocalReaderBlankPaperLogoLoader.current),
                     LocalDesktopUiDependencies provides dependencies,
                     LocalContextMenuRepresentation provides menuRepresentation,
                     LocalReaderNativeWindow provides nativeWindow,
@@ -1911,6 +1956,34 @@ class SharedDualPageNativeStablePresentationTest {
                 java.awt.event.MouseWheelEvent.WHEEL_UNIT_SCROLL, 1, 1,
             )
             assertTrue(handleReaderWheelEvent(event, model.state.value, model, {}, {}))
+        }
+        fun assertWhitePaperRectangle(expected: List<Int>) {
+            // Other reader feedback also uses white. Sample the known paper's interior and edges
+            // instead of treating every white pixel in the whole viewport as decorative paper.
+            time += 16_000_000L
+            val bitmap = scene.render(time).toComposeImageBitmap().asSkiaBitmap()
+            try {
+                val (left, top, right, bottom) = expected
+                val xs = listOf(left, (left + right) / 2, right)
+                val ys = listOf(top, (top + bottom) / 2, bottom)
+                xs.forEach { x ->
+                    ys.forEach { y ->
+                        assertEquals(0xFFFFFFFF.toInt(), bitmap.getColor(x, y), "White paper inside $expected at $x,$y")
+                    }
+                }
+                val outside = listOf(
+                    left - 1 to top,
+                    right + 1 to top,
+                    (left + right) / 2 to top - 1,
+                    (left + right) / 2 to bottom + 1,
+                )
+                outside.filter { (x, y) -> x in 0 until canvasWidth && y in 0 until canvasHeight }
+                    .forEach { (x, y) ->
+                        assertTrue(bitmap.getColor(x, y) != 0xFFFFFFFF.toInt(), "Paper edge $expected at $x,$y")
+                    }
+            } finally {
+                bitmap.close()
+            }
         }
         fun redRectangle(): List<Int> = colorRectangle(RED)
         fun comicRectangle(): List<Int> = colorRectangle(RED, GREEN)

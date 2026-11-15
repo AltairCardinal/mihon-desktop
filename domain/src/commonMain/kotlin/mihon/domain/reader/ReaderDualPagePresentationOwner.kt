@@ -10,10 +10,15 @@ data class ReaderDualPageFrame(
     val unit: ReaderDualPageUnit,
     val lockedPageIds: Set<ReaderPageId>,
     val drawnPageIds: Set<ReaderPageId>,
+    val blankPaperSlot: ReaderPortraitSingleSlot? = null,
 )
 
 /** A not-yet-mounted proposal has no frame id; mounted frames never share identity. */
-data class ReaderDualPagePresentationFrame(val unit: ReaderDualPageUnit, val frameId: ReaderDualPageFrameId?)
+data class ReaderDualPagePresentationFrame(
+    val unit: ReaderDualPageUnit,
+    val frameId: ReaderDualPageFrameId?,
+    val blankPaperSlot: ReaderPortraitSingleSlot? = null,
+)
 
 /** Research implementation: metadata determines pairs; visible leases never feed pairing history. */
 internal class ReaderDualPagePresentationOwner(
@@ -23,6 +28,7 @@ internal class ReaderDualPagePresentationOwner(
     private var direction: ReaderDirection,
     private val preferred: (ReaderPageId) -> ReaderDualPagePresentationSelection?,
     private val currentPage: () -> ReaderPageId?,
+    private val pairingReady: () -> Boolean,
 ) {
     private data class Record(
         val id: ReaderDualPageFrameId,
@@ -37,9 +43,50 @@ internal class ReaderDualPagePresentationOwner(
         var appendable: Boolean = true,
         var activeSequence: Long = -1,
         var stale: Boolean = false,
-    ) {
-        fun snapshot() = ReaderDualPageFrame(id, unit, locked.toSet(), drawn.toSet())
+    )
+
+    /** Decoration is a published property of the current proof, never an input to pairing or identity. */
+    private fun blankPaperSlot(unit: ReaderDualPageUnit, record: Record? = null): ReaderPortraitSingleSlot? {
+        if (singleMode || !pairingReady()) return null
+        val slot = unit.slots.singleOrNull() ?: return null
+        val index = ordinals[slot.pageId] ?: return null
+        if (!shouldFillReaderDualPageBlank(index, pages.size, slot.position) ||
+            unit.singleReason == null || facts[slot.pageId]?.state != ReaderPageFactState.PORTRAIT
+        ) {
+            return null
+        }
+        // A physical pair which lost an incompatible unpainted partner still promised that real page.
+        if (record != null && (
+                !record.visible || record.stale ||
+                    record.promised != setOf(slot.pageId)
+                )
+        ) {
+            return null
+        }
+        val selection = candidate(slot.pageId)
+        if (selection.unit != unit) return null
+        val currentProof = preferred(slot.pageId)
+        val certified = currentProof?.source == ReaderDualPagePresentationSource.CERTIFIED &&
+            currentProof.unit == unit
+        if (!certified && !(selection.source == ReaderDualPagePresentationSource.DEFAULT && slot.pageId in forced)) {
+            return null
+        }
+        return if (slot.position ==
+            ReaderPortraitSingleSlot.LEFT
+        ) {
+            ReaderPortraitSingleSlot.RIGHT
+        } else {
+            ReaderPortraitSingleSlot.LEFT
+        }
     }
+
+    private fun snapshot(record: Record) = ReaderDualPageFrame(
+        record.id,
+        record.unit,
+        record.locked.toSet(),
+        record.drawn.toSet(),
+        blankPaperSlot(record.unit, record),
+    )
 
     private val pages = identity().pageIds
     private val ordinals = pages.withIndex().associate { it.value to it.index }
@@ -209,21 +256,21 @@ internal class ReaderDualPagePresentationOwner(
     }.flatMap { unit ->
         val mounted = records.values.filter { it.visible && it.unit.id == unit.id }
         if (mounted.isEmpty()) {
-            listOf(ReaderDualPagePresentationFrame(unit, null))
+            listOf(ReaderDualPagePresentationFrame(unit, null, blankPaperSlot(unit)))
         } else {
-            mounted.map { ReaderDualPagePresentationFrame(it.unit, it.id) }
+            mounted.map { ReaderDualPagePresentationFrame(it.unit, it.id, blankPaperSlot(it.unit, it)) }
         }
     }
 
     fun frame(ticket: ReaderDualPageViewportTicket): ReaderDualPageFrame? {
         val record = tickets[ticket] ?: return null
         refresh(record)
-        return tickets[ticket]?.snapshot()
+        return tickets[ticket]?.let(::snapshot)
     }
 
     val history: List<ReaderDualPageFrame> get() = records.values.filter {
         it.locked.isNotEmpty()
-    }.map { it.snapshot() }
+    }.map(::snapshot)
     val reservedPairs: Set<Pair<ReaderPageId, ReaderPageId>> get() = emptySet()
     val visibleContentPageIds: Set<ReaderPageId> get() = records.values.filter {
         it.visible

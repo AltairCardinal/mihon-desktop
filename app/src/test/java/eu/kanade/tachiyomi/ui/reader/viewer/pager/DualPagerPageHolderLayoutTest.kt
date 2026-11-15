@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.ui.reader.viewer.pager
 import android.app.Activity
 import android.app.Application
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Rect
 import android.os.Looper
@@ -20,6 +21,7 @@ import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.presentation.more.settings.screen.SettingsReaderScreen
+import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.databinding.ReaderActivityBinding
 import eu.kanade.tachiyomi.databinding.ReaderErrorBinding
@@ -195,6 +197,395 @@ class DualPagerPageHolderLayoutTest {
             assertEquals(0, owner.location?.pageId?.sourcePageIndex)
         } finally {
             ltr.destroy()
+        }
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `unpublished physical singles never receive decorative paper`() = runTest {
+        val chapter = loadedChapter(76101, 5)
+        val pages = requireNotNull(chapter.pages)
+        for (index in listOf(0, 2, 4)) {
+            for (slot in listOf(ReaderPortraitSingleSlot.LEFT, ReaderPortraitSingleSlot.RIGHT)) {
+                val holder = DualPagerPageHolder(viewer.activity, viewer, DisplayPage.Single(pages[index], slot))
+                try {
+                    measure(holder, 1400, 1000)
+                    val output = Bitmap.createBitmap(1400, 1000, Bitmap.Config.ARGB_8888)
+                    try {
+                        holder.draw(Canvas(output))
+                        val emptyX = if (slot == ReaderPortraitSingleSlot.RIGHT) 200 else 1200
+                        assertEquals(
+                            "A bare half-slot descriptor has no current blank-paper proof: index=$index slot=$slot",
+                            android.graphics.Color.TRANSPARENT,
+                            output.getPixel(emptyX, 100),
+                        )
+                        assertEquals(listOf(pages[index]), holder.displayPage.visiblePages)
+                    } finally {
+                        output.recycle()
+                    }
+                } finally {
+                    detach(holder)
+                }
+            }
+        }
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `internal blank paper mirrors native fit and follows the same group camera`() = runTest {
+        useOriginalPngDecoder()
+        runCurrent()
+        Injekt.get<ReaderPreferences>().automaticSpreadMatching().set(true)
+        runCurrent()
+        for (slot in listOf(ReaderPortraitSingleSlot.LEFT, ReaderPortraitSingleSlot.RIGHT)) {
+            val chapter = blankSlotChapter(76102 + slot.ordinal.toLong(), slot)
+            val page = requireNotNull(chapter.pages)[2]
+            viewer.setChapters(ViewerChapters(chapter, null, null))
+            viewer.moveToPage(page)
+            val display = prepareCertifiedBlankFrame(chapter, page.index)
+            assertEquals(slot, display.slot)
+            val holder = DualPagerPageHolder(viewer.activity, viewer, display)
+            try {
+                load(holder, page, "CENTER")
+                measure(holder, 1400, 1000)
+                val image = descendants(holder).filterIsInstance<ReaderPageImageView>().single()
+                paintReaderImage(image, requireNotNull(page.stream).invoke().use { it.readBytes() })
+                measure(holder, 1400, 1000)
+                val outsidePaperX = if (slot == ReaderPortraitSingleSlot.RIGHT) 100 else 1300
+                val output = Bitmap.createBitmap(1400, 1000, Bitmap.Config.ARGB_8888)
+                try {
+                    holder.draw(Canvas(output))
+                    assertEquals(android.graphics.Color.TRANSPARENT, output.getPixel(outsidePaperX, 100))
+                    val identity = holder.displayPage
+                    ReflectionHelpers.setField(holder, "currentScale", 2f)
+                    ReflectionHelpers.setField(
+                        holder,
+                        "translateX",
+                        if (slot ==
+                            ReaderPortraitSingleSlot.RIGHT
+                        ) {
+                            100f
+                        } else {
+                            -100f
+                        },
+                    )
+                    ReflectionHelpers.setField(holder, "translateY", -40f)
+                    ReflectionHelpers.callInstanceMethod<Unit>(holder, "applyTransform")
+                    shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(32))
+                    output.eraseColor(android.graphics.Color.TRANSPARENT)
+                    holder.draw(Canvas(output))
+                    assertEquals(android.graphics.Color.WHITE, output.getPixel(outsidePaperX, 100))
+                    assertTrue(identity === holder.displayPage)
+                    assertEquals(listOf(page), holder.displayPage.visiblePages)
+                    assertEquals(2f, image.viewportScale)
+                    assertEquals(-40f, image.viewportOffsetY)
+                } finally {
+                    output.recycle()
+                }
+            } finally {
+                detach(holder)
+            }
+        }
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `late local logo preserves native camera and is released with its viewer`() = runTest {
+        useOriginalPngDecoder()
+        Injekt.get<ReaderPreferences>().automaticSpreadMatching().set(true)
+        val started = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val decodedOnMain = java.util.concurrent.atomic.AtomicBoolean(true)
+        val mark = requireNotNull(BitmapFactory.decodeResource(viewer.activity.resources, R.drawable.reader_blank_logo))
+        val logoViewer = DualPageR2LPagerViewer(viewer.activity, blankLogoDecoder = {
+            decodedOnMain.set(Looper.myLooper() == Looper.getMainLooper())
+            started.countDown()
+            check(release.await(30, java.util.concurrent.TimeUnit.SECONDS))
+            mark
+        })
+        logoViewer.config.navigationModeChangedListener = null
+        useOriginalPngDecoder(logoViewer)
+        var holder: DualPagerPageHolder? = null
+        try {
+            runCurrent()
+            assertTrue(
+                "Decode starts on reader entry without an internal blank holder",
+                started.await(5, java.util.concurrent.TimeUnit.SECONDS),
+            )
+            assertFalse(decodedOnMain.get())
+            val chapter = blankSlotChapter(76113, ReaderPortraitSingleSlot.RIGHT)
+            val page = requireNotNull(chapter.pages)[2]
+            logoViewer.setChapters(ViewerChapters(chapter, null, null))
+            logoViewer.moveToPage(page)
+            val display = prepareCertifiedBlankFrame(chapter, page.index, logoViewer)
+            assertEquals(ReaderPortraitSingleSlot.RIGHT, display.slot)
+            val target = DualPagerPageHolder(logoViewer.activity, logoViewer, display)
+            holder = target
+            load(target, page, "CENTER")
+            measure(target, 1400, 1000)
+            val image = descendants(target).filterIsInstance<ReaderPageImageView>().single()
+            paintReaderImage(image, requireNotNull(page.stream).invoke().use { it.readBytes() })
+            measure(target, 1400, 1000)
+            ReflectionHelpers.setField(target, "currentScale", 1.25f)
+            ReflectionHelpers.setField(target, "translateX", 60f)
+            ReflectionHelpers.setField(target, "translateY", -100f)
+            ReflectionHelpers.callInstanceMethod<Unit>(target, "applyTransform")
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(32))
+            val native = image.getChildAt(0)
+            val bounds = requireNotNull(image.viewportImageBounds())
+            val output = Bitmap.createBitmap(1400, 1000, Bitmap.Config.ARGB_8888)
+            try {
+                target.draw(Canvas(output))
+                assertEquals(android.graphics.Color.WHITE, output.getPixel(300, 100))
+                assertNull(logoViewer.blankLogo.bitmap.value)
+                release.countDown()
+                logoViewer.blankLogo.loading.join()
+                runCurrent()
+                output.eraseColor(android.graphics.Color.TRANSPARENT)
+                target.draw(Canvas(output))
+                val pixels = IntArray(output.width * output.height)
+                output.getPixels(pixels, 0, output.width, 0, 0, output.width, output.height)
+                assertTrue(
+                    "Real application mark must reach the native holder canvas",
+                    pixels.any {
+                        it ==
+                            android.graphics.Color.rgb(189, 189, 189)
+                    },
+                )
+                assertEquals(1.25f, image.viewportScale)
+                assertEquals(60f, image.viewportOffsetX)
+                assertEquals(-100f, image.viewportOffsetY)
+                assertEquals(bounds, image.viewportImageBounds())
+                assertTrue(native === image.getChildAt(0))
+                assertEquals(listOf(page), target.displayPage.visiblePages)
+            } finally {
+                output.recycle()
+            }
+        } finally {
+            release.countDown()
+            holder?.let(::detach)
+            logoViewer.destroy()
+            logoViewer.blankLogo.loading.join()
+        }
+        assertTrue(mark.isRecycled)
+    }
+
+    @Test
+    fun `closing viewer during local logo decoding recycles its late result`() = runTest {
+        val started = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val mark = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+        val logoViewer = DualPageR2LPagerViewer(viewer.activity, blankLogoDecoder = {
+            started.countDown()
+            check(release.await(30, java.util.concurrent.TimeUnit.SECONDS))
+            mark
+        })
+        logoViewer.config.navigationModeChangedListener = null
+        try {
+            runCurrent()
+            assertTrue(started.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            logoViewer.destroy()
+            release.countDown()
+            logoViewer.blankLogo.loading.join()
+            assertNull(logoViewer.blankLogo.bitmap.value)
+            assertTrue(mark.isRecycled)
+        } finally {
+            release.countDown()
+            logoViewer.destroy()
+        }
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `failed local logo keeps blank paper and never fills real or full slots`() = runTest {
+        Injekt.get<ReaderPreferences>().automaticSpreadMatching().set(false)
+        runCurrent()
+        val sourceOpens = java.util.concurrent.atomic.AtomicInteger()
+        val chapter = ReaderChapter(Chapter.create().copy(id = 76104, mangaId = 1))
+        val pages = List(5) { index ->
+            ReaderPage(index, stream = {
+                sourceOpens.incrementAndGet()
+                error("Decoration cannot open source streams")
+            }).apply { this.chapter = chapter }
+        }
+        chapter.publishLoadedPageListForTest(pages)
+        val logoViewer = DualPageR2LPagerViewer(viewer.activity, blankLogoDecoder = { error("Unreadable local logo") })
+        logoViewer.config.navigationModeChangedListener = null
+        try {
+            logoViewer.blankLogo.loading.join()
+            assertNull(logoViewer.blankLogo.bitmap.value)
+            logoViewer.setChapters(ViewerChapters(chapter, null, null))
+            val owner = requireNotNull(logoViewer.adapter.session(chapter))
+            logoViewer.moveToPage(pages[1])
+            owner.adjustPairing()
+            assertTrue(owner.pairingState.committedForcedSinglePages.contains(1))
+            logoViewer.adapter.updatePageDimensions(pages[1], 100, 200)
+            logoViewer.moveToPage(pages[1])
+            logoViewer.adapter.refreshPresentationFrames()
+            val manual = logoViewer.adapter.items.filterIsInstance<DisplayPage.Single>().first { it.page === pages[1] }
+            assertEquals(ReaderPortraitSingleSlot.LEFT, manual.blankPaperSlot)
+            val displays = listOf(
+                manual,
+                DisplayPage.Single(pages[2], ReaderPortraitSingleSlot.FULL),
+                DisplayPage.Double(pages[2], pages[3]),
+            )
+            for ((index, display) in displays.withIndex()) {
+                val holder = DualPagerPageHolder(logoViewer.activity, logoViewer, display)
+                try {
+                    measure(holder, 1400, 1000)
+                    val output = Bitmap.createBitmap(1400, 1000, Bitmap.Config.ARGB_8888)
+                    try {
+                        holder.draw(Canvas(output))
+                        assertEquals(
+                            if (index == 0) android.graphics.Color.WHITE else android.graphics.Color.TRANSPARENT,
+                            output.getPixel(200, 100),
+                        )
+                        assertEquals(display.visiblePages, holder.displayPage.visiblePages)
+                    } finally {
+                        output.recycle()
+                    }
+                } finally {
+                    detach(holder)
+                }
+            }
+            assertEquals(0, sourceOpens.get())
+        } finally {
+            logoViewer.destroy()
+        }
+    }
+
+    private fun blankSlotChapter(id: Long, slot: ReaderPortraitSingleSlot): ReaderChapter {
+        val pixels = Bitmap.createBitmap(128, 256, Bitmap.Config.ARGB_8888)
+        pixels.eraseColor(android.graphics.Color.rgb(40, 40, 40))
+        val gutter = if (slot == ReaderPortraitSingleSlot.LEFT) 122 until 128 else 0 until 6
+        for (x in gutter) for (y in 0 until 256) pixels.setPixel(x, y, android.graphics.Color.WHITE)
+        val encoded = ByteArrayOutputStream().also { pixels.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+        pixels.recycle()
+        val chapter = ReaderChapter(Chapter.create().copy(id = id, mangaId = 1))
+        chapter.publishLoadedPageListForTest(
+            List(5) { index ->
+                ReaderPage(index, stream = { encoded.inputStream() }).apply {
+                    this.chapter = chapter
+                    status = Page.State.Ready
+                }
+            },
+        )
+        return chapter
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `unproved default wide boundary never paints paper before the pairing phase is known`() = runTest {
+        Injekt.get<ReaderPreferences>().automaticSpreadMatching().set(true)
+        runCurrent()
+        val chapter = loadedChapter(76121, 7)
+        val pages = requireNotNull(chapter.pages)
+        pages.forEach { it.stream = null }
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        viewer.adapter.updatePageDimensions(pages[3], 100, 150)
+        viewer.adapter.updatePageDimensions(pages[4], 200, 100)
+        viewer.moveToPage(pages[3])
+        viewer.adapter.refreshPresentationFrames()
+        val owner = requireNotNull(viewer.adapter.session(chapter))
+        val display = viewer.adapter.items.filterIsInstance<DisplayPage.Single>().single { it.page === pages[3] }
+        assertEquals(ReaderPortraitSingleSlot.RIGHT, display.slot)
+        val holder = DualPagerPageHolder(viewer.activity, viewer, display)
+        try {
+            val (_, ticket) = requireNotNull(holder.presentationScope)
+            assertEquals(mihon.domain.reader.ReaderDualPagePresentationSource.DEFAULT, ticket.source)
+            assertEquals(
+                mihon.domain.reader.ReaderDualPageSingleReason.REMAINDER_BEFORE_SPREAD,
+                owner.frame(ticket)!!.unit.singleReason,
+            )
+            measure(holder, 1400, 1000)
+            val output = Bitmap.createBitmap(1400, 1000, Bitmap.Config.ARGB_8888)
+            try {
+                holder.draw(Canvas(output))
+                assertEquals(
+                    "An unproved remainder is still waiting for the earlier pairing phase",
+                    android.graphics.Color.TRANSPARENT,
+                    output.getPixel(200, 100),
+                )
+                viewer.adapter.updatePageDimensions(pages[1], 200, 100)
+                viewer.adapter.refreshPresentationFrames()
+                val paired = viewer.adapter.items.filterIsInstance<DisplayPage.Double>().single {
+                    it.containsPage(pages[3])
+                }
+                assertEquals(listOf(2, 3), paired.visiblePages.map { it.index })
+            } finally {
+                output.recycle()
+            }
+        } finally {
+            detach(holder)
+        }
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `published blank flag updates preserve native image camera and encoded reads`() = runTest {
+        useOriginalPngDecoder()
+        Injekt.get<ReaderPreferences>().automaticSpreadMatching().set(true)
+        runCurrent()
+        val chapter = blankSlotChapter(76122, ReaderPortraitSingleSlot.LEFT)
+        val page = requireNotNull(chapter.pages)[2]
+        val encoded = requireNotNull(page.stream).invoke().use { it.readBytes() }
+        var sourceOpens = 0
+        page.stream = {
+            sourceOpens++
+            encoded.inputStream()
+        }
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        viewer.moveToPage(page)
+        val display = prepareCertifiedBlankFrame(chapter, page.index)
+        assertEquals(ReaderPortraitSingleSlot.RIGHT, display.blankPaperSlot)
+        val holder = DualPagerPageHolder(viewer.activity, viewer, display)
+        try {
+            load(holder, page, "CENTER")
+            measure(holder, 1400, 1000)
+            val image = descendants(holder).filterIsInstance<ReaderPageImageView>().single()
+            paintReaderImage(image, encoded)
+            val native = image.getChildAt(0)
+            val reads = sourceOpens
+            val ticket = holder.presentationScope
+            ReflectionHelpers.setField(holder, "currentScale", 2f)
+            ReflectionHelpers.setField(holder, "translateX", 60f)
+            assertTrue(holder.updateDisplayPage(display.copy().also { it.blankPaperSlot = null }))
+            assertTrue(holder.updateDisplayPage(display))
+            assertTrue(holder.replaceUnexposedPreparationFrame(display.copy()))
+            assertNull(ReflectionHelpers.getField<ReaderPortraitSingleSlot?>(holder, "blankPaperSlot"))
+            assertTrue(holder.replaceUnexposedPreparationFrame(display))
+            assertEquals(
+                display.blankPaperSlot,
+                ReflectionHelpers.getField<ReaderPortraitSingleSlot?>(holder, "blankPaperSlot"),
+            )
+            assertEquals(reads, sourceOpens)
+            assertEquals(ticket, holder.presentationScope)
+            assertTrue(native === image.getChildAt(0))
+            assertEquals(2f, ReflectionHelpers.getField<Float>(holder, "currentScale"))
+            assertEquals(60f, ReflectionHelpers.getField<Float>(holder, "translateX"))
+        } finally {
+            detach(holder)
+        }
+    }
+
+    @Test
+    fun `unexposed preparation replacement clears published blank metadata`() = runTest {
+        val chapter = loadedChapter(76123, 5)
+        val pages = requireNotNull(chapter.pages)
+        val published = DisplayPage.Single(pages[1], ReaderPortraitSingleSlot.RIGHT).also {
+            it.blankPaperSlot = ReaderPortraitSingleSlot.LEFT
+        }
+        val holder = DualPagerPageHolder(viewer.activity, viewer, published)
+        try {
+            assertTrue(holder.replaceUnexposedPreparationFrame(DisplayPage.Double(pages[1], pages[2])))
+            assertNull(ReflectionHelpers.getField<ReaderPortraitSingleSlot?>(holder, "blankPaperSlot"))
+            assertTrue(holder.replaceUnexposedPreparationFrame(published))
+            assertEquals(
+                ReaderPortraitSingleSlot.LEFT,
+                ReflectionHelpers.getField<ReaderPortraitSingleSlot?>(holder, "blankPaperSlot"),
+            )
+        } finally {
+            detach(holder)
         }
     }
 
@@ -1983,9 +2374,28 @@ class DualPagerPageHolderLayoutTest {
         assertEquals(0f, image.viewportOffsetY, 0.001f)
     }
 
-    private fun useOriginalPngDecoder() {
+    private fun kotlinx.coroutines.test.TestScope.prepareCertifiedBlankFrame(
+        chapter: ReaderChapter,
+        index: Int,
+        targetViewer: DualPageR2LPagerViewer = viewer,
+    ): DisplayPage.Single {
+        val proof = awaitOriginalPairing(chapter, index, targetViewer)
+        val owner = requireNotNull(targetViewer.adapter.session(chapter))
+        val id = owner.identity.pageIds[index]
+        val frameId = requireNotNull(owner.preparePresentationFrame(id, proof.segment.unit.id, activate = false))
+        val frame = owner.presentationFrames.first { it.frameId == frameId }
+        check(frame.unit.slots.size == 1) {
+            "Expected certified single, actual proof=${proof.segment.unit} frame=$frame"
+        }
+        val slot = frame.unit.slots.single()
+        return DisplayPage.Single(requireNotNull(chapter.pages)[index], slot.position, frameId).also {
+            it.blankPaperSlot = frame.blankPaperSlot
+        }
+    }
+
+    private fun useOriginalPngDecoder(targetViewer: DualPageR2LPagerViewer = viewer) {
         // Windows JVM substitutes only the unavailable JNI region boundary; sampling and publication stay real.
-        viewer.adapter.spreadDecoderFactory = { input ->
+        targetViewer.adapter.spreadDecoderFactory = { input ->
             eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(input)
         }
     }
@@ -1993,16 +2403,17 @@ class DualPagerPageHolderLayoutTest {
     private fun kotlinx.coroutines.test.TestScope.awaitOriginalPairing(
         chapter: ReaderChapter,
         index: Int,
+        targetViewer: DualPageR2LPagerViewer = viewer,
     ): mihon.domain.reader.ReaderPairingCertification.Certified {
-        val display = viewer.adapter.items.filterIsInstance<DisplayPage>().single {
+        val display = targetViewer.adapter.items.filterIsInstance<DisplayPage>().single {
             it.containsPage(requireNotNull(chapter.pages)[index])
         }
-        viewer.adapter.requirePairing(display)
+        targetViewer.adapter.requirePairing(display)
         val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5)
         var result: mihon.domain.reader.ReaderPairingCertification? = null
         do {
             runCurrent()
-            val owner = requireNotNull(viewer.adapter.session(chapter))
+            val owner = requireNotNull(targetViewer.adapter.session(chapter))
             result = owner.certifyPairing(owner.identity.pageIds[index])
             if (result is mihon.domain.reader.ReaderPairingCertification.Certified) return result
             Thread.sleep(5)

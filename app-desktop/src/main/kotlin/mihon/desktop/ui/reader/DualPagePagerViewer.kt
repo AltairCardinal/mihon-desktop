@@ -106,6 +106,9 @@ internal fun DualPageDisplayUnitFrame(
     onRetry: (ReaderPageId) -> Unit,
     mountIdentity: Any = unit.id,
     foregroundSlots: Set<DisplaySlotId> = emptySet(),
+    blankContent: @Composable (DisplaySlot, Modifier) -> Unit = { slot, modifier ->
+        ReaderBlankPaper(modifier, left = unit.slots.indexOf(slot) == 0)
+    },
     readyContent: @Composable (DisplaySlot, Modifier) -> Unit,
 ) {
     require(unit.id.mode == ReaderPresentationMode.DUAL_PAGED) { "A dual frame requires a dual display unit" }
@@ -137,6 +140,7 @@ internal fun DualPageDisplayUnitFrame(
                 showLoadingIndicator = true,
                 onRetry = onRetry,
                 modifier = Modifier.fillMaxSize(),
+                blankContent = blankContent,
                 readyContent = readyContent,
             )
         } else {
@@ -153,6 +157,7 @@ internal fun DualPageDisplayUnitFrame(
                     .align(AbsoluteAlignment.CenterLeft)
                     .fillMaxWidth(0.5f)
                     .fillMaxHeight(),
+                blankContent = blankContent,
                 readyContent = readyContent,
             )
             DualPageSlotContainer(
@@ -165,6 +170,7 @@ internal fun DualPageDisplayUnitFrame(
                     .align(AbsoluteAlignment.CenterRight)
                     .fillMaxWidth(0.5f)
                     .fillMaxHeight(),
+                blankContent = blankContent,
                 readyContent = readyContent,
             )
             if (placement == DualPageLoadingIndicatorPlacement.Center) {
@@ -181,6 +187,7 @@ private fun DualPageSlotContainer(
     showLoadingIndicator: Boolean,
     onRetry: (ReaderPageId) -> Unit,
     modifier: Modifier,
+    blankContent: @Composable (DisplaySlot, Modifier) -> Unit,
     readyContent: @Composable (DisplaySlot, Modifier) -> Unit,
 ) {
     Box(
@@ -190,7 +197,10 @@ private fun DualPageSlotContainer(
         },
         contentAlignment = Alignment.Center,
     ) {
-        val page = slot.page ?: return@Box
+        val page = slot.page ?: run {
+            if (slot.isBlankPaper) blankContent(slot, Modifier.fillMaxSize())
+            return@Box
+        }
         when (page.loadState) {
             ReaderPageLoadState.Queued,
             ReaderPageLoadState.ResolvingImage,
@@ -424,6 +434,13 @@ internal fun DualPagePagerViewer(
         val panFrameIdentity = unit.id.frameId ?: unit.id
         val panGeometries = remember(panFrameIdentity) { mutableStateMapOf<DisplaySlotId, ReaderRegionDrawGeometry>() }
         val panBoundsState = remember(panFrameIdentity) { ReaderPanBoundsState() }
+        val blankSlotIndex = unit.slots.indexOfFirst { it.isBlankPaper }
+        val blankPartner = panGeometries.values.firstOrNull()
+        val blankPaperBounds = if (blankSlotIndex >= 0 && blankPartner != null) {
+            readerBlankPaperBounds(blankPartner.viewportSize, blankPartner, blankSlotIndex == 0)
+        } else {
+            null
+        }
         val measuredPanBounds = if (selected && unit.slots.size == 2) {
             val viewport = panGeometries.values.firstOrNull()?.viewportSize
             val pendingSlots = if (viewport == null) {
@@ -443,7 +460,7 @@ internal fun DualPagePagerViewer(
                     }
                 }
             }
-            combineReaderPanBounds(panGeometries.values, pendingSlots)
+            combineReaderPanBounds(panGeometries.values, pendingSlots + listOfNotNull(blankPaperBounds))
         } else {
             null
         }
@@ -471,6 +488,22 @@ internal fun DualPagePagerViewer(
                 onRetry = onRetryPage,
                 mountIdentity = nativePresentation,
                 foregroundSlots = feedbackSlots.filterValues { it }.keys,
+                blankContent = { _, modifier ->
+                    val left = blankSlotIndex == 0
+                    ReaderBlankPaper(
+                        modifier = modifier,
+                        paperBounds = blankPaperBounds ?: readerBlankPaperBounds(viewportSize, null, left),
+                        viewport = ReaderImageViewport(
+                            viewportSize,
+                            IntOffset(
+                                if (left) 0 else viewportSize.width - (viewportSize.width * 0.5f).roundToInt(),
+                                0,
+                            ),
+                        ),
+                        zoom = displayZoom,
+                        left = left,
+                    )
+                },
             ) { slot, modifier ->
                 val page = requireNotNull(slot.page)
                 val physicalSlot = unit.slots.indexOf(slot)

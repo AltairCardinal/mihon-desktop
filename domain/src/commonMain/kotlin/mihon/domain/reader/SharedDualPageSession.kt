@@ -130,6 +130,14 @@ class SharedDualPageSession(
         direction,
         { currentPresentationSelection(it) },
         { location?.pageId },
+        {
+            pairingState.status !in setOf(
+                ReaderPairingPersistenceStatus.WAITING_FOR_RESTORE,
+                ReaderPairingPersistenceStatus.RESTORING,
+                ReaderPairingPersistenceStatus.RESTORE_FAILED,
+                ReaderPairingPersistenceStatus.CONFLICT,
+            )
+        },
     )
     var sampleWorkRevision: Long = 0
         private set

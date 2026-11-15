@@ -48,6 +48,7 @@ internal data class DisplaySlot(
     val page: ReaderPageSession?,
     val splitHalf: PageSplitHalf? = id.splitHalf,
     val sourceBounds: PixelBounds? = null,
+    val isBlankPaper: Boolean = false,
 ) {
     init {
         require(id.pageId == page?.id) { "Display slot identity must match its page" }

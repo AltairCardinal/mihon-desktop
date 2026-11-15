@@ -101,6 +101,8 @@ class SharedDualPageDesktopPresentationWiringTest {
 internal fun ReaderPresentationRequest.withSharedOwner(
     forcedSingles: Set<Int> = emptySet(),
     matchedPairs: Set<Pair<Int, Int>> = emptySet(),
+    projectFrames: Boolean = false,
+    certifyPage: Int? = null,
 ): ReaderPresentationRequest {
     val ids = chapter.pages.map { it.id }
     val identity = ReaderDualPageIdentity(
@@ -156,7 +158,17 @@ internal fun ReaderPresentationRequest.withSharedOwner(
             }
         }
         if (matchedPairs.isNotEmpty()) check(owner.goToPage(ids.first()))
-        return copy(dualPageUnits = owner.units)
+        if (certifyPage != null) {
+            check(owner.goToPage(ids[certifyPage]))
+            check(owner.certifyPairing(ids[certifyPage]) is mihon.domain.reader.ReaderPairingCertification.Certified)
+            owner.preparePresentationFrame()
+        }
+        return copy(
+            dualPageUnits = owner.units,
+            dualPageFrames = owner.presentationFrames.takeIf { projectFrames },
+            dualPageTargetFrameId = owner.targetFrameId.takeIf { projectFrames },
+            dualPageTargetPageId = owner.location?.pageId.takeIf { projectFrames },
+        )
     } finally {
         owner.close()
     }

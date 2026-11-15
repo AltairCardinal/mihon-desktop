@@ -554,6 +554,16 @@ class DualPageViewerAdapter(
         return position
     }
 
+    /** Decoration updates never enter ViewPager identity or its native publication protocol. */
+    private fun publishBlankPaperSlots(replacement: List<Any>) {
+        val latest = replacement.filterIsInstance<DisplayPage.Single>().associateBy { it }
+        items.filterIsInstance<DisplayPage.Single>().forEach { it.blankPaperSlot = latest[it]?.blankPaperSlot }
+        viewer.pager.children.filterIsInstance<DualPagerPageHolder>().forEach { holder ->
+            val key = holder.displayPage as? DisplayPage.Single
+            holder.updateBlankPaperSlot(key?.let(latest::get)?.blankPaperSlot)
+        }
+    }
+
     private fun publishNativeItems() {
         val previousOwners = nativePositionOwners
         val holders = viewer.pager.children.filterIsInstance<DualPagerPageHolder>().toList()
@@ -648,6 +658,7 @@ class DualPageViewerAdapter(
         val consumedInputs = window.mapNotNull { chapter ->
             chapterPairings[chapter]?.session?.let { it to it.factProjectionInput() }
         }.toMap()
+        publishBlankPaperSlots(replacement)
         if (items == replacement) {
             recordProjectedFacts(consumedInputs)
             // Metadata can change certainty and the presentation capability without changing physical slots.
@@ -1164,8 +1175,14 @@ class DualPageViewerAdapter(
         ) {
             val old = items.getOrNull(position) as? DisplayPage ?: return
             if (old.firstPage.chapter !== pages.firstOrNull()?.chapter) return
-            val replacement = displayPage(unit, frame, pages)
-            if (old == replacement) return
+            val metadata = owner.presentationFrames.firstOrNull { it.frameId == frame && it.unit == unit }
+            val replacement = displayPage(unit, frame, pages, metadata?.blankPaperSlot)
+            if (old == replacement) {
+                if (old is DisplayPage.Single) old.blankPaperSlot = metadata?.blankPaperSlot
+                viewer.pager.children.filterIsInstance<DualPagerPageHolder>().filter { it.displayPage == old }
+                    .forEach { it.updateBlankPaperSlot(metadata?.blankPaperSlot) }
+                return
+            }
             val holders = viewer.pager.children.filterIsInstance<DualPagerPageHolder>().filter {
                 it.displayPage == old
             }.toList()
@@ -1220,8 +1237,11 @@ class DualPageViewerAdapter(
         unit: mihon.domain.reader.ReaderDualPageUnit,
         frame: mihon.domain.reader.ReaderDualPageFrameId?,
         pages: List<ReaderPage>,
+        blankPaperSlot: ReaderPortraitSingleSlot? = null,
     ): DisplayPage = if (unit.pageIds.size == 1) {
-        DisplayPage.Single(pages[unit.pageIds.single().sourcePageIndex], unit.slots.single().position, frame)
+        DisplayPage.Single(pages[unit.pageIds.single().sourcePageIndex], unit.slots.single().position, frame).also {
+            it.blankPaperSlot = blankPaperSlot
+        }
     } else {
         DisplayPage.Double(
             pages[unit.slots.single { it.position == ReaderPortraitSingleSlot.RIGHT }.pageId.sourcePageIndex],
@@ -1232,6 +1252,6 @@ class DualPageViewerAdapter(
 
     private fun buildDisplayPages(pages: List<ReaderPage>, session: SharedDualPageSession): List<DisplayPage> {
         session.preparePresentationFrame()
-        return session.presentationFrames.map { displayPage(it.unit, it.frameId, pages) }
+        return session.presentationFrames.map { displayPage(it.unit, it.frameId, pages, it.blankPaperSlot) }
     }
 }

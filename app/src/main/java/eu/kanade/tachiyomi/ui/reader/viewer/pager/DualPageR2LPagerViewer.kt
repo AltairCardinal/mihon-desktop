@@ -1,5 +1,7 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.pager
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.PointF
 import android.view.InputDevice
 import android.view.KeyEvent
@@ -51,6 +53,13 @@ class DualPageR2LPagerViewer(
     override val activity: ReaderActivity,
     private val pairingStore: DualPagePairingStore = DualPagePairingStore(),
     val direction: ReaderDirection = ReaderDirection.RTL,
+    blankLogoDecoder: () -> Bitmap? = {
+        BitmapFactory.decodeResource(
+            activity.resources,
+            R.drawable.reader_blank_logo,
+            BitmapFactory.Options().apply { inScaled = false },
+        )
+    },
 ) : Viewer, ViewerWithPager {
     val isRtl: Boolean get() = direction == ReaderDirection.RTL
 
@@ -58,6 +67,8 @@ class DualPageR2LPagerViewer(
 
     private val scope = MainScope()
     internal val imagePreparation = ReaderImagePreparationQueue(scope)
+
+    internal val blankLogo = ReaderBlankLogo(scope, blankLogoDecoder)
 
     override val pager = Pager(activity)
 
@@ -276,6 +287,7 @@ class DualPageR2LPagerViewer(
         pager.removeOnPageChangeListener(pagerListener)
         adapter.close()
         imagePreparation.close()
+        blankLogo.close()
         scope.cancel()
     }
 

@@ -3,6 +3,9 @@ package eu.kanade.tachiyomi.ui.reader.viewer.pager
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
 import android.view.GestureDetector
@@ -37,6 +40,7 @@ import mihon.domain.reader.ReaderDualPageViewportTicket
 import mihon.domain.reader.ReaderPortraitSingleSlot
 import mihon.domain.reader.SharedDualPageSession
 import mihon.domain.reader.session.ReaderPageId
+import mihon.domain.reader.shouldFillReaderDualPageBlank
 import okio.Buffer
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.lang.withIOContext
@@ -294,6 +298,72 @@ class DualPagerPageHolder(
         preparationLeases.remove(page)?.close()
     }
 
+    private var blankLogoObservation: Job? = null
+    private var blankPaperSlot = (displayPage as? DisplayPage.Single)?.blankPaperSlot
+    private val blankPaperPaint = Paint().apply { color = Color.WHITE }
+    private val blankLogoPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+
+    private fun observeBlankLogo() {
+        if (blankLogoObservation?.isActive == true) return
+        blankLogoObservation = scope.launch { viewer.blankLogo.bitmap.collect { invalidate() } }
+    }
+
+    /** Only decoration geometry: no synthetic source page, decode, progress or presentation ticket. */
+    private fun blankPaperBounds(): RectF? {
+        val single = displayPage as? DisplayPage.Single ?: return null
+        if (blankPaperSlot == null) return null
+        if (!shouldFillReaderDualPageBlank(single.page.index, single.page.chapter.pages?.size ?: 0, single.slot)) {
+            return null
+        }
+        val image = if (single.slot == ReaderPortraitSingleSlot.LEFT) leftHolder else rightHolder
+        val realBounds = image?.viewportImageBounds()
+        if (image != null && realBounds != null) {
+            val spine = width / 2f + image.viewportOffsetX
+            return RectF(2f * spine - realBounds.right, realBounds.top, 2f * spine - realBounds.left, realBounds.bottom)
+        }
+        // Until the real dimensions arrive use a portrait paper fitted to the physical half slot.
+        val paperHeight = min(height.toFloat(), width / 2f * 1.5f)
+        val paperWidth = paperHeight / 1.5f
+        val spine = width / 2f
+        val left = if (single.slot == ReaderPortraitSingleSlot.RIGHT) spine - paperWidth else spine
+        val top = (height - paperHeight) / 2f
+        return RectF(
+            spine + (left - spine) * currentScale + translateX,
+            height / 2f + (top - height / 2f) * currentScale + translateY,
+            spine + (left + paperWidth - spine) * currentScale + translateX,
+            height / 2f + (top + paperHeight - height / 2f) * currentScale + translateY,
+        )
+    }
+
+    override fun dispatchDraw(canvas: Canvas) {
+        blankPaperBounds()?.let { paper ->
+            canvas.drawRect(paper, blankPaperPaint)
+            viewer.blankLogo.bitmap.value?.takeUnless { it.isRecycled }?.let { logo ->
+                val leftBlank = (displayPage as DisplayPage.Single).slot == ReaderPortraitSingleSlot.RIGHT
+                // The shared PNG has an 8 px transparent inset around its 240 px mark.
+                val diameter = min(paper.width(), paper.height() * 0.62f) * 256f / 240f
+                val centerX = paper.left + paper.width() * if (leftBlank) 0.28f else 0.72f
+                val centerY = paper.top + paper.height() * 0.84f
+                val checkpoint = canvas.save()
+                canvas.clipRect(paper)
+                canvas.rotate(if (leftBlank) 25f else -25f, centerX, centerY)
+                canvas.drawBitmap(
+                    logo,
+                    null,
+                    RectF(
+                        centerX - diameter / 2f,
+                        centerY - diameter / 2f,
+                        centerX + diameter / 2f,
+                        centerY + diameter / 2f,
+                    ),
+                    blankLogoPaint,
+                )
+                canvas.restoreToCount(checkpoint)
+            }
+        }
+        super.dispatchDraw(canvas)
+    }
+
     // ── Zoom / pan state (all physical half-slot frames) ────────────────────
 
     private var currentScale = 1f
@@ -396,6 +466,7 @@ class DualPagerPageHolder(
     init {
         latencyTarget?.let { recordLatency("TARGET_HOLDER_CREATED", it) }
         createEmptySlots()
+        observeBlankLogo()
         loadPages()
     }
 
@@ -413,6 +484,8 @@ class DualPagerPageHolder(
     override fun onDetachedFromWindow() {
         displayPage.visiblePages.forEach { diagnose("holder_detach", it, "attachment" to attachmentGeneration) }
         zoomAnimator?.cancel()
+        blankLogoObservation?.cancel()
+        blankLogoObservation = null
         super.onDetachedFromWindow()
         attachmentGeneration++
         presentationScope?.let(viewer::releasePresentation)
@@ -434,6 +507,7 @@ class DualPagerPageHolder(
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        observeBlankLogo()
         beginPresentation()
         loadPages()
         viewer.onHolderDisplayStateChanged(this)
@@ -556,7 +630,10 @@ class DualPagerPageHolder(
 
     /** Re-describe an unexposed paging shell before admitting its new ordinary image work. */
     internal fun replaceUnexposedPreparationFrame(replacement: DisplayPage): Boolean {
-        if (displayPage == replacement) return true
+        if (displayPage == replacement) {
+            updateBlankPaperSlot((replacement as? DisplayPage.Single)?.blankPaperSlot)
+            return true
+        }
         if (nativePixelsWerePrepared || renderedPages.isNotEmpty() ||
             displayPage.firstPage.chapter !== replacement.firstPage.chapter ||
             (displayPage as? DisplayPage.Single)?.slot == ReaderPortraitSingleSlot.FULL ||
@@ -618,6 +695,7 @@ class DualPagerPageHolder(
         leftSlot = null
         rightSlot = null
         displayPage = replacement
+        updateBlankPaperSlot((replacement as? DisplayPage.Single)?.blankPaperSlot)
         presentationDiagnostics.retainSources(replacement.visiblePages.map { it.index })
         diagnosticStates.clear()
         createEmptySlots()
@@ -626,9 +704,18 @@ class DualPagerPageHolder(
         return true
     }
 
+    internal fun updateBlankPaperSlot(slot: ReaderPortraitSingleSlot?) {
+        if (blankPaperSlot == slot) return
+        blankPaperSlot = slot
+        invalidate()
+    }
+
     /** A candidate partner can leave or enter without replacing an unchanged physical image slot. */
     internal fun updateDisplayPage(replacement: DisplayPage): Boolean {
-        if (displayPage == replacement) return true
+        if (displayPage == replacement) {
+            updateBlankPaperSlot((replacement as? DisplayPage.Single)?.blankPaperSlot)
+            return true
+        }
         if (displayPage.frameId != replacement.frameId &&
             replacement.frameId != presentationScope?.second?.frameId
         ) {
@@ -659,6 +746,8 @@ class DualPagerPageHolder(
             errorPages.remove(side)
         }
         displayPage = replacement
+        updateBlankPaperSlot((replacement as? DisplayPage.Single)?.blankPaperSlot)
+        invalidate()
         presentationDiagnostics.retainSources(replacement.visiblePages.map { it.index })
         diagnosticStates.keys.removeAll { key -> replacement.visiblePages.none { it.index == key.first } }
         errorPage = errorPages.values.firstOrNull()
@@ -1116,6 +1205,7 @@ class DualPagerPageHolder(
             transformScheduled = false
             leftSlot?.applyTransform()
             rightSlot?.applyTransform()
+            invalidate()
         }
     }
 
