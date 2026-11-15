@@ -59,6 +59,8 @@ Mihon’s reading and library experience gains a desktop home. Use the desktop i
 
 **Source image downloads and access errors:** Windows queued chapter downloads preserve the source’s image request, including its headers, client and custom request method/body. Retry a failed chapter from the download queue after switching to the updated build. HTTP 403 means access was denied and is no longer presented as a login requirement; HTTP 401 retains the login prompt. Source network configuration failures remain visible instead of silently sending a fallback request. The shared Android error mapping also distinguishes these statuses. The accepted Windows candidate and the limits of the Android and browser checks are recorded in the [change history](./changelog.md).
 
+**Windows source-detail refresh:** Open the work details and use **Retry** or refresh after a failure. A source returning a detail URL without the original query parameters no longer causes an identity-conflict error; metadata updates remain attached to the original work and its full URL. Existing chapter, reading-progress and download associations are retained. Accepted on Windows preview `0.11.24.6.7b4cf6d`; unavailable sources can still fail.
+
 **Platform boundaries:** Windows is the primary desktop development and validation target. The repository also maintains a macOS build entrypoint; macOS preview builds require the source and output directories to be on an APFS volume. Linux desktop packaging and acceptance are not configured. A successful preview build does not establish release readiness.
 
 ## Two-page reading and spread matching {#two-page-reading}

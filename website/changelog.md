@@ -5,6 +5,10 @@ description: A traceable history of public feature documentation, separate from 
 
 # Changelog
 
+## 2026-11-15 — Windows source-detail refresh accepted
+
+The project owner accepted Windows preview `0.11.24.6.7b4cf6d` in a private review on November 15, 2026 and authorized main integration and push. Implementation: `7b4cf6d403`; main integration: `f9517bbfed`. A source-detail URL that omits the original query parameters no longer triggers the reported identity-conflict error. Refresh retains the original work identity, full URL and existing chapter/progress/download associations. This acceptance covers the Windows repair, not other platforms or a new public product release.
+
 ## 2026-11-15 — Android initial reader loading feedback accepted
 
 The project owner accepted signed Android candidate `0.19.4-aex.139 / vc157` on the tablet in a private review on November 15, 2026 and authorized main integration and push. Implementation: `ad7a30685d`; candidate source: `e6245f22ca`. Opening an online or undownloaded chapter now shows a centered indicator from the initial reader frame and hands over to the current page slots only when their feedback is ready. Initial retries restore feedback, and intentional empty slots remain empty. This acceptance covers the Android loading repair and retains the previously accepted two-page swipe repair; it does not establish acceptance on other platforms or a new public product release.
