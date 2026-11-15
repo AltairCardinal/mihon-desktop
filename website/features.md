@@ -63,6 +63,8 @@ Mihon’s reading and library experience gains a desktop home. Use the desktop i
 
 ## Two-page reading and spread matching {#two-page-reading}
 
+**Android initial loading feedback:** Opening an online or undownloaded chapter shows a centered loading indicator from the reader's initial frame, including when opening the reader from a cold start. Once the current page slots have their loading feedback ready, the reader hands over to those indicators without a blank gap. Retrying an initial failure restores loading feedback; intentional empty slots do not show artificial loading indicators. Acceptance covers Android candidate `0.19.4-aex.139 / vc157`.
+
 Read adjacent pages side by side, display landscape pages, and adjust pairing manually when a cover or page sequence shifts the layout.
 
 **Try it:** open a chapter, select two-page reading, and inspect the page order. If a pair is wrong, adjust it manually in the reader. Use a chapter you know well to compare the result with the intended spread.
