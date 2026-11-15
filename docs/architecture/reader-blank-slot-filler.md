@@ -46,3 +46,11 @@
 ### 2026-11-15 修复验证
 
 完整157基线移入填充并修正共享资格，同一批提交保留预准备/native复用链。实际红测覆盖DEFAULT横跨页前半槽误填与预加载壳重描述遗漏装饰标记；修复后 `blank-fix-final` 成功：共享5项、Android填充/异步/metadata8项、157 preparation/reuse/loading代表3项、Desktop native/metadata2项全部通过，另3个mapper用例复用`blank-fix-focused`绿色结果；19个任务Kotlin文件ktlint及git diff检查通过。独立审查无未解决阻塞。此组合证据不等于整个模块或最终代码全量通过，未测量实体设备翻页到屏延迟。
+
+### 手动边界前的竖页余页
+
+canonical 扫描在前一组已消费、下一页为手动强制独页时，将剩余竖页归为 `MANUAL_BOUNDARY`，而非 `UNRESOLVED/FULL`。该分类位于既有开篇、宽页和歧义原因之后，保持真实几何的优先级；本页无可靠侧提示时按方向占 leading 半槽。相同扫描也用于有限认证，因此认证和完整分区消费同一原因与槽位。
+
+`MANUAL_BOUNDARY` 可以表示本页强制独页，也可以表示下一页的边界留下本页。DEFAULT 投影对这两种单页仅在自动匹配开启、本页为 PORTRAIT 且有可靠 LEFT/RIGHT 提示时校正自己的槽位，不重新运行局部配对、不改变成员和 certain。这样既不会回头占用前一组，也避免等待其它原图证据时先锁错侧。边界前余页仍不属于 DEFAULT 的“本页 forced”装饰例外，白纸与图案必须等待当前完整认证；认证升级只发布装饰资格，保留同一物理帧和真实页身份。
+
+手动记录、认证依赖缓存及已绘像素保护保持原链路。下一页后来确认宽图时按既有几何原因重算；已有锁帧不在中途强换槽，新的阅读 session 从保存记录重新投影，无需清除用户数据。回归入口为 `ReaderManualBoundaryRemainderTest`，另由 Android 真实 holder/手动保存恢复和 Desktop shared-frame 映射用例覆盖接线。

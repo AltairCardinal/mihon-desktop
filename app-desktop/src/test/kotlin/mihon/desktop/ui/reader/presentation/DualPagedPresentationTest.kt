@@ -113,6 +113,39 @@ class DualPagedPresentationTest {
 
     @OptIn(ExperimentalComposeUiApi::class)
     @Test
+    fun `certified manual boundary remainder maps its shared half slot and decorative paper`() = runTest {
+        for (direction in listOf(ReaderDirection.RTL, ReaderDirection.LTR)) {
+            val input = request(
+                pageCount = 6,
+                direction = direction,
+                options = PresentationFixtureOptions(forcedSinglePageIds = setOf(pageId(4))),
+                stateAt = { ReaderPageLoadState.Ready },
+            ).withSharedOwner(forcedSingles = setOf(4), projectFrames = true, certifyPage = 3)
+            val shared = input.dualPageFrames!!.single { pageId(3) in it.unit.pageIds }
+            assertEquals(mihon.domain.reader.ReaderDualPageSingleReason.MANUAL_BOUNDARY, shared.unit.singleReason)
+            val snapshot = DualPagedPresentation.present(input)
+            val unit = snapshot.displayUnits.single { it.slots.any { slot -> slot.page?.id == pageId(3) } }
+            val occupied = if (direction == ReaderDirection.RTL) 1 else 0
+            assertEquals(pageId(3), unit.slots[occupied].page?.id)
+            assertTrue(unit.slots[1 - occupied].isBlankPaper)
+            val scene = ImageComposeScene(400, 400, coroutineContext = coroutineContext) {
+                mihon.desktop.ui.reader.DualPageDisplayUnitFrame(unit, {}) { _, _ -> }
+            }
+            try {
+                scene.render(0).use { image ->
+                    org.jetbrains.skia.Bitmap.makeFromImage(image).use { bitmap ->
+                        assertEquals(0xFFFFFFFF.toInt(), bitmap.getColor(if (occupied == 1) 20 else 380, 100))
+                    }
+                }
+                assertEquals(setOf(pageId(3)), snapshot.resolveDualVisiblePages(unit.id).pageIds)
+            } finally {
+                scene.close()
+            }
+        }
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
     fun `certified internal single draws paper from its published frame`() = runTest {
         val input = request(
             pageCount = 5,

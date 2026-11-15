@@ -522,6 +522,55 @@ class DualPagerPageHolderLayoutTest {
 
     @Test
     @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `certified manual boundary remainder mounts half paper without fake progress`() = runTest {
+        val activity = viewer.activity
+        viewer.destroy()
+        viewer = DualPageR2LPagerViewer(activity, DualPagePairingStore(requiresRestoration = true))
+        viewer.config.navigationModeChangedListener = null
+        Injekt.get<ReaderPreferences>().automaticSpreadMatching().set(false)
+        runCurrent()
+        val chapter = loadedChapter(76132, 6)
+        val pages = requireNotNull(chapter.pages)
+        pages.forEach { it.stream = null }
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        val owner = requireNotNull(viewer.adapter.session(chapter))
+        assertTrue(
+            owner.acceptPairingRestore(
+                requireNotNull(owner.beginPairingRestore(explicit = true)),
+                mihon.domain.reader.ChapterPairingSnapshot(mihon.domain.reader.ChapterPairingRecord(1, 6, setOf(4)), 1),
+            ),
+        )
+        pages.forEach { viewer.adapter.updatePageDimensions(it, 100, 200) }
+        viewer.moveToPage(pages[3])
+        viewer.adapter.refreshPairing()
+        val proof = owner.certifyPairing(
+            owner.identity.pageIds[3],
+        ) as mihon.domain.reader.ReaderPairingCertification.Certified
+        assertEquals(mihon.domain.reader.ReaderDualPageSingleReason.MANUAL_BOUNDARY, proof.segment.unit.singleReason)
+        viewer.adapter.refreshPresentationFrames()
+        val display = viewer.adapter.items.filterIsInstance<DisplayPage.Single>().single { it.page === pages[3] }
+        assertEquals(ReaderPortraitSingleSlot.RIGHT, display.slot)
+        assertEquals(ReaderPortraitSingleSlot.LEFT, display.blankPaperSlot)
+        val holder = DualPagerPageHolder(viewer.activity, viewer, display)
+        try {
+            measure(holder, 1400, 1000)
+            val output = Bitmap.createBitmap(1400, 1000, Bitmap.Config.ARGB_8888)
+            try {
+                holder.draw(Canvas(output))
+                assertEquals(android.graphics.Color.WHITE, output.getPixel(200, 500))
+                assertEquals(listOf(pages[3]), holder.displayPage.visiblePages)
+                val (_, ticket) = requireNotNull(holder.presentationScope)
+                assertTrue(owner.frame(ticket)!!.drawnPageIds.isEmpty())
+            } finally {
+                output.recycle()
+            }
+        } finally {
+            detach(holder)
+        }
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
     fun `published blank flag updates preserve native image camera and encoded reads`() = runTest {
         useOriginalPngDecoder()
         Injekt.get<ReaderPreferences>().automaticSpreadMatching().set(true)

@@ -158,17 +158,24 @@ internal class ReaderDualPagePresentationOwner(
             )
         }
         ).map { proposed ->
-        // A restored manual single keeps reliable own-page side geometry without allowing
-        // decoded side hints to choose the unknown chapter pairing phase.
-        val unit = if (proposed.singleReason == ReaderDualPageSingleReason.MANUAL_BOUNDARY) {
-            SharedDualPageRules.decide(
-                pages,
-                facts,
-                direction,
-                ordinals.getValue(proposed.anchor),
-                forcedSinglePages = forced,
-                usePageSideHints = automatic,
-            ).unit
+        // A manual single or boundary remainder may retain its own reliable side geometry.
+        // Correct only that physical slot: a local decision could pair the remainder backwards
+        // into a page already consumed by the canonical partition.
+        val slot = proposed.slots.singleOrNull()
+        val fact = slot?.let { facts[it.pageId] }
+        val hintedPosition = if (automatic && fact?.state == ReaderPageFactState.PORTRAIT) {
+            when (fact.sideHint) {
+                ReaderPageSideHint.LEFT -> ReaderPortraitSingleSlot.LEFT
+                ReaderPageSideHint.RIGHT -> ReaderPortraitSingleSlot.RIGHT
+                ReaderPageSideHint.UNKNOWN -> null
+            }
+        } else {
+            null
+        }
+        val unit = if (proposed.singleReason == ReaderDualPageSingleReason.MANUAL_BOUNDARY &&
+            slot != null && hintedPosition != null && slot.position != hintedPosition
+        ) {
+            proposed.copy(slots = listOf(slot.copy(position = hintedPosition)))
         } else {
             proposed
         }

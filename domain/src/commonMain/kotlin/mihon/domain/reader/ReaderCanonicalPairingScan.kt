@@ -141,6 +141,7 @@ internal class ReaderCanonicalPairingScan(
             cursor.opening && wide(i + 1) -> ReaderDualPageSingleReason.OPENING
             wide(i + 1) && wide(i - 1) -> ReaderDualPageSingleReason.AMBIGUOUS
             wide(i + 1) -> ReaderDualPageSingleReason.REMAINDER_BEFORE_SPREAD
+            pages.getOrNull(i + 1) in forced -> ReaderDualPageSingleReason.MANUAL_BOUNDARY
             laterWins(i) -> ReaderDualPageSingleReason.MATCH_BOUNDARY
             else -> ReaderDualPageSingleReason.UNRESOLVED
         }
