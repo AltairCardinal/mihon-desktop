@@ -111,7 +111,21 @@ abstract class SyncRuntimeStorageContract {
         verifyLocalReceiptRecovery(orphan = false)
     }
 
-    private suspend fun verifyLocalReceiptRecovery(orphan: Boolean) {
+    @Test
+    fun `legacy unknown merging run probes accepted local projection without network`() = runBlocking {
+        verifyLocalReceiptRecovery(orphan = true, blocked = true)
+    }
+
+    @Test
+    fun `legacy merge probe failure preserves storage block without remote writes`() = runBlocking {
+        verifyLocalReceiptRecovery(orphan = true, blocked = true, probeFailure = true)
+    }
+
+    private suspend fun verifyLocalReceiptRecovery(
+        orphan: Boolean,
+        blocked: Boolean = false,
+        probeFailure: Boolean = false,
+    ) {
         open().use { storage ->
             SyncOnboardingFixture(storage).use { setup ->
                 setup.existing("")
@@ -167,15 +181,55 @@ abstract class SyncRuntimeStorageContract {
                 assertTrue(runs.claim(run.runId, "previous-process", 1))
                 runs.expectDownload(run.runId, "previous-process", "runtime-remove", 1)
                 runs.freezePlan(run.runId, "previous-process", emptyList())
-                runs.finish(run.runId, SyncRunState.PARTIAL, "projection_pending", "previous-process")
+                if (blocked) {
+                    runs.progress(
+                        run.runId,
+                        mihon.data.sync.runtime.SyncRunPhase.MERGING,
+                        0,
+                        1,
+                        ownerSession = "previous-process",
+                    )
+                }
+                runs.finish(
+                    run.runId,
+                    if (blocked) SyncRunState.BLOCKED else SyncRunState.PARTIAL,
+                    if (blocked) "UNKNOWN" else "projection_pending",
+                    "previous-process",
+                )
+                if (probeFailure) {
+                    storage.driver.execute(
+                        null,
+                        "CREATE TRIGGER fail_local_probe BEFORE UPDATE ON sync_field_state " +
+                            "BEGIN SELECT RAISE(ABORT, 'projection SQL failure'); END",
+                        0,
+                    )
+                }
                 val requests = setup.git.server.requestCount
                 assertTrue(runtime.resumeIfNeeded())
                 val settled = runs.latest("space", 1)!!
                 assertEquals(run.runId, settled.runId)
-                assertEquals(SyncRunState.SUCCEEDED, settled.state)
-                assertEquals(1L, settled.confirmedItems)
+                assertEquals(if (probeFailure) SyncRunState.BLOCKED else SyncRunState.SUCCEEDED, settled.state)
+                assertEquals(if (probeFailure) 0L else 1L, settled.confirmedItems)
+                if (probeFailure) {
+                    assertEquals("local_projection_storage", settled.stopReason)
+                    setup.panel.dispatch(mihon.data.sync.runtime.SyncPanelAction.Open)
+                    setup.panel.awaitIdle()
+                    assertEquals(mihon.domain.sync.runtime.SyncRunProblem.STORAGE, setup.panel.state.value.problem)
+                }
                 assertNull(settled.ownerSession)
                 assertEquals(requests, setup.git.server.requestCount)
+                if (probeFailure) {
+                    assertTrue(runtime.hasResumableRun())
+                    assertTrue(runtime.recoveryDelayMillis() >= 900_000L)
+                    assertTrue(runtime.resumeIfNeeded())
+                    assertEquals(settled.attemptId, runs.get(run.runId)!!.attemptId)
+                    storage.driver.execute(null, "DROP TRIGGER fail_local_probe", 0)
+                    setup.now = settled.nextRetryAt
+                    assertTrue(runtime.resumeIfNeeded())
+                    assertEquals(SyncRunState.SUCCEEDED, runs.get(run.runId)!!.state)
+                    assertEquals(1L, runs.get(run.runId)!!.confirmedItems)
+                    assertEquals(requests, setup.git.server.requestCount)
+                }
                 assertTrue(!runtime.resumeIfNeeded())
                 assertEquals(1L, runs.get(run.runId)!!.confirmedItems)
                 assertEquals("space", runtime.connection()!!.spaceId)

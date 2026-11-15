@@ -2,6 +2,8 @@ package mihon.data.sync
 
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import mihon.data.sync.runtime.SyncDiagnosticEnvironment
 import mihon.data.sync.runtime.SyncDiagnosticJournal
 import mihon.data.sync.runtime.SyncJournalCode
@@ -16,6 +18,22 @@ import org.junit.jupiter.api.Test
 import java.nio.file.Files
 
 abstract class SyncDiagnosticJournalContract {
+    @Test
+    fun `database extended result code survives restart without SQL text`() {
+        val directory = Files.createTempDirectory("sync-journal-database")
+        val journal = SyncDiagnosticJournal(directory.toOkioPath())
+        journal.record(
+            SyncJournalEventKind.EXCEPTION,
+            SyncJournalStage.MERGING,
+            failure = IllegalStateException(SECRET, java.sql.SQLException(SECRET, SECRET, 517)),
+        )
+        val restored = SyncDiagnosticJournal(directory.toOkioPath()).snapshot()
+        val encoded = Json.encodeToString(restored.events.single())
+        val event = Json.parseToJsonElement(encoded).jsonObject
+        assertEquals("517", event["databaseErrorCode"]?.jsonPrimitive?.content)
+        assertFalse(encoded.contains(SECRET))
+    }
+
     @Test
     fun `exception cycles and hostile frames are bounded and event versions survive upgrade`() {
         val directory = Files.createTempDirectory("sync-journal-graph")

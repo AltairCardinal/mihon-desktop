@@ -568,6 +568,7 @@ class SyncDatabaseExchange(
             )
             problem = failure.syncProblem()
             retryAfterMillis = (failure as? SyncHttpException)?.retryAfterMillis
+                ?: LOCAL_DATABASE_RETRY_MILLIS.takeIf { failure.isRetryableSyncDatabaseFailure() }
             networkPhase = (failure as? SyncHttpException)?.networkPhase
             httpStatus = (failure as? SyncHttpException)?.code
         }
@@ -637,7 +638,26 @@ private fun SyncBatch.itemLogs(result: String): List<SyncBatchLogEntry> {
         }
 }
 
-internal fun Exception.syncProblem(): SyncRunProblem = when (this) {
+internal const val LOCAL_DATABASE_RETRY_MILLIS = 900_000L
+
+/** Actual driver code, including SQLite extended result codes; no message-based classification. */
+internal fun Throwable.syncDatabaseErrorCode(): Int? = generateSequence(this) { it.cause }.take(8)
+    .filterIsInstance<java.sql.SQLException>().firstOrNull()?.errorCode
+
+/** Driver codes are used instead of exception messages; permanent SQL/data errors stay blocked. */
+internal fun Throwable.isRetryableSyncDatabaseFailure(): Boolean =
+    syncDatabaseErrorCode()?.let { (it and 0xff) in setOf(5, 6) } == true ||
+        generateSequence(this) { it.cause }.take(8).any {
+            it.javaClass.name == "android.database.sqlite.SQLiteDatabaseLockedException" ||
+                it.javaClass.name == "android.database.sqlite.SQLiteTableLockedException"
+        }
+
+internal fun Exception.syncProblem(): SyncRunProblem = when {
+    isRetryableSyncDatabaseFailure() -> SyncRunProblem.STORAGE
+    else -> syncNonDatabaseProblem()
+}
+
+private fun Exception.syncNonDatabaseProblem(): SyncRunProblem = when (this) {
     is mihon.data.sync.transport.SyncRemoteDataInvalid -> SyncRunProblem.INVALID_DATA
     is mihon.data.sync.http.SyncRequiredResourceUnavailable -> SyncRunProblem.SPACE_UNAVAILABLE
     is mihon.domain.sync.crypto.SyncCryptoException -> SyncRunProblem.INVALID_DATA

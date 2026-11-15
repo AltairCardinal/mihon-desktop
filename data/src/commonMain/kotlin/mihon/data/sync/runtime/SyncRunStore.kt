@@ -735,6 +735,58 @@ class SyncRunStore(
         claimed
     }
 
+    internal suspend fun hasAcceptedLocalReceipts(runId: String): Boolean = handler.await {
+        val run = sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull() ?: return@await false
+        sync_runtimeQueries.getRuntimePlanMembers(runId).executeAsList().filter {
+            it.direction == SyncProgressDirection.DOWNLOAD.name
+        }.any {
+            sync_inboxQueries.getReceivedBatch(run.space_id, run.generation, it.batch_id).executeAsOneOrNull() != null
+        }
+    }
+
+    /** Claim only accepted local receipts from the old merge failure, never an arbitrary UNKNOWN run. */
+    internal suspend fun claimLocalProjectionRecovery(runId: String, owner: String): Boolean =
+        handler.await(inTransaction = true) {
+            val active = sync_journalQueries.getActiveSpace().executeAsOneOrNull() ?: return@await false
+            val run = sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull() ?: return@await false
+            if (!active.exchange_enabled || run.space_id != active.space_id || run.generation != active.generation ||
+                run.phase != SyncRunPhase.MERGING.name ||
+                !(
+                    (
+                        run.owner_session == null && run.state == SyncRunState.BLOCKED.name &&
+                            run.stop_reason in setOf("UNKNOWN", "local_projection_storage")
+                        ) ||
+                        (
+                            run.owner_session == null && run.state == SyncRunState.WAITING_RETRY.name &&
+                                run.stop_reason == "STORAGE"
+                            ) ||
+                        (run.state in setOf("RUNNING", "WAITING_SYSTEM") && run.stop_reason == "local_projection")
+                    ) ||
+                run.next_retry_at > clock()
+            ) {
+                return@await false
+            }
+            val received = sync_runtimeQueries.getRuntimePlanMembers(runId).executeAsList().filter {
+                it.direction == SyncProgressDirection.DOWNLOAD.name
+            }.any {
+                sync_inboxQueries.getReceivedBatch(run.space_id, run.generation, it.batch_id)
+                    .executeAsOneOrNull() != null
+            }
+            if (!received) return@await false
+            sync_runtimeQueries.updateRuntimeState(
+                SyncRunState.WAITING_SYSTEM.name,
+                "local_projection",
+                null,
+                clock(),
+                runId,
+            )
+            val claimed = claim(runId, owner, run.attempt_id + 1)
+            if (claimed) {
+                sync_runtimeQueries.updateRuntimeStateOwned("RUNNING", "local_projection", owner, clock(), runId, owner)
+            }
+            claimed
+        }
+
     suspend fun recordNetworkFailure(runId: String, ownerSession: String): Long =
         handler.await(inTransaction = true) {
             sync_runtimeQueries.incrementRuntimeNetworkFailureOwned(clock(), runId, ownerSession)

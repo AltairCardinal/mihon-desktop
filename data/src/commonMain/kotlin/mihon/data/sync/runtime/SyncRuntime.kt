@@ -1,7 +1,14 @@
 package mihon.data.sync.runtime
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
@@ -620,24 +627,65 @@ class SyncRuntime(
         if (panelDelegate.isInitialized()) panelDelegate.value.stop()
     }
 
+    private val localResumeMutex = Mutex()
+    private val localProjectionLock = Any()
+    private var localProjectionEpoch = 0L
+    private var localProjectionJob: Job? = null
+    private var localProjectionRunId: String? = null
+
+    @Volatile private var localProjectionStopping = false
+
+    @Volatile private var localProjectionStoppedRunId: String? = null
+
+    @Volatile private var localProjectionNotBefore: Pair<String, Long>? = null
+
+    private fun localProjectionDeadline(run: SyncRunSnapshot): Long =
+        localProjectionNotBefore?.takeIf { it.first == run.runId }?.second ?: 0L
+
+    private suspend fun stopLocalProjection() {
+        val job = synchronized(localProjectionLock) {
+            localProjectionStopping = true
+            localProjectionEpoch++
+            localProjectionRunId?.let { localProjectionStoppedRunId = it }
+            localProjectionJob
+        }
+        job?.cancelAndJoin()
+    }
+
     private suspend fun isResumable(run: SyncRunSnapshot): Boolean = run.state in RESUMABLE_STATES ||
-        (run.state == SyncRunState.PARTIAL && runStore.hasPlannedWork(run.runId))
+        (run.state == SyncRunState.PARTIAL && runStore.hasPlannedWork(run.runId)) ||
+        (isLocalProjectionCandidate(run) && runStore.hasAcceptedLocalReceipts(run.runId))
+
+    private fun isLocalProjectionCandidate(run: SyncRunSnapshot): Boolean =
+        run.phase == SyncRunPhase.MERGING && (
+            (
+                run.ownerSession == null && run.state == SyncRunState.BLOCKED &&
+                    run.stopReason in setOf("UNKNOWN", "local_projection_storage")
+                ) ||
+                (run.ownerSession == null && run.state == SyncRunState.WAITING_RETRY && run.stopReason == "STORAGE") ||
+                (
+                    run.state in setOf(SyncRunState.RUNNING, SyncRunState.WAITING_SYSTEM) &&
+                        run.stopReason == "local_projection"
+                    )
+            )
 
     /** Resumes only an accepted system-interrupted run; a user pause remains paused. */
     suspend fun hasResumableRun(): Boolean {
         val connection = connection() ?: return false
         if (recoveryBlocked(connection)) return false
         return runStore.active(connection.spaceId, connection.generation)?.let {
-            isResumable(it)
+            connection.enabled && !connection.unsupportedFormat && isResumable(it)
         } == true
     }
 
     /** Returns whether an accepted automatic run is allowed to make its next attempt now. */
     suspend fun isRecoveryDue(): Boolean {
         val connection = connection() ?: return false
+        if (!connection.enabled || connection.unsupportedFormat) return false
         if (recoveryBlocked(connection)) return false
         return runStore.active(connection.spaceId, connection.generation)?.let {
-            isResumable(it) && maxOf(it.nextRetryAt, scheduledAccountHttpNotBefore(connection)) <= clock()
+            isResumable(it) &&
+                maxOf(it.nextRetryAt, localProjectionDeadline(it), scheduledAccountHttpNotBefore(connection)) <= clock()
         } == true
     }
 
@@ -647,7 +695,13 @@ class SyncRuntime(
         if (recoveryBlocked(connection)) return 0L
         return runStore.active(connection.spaceId, connection.generation)?.let {
             if (isResumable(it)) {
-                (maxOf(it.nextRetryAt, scheduledAccountHttpNotBefore(connection)) - clock()).coerceAtLeast(0L)
+                (
+                    maxOf(
+                        it.nextRetryAt,
+                        localProjectionDeadline(it),
+                        scheduledAccountHttpNotBefore(connection),
+                    ) - clock()
+                    ).coerceAtLeast(0L)
             } else {
                 0L
             }
@@ -676,27 +730,137 @@ class SyncRuntime(
 
     /** Resumes only an accepted system-interrupted run; a user pause remains paused. */
     suspend fun resumeIfNeeded(): Boolean {
-        val connection = connection() ?: return false
-        if (recoveryBlocked(connection)) return false
-        if (runStore.active(connection.spaceId, connection.generation) == null) {
-            completePendingSetupIfSettled()
+        return localResumeMutex.withLock {
+            if (localProjectionStopping) return false
+            val localEpoch = synchronized(localProjectionLock) { localProjectionEpoch }
+            val connection = connection() ?: return false
+            if (recoveryBlocked(connection)) return false
+            if (runStore.active(connection.spaceId, connection.generation) == null) {
+                completePendingSetupIfSettled()
+            }
+            val run = runStore.active(connection.spaceId, connection.generation) ?: return false
+            if (localProjectionStoppedRunId == run.runId) return false
+            if (isLocalProjectionCandidate(run)) return recoverLocalProjection(connection, run, localEpoch)
+            if (recoverLocalOrphanDecisions(connection, run)) return true
+            if (settleLocalReceipts(connection.spaceId, connection.generation)) return true
+            if (!isResumable(run)) return false
+            if (maxOf(run.nextRetryAt, scheduledAccountHttpNotBefore(connection)) > clock()) return true
+            if (!coordinator.activity.value.running && run.state in setOf(
+                    SyncRunState.RUNNING,
+                    SyncRunState.WAITING_NETWORK,
+                    SyncRunState.WAITING_RETRY,
+                )
+            ) {
+                runStore.releaseForRecovery(run.runId)
+            }
+            coordinator.synchronize(SyncTrigger.RECOVERY)
+            true
         }
-        val run = runStore.active(connection.spaceId, connection.generation) ?: return false
-        if (recoverLocalOrphanDecisions(connection, run)) return true
-        if (settleLocalReceipts(connection.spaceId, connection.generation)) return true
-        if (!isResumable(run)) return false
-        if (maxOf(run.nextRetryAt, scheduledAccountHttpNotBefore(connection)) > clock()) return true
-        if (!coordinator.activity.value.running && run.state in setOf(
-                SyncRunState.RUNNING,
-                SyncRunState.WAITING_NETWORK,
-                SyncRunState.WAITING_RETRY,
-            )
-        ) {
-            runStore.releaseForRecovery(run.runId)
-        }
-        coordinator.synchronize(SyncTrigger.RECOVERY)
-        return true
     }
+
+    /** An old unclassified merge failure is probed locally before normal exchange can be resumed. */
+    private suspend fun recoverLocalProjection(connection: SyncConnection, run: SyncRunSnapshot, epoch: Long): Boolean =
+        coroutineScope {
+            val task = async(start = CoroutineStart.LAZY) { recoverLocalProjectionOwned(connection, run) }
+            val accepted = synchronized(localProjectionLock) {
+                if (localProjectionStopping || localProjectionEpoch != epoch ||
+                    localProjectionJob?.isCompleted == false
+                ) {
+                    false
+                } else {
+                    localProjectionJob = task
+                    localProjectionRunId = run.runId
+                    true
+                }
+            }
+            if (!accepted) {
+                task.cancel()
+                return@coroutineScope false
+            }
+            try {
+                task.await()
+            } catch (cancelled: CancellationException) {
+                currentCoroutineContext().ensureActive()
+                true
+            } finally {
+                synchronized(localProjectionLock) {
+                    if (localProjectionJob === task) {
+                        localProjectionJob = null
+                        localProjectionRunId = null
+                    }
+                }
+            }
+        }
+
+    private suspend fun recoverLocalProjectionOwned(connection: SyncConnection, run: SyncRunSnapshot): Boolean =
+        connectionMutex.withLock {
+            if (!connection.enabled || connection.unsupportedFormat) return@withLock false
+            if (coordinator.activity.value.running || rawConnection() != connection) return@withLock false
+            if (maxOf(run.nextRetryAt, localProjectionDeadline(run)) > clock()) return@withLock true
+            val owner = UUID.randomUUID().toString()
+            try {
+                if (!runStore.claimLocalProjectionRecovery(run.runId, owner)) return@withLock false
+                projector.retryOrphanDecisions(connection.spaceId, connection.generation)
+                while (projector.project(connection.spaceId, connection.generation) == 50) {
+                    kotlinx.coroutines.yield()
+                }
+                runStore.confirmReceived(run.runId, owner)
+                runStore.reconcilePublishedPlan(run.runId, owner)
+                val pending = projector.pending(connection.spaceId, connection.generation, limit = 1).isNotEmpty()
+                val unfinished =
+                    runStore.hasUnconfirmedDownloads(run.runId, owner) || runStore.hasPlannedWork(run.runId)
+                runStore.finish(
+                    run.runId,
+                    if (pending || unfinished) SyncRunState.PARTIAL else SyncRunState.SUCCEEDED,
+                    if (pending) {
+                        "pending_decision"
+                    } else if (unfinished) {
+                        "projection_pending"
+                    } else {
+                        null
+                    },
+                    owner,
+                )
+            } catch (cancelled: CancellationException) {
+                withContext(NonCancellable) {
+                    runStore.finish(run.runId, SyncRunState.BLOCKED, "local_projection_storage", owner)
+                }
+                throw cancelled
+            } catch (failure: Exception) {
+                diagnosticJournal?.record(
+                    SyncJournalEventKind.EXCEPTION,
+                    SyncJournalStage.MERGING,
+                    run.runId,
+                    failure = failure,
+                    attemptId = run.attemptId + 1,
+                    trigger = SyncTrigger.RECOVERY,
+                )
+                val deadline = clock() + LOCAL_DATABASE_RETRY_MILLIS
+                localProjectionNotBefore = run.runId to deadline
+                // The database may still be locked at claim/persist time. Preserve the old facts and
+                // keep an in-process cooldown if the durable deadline cannot yet be written.
+                try {
+                    val current = runStore.get(run.runId)
+                    if (current?.ownerSession == owner) {
+                        val transient = failure.isRetryableSyncDatabaseFailure()
+                        val nextState = if (transient) SyncRunState.WAITING_RETRY else SyncRunState.BLOCKED
+                        val reason = if (transient) "STORAGE" else "local_projection_storage"
+                        runStore.progress(
+                            run.runId, SyncRunPhase.MERGING, current.processed, current.total,
+                            current.completed, current.skipped, current.failed,
+                            attemptId = current.attemptId, nextRetryAt = deadline,
+                            state = nextState, reason = reason, ownerSession = owner,
+                        )
+                        runStore.finish(run.runId, nextState, reason, owner)
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // No new authority is granted when storage cannot persist a recovery result.
+                }
+            }
+            true
+        }
 
     /** A local choice can complete an accepted receipt without loading connection secrets or contacting the server. */
     internal suspend fun settleLocalReceipts(spaceId: String, generation: Long): Boolean =
@@ -775,17 +939,31 @@ class SyncRuntime(
         }
 
     suspend fun cancelSync() {
-        connection()?.let { runStore.active(it.spaceId, it.generation)?.let { runStore.cancel(it.runId) } }
-        coordinator.cancelAndJoin()
+        try {
+            stopLocalProjection()
+            localProjectionStoppedRunId = connection()?.let { runStore.active(it.spaceId, it.generation)?.runId }
+            connection()?.let { runStore.active(it.spaceId, it.generation)?.let { runStore.cancel(it.runId) } }
+            coordinator.cancelAndJoin()
+        } finally {
+            localProjectionStopping = false
+        }
     }
 
     suspend fun pauseSync() {
-        val run = connection()?.let { runStore.active(it.spaceId, it.generation) }
-        if (run != null) liveSession?.hold(SyncProgressHold.PAUSING)
-        coordinator.cancelAndJoin()
-        if (run != null && runStore.get(run.runId)?.state in RESUMABLE_STATES + SyncRunState.RUNNING) {
-            runStore.pause(run.runId)
-            liveSession?.hold(SyncProgressHold.PAUSED)
+        try {
+            stopLocalProjection()
+            val run = connection()?.let { runStore.active(it.spaceId, it.generation) }
+            localProjectionStoppedRunId = run?.runId
+            if (run != null) liveSession?.hold(SyncProgressHold.PAUSING)
+            coordinator.cancelAndJoin()
+            if (run != null &&
+                runStore.get(run.runId)?.state in RESUMABLE_STATES + setOf(SyncRunState.RUNNING, SyncRunState.BLOCKED)
+            ) {
+                runStore.pause(run.runId)
+                liveSession?.hold(SyncProgressHold.PAUSED)
+            }
+        } finally {
+            localProjectionStopping = false
         }
     }
 
@@ -1161,18 +1339,12 @@ class SyncRuntime(
             return@withLock diagnosticSkip(SyncJournalCode.RECOVERY_BLOCKED, trigger = trigger)
         }
         val active = runStore.active(connection.spaceId, connection.generation)
+        if (trigger == SyncTrigger.MANUAL) localProjectionStoppedRunId = null
         if (trigger == SyncTrigger.STARTUP && active != null) {
             // Startup is a recovery probe. It must never create a second run over a
             // paused, blocked, or still owned run; the scheduler will resume an
             // eligible run separately.
             return@withLock diagnosticSkip(SyncJournalCode.STARTUP_ACTIVE, active?.runId, trigger)
-        }
-        if (trigger == SyncTrigger.STARTUP && active == null &&
-            runStore.latest(connection.spaceId, connection.generation)?.let {
-                it.state == SyncRunState.FAILED && it.stopReason == "retry_exhausted"
-            } == true
-        ) {
-            return@withLock diagnosticSkip(SyncJournalCode.RETRY_EXHAUSTED, active?.runId, trigger)
         }
         if (trigger == SyncTrigger.RECOVERY && (active == null || !isResumable(active))) {
             return@withLock diagnosticSkip(SyncJournalCode.NOT_RESUMABLE, active?.runId, trigger)
@@ -1186,13 +1358,6 @@ class SyncRuntime(
             active?.nextRetryAt?.takeIf { it > 0 }?.let { it > clock() } == true
         ) {
             return@withLock diagnosticSkip(SyncJournalCode.RETRY_NOT_DUE, active?.runId, trigger)
-        }
-        if (trigger in setOf(SyncTrigger.RECOVERY, SyncTrigger.PERIODIC) && active == null &&
-            runStore.latest(connection.spaceId, connection.generation)?.let {
-                it.state == SyncRunState.FAILED && it.stopReason == "retry_exhausted"
-            } == true
-        ) {
-            return@withLock diagnosticSkip(SyncJournalCode.RETRY_EXHAUSTED, active?.runId, trigger)
         }
         if (trigger == SyncTrigger.MANUAL && active?.state == SyncRunState.BLOCKED) {
             runStore.finish(active.runId, SyncRunState.CANCELLED, "superseded_by_manual_retry")
@@ -1224,15 +1389,9 @@ class SyncRuntime(
             )
         }
         val ownerSession = UUID.randomUUID().toString()
-        val automatic = trigger in setOf(SyncTrigger.RECOVERY, SyncTrigger.PERIODIC)
-        val exhausted = automatic && run.networkFailureCount >= MAX_NETWORK_FAILURES
-        val attemptId = if (exhausted) run.attemptId else run.attemptId + 1
+        val attemptId = run.attemptId + 1
         if (!runStore.claim(run.runId, ownerSession, attemptId)) {
             return@withLock diagnosticSkip(SyncJournalCode.CLAIM_REJECTED, run.runId, trigger)
-        }
-        if (exhausted) {
-            runStore.finish(run.runId, SyncRunState.FAILED, "retry_exhausted", ownerSession)
-            return@withLock SyncRunResult(SyncRunStatus.FAILED, problem = SyncRunProblem.NETWORK)
         }
         val progressSession = if (progressTelemetryEnabled) {
             lateinit var current: SyncLiveProgressSession
@@ -1382,6 +1541,7 @@ class SyncRuntime(
             SyncRunResult(
                 SyncRunStatus.FAILED,
                 problem = failure.syncProblem(),
+                retryAfterMillis = LOCAL_DATABASE_RETRY_MILLIS.takeIf { failure.isRetryableSyncDatabaseFailure() },
                 networkPhase = (failure as? mihon.data.sync.http.SyncHttpException)?.networkPhase,
                 httpStatus = (failure as? mihon.data.sync.http.SyncHttpException)?.code,
             )
@@ -1409,13 +1569,14 @@ class SyncRuntime(
                 result = result.copy(problem = checked.problem ?: SyncRunProblem.NETWORK)
             }
         }
-        val networkFailureCount = if (result.problem == SyncRunProblem.NETWORK && !exhausted) {
+        val networkFailureCount = if (result.problem == SyncRunProblem.NETWORK) {
             runStore.recordNetworkFailure(run.runId, ownerSession)
         } else {
             runStore.get(run.runId)?.networkFailureCount ?: run.networkFailureCount
         }
-        val retryAvailable = result.problem == SyncRunProblem.NETWORK &&
-            networkFailureCount < MAX_NETWORK_FAILURES
+        val retryAvailable = result.problem == SyncRunProblem.NETWORK ||
+            result.problem == SyncRunProblem.REMOTE_CHANGED ||
+            (result.problem == SyncRunProblem.STORAGE && result.retryAfterMillis != null)
         if (result.status == SyncRunStatus.SUCCESS) {
             val completedSnapshot = runStore.get(run.runId)
             val completedItems = (completedSnapshot?.uploaded ?: result.uploaded.toLong()) +
@@ -1457,7 +1618,13 @@ class SyncRuntime(
                     snapshot.failed,
                     attemptId = snapshot.attemptId,
                     nextRetryAt = clock() + maxOf(
-                        RETRY_DELAYS[delayIndex],
+                        if (result.problem == SyncRunProblem.REMOTE_CHANGED ||
+                            networkFailureCount >= MAX_NETWORK_FAILURES
+                        ) {
+                            LOCAL_DATABASE_RETRY_MILLIS
+                        } else {
+                            RETRY_DELAYS[delayIndex]
+                        },
                         result.retryAfterMillis?.coerceAtLeast(0L) ?: 0L,
                     ),
                     state = SyncRunState.WAITING_RETRY,
@@ -1515,7 +1682,7 @@ class SyncRuntime(
         const val CLIENT_ID = "Iv23liNtj6rhGAXJEwCS"
         const val APP_SLUG = "mihon-desktop"
 
-        /** Four network failures: the initial attempt plus three automatic retries. */
+        /** After the short retry sequence, retain low-frequency automatic recovery. */
         private const val MAX_NETWORK_FAILURES = 4L
         private val RETRY_DELAYS = longArrayOf(10_000L, 30_000L, 120_000L)
 

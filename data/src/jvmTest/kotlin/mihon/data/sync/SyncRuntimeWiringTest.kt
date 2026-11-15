@@ -817,7 +817,7 @@ class SyncRuntimeWiringTest {
                     val runtime = setup.runtime
                     val expiring = runtime.credentials.replace(
                         runtime.credentials.read()!!.revision,
-                        GitHubAccessToken("access-secret", "refresh-secret", "bearer", emptySet(), 1000, 1_000_000),
+                        GitHubAccessToken("access-secret", "refresh-secret", "bearer", emptySet(), 1000, 86_400_000),
                     )
                     for (code in listOf(500, 429)) {
                         auth.enqueue(mockwebserver3.MockResponse(code = code, body = "private diagnostic"))
@@ -851,10 +851,17 @@ class SyncRuntimeWiringTest {
                     )
                     auth.enqueue(mockwebserver3.MockResponse(code = 500, body = "private diagnostic"))
                     assertEquals(SyncRunProblem.NETWORK, runtime.coordinator.synchronize(SyncTrigger.PERIODIC).problem)
-                    assertEquals(SyncRunState.FAILED, runtime.runStore.latest("space", 1)?.state)
-                    assertEquals("retry_exhausted", runtime.runStore.latest("space", 1)?.stopReason)
+                    assertEquals(SyncRunState.WAITING_RETRY, runtime.runStore.latest("space", 1)?.state)
+                    assertEquals("NETWORK", runtime.runStore.latest("space", 1)?.stopReason)
                     assertEquals(4L, runtime.runStore.latest("space", 1)?.networkFailureCount)
-                    assertEquals(null, runtime.runStore.active("space", 1))
+                    assertTrue(runtime.recoveryDelayMillis() >= 900_000L)
+                    setup.now =
+                        maxOf(runtime.runStore.active("space", 1)!!.nextRetryAt, runtime.authorizationNotBeforeMillis())
+                    auth.enqueue(mockwebserver3.MockResponse(code = 500, body = "private diagnostic"))
+                    assertEquals(SyncRunProblem.NETWORK, runtime.coordinator.synchronize(SyncTrigger.PERIODIC).problem)
+                    assertEquals(SyncRunState.WAITING_RETRY, runtime.runStore.latest("space", 1)?.state)
+                    assertEquals(5L, runtime.runStore.latest("space", 1)?.networkFailureCount)
+                    assertTrue(runtime.recoveryDelayMillis() >= 900_000L)
                 }
             }
         }
@@ -1122,6 +1129,24 @@ class SyncRuntimeWiringTest {
     }
 
     @Test
+    fun `unknown outside merging never permits automatic remote recovery`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize("access-secret")
+                setup.begin()
+                val runtime = setup.runtime
+                val run = runtime.runStore.start("space", 1, SyncTrigger.MANUAL)
+                runtime.runStore.finish(run.runId, SyncRunState.BLOCKED, "UNKNOWN")
+                val requests = setup.git.server.requestCount
+                assertFalse(runtime.resumeIfNeeded())
+                assertEquals(SyncRunState.BLOCKED, runtime.runStore.get(run.runId)!!.state)
+                assertEquals(requests, setup.git.server.requestCount)
+            }
+        }
+    }
+
+    @Test
     fun `system recovery reclaims an orphaned run while user pause stays paused`() = runBlocking {
         Fixture().use { f ->
             SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
@@ -1192,7 +1217,7 @@ class SyncRuntimeWiringTest {
     }
 
     @Test
-    fun `startup does not reset an exhausted automatic run`() = runBlocking {
+    fun `startup recovers a legacy exhausted automatic run`() = runBlocking {
         Fixture().use { f ->
             SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
                 setup.existing("")
@@ -1203,8 +1228,12 @@ class SyncRuntimeWiringTest {
                 val exhausted = runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.RECOVERY)
                 runtime.runStore.finish(exhausted.runId, SyncRunState.FAILED, "retry_exhausted")
 
-                assertEquals(SyncRunStatus.SKIPPED, runtime.coordinator.synchronize(SyncTrigger.STARTUP).status)
-                assertEquals(exhausted.runId, runtime.runStore.latest(connection.spaceId, connection.generation)?.runId)
+                assertEquals(SyncRunStatus.SUCCESS, runtime.coordinator.synchronize(SyncTrigger.STARTUP).status)
+                assertEquals(SyncRunState.FAILED, runtime.runStore.get(exhausted.runId)!!.state)
+                assertEquals(
+                    SyncRunState.SUCCEEDED,
+                    runtime.runStore.latest(connection.spaceId, connection.generation)!!.state,
+                )
             }
         }
     }

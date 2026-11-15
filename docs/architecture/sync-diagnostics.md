@@ -23,6 +23,11 @@ method and source-file names are validated and bounded; source directory paths a
 Only explicitly allowlisted fixed failure reasons may become safe error codes. Unknown errors
 retain code locations without exposing their messages.
 
+Database failures may also carry `databaseErrorCode`, a bounded numeric driver result code
+(including a SQLite extended result code). It is retained across journal restarts without SQL,
+parameters, driver messages or SQL state text. The diagnostic field does not authorize recovery;
+the Runtime independently checks the active binding, accepted receipts and recovery owner.
+
 Run and request identifiers are exported as short SHA-256 aliases derived with a random,
 profile-local persisted salt. The salt and raw IDs are never exported. This alias survives
 restarts and is independent of the optional, expiring panel-observation session. Logs describe

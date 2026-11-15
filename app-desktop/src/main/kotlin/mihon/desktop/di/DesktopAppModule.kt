@@ -916,9 +916,11 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
     val upsertHistory = UpsertHistory(historyRepository)
     Injekt.addSingleton(networkToLocalManga)
     Injekt.addSingleton(updateChapter)
-    Injekt.addSingleton(SetChapterReadStatus(Injekt.get<GetChaptersByMangaId>(), updateChapter) { chapters ->
-        Injekt.get<mihon.desktop.download.DesktopReadDownloadDeletion>().prepareManualRead(chapters)
-    })
+    Injekt.addSingleton(
+        SetChapterReadStatus(Injekt.get<GetChaptersByMangaId>(), updateChapter) { chapters ->
+            Injekt.get<mihon.desktop.download.DesktopReadDownloadDeletion>().prepareManualRead(chapters)
+        },
+    )
     Injekt.addSingleton(updateManga)
     Injekt.addSingleton(SetMangaChapterFlags(mangaRepository))
     Injekt.addSingleton(upsertHistory)
@@ -1283,8 +1285,13 @@ internal suspend fun initUILayer(
         )
         Injekt.addSingleton(sharedDownloadPreferences)
         val readDownloadDeletion = mihon.desktop.download.DesktopReadDownloadDeletion(
-            sharedDownloadPreferences, mangaRepository, chapterRepository, Injekt.get(), downloadManager,
-            Injekt.get(), Injekt.get(),
+            sharedDownloadPreferences,
+            mangaRepository,
+            chapterRepository,
+            Injekt.get(),
+            downloadManager,
+            Injekt.get(),
+            Injekt.get(),
         )
         Injekt.addSingleton(readDownloadDeletion)
         Injekt.addSingleton(filterChaptersForDownload)
@@ -1538,6 +1545,14 @@ internal suspend fun initUILayer(
             onStopped = syncRuntime::stopPanel,
             resumeIfNeeded = syncRuntime::resumeIfNeeded,
             recoveryDelayMillis = syncRuntime::recoveryDelayMillis,
+            hasResumableRun = syncRuntime::hasResumableRun,
+            onRecoveryFailure = { failure ->
+                syncRuntime.diagnosticJournal?.record(
+                    mihon.data.sync.runtime.SyncJournalEventKind.EXCEPTION,
+                    mihon.data.sync.runtime.SyncJournalStage.RECOVERY,
+                    failure = failure,
+                )
+            },
         )
         Injekt.addSingleton(syncScheduler)
         val autoBackupScheduler = registerDesktopBackup(

@@ -1318,6 +1318,7 @@ class SyncPanelController(
     }
 
     private fun persistedProblem(run: SyncRunSnapshot): SyncRunProblem = when (run.stopReason) {
+        "local_projection_storage" -> SyncRunProblem.STORAGE
         "retry_exhausted",
         "network",
         -> SyncRunProblem.NETWORK
