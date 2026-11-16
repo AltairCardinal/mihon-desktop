@@ -5,6 +5,10 @@ description: A traceable history of public feature documentation, separate from 
 
 # Changelog
 
+## 2026-11-16 — Windows automatic sync recovery accepted
+
+The project owner confirmed the Windows sync repair in a private review on November 16, 2026 and authorized main integration and push. Accepted preview: `0.11.24.10.e35afaa` with the recorded dirty production inputs; implementation: `e35afaa8cd`, `640ddd5a8b`. Old merge blocks resume automatically while preserving saved decisions. Restored databases reconcile already published batches against authenticated remote content without republishing; transient network failures retry automatically. Two isolated database-restore runs completed successfully. This acceptance covers Windows recovery, not revoked credentials, incompatible or invalid remote data, other platforms, or a new public product release.
+
 ## 2026-11-15 — Windows source-detail refresh accepted
 
 The project owner accepted Windows preview `0.11.24.6.7b4cf6d` in a private review on November 15, 2026 and authorized main integration and push. Implementation: `7b4cf6d403`; main integration: `f9517bbfed`. A source-detail URL that omits the original query parameters no longer triggers the reported identity-conflict error. Refresh retains the original work identity, full URL and existing chapter/progress/download associations. This acceptance covers the Windows repair, not other platforms or a new public product release.
