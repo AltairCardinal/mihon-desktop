@@ -505,22 +505,12 @@ class DownloadManager(
 
     private suspend fun getChaptersToDelete(chapters: List<Chapter>, manga: Manga): List<Chapter> {
         // Retrieve the categories that are set to exclude from being deleted on read
-        val categoriesToExclude = downloadPreferences.removeExcludeCategories().get().map(String::toLong)
-
-        val categoriesForManga = getCategories.await(manga.id)
-            .map { it.id }
-            .ifEmpty { listOf(0) }
-        val filteredCategoryManga = if (categoriesForManga.intersect(categoriesToExclude).isNotEmpty()) {
-            chapters.filterNot { it.read }
-        } else {
-            chapters
-        }
-
-        return if (!downloadPreferences.removeBookmarkedChapters().get()) {
-            filteredCategoryManga.filterNot { it.bookmark }
-        } else {
-            filteredCategoryManga
-        }
+        return tachiyomi.domain.download.service.filterReadDownloadDeletion(
+            chapters,
+            getCategories.await(manga.id).map { it.id },
+            downloadPreferences.removeExcludeCategories().get(),
+            downloadPreferences.removeBookmarkedChapters().get(),
+        )
     }
 
     fun statusFlow(): Flow<Download> = queueState

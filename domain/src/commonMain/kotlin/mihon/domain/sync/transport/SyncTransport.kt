@@ -147,6 +147,21 @@ data class SyncInitializationCheckpoint(
 interface SyncTransportPort {
     fun prepare(snapshot: SyncSnapshot, encryptedBatch: SyncEncryptedBatch): SyncPreparedUpload
 
+    /** Reconstruct only the authenticated immutable artifact already present in this snapshot. */
+    suspend fun recoverPreparedUpload(snapshot: SyncSnapshot, batchId: String): SyncPreparedUpload? = null
+
+    /** Read-only live-ref confirmation; unsupported transports must never fall back to publication. */
+    suspend fun confirmPublished(
+        repository: SyncRepository,
+        snapshot: SyncSnapshot,
+        upload: SyncPreparedUpload,
+        observeSnapshot: suspend (SyncSnapshot) -> Unit = {},
+    ): SyncPublishResult = SyncPublishResult(
+        SyncPublishStatus.UNCONFIRMED,
+        upload.encryptedBatch.batchId,
+        failureClass = SyncPublishFailureClass.CONFLICT,
+    )
+
     /** Reads only the current branch ref when an exchange needs a terminal freshness probe. */
     suspend fun readCurrentHead(
         repository: SyncRepository,

@@ -49,6 +49,7 @@ class DesktopDownloadProvider(
     private val baseDir: File,
     private val directoryLister: (File) -> Array<File>? = File::listFiles,
 ) {
+    internal val artifactUsage = DesktopDownloadArtifactUsage()
     private val _availabilityRevision = MutableStateFlow(0L)
     val availabilityRevision = _availabilityRevision.asStateFlow()
 

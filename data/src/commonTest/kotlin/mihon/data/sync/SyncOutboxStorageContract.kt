@@ -62,6 +62,41 @@ abstract class SyncOutboxStorageContract {
     private val secret = SyncSecret.fromBytes(ByteArray(32) { (it + 1).toByte() })
 
     @Test
+    fun `restored outbox without artifact confirms existing remote bytes read only`() = runBlocking {
+        SyncGitSafetyContractTest().GitFixture().use { git ->
+            open().use { storage ->
+                storage.connect(repository)
+                storage.favorite("/restored-artifact", "restored")
+                val transport = git.transport()
+                transport.initialize(repository, "space", 1)
+                val store = SyncOutboxStore(storage.handler)
+                val exchange = SyncOutboxExchange(store, SyncBatchSyncService(transport, secret))
+                val original = requireNotNull(
+                    exchange.uploadNext(transport.readSnapshot(repository, "space", 1).getOrThrow()),
+                )
+                assertEquals(SyncPublishStatus.PUBLISHED, original.publish.status)
+                storage.driver.execute(
+                    null,
+                    "UPDATE sync_batches SET status = 'SEALED', prepared_upload = NULL WHERE batch_id = ?",
+                    1,
+                ) { bindString(0, original.publish.batchId) }
+                storage.driver.execute(null, "UPDATE sync_outbox SET status = 'QUEUED' WHERE batch_id = ?", 1) {
+                    bindString(0, original.publish.batchId)
+                }
+                val published = transport.readSnapshot(repository, "space", 1).getOrThrow()
+                val writes = git.pathWrites.mapValues { it.value.toList() }
+                val replay = requireNotNull(exchange.uploadNext(published, allowPublish = false))
+                assertEquals(SyncPublishStatus.PUBLISHED, replay.publish.status)
+                assertEquals(original.artifact.encryptedBatch, replay.artifact.encryptedBatch)
+                assertEquals(original.artifact.indexCiphertext, replay.artifact.indexCiphertext)
+                assertEquals(published.head, transport.readCurrentHead(repository, "space", 1).getOrThrow())
+                assertEquals(writes, git.pathWrites)
+                assertTrue(storage.journal.pendingEvents("space", 1).isEmpty())
+            }
+        }
+    }
+
+    @Test
     fun `blank source labels remain uploadable without changing stored metadata`() = runBlocking {
         open().use { storage ->
             storage.connect(repository)

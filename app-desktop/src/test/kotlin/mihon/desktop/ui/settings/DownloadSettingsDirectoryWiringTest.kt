@@ -51,6 +51,65 @@ import java.util.Locale
 class DownloadSettingsDirectoryWiringTest {
 
     @Test
+    fun `read deletion settings use shared preferences and are searchable`(@TempDir root: File) = runBlocking {
+        val node = java.util.prefs.Preferences.userRoot().node("/mihon-test/read-delete-ui/${java.util.UUID.randomUUID()}")
+        val fixture = fixture(root, store = tachiyomi.core.common.preference.DesktopPreferenceStore(node))
+        try {
+            val title = MR.strings.pref_remove_after_marked_as_read.localized()
+            assertTrue(title in renderText(fixture.scene))
+            val switch = semanticBranch(fixture.scene, title, Role.Switch)
+            assertTrue(requireNotNull(switch.config[SemanticsActions.OnClick].action).invoke())
+            render(fixture.scene)
+            assertTrue(tachiyomi.domain.download.service.DownloadPreferences(fixture.store).removeAfterMarkedAsRead().get())
+            val shared = tachiyomi.domain.download.service.DownloadPreferences(fixture.store)
+            listOf(-1 to MR.strings.disabled, 0 to MR.strings.last_read_chapter,
+                1 to MR.strings.second_to_last, 2 to MR.strings.third_to_last,
+                3 to MR.strings.fourth_to_last, 4 to MR.strings.fifth_to_last).forEach { (value, label) ->
+                click(fixture.scene, MR.strings.pref_remove_after_read.localized())
+                render(fixture.scene)
+                val radio = semanticBranch(fixture.scene, label.localized(), Role.RadioButton)
+                assertTrue(requireNotNull(radio.config[SemanticsActions.OnClick].action).invoke())
+                render(fixture.scene)
+                assertEquals(value, shared.removeAfterReadSlots().get())
+            }
+            click(fixture.scene, MR.strings.pref_remove_exclude_categories.localized())
+            render(fixture.scene)
+            val defaultCategory = semanticBranch(fixture.scene, MR.strings.label_default.localized(), Role.Checkbox)
+            assertTrue(requireNotNull(defaultCategory.config[SemanticsActions.OnClick].action).invoke())
+            render(fixture.scene)
+            click(fixture.scene, MR.strings.action_cancel.localized())
+            render(fixture.scene)
+            assertTrue(shared.removeExcludeCategories().get().isEmpty())
+            click(fixture.scene, MR.strings.pref_remove_exclude_categories.localized())
+            render(fixture.scene)
+            listOf(MR.strings.label_default.localized(), "Protected").forEach { name ->
+                val checkbox = semanticBranch(fixture.scene, name, Role.Checkbox)
+                assertTrue(requireNotNull(checkbox.config[SemanticsActions.OnClick].action).invoke())
+                render(fixture.scene)
+            }
+            click(fixture.scene, MR.strings.action_ok.localized())
+            render(fixture.scene)
+            assertEquals(setOf("0", "9"), shared.removeExcludeCategories().get())
+            fixture.scene.setContent { content(fixture.dependencies) }
+            render(fixture.scene)
+            assertEquals(4, shared.removeAfterReadSlots().get())
+            listOf(
+                MR.strings.pref_remove_after_marked_as_read,
+                MR.strings.pref_remove_after_read,
+                MR.strings.pref_remove_bookmarked_chapters,
+                MR.strings.pref_remove_exclude_categories,
+            ).forEach { resource ->
+                assertTrue(DesktopSettingsCatalog.search(resource.localized()).any {
+                    it.route is DownloadSettingsScreen && it.anchorTitle == resource.localized()
+                })
+            }
+        } finally {
+            fixture.close()
+            node.removeNode()
+        }
+    }
+
+    @Test
     fun `screen probes frozen active and pending roots once without changing the saved selection`(
         @TempDir tempDir: File,
     ) = runBlocking {
@@ -277,9 +336,9 @@ class DownloadSettingsDirectoryWiringTest {
         pendingDirectory: File? = null,
         availabilityProbe: RecordingAvailabilityProbe? = null,
         screenProbeResult: DesktopDownloadDirectoryProbeResult? = null,
+        store: tachiyomi.core.common.preference.PreferenceStore = InMemoryPreferenceStore(),
     ): Fixture {
         val defaultDirectory = tempDir.resolve("default-downloads").apply { mkdirs() }.normalized()
-        val store = InMemoryPreferenceStore()
         val preferences = DesktopDownloadPreferences(store)
         val directoryPreference = preferences.downloadDirectory(
             defaultDirectory = defaultDirectory,
@@ -306,10 +365,12 @@ class DownloadSettingsDirectoryWiringTest {
             every { filePicker } returns picker
             every { downloadDirectoryOpener } returns opener
             every { downloadQueuePort } returns queuePort
+            every { getCategories.subscribe() } returns MutableStateFlow(listOf(tachiyomi.domain.category.model.Category(9, "Protected", 0, 0)))
         }
         val scene = ImageComposeScene(1_000, 1_800) {}
         scene.setContent { content(dependencies) }
         return Fixture(
+            store = store,
             scene = scene,
             dependencies = dependencies,
             directoryPreference = directoryPreference,
@@ -416,6 +477,7 @@ class DownloadSettingsDirectoryWiringTest {
     }
 
     private data class Fixture(
+        val store: tachiyomi.core.common.preference.PreferenceStore,
         val scene: ImageComposeScene,
         val dependencies: DesktopUiDependencies,
         val directoryPreference: mihon.desktop.download.DesktopDownloadDirectoryPreference,

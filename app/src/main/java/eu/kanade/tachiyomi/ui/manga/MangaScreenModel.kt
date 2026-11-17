@@ -87,7 +87,9 @@ import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.model.NoChaptersException
 import tachiyomi.domain.chapter.service.calculateChapterGap
 import tachiyomi.domain.chapter.service.getChapterSort
+import tachiyomi.domain.library.ChapterRangeSelectionUndo
 import tachiyomi.domain.library.service.LibraryPreferences
+import tachiyomi.domain.library.toggleChapterRangeSelection
 import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
 import tachiyomi.domain.manga.interactor.GetMangaWithChapters
 import tachiyomi.domain.manga.interactor.LibraryMembershipResult
@@ -182,7 +184,19 @@ class MangaScreenModel(
         mutableState.update {
             when (it) {
                 State.Loading -> it
-                is State.Success -> func(it)
+                is State.Success -> {
+                    val updated = func(it)
+                    val selected = updated.chapters.filter { chapter -> chapter.selected }
+                        .mapTo(mutableSetOf()) { chapter -> chapter.id }
+                    val undo = updated.rangeSelectionUndo
+                    if (undo != null &&
+                        !undo.isValidFor(selected, updated.processedChapters.map { chapter -> chapter.id })
+                    ) {
+                        updated.copy(rangeSelectionUndo = null)
+                    } else {
+                        updated
+                    }
+                }
             }
         }
     }
@@ -1066,8 +1080,45 @@ class MangaScreenModel(
                     }
                 }
             }
-            successState.copy(chapters = newChapters)
+            successState.copy(chapters = newChapters, rangeSelectionUndo = null)
         }
+    }
+
+    fun selectRange() {
+        updateSuccessState { successState ->
+            val visible = successState.processedChapters
+            val selected = successState.chapters.filter { it.selected }.map { it.id }.toSet()
+            val visibleIds = visible.map { it.id }
+            val undoing = successState.rangeSelectionUndo?.isValidFor(selected, visibleIds) == true
+            val result = toggleChapterRangeSelection(
+                selectedIds = selected,
+                anchor = selectedPositions[0] to selectedPositions[1],
+                visibleIds = visibleIds,
+                undo = successState.rangeSelectionUndo,
+            )
+            selectedChapterIds.retainAll(result.selectedIds)
+            selectedChapterIds.addAll(result.selectedIds)
+            if (undoing) {
+                selectedPositions[0] = result.anchor.first
+                selectedPositions[1] = result.anchor.second
+            } else if (result.selectedIds != selected) {
+                selectedPositions[0] = visible.indexOfFirst { it.id in result.selectedIds }
+                selectedPositions[1] = visible.indexOfLast { it.id in result.selectedIds }
+            }
+            successState.copy(
+                chapters = successState.chapters.map { it.copy(selected = it.id in result.selectedIds) },
+                rangeSelectionUndo = result.undo,
+            )
+        }
+    }
+
+    fun clearRangeSelectionUndo() {
+        updateSuccessState { it.copy(rangeSelectionUndo = null) }
+    }
+
+    override fun onDispose() {
+        clearRangeSelectionUndo()
+        super.onDispose()
     }
 
     fun toggleAllSelection(selected: Boolean) {
@@ -1078,7 +1129,7 @@ class MangaScreenModel(
             }
             selectedPositions[0] = -1
             selectedPositions[1] = -1
-            successState.copy(chapters = newChapters)
+            successState.copy(chapters = newChapters, rangeSelectionUndo = null)
         }
     }
 
@@ -1090,7 +1141,7 @@ class MangaScreenModel(
             }
             selectedPositions[0] = -1
             selectedPositions[1] = -1
-            successState.copy(chapters = newChapters)
+            successState.copy(chapters = newChapters, rangeSelectionUndo = null)
         }
     }
 
@@ -1191,7 +1242,11 @@ class MangaScreenModel(
             val hasPromptedToAddBefore: Boolean = false,
             val hideMissingChapters: Boolean = false,
             val synchronizedResumeId: Long? = null,
+            val rangeSelectionUndo: ChapterRangeSelectionUndo<Pair<Int, Int>>? = null,
         ) : State {
+            val canUndoRangeSelection: Boolean
+                get() = rangeSelectionUndo != null
+
             val processedChapters by lazy {
                 chapters.applyFilters(manga).toList()
             }

@@ -17,6 +17,8 @@ import mihon.domain.sync.transport.SyncSnapshot
 import mihon.domain.sync.transport.SyncTransportPort
 import mihon.domain.sync.transport.SyncUploadResult
 
+class SyncUploadReconciliationUnavailable : IllegalStateException("sync upload cannot yet be reconciled read-only")
+
 /** The upload artifact is retained by callers so a retry reuses its exact ciphertext bytes. */
 class SyncBatchSyncService(
     private val transport: SyncTransportPort,
@@ -29,6 +31,40 @@ class SyncBatchSyncService(
     fun prepare(snapshot: SyncSnapshot, batch: SyncBatch, path: String): SyncPreparedUpload =
         transport.prepare(snapshot, SyncBatchEncryption.encrypt(engine, secret, batch, path, spaceMaterial))
 
+    /** A restored backup must reuse remote ciphertext rather than encrypting immutable content again. */
+    suspend fun prepareRecovering(
+        snapshot: SyncSnapshot,
+        batch: SyncBatch,
+        path: String,
+        allowPublish: Boolean = true,
+    ): SyncPreparedUpload {
+        if (snapshot.batches.none { it.batchId == batch.batchId }) {
+            if (!allowPublish) throw SyncUploadReconciliationUnavailable()
+            return prepare(snapshot, batch, path)
+        }
+        val recovered = transport.recoverPreparedUpload(snapshot, batch.batchId)
+            ?: throw SyncUploadReconciliationUnavailable()
+        requireRemoteData(recovered.repository == snapshot.repository && recovered.encryptedBatch.path == path) {
+            "recovered upload scope differs from the frozen batch"
+        }
+        requireRemoteData(
+            SyncBatchEncryption.decrypt(engine, secret, recovered.encryptedBatch, spaceMaterial) == batch,
+        ) {
+            "remote immutable batch differs from the frozen batch"
+        }
+        return recovered
+    }
+
+    suspend fun confirmPrepared(
+        repository: SyncRepository,
+        snapshot: SyncSnapshot,
+        prepared: SyncPreparedUpload,
+        observeSnapshot: suspend (SyncSnapshot) -> Unit = {},
+    ): SyncUploadResult = SyncUploadResult(
+        prepared,
+        transport.confirmPublished(repository, snapshot, prepared, observeSnapshot),
+    )
+
     suspend fun upload(
         repository: SyncRepository,
         snapshot: SyncSnapshot,
@@ -36,7 +72,7 @@ class SyncBatchSyncService(
         path: String,
         persist: suspend (SyncPreparedUpload) -> Unit,
     ): SyncUploadResult {
-        val prepared = prepare(snapshot, batch, path)
+        val prepared = prepareRecovering(snapshot, batch, path)
         persist(prepared)
         return uploadPrepared(repository, snapshot, prepared)
     }

@@ -60,6 +60,9 @@ data class SyncRunSnapshot(
     val pausedAt: Long? = null,
     val planStartedAt: Long? = null,
     val planPausedMillis: Long = 0,
+    val attemptStartedAt: Long? = null,
+    val attemptConfirmedBaseline: Long = 0,
+    val attemptPausedMillis: Long = 0,
 )
 
 data class SyncRunPlanBatch(
@@ -479,6 +482,19 @@ class SyncRunStore(
         val now = clock()
         val runId = UUID.randomUUID().toString()
         handler.await(inTransaction = true) {
+            val previousRun = sync_runtimeQueries.getLatestRuntimeRun(spaceId, generation).executeAsOneOrNull()
+            val reconciliation = previousRun?.let {
+                sync_runtimeQueries.getRuntimeConfirmation(it.run_id, "RECOVERY", "upload-reconciliation")
+                    .executeAsOneOrNull()?.status == "PENDING"
+            } == true
+            val previousMembers = if (reconciliation) {
+                sync_runtimeQueries.getRuntimePlanMembers(requireNotNull(previousRun).run_id).executeAsList()
+            } else {
+                emptyList()
+            }
+            val protectedUploads = previousMembers.filter { it.direction == SyncProgressDirection.UPLOAD.name }
+            val inheritReconciliation = reconciliation &&
+                (protectedUploads.isEmpty() || protectedUploads.any { it.status != "CONFIRMED" })
             val uploadedBaseline = sync_journalQueries.countPublishedEvents(spaceId, generation).executeAsOne()
             val downloadedBaseline = sync_journalQueries.countRemoteEvents(spaceId, generation, spaceId, generation)
                 .executeAsOne()
@@ -495,6 +511,21 @@ class SyncRunStore(
                 now,
                 now,
             )
+            if (inheritReconciliation) {
+                sync_runtimeQueries.insertRuntimeConfirmation(runId, "RECOVERY", "upload-reconciliation", 0, "PENDING")
+                previousMembers.filter { it.status != "CONFIRMED" }.forEach { member ->
+                    sync_runtimeQueries.insertRuntimeConfirmation(
+                        runId,
+                        member.direction,
+                        member.batch_id,
+                        member.item_count,
+                        member.status,
+                    )
+                }
+                sync_runtimeQueries.insertRuntimeConfirmation(runId, "PLAN", "round", 0, "PLANNED")
+                sync_runtimeQueries.ensureRuntimePauseClock(runId)
+                sync_runtimeQueries.startRuntimePlanClock(now, runId)
+            }
         }
         diagnosticJournal?.record(
             SyncJournalEventKind.RUN_START,
@@ -527,6 +558,15 @@ class SyncRunStore(
                 0L
             } else {
                 sync_runtimeQueries.countSourceFieldsInPendingRuntimeReceipts(
+                    spaceId = run.space_id,
+                    generation = run.generation,
+                    runId = runId,
+                ).executeAsOne()
+            },
+            invalidEvents = if (pending.isEmpty()) {
+                0L
+            } else {
+                sync_runtimeQueries.countFailureReportInvalidEvents(
                     spaceId = run.space_id,
                     generation = run.generation,
                     runId = runId,
@@ -711,11 +751,125 @@ class SyncRunStore(
     suspend fun claim(runId: String, ownerSession: String, attemptId: Long): Boolean = handler.await(
         inTransaction = true,
     ) {
-        sync_runtimeQueries.claimRuntimeRun(attemptId, ownerSession, clock(), runId, ownerSession)
-        sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull()?.let {
+        val startedAt = clock()
+        sync_runtimeQueries.claimRuntimeRun(attemptId, ownerSession, startedAt, runId, ownerSession)
+        val claimed = sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull()?.let {
             it.state == SyncRunState.RUNNING.name && it.owner_session == ownerSession && it.attempt_id == attemptId
         } == true
+        if (claimed) {
+            sync_runtimeQueries.ensureRuntimePauseClock(runId)
+            sync_runtimeQueries.startRuntimeAttemptClock(startedAt, runId)
+        }
+        claimed
     }
+
+    internal suspend fun hasLegacyUploadReconciliation(runId: String): Boolean = handler.await {
+        val run = sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull() ?: return@await false
+        if (run.state != SyncRunState.BLOCKED.name || run.phase != SyncRunPhase.UPLOADING.name ||
+            run.stop_reason != "UNKNOWN" || run.owner_session != null ||
+            sync_runtimeQueries.getRuntimePlanMarker(runId).executeAsOneOrNull() == null
+        ) {
+            return@await false
+        }
+        sync_runtimeQueries.getRuntimePlanMembers(runId).executeAsList().any { member ->
+            member.direction == SyncProgressDirection.UPLOAD.name && member.status != "CONFIRMED" &&
+                sync_journalQueries.getBatch(run.space_id, run.generation, member.batch_id)
+                    .executeAsOneOrNull()?.let { it.status == "SEALED" && it.prepared_upload == null } == true
+        }
+    }
+
+    /** Reopen only a frozen upload for authenticated remote confirmation, never fresh publication. */
+    internal suspend fun queueLegacyUploadReconciliation(runId: String): Boolean = handler.await(inTransaction = true) {
+        val active = sync_journalQueries.getActiveSpace().executeAsOneOrNull() ?: return@await false
+        val run = sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull() ?: return@await false
+        if (!active.exchange_enabled || run.space_id != active.space_id || run.generation != active.generation ||
+            !hasLegacyUploadReconciliation(runId)
+        ) {
+            return@await false
+        }
+        val marker = sync_runtimeQueries.getRuntimeConfirmation(runId, "RECOVERY", "upload-reconciliation")
+            .executeAsOneOrNull()
+        if (marker?.status == "CONFIRMED") return@await false
+        if (marker == null) {
+            sync_runtimeQueries.insertRuntimeConfirmation(runId, "RECOVERY", "upload-reconciliation", 0, "PENDING")
+        }
+        sync_runtimeQueries.updateRuntimeState(
+            SyncRunState.WAITING_SYSTEM.name,
+            "upload_reconciliation",
+            null,
+            clock(),
+            runId,
+        )
+        true
+    }
+
+    internal suspend fun requiresUploadReconciliation(runId: String): Boolean = handler.await {
+        sync_runtimeQueries.getRuntimeConfirmation(runId, "RECOVERY", "upload-reconciliation")
+            .executeAsOneOrNull()?.status == "PENDING"
+    }
+
+    internal suspend fun completeUploadReconciliation(runId: String, owner: String) =
+        handler.await(inTransaction = true) {
+            val run = sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull() ?: return@await
+            if (run.owner_session != owner) return@await
+            val uploads = sync_runtimeQueries.getRuntimePlanMembers(runId).executeAsList()
+                .filter { it.direction == SyncProgressDirection.UPLOAD.name }
+            if (uploads.isNotEmpty() && uploads.all { it.status == "CONFIRMED" }) {
+                sync_runtimeQueries.markRuntimeConfirmation(runId, "RECOVERY", "upload-reconciliation")
+            }
+        }
+
+    internal suspend fun hasAcceptedLocalReceipts(runId: String): Boolean = handler.await {
+        val run = sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull() ?: return@await false
+        sync_runtimeQueries.getRuntimePlanMembers(runId).executeAsList().filter {
+            it.direction == SyncProgressDirection.DOWNLOAD.name
+        }.any {
+            sync_inboxQueries.getReceivedBatch(run.space_id, run.generation, it.batch_id).executeAsOneOrNull() != null
+        }
+    }
+
+    /** Claim only accepted local receipts from the old merge failure, never an arbitrary UNKNOWN run. */
+    internal suspend fun claimLocalProjectionRecovery(runId: String, owner: String): Boolean =
+        handler.await(inTransaction = true) {
+            val active = sync_journalQueries.getActiveSpace().executeAsOneOrNull() ?: return@await false
+            val run = sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull() ?: return@await false
+            if (!active.exchange_enabled || run.space_id != active.space_id || run.generation != active.generation ||
+                run.phase != SyncRunPhase.MERGING.name ||
+                !(
+                    (
+                        run.owner_session == null && run.state == SyncRunState.BLOCKED.name &&
+                            run.stop_reason in setOf("UNKNOWN", "local_projection_storage")
+                        ) ||
+                        (
+                            run.owner_session == null && run.state == SyncRunState.WAITING_RETRY.name &&
+                                run.stop_reason == "STORAGE"
+                            ) ||
+                        (run.state in setOf("RUNNING", "WAITING_SYSTEM") && run.stop_reason == "local_projection")
+                    ) ||
+                run.next_retry_at > clock()
+            ) {
+                return@await false
+            }
+            val received = sync_runtimeQueries.getRuntimePlanMembers(runId).executeAsList().filter {
+                it.direction == SyncProgressDirection.DOWNLOAD.name
+            }.any {
+                sync_inboxQueries.getReceivedBatch(run.space_id, run.generation, it.batch_id)
+                    .executeAsOneOrNull() != null
+            }
+            if (!received) return@await false
+            sync_runtimeQueries.updateRuntimeState(
+                SyncRunState.WAITING_SYSTEM.name,
+                "local_projection",
+                null,
+                clock(),
+                runId,
+            )
+            val claimed = claim(runId, owner, run.attempt_id + 1)
+            if (claimed) {
+                sync_runtimeQueries.updateRuntimeStateOwned("RUNNING", "local_projection", owner, clock(), runId, owner)
+            }
+            claimed
+        }
 
     suspend fun recordNetworkFailure(runId: String, ownerSession: String): Long =
         handler.await(inTransaction = true) {
@@ -950,6 +1104,9 @@ private fun tachiyomi.data.Sync_runtime_runs.toSnapshot(
     pausedAt = pauseClock?.paused_at,
     planStartedAt = pauseClock?.planned_at,
     planPausedMillis = pauseClock?.planned_paused_millis ?: 0,
+    attemptStartedAt = pauseClock?.attempt_started_at,
+    attemptConfirmedBaseline = pauseClock?.attempt_confirmed_baseline ?: 0,
+    attemptPausedMillis = pauseClock?.attempt_paused_millis ?: 0,
     uploadedBaseline = uploaded_baseline,
     downloadedBaseline = downloaded_baseline,
     attemptId = attempt_id,

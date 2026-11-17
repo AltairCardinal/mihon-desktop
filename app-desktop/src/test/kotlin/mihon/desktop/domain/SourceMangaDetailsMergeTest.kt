@@ -6,6 +6,23 @@ import org.junit.jupiter.api.Test
 
 class SourceMangaDetailsMergeTest {
 
+    @Test
+    fun `canonical URL projection and its copy preserve request identity without mutating extension`() {
+        val original = SManga.create().apply {
+            url = "/work?id=1"
+            title = "Original"
+        }
+        val remote = SManga.create().apply {
+            url = "/work"
+            title = "Remote"
+        }
+        val merged = mergeSourceMangaDetails(original, remote)
+        assertEquals(original.url, merged.url)
+        assertEquals(original.url, merged.copy().url)
+        assertEquals("/work", remote.url)
+        assertEquals("Remote", merged.title)
+    }
+
     /**
      * Extensions commonly return getMangaDetails() without setting url/title;
      * those are already known from the catalogue listing.

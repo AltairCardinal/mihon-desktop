@@ -132,35 +132,57 @@ internal fun ReaderPresentationRequest.withSharedOwner(
             check(owner.acceptFact(owner.requestFact(id), fact))
         }
         var samples = 0
-        // Real score work is local to a requested window. Visit each intended fixture window,
-        // then restore the original cold projection; loading every page's dimensions is insufficient.
+        fun publishOriginal(id: ReaderPageId) {
+            check(samples++ <= ids.size * 4)
+            val original = requireNotNull(owner.requestOriginalAnalysis(id))
+            fun edge(left: Boolean): List<Int> {
+                val pair = matchedPairs.firstOrNull { (first, second) ->
+                    (id.sourcePageIndex == first && left == (direction == ReaderDirection.RTL)) ||
+                        (id.sourcePageIndex == second && left == (direction == ReaderDirection.LTR))
+                }
+                return if (pair == null) {
+                    List(50) { 0xff404040.toInt() }
+                } else {
+                    List(50) { point ->
+                        0xff000000.toInt() or ((60 + point * 3) shl 16) or ((60 + pair.first * 8) shl 8) or 100
+                    }
+                }
+            }
+            val size = requireNotNull(pageSizes[id])
+            check(
+                owner.acceptOriginalAnalysis(
+                    original,
+                    ReaderPageFact.dimensions(size.width, size.height, pageRotations[id] ?: PageRotation.NONE),
+                    mihon.domain.reader.ReaderOriginalPageSamples(
+                        mihon.domain.reader.ReaderPageSideHint.UNKNOWN,
+                        ReaderSpreadEdgeSamples(edge(true), edge(false)),
+                    ),
+                ),
+            )
+        }
+        // Optional preparation remains bounded to the ordinary local window.
         for ((first, _) in matchedPairs.sortedBy { it.first }) {
             check(owner.goToPage(ids[first]))
             while (true) {
                 val id = owner.spreadSampleDependencies().firstOrNull() ?: break
-                check(samples++ <= ids.size * 4)
-                val original = requireNotNull(owner.requestSpreadSample(id))
-                fun edge(left: Boolean): List<Int> {
-                    val pair = matchedPairs.firstOrNull { (first, second) ->
-                        (id.sourcePageIndex == first && left == (direction == ReaderDirection.RTL)) ||
-                            (id.sourcePageIndex == second && left == (direction == ReaderDirection.LTR))
-                    }
-                    return if (pair == null) {
-                        List(50) { 0xff404040.toInt() }
-                    } else {
-                        List(50) { point ->
-                            0xff000000.toInt() or ((60 + point * 3) shl 16) or ((60 + pair.first * 8) shl 8) or
-                                100
-                        }
-                    }
-                }
-                check(owner.acceptSpreadSample(original, ReaderSpreadEdgeSamples(edge(true), edge(false))))
+                publishOriginal(id)
             }
         }
         if (matchedPairs.isNotEmpty()) check(owner.goToPage(ids.first()))
         if (certifyPage != null) {
             check(owner.goToPage(ids[certifyPage]))
-            check(owner.certifyPairing(ids[certifyPage]) is mihon.domain.reader.ReaderPairingCertification.Certified)
+            var certification = owner.certifyPairing(ids[certifyPage])
+            // Like the production required-work channel, satisfy the real certifier's explicit
+            // dependencies; optional edge preparation alone does not prove a requested unit.
+            while (certification is mihon.domain.reader.ReaderPairingCertification.NeedFacts) {
+                val required = certification.facts.flatMap { listOfNotNull(it.pageId, it.secondPageId) }.distinct()
+                check(required.isNotEmpty()) { "Fixture cannot satisfy $certification" }
+                required.forEach(::publishOriginal)
+                certification = owner.certifyPairing(ids[certifyPage])
+            }
+            check(certification is mihon.domain.reader.ReaderPairingCertification.Certified) {
+                "Fixture target $certifyPage needs actual evidence: $certification"
+            }
             owner.preparePresentationFrame()
         }
         return copy(

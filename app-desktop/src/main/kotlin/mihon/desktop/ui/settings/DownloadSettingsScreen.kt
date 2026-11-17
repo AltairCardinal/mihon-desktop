@@ -74,7 +74,6 @@ class DownloadSettingsScreen : Screen {
 
         val downloadAsCbz by prefs.downloadAsCbz.changes().collectAsState(initial = prefs.downloadAsCbz.get())
         val autoDownload by prefs.autoDownloadNewChapters.changes().collectAsState(initial = prefs.autoDownloadNewChapters.get())
-        val deleteAfterRead by prefs.deleteAfterRead.changes().collectAsState(initial = prefs.deleteAfterRead.get())
         val parallelLimit by prefs.parallelDownloadLimit.changes().collectAsState(initial = prefs.parallelDownloadLimit.get())
         val cbzTitle = DesktopSettingsAnchorResources.downloadAsCbz.localized()
         val downloadNewTitle = DesktopSettingsAnchorResources.downloadNew.localized()
@@ -168,12 +167,9 @@ class DownloadSettingsScreen : Screen {
                     onCheckedChange = { prefs.autoDownloadNewChapters.set(it) },
                     modifier = Modifier.desktopSettingsAnchor(downloadNewTitle),
                 )
-                SwitchSettingsItem(
-                    title = MR.strings.pref_remove_after_read.localized(),
-                    subtitle = MR.strings.desktop_download_delete_after_read_summary.localized(),
-                    checked = deleteAfterRead,
-                    onCheckedChange = { prefs.deleteAfterRead.set(it) },
-                )
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                ReadDownloadDeletionSettings(prefs.shared, dependencies.getCategories)
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 

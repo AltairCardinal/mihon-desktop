@@ -123,8 +123,14 @@ class ReaderProgressProductionWiringTest {
             val basePreferences = mockk<BasePreferences>(relaxed = true)
             every { basePreferences.downloadedOnly().get() } returns false
             val downloadPreferences = mockk<DownloadPreferences>(relaxed = true)
+            var removalSlots = -1
             every { downloadPreferences.autoDownloadWhileReading().get() } returns 0
-            every { downloadPreferences.removeAfterReadSlots().get() } returns -1
+            every { downloadPreferences.removeAfterReadSlots().get() } answers { removalSlots }
+            val completions = Channel<ReaderProgressCompletionPlan>(Channel.UNLIMITED)
+            val coordinator = AndroidReaderProgressCoordinator(
+                onCommitted = { it.completion?.let { plan -> completions.send(plan) } },
+                onClosed = {},
+            )
             val trackPreferences = mockk<TrackPreferences>(relaxed = true)
             every { trackPreferences.autoUpdateTrack().get() } returns false
             val libraryPreferences = mockk<LibraryPreferences>(relaxed = true)
@@ -151,7 +157,7 @@ class ReaderProgressProductionWiringTest {
                 setMangaViewerFlags = mockk(relaxed = true),
                 getIncognitoState = getIncognitoState,
                 pairingCoordinator = emptyChapterPairingCoordinator(),
-                progressCoordinator = emptyReaderProgressCoordinator(),
+                progressCoordinator = coordinator,
                 libraryPreferences = libraryPreferences,
                 chapterLoaderFactory = { _: Manga, _: Source -> chapterLoader },
             )
@@ -184,6 +190,16 @@ class ReaderProgressProductionWiringTest {
             assertTrue(completion.isRead)
             assertEquals("finished", completion.trackerEvent)
             assertTrue(current.chapter.read)
+            coordinator.awaitAccepted(manga.id)
+            assertEquals(null, completions.receive().deleteCandidate)
+            for (slots in 0..4) {
+                removalSlots = slots
+                viewModel.onPageSelected(requireNotNull(current.pages).last())
+                awaitRecordedEvent(recorded)
+                coordinator.awaitAccepted(manga.id)
+                val plan = completions.receive()
+                assertEquals(if (slots == 0) 2L else null, plan.deleteCandidate?.id)
+            }
         } finally {
             Dispatchers.resetMain()
         }

@@ -257,8 +257,11 @@ abstract class SyncMetadataStorageContract {
                     s.driver.execute(null, "ALTER TABLE sync_import_entries DROP COLUMN snapshot_field", 0)
                     s.driver.execute(null, "ALTER TABLE sync_import_entries DROP COLUMN snapshot_payload", 0)
                 }
+                for (column in listOf("attempt_started_at", "attempt_confirmed_baseline", "attempt_paused_millis")) {
+                    s.driver.execute(null, "ALTER TABLE sync_runtime_pause_clock DROP COLUMN $column", 0)
+                }
                 s.driver.execute(null, "PRAGMA user_version = 45", 0)
-                assertEquals(46L, Database.Schema.version)
+                assertEquals(47L, Database.Schema.version)
                 tachiyomi.data.DatabaseMigration.migrateAtomically(s.driver, 45, Database.Schema.version)
                 assertEquals(before, s.journal.pendingEvents("space", 1))
                 assertEquals(setOf(3), s.pairings.load(chapter.id, chapter.mangaId).record!!.forcedSinglePages)

@@ -24,6 +24,99 @@ import java.util.prefs.Preferences
 @Isolated
 class DesktopSyncWiringTest {
     @Test
+    fun `default scheduler wakes a durable retry with periodic synchronization disabled`(
+        @TempDir folder: File,
+    ) = runBlocking {
+        val node = Preferences.userRoot().node("mihon-sync-deadline-di-" + UUID.randomUUID())
+        val keys = java.util.concurrent.ConcurrentHashMap<String, CharArray>()
+        val context = initDesktopDIForTest(
+            folder,
+            DesktopPreferenceStore(node),
+            credentialBackendFactory = {
+                object : mihon.desktop.platform.CredentialBackend {
+                    override fun save(account: String, secret: CharArray) {
+                        keys[account] = secret.copyOf()
+                    }
+                    override fun load(account: String): CharArray? = keys[account]?.copyOf()
+                    override fun delete(account: String) {
+                        keys.remove(account)?.fill('\u0000')
+                    }
+                }
+            },
+        )
+        try {
+            val runtime = Injekt.get<SyncRuntime>()
+            runtime.preferences.startup.set(false)
+            runtime.preferences.setInterval(0)
+            val spaceId = "deadline-space"
+            val repository = mihon.domain.sync.transport.SyncRepository("fixture", "mihon-sync", "main")
+            mihon.data.sync.journal.SyncLocalJournal(Injekt.get()).connect(spaceId, 1, repository, "local", 1)
+            val descriptor = mihon.domain.sync.crypto.SyncSpaceDescriptorCodec.encode(
+                mihon.data.sync.crypto.SyncSpaceCrypto.create(spaceId, 1, "").descriptor,
+            ).decodeToString()
+            val binding = kotlinx.serialization.json.buildJsonObject {
+                put("version", kotlinx.serialization.json.JsonPrimitive(2))
+                put("accountId", kotlinx.serialization.json.JsonPrimitive(1))
+                put("accountLogin", kotlinx.serialization.json.JsonPrimitive("fixture"))
+                put("repositoryId", kotlinx.serialization.json.JsonPrimitive(2))
+                put("owner", kotlinx.serialization.json.JsonPrimitive(repository.owner))
+                put("repository", kotlinx.serialization.json.JsonPrimitive(repository.name))
+                put("branch", kotlinx.serialization.json.JsonPrimitive(repository.branch))
+                put(
+                    "material",
+                    kotlinx.serialization.json.buildJsonObject {
+                        put("descriptor", kotlinx.serialization.json.JsonPrimitive(descriptor))
+                        put("keyHex", kotlinx.serialization.json.JsonNull)
+                    },
+                )
+                put("actorId", kotlinx.serialization.json.JsonPrimitive("local"))
+                put("epoch", kotlinx.serialization.json.JsonPrimitive(1))
+            }.toString()
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+                .digest("1:$spaceId".toByteArray()).joinToString("") { "%02x".format(it) }
+            assertTrue(Injekt.get<SyncSecureStore>().compareAndSet("space-$digest", null, binding))
+            val run = runtime.runStore.start(spaceId, 1, SyncTrigger.MANUAL)
+            assertTrue(runtime.runStore.claim(run.runId, "previous-process", 1))
+            runtime.runStore.progress(
+                run.runId,
+                mihon.data.sync.runtime.SyncRunPhase.CHECKING,
+                0,
+                0,
+                attemptId = 1,
+                nextRetryAt = System.currentTimeMillis() + 2_000,
+                state = mihon.data.sync.runtime.SyncRunState.WAITING_RETRY,
+                reason = "network",
+                ownerSession = "previous-process",
+            )
+            runtime.runStore.finish(
+                run.runId,
+                mihon.data.sync.runtime.SyncRunState.WAITING_RETRY,
+                "network",
+                "previous-process",
+            )
+            assertTrue(runtime.hasResumableRun())
+            val scheduler = Injekt.get<DesktopSyncScheduler>()
+            scheduler.start()
+            kotlinx.coroutines.withTimeout(10_000) {
+                while (runtime.coordinator.activity.value.completion == 0L) kotlinx.coroutines.delay(10)
+            }
+            // No credential was supplied: the real resumed exchange must reach the authorization boundary.
+            val resumed = runtime.runStore.latest(spaceId, 1)!!
+            assertEquals(run.runId, resumed.runId)
+            assertEquals(2L, resumed.attemptId)
+            assertEquals(
+                mihon.domain.sync.runtime.SyncRunProblem.AUTHORIZATION,
+                runtime.coordinator.activity.value.result?.problem,
+            )
+            assertEquals(0, runtime.preferences.intervalMinutes())
+        } finally {
+            context.closeAndJoin()
+            keys.values.forEach { it.fill('\u0000') }
+            node.removeNode()
+        }
+    }
+
+    @Test
     fun `isolated graph factory consumes the exact test target`(@TempDir folder: File) = runBlocking {
         val node = Preferences.userRoot().node("mihon-sync-acceptance-di-" + UUID.randomUUID())
         val scope = mihon.data.sync.auth.SyncRepositoryScope.acceptance("mihon-sync-acceptance-fixture-none")
@@ -132,7 +225,10 @@ class DesktopSyncWiringTest {
             assertSame(runtime, Injekt.get<SyncRuntime>())
             assertSame(runtime.panel, mihon.desktop.DesktopUiDependencies.fromInjekt().syncPanel)
             assertTrue(mihon.desktop.DesktopUiDependencies.fromInjekt().recoveryPackageInstaller != null)
-            assertSame(Injekt.get<mihon.desktop.update.InstallerTrust>(), Injekt.get<mihon.desktop.update.DesktopUpdateInstaller>().trust)
+            assertSame(
+                Injekt.get<mihon.desktop.update.InstallerTrust>(),
+                Injekt.get<mihon.desktop.update.DesktopUpdateInstaller>().trust,
+            )
             assertTrue(Injekt.get<SyncSecureStore>() is DesktopSyncSecureStore)
             assertSame(runtime.coordinator, Injekt.get<DesktopSyncScheduler>().coordinator)
             assertEquals(SyncRunStatus.SKIPPED, runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)

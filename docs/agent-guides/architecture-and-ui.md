@@ -114,6 +114,38 @@ Desktop 的 `ReaderPanBounds` 是阅读器视口交互策略：放大后，拖�
 
 本地决定完成后立即读取数据库局部快照并更新条目和计数，不重读 GitHub 凭据、加密空间记录或生成诊断报告。局部读取/发布与完整刷新最后的数据库快照读取/发布共用互斥锁，慢凭据和恢复读取不能持锁，避免旧快照重新显示已处理条目；选择引用等命令队列内部状态仍由原队列维护。数据库订阅使用同一局部刷新，授权、空间变更与同步结果仍走完整刷新。失败或失效的决定不得通过提前隐藏条目伪装成成功。`SyncPanelStorageContract` 覆盖完整安全存储读取挂起期间两种单条决定直接提交及刷新、零额外凭据读取和零 GitHub 请求，以及既有的批量确认、失败重试和空间切换回归；真实指针点击到 production controller 的 UI 集成测试覆盖单击即生效且没有确认窗。
 
+### 同步决定收尾、旧状态恢复与本次计时
+
+取消收藏/关注的本机决定必须在原事务内保存决定、完成实际操作、清除待确认条目并重新投影字段。重新投影复用当前 heads/binding 与既有本地成员状态规则；已经保存的决定不能冒充对新 binding 的许可。没有有效决定且仍需取消本地成员关系时恢复待确认；本地关系已不存在时不再要求无意义的确认。作者的 `INVALIDATED` 本地动作证据沿用原有规则。
+
+旧版可能遗留 `DECISION`、`dirty=0` 且没有待确认行的字段。仅将这种孤儿字段重新标脏并执行真实投影，保留仍有有效待确认条目的 ID 与 binding；不能直接将字段或整个批次标为完成。启动恢复复核连接、空间、run 与 owner 后在本地完成这项修复，不依赖启动时网络同步偏好。仅有已经可确认的接收回执也可通过 `settleLocalReceipts` 的数据库事务完成收尾；该路径不读取安全存储、不请求远端，不将所有待确认回执当作联网重试授权。单条及批量决定后立即调用此本地收尾，之后通过原局部快照锁发布 run、确认数和待确认列表。失败保留回执和检查点；仍有未完成内容时保留实际部分完成状态。
+
+整轮计划、累计确认与本次尝试的显示分别保存。成功 claim 在同一事务记录 `attemptStartedAt`、`attemptConfirmedBaseline` 和 `attemptPausedMillis`；重复/失败 claim 不覆盖现有 owner 的基线。当前尝试展示新增确认数及其耗时，总体进度保留旧检查点；暂停、等待、终态和恢复前按已保存边界冻结，不累计停机时间。schema 47 为既有 pause clock 增加这些字段；旧数据缺少尝试事实时保持未知，不把整个旧轮次年龄或累计确认冒充本次结果。迁移检查拒绝缺失、部分或畸形列组，保留事务回滚与原数据。
+
+共享面板将已接收但暂不能本地应用的数据展示为待恢复，并提供可选的“检查已保存数据”；图源暂不可用时保留内容清单。网络短重试达到阈值后保留任务并转为低频自动重试，展示实际等待时间；旧版已停止的轮次仍按其保存事实显示，不能将历史耗尽记录冒充本次后台活动。无效事件由当前 run 待确认回执的真实计数识别，保留校验问题及诊断入口；用户待决定、授权问题和真实未完成结果不能被归为成功或普通待恢复。
+
+回归由共享 `SyncInboxStorageContract`、`SyncRuntimeStorageContract`、`SyncPanelStorageContract` 覆盖决定、旧状态恢复、纯本地收尾、身份及幂等；`SyncAttemptClockMigrationTest` 覆盖真实旧文件升级和结构拒绝，`SyncProgressPresentationTest`、`SyncPanelContentTest`、`SyncProgressControllerIntegrationTest` 覆盖计时/计数、状态分类与生产点击接线。各平台只执行本次受影响的定向范围。
+
+### 同步故障的后台本地恢复
+
+旧 `BLOCKED/UPLOADING/UNKNOWN` 若有冻结计划、未确认的本地 SEALED 批次且缺失 prepared upload，恢复只允许远端对账。`RECOVERY/upload-reconciliation` 的 PENDING 标记独立于运行状态持久保存；手动重试、取消后新建轮次和进程重启都必须继承该标记及原未确认计划。仅在原上传成员全部确认后解除，原计划之外的新排队数据不得夹入只读恢复。
+
+对账从已认证的远端索引恢复原批次密文、原索引密文及前驱，验证 scope、路径和解密后的完整批次与本地相同，并从 live ref 确认发布。只读路径不调用 Git 写接口，不以当前 head 重做发布；远端缺失证明时保留队列并低频复核，同 ID 内容不同则报数据无效。授权、网络及限流错误保留原类型和 Retry-After，不得吞成冲突或 UNKNOWN。共享 outbox 契约覆盖 JVM/Android，Runtime wiring 另覆盖自动、手动、取消和新轮次的权限传递。
+
+已有 `BLOCKED/MERGING/UNKNOWN` 轮次只有在活动绑定可用、同步启用且该轮次持有已接收回执时，才允许后台本地探测。接管复用原 run、检查点、生产投影和回执确认，不新建轮次来掩盖失败。`local_projection` 是持久化的仅本地恢复标记：claim 后、进程中断和重开时都不能丢失，只有本地投影及收尾成功后才允许回到普通同步路径。失败保留事件、回执与业务决定；`local_projection_storage` 保留低频本地复核权限，不等于远端写许可。
+
+本地恢复具有独立可取消子任务与串行准入，普通恢复不得抢占它的 owner。暂停、取消先停止并等待该任务，随后持久化用户状态；启动和周期触发的竞态不能覆盖任务引用或继续投影。断开、空间切换和授权校验仍沿用原绑定与事务栅栏，取消收藏等业务选择不能由故障恢复代答。
+
+Desktop 调度器通过 Runtime 的持久可恢复状态及 deadline 安排唤醒，启动时、每次完成以及等待期间都重新核对；等待可被新完成信号打断，最长每分钟重算一次。定时新轮次关闭不撤销已接受轮次的恢复，停止或显式暂停则不得复活。网络短重试达到阈值后转为十五分钟低频重试，尊重服务端和账户 gate；远端变化也通过同一调度链恢复，不依赖用户打开面板。局部查询失败保留诊断并冷却复核，不能令整个调度器退出。
+
+固定 SQLite 数值错误码可进入脱敏诊断，任意异常文案、SQL 参数和私人对象信息不能进入 journal。完整性或业务约束错误不能仅因需要恢复就被当作网络错误；仍需真实回滚、保全和本地重新验证。对应回归覆盖真实双连接锁、停止与并发、中断标记、启用状态、持久回执及生产 Desktop DI 的到期唤醒。
+
+### Desktop 应用关闭与同步收尾
+
+主窗口关闭由 `DesktopApplicationCloseCoordinator` 先发布 closing，`DesktopApplicationWindow` 将生产窗口设为不可见，保留 composition 和 owner，直到清理结束再在原 UI 上下文调用 `exitApplication()`。清理通过 IO dispatcher 执行，不能让同步等待子进程、保存检查点等阻塞式实现占住 UI 线程。窗口隐藏只表示已接受关闭请求，不表示进程或同步清理已经结束；不通过强制超时跳过数据落盘。`stopForRecovery()` 不隐藏窗口，恢复实例启动失败时仍需原窗口反馈。
+
+`DesktopAppRuntime.closeAndJoin()` 在所有服务收尾期间保留单实例 profile 锁，同时让 broker 拒绝新启动和 URI，不能向停止中的导航链路确认接收。并发的普通 `close()` 不得提前释放该锁；等待结束后才允许关闭 broker。broker 关闭失败保留对象并恢复普通关闭的重试能力；清理和关闭异常按原有顺序聚合。无需等待的失败启动清理继续支持普通 `close()`。回归位于 `DesktopApplicationCloseResponsivenessTest`（UI 响应、退出线程、真实 broker 与失败重试）及 `DesktopApplicationWindowCloseNativeTest`（真实窗口关闭、composition 保留和最终释放），既有 `DesktopAppRuntimeTest` 保护重复关闭与异常传播。
+
 ### 同步授权与令牌续期
 
 同步的账户查询、仓库管理、恢复和 Git 数据交换通过 `SyncOnboarding` 的请求级 token provider 获取凭据，不能把会话开始时的访问令牌固定到整轮同步。provider 缓存绑定当前 `authorizationEpoch`；显式重新授权或清除凭据后，旧会话必须停止，不能自动跟随新账号。浏览器返回的候选令牌在身份验证期间固定使用，不得替换成当前已保存账号的令牌。
@@ -160,3 +192,9 @@ Desktop 的 `ReaderPanBounds` 是阅读器视口交互策略：放大后，拖�
 ### 阅读器屏幕常亮的计时边界
 
 `ReaderKeepScreenOn` 的原生电源管理与周期保活使用 `Dispatchers.IO` 的实际时间，不能占用 Compose UI 的虚拟帧时钟。任务仍由原 `LaunchedEffect` 管理，关闭选项或离开阅读器时取消；macOS 的 caffeinate 子进程在 finally 中释放。Windows 使用非持续标志定期刷新系统空闲计时，不保留线程级持续请求。`ReaderIoProductionWiringTest` 挂载真实阅读器并执行 `advanceUntilIdle()`，覆盖后台任务不阻塞 UI 测试调度及场景释放。
+
+### Desktop 详情刷新作品身份
+
+`SaveSourceMangaForDetails` 在开始刷新时固定完整请求 URL。详情返回值只提供元数据，不能通过返回不同 URL 将入库目标切换到另一条作品；该语义与 Android 按本地作品 ID 更新远端元数据一致。URL 绑定使用宿主投影，不改写插件对象的 URL，复制投影也保留请求 URL。不得统一删除查询参数，不同查询参数可能代表不同作品。
+
+持久化前仍校验本地作品 ID、source 和 URL 与原快照一致；目录校验、事务、下载归属及异常分类沿用现有链路。真实网络或插件字段异常仍失败并保留重试反馈；成功后清除原请求键上的错误状态。回归由 `SaveSourceMangaForDetailsTest` 的 HTTP→图源解析→SQL 入库用例覆盖参数省略、查询参数作品隔离及失败后重试。

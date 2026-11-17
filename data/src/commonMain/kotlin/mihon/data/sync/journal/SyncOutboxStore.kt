@@ -4,6 +4,7 @@ import mihon.data.sync.crypto.SyncAeadEngineFactory
 import mihon.data.sync.transport.SyncBatchSyncService
 import mihon.data.sync.transport.SyncRemoteSnapshotGuard
 import mihon.data.sync.transport.SyncUploadArtifactCodec
+import mihon.data.sync.transport.SyncUploadReconciliationUnavailable
 import mihon.domain.sync.SyncBatch
 import mihon.domain.sync.SyncBatchCodec
 import mihon.domain.sync.SyncBatchDecodeResult
@@ -174,24 +175,34 @@ class SyncOutboxExchange(private val store: SyncOutboxStore, private val service
         onPreparedBatch: (SyncBatch) -> Unit = {},
         onConfirmedBatch: (SyncBatch) -> Unit = {},
         frozenBatchId: String? = null,
+        allowPublish: Boolean = true,
     ): SyncUploadResult? {
         observeSnapshot(snapshot, null)
         val batch = store.nextBatch(snapshot.spaceId, snapshot.generation, frozenBatchId) ?: return null
         runCatching { onPreparingBatch(batch) }
+        if (!allowPublish && snapshot.batches.none { it.batchId == batch.batchId }) {
+            throw SyncUploadReconciliationUnavailable()
+        }
         val upload = store.prepared(batch) ?: store.savePrepared(
             batch,
-            service.prepare(
+            service.prepareRecovering(
                 snapshot,
                 batch,
                 ".mihon-sync/batches/${batch.events.first().actorId}/" +
                     "${batch.events.first().epoch}/${batch.batchId}.json",
+                allowPublish = allowPublish,
             ),
         )
         runCatching { onPreparedBatch(batch) }
-        val result = service.uploadPrepared(snapshot.repository, snapshot, upload) { confirmed ->
+        val observeConfirmed: suspend (SyncSnapshot) -> Unit = { confirmed ->
             // The snapshot can contain this upload before the outbox transaction marks it PUBLISHED.
             // Exclude only its known batch ID from discovery during that confirmation window.
             observeSnapshot(confirmed, batch.batchId)
+        }
+        val result = if (allowPublish) {
+            service.uploadPrepared(snapshot.repository, snapshot, upload, observeConfirmed)
+        } else {
+            service.confirmPrepared(snapshot.repository, snapshot, upload, observeConfirmed)
         }
         if (result.publish.status == SyncPublishStatus.PUBLISHED) {
             store.acknowledge(upload, result.publish)

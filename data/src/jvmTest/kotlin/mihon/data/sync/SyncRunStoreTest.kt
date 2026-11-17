@@ -40,12 +40,23 @@ class SyncRunStoreTest {
         store.pause(counting.runId)
         // Reconstruct the previous schema, then run the real generated migration.
         driver.execute(null, "DROP TABLE sync_repair_failures", 0)
+        driver.execute(null, "DROP TABLE chapter_pairing_pairs", 0)
+        driver.execute(null, "ALTER TABLE chapter_pairings DROP COLUMN opening_mode", 0)
+        driver.execute(null, "DROP TABLE sync_metadata_imports", 0)
+        driver.execute(null, "ALTER TABLE sync_import_entries DROP COLUMN snapshot_field", 0)
+        driver.execute(null, "ALTER TABLE sync_import_entries DROP COLUMN snapshot_payload", 0)
         val columns = mutableListOf<String>()
         driver.executeQuery(null, "PRAGMA table_info(sync_runtime_pause_clock)", { cursor ->
             while (cursor.next().value) columns += requireNotNull(cursor.getString(1))
             app.cash.sqldelight.db.QueryResult.Value(Unit)
         }, 0).value
-        for (column in listOf("planned_at", "planned_paused_millis")) {
+        for (column in listOf(
+            "planned_at",
+            "planned_paused_millis",
+            "attempt_started_at",
+            "attempt_confirmed_baseline",
+            "attempt_paused_millis",
+        )) {
             if (column in columns) driver.execute(null, "ALTER TABLE sync_runtime_pause_clock DROP COLUMN $column", 0)
         }
         Database.Schema.migrate(driver, 41, Database.Schema.version)
@@ -200,6 +211,11 @@ class SyncRunStoreTest {
         listOf("chapter_url_aliases", "chapter_directory_phases", "chapter_id_floor").forEach { table ->
             driver.execute(null, "DROP TABLE $table", 0)
         }
+        listOf("chapter_pairing_pairs", "chapter_pairing_boundaries", "chapter_pairing_revisions", "chapter_pairings")
+            .forEach { table -> driver.execute(null, "DROP TABLE $table", 0) }
+        driver.execute(null, "DROP TABLE sync_metadata_imports", 0)
+        driver.execute(null, "ALTER TABLE sync_import_entries DROP COLUMN snapshot_field", 0)
+        driver.execute(null, "ALTER TABLE sync_import_entries DROP COLUMN snapshot_payload", 0)
 
         driver.execute(null, "DROP TABLE sync_repair_failures", 0)
         driver.execute(null, "DROP TABLE IF EXISTS sync_runtime_pause_clock", 0)

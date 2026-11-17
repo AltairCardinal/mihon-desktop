@@ -543,6 +543,15 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         actions = {
                             if (selectionState.isActive) {
                                 IconButton(onClick = {
+                                    selectionState.selectBetweenSelected(model.visibleChapters().map { it.id })
+                                }) {
+                                    val undo = selectionState.canUndoRangeSelection
+                                    Icon(
+                                        if (undo) tachiyomi.presentation.icons.undoSelectRangeIcon else tachiyomi.presentation.icons.selectRangeIcon,
+                                        if (undo) MR.strings.action_undo_select_range.localized() else MR.strings.action_select_range.localized(),
+                                    )
+                                }
+                                IconButton(onClick = {
                                     selectionState.selectAll(model.visibleChapters().map { it.id })
                                 }) {
                                     Icon(Icons.Outlined.SelectAll, MR.strings.action_select_all.localized())

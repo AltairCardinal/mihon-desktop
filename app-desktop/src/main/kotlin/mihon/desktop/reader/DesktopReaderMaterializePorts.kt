@@ -184,6 +184,7 @@ class DesktopReaderChapterContentPort(
 
     private fun downloadDescriptors(match: DownloadArtifactMatch): List<ReaderPageDescriptor> {
         val artifact = File(match.opaqueLocation)
+        contentAdapter.retainDownloadArtifact(context.chapterId, leaseGeneration, artifact, downloadProvider.artifactUsage)
         return when (match.candidate.kind) {
             DownloadArtifactKind.DIRECTORY -> contentAdapter.directoryDescriptors(
                 artifact,

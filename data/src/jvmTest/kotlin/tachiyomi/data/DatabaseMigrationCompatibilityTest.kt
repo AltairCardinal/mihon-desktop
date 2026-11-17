@@ -158,7 +158,7 @@ class DatabaseMigrationCompatibilityTest {
 
     @Test
     fun `current schema reserves compatibility migration after published sync schema`() {
-        Database.Schema.version shouldBe 46L
+        Database.Schema.version shouldBe 47L
     }
 
     @Test

@@ -1,7 +1,7 @@
 package mihon.desktop.reader
 
-import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runInterruptible
 import mihon.domain.error.AppError
 import mihon.domain.network.AppErrorException
 import mihon.domain.reader.content.ReaderImageCandidatePolicy
@@ -46,9 +46,29 @@ class DesktopReaderContentAdapter internal constructor(
 ) : AutoCloseable, DesktopReaderChapterLeasePort {
     private val lock = Any()
     private val archiveLeases = mutableMapOf<Long, ArchiveLeaseBinding>()
+    private val downloadArtifactLeases = mutableMapOf<Long, Triple<Long, AutoCloseable, () -> AutoCloseable>>()
     private val leaseReservations = mutableMapOf<Long, Long>()
     private val leaseGenerationWatermarks = mutableMapOf<Long, Long>()
     private var closed = false
+
+    internal fun retainDownloadArtifact(
+        chapterId: Long,
+        generation: Long,
+        artifact: File,
+        usage: mihon.desktop.download.DesktopDownloadArtifactUsage,
+    ) {
+        val lease = usage.acquire(artifact)
+        val previous = try {
+            synchronized(lock) {
+                checkLeaseReservationLocked(chapterId, generation)
+                downloadArtifactLeases.put(chapterId, Triple(generation, lease) { usage.acquire(artifact) })
+            }
+        } catch (error: Throwable) {
+            lease.close()
+            throw error
+        }
+        previous?.second?.close()
+    }
 
     fun directoryDescriptors(
         directory: File,
@@ -167,22 +187,27 @@ class DesktopReaderContentAdapter internal constructor(
         destination: File,
     ): Long = runInterruptible {
         ReaderStartupTrace.markChapter("ARCHIVE_COPY_BEGIN", chapterId, pageIndex)
-        val lease = synchronized(lock) {
-            val binding = archiveLeases[chapterId]
-                ?: error("Reader archive lease is unavailable for chapter $chapterId")
-            check(binding.pageRefs.getOrNull(pageIndex) == opaquePageRef) {
-                "Reader archive page generation is stale for chapter $chapterId page $pageIndex"
-            }
-            binding.lease
-        }
-        destination.parentFile?.mkdirs()
+        val artifactRead = synchronized(lock) { downloadArtifactLeases[chapterId]?.third?.invoke() }
         try {
-            lease.copyPage(pageIndex, destination)
-            ReaderStartupTrace.markChapter("ARCHIVE_COPY_END", chapterId, pageIndex)
-            destination.length()
-        } catch (error: Throwable) {
-            destination.delete()
-            throw error
+            val lease = synchronized(lock) {
+                val binding = archiveLeases[chapterId]
+                    ?: error("Reader archive lease is unavailable for chapter $chapterId")
+                check(binding.pageRefs.getOrNull(pageIndex) == opaquePageRef) {
+                    "Reader archive page generation is stale for chapter $chapterId page $pageIndex"
+                }
+                binding.lease
+            }
+            destination.parentFile?.mkdirs()
+            try {
+                lease.copyPage(pageIndex, destination)
+                ReaderStartupTrace.markChapter("ARCHIVE_COPY_END", chapterId, pageIndex)
+                destination.length()
+            } catch (error: Throwable) {
+                destination.delete()
+                throw error
+            }
+        } finally {
+            artifactRead?.close()
         }
     }
 
@@ -198,23 +223,33 @@ class DesktopReaderContentAdapter internal constructor(
     }
 
     override fun releaseChapter(chapterId: Long, leaseGeneration: Long) {
-        val lease = synchronized(lock) {
+        val (artifact, lease) = synchronized(lock) {
             if (leaseReservations[chapterId] == leaseGeneration) {
                 leaseReservations.remove(chapterId)
             }
-            archiveLeases[chapterId]
+            val artifact = downloadArtifactLeases[chapterId]?.takeIf { it.first == leaseGeneration }
+                ?.also { downloadArtifactLeases.remove(chapterId) }
+            artifact to archiveLeases[chapterId]
                 ?.takeIf { it.leaseGeneration == leaseGeneration }
                 ?.also { archiveLeases.remove(chapterId) }
         }
-        lease?.lease?.release()
+        try {
+            lease?.lease?.release()
+        } finally {
+            artifact?.second?.close()
+        }
     }
 
     fun releaseChapter(chapterId: Long) {
-        val lease = synchronized(lock) {
+        val (artifact, lease) = synchronized(lock) {
             leaseReservations.remove(chapterId)
-            archiveLeases.remove(chapterId)
+            downloadArtifactLeases.remove(chapterId) to archiveLeases.remove(chapterId)
         }
-        lease?.lease?.release()
+        try {
+            lease?.lease?.release()
+        } finally {
+            artifact?.second?.close()
+        }
     }
 
     internal fun hasArchiveLease(chapterId: Long): Boolean = synchronized(lock) {
@@ -230,13 +265,28 @@ class DesktopReaderContentAdapter internal constructor(
     }
 
     override fun close() {
-        val leases = synchronized(lock) {
+        val (artifactLeases, leases) = synchronized(lock) {
             closed = true
             leaseReservations.clear()
             leaseGenerationWatermarks.clear()
-            archiveLeases.values.toList().also { archiveLeases.clear() }
+            downloadArtifactLeases.values.map { it.second }.also { downloadArtifactLeases.clear() } to
+                archiveLeases.values.toList().also { archiveLeases.clear() }
         }
-        leases.forEach { it.lease.release() }
+        var failure: Throwable? = null
+        fun release(action: () -> Unit) {
+            try {
+                action()
+            } catch (error: Throwable) {
+                if (failure == null) {
+                    failure = error
+                } else if (failure !== error) {
+                    failure?.addSuppressed(error)
+                }
+            }
+        }
+        leases.forEach { release(it.lease::release) }
+        artifactLeases.forEach { release(it::close) }
+        failure?.let { throw it }
     }
 
     private fun acceptsLease(chapterId: Long, leaseGeneration: Long): Boolean = synchronized(lock) {

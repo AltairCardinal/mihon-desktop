@@ -27,6 +27,9 @@ data class SyncProgressPresentation(
     val stages: Map<SyncProgressStage, Pair<Long, Long?>>,
     val nextDeadlineMillis: Long?,
     val elapsedSeconds: Long = 0,
+    val attemptConfirmed: Long? = null,
+    val retainedConfirmed: Long = 0,
+    val elapsedKnown: Boolean = true,
 )
 
 /** Panel-owned observations; count and denominator always come from the same durable run. */
@@ -40,8 +43,8 @@ class SyncProgressDisplaySession {
     private var attempt: Long? = null
     private var elapsedOriginMillis = 0L
     private var elapsedBaselineSeconds = 0L
-    private var elapsedPlanOrigin: Long? = null
-    private var elapsedPaused = false
+    private var elapsedAttemptOrigin: Long? = null
+    private var elapsedAdvancing = false
     private var excludedPauseMillis = 0L
     private val roundRate = SyncRoundConfirmationRate()
     private var previousFact: SyncProgressFact? = null
@@ -55,28 +58,34 @@ class SyncProgressDisplaySession {
             run != null && (it.scope == run.runId || it.scope.startsWith("${run.runId}:"))
         }
         val counting = run?.plannedItems == null
-        val planOrigin = run?.planStartedAt ?: run?.createdAt
-        val pausedAfterPlan = ((run?.pausedMillis ?: 0) - (run?.planPausedMillis ?: 0)).coerceAtLeast(0)
+        val attemptOrigin = run?.attemptStartedAt
+        val elapsedKnown = attemptOrigin != null
+        val pausedAfterAttempt = ((run?.pausedMillis ?: 0) - (run?.attemptPausedMillis ?: 0)).coerceAtLeast(0)
         val paused = run?.state == SyncRunState.PAUSED_USER
-        if (!initialized || identity != nextIdentity || elapsedPlanOrigin != planOrigin || elapsedPaused != paused ||
+        val advancing = run?.state == SyncRunState.RUNNING && elapsedKnown &&
+            (fact?.hold in setOf(SyncProgressHold.ACTIVE, SyncProgressHold.PAUSING) || (fact == null && state.busy))
+        if (!initialized || identity != nextIdentity || attempt != run?.attemptId ||
+            elapsedAttemptOrigin != attemptOrigin || elapsedAdvancing != advancing ||
             excludedPauseMillis != (run?.pausedMillis ?: 0L)
         ) {
             elapsedOriginMillis = monotonicMillis
             val elapsedUntil = if (paused) {
                 run!!.pausedAt ?: run.updatedAt
-            } else {
+            } else if (advancing) {
                 maxOf(
                     state.nowMillis,
                     run?.updatedAt ?: 0,
                 )
+            } else {
+                run?.updatedAt ?: 0L
             }
             elapsedBaselineSeconds = (
-                elapsedUntil - (planOrigin ?: elapsedUntil) - pausedAfterPlan
+                elapsedUntil - (attemptOrigin ?: elapsedUntil) - pausedAfterAttempt
                 ).coerceAtLeast(0) / 1000
         }
         if (!initialized || identity != nextIdentity) stages.clear()
-        elapsedPlanOrigin = planOrigin
-        elapsedPaused = paused
+        elapsedAttemptOrigin = attemptOrigin
+        elapsedAdvancing = advancing
         excludedPauseMillis = run?.pausedMillis ?: 0L
         if (identity != nextIdentity || attempt != run?.attemptId) roundRate.reset()
         if (previousFact?.scope != fact?.scope || previousFact?.direction != fact?.direction) stages.clear()
@@ -87,6 +96,18 @@ class SyncProgressDisplaySession {
             ?.let { run.confirmedItems.toDouble().div(it).toFloat() }
         val wholeRemaining = roundRate.estimate(run?.plannedItems, run?.confirmedItems, active, monotonicMillis)
         val status = when {
+            state.hasInvalidReceivedData -> MR.strings.sync_invalid_saved_data
+            run?.state in setOf(SyncRunState.FAILED, SyncRunState.PARTIAL) &&
+                state.problem == mihon.domain.sync.runtime.SyncRunProblem.NETWORK ->
+                MR.strings.sync_connection_unavailable
+            state.waitingForLocalRestoration -> if (
+                state.terminalSummary?.takeIf { it.runId == run?.runId }?.sourceUnavailableFields?.let { it > 0 } ==
+                true
+            ) {
+                MR.strings.sync_source_restore_pending
+            } else {
+                MR.strings.sync_local_restore_pending
+            }
             terminal -> when (run?.state) {
                 SyncRunState.SUCCEEDED -> MR.strings.sync_result_completed
                 SyncRunState.PARTIAL -> if (historical) {
@@ -131,11 +152,11 @@ class SyncProgressDisplaySession {
         initialized = true
         attempt = run?.attemptId
         previousFact = fact
-        val elapsed = if (counting) {
+        val elapsed = if (counting || !elapsedKnown) {
             0L
         } else if (terminal && run != null) {
-            (run.updatedAt - requireNotNull(planOrigin) - pausedAfterPlan).coerceAtLeast(0) / 1000
-        } else if (paused) {
+            (run.updatedAt - requireNotNull(attemptOrigin) - pausedAfterAttempt).coerceAtLeast(0) / 1000
+        } else if (!advancing) {
             elapsedBaselineSeconds
         } else {
             elapsedBaselineSeconds + (monotonicMillis - elapsedOriginMillis).coerceAtLeast(0) / 1000
@@ -143,7 +164,7 @@ class SyncProgressDisplaySession {
         return SyncProgressPresentation(
             status, action, run?.confirmedItems, fraction, if (active) wholeRemaining else null,
             false, null, active, fact, stages.toMap(),
-            if (!counting && !terminal && !paused &&
+            if (!counting && !terminal && advancing &&
                 (run != null || state.busy)
             ) {
                 monotonicMillis + NUMBER_INTERVAL
@@ -151,9 +172,23 @@ class SyncProgressDisplaySession {
                 null
             },
             elapsed,
+            run?.takeIf { it.attemptStartedAt != null }?.let {
+                (it.confirmedItems - it.attemptConfirmedBaseline).coerceAtLeast(0)
+            },
+            run?.let { if (it.attemptStartedAt != null) it.attemptConfirmedBaseline else it.confirmedItems } ?: 0L,
+            elapsedKnown,
         )
     }
 }
+
+/** Received data awaiting local application is separate from a user decision or a transport failure. */
+internal val SyncPanelState.waitingForLocalRestoration: Boolean
+    get() = run?.state == SyncRunState.PARTIAL && run?.stopReason == "projection_pending" &&
+        problem == null && pendingTotal == 0L && !hasInvalidReceivedData
+
+internal val SyncPanelState.hasInvalidReceivedData: Boolean
+    get() = run?.state == SyncRunState.PARTIAL &&
+        terminalSummary?.takeIf { it.runId == run?.runId }?.invalidEvents?.let { it > 0 } == true
 
 /** Whole-plan ETA observes only committed run confirmations, across all work directions and stages. */
 private class SyncRoundConfirmationRate {

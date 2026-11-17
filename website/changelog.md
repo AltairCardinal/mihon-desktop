@@ -5,6 +5,34 @@ description: A traceable history of public feature documentation, separate from 
 
 # Changelog
 
+## November 17, 2026 — Android two-page empty slots and manual-boundary remainders
+
+The project owner accepted the tablet candidate `0.19.4-aex.143` (code 161, source `2743706914cef4f3fa2755b005d90ca45b161b56`) in a private conversation on November 17, 2026 and authorized main integration and push. Confirmed chapter-internal empty slots use white paper and a pale gray editor logo with shared zoom/pan; chapter-opening and ending opposite slots remain unfilled. The candidate includes native redraw recovery after exposure and correct half-slot placement of portrait remainders before manual boundaries. Implementations: `c2e4871a47`, `a01925d0b5`, and `2743706914`. Acceptance covers this Android scope, not Windows/macOS runtime behavior or a universal latency guarantee. This documents an accepted local candidate, not a new public product release or APK upload.
+
+## 2026-11-17 — Chapter range selection and single-step undo accepted
+
+The project owner accepted the Windows and Android candidates in a private review on November 17, 2026 and authorized main integration and push. Windows preview: `0.11.24.6.c54bd8c`; signed Android tablet candidate: `0.19.4-aex.146 / vc164`, source `54bc58d738`. The chapter multi-select toolbar fills the visible interval between selected endpoints and offers one immediate undo with the approved dashed icon, restoring both selection and range anchor. Intervening selection actions, visible identity/order changes, or leaving details clear undo. Acceptance covers Windows and the Android tablet, not macOS or a new public product release.
+
+## 2026-11-16 — Windows automatic sync recovery accepted
+
+The project owner confirmed the Windows sync repair in a private review on November 16, 2026 and authorized main integration and push. Accepted preview: `0.11.24.10.e35afaa` with the recorded dirty production inputs; implementation: `e35afaa8cd`, `640ddd5a8b`. Old merge blocks resume automatically while preserving saved decisions. Restored databases reconcile already published batches against authenticated remote content without republishing; transient network failures retry automatically. Two isolated database-restore runs completed successfully. This acceptance covers Windows recovery, not revoked credentials, incompatible or invalid remote data, other platforms, or a new public product release.
+
+## 2026-11-15 — Windows source-detail refresh accepted
+
+The project owner accepted Windows preview `0.11.24.6.7b4cf6d` in a private review on November 15, 2026 and authorized main integration and push. Implementation: `7b4cf6d403`; main integration: `f9517bbfed`. A source-detail URL that omits the original query parameters no longer triggers the reported identity-conflict error. Refresh retains the original work identity, full URL and existing chapter/progress/download associations. This acceptance covers the Windows repair, not other platforms or a new public product release.
+
+## 2026-11-15 — Android initial reader loading feedback accepted
+
+The project owner accepted signed Android candidate `0.19.4-aex.139 / vc157` on the tablet in a private review on November 15, 2026 and authorized main integration and push. Implementation: `ad7a30685d`; candidate source: `e6245f22ca`. Opening an online or undownloaded chapter now shows a centered indicator from the initial reader frame and hands over to the current page slots only when their feedback is ready. Initial retries restore feedback, and intentional empty slots remain empty. This acceptance covers the Android loading repair and retains the previously accepted two-page swipe repair; it does not establish acceptance on other platforms or a new public product release.
+
+## 2026-11-13 — Windows sync recovery and close response accepted
+
+The project owner accepted Windows preview `0.11.24.6.6534682` on November 13, 2026 in a private conversation and authorized main integration and push. Candidate implementations: `3cd5a837d0` and `6534682a41`; main integrations: `ca12d6c324` and `9cb6f0afc5`. Confirmed local decisions now finish their fields and receipts, old orphaned confirmation state is checked automatically, and retries separate current-attempt timing/new confirmations from retained overall progress. Deferred local/source restoration is distinguished from real transport or validation problems. Window closing responds promptly while safe cleanup retains the profile lock. Acceptance covers this Windows candidate; Android shared-contract tests do not establish Android user acceptance, and no public product release is implied.
+
+## 2026-11-13 — Android two-page swipe repair accepted
+
+The project owner accepted Android `0.19.4-aex.137 / vc155` in a private review on 2026-11-13. The candidate contains implementation `fffacab00c` and source `f22079950c`: two-page preparation-window reconciliation now retains one native holder per pager position, preserving drawn content and forward/reverse navigation while images load. Nine focused regressions passed, including RTL/LTR and interrupted settling. This is acceptance of the local Android candidate, not a new public release or acceptance of other platforms.
+
 ## 2026-11-12 — Reader settings prerelease downloads
 
 [Windows x64 preview and signed Android aex.136 / vc154 downloads](https://github.com/AltairCardinal/mihon-desktop/releases/tag/reader-settings-preview-20261112) are now public. These are the accepted `787f06b` artifacts, not rebuilt packages or a stable release. The Windows ZIP retains its preview identity and includes the complete app/runtime. Asset sizes and GitHub SHA-256 digests match the local files. The full Desktop test run remains incomplete; cold-tail pairing and timing-sensitive tests remain unresolved as described in the release notes. The later `14c7ba5aa1` timing repair is not included in these binaries. The in-app update feed is unchanged.

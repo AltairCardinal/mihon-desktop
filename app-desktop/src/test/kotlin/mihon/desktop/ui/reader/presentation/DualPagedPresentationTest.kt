@@ -371,6 +371,7 @@ class DualPagedPresentationTest {
         val matched = present(
             pageCount = 7,
             direction = ReaderDirection.LTR,
+            certifyPage = 5,
             options = PresentationFixtureOptions(
                 spreadPageIds = setOf(pageId(3)),
                 matchedPagePairs = setOf(pageId(5) to pageId(6)),
@@ -419,8 +420,19 @@ class DualPagedPresentationTest {
         options: PresentationFixtureOptions = PresentationFixtureOptions(),
         stateAt: (Int) -> ReaderPageLoadState = { ReaderPageLoadState.Queued },
         imageAt: (Int) -> String? = { null },
+        certifyPage: Int? = null,
     ): ReaderPresentationSnapshot = DualPagedPresentation.present(
-        request(pageCount, direction, hasPreviousChapter, hasNextChapter, splitPageIds, options, stateAt, imageAt),
+        request(
+            pageCount,
+            direction,
+            hasPreviousChapter,
+            hasNextChapter,
+            splitPageIds,
+            options,
+            stateAt,
+            imageAt,
+            certifyPage,
+        ),
     )
 
     private fun request(
@@ -432,6 +444,7 @@ class DualPagedPresentationTest {
         options: PresentationFixtureOptions = PresentationFixtureOptions(),
         stateAt: (Int) -> ReaderPageLoadState = { ReaderPageLoadState.Queued },
         imageAt: (Int) -> String? = { null },
+        certifyPage: Int? = null,
     ): ReaderPresentationRequest =
         ReaderPresentationRequest(
             chapter = ReaderChapterSession(
@@ -462,6 +475,7 @@ class DualPagedPresentationTest {
                     }
             },
         ).withSharedOwner(
+            certifyPage = certifyPage,
             forcedSingles = options.forcedSinglePageIds.mapTo(linkedSetOf()) { it.sourcePageIndex },
             matchedPairs = options.matchedPagePairs.mapTo(linkedSetOf()) {
                 it.first.sourcePageIndex to

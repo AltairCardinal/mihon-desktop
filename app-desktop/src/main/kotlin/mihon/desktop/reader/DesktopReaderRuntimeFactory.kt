@@ -46,6 +46,7 @@ data class DesktopReaderRuntime(
     private val prefetchPreferenceJob: Job,
     internal val contentAdapter: DesktopReaderContentAdapter = DesktopReaderContentAdapter(),
     internal val presentationScope: CoroutineScope? = null,
+    internal val readDeletionSession: mihon.desktop.domain.ReaderReadDownloadDeletionSession? = null,
 ) : AutoCloseable {
     private class CloseAttempt(
         val ownerThread: Thread,
@@ -104,6 +105,7 @@ data class DesktopReaderRuntime(
             closeStage(session::close)
             closeStage(pageContentOwner::close)
             closeStage(contentAdapter::close)
+            readDeletionSession?.releaseResources()
         } finally {
             candidate.failure = failure
             candidate.completed.countDown()
@@ -155,7 +157,11 @@ class DesktopReaderRuntimeFactory internal constructor(
                 runtime.close()
             } catch (error: Throwable) {
                 val primary = failure
-                if (primary == null) failure = error else if (primary !== error) primary.addSuppressed(error)
+                if (primary == null) {
+                    failure = error
+                } else if (primary !== error) {
+                    primary.addSuppressed(error)
+                }
             }
         }
         failure?.let { throw it }
@@ -187,8 +193,18 @@ class DesktopReaderRuntimeFactory internal constructor(
         val normalizedInitialContext = normalizeDownloadIdentity(initialContext)
         val ioReporter = ReaderIoReporter(readerIoProbe.bind(), readerMonotonicClock)
         val store = encodedPageStoreCoordinator.openSessionStore()
+        fun <T> readArtifact(ref: mihon.domain.reader.session.EncodedPageRef, read: () -> T): T {
+            val file = runCatching { File(java.net.URI(ref.value)) }.getOrNull() ?: return read()
+            return downloadProvider.artifactUsage.acquire(file).use { read() }
+        }
         val pageContentOwner =
-            DesktopReaderPageContentOwner(parentScope, store::read, ioReporter, store::readPrefix, readerIoGate)
+            DesktopReaderPageContentOwner(
+                parentScope,
+                { ref -> readArtifact(ref) { store.read(ref) } },
+                ioReporter,
+                { ref, bytes -> readArtifact(ref) { store.readPrefix(ref, bytes) } },
+                readerIoGate,
+            )
         lateinit var session: DesktopReaderSession
         val pageImagePipeline = DesktopReaderPageImagePipeline(
             scope = parentScope,
@@ -212,6 +228,7 @@ class DesktopReaderRuntimeFactory internal constructor(
             ),
         )
         val tracker = progressTrackerOverride ?: progressTracker
+        val readDeletionSession = tracker.newDownloadDeletionSession()
         var presentationImageOwner: DesktopReaderPresentationImageOwner? = null
         session = DesktopReaderSession(
             initialContext = normalizedInitialContext,
@@ -249,7 +266,7 @@ class DesktopReaderRuntimeFactory internal constructor(
                     ),
                 )
             },
-            progressPort = DesktopReaderTrackerPort(tracker),
+            progressPort = DesktopReaderTrackerPort(tracker, deletionSession = readDeletionSession),
             chapterLeasePort = contentAdapter,
             parentScope = parentScope,
             initialNextChapterPrefetchMode = prefs.nextChapterPrefetchMode,
@@ -284,6 +301,7 @@ class DesktopReaderRuntimeFactory internal constructor(
             contentAdapter = contentAdapter,
             prefetchPreferenceJob = prefetchPreferenceJob,
             presentationScope = parentScope,
+            readDeletionSession = readDeletionSession,
         ).also { runtime ->
             val accepted = synchronized(lifecycleLock) {
                 if (shutdownRuntimes != null) {
@@ -342,7 +360,19 @@ class DesktopReaderRuntimeFactory internal constructor(
             }
         },
         readViewerFlags = { targetMangaId -> mangaRepository?.getMangaById(targetMangaId)?.viewerFlags },
-    ).also { model -> runtime.presentationScope?.let(model::bindDualFactPublisher) }
+    ).also { model ->
+        runtime.presentationScope?.let(model::bindDualFactPublisher)
+        runtime.readDeletionSession?.apply {
+            chapters = { model.state.value.chapterRefs }
+            skipPolicy = {
+                mihon.domain.reader.ChapterSkipPolicy(
+                    model.state.value.skipReadChapters,
+                    model.state.value.skipFilteredChapters,
+                    model.state.value.skipDuplicateChapters,
+                )
+            }
+        }
+    }
 
     fun createScreenModel(
         initialContext: DesktopReaderChapterContext,
@@ -430,16 +460,24 @@ private class DesktopReaderTrackerPort(
     private val tracker: ReaderProgressTracker,
     private val session: tachiyomi.domain.reader.interactor.ReadingProgressSession? = null,
     private val incognitoAtAcceptance: Boolean? = null,
+    private val deletionSession: mihon.desktop.domain.ReaderReadDownloadDeletionSession? = null,
 ) : DesktopReaderProgressPort {
+    override suspend fun close() {
+        deletionSession?.close()
+    }
     override suspend fun open(context: DesktopReaderChapterContext): DesktopReaderProgressPort =
         if (context.localChapterPath == null) {
-            DesktopReaderTrackerPort(tracker, tracker.openSession(context.chapterId, context.resumeSnapshot))
+            DesktopReaderTrackerPort(
+                tracker,
+                tracker.openSession(context.chapterId, context.resumeSnapshot),
+                deletionSession = deletionSession,
+            )
         } else {
             this
         }
 
     override fun capture(context: DesktopReaderChapterContext): DesktopReaderProgressPort =
-        DesktopReaderTrackerPort(tracker, session, tracker.isIncognito(context.sourceId))
+        DesktopReaderTrackerPort(tracker, session, tracker.isIncognito(context.sourceId), deletionSession)
 
     override suspend fun record(
         context: DesktopReaderChapterContext,
@@ -457,6 +495,7 @@ private class DesktopReaderTrackerPort(
             wasRead = effect.wasRead,
             readingSession = checkNotNull(session),
             incognitoAtAcceptance = incognitoAtAcceptance,
+            downloadDeletionSession = deletionSession,
             downloadIdentity = DownloadChapterIdentity(
                 sourceDisplayName = context.sourceDisplayName,
                 mangaTitle = context.mangaTitle,

@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.ui.reader.viewer.pager
 import android.app.Activity
 import android.app.Application
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.os.Looper
 import android.view.View
 import androidx.activity.ComponentActivity
@@ -110,6 +111,7 @@ import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], manifest = Config.NONE, qualifiers = "w480dp-h1040dp-xxhdpi")
 class DualPageProgressProductionWiringTest {
+    private var pngDecoder: ReaderPngRegionDecoderFixture? = null
     private lateinit var previousInjekt: InjektScope
     private lateinit var viewer: DualPageR2LPagerViewer
     private lateinit var events: Channel<ReadingProgressEvent>
@@ -325,6 +327,7 @@ class DualPageProgressProductionWiringTest {
     @After
     fun tearDown() {
         if (::viewer.isInitialized) viewer.destroy()
+        pngDecoder?.close()
         host?.finish()
         if (::driver.isInitialized) driver.close()
         if (::dbFile.isInitialized) dbFile.delete()
@@ -1032,7 +1035,9 @@ class DualPageProgressProductionWiringTest {
     }
 
     @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
     fun `B completion deletes already accepted A after both same manga writes commit`() = runTest {
+        pngDecoder = ReaderPngRegionDecoderFixture()
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val started = CompletableDeferred<Unit>().also { pendingWriteStarted = it }
         val release = CompletableDeferred<Unit>().also { releasePendingWrite = it }
@@ -1041,13 +1046,16 @@ class DualPageProgressProductionWiringTest {
         try {
             val next = prepareNextChapter()
             mountReadyViewer(nextChapter = next)
-            assertEquals(2, requireNotNull(awaitRenderedEvent()).lastPageRead)
+            assertEquals(2, requireNotNull(awaitRenderedEvent(lastPage = 2)).lastPageRead)
             selectGroup(requireNotNull(current.pages)[3])
             withContext(Dispatchers.Default) { withTimeout(10_000) { started.await() } }
             selectGroup(requireNotNull(next.pages)[0], decode = false)
             withContext(Dispatchers.Default) {
                 withTimeout(10_000) { model.state.first { it.currentChapter === next } }
             }
+            // This fixture does not start ReaderActivity's lifecycle collector. Deliver the
+            // same chapter-window update that its real state subscription sends to the viewer.
+            viewer.setChapters(requireNotNull(model.state.value.viewerChapters))
             requireNotNull(next.pages).forEach { it.status = Page.State.Ready }
             selectGroup(requireNotNull(next.pages)[3])
             release.complete(Unit)
@@ -1064,7 +1072,9 @@ class DualPageProgressProductionWiringTest {
     }
 
     @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
     fun `B completion does not delete A when A accepted write fails`() = runTest {
+        pngDecoder = ReaderPngRegionDecoderFixture()
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val started = CompletableDeferred<Unit>().also { pendingWriteStarted = it }
         val release = CompletableDeferred<Unit>().also { releasePendingWrite = it }
@@ -1075,13 +1085,16 @@ class DualPageProgressProductionWiringTest {
         try {
             val next = prepareNextChapter()
             mountReadyViewer(nextChapter = next)
-            assertEquals(2, requireNotNull(awaitRenderedEvent()).lastPageRead)
+            assertEquals(2, requireNotNull(awaitRenderedEvent(lastPage = 2)).lastPageRead)
             selectGroup(requireNotNull(current.pages)[3])
             withContext(Dispatchers.Default) { withTimeout(10_000) { started.await() } }
             selectGroup(requireNotNull(next.pages)[0], decode = false)
             withContext(Dispatchers.Default) {
                 withTimeout(10_000) { model.state.first { it.currentChapter === next } }
             }
+            // This fixture does not start ReaderActivity's lifecycle collector. Deliver the
+            // same chapter-window update that its real state subscription sends to the viewer.
+            viewer.setChapters(requireNotNull(model.state.value.viewerChapters))
             requireNotNull(next.pages).forEach { it.status = Page.State.Ready }
             selectGroup(requireNotNull(next.pages)[3])
             release.complete(Unit)
@@ -1636,6 +1649,15 @@ class DualPageProgressProductionWiringTest {
         imageBytes: ByteArray? = null,
     ) {
         val pages = requireNotNull(current.pages)
+        if (pngDecoder != null) {
+            listOfNotNull(current, nextChapter).forEach { chapter ->
+                chapter.pageLoader = object : eu.kanade.tachiyomi.ui.reader.loader.PageLoader() {
+                    override var isLocal = true
+                    override suspend fun getPages() = requireNotNull(chapter.pages)
+                    override suspend fun loadPage(page: ReaderPage) = Unit
+                }
+            }
+        }
         val bytes = imageBytes ?: readerTestPng(1125, 1600)
         pages.forEach { page ->
             page.stream = { bytes.inputStream() }
@@ -1668,6 +1690,7 @@ class DualPageProgressProductionWiringTest {
     }
 
     private suspend fun selectGroup(page: ReaderPage, failLeft: Boolean = false, decode: Boolean = true) {
+        if (pngDecoder != null) viewer.moveToPage(page)
         val position = viewer.adapter.items.indexOfFirst { item ->
             item is DisplayPage && item.containsPage(page)
         }
@@ -1683,6 +1706,58 @@ class DualPageProgressProductionWiringTest {
 
     /** Bind original encoded content, then paint the mounted production SSIV children. */
     private suspend fun decodeAndSignal(page: ReaderPage, failLeft: Boolean = false) {
+        if (pngDecoder != null && !failLeft) {
+            // These cross-chapter cases exercise ordinary preparation admission too. Do not
+            // issue a second reflective setImage while the real collector owns the same slot.
+            val deadline = System.nanoTime() + 10_000_000_000L
+            while (System.nanoTime() < deadline) {
+                kotlin.coroutines.coroutineContext[kotlinx.coroutines.test.TestCoroutineScheduler]?.runCurrent()
+                viewer.pager.measure(
+                    View.MeasureSpec.makeMeasureSpec(1440, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(3120, View.MeasureSpec.EXACTLY),
+                )
+                viewer.pager.layout(0, 0, 1440, 3120)
+                viewer.pager.computeScroll()
+                val mounted = viewer.pager.children.filterIsInstance<DualPagerPageHolder>()
+                    .firstOrNull { it.displayPage.containsPage(page) }
+                if (mounted != null) {
+                    listOf("leftHolder", "rightHolder").forEach { field ->
+                        val image = ReflectionHelpers.getField<ReaderPageImageView?>(mounted, field)
+                        if (image != null && image.width > 0 && image.height > 0) {
+                            val output = Bitmap.createBitmap(image.width, image.height, Bitmap.Config.ARGB_8888)
+                            try {
+                                image.draw(Canvas(output))
+                            } finally {
+                                output.recycle()
+                            }
+                        }
+                    }
+                }
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+                if (mounted?.hasRenderedVisiblePages() == true) return
+                withContext(Dispatchers.Default) { delay(5) }
+            }
+            val mounted = viewer.pager.children.filterIsInstance<DualPagerPageHolder>()
+                .firstOrNull { it.displayPage.containsPage(page) }
+            val imageState = listOf("leftHolder", "rightHolder").map { field ->
+                val image = mounted?.let { ReflectionHelpers.getField<ReaderPageImageView?>(it, field) }
+                val native = image?.let {
+                    ReflectionHelpers.getField<com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView?>(
+                        it,
+                        "pageView",
+                    )
+                }
+                "$field=$image ready=${native?.isReady} loaded=${native?.isImageLoaded} " +
+                    "dimensions=${native?.sWidth}x${native?.sHeight} shown=${image?.isShown} " +
+                    "visible=${image?.getGlobalVisibleRect(android.graphics.Rect())}"
+            }
+            error(
+                "Original PNG pipeline did not draw chapter ${page.chapter.chapter.id} page ${page.index}: " +
+                    "mounted=$mounted work=${ReaderPageImageView.foregroundWork.value} images=$imageState " +
+                    "selected=${viewer.pager.currentItem} desired=${viewer.adapter.positionForPage(page)} " +
+                    "scroll=${viewer.pager.scrollX}",
+            )
+        }
         val holder = viewer.pager.children.filterIsInstance<DualPagerPageHolder>()
             .first { it.displayPage.containsPage(page) }
         val bind = DualPagerPageHolder::class.java.declaredMethods.single { it.name == "setImage" }
@@ -1718,11 +1793,16 @@ class DualPageProgressProductionWiringTest {
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
     }
 
-    private suspend fun awaitRenderedEvent(): ReadingProgressEvent? {
+    private suspend fun awaitRenderedEvent(lastPage: Int? = null): ReadingProgressEvent? {
         val deadline = System.nanoTime() + 10_000_000_000L
         while (System.nanoTime() < deadline) {
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
-            events.tryReceive().getOrNull()?.let { return it }
+            events.tryReceive().getOrNull()?.let { event ->
+                if (lastPage == null || event.lastPageRead == lastPage) return event
+                check(event.lastPageRead < lastPage) {
+                    "Unexpected progress beyond the requested real viewport: $event"
+                }
+            }
             withContext(Dispatchers.Default) { delay(20) }
         }
         return null

@@ -132,6 +132,7 @@ data class SyncJournalEvent(
     val attemptId: Long? = null,
     val operation: SyncJournalOperation? = null,
     val environment: SyncDiagnosticEnvironment? = null,
+    val databaseErrorCode: Int? = null,
 )
 
 @Serializable
@@ -190,6 +191,7 @@ class SyncDiagnosticJournal(
                     clock(), kind, stage, runId?.let(::runAlias), code ?: failure?.safeCode(),
                     requestId?.let(::runAlias), networkPhase, httpStatus?.takeIf { it in 100..599 },
                     nextRetryAt, failure?.safeThrowableGraph().orEmpty(), trigger, attemptId, operation, environment,
+                    databaseErrorCode = failure?.syncDatabaseErrorCode()?.takeIf { it in 1..65_535 },
                 )
                 while (json.encodeToString(event).encodeToByteArray().size > MAX_EVENT_BYTES) {
                     val longest = event.exceptions.indices.maxByOrNull { event.exceptions[it].frames.size } ?: break

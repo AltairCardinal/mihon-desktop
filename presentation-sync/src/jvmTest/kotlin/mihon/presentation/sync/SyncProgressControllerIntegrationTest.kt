@@ -186,18 +186,18 @@ class SyncProgressControllerIntegrationTest {
             assertEquals(SyncRunState.PAUSED_USER, runtime.runStore.get(run.runId)!!.state)
             render()
             fun displayedTime() = node("sync-round-time")!!.config[SemanticsProperties.Text].single().text
-            assertTrue(displayedTime().contains("00:10"), displayedTime())
+            assertTrue(displayedTime().contains("00:40"), displayedTime())
             clockMillis = 101_000
             displayMillis = 100_000
             render()
-            assertTrue(displayedTime().contains("00:10"), displayedTime())
+            assertTrue(displayedTime().contains("00:40"), displayedTime())
             runtime.panel.dispatch(SyncPanelAction.Close)
             withTimeout(5000) { runtime.panel.state.first { !it.visible } }
             render()
             runtime.panel.dispatch(SyncPanelAction.Open)
             withTimeout(5000) { runtime.panel.state.first { it.visible && it.loaded } }
             withTimeout(5000) { while (node("sync-round-time") == null) render() }
-            assertTrue(displayedTime().contains("00:10"), displayedTime())
+            assertTrue(displayedTime().contains("00:40"), displayedTime())
             assertNull(node("sync-pause-import"))
             runtime.panel.dispatch(SyncPanelAction.PauseImport)
             withTimeout(5000) { runtime.panel.state.first { it.importPaused } }
@@ -283,7 +283,8 @@ class SyncProgressControllerIntegrationTest {
             render()
             assertEquals(SyncRunState.BLOCKED, runtime.panel.state.value.run!!.state)
             assertEquals(31_000L, runtime.panel.state.value.run!!.planStartedAt)
-            assertEquals(10L, SyncProgressDisplaySession().project(runtime.panel.state.value, 0).elapsedSeconds)
+            assertEquals(101_000L, runtime.panel.state.value.run!!.attemptStartedAt)
+            assertEquals(0L, SyncProgressDisplaySession().project(runtime.panel.state.value, 0).elapsedSeconds)
             assertNull(node("sync-progress-details"))
             assertEquals(mihon.domain.sync.runtime.SyncRunProblem.STORAGE, runtime.panel.state.value.problem)
             withTimeout(5000) { while (node("sync-reenter-password") == null) render() }

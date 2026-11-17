@@ -205,8 +205,10 @@ class HistoryCatalogHttpIntegrationTest {
                 override suspend fun getMangaUpdate(manga: SManga, chapters: List<SChapter>, fetchDetails: Boolean, fetchChapters: Boolean) = eu.kanade.tachiyomi.source.model.SMangaUpdate(manga.apply { url = "/manga/other" }, chapters)
             }
 
-            // Explicit source refresh verifies the returned identity even for a cached directory.
-            assertThrows(Exception::class.java) { runBlocking { owner.awaitFromSource(bad, manga.toSourceMangaForTest()) } }
+            // Returned detail URLs are metadata, never a new persistence target.
+            val refreshed = owner.awaitFromSource(bad, manga.toSourceMangaForTest())
+            assertEquals(manga.id, refreshed.id)
+            assertEquals(manga.url, refreshed.url)
             assertNull(Injekt.get<MangaRepository>().getMangaByUrlAndSourceId("/manga/other", source.id))
             val bindingReached = CompletableDeferred<Unit>()
             val bindingRelease = CompletableDeferred<Unit>()

@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -101,6 +102,9 @@ class MangaScreen(
 
     @Composable
     internal fun ContentWithModel(screenModel: MangaScreenModel) {
+        DisposableEffect(screenModel) {
+            onDispose { screenModel.clearRangeSelectionUndo() }
+        }
         val navigator = LocalNavigator.currentOrThrow
         val context = LocalContext.current
         val haptic = LocalHapticFeedback.current
@@ -221,6 +225,7 @@ class MangaScreen(
             onChapterSwipe = screenModel::chapterSwipe,
             onChapterSelected = screenModel::toggleSelection,
             onAllChapterSelected = screenModel::toggleAllSelection,
+            onSelectRange = screenModel::selectRange,
             onInvertSelection = screenModel::invertSelection,
         )
 

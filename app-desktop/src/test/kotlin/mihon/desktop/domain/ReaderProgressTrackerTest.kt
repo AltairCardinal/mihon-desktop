@@ -58,7 +58,7 @@ import java.util.prefs.Preferences
 
 class ReaderProgressTrackerTest {
     @Test
-    fun `delete after read uses the complete download identity for every migrated artifact alias`() = runBlocking {
+    fun `legacy boolean never bypasses the ordinary reader close deletion boundary`() = runBlocking {
         val downloadPreferences = DesktopDownloadPreferences(InMemoryPreferenceStore()).apply {
             deleteAfterRead.set(true)
         }
@@ -86,7 +86,7 @@ class ReaderProgressTrackerTest {
             downloadIdentity = identity,
         )
 
-        verify(exactly = 1) { downloadManager.deleteDownload(42L, identity) }
+        verify(exactly = 0) { downloadManager.deleteDownload(any(), any<DownloadChapterIdentity>()) }
     }
 
     @Test

@@ -25,6 +25,8 @@ import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.theme.active
+import tachiyomi.presentation.icons.selectRangeIcon
+import tachiyomi.presentation.icons.undoSelectRangeIcon
 
 @Composable
 fun MangaToolbar(
@@ -42,11 +44,13 @@ fun MangaToolbar(
     // For action mode
     actionModeCounter: Int,
     onCancelActionMode: () -> Unit,
+    onSelectRange: () -> Unit,
     onSelectAll: () -> Unit,
     onInvertSelection: () -> Unit,
 
     titleAlphaProvider: () -> Float,
     backgroundAlphaProvider: () -> Float,
+    canUndoRangeSelection: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val isActionMode = actionModeCounter > 0
@@ -78,6 +82,19 @@ fun MangaToolbar(
             AppBarActions(
                 actions = persistentListOf<AppBar.AppBarAction>().builder().apply {
                     if (isActionMode) {
+                        add(
+                            AppBar.Action(
+                                title = stringResource(
+                                    if (canUndoRangeSelection) {
+                                        MR.strings.action_undo_select_range
+                                    } else {
+                                        MR.strings.action_select_range
+                                    },
+                                ),
+                                icon = if (canUndoRangeSelection) undoSelectRangeIcon else selectRangeIcon,
+                                onClick = onSelectRange,
+                            ),
+                        )
                         add(
                             AppBar.Action(
                                 title = stringResource(MR.strings.action_select_all),

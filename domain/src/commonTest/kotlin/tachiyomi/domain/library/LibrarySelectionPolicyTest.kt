@@ -5,6 +5,31 @@ import org.junit.jupiter.api.Test
 
 class LibrarySelectionPolicyTest {
     @Test
+    fun `selected endpoints use display order and retain selections outside the visible interval`() {
+        val selected = setOf(1L, 3L, 99L)
+        val visible = listOf(9L, 1L, 7L, 3L, 5L)
+        for (order in listOf(visible, visible.reversed())) {
+            assertEquals(setOf(1L, 7L, 3L, 99L), selectBetweenSelectedLibraryItems(selected, order))
+        }
+    }
+
+    @Test
+    fun `selected endpoints do not add filtered chapters and are idempotent`() {
+        val visible = listOf(1L, 3L, 5L)
+        val expanded = selectBetweenSelectedLibraryItems(setOf(1L, 5L), visible)
+        assertEquals(setOf(1L, 3L, 5L), expanded)
+        assertEquals(expanded, selectBetweenSelectedLibraryItems(expanded, visible))
+    }
+
+    @Test
+    fun `zero or one visible selected endpoint leaves the selection unchanged`() {
+        for (selected in listOf(emptySet(), setOf(2L), setOf(2L, 99L), setOf(99L))) {
+            assertEquals(selected, selectBetweenSelectedLibraryItems(selected, listOf(1L, 2L, 3L)))
+            assertEquals(selected, selectBetweenSelectedLibraryItems(selected, emptyList()))
+        }
+    }
+
+    @Test
     fun `default android range remains append with anchor moved to each target`() {
         val initial = LibrarySelectionResult(setOf(2L, 90L), LibrarySelectionAnchor(2L, 1L))
         val visible = listOf(1L, 2L, 3L, 4L, 5L)

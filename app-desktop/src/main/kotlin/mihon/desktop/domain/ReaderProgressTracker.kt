@@ -21,7 +21,7 @@ import java.util.Date
  * - Marks the chapter as read when [lastPageRead] reaches the last page.
  * - Always persists [lastPageRead] so the reader can resume later.
  * - Records history unless incognito mode is enabled.
- * - Deletes downloaded chapter after read when [DesktopDownloadPreferences.deleteAfterRead] is true.
+ * - Captures ordinary cleanup through shared preferences; the owning reader closes before deletion.
  */
 class ReaderProgressTracker(
     private val recordReadingProgress: RecordReadingProgress,
@@ -30,7 +30,11 @@ class ReaderProgressTracker(
     private val downloadManager: DesktopDownloadManager? = null,
     private val trackSync: ReadingProgressTrackSync? = null,
     private val extensionPackageForSource: (Long) -> String? = { null },
+    private val readDownloadDeletion: mihon.desktop.download.DesktopReadDownloadDeletion? = null,
 ) {
+    fun newDownloadDeletionSession(): ReaderReadDownloadDeletionSession? = readDownloadDeletion?.let {
+        ReaderReadDownloadDeletionSession(requireNotNull(downloadPreferences).shared, it)
+    }
 
     suspend fun openSession(
         chapterId: Long,
@@ -59,6 +63,7 @@ class ReaderProgressTracker(
         downloadIdentity: DownloadChapterIdentity? = null,
         readingSession: ReadingProgressSession? = null,
         incognitoAtAcceptance: Boolean? = null,
+        downloadDeletionSession: ReaderReadDownloadDeletionSession? = null,
     ) {
         val isRead = wasRead || (totalPages > 0 && lastPageRead >= totalPages - 1)
 
@@ -84,21 +89,6 @@ class ReaderProgressTracker(
             }
         }
 
-        // Auto-delete downloaded chapter when fully read
-        if (isRead) {
-            val shouldDelete = downloadPreferences?.deleteAfterRead?.get() == true
-            if (shouldDelete) {
-                when {
-                    sourceId != null && downloadIdentity != null ->
-                        downloadManager?.deleteDownload(sourceId, downloadIdentity)
-                    manga != null && chapterName != null ->
-                        downloadManager?.deleteDownload(
-                            sourceId = manga.source,
-                            mangaTitle = manga.title,
-                            chapterName = chapterName,
-                        )
-                }
-            }
-        }
+        if (totalPages > 0 && lastPageRead >= totalPages - 1) downloadDeletionSession?.completed(chapterId)
     }
 }

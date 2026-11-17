@@ -20,6 +20,8 @@ object UpdatesScreenModelFactory {
             isChapterDownloaded = Injekt.get<IsChapterDownloaded>(),
             downloadIdentity = Injekt.get<DesktopDownloadIdentityResolver>()::resolve,
             enqueueDownload = Injekt.get<EnqueueDownload>(),
+            setChapterReadStatus = Injekt.get(),
+            chapterRepository = Injekt.get(),
             creatorArchiveRepository = Injekt.get<tachiyomi.domain.creator.repository.CreatorArchiveRepository>(),
         )
     }

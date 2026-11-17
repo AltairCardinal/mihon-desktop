@@ -3494,8 +3494,9 @@ class DualPageViewportZoomTest {
 
     @Test
     fun halfSlotGesturesCrossTheSpineAndResetWithoutReopeningTheImage() = runTest {
+        useOriginalDisplayDecoder()
         for (slot in listOf(ReaderPortraitSingleSlot.LEFT, ReaderPortraitSingleSlot.RIGHT)) {
-            val subject = subject(slot)
+            val subject = subject(slot, actualSingleFrame = true)
             val initial = pixels(subject.holder)
             assertEquals(
                 if (slot ==
@@ -4197,6 +4198,7 @@ class DualPageViewportZoomTest {
         partnerWidth: Int = sourceWidth,
         partnerHeight: Int = sourceHeight,
         actualPairFrame: Boolean = false,
+        actualSingleFrame: Boolean = false,
     ): Subject {
         val viewer = ReflectionHelpers.getField<DualPageR2LPagerViewer>(fixture, "viewer")
         val source = Bitmap.createBitmap(sourceWidth, sourceHeight, Bitmap.Config.ARGB_8888).apply {
@@ -4224,7 +4226,7 @@ class DualPageViewportZoomTest {
         }
         chapter.publishLoadedPageListForTest(pages)
         pages.forEach { it.publishHeaderFact() }
-        if (actualPairFrame && !ReflectionHelpers.getField<Boolean>(viewer, "isIdle")) {
+        if ((actualPairFrame || actualSingleFrame) && !ReflectionHelpers.getField<Boolean>(viewer, "isIdle")) {
             settleOriginalPager(viewer) { mainScheduler.runCurrent() }
         }
         viewer.setChapters(ViewerChapters(chapter, null, null))
@@ -4237,17 +4239,17 @@ class DualPageViewportZoomTest {
         } else {
             pages.last()
         }
-        if (actualPairFrame) {
+        if (actualPairFrame || actualSingleFrame) {
             // Initial window/configuration callbacks retire undrawn descriptors in the old context.
             invokeFixture("measure", viewer.pager, viewportWidth, viewportHeight)
             mainScheduler.runCurrent()
         }
         viewer.moveToPage(page)
-        if (actualPairFrame) {
+        if (actualPairFrame || actualSingleFrame) {
             mainScheduler.runCurrent()
             settleOriginalPager(viewer) { mainScheduler.runCurrent() }
         }
-        val display = if (actualPairFrame) {
+        val display = if (actualPairFrame || actualSingleFrame) {
             viewer.adapter.items[viewer.adapter.positionForPage(page)] as DisplayPage
         } else if (provisionalPair) {
             DisplayPage.Single(page, slot)
@@ -4260,18 +4262,53 @@ class DualPageViewportZoomTest {
         } else {
             assertEquals(slot, (display as DisplayPage.Single).slot)
         }
-        val holder = DualPagerPageHolder(viewer.activity, viewer, display)
+        val holder = if (actualSingleFrame) {
+            // The gesture path needs the actual selected native mount, not an unrelated holder
+            // carrying a descriptor captured before the pager's initial layout/context change.
+            viewer.pager.children.filterIsInstance<DualPagerPageHolder>().single { it.displayPage == display }
+        } else {
+            DualPagerPageHolder(viewer.activity, viewer, display)
+        }
         mounted += holder
         load(holder, page, "CENTER")
-        invokeFixture("measure", holder, viewportWidth, viewportHeight)
+        invokeFixture("measure", if (actualSingleFrame) viewer.pager else holder, viewportWidth, viewportHeight)
         val image = if (actualPairFrame) {
             ReflectionHelpers.getField<ReaderPageImageView>(holder, "rightHolder")
         } else {
             descendants(holder).filterIsInstance<ReaderPageImageView>().single()
         }
-        paintReaderImage(image, encoded)
+        if (!actualSingleFrame) paintReaderImage(image, encoded)
         val native = image.getChildAt(0) as SubsamplingScaleImageView
         settle(holder)
+        if (actualSingleFrame) {
+            // Let the actual pager finish its initial callbacks/encoded rebind before replacing
+            // Windows' unavailable decoder output; a late rebind would replace this bitmap seam.
+            val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5)
+            var previousTicket: mihon.domain.reader.ReaderDualPageViewportTicket? = null
+            var stableFrames = 0
+            do {
+                mainScheduler.runCurrent()
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+                val ticket = holder.presentationScope?.second
+                stableFrames = if (ticket != null && ticket === previousTicket &&
+                    ReaderPageImageView.foregroundWork.value == 0 && !viewer.pager.isLayoutRequested
+                ) {
+                    stableFrames + 1
+                } else {
+                    0
+                }
+                previousTicket = ticket
+                if (stableFrames >= 2) break
+                Thread.sleep(1)
+            } while (System.nanoTime() < deadline)
+            check(stableFrames >= 2) { "The real initial native binding did not settle" }
+            check(viewer.pager.children.any { it === holder }) { "Initial native mount was replaced during layout" }
+            check(viewer.adapter.items[viewer.pager.currentItem] == holder.displayPage)
+            assertEquals(holder.presentationScope?.first?.targetFrameId, previousTicket?.frameId)
+            assertEquals(0, ReaderPageImageView.foregroundWork.value)
+            paintReaderImage(image, encoded)
+            settle(holder)
+        }
         val bitmap = ReflectionHelpers.getField<Bitmap>(native, "bitmap")
         val imageParent = image.parent
         val attachment = ReflectionHelpers.getField<Long>(holder, "attachmentGeneration")

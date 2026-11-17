@@ -890,6 +890,84 @@ class SaveSourceMangaForDetailsTest {
         }
 
     @Test
+    fun `HTTP detail canonical URLs preserve full local identity and clear refresh failure`() = runBlocking<Unit> {
+        val failing = java.util.concurrent.atomic.AtomicBoolean(true)
+        val server = mockwebserver3.MockWebServer()
+        server.dispatcher = object : mockwebserver3.Dispatcher() {
+            override fun dispatch(request: mockwebserver3.RecordedRequest) = if (failing.get()) {
+                mockwebserver3.MockResponse(code = 500)
+            } else {
+                mockwebserver3.MockResponse(body = "<h1>Remote</h1><a href='/chapter/1'>Chapter</a>")
+            }
+        }
+        server.start()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val returned = mutableListOf<SManga>()
+        val source = object : eu.kanade.tachiyomi.source.online.HttpSource() {
+            override val name = "Canonical URL fixture"
+            override val lang = "en"
+            override val supportsLatest = false
+            override val baseUrl = server.url("/").toString().trimEnd('/')
+            override val client = okhttp3.OkHttpClient()
+            override fun headersBuilder() = okhttp3.Headers.Builder()
+            override fun mangaDetailsParse(response: okhttp3.Response): SManga {
+                val document = org.jsoup.Jsoup.parse(response.body.string())
+                return SManga.create().apply {
+                    url = response.request.url.encodedPath
+                    title = document.selectFirst("h1")!!.text()
+                    author = "Remote author"
+                }.also { returned.add(it) }
+            }
+            override fun chapterPageParse(response: okhttp3.Response): SChapter = error("Unused chapter page")
+            override fun chapterListParse(response: okhttp3.Response): List<SChapter> {
+                val document = org.jsoup.Jsoup.parse(response.body.string())
+                return document.select("a").map {
+                    SChapter.create().apply {
+                        url = it.attr("href")
+                        name = it.text()
+                    }
+                }
+            }
+        }
+        try {
+            val owner = SaveSourceMangaForDetails(
+                NetworkToLocalManga(storage.mangas),
+                storage.mangas,
+                storage.chapters,
+                refreshScope = scope,
+            )
+            val ids = mutableSetOf<Long>()
+            for (url in listOf("/g/1/token/?nw=always", "/read?id=1", "/read?id=2")) {
+                val listed = SManga.create().apply {
+                    this.url = url
+                    title = "Listed"
+                }
+                val original = owner.awaitListed(listed, source.id)
+                failing.set(true)
+                assertNotNull(runCatching { owner.awaitFromSource(source, listed) }.exceptionOrNull())
+                assertInstanceOf(
+                    SourceMangaRefreshState.Failure::class.java,
+                    owner.refreshStates.value[SourceMangaRefreshKey(source.id, url)],
+                )
+                failing.set(false)
+                val saved = owner.awaitFromSource(source, listed)
+                assertEquals(original.id, saved.id)
+                assertEquals(url, saved.url)
+                assertEquals("Remote", saved.title)
+                assertEquals("Remote author", saved.author)
+                assertEquals(saved.id, storage.chapters.getChapterByMangaId(saved.id).single().mangaId)
+                assertNull(owner.refreshStates.value[SourceMangaRefreshKey(source.id, url)])
+                assertEquals(java.net.URI(url).path, returned.last().url, "Do not rewrite the extension object")
+                ids.add(saved.id)
+            }
+            assertEquals(3, ids.size)
+        } finally {
+            scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+            server.close()
+        }
+    }
+
+    @Test
     fun `saves listed manga without fetching source before navigation`() =
         runBlocking<Unit> {
             val mangaRepo = storage.mangas

@@ -41,6 +41,8 @@ Mihon’s reading and library experience gains a desktop home. Use the desktop i
 
 **Windows reader preparation:** The accepted Windows reader candidate reduces repeated preparation when opening chapters while preserving image quality, page order, and normal page turning. The observed speed depends on the device and content; this change does not establish a stable opening-time improvement.
 
+**Chapter range selection (Windows and Android):** In a work’s chapter multi-select toolbar, use **Select range** to fill the visible interval between the first and last selected chapters in the current display order. The button changes to a dashed icon and **Undo range selection**; press it again to restore the previous selection and range anchor. Undo is available only for the immediately preceding range fill. Manual selection, select all, inverse selection, changes to the visible chapter identities or order, and leaving the detail page clear it. A range fill that changes nothing creates no undo. Ordinary progress or metadata refreshes retain undo when selection and visible order stay unchanged.
+
 **Manga details and chapter list:** The chapter list provides native dynamic scrollbars in both dual-pane and single-pane layouts, highlighting on scroll or hover. When the floating "Continue" action button is visible in the bottom-right corner, the list automatically maintains an 88dp bottom clearance so the final chapter row remains completely clear of the button when scrolled to the end.
 
 **Chapter action feedback:** On Windows, successful or skipped chapter actions on the manga detail page no longer show the success/skip/failure count snackbar. Failure feedback and the optional Add to library action remain available.
@@ -59,9 +61,13 @@ Mihon’s reading and library experience gains a desktop home. Use the desktop i
 
 **Source image downloads and access errors:** Windows queued chapter downloads preserve the source’s image request, including its headers, client and custom request method/body. Retry a failed chapter from the download queue after switching to the updated build. HTTP 403 means access was denied and is no longer presented as a login requirement; HTTP 401 retains the login prompt. Source network configuration failures remain visible instead of silently sending a fallback request. The shared Android error mapping also distinguishes these statuses. The accepted Windows candidate and the limits of the Android and browser checks are recorded in the [change history](./changelog.md).
 
+**Windows source-detail refresh:** Open the work details and use **Retry** or refresh after a failure. A source returning a detail URL without the original query parameters no longer causes an identity-conflict error; metadata updates remain attached to the original work and its full URL. Existing chapter, reading-progress and download associations are retained. Accepted on Windows preview `0.11.24.6.7b4cf6d`; unavailable sources can still fail.
+
 **Platform boundaries:** Windows is the primary desktop development and validation target. The repository also maintains a macOS build entrypoint; macOS preview builds require the source and output directories to be on an APFS volume. Linux desktop packaging and acceptance are not configured. A successful preview build does not establish release readiness.
 
 ## Two-page reading and spread matching {#two-page-reading}
+
+**Android initial loading feedback:** Opening an online or undownloaded chapter shows a centered loading indicator from the reader's initial frame, including when opening the reader from a cold start. Once the current page slots have their loading feedback ready, the reader hands over to those indicators without a blank gap. Retrying an initial failure restores loading feedback; intentional empty slots do not show artificial loading indicators. Acceptance covers Android candidate `0.19.4-aex.139 / vc157`.
 
 Read adjacent pages side by side, display landscape pages, and adjust pairing manually when a cover or page sequence shifts the layout.
 
@@ -78,6 +84,10 @@ Read adjacent pages side by side, display landscape pages, and adjust pairing ma
 **Windows page-image retry:** use the failed page's **Retry** button. In the accepted online two-page case, a successful retry restores that page's image and clears its error while preserving the normal partner and current reading position. This is separate from reloading saved page-pairing adjustments, and does not guarantee recovery from an unavailable source. Acceptance covers Windows only.
 
 **Windows zoomed panning:** after zooming in, drag the comic to inspect its edges. In single-page and two-page reading, extra blank space on any side is limited to one third of the reading viewport's corresponding width or height. Two-page reading uses the whole spread's outer edges. Movement stops at the limit and responds immediately when reversed; changing the zoom or window size recalculates the limit. Unavoidable margins around small images are retained without allowing further outward movement. This acceptance covers Windows desktop reading only.
+
+**Android online two-page swipes:** with automatic matching enabled, repeated forward and reverse swipes remain available while images load, without the confirmed one-direction lock or backward turn. The project owner accepted Android aex.137 / vc155 on 2026-11-13. This acceptance covers Android; it does not extend the fix to other platforms.
+
+**Android internal empty slots:** in the accepted tablet two-page case, confirmed empty slots inside a chapter display white paper with a pale gray editor logo. The paper follows the spread when zooming and panning; the opposite slot at the chapter opening or ending stays unfilled. Manual boundaries keep an adjacent portrait remainder in a half-page slot instead of unexpectedly centering it. An already decoded image repaints when its page becomes visible, allowing loading feedback to finish. Acceptance covers Android aex.143 / code 161, without a universal loading-time guarantee.
 
 **Android boundary:** this fork’s Android reader supports two-page reading and manual pairing. Android automatic matching is available in the accepted reader settings and continuity scope; complete recognition of all layouts is not guaranteed.
 
@@ -102,6 +112,8 @@ The documented sync scope is:
 **Try it:** connect GitHub from the sync panel on one device, create or join a sync space, then connect a compatible build on the other device to the same space. Use the panel’s status and feedback to follow the operation.
 
 **Accepted Windows behavior:** the panel opens immediately while connection checks continue. Locally stored cancellation conflicts remain visible during those checks and in setup results; choosing to keep or cancel one item on this device applies directly, without a confirmation dialog or waiting for GitHub. Batch decisions still require confirmation. Download batches awaiting system confirmation are separate from these manual decisions. Active sync sessions renew renewable GitHub credentials automatically; revoked authorization still requires reconnecting.
+
+**Accepted Windows sync recovery:** old blocked merge tasks resume automatically without a repair click, preserving saved decisions and confirmations. After a database restore, already published upload batches are confirmed against their original remote content without publishing them again; temporary network failures are retried automatically. Confirmed keep/cancel decisions finish locally, including recovery of old saved decisions that left a batch awaiting confirmation. Retry timing and newly confirmed counts describe the current attempt while overall progress is retained. Saved content awaiting local or source recovery is distinguished from transport and validation issues, with diagnostics retained for invalid data. Closing the app hides its window promptly while safe cleanup keeps the profile locked until it finishes.
 
 **Compatibility boundary:** upstream Mihon for Android does not implement this fork’s sync protocol. Use compatible builds from this repository on both devices.
 

@@ -12,6 +12,13 @@ import java.io.File
  * Download-related preferences — saved as CBZ, auto-download, delete after read.
  */
 class DesktopDownloadPreferences(private val preferenceStore: PreferenceStore) {
+    val shared = tachiyomi.domain.download.service.DownloadPreferences(preferenceStore)
+
+    init {
+        if (!shared.removeAfterReadSlots().isSet()) {
+            shared.removeAfterReadSlots().set(if (preferenceStore.getBoolean("delete_after_read", false).get()) 0 else -1)
+        }
+    }
 
     fun downloadDirectory(
         defaultDirectory: File,
@@ -34,7 +41,7 @@ class DesktopDownloadPreferences(private val preferenceStore: PreferenceStore) {
     /** When true, newly found chapters are automatically enqueued for download. */
     val autoDownloadNewChapters by lazy { preferenceStore.getBoolean("download_new", false) }
 
-    /** When true, downloaded chapter files are deleted after the chapter is marked as read. */
+    /** Legacy compatibility handle. Production deletion reads [shared] after the one-time migration. */
     val deleteAfterRead by lazy { preferenceStore.getBoolean("delete_after_read", false) }
 
     /** Maximum number of chapters to download in parallel (1–5). */

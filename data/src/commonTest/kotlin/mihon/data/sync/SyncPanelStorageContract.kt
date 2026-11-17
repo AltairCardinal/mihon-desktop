@@ -30,6 +30,7 @@ import mihon.data.sync.runtime.SyncPanelController
 import mihon.data.sync.runtime.SyncPanelPage
 import mihon.data.sync.runtime.SyncPasswordHelpSource
 import mihon.data.sync.runtime.SyncPasswordProblem
+import mihon.data.sync.runtime.SyncRunState
 import mihon.data.sync.runtime.SyncRuntime
 import mihon.data.sync.runtime.SyncSetupStep
 import mihon.domain.sync.SyncBatch
@@ -49,6 +50,7 @@ import mihon.domain.sync.auth.GitHubAuthFailureReason
 import mihon.domain.sync.crypto.SyncRecoveryCodec
 import mihon.domain.sync.crypto.SyncSpaceDescriptorCodec
 import mihon.domain.sync.crypto.SyncSpaceMaterial
+import mihon.domain.sync.runtime.SyncTrigger
 import mihon.domain.sync.security.SyncSecureStore
 import mihon.domain.sync.transport.SyncInitializationIntent
 import mihon.domain.sync.transport.SyncInitializationStage
@@ -84,6 +86,62 @@ import java.nio.file.Path as NioPath
 
 @Timeout(30)
 abstract class SyncPanelStorageContract {
+    @Test
+    fun `single and bulk decisions settle receipts and refresh run without secure reads or HTTP`() = runBlocking {
+        for (bulk in listOf(false, true)) {
+            open().use { storage ->
+                SyncOnboardingFixture(storage).use { f ->
+                    f.existing("")
+                    f.authorize()
+                    f.begin()
+                    pending(storage, 2)
+                    val runs = f.runtime.runStore
+                    val run = runs.start("space", 1, SyncTrigger.MANUAL)
+                    assertTrue(runs.claim(run.runId, "old-owner", 1))
+                    repeat(2) { runs.expectDownload(run.runId, "old-owner", "remove-$it", 1) }
+                    runs.freezePlan(run.runId, "old-owner", emptyList())
+                    runs.finish(run.runId, SyncRunState.PARTIAL, "pending_decision", "old-owner")
+                    f.panel.act(SyncPanelAction.Open)
+                    val requests = f.git.server.requestCount
+                    val reads = f.secure.readCount.get()
+                    f.secure.readFailure = true
+                    try {
+                        if (bulk) {
+                            f.panel.act(
+                                SyncPanelAction.PrepareDecision(
+                                    SyncCancellationDecision.CONFIRM,
+                                    SyncDecisionScope.ALL,
+                                ),
+                            )
+                            f.panel.act(SyncPanelAction.ConfirmDecision)
+                            withTimeout(5_000) { f.panel.state.first { it.notice?.bulk?.completed == 2L } }
+                        } else {
+                            repeat(2) {
+                                val item = f.panel.state.value.pending.first()
+                                f.panel.act(
+                                    SyncPanelAction.PrepareDecision(
+                                        SyncCancellationDecision.CONFIRM,
+                                        SyncDecisionScope.ITEM,
+                                        item.id,
+                                    ),
+                                )
+                            }
+                        }
+                        f.panel.awaitIdle()
+                        assertEquals(SyncRunState.SUCCEEDED, runs.get(run.runId)!!.state)
+                        assertEquals(SyncRunState.SUCCEEDED, f.panel.state.value.run?.state)
+                        assertEquals(2L, f.panel.state.value.run?.confirmedItems)
+                        assertEquals(0L, f.panel.state.value.pendingTotal)
+                        assertEquals(requests, f.git.server.requestCount)
+                        assertEquals(reads, f.secure.readCount.get())
+                    } finally {
+                        f.secure.readFailure = false
+                    }
+                }
+            }
+        }
+    }
+
     @Test
     fun `reopened panel shows and resolves local conflicts before connection checking finishes`() = runBlocking {
         open().use { storage ->
@@ -291,7 +349,9 @@ abstract class SyncPanelStorageContract {
                 pending(storage, 3)
                 storage.driver.execute(
                     null,
-                    "CREATE TRIGGER fail_bulk BEFORE UPDATE OF favorite ON mangas WHEN OLD.url IN ('/remote-1','/remote-2') BEGIN SELECT RAISE(ABORT, 'temporary failure'); END",
+                    "CREATE TRIGGER fail_bulk BEFORE UPDATE OF favorite ON mangas " +
+                        "WHEN OLD.url IN ('/remote-1','/remote-2') " +
+                        "BEGIN SELECT RAISE(ABORT, 'temporary failure'); END",
                     0,
                 )
                 withPanel(storage) { panel, _ ->
