@@ -42,3 +42,13 @@
 `sync-finishing-handoff-red` 的投影与真实 Compose 场景按预期失败。首绿投影通过，但新增 UI 测试误把已 finish 的 fraction=1 快照复活为下一段起点，修正为保留真实活动中的快照。`sync-finishing-handoff-green2` 的 24 项定向测试通过，`sync-server-label` 实际界面文案 1 项通过；组合 25 项，未重新全量执行。定向格式及 diff 检查通过。
 
 `sync-finishing-handoff-preview` 完成，实际候选为 `app-desktop/artifacts/preview/windows/20261117T154501Z-784d34de/Mihon-Desktop-0.11.24.10.3b48ed2-unpacked/Mihon Desktop.exe`，清单如实记录基线加 dirty 输入。构建、源码完整性与生产扩展运行时通过；用户真实同步、原生交互未执行。
+
+## 手动开始同步的即时反馈
+
+基线 `cedbe07aae`。用户反馈点击开始同步后长时间无反应。真实契约测试挂起安全存储中的完整刷新后，dispatch Synchronize 未立即发布 busy，证实手动开始排在慢面板命令后。`sync-start-red` 按预期失败于即时反馈断言。
+
+已连接且未暂停、未忙碌、未切换空间时，dispatch 立即发布准备反馈并用独立生命周期任务进入原协调器；单任务保护连续点击，停止后不接收动作。请求接纳不是同步成功，后续授权、绑定、互斥及恢复 gate 仍由 Runtime 核验。准备状态暂时隐藏旧结果与条目比例，显示“正在准备同步”，协调器开始后接回真实全流程进度。未连接的配置、暂停继续等其他命令沿原链路。
+
+`sync-start-green` 首轮真实契约 3 项通过；补充连续点击仅一轮、用户暂停不被开始绕过、真实 Compose 准备态后，`sync-start-focused` 最终 31 项通过（data 5、展示投影 23、Compose 2、controller 集成 1），修改文件定向格式检查通过。未运行全量测试，未操作真实数据库。`sync-start-preview` 通过构建、源码完整性及生产扩展运行时检查，原生交互未执行。
+
+候选：`app-desktop/artifacts/preview/windows/20261117T155803Z-ef0b5bb0/Mihon-Desktop-0.11.24.10.cedbe07-unpacked/Mihon Desktop.exe`，manifest 如实记录基线加 dirty 输入。验收：退出旧版打开此包，点击开始同步应立即看到准备/检查反馈，连续点击不会叠加同步轮次；最后仍按完整活动边界显示完成。

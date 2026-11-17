@@ -64,11 +64,12 @@ class SyncProgressDisplaySession {
     fun project(state: SyncPanelState, monotonicMillis: Long): SyncProgressPresentation {
         val run = state.run
         val operation = state.operation?.takeIf {
-            it.running || (it.runId == run?.runId && it.outcome != SyncRunStatus.SKIPPED)
+            !state.syncStartRequested && (it.running || (it.runId == run?.runId && it.outcome != SyncRunStatus.SKIPPED))
         }
         val operationFailed = run?.state == SyncRunState.SUCCEEDED && operation?.running == false &&
             operation.outcome in setOf(SyncRunStatus.FAILED, SyncRunStatus.PARTIAL)
-        val complete = run?.state == SyncRunState.SUCCEEDED && !state.busy && operation?.running != true &&
+        val complete = !state.syncStartRequested && run?.state == SyncRunState.SUCCEEDED &&
+            !state.busy && operation?.running != true &&
             (
                 operation == null || (
                     operation.runId == run.runId && operation.durableSuccess &&
@@ -79,9 +80,9 @@ class SyncProgressDisplaySession {
             ?: run?.let { Identity(it.spaceId, it.generation, it.runId) }
             ?: if (state.busy) Identity("", 0, "counting") else null
         val fact = state.progress?.takeIf {
-            run != null && (it.scope == run.runId || it.scope.startsWith("${run.runId}:"))
+            !state.syncStartRequested && run != null && (it.scope == run.runId || it.scope.startsWith("${run.runId}:"))
         }
-        val counting = run?.plannedItems == null
+        val counting = state.syncStartRequested || run?.plannedItems == null
         val attemptOrigin = run?.attemptStartedAt
         val elapsedKnown = attemptOrigin != null
         val pausedAfterAttempt = ((run?.pausedMillis ?: 0) - (run?.attemptPausedMillis ?: 0)).coerceAtLeast(0)
@@ -113,9 +114,10 @@ class SyncProgressDisplaySession {
         excludedPauseMillis = run?.pausedMillis ?: 0L
         if (identity != nextIdentity || attempt != run?.attemptId) roundRate.reset()
         if (previousFact?.scope != fact?.scope || previousFact?.direction != fact?.direction) stages.clear()
-        val terminal = run?.state in TERMINAL_STATES && (run?.state != SyncRunState.SUCCEEDED || complete)
+        val terminal = !state.syncStartRequested && run?.state in TERMINAL_STATES &&
+            (run?.state != SyncRunState.SUCCEEDED || complete)
         val historical = state.showingHistoricalResult
-        val active = (
+        val active = state.syncStartRequested || (
             operation?.running == true &&
                 (
                     operation.runId != run?.runId || run?.state !in setOf(
@@ -139,6 +141,7 @@ class SyncProgressDisplaySession {
         val itemFraction = run?.plannedItems?.takeIf { it > 0 && run.confirmedItems in 0..it }
             ?.let { requireNotNull(processedItems).toDouble().div(it).toFloat() }
         val fraction = when {
+            state.syncStartRequested -> null
             complete -> 1f
             operation != null -> if (operation.fraction >= 1.0) {
                 operation.copy(
@@ -263,6 +266,7 @@ class SyncProgressDisplaySession {
 
 /** Keep successful activity feedback until the matching final database projection reaches the panel. */
 internal fun SyncPanelState.operationFeedback(): StringResource? {
+    if (syncStartRequested) return MR.strings.sync_start_preparing
     val current = operation ?: return null
     if (current.runId == run?.runId && current.durableSuccess &&
         current.outcome !in setOf(SyncRunStatus.FAILED, SyncRunStatus.PARTIAL, SyncRunStatus.SKIPPED) &&

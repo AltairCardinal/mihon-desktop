@@ -165,6 +165,24 @@ class SyncPanelContentTest {
     }
 
     @Test
+    fun `accepted manual start immediately replaces the previous successful result`() = rendered(
+        connected().copy(
+            busy = true,
+            syncStartRequested = true,
+            run = visualRun(
+                SyncRunPhase.COMPLETE,
+            ).copy(state = SyncRunState.SUCCEEDED, plannedItems = 1, confirmedItems = 1),
+        ),
+    ) {
+        awaitTag("sync-counting-track")
+        assertTrue(texts().contains("正在准备同步"))
+        assertFalse(texts().contains("同步已完成"))
+        assertFalse(hasTag("sync-progress-track"))
+        assertTrue(hasTag("sync-wait"))
+        assertFalse(hasTag("sync-pause-run"))
+    }
+
+    @Test
     fun `upload confirmation feedback refers to the server`() = rendered(
         connected().copy(
             busy = true,

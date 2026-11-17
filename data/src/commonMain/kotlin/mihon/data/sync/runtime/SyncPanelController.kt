@@ -3,6 +3,7 @@ package mihon.data.sync.runtime
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -118,6 +119,7 @@ class SyncPanelController(
     private var switchIntent: StoredSyncSpaceSwitch? = null
     private var switchConfirmation: StoredSyncSpaceSwitch? = null
     private var observedCompletion = runtime.coordinator.activity.value.completion
+    private var manualStartJob: Job? = null
 
     init {
         for (queue in listOf(commands, localCommands)) {
@@ -164,7 +166,8 @@ class SyncPanelController(
                 mutableState.update {
                     it.copy(
                         operation = operationFor(it.run?.runId),
-                        busy = activity.running || local?.running == true,
+                        syncStartRequested = it.syncStartRequested && !activity.running,
+                        busy = activity.running || local?.running == true || it.syncStartRequested,
                     )
                 }
                 val structure = Triple(activity.running, activity.trigger, activity.completion)
@@ -178,7 +181,7 @@ class SyncPanelController(
                         it.copy(
                             busy =
                             runtime.coordinator.activity.value.running ||
-                                runtime.localOperation.value?.running == true,
+                                runtime.localOperation.value?.running == true || it.syncStartRequested,
                             problem = if (completed) activity.result?.problem else it.problem,
                             notice = if (completed && it.visible && activity.completion != setupExchangeCompletion &&
                                 activity.result?.status != SyncRunStatus.SKIPPED
@@ -199,7 +202,7 @@ class SyncPanelController(
                 mutableState.update { current ->
                     current.copy(
                         operation = operationFor(current.run?.runId),
-                        busy = activity.running || local?.running == true,
+                        busy = activity.running || local?.running == true || current.syncStartRequested,
                     )
                 }
             }
@@ -289,6 +292,37 @@ class SyncPanelController(
     @Synchronized
     override fun dispatch(action: SyncPanelAction) {
         if (!lifetime.isActive) return
+        if (action == SyncPanelAction.Synchronize && state.value.connection?.enabled == true) {
+            val current = state.value
+            if (current.busy || current.run?.state == SyncRunState.PAUSED_USER ||
+                manualStartJob?.isActive == true || switchIntent != null || current.pendingRecoveryPurpose != null
+            ) {
+                return
+            }
+            val job = panelScope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    mutableState.update { it.copy(problem = failure.syncProblem()) }
+                } finally {
+                    mutableState.update {
+                        it.copy(
+                            syncStartRequested = false,
+                            busy = runtime.coordinator.activity.value.running ||
+                                runtime.localOperation.value?.running == true,
+                        )
+                    }
+                }
+            }
+            manualStartJob = job
+            mutableState.update {
+                it.copy(syncStartRequested = true, busy = true, notice = null, problem = null)
+            }
+            job.start()
+            return
+        }
         if (action is SyncPanelAction.PrepareDecision && action.scope == SyncDecisionScope.ITEM) {
             val current = state.value
             val connection = current.connection ?: return

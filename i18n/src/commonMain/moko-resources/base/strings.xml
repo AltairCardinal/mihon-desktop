@@ -2702,4 +2702,5 @@
     <string name="sync_operation_integrity">Checking sync completeness</string>
     <string name="sync_operation_closing">Saving sync result</string>
     <string name="sync_operation_finishing">Finishing sync</string>
+    <string name="sync_start_preparing">Preparing sync</string>
 </resources>

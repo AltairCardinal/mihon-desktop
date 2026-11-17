@@ -2953,7 +2953,7 @@ private fun ErrorRecoveryExit(
 }
 
 private val SyncPanelState.showingCompactRun: Boolean
-    get() = (run != null || busy) && run?.state !in TERMINAL_STATES
+    get() = syncStartRequested || ((run != null || busy) && run?.state !in TERMINAL_STATES)
 
 private fun syncClockDuration(seconds: Long): String =
     "${(seconds.coerceAtLeast(0) / 60).toString().padStart(2, '0')}:" +
@@ -2967,7 +2967,7 @@ private fun SyncCompactProgressCard(
     horizontalPadding: Dp,
 ) {
     val run = state.run
-    val counting = run?.plannedItems == null && presentation.operation == null
+    val counting = state.syncStartRequested || (run?.plannedItems == null && presentation.operation == null)
     val countingInProgress = counting && (
         presentation.active ||
             (run?.state == SyncRunState.RUNNING && presentation.fact?.hold == SyncProgressHold.RECOVERING) ||
@@ -2975,7 +2975,9 @@ private fun SyncCompactProgressCard(
         )
     val status = if (presentation.status == MR.strings.sync_busy) MR.strings.sync_round_active else presentation.status
     val statusText = syncString(
-        if (countingInProgress ||
+        if (state.syncStartRequested) {
+            MR.strings.sync_start_preparing
+        } else if (countingInProgress ||
             (counting && presentation.status in setOf(MR.strings.sync_busy, MR.strings.sync_wait_start))
         ) {
             MR.strings.sync_round_counting
@@ -3465,6 +3467,13 @@ private fun SyncMainOperation(
     }
     Box(containerModifier, contentAlignment = Alignment.CenterEnd) {
         when {
+            state.syncStartRequested -> Action(
+                "sync-wait",
+                MR.strings.sync_start_preparing,
+                false,
+                shape = operationShape,
+                modifier = buttonModifier,
+            ) {}
             terminal && state.busy -> Action(
                 "sync-wait",
                 MR.strings.sync_wait_start,

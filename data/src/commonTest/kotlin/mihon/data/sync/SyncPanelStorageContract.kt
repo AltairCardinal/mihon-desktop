@@ -304,6 +304,63 @@ abstract class SyncPanelStorageContract {
     }
 
     @Test
+    fun `manual sync acknowledges immediately and bypasses a blocked panel refresh`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                f.panel.act(SyncPanelAction.Open)
+                val entered = CompletableDeferred<Unit>()
+                val release = CompletableDeferred<Unit>()
+                f.secure.nextSpaceRead = entered to release
+                try {
+                    f.panel.dispatch(SyncPanelAction.SetDeviceName("Slow refresh"))
+                    withTimeout(5_000) { entered.await() }
+                    val completed = f.runtime.coordinator.activity.value.completion
+                    f.panel.dispatch(SyncPanelAction.Synchronize)
+                    assertTrue(f.panel.state.value.busy, "the click must be acknowledged before any slow read")
+                    repeat(5) { f.panel.dispatch(SyncPanelAction.Synchronize) }
+                    withTimeout(5_000) { f.runtime.coordinator.activity.first { it.running } }
+                    assertFalse(release.isCompleted, "manual start must bypass the panel command queue")
+                    release.complete(Unit)
+                    withTimeout(5_000) { f.runtime.coordinator.activity.first { !it.running } }
+                    assertEquals(completed + 1, f.runtime.coordinator.activity.value.completion)
+                } finally {
+                    release.complete(Unit)
+                }
+                withTimeout(5_000) { f.runtime.coordinator.activity.first { !it.running } }
+                f.panel.awaitIdle()
+                assertFalse(f.panel.state.value.busy)
+            }
+        }
+    }
+
+    @Test
+    fun `manual start does not resume a durable user pause`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                val connection = f.runtime.connection()!!
+                val run = f.runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.MANUAL)
+                f.runtime.runStore.pause(run.runId)
+                f.panel.act(SyncPanelAction.Open)
+                val completion = f.runtime.coordinator.activity.value.completion
+                f.panel.act(SyncPanelAction.Synchronize)
+                assertFalse(f.panel.state.value.busy)
+                assertFalse(f.panel.state.value.syncStartRequested)
+                assertEquals(completion, f.runtime.coordinator.activity.value.completion)
+                assertEquals(
+                    mihon.data.sync.runtime.SyncRunState.PAUSED_USER,
+                    f.runtime.runStore.get(run.runId)!!.state,
+                )
+            }
+        }
+    }
+
+    @Test
     fun `closing during production refresh is immediate and a queued open cannot resurrect the panel`() = runBlocking {
         open().use { storage ->
             SyncOnboardingFixture(storage).use { f ->

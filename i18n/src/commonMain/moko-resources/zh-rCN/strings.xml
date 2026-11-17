@@ -2494,4 +2494,5 @@
     <string name="sync_operation_integrity">正在检查同步完整性</string>
     <string name="sync_operation_closing">正在保存同步结果</string>
     <string name="sync_operation_finishing">正在结束同步</string>
+    <string name="sync_start_preparing">正在准备同步</string>
 </resources>
