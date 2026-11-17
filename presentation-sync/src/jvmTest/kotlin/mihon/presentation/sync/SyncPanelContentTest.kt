@@ -114,9 +114,17 @@ class SyncPanelContentTest {
         assertEquals(0.98f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
         assertFalse(texts().contains("同步已完成"))
         assertTrue(hasTag("sync-operation-stage"))
+        assertTrue(texts().contains("正在保存同步结果"))
+        panel.state.value =
+            panel.state.value.copy(operation = panel.state.value.operation!!.copy(durableSuccess = true))
+        render()
+        assertTrue(texts().contains("正在结束同步"))
+        assertFalse(texts().contains("正在保存同步结果"))
+        assertFalse(texts().contains("同步已完成"))
         val queued = panel.state.value.operation!!.nextSegment()
         panel.state.value = panel.state.value.copy(operation = queued)
         render()
+        assertFalse(texts().contains("正在结束同步"))
         assertEquals(0.98f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
         assertFalse(texts().contains("同步已完成"))
         panel.state.value = panel.state.value.copy(

@@ -26,3 +26,9 @@
 - 完整产物树摘要：`11e4174bc388744cd8499478caaff73b753ffd61f73a7d8822a44cc087d04f38`。
 
 用户验收：完全退出旧版后启动本候选，打开书架同步面板；条目到 1/1 后总进度继续呈现真实核验与收尾，整次活动结束时显示完成；内部批次和排队段不重新归零。暂停、等待、失败、待决定及部分完成不显示成功。公共功能说明等待用户验收后更新。本地提交不代表推送或用户验收。
+
+## 活动结束检查文案补充
+
+基线 `d11febde52bd0f97aae1774057b30cac060cbb0c`。用户要求最后的活动结束检查显示“正在结束同步”。实际结果持久保存成功且活动仍 running 时，阶段文字与面板状态统一使用此文案；保存期间仍显示“正在保存同步结果”，后续 segment 清除 durableSuccess 后恢复对应检查文案，最终结束显示同步完成。不增加阶段等待、请求或修改完成权限。
+
+`sync-finishing-red` 新增行为测试按预期失败；首绿遇到跨模块 public 属性 smart cast 编译错误，改为安全读取后，`sync-finishing-green2` 的展示 22 项及真实 Compose 活动流程 1 项全部通过，定向格式检查通过。`sync-finishing-preview` 成功，候选位于 `app-desktop/artifacts/preview/windows/20261117T152554Z-c5499df7/Mihon-Desktop-0.11.24.10.d11febd-unpacked/Mihon Desktop.exe`；如实为基线加 dirty 输入。生产扩展运行时与源码完整性通过，原生交互未执行，未操作真实数据库。

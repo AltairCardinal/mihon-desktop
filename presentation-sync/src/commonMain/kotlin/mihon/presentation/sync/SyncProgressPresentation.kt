@@ -155,6 +155,7 @@ class SyncProgressDisplaySession {
         }
         val wholeRemaining = roundRate.estimate(run?.plannedItems, run?.confirmedItems, active, monotonicMillis)
         val status = when {
+            operation?.running == true && operation.durableSuccess -> MR.strings.sync_operation_finishing
             operationFailed -> if (operation?.outcome == SyncRunStatus.PARTIAL) {
                 MR.strings.sync_terminal_partial
             } else {
@@ -202,6 +203,7 @@ class SyncProgressDisplaySession {
             else -> MR.strings.sync_busy
         }
         val action = when {
+            operation?.running == true && operation.durableSuccess -> MR.strings.sync_operation_finishing
             operation?.running == true && operation.stage != SyncOperationStage.ITEMS -> when (operation.stage) {
                 SyncOperationStage.CHECKING, SyncOperationStage.AUTHORIZATION -> MR.strings.sync_checking_connection
                 SyncOperationStage.BASELINE -> MR.strings.sync_phase_importing

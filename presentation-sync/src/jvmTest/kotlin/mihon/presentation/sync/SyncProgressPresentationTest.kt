@@ -17,6 +17,31 @@ import org.junit.jupiter.api.Test
 
 class SyncProgressPresentationTest {
     @Test
+    fun `final activity check has a distinct finishing label until completion`() {
+        val saving = mihon.domain.sync.runtime.SyncOperationProgress("ending", runId = run.runId)
+            .advance(mihon.domain.sync.runtime.SyncOperationStage.PERSISTING)
+        val current = state().copy(busy = true, run = run.copy(state = SyncRunState.SUCCEEDED), operation = saving)
+        val session = SyncProgressDisplaySession()
+        assertEquals(tachiyomi.i18n.MR.strings.sync_operation_closing, session.project(current, 0).action)
+        val ending = current.copy(operation = saving.copy(durableSuccess = true))
+        val shown = session.project(ending, 1)
+        assertEquals(tachiyomi.i18n.MR.strings.sync_operation_finishing, shown.action)
+        assertEquals(tachiyomi.i18n.MR.strings.sync_operation_finishing, shown.status)
+        assertFalse(shown.complete)
+        assertTrue(shown.fraction!! < 1f)
+        val next = ending.copy(operation = ending.operation!!.nextSegment())
+        assertEquals(tachiyomi.i18n.MR.strings.sync_checking_connection, session.project(next, 2).action)
+        val done = ending.copy(
+            busy = false,
+            operation = ending.operation!!.finish(
+                mihon.domain.sync.runtime.SyncRunResult(mihon.domain.sync.runtime.SyncRunStatus.SUCCESS),
+            ),
+        )
+        assertTrue(session.project(done, 3).complete)
+        assertEquals(tachiyomi.i18n.MR.strings.sync_result_completed, session.project(done, 3).status)
+    }
+
+    @Test
     fun `failed operation closing never reports a persisted successful run as completed`() {
         val closing = mihon.domain.sync.runtime.SyncOperationProgress("closing", runId = run.runId)
             .advance(mihon.domain.sync.runtime.SyncOperationStage.PERSISTING, 0.0)

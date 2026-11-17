@@ -3922,6 +3922,8 @@ private fun NextAutomaticSync(state: SyncPanelState) {
 @Composable
 private fun statusText(state: SyncPanelState): String = when {
     state.setupProblem != null -> state.setupProblem?.let { setupProblemText(it) }.orEmpty()
+    state.busy && state.operation?.running == true && state.operation?.durableSuccess == true ->
+        syncString(MR.strings.sync_operation_finishing)
     state.busy -> syncString(MR.strings.sync_busy)
     state.problem != null -> state.problem?.let { problemText(it) }.orEmpty()
     state.connection?.enabled != true -> syncString(MR.strings.sync_connect)
