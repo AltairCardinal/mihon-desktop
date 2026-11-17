@@ -52,3 +52,15 @@
 `sync-start-green` 首轮真实契约 3 项通过；补充连续点击仅一轮、用户暂停不被开始绕过、真实 Compose 准备态后，`sync-start-focused` 最终 31 项通过（data 5、展示投影 23、Compose 2、controller 集成 1），修改文件定向格式检查通过。未运行全量测试，未操作真实数据库。`sync-start-preview` 通过构建、源码完整性及生产扩展运行时检查，原生交互未执行。
 
 候选：`app-desktop/artifacts/preview/windows/20261117T155803Z-ef0b5bb0/Mihon-Desktop-0.11.24.10.cedbe07-unpacked/Mihon Desktop.exe`，manifest 如实记录基线加 dirty 输入。验收：退出旧版打开此包，点击开始同步应立即看到准备/检查反馈，连续点击不会叠加同步轮次；最后仍按完整活动边界显示完成。
+
+## 2026-11-18 暂停同步的即时反馈
+
+基线 `0680233194`。用户报告点击暂停没有立即响应。已证实的两条路径：PauseSync 仍排在面板完整刷新命令后；Runtime.pauseSync 在取消任务前读取安全存储连接。首条测试因 async 作用域拼写错误未编译，不计红证据；`sync-pause-behavior-red` 两条真实行为测试分别失败于立即 PAUSING 反馈及等待安全存储超时。
+
+实现使用独立暂停控制任务，先发布请求反馈，固定点击时空间/run/operation 身份，阻止重复暂停和开始/继续越过未完成的暂停请求。实际暂停沿既有本地投影取消、协调器 owner join 和持久检查点路径；去除凭据读取，暂停提交前事务复核活动空间、run、owner 与状态。局部数据库刷新发布实际暂停，旧进度不能覆盖请求提示，失败清理反馈并允许重试。未变更 schema、同步协议或发布/恢复权限。
+
+一次独立只读审查发现并关闭三个边界：显式 null operation 不得回退取消新远端任务；本地投影必须在数据库读取前停止；停止标记取得后将所有可挂起工作置于 finally 保护内。主代理修正后核验这些路径，未声称额外独立复审。原有本地恢复挂起事务/暂停/取消测试通过，定向取消旧 operation 不会停下一次活动、过期空间/run 目标不改变当前运行、local-only 目标不取消新远端活动均有真实行为覆盖。
+
+`sync-pause-green` 两项通过；`sync-pause-focused` 44 项通过。失败清理测试最初末表达式非 Unit 未被 JUnit 发现，不计通过；补 Unit 后 `sync-pause-final` 实际 3/3，通过失败清理重试及相关暂停/开始补验。组合为 45 个唯一 focused 用例（domain 9、data 9、presentation 27），不冒充最终源码全部重跑。修改 Kotlin 定向格式检查及 diff 检查通过，未执行全量测试。
+
+Windows preview：`sync-pause-preview` exit 0，实际 EXE 为 `app-desktop/artifacts/preview/windows/20261117T161728Z-47581148/Mihon-Desktop-0.11.24.10.0680233-unpacked/Mihon Desktop.exe`。清单如实为基线加 dirty 输入；构建、源码完整性、生产扩展运行时通过，原生交互未执行。本轮未操作真实数据库。验收：同步中点击暂停立即显示正在暂停，实际停止并保存后显示已暂停/继续；关闭重开仍保持暂停，继续后仍属原任务。

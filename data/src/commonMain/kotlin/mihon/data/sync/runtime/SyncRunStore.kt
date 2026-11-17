@@ -153,6 +153,8 @@ class SyncLiveProgressSession(
 
     fun scope(part: String): String = "$runId:$part"
 
+    internal fun belongsTo(runId: String): Boolean = this.runId == runId
+
     init {
         timeline.begin("$runId:initial", stage, direction, null, atNanos = nanos())
     }
@@ -950,6 +952,26 @@ class SyncRunStore(
     suspend fun pause(runId: String) {
         state(runId, SyncRunState.PAUSED_USER, "user")
         observe(runId, SyncJournalEventKind.PHASE)
+    }
+
+    internal suspend fun pauseIfActive(expected: SyncRunSnapshot): Boolean {
+        val paused = handler.await(inTransaction = true) {
+            val active = sync_journalQueries.getActiveSpace().executeAsOneOrNull() ?: return@await false
+            if (active.space_id != expected.spaceId || active.generation != expected.generation) return@await false
+            val run = sync_runtimeQueries.getActiveRuntimeRun(expected.spaceId, expected.generation)
+                .executeAsOneOrNull() ?: return@await false
+            if (run.run_id != expected.runId ||
+                (run.owner_session != null && run.owner_session != expected.ownerSession) ||
+                run.state !in
+                setOf("QUEUED", "RUNNING", "WAITING_NETWORK", "WAITING_RETRY", "WAITING_SYSTEM", "BLOCKED")
+            ) {
+                return@await false
+            }
+            sync_runtimeQueries.updateRuntimeState(SyncRunState.PAUSED_USER.name, "user", null, clock(), expected.runId)
+            true
+        }
+        if (paused) observe(expected.runId, SyncJournalEventKind.PHASE)
+        return paused
     }
 
     suspend fun cancel(runId: String) {

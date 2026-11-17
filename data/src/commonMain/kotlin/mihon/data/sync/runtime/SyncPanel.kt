@@ -176,6 +176,7 @@ data class SyncPanelState(
     val busy: Boolean = false,
     val operation: mihon.domain.sync.runtime.SyncOperationProgress? = null,
     val syncStartRequested: Boolean = false,
+    val syncPauseRequested: Boolean = false,
     val problem: SyncRunProblem? = null,
     val notice: SyncPanelNotice? = null,
     val queuedMembership: Long = 0,

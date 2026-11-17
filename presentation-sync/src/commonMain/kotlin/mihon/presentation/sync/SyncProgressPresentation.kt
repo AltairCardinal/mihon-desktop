@@ -68,7 +68,7 @@ class SyncProgressDisplaySession {
         }
         val operationFailed = run?.state == SyncRunState.SUCCEEDED && operation?.running == false &&
             operation.outcome in setOf(SyncRunStatus.FAILED, SyncRunStatus.PARTIAL)
-        val complete = !state.syncStartRequested && run?.state == SyncRunState.SUCCEEDED &&
+        val complete = !state.syncStartRequested && !state.syncPauseRequested && run?.state == SyncRunState.SUCCEEDED &&
             !state.busy && operation?.running != true &&
             (
                 operation == null || (
@@ -266,6 +266,7 @@ class SyncProgressDisplaySession {
 
 /** Keep successful activity feedback until the matching final database projection reaches the panel. */
 internal fun SyncPanelState.operationFeedback(): StringResource? {
+    if (syncPauseRequested) return MR.strings.sync_pausing_save
     if (syncStartRequested) return MR.strings.sync_start_preparing
     val current = operation ?: return null
     if (current.runId == run?.runId && current.durableSuccess &&

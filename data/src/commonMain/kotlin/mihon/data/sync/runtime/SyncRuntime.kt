@@ -74,6 +74,8 @@ data class SyncConnection(
 @Serializable
 data class SyncRunRecord(val time: Long, val trigger: SyncTrigger, val result: SyncRunResult)
 
+data class SyncPauseTarget(val spaceId: String, val generation: Long, val runId: String?, val operationId: String?)
+
 /** The same production application graph is used by platform scheduling and the synchronization UI. */
 class SyncRuntime(
     private val handler: DatabaseHandler,
@@ -683,14 +685,23 @@ class SyncRuntime(
     private fun localProjectionDeadline(run: SyncRunSnapshot): Long =
         localProjectionNotBefore?.takeIf { it.first == run.runId }?.second ?: 0L
 
-    private suspend fun stopLocalProjection() {
-        val job = synchronized(localProjectionLock) {
-            localProjectionStopping = true
-            localProjectionEpoch++
-            localProjectionRunId?.let { localProjectionStoppedRunId = it }
-            localProjectionJob
+    private data class LocalProjectionStop(val job: Job?)
+
+    private fun requestLocalProjectionStop(
+        expectedRunId: String? = null,
+        requireMatch: Boolean = false,
+    ): LocalProjectionStop? = synchronized(localProjectionLock) {
+        if (requireMatch && localProjectionRunId != null && localProjectionRunId != expectedRunId) {
+            return null
         }
-        job?.cancelAndJoin()
+        localProjectionStopping = true
+        localProjectionEpoch++
+        localProjectionRunId?.let { localProjectionStoppedRunId = it }
+        LocalProjectionStop(localProjectionJob)
+    }
+
+    private suspend fun stopLocalProjection() {
+        requireNotNull(requestLocalProjectionStop()).job?.cancelAndJoin()
     }
 
     private suspend fun isResumable(run: SyncRunSnapshot): Boolean = run.state in RESUMABLE_STATES ||
@@ -1011,18 +1022,42 @@ class SyncRuntime(
         }
     }
 
-    suspend fun pauseSync() {
+    private val pauseMutex = Mutex()
+
+    suspend fun pauseSync(target: SyncPauseTarget? = null) = pauseMutex.withLock {
+        val operationId = if (target == null) {
+            coordinator.activity.value.operation?.takeIf { it.running }?.id
+        } else {
+            target.operationId
+        }
+        if (target != null && operationId == null && coordinator.activity.value.running) return@withLock
+        if (target?.operationId != null &&
+            coordinator.activity.value.operation?.id != target.operationId
+        ) {
+            return@withLock
+        }
+        val stop = requestLocalProjectionStop(target?.runId, requireMatch = target != null) ?: return@withLock
         try {
-            stopLocalProjection()
-            val run = connection()?.let { runStore.active(it.spaceId, it.generation) }
-            localProjectionStoppedRunId = run?.runId
-            if (run != null) liveSession?.hold(SyncProgressHold.PAUSING)
-            coordinator.cancelAndJoin()
-            if (run != null &&
-                runStore.get(run.runId)?.state in RESUMABLE_STATES + setOf(SyncRunState.RUNNING, SyncRunState.BLOCKED)
+            stop.job?.cancelAndJoin()
+            val active = handler.await { sync_journalQueries.getActiveSpace().executeAsOneOrNull() } ?: return@withLock
+            if (target != null &&
+                (active.space_id != target.spaceId || active.generation != target.generation)
             ) {
-                runStore.pause(run.runId)
-                liveSession?.hold(SyncProgressHold.PAUSED)
+                return@withLock
+            }
+            val run = runStore.active(active.space_id, active.generation)
+            if (target?.runId != null && run?.runId != target.runId) return@withLock
+            if (target != null && coordinator.activity.value.running &&
+                coordinator.activity.value.operation?.id != operationId
+            ) {
+                return@withLock
+            }
+            localProjectionStoppedRunId = run?.runId
+            val session = run?.let { selected -> liveSession?.takeIf { it.belongsTo(selected.runId) } }
+            session?.hold(SyncProgressHold.PAUSING)
+            if (operationId != null) coordinator.cancelAndJoin(operationId)
+            if (run != null && runStore.pauseIfActive(run)) {
+                session?.hold(SyncProgressHold.PAUSED)
             }
         } finally {
             localProjectionStopping = false

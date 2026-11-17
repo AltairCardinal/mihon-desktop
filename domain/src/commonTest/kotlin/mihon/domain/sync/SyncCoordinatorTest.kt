@@ -22,6 +22,31 @@ class SyncCoordinatorTest {
     private val success = SyncRunResult(SyncRunStatus.SUCCESS)
 
     @Test
+    fun `targeted cancellation cannot stop the next flight`() = runTest {
+        var gate = CompletableDeferred<Unit>()
+        val coordinator = SyncCoordinator(
+            SyncRunPort {
+                gate.await()
+                success
+            },
+        )
+        val first = async { coordinator.synchronize(SyncTrigger.MANUAL) }
+        runCurrent()
+        val previous = coordinator.activity.value.operation!!.id
+        gate.complete(Unit)
+        first.await()
+        gate = CompletableDeferred()
+        val next = async { coordinator.synchronize(SyncTrigger.MANUAL) }
+        runCurrent()
+        coordinator.cancelAndJoin(previous)
+        assertTrue(coordinator.activity.value.running)
+        assertFalse(next.isCancelled)
+        coordinator.cancelAndJoin(coordinator.activity.value.operation!!.id)
+        assertTrue(next.isCancelled)
+        assertFalse(coordinator.activity.value.running)
+    }
+
+    @Test
     fun `operation success requires durable proof and a cancelled flight never releases completion share`() = runTest {
         lateinit var coordinator: SyncCoordinator
         val gate = CompletableDeferred<Unit>()

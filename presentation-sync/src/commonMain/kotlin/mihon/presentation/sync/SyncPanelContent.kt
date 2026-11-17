@@ -3467,6 +3467,13 @@ private fun SyncMainOperation(
     }
     Box(containerModifier, contentAlignment = Alignment.CenterEnd) {
         when {
+            state.syncPauseRequested -> Action(
+                "sync-wait",
+                MR.strings.sync_pausing_save,
+                false,
+                shape = operationShape,
+                modifier = buttonModifier,
+            ) {}
             state.syncStartRequested -> Action(
                 "sync-wait",
                 MR.strings.sync_start_preparing,

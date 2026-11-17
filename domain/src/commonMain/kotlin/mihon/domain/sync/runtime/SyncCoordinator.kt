@@ -198,6 +198,12 @@ class SyncCoordinator(private val port: SyncRunPort) {
         mutex.withLock { flight?.owner }?.cancelAndJoin()
     }
 
+    suspend fun cancelAndJoin(operationId: String) {
+        mutex.withLock {
+            flight?.owner?.takeIf { mutableActivity.value.operation?.id == operationId }
+        }?.cancelAndJoin()
+    }
+
     companion object {
         private val AUTOMATIC_TRIGGERS = setOf(SyncTrigger.PERIODIC, SyncTrigger.RECOVERY)
     }

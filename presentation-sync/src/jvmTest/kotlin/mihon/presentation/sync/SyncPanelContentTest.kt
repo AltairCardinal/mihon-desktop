@@ -165,6 +165,33 @@ class SyncPanelContentTest {
     }
 
     @Test
+    fun `requested pause remains visible across late progress until durable pause arrives`() = rendered(
+        connected().copy(
+            busy = true,
+            syncPauseRequested = true,
+            run = visualRun(SyncRunPhase.UPLOADING).copy(plannedItems = 10, confirmedItems = 4),
+            progress = compactFact(),
+        ),
+    ) {
+        awaitTag("sync-wait")
+        assertTrue(texts().contains("正在暂停，正在保存进度"))
+        assertFalse(hasTag("sync-pause-run"))
+        assertFalse(hasTag("sync-resume-run"))
+        panel.state.value = panel.state.value.copy(progress = compactFact().copy(completedItems = 7))
+        render()
+        assertTrue(texts().contains("正在暂停，正在保存进度"))
+        panel.state.value = panel.state.value.copy(
+            busy = false,
+            syncPauseRequested = false,
+            run = panel.state.value.run!!.copy(state = SyncRunState.PAUSED_USER),
+            progress = compactFact().copy(hold = SyncProgressHold.PAUSED),
+        )
+        render()
+        assertTrue(hasTag("sync-resume-run"))
+        assertFalse(texts().contains("正在暂停，正在保存进度"))
+    }
+
+    @Test
     fun `accepted manual start immediately replaces the previous successful result`() = rendered(
         connected().copy(
             busy = true,
