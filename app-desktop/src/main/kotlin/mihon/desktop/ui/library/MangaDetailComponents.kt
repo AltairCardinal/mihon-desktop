@@ -1296,7 +1296,8 @@ internal fun ChapterSelectionBar(
     ) {
         BoxWithConstraints(Modifier.padding(horizontal = 8.dp, vertical = 12.dp)) {
             val columns = (maxWidth / 48.dp).toInt().coerceAtLeast(1).coerceAtMost(actionTypes.size)
-            val actionWidth = maxWidth / columns
+            // Divide whole pixels so independently rounded buttons cannot overflow the row.
+            val actionWidth = with(LocalDensity.current) { (constraints.maxWidth / columns).toDp() }
             val scope = rememberCoroutineScope()
             FlowRow(maxItemsInEachRow = columns) {
                 actionTypes.forEach { action ->
