@@ -169,7 +169,7 @@ class SyncProgressControllerIntegrationTest {
             )
             withTimeout(5000) { runtime.panel.state.first { it.run?.plannedItems == 1L } }
             withTimeout(5000) { while (node("sync-progress-track") == null) render() }
-            assertEquals(0f, node("sync-progress-track")!!.config[SemanticsProperties.ProgressBarRangeInfo].current)
+            assertEquals(0.20f, node("sync-progress-track")!!.config[SemanticsProperties.ProgressBarRangeInfo].current)
             assertEquals(0L, runtime.panel.state.value.run!!.confirmedItems)
             assertTrue(node("sync-progress-status")!!.config[SemanticsProperties.Text].single().text.contains("0/1"))
             // Feed the production runtime observation stream, retaining the actual controller and database.

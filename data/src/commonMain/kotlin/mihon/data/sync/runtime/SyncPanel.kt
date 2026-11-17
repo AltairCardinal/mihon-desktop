@@ -174,6 +174,7 @@ data class SyncPanelState(
     val switchTargetRepository: SyncRepository? = null,
     val switchPendingDecisions: Long = 0,
     val busy: Boolean = false,
+    val operation: mihon.domain.sync.runtime.SyncOperationProgress? = null,
     val problem: SyncRunProblem? = null,
     val notice: SyncPanelNotice? = null,
     val queuedMembership: Long = 0,

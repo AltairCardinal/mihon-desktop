@@ -57,6 +57,18 @@ class SyncPanelController(
 ) : SyncPanel {
     private val lifetime = SupervisorJob(scope.coroutineContext[Job])
     private val panelScope = CoroutineScope(scope.coroutineContext + lifetime)
+    private fun operationFor(runId: String?): mihon.domain.sync.runtime.SyncOperationProgress? {
+        val activity = runtime.coordinator.activity.value
+        val local = runtime.localOperation.value
+        return when {
+            local?.running == true -> local
+            activity.running -> activity.operation
+            else -> listOfNotNull(local, activity.operation)
+                .filter { it.runId == runId && it.outcome != SyncRunStatus.SKIPPED }
+                .maxByOrNull { it.sequence }
+        }
+    }
+
     private val mutableState = MutableStateFlow(SyncPanelState())
     override val state: StateFlow<SyncPanelState> = mutableState
     override val diagnosticDirectory: String? get() = runtime.diagnosticDirectory?.toString()
@@ -146,14 +158,27 @@ class SyncPanelController(
             }
         }
         panelScope.launch {
+            var previousStructure: Triple<Boolean, SyncTrigger?, Long>? = null
             runtime.coordinator.activity.collect { activity ->
+                val local = runtime.localOperation.value
+                mutableState.update {
+                    it.copy(
+                        operation = operationFor(it.run?.runId),
+                        busy = activity.running || local?.running == true,
+                    )
+                }
+                val structure = Triple(activity.running, activity.trigger, activity.completion)
+                if (structure == previousStructure) return@collect
+                previousStructure = structure
                 runtime.diagnostics.recordCoordinator(activity)
                 enqueue {
                     val completed = activity.completion != observedCompletion
                     observedCompletion = activity.completion
                     mutableState.update {
                         it.copy(
-                            busy = activity.running,
+                            busy =
+                            runtime.coordinator.activity.value.running ||
+                                runtime.localOperation.value?.running == true,
                             problem = if (completed) activity.result?.problem else it.problem,
                             notice = if (completed && it.visible && activity.completion != setupExchangeCompletion &&
                                 activity.result?.status != SyncRunStatus.SKIPPED
@@ -165,6 +190,17 @@ class SyncPanelController(
                         )
                     }
                     refresh(source = SyncDiagnosticRefreshSource.COORDINATOR)
+                }
+            }
+        }
+        panelScope.launch {
+            runtime.localOperation.collect { local ->
+                val activity = runtime.coordinator.activity.value
+                mutableState.update { current ->
+                    current.copy(
+                        operation = operationFor(current.run?.runId),
+                        busy = activity.running || local?.running == true,
+                    )
                 }
             }
         }
@@ -496,6 +532,7 @@ class SyncPanelController(
                 },
                 bulk = queue.bulk,
                 run = localRun?.withObservedCounts(it.run),
+                operation = operationFor(localRun?.runId),
                 runSource = when {
                     activeRun != null -> SyncPanelRunSource.ACTIVE
                     localRun != null -> SyncPanelRunSource.LATEST
@@ -737,6 +774,7 @@ class SyncPanelController(
                     importPaused = prefs.importPaused.get(),
                     records = runtime.records().asReversed(),
                     run = run?.withObservedCounts(it.run),
+                    operation = operationFor(run?.runId),
                     runSource = when {
                         activeRun != null -> SyncPanelRunSource.ACTIVE
                         run != null -> SyncPanelRunSource.LATEST

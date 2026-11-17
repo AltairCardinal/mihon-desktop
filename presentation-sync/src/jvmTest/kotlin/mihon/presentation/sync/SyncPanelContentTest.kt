@@ -98,6 +98,47 @@ import java.util.Locale
 @OptIn(ExperimentalComposeUiApi::class)
 class SyncPanelContentTest {
     @Test
+    fun `whole flight keeps closing and queued work active until the completed projection`() = rendered(
+        connected().copy(
+            busy = true,
+            run = visualRun(SyncRunPhase.COMPLETE).copy(
+                state = SyncRunState.SUCCEEDED,
+                plannedItems = 1,
+                confirmedItems = 1,
+            ),
+            operation = mihon.domain.sync.runtime.SyncOperationProgress("whole-ui", runId = "run-visual")
+                .advance(mihon.domain.sync.runtime.SyncOperationStage.PERSISTING),
+        ),
+    ) {
+        awaitTag("sync-progress-track")
+        assertEquals(0.98f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
+        assertFalse(texts().contains("同步已完成"))
+        assertTrue(hasTag("sync-operation-stage"))
+        val queued = panel.state.value.operation!!.nextSegment()
+        panel.state.value = panel.state.value.copy(operation = queued)
+        render()
+        assertEquals(0.98f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
+        assertFalse(texts().contains("同步已完成"))
+        panel.state.value = panel.state.value.copy(
+            busy = false,
+            operation = queued.copy(runId = "run-visual", durableSuccess = true)
+                .finish(mihon.domain.sync.runtime.SyncRunResult(mihon.domain.sync.runtime.SyncRunStatus.SUCCESS)),
+        )
+        render()
+        assertTrue(texts().contains("同步已完成"))
+        assertFalse(hasTag("sync-progress-track"))
+        panel.state.value = panel.state.value.copy(
+            operation = mihon.domain.sync.runtime.SyncOperationProgress("failed-closing", runId = "run-visual")
+                .advance(mihon.domain.sync.runtime.SyncOperationStage.PERSISTING, 0.0)
+                .finish(mihon.domain.sync.runtime.SyncRunResult(mihon.domain.sync.runtime.SyncRunStatus.FAILED)),
+        )
+        render()
+        assertFalse(texts().contains("同步已完成"))
+        click("sync-retry-run")
+        assertEquals(SyncPanelAction.RetrySync, actions.last())
+    }
+
+    @Test
     fun `unknown blocked run opens guided recovery instead of an inert reason button`() = rendered(
         connected().copy(
             run = visualRun(SyncRunPhase.MERGING).copy(state = SyncRunState.BLOCKED),
@@ -141,7 +182,7 @@ class SyncPanelContentTest {
         assertTrue(texts().contains("总条目已处理 2135/6144 条"))
         assertFalse(hasTag("sync-current-batch"))
         assertEquals(
-            2135f / 6144,
+            (0.20f + 0.65f * (2135f / 6144)),
             node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current,
             0.00001f,
         )
@@ -156,7 +197,7 @@ class SyncPanelContentTest {
         render()
         assertTrue(texts().contains("总条目已处理 2169/6144 条"))
         assertEquals(
-            2169f / 6144,
+            (0.20f + 0.65f * (2169f / 6144)),
             node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current,
             0.00001f,
         )
@@ -168,7 +209,10 @@ class SyncPanelContentTest {
         )
         render()
         assertTrue(texts().contains("总条目已处理 87/6144 条"))
-        assertEquals(87f / 6144, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
+        assertEquals(
+            (0.20f + 0.65f * (87f / 6144)),
+            node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current,
+        )
         assertTextFits("sync-progress-status")
         System.getProperty("mihon.sync.visualDir")?.let { directory ->
             File(directory).mkdirs()
@@ -1012,7 +1056,7 @@ class SyncPanelContentTest {
             },
             texts().toString(),
         )
-        assertEquals(0f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
+        assertEquals(0.06f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
     }
 
     @Test
@@ -1926,7 +1970,7 @@ class SyncPanelContentTest {
             texts().toString(),
         )
         assertEquals(
-            androidx.compose.ui.semantics.ProgressBarRangeInfo(0.4f, 0f..1f),
+            androidx.compose.ui.semantics.ProgressBarRangeInfo(0.20f + 0.65f * 0.4f, 0f..1f),
             node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo],
         )
         for (tag in listOf(
@@ -2056,7 +2100,10 @@ class SyncPanelContentTest {
         assertFalse(hasTag("sync-stage-count"))
         assertFalse(hasTag("sync-active-body-progress"))
         assertTrue(texts().contains("总条目已处理 4/10 条"))
-        assertEquals(0.4f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
+        assertEquals(
+            0.20f + 0.65f * 0.4f,
+            node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current,
+        )
         assertFalse(texts().any { it.contains("6 / 10") })
     }
 
@@ -2086,7 +2133,7 @@ class SyncPanelContentTest {
         assertFalse(hasTag("sync-stage-count"))
         assertFalse(hasTag("sync-active-body-progress"))
         assertTrue(texts().any { it.contains("正在恢复并核对进度") && it.contains("7/10条") })
-        assertEquals(0.7f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
+        assertEquals(0.02f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
     }
 
     @Test
@@ -2114,7 +2161,7 @@ class SyncPanelContentTest {
         assertFalse(hasTag("sync-stage-count"))
         assertFalse(hasTag("sync-active-body-progress"))
         assertTrue(texts().contains("总条目已处理 0/10 条"))
-        assertEquals(0f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
+        assertEquals(0.20f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
         assertFalse(texts().any { it.contains("5 / 10") })
     }
 
@@ -4155,7 +4202,7 @@ class SyncPanelContentTest {
         render()
         assertNull(panel.state.value.progress!!.receivedItems)
         assertTrue(texts().contains("总条目已处理 0/10 条"))
-        assertEquals(0f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
+        assertEquals(0.20f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
     }
 
     @Test
@@ -4186,7 +4233,7 @@ class SyncPanelContentTest {
                 panel.state.value.copy(run = panel.state.value.run!!.copy(confirmedItems = increment * 10L))
             render()
         }
-        assertTrue(texts().any { it.contains("预计剩余 00:07") })
+        assertTrue(texts().any { it.contains("预计剩余 —") })
         displayMillis = 13000
         withTimeout(3000) {
             while (texts().any { it.contains("预计剩余") && !it.endsWith("—") }) {
@@ -4410,7 +4457,7 @@ class SyncPanelContentTest {
                     assertEquals(statusLayouts.single().size.height.toFloat(), statusRegion.size.height.toFloat(), 1f)
                     assertTrue(fixture.texts().any { it.contains("00:00") })
                     assertEquals(
-                        1f,
+                        0.85f,
                         fixture.node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current,
                     )
                     assertTrue(fixture.node("sync-close").boundsInRoot.right <= width)
@@ -4716,7 +4763,7 @@ class SyncPanelContentTest {
                     }
                 }
                 assertEquals(
-                    completed / 100f,
+                    0.20f + 0.65f * completed / 100f,
                     node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current,
                 )
             }

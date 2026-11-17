@@ -17,6 +17,51 @@ import org.junit.jupiter.api.Test
 
 class SyncProgressPresentationTest {
     @Test
+    fun `failed operation closing never reports a persisted successful run as completed`() {
+        val closing = mihon.domain.sync.runtime.SyncOperationProgress("closing", runId = run.runId)
+            .advance(mihon.domain.sync.runtime.SyncOperationStage.PERSISTING, 0.0)
+            .finish(mihon.domain.sync.runtime.SyncRunResult(mihon.domain.sync.runtime.SyncRunStatus.FAILED))
+        val current = state().copy(run = run.copy(state = SyncRunState.SUCCEEDED), operation = closing)
+        val display = SyncProgressDisplaySession().project(current, 0)
+        assertFalse(display.complete)
+        assertTrue(display.operationFailed)
+        assertTrue(display.fraction!! < 1f)
+        assertEquals(tachiyomi.i18n.MR.strings.sync_last_failed, display.status)
+    }
+
+    @Test
+    fun `finished stale operation cannot hide another historical successful run`() {
+        val old = mihon.domain.sync.runtime.SyncOperationProgress("old", runId = "other", running = false)
+        val history = state().copy(
+            run = run.copy(state = SyncRunState.SUCCEEDED, confirmedItems = 100),
+            operation = old,
+        )
+        val shown = SyncProgressDisplaySession().project(history, 0)
+        assertEquals(1f, shown.fraction)
+        assertTrue(shown.complete)
+        assertNull(shown.operation)
+    }
+
+    @Test
+    fun `whole operation never completes while durable success still has active flight work`() {
+        val current = state().copy(
+            busy = true,
+            run = run.copy(state = SyncRunState.SUCCEEDED, plannedItems = 10, confirmedItems = 10),
+        )
+        val display = SyncProgressDisplaySession().project(current, 0)
+        assertTrue(display.fraction!! < 1f)
+        assertTrue(display.status != tachiyomi.i18n.MR.strings.sync_result_completed)
+    }
+
+    @Test
+    fun `whole operation reserves real completion work after every item was confirmed`() {
+        val current = state().copy(run = run.copy(plannedItems = 10, confirmedItems = 10))
+        val display = SyncProgressDisplaySession().project(current, 0)
+        assertTrue(display.fraction!! < 1f)
+        assertNull(display.wholeEta)
+    }
+
+    @Test
     fun `fine total progresses within a batch and ignores foreign plan and terminal observations`() {
         val session = SyncProgressDisplaySession()
         val batch = mihon.data.sync.runtime.SyncBatchProgress(
@@ -25,19 +70,19 @@ class SyncProgressPresentationTest {
         )
         val current = state(32, fact.copy(batchProgress = batch))
             .copy(run = run.copy(confirmedItems = 32, plannedItems = 291))
-        assertEquals(119f / 291, session.project(current, 0).fraction!!, 0.00001f)
+        assertEquals(119f / 291, session.project(current, 0).itemFraction!!, 0.00001f)
         assertEquals(32L, session.project(current, 1).confirmed)
         assertEquals(119L, session.project(current, 1).processedItems)
         assertEquals(
             32f / 291,
-            session.project(current.copy(progress = current.progress!!.copy(scope = "other:run")), 2).fraction!!,
+            session.project(current.copy(progress = current.progress!!.copy(scope = "other:run")), 2).itemFraction!!,
             0.00001f,
         )
         val failed = current.copy(run = current.run!!.copy(state = SyncRunState.FAILED))
-        assertEquals(32f / 291, session.project(failed, 3).fraction!!, 0.00001f)
+        assertEquals(32f / 291, session.project(failed, 3).itemFraction!!, 0.00001f)
         assertEquals(
             32f / 292,
-            session.project(current.copy(run = current.run!!.copy(plannedItems = 292)), 4).fraction!!,
+            session.project(current.copy(run = current.run!!.copy(plannedItems = 292)), 4).itemFraction!!,
             0.00001f,
         )
     }
@@ -58,7 +103,7 @@ class SyncProgressPresentationTest {
         assertEquals(0L, initial.elapsedSeconds)
         assertEquals(0L, initial.attemptConfirmed)
         assertEquals(2170L, initial.retainedConfirmed)
-        assertEquals(2170f / 2423, initial.fraction!!, 0.00001f)
+        assertEquals(2170f / 2423, initial.itemFraction!!, 0.00001f)
         val completed = retry.copy(
             run = retry.run!!.copy(
                 state = SyncRunState.SUCCEEDED,
@@ -193,41 +238,41 @@ class SyncProgressPresentationTest {
         assertEquals(7L, session.project(durable.copy(nowMillis = -1000), 9_003_000).elapsedSeconds)
     }
 
-    @Test fun `unrepresentable whole ETA stays unknown rather than saturating the duration`() {
+    @Test fun `unrepresentable item ETA stays unknown rather than saturating the duration`() {
         val session = SyncProgressDisplaySession()
         for (i in 0..3) {
             val large = state(
                 i.toLong(),
             ).copy(run = run.copy(plannedItems = Long.MAX_VALUE, confirmedItems = i.toLong()))
-            assertNull(session.project(large, i * 3333L).wholeEta)
+            assertNull(session.project(large, i * 3333L).itemEta)
         }
     }
 
     @Test fun `compact progress immediately uses the fixed run plan and safe confirmations`() {
         val session = SyncProgressDisplaySession()
         assertEquals(0L, session.project(state(), 0).confirmed)
-        assertEquals(0f, session.project(state(), 0).fraction)
+        assertEquals(0f, session.project(state(), 0).itemFraction)
         val confirmed = session.project(state(40), 1)
         assertEquals(40L, confirmed.confirmed)
-        assertEquals(0.4f, confirmed.fraction)
-        assertNull(confirmed.wholeEta, "a local work or HTTP body estimate cannot become a whole-run ETA")
+        assertEquals(0.4f, confirmed.itemFraction)
+        assertNull(confirmed.itemEta, "a local work or HTTP body estimate cannot become a whole-run ETA")
     }
 
     @Test fun `compact fraction survives direction stage attempt pause and scope changes`() {
         val session = SyncProgressDisplaySession()
-        assertEquals(0.4f, session.project(state(40), 0).fraction)
+        assertEquals(0.4f, session.project(state(40), 0).itemFraction)
         for ((index, f) in listOf(
             fact.copy(scope = "run:next", direction = SyncProgressDirection.DOWNLOAD),
             fact.copy(stage = SyncProgressStage.CONFIRMING),
             fact.copy(hold = SyncProgressHold.PAUSED),
             fact.copy(scope = "foreign", confirmedThisRun = 99999),
         ).withIndex()) {
-            assertEquals(0.4f, session.project(state(40, f), index.toLong() + 1).fraction)
+            assertEquals(0.4f, session.project(state(40, f), index.toLong() + 1).itemFraction)
         }
         val paused = state(
             40,
         ).copy(run = run.copy(state = SyncRunState.PAUSED_USER, confirmedItems = 40, attemptId = 2))
-        assertEquals(0.4f, session.project(paused, 10).fraction)
+        assertEquals(0.4f, session.project(paused, 10).itemFraction)
         assertFalse(session.project(paused, 10).active)
     }
 
@@ -235,44 +280,46 @@ class SyncProgressPresentationTest {
         val session = SyncProgressDisplaySession()
         val unknown = state().copy(run = run.copy(plannedItems = null))
         assertEquals(0L, session.project(unknown, 0).confirmed)
-        assertNull(session.project(unknown, 0).fraction)
+        assertNull(session.project(unknown, 0).itemFraction)
         val zero = state().copy(run = run.copy(plannedItems = 0))
-        assertNull(session.project(zero, 1).fraction)
+        assertNull(session.project(zero, 1).itemFraction)
         val complete = session.project(state(100), 2)
-        assertEquals(1f, complete.fraction)
+        assertEquals(1f, complete.itemFraction)
+        assertTrue(complete.fraction!! < 1f)
+        assertFalse(complete.complete)
         assertTrue(complete.active)
         assertEquals(tachiyomi.i18n.MR.strings.sync_busy, complete.status)
         val terminal = state(100).copy(run = run.copy(state = SyncRunState.SUCCEEDED, confirmedItems = 100))
         assertEquals(tachiyomi.i18n.MR.strings.sync_result_completed, session.project(terminal, 3).status)
-        assertNull(session.project(terminal, 3).wholeEta)
+        assertNull(session.project(terminal, 3).itemEta)
     }
 
-    @Test fun `batch paced safety confirmations produce a whole ETA and a bounded cadence stale deadline`() {
+    @Test fun `batch paced safety confirmations produce a item ETA and a bounded cadence stale deadline`() {
         val session = SyncProgressDisplaySession()
         fun batchState(
             confirmed: Long,
         ) = state(confirmed).copy(run = run.copy(plannedItems = 10_000, confirmedItems = confirmed))
-        assertNull(session.project(batchState(0), 0).wholeEta)
-        assertNull(session.project(batchState(256), 20_000).wholeEta)
-        assertNull(session.project(batchState(512), 40_000).wholeEta)
-        assertEquals(722L, session.project(batchState(768), 60_000).wholeEta)
-        assertEquals(722L, session.project(batchState(768), 75_000).wholeEta)
-        assertNull(session.project(batchState(768), 100_000).wholeEta)
-        assertNull(session.project(batchState(1024), 120_000).wholeEta)
+        assertNull(session.project(batchState(0), 0).itemEta)
+        assertNull(session.project(batchState(256), 20_000).itemEta)
+        assertNull(session.project(batchState(512), 40_000).itemEta)
+        assertEquals(722L, session.project(batchState(768), 60_000).itemEta)
+        assertEquals(722L, session.project(batchState(768), 75_000).itemEta)
+        assertNull(session.project(batchState(768), 100_000).itemEta)
+        assertNull(session.project(batchState(1024), 120_000).itemEta)
     }
 
     @Test fun `whole remaining ETA requires three safe increments spanning three seconds`() {
         val session = SyncProgressDisplaySession()
-        assertNull(session.project(state(), 0).wholeEta)
-        assertNull(session.project(state(10), 1000).wholeEta)
-        assertNull(session.project(state(20), 2000).wholeEta)
-        assertEquals(7L, session.project(state(30), 3000).wholeEta)
+        assertNull(session.project(state(), 0).itemEta)
+        assertNull(session.project(state(10), 1000).itemEta)
+        assertNull(session.project(state(20), 2000).itemEta)
+        assertEquals(7L, session.project(state(30), 3000).itemEta)
         val switched = state(40, fact.copy(direction = SyncProgressDirection.DOWNLOAD, scope = "run:download"))
-        assertEquals(6L, session.project(switched, 4000).wholeEta)
-        assertNull(session.project(switched.copy(nowMillis = -900000), 14000).wholeEta)
+        assertEquals(6L, session.project(switched, 4000).itemEta)
+        assertNull(session.project(switched.copy(nowMillis = -900000), 14000).itemEta)
     }
 
-    @Test fun `whole rate follows the bounded recent confirmation cadence`() {
+    @Test fun `item rate follows the bounded recent confirmation cadence`() {
         val session = SyncProgressDisplaySession()
         var confirmed = 0L
         fun observed() = state(confirmed).copy(run = run.copy(plannedItems = 100_000, confirmedItems = confirmed))
@@ -281,30 +328,30 @@ class SyncProgressPresentationTest {
             confirmed += if (batch <= 12) 256 else 512
             session.project(observed(), batch * 20_000L)
         }
-        assertEquals(3607L, session.project(observed(), 420_000).wholeEta)
-        assertNull(session.project(observed(), 540_000).wholeEta)
+        assertEquals(3607L, session.project(observed(), 420_000).itemEta)
+        assertNull(session.project(observed(), 540_000).itemEta)
     }
 
     @Test fun `holds reset whole-run rate and recovery never estimates from elapsed suspended time`() {
         val session = SyncProgressDisplaySession()
         for (i in 0..3) session.project(state(i * 10L), i * 1000L)
         val waiting = state(30).copy(run = run.copy(state = SyncRunState.WAITING_NETWORK, confirmedItems = 30))
-        assertNull(session.project(waiting, 4000).wholeEta)
-        assertNull(session.project(state(30), 10000).wholeEta)
-        assertNull(session.project(state(40), 11000).wholeEta)
-        assertNull(session.project(state(50), 12000).wholeEta)
-        assertEquals(4L, session.project(state(60), 13000).wholeEta)
+        assertNull(session.project(waiting, 4000).itemEta)
+        assertNull(session.project(state(30), 10000).itemEta)
+        assertNull(session.project(state(40), 11000).itemEta)
+        assertNull(session.project(state(50), 12000).itemEta)
+        assertEquals(4L, session.project(state(60), 13000).itemEta)
     }
 
     @Test fun `new run and recovery attempt invalidate rate without inventing denominator or confirming bytes`() {
         val session = SyncProgressDisplaySession()
         for (i in 0..3) session.project(state(i * 10L), i * 1000L)
         val recovery = state(30).copy(run = run.copy(attemptId = 2, confirmedItems = 30))
-        assertNull(session.project(recovery, 4000).wholeEta)
-        assertEquals(0.3f, session.project(recovery, 4000).fraction)
+        assertNull(session.project(recovery, 4000).itemEta)
+        assertEquals(0.3f, session.project(recovery, 4000).itemFraction)
         val next = state().copy(run = run.copy(runId = "new-run", plannedItems = null))
-        assertNull(session.project(next, 5000).fraction)
-        assertNull(session.project(next, 5000).wholeEta)
+        assertNull(session.project(next, 5000).itemFraction)
+        assertNull(session.project(next, 5000).itemEta)
         assertEquals(0L, session.project(next, 5000).confirmed)
     }
 }

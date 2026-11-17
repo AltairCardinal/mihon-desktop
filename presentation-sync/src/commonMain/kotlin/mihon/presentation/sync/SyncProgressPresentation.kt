@@ -10,6 +10,9 @@ import mihon.data.sync.runtime.SyncProgressHold
 import mihon.data.sync.runtime.SyncProgressStage
 import mihon.data.sync.runtime.SyncProgressTimeline
 import mihon.data.sync.runtime.SyncRunState
+import mihon.domain.sync.runtime.SyncOperationProgress
+import mihon.domain.sync.runtime.SyncOperationStage
+import mihon.domain.sync.runtime.SyncRunStatus
 import tachiyomi.i18n.MR
 import kotlin.math.ceil
 
@@ -33,6 +36,11 @@ data class SyncProgressPresentation(
     val elapsedKnown: Boolean = true,
     val batchProgress: SyncBatchProgress? = null,
     val processedItems: Long? = confirmed,
+    val itemFraction: Float? = null,
+    val operation: SyncOperationProgress? = null,
+    val complete: Boolean = false,
+    val itemEta: Long? = null,
+    val operationFailed: Boolean = false,
 )
 
 /** Panel-owned observations; count and denominator always come from the same durable run. */
@@ -55,7 +63,20 @@ class SyncProgressDisplaySession {
 
     fun project(state: SyncPanelState, monotonicMillis: Long): SyncProgressPresentation {
         val run = state.run
-        val nextIdentity = run?.let { Identity(it.spaceId, it.generation, it.runId) }
+        val operation = state.operation?.takeIf {
+            it.running || (it.runId == run?.runId && it.outcome != SyncRunStatus.SKIPPED)
+        }
+        val operationFailed = run?.state == SyncRunState.SUCCEEDED && operation?.running == false &&
+            operation.outcome in setOf(SyncRunStatus.FAILED, SyncRunStatus.PARTIAL)
+        val complete = run?.state == SyncRunState.SUCCEEDED && !state.busy && operation?.running != true &&
+            (
+                operation == null || (
+                    operation.runId == run.runId && operation.durableSuccess &&
+                        operation.outcome == SyncRunStatus.SUCCESS
+                    )
+                )
+        val nextIdentity = operation?.let { Identity("", 0, "operation:${it.id}") }
+            ?: run?.let { Identity(it.spaceId, it.generation, it.runId) }
             ?: if (state.busy) Identity("", 0, "counting") else null
         val fact = state.progress?.takeIf {
             run != null && (it.scope == run.runId || it.scope.startsWith("${run.runId}:"))
@@ -92,9 +113,22 @@ class SyncProgressDisplaySession {
         excludedPauseMillis = run?.pausedMillis ?: 0L
         if (identity != nextIdentity || attempt != run?.attemptId) roundRate.reset()
         if (previousFact?.scope != fact?.scope || previousFact?.direction != fact?.direction) stages.clear()
-        val terminal = run?.state in TERMINAL_STATES
+        val terminal = run?.state in TERMINAL_STATES && (run?.state != SyncRunState.SUCCEEDED || complete)
         val historical = state.showingHistoricalResult
-        val active = run?.state == SyncRunState.RUNNING && (fact == null || fact.hold == SyncProgressHold.ACTIVE)
+        val active = (
+            operation?.running == true &&
+                (
+                    operation.runId != run?.runId || run?.state !in setOf(
+                        SyncRunState.PAUSED_USER,
+                        SyncRunState.WAITING_SYSTEM,
+                        SyncRunState.WAITING_NETWORK,
+                        SyncRunState.WAITING_RETRY,
+                    )
+                    )
+            ) || (
+            operation == null && run?.state == SyncRunState.RUNNING &&
+                (fact == null || fact.hold == SyncProgressHold.ACTIVE)
+            )
         val batchProgress = fact?.batchProgress?.takeIf {
             !terminal && it.plannedRunItems == run?.plannedItems
         }
@@ -102,10 +136,32 @@ class SyncProgressDisplaySession {
             maxOf(it.confirmedItems, batchProgress?.processedRunItems ?: 0L)
                 .coerceIn(0L, it.plannedItems ?: Long.MAX_VALUE)
         }
-        val fraction = run?.plannedItems?.takeIf { it > 0 && run.confirmedItems in 0..it }
+        val itemFraction = run?.plannedItems?.takeIf { it > 0 && run.confirmedItems in 0..it }
             ?.let { requireNotNull(processedItems).toDouble().div(it).toFloat() }
+        val fraction = when {
+            complete -> 1f
+            operation != null -> if (operation.fraction >= 1.0) {
+                operation.copy(running = true).displayFraction()
+            } else {
+                operation.displayFraction()
+            }
+            run?.plannedItems != null -> when (run.phase) {
+                mihon.data.sync.runtime.SyncRunPhase.CHECKING -> 0.02f
+                mihon.data.sync.runtime.SyncRunPhase.IMPORTING -> 0.06f
+                mihon.data.sync.runtime.SyncRunPhase.COMPLETE -> 0.94f
+                else -> 0.20f + 0.65f * (batchProgress?.workflowFraction?.toFloat() ?: itemFraction ?: 0f)
+            }
+            else -> null
+        }
         val wholeRemaining = roundRate.estimate(run?.plannedItems, run?.confirmedItems, active, monotonicMillis)
         val status = when {
+            operationFailed -> if (operation?.outcome == SyncRunStatus.PARTIAL) {
+                MR.strings.sync_terminal_partial
+            } else {
+                MR.strings.sync_last_failed
+            }
+            run?.state == SyncRunState.SUCCEEDED && !complete -> MR.strings.sync_busy
+            operation?.running == true && operation.runId != run?.runId -> MR.strings.sync_busy
             state.hasInvalidReceivedData -> MR.strings.sync_invalid_saved_data
             run?.state in setOf(SyncRunState.FAILED, SyncRunState.PARTIAL) &&
                 state.problem == mihon.domain.sync.runtime.SyncRunProblem.NETWORK ->
@@ -146,6 +202,16 @@ class SyncProgressDisplaySession {
             else -> MR.strings.sync_busy
         }
         val action = when {
+            operation?.running == true && operation.stage != SyncOperationStage.ITEMS -> when (operation.stage) {
+                SyncOperationStage.CHECKING, SyncOperationStage.AUTHORIZATION -> MR.strings.sync_checking_connection
+                SyncOperationStage.BASELINE -> MR.strings.sync_phase_importing
+                SyncOperationStage.DISCOVERY -> MR.strings.sync_phase_checking
+                SyncOperationStage.PLAN -> MR.strings.sync_stage_prepare
+                SyncOperationStage.HEAD -> MR.strings.sync_operation_head
+                SyncOperationStage.INTEGRITY -> MR.strings.sync_operation_integrity
+                SyncOperationStage.PERSISTING -> MR.strings.sync_operation_closing
+                else -> MR.strings.sync_busy
+            }
             terminal -> if (historical) MR.strings.sync_confirmed_retained else status
             fact?.stage == SyncProgressStage.PREPARING -> MR.strings.sync_stage_prepare
             fact?.stage == SyncProgressStage.TRANSFERRING -> if (fact.direction == SyncProgressDirection.UPLOAD) {
@@ -172,7 +238,7 @@ class SyncProgressDisplaySession {
             elapsedBaselineSeconds + (monotonicMillis - elapsedOriginMillis).coerceAtLeast(0) / 1000
         }
         return SyncProgressPresentation(
-            status, action, run?.confirmedItems, fraction, if (active) wholeRemaining else null,
+            status, action, run?.confirmedItems, fraction, null,
             false, null, active, fact, stages.toMap(),
             if (!counting && !terminal && advancing &&
                 (run != null || state.busy)
@@ -189,6 +255,11 @@ class SyncProgressDisplaySession {
             elapsedKnown,
             batchProgress,
             processedItems,
+            itemFraction,
+            operation,
+            complete,
+            if (active) wholeRemaining else null,
+            operationFailed,
         )
     }
 }

@@ -2698,4 +2698,7 @@
     <string name="sync_invalid_saved_data">Some sync data failed validation; other progress is retained</string>
     <string name="sync_invalid_saved_hint">This data has not been restored and needs application investigation. Diagnostic details are available below.</string>
     <string name="sync_total_items_completed">Total items processed %1$d/%2$s</string>
+    <string name="sync_operation_head">Verifying latest remote state</string>
+    <string name="sync_operation_integrity">Checking sync completeness</string>
+    <string name="sync_operation_closing">Saving sync result</string>
 </resources>

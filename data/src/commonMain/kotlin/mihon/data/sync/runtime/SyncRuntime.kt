@@ -39,6 +39,8 @@ import mihon.domain.sync.auth.GitHubAuthFailure
 import mihon.domain.sync.auth.GitHubAuthFailureReason
 import mihon.domain.sync.auth.GitHubCredentialStore
 import mihon.domain.sync.runtime.SyncCoordinator
+import mihon.domain.sync.runtime.SyncOperationProgress
+import mihon.domain.sync.runtime.SyncOperationStage
 import mihon.domain.sync.runtime.SyncPreferences
 import mihon.domain.sync.runtime.SyncRunPort
 import mihon.domain.sync.runtime.SyncRunProblem
@@ -119,6 +121,45 @@ class SyncRuntime(
     internal val instanceId: String = UUID.randomUUID().toString()
     private val externalRecoveryOrigin = preferenceStore.getString("sync.recovery.external-origin-unverified", "")
     val coordinator = SyncCoordinator(this)
+    private val mutableLocalOperation = MutableStateFlow<SyncOperationProgress?>(null)
+    val localOperation: StateFlow<SyncOperationProgress?> = mutableLocalOperation
+
+    private suspend fun trackLocalOperation(runId: String, block: suspend () -> Boolean): Boolean {
+        val operation = SyncOperationProgress("local:${UUID.randomUUID()}", localOnly = true, runId = runId)
+        mutableLocalOperation.value = operation
+        try {
+            val value = block()
+            val saved = runCatching { runStore.get(runId) }.getOrNull()
+            val durableSuccess = value && saved?.state == SyncRunState.SUCCEEDED
+            val result = SyncRunResult(
+                when {
+                    value == false -> SyncRunStatus.SKIPPED
+                    else -> when (saved?.state) {
+                        SyncRunState.SUCCEEDED -> SyncRunStatus.SUCCESS
+                        SyncRunState.PARTIAL -> SyncRunStatus.PARTIAL
+                        else -> SyncRunStatus.FAILED
+                    }
+                },
+            )
+            val current = mutableLocalOperation.value ?: operation
+            mutableLocalOperation.value = (
+                if (result.status == SyncRunStatus.SUCCESS) {
+                    current.advance(SyncOperationStage.PERSISTING)
+                } else {
+                    current
+                }
+                ).copy(durableSuccess = durableSuccess).finish(result)
+            return value
+        } catch (failure: Exception) {
+            mutableLocalOperation.value = (mutableLocalOperation.value ?: operation)
+                .finish(SyncRunResult(SyncRunStatus.FAILED))
+            throw failure
+        }
+    }
+
+    private fun localStage(stage: SyncOperationStage, completed: Double = 1.0) {
+        mutableLocalOperation.value = mutableLocalOperation.value?.advance(stage, completed)
+    }
     val runStore = SyncRunStore(handler, clock, diagnosticJournal = diagnosticJournal)
     val diagnostics = SyncDiagnostics(this, diagnosticDirectory, diagnosticEnvironment, clock)
     private val failureReportStore = failureLogDirectory?.let { SyncFailureReportStore(handler, it) }
@@ -806,69 +847,75 @@ class SyncRuntime(
             if (!connection.enabled || connection.unsupportedFormat) return@withLock false
             if (coordinator.activity.value.running || rawConnection() != connection) return@withLock false
             if (maxOf(run.nextRetryAt, localProjectionDeadline(run)) > clock()) return@withLock true
-            val owner = UUID.randomUUID().toString()
-            try {
-                if (!runStore.claimLocalProjectionRecovery(run.runId, owner)) return@withLock false
-                projector.retryOrphanDecisions(connection.spaceId, connection.generation)
-                while (projector.project(connection.spaceId, connection.generation) == 50) {
-                    kotlinx.coroutines.yield()
-                }
-                runStore.confirmReceived(run.runId, owner)
-                runStore.reconcilePublishedPlan(run.runId, owner)
-                val pending = projector.pending(connection.spaceId, connection.generation, limit = 1).isNotEmpty()
-                val unfinished =
-                    runStore.hasUnconfirmedDownloads(run.runId, owner) || runStore.hasPlannedWork(run.runId)
-                runStore.finish(
-                    run.runId,
-                    if (pending || unfinished) SyncRunState.PARTIAL else SyncRunState.SUCCEEDED,
-                    if (pending) {
-                        "pending_decision"
-                    } else if (unfinished) {
-                        "projection_pending"
-                    } else {
-                        null
-                    },
-                    owner,
-                )
-            } catch (cancelled: CancellationException) {
-                withContext(NonCancellable) {
-                    runStore.finish(run.runId, SyncRunState.BLOCKED, "local_projection_storage", owner)
-                }
-                throw cancelled
-            } catch (failure: Exception) {
-                diagnosticJournal?.record(
-                    SyncJournalEventKind.EXCEPTION,
-                    SyncJournalStage.MERGING,
-                    run.runId,
-                    failure = failure,
-                    attemptId = run.attemptId + 1,
-                    trigger = SyncTrigger.RECOVERY,
-                )
-                val deadline = clock() + LOCAL_DATABASE_RETRY_MILLIS
-                localProjectionNotBefore = run.runId to deadline
-                // The database may still be locked at claim/persist time. Preserve the old facts and
-                // keep an in-process cooldown if the durable deadline cannot yet be written.
+            trackLocalOperation(run.runId) {
+                val owner = UUID.randomUUID().toString()
                 try {
-                    val current = runStore.get(run.runId)
-                    if (current?.ownerSession == owner) {
-                        val transient = failure.isRetryableSyncDatabaseFailure()
-                        val nextState = if (transient) SyncRunState.WAITING_RETRY else SyncRunState.BLOCKED
-                        val reason = if (transient) "STORAGE" else "local_projection_storage"
-                        runStore.progress(
-                            run.runId, SyncRunPhase.MERGING, current.processed, current.total,
-                            current.completed, current.skipped, current.failed,
-                            attemptId = current.attemptId, nextRetryAt = deadline,
-                            state = nextState, reason = reason, ownerSession = owner,
-                        )
-                        runStore.finish(run.runId, nextState, reason, owner)
+                    if (!runStore.claimLocalProjectionRecovery(run.runId, owner)) return@trackLocalOperation false
+                    localStage(SyncOperationStage.CHECKING)
+                    localStage(SyncOperationStage.ITEMS, 0.0)
+                    projector.retryOrphanDecisions(connection.spaceId, connection.generation)
+                    while (projector.project(connection.spaceId, connection.generation) == 50) {
+                        kotlinx.coroutines.yield()
                     }
+                    localStage(SyncOperationStage.ITEMS)
+                    runStore.confirmReceived(run.runId, owner)
+                    runStore.reconcilePublishedPlan(run.runId, owner)
+                    val pending = projector.pending(connection.spaceId, connection.generation, limit = 1).isNotEmpty()
+                    val unfinished =
+                        runStore.hasUnconfirmedDownloads(run.runId, owner) || runStore.hasPlannedWork(run.runId)
+                    localStage(SyncOperationStage.INTEGRITY)
+                    runStore.finish(
+                        run.runId,
+                        if (pending || unfinished) SyncRunState.PARTIAL else SyncRunState.SUCCEEDED,
+                        if (pending) {
+                            "pending_decision"
+                        } else if (unfinished) {
+                            "projection_pending"
+                        } else {
+                            null
+                        },
+                        owner,
+                    )
                 } catch (cancelled: CancellationException) {
+                    withContext(NonCancellable) {
+                        runStore.finish(run.runId, SyncRunState.BLOCKED, "local_projection_storage", owner)
+                    }
                     throw cancelled
-                } catch (_: Exception) {
-                    // No new authority is granted when storage cannot persist a recovery result.
+                } catch (failure: Exception) {
+                    diagnosticJournal?.record(
+                        SyncJournalEventKind.EXCEPTION,
+                        SyncJournalStage.MERGING,
+                        run.runId,
+                        failure = failure,
+                        attemptId = run.attemptId + 1,
+                        trigger = SyncTrigger.RECOVERY,
+                    )
+                    val deadline = clock() + LOCAL_DATABASE_RETRY_MILLIS
+                    localProjectionNotBefore = run.runId to deadline
+                    // The database may still be locked at claim/persist time. Preserve the old facts and
+                    // keep an in-process cooldown if the durable deadline cannot yet be written.
+                    try {
+                        val current = runStore.get(run.runId)
+                        if (current?.ownerSession == owner) {
+                            val transient = failure.isRetryableSyncDatabaseFailure()
+                            val nextState = if (transient) SyncRunState.WAITING_RETRY else SyncRunState.BLOCKED
+                            val reason = if (transient) "STORAGE" else "local_projection_storage"
+                            runStore.progress(
+                                run.runId, SyncRunPhase.MERGING, current.processed, current.total,
+                                current.completed, current.skipped, current.failed,
+                                attemptId = current.attemptId, nextRetryAt = deadline,
+                                state = nextState, reason = reason, ownerSession = owner,
+                            )
+                            runStore.finish(run.runId, nextState, reason, owner)
+                        }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        // No new authority is granted when storage cannot persist a recovery result.
+                    }
                 }
+                true
             }
-            true
         }
 
     /** A local choice can complete an accepted receipt without loading connection secrets or contacting the server. */
@@ -916,35 +963,41 @@ class SyncRuntime(
             if (!projector.hasOrphanDecisions(connection.spaceId, connection.generation)) return@withLock false
             val owner = UUID.randomUUID().toString()
             if (!runStore.claim(current.runId, owner, current.attemptId + 1)) return@withLock false
-            try {
-                projector.retryOrphanDecisions(connection.spaceId, connection.generation)
-                while (projector.project(connection.spaceId, connection.generation) == 50) {
-                    kotlinx.coroutines.yield()
+            trackLocalOperation(current.runId) {
+                try {
+                    localStage(SyncOperationStage.CHECKING)
+                    localStage(SyncOperationStage.ITEMS, 0.0)
+                    projector.retryOrphanDecisions(connection.spaceId, connection.generation)
+                    while (projector.project(connection.spaceId, connection.generation) == 50) {
+                        kotlinx.coroutines.yield()
+                    }
+                    localStage(SyncOperationStage.ITEMS)
+                    runStore.confirmReceived(current.runId, owner)
+                    val pending = projector.pending(connection.spaceId, connection.generation, limit = 1).isNotEmpty()
+                    val unfinished = runStore.hasUnconfirmedDownloads(current.runId, owner) ||
+                        runStore.hasPlannedWork(current.runId)
+                    localStage(SyncOperationStage.INTEGRITY)
+                    runStore.finish(
+                        current.runId,
+                        if (unfinished || pending) SyncRunState.PARTIAL else SyncRunState.SUCCEEDED,
+                        if (pending) {
+                            "pending_decision"
+                        } else if (unfinished) {
+                            "projection_pending"
+                        } else {
+                            null
+                        },
+                        owner,
+                    )
+                } catch (cancelled: CancellationException) {
+                    withContext(NonCancellable) { runStore.releaseForRecovery(current.runId) }
+                    throw cancelled
+                } catch (failure: Exception) {
+                    runStore.finish(current.runId, SyncRunState.PARTIAL, "projection_pending", owner)
+                    throw failure
                 }
-                runStore.confirmReceived(current.runId, owner)
-                val pending = projector.pending(connection.spaceId, connection.generation, limit = 1).isNotEmpty()
-                val unfinished = runStore.hasUnconfirmedDownloads(current.runId, owner) ||
-                    runStore.hasPlannedWork(current.runId)
-                runStore.finish(
-                    current.runId,
-                    if (unfinished || pending) SyncRunState.PARTIAL else SyncRunState.SUCCEEDED,
-                    if (pending) {
-                        "pending_decision"
-                    } else if (unfinished) {
-                        "projection_pending"
-                    } else {
-                        null
-                    },
-                    owner,
-                )
-            } catch (cancelled: CancellationException) {
-                withContext(NonCancellable) { runStore.releaseForRecovery(current.runId) }
-                throw cancelled
-            } catch (failure: Exception) {
-                runStore.finish(current.runId, SyncRunState.PARTIAL, "projection_pending", owner)
-                throw failure
+                true
             }
-            true
         }
 
     suspend fun cancelSync() {
@@ -1316,6 +1369,8 @@ class SyncRuntime(
     }
 
     override suspend fun exchange(trigger: SyncTrigger): SyncRunResult = connectionMutex.withLock {
+        val operation = coordinator.activity.value.operation?.token
+        coordinator.reportProgress(operation, SyncOperationStage.CHECKING, 0.0)
         diagnosticJournal?.record(
             SyncJournalEventKind.RUN_START,
             SyncJournalStage.RUNTIME,
@@ -1386,6 +1441,8 @@ class SyncRuntime(
                 (trigger == SyncTrigger.MANUAL && it.state == SyncRunState.RUNNING)
         }
         val run = existing ?: runStore.start(connection.spaceId, connection.generation, trigger)
+        coordinator.reportProgress(operation, SyncOperationStage.CHECKING, runId = run.runId)
+        coordinator.reportProgress(operation, SyncOperationStage.AUTHORIZATION, 0.0, run.runId)
         val accountNotBefore = try {
             if (connection.unsupportedFormat) 0L else accountHttpNotBefore(connection)
         } catch (cancelled: CancellationException) {
@@ -1413,6 +1470,9 @@ class SyncRuntime(
                 run.runId,
                 mutableLiveProgress,
                 canPublish = { liveSession === current },
+                onWorkflowProgress = { fraction ->
+                    coordinator.reportProgress(operation, SyncOperationStage.ITEMS, fraction, run.runId)
+                },
                 confirmedBaseline = run.confirmedItems.takeUnless {
                     existing != null && run.confirmedItems == 0L && run.downloaded > 0L
                 },
@@ -1486,6 +1546,7 @@ class SyncRuntime(
                 attemptId = attemptId,
                 trigger = trigger,
             )
+            coordinator.reportProgress(operation, SyncOperationStage.AUTHORIZATION, runId = run.runId)
             diagnosticStage = SyncJournalStage.EXCHANGE
             val actor = handler.await {
                 sync_journalQueries.getCurrentActor(connection.spaceId, connection.generation).executeAsOne()
@@ -1521,6 +1582,9 @@ class SyncRuntime(
                 snapshotOwner = SyncSnapshotWriteOwner(run.runId, ownerSession, attemptId),
                 allowPublish = !runStore.requiresUploadReconciliation(run.runId),
                 liveProgress = progressSession,
+                onOperationProgress = { stage, fraction ->
+                    coordinator.reportProgress(operation, stage, fraction, run.runId)
+                },
                 diagnosticContext = diagnosticJournal?.let {
                     SyncJournalContext(it, SyncJournalStage.EXCHANGE, run.runId, attemptId, trigger)
                 },
@@ -1648,6 +1712,9 @@ class SyncRuntime(
                 )
             }
         }
+        if (result.status == SyncRunStatus.SUCCESS) {
+            coordinator.reportProgress(operation, SyncOperationStage.PERSISTING, 0.0, run.runId)
+        }
         if (result.problem == null) runStore.completeUploadReconciliation(run.runId, ownerSession)
         runStore.finish(
             run.runId,
@@ -1672,6 +1739,14 @@ class SyncRuntime(
         if (result.status == SyncRunStatus.SUCCESS) completePendingSetupIfSettled(connection)
         if (result.status == SyncRunStatus.SUCCESS) preferences.lastSuccess.set(clock())
         preferences.history.set(Json.encodeToString((records() + SyncRunRecord(clock(), trigger, result)).takeLast(20)))
+        if (result.status == SyncRunStatus.SUCCESS && runStore.get(run.runId)?.state == SyncRunState.SUCCEEDED) {
+            coordinator.reportProgress(
+                operation,
+                SyncOperationStage.PERSISTING,
+                runId = run.runId,
+                durableSuccess = true,
+            )
+        }
         result
     }
 

@@ -9,6 +9,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.job
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -62,6 +63,7 @@ data class SyncActivity(
     val trigger: SyncTrigger? = null,
     val completion: Long = 0,
     val result: SyncRunResult? = null,
+    val operation: SyncOperationProgress? = null,
 )
 
 /** One coordinator per application, shared by foreground and scheduled callers. */
@@ -76,6 +78,25 @@ class SyncCoordinator(private val port: SyncRunPort) {
     private val mutableActivity = MutableStateFlow(SyncActivity())
     val activity: StateFlow<SyncActivity> = mutableActivity
 
+    fun reportProgress(
+        token: SyncOperationToken?,
+        stage: SyncOperationStage,
+        completed: Double = 1.0,
+        runId: String? = null,
+        durableSuccess: Boolean = false,
+    ) {
+        if (token == null) return
+        mutableActivity.update { current ->
+            val operation = current.operation ?: return@update current
+            if (!current.running || operation.token != token) return@update current
+            current.copy(
+                operation = operation.advance(stage, completed, runId).let {
+                    if (durableSuccess) it.copy(durableSuccess = true) else it
+                },
+            )
+        }
+    }
+
     suspend fun synchronize(trigger: SyncTrigger): SyncRunResult = coroutineScope {
         val owner = currentCoroutineContext().job
         val current = mutex.withLock {
@@ -88,7 +109,11 @@ class SyncCoordinator(private val port: SyncRunPort) {
                 }
             } ?: Flight(owner, trigger).also {
                 flight = it
-                mutableActivity.value = mutableActivity.value.copy(running = true, trigger = trigger)
+                mutableActivity.value = mutableActivity.value.copy(
+                    running = true,
+                    trigger = trigger,
+                    operation = SyncOperationProgress(java.util.UUID.randomUUID().toString()),
+                )
             }
         }
         if (current.owner != owner) return@coroutineScope current.completion.await()
@@ -136,10 +161,14 @@ class SyncCoordinator(private val port: SyncRunPort) {
                         mutableActivity.value = SyncActivity(
                             completion = mutableActivity.value.completion + 1,
                             result = result,
+                            operation = mutableActivity.value.operation?.finish(result),
                         )
                         current.completion.complete(result)
                     } else {
-                        mutableActivity.value = mutableActivity.value.copy(trigger = pending)
+                        mutableActivity.value = mutableActivity.value.copy(
+                            trigger = pending,
+                            operation = mutableActivity.value.operation?.nextSegment(),
+                        )
                     }
                     pending
                 }
@@ -153,7 +182,11 @@ class SyncCoordinator(private val port: SyncRunPort) {
                 mutex.withLock {
                     if (flight === current) {
                         flight = null
-                        mutableActivity.value = mutableActivity.value.copy(running = false, trigger = null)
+                        mutableActivity.value = mutableActivity.value.copy(
+                            running = false,
+                            trigger = null,
+                            operation = mutableActivity.value.operation?.finish(SyncRunResult(SyncRunStatus.FAILED)),
+                        )
                         current.completion.cancel()
                     }
                 }

@@ -22,6 +22,30 @@ class SyncCoordinatorTest {
     private val success = SyncRunResult(SyncRunStatus.SUCCESS)
 
     @Test
+    fun `operation success requires durable proof and a cancelled flight never releases completion share`() = runTest {
+        lateinit var coordinator: SyncCoordinator
+        val gate = CompletableDeferred<Unit>()
+        coordinator = SyncCoordinator(
+            SyncRunPort {
+                val token = coordinator.activity.value.operation!!.token
+                coordinator.reportProgress(token, mihon.domain.sync.runtime.SyncOperationStage.ITEMS, 0.5, "run")
+                gate.await()
+                success
+            },
+        )
+        val worker = async { coordinator.synchronize(SyncTrigger.MANUAL) }
+        runCurrent()
+        val active = coordinator.activity.value.operation!!
+        assertTrue(active.fraction > 0.20 && active.fraction < 0.85)
+        worker.cancelAndJoin()
+        assertTrue(coordinator.activity.value.operation!!.fraction < 1.0)
+        assertFalse(coordinator.activity.value.operation!!.running)
+        gate.complete(Unit)
+        assertEquals(success, coordinator.synchronize(SyncTrigger.MANUAL))
+        assertTrue(coordinator.activity.value.operation!!.fraction < 1.0)
+    }
+
+    @Test
     fun `overlapping callers share one flight and drain a burst once`() = runTest {
         val first = CompletableDeferred<Unit>()
         val second = CompletableDeferred<Unit>()

@@ -2490,4 +2490,7 @@
     <string name="sync_invalid_saved_data">部分同步数据未通过校验，已保留其他进度</string>
     <string name="sync_invalid_saved_hint">这部分数据尚未恢复，应用需要进一步检查。可在下方查看诊断记录。</string>
     <string name="sync_total_items_completed">总条目已处理 %1$d/%2$s 条</string>
+    <string name="sync_operation_head">正在复核远端最终状态</string>
+    <string name="sync_operation_integrity">正在检查同步完整性</string>
+    <string name="sync_operation_closing">正在保存同步结果</string>
 </resources>

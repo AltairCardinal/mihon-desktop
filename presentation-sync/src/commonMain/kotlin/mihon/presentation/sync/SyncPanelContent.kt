@@ -2967,7 +2967,7 @@ private fun SyncCompactProgressCard(
     horizontalPadding: Dp,
 ) {
     val run = state.run
-    val counting = run?.plannedItems == null
+    val counting = run?.plannedItems == null && presentation.operation == null
     val countingInProgress = counting && (
         presentation.active ||
             (run?.state == SyncRunState.RUNNING && presentation.fact?.hold == SyncProgressHold.RECOVERING) ||
@@ -3060,6 +3060,9 @@ private fun SyncCompactProgressCard(
                         drawStopIndicator = {},
                     )
                 }
+                if (presentation.operation != null) {
+                    Text(syncString(presentation.action), Modifier.testTag("sync-operation-stage"), style = textStyle)
+                }
                 if (!counting) {
                     presentation.attemptConfirmed?.let {
                         Text(
@@ -3126,7 +3129,9 @@ private fun SyncProgressCard(
     onOpenFailureLog: (String) -> Unit,
     horizontalPadding: Dp = 24.dp,
 ) {
-    if (state.showingCompactRun) {
+    if (state.showingCompactRun || state.operation?.running == true ||
+        (state.run?.state == SyncRunState.SUCCEEDED && !presentation.complete && !presentation.operationFailed)
+    ) {
         SyncCompactProgressCard(state, presentation, dispatch, horizontalPadding)
         return
     }
@@ -3143,7 +3148,7 @@ private fun SyncProgressCard(
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    if (run?.state == SyncRunState.SUCCEEDED) Icons.Outlined.CheckCircle else Icons.Outlined.Info,
+                    if (presentation.complete) Icons.Outlined.CheckCircle else Icons.Outlined.Info,
                     null,
                     Modifier.size(28.dp),
                 )
@@ -3440,7 +3445,9 @@ private fun SyncMainOperation(
 ) {
     val run = state.run
     val fact = presentation.fact
-    val terminal = run?.state in TERMINAL_STATES
+    val terminal =
+        run?.state in TERMINAL_STATES &&
+            (run?.state != SyncRunState.SUCCEEDED || presentation.complete || presentation.operationFailed)
     val operation = connectionOperation(state)
     val operationHeight = syncMainOperationHeight()
     val operationShape = MaterialTheme.shapes.small
@@ -3555,6 +3562,13 @@ private fun SyncMainOperation(
                     dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
                 }
             }
+            presentation.operationFailed -> Action(
+                "sync-retry-run",
+                MR.strings.sync_retry_run,
+                shape = operationShape,
+                primary = true,
+                modifier = buttonModifier,
+            ) { dispatch(SyncPanelAction.RetrySync) }
             terminal -> Action(
                 "sync-now",
                 MR.strings.sync_now,

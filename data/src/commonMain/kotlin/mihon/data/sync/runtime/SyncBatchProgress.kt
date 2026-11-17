@@ -13,6 +13,7 @@ data class SyncBatchProgress(
     val processedRunItems: Long,
     val plannedRunItems: Long,
     val work: SyncBatchWork,
+    val workflowFraction: Double? = null,
 )
 
 internal class SyncBatchProgressTracker {
@@ -24,19 +25,27 @@ internal class SyncBatchProgressTracker {
         var committed: Long,
         var effective: Long,
         var committedEffective: Long,
+        val direction: SyncProgressDirection,
+        var confirmed: Boolean,
+        var weighted: Double,
     )
     private val batches = linkedMapOf<Key, Work>()
     private var active: Key? = null
     private var work = SyncBatchWork.PREPARING
     private var processedRunItems = 0L
     private var plannedRunItems = 0L
+    private var workflowItems = 0.0
 
     fun plan(plan: SyncRunPlan) {
         if (batches.isNotEmpty()) return
         plan.batches.forEach {
             val done = if (it.confirmed) it.itemCount else 0L
-            batches[Key(it.direction, it.batchId)] = Work(batches.size + 1, it.itemCount, done, done, done, done)
+            batches[Key(it.direction, it.batchId)] = Work(
+                batches.size + 1, it.itemCount, done, done, done, done,
+                it.direction, it.confirmed, done.toDouble(),
+            )
             processedRunItems += done
+            workflowItems += done
             plannedRunItems += it.itemCount
         }
     }
@@ -53,6 +62,7 @@ internal class SyncBatchProgressTracker {
         val next = maxOf(batch.processed, count)
         batch.processed = next
         if (active?.direction == SyncProgressDirection.DOWNLOAD) advance(batch, next)
+        updateWorkflow(batch)
     }
 
     fun transfer(workKey: String?, offset: Long, total: Long?) {
@@ -76,6 +86,17 @@ internal class SyncBatchProgressTracker {
         val next = maxOf(batch.effective, count)
         processedRunItems += next - batch.effective
         batch.effective = next
+        updateWorkflow(batch)
+    }
+
+    private fun updateWorkflow(batch: Work) {
+        val weighted = when {
+            batch.confirmed -> batch.total.toDouble()
+            batch.direction == SyncProgressDirection.DOWNLOAD -> batch.effective * 0.55
+            else -> batch.processed * 0.15 + batch.effective * 0.60
+        }
+        workflowItems += weighted - batch.weighted
+        batch.weighted = weighted
     }
 
     fun finish(successful: Boolean) {
@@ -88,6 +109,7 @@ internal class SyncBatchProgressTracker {
             batch.processed = batch.committed
             batch.effective = batch.committedEffective
         }
+        updateWorkflow(batch)
     }
 
     fun phase(work: SyncBatchWork) {
@@ -101,6 +123,8 @@ internal class SyncBatchProgressTracker {
         batch.committed = batch.total
         batch.effective = batch.total
         batch.committedEffective = batch.total
+        batch.confirmed = true
+        updateWorkflow(batch)
     }
 
     fun snapshot(): SyncBatchProgress? {
@@ -109,6 +133,7 @@ internal class SyncBatchProgressTracker {
         return SyncBatchProgress(
             key.id, key.direction, batch.ordinal, batches.size,
             batch.processed, batch.total, processedRunItems, plannedRunItems, work,
+            if (plannedRunItems > 0) (workflowItems / plannedRunItems).coerceIn(0.0, 1.0) else 1.0,
         )
     }
 }

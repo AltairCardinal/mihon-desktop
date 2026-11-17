@@ -141,6 +141,7 @@ class SyncLiveProgressSession(
     private val millis: () -> Long = System::currentTimeMillis,
     private val canPublish: () -> Boolean = { true },
     private var confirmedBaseline: Long? = 0,
+    private val onWorkflowProgress: (Double) -> Unit = {},
 ) : SyncHttpBodyObserver {
     private val timeline = SyncProgressTimeline()
     private val batchProgress = SyncBatchProgressTracker()
@@ -334,7 +335,9 @@ class SyncLiveProgressSession(
         val now = millis()
         if (force || lastEmissionMillis == Long.MIN_VALUE || now - lastEmissionMillis >= 250L) {
             lastEmissionMillis = now
-            mutable.value = fact()
+            val current = fact()
+            mutable.value = current
+            current.batchProgress?.workflowFraction?.let { runCatching { onWorkflowProgress(it) } }
         }
     }
 

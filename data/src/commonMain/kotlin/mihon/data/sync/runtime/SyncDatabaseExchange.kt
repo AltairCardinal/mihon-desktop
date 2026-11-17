@@ -25,6 +25,7 @@ import mihon.domain.sync.SyncObjectType
 import mihon.domain.sync.auth.GitHubAuthException
 import mihon.domain.sync.crypto.SyncSecret
 import mihon.domain.sync.crypto.SyncSpaceMaterial
+import mihon.domain.sync.runtime.SyncOperationStage
 import mihon.domain.sync.runtime.SyncRunProblem
 import mihon.domain.sync.runtime.SyncRunResult
 import mihon.domain.sync.runtime.SyncRunStatus
@@ -57,9 +58,14 @@ class SyncDatabaseExchange(
     private val liveProgress: SyncLiveProgressSession? = null,
     private val diagnosticContext: SyncJournalContext? = null,
     private val allowPublish: Boolean = true,
+    private val onOperationProgress: (SyncOperationStage, Double) -> Unit = { _, _ -> },
 ) {
     private val inboxStore = SyncInboxStore(handler)
     internal val snapshotEvidenceEvaluations: Long get() = inboxStore.remoteGuard.evidenceEvaluations
+
+    private fun operation(stage: SyncOperationStage, completed: Double = 1.0) {
+        runCatching { onOperationProgress(stage, completed) }
+    }
 
     suspend fun exchange(spaceId: String, generation: Long, repository: SyncRepository): SyncRunResult {
         var diagnosticStage = SyncJournalStage.CHECKING
@@ -87,7 +93,9 @@ class SyncDatabaseExchange(
         var uploadTransferFinished = false
         var hasUnconfirmedProjection = false
         val receivedThisExchange = mutableSetOf<String>()
+        var finalHeadVerified = false
         try {
+            operation(SyncOperationStage.BASELINE, 0.0)
             val enabled = handler.await {
                 sync_journalQueries.getSpace(spaceId, generation).executeAsOneOrNull()?.let {
                     it.active && it.exchange_enabled
@@ -128,6 +136,7 @@ class SyncDatabaseExchange(
                 progress?.log(importId, "首次合并", "已写入已保存的数据", SyncRunLogStatus.COMPLETED)
                 yield()
             }
+            operation(SyncOperationStage.BASELINE)
             val store = inboxStore
             val discovery = SyncDiscoveryStore(handler)
             val service = SyncBatchSyncService(
@@ -210,9 +219,12 @@ class SyncDatabaseExchange(
                 SyncProgressStage.TRANSFERRING,
                 SyncProgressDirection.DOWNLOAD,
             )
+            operation(SyncOperationStage.DISCOVERY, 0.0)
             var snapshot = transport.readSnapshot(repository, spaceId, generation).getOrThrow()
             if (persistentPlan) {
                 observeSnapshot(snapshot)
+                operation(SyncOperationStage.DISCOVERY)
+                operation(SyncOperationStage.PLAN, 0.0)
                 if (runPlan == null) {
                     val downloads = discovery.allPending(spaceId, generation)
                     val uploads = outboxStore.freezeRound(spaceId, generation)
@@ -250,6 +262,8 @@ class SyncDatabaseExchange(
                     ),
                 )
             }
+            operation(SyncOperationStage.PLAN)
+            operation(SyncOperationStage.ITEMS, 0.0)
             suspend fun pendingDownloads() = if (persistentPlan) {
                 val memberIds = requireNotNull(runPlan).batches.filter {
                     it.direction == SyncProgressDirection.DOWNLOAD && !it.confirmed
@@ -492,8 +506,13 @@ class SyncDatabaseExchange(
                     // No-op runs stop after their initial snapshot. When this exchange moved data,
                     // probe only the ref first; parse a full snapshot only if another device advanced it.
                     if (!performedExchangeWork) break
+                    operation(SyncOperationStage.HEAD, 0.0)
                     val finalHead = transport.readCurrentHead(repository, spaceId, generation).getOrThrow()
-                    if (finalHead == snapshot.head) break
+                    if (finalHead == snapshot.head) {
+                        finalHeadVerified = true
+                        operation(SyncOperationStage.HEAD)
+                        break
+                    }
                     snapshot = transport.readSnapshot(repository, spaceId, generation).getOrThrow()
                     observeSnapshot(snapshot)
                     if (persistentPlan) break
@@ -590,11 +609,18 @@ class SyncDatabaseExchange(
                 snapshot = result.publish.confirmedSnapshot
                     ?: transport.readSnapshot(repository, spaceId, generation).getOrThrow()
             }
+            if (problem == null && !finalHeadVerified) {
+                // No-op and bounded-plan exits already authenticated their last snapshot. The
+                // observation reuses that evidence; progress must not add network requests.
+                operation(SyncOperationStage.HEAD)
+            }
+            operation(SyncOperationStage.INTEGRITY, 0.0)
             hasUnconfirmedProjection = if (progress == null) {
                 receivedThisExchange.any { !store.canConfirmReceivedBatch(spaceId, generation, it) }
             } else {
                 progress.hasUnconfirmedDownloads() || progress.hasUnfinishedPlan()
             }
+            operation(SyncOperationStage.INTEGRITY)
         } catch (cancelled: CancellationException) {
             liveProgress?.finishBatchWork(false)
             diagnosticContext?.record(SyncJournalEventKind.TERMINAL, SyncJournalCode.CANCELLED)

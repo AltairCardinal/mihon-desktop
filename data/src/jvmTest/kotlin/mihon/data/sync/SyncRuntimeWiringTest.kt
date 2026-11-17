@@ -1,9 +1,13 @@
 package mihon.data.sync
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import mihon.data.sync.http.InMemorySyncMetrics
@@ -71,6 +75,140 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.prefs.Preferences
 
 class SyncRuntimeWiringTest {
+    @Test
+    fun `whole operation waits for final head and queued empty exchange in one flight`() = runBlocking {
+        Fixture().use { f ->
+            val historyEntered = CountDownLatch(1)
+            val releaseHistory = CountDownLatch(1)
+            val blockHistory = java.util.concurrent.atomic.AtomicBoolean(false)
+            val blockedOnce = java.util.concurrent.atomic.AtomicBoolean(false)
+            val preferences = object : tachiyomi.core.common.preference.PreferenceStore by f.preferences {
+                override fun getString(key: String, defaultValue: String): Preference<String> {
+                    val delegate = f.preferences.getString(key, defaultValue)
+                    if (key != Preference.appStateKey("sync_history")) return delegate
+                    return object : Preference<String> by delegate {
+                        override fun set(value: String) {
+                            if (blockHistory.get() && blockedOnce.compareAndSet(false, true)) {
+                                historyEntered.countDown()
+                                check(releaseHistory.await(10, TimeUnit.SECONDS))
+                            }
+                            delegate.set(value)
+                        }
+                    }
+                }
+            }
+            SyncOnboardingFixture(f.storage, preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val runtime = setup.runtime
+                f.storage.favorite("/whole-operation")
+                val headEntered = CountDownLatch(1)
+                val releaseHead = CountDownLatch(1)
+                val nextEntered = CountDownLatch(1)
+                val releaseNext = CountDownLatch(1)
+                val previous = setup.git.server.dispatcher
+                val seen = java.util.Collections.synchronizedList(
+                    mutableListOf<mihon.domain.sync.runtime.SyncOperationProgress>(),
+                )
+                val observe = launch(Dispatchers.Unconfined) {
+                    runtime.coordinator.activity.collect { it.operation?.let(seen::add) }
+                }
+                setup.git.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        val op = runtime.coordinator.activity.value.operation
+                        if (request.method == "GET" && op?.segment == 0 &&
+                            op.stage == mihon.domain.sync.runtime.SyncOperationStage.HEAD &&
+                            request.url.encodedPath.contains("/git/ref/heads/")
+                        ) {
+                            headEntered.countDown()
+                            check(releaseHead.await(10, TimeUnit.SECONDS))
+                        }
+                        if (request.method == "GET" && op?.segment == 1 && nextEntered.count > 0) {
+                            nextEntered.countDown()
+                            check(releaseNext.await(10, TimeUnit.SECONDS))
+                        }
+                        return previous.dispatch(request)
+                    }
+                }
+                val baselineCompletion = runtime.coordinator.activity.value.completion
+                blockHistory.set(true)
+                val leader = async(Dispatchers.IO) { runtime.coordinator.synchronize(SyncTrigger.MANUAL) }
+                try {
+                    assertTrue(headEntered.await(10, TimeUnit.SECONDS))
+                    val atHead = runtime.coordinator.activity.value.operation!!
+                    val run = runtime.runStore.latest("space", 1)!!
+                    assertEquals(run.plannedItems, run.confirmedItems)
+                    assertTrue(atHead.fraction >= 0.85 && atHead.fraction < 0.90)
+                    assertTrue(atHead.running)
+                    val follower = async(start = CoroutineStart.UNDISPATCHED) {
+                        runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                    }
+                    releaseHead.countDown()
+                    assertTrue(historyEntered.await(10, TimeUnit.SECONDS))
+                    assertEquals(SyncRunState.SUCCEEDED, runtime.runStore.get(run.runId)!!.state)
+                    assertTrue(runtime.coordinator.activity.value.running)
+                    assertTrue(runtime.coordinator.activity.value.operation!!.fraction < 1.0)
+                    withTimeout(5_000) {
+                        setup.panel.state.first { it.run?.state == SyncRunState.SUCCEEDED && it.busy }
+                    }
+                    releaseHistory.countDown()
+                    assertTrue(nextEntered.await(10, TimeUnit.SECONDS))
+                    val queued = runtime.coordinator.activity.value.operation!!
+                    assertEquals(atHead.id, queued.id)
+                    assertEquals(1, queued.segment)
+                    assertTrue(queued.fraction >= atHead.fraction && queued.fraction < 1.0)
+                    assertTrue(queued.running)
+                    releaseNext.countDown()
+                    assertEquals(SyncRunStatus.SUCCESS, leader.await().status)
+                    assertEquals(SyncRunStatus.SUCCESS, follower.await().status)
+                    val done = runtime.coordinator.activity.value.operation!!
+                    assertEquals(atHead.id, done.id)
+                    assertFalse(done.running)
+                    assertEquals(1.0, done.fraction)
+                    assertTrue(done.durableSuccess)
+                    assertEquals(SyncRunState.SUCCEEDED, runtime.runStore.get(done.runId!!)!!.state)
+                    val stages = seen.filter { it.id == done.id && it.segment == 0 }.map { it.stage }.distinct()
+                    assertEquals(mihon.domain.sync.runtime.SyncOperationStage.entries.toList(), stages)
+                    val fractions = seen.filter { it.id == done.id }.map { it.fraction }
+                    assertTrue(fractions.zipWithNext().all { (a, b) -> b >= a })
+                    assertEquals(baselineCompletion + 1, runtime.coordinator.activity.value.completion)
+                } finally {
+                    releaseHead.countDown()
+                    releaseHistory.countDown()
+                    releaseNext.countDown()
+                    leader.cancelAndJoin()
+                    observe.cancelAndJoin()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `whole operation cannot complete when durable finish downgrades returned success`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                f.storage.driver.execute(
+                    null,
+                    "CREATE TRIGGER incomplete_at_closing AFTER UPDATE OF phase ON sync_runtime_runs " +
+                        "WHEN NEW.phase = 'COMPLETE' BEGIN INSERT OR IGNORE INTO sync_runtime_confirmations " +
+                        "VALUES(NEW.run_id, 'UPLOAD', 'unfinished-at-closing', 1, 'PLANNED'); END",
+                    0,
+                )
+                val runtime = setup.runtime
+                assertEquals(SyncRunStatus.SUCCESS, runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                val done = runtime.coordinator.activity.value.operation!!
+                assertEquals(SyncRunState.PARTIAL, runtime.runStore.get(done.runId!!)!!.state)
+                assertFalse(done.durableSuccess)
+                assertFalse(done.running)
+                assertTrue(done.fraction < 1.0)
+            }
+        }
+    }
+
     @Test
     fun `legacy upload block automatically reconciles a published batch without remote writes`() = runBlocking {
         verifyLegacyUploadReconciliation(remotePresent = true)
