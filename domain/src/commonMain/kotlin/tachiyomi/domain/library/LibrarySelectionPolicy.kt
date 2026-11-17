@@ -73,6 +73,53 @@ fun selectAllLibraryItems(
     anchor = LibrarySelectionAnchor(),
 )
 
+/** One immediate range-fill undo. Platform anchors must be immutable values. */
+data class ChapterRangeSelectionUndo<A>(
+    val selectedIds: Set<Long>,
+    val anchor: A,
+    val visibleIds: List<Long>,
+    val filledIds: Set<Long>,
+) {
+    fun isValidFor(selectedIds: Set<Long>, visibleIds: List<Long>): Boolean =
+        filledIds == selectedIds && this.visibleIds == visibleIds
+}
+
+data class ChapterRangeSelectionResult<A>(
+    val selectedIds: Set<Long>,
+    val anchor: A,
+    val undo: ChapterRangeSelectionUndo<A>?,
+)
+
+/** Toggle only a still-valid fill; unrelated selection actions must discard the snapshot. */
+fun <A> toggleChapterRangeSelection(
+    selectedIds: Set<Long>,
+    anchor: A,
+    visibleIds: List<Long>,
+    undo: ChapterRangeSelectionUndo<A>?,
+): ChapterRangeSelectionResult<A> {
+    if (undo != null && undo.isValidFor(selectedIds, visibleIds)) {
+        return ChapterRangeSelectionResult(undo.selectedIds, undo.anchor, null)
+    }
+    val filled = selectBetweenSelectedLibraryItems(selectedIds, visibleIds)
+    return ChapterRangeSelectionResult(
+        selectedIds = filled,
+        anchor = anchor,
+        undo = if (filled == selectedIds) {
+            null
+        } else {
+            ChapterRangeSelectionUndo(selectedIds.toSet(), anchor, visibleIds.toList(), filled.toSet())
+        },
+    )
+}
+
+/** Fill only the displayed interval between selected endpoints, preserving any existing selection. */
+fun selectBetweenSelectedLibraryItems(selectedIds: Set<Long>, visibleIds: List<Long>): Set<Long> {
+    val first = visibleIds.indexOfFirst { it in selectedIds }
+    val last = visibleIds.indexOfLast { it in selectedIds }
+    if (first < 0 || first == last) return selectedIds
+    return selectedIds + visibleIds.subList(first, last + 1)
+}
+
 fun invertLibraryItems(
     state: LibrarySelectionResult,
     visibleIds: List<Long>,

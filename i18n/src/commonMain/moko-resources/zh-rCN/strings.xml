@@ -57,6 +57,8 @@
     <string name="action_search">搜索</string>
     <string name="action_global_search">全局搜索</string>
     <string name="action_select_all">全选</string>
+    <string name="action_select_range">区间选择</string>
+    <string name="action_undo_select_range">撤销区间选择</string>
     <string name="action_mark_as_read">标记为已读</string>
     <string name="action_mark_as_unread">标记为未读</string>
     <string name="action_download">下载</string>

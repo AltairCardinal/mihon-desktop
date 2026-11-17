@@ -113,6 +113,8 @@
     <string name="desktop_settings_search_entry_summary">Find a setting by name or description</string>
     <string name="action_global_search">Global search</string>
     <string name="action_select_all">Select all</string>
+    <string name="action_select_range">Select range</string>
+    <string name="action_undo_select_range">Undo range selection</string>
     <string name="action_select_inverse">Select inverse</string>
     <string name="action_mark_as_read">Mark as read</string>
     <string name="action_mark_as_unread">Mark as unread</string>

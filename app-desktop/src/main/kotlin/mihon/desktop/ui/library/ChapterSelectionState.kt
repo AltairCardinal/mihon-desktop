@@ -3,22 +3,26 @@ package mihon.desktop.ui.library
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import tachiyomi.domain.library.ChapterRangeSelectionUndo
 import tachiyomi.domain.library.LibraryRangeAnchorPolicy
 import tachiyomi.domain.library.LibraryRangeSelectionMode
 import tachiyomi.domain.library.LibrarySelectionAnchor
 import tachiyomi.domain.library.LibrarySelectionResult
 import tachiyomi.domain.library.invertLibraryItems
 import tachiyomi.domain.library.selectLibraryRange
+import tachiyomi.domain.library.toggleChapterRangeSelection
 import tachiyomi.domain.library.toggleLibraryItem
 
 /** Detail selection belongs to one manga and retains only its visible chapter identities. */
 class ChapterSelectionState(private val mangaId: Long = 0L) {
     private var selection by mutableStateOf(LibrarySelectionResult())
     private var revision = 0L
+    private var rangeUndo by mutableStateOf<ChapterRangeSelectionUndo<LibrarySelectionAnchor>?>(null)
 
     val selectedIds: Set<Long> get() = selection.selectedIds
     val anchorId: Long? get() = selection.anchor.id
     val isActive get() = selectedIds.isNotEmpty()
+    val canUndoRangeSelection get() = rangeUndo != null
 
     fun toggle(id: Long) {
         publish(toggleLibraryItem(selection, id, mangaId))
@@ -69,6 +73,7 @@ class ChapterSelectionState(private val mangaId: Long = 0L) {
                         anchor = if (remaining.isEmpty()) LibrarySelectionAnchor() else selection.anchor,
                     ),
                     userEdit = false,
+                    invalidateUndo = remaining != selectedIds,
                 )
             }
         }
@@ -76,6 +81,13 @@ class ChapterSelectionState(private val mangaId: Long = 0L) {
 
     fun selectAll(ids: List<Long>) {
         publish(LibrarySelectionResult(selectedIds = ids.toSet()))
+    }
+
+    /** Fill the visible interval, or undo the immediately preceding fill including its anchor. */
+    fun selectBetweenSelected(visibleIds: List<Long>) {
+        val result = toggleChapterRangeSelection(selectedIds, selection.anchor, visibleIds, rangeUndo)
+        publish(LibrarySelectionResult(result.selectedIds, result.anchor), invalidateUndo = false)
+        rangeUndo = result.undo
     }
 
     /** Unlike library selection, filters remove hidden chapter IDs and invalidate hidden anchors. */
@@ -94,6 +106,7 @@ class ChapterSelectionState(private val mangaId: Long = 0L) {
                 },
             ),
             userEdit = false,
+            invalidateUndo = rangeUndo?.isValidFor(retained, ids.toList()) != true,
         )
     }
 
@@ -101,7 +114,12 @@ class ChapterSelectionState(private val mangaId: Long = 0L) {
         publish(LibrarySelectionResult())
     }
 
-    private fun publish(next: LibrarySelectionResult, userEdit: Boolean = true) {
+    private fun publish(
+        next: LibrarySelectionResult,
+        userEdit: Boolean = true,
+        invalidateUndo: Boolean = true,
+    ) {
+        if (invalidateUndo) rangeUndo = null
         if (next == selection) return
         if (userEdit) revision++
         selection = next

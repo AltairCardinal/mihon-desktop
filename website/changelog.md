@@ -5,6 +5,10 @@ description: A traceable history of public feature documentation, separate from 
 
 # Changelog
 
+## 2026-11-17 — Chapter range selection and single-step undo accepted
+
+The project owner accepted the Windows and Android candidates in a private review on November 17, 2026 and authorized main integration and push. Windows preview: `0.11.24.6.c54bd8c`; signed Android tablet candidate: `0.19.4-aex.146 / vc164`, source `54bc58d738`. The chapter multi-select toolbar fills the visible interval between selected endpoints and offers one immediate undo with the approved dashed icon, restoring both selection and range anchor. Intervening selection actions, visible identity/order changes, or leaving details clear undo. Acceptance covers Windows and the Android tablet, not macOS or a new public product release.
+
 ## 2026-11-16 — Windows automatic sync recovery accepted
 
 The project owner confirmed the Windows sync repair in a private review on November 16, 2026 and authorized main integration and push. Accepted preview: `0.11.24.10.e35afaa` with the recorded dirty production inputs; implementation: `e35afaa8cd`, `640ddd5a8b`. Old merge blocks resume automatically while preserving saved decisions. Restored databases reconcile already published batches against authenticated remote content without republishing; transient network failures retry automatically. Two isolated database-restore runs completed successfully. This acceptance covers Windows recovery, not revoked credentials, incompatible or invalid remote data, other platforms, or a new public product release.

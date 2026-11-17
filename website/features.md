@@ -41,6 +41,8 @@ Mihon’s reading and library experience gains a desktop home. Use the desktop i
 
 **Windows reader preparation:** The accepted Windows reader candidate reduces repeated preparation when opening chapters while preserving image quality, page order, and normal page turning. The observed speed depends on the device and content; this change does not establish a stable opening-time improvement.
 
+**Chapter range selection (Windows and Android):** In a work’s chapter multi-select toolbar, use **Select range** to fill the visible interval between the first and last selected chapters in the current display order. The button changes to a dashed icon and **Undo range selection**; press it again to restore the previous selection and range anchor. Undo is available only for the immediately preceding range fill. Manual selection, select all, inverse selection, changes to the visible chapter identities or order, and leaving the detail page clear it. A range fill that changes nothing creates no undo. Ordinary progress or metadata refreshes retain undo when selection and visible order stay unchanged.
+
 **Manga details and chapter list:** The chapter list provides native dynamic scrollbars in both dual-pane and single-pane layouts, highlighting on scroll or hover. When the floating "Continue" action button is visible in the bottom-right corner, the list automatically maintains an 88dp bottom clearance so the final chapter row remains completely clear of the button when scrolled to the end.
 
 **Chapter action feedback:** On Windows, successful or skipped chapter actions on the manga detail page no longer show the success/skip/failure count snackbar. Failure feedback and the optional Add to library action remain available.

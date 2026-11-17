@@ -14,7 +14,9 @@ import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.printToString
 import androidx.lifecycle.Lifecycle
@@ -107,6 +109,213 @@ import java.util.Collections
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], manifest = Config.NONE)
 class MangaScreenModelSharedMutationWiringTest {
+    @Test
+    @Config(qualifiers = "sw360dp-w360dp-h800dp")
+    fun `Android phone detail range button fills visible selected endpoints`() = assertDetailRangeSelection(false)
+
+    @Test
+    @Config(qualifiers = "sw800dp-w1200dp-h800dp")
+    fun `Android tablet detail range button fills visible selected endpoints`() = assertDetailRangeSelection(true)
+
+    private fun assertDetailRangeSelection(descending: Boolean) = runBlocking {
+        Dispatchers.resetMain()
+        val current = manga(true).copy(
+            chapterFlags = Manga.CHAPTER_SORTING_NUMBER or Manga.CHAPTER_SHOW_UNREAD or
+                if (descending) Manga.CHAPTER_SORT_DESC else Manga.CHAPTER_SORT_ASC,
+        )
+        val chapters = (1L..7L).map { chapter(it).copy(chapterNumber = it.toDouble(), read = it == 3L) }
+        val updates = MutableStateFlow(current to chapters)
+        val get = mockk<GetMangaWithChapters> {
+            coEvery { subscribe(MANGA_ID, true) } returns updates
+            coEvery { awaitManga(MANGA_ID) } returns current
+            coEvery { awaitChapters(MANGA_ID, true) } returns chapters
+        }
+        val downloadChanges = MutableSharedFlow<Unit>(replay = 1).apply { tryEmit(Unit) }
+        val model = screenModel(
+            manga = current,
+            chapters = chapters,
+            getMangaWithChaptersOverride = get,
+            downloadCacheOverride = mockk { every { changes } returns downloadChanges },
+        )
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        try {
+            awaitSuccess(model)
+            fun success() = model.state.value as MangaScreenModel.State.Success
+            fun selected() = success().chapters.filter { it.selected }.map { it.id }.toSet()
+            model.toggleSelection(success().processedChapters.single { it.id == 4L }, true)
+            val route = MangaScreen(MANGA_ID)
+            val showDetail = mutableStateOf(true)
+            activity.get().setContent {
+                MaterialTheme {
+                    Navigator(route) { if (showDetail.value) route.ContentWithModel(model) }
+                }
+            }
+            assertEquals(descending, activity.get().resources.configuration.smallestScreenWidthDp >= 720)
+            val rangeLabel = activity.get().stringResource(MR.strings.action_select_range)
+            compose.onNodeWithContentDescription(rangeLabel).assertIsDisplayed().performClick()
+            assertEquals(setOf(4L), selected())
+            compose.runOnIdle {
+                model.toggleSelection(success().processedChapters.single { it.id == 2L }, true)
+                model.toggleSelection(success().processedChapters.single { it.id == 6L }, true)
+            }
+            val rangeBounds = compose.onNodeWithContentDescription(rangeLabel).fetchSemanticsNode().boundsInRoot
+            val allBounds = compose.onNodeWithContentDescription(
+                activity.get().stringResource(MR.strings.action_select_all),
+            ).fetchSemanticsNode().boundsInRoot
+            assertTrue(rangeBounds.right <= allBounds.left)
+            compose.onNodeWithContentDescription(rangeLabel).performClick()
+            assertEquals(setOf(2L, 4L, 5L, 6L), selected())
+            compose.runOnIdle { updates.value = current to chapters.map { it.copy(bookmark = true) } }
+            compose.waitUntil(5_000) { success().chapters.all { it.chapter.bookmark } }
+            assertEquals(setOf(2L, 4L, 5L, 6L), selected())
+            val undoLabel = activity.get().stringResource(MR.strings.action_undo_select_range)
+            compose.onNodeWithContentDescription(undoLabel).assertIsDisplayed().performClick()
+            assertEquals(setOf(2L, 4L, 6L), selected())
+            compose.onNodeWithContentDescription(rangeLabel).assertIsDisplayed().performClick()
+            assertEquals(setOf(2L, 4L, 5L, 6L), selected())
+            compose.runOnIdle { showDetail.value = false }
+            compose.waitForIdle()
+            compose.runOnIdle { showDetail.value = true }
+            compose.onNodeWithContentDescription(rangeLabel).assertIsDisplayed().performClick()
+            assertEquals(setOf(2L, 4L, 5L, 6L), selected())
+            compose.onNodeWithContentDescription(
+                activity.get().stringResource(MR.strings.action_select_all),
+            ).performClick()
+            assertEquals(chapters.map { it.id }.toSet(), selected())
+            compose.onNodeWithContentDescription(
+                activity.get().stringResource(MR.strings.action_select_inverse),
+            ).performClick()
+            assertTrue(selected().isEmpty())
+            compose.onNodeWithContentDescription(rangeLabel).assertDoesNotExist()
+        } finally {
+            activity.pause().stop().destroy()
+            model.onDispose()
+        }
+    }
+
+    @Test
+    fun `Android detail range button restores anchors and cache across refresh`() = runTest {
+        val current = manga(true).copy(chapterFlags = Manga.CHAPTER_SORTING_NUMBER or Manga.CHAPTER_SORT_ASC)
+        val chapters = (1L..7L).map { chapter(it).copy(chapterNumber = it.toDouble()) }
+        val updates = MutableStateFlow(current to chapters)
+        val downloadChanges = MutableSharedFlow<Unit>(replay = 1).apply { tryEmit(Unit) }
+        val model = screenModel(
+            manga = current,
+            chapters = chapters,
+            getMangaWithChaptersOverride = mockk {
+                coEvery { subscribe(MANGA_ID, true) } returns updates
+                coEvery { awaitManga(MANGA_ID) } returns current
+                coEvery { awaitChapters(MANGA_ID, true) } returns chapters
+            },
+            downloadCacheOverride = mockk { every { changes } returns downloadChanges },
+        )
+        try {
+            awaitSuccess(model)
+            fun success() = model.state.value as MangaScreenModel.State.Success
+            fun selected() = success().chapters.filter { it.selected }.map { it.id }.toSet()
+            fun select(id: Long, longPress: Boolean = false) =
+                model.toggleSelection(success().processedChapters.single { it.id == id }, true, longPress)
+            select(3)
+            select(5)
+            model.selectRange()
+            assertEquals(setOf(3L, 4L, 5L), selected())
+            model.selectRange()
+            assertEquals(setOf(3L, 5L), selected())
+            downloadChanges.emit(Unit)
+            updates.value = current to chapters.map { it.copy(bookmark = true) }
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) {
+                    while (!success().chapters.all { it.chapter.bookmark }) {
+                        testScheduler.runCurrent()
+                        delay(10)
+                    }
+                }
+            }
+            assertEquals(setOf(3L, 5L), selected())
+            select(1, longPress = true)
+            assertEquals(setOf(1L, 3L, 5L), selected())
+            model.selectRange()
+            model.selectRange()
+            assertEquals(setOf(1L, 3L, 5L), selected())
+        } finally {
+            model.onDispose()
+        }
+    }
+
+    @Test
+    fun `Android detail range button invalidates after explicit selection and visible order changes`() = runTest {
+        val current = manga(true).copy(chapterFlags = Manga.CHAPTER_SORTING_NUMBER or Manga.CHAPTER_SORT_ASC)
+        val chapters = (1L..6L).map { chapter(it).copy(chapterNumber = it.toDouble()) }
+        val updates = MutableStateFlow(current to chapters)
+        val downloadChanges = MutableSharedFlow<Unit>(replay = 1).apply { tryEmit(Unit) }
+        val model = screenModel(
+            manga = current,
+            chapters = chapters,
+            getMangaWithChaptersOverride = mockk {
+                coEvery { subscribe(MANGA_ID, true) } returns updates
+                coEvery { awaitManga(MANGA_ID) } returns current
+                coEvery { awaitChapters(MANGA_ID, true) } returns chapters
+            },
+            downloadCacheOverride = mockk { every { changes } returns downloadChanges },
+        )
+        try {
+            awaitSuccess(model)
+            fun success() = model.state.value as MangaScreenModel.State.Success
+            fun selected() = success().chapters.filter { it.selected }.map { it.id }.toSet()
+            fun fill() {
+                model.toggleAllSelection(false)
+                for (id in listOf(2L, 5L)) {
+                    model.toggleSelection(success().processedChapters.single { it.id == id }, true)
+                }
+                model.selectRange()
+            }
+            fill()
+            // Even a no-op direct selection is an intervening user action.
+            model.toggleSelection(success().processedChapters.single { it.id == 3L }, true)
+            model.selectRange()
+            assertEquals(setOf(2L, 3L, 4L, 5L), selected())
+            fill()
+            model.toggleSelection(success().processedChapters.single { it.id == 3L }, true, fromLongPress = true)
+            model.selectRange()
+            assertEquals(setOf(2L, 3L, 4L, 5L), selected())
+            model.toggleAllSelection(false)
+            for (id in listOf(1L, 6L)) {
+                model.toggleSelection(success().processedChapters.single { it.id == id }, true)
+            }
+            model.selectRange()
+            model.toggleAllSelection(true)
+            model.selectRange()
+            assertEquals(chapters.map { it.id }.toSet(), selected())
+            fill()
+            updates.value =
+                current.copy(chapterFlags = Manga.CHAPTER_SORTING_NUMBER or Manga.CHAPTER_SORT_DESC) to chapters
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) {
+                    while (success().processedChapters.first().id != 6L) {
+                        testScheduler.runCurrent()
+                        delay(10)
+                    }
+                }
+            }
+            model.selectRange()
+            assertEquals(setOf(2L, 3L, 4L, 5L), selected())
+            fill()
+            updates.value = current to chapters.filter { it.id != 3L }
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) {
+                    while (success().chapters.any { it.id == 3L }) {
+                        testScheduler.runCurrent()
+                        delay(10)
+                    }
+                }
+            }
+            model.selectRange()
+            assertEquals(setOf(2L, 4L, 5L), selected())
+        } finally {
+            model.onDispose()
+        }
+    }
+
     @Test
     fun `actual detail refresh displays localized compatibility with the owner captured before update`() = runTest {
         val current = manga(true)
@@ -566,7 +775,7 @@ class MangaScreenModelSharedMutationWiringTest {
                         onMultiMarkAsReadClicked = { _, _ -> }, onMarkPreviousAsReadClicked = {},
                         onMultiDeleteClicked = {},
                         onChapterSwipe = { _, _ -> }, onChapterSelected = { _, _, _ -> },
-                        onAllChapterSelected = {}, onInvertSelection = {},
+                        onAllChapterSelected = {}, onSelectRange = {}, onInvertSelection = {},
                     )
                 }
             }
@@ -696,7 +905,7 @@ class MangaScreenModelSharedMutationWiringTest {
                         onMultiMarkAsReadClicked = { _, _ -> }, onMarkPreviousAsReadClicked = {},
                         onMultiDeleteClicked = {},
                         onChapterSwipe = { _, _ -> }, onChapterSelected = { _, _, _ -> },
-                        onAllChapterSelected = {}, onInvertSelection = {},
+                        onAllChapterSelected = {}, onSelectRange = {}, onInvertSelection = {},
                     )
                 }
             }
@@ -872,6 +1081,8 @@ class MangaScreenModelSharedMutationWiringTest {
             Context.MODE_PRIVATE,
         )
         preferenceStore = AndroidPreferenceStore(application, sharedPreferences)
+        Injekt.addSingleton<tachiyomi.core.common.preference.PreferenceStore>(preferenceStore)
+        Injekt.addSingleton(DownloadPreferences(preferenceStore))
         Injekt.addSingleton(BasePreferences(application, preferenceStore))
         Injekt.addSingleton(UiPreferences(preferenceStore))
         Injekt.addSingleton(SourcePreferences(preferenceStore))
@@ -1092,6 +1303,7 @@ class MangaScreenModelSharedMutationWiringTest {
         getMangaWithChaptersOverride: GetMangaWithChapters? = null,
         defaultsOverride: SetMangaDefaultChapterFlags? = null,
         downloadManagerOverride: DownloadManager? = null,
+        downloadCacheOverride: DownloadCache? = null,
         trackerManagerOverride: TrackerManager? = null,
         getTracksOverride: GetTracks? = null,
         trackChapterOverride: TrackChapter? = null,
@@ -1116,7 +1328,7 @@ class MangaScreenModelSharedMutationWiringTest {
             every { statusFlow() } returns emptyFlow()
             every { progressFlow() } returns emptyFlow()
         }
-        val downloadCache = mockk<DownloadCache> {
+        val downloadCache = downloadCacheOverride ?: mockk<DownloadCache> {
             every { changes } returns MutableSharedFlow(replay = 1)
         }
         val libraryPreferences = LibraryPreferences(preferenceStore)

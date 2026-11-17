@@ -159,6 +159,67 @@ class MangaDetailInteractionTest {
     }
 
     @Test
+    fun `chapter range button fills selected endpoints in the actual detail toolbar`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root) { scene, _, _, _ ->
+            assertFalse(nodes(scene).any { "Select range" in labels(it) })
+            chapterMouse(scene, "Chapter 4", ctrl = true)
+            click(scene, "Select range")
+            render(scene)
+            assertEquals(setOf("Chapter 4"), selectedChapterNames(scene))
+            chapterMouse(scene, "Chapter 1", ctrl = true)
+            chapterMouse(scene, "Chapter 6", ctrl = true)
+            val rangeButton = activeNodes(scene).first {
+                it.config.contains(SemanticsActions.OnClick) && "Select range" in labels(it)
+            }
+            val allButton = activeNodes(scene).first {
+                it.config.contains(SemanticsActions.OnClick) && MR.strings.action_select_all.localized() in labels(it)
+            }
+            assertTrue(rangeButton.boundsInRoot.right <= allButton.boundsInRoot.left)
+            scene.savePng(visualFile(root, "chapter-range-square-z.png"))
+            val image = scene.snapshot()
+            val iconOrigin = rangeButton.boundsInRoot.center - Offset(12f, 12f)
+            fun iconPixel(x: Int, y: Int) = image.getRGB((iconOrigin.x + x).toInt(), (iconOrigin.y + y).toInt())
+            val endpointInk = iconPixel(4, 4)
+            val endpointHole = iconPixel(6, 6)
+            assertTrue(endpointInk != endpointHole, "The approved Z icon has a hollow square endpoint")
+            assertEquals(endpointInk, iconPixel(11, 12), "The Z diagonal connects the selected endpoints")
+            assertEquals(endpointHole, iconPixel(18, 18), "The lower square endpoint also stays hollow")
+            assertEquals(endpointHole, iconPixel(12, 4), "The area above the Z stays clear")
+            click(scene, "Select range")
+            render(scene)
+            assertEquals((1..6).map { "Chapter $it" }.toSet(), selectedChapterNames(scene))
+            assertTrue(activeNodes(scene).any { "Undo range selection" in labels(it) })
+            scene.savePng(visualFile(root, "chapter-range-undo.png"))
+            val undoImage = scene.snapshot()
+            fun undoPixel(x: Int, y: Int) = undoImage.getRGB((iconOrigin.x + x).toInt(), (iconOrigin.y + y).toInt())
+            assertEquals(endpointInk, undoPixel(11, 6), "Horizontal dashes retain the original line width")
+            val gapPixel = undoPixel(13, 6)
+            assertTrue(
+                listOf(0, 8, 16).all { shift ->
+                    kotlin.math.abs(((gapPixel shr shift) and 255) - ((endpointHole shr shift) and 255)) <= 3
+                },
+                "The approved undo icon has separated square dashes (allowing edge antialiasing)",
+            )
+            click(scene, "Undo range selection")
+            render(scene)
+            assertEquals(setOf("Chapter 1", "Chapter 4", "Chapter 6"), selectedChapterNames(scene))
+            assertFalse(activeNodes(scene).any { "Undo range selection" in labels(it) })
+            click(scene, "Select range")
+            render(scene)
+            assertEquals((1..6).map { "Chapter $it" }.toSet(), selectedChapterNames(scene))
+            click(scene, MR.strings.action_select_all.localized())
+            render(scene)
+            assertFalse(activeNodes(scene).any { "Undo range selection" in labels(it) })
+            assertTrue(scene.navigator.lastItem is MangaDetailScreen)
+            click(scene, MR.strings.desktop_ui_clear_selection.localized())
+            render(scene)
+            assertFalse(nodes(scene).any { "Select range" in labels(it) })
+        }
+    }
+
+    @Test
     fun `actual detail legacy and duplicate dialogs revoke the original armed content intent`(
         @TempDir root: File,
     ) = runBlocking {
