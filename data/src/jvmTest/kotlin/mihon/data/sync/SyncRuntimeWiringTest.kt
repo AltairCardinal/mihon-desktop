@@ -363,6 +363,11 @@ class SyncRuntimeWiringTest {
                 try {
                     assertTrue(enteredRef.await(10, TimeUnit.SECONDS))
                     val beforeRef = requireNotNull(runtime.liveProgress.value)
+                    val batchProgress = requireNotNull(beforeRef.batchProgress)
+                    assertEquals(1, batchProgress.ordinal)
+                    assertEquals(1, batchProgress.batchCount)
+                    assertEquals(1L, batchProgress.processedItems)
+                    assertEquals(1L, batchProgress.plannedRunItems)
                     assertEquals(mihon.data.sync.runtime.SyncProgressStage.CONFIRMING, beforeRef.stage)
                     assertEquals(0L, beforeRef.completedItems)
                     assertTrue(beforeRef.effectiveBytes > 0L, beforeRef.toString())
@@ -428,6 +433,8 @@ class SyncRuntimeWiringTest {
                         val run = requireNotNull(runtime.runStore.latest("space", 1))
                         assertEquals(1, result.downloaded)
                         assertEquals(1L, run.confirmedItems)
+                        assertEquals(1L, run.plannedBatches)
+                        assertEquals(1L, runtime.liveProgress.value?.batchProgress?.processedRunItems)
                         val projected = receiver.storage.handler.await {
                             sync_projectionQueries.getMangaByIdentity("/source-free-download", 1).executeAsOneOrNull()
                         }

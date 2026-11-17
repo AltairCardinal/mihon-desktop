@@ -111,6 +111,14 @@ getRuntimePlanMembers:
 SELECT * FROM sync_runtime_confirmations WHERE run_id = ? AND direction IN ('UPLOAD', 'DOWNLOAD')
 ORDER BY direction, batch_id;
 
+getRuntimeBatchCounts:
+SELECT COUNT(*) AS planned_batches,
+    COALESCE(SUM(CASE WHEN status = 'CONFIRMED' THEN 1 ELSE 0 END), 0) AS confirmed_batches
+FROM sync_runtime_confirmations WHERE run_id = :runId AND direction IN ('UPLOAD', 'DOWNLOAD')
+HAVING EXISTS (
+    SELECT 1 FROM sync_runtime_confirmations WHERE run_id = :runId AND direction = 'PLAN' AND batch_id = 'round'
+);
+
 getRuntimePlannedItems:
 SELECT COALESCE(SUM(item_count), 0)
 FROM sync_runtime_confirmations WHERE run_id = :runId AND direction IN ('UPLOAD', 'DOWNLOAD')

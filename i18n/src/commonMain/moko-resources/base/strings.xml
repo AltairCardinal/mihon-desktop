@@ -2370,7 +2370,7 @@
     <string name="sync_round_active">Syncing</string>
     <string name="sync_round_counting">Counting data</string>
     <string name="sync_round_progress">%1$s, completed %2$d/%3$s items</string>
-    <string name="sync_round_time">Elapsed %1$s, estimated remaining %2$s</string>
+    <string name="sync_round_time">Elapsed %1$s · Estimated remaining %2$s</string>
     <string name="sync_pause_import">Pause initial merge</string>
     <string name="sync_resume_import">Resume initial merge</string>
     <string name="sync_pause_bulk">Pause selected processing</string>
@@ -2697,4 +2697,5 @@
     <string name="sync_deferred_list_open">View items awaiting restoration</string>
     <string name="sync_invalid_saved_data">Some sync data failed validation; other progress is retained</string>
     <string name="sync_invalid_saved_hint">This data has not been restored and needs application investigation. Diagnostic details are available below.</string>
+    <string name="sync_total_items_completed">Total items processed %1$d/%2$s</string>
 </resources>

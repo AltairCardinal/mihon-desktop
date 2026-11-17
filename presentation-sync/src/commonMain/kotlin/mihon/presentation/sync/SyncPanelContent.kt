@@ -2934,10 +2934,11 @@ private fun ErrorRecoveryExit(
     dispatch: (SyncPanelAction) -> Unit,
     prefix: String,
     showDiagnostics: Boolean = true,
+    showRecovery: Boolean = true,
 ) {
     val enabled = state.recoveryActionsEnabled && !state.busy
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (state.canOpenRecovery) {
+        if (showRecovery && state.canOpenRecovery) {
             Text(syncString(MR.strings.sync_error_recovery_hint))
             Action("$prefix-recovery-open", MR.strings.sync_recovery_choose, enabled) {
                 dispatch(SyncPanelAction.OpenRecovery)
@@ -2986,9 +2987,8 @@ private fun SyncCompactProgressCard(
         statusText
     } else {
         syncString(
-            MR.strings.sync_round_progress,
-            syncString(status),
-            run?.confirmedItems ?: 0L,
+            MR.strings.sync_total_items_completed,
+            presentation.processedItems ?: 0L,
             run?.plannedItems?.toString() ?: "—",
         )
     }
@@ -3006,8 +3006,7 @@ private fun SyncCompactProgressCard(
                         statusText
                     } else {
                         syncString(
-                            MR.strings.sync_round_progress,
-                            statusText,
+                            MR.strings.sync_total_items_completed,
                             largestCount,
                             run?.plannedItems?.toString() ?: "—",
                         )
@@ -3088,12 +3087,16 @@ private fun SyncCompactProgressCard(
                                 elapsedText,
                                 syncClockDuration(eta),
                             )
-                        } ?: syncString(MR.strings.sync_elapsed, elapsedText),
+                        } ?: syncString(
+                            MR.strings.sync_round_time,
+                            elapsedText,
+                            "—",
+                        ),
                         Modifier.fillMaxWidth().height(timeHeight).testTag("sync-round-time"),
                         style = textStyle,
                     )
                 }
-                SyncMainOperation(state, presentation, false, {}, dispatch)
+                SyncMainOperation(state, presentation, dispatch)
                 state.bulk?.takeIf { it.remaining > 0 }?.let { bulk ->
                     Action(
                         if (bulk.running) "sync-pause-bulk" else "sync-resume-bulk",
@@ -3210,11 +3213,18 @@ private fun SyncProgressCard(
                     ),
                 )
             }
-            SyncMainOperation(state, presentation, detailsExpanded, toggleDetails, dispatch)
+            SyncMainOperation(state, presentation, dispatch)
             if (run?.state in setOf(SyncRunState.FAILED, SyncRunState.BLOCKED, SyncRunState.PARTIAL) &&
                 state.problem != null
             ) {
-                ErrorRecoveryExit(state, dispatch, "sync-main")
+                ErrorRecoveryExit(
+                    state,
+                    dispatch,
+                    "sync-main",
+                    showRecovery = !(
+                        run?.state == SyncRunState.BLOCKED && state.problem == SyncRunProblem.UNKNOWN
+                        ),
+                )
             }
             TextButton({
                 toggleDetails()
@@ -3426,8 +3436,6 @@ private fun syncMainOperationHeight(): Dp {
 private fun SyncMainOperation(
     state: SyncPanelState,
     presentation: SyncProgressPresentation,
-    detailsExpanded: Boolean,
-    toggleDetails: () -> Unit,
     dispatch: (SyncPanelAction) -> Unit,
 ) {
     val run = state.run
@@ -3495,6 +3503,16 @@ private fun SyncMainOperation(
                 dispatch(SyncPanelAction.RetrySync)
             }
             run?.state == SyncRunState.BLOCKED -> when (state.problem) {
+                SyncRunProblem.UNKNOWN, null -> Action(
+                    "sync-resolve-run",
+                    MR.strings.sync_recovery_choose,
+                    state.recoveryActionsEnabled && !state.busy,
+                    shape = operationShape,
+                    primary = terminal,
+                    modifier = buttonModifier,
+                ) {
+                    dispatch(SyncPanelAction.OpenRecovery)
+                }
                 SyncRunProblem.AUTHORIZATION -> Action(
                     "sync-reconnect",
                     MR.strings.sync_reconnect,
@@ -3508,13 +3526,13 @@ private fun SyncMainOperation(
                     state.setupProblem != SyncDiscoveryProblem.INCOMPATIBLE
                 ) {
                     Action(
-                        "sync-reenter-password",
-                        MR.strings.sync_password_connect,
+                        "sync-resolve-run",
+                        MR.strings.sync_recovery_choose,
                         shape = operationShape,
                         primary = terminal,
                         modifier = buttonModifier,
                     ) {
-                        dispatch(SyncPanelAction.BeginSetup)
+                        dispatch(SyncPanelAction.OpenRecovery)
                     }
                 } else {
                     Action(
@@ -3524,7 +3542,7 @@ private fun SyncMainOperation(
                         primary = terminal,
                         modifier = buttonModifier,
                     ) {
-                        if (!detailsExpanded) toggleDetails()
+                        dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
                     }
                 }
                 else -> Action(
@@ -3534,7 +3552,7 @@ private fun SyncMainOperation(
                     primary = terminal,
                     modifier = buttonModifier,
                 ) {
-                    if (!detailsExpanded) toggleDetails()
+                    dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
                 }
             }
             terminal -> Action(

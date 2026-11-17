@@ -2161,7 +2161,7 @@
     <string name="sync_round_active">同步中</string>
     <string name="sync_round_counting">正在统计数据</string>
     <string name="sync_round_progress">%1$s，已完成%2$d/%3$s条</string>
-    <string name="sync_round_time">已用%1$s，剩余估时%2$s</string>
+    <string name="sync_round_time">已用时 %1$s · 预计剩余 %2$s</string>
     <string name="sync_pause_import">暂停首次合并</string>
     <string name="sync_resume_import">继续首次合并</string>
     <string name="sync_pause_bulk">暂停已选处理</string>
@@ -2489,4 +2489,5 @@
     <string name="sync_deferred_list_open">查看待恢复内容</string>
     <string name="sync_invalid_saved_data">部分同步数据未通过校验，已保留其他进度</string>
     <string name="sync_invalid_saved_hint">这部分数据尚未恢复，应用需要进一步检查。可在下方查看诊断记录。</string>
+    <string name="sync_total_items_completed">总条目已处理 %1$d/%2$s 条</string>
 </resources>

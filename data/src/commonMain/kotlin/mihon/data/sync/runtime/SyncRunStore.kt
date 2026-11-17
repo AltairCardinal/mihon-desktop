@@ -63,6 +63,8 @@ data class SyncRunSnapshot(
     val attemptStartedAt: Long? = null,
     val attemptConfirmedBaseline: Long = 0,
     val attemptPausedMillis: Long = 0,
+    val plannedBatches: Long? = null,
+    val confirmedBatches: Long = 0,
 )
 
 data class SyncRunPlanBatch(
@@ -141,6 +143,7 @@ class SyncLiveProgressSession(
     private var confirmedBaseline: Long? = 0,
 ) : SyncHttpBodyObserver {
     private val timeline = SyncProgressTimeline()
+    private val batchProgress = SyncBatchProgressTracker()
     private var stage = SyncProgressStage.PREPARING
     private var direction = SyncProgressDirection.UPLOAD
     private var scope = "$runId:initial"
@@ -155,6 +158,40 @@ class SyncLiveProgressSession(
 
     @Synchronized
     fun activate() = emit(force = true)
+
+    @Synchronized
+    fun plan(plan: SyncRunPlan) {
+        observeBatch(force = true) { batchProgress.plan(plan) }
+    }
+
+    @Synchronized
+    fun startBatch(direction: SyncProgressDirection, batchId: String, work: SyncBatchWork) {
+        observeBatch(force = true) { batchProgress.start(direction, batchId, work) }
+    }
+
+    @Synchronized
+    fun batchItems(count: Long) {
+        observeBatch(force = false) { batchProgress.items(count) }
+    }
+
+    @Synchronized
+    fun finishBatchWork(successful: Boolean) {
+        observeBatch(force = true) { batchProgress.finish(successful) }
+    }
+
+    @Synchronized
+    fun batchWork(work: SyncBatchWork) {
+        observeBatch(force = true) { batchProgress.phase(work) }
+    }
+
+    private inline fun observeBatch(force: Boolean, update: () -> Unit) {
+        try {
+            update()
+            emit(force)
+        } catch (_: RuntimeException) {
+            // Display observations must not change the transaction or exchange result.
+        }
+    }
 
     @Synchronized
     fun begin(
@@ -185,6 +222,8 @@ class SyncLiveProgressSession(
     @Synchronized
     fun batch(stage: SyncProgressStage, batchKey: String, itemCount: Long) {
         try {
+            if (stage == SyncProgressStage.CONFIRMING) batchProgress.confirmed(direction, batchKey)
+            if (stage == SyncProgressStage.TRANSFERRING) batchProgress.transferred(direction, batchKey)
             when (stage) {
                 SyncProgressStage.PREPARING -> timeline.prepareBatch(batchKey, itemCount, nanos())
                 SyncProgressStage.TRANSFERRING -> timeline.transferBatch(batchKey, itemCount, nanos())
@@ -266,6 +305,7 @@ class SyncLiveProgressSession(
         if (!canPublish()) return
         if (stage != SyncProgressStage.TRANSFERRING) return
         try {
+            if (direction == SyncHttpBodyDirection.UPLOAD) batchProgress.transfer(workKey, bytes, total)
             val attemptKey = "${direction.name}:$requestId"
             if (workKey == null) {
                 timeline.networkProgress(attemptKey, bytes, nanos(), total)
@@ -300,7 +340,10 @@ class SyncLiveProgressSession(
 
     private fun fact(): SyncProgressFact {
         val snapshot = timeline.snapshot(nanos())
-        return snapshot.copy(confirmedThisRun = confirmedBaseline?.plus(snapshot.confirmedThisRun ?: 0L))
+        return snapshot.copy(
+            confirmedThisRun = confirmedBaseline?.plus(snapshot.confirmedThisRun ?: 0L),
+            batchProgress = batchProgress.snapshot(),
+        )
     }
 
     @Synchronized
@@ -543,6 +586,7 @@ class SyncRunStore(
             it.toSnapshot(
                 sync_runtimeQueries.getRuntimePlannedItems(it.run_id).executeAsOneOrNull(),
                 sync_runtimeQueries.getRuntimePauseClock(it.run_id).executeAsOneOrNull(),
+                sync_runtimeQueries.getRuntimeBatchCounts(it.run_id).executeAsOneOrNull(),
             )
         }
     }
@@ -580,6 +624,7 @@ class SyncRunStore(
             it.toSnapshot(
                 sync_runtimeQueries.getRuntimePlannedItems(it.run_id).executeAsOneOrNull(),
                 sync_runtimeQueries.getRuntimePauseClock(it.run_id).executeAsOneOrNull(),
+                sync_runtimeQueries.getRuntimeBatchCounts(it.run_id).executeAsOneOrNull(),
             )
         }
     }
@@ -589,6 +634,7 @@ class SyncRunStore(
             it.toSnapshot(
                 sync_runtimeQueries.getRuntimePlannedItems(it.run_id).executeAsOneOrNull(),
                 sync_runtimeQueries.getRuntimePauseClock(it.run_id).executeAsOneOrNull(),
+                sync_runtimeQueries.getRuntimeBatchCounts(it.run_id).executeAsOneOrNull(),
             )
         }
     }
@@ -1084,6 +1130,7 @@ class SyncRunStore(
 private fun tachiyomi.data.Sync_runtime_runs.toSnapshot(
     planned: Long? = null,
     pauseClock: tachiyomi.data.Sync_runtime_pause_clock? = null,
+    batches: tachiyomi.data.GetRuntimeBatchCounts? = null,
 ) = SyncRunSnapshot(
     runId = run_id,
     spaceId = space_id,
@@ -1107,6 +1154,8 @@ private fun tachiyomi.data.Sync_runtime_runs.toSnapshot(
     attemptStartedAt = pauseClock?.attempt_started_at,
     attemptConfirmedBaseline = pauseClock?.attempt_confirmed_baseline ?: 0,
     attemptPausedMillis = pauseClock?.attempt_paused_millis ?: 0,
+    plannedBatches = batches?.planned_batches,
+    confirmedBatches = batches?.confirmed_batches ?: 0,
     uploadedBaseline = uploaded_baseline,
     downloadedBaseline = downloaded_baseline,
     attemptId = attempt_id,

@@ -61,6 +61,27 @@ import java.util.UUID
 
 @OptIn(ExperimentalComposeUiApi::class)
 class SyncTerminalRecoveryIntegrationTest {
+    @Test fun `reason click navigates even when terminal details are already expanded`() = fixture {
+        val blocked = runtime.runStore.start("space", 1, SyncTrigger.MANUAL)
+        runtime.runStore.finish(blocked.runId, SyncRunState.BLOCKED, "REMOTE_CHANGED")
+        open()
+        click("sync-progress-details-toggle")
+        click("sync-view-reason")
+        withTimeout(5000) { panel.state.first { it.page == SyncPanelPage.DIAGNOSTICS } }
+        assertEquals(blocked.runId, runtime.runStore.active("space", 1)!!.runId)
+    }
+
+    @Test fun `unknown blocked primary opens recovery and retains the original run`() = fixture {
+        val blocked = runtime.runStore.start("space", 1, SyncTrigger.MANUAL)
+        runtime.runStore.finish(blocked.runId, SyncRunState.BLOCKED, "UNKNOWN")
+        open()
+        click("sync-resolve-run")
+        withTimeout(5000) { panel.state.first { it.page == SyncPanelPage.RECOVERY } }
+        assertEquals(blocked.runId, runtime.runStore.active("space", 1)!!.runId)
+        assertEquals(SyncRunState.BLOCKED, runtime.runStore.get(blocked.runId)!!.state)
+        assertFalse(runtime.coordinator.activity.value.running)
+    }
+
     @Test fun `R01 disconnected cancelled history click uses setup without changing durable facts`() = fixture {
         handler.await { sync_journalQueries.disconnectSpace("space", 1) }
         open()
@@ -160,7 +181,7 @@ class SyncTerminalRecoveryIntegrationTest {
         awaitNode("sync-wait")
         assertTrue(node("sync-wait")!!.config.contains(SemanticsProperties.Disabled))
         assertEquals(now + 60_000, panel.state.value.run!!.nextRetryAt)
-        assertTrue(texts().any { it.startsWith("已安排重试，已完成") })
+        assertTrue(texts().any { it.contains("总条目已处理 0/100 条") })
         assertNull(node("sync-retry-countdown"))
         assertEquals(run.runId, runtime.runStore.latest("space", 1)!!.runId)
         assertFalse(runtime.coordinator.activity.value.running)

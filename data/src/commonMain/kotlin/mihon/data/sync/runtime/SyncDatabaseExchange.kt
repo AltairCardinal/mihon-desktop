@@ -156,6 +156,7 @@ class SyncDatabaseExchange(
             val githubTransport = transport as? GitHubSyncTransport
             githubTransport?.onBatchObjectsUploaded { batchId ->
                 if (batchId == activeUploadBatchId) {
+                    liveProgress?.batchWork(SyncBatchWork.CONFIRMING)
                     liveProgress?.batch(SyncProgressStage.TRANSFERRING, batchId, uploadCount)
                     uploadTransferFinished = true
                     liveProgress?.begin(
@@ -240,6 +241,14 @@ class SyncDatabaseExchange(
                 uploadRoundTotal = uploadMembers.sumOf { it.itemCount }
                 uploadRemainingExpected = uploadRoundTotal
                 uploadScope = liveProgress?.scope("upload-round-${uploadRound++}")
+                val uploadOrder = frozenUploadBatchIds.withIndex().associate { it.value to it.index }
+                liveProgress?.plan(
+                    SyncRunPlan(
+                        requireNotNull(runPlan).batches.filter { it.direction == SyncProgressDirection.DOWNLOAD } +
+                            requireNotNull(runPlan).batches.filter { it.direction == SyncProgressDirection.UPLOAD }
+                                .sortedBy { uploadOrder[it.batchId] ?: -1 },
+                    ),
+                )
             }
             suspend fun pendingDownloads() = if (persistentPlan) {
                 val memberIds = requireNotNull(runPlan).batches.filter {
@@ -293,7 +302,24 @@ class SyncDatabaseExchange(
                         downloadTotal,
                     )
                     progress?.expectDownload(entry.batchId, entry.lastSeq - entry.firstSeq + 1)
-                    val result = inbox.receive(snapshot, entry, snapshotAlreadyObserved = true)
+                    liveProgress?.startBatch(SyncProgressDirection.DOWNLOAD, entry.batchId, SyncBatchWork.TRANSFERRING)
+                    val result = try {
+                        inbox.receive(
+                            snapshot,
+                            entry,
+                            snapshotAlreadyObserved = true,
+                            onItemsWritten = { count ->
+                                if (count == 1L) liveProgress?.batchWork(SyncBatchWork.WRITING)
+                                liveProgress?.batchItems(count)
+                            },
+                        ).also {
+                            if (it.accepted) liveProgress?.batchItems(entry.lastSeq - entry.firstSeq + 1)
+                            liveProgress?.finishBatchWork(it.accepted)
+                        }
+                    } catch (failure: Exception) {
+                        liveProgress?.finishBatchWork(false)
+                        throw failure
+                    }
                     if (result.accepted) {
                         if (!result.duplicate) {
                             liveProgress?.receivedBatch(
@@ -345,7 +371,10 @@ class SyncDatabaseExchange(
                     projector.project(
                         spaceId,
                         generation,
-                        onStarted = { liveProgress?.projectionStarted() },
+                        onStarted = {
+                            liveProgress?.batchWork(SyncBatchWork.MERGING)
+                            liveProgress?.projectionStarted()
+                        },
                         onChecked = { count, sourceUnavailable ->
                             liveProgress?.checkedFields(count, sourceUnavailable)
                         },
@@ -410,6 +439,12 @@ class SyncDatabaseExchange(
                         ::observeSnapshot,
                         allowPublish = allowPublish,
                         frozenBatchId = frozenBatchId,
+                        onItemRead = { batchId, count ->
+                            if (count == 1L) {
+                                liveProgress?.startBatch(SyncProgressDirection.UPLOAD, batchId, SyncBatchWork.PREPARING)
+                            }
+                            liveProgress?.batchItems(count)
+                        },
                         onPreparingBatch = { batch ->
                             activeUploadBatchId = batch.batchId
                             uploadCount = batch.events.size.toLong()
@@ -425,6 +460,8 @@ class SyncDatabaseExchange(
                             }
                         },
                         onPreparedBatch = { batch ->
+                            liveProgress?.finishBatchWork(true)
+                            liveProgress?.batchWork(SyncBatchWork.TRANSFERRING)
                             if (uploadScope != null) {
                                 liveProgress?.batch(SyncProgressStage.PREPARING, batch.batchId, uploadCount)
                                 liveProgress?.begin(
@@ -559,9 +596,11 @@ class SyncDatabaseExchange(
                 progress.hasUnconfirmedDownloads() || progress.hasUnfinishedPlan()
             }
         } catch (cancelled: CancellationException) {
+            liveProgress?.finishBatchWork(false)
             diagnosticContext?.record(SyncJournalEventKind.TERMINAL, SyncJournalCode.CANCELLED)
             throw cancelled
         } catch (failure: Exception) {
+            liveProgress?.finishBatchWork(false)
             diagnosticContext?.copy(stage = diagnosticStage)?.record(
                 SyncJournalEventKind.EXCEPTION,
                 failure = failure,

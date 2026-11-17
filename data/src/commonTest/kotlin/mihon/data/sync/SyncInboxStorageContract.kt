@@ -67,6 +67,49 @@ abstract class SyncInboxStorageContract {
     private val manga = SyncObjectKey(SyncObjectType.MANGA, sourceId = "42", originalUrl = "/manga")
 
     @Test
+    fun `real encrypted receipt reports each written item before batch confirmation`() = runBlocking {
+        SyncGitSafetyContractTest().GitFixture().use { git ->
+            val transport = git.transport()
+            transport.initialize(repository, "space", 1)
+            val service = SyncBatchSyncService(transport, secret)
+            val initial = transport.readSnapshot(repository, "space", 1).getOrThrow()
+            service.upload(
+                repository,
+                initial,
+                batch(1, 2, 3),
+                ".mihon-sync/batches/device-a/1/incoming.json",
+                persist = {},
+            )
+            val snapshot = transport.readSnapshot(repository, "space", 1).getOrThrow()
+            open().use { storage ->
+                storage.connect(repository)
+                val written = mutableListOf<Long>()
+                val result = SyncInboxExchange(storage.inbox, service).receive(
+                    snapshot,
+                    snapshot.batches.single(),
+                    snapshotAlreadyObserved = false,
+                    onItemsWritten = { written += it },
+                )
+                assertTrue(result.accepted)
+                assertEquals(listOf(1L, 2L, 3L), written)
+                assertFalse(storage.inbox.canConfirmReceivedBatch("space", 1, "incoming"))
+                storage.projectAll()
+                assertTrue(storage.inbox.canConfirmReceivedBatch("space", 1, "incoming"))
+                written.clear()
+                assertTrue(
+                    SyncInboxExchange(storage.inbox, service).receive(
+                        snapshot,
+                        snapshot.batches.single(),
+                        snapshotAlreadyObserved = true,
+                        onItemsWritten = { written += it },
+                    ).duplicate,
+                )
+                assertTrue(written.isEmpty())
+            }
+        }
+    }
+
+    @Test
     fun `authenticated protocol and payload rejections retain precise reasons through real receipt`() = runBlocking {
         val cases = listOf(
             batch().copy(protocolVersion = 999) to "UNKNOWN_PROTOCOL",

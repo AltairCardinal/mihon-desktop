@@ -16,6 +16,32 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class SyncProgressPresentationTest {
+    @Test
+    fun `fine total progresses within a batch and ignores foreign plan and terminal observations`() {
+        val session = SyncProgressDisplaySession()
+        val batch = mihon.data.sync.runtime.SyncBatchProgress(
+            "b", SyncProgressDirection.DOWNLOAD, 2, 3, 87, 256, 119, 291,
+            mihon.data.sync.runtime.SyncBatchWork.WRITING,
+        )
+        val current = state(32, fact.copy(batchProgress = batch))
+            .copy(run = run.copy(confirmedItems = 32, plannedItems = 291))
+        assertEquals(119f / 291, session.project(current, 0).fraction!!, 0.00001f)
+        assertEquals(32L, session.project(current, 1).confirmed)
+        assertEquals(119L, session.project(current, 1).processedItems)
+        assertEquals(
+            32f / 291,
+            session.project(current.copy(progress = current.progress!!.copy(scope = "other:run")), 2).fraction!!,
+            0.00001f,
+        )
+        val failed = current.copy(run = current.run!!.copy(state = SyncRunState.FAILED))
+        assertEquals(32f / 291, session.project(failed, 3).fraction!!, 0.00001f)
+        assertEquals(
+            32f / 292,
+            session.project(current.copy(run = current.run!!.copy(plannedItems = 292)), 4).fraction!!,
+            0.00001f,
+        )
+    }
+
     @Test fun `attempt retry resets its clock and new confirmations while retaining the round`() {
         val session = SyncProgressDisplaySession()
         val retry = state().copy(

@@ -52,7 +52,12 @@ class SyncOutboxStore(private val handler: DatabaseHandler) {
             )
         }
 
-    suspend fun nextBatch(spaceId: String, generation: Long, frozenBatchId: String? = null): SyncBatch? =
+    suspend fun nextBatch(
+        spaceId: String,
+        generation: Long,
+        frozenBatchId: String? = null,
+        onItemRead: (String, Long) -> Unit = { _, _ -> },
+    ): SyncBatch? =
         handler.await(inTransaction = true) {
             requireActive(spaceId, generation)
             val stored = if (frozenBatchId == null) {
@@ -62,7 +67,7 @@ class SyncOutboxStore(private val handler: DatabaseHandler) {
                     ?.takeIf { it.status == "SEALED" && it.event_count > 0 }
             }
                 ?: return@await null
-            val batch = readBatch(stored)
+            val batch = readBatch(stored, onItemRead)
             sync_journalQueries.sealBatch(spaceId, generation, stored.batch_id)
             batch
         }
@@ -119,11 +124,17 @@ class SyncOutboxStore(private val handler: DatabaseHandler) {
         return stored
     }
 
-    private fun Database.readBatch(stored: Sync_batches): SyncBatch {
+    private fun Database.readBatch(
+        stored: Sync_batches,
+        onItemRead: (String, Long) -> Unit = { _, _ -> },
+    ): SyncBatch {
+        var processedItems = 0L
         val events = sync_journalQueries.getBatchEvents(stored.space_id, stored.generation, stored.batch_id)
             .executeAsList().map {
-                (SyncCodec.decode(it) as? SyncDecodeResult.Accepted)?.event
+                val event = (SyncCodec.decode(it) as? SyncDecodeResult.Accepted)?.event
                     ?: error("stored sync event is invalid")
+                runCatching { onItemRead(stored.batch_id, ++processedItems) }
+                event
             }
         val batch = SyncBatch(
             SyncProtocol.CURRENT_VERSION,
@@ -175,10 +186,11 @@ class SyncOutboxExchange(private val store: SyncOutboxStore, private val service
         onPreparedBatch: (SyncBatch) -> Unit = {},
         onConfirmedBatch: (SyncBatch) -> Unit = {},
         frozenBatchId: String? = null,
+        onItemRead: (String, Long) -> Unit = { _, _ -> },
         allowPublish: Boolean = true,
     ): SyncUploadResult? {
         observeSnapshot(snapshot, null)
-        val batch = store.nextBatch(snapshot.spaceId, snapshot.generation, frozenBatchId) ?: return null
+        val batch = store.nextBatch(snapshot.spaceId, snapshot.generation, frozenBatchId, onItemRead) ?: return null
         runCatching { onPreparingBatch(batch) }
         if (!allowPublish && snapshot.batches.none { it.batchId == batch.batchId }) {
             throw SyncUploadReconciliationUnavailable()

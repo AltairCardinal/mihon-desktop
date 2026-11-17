@@ -287,8 +287,14 @@ class SyncProgressControllerIntegrationTest {
             assertEquals(0L, SyncProgressDisplaySession().project(runtime.panel.state.value, 0).elapsedSeconds)
             assertNull(node("sync-progress-details"))
             assertEquals(mihon.domain.sync.runtime.SyncRunProblem.STORAGE, runtime.panel.state.value.problem)
-            withTimeout(5000) { while (node("sync-reenter-password") == null) render() }
-            assertNotNull(node("sync-reenter-password"))
+            withTimeout(5000) { while (node("sync-resolve-run") == null) render() }
+            assertNotNull(node("sync-resolve-run"))
+            assertNull(node("sync-reenter-password"))
+            click("sync-resolve-run")
+            withTimeout(5000) {
+                runtime.panel.state.first { it.page == mihon.data.sync.runtime.SyncPanelPage.RECOVERY }
+            }
+            Unit
         } finally {
             scene.close()
             runtime.coordinator.cancelAndJoin()

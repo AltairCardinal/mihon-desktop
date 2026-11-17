@@ -25,6 +25,37 @@ import tachiyomi.data.UpdateStrategyColumnAdapter
 
 class SyncRunStoreTest {
     @Test
+    fun `batch counts use actual plan members and survive store recreation`() = runBlocking {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        Database.Schema.create(driver)
+        val database = Database(
+            driver,
+            History.Adapter(DateColumnAdapter),
+            Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+        )
+        try {
+            val handler = JvmDatabaseHandler(database, driver)
+            val store = SyncRunStore(handler)
+            val run = store.start("space", 1, SyncTrigger.MANUAL)
+            store.claim(run.runId, "owner", 1)
+            assertNull(store.get(run.runId)!!.plannedBatches)
+            database.sync_runtimeQueries.insertRuntimeConfirmation(run.runId, "PLAN", "round", 0, "PLANNED")
+            database.sync_runtimeQueries.insertRuntimeConfirmation(run.runId, "UPLOAD", "a", 32, "PLANNED")
+            database.sync_runtimeQueries.insertRuntimeConfirmation(run.runId, "DOWNLOAD", "b", 256, "PLANNED")
+            store.confirmed(run.runId, "owner", SyncProgressDirection.UPLOAD, "a", 32)
+            val restored = SyncRunStore(handler).get(run.runId)!!
+            assertEquals(2L, restored.plannedBatches)
+            assertEquals(1L, restored.confirmedBatches)
+            assertEquals(32L, restored.confirmedItems)
+            assertEquals(288L, restored.plannedItems)
+            assertEquals(2L, store.active("space", 1)!!.plannedBatches)
+            assertEquals(2L, store.latest("space", 1)!!.plannedBatches)
+        } finally {
+            driver.close()
+        }
+    }
+
+    @Test
     fun `schema 41 migration retains legacy plan and counting pause clocks`() = runBlocking {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         Database.Schema.create(driver)

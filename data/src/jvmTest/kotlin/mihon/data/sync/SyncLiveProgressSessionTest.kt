@@ -2,14 +2,54 @@ package mihon.data.sync
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import mihon.data.sync.http.SyncHttpBodyDirection
+import mihon.data.sync.runtime.SyncBatchWork
 import mihon.data.sync.runtime.SyncLiveProgressSession
 import mihon.data.sync.runtime.SyncProgressDirection
 import mihon.data.sync.runtime.SyncProgressFact
 import mihon.data.sync.runtime.SyncProgressStage
+import mihon.data.sync.runtime.SyncRunPlan
+import mihon.data.sync.runtime.SyncRunPlanBatch
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
 class SyncLiveProgressSessionTest {
+    @Test
+    fun `batch item progress weights unequal batches and rollback retains committed work`() {
+        val sink = MutableStateFlow<SyncProgressFact?>(null)
+        val session = SyncLiveProgressSession("run", sink)
+        session.plan(
+            SyncRunPlan(
+                listOf(
+                    SyncRunPlanBatch(SyncProgressDirection.DOWNLOAD, "small", 32, confirmed = true),
+                    SyncRunPlanBatch(SyncProgressDirection.DOWNLOAD, "large", 256),
+                    SyncRunPlanBatch(SyncProgressDirection.UPLOAD, "last", 3),
+                ),
+            ),
+        )
+        session.startBatch(SyncProgressDirection.DOWNLOAD, "large", SyncBatchWork.WRITING)
+        session.batchItems(87)
+        val partial = requireNotNull(session.snapshot().batchProgress)
+        assertEquals(2, partial.ordinal)
+        assertEquals(3, partial.batchCount)
+        assertEquals(119L, partial.processedRunItems)
+        assertEquals(291L, partial.plannedRunItems)
+        session.finishBatchWork(false)
+        assertEquals(32L, session.snapshot().batchProgress!!.processedRunItems)
+        session.batchItems(256)
+        session.finishBatchWork(true)
+        session.startBatch(SyncProgressDirection.UPLOAD, "last", SyncBatchWork.PREPARING)
+        session.batchItems(2)
+        assertEquals(288L, session.snapshot().batchProgress!!.processedRunItems)
+        session.begin(session.scope("upload"), SyncProgressStage.TRANSFERRING, SyncProgressDirection.UPLOAD, 3)
+        session.onBodyWorkBytes(SyncHttpBodyDirection.UPLOAD, 1, 2, 3, "last:tree")
+        assertEquals(290L, session.snapshot().batchProgress!!.processedRunItems)
+        session.finishBatchWork(false)
+        assertEquals(288L, session.snapshot().batchProgress!!.processedRunItems)
+        session.startBatch(SyncProgressDirection.DOWNLOAD, "outside-plan", SyncBatchWork.WRITING)
+        session.batchItems(999)
+        assertEquals(null, session.snapshot().batchProgress)
+    }
+
     @Test
     fun `rapid byte and batch callbacks publish at most every 250 milliseconds`() {
         var nowMillis = 0L

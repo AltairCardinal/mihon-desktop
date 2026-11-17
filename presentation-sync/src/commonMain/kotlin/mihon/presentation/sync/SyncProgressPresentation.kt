@@ -1,6 +1,7 @@
 package mihon.presentation.sync
 
 import dev.icerock.moko.resources.StringResource
+import mihon.data.sync.runtime.SyncBatchProgress
 import mihon.data.sync.runtime.SyncPanelRunSource
 import mihon.data.sync.runtime.SyncPanelState
 import mihon.data.sync.runtime.SyncProgressDirection
@@ -30,6 +31,8 @@ data class SyncProgressPresentation(
     val attemptConfirmed: Long? = null,
     val retainedConfirmed: Long = 0,
     val elapsedKnown: Boolean = true,
+    val batchProgress: SyncBatchProgress? = null,
+    val processedItems: Long? = confirmed,
 )
 
 /** Panel-owned observations; count and denominator always come from the same durable run. */
@@ -92,8 +95,15 @@ class SyncProgressDisplaySession {
         val terminal = run?.state in TERMINAL_STATES
         val historical = state.showingHistoricalResult
         val active = run?.state == SyncRunState.RUNNING && (fact == null || fact.hold == SyncProgressHold.ACTIVE)
+        val batchProgress = fact?.batchProgress?.takeIf {
+            !terminal && it.plannedRunItems == run?.plannedItems
+        }
+        val processedItems = run?.let {
+            maxOf(it.confirmedItems, batchProgress?.processedRunItems ?: 0L)
+                .coerceIn(0L, it.plannedItems ?: Long.MAX_VALUE)
+        }
         val fraction = run?.plannedItems?.takeIf { it > 0 && run.confirmedItems in 0..it }
-            ?.let { run.confirmedItems.toDouble().div(it).toFloat() }
+            ?.let { requireNotNull(processedItems).toDouble().div(it).toFloat() }
         val wholeRemaining = roundRate.estimate(run?.plannedItems, run?.confirmedItems, active, monotonicMillis)
         val status = when {
             state.hasInvalidReceivedData -> MR.strings.sync_invalid_saved_data
@@ -177,6 +187,8 @@ class SyncProgressDisplaySession {
             },
             run?.let { if (it.attemptStartedAt != null) it.attemptConfirmedBaseline else it.confirmedItems } ?: 0L,
             elapsedKnown,
+            batchProgress,
+            processedItems,
         )
     }
 }

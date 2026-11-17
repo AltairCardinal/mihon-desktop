@@ -38,6 +38,7 @@ data class SyncProgressFact(
     val checkedFields: Long = 0,
     val unavailableFields: Long = 0,
     val mergingReceivedData: Boolean = false,
+    val batchProgress: SyncBatchProgress? = null,
 )
 
 /**

@@ -126,6 +126,12 @@ Desktop 的 `ReaderPanBounds` 是阅读器视口交互策略：放大后，拖�
 
 回归由共享 `SyncInboxStorageContract`、`SyncRuntimeStorageContract`、`SyncPanelStorageContract` 覆盖决定、旧状态恢复、纯本地收尾、身份及幂等；`SyncAttemptClockMigrationTest` 覆盖真实旧文件升级和结构拒绝，`SyncProgressPresentationTest`、`SyncPanelContentTest`、`SyncProgressControllerIntegrationTest` 覆盖计时/计数、状态分类与生产点击接线。各平台只执行本次受影响的定向范围。
 
+### 同步批次内进度观察
+
+运行中的紧凑卡片以冻结计划的条目数作分母，使用同一处理量显示文本和全轮进度条，不再单列批次信息。批次内观察由 `SyncLiveProgressSession` 串行维护：下载事件写入、上传准备及带批次身份的请求体传输分别进入既有 exchange；上传字节比例只折算有效处理量，不代表服务端逐条确认。批次失败撤回尚未提交的观察，重试不重复累加。观察异常不得改变数据库事务或同步结果。
+
+确认账本仍是持久完成数的唯一权威。界面只接受当前 run、当前冻结计划的观察，终态使用持久确认而非乐观处理量；重启后从计划和账本重建。耗时继续遵循当前尝试的持久基线及暂停冻结，ETA 依赖安全确认速度，无可靠速度时保持估算中。进度优化不得改变 `local_projection` 和上传只读对账权限。
+
 ### 同步故障的后台本地恢复
 
 旧 `BLOCKED/UPLOADING/UNKNOWN` 若有冻结计划、未确认的本地 SEALED 批次且缺失 prepared upload，恢复只允许远端对账。`RECOVERY/upload-reconciliation` 的 PENDING 标记独立于运行状态持久保存；手动重试、取消后新建轮次和进程重启都必须继承该标记及原未确认计划。仅在原上传成员全部确认后解除，原计划之外的新排队数据不得夹入只读恢复。
