@@ -41,7 +41,7 @@
 | 规划 roadmap、维护 manifest/checkoff、代理交接、提交/整合/推送或完成报告 | [进度、交接与报告](docs/agent-guides/governance-and-reporting.md) |
 | Desktop 体验/正式构建、版本分配或 Windows/macOS 产物交付 | [Desktop 构建](docs/agent-guides/desktop-build.md)，同时遵循验证规则 |
 | Android 编译/JVM 测试、SDK/签名诊断、安装或验收 | [Android 构建与验收](docs/agent-guides/android-build.md)，同时遵循验证/原生操作规则 |
-| Android 真机无线/USB ADB、屏幕/锁屏操作、阅读器性能采集或设备收尾 | [Android 平板实测经验](docs/automation/ANDROID_TABLET_ACCEPTANCE.md)：先查成功方法与限制；无密码锁屏正常唤醒，前台需要时亮屏，离线等待和结束后熄屏 |
+| Android 真机无线/USB ADB、屏幕/锁屏操作、阅读器性能采集或设备收尾 | [Android 平板操作](docs/automation/ANDROID_TABLET_ACCEPTANCE.md)：默认无线优先；设备列表为空先尝试已记录无线入口，再按失败结果请求 USB；前台需要时亮屏，结束后熄屏；历史经验按需加载 |
 | 判断公共说明更新时机、编辑 README/website/双语 changelog、部署 Pages，或用户明确验收具体功能后 | [公共说明](docs/agent-guides/public-documentation.md) |
 | 新增、修改、打开或验证双端 HTML 原型 | [HTML 原型](docs/agent-guides/html-prototypes.md)，只读目标原型 README 与适用规则 |
 | Desktop E2E/Test Mode、跨会话移交、macOS 验收或占用桌面的原生操作/诊断 | [自动化与原生验收](docs/agent-guides/desktop-acceptance.md)，再读平台/工具经验入口；Windows 阅读器延迟采集另读[已验证流程](docs/automation/DESKTOP_READER_LATENCY.md) |
