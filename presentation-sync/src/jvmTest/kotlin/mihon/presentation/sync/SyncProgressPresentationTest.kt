@@ -17,6 +17,25 @@ import org.junit.jupiter.api.Test
 
 class SyncProgressPresentationTest {
     @Test
+    fun `finished operation awaiting its final run snapshot keeps finishing feedback`() {
+        val operation = mihon.domain.sync.runtime.SyncOperationProgress("handoff", runId = run.runId)
+            .advance(mihon.domain.sync.runtime.SyncOperationStage.PERSISTING)
+            .copy(durableSuccess = true)
+            .finish(mihon.domain.sync.runtime.SyncRunResult(mihon.domain.sync.runtime.SyncRunStatus.SUCCESS))
+        val session = SyncProgressDisplaySession()
+        for (busy in listOf(false, true)) {
+            val stale = state().copy(busy = busy, operation = operation)
+            val shown = session.project(stale, 0)
+            assertEquals(tachiyomi.i18n.MR.strings.sync_operation_finishing, shown.status)
+            assertEquals(tachiyomi.i18n.MR.strings.sync_operation_finishing, shown.action)
+            assertFalse(shown.complete)
+            assertEquals(0.98f, shown.fraction)
+        }
+        val final = state().copy(run = run.copy(state = SyncRunState.SUCCEEDED), operation = operation, busy = false)
+        assertTrue(session.project(final, 1).complete)
+    }
+
+    @Test
     fun `final activity check has a distinct finishing label until completion`() {
         val saving = mihon.domain.sync.runtime.SyncOperationProgress("ending", runId = run.runId)
             .advance(mihon.domain.sync.runtime.SyncOperationStage.PERSISTING)

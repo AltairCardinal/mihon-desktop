@@ -1951,7 +1951,7 @@
     <string name="sync_no_progress_minute">已有 1 分钟未收到新的处理进展</string>
     <string name="sync_merging_received_data">正在合并已接收的数据</string>
     <string name="sync_waiting_step_generic">正在等待当前步骤返回</string>
-    <string name="sync_checking_github_saved">正在核对 GitHub 已保存的数据</string>
+    <string name="sync_checking_github_saved">正在核对服务器已保存的数据</string>
     <string name="sync_receiving_and_verifying">正在接收并校验数据</string>
     <string name="sync_pending_decisions_count">仍有 %1$d 条待处理，请在下方决定如何保留</string>
     <string name="sync_pending_decisions">仍有数据待处理，请在下方查看</string>
@@ -2017,7 +2017,7 @@
     <string name="sync_paused">同步已暂停</string>
     <string name="sync_blocked">同步需要处理</string>
     <string name="sync_waiting_retry">已安排重试</string>
-    <string name="sync_waiting_rate_limit">等待 GitHub 限流解除</string>
+    <string name="sync_waiting_rate_limit">等待服务器限流解除</string>
     <string name="sync_retry_after_seconds">将在 %1$d 秒后自动重试</string>
     <string name="sync_retry_after_minutes">将在 %1$d 分钟后自动重试</string>
     <string name="sync_retry_ready">即将重试</string>

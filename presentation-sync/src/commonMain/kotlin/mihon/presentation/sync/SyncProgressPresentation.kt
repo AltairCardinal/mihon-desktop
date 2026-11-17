@@ -141,7 +141,11 @@ class SyncProgressDisplaySession {
         val fraction = when {
             complete -> 1f
             operation != null -> if (operation.fraction >= 1.0) {
-                operation.copy(running = true).displayFraction()
+                operation.copy(
+                    running = true,
+                    fraction = operation.segmentBase +
+                        (1.0 - operation.segmentBase) * SyncOperationStage.PERSISTING.end,
+                ).displayFraction()
             } else {
                 operation.displayFraction()
             }
@@ -154,8 +158,9 @@ class SyncProgressDisplaySession {
             else -> null
         }
         val wholeRemaining = roundRate.estimate(run?.plannedItems, run?.confirmedItems, active, monotonicMillis)
+        val operationFeedback = state.operationFeedback()
         val status = when {
-            operation?.running == true && operation.durableSuccess -> MR.strings.sync_operation_finishing
+            operationFeedback != null -> operationFeedback
             operationFailed -> if (operation?.outcome == SyncRunStatus.PARTIAL) {
                 MR.strings.sync_terminal_partial
             } else {
@@ -203,17 +208,7 @@ class SyncProgressDisplaySession {
             else -> MR.strings.sync_busy
         }
         val action = when {
-            operation?.running == true && operation.durableSuccess -> MR.strings.sync_operation_finishing
-            operation?.running == true && operation.stage != SyncOperationStage.ITEMS -> when (operation.stage) {
-                SyncOperationStage.CHECKING, SyncOperationStage.AUTHORIZATION -> MR.strings.sync_checking_connection
-                SyncOperationStage.BASELINE -> MR.strings.sync_phase_importing
-                SyncOperationStage.DISCOVERY -> MR.strings.sync_phase_checking
-                SyncOperationStage.PLAN -> MR.strings.sync_stage_prepare
-                SyncOperationStage.HEAD -> MR.strings.sync_operation_head
-                SyncOperationStage.INTEGRITY -> MR.strings.sync_operation_integrity
-                SyncOperationStage.PERSISTING -> MR.strings.sync_operation_closing
-                else -> MR.strings.sync_busy
-            }
+            operationFeedback != null -> operationFeedback
             terminal -> if (historical) MR.strings.sync_confirmed_retained else status
             fact?.stage == SyncProgressStage.PREPARING -> MR.strings.sync_stage_prepare
             fact?.stage == SyncProgressStage.TRANSFERRING -> if (fact.direction == SyncProgressDirection.UPLOAD) {
@@ -263,6 +258,29 @@ class SyncProgressDisplaySession {
             if (active) wholeRemaining else null,
             operationFailed,
         )
+    }
+}
+
+/** Keep successful activity feedback until the matching final database projection reaches the panel. */
+internal fun SyncPanelState.operationFeedback(): StringResource? {
+    val current = operation ?: return null
+    if (current.runId == run?.runId && current.durableSuccess &&
+        current.outcome !in setOf(SyncRunStatus.FAILED, SyncRunStatus.PARTIAL, SyncRunStatus.SKIPPED) &&
+        run?.state in setOf(SyncRunState.RUNNING, SyncRunState.SUCCEEDED) &&
+        (current.running || busy || run?.state != SyncRunState.SUCCEEDED)
+    ) {
+        return MR.strings.sync_operation_finishing
+    }
+    if (!current.running) return null
+    return when (current.stage) {
+        SyncOperationStage.CHECKING, SyncOperationStage.AUTHORIZATION -> MR.strings.sync_checking_connection
+        SyncOperationStage.BASELINE -> MR.strings.sync_phase_importing
+        SyncOperationStage.DISCOVERY -> MR.strings.sync_phase_checking
+        SyncOperationStage.PLAN -> MR.strings.sync_stage_prepare
+        SyncOperationStage.HEAD -> MR.strings.sync_operation_head
+        SyncOperationStage.INTEGRITY -> MR.strings.sync_operation_integrity
+        SyncOperationStage.PERSISTING -> MR.strings.sync_operation_closing
+        SyncOperationStage.ITEMS -> null
     }
 }
 

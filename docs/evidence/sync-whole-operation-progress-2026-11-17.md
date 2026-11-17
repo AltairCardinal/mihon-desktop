@@ -32,3 +32,13 @@
 基线 `d11febde52bd0f97aae1774057b30cac060cbb0c`。用户要求最后的活动结束检查显示“正在结束同步”。实际结果持久保存成功且活动仍 running 时，阶段文字与面板状态统一使用此文案；保存期间仍显示“正在保存同步结果”，后续 segment 清除 durableSuccess 后恢复对应检查文案，最终结束显示同步完成。不增加阶段等待、请求或修改完成权限。
 
 `sync-finishing-red` 新增行为测试按预期失败；首绿遇到跨模块 public 属性 smart cast 编译错误，改为安全读取后，`sync-finishing-green2` 的展示 22 项及真实 Compose 活动流程 1 项全部通过，定向格式检查通过。`sync-finishing-preview` 成功，候选位于 `app-desktop/artifacts/preview/windows/20261117T152554Z-c5499df7/Mihon-Desktop-0.11.24.10.d11febd-unpacked/Mihon Desktop.exe`；如实为基线加 dirty 输入。生产扩展运行时与源码完整性通过，原生交互未执行，未操作真实数据库。
+
+## 最终快照交接及服务器文案补充
+
+用户反馈完成前仍显示“正在同步”。基线 `3b48ed2f0f` 的遗漏可由生产展示复现：operation 已成功结束，但 run 快照尚为 RUNNING，原条件要求 operation.running，导致交接期间退回通用文案。统一的 `operationFeedback()` 现在让匹配 run 的成功活动在等待最终快照期间继续显示“正在结束同步”，并保留活动结束前的末段份额；最终成功投影到达才满格。阶段提示、面板状态与工具栏辅助说明共用同一来源，过期、失败和后续 segment 不借用成功提示。
+
+同步进度的“核对 GitHub 已保存的数据”和“等待 GitHub 限流解除”改为“服务器”，英文同步更新。认证、安装和账户配置仍按实际平台身份描述。
+
+`sync-finishing-handoff-red` 的投影与真实 Compose 场景按预期失败。首绿投影通过，但新增 UI 测试误把已 finish 的 fraction=1 快照复活为下一段起点，修正为保留真实活动中的快照。`sync-finishing-handoff-green2` 的 24 项定向测试通过，`sync-server-label` 实际界面文案 1 项通过；组合 25 项，未重新全量执行。定向格式及 diff 检查通过。
+
+`sync-finishing-handoff-preview` 完成，实际候选为 `app-desktop/artifacts/preview/windows/20261117T154501Z-784d34de/Mihon-Desktop-0.11.24.10.3b48ed2-unpacked/Mihon Desktop.exe`，清单如实记录基线加 dirty 输入。构建、源码完整性与生产扩展运行时通过；用户真实同步、原生交互未执行。

@@ -121,6 +121,24 @@ class SyncPanelContentTest {
         assertTrue(texts().contains("正在结束同步"))
         assertFalse(texts().contains("正在保存同步结果"))
         assertFalse(texts().contains("同步已完成"))
+        val pendingOperation = panel.state.value.operation!!
+        val successfulOperation = pendingOperation
+            .finish(mihon.domain.sync.runtime.SyncRunResult(mihon.domain.sync.runtime.SyncRunStatus.SUCCESS))
+        panel.state.value = panel.state.value.copy(
+            busy = false,
+            run = panel.state.value.run!!.copy(state = SyncRunState.RUNNING),
+            operation = successfulOperation,
+            progress = null,
+        )
+        render()
+        assertTrue(texts().contains("正在结束同步"))
+        assertFalse(texts().contains("正在同步…"))
+        assertFalse(texts().contains("同步已完成"))
+        panel.state.value = panel.state.value.copy(
+            busy = true,
+            run = panel.state.value.run!!.copy(state = SyncRunState.SUCCEEDED),
+            operation = pendingOperation,
+        )
         val queued = panel.state.value.operation!!.nextSegment()
         panel.state.value = panel.state.value.copy(operation = queued)
         render()
@@ -144,6 +162,21 @@ class SyncPanelContentTest {
         assertFalse(texts().contains("同步已完成"))
         click("sync-retry-run")
         assertEquals(SyncPanelAction.RetrySync, actions.last())
+    }
+
+    @Test
+    fun `upload confirmation feedback refers to the server`() = rendered(
+        connected().copy(
+            busy = true,
+            run = visualRun(SyncRunPhase.CONFIRMING).copy(plannedItems = 1),
+            progress = compactFact().copy(stage = SyncProgressStage.CONFIRMING),
+            operation = mihon.domain.sync.runtime.SyncOperationProgress("server-ui", runId = "run-visual")
+                .advance(mihon.domain.sync.runtime.SyncOperationStage.ITEMS, 0.5),
+        ),
+    ) {
+        awaitTag("sync-operation-stage")
+        assertTrue(texts().contains("正在核对服务器已保存的数据"))
+        assertFalse(texts().any { it.contains("GitHub", ignoreCase = true) && it.contains("正在核对") })
     }
 
     @Test

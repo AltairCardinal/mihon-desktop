@@ -177,7 +177,7 @@ fun SyncToolbarButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Outlined.Sync,
     onOpen: () -> Unit,
 ) {
-    val busyDescription = if (state.busy) syncString(MR.strings.sync_busy) else ""
+    val busyDescription = if (state.busy) syncString(state.operationFeedback() ?: MR.strings.sync_busy) else ""
     Box(Modifier.size(48.dp)) {
         IconButton(
             onClick = onOpen,
@@ -3922,8 +3922,7 @@ private fun NextAutomaticSync(state: SyncPanelState) {
 @Composable
 private fun statusText(state: SyncPanelState): String = when {
     state.setupProblem != null -> state.setupProblem?.let { setupProblemText(it) }.orEmpty()
-    state.busy && state.operation?.running == true && state.operation?.durableSuccess == true ->
-        syncString(MR.strings.sync_operation_finishing)
+    state.operationFeedback() != null -> syncString(requireNotNull(state.operationFeedback()))
     state.busy -> syncString(MR.strings.sync_busy)
     state.problem != null -> state.problem?.let { problemText(it) }.orEmpty()
     state.connection?.enabled != true -> syncString(MR.strings.sync_connect)
