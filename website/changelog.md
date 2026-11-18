@@ -5,6 +5,10 @@ description: A traceable history of public feature documentation, separate from 
 
 # Changelog
 
+## 2026-11-18 — Huawei reader cutout fallback accepted on Android
+
+The project owner verified the four-orientation cutout fallback on the Huawei MatePad Pro 13.2 (PCE-W30) in a private review on November 18, 2026. The accepted signed tablet candidate was `0.19.4-aex.153 / vc171`, source `8d95776c68`. The implementation on main is `3d31017833`. With **Show content in cutout area** off, the fullscreen reader uses the Huawei cutout depth plus one physical pixel when Android provides no cutout data. This entry records tablet acceptance of the local candidate.
+
 ## November 17, 2026 — Android two-page empty slots and manual-boundary remainders
 
 The project owner accepted the tablet candidate `0.19.4-aex.143` (code 161, source `2743706914cef4f3fa2755b005d90ca45b161b56`) in a private conversation on November 17, 2026 and authorized main integration and push. Confirmed chapter-internal empty slots use white paper and a pale gray editor logo with shared zoom/pan; chapter-opening and ending opposite slots remain unfilled. The candidate includes native redraw recovery after exposure and correct half-slot placement of portrait remainders before manual boundaries. Implementations: `c2e4871a47`, `a01925d0b5`, and `2743706914`. Acceptance covers this Android scope, not Windows/macOS runtime behavior or a universal latency guarantee. This documents an accepted local candidate, not a new public product release or APK upload.
