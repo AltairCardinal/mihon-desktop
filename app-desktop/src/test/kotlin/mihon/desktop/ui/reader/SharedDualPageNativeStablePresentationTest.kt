@@ -762,7 +762,9 @@ class SharedDualPageNativeStablePresentationTest {
             fixture.partner.complete(Unit)
             fixture.pump()
             val page = fixture.page
-            fixture.doubleTap()
+            fixture.doubleTap(x = 20f)
+            advanceTimeBy(READER_DOUBLE_TAP_MILLIS + 1)
+            fixture.settle()
             assertEquals(2f, fixture.zoomState.scale)
             assertEquals(page, fixture.page)
 
@@ -1076,6 +1078,7 @@ class SharedDualPageNativeStablePresentationTest {
     fun `actual rapid taps activate a held source once then advance the logical target`() = runTest {
         Fixture(this).use { fixture ->
             fixture.pump()
+            fixture.disablePagedDoubleTapZoom()
             fixture.tapForward()
             assertEquals(2, fixture.page, "The first input explicitly activates the held partner")
             fixture.tapForward()
@@ -1583,10 +1586,10 @@ class SharedDualPageNativeStablePresentationTest {
             settle(3)
         }
 
-        fun doubleTap() {
+        fun doubleTap(x: Float = 200f) {
             repeat(2) {
-                scene.sendPointerEvent(PointerEventType.Press, Offset(200f, 200f), button = PointerButton.Primary)
-                scene.sendPointerEvent(PointerEventType.Release, Offset(200f, 200f), button = PointerButton.Primary)
+                scene.sendPointerEvent(PointerEventType.Press, Offset(x, 200f), button = PointerButton.Primary)
+                scene.sendPointerEvent(PointerEventType.Release, Offset(x, 200f), button = PointerButton.Primary)
                 settle(2)
             }
         }
