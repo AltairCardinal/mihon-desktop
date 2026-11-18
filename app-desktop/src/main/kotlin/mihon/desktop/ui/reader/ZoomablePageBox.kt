@@ -63,6 +63,9 @@ internal fun zoomableGestureCapabilities(
     doubleTapResetEnabled = true,
 )
 
+internal const val READER_DOUBLE_TAP_MILLIS = 300L
+internal const val READER_DOUBLE_TAP_DISTANCE = 50f
+
 /** Input remains in viewport coordinates even when either image crosses the spine. */
 @Composable
 internal fun Modifier.readerZoomInput(
@@ -86,7 +89,11 @@ internal fun Modifier.readerZoomInput(
         },
     )
     val doubleTapEnabled by rememberUpdatedState(
-        !viewportOptions.webtoon || viewportOptions.display.webtoonDoubleTapZoom,
+        if (viewportOptions.webtoon) {
+            viewportOptions.display.webtoonDoubleTapZoom
+        } else {
+            viewportOptions.display.pagedDoubleTapZoom
+        },
     )
     return pointerInput(Unit) {
         var lastTapTime = 0L
@@ -96,7 +103,7 @@ internal fun Modifier.readerZoomInput(
             var lastPanPosition = Offset.Zero
             var downTime = 0L
             var moved = false
-            var resetTap = false
+            var doubleTap = false
             var gestureZoom = latestZoom
             while (true) {
                 val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -108,21 +115,21 @@ internal fun Modifier.readerZoomInput(
                     lastPanPosition = down.position
                     downTime = System.currentTimeMillis()
                     moved = false
-                    resetTap = doubleTapEnabled && downTime - lastTapTime < 300 &&
-                        (down.position - lastTapPosition).getDistance() < 50
-                    gestureZoom =
-                        if (resetTap) {
-                            if (viewportOptions.webtoon &&
-                                latestZoom.scale <= 1f
-                            ) {
-                                ZoomState(scale = 2f)
-                            } else {
-                                ZoomState()
-                            }
-                        } else {
-                            latestZoom
+                    doubleTap = (doubleTapEnabled || latestZoom.scale != 1f) &&
+                        downTime - lastTapTime < READER_DOUBLE_TAP_MILLIS &&
+                        (down.position - lastTapPosition).getDistance() < READER_DOUBLE_TAP_DISTANCE
+                    gestureZoom = if (doubleTap && latestZoom.scale == 1f) {
+                        val center = Offset(size.width / 2f, size.height / 2f)
+                        val focus = center - down.position
+                        ZoomState(scale = 2f, offsetX = focus.x, offsetY = focus.y).let {
+                            latestBounds?.constrain(it) ?: it
                         }
-                    if (resetTap) {
+                    } else if (doubleTap) {
+                        ZoomState()
+                    } else {
+                        latestZoom
+                    }
+                    if (doubleTap) {
                         latestChange(gestureZoom)
                         lastTapTime = 0L
                         event.changes.forEach { it.consume() }
@@ -174,8 +181,9 @@ internal fun Modifier.readerZoomInput(
                 if (pressed.isEmpty()) {
                     // Native cancellation releases are consumed; they cannot seed a later double tap.
                     val consumed = event.changes.any { it.isConsumed }
+                    if (doubleTap) event.changes.forEach { it.consume() }
                     if (consumed) lastTapTime = 0L
-                    if (!consumed && !moved && !resetTap && System.currentTimeMillis() - downTime < 400) {
+                    if (!consumed && !moved && !doubleTap && System.currentTimeMillis() - downTime < 400) {
                         lastTapTime = System.currentTimeMillis()
                         lastTapPosition = event.changes.first().position
                         latestTap?.invoke(lastTapPosition, size.width.toFloat(), size.height.toFloat())

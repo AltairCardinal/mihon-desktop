@@ -757,6 +757,24 @@ class SharedDualPageNativeStablePresentationTest {
     }
 
     @Test
+    fun `double click enlarges a fitted dual page without turning it`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.partner.complete(Unit)
+            fixture.pump()
+            val page = fixture.page
+            fixture.doubleTap()
+            assertEquals(2f, fixture.zoomState.scale)
+            assertEquals(page, fixture.page)
+
+            fixture.disablePagedDoubleTapZoom()
+            fixture.doubleTap()
+            assertEquals(ZoomState(), fixture.zoomState)
+            fixture.doubleTap()
+            assertEquals(ZoomState(), fixture.zoomState)
+        }
+    }
+
+    @Test
     fun `dual zoom continuously consumes mouse pan and restores native page turns after reset`() = runTest {
         Fixture(this).use { fixture ->
             fixture.partner.complete(Unit)
@@ -1560,6 +1578,11 @@ class SharedDualPageNativeStablePresentationTest {
         val zoomState get() = model.state.value.zoomState
         fun zoom() = model.setZoomState(ZoomState(scale = 1.35f, offsetX = 7f, offsetY = -11f))
         fun setZoom(value: ZoomState) = model.setZoomState(value)
+        fun disablePagedDoubleTapZoom() {
+            model.setDisplayOptions(model.state.value.displayOptions.copy(pagedDoubleTapZoom = false))
+            settle(3)
+        }
+
         fun doubleTap() {
             repeat(2) {
                 scene.sendPointerEvent(PointerEventType.Press, Offset(200f, 200f), button = PointerButton.Primary)

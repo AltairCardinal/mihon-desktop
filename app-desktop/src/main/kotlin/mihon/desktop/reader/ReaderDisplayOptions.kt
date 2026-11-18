@@ -19,6 +19,7 @@ data class ReaderDisplayOptions(
     val rotateWide: Boolean = false,
     val rotateInvert: Boolean = false,
     val webtoonPadding: Int = 0,
+    val pagedDoubleTapZoom: Boolean = true,
     val webtoonDoubleTapZoom: Boolean = true,
     val webtoonDisableZoomOut: Boolean = false,
     val showPageNumber: Boolean = true,

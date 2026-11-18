@@ -78,6 +78,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
     @AttrRes defStyleAttrs: Int = 0,
     @StyleRes defStyleRes: Int = 0,
     private val isWebtoon: Boolean = false,
+    private val doubleTapZoomEnabled: () -> Boolean = { true },
 ) : FrameLayout(context, attrs, defStyleAttrs, defStyleRes) {
 
     companion object {
@@ -654,6 +655,20 @@ open class ReaderPageImageView @JvmOverloads constructor(
             WebtoonSubsamplingImageView(context)
         } else {
             object : SubsamplingScaleImageView(context) {
+                override fun onTouchEvent(event: MotionEvent): Boolean {
+                    if (event.actionMasked != MotionEvent.ACTION_DOWN || doubleTapZoomEnabled() || !isZoomEnabled) {
+                        return super.onTouchEvent(event)
+                    }
+                    // The native detector starts double-tap and quick-scale on the second DOWN.
+                    // Suppress zoom only while processing DOWN so multi-touch pinch still works.
+                    isZoomEnabled = false
+                    return try {
+                        super.onTouchEvent(event)
+                    } finally {
+                        isZoomEnabled = true
+                    }
+                }
+
                 override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
                     super.onSizeChanged(w, h, oldw, oldh)
                     // SSIV installs its own pending center during resize, replacing our old pose.
@@ -875,6 +890,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
                 setOnDoubleTapListener(
                     object : GestureDetector.SimpleOnGestureListener() {
                         override fun onDoubleTap(e: MotionEvent): Boolean {
+                            if (!doubleTapZoomEnabled()) return false
                             if (scale > 1F) {
                                 setScale(1F, e.x, e.y, true)
                             } else {

@@ -182,6 +182,7 @@ fun ReaderSettingsPanel(
                             onCropBordersWebtoonChange = onCropBordersWebtoonChange,
                         )
                         1 -> ReaderGeneralTab(
+                            currentMode,
                             backgroundTheme,
                             onBackgroundThemeChange,
                             displayOptions,
@@ -418,9 +419,6 @@ private fun ReaderModeExtensions(
         }
     }
     if (webtoon) {
-        CheckboxRow(MR.strings.pref_double_tap_zoom.localized(), options.webtoonDoubleTapZoom, {
-            onChange(options.copy(webtoonDoubleTapZoom = it))
-        })
         CheckboxRow(MR.strings.pref_webtoon_disable_zoom_out.localized(), options.webtoonDisableZoomOut, {
             onChange(options.copy(webtoonDisableZoomOut = it))
         })
@@ -429,6 +427,7 @@ private fun ReaderModeExtensions(
 
 @Composable
 private fun ReaderGeneralTab(
+    mode: ReadingMode,
     background: ReaderBackgroundTheme,
     onBackgroundChange: (ReaderBackgroundTheme) -> Unit,
     options: ReaderDisplayOptions,
@@ -441,6 +440,14 @@ private fun ReaderGeneralTab(
             }
         }
     }
+    val webtoon = mode == ReadingMode.WEBTOON
+    CheckboxRow(
+        MR.strings.pref_double_tap_zoom.localized(),
+        if (webtoon) options.webtoonDoubleTapZoom else options.pagedDoubleTapZoom,
+        {
+            onChange(if (webtoon) options.copy(webtoonDoubleTapZoom = it) else options.copy(pagedDoubleTapZoom = it))
+        },
+    )
     CheckboxRow(MR.strings.pref_show_page_number.localized(), options.showPageNumber, {
         onChange(options.copy(showPageNumber = it))
     })

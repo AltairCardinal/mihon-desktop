@@ -39,7 +39,7 @@ class WebtoonConfig(
     var sidePadding = 0
         private set
 
-    var doubleTapZoom = true
+    var doubleTapZoom = readerPreferences.webtoonDoubleTapZoomEnabled().get()
         private set
 
     var doubleTapZoomChangedListener: ((Boolean) -> Unit)? = null

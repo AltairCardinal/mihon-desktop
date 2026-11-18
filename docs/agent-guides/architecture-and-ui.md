@@ -94,6 +94,12 @@ Mihon 是由 Android 应用、Mihon Desktop 和共享 Kotlin 模块组成的多�
 
 `DesktopReaderChapterTransitionIntegrationTest` 覆盖真实挂载 Screen 的底栏按钮点击、异步页列表到达及长短章节交接；`HistoryReaderOpenContextIntegrationTest` 覆盖已读／未读的新开页码和原子同步基线。键盘／滚轮仍沿用阅读流越界语义，方向与分组回归位于 `ReaderKeyboardNavigationPositionTest`。
 
+### 双击缩放偏好
+
+阅读器「常规」按当前阅读器选择两项全局偏好之一。条漫（含页间有空隙）沿用原存储键，逐页纵向、横向单页、双页和自动布局共用翻页键。两个键均默认开启，模式改变不复制偏好，也不重置已有缩放。Android 的 E-Ink 控件在阅读器内随设备探测结果显示，主设置仍允许访问原偏好。
+
+Android 单页、双页各在原生手势入口读取翻页键，双指缩放保持独立。Desktop 的双击在画面为默认比例时按偏好以指针为焦点放大，已缩放时可双击复位。Desktop 手势确认窗口内保留单击导航意图，实际识别为缩放的双击取消此意图。关闭放大且处于默认比例时，单击导航立即提交。
+
 ### Desktop 阅读器放大平移边界
 
 Desktop 的 `ReaderPanBounds` 是阅读器视口交互策略：放大后，拖动产生的单侧留白最多为对应视口尺寸的三分之一；小图或偏置布局原本不可避免的留白保留，不能继续向该方向扩大。边界复用 `resolveReaderRegionDrawGeometry` 的实际绘制范围，包含适配比例、对齐、裁白边及分割后的图片尺寸，不能以图片容器空白代替漫画边缘。

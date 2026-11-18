@@ -2812,6 +2812,26 @@ class DualPagerPageHolderLayoutTest {
     }
 
     @Test
+    fun `mounted dual reader applies changes to the double tap preference`() {
+        val (holder) = pair()
+        mountInPager(holder)
+        val preference = Injekt.get<ReaderPreferences>().pagedDoubleTapZoomEnabled()
+
+        fun tapAndReadScale(): Float {
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
+            doubleTap(viewer.pager, SystemClock.uptimeMillis(), x = 720f)
+            advanceGestureAnimation()
+            return ReflectionHelpers.getField(holder, "currentScale")
+        }
+
+        preference.set(false)
+        assertEquals(1f, tapAndReadScale(), 0.001f)
+        preference.set(true)
+        assertEquals(2f, tapAndReadScale(), 0.001f)
+        assertEquals(1f, tapAndReadScale(), 0.001f)
+    }
+
+    @Test
     fun `double tap zoom and reset share native cameras without transforming feedback`() = runTest {
         val (holder, right, left) = pair()
         load(holder, right, "RIGHT")

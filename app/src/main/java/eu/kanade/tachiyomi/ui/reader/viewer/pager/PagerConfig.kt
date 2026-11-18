@@ -38,6 +38,10 @@ class PagerConfig(
             }
         }
 
+    private val doubleTapZoomPreference = readerPreferences.pagedDoubleTapZoomEnabled()
+    val doubleTapZoomEnabled: Boolean
+        get() = doubleTapZoomPreference.get()
+
     var theme = readerPreferences.readerTheme().get()
         private set
 

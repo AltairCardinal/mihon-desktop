@@ -30,6 +30,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asSkiaBitmap
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -43,6 +44,9 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -675,58 +679,89 @@ internal fun Modifier.readerPrimaryTapInput(
         navigationMode
     }
     val inversion = if (viewport.webtoon) viewport.display.webtoonInversion else viewport.display.pagerInversion
-    return pointerInput(zoomScale, effectiveNavigationMode, isRtl, allowZoomedNavigation, isVertical, inversion) {
-        awaitPointerEventScope {
-            while (true) {
-                val event = awaitPointerEvent(PointerEventPass.Initial)
-                if (!event.isReaderPrimaryPress()) continue
+    val waitForDoubleTap = if (viewport.webtoon) {
+        viewport.display.webtoonDoubleTapZoom || zoomScale != 1f
+    } else {
+        viewport.display.pagedDoubleTapZoom || zoomScale != 1f
+    }
+    val latestTap by rememberUpdatedState(onTap)
+    return pointerInput(
+        zoomScale, effectiveNavigationMode, isRtl, allowZoomedNavigation, isVertical, inversion, waitForDoubleTap,
+    ) {
+        coroutineScope {
+            var pendingTap: Job? = null
+            var pendingPosition = Offset.Zero
+            var pendingTime = 0L
+            awaitPointerEventScope {
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    if (!event.isReaderPrimaryPress()) continue
 
-                val down = event.changes.first()
-                val downPos = down.position
-                val downTime = System.currentTimeMillis()
-                var gestureComplete = false
-                var moved = false
-                var isTap = false
-                var releasePos = downPos
-
-                while (!gestureComplete) {
-                    val nextEvent = awaitPointerEvent(PointerEventPass.Main)
-                    // Respect consumed releases without cancelling taps when a pager consumes the press.
-                    if (nextEvent.type == PointerEventType.Release && nextEvent.changes.any { it.isConsumed }) {
-                        gestureComplete = true
-                        continue
+                    val down = event.changes.first()
+                    val downPos = down.position
+                    val downTime = System.currentTimeMillis()
+                    if (waitForDoubleTap && pendingTap?.isActive == true &&
+                        downTime - pendingTime < READER_DOUBLE_TAP_MILLIS &&
+                        (downPos - pendingPosition).getDistance() < READER_DOUBLE_TAP_DISTANCE
+                    ) {
+                        awaitPointerEvent(PointerEventPass.Final)
+                        if (down.isConsumed) pendingTap?.cancel()
                     }
-                    when (nextEvent.type) {
-                        PointerEventType.Move -> {
-                            val change = nextEvent.changes.first()
-                            val dx = change.position.x - downPos.x
-                            val dy = change.position.y - downPos.y
-                            if (dx * dx + dy * dy > 225f) {
-                                moved = true
+                    var gestureComplete = false
+                    var moved = false
+                    var isTap = false
+                    var releasePos = downPos
+
+                    while (!gestureComplete) {
+                        val nextEvent = awaitPointerEvent(PointerEventPass.Main)
+                        // Respect consumed releases without cancelling taps when a pager consumes the press.
+                        if (nextEvent.type == PointerEventType.Release && nextEvent.changes.any { it.isConsumed }) {
+                            gestureComplete = true
+                            continue
+                        }
+                        when (nextEvent.type) {
+                            PointerEventType.Move -> {
+                                val change = nextEvent.changes.first()
+                                val dx = change.position.x - downPos.x
+                                val dy = change.position.y - downPos.y
+                                if (dx * dx + dy * dy > 225f) {
+                                    moved = true
+                                    gestureComplete = true
+                                }
+                            }
+                            PointerEventType.Release -> {
+                                releasePos = nextEvent.changes.first().position
+                                if (System.currentTimeMillis() - downTime < 400) isTap = true
                                 gestureComplete = true
                             }
+                            PointerEventType.Exit -> gestureComplete = true
                         }
-                        PointerEventType.Release -> {
-                            releasePos = nextEvent.changes.first().position
-                            if (System.currentTimeMillis() - downTime < 400) isTap = true
-                            gestureComplete = true
-                        }
-                        PointerEventType.Exit -> gestureComplete = true
                     }
-                }
 
-                // Dual readers opt into short clicks while zoomed; movement belongs to image panning.
-                if (isTap && !moved && (zoomScale <= 1f || allowZoomedNavigation)) {
-                    tapNavRegionForPointerButton(
-                        button = PointerButton.Primary,
-                        x = releasePos.x,
-                        y = releasePos.y,
-                        width = size.width.toFloat(),
-                        height = size.height.toFloat(),
-                        mode = effectiveNavigationMode,
-                        isRtl = isRtl,
-                        inversion = inversion,
-                    )?.let(onTap)
+                    // Dual readers opt into short clicks while zoomed; movement belongs to image panning.
+                    if (isTap && !moved && (zoomScale <= 1f || allowZoomedNavigation)) {
+                        tapNavRegionForPointerButton(
+                            button = PointerButton.Primary,
+                            x = releasePos.x,
+                            y = releasePos.y,
+                            width = size.width.toFloat(),
+                            height = size.height.toFloat(),
+                            mode = effectiveNavigationMode,
+                            isRtl = isRtl,
+                            inversion = inversion,
+                        )?.let { region ->
+                            if (waitForDoubleTap) {
+                                pendingPosition = releasePos
+                                pendingTime = System.currentTimeMillis()
+                                pendingTap = launch {
+                                    delay(READER_DOUBLE_TAP_MILLIS)
+                                    latestTap(region)
+                                }
+                            } else {
+                                latestTap(region)
+                            }
+                        }
+                    }
                 }
             }
         }

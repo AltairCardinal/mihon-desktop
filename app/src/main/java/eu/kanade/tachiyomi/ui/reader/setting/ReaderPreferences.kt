@@ -90,6 +90,8 @@ class ReaderPreferences(
         ReaderOrientation.FREE.flagValue,
     )
 
+    fun pagedDoubleTapZoomEnabled() = preferenceStore.getBoolean("pref_enable_double_tap_zoom_paged", true)
+
     fun webtoonDoubleTapZoomEnabled() = preferenceStore.getBoolean("pref_enable_double_tap_zoom_webtoon", true)
 
     fun imageScaleType() = preferenceStore.getInt("pref_image_scale_type_key", 1)
