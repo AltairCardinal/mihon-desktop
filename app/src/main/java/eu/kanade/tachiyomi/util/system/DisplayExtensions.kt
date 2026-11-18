@@ -56,12 +56,10 @@ fun Context.isNightMode(): Boolean {
 }
 
 /**
- * Checks whether if the device has a display cutout (i.e. notch, camera cutout, etc.).
- *
- * Only works on Android 9+.
+ * Checks for a platform cutout or a usable Huawei cutout.
  */
 fun Activity.hasDisplayCutout(): Boolean {
-    return window.decorView.hasDisplayCutout()
+    return window.decorView.hasDisplayCutout() || huaweiDisplayCutoutInsets() != null
 }
 
 /**
@@ -69,7 +67,7 @@ fun Activity.hasDisplayCutout(): Boolean {
  *
  * Only works on Android 9+.
  */
-fun View.hasDisplayCutout(): Boolean {
+private fun View.hasDisplayCutout(): Boolean {
     return Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && rootWindowInsets?.displayCutout != null
 }
 

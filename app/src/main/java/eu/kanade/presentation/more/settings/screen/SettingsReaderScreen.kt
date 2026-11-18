@@ -1,10 +1,10 @@
 package eu.kanade.presentation.more.settings.screen
 
+import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalView
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.presentation.reader.settings.ReaderSettingsControls
 import eu.kanade.presentation.reader.settings.collectDefaultReaderSettings
@@ -106,7 +106,7 @@ object SettingsReaderScreen : SearchableSettings {
                 Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.drawUnderCutout(),
                     title = stringResource(MR.strings.pref_cutout_short),
-                    enabled = LocalView.current.hasDisplayCutout() && fullscreen,
+                    enabled = fullscreen && LocalActivity.current?.hasDisplayCutout() == true,
                 ),
                 Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.keepScreenOn(),

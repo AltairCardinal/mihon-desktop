@@ -12,9 +12,11 @@ import android.graphics.Color
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
+import android.hardware.display.DisplayManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.view.Display
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
@@ -89,8 +91,10 @@ import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.R2LPagerViewer
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
+import eu.kanade.tachiyomi.util.system.isHuaweiDevice
 import eu.kanade.tachiyomi.util.system.isNightMode
 import eu.kanade.tachiyomi.util.system.openInBrowser
+import eu.kanade.tachiyomi.util.system.readerDisplayCutoutInsets
 import eu.kanade.tachiyomi.util.system.toShareIntent
 import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.util.view.setComposeContent
@@ -166,6 +170,18 @@ open class ReaderActivity : BaseActivity() {
 
     private val windowInsetsController by lazy { WindowInsetsControllerCompat(window, window.decorView) }
 
+    private val huaweiCutoutDisplayManager by lazy { if (isHuaweiDevice) getSystemService<DisplayManager>() else null }
+    private val cutoutDisplayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) = Unit
+        override fun onDisplayRemoved(displayId: Int) = Unit
+
+        override fun onDisplayChanged(displayId: Int) {
+            if (displayId == Display.DEFAULT_DISPLAY) {
+                refreshHuaweiCutoutPadding()
+            }
+        }
+    }
+
     private var loadingIndicator: ReaderProgressIndicator? = null
 
     var isScrollingThroughPages = false
@@ -176,7 +192,13 @@ open class ReaderActivity : BaseActivity() {
      */
     private var latencyRequest = 0L
 
+    override fun onStart() {
+        super.onStart()
+        setHuaweiCutoutUpdates(enabled = true)
+    }
+
     override fun onStop() {
+        setHuaweiCutoutUpdates(enabled = false)
         super.onStop()
         ReaderOpenLatencyProbe.exportAfterReaderStopped(latencyRequest)
     }
@@ -1238,6 +1260,22 @@ open class ReaderActivity : BaseActivity() {
         }
     }
 
+    private fun setHuaweiCutoutUpdates(enabled: Boolean) {
+        val displayManager = huaweiCutoutDisplayManager ?: return
+        if (enabled) {
+            displayManager.registerDisplayListener(cutoutDisplayListener, null)
+            refreshHuaweiCutoutPadding()
+        } else {
+            displayManager.unregisterDisplayListener(cutoutDisplayListener)
+        }
+    }
+
+    private fun refreshHuaweiCutoutPadding() {
+        if (readerPreferences.fullscreen().get() && !readerPreferences.drawUnderCutout().get()) {
+            updateViewerInset(fullscreen = true, drawUnderCutout = false)
+        }
+    }
+
     /**
      * Updates viewer inset depending on fullscreen reader preferences.
      */
@@ -1259,7 +1297,7 @@ open class ReaderActivity : BaseActivity() {
     ) {
         val insets = when {
             !fullscreen -> windowInsets?.getInsets(WindowInsetsCompat.Type.systemBars())
-            !drawUnderCutout -> windowInsets?.getInsets(WindowInsetsCompat.Type.displayCutout())
+            !drawUnderCutout -> readerDisplayCutoutInsets(windowInsets)
             else -> null
         }
             ?: Insets.NONE
