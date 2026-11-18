@@ -762,13 +762,16 @@ class SharedDualPageNativeStablePresentationTest {
             fixture.partner.complete(Unit)
             fixture.pump()
             val page = fixture.page
+            fixture.doubleTap()
+            assertEquals(ZoomState(), fixture.zoomState)
+            fixture.setPagedDoubleTapZoom(true)
             fixture.doubleTap(x = 20f)
             advanceTimeBy(READER_DOUBLE_TAP_MILLIS + 1)
             fixture.settle()
             assertEquals(2f, fixture.zoomState.scale)
             assertEquals(page, fixture.page)
 
-            fixture.disablePagedDoubleTapZoom()
+            fixture.setPagedDoubleTapZoom(false)
             fixture.doubleTap()
             assertEquals(ZoomState(), fixture.zoomState)
             fixture.doubleTap()
@@ -1078,7 +1081,7 @@ class SharedDualPageNativeStablePresentationTest {
     fun `actual rapid taps activate a held source once then advance the logical target`() = runTest {
         Fixture(this).use { fixture ->
             fixture.pump()
-            fixture.disablePagedDoubleTapZoom()
+            fixture.setPagedDoubleTapZoom(false)
             fixture.tapForward()
             assertEquals(2, fixture.page, "The first input explicitly activates the held partner")
             fixture.tapForward()
@@ -1581,8 +1584,8 @@ class SharedDualPageNativeStablePresentationTest {
         val zoomState get() = model.state.value.zoomState
         fun zoom() = model.setZoomState(ZoomState(scale = 1.35f, offsetX = 7f, offsetY = -11f))
         fun setZoom(value: ZoomState) = model.setZoomState(value)
-        fun disablePagedDoubleTapZoom() {
-            model.setDisplayOptions(model.state.value.displayOptions.copy(pagedDoubleTapZoom = false))
+        fun setPagedDoubleTapZoom(enabled: Boolean) {
+            model.setDisplayOptions(model.state.value.displayOptions.copy(pagedDoubleTapZoom = enabled))
             settle(3)
         }
 

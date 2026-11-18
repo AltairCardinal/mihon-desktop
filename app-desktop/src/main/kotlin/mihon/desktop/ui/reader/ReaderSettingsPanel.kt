@@ -50,8 +50,6 @@ import androidx.compose.ui.unit.dp
 import mihon.desktop.reader.ReaderBackgroundTheme
 import mihon.desktop.reader.ReaderColorFilter
 import mihon.desktop.reader.ReaderDisplayOptions
-import mihon.desktop.reader.ReaderFlashColor
-import mihon.desktop.reader.ReaderRippleStyle
 import mihon.desktop.reader.ReaderZoomStart
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.ScaleType
@@ -66,7 +64,7 @@ import mihon.domain.reader.ReaderSettingsLayout
 import mihon.domain.reader.ReaderSettingsMode
 import tachiyomi.i18n.MR
 
-/** Reader settings mirror Android: reading mode/extensions, general/E-Ink, and filters. */
+/** Reader settings mirror Android: reading mode/extensions, general, and filters. */
 @Composable
 fun ReaderSettingsPanel(
     currentMode: ReadingMode,
@@ -464,59 +462,6 @@ private fun ReaderGeneralTab(
     CheckboxRow(MR.strings.pref_page_transitions.localized(), options.pageTransitions, {
         onChange(options.copy(pageTransitions = it))
     })
-    HorizontalDivider(Modifier.padding(vertical = 8.dp))
-    SettingsSection(MR.strings.pref_reader_eink.localized()) {
-        CheckboxRow(MR.strings.pref_flash_page.localized(), options.flash, { onChange(options.copy(flash = it)) })
-        CheckboxRow(MR.strings.pref_page_turn_ripple.localized(), options.ripple, {
-            onChange(options.copy(ripple = it))
-        })
-        if (options.ripple) {
-            SettingsSection(MR.strings.pref_page_turn_ripple_style.localized()) {
-                val labels =
-                    listOf(
-                        MR.strings.pref_page_turn_ripple_style_clean,
-                        MR.strings.pref_page_turn_ripple_style_shadow_line,
-                        MR.strings.pref_page_turn_ripple_style_smooth,
-                    )
-                ChoiceRow {
-                    ReaderRippleStyle.entries.forEachIndexed { i, value ->
-                        ChoiceChip(labels[i].localized(), options.rippleStyle == value, {
-                            onChange(options.copy(rippleStyle = value))
-                        })
-                    }
-                }
-            }
-        }
-        if (options.flash) {
-            ReaderIntegerSlider(
-                MR.strings.pref_flash_duration.localized(),
-                options.flashMillis,
-                100..1500,
-                " ms",
-                100,
-            ) {
-                onChange(options.copy(flashMillis = it))
-            }
-            ReaderIntegerSlider(MR.strings.pref_flash_page_interval.localized(), options.flashInterval, 1..10) {
-                onChange(options.copy(flashInterval = it))
-            }
-            SettingsSection(MR.strings.pref_flash_with.localized()) {
-                val labels =
-                    listOf(
-                        MR.strings.pref_flash_style_black,
-                        MR.strings.pref_flash_style_white,
-                        MR.strings.pref_flash_style_white_black,
-                    )
-                ChoiceRow {
-                    ReaderFlashColor.entries.forEachIndexed { i, value ->
-                        ChoiceChip(labels[i].localized(), options.flashColor == value, {
-                            onChange(options.copy(flashColor = value))
-                        })
-                    }
-                }
-            }
-        }
-    }
 }
 
 @Composable
