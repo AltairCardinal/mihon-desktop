@@ -205,8 +205,22 @@ class SyncPanelContentTest {
         assertTrue(texts().contains("正在准备同步"))
         assertFalse(texts().contains("同步已完成"))
         assertFalse(hasTag("sync-progress-track"))
-        assertTrue(hasTag("sync-wait"))
-        assertFalse(hasTag("sync-pause-run"))
+        click("sync-pause-run")
+        assertEquals(SyncPanelAction.PauseSync, actions.last())
+    }
+
+    @Test
+    fun `a new operation can be paused before the previous run is replaced`() = rendered(
+        connected().copy(
+            busy = true,
+            run = visualRun(SyncRunPhase.COMPLETE).copy(state = SyncRunState.PARTIAL),
+            operation = mihon.domain.sync.runtime.SyncOperationProgress("checking-new-run"),
+        ),
+    ) {
+        awaitTag("sync-pause-run")
+        click("sync-pause-run")
+        assertEquals(SyncPanelAction.PauseSync, actions.last())
+        assertFalse(hasTag("sync-retry-run"))
     }
 
     @Test
@@ -2092,7 +2106,8 @@ class SyncPanelContentTest {
             ),
         )
         render()
-        assertTrue(texts().contains("Sync paused, completed 40/100 items"), texts().toString())
+        assertTrue(texts().contains("Sync paused"), texts().toString())
+        assertTrue(texts().contains("Total items processed 40/100"), texts().toString())
         assertTrue(hasTag("sync-resume-run"))
         click("sync-resume-run")
         assertTrue(actions.contains(SyncPanelAction.ResumeSync))
@@ -4541,10 +4556,12 @@ class SyncPanelContentTest {
                         .invoke(statusLayouts)
                     val statusRegion = fixture.nodes().single { it.config.contains(SemanticsProperties.LiveRegion) }
                     assertEquals(statusLayouts.single().size.height.toFloat(), statusRegion.size.height.toFloat(), 1f)
-                    assertTrue(fixture.texts().any { it.contains("00:00") })
+                    val timeText = fixture.node("sync-round-time").config[SemanticsProperties.Text].single().text
+                    assertTrue(timeText.contains("00:03"), timeText)
                     assertEquals(
                         0.85f,
                         fixture.node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current,
+                        0.0001f,
                     )
                     assertTrue(fixture.node("sync-close").boundsInRoot.right <= width)
                     assertTrue(fixture.node("sync-settings").boundsInRoot.right <= width)

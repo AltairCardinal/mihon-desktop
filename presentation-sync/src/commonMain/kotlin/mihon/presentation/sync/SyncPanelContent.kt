@@ -2953,7 +2953,8 @@ private fun ErrorRecoveryExit(
 }
 
 private val SyncPanelState.showingCompactRun: Boolean
-    get() = syncStartRequested || ((run != null || busy) && run?.state !in TERMINAL_STATES)
+    get() = syncStartRequested || syncPauseRequested || operation?.running == true ||
+        ((run != null || busy) && run?.state !in TERMINAL_STATES)
 
 private fun syncClockDuration(seconds: Long): String =
     "${(seconds.coerceAtLeast(0) / 60).toString().padStart(2, '0')}:" +
@@ -2975,7 +2976,9 @@ private fun SyncCompactProgressCard(
         )
     val status = if (presentation.status == MR.strings.sync_busy) MR.strings.sync_round_active else presentation.status
     val statusText = syncString(
-        if (state.syncStartRequested) {
+        if (state.syncPauseRequested) {
+            MR.strings.sync_pausing_save
+        } else if (state.syncStartRequested) {
             MR.strings.sync_start_preparing
         } else if (countingInProgress ||
             (counting && presentation.status in setOf(MR.strings.sync_busy, MR.strings.sync_wait_start))
@@ -3062,8 +3065,14 @@ private fun SyncCompactProgressCard(
                         drawStopIndicator = {},
                     )
                 }
-                if (presentation.operation != null) {
-                    Text(syncString(presentation.action), Modifier.testTag("sync-operation-stage"), style = textStyle)
+                val operationLabel = when {
+                    state.syncPauseRequested -> MR.strings.sync_pausing_save
+                    run?.state == SyncRunState.PAUSED_USER && !presentation.active -> MR.strings.sync_paused
+                    presentation.operation != null -> presentation.action
+                    else -> null
+                }
+                if (operationLabel != null) {
+                    Text(syncString(operationLabel), Modifier.testTag("sync-operation-stage"), style = textStyle)
                 }
                 if (!counting) {
                     presentation.attemptConfirmed?.let {
@@ -3447,8 +3456,9 @@ private fun SyncMainOperation(
 ) {
     val run = state.run
     val fact = presentation.fact
+    val canPause = state.connection != null && presentation.active
     val terminal =
-        run?.state in TERMINAL_STATES &&
+        !canPause && !state.syncPauseRequested && run?.state in TERMINAL_STATES &&
             (run?.state != SyncRunState.SUCCEEDED || presentation.complete || presentation.operationFailed)
     val operation = connectionOperation(state)
     val operationHeight = syncMainOperationHeight()
@@ -3474,13 +3484,10 @@ private fun SyncMainOperation(
                 shape = operationShape,
                 modifier = buttonModifier,
             ) {}
-            state.syncStartRequested -> Action(
-                "sync-wait",
-                MR.strings.sync_start_preparing,
-                false,
-                shape = operationShape,
+            canPause -> SyncPauseResumeButton(
+                paused = false,
                 modifier = buttonModifier,
-            ) {}
+            ) { dispatch(SyncPanelAction.PauseSync) }
             terminal && state.busy -> Action(
                 "sync-wait",
                 MR.strings.sync_wait_start,
@@ -3595,10 +3602,6 @@ private fun SyncMainOperation(
             ) {
                 dispatch(SyncPanelAction.Synchronize)
             }
-            presentation.active -> SyncPauseResumeButton(
-                paused = false,
-                modifier = buttonModifier,
-            ) { dispatch(SyncPanelAction.PauseSync) }
             else -> Action(
                 "sync-wait",
                 if (fact?.hold ==

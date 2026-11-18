@@ -307,22 +307,26 @@ class SyncPanelController(
         if (action == SyncPanelAction.PauseSync) {
             val current = state.value
             val connection = current.connection ?: return
+            val selectedOperation = current.operation?.takeIf { it.running }
             if (current.syncPauseRequested ||
-                current.run?.state == SyncRunState.PAUSED_USER ||
-                (!current.busy && current.run?.state != SyncRunState.RUNNING)
+                (selectedOperation == null && !current.syncStartRequested && current.run?.state != SyncRunState.RUNNING)
             ) {
                 return
             }
-            val selectedOperation = current.operation?.takeIf { it.running }
+            val startingJob = manualStartJob.takeIf { current.syncStartRequested && selectedOperation == null }
             val target = SyncPauseTarget(
                 connection.spaceId,
                 connection.generation,
-                selectedOperation?.runId ?: current.run?.takeIf { it.state == SyncRunState.RUNNING }?.runId,
+                if (selectedOperation != null) {
+                    selectedOperation.runId
+                } else {
+                    current.run?.takeIf { it.state == SyncRunState.RUNNING }?.runId
+                },
                 selectedOperation?.takeUnless { it.localOnly }?.id,
             )
             val job = panelScope.launch(start = CoroutineStart.LAZY) {
                 try {
-                    if (current.syncStartRequested) manualStartJob?.cancelAndJoin()
+                    startingJob?.cancelAndJoin()
                     runtime.pauseSync(target)
                     pendingMutex.withLock { refreshPendingLocked(updateReferences = false) }
                 } catch (cancelled: CancellationException) {
