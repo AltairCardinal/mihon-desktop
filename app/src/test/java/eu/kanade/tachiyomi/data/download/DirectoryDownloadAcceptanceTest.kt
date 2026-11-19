@@ -10,12 +10,14 @@ import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
+import mihon.domain.chapter.interactor.FilterChaptersForDownload
 import nl.adaptivity.xmlutil.serialization.XML
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -150,6 +152,113 @@ class DirectoryDownloadAcceptanceTest {
             }
         }
 
+    @Test
+    fun `a chapter first discovered during reader preparation still gets automatically downloaded`() =
+        verifyAutomaticDownload(prepareReader = true)
+
+    @Test
+    fun `a chapter first discovered by the library update itself is automatically downloaded`() =
+        verifyAutomaticDownload(prepareReader = false)
+
+    @Test
+    fun `reader retries an interrupted automatic download before loading an already complete catalogue`() =
+        verifyAutomaticDownload(prepareReader = true, interruptReader = true)
+
+    private fun verifyAutomaticDownload(prepareReader: Boolean, interruptReader: Boolean = false) = runBlocking {
+        fixture { manager, provider, storage, manga, phase, _ ->
+            val sources = Injekt.get<SourceManager>()
+            val source = sources.get(manga.source) as HttpSource
+            val sync = wrapper(manager, provider, storage)
+            sync.finishPhase(manga, source, phase) { }
+            val existing = storage.chapters.getChapterByMangaId(manga.id).single()
+            val preferences = Injekt.get<DownloadPreferences>()
+            preferences.downloadNewChapters().set(true)
+            assertTrue(preferences.downloadNewChapters().get())
+            Injekt.addSingleton(
+                FilterChaptersForDownload(storage.getChapters, preferences, GetCategories(storage.categories)),
+            )
+            var requests = 0
+            coEvery { source.getMangaUpdate(any(), any(), false, true) } coAnswers {
+                requests++
+                eu.kanade.tachiyomi.source.model.SMangaUpdate(
+                    firstArg(),
+                    listOf(
+                        eu.kanade.tachiyomi.source.model.SChapter.create().apply {
+                            url = "/reader-discovered"
+                            name = "Chapter 2"
+                            chapter_number = 2f
+                            date_upload = System.currentTimeMillis()
+                        },
+                        eu.kanade.tachiyomi.source.model.SChapter.create().apply {
+                            url = existing.url
+                            name = existing.name
+                            chapter_number = existing.chapterNumber.toFloat()
+                        },
+                        eu.kanade.tachiyomi.source.model.SChapter.create().apply {
+                            url = "/older-gap"
+                            name = "Chapter 0"
+                            chapter_number = 0f
+                        },
+                    ),
+                )
+            }
+            var refuseDownload = interruptReader
+            val reader = eu.kanade.tachiyomi.ui.reader.AndroidReaderCatalogPreparation(
+                storage.mangas,
+                storage.chapters,
+                sources,
+                tachiyomi.data.chapter.SourceChapterCatalogWriter(
+                    storage.chapters,
+                    tachiyomi.data.creator.CreatorRepositoryImpl(storage.handler),
+                    storage.handler,
+                ),
+                downloadPolicy = { Injekt.get<FilterChaptersForDownload>().snapshot(it) },
+                finishDownloads = { current, registered, pending ->
+                    check(!refuseDownload) { "Download acceptance interrupted" }
+                    sync.finishPhase(current, registered, pending) { }
+                },
+            )
+            if (prepareReader) {
+                val target = tachiyomi.domain.reader.model.ReaderChapterIdentity(
+                    manga.id,
+                    manga.source,
+                    manga.url,
+                    existing.id,
+                    existing.url,
+                )
+                if (interruptReader) {
+                    val failure = runCatching { reader.prepare(target) }.exceptionOrNull()
+                    assertEquals("Download acceptance interrupted", failure?.message)
+                    assertTrue(storage.chapters.pendingDirectoryPhase(manga.id)?.downloadsPending == true)
+                    refuseDownload = false
+                }
+                reader.prepare(target)
+                assertEquals(1, requests)
+                assertEquals(null, storage.chapters.pendingDirectoryPhase(manga.id))
+                val visible = storage.handler.await {
+                    updatesViewQueries.getRecentUpdates(0, 10).executeAsList().single {
+                        it.chapterUrl ==
+                            "/reader-discovered"
+                    }
+                }
+                assertFalse(visible.read)
+                assertTrue(storage.chapters.getChapterByMangaId(manga.id).any { it.url == "/older-gap" })
+            }
+            storage.updateManga.awaitFromRemote(
+                manga, source, fetchDetails = false, fetchChapters = true,
+                chapterRepository = storage.chapters, syncChaptersWithSource = sync,
+                coverCache = mockk(relaxed = true),
+                libraryPreferences = LibraryPreferences(tachiyomi.core.common.preference.InMemoryPreferenceStore()),
+                downloadManager = manager, requireFavorite = true,
+            )
+            assertTrue(
+                "The visible new chapter was never accepted into the download queue",
+                manager.queueState.value.any { it.chapter.url == "/reader-discovered" },
+            )
+            if (prepareReader) assertFalse(manager.queueState.value.any { it.chapter.url == "/older-gap" })
+        }
+    }
+
     private fun wrapper(
         manager: DownloadManager,
         provider: DownloadProvider,
@@ -225,8 +334,13 @@ class DirectoryDownloadAcceptanceTest {
                         every { findChapterDir(any(), any(), any(), any(), any()) } returns null
                     }
                 }
-                val preferences = mockk<DownloadPreferences>(relaxed = true)
-                val categories = mockk<GetCategories>(relaxed = true)
+                val preferences = DownloadPreferences(
+                    tachiyomi.core.common.preference.AndroidPreferenceStore(
+                        context,
+                        base.getSharedPreferences("directory-settings-" + directory.name, Context.MODE_PRIVATE),
+                    ),
+                )
+                val categories = GetCategories(storage.categories)
                 Injekt.addSingleton<SourceManager>(sourceManager)
                 Injekt.addSingleton<ChapterCache>(mockk(relaxed = true))
                 Injekt.addSingleton<DownloadPreferences>(preferences)

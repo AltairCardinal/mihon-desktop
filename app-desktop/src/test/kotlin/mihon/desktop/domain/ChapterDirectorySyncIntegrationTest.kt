@@ -973,6 +973,55 @@ class ChapterDirectorySyncIntegrationTest {
         }
 
     @Test
+    fun `reader catalogue queues newly released chapters and skips older gaps`() =
+        verifyReaderCatalogDownload(100, listOf("/new"))
+
+    @Test
+    fun `reader catalogue with only a restored placeholder does not download history`() =
+        verifyReaderCatalogDownload(0, emptyList())
+
+    private fun verifyReaderCatalogDownload(dateFetch: Long, expectedQueue: List<String>) = runBlocking<Unit> {
+        val store = mihon.desktop.di.isolatedDesktopPreferenceStore()
+        val context = mihon.desktop.di.initDesktopDIForTest(
+            directory.resolve("reader-auto-download"),
+            store,
+            startDownloadWorker = false,
+        )
+        try {
+            val mangas = Injekt.get<tachiyomi.domain.manga.repository.MangaRepository>()
+            val chapters = Injekt.get<ChapterRepository>()
+            val manga = mangas.insertNetworkManga(
+                listOf(Manga.create().copy(source = 42, url = "/reader-work", title = "Work", favorite = true)),
+            ).single()
+            chapters.addAll(
+                listOf(
+                    Chapter.create().copy(
+                        mangaId = manga.id, url = "/head", name = "Chapter 2", chapterNumber = 2.0, dateFetch = dateFetch,
+                    ),
+                ),
+            )
+            Injekt.get<DownloadPreferences>().downloadNewChapters().set(true)
+            val result = Injekt.get<SaveSourceMangaForDetails>().awaitPrepared(
+                source(
+                    listOf(
+                        remote("/new", "Chapter 3", 3.0),
+                        remote("/head", "Chapter 2", 2.0),
+                        remote("/older", "Chapter 1", 1.0),
+                    ),
+                ),
+                manga,
+            ) as mihon.desktop.extension.SourceCallResult.Success
+            assertEquals(listOf("/new", "/head", "/older"), result.value.chapters.map { it.url })
+            assertEquals(
+                expectedQueue,
+                Injekt.get<mihon.desktop.download.DesktopDownloadManager>().queue.value.map { it.chapterUrl },
+            )
+        } finally {
+            context.closeAndJoin()
+        }
+    }
+
+    @Test
     fun `persistent queue acceptance resumes linked Browse phase without redelivery or network`() =
         runBlocking<Unit> {
             val previous = Injekt

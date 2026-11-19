@@ -942,6 +942,10 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
         initialChapterFlags = { Injekt.get<SetMangaDefaultChapterFlags>().initialFlags() },
         finishPendingDirectory = { manga, phase -> Injekt.get<LibraryUpdateChecker>().finishPhase(manga, phase) },
         downloadPolicy = { manga -> Injekt.get<FilterChaptersForDownload>().snapshot(manga) },
+        markDuplicateAsRead = {
+            Injekt.get<LibraryPreferences>().markDuplicateReadChapterAsRead().get()
+                .contains(LibraryPreferences.MARK_DUPLICATE_CHAPTER_READ_NEW)
+        },
         disallowNonAsciiFilenames = { Injekt.get<LibraryPreferences>().disallowNonAsciiFilenames().get() },
         directoryCommit = { manga, request -> Injekt.get<LibraryUpdateChecker>().commitDirectory(manga, request) },
         catalogWriter = catalogWriter,

@@ -106,6 +106,7 @@ import tachiyomi.domain.history.interactor.GetTotalReadDuration
 import tachiyomi.domain.history.interactor.RemoveHistory
 import tachiyomi.domain.history.interactor.UpsertHistory
 import tachiyomi.domain.history.repository.HistoryRepository
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.FetchInterval
 import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
 import tachiyomi.domain.manga.interactor.GetFavorites
@@ -317,7 +318,20 @@ class DomainModule : InjektModule {
             }
         }
         addSingletonFactory<tachiyomi.domain.reader.interactor.ReaderCatalogPreparation> {
-            eu.kanade.tachiyomi.ui.reader.AndroidReaderCatalogPreparation(get(), get(), get(), get())
+            eu.kanade.tachiyomi.ui.reader.AndroidReaderCatalogPreparation(
+                get(),
+                get(),
+                get(),
+                get(),
+                downloadPolicy = { get<FilterChaptersForDownload>().snapshot(it) },
+                markDuplicateAsRead = {
+                    get<LibraryPreferences>().markDuplicateReadChapterAsRead().get()
+                        .contains(LibraryPreferences.MARK_DUPLICATE_CHAPTER_READ_NEW)
+                },
+                finishDownloads = { manga, source, phase ->
+                    get<SyncChaptersWithSource>().finishPhase(manga, source, phase) { }
+                },
+            )
         }
         addFactory { UpdateMangaNotes(get()) }
         addFactory { SetMangaCategories(get()) }

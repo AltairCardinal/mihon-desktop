@@ -29,6 +29,7 @@ import mihon.domain.manga.model.toDomainManga
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.chapter.service.ChapterDirectoryDownloadConflictException
+import tachiyomi.domain.chapter.service.READER_CATALOG_DOWNLOAD_ORIGIN
 import tachiyomi.domain.chapter.service.finishDirectoryPhase
 import tachiyomi.domain.chapter.service.observeDirectoryPhase
 import tachiyomi.domain.creator.model.SourceDateExtensionIdentity
@@ -64,6 +65,7 @@ class SaveSourceMangaForDetails(
     private val downloadPolicy: suspend (Manga) -> mihon.domain.chapter.interactor.DownloadNewChapterPolicy = {
         mihon.domain.chapter.interactor.DownloadNewChapterPolicy(false, false)
     },
+    private val markDuplicateAsRead: () -> Boolean = { false },
     private val disallowNonAsciiFilenames: () -> Boolean = { false },
     private val directoryCommit: suspend (Manga, tachiyomi.domain.chapter.service.ChapterDirectoryCommit) ->
     tachiyomi.domain.chapter.service.ChapterDirectoryResult = { _, request ->
@@ -213,6 +215,9 @@ class SaveSourceMangaForDetails(
         val local = try {
             val current = mangaRepository.getMangaById(manga.id)
             check(current.source == manga.source && current.url == manga.url) { "Source manga identity conflict" }
+            chapterRepository.pendingDirectoryPhase(current.id)
+                ?.takeIf { it.effects.origin == READER_CATALOG_DOWNLOAD_ORIGIN }
+                ?.let { completePhase(current, it) }
             SourceCallResult.Success(
                 if (current.source != 0L && catalogWriter.needsRefresh(current)) {
                     null
@@ -335,7 +340,11 @@ class SaveSourceMangaForDetails(
                     },
                 )
             } else {
-                awaitReaderCatalog(details, source.id, validated, false, expectedManga = manga.takeIf { it.id > 0 })
+                awaitReaderCatalog(
+                    details, source.id, validated, false,
+                    expectedManga = manga.takeIf { it.id > 0 },
+                    queueNewChapters = source.id != 0L,
+                )
             }
         }
         flight.detailsPersisted = saveDetails
@@ -615,6 +624,7 @@ class SaveSourceMangaForDetails(
         sChapters: List<SChapter>,
         fetchDetails: Boolean = true,
         expectedManga: Manga? = null,
+        queueNewChapters: Boolean = false,
     ): Manga {
         // Generic callers such as migration may save metadata without receiving a directory.
         // Source refresh callers validate their network response before reaching this method.
@@ -627,12 +637,16 @@ class SaveSourceMangaForDetails(
             readMemo = fetchDetails,
             readStrategy = false,
         )
-        return catalogWriter.transaction {
+        val (manga, downloadPhase) = catalogWriter.transaction {
             val dbManga = persistManga(metadata, sourceId, fetchDetails, expectedManga)
-            if (sChapters.isNotEmpty()) catalogWriter.merge(dbManga, sChapters)
-
-            dbManga
+            val phase = sChapters.takeIf { it.isNotEmpty() }?.let {
+                val policy = if (queueNewChapters) downloadPolicy(dbManga) else null
+                catalogWriter.merge(dbManga, it, policy, policy?.enabled == true && markDuplicateAsRead()).downloadPhase
+            }
+            dbManga to phase
         }
+        downloadPhase?.let { completePhase(manga, it) }
+        return manga
     }
 
     /** Called only inside the catalogue transaction; directory-only visits retain download identity. */

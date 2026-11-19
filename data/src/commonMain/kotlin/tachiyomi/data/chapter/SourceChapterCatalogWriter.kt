@@ -1,12 +1,17 @@
 package tachiyomi.data.chapter
 
 import eu.kanade.tachiyomi.source.model.SChapter
+import kotlinx.serialization.json.Json
+import mihon.domain.chapter.interactor.DownloadNewChapterPolicy
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.data.manga.MangaMapper
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.model.NoChaptersException
 import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.chapter.service.ChapterDirectoryEffects
+import tachiyomi.domain.chapter.service.ChapterDirectoryPhase
+import tachiyomi.domain.chapter.service.READER_CATALOG_DOWNLOAD_ORIGIN
 import tachiyomi.domain.chapter.service.observeDirectoryPhase
 import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.model.SourceDateExtensionIdentity
@@ -132,7 +137,12 @@ class SourceChapterCatalogWriter(
     }
 
     /** Must be called from [transaction]; only source fields are written, never user progress. */
-    suspend fun merge(manga: Manga, sourceChapters: List<SChapter>): CatalogMerge {
+    suspend fun merge(
+        manga: Manga,
+        sourceChapters: List<SChapter>,
+        downloadPolicy: DownloadNewChapterPolicy? = null,
+        markDuplicateAsRead: Boolean = false,
+    ): CatalogMerge {
         val remote = validate(sourceChapters)
         if (handler != null) {
             val current = handler.await { mangasQueries.getMangaById(manga.id).executeAsOneOrNull() }
@@ -235,7 +245,58 @@ class SourceChapterCatalogWriter(
                     observation.completeness == ChapterCatalogCompleteness.COMPLETE,
             )
         }
-        return CatalogMerge(verified, inserted)
+        val downloadPhase = downloadPolicy?.takeIf { it.enabled }?.let {
+            recordReaderDownloads(manga, stored, verified, it, markDuplicateAsRead, now)
+        }
+        return CatalogMerge(verified, inserted, downloadPhase)
+    }
+
+    private suspend fun recordReaderDownloads(
+        manga: Manga,
+        stored: List<Chapter>,
+        remote: List<Chapter>,
+        policy: DownloadNewChapterPolicy,
+        markDuplicateAsRead: Boolean,
+        now: Long,
+    ): ChapterDirectoryPhase? {
+        // A sparse or restored directory can include old gaps. Only a known, fetched head anchors new releases.
+        val head = stored.singleOrNull { it.sourceOrder == 0L }?.takeIf { it.dateFetch > 0 } ?: return null
+        val headIndex = remote.indexOfFirst { it.id == head.id }
+        if (headIndex <= 0) return null
+        val knownIds = stored.mapTo(mutableSetOf()) { it.id }
+        val prefix = remote.subList(0, headIndex)
+        if (prefix.any { it.id in knownIds }) return null
+        val effectivePolicy = policy.copy(unreadOnly = policy.unreadOnly || markDuplicateAsRead)
+        return requireNotNull(handler).await {
+            val current = mangasQueries.getMangaById(manga.id).executeAsOne()
+            if (!current.favorite) return@await null
+            val excluded = excluded_scanlatorsQueries.getExcludedScanlatorsByMangaId(manga.id).executeAsList().toSet()
+            val candidates = prefix.filterNot { it.scanlator in excluded }
+            val ids = effectivePolicy.select(candidates, stored).map { it.id }
+            if (ids.isEmpty()) return@await null
+            val phase = ChapterDirectoryPhase(
+                id = "${manga.id}:$now:${kotlin.random.Random.nextLong()}",
+                mangaId = manga.id,
+                effects = ChapterDirectoryEffects(
+                    sourceId = manga.source,
+                    sourceName = manga.source.toString(),
+                    mangaUrl = manga.url,
+                    mangaTitle = current.title,
+                    origin = READER_CATALOG_DOWNLOAD_ORIGIN,
+                    observedAt = now,
+                    downloadEnabled = true,
+                    downloadUnreadOnly = effectivePolicy.unreadOnly,
+                ),
+                currentTitle = current.title,
+                files = emptyList(),
+                addedIds = ids,
+                downloadIds = ids,
+                observationPending = false,
+                downloadsPending = true,
+            )
+            chapter_directory_phasesQueries.insertPhase(phase.mangaId, phase.id, Json.encodeToString(phase))
+            phase
+        }
     }
 
     private fun key(manga: Manga) = SourceWorkNaturalKey(
@@ -244,4 +305,8 @@ class SourceChapterCatalogWriter(
     )
 }
 
-data class CatalogMerge(val chapters: List<Chapter>, val added: List<Chapter>)
+data class CatalogMerge(
+    val chapters: List<Chapter>,
+    val added: List<Chapter>,
+    val downloadPhase: ChapterDirectoryPhase? = null,
+)

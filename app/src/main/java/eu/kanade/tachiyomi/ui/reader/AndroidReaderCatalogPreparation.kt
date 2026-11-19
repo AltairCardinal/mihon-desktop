@@ -1,8 +1,14 @@
 package eu.kanade.tachiyomi.ui.reader
 
+import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.online.HttpSource
+import mihon.domain.chapter.interactor.DownloadNewChapterPolicy
 import tachiyomi.data.chapter.SourceChapterCatalogWriter
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.chapter.service.ChapterDirectoryPhase
+import tachiyomi.domain.chapter.service.READER_CATALOG_DOWNLOAD_ORIGIN
+import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.reader.interactor.ReaderCatalogPreparation
 import tachiyomi.domain.reader.model.ReaderChapterIdentity
@@ -13,12 +19,21 @@ class AndroidReaderCatalogPreparation(
     private val chapters: ChapterRepository,
     private val sources: SourceManager,
     private val writer: SourceChapterCatalogWriter,
+    private val downloadPolicy: (suspend (Manga) -> DownloadNewChapterPolicy)? = null,
+    private val markDuplicateAsRead: () -> Boolean = { false },
+    private val finishDownloads: (suspend (Manga, Source, ChapterDirectoryPhase) -> Unit)? = null,
 ) : ReaderCatalogPreparation {
     override suspend fun prepare(target: ReaderChapterIdentity): List<Chapter>? {
         val manga = mangas.getMangaById(target.mangaId)
         check(manga.source == target.sourceId && manga.url == target.mangaUrl) { "Reader manga identity conflict" }
         fun matches(chapter: Chapter?) = chapter?.mangaId == target.mangaId && chapter.url == target.chapterUrl
         check(matches(chapters.getChapterById(target.chapterId))) { "Reader chapter identity conflict" }
+        chapters.pendingDirectoryPhase(manga.id)
+            ?.takeIf { it.effects.origin == READER_CATALOG_DOWNLOAD_ORIGIN }
+            ?.let { phase ->
+                val source = sources.get(target.sourceId) ?: return null
+                requireNotNull(finishDownloads)(manga, source, phase)
+            }
         if (!writer.needsRefresh(manga)) return chapters.getChapterByMangaId(manga.id)
         val source = sources.get(target.sourceId) ?: return null
         check(source.id == target.sourceId) { "Reader source identity conflict" }
@@ -29,12 +44,19 @@ class AndroidReaderCatalogPreparation(
             fetchDetails = false,
         )
         check(update.manga.url == target.mangaUrl) { "Reader remote manga identity conflict" }
-        return writer.transaction {
+        val result = writer.transaction {
             check(matches(chapters.getChapterById(target.chapterId))) { "Reader chapter identity conflict" }
-            val result = writer.merge(manga, update.chapters)
+            val policy = if (source is HttpSource) {
+                downloadPolicy?.invoke(mangas.getMangaById(manga.id))
+            } else {
+                null
+            }
+            val merged = writer.merge(manga, update.chapters, policy, policy?.enabled == true && markDuplicateAsRead())
             check(mangas.update(tachiyomi.domain.manga.model.MangaUpdate(manga.id, memo = update.manga.memo)))
             check(mangas.getMangaById(manga.id).memo == update.manga.memo) { "Reader manga memo write failed" }
-            result.chapters
+            merged
         }
+        result.downloadPhase?.let { requireNotNull(finishDownloads)(manga, source, it) }
+        return result.chapters
     }
 }

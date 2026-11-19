@@ -4,6 +4,8 @@ import kotlinx.serialization.Serializable
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
 
+const val READER_CATALOG_DOWNLOAD_ORIGIN = "READER_CATALOG"
+
 /** Local, single-manga post-commit work. This record is neither a backup nor a sync wire object. */
 @Serializable
 data class ChapterDirectoryEffects(
