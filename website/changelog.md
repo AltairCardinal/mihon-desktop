@@ -5,6 +5,10 @@ description: A traceable history of public feature documentation, separate from 
 
 # Changelog
 
+## 2026-11-19 — Windows reader double-click zoom accepted
+
+The project owner accepted Windows preview `0.11.24.10.7c7f9a7` (source `7c7f9a740d`) in a private review on November 19, 2026. The reader’s General tab hides E-Ink controls and offers separate double-click enlargement choices for long strip and paged modes. Both default to off, and double-click reset still works when the page is zoomed. Acceptance covers the Windows preview.
+
 ## 2026-11-19 — Android automatic downloads on synced resume
 
 The project owner accepted signed tablet candidate `0.19.4-aex.155 / vc173` on November 19, 2026. Candidate source was `6cab6f44fd`, and the main implementation is `26f32e2808`. On the PCE-W30, an in-place upgrade retained the library and download settings. Resuming a synced chapter queued the newly released chapter while filling an older gap in the chapter list. Acceptance covers the Android tablet and the local candidate.
