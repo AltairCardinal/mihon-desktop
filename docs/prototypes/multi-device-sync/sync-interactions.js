@@ -41,13 +41,25 @@
       if (label) label.textContent = countdownTitle();
       const next = document.querySelector('[data-testid="sync-next-auto"]');
       if (next) next.textContent = nextAutoText();
+      const history = document.querySelector('[data-lifecycle-history]');
+      if (history) {
+        const text = lifecycleHistoryText();
+        if (history.textContent !== text) history.textContent = text;
+      }
     }, 1000);
     const screen = () => data().stack.at(-1);
     function go(name) { data().stack.push(name); data().message = ''; }
     function clearPasswordDraft() { const d = data(); d.fields.password = ''; d.showPassword = false; d.passwordEnabled = false; d.passwordAcknowledged = false; d.message = ''; }
     function back() { if (screen() === 'password-help') state.ui.syncReturnFocus = 'ix-password-help'; if (['password', 'password-help'].includes(screen())) clearPasswordDraft(); data().stack.pop(); data().message = ''; }
     function home(message = '') { data().stack = []; data().message = message; state.ui.syncSettingsOpen = false; }
-    function close() { display = window.MihonSyncProgress.createDisplay(); data().stack = []; clearPasswordDraft(); if (data().batch?.done === data().batch?.total) data().batch = null; }
+    function close() {
+      const d = data();
+      display = window.MihonSyncProgress.createDisplay();
+      d.stack = [];
+      clearPasswordDraft();
+      if (d.batch?.done === d.batch?.total) d.batch = null;
+      if (d.lifecycle) d.lifecycle.showCompletion = false;
+    }
     const action = (label, name, primary = false, attrs = '') => button(label, `data-action="ix-${name}" data-testid="ix-${name}" ${attrs}`, primary ? 'm-button-primary' : 'm-button-text');
     const note = text => `<p class="ix-note">${text}</p>`;
     const section = text => `<p class="settings-section-label">${text}</p>`;
@@ -81,6 +93,11 @@
       return note('采集本机同步事实，不包含账号、仓库、凭据或作品信息。仅保留本进程最近128次观察到的状态变化；JSON导出上限256KiB，超限会标明截断。可再次采集比较变化。') + action('采集快照', 'diagnostic-capture') + `<p data-testid="native-diagnostic-feedback">${esc(d.diagnosticFeedback || '')}</p>` + note('自愿开启后，最多24小时内可跨应用重启比较别名。私有缓存仅保留随机盐与上一快照关联摘要；不开启时只保证本进程内别名可比较。') + action(d.diagnosticSession ? '结束诊断会话' : '开启24小时诊断会话', 'diagnostic-session') + (d.diagnosticSnapshot ? note(d.connected ? '同步连接已启用' : '同步连接未启用') + note('当前没有执行同步，请查看任务状态') + action('保存诊断JSON', 'diagnostic-export') + (d.diagnosticUrl ? action('打开或分享本机文件', 'diagnostic-open') : '') + `<pre class="native-diagnostic-json" data-testid="native-diagnostic-details">${esc(JSON.stringify(d.diagnosticSnapshot, null, 2))}</pre>` : '');
     }
     function nativeRecords() {
+      if (data().lifecycle) {
+        return data().lifecycle.lastCompletedAt === null
+          ? '<p>暂无同步记录</p>'
+          : `<article class="native-record"><p data-lifecycle-history data-testid="sync-lifecycle-record">${lifecycleHistoryText()}</p></article>`;
+      }
       const records = currentDevice().lastResult;
       return records ? `<article class="native-record"><small>${data().lastSync}</small><p>上传 ${records.sent || 0} 项，接收 ${records.received || 0} 项，待确认 ${currentDevice().confirmations.length} 项</p>${records.ok ? '' : `<p>${esc(records.message)}</p>`}</article>` : '<p>暂无同步记录</p>';
     }
@@ -148,6 +165,7 @@
       return entries.map(([title, detail]) => `<article class="ix-activity-entry"><span class="row-leading">${view.icon('check')}</span><div><strong>${title}</strong><p>${detail}</p></div></article>`).join('');
     }
     function status({ total, membership, reading, pending, busy, online }) {
+      if (data().lifecycle) return lifecycleCard();
       const d = data();
       if (modern() && d.recovery) return recoverySummary();
       if (d.progress) return progressCard();
@@ -193,6 +211,139 @@
     let display = window.MihonSyncProgress.createDisplay();
     let compactDisplay = window.MihonSyncProgress.createCompactDisplay();
     let progressTimer = null;
+    let lifecycleControlTimer = null;
+
+    const lifecycleTotal = 48;
+    const lifecyclePreparedPercent = 5;
+    const lifecycleTransferPercent = 85;
+    const lifecycleTitles = {
+      preparing: '正在准备同步',
+      syncing: '同步中',
+      finishing: '正在结束同步',
+      pausing: '正在暂停',
+      saving: '正在保存进度',
+      stopped: '本次同步已停止',
+      paused: '同步已暂停',
+      resuming: '正在继续同步',
+      'resume-failed': '继续同步失败',
+    };
+    const lifecycleNotes = {
+      finishing: '正在核对本次同步结果',
+      'resume-failed': '暂时无法读取保存的进度，已确认的条目仍会保留。',
+    };
+    const lifecycleInFlight = ['preparing', 'syncing', 'finishing', 'pausing', 'saving', 'resuming'];
+    const lifecyclePausable = ['preparing', 'syncing', 'finishing'];
+
+    function lifecycleHistoryText() {
+      const completed = data().lifecycle.lastCompletedAt;
+      if (completed === null) return '尚未完成过同步';
+      const minutes = Math.max(0, Math.floor((Date.now() - completed) / 60000));
+      return minutes === 0 ? '上次同步刚刚完成' : `上次同步完成于 ${minutes} 分钟前`;
+    }
+
+    function lifecycleCard() {
+      const { run, showCompletion } = data().lifecycle;
+      const phase = run?.phase || 'idle';
+      const history = phase === 'idle' || phase === 'completed' && !showCompletion;
+      const title = history ? lifecycleHistoryText()
+        : phase === 'completed' ? '本次同步已完成' : lifecycleTitles[phase];
+      const [label, command] = lifecyclePausable.includes(phase) ? ['暂停同步', 'pause']
+        : phase === 'paused' ? ['继续同步', 'resume']
+          : phase === 'resume-failed' ? ['重试', 'resume']
+            : lifecycleInFlight.includes(phase) ? [] : ['开始同步', 'start'];
+      const confirmed = run?.confirmed;
+      const showCount = Number.isFinite(confirmed) && !history && phase !== 'completed' && phase !== 'stopped';
+      let percent = null;
+      if (showCount) percent = lifecyclePreparedPercent + Math.floor(confirmed / lifecycleTotal * lifecycleTransferPercent);
+      if (phase === 'completed' && showCompletion) percent = 100;
+      const determinate = percent !== null;
+      const waiting = phase === 'preparing';
+      return `<section class="sync-progress-card modern-status-card sync-lifecycle-card" data-testid="sync-progress-card" data-state="${phase}">
+        <div class="modern-status-heading"><h3 data-testid="sync-progress-title" aria-live="polite" ${history ? 'data-lifecycle-history' : ''}>${title}</h3></div>
+        ${lifecycleNotes[phase] ? `<p class="modern-muted">${lifecycleNotes[phase]}</p>` : ''}
+        ${showCount ? `<p class="modern-muted" data-testid="sync-progress-confirmed">已确认 ${confirmed} / ${lifecycleTotal} 条</p>` : ''}
+        ${determinate || waiting ? `<div class="sync-progress-track" role="progressbar" aria-label="整轮同步进度"${determinate ? ` aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"` : ''} data-determinate="${determinate}" data-active="${waiting}"><span style="width:${percent ?? 32}%"></span></div>` : ''}
+        ${label ? `<div class="modern-status-actions">${action(label, 'lifecycle-' + command, command !== 'pause')}</div>` : ''}
+      </section>`;
+    }
+
+    function advanceLifecycle(run, delay, next) {
+      progressTimer = setTimeout(() => {
+        if (data().lifecycle?.run !== run) return;
+        next();
+        render(false);
+      }, delay);
+    }
+
+    function workLifecycle(run) {
+      if (run.phase === 'finishing') {
+        advanceLifecycle(run, 5000, () => {
+          clearTimeout(lifecycleControlTimer);
+          const lifecycle = data().lifecycle;
+          run.phase = 'completed';
+          lifecycle.lastCompletedAt = Date.now();
+          lifecycle.showCompletion = state.ui.syncOpen && !state.ui.syncSettingsOpen && !state.ui.batchReview && !screen() &&
+            !window.frameElement?.closest('.device-column')?.hidden;
+        });
+        return;
+      }
+      advanceLifecycle(run, 2000, () => {
+        run.confirmed += 12;
+        if (run.confirmed === lifecycleTotal) run.phase = 'finishing';
+        workLifecycle(run);
+      });
+    }
+
+    function controlLifecycle(run, delay, next) {
+      lifecycleControlTimer = setTimeout(() => {
+        if (data().lifecycle?.run !== run) return;
+        next();
+        render(false);
+      }, delay);
+    }
+
+    function handleLifecycle(command) {
+      const lifecycle = data().lifecycle;
+      const run = lifecycle.run;
+      if (command === 'start' && (!run || ['completed', 'stopped'].includes(run.phase))) {
+        const next = { phase: 'preparing', confirmed: null };
+        lifecycle.run = next;
+        lifecycle.showCompletion = false;
+        advanceLifecycle(next, 6000, () => {
+          next.phase = 'syncing';
+          next.confirmed = 0;
+          workLifecycle(next);
+        });
+      } else if (command === 'pause' && run && lifecyclePausable.includes(run.phase)) {
+        run.resumePhase = run.phase;
+        // A final check already in progress may finish before the pause is saved.
+        if (run.phase !== 'finishing') clearTimeout(progressTimer);
+        run.phase = 'pausing';
+        controlLifecycle(run, 650, () => {
+          if (!run.confirmed) {
+            run.phase = 'stopped';
+            return;
+          }
+          run.phase = 'saving';
+          controlLifecycle(run, 1650, () => {
+            clearTimeout(progressTimer);
+            run.phase = 'paused';
+          });
+        });
+      } else if (command === 'resume' && run && ['paused', 'resume-failed'].includes(run.phase)) {
+        run.phase = 'resuming';
+        controlLifecycle(run, 2300, () => {
+          if (lifecycle.failNextResume) {
+            lifecycle.failNextResume = false;
+            run.phase = 'resume-failed';
+          } else {
+            run.phase = run.resumePhase;
+            workLifecycle(run);
+          }
+        });
+      }
+      render(false);
+    }
     let lastPaint = 0;
     function newProgress(fact = {}) {
       display = window.MihonSyncProgress.createDisplay();
@@ -641,13 +792,21 @@
     }
     function showScenario(name) {
       clearTimeout(importTimer); clearTimeout(batchTimer); clearTimeout(setupTimer); clearTimeout(progressTimer); clearTimeout(recoveryTimer);
+      clearTimeout(lifecycleControlTimer);
       clearTimeout(state.ui.timerId); state.ui.busy = false; state.ui.timerId = null;
       authWindow?.close(); authWindow = null; authRequest += 1;
       batchStep = null;
       state.ui.interactions = null; const d = data();
       state.ui.syncOpen = true; state.ui.syncSettingsOpen = false; state.ui.route = 'library'; state.ui.detail = null; state.ui.reader = false;
       state.ui.batchReview = null; state.ui.selecting = false; state.ui.syncResult = null; state.ui.batchResult = null;
-      if (name.startsWith('space-')) recoveryScenario(name);
+      if (name.startsWith('lifecycle-')) {
+        d.lifecycle = {
+          run: null,
+          showCompletion: false,
+          lastCompletedAt: name === 'lifecycle-first-sync' ? null : Date.now() - 12 * 60000,
+          failNextResume: name === 'lifecycle-resume-failure',
+        };
+      } else if (name.startsWith('space-')) recoveryScenario(name);
       else if (name.startsWith('progress-')) progressScenario(name.slice(9));
       else if (name.startsWith('setup')) { d.connected = false; d.spaceScenario = name === 'setup-existing' ? 'existing' : name === 'setup-protected' ? 'protected' : 'new'; d.setupFailure = name === 'setup-find-failed' ? 'find' : name === 'setup-create-failed' ? 'create' : null; }
       if (name === 'setup-password-review') { d.mode = 'create'; d.authStatus = 'success'; setupPage('password'); }
@@ -751,6 +910,10 @@
     function handle(name, target) {
       if (!name.startsWith('ix-')) return false;
       const actionName = name.slice(3); const d = data();
+      if (d.lifecycle && actionName.startsWith('lifecycle-')) {
+        handleLifecycle(actionName.slice('lifecycle-'.length));
+        return true;
+      }
       if (handleRecovery(actionName, target)) return true;
       if (actionName === 'progress-details') { d.progressDetails = !d.progressDetails; }
       else if (actionName === 'progress-restart') compactScenario(['compact-download', 'compact-bidirectional'].includes(data().progressScenario) ? data().progressScenario : 'compact-start');
@@ -825,7 +988,7 @@
     }
     return { nativeSettings, beginSync, finishSync, paintProgress, needsRecovery: () => Boolean(modern() && data().recovery), hasProgress: () => Boolean(data().progress), screen, title: () => screen() === 'password-help' ? '忘记同步密码' : screen() === 'password' && data().mode === 'create' ? '创建同步空间' : titles[screen()], back, close, settings, settingsFooter, renderScreen, unconfigured, connected: () => data().connected, status, didSync, resetCountdown, summary, handle, input, showScenario, networkChanged, startBatch, batchActive: () => data().batch && data().batch.done < data().batch.total,
       importStatus: () => data().importProgress != null && !data().progress ? row(data().importReady ? '合并已完成' : data().importWaitingNetwork ? '等待网络连接' : data().importPaused ? '合并尚未完成' : '正在合并数据', '查看进度与继续操作', 'import-view') : '',
-      busy: () => data().issue === 'unknown' || (data().importProgress != null && !data().importPaused && !data().importReady),
+      busy: () => lifecycleInFlight.includes(data().lifecycle?.run?.phase) || data().issue === 'unknown' || (data().importProgress != null && !data().importPaused && !data().importReady),
     };
   }
 })();

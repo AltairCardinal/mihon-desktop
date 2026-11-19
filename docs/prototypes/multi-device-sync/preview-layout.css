@@ -38,3 +38,4 @@ html:has(body.responsive-preview[data-preview-single="true"]) { min-width: 0; }
   .responsive-review .preview-field-choice { width: 100%; }
   .responsive-review .preview-tool-panel .m-button { flex: 1 1 auto; }
 }
+.lifecycle-review .preview-tool-panel > :not(.lifecycle-tools) { display: none; }

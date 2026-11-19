@@ -469,6 +469,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 [data-sync-design="modern"] .modern-status-icon { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 36px; border-radius: 12px; color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); }
 [data-sync-design="modern"] .modern-muted, [data-sync-design="modern"] .ix-note { color: var(--modern-muted); font-size: 14px; line-height: 1.6; margin: 12px 0; }
 [data-sync-design="modern"] .modern-status-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+[data-sync-design="modern"] .sync-lifecycle-card .sync-progress-track { margin-top: 12px; }
+[data-sync-design="modern"] .sync-lifecycle-card .sync-progress-track[data-active="true"][data-determinate="false"] span { animation: sync-progress-slide 1.7s ease-in-out infinite alternate; }
 [data-sync-design="modern"] .m-button { min-height: 48px; padding: 12px 16px; font-size: 14px; line-height: 1.5; white-space: normal; overflow-wrap: anywhere; text-align: center; }
 [data-sync-design="modern"] .m-button-primary { color: var(--on-primary); background: var(--primary); border-radius: 14px; font-weight: 650; }
 [data-sync-design="modern"] .m-button-text { color: var(--modern-muted); border-radius: 12px; }

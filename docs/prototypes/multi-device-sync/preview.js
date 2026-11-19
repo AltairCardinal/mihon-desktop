@@ -3,6 +3,7 @@
   const model = window.MihonSyncModel;
   const root = document.getElementById('preview');
   const responsiveReview = document.body.dataset.responsiveReview === 'true';
+  const lifecycleReview = document.body.classList.contains('lifecycle-review');
   const query = new URLSearchParams(location.search);
   const requestedDevice = query.get('device');
   let chosenDevice = ['both', 'android', 'windows'].includes(requestedDevice) ? requestedDevice : null;
@@ -62,6 +63,9 @@
       } else return;
       apps().forEach(app => app.render(false));
     });
+  }
+  if (lifecycleReview) {
+    root.querySelector('.preview-tool-panel').insertAdjacentHTML('afterbegin', `<div class="tool-group lifecycle-tools"><label for="lifecycle-scene">同步时序场景</label><select id="lifecycle-scene"><option value="history">已有上次成功记录</option><option value="first-sync">首次同步</option><option value="resume-failure">首次继续失败，可重试</option></select><button class="m-button" data-command="lifecycle">载入场景</button></div>`);
   }
   // Only the review container adapts. Existing frame instances own navigation, focus and timers.
   function sizeSingleFrame() {
@@ -163,6 +167,10 @@
     } else if (button.dataset.command === 'progress-both') {
       const targets = responsiveReview && previewDevice() !== 'both' ? [target].filter(Boolean) : apps();
       targets.forEach(app => app.showInteractionScenario('progress-' + root.querySelector('#progress-scene').value));
+    } else if (button.dataset.command === 'lifecycle') {
+      const scene = 'lifecycle-' + root.querySelector('#lifecycle-scene').value;
+      const targets = previewDevice() === 'both' ? apps() : [target].filter(Boolean);
+      targets.forEach(app => app.showInteractionScenario(scene));
     } else if (button.dataset.command === 'network') {
       model.setOnline(sharedState, !sharedState.online);
       button.textContent = sharedState.online ? '切换离线' : '恢复在线';
@@ -180,5 +188,11 @@
   const progressChoice = root.querySelector('#progress-scene');
   progressChoice.insertAdjacentHTML('afterbegin', `<optgroup label="新版：两行信息＋完成进度"><option value="compact-upload">纯上传 · 同步中</option><option value="compact-start">首次上传 · 从0开始</option><option value="compact-download">纯下载 · 同步中</option><option value="compact-bidirectional">双向同步 · 固定整轮总数</option><option value="compact-paused">暂停与继续 · 保留比例</option><option value="compact-unknown">统计中 · 等待后开始同步</option><option value="compact-complete">同步完成 · 100%</option><option value="compact-failed">连接中断 · 继续同步</option></optgroup>`);
   progressChoice.value = progressScene || 'continuous';
-  mountFrames(query.get('review') === 'password' ? frame => { frame.contentWindow.__mihonSyncDemo.showInteractionScenario('setup-password-review'); } : progressScene ? frame => { frame.contentWindow.__mihonSyncDemo.showInteractionScenario('progress-' + progressScene); } : null);
+  if (lifecycleReview) {
+    mountFrames(frame => frame.contentWindow.__mihonSyncDemo.showInteractionScenario('lifecycle-history'));
+  } else if (query.get('review') === 'password') {
+    mountFrames(frame => frame.contentWindow.__mihonSyncDemo.showInteractionScenario('setup-password-review'));
+  } else {
+    mountFrames(progressScene ? frame => frame.contentWindow.__mihonSyncDemo.showInteractionScenario('progress-' + progressScene) : null);
+  }
 })();
