@@ -16,8 +16,12 @@ import eu.kanade.presentation.more.settings.screen.SettingsReaderScreen
 import eu.kanade.tachiyomi.ui.reader.ReaderViewModel
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
+import eu.kanade.tachiyomi.ui.reader.viewer.pager.VerticalPagerViewer
+import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonViewer
+import io.mockk.mockk
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -47,7 +51,7 @@ class ReaderRippleSettingsWiringTest {
         try {
             activity.get().setContent {
                 MaterialTheme {
-                    Column(Modifier.verticalScroll(rememberScrollState())) { GeneralPage(model) }
+                    Column(Modifier.verticalScroll(rememberScrollState())) { GeneralPage(model, isEInk = true) }
                 }
             }
             compose.onNodeWithText("方案 A（平滑）").assertDoesNotExist()
@@ -56,6 +60,38 @@ class ReaderRippleSettingsWiringTest {
             assertEquals(ReaderPreferences.PageTurnRippleMode.SMOOTH, preferences.pageTurnRippleMode().get())
             compose.onNodeWithText("经典（分步）").performScrollTo().performClick()
             assertEquals(ReaderPreferences.PageTurnRippleMode.SHADOW_LINE, preferences.pageTurnRippleMode().get())
+        } finally {
+            activity.pause().stop().destroy()
+            shared.edit().clear().commit()
+        }
+    }
+
+    @Test
+    fun `general settings switch preference with the active viewer and hide e ink for normal displays`() {
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        val shared = activity.get().getSharedPreferences("mode-double-tap-${System.nanoTime()}", 0)
+        val preferences = ReaderPreferences(AndroidPreferenceStore(activity.get(), shared))
+        val state = MutableStateFlow(ReaderViewModel.State(viewer = mockk<WebtoonViewer>()))
+        val model = ReaderSettingsScreenModel(state, {}, {}, preferences)
+        try {
+            activity.get().setContent {
+                MaterialTheme {
+                    Column(Modifier.verticalScroll(rememberScrollState())) { GeneralPage(model) }
+                }
+            }
+            val zoom = compose.onNodeWithText("双击放大")
+            compose.waitUntil { model.viewerFlow.value is WebtoonViewer }
+            zoom.performScrollTo().performClick()
+            assertFalse(preferences.webtoonDoubleTapZoomEnabled().get())
+            assertTrue(preferences.pagedDoubleTapZoomEnabled().get())
+            compose.onNodeWithText("翻页时用水波纹").assertDoesNotExist()
+
+            state.value = state.value.copy(viewer = mockk<VerticalPagerViewer>())
+            compose.waitUntil {
+                model.viewerFlow.value is VerticalPagerViewer
+            }
+            zoom.performScrollTo().performClick()
+            assertFalse(preferences.pagedDoubleTapZoomEnabled().get())
         } finally {
             activity.pause().stop().destroy()
             shared.edit().clear().commit()

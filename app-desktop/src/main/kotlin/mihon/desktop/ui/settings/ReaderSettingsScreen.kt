@@ -36,6 +36,7 @@ class ReaderSettingsScreen : Screen {
         val pageTurnAnimation by prefs.pageTurnAnimation.changes().collectAsState(
             initial = prefs.pageTurnAnimation.get(),
         )
+        var displayOptions by remember { mutableStateOf(readerPreferences.loadDisplayOptions()) }
         var readerSettings by remember { mutableStateOf(readerPreferences.loadReaderSettings()) }
         val nextChapterPrefetchMode by readerPreferences.nextChapterPrefetchPreference.changes().collectAsState(
             initial = readerPreferences.nextChapterPrefetchMode,
@@ -64,6 +65,26 @@ class ReaderSettingsScreen : Screen {
                     }
                 }
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                val doubleTapLabel = MR.strings.pref_double_tap_zoom.localized()
+                SwitchSettingsItem(
+                    title = "${MR.strings.webtoon_viewer.localized()} · $doubleTapLabel",
+                    subtitle = null,
+                    checked = displayOptions.webtoonDoubleTapZoom,
+                    onCheckedChange = {
+                        displayOptions = readerPreferences.loadDisplayOptions().copy(webtoonDoubleTapZoom = it)
+                        readerPreferences.saveDisplayOptions(displayOptions)
+                    },
+                )
+                SwitchSettingsItem(
+                    title = "${MR.strings.pager_viewer.localized()} · $doubleTapLabel",
+                    subtitle = null,
+                    checked = displayOptions.pagedDoubleTapZoom,
+                    onCheckedChange = {
+                        displayOptions = readerPreferences.loadDisplayOptions().copy(pagedDoubleTapZoom = it)
+                        readerPreferences.saveDisplayOptions(displayOptions)
+                    },
+                )
 
                 SwitchSettingsItem(
                     title = MR.strings.pref_page_transitions.localized(),

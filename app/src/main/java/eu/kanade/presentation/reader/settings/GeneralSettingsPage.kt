@@ -6,9 +6,12 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
+import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonViewer
+import eu.kanade.tachiyomi.util.system.DeviceUtil
 import eu.kanade.tachiyomi.util.system.hasDisplayCutout
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.CheckboxItem
@@ -39,23 +42,24 @@ private val rippleModes = listOf(
 )
 
 @Composable
-internal fun ColumnScope.GeneralPage(screenModel: ReaderSettingsScreenModel) {
+internal fun ColumnScope.GeneralPage(
+    screenModel: ReaderSettingsScreenModel,
+    isEInk: Boolean = DeviceUtil.isEInk,
+) {
     val readerTheme by screenModel.preferences.readerTheme().collectAsState()
 
-    val flashPageState by screenModel.preferences.flashOnPageChange().collectAsState()
+    val viewer by screenModel.viewerFlow.collectAsState()
 
-    val flashMillisPref = screenModel.preferences.flashDurationMillis()
-    val flashMillis by flashMillisPref.collectAsState()
-
-    val flashIntervalPref = screenModel.preferences.flashPageInterval()
-    val flashInterval by flashIntervalPref.collectAsState()
-
-    val flashColorPref = screenModel.preferences.flashColor()
-    val flashColor by flashColorPref.collectAsState()
-
-    val rippleState by screenModel.preferences.pageTurnRipple().collectAsState()
-    val rippleModePref = screenModel.preferences.pageTurnRippleMode()
-    val rippleMode by rippleModePref.collectAsState()
+    if (viewer != null) {
+        CheckboxItem(
+            label = stringResource(MR.strings.pref_double_tap_zoom),
+            pref = if (viewer is WebtoonViewer) {
+                screenModel.preferences.webtoonDoubleTapZoomEnabled()
+            } else {
+                screenModel.preferences.pagedDoubleTapZoomEnabled()
+            },
+        )
+    }
 
     SettingsChipRow(MR.strings.pref_reader_theme) {
         themes.map { (labelRes, value) ->
@@ -105,14 +109,36 @@ internal fun ColumnScope.GeneralPage(screenModel: ReaderSettingsScreenModel) {
         pref = screenModel.preferences.pageTransitions(),
     )
 
-    HeadingItem(MR.strings.pref_reader_eink)
+    if (isEInk) {
+        HeadingItem(MR.strings.pref_reader_eink)
+        EInkSettings(screenModel.preferences)
+    }
+}
+
+@Composable
+private fun ColumnScope.EInkSettings(preferences: ReaderPreferences) {
+    val flashPageState by preferences.flashOnPageChange().collectAsState()
+
+    val flashMillisPref = preferences.flashDurationMillis()
+    val flashMillis by flashMillisPref.collectAsState()
+
+    val flashIntervalPref = preferences.flashPageInterval()
+    val flashInterval by flashIntervalPref.collectAsState()
+
+    val flashColorPref = preferences.flashColor()
+    val flashColor by flashColorPref.collectAsState()
+
+    val rippleState by preferences.pageTurnRipple().collectAsState()
+    val rippleModePref = preferences.pageTurnRippleMode()
+    val rippleMode by rippleModePref.collectAsState()
+
     CheckboxItem(
         label = stringResource(MR.strings.pref_flash_page),
-        pref = screenModel.preferences.flashOnPageChange(),
+        pref = preferences.flashOnPageChange(),
     )
     CheckboxItem(
         label = stringResource(MR.strings.pref_page_turn_ripple),
-        pref = screenModel.preferences.pageTurnRipple(),
+        pref = preferences.pageTurnRipple(),
     )
     if (rippleState) {
         SettingsChipRow(MR.strings.pref_page_turn_ripple_style) {

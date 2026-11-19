@@ -172,6 +172,7 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
 
         frame.layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
         frame.addView(recycler)
+        frame.doubleTapZoom = config.doubleTapZoom
     }
 
     private fun checkAllowPreload(page: ReaderPage?): Boolean {

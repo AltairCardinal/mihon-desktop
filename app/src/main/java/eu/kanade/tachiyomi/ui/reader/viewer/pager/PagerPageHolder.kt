@@ -52,7 +52,11 @@ class PagerPageHolder(
             directory,
         )
     },
-) : ReaderPageImageView(readerThemedContext), ViewPagerAdapter.PositionableView {
+) : ReaderPageImageView(
+    readerThemedContext,
+    doubleTapZoomEnabled = { viewer.config.doubleTapZoomEnabled },
+),
+    ViewPagerAdapter.PositionableView {
 
     /**
      * Item that identifies this view. Needed by the adapter to not recreate views.

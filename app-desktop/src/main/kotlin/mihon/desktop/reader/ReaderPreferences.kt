@@ -147,7 +147,8 @@ class ReaderPreferences(
         "reader_display_webtoonPadding",
         (paddingPref.get().ratio * 100).toInt(),
     )
-    private val displayWebtoonDoubleTapZoomPref = store.getBoolean("reader_display_webtoonDoubleTapZoom", true)
+    private val displayPagedDoubleTapZoomPref = store.getBoolean("reader_display_pagedDoubleTapZoom", false)
+    private val displayWebtoonDoubleTapZoomPref = store.getBoolean("reader_display_webtoonDoubleTapZoom", false)
     private val displayWebtoonDisableZoomOutPref = store.getBoolean("reader_display_webtoonDisableZoomOut", false)
     private val displayShowPageNumberPref = store.getBoolean("reader_display_showPageNumber", true)
     private val displayFullscreenPref = store.getBoolean("reader_display_fullscreen", false)
@@ -212,6 +213,7 @@ class ReaderPreferences(
         rotateWide = displayRotateWidePref.get(),
         rotateInvert = displayRotateInvertPref.get(),
         webtoonPadding = displayWebtoonPaddingPref.get(),
+        pagedDoubleTapZoom = displayPagedDoubleTapZoomPref.get(),
         webtoonDoubleTapZoom = displayWebtoonDoubleTapZoomPref.get(),
         webtoonDisableZoomOut = displayWebtoonDisableZoomOutPref.get(),
         showPageNumber = displayShowPageNumberPref.get(),
@@ -239,6 +241,7 @@ class ReaderPreferences(
         displayRotateWidePref.set(options.rotateWide)
         displayRotateInvertPref.set(options.rotateInvert)
         displayWebtoonPaddingPref.set(options.webtoonPadding)
+        displayPagedDoubleTapZoomPref.set(options.pagedDoubleTapZoom)
         displayWebtoonDoubleTapZoomPref.set(options.webtoonDoubleTapZoom)
         displayWebtoonDisableZoomOutPref.set(options.webtoonDisableZoomOut)
         displayShowPageNumberPref.set(options.showPageNumber)

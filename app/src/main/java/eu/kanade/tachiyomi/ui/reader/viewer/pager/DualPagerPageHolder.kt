@@ -444,6 +444,7 @@ class DualPagerPageHolder(
             override fun onDown(e: MotionEvent): Boolean = true
 
             override fun onDoubleTap(e: MotionEvent): Boolean {
+                if (!viewer.config.doubleTapZoomEnabled) return false
                 val targetScale = if (currentScale > 1f) 1f else 2f
                 val targetX = if (targetScale == 1f) 0f else (width / 2f - e.x) * targetScale
                 val targetY = if (targetScale == 1f) 0f else (height / 2f - e.y) * targetScale
@@ -573,6 +574,9 @@ class DualPagerPageHolder(
         }
         if (!handedToPager && (hadMultiplePointers || currentScale > 1f)) {
             parent?.requestDisallowInterceptTouchEvent(true)
+        }
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            scaleGestureDetector.isQuickScaleEnabled = viewer.config.doubleTapZoomEnabled
         }
         scaleGestureDetector.onTouchEvent(event)
         gestureDetector.onTouchEvent(event)
@@ -1436,7 +1440,7 @@ class DualPagerPageHolder(
     private inner class SinglePageSubHolder(
         context: Context,
         val page: ReaderPage,
-    ) : ReaderPageImageView(context) {
+    ) : ReaderPageImageView(context, doubleTapZoomEnabled = { viewer.config.doubleTapZoomEnabled }) {
         init {
             val request = if (page === latencyTarget) this@DualPagerPageHolder.latencyRequest else 0L
             bindLatencyPage(

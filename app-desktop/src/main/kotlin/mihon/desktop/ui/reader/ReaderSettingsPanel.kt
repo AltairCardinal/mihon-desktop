@@ -50,8 +50,6 @@ import androidx.compose.ui.unit.dp
 import mihon.desktop.reader.ReaderBackgroundTheme
 import mihon.desktop.reader.ReaderColorFilter
 import mihon.desktop.reader.ReaderDisplayOptions
-import mihon.desktop.reader.ReaderFlashColor
-import mihon.desktop.reader.ReaderRippleStyle
 import mihon.desktop.reader.ReaderZoomStart
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.ScaleType
@@ -66,7 +64,7 @@ import mihon.domain.reader.ReaderSettingsLayout
 import mihon.domain.reader.ReaderSettingsMode
 import tachiyomi.i18n.MR
 
-/** Reader settings mirror Android: reading mode/extensions, general/E-Ink, and filters. */
+/** Reader settings mirror Android: reading mode/extensions, general, and filters. */
 @Composable
 fun ReaderSettingsPanel(
     currentMode: ReadingMode,
@@ -182,6 +180,7 @@ fun ReaderSettingsPanel(
                             onCropBordersWebtoonChange = onCropBordersWebtoonChange,
                         )
                         1 -> ReaderGeneralTab(
+                            currentMode,
                             backgroundTheme,
                             onBackgroundThemeChange,
                             displayOptions,
@@ -418,9 +417,6 @@ private fun ReaderModeExtensions(
         }
     }
     if (webtoon) {
-        CheckboxRow(MR.strings.pref_double_tap_zoom.localized(), options.webtoonDoubleTapZoom, {
-            onChange(options.copy(webtoonDoubleTapZoom = it))
-        })
         CheckboxRow(MR.strings.pref_webtoon_disable_zoom_out.localized(), options.webtoonDisableZoomOut, {
             onChange(options.copy(webtoonDisableZoomOut = it))
         })
@@ -429,6 +425,7 @@ private fun ReaderModeExtensions(
 
 @Composable
 private fun ReaderGeneralTab(
+    mode: ReadingMode,
     background: ReaderBackgroundTheme,
     onBackgroundChange: (ReaderBackgroundTheme) -> Unit,
     options: ReaderDisplayOptions,
@@ -441,6 +438,14 @@ private fun ReaderGeneralTab(
             }
         }
     }
+    val webtoon = mode == ReadingMode.WEBTOON
+    CheckboxRow(
+        MR.strings.pref_double_tap_zoom.localized(),
+        if (webtoon) options.webtoonDoubleTapZoom else options.pagedDoubleTapZoom,
+        {
+            onChange(if (webtoon) options.copy(webtoonDoubleTapZoom = it) else options.copy(pagedDoubleTapZoom = it))
+        },
+    )
     CheckboxRow(MR.strings.pref_show_page_number.localized(), options.showPageNumber, {
         onChange(options.copy(showPageNumber = it))
     })
@@ -457,59 +462,6 @@ private fun ReaderGeneralTab(
     CheckboxRow(MR.strings.pref_page_transitions.localized(), options.pageTransitions, {
         onChange(options.copy(pageTransitions = it))
     })
-    HorizontalDivider(Modifier.padding(vertical = 8.dp))
-    SettingsSection(MR.strings.pref_reader_eink.localized()) {
-        CheckboxRow(MR.strings.pref_flash_page.localized(), options.flash, { onChange(options.copy(flash = it)) })
-        CheckboxRow(MR.strings.pref_page_turn_ripple.localized(), options.ripple, {
-            onChange(options.copy(ripple = it))
-        })
-        if (options.ripple) {
-            SettingsSection(MR.strings.pref_page_turn_ripple_style.localized()) {
-                val labels =
-                    listOf(
-                        MR.strings.pref_page_turn_ripple_style_clean,
-                        MR.strings.pref_page_turn_ripple_style_shadow_line,
-                        MR.strings.pref_page_turn_ripple_style_smooth,
-                    )
-                ChoiceRow {
-                    ReaderRippleStyle.entries.forEachIndexed { i, value ->
-                        ChoiceChip(labels[i].localized(), options.rippleStyle == value, {
-                            onChange(options.copy(rippleStyle = value))
-                        })
-                    }
-                }
-            }
-        }
-        if (options.flash) {
-            ReaderIntegerSlider(
-                MR.strings.pref_flash_duration.localized(),
-                options.flashMillis,
-                100..1500,
-                " ms",
-                100,
-            ) {
-                onChange(options.copy(flashMillis = it))
-            }
-            ReaderIntegerSlider(MR.strings.pref_flash_page_interval.localized(), options.flashInterval, 1..10) {
-                onChange(options.copy(flashInterval = it))
-            }
-            SettingsSection(MR.strings.pref_flash_with.localized()) {
-                val labels =
-                    listOf(
-                        MR.strings.pref_flash_style_black,
-                        MR.strings.pref_flash_style_white,
-                        MR.strings.pref_flash_style_white_black,
-                    )
-                ChoiceRow {
-                    ReaderFlashColor.entries.forEachIndexed { i, value ->
-                        ChoiceChip(labels[i].localized(), options.flashColor == value, {
-                            onChange(options.copy(flashColor = value))
-                        })
-                    }
-                }
-            }
-        }
-    }
 }
 
 @Composable
