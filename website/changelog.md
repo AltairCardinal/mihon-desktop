@@ -5,6 +5,10 @@ description: A traceable history of public feature documentation, separate from 
 
 # Changelog
 
+## 2026-11-19 — Android automatic downloads on synced resume
+
+The project owner accepted signed tablet candidate `0.19.4-aex.155 / vc173` on November 19, 2026. Candidate source was `6cab6f44fd`, and the main implementation is `26f32e2808`. On the PCE-W30, an in-place upgrade retained the library and download settings. Resuming a synced chapter queued the newly released chapter while filling an older gap in the chapter list. Acceptance covers the Android tablet and the local candidate.
+
 ## 2026-11-18 — Huawei reader cutout fallback accepted on Android
 
 The project owner verified the four-orientation cutout fallback on the Huawei MatePad Pro 13.2 (PCE-W30) in a private review on November 18, 2026. The accepted signed tablet candidate was `0.19.4-aex.153 / vc171`, source `8d95776c68`. The implementation on main is `3d31017833`. With **Show content in cutout area** off, the fullscreen reader uses the Huawei cutout depth plus one physical pixel when Android provides no cutout data. This entry records tablet acceptance of the local candidate.
