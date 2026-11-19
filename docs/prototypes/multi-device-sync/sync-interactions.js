@@ -241,6 +241,9 @@
       return minutes === 0 ? '上次同步刚刚完成' : `上次同步完成于 ${minutes} 分钟前`;
     }
 
+    const lifecycleCountText = processed => `已处理 ${processed} / ${lifecycleTotal} 条`;
+    const lifecycleItemPercent = processed => lifecyclePreparedPercent + Math.floor(processed / lifecycleTotal * lifecycleTransferPercent);
+
     function lifecycleCard() {
       const { run, showCompletion } = data().lifecycle;
       const phase = run?.phase || 'idle';
@@ -251,17 +254,17 @@
         : phase === 'paused' ? ['继续同步', 'resume']
           : phase === 'resume-failed' ? ['重试', 'resume']
             : lifecycleInFlight.includes(phase) ? [] : ['开始同步', 'start'];
-      const confirmed = run?.confirmed;
-      const showCount = Number.isFinite(confirmed) && !history && phase !== 'completed' && phase !== 'stopped';
+      const processed = run?.processed;
+      const showCount = Number.isFinite(processed) && !history && phase !== 'completed' && phase !== 'stopped';
       let percent = null;
-      if (showCount) percent = lifecyclePreparedPercent + Math.floor(confirmed / lifecycleTotal * lifecycleTransferPercent);
+      if (showCount) percent = lifecycleItemPercent(processed);
       if (phase === 'completed' && showCompletion) percent = 100;
       const determinate = percent !== null;
       const waiting = phase === 'preparing';
       return `<section class="sync-progress-card modern-status-card sync-lifecycle-card" data-testid="sync-progress-card" data-state="${phase}">
         <div class="modern-status-heading"><h3 data-testid="sync-progress-title" aria-live="polite" ${history ? 'data-lifecycle-history' : ''}>${title}</h3></div>
         ${lifecycleNotes[phase] ? `<p class="modern-muted">${lifecycleNotes[phase]}</p>` : ''}
-        ${showCount ? `<p class="modern-muted" data-testid="sync-progress-confirmed">已确认 ${confirmed} / ${lifecycleTotal} 条</p>` : ''}
+        ${showCount ? `<p class="modern-muted" data-testid="sync-progress-confirmed">${lifecycleCountText(processed)}</p>` : ''}
         ${determinate || waiting ? `<div class="sync-progress-track" role="progressbar" aria-label="整轮同步进度"${determinate ? ` aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"` : ''} data-determinate="${determinate}" data-active="${waiting}"><span style="width:${percent ?? 32}%"></span></div>` : ''}
         ${label ? `<div class="modern-status-actions">${action(label, 'lifecycle-' + command, command !== 'pause')}</div>` : ''}
       </section>`;
@@ -287,11 +290,25 @@
         });
         return;
       }
-      advanceLifecycle(run, 2000, () => {
-        run.confirmed += 12;
-        if (run.confirmed === lifecycleTotal) run.phase = 'finishing';
+      progressTimer = setTimeout(() => {
+        if (data().lifecycle?.run !== run || run.phase !== 'syncing') return;
+        run.processed++;
+        if (run.processed === lifecycleTotal) {
+          run.phase = 'finishing';
+          render(false);
+        } else {
+          // Update only the changing values, preserving the pause button and keyboard focus.
+          const card = document.querySelector('.sync-lifecycle-card[data-state="syncing"]');
+          if (card) {
+            card.querySelector('[data-testid="sync-progress-confirmed"]').textContent = lifecycleCountText(run.processed);
+            const track = card.querySelector('[role="progressbar"]');
+            const percent = lifecycleItemPercent(run.processed);
+            track.setAttribute('aria-valuenow', percent);
+            track.firstElementChild.style.width = percent + '%';
+          }
+        }
         workLifecycle(run);
-      });
+      }, 167);
     }
 
     function controlLifecycle(run, delay, next) {
@@ -306,12 +323,12 @@
       const lifecycle = data().lifecycle;
       const run = lifecycle.run;
       if (command === 'start' && (!run || ['completed', 'stopped'].includes(run.phase))) {
-        const next = { phase: 'preparing', confirmed: null };
+        const next = { phase: 'preparing', processed: null };
         lifecycle.run = next;
         lifecycle.showCompletion = false;
         advanceLifecycle(next, 6000, () => {
           next.phase = 'syncing';
-          next.confirmed = 0;
+          next.processed = 0;
           workLifecycle(next);
         });
       } else if (command === 'pause' && run && lifecyclePausable.includes(run.phase)) {
@@ -320,7 +337,7 @@
         if (run.phase !== 'finishing') clearTimeout(progressTimer);
         run.phase = 'pausing';
         controlLifecycle(run, 650, () => {
-          if (!run.confirmed) {
+          if (!run.processed) {
             run.phase = 'stopped';
             return;
           }

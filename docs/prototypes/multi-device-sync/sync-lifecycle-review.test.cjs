@@ -44,6 +44,29 @@ async function choose(page, name) {
   await page.getByRole('button', { name: '载入场景', exact: true }).click();
 }
 
+test('批内逐条处理推进总进度，批中暂停继续保留位置，跨批不重置', async () => {
+  await review(async (page, pc) => {
+    await start(pc);
+    await page.clock.runFor(6500);
+    const readCount = async () => Number((await progress(pc)).match(/(\d+)\s*\//)[1]);
+    const first = await readCount();
+    const firstPercent = await percent(pc);
+    assert.ok(first > 0 && first < 12, `第一批处理到 ${first} 条`);
+    await page.clock.runFor(500);
+    const middle = await readCount();
+    assert.ok(middle > first && middle < 12);
+    assert.ok(await percent(pc) > firstPercent);
+    await pause(pc);
+    await page.clock.runFor(3000);
+    assert.equal(await readCount(), middle);
+    await resume(pc);
+    await page.clock.runFor(2300);
+    assert.equal(await readCount(), middle);
+    await page.clock.runFor(1400);
+    assert.ok(await readCount() > 12 && await readCount() < 24);
+  });
+});
+
 test('Windows 准备时暂停先反馈再停止，空检查点只允许重新开始且另一端无变化', async () => {
   await review(async (page, pc, phone) => {
     assert.equal(await title(pc), '上次同步完成于 12 分钟前');
