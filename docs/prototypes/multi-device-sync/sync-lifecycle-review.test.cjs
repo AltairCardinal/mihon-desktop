@@ -14,6 +14,7 @@ async function review(run) {
     page.on('pageerror', error => errors.push(error.message));
     page.setDefaultTimeout(3000);
     await page.clock.install({ time: new Date('2026-11-19T10:00:00+08:00') });
+    await page.clock.pauseAt(new Date('2026-11-19T10:00:01+08:00'));
     await page.goto(url.href + '?device=both');
     const pc = page.frameLocator('#preview-windows');
     const phone = page.frameLocator('#preview-android');
@@ -43,6 +44,33 @@ async function choose(page, name) {
   await page.getByLabel('同步时序场景').selectOption(name);
   await page.getByRole('button', { name: '载入场景', exact: true }).click();
 }
+
+test('双端同步面板沿用客户端的结果详情、紧凑运行卡及图标按钮', async () => {
+  await review(async (page, pc, phone) => {
+    for (const device of [pc, phone]) {
+      const surface = card(device);
+      const details = surface.getByRole('button', { name: '查看详情' });
+      assert.ok(await details.isVisible(), '结果卡保留原生的查看详情入口');
+      const primary = surface.getByRole('button', { name: '开始同步', exact: true });
+      assert.equal(await primary.evaluate(button => getComputedStyle(button).backgroundColor), 'rgb(176, 198, 255)');
+      assert.ok(await device.getByText('当前没有待确认的操作', { exact: true }).isVisible());
+      await details.click();
+      await surface.getByRole('button', { name: '收起详情' }).click();
+      await start(device);
+      await page.clock.runFor(7000);
+      assert.match(await progress(device), /总条目已处理\s*\d+\s*\/\s*48\s*条/);
+      assert.ok(await surface.getByText(/已用时.*预计剩余/).isVisible());
+      const pauseButton = surface.getByRole('button', { name: '暂停同步' });
+      assert.ok(await pauseButton.locator('svg').isVisible());
+      const [buttonBounds, cardBounds, trackBounds] = await Promise.all([
+        pauseButton.boundingBox(), surface.boundingBox(), surface.getByRole('progressbar').boundingBox(),
+      ]);
+      assert.ok(Math.abs(trackBounds.height - 4) <= 1);
+      assert.ok(Math.abs(buttonBounds.width - 168) <= 1 && buttonBounds.height >= 48);
+      assert.ok(Math.abs(cardBounds.x + cardBounds.width - buttonBounds.x - buttonBounds.width - 19) <= 2);
+    }
+  });
+});
 
 test('批内逐条处理推进总进度，批中暂停继续保留位置，跨批不重置', async () => {
   await review(async (page, pc) => {
@@ -76,7 +104,7 @@ test('Windows 准备时暂停先反馈再停止，空检查点只允许重新开
     assert.equal(await card(pc).getByRole('progressbar').getAttribute('aria-valuenow'), null);
     await pause(pc);
     assert.equal(await title(pc), '正在暂停');
-    assert.equal(await card(pc).getByRole('button').count(), 0);
+    assert.ok(await card(pc).getByRole('button').isDisabled());
     await page.clock.runFor(700);
     assert.equal(await title(pc), '本次同步已停止');
     assert.equal(await card(pc).getByRole('button', { name: '开始同步' }).count(), 1);
@@ -94,10 +122,11 @@ test('Android 保存检查点后继续原轮，恢复失败可重试，重开只
     await choose(page, 'resume-failure');
     await start(phone);
     await page.clock.runFor(8100);
-    assert.equal(await title(phone), '同步中');
+    assert.match(await title(phone), /正在接收并校验数据|正在获取同步数据/);
     const checkpoint = await progress(phone);
     const checkpointPercent = await percent(phone);
     assert.match(checkpoint, /12\s*\/\s*48/);
+    assert.ok(await card(phone).getByText('本次新增确认12条', { exact: true }).isVisible());
     assert.ok(checkpointPercent > 0 && checkpointPercent < 100);
     await pause(phone);
     assert.equal(await title(phone), '正在暂停');
@@ -112,7 +141,7 @@ test('Android 保存检查点后继续原轮，恢复失败可重试，重开只
     await resume(phone);
     assert.equal(await title(phone), '正在继续同步');
     assert.equal(await progress(phone), checkpoint);
-    assert.equal(await card(phone).getByRole('button').count(), 0);
+    assert.ok(await card(phone).getByRole('button').isDisabled());
     await page.clock.runFor(2400);
     assert.equal(await title(phone), '继续同步失败');
     assert.equal(await progress(phone), checkpoint);
@@ -121,8 +150,9 @@ test('Android 保存检查点后继续原轮，恢复失败可重试，重开只
     await click(phone, '重试');
     assert.equal(await title(phone), '正在继续同步');
     await page.clock.runFor(2400);
-    assert.equal(await title(phone), '同步中');
+    assert.match(await title(phone), /正在接收并校验数据|正在获取同步数据/);
     assert.equal(await progress(phone), checkpoint);
+    assert.ok(await card(phone).getByText('已保留12条确认结果', { exact: true }).isVisible());
     await page.clock.runFor(6050);
     assert.equal(await title(phone), '正在结束同步');
     await page.clock.runFor(5000);
@@ -153,7 +183,8 @@ test('首次同步收尾不能冒充完成，实际完成可赢过暂停，面�
     assert.equal(await title(pc), '正在暂停');
     await page.clock.runFor(600);
     assert.equal(await title(pc), '本次同步已完成');
-    assert.equal(await percent(pc), 100);
+    assert.equal(await card(pc).getByRole('progressbar').count(), 0);
+    assert.ok(await card(pc).getByRole('button', { name: '查看详情' }).isVisible());
     await page.clock.runFor(2400);
     assert.equal(await title(pc), '本次同步已完成');
 
@@ -177,9 +208,10 @@ test('收尾暂停若先落地，迟到的完成不能覆盖暂停，也不能�
     assert.equal(await title(pc), '同步已暂停');
     assert.match(await progress(pc), /48\s*\/\s*48/);
     assert.equal(await percent(pc), beforePause);
-    await pc.getByRole('button', { name: '同步记录', exact: true }).click();
-    assert.equal(await pc.getByTestId('sync-lifecycle-record').first().innerText(), '上次同步完成于 12 分钟前');
-    await pc.getByTestId('sync-settings-back').click();
+    assert.equal(await pc.getByRole('button', { name: '同步记录', exact: true }).count(), 0);
+    await reopen(pc);
+    assert.equal(await title(pc), '同步已暂停');
+    assert.equal(await percent(pc), beforePause);
     await resume(pc);
     assert.equal(await percent(pc), beforePause);
     await page.clock.runFor(2400);

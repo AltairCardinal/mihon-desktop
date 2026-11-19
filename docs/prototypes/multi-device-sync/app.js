@@ -96,7 +96,9 @@
     const shell = platform === 'android' ? 'android-shell' : 'windows-shell';
     const frame = platform === 'android' ? `<div class="android-statusbar"><span>9:41</span><span class="status-icons">${view.icon('wifi')}${view.icon('signal')}${view.icon('battery')}</span></div>` : `<div class="desktop-windowbar"><span class="desktop-title"><img src="./mihon-desktop.png" alt="Mihon Desktop 图标"><span>Mihon Desktop 0.11.19.33 · 本地原型</span></span><span class="window-controls" aria-hidden="true"><i></i><i></i><i class="window-close"></i></span></div>`;
     const nav = state.ui.reader || (state.ui.detail && platform === 'android') ? '' : view.renderNav(spec(), state.ui.route, navIndicators());
-    return `<section class="app-window ${shell}" data-platform="${platform}" data-sync-design="${preview?.fullSyncReview && preview.reviewMode === 'proposal' ? 'modern' : 'source'}" data-native-sync="${Boolean(preview?.fullSyncReview)}" data-sync-palette="${preview?.syncPalette || 'default'}" data-testid="app-window">${frame}<div class="app-body">${content}</div>${nav}${platform === 'android' ? '<div class="gesture-area" aria-hidden="true"></div>' : ''}${state.ui.syncOpen ? renderSyncSheet() : ''}${extensions.modal()}</section>`;
+    const lifecycle = Boolean(state.ui.interactions?.lifecycle);
+    const design = lifecycle ? 'lifecycle' : preview?.fullSyncReview && preview.reviewMode === 'proposal' ? 'modern' : 'source';
+    return `<section class="app-window ${shell}" data-platform="${platform}" data-sync-design="${design}" data-native-sync="${Boolean(preview?.fullSyncReview)}" data-sync-palette="${lifecycle ? 'default' : preview?.syncPalette || 'default'}" data-testid="app-window">${frame}<div class="app-body">${content}</div>${nav}${platform === 'android' ? '<div class="gesture-area" aria-hidden="true"></div>' : ''}${state.ui.syncOpen ? renderSyncSheet() : ''}${extensions.modal()}</section>`;
   }
 
   function renderUpdatesActions() {
@@ -237,6 +239,16 @@
     const result = state.ui.syncResult;
     const batchResult = state.ui.batchResult;
     const busy = state.ui.busy && state.ui.busyDeviceId === current.id;
+    if (state.ui.interactions?.lifecycle) {
+      const status = interactions.status({});
+      if (interactions.lifecycleCompact()) return `<section class="sync-content" data-testid="sync-panel">${status}</section>`;
+      return `<section class="sync-content" data-testid="sync-panel">
+        ${status}${interactions.summary()}
+        ${batchResult ? `<div class="snackbar-inline" data-testid="batch-result">${esc(batchResult.message)}</div>` : ''}
+        ${pending ? `<section class="sync-list pending-list">${renderPendingToolbar(pending)}${current.confirmations.map(renderConfirmation).join('')}</section>` : `<div class="sync-empty"><span class="sync-check-circle">${view.icon('check')}</span><span>当前没有待确认的操作</span></div>`}
+        <button class="m-button m-button-text sync-lifecycle-record-link" data-action="ix-activity" data-testid="ix-activity">${view.icon('history')}<span>同步记录</span>${view.icon('chevron')}</button>
+      </section>`;
+    }
     if (state.ui.interactions?.progress?.compact && !(preview?.fullSyncReview ? ['succeeded', 'failed', 'partial', 'blocked', 'cancelled'].includes(state.ui.interactions.progress.state) : state.ui.interactions.progress.state === 'succeeded')) {
       return `<section class="sync-content" data-testid="sync-panel">${interactions.status({ total: current.pendingOutgoing.length, membership, reading, pending, busy, online: state.online })}</section>`;
     }

@@ -17,12 +17,16 @@
     function resetCountdown() { data().nextSyncAt = Date.now() + currentDevice().settings.periodMinutes * 60000; }
     function nextAutoText() {
       if (!currentDevice().settings.periodicSync) return '自动同步已关闭';
-      if (!state.online) return '当前离线，自动同步需等待网络恢复';
+      if (!state.online) return data().lifecycle ? '自动同步等待网络恢复' : '当前离线，自动同步需等待网络恢复';
       const now = new Date();
       const next = new Date(data().nextSyncAt);
       const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
       const day = next.toDateString() === now.toDateString() ? '今天' : next.toDateString() === tomorrow.toDateString() ? '明天' : `${next.getMonth() + 1}月${next.getDate()}日`;
       const time = `${String(next.getHours()).padStart(2, '0')}:${String(next.getMinutes()).padStart(2, '0')}`;
+      if (data().lifecycle) {
+        if (next <= now) return '自动同步已到期，等待系统安排';
+        return `预计下次自动同步：${day} ${time} · ${countdownTitle().replace(/同步$/, '')}`;
+      }
       return `下次自动同步${isWindows() ? '' : '（预计）'}：${day} ${time} · ${countdownTitle()}`;
     }
     function nextAuto() {
@@ -46,6 +50,8 @@
         const text = lifecycleHistoryText();
         if (history.textContent !== text) history.textContent = text;
       }
+      const roundTime = document.querySelector('[data-lifecycle-time]');
+      if (roundTime) roundTime.textContent = lifecycleRoundTime(data().lifecycle.run);
     }, 1000);
     const screen = () => data().stack.at(-1);
     function go(name) { data().stack.push(name); data().message = ''; }
@@ -103,7 +109,7 @@
     }
     function nativeQueue() {
       const { membership, reading } = queueStats();
-      return `<div class="sync-queue-summary">${[['待上传操作', `${currentDevice().pendingOutgoing.length} 项`], ['收藏与关注', `${membership.favorites} 条收藏 · ${membership.authors} 条关注`], ['阅读记录', `${reading} 条阅读记录`]].map(([label, value]) => `<div class="native-list-row"><strong>${label}</strong><span>${value}</span></div>`).join('')}</div>`;
+      return `<div class="sync-queue-summary" data-testid="sync-queue-summary">${[['待上传操作', `${currentDevice().pendingOutgoing.length} 项`], ['收藏与关注', `${membership.favorites} 条收藏 · ${membership.authors} 条关注`], ['阅读记录', `${reading} 条阅读记录`]].map(([label, value]) => `<div class="native-list-row"><strong>${label}</strong><span>${value}</span></div>`).join('')}</div>`;
     }
     function modernHistoryCard(f) {
       const [label, name] = primary(f);
@@ -165,7 +171,7 @@
       return entries.map(([title, detail]) => `<article class="ix-activity-entry"><span class="row-leading">${view.icon('check')}</span><div><strong>${title}</strong><p>${detail}</p></div></article>`).join('');
     }
     function status({ total, membership, reading, pending, busy, online }) {
-      if (data().lifecycle) return lifecycleCard();
+      if (data().lifecycle) return lifecycleCompact() ? lifecycleProgress(data().lifecycle.run) : lifecycleResult() + nextAuto();
       const d = data();
       if (modern() && d.recovery) return recoverySummary();
       if (d.progress) return progressCard();
@@ -214,11 +220,14 @@
     let lifecycleControlTimer = null;
 
     const lifecycleTotal = 48;
+    const lifecycleBatchSize = 12;
     const lifecyclePreparedPercent = 5;
     const lifecycleTransferPercent = 85;
+    const lifecycleItemDelay = 167;
+    const lifecycleFinishDelay = 5000;
     const lifecycleTitles = {
       preparing: '正在准备同步',
-      syncing: '同步中',
+      syncing: '正在接收并校验数据',
       finishing: '正在结束同步',
       pausing: '正在暂停',
       saving: '正在保存进度',
@@ -228,7 +237,6 @@
       'resume-failed': '继续同步失败',
     };
     const lifecycleNotes = {
-      finishing: '正在核对本次同步结果',
       'resume-failed': '暂时无法读取保存的进度，已确认的条目仍会保留。',
     };
     const lifecycleInFlight = ['preparing', 'syncing', 'finishing', 'pausing', 'saving', 'resuming'];
@@ -241,32 +249,82 @@
       return minutes === 0 ? '上次同步刚刚完成' : `上次同步完成于 ${minutes} 分钟前`;
     }
 
-    const lifecycleCountText = processed => `已处理 ${processed} / ${lifecycleTotal} 条`;
+    const lifecycleCountText = processed => `总条目已处理 ${processed} / ${lifecycleTotal} 条`;
     const lifecycleItemPercent = processed => lifecyclePreparedPercent + Math.floor(processed / lifecycleTotal * lifecycleTransferPercent);
+    function lifecycleCompact() {
+      const phase = data().lifecycle?.run?.phase;
+      return phase === 'paused' || lifecycleInFlight.includes(phase);
+    }
 
-    function lifecycleCard() {
-      const { run, showCompletion } = data().lifecycle;
+    function lifecycleClock(milliseconds) {
+      const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+      return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+    }
+
+    function lifecycleElapsed(run, now = Date.now()) {
+      return (run.pausedAt ?? now) - run.startedAt - run.pausedMillis;
+    }
+
+    function lifecycleRoundTime(run) {
+      const remainingMillis = (lifecycleTotal - run.processed) * lifecycleItemDelay + lifecycleFinishDelay;
+      const remains = run.phase === 'syncing' && run.processed >= 3
+        ? lifecycleClock(Math.ceil(remainingMillis / 1000) * 1000) : '—';
+      return `已用时 ${lifecycleClock(lifecycleElapsed(run))} · 预计剩余 ${remains}`;
+    }
+
+    function lifecycleOperation(label, command, { icon, disabled = false, primary = false } = {}) {
+      const content = (icon ? `<span data-progress-control-icon>${view.icon(icon)}</span>` : '') + `<span>${label}</span>`;
+      return `<div class="sync-progress-operation" data-testid="sync-progress-operation">
+        ${button(content, `data-testid="sync-progress-primary" data-action="ix-lifecycle-${command}" ${disabled ? 'disabled' : ''}`,
+          primary ? 'm-button-primary' : icon ? 'm-button-tonal' : 'm-button-text')}
+      </div>`;
+    }
+
+    function lifecycleConfirmationRows(run) {
+      if (!run.confirmed) return '';
+      const added = run.confirmed - run.retainedConfirmed;
+      return `<p data-testid="sync-attempt-confirmed">本次新增确认${added}条</p>${run.retainedConfirmed
+        ? `<p data-testid="sync-retained-confirmed">已保留${run.retainedConfirmed}条确认结果</p>` : ''}`;
+    }
+
+    function lifecycleProgress(run) {
+      const { phase, processed } = run;
+      const title = lifecycleTitles[phase];
+      const counted = processed !== null;
+      const percent = counted ? lifecycleItemPercent(processed) : null;
+      const waiting = phase === 'preparing';
+      const status = `<p data-testid="sync-progress-title" aria-live="polite">${title}</p>`;
+      const operation = lifecyclePausable.includes(phase) ? lifecycleOperation('暂停同步', 'pause', { icon: 'pause' })
+        : phase === 'paused' ? lifecycleOperation('继续同步', 'resume', { icon: 'play' })
+          : lifecycleOperation(title, 'wait', { disabled: true });
+      return `<section class="sync-progress-card sync-compact-card sync-lifecycle-card" data-testid="sync-progress-card" data-state="${phase}">
+        <div class="sync-compact-content">
+          ${counted ? `<p data-testid="sync-progress-confirmed">${lifecycleCountText(processed)}</p>` : status}
+          <div class="sync-progress-track" data-testid="sync-progress-track" role="progressbar" aria-label="整轮同步进度"${counted ? ` aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"` : ''} data-determinate="${counted}" data-active="${waiting}"><span style="width:${percent ?? 32}%"></span></div>
+          ${counted ? status : ''}
+          <div class="sync-lifecycle-confirmations">${lifecycleConfirmationRows(run)}</div>
+          ${counted ? `<p data-testid="sync-compact-time" data-lifecycle-time>${lifecycleRoundTime(run)}</p>` : ''}
+          ${operation}
+        </div>
+      </section>`;
+    }
+
+    function lifecycleResult() {
+      const d = data();
+      const { run, showCompletion, lastCompletedAt, lastCompletedElapsed, lastCompletedConfirmed } = d.lifecycle;
       const phase = run?.phase || 'idle';
       const history = phase === 'idle' || phase === 'completed' && !showCompletion;
-      const title = history ? lifecycleHistoryText()
-        : phase === 'completed' ? '本次同步已完成' : lifecycleTitles[phase];
-      const [label, command] = lifecyclePausable.includes(phase) ? ['暂停同步', 'pause']
-        : phase === 'paused' ? ['继续同步', 'resume']
-          : phase === 'resume-failed' ? ['重试', 'resume']
-            : lifecycleInFlight.includes(phase) ? [] : ['开始同步', 'start'];
-      const processed = run?.processed;
-      const showCount = Number.isFinite(processed) && !history && phase !== 'completed' && phase !== 'stopped';
-      let percent = null;
-      if (showCount) percent = lifecycleItemPercent(processed);
-      if (phase === 'completed' && showCompletion) percent = 100;
-      const determinate = percent !== null;
-      const waiting = phase === 'preparing';
-      return `<section class="sync-progress-card modern-status-card sync-lifecycle-card" data-testid="sync-progress-card" data-state="${phase}">
-        <div class="modern-status-heading"><h3 data-testid="sync-progress-title" aria-live="polite" ${history ? 'data-lifecycle-history' : ''}>${title}</h3></div>
-        ${lifecycleNotes[phase] ? `<p class="modern-muted">${lifecycleNotes[phase]}</p>` : ''}
-        ${showCount ? `<p class="modern-muted" data-testid="sync-progress-confirmed">${lifecycleCountText(processed)}</p>` : ''}
-        ${determinate || waiting ? `<div class="sync-progress-track" role="progressbar" aria-label="整轮同步进度"${determinate ? ` aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"` : ''} data-determinate="${determinate}" data-active="${waiting}"><span style="width:${percent ?? 32}%"></span></div>` : ''}
-        ${label ? `<div class="modern-status-actions">${action(label, 'lifecycle-' + command, command !== 'pause')}</div>` : ''}
+      const succeeded = phase === 'completed' || history && lastCompletedAt !== null;
+      const failed = phase === 'resume-failed';
+      const title = history ? lifecycleHistoryText() : succeeded ? '本次同步已完成' : lifecycleTitles[phase];
+      const statusIcon = succeeded ? `<span class="sync-check-circle">${view.icon('check')}</span>` : view.icon(failed ? 'info' : 'sync');
+      return `<section class="sync-progress-card sync-lifecycle-card sync-lifecycle-result" data-testid="sync-progress-card" data-state="${phase}">
+        <div class="sync-lifecycle-heading">${statusIcon}<h3 data-testid="sync-progress-title" aria-live="polite" ${history ? 'data-lifecycle-history' : ''}>${title}</h3></div>
+        ${succeeded ? `<p class="sync-lifecycle-result-copy">已完成${lastCompletedConfirmed}条 · 用时${lifecycleClock(lastCompletedElapsed)}</p>` : ''}
+        ${failed ? `<p class="sync-lifecycle-result-copy" data-testid="sync-progress-confirmed">${lifecycleCountText(run.processed)}</p><div class="sync-lifecycle-confirmations">${lifecycleConfirmationRows(run)}</div><p>${lifecycleNotes[phase]}</p>` : ''}
+        ${lifecycleOperation(failed ? '重试' : '开始同步', failed ? 'resume' : 'start', { primary: true })}
+        ${button(d.progressDetails ? '收起详情' : '查看详情', `data-action="ix-progress-details" data-testid="sync-progress-toggle" aria-expanded="${Boolean(d.progressDetails)}" aria-controls="sync-lifecycle-details"`, 'm-button-text progress-toggle')}
+        <div id="sync-lifecycle-details" class="sync-progress-details native-details" data-testid="sync-progress-details" ${d.progressDetails ? '' : 'hidden'} tabindex="0">${nativeQueue()}</div>
       </section>`;
     }
 
@@ -280,11 +338,14 @@
 
     function workLifecycle(run) {
       if (run.phase === 'finishing') {
-        advanceLifecycle(run, 5000, () => {
+        advanceLifecycle(run, lifecycleFinishDelay, () => {
           clearTimeout(lifecycleControlTimer);
           const lifecycle = data().lifecycle;
           run.phase = 'completed';
           lifecycle.lastCompletedAt = Date.now();
+          lifecycle.lastCompletedElapsed = lifecycleElapsed(run, lifecycle.lastCompletedAt);
+          lifecycle.lastCompletedConfirmed = run.confirmed;
+          resetCountdown();
           lifecycle.showCompletion = state.ui.syncOpen && !state.ui.syncSettingsOpen && !state.ui.batchReview && !screen() &&
             !window.frameElement?.closest('.device-column')?.hidden;
         });
@@ -293,6 +354,8 @@
       progressTimer = setTimeout(() => {
         if (data().lifecycle?.run !== run || run.phase !== 'syncing') return;
         run.processed++;
+        const batchConfirmed = run.processed % lifecycleBatchSize === 0;
+        if (batchConfirmed) run.confirmed += lifecycleBatchSize;
         if (run.processed === lifecycleTotal) {
           run.phase = 'finishing';
           render(false);
@@ -305,10 +368,11 @@
             const percent = lifecycleItemPercent(run.processed);
             track.setAttribute('aria-valuenow', percent);
             track.firstElementChild.style.width = percent + '%';
+            if (batchConfirmed) card.querySelector('.sync-lifecycle-confirmations').innerHTML = lifecycleConfirmationRows(run);
           }
         }
         workLifecycle(run);
-      }, 167);
+      }, lifecycleItemDelay);
     }
 
     function controlLifecycle(run, delay, next) {
@@ -323,9 +387,10 @@
       const lifecycle = data().lifecycle;
       const run = lifecycle.run;
       if (command === 'start' && (!run || ['completed', 'stopped'].includes(run.phase))) {
-        const next = { phase: 'preparing', processed: null };
+        const next = { phase: 'preparing', processed: null, confirmed: 0, retainedConfirmed: 0, startedAt: Date.now(), pausedMillis: 0 };
         lifecycle.run = next;
         lifecycle.showCompletion = false;
+        data().progressDetails = false;
         advanceLifecycle(next, 6000, () => {
           next.phase = 'syncing';
           next.processed = 0;
@@ -334,7 +399,10 @@
       } else if (command === 'pause' && run && lifecyclePausable.includes(run.phase)) {
         run.resumePhase = run.phase;
         // A final check already in progress may finish before the pause is saved.
-        if (run.phase !== 'finishing') clearTimeout(progressTimer);
+        if (run.phase !== 'finishing') {
+          clearTimeout(progressTimer);
+          run.pausedAt = Date.now();
+        }
         run.phase = 'pausing';
         controlLifecycle(run, 650, () => {
           if (!run.processed) {
@@ -344,17 +412,21 @@
           run.phase = 'saving';
           controlLifecycle(run, 1650, () => {
             clearTimeout(progressTimer);
+            run.pausedAt ??= Date.now();
             run.phase = 'paused';
           });
         });
       } else if (command === 'resume' && run && ['paused', 'resume-failed'].includes(run.phase)) {
         run.phase = 'resuming';
+        run.retainedConfirmed = run.confirmed;
         controlLifecycle(run, 2300, () => {
           if (lifecycle.failNextResume) {
             lifecycle.failNextResume = false;
             run.phase = 'resume-failed';
           } else {
             run.phase = run.resumePhase;
+            run.pausedMillis += Date.now() - run.pausedAt;
+            run.pausedAt = null;
             workLifecycle(run);
           }
         });
@@ -817,10 +889,13 @@
       state.ui.syncOpen = true; state.ui.syncSettingsOpen = false; state.ui.route = 'library'; state.ui.detail = null; state.ui.reader = false;
       state.ui.batchReview = null; state.ui.selecting = false; state.ui.syncResult = null; state.ui.batchResult = null;
       if (name.startsWith('lifecycle-')) {
+        currentDevice().confirmations = [];
         d.lifecycle = {
           run: null,
           showCompletion: false,
           lastCompletedAt: name === 'lifecycle-first-sync' ? null : Date.now() - 12 * 60000,
+          lastCompletedElapsed: 19000,
+          lastCompletedConfirmed: lifecycleTotal,
           failNextResume: name === 'lifecycle-resume-failure',
         };
       } else if (name.startsWith('space-')) recoveryScenario(name);
@@ -1003,7 +1078,7 @@
         document.querySelector('.ix-feedback')?.remove();
       }
     }
-    return { nativeSettings, beginSync, finishSync, paintProgress, needsRecovery: () => Boolean(modern() && data().recovery), hasProgress: () => Boolean(data().progress), screen, title: () => screen() === 'password-help' ? '忘记同步密码' : screen() === 'password' && data().mode === 'create' ? '创建同步空间' : titles[screen()], back, close, settings, settingsFooter, renderScreen, unconfigured, connected: () => data().connected, status, didSync, resetCountdown, summary, handle, input, showScenario, networkChanged, startBatch, batchActive: () => data().batch && data().batch.done < data().batch.total,
+    return { nativeSettings, beginSync, finishSync, paintProgress, lifecycleCompact, needsRecovery: () => Boolean(modern() && data().recovery), hasProgress: () => Boolean(data().progress), screen, title: () => screen() === 'password-help' ? '忘记同步密码' : screen() === 'password' && data().mode === 'create' ? '创建同步空间' : titles[screen()], back, close, settings, settingsFooter, renderScreen, unconfigured, connected: () => data().connected, status, didSync, resetCountdown, summary, handle, input, showScenario, networkChanged, startBatch, batchActive: () => data().batch && data().batch.done < data().batch.total,
       importStatus: () => data().importProgress != null && !data().progress ? row(data().importReady ? '合并已完成' : data().importWaitingNetwork ? '等待网络连接' : data().importPaused ? '合并尚未完成' : '正在合并数据', '查看进度与继续操作', 'import-view') : '',
       busy: () => lifecycleInFlight.includes(data().lifecycle?.run?.phase) || data().issue === 'unknown' || (data().importProgress != null && !data().importPaused && !data().importReady),
     };
