@@ -236,7 +236,7 @@ class SyncProgressDisplaySession {
             } else {
                 MR.strings.sync_waiting_retry
             }
-            fact?.hold == SyncProgressHold.PAUSING -> MR.strings.sync_pausing_save
+            fact?.hold == SyncProgressHold.PAUSING -> MR.strings.sync_pausing
             fact?.hold == SyncProgressHold.PAUSED -> MR.strings.sync_paused
             fact?.hold == SyncProgressHold.OFFLINE -> MR.strings.sync_waiting_network
             fact?.hold == SyncProgressHold.WAITING -> MR.strings.sync_waiting_system
@@ -246,7 +246,7 @@ class SyncProgressDisplaySession {
         }
         val action = when {
             operationFeedback != null -> operationFeedback
-            terminal -> if (historical) MR.strings.sync_confirmed_retained else status
+            terminal -> status
             fact?.stage == SyncProgressStage.PREPARING -> MR.strings.sync_stage_prepare
             fact?.stage == SyncProgressStage.TRANSFERRING -> if (fact.direction == SyncProgressDirection.UPLOAD) {
                 MR.strings.sync_phase_uploading
@@ -302,7 +302,7 @@ class SyncProgressDisplaySession {
 
 /** Keep successful activity feedback until the matching final database projection reaches the panel. */
 internal fun SyncPanelState.operationFeedback(): StringResource? {
-    if (syncPauseRequested) return if (syncPauseSaving) MR.strings.sync_pause_saving else MR.strings.sync_pausing
+    if (syncPauseRequested) return MR.strings.sync_pausing
     if (syncResumeRequested) return MR.strings.sync_resuming
     if (syncStartRequested) return MR.strings.sync_start_preparing
     val current = operation ?: return null

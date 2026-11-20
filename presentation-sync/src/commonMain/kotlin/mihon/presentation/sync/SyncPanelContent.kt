@@ -410,7 +410,7 @@ fun SyncPanelContent(
                             SyncPanelQuestion.ABANDON_LEGACY -> MR.strings.sync_setup_abandon_legacy_title
                             SyncPanelQuestion.CREATE_NEW_SPACE -> MR.strings.sync_recovery_create
                             SyncPanelQuestion.CONNECT_SPACE -> MR.strings.sync_recovery_connect_confirm
-                            SyncPanelQuestion.CANCEL_RECOVERY_SWITCH -> MR.strings.sync_recovery_cancel_switch
+                            SyncPanelQuestion.CANCEL_RECOVERY_SWITCH -> MR.strings.sync_recovery_cancel_switch_title
                             SyncPanelQuestion.CREATE_REPOSITORY -> MR.strings.sync_repository_create_confirm
                             SyncPanelQuestion.REPAIR_REPOSITORY_PROPERTIES ->
                                 MR.strings.sync_repository_properties_confirm
@@ -443,33 +443,24 @@ fun SyncPanelContent(
                             if (state.repairUnarchive) Text(syncString(MR.strings.sync_repository_unarchive_change))
                         }
                     }
+                    val body = when (question) {
+                        SyncPanelQuestion.DISCONNECT -> MR.strings.sync_disconnect_body
+                        SyncPanelQuestion.SWITCH_SPACE -> MR.strings.sync_switch_body
+                        SyncPanelQuestion.ABANDON_LEGACY -> MR.strings.sync_setup_abandon_legacy_body
+                        SyncPanelQuestion.CREATE_NEW_SPACE -> MR.strings.sync_recovery_create_body
+                        SyncPanelQuestion.CONNECT_SPACE, SyncPanelQuestion.CANCEL_RECOVERY_SWITCH -> null
+                        SyncPanelQuestion.CREATE_REPOSITORY -> MR.strings.sync_repository_create_confirm_body
+                        SyncPanelQuestion.REPAIR_REPOSITORY_PROPERTIES ->
+                            MR.strings.sync_repository_properties_confirm_body
+                        SyncPanelQuestion.AUTHORIZE_REPOSITORY_SCOPE -> MR.strings.sync_repository_scope_confirm_body
+                        SyncPanelQuestion.CONNECT_MANUAL_REPOSITORY -> MR.strings.sync_repository_manual_confirm_body
+                    }
                     if (question == SyncPanelQuestion.CONNECT_SPACE) {
                         state.switchTargetRepository?.let { target ->
                             Text(syncString(MR.strings.sync_recovery_connect_target, target.fullName))
                         }
-                    } else {
-                        Text(
-                            syncString(
-                                when (question) {
-                                    SyncPanelQuestion.DISCONNECT -> MR.strings.sync_disconnect_body
-                                    SyncPanelQuestion.SWITCH_SPACE -> MR.strings.sync_switch_body
-                                    SyncPanelQuestion.ABANDON_LEGACY -> MR.strings.sync_setup_abandon_legacy_body
-                                    SyncPanelQuestion.CREATE_NEW_SPACE -> MR.strings.sync_recovery_create_body
-                                    SyncPanelQuestion.CONNECT_SPACE -> MR.strings.sync_recovery_connect_target
-                                    SyncPanelQuestion.CANCEL_RECOVERY_SWITCH -> {
-                                        MR.strings.sync_recovery_cancel_switch_body
-                                    }
-                                    SyncPanelQuestion.CREATE_REPOSITORY ->
-                                        MR.strings.sync_repository_create_confirm_body
-                                    SyncPanelQuestion.REPAIR_REPOSITORY_PROPERTIES ->
-                                        MR.strings.sync_repository_properties_confirm_body
-                                    SyncPanelQuestion.AUTHORIZE_REPOSITORY_SCOPE ->
-                                        MR.strings.sync_repository_scope_confirm_body
-                                    SyncPanelQuestion.CONNECT_MANUAL_REPOSITORY ->
-                                        MR.strings.sync_repository_manual_confirm_body
-                                },
-                            ),
-                        )
+                    } else if (body != null) {
+                        Text(syncString(body))
                     }
                     if (question == SyncPanelQuestion.CONNECT_SPACE || question == SyncPanelQuestion.CREATE_NEW_SPACE) {
                         Text(
@@ -635,7 +626,7 @@ private fun RecoverySummary(state: SyncPanelState, dispatch: (SyncPanelAction) -
                         ),
                         style = MaterialTheme.typography.titleMedium,
                     )
-                    Text(syncString(recoveryBody(state)))
+                    recoveryBody(recovery.reason)?.let { Text(syncString(it)) }
                     RecoveryFacts(state)
                     RecoveryCheckFeedback(state)
                     if (recovery.reason == SyncSpaceRecoveryReason.SWITCH_PENDING) {
@@ -727,8 +718,8 @@ private fun RecoveryPage(
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Text(syncString(MR.strings.sync_error_recovery_choice_body))
-                } else {
-                    Text(syncString(recoveryBody(state)))
+                } else if (reason == SyncSpaceRecoveryReason.SWITCH_PENDING) {
+                    Text(syncString(MR.strings.sync_recovery_switch_pending_body))
                 }
                 RecoveryFacts(state)
                 (
@@ -1304,12 +1295,11 @@ private fun RecoveryFacts(state: SyncPanelState) {
     }
 }
 
-private fun recoveryBody(state: SyncPanelState): StringResource =
-    if (state.recovery?.reason == SyncSpaceRecoveryReason.SWITCH_PENDING) {
-        MR.strings.sync_recovery_switch_pending_body
-    } else {
-        MR.strings.sync_recovery_preserved
-    }
+private fun recoveryBody(reason: SyncSpaceRecoveryReason): StringResource? = when (reason) {
+    SyncSpaceRecoveryReason.SPACE_UNAVAILABLE -> MR.strings.sync_recovery_space_unavailable_body
+    SyncSpaceRecoveryReason.SWITCH_PENDING -> MR.strings.sync_recovery_switch_pending_body
+    SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED, SyncSpaceRecoveryReason.SPACE_DATA_INVALID -> null
+}
 
 private fun recoveryWaiting(state: SyncPanelState): StringResource =
     if (state.recovery?.reason == SyncSpaceRecoveryReason.SWITCH_PENDING) {
@@ -1497,30 +1487,6 @@ private fun MainPage(
         }
         if (!state.showingCompactRun && state.pendingTotal > 0) {
             stickyHeader(key = "selection-toolbar") { SelectionBar(state, dispatch) }
-        }
-        if (!state.showingCompactRun && state.pending.isEmpty()) {
-            item("empty") {
-                Row(
-                    Modifier.fillMaxWidth().padding(
-                        horizontal = 24.dp,
-                        vertical = 16.dp,
-                    ),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        Icons.Outlined.CheckCircle,
-                        null,
-                        Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        syncString(MR.strings.sync_empty),
-                        Modifier.padding(start = 8.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
         }
         if (!state.showingCompactRun) {
             items(state.pending, key = { it.id }) { item -> PendingRow(item, state, dispatch) }
@@ -3150,10 +3116,15 @@ private fun SyncCompactProgressCard(
                         drawStopIndicator = {},
                     )
                 }
+                val fact = presentation.fact
+                val stalled = fact?.hold == SyncProgressHold.ACTIVE &&
+                    (fact.secondsWithoutProgress ?: fact.secondsSinceLastProgress ?: 0L) >= 10L
                 val operationLabel = when {
                     state.syncPauseRequested || state.syncResumeRequested -> presentation.status
                     presentation.resumeFailed -> MR.strings.sync_resume_failed
                     run?.state == SyncRunState.PAUSED_USER && !presentation.active -> MR.strings.sync_paused
+                    run != null && fact != null && presentation.active && stalled ->
+                        state.operationFeedback() ?: progressStageAction(run.phase, fact)
                     presentation.operation != null -> presentation.action
                     else -> null
                 }
@@ -3168,13 +3139,6 @@ private fun SyncCompactProgressCard(
                         Text(
                             syncString(MR.strings.sync_attempt_confirmed, it),
                             Modifier.fillMaxWidth().testTag("sync-attempt-confirmed"),
-                            style = textStyle,
-                        )
-                    }
-                    if (presentation.retainedConfirmed > 0) {
-                        Text(
-                            syncString(MR.strings.sync_retained_confirmed, presentation.retainedConfirmed),
-                            Modifier.fillMaxWidth().testTag("sync-retained-confirmed"),
                             style = textStyle,
                         )
                     }
@@ -3294,13 +3258,6 @@ private fun SyncProgressCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (presentation.attemptConfirmed != null && presentation.retainedConfirmed > 0) {
-                Text(
-                    syncString(MR.strings.sync_retained_confirmed, presentation.retainedConfirmed),
-                    Modifier.testTag("sync-retained-confirmed"),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
             if (state.hasInvalidReceivedData) {
                 Text(syncString(MR.strings.sync_invalid_saved_hint), Modifier.testTag("sync-validation-reason"))
             } else if (run?.state == SyncRunState.FAILED && run.stopReason == "retry_exhausted") {
@@ -3310,22 +3267,13 @@ private fun SyncProgressCard(
             ) {
                 Text(problemText(state.problem ?: SyncRunProblem.UNKNOWN), Modifier.testTag("sync-blocked-reason"))
             } else if (run?.state == SyncRunState.PARTIAL) {
-                Text(
-                    syncString(
-                        when {
-                            state.waitingForLocalRestoration -> MR.strings.sync_local_restore_hint
-                            run.stopReason == "projection_pending" -> MR.strings.sync_projection_pending
-                            state.pendingTotal > 0 -> MR.strings.sync_pending_decisions_count
-                            else -> MR.strings.sync_pending_decisions
-                        },
-                        *if (state.pendingTotal > 0 && run.stopReason != "projection_pending") {
-                            arrayOf(state.pendingTotal)
-                        } else {
-                            emptyArray()
-                        },
-
-                    ),
-                )
+                val detail = when {
+                    state.waitingForLocalRestoration -> syncString(MR.strings.sync_local_restore_hint)
+                    run.stopReason == "projection_pending" -> syncString(MR.strings.sync_projection_pending)
+                    state.pendingTotal > 0 -> syncString(MR.strings.sync_pending_decisions_count, state.pendingTotal)
+                    else -> null
+                }
+                detail?.let { Text(it) }
             }
             if (normalSuccess && state.queuedTotal > 0L) PendingOperations(state.queuedTotal)
             if (!normalSuccess || state.queuedTotal > 0L) SyncMainOperation(state, presentation, dispatch)
@@ -3353,16 +3301,6 @@ private fun SyncProgressCard(
             }
             if (terminal && run != null) {
                 val summary = state.terminalSummary?.takeIf { it.runId == run.runId }
-                summary?.takeIf { it.pendingDownloadBatches > 0 }?.let {
-                    Text(
-                        syncString(
-                            MR.strings.sync_terminal_pending_receipts,
-                            it.pendingDownloadBatches,
-                            it.pendingDownloadEvents,
-                        ),
-                    )
-                    Text(syncString(MR.strings.sync_terminal_pending_explanation))
-                }
                 summary?.takeIf { it.sourceUnavailableFields > 0 }?.let {
                     Text(
                         syncString(
@@ -3419,6 +3357,23 @@ private fun SyncProgressCard(
                     }.focusGroup().testTag("sync-progress-details"),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    if (presentation.attemptConfirmed != null && presentation.retainedConfirmed > 0) {
+                        Text(
+                            syncString(MR.strings.sync_retained_confirmed, presentation.retainedConfirmed),
+                            Modifier.testTag("sync-retained-confirmed"),
+                        )
+                    }
+                    state.terminalSummary?.takeIf {
+                        terminal && it.runId == run?.runId && it.pendingDownloadBatches > 0
+                    }?.let {
+                        Text(
+                            syncString(
+                                MR.strings.sync_terminal_pending_receipts,
+                                it.pendingDownloadBatches,
+                                it.pendingDownloadEvents,
+                            ),
+                        )
+                    }
                     if (run?.state == SyncRunState.BLOCKED ||
                         (run?.state in setOf(SyncRunState.FAILED, SyncRunState.PARTIAL) && state.problem != null)
                     ) {
@@ -3536,8 +3491,7 @@ private fun syncMainOperationHeight(): Dp {
     val labels = listOf(
         MR.strings.sync_resume_run, MR.strings.sync_retry_run, MR.strings.sync_reconnect,
         MR.strings.sync_password_connect, MR.strings.sync_view_reason, MR.strings.sync_now,
-        MR.strings.sync_pause_run, MR.strings.sync_pausing_save, MR.strings.sync_wait_start,
-        MR.strings.sync_pausing, MR.strings.sync_pause_saving, MR.strings.sync_resuming,
+        MR.strings.sync_pause_run, MR.strings.sync_pausing, MR.strings.sync_wait_start, MR.strings.sync_resuming,
         MR.strings.sync_connect_space, MR.strings.sync_connection_problem,
         MR.strings.sync_checking_connection, MR.strings.sync_retry_connection_check,
     ).map { syncString(it) }
@@ -3721,7 +3675,7 @@ private fun SyncMainOperation(
                 if (fact?.hold ==
                     SyncProgressHold.PAUSING
                 ) {
-                    MR.strings.sync_pausing_save
+                    MR.strings.sync_pausing
                 } else {
                     MR.strings.sync_wait_start
                 },
@@ -3788,26 +3742,7 @@ private fun SyncStageProgress(
         }
     }
     if (fact.additionalWork) Text(syncString(MR.strings.sync_additional_work))
-    val action = when (fact.stage) {
-        SyncProgressStage.PREPARING -> if (run.phase == SyncRunPhase.UPLOADING) {
-            MR.strings.sync_preparing_upload
-        } else {
-            runPhaseLabel(run.phase)
-        }
-        SyncProgressStage.TRANSFERRING -> if (fact.direction == SyncProgressDirection.UPLOAD) {
-            MR.strings.sync_phase_uploading
-        } else {
-            MR.strings.sync_phase_downloading
-        }
-        SyncProgressStage.CONFIRMING -> if (fact.direction == SyncProgressDirection.UPLOAD) {
-            MR.strings.sync_checking_github_saved
-        } else if (fact.mergingReceivedData) {
-            MR.strings.sync_merging_received_data
-        } else {
-            MR.strings.sync_receiving_and_verifying
-        }
-    }
-    Text(syncString(action), style = MaterialTheme.typography.titleMedium)
+    Text(syncString(progressStageAction(run.phase, fact)), style = MaterialTheme.typography.titleMedium)
     if (fact.stage == SyncProgressStage.PREPARING) {
         val imported = fact.importCompletedItems
         val importTotal = fact.importTotalItems
@@ -3818,7 +3753,7 @@ private fun SyncStageProgress(
     if (fact.hold == SyncProgressHold.RECOVERING) {
         Text(syncString(MR.strings.sync_recovering_progress))
     } else if (fact.hold == SyncProgressHold.PAUSING) {
-        Text(syncString(MR.strings.sync_pausing_save))
+        Text(syncString(MR.strings.sync_pausing))
     }
     if (fact.totalItems == 0L && fact.completedItems == 0L && run.state == SyncRunState.SUCCEEDED) {
         Text(syncString(MR.strings.sync_no_pending_data))
@@ -4100,6 +4035,24 @@ private fun statusText(state: SyncPanelState): String = when {
     state.connection?.enabled != true -> syncString(MR.strings.sync_connect)
     state.syncStoppedBeforeRun -> syncString(MR.strings.sync_stopped_this_run)
     else -> syncString(MR.strings.sync_no_success)
+}
+
+private fun progressStageAction(phase: SyncRunPhase, fact: SyncProgressFact): StringResource = when (fact.stage) {
+    SyncProgressStage.PREPARING -> if (phase == SyncRunPhase.UPLOADING) {
+        MR.strings.sync_preparing_upload
+    } else {
+        runPhaseLabel(phase)
+    }
+    SyncProgressStage.TRANSFERRING -> if (fact.direction == SyncProgressDirection.UPLOAD) {
+        MR.strings.sync_phase_uploading
+    } else {
+        MR.strings.sync_phase_downloading
+    }
+    SyncProgressStage.CONFIRMING -> when {
+        fact.direction == SyncProgressDirection.UPLOAD -> MR.strings.sync_checking_github_saved
+        fact.mergingReceivedData -> MR.strings.sync_merging_received_data
+        else -> MR.strings.sync_receiving_and_verifying
+    }
 }
 
 private fun runPhaseLabel(phase: SyncRunPhase): StringResource = when (phase) {
