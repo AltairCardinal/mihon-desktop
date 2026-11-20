@@ -196,10 +196,11 @@ class GitHubAuthClient(
                 else -> SyncJournalRefreshOutcome.OTHER_ERROR
             }
             recordRefreshOutcome(outcome, response.code)
-            val failure = if (outcome == SyncJournalRefreshOutcome.TOKEN_REJECTED) {
-                revokedFailure()
-            } else {
-                GitHubAuthFailure(GitHubAuthFailureReason.HTTP, "token refresh rejected", false)
+            val failure = when (outcome) {
+                SyncJournalRefreshOutcome.TOKEN_REJECTED -> revokedFailure()
+                SyncJournalRefreshOutcome.CLIENT_REJECTED ->
+                    GitHubAuthFailure(GitHubAuthFailureReason.REFRESH_CLIENT_REJECTED, "token refresh rejected", false)
+                else -> GitHubAuthFailure(GitHubAuthFailureReason.HTTP, "token refresh rejected", false)
             }
             throw GitHubAuthException(failure)
         }

@@ -3937,7 +3937,9 @@ private fun syncEtaDuration(seconds: Long): String = when {
 @Composable
 private fun authFailureText(failure: GitHubAuthFailureReason): String = syncString(
     when (failure) {
-        GitHubAuthFailureReason.HTTP -> MR.strings.sync_auth_request_failed
+        GitHubAuthFailureReason.HTTP,
+        GitHubAuthFailureReason.REFRESH_CLIENT_REJECTED,
+        -> MR.strings.sync_auth_request_failed
         GitHubAuthFailureReason.MALFORMED_RESPONSE -> MR.strings.sync_auth_malformed
         GitHubAuthFailureReason.ACCESS_DENIED -> MR.strings.sync_auth_denied
         GitHubAuthFailureReason.PERMISSION_DENIED -> MR.strings.sync_auth_permission_denied

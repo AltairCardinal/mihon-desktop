@@ -352,7 +352,18 @@ class SyncRuntime(
             connectionMutex.withLock {
                 val connection = rawConnection()
                 val stored = connection?.let { onboarding.storage.connection(it.spaceId, it.generation) }
-                if (credentials.read() == null) return@withLock SyncRecoveryAuthorizationCheck(required = true)
+                val currentCredential = credentials.read()
+                    ?: return@withLock SyncRecoveryAuthorizationCheck(required = true)
+                if (connection?.enabled == true && stored != null &&
+                    onboarding.storage.recovery(stored)?.reason == SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED &&
+                    verifiedAuthorizationRejection == VerifiedAuthorizationRejection(
+                        stored.snapshotManifestBinding().connectionRevision,
+                        currentCredential.revision,
+                        credentials.authorizationEpoch.value,
+                    )
+                ) {
+                    return@withLock SyncRecoveryAuthorizationCheck(required = true)
+                }
                 val session = onboarding.session(stored?.accountId)
                 val credential = requireNotNull(credentials.read())
                 require(credentials.authorizationEpoch.value == session.authorizationEpoch) {
@@ -878,7 +889,11 @@ class SyncRuntime(
                         failureClass = mihon.data.sync.http.SyncHttpFailureClass.NETWORK,
                     )
                 }
-                checked = checkSpace(connection, stored)
+                checked = checkSpace(
+                    connection,
+                    stored,
+                    accessTokenRejected = credential != null && response.code == 401,
+                )
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -904,6 +919,7 @@ class SyncRuntime(
             if (revision != evidenceRevision) return true
             val next = clock() + AUTHORIZATION_RECHECK_DELAY_MILLIS
             authorizationCheckFallback = VerifiedAuthorizationRejection(binding, revision, epoch) to next
+            val authorizationRejected = checked.recovery?.reason == SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED
             onboarding.storage.updateRecoveryObservation(current) {
                 it.copy(
                     lastCheckedAtMillis = clock(),
@@ -911,6 +927,10 @@ class SyncRuntime(
                     lastCheckProblem = checked.problem,
                     lastCheckReason = checked.recovery?.reason,
                     credentialRevision = revision,
+                    authorization = if (authorizationRejected) SyncRecoveryAuthorization.IDLE else it.authorization,
+                    authorizationConfirmedAtMillis = it.authorizationConfirmedAtMillis.takeUnless { _ ->
+                        it.credentialRevision != revision || authorizationRejected
+                    },
                 )
             }
             if (checked.problem == null) {
@@ -1477,7 +1497,7 @@ class SyncRuntime(
             val connection = rawConnection() ?: return@withLock SyncSpaceRecoveryCheck()
             val stored = onboarding.storage.connection(connection.spaceId, connection.generation)
                 ?: throw SyncSecureStoreException()
-            try {
+            val previousRecovery = try {
                 onboarding.storage.recovery(stored)
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -1491,6 +1511,14 @@ class SyncRuntime(
             val checked = checkSpace(connection, stored, allowRename = true)
             if (checked.problem == null) {
                 val current = requireNotNull(onboarding.storage.connection(connection.spaceId, connection.generation))
+                if (previousRecovery?.reason == SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED &&
+                    checked.recovery == null && checked.authorizationConfirmed &&
+                    credentials.read()?.revision == checked.authorizationCredentialRevision
+                ) {
+                    runStore.active(connection.spaceId, connection.generation)?.let {
+                        runStore.queueVerifiedAuthorizationRecovery(it.runId)
+                    }
+                }
                 onboarding.storage.setRecovery(current, checked.recovery?.reason)
             }
             val current = requireNotNull(onboarding.storage.connection(connection.spaceId, connection.generation))
@@ -1542,6 +1570,7 @@ class SyncRuntime(
         connection: SyncConnection,
         stored: StoredSyncConnection,
         allowRename: Boolean = false,
+        accessTokenRejected: Boolean = false,
     ): SyncSpaceRecoveryCheck {
         var authorizationConfirmed = false
         var authorizationCredentialRevision: Long? = null
@@ -1628,7 +1657,9 @@ class SyncRuntime(
                 is mihon.data.sync.transport.SyncRemoteDataInvalid,
                 is mihon.domain.sync.crypto.SyncCryptoException,
                 -> SyncSpaceRecoveryReason.SPACE_DATA_INVALID
-                is GitHubAuthException -> if (failure.requiresReauthorization) {
+                is GitHubAuthException -> if (failure.requiresReauthorization ||
+                    (accessTokenRejected && failure.failure.reason == GitHubAuthFailureReason.REFRESH_CLIENT_REJECTED)
+                ) {
                     SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED
                 } else {
                     null

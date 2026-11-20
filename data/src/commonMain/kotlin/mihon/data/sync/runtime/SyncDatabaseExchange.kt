@@ -733,6 +733,7 @@ internal val GitHubAuthException.requiresReauthorization: Boolean
         GitHubAuthFailureReason.EXPIRED,
         -> true
         GitHubAuthFailureReason.HTTP,
+        GitHubAuthFailureReason.REFRESH_CLIENT_REJECTED,
         GitHubAuthFailureReason.MALFORMED_RESPONSE,
         GitHubAuthFailureReason.RATE_LIMITED,
         -> false

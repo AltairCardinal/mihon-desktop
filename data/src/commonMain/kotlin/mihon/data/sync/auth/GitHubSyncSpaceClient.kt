@@ -561,7 +561,9 @@ private fun Exception.problem(): SyncDiscoveryProblem = when (this) {
     is DiscoveryException -> problem
     is GitHubAuthException -> when (failure.reason) {
         GitHubAuthFailureReason.RATE_LIMITED -> SyncDiscoveryProblem.RATE_LIMITED
-        GitHubAuthFailureReason.HTTP -> SyncDiscoveryProblem.RETRYABLE
+        GitHubAuthFailureReason.HTTP,
+        GitHubAuthFailureReason.REFRESH_CLIENT_REJECTED,
+        -> SyncDiscoveryProblem.RETRYABLE
         GitHubAuthFailureReason.MALFORMED_RESPONSE -> SyncDiscoveryProblem.MALFORMED
         else -> SyncDiscoveryProblem.AUTHORIZATION_REQUIRED
     }

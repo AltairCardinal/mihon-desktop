@@ -41,6 +41,7 @@ data class GitHubStoredCredential(
 
 enum class GitHubAuthFailureReason {
     HTTP,
+    REFRESH_CLIENT_REJECTED,
     MALFORMED_RESPONSE,
     ACCESS_DENIED,
     PERMISSION_DENIED,

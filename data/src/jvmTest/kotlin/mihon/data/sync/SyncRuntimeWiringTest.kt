@@ -228,6 +228,86 @@ class SyncRuntimeWiringTest {
     }
 
     @Test
+    fun `rejected old access and refresh tokens open device authorization for the same space`() = runBlocking {
+        for (accessRejected in listOf(false, true)) {
+            Fixture().use { f ->
+                SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                    setup.existing("")
+                    setup.authorize()
+                    setup.begin()
+                    setup.panel.act(SyncPanelAction.Close)
+                    val runtime = setup.runtime
+                    val stored = runtime.onboarding.storage.connection("space", 1)!!
+                    runtime.onboarding.storage.setRecovery(stored, SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED)
+                    val expired = runtime.credentials.replace(
+                        runtime.credentials.read()!!.revision,
+                        GitHubAccessToken("old-access", "old-refresh", "bearer", emptySet(), 1_000, 10_000_000),
+                    )
+                    val blocked = runtime.runStore.start("space", 1, SyncTrigger.MANUAL)
+                    runtime.runStore.finish(blocked.runId, SyncRunState.BLOCKED, "AUTHORIZATION")
+                    runtime.recordRecoveryAuthorization(mihon.data.sync.runtime.SyncRecoveryAuthorization.CONFIRMED)
+                    val delegate = setup.git.server.dispatcher
+                    val refreshes = AtomicInteger()
+                    val deviceRequests = AtomicInteger()
+                    setup.git.server.dispatcher = object : Dispatcher() {
+                        override fun dispatch(request: RecordedRequest): MockResponse {
+                            if (request.url.encodedPath == "/user" && accessRejected &&
+                                request.headers["Authorization"] == "Bearer old-access"
+                            ) {
+                                return MockResponse(
+                                    code = 401,
+                                    body = """
+                                        {"message":"Bad credentials","documentation_url":"https://docs.github.com/rest"}
+                                    """.trimIndent(),
+                                )
+                            }
+                            if (request.url.encodedPath == "/token" &&
+                                request.body?.utf8()?.contains("grant_type=refresh_token") == true
+                            ) {
+                                refreshes.incrementAndGet()
+                                return MockResponse(body = """{"error":"incorrect_client_credentials"}""")
+                            }
+                            if (request.url.encodedPath == "/device") deviceRequests.incrementAndGet()
+                            return delegate.dispatch(request)
+                        }
+                    }
+                    assertTrue(runtime.recheckAuthorizationIfNeeded())
+                    assertEquals(expired, runtime.credentials.read())
+                    if (accessRejected) {
+                        assertNull(runtime.spaceRecovery()?.authorizationVerification)
+                        assertNull(runtime.recoveryObservation()?.authorizationConfirmedAtMillis)
+                        setup.panel.act(SyncPanelAction.Open)
+                        setup.panel.act(SyncPanelAction.CheckAuthorization)
+                        withTimeout(8_000) { setup.panel.state.first { it.deviceCode != null } }
+                        withTimeout(8_000) {
+                            setup.panel.state.first {
+                                runtime.credentials.read()?.revision != expired.revision &&
+                                    runtime.spaceRecovery() == null
+                            }
+                        }
+                        assertEquals(1, deviceRequests.get())
+                        assertEquals(
+                            1,
+                            refreshes.get(),
+                            "Reconnect should use verified evidence without retrying the spent token",
+                        )
+                        assertEquals(
+                            stored.repositoryId,
+                            runtime.onboarding.storage.connection("space", 1)?.repositoryId,
+                        )
+                        assertEquals(SyncRunState.WAITING_SYSTEM, runtime.runStore.get(blocked.runId)?.state)
+                        assertTrue(runtime.resumeIfNeeded())
+                        assertEquals(SyncRunState.SUCCEEDED, runtime.runStore.get(blocked.runId)?.state)
+                    } else {
+                        assertNotNull(runtime.spaceRecovery()?.authorizationVerification)
+                        assertEquals(0, deviceRequests.get())
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
     fun `whole operation waits for final head and queued empty exchange in one flight`() = runBlocking {
         Fixture().use { f ->
             val historyEntered = CountDownLatch(1)
