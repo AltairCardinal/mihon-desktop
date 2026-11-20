@@ -5,6 +5,10 @@ description: A traceable history of public feature documentation, separate from 
 
 # Changelog
 
+## 2026-11-20 — Android detail button scrolling accepted
+
+The project owner accepted tablet candidate `0.19.4-aex.162 / vc180` (source `e3645f0872`) in a private review on November 20, 2026. The manga detail action row now decelerates to a fully visible button after a swipe, and a faster flick can travel farther. The trailing **Sort** button uses an edit icon. This entry records acceptance of the Android tablet candidate.
+
 ## 2026-11-19 — Windows reader double-click zoom accepted
 
 The project owner accepted Windows preview `0.11.24.10.7c7f9a7` (source `7c7f9a740d`) in a private review on November 19, 2026. The reader’s General tab hides E-Ink controls and offers separate double-click enlargement choices for long strip and paged modes. Both default to off, and double-click reset still works when the page is zoomed. Acceptance covers the Windows preview.

@@ -247,6 +247,9 @@ class AndroidReaderCoreProductionContractTest {
         val downloadPreferences = mockk<DownloadPreferences>(relaxed = true)
         every { downloadPreferences.autoDownloadWhileReading().get() } returns 0
         every { downloadPreferences.removeAfterReadSlots().get() } returns -1
+        every { downloadPreferences.mangaDeletionSettings(any()).get() } returns
+            tachiyomi.domain.download.service.MangaDownloadDeletionSettings()
+
         val trackPreferences = mockk<TrackPreferences>(relaxed = true)
         every { trackPreferences.autoUpdateTrack().get() } returns false
         val libraryPreferences = mockk<LibraryPreferences>(relaxed = true)

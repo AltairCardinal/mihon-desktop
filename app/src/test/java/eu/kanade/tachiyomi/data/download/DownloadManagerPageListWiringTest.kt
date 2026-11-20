@@ -5,6 +5,7 @@ import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.Page
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
@@ -34,6 +35,7 @@ import tachiyomi.domain.track.interactor.GetTracks
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.InjektScope
 import uy.kohesive.injekt.api.addSingleton
+import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.registry.default.DefaultRegistrar
 import java.io.ByteArrayInputStream
 import java.io.InputStream
@@ -96,6 +98,82 @@ class DownloadManagerPageListWiringTest {
         Unit
     }
 
+    @Test
+    fun `reader deletion queue retains bookmark protection and explicit bookmark permission`() = runBlocking {
+        withIsolatedDownloadManager { manager, _ ->
+            val context = RuntimeEnvironment.getApplication()
+            context.getSharedPreferences("chapters_to_delete", 0).edit().clear().commit()
+            try {
+                val preferences = Injekt.get<DownloadPreferences>()
+                coEvery { Injekt.get<GetCategories>().await(1) } returns emptyList()
+                every { preferences.removeExcludeCategories().get() } returns emptySet()
+                every { preferences.removeBookmarkedChapters().get() } returns false
+                val manga = Manga.create().copy(id = 1, source = 7, title = "Work")
+                val ordinary = Chapter.create().copy(id = 2, mangaId = 1, read = true)
+                val bookmarked = ordinary.copy(id = 3, bookmark = true)
+                manager.enqueueChaptersToDelete(listOf(ordinary, bookmarked), manga)
+                val pending = org.robolectric.util.ReflectionHelpers.getField<DownloadPendingDeleter>(
+                    manager,
+                    "pendingDeleter",
+                )
+                assertEquals(listOf(2L), pending.getPendingChapters().values.flatten().map { it.id })
+                every { preferences.removeBookmarkedChapters().get() } returns true
+                manager.enqueueChaptersToDelete(listOf(bookmarked), manga)
+                assertEquals(listOf(3L), pending.getPendingChapters().values.flatten().map { it.id })
+                every { preferences.mangaDeletion(1).get() } returns
+                    tachiyomi.domain.download.service.MangaDownloadDeletion.ENABLED
+                every { preferences.mangaDeletionSettings(1).get() } returns
+                    tachiyomi.domain.download.service.MangaDownloadDeletionSettings(
+                        tachiyomi.domain.download.service.MangaDownloadDeletion.ENABLED,
+                        2,
+                        false,
+                    )
+                manager.enqueueChaptersToDelete(listOf(bookmarked), manga)
+                assertTrue(pending.getPendingChapters().values.flatten().isEmpty())
+                every { preferences.removeBookmarkedChapters().get() } returns false
+                every { preferences.mangaDeletionSettings(1).get() } returns
+                    tachiyomi.domain.download.service.MangaDownloadDeletionSettings(
+                        tachiyomi.domain.download.service.MangaDownloadDeletion.ENABLED,
+                        2,
+                        true,
+                    )
+                manager.enqueueChaptersToDelete(listOf(bookmarked), manga)
+                assertEquals(listOf(3L), pending.getPendingChapters().values.flatten().map { it.id })
+            } finally {
+                context.getSharedPreferences("chapters_to_delete", 0).edit().clear().commit()
+            }
+        }
+    }
+
+    @Test
+    fun `reader deletion queue protects an excluded default or explicit category`() = runBlocking {
+        withIsolatedDownloadManager { manager, _ ->
+            val context = RuntimeEnvironment.getApplication()
+            context.getSharedPreferences("chapters_to_delete", 0).edit().clear().commit()
+            try {
+                val preferences = Injekt.get<DownloadPreferences>()
+                val categories = Injekt.get<GetCategories>()
+                every { preferences.removeBookmarkedChapters().get() } returns false
+                val manga = Manga.create().copy(id = 1, source = 7, title = "Work")
+                val completed = Chapter.create().copy(id = 2, mangaId = 1, read = true)
+                for (categoryId in listOf(0L, 4L)) {
+                    coEvery { categories.await(1) } returns if (categoryId == 0L) {
+                        emptyList()
+                    } else {
+                        listOf(
+                            tachiyomi.domain.category.model.Category(categoryId, "Protected", 0, 0),
+                        )
+                    }
+                    every { preferences.removeExcludeCategories().get() } returns setOf(categoryId.toString())
+                    manager.enqueueChaptersToDelete(listOf(completed), manga)
+                    assertTrue(DownloadPendingDeleter(context).getPendingChapters().values.flatten().isEmpty())
+                }
+            } finally {
+                context.getSharedPreferences("chapters_to_delete", 0).edit().clear().commit()
+            }
+        }
+    }
+
     private fun uniFile(name: String?, marker: Int?): UniFile = mockk<UniFile>().also { file ->
         every { file.name } returns name
         every { file.isFile } returns true
@@ -130,6 +208,8 @@ class DownloadManagerPageListWiringTest {
             val sourceManager = mockk<SourceManager>(relaxed = true)
             val chapterCache = mockk<ChapterCache>(relaxed = true)
             val downloadPreferences = mockk<DownloadPreferences>(relaxed = true)
+            every { downloadPreferences.mangaDeletionSettings(any()).get() } returns
+                tachiyomi.domain.download.service.MangaDownloadDeletionSettings()
             val getCategories = mockk<GetCategories>(relaxed = true)
             Injekt.addSingleton<SourceManager>(sourceManager)
             Injekt.addSingleton<ChapterCache>(chapterCache)

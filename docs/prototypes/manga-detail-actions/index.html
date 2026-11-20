@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mihon · 详情操作区审阅</title>
+  <link rel="stylesheet" href="styles.css?v=action-sort-14">
+</head>
+<body class="review-page">
+  <header class="review-header">
+    <div class="review-brand"><span class="brand-mark">m</span><div><h1>详情操作栏</h1></div></div>
+    <div class="review-controls">
+      <label class="sample-control">示例作品<select id="sample"><option value="journey">长旅之后</option><option value="letter">深蓝来信</option></select></label>
+      <label class="narrow-control"><input type="checkbox" id="narrow">320 窄屏</label>
+      <button id="theme" class="theme-button" aria-label="切换深色主题" aria-pressed="false">◐ <span>深色</span></button>
+    </div>
+  </header>
+  <main class="review-grid">
+    <section class="preview-column desktop-column"><div class="preview-caption"><strong>Windows Desktop</strong></div><div class="desktop-frame"><div class="window-bar"><span><span class="tiny-mark">m</span> Mihon</span><span class="window-controls" aria-hidden="true">—　□　×</span></div><iframe id="preview-windows" title="Windows 详情操作区" src="device.html?platform=desktop&v=action-sort-14"></iframe></div></section>
+    <section class="preview-column phone-column"><div class="preview-caption"><strong>Android</strong></div><div class="phone-frame"><iframe id="preview-android" title="Android 详情操作区" src="device.html?platform=android&v=action-sort-14"></iframe></div></section>
+  </main>
+  <footer class="review-foot"><span class="review-dot"></span>本地交互原型 · 修订 14 · 待审核</footer>
+  <script>
+    (() => {
+      const frames = [...document.querySelectorAll('iframe')];
+      let dark = true; document.documentElement.dataset.theme = 'dark';
+      const theme = document.querySelector('#theme'); theme.setAttribute('aria-pressed','true'); theme.setAttribute('aria-label','切换浅色主题'); theme.querySelector('span').textContent='浅色';
+      const send = () => frames.forEach(f => f.contentWindow.postMessage({type:'prototype-settings', dark, book:document.querySelector('#sample').value}, '*'));
+      frames.forEach(f => f.addEventListener('load', send));
+      document.querySelector('#theme').addEventListener('click', e => {
+        dark = !dark; document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        e.currentTarget.setAttribute('aria-pressed', String(dark));
+        e.currentTarget.setAttribute('aria-label', dark ? '切换浅色主题' : '切换深色主题');
+        e.currentTarget.querySelector('span').textContent = dark ? '浅色' : '深色'; send();
+      });
+      document.querySelector('#sample').addEventListener('change', send);
+      document.querySelector('#narrow').addEventListener('change', e => document.querySelector('.phone-column').classList.toggle('is-narrow', e.target.checked));
+    })();
+  </script>
+</body></html>

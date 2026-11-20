@@ -27,6 +27,26 @@ class PreferenceModuleWiringTest {
         }
     }
 
+    @Test
+    fun `detail action and reader deletion preferences share the production store`() {
+        withIsolatedInjekt {
+            Injekt.importModule(PreferenceModule(RuntimeEnvironment.getApplication()))
+            val store = Injekt.get<PreferenceStore>()
+            val downloads = Injekt.get<tachiyomi.domain.download.service.DownloadPreferences>()
+            val preference = downloads.mangaDeletion(7)
+            try {
+                preference.set(tachiyomi.domain.download.service.MangaDownloadDeletion.ENABLED)
+                org.junit.Assert.assertEquals(
+                    tachiyomi.domain.download.service.MangaDownloadDeletion.ENABLED,
+                    tachiyomi.domain.download.service.DownloadPreferences(store).mangaDeletion(7).get(),
+                )
+                assertTrue(tachiyomi.core.common.preference.Preference.isAppState(preference.key()))
+            } finally {
+                preference.delete()
+            }
+        }
+    }
+
     private inline fun <T> withIsolatedInjekt(block: () -> T): T {
         val previous = Injekt
         Injekt = InjektScope(DefaultRegistrar())

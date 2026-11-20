@@ -5,6 +5,7 @@ import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.download.service.filterReadDownloadDeletion
+import tachiyomi.domain.download.service.removeBookmarkedForReader
 import tachiyomi.domain.manga.repository.MangaRepository
 
 /** Ordinary read cleanup uses the same finite artifact/producer boundary as confirmed deletion. */
@@ -21,13 +22,14 @@ class DesktopReadDownloadDeletion(
         val chapter: Chapter,
         val files: CapturedDownloadFiles,
         val generations: Map<Long, CapturedDownloadGeneration>,
+        val readerCleanup: Boolean,
     )
 
-    internal suspend fun captureReader(chapter: Chapter): ReaderCapture? {
+    internal suspend fun captureReader(chapter: Chapter, readerCleanup: Boolean = false): ReaderCapture? {
         val generations = manager.captureMigrationGenerations(setOf(chapter.id))
-        val files = capture(listOf(chapter))
+        val files = capture(listOf(chapter), readerCleanup)
         if (files.pendingArtifacts.isEmpty()) return null
-        return ReaderCapture(chapter, files, generations)
+        return ReaderCapture(chapter, files, generations, readerCleanup)
     }
 
     internal suspend fun deleteReader(capture: ReaderCapture) {
@@ -38,7 +40,11 @@ class DesktopReadDownloadDeletion(
                 listOf(current),
                 getCategories.await(manga.id).map { it.id },
                 preferences.removeExcludeCategories().get(),
-                preferences.removeBookmarkedChapters().get(),
+                if (capture.readerCleanup) {
+                    preferences.removeBookmarkedForReader(current.mangaId)
+                } else {
+                    preferences.removeBookmarkedChapters().get()
+                },
             ).isEmpty()
         ) {
             return
@@ -69,7 +75,7 @@ class DesktopReadDownloadDeletion(
 
     suspend fun chapter(id: Long): Chapter? = chapterRepository.getChapterById(id)
 
-    private suspend fun capture(chapters: List<Chapter>): CapturedDownloadFiles {
+    private suspend fun capture(chapters: List<Chapter>, readerCleanup: Boolean): CapturedDownloadFiles {
         val artifacts = mutableSetOf<java.io.File>()
         val attempts = mutableListOf<CapturedDownloadAttempt>()
         val queuedAliases = mutableMapOf<Long, Set<java.io.File>>()
@@ -79,7 +85,11 @@ class DesktopReadDownloadDeletion(
                 group,
                 getCategories.await(mangaId).map { it.id },
                 preferences.removeExcludeCategories().get(),
-                preferences.removeBookmarkedChapters().get(),
+                if (readerCleanup) {
+                    preferences.removeBookmarkedForReader(mangaId)
+                } else {
+                    preferences.removeBookmarkedChapters().get()
+                },
             )
             eligible.forEach { chapter ->
                 artifacts += provider.chapterDownloadArtifacts(manga.source, identities.resolve(manga, chapter))

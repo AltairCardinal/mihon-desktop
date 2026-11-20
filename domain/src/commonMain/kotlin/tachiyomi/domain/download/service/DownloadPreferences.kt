@@ -1,5 +1,6 @@
 package tachiyomi.domain.download.service
 
+import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 
 class DownloadPreferences(
@@ -18,6 +19,22 @@ class DownloadPreferences(
     fun autoDownloadWhileReading() = preferenceStore.getInt("auto_download_while_reading", 0)
 
     fun removeAfterReadSlots() = preferenceStore.getInt("remove_after_read_slots", -1)
+
+    fun mangaDeletionSettings(mangaId: Long) = preferenceStore.getObjectFromString(
+        // Database IDs and local download cleanup settings must not enter portable preference backups.
+        key = Preference.appStateKey("manga_delete_after_read_$mangaId"),
+        defaultValue = MangaDownloadDeletionSettings(),
+        serializer = MangaDownloadDeletionSettings::encode,
+        deserializer = MangaDownloadDeletionSettings::decode,
+    )
+
+    // Keep the old mode-only API as a projection; changing it preserves the dependent options.
+    fun mangaDeletion(mangaId: Long) = preferenceStore.getObjectFromString(
+        key = mangaDeletionSettings(mangaId).key(),
+        defaultValue = MangaDownloadDeletion.INHERIT,
+        serializer = { mode -> mangaDeletionSettings(mangaId).get().copy(mode = mode).encode() },
+        deserializer = { MangaDownloadDeletionSettings.decode(it).mode },
+    )
 
     fun removeAfterMarkedAsRead() = preferenceStore.getBoolean(
         "pref_remove_after_marked_as_read_key",

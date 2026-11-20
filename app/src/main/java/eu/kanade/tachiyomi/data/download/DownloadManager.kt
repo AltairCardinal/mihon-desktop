@@ -28,6 +28,7 @@ import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.download.service.DownloadPreferences
+import tachiyomi.domain.download.service.removeBookmarkedForReader
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
@@ -315,9 +316,12 @@ class DownloadManager(
      * @param manga the manga of the chapters.
      * @param source the source of the chapters.
      */
-    fun deleteChapters(chapters: List<Chapter>, manga: Manga, source: Source) {
+    fun deleteChapters(chapters: List<Chapter>, manga: Manga, source: Source) =
+        deleteChapters(chapters, manga, source, readerCleanup = false)
+
+    private fun deleteChapters(chapters: List<Chapter>, manga: Manga, source: Source, readerCleanup: Boolean) {
         launchIO {
-            val filteredChapters = getChaptersToDelete(chapters, manga)
+            val filteredChapters = getChaptersToDelete(chapters, manga, readerCleanup)
             if (filteredChapters.isEmpty()) {
                 return@launchIO
             }
@@ -383,7 +387,7 @@ class DownloadManager(
      * @param manga the manga of the chapters.
      */
     suspend fun enqueueChaptersToDelete(chapters: List<Chapter>, manga: Manga) {
-        pendingDeleter.addChapters(getChaptersToDelete(chapters, manga), manga)
+        pendingDeleter.addChapters(getChaptersToDelete(chapters, manga, readerCleanup = true), manga)
     }
 
     /**
@@ -393,7 +397,7 @@ class DownloadManager(
         val pendingChapters = pendingDeleter.getPendingChapters()
         for ((manga, chapters) in pendingChapters) {
             val source = sourceManager.get(manga.source) ?: continue
-            deleteChapters(chapters, manga, source)
+            deleteChapters(chapters, manga, source, readerCleanup = true)
         }
     }
 
@@ -503,13 +507,21 @@ class DownloadManager(
         cache.invalidateCache()
     }
 
-    private suspend fun getChaptersToDelete(chapters: List<Chapter>, manga: Manga): List<Chapter> {
+    private suspend fun getChaptersToDelete(
+        chapters: List<Chapter>,
+        manga: Manga,
+        readerCleanup: Boolean,
+    ): List<Chapter> {
         // Retrieve the categories that are set to exclude from being deleted on read
         return tachiyomi.domain.download.service.filterReadDownloadDeletion(
             chapters,
             getCategories.await(manga.id).map { it.id },
             downloadPreferences.removeExcludeCategories().get(),
-            downloadPreferences.removeBookmarkedChapters().get(),
+            if (readerCleanup) {
+                downloadPreferences.removeBookmarkedForReader(manga.id)
+            } else {
+                downloadPreferences.removeBookmarkedChapters().get()
+            },
         )
     }
 

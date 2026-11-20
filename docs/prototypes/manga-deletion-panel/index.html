@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>读完即删 · 界面提案</title>
+  <link rel="stylesheet" href="style.css?v=4">
+</head>
+<body class="review">
+  <header class="review-header">
+    <div><div class="eyebrow">MIHON · 视觉提案 04</div><h1>移动端底部留白</h1><p>修改即时生效，手机底部增加舒适留白。</p></div>
+    <button id="theme" class="theme-button" aria-pressed="false">切换浅色</button>
+  </header>
+  <main class="previews">
+    <section><div class="preview-heading"><h2>Android 平板</h2><span>居中面板 · 底部 32px</span></div><iframe id="desktop" title="Android平板预览" src="device.html?screen=tablet&v=4"></iframe></section>
+    <section class="phone-preview"><div class="preview-heading"><h2>手机</h2><span>底部 32px + 系统安全区</span></div><iframe id="phone" title="手机预览" src="device.html?screen=phone&v=4"></iframe></section>
+  </main>
+  <footer class="review-footer">可切换模式、选择删除时机、开关书签删除，修改后关闭再打开，设置仍然保留。仅本地原型，不操作下载文件。</footer>
+  <script>
+    document.querySelector('#theme').onclick = () => {
+      const light = document.documentElement.dataset.theme !== 'light';
+      document.documentElement.dataset.theme = light ? 'light' : 'dark';
+      document.querySelector('#theme').textContent = light ? '切换深色' : '切换浅色';
+      document.querySelector('#theme').setAttribute('aria-pressed', String(light));
+      document.querySelectorAll('iframe').forEach(frame => frame.contentWindow.postMessage({type:'theme',theme:light?'light':'dark'}, '*'));
+    };
+  </script>
+</body>
+</html>

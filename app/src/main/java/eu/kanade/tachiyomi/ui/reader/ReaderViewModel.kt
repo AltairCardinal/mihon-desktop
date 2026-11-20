@@ -1309,7 +1309,12 @@ class ReaderViewModel @JvmOverloads constructor(
         val completed = readerChapter.chapter.toDomainChapter()?.copy(read = true) ?: return null
         val markDuplicates = libraryPreferences.markDuplicateReadChapterAsRead().get()
             .contains(LibraryPreferences.MARK_DUPLICATE_CHAPTER_READ_EXISTING)
-        val slots = downloadPreferences.removeAfterReadSlots().get()
+        val deletionSettings = downloadPreferences.mangaDeletionSettings(manga.id).get()
+        val slots = deletionSettings.mode
+            .resolveSlots(
+                downloadPreferences.removeAfterReadSlots().get(),
+                deletionSettings.slots,
+            )
         val chapterList = chapterListCache.orEmpty()
         val deleteCandidate = tachiyomi.domain.download.service.readDownloadDeletionCandidate(
             chapterList,

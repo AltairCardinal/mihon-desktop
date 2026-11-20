@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>读完即删</title><link rel="stylesheet" href="style.css?v=4">
+</head>
+<body class="device">
+  <main class="app-context">
+    <div class="app-top"><span aria-hidden="true">‹</span><span>作品详情</span><span aria-hidden="true">⋮</span></div>
+    <div class="resting-state"><button id="open" class="open-button">读完即删</button><p id="saved-summary">开启 · 刚才读完的章节</p></div>
+    <div class="context-lines" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  </main>
+  <dialog id="panel" class="panel" aria-labelledby="panel-title">
+    <form id="settings">
+      <h2 id="panel-title" tabindex="-1">读完即删</h2>
+      <div class="panel-scroll">
+        <div class="mode-grid" role="radiogroup" aria-label="读完即删模式">
+          <label class="mode-tile"><input type="radio" name="mode" value="inherit"><span class="tile-face"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c5 5 5 13 0 18M12 3c-5 5-5 13 0 18"/></svg><span>跟随全局</span></span></label>
+          <label class="mode-tile"><input type="radio" name="mode" value="on" checked><span class="tile-face"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg><span>开启</span></span></label>
+          <label class="mode-tile"><input type="radio" name="mode" value="off"><span class="tile-face"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg><span>关闭</span></span></label>
+        </div>
+        <div id="details" class="details"><div class="details-clip"><div class="details-content">
+          <button id="timing" type="button" class="setting-row timing" aria-haspopup="dialog">
+            <span class="row-copy"><span class="setting-title">读完自动删除</span><span id="timing-value" class="setting-summary">刚才读完的章节</span></span>
+          </button>
+          <button id="bookmark" type="button" class="setting-row bookmark" role="switch" aria-checked="false">
+            <span class="setting-title">允许删除添加了<span class="keep-words">书签的章节</span></span><span class="switch" aria-hidden="true"><span></span></span>
+          </button>
+        </div></div></div>
+      </div>
+      <div class="actions desktop-actions"><button id="close" type="button" class="text-button">关闭</button></div>
+    </form>
+  </dialog>
+  <dialog id="picker" class="panel picker" aria-labelledby="picker-title">
+    <h2 id="picker-title">读完自动删除</h2>
+    <div id="timings" class="picker-list"></div>
+    <div class="actions"><button id="picker-cancel" type="button" class="text-button">取消</button></div>
+  </dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="app.js?v=4"></script>
+</body>
+</html>

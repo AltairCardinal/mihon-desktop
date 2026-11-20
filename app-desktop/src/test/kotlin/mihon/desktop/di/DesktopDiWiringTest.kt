@@ -200,6 +200,31 @@ import java.util.zip.ZipOutputStream
 @Isolated
 class DesktopDiWiringTest {
     @Test
+    fun `detail actions resolve the reader download preference from production DI`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
+        val store = inMemoryDesktopPreferenceStore()
+        val context = initDesktopDIForTest(tempDir, store, startDownloadWorker = false)
+        try {
+            assertSame(store, Injekt.get<PreferenceStore>())
+            val downloads = Injekt.get<mihon.desktop.download.DesktopDownloadPreferences>()
+            DownloadPreferences(Injekt.get()).mangaDeletion(7)
+                .set(tachiyomi.domain.download.service.MangaDownloadDeletion.ENABLED)
+            assertEquals(
+                tachiyomi.domain.download.service.MangaDownloadDeletion.ENABLED,
+                downloads.shared.mangaDeletion(7).get(),
+            )
+            assertEquals(
+                tachiyomi.domain.download.service.MangaDownloadDeletion.INHERIT,
+                downloads.shared.mangaDeletion(8).get(),
+            )
+            assertNotNull(Injekt.get<mihon.desktop.domain.ReaderProgressTracker>())
+        } finally {
+            context.closeAndJoin()
+        }
+    }
+
+    @Test
     fun `cancelled DI owner releases a suspended category snapshot before recovery or producers`(
         @TempDir tempDir: File,
     ) = runBlocking {

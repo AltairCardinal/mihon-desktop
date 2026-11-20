@@ -408,6 +408,7 @@ private fun MangaScreenSmallImpl(
                         contentType = MangaScreenItem.ACTION_ROW,
                     ) {
                         MangaActionRow(
+                            mangaId = state.manga.id,
                             favorite = state.manga.favorite,
                             trackingCount = state.trackingCount,
                             nextUpdate = nextUpdate,
@@ -643,6 +644,7 @@ fun MangaScreenLargeImpl(
                             onCreatorClick = onCreatorClick,
                         )
                         MangaActionRow(
+                            mangaId = state.manga.id,
                             favorite = state.manga.favorite,
                             trackingCount = state.trackingCount,
                             nextUpdate = nextUpdate,

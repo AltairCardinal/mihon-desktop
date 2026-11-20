@@ -138,7 +138,12 @@ class DualPageProgressProductionWiringTest {
     private var failWriteChapterId: Long? = null
     private var previousFramePause = false
     private lateinit var previousFrameDelay: Duration
-    private var removeAfterReadSlots = -1
+    private lateinit var downloadPreferences: DownloadPreferences
+    private var removeAfterReadSlots: Int
+        get() = downloadPreferences.removeAfterReadSlots().get()
+        set(value) {
+            downloadPreferences.removeAfterReadSlots().set(value)
+        }
 
     @Before
     fun setUp() = runBlocking<Unit> {
@@ -245,9 +250,7 @@ class DualPageProgressProductionWiringTest {
         coEvery { chapterLoader.loadChapter(any(), any()) } coAnswers { load(firstArg()) }
         val basePreferences = mockk<BasePreferences>(relaxed = true)
         every { basePreferences.downloadedOnly().get() } returns false
-        val downloadPreferences = mockk<DownloadPreferences>(relaxed = true)
-        every { downloadPreferences.autoDownloadWhileReading().get() } returns 0
-        every { downloadPreferences.removeAfterReadSlots().get() } answers { removeAfterReadSlots }
+        downloadPreferences = DownloadPreferences(preferences)
         val trackPreferences = mockk<TrackPreferences>(relaxed = true)
         every { trackPreferences.autoUpdateTrack().get() } returns false
         val libraryPreferences = mockk<LibraryPreferences>(relaxed = true)
@@ -995,6 +998,37 @@ class DualPageProgressProductionWiringTest {
             ShadowToast.getTextOfLatestToast(),
         )
         assertFalse(database.chaptersQueries.getChapterById(2).executeAsOne().read)
+    }
+
+    @Test
+    fun `work enabled deletion overrides global setting in reader completion pipeline`() = runTest {
+        downloadPreferences.mangaDeletion(1).set(tachiyomi.domain.download.service.MangaDownloadDeletion.ENABLED)
+        val pages = requireNotNull(current.pages)
+        pages.forEach { it.status = Page.State.Ready }
+        model.onPageSelected(pages.first())
+        requireNotNull(awaitRenderedEvent())
+        model.onPageSelected(pages.last())
+        requireNotNull(awaitRenderedEvent())
+        withContext(Dispatchers.Default) { withTimeout(10_000) { progressCoordinator.awaitAccepted(1) } }
+        coVerify(exactly = 1) {
+            downloadManager.enqueueChaptersToDelete(match { it.single().id == 2L }, match { it.id == 1L })
+        }
+        assertPersistedProgress(4, true)
+    }
+
+    @Test
+    fun `work disabled deletion overrides global setting in reader completion pipeline`() = runTest {
+        removeAfterReadSlots = 0
+        downloadPreferences.mangaDeletion(1).set(tachiyomi.domain.download.service.MangaDownloadDeletion.DISABLED)
+        val pages = requireNotNull(current.pages)
+        pages.forEach { it.status = Page.State.Ready }
+        model.onPageSelected(pages.first())
+        requireNotNull(awaitRenderedEvent())
+        model.onPageSelected(pages.last())
+        requireNotNull(awaitRenderedEvent())
+        withContext(Dispatchers.Default) { withTimeout(10_000) { progressCoordinator.awaitAccepted(1) } }
+        coVerify(exactly = 0) { downloadManager.enqueueChaptersToDelete(any(), any()) }
+        assertPersistedProgress(4, true)
     }
 
     @Test

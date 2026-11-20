@@ -2728,6 +2728,9 @@ class AndroidChapterPairingPersistenceWiringTest {
         val downloadPreferences = mockk<DownloadPreferences>(relaxed = true)
         every { downloadPreferences.autoDownloadWhileReading().get() } returns 0
         every { downloadPreferences.removeAfterReadSlots().get() } returns -1
+        every { downloadPreferences.mangaDeletionSettings(any()).get() } returns
+            tachiyomi.domain.download.service.MangaDownloadDeletionSettings()
+
         val basePreferences = mockk<BasePreferences>(relaxed = true)
         every { basePreferences.downloadedOnly().get() } returns downloadedOnly
         val incognito = mockk<GetIncognitoState>()

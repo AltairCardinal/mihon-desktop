@@ -158,15 +158,17 @@ class ReadDownloadDeletionIntegrationTest {
             val provider = Injekt.get<DesktopDownloadProvider>()
             val factory = Injekt.get<mihon.desktop.reader.DesktopReaderRuntimeFactory>()
             val prefs = Injekt.get<DownloadPreferences>()
-            val cases = (-1..4).map { it to "ordinary" } + listOf(
-                2 to "unread",
-                0 to "bookmark",
-                0 to "excluded",
-                0 to "late-bookmark",
-                0 to "replacement",
-                0 to "occupied",
-                0 to "occupied-cbz",
-            )
+            val cases = listOf(-1 to "work-enabled", 0 to "work-disabled", 2 to "work-inherit") +
+                (0..4).map { it to "work-options" } + listOf(0 to "work-bookmark-allow", 0 to "work-bookmark-deny") +
+                (-1..4).map { it to "ordinary" } + listOf(
+                    2 to "unread",
+                    0 to "bookmark",
+                    0 to "excluded",
+                    0 to "late-bookmark",
+                    0 to "replacement",
+                    0 to "occupied",
+                    0 to "occupied-cbz",
+                )
             for ((slots, scenario) in cases) {
                 val manga = Injekt.get<MangaRepository>().insertNetworkManga(
                     listOf(
@@ -186,7 +188,7 @@ class ReadDownloadDeletionIntegrationTest {
                             chapterNumber = index.toDouble(),
                             sourceOrder = (5 - index).toLong(),
                             read = index < 5 && !(scenario == "unread" && index == 3),
-                            bookmark = scenario == "bookmark" && index == 5,
+                            bookmark = (scenario == "bookmark" || scenario.startsWith("work-bookmark")) && index == 5,
                         )
                     },
                 ).sortedBy { it.chapterNumber }
@@ -214,6 +216,21 @@ class ReadDownloadDeletionIntegrationTest {
                     }
                 }
                 prefs.removeAfterReadSlots().set(slots)
+                prefs.mangaDeletion(manga.id).set(
+                    when (scenario) {
+                        "work-enabled" -> tachiyomi.domain.download.service.MangaDownloadDeletion.ENABLED
+                        "work-disabled" -> tachiyomi.domain.download.service.MangaDownloadDeletion.DISABLED
+                        else -> tachiyomi.domain.download.service.MangaDownloadDeletion.INHERIT
+                    },
+                )
+                if (scenario == "work-options" || scenario.startsWith("work-bookmark")) {
+                    prefs.removeAfterReadSlots().set(-1)
+                    prefs.removeBookmarkedChapters().set(scenario == "work-bookmark-deny")
+                    DesktopPreferenceStore(node).getString(prefs.mangaDeletion(manga.id).key())
+                        .set("ENABLED|$slots|${scenario == "work-bookmark-allow"}")
+                } else {
+                    prefs.removeBookmarkedChapters().set(false)
+                }
                 prefs.removeAfterMarkedAsRead().set(scenario.startsWith("occupied"))
                 prefs.removeExcludeCategories().set(if (scenario == "excluded") setOf("0") else emptySet())
                 val current = chapters.last()
@@ -280,7 +297,19 @@ class ReadDownloadDeletionIntegrationTest {
                     runtime.session.awaitProgressDrained()
                     model.onDispose()
                 }
-                val expected = if (slots < 0 || scenario != "ordinary") null else chapters[5 - slots].id
+                val effectiveSlots = when (scenario) {
+                    "work-enabled" -> 0
+                    "work-disabled" -> -1
+                    else -> slots
+                }
+                val expected = if (effectiveSlots < 0 ||
+                    scenario == "work-bookmark-deny" ||
+                    (scenario != "ordinary" && !scenario.startsWith("work-"))
+                ) {
+                    null
+                } else {
+                    chapters[5 - effectiveSlots].id
+                }
                 files.forEach { (id, file) -> assertEquals(id != expected, file.exists(), "slots=$slots chapter=$id") }
                 blocker?.close()
                 blocker?.session?.awaitProgressDrained()

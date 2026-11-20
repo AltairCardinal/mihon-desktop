@@ -49,6 +49,8 @@ Mihon’s reading and library experience gains a desktop home. Use the desktop i
 
 **Manga details and chapter list:** The chapter list provides native dynamic scrollbars in both dual-pane and single-pane layouts, highlighting on scroll or hover. When the floating "Continue" action button is visible in the bottom-right corner, the list automatically maintains an 88dp bottom clearance so the final chapter row remains completely clear of the button when scrolled to the end.
 
+**Android manga detail buttons:** Swipe the action row to browse buttons. When you release, the row slows to a stop with the next button fully visible. A quick flick can reveal several buttons. Long-press and drag a button to move it, or tap **Sort** at the end of the row to open the edit panel.
+
 **Chapter action feedback:** On Windows, successful or skipped chapter actions on the manga detail page no longer show the success/skip/failure count snackbar. Failure feedback and the optional Add to library action remain available.
 
 **Windows batch read status:** Select chapters on the manga detail page to mark them read or unread, or use the action to mark the chapters below the current position as read. The normal path writes the selected chapter states in one batch. An explicit command is preserved even when the local state already matches, so it can carry the user's sync intent. If the batch fails, individual retries report the actual successful and failed chapters; marking unread resets reading progress. This does not promise a fixed completion time on every device.

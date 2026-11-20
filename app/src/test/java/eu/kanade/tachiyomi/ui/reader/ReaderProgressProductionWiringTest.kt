@@ -131,6 +131,12 @@ class ReaderProgressProductionWiringTest {
                 onCommitted = { it.completion?.let { plan -> completions.send(plan) } },
                 onClosed = {},
             )
+            var deletionMode = tachiyomi.domain.download.service.MangaDownloadDeletion.INHERIT
+            var workSlots = 0
+            every { downloadPreferences.mangaDeletion(any()).get() } answers { deletionMode }
+            every { downloadPreferences.mangaDeletionSettings(any()).get() } answers {
+                tachiyomi.domain.download.service.MangaDownloadDeletionSettings(deletionMode, workSlots)
+            }
             val trackPreferences = mockk<TrackPreferences>(relaxed = true)
             every { trackPreferences.autoUpdateTrack().get() } returns false
             val libraryPreferences = mockk<LibraryPreferences>(relaxed = true)
@@ -199,6 +205,26 @@ class ReaderProgressProductionWiringTest {
                 coordinator.awaitAccepted(manga.id)
                 val plan = completions.receive()
                 assertEquals(if (slots == 0) 2L else null, plan.deleteCandidate?.id)
+            }
+            for ((global, mode, expected) in listOf(
+                Triple(-1, tachiyomi.domain.download.service.MangaDownloadDeletion.ENABLED, 2L),
+                Triple(0, tachiyomi.domain.download.service.MangaDownloadDeletion.DISABLED, null),
+            )) {
+                removalSlots = global
+                deletionMode = mode
+                viewModel.onPageSelected(requireNotNull(current.pages).last())
+                awaitRecordedEvent(recorded)
+                coordinator.awaitAccepted(manga.id)
+                assertEquals(expected, completions.receive().deleteCandidate?.id)
+            }
+            removalSlots = -1
+            deletionMode = tachiyomi.domain.download.service.MangaDownloadDeletion.ENABLED
+            for (slots in 0..4) {
+                workSlots = slots
+                viewModel.onPageSelected(requireNotNull(current.pages).last())
+                awaitRecordedEvent(recorded)
+                coordinator.awaitAccepted(manga.id)
+                assertEquals(if (slots == 0) 2L else null, completions.receive().deleteCandidate?.id)
             }
         } finally {
             Dispatchers.resetMain()

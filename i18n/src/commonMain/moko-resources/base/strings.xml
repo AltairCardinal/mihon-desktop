@@ -2697,4 +2697,13 @@
     <string name="sync_deferred_list_open">View items awaiting restoration</string>
     <string name="sync_invalid_saved_data">Some sync data failed validation; other progress is retained</string>
     <string name="sync_invalid_saved_hint">This data has not been restored and needs application investigation. Diagnostic details are available below.</string>
+
+    <string name="manga_actions_customize">Sort</string>
+    <string name="manga_actions_limit">Show up to 4 buttons. Library is required.</string>
+    <string name="manga_actions_order_hint">Long press and drag to reorder.</string>
+    <string name="manga_delete_after_read">Delete after read</string>
+    <string name="manga_delete_after_read_description">Automatically delete this work’s downloaded chapters after reading them. This device setting overrides the global setting and does not immediately delete existing downloads.</string>
+    <string name="manga_delete_inherit">Follow global</string>
+    <string name="manga_delete_on">On</string>
+    <string name="manga_delete_off">Off</string>
 </resources>

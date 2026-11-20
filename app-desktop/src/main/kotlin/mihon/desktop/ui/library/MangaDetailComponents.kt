@@ -134,6 +134,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.DesktopNotificationService
+import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.library.MangaDetailScreenModelFactory
 import mihon.desktop.platform.DesktopShareResult
 import mihon.desktop.platform.DesktopShareService
@@ -146,6 +147,7 @@ import mihon.desktop.ui.browse.GlobalSearchScreen
 import mihon.desktop.ui.reader.DesktopReaderScreen
 import mihon.domain.platform.SharePayload
 import mihon.domain.task.TaskState
+import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.ChapterItemClickAction
 import tachiyomi.domain.chapter.chapterItemClickAction
@@ -155,7 +157,13 @@ import tachiyomi.domain.creator.model.CreatorMentionResolution
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.service.TitleCreditParser
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.MangaDetailAction
 import tachiyomi.i18n.MR
+import tachiyomi.presentation.manga.DetailActionItem
+import tachiyomi.presentation.manga.DetailActionStrip
+import tachiyomi.presentation.manga.detailActionLabels
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.util.Locale
 import androidx.compose.foundation.layout.size as layoutSize
 
@@ -738,86 +746,88 @@ internal fun MangaDetailActionRow(
     onOpenInBrowser: () -> Unit,
 ) {
     val linkActions = mangaUrl?.let { mangaLinkActions(it) }
-    val actions = mangaDetailPrimaryActionTypes(
-        isFavorite = manga.favorite,
-        isHttpSource = linkActions != null,
-        hasUnreadChapters = hasUnreadChapters,
+    val store = remember { Injekt.get<PreferenceStore>() }
+    val downloadPreferences = remember { Injekt.get<DesktopDownloadPreferences>() }
+    val globalDeletion by downloadPreferences.shared.removeAfterReadSlots().changes().collectAsState(
+        initial = downloadPreferences.shared.removeAfterReadSlots().get(),
     )
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            actions.forEach { action ->
-                when (action) {
-                    MangaDetailPrimaryActionType.TOGGLE_LIBRARY ->
-                        TextButton(
-                            modifier = libraryFocus?.let {
-                                Modifier.focusRequester(it)
-                            } ?: Modifier,
-                            onClick = onToggleLibrary,
-                        ) {
-                            Icon(
-                                if (manga.favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                contentDescription = null,
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            val label = if (manga.favorite) {
-                                MR.strings.in_library.localized()
-                            } else {
-                                MR.strings.add_to_library.localized()
-                            }
-                            Text(label)
-                        }
-                    MangaDetailPrimaryActionType.EDIT_FETCH_INTERVAL ->
-                        IconButton(
-                            modifier = intervalFocus?.let {
-                                Modifier.focusRequester(it)
-                            } ?: Modifier,
-                            onClick = onEditFetchInterval,
-                        ) {
-                            Icon(
-                                Icons.Default.HourglassEmpty,
-                                contentDescription = MR.strings.desktop_ui_edit_update_interval.localized(),
-                            )
-                        }
-                    MangaDetailPrimaryActionType.TRACKING ->
-                        IconButton(onClick = onTracking) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Default.Sync,
-                                    contentDescription = MR.strings.pref_category_tracking.localized(),
-                                )
-                                Text(trackingCount.toString())
-                            }
-                        }
-                    MangaDetailPrimaryActionType.OPEN_IN_BROWSER ->
-                        IconButton(onClick = onOpenInBrowser) {
-                            Icon(
-                                Icons.Default.OpenInBrowser,
-                                contentDescription = MR.strings.action_open_in_browser.localized(),
-                            )
-                        }
-                    MangaDetailPrimaryActionType.COPY_LINK ->
-                        IconButton(onClick = linkActions!!.copyLink) {
-                            Icon(Icons.Default.Link, contentDescription = MR.strings.action_copy_link.localized())
-                        }
-                    MangaDetailPrimaryActionType.SHARE ->
-                        IconButton(onClick = linkActions!!.share) {
-                            Icon(Icons.Default.Share, contentDescription = MR.strings.desktop_ui_share_link.localized())
-                        }
-                    MangaDetailPrimaryActionType.CONTINUE_READING -> Unit
-                }
-            }
-        }
+    val items = buildList {
+        add(
+            DetailActionItem(
+                MangaDetailAction.LIBRARY,
+                if (manga.favorite) MR.strings.in_library.localized() else MR.strings.add_to_library.localized(),
+                icon = { Icon(if (manga.favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, null) },
+                onClick = onToggleLibrary,
+                active = manga.favorite,
+                modifier = libraryFocus?.let { Modifier.focusRequester(it) } ?: Modifier,
+            ),
+        )
         if (manga.favorite) {
-            MangaUpdateSchedule(manga)
+            add(
+                DetailActionItem(
+                    MangaDetailAction.UPDATE_INTERVAL,
+                    MR.strings.desktop_ui_edit_update_interval.localized(),
+                    icon = { Icon(Icons.Default.HourglassEmpty, null) },
+                    onClick = onEditFetchInterval,
+                    active = manga.fetchInterval < 0,
+                    modifier = intervalFocus?.let { Modifier.focusRequester(it) } ?: Modifier,
+                ),
+            )
         }
+        add(
+            DetailActionItem(
+                MangaDetailAction.TRACKING,
+                MR.strings.pref_category_tracking.localized(),
+                icon = { Icon(Icons.Default.Sync, null) },
+                onClick = onTracking,
+                active = trackingCount > 0,
+                detail = trackingCount.takeIf { it > 0 }?.toString(),
+            ),
+        )
+        if (linkActions != null) {
+            add(
+                DetailActionItem(
+                    MangaDetailAction.WEB,
+                    MR.strings.action_open_in_browser.localized(),
+                    icon = { Icon(Icons.Default.OpenInBrowser, null) },
+                    onClick = onOpenInBrowser,
+                ),
+            )
+            add(
+                DetailActionItem(
+                    MangaDetailAction.COPY_LINK,
+                    MR.strings.action_copy_link.localized(),
+                    icon = { Icon(Icons.Default.Link, null) },
+                    onClick = linkActions.copyLink,
+                ),
+            )
+            add(
+                DetailActionItem(
+                    MangaDetailAction.SHARE,
+                    MR.strings.desktop_ui_share_link.localized(),
+                    icon = { Icon(Icons.Default.Share, null) },
+                    onClick = linkActions.share,
+                ),
+            )
+        }
+    }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        DetailActionStrip(
+            mangaId = manga.id,
+            preferenceStore = store,
+            actions = items,
+            globalDeletionEnabled = globalDeletion >= 0,
+            deleteIcon = { Icon(Icons.Outlined.Delete, null) },
+            labels = detailActionLabels { it.localized() },
+            deletionOptions = { settings, onChange ->
+                mihon.desktop.ui.settings.MangaDeletionOptions(settings, onChange)
+            },
+            deletionDialog = { title, onDismiss, content ->
+                mihon.desktop.ui.settings.MangaDeletionSettingsDialog(title, onDismiss, content)
+            },
+            platform = tachiyomi.presentation.manga.DetailActionPlatform.Desktop,
+        )
+        if (manga.favorite) MangaUpdateSchedule(manga)
     }
 }
 

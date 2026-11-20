@@ -340,6 +340,7 @@ dependencies {
     implementation(projects.domain)
     implementation(projects.presentationCore)
     implementation(projects.presentationTheme)
+    implementation(projects.presentationManga)
     implementation(projects.presentationSync)
     implementation(projects.presentationHistory)
     implementation(projects.presentationWidget)

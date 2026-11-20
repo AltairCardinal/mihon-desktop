@@ -23,7 +23,9 @@ class ReaderReadDownloadDeletionSession(
     }
 
     suspend fun completed(chapterId: Long) {
-        val slots = preferences.removeAfterReadSlots().get()
+        val mangaId = deletion.chapter(chapterId)?.mangaId ?: return
+        val settings = preferences.mangaDeletionSettings(mangaId).get()
+        val slots = settings.mode.resolveSlots(preferences.removeAfterReadSlots().get(), settings.slots)
         acceptedRead += chapterId
         val catalog = readDownloadDeletionCatalog(
             chapters().asReversed().map {
@@ -37,7 +39,7 @@ class ReaderReadDownloadDeletionSession(
         } ?: return
         if (candidate.id in pending) return
         val chapter = deletion.chapter(candidate.id) ?: return
-        deletion.captureReader(chapter.copy(read = true))?.let { pending[candidate.id] = it }
+        deletion.captureReader(chapter.copy(read = true), readerCleanup = true)?.let { pending[candidate.id] = it }
     }
 
     suspend fun close() {

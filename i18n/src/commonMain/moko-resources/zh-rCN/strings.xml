@@ -2489,4 +2489,13 @@
     <string name="sync_deferred_list_open">查看待恢复内容</string>
     <string name="sync_invalid_saved_data">部分同步数据未通过校验，已保留其他进度</string>
     <string name="sync_invalid_saved_hint">这部分数据尚未恢复，应用需要进一步检查。可在下方查看诊断记录。</string>
+
+    <string name="manga_actions_customize">排序</string>
+    <string name="manga_actions_limit">最多显示 4 个按钮，收藏必须保留</string>
+    <string name="manga_actions_order_hint">长按拖动调整顺序</string>
+    <string name="manga_delete_after_read">读完即删</string>
+    <string name="manga_delete_after_read_description">读完章节后自动删除此作品的本机下载内容。此设置仅保存在本机，优先于全局设置，不会立即删除已有下载。</string>
+    <string name="manga_delete_inherit">跟随全局</string>
+    <string name="manga_delete_on">开启</string>
+    <string name="manga_delete_off">关闭</string>
 </resources>

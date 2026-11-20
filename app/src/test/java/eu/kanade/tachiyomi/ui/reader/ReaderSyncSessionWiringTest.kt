@@ -306,6 +306,8 @@ class ReaderSyncSessionWiringTest {
             downloadPreferences = mockk<DownloadPreferences>(relaxed = true) {
                 every { autoDownloadWhileReading().get() } returns 0
                 every { removeAfterReadSlots().get() } returns -1
+                every { mangaDeletionSettings(any()).get() } returns
+                    tachiyomi.domain.download.service.MangaDownloadDeletionSettings()
             },
             trackPreferences = mockk<TrackPreferences>(relaxed = true) {
                 every { autoUpdateTrack().get() } returns false

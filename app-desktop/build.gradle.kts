@@ -150,6 +150,7 @@ kotlin {
                 implementation(projects.coreMetadata)
                 implementation(projects.i18n)
                 implementation(projects.presentationTheme)
+                implementation(projects.presentationManga)
                 implementation(projects.presentationSync)
                 implementation(projects.presentationHistory)
 

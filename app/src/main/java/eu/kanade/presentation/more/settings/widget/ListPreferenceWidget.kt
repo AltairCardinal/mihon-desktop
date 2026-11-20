@@ -35,10 +35,12 @@ fun <T> ListPreferenceWidget(
     icon: ImageVector?,
     entries: Map<out T, String>,
     onValueChange: (T) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var isDialogShown by remember { mutableStateOf(false) }
 
     TextPreferenceWidget(
+        modifier = modifier,
         title = title,
         subtitle = subtitle,
         icon = icon,

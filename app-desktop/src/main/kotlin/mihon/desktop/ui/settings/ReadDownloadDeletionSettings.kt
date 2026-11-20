@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -21,13 +23,16 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import mihon.desktop.ui.library.categoryDialogEscape
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.download.service.DownloadPreferences
+import tachiyomi.domain.download.service.MangaDownloadDeletionSettings
 import tachiyomi.i18n.MR
+import tachiyomi.presentation.manga.DetailDeletionOptions
 
 @Composable
 internal fun ReadDownloadDeletionSettings(preferences: DownloadPreferences, getCategories: GetCategories) {
@@ -117,6 +122,7 @@ internal fun ReadDownloadDeletionSettings(preferences: DownloadPreferences, getC
 private fun ReadDeletionDialogSetting(
     title: String,
     summary: String,
+    modifier: Modifier = Modifier,
     content: @Composable (() -> Unit) -> Unit,
 ) {
     var visible by remember { mutableStateOf(false) }
@@ -142,7 +148,7 @@ private fun ReadDeletionDialogSetting(
     ListItem(
         headlineContent = { Text(title) },
         supportingContent = { Text(summary) },
-        modifier = Modifier.desktopSettingsAnchor(title).focusRequester(trigger).desktopSettingsAction(Role.Button) {
+        modifier = modifier.desktopSettingsAnchor(title).focusRequester(trigger).desktopSettingsAction(Role.Button) {
             visible =
                 true
         },
@@ -157,4 +163,46 @@ private fun ReadDeletionDialogSetting(
             dismissButton = { TextButton(onClick = ::close) { Text(MR.strings.action_cancel.localized()) } },
         )
     }
+}
+
+/** Platform strings only; both hosts render the shared deletion controls. */
+@Composable
+internal fun MangaDeletionOptions(
+    settings: MangaDownloadDeletionSettings,
+    onChange: (MangaDownloadDeletionSettings) -> Unit,
+) {
+    DetailDeletionOptions(
+        settings = settings,
+        onChange = onChange,
+        retentionTitle = MR.strings.pref_remove_after_read.localized(),
+        retentionEntries = listOf(
+            MR.strings.last_read_chapter,
+            MR.strings.second_to_last,
+            MR.strings.third_to_last,
+            MR.strings.fourth_to_last,
+            MR.strings.fifth_to_last,
+        ).map { it.localized() },
+        bookmarkTitle = MR.strings.pref_remove_bookmarked_chapters.localized(),
+        cancelLabel = MR.strings.action_cancel.localized(),
+    )
+}
+
+/** Matches ReaderSettingsPanel: immediate settings in a scrollable dialog with a Close action. */
+@Composable
+internal fun MangaDeletionSettingsDialog(
+    title: String,
+    onDismiss: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    AlertDialog(
+        modifier = Modifier.categoryDialogEscape(true, onDismiss),
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) { content() } },
+        confirmButton = {
+            TextButton(onClick = onDismiss, modifier = Modifier.testTag("manga-delete-close")) {
+                Text(MR.strings.action_close.localized())
+            }
+        },
+    )
 }

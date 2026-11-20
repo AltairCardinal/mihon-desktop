@@ -34,6 +34,8 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.AttachMoney
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Done
 import androidx.compose.material.icons.outlined.DoneAll
 import androidx.compose.material.icons.outlined.FavoriteBorder
@@ -52,6 +54,7 @@ import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -93,11 +96,14 @@ import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.ui.browse.author.creatorTitleCreditText
 import eu.kanade.tachiyomi.util.system.copyToClipboard
+import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.util.lang.DescriptionMarkdownFragment
 import tachiyomi.core.common.util.lang.descriptionMarkdownFragment
 import tachiyomi.domain.creator.model.CreatorMention
 import tachiyomi.domain.creator.service.TitleCreditParser
+import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.MangaDetailAction
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.DISABLED_ALPHA
 import tachiyomi.presentation.core.components.material.TextButton
@@ -106,6 +112,9 @@ import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.clickableNoIndication
 import tachiyomi.presentation.core.util.secondaryItemAlpha
+import tachiyomi.presentation.manga.DetailActionItem
+import tachiyomi.presentation.manga.DetailActionStrip
+import tachiyomi.presentation.manga.detailActionLabels
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.time.Instant
@@ -183,6 +192,7 @@ fun MangaInfoBox(
 
 @Composable
 fun MangaActionRow(
+    mangaId: Long,
     favorite: Boolean,
     trackingCount: Int,
     nextUpdate: Instant?,
@@ -195,64 +205,85 @@ fun MangaActionRow(
     onEditCategory: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    val defaultActionButtonColor = MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_ALPHA)
-
-    // TODO: show something better when using custom interval
+    val store = remember { Injekt.get<PreferenceStore>() }
+    val downloadPreferences = remember { Injekt.get<DownloadPreferences>() }
+    val globalPreference = remember(downloadPreferences) { downloadPreferences.removeAfterReadSlots() }
+    val globalSlots by globalPreference.changes().collectAsState(initial = globalPreference.get())
     val nextUpdateDays = remember(nextUpdate) {
-        return@remember if (nextUpdate != null) {
-            val now = Instant.now()
-            now.until(nextUpdate, ChronoUnit.DAYS).toInt().coerceAtLeast(0)
-        } else {
-            null
-        }
+        nextUpdate?.let { Instant.now().until(it, ChronoUnit.DAYS).toInt().coerceAtLeast(0) }
     }
-
-    Row(modifier = modifier.padding(start = 16.dp, top = 8.dp, end = 16.dp)) {
-        MangaActionButton(
-            title = if (favorite) {
-                stringResource(MR.strings.in_library)
-            } else {
-                stringResource(MR.strings.add_to_library)
-            },
-            icon = if (favorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-            color = if (favorite) MaterialTheme.colorScheme.primary else defaultActionButtonColor,
-            onClick = onAddToLibraryClicked,
-            onLongClick = onEditCategory,
+    val items = buildList {
+        add(
+            DetailActionItem(
+                MangaDetailAction.LIBRARY,
+                if (favorite) stringResource(MR.strings.in_library) else stringResource(MR.strings.add_to_library),
+                icon = { Icon(if (favorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder, null) },
+                onClick = onAddToLibraryClicked,
+                active = favorite,
+            ),
         )
-        MangaActionButton(
-            title = when (nextUpdateDays) {
-                null -> stringResource(MR.strings.not_applicable)
-                0 -> stringResource(MR.strings.manga_interval_expected_update_soon)
-                else -> pluralStringResource(
-                    MR.plurals.day,
-                    count = nextUpdateDays,
-                    nextUpdateDays,
-                )
-            },
-            icon = Icons.Default.HourglassEmpty,
-            color = if (isUserIntervalMode) MaterialTheme.colorScheme.primary else defaultActionButtonColor,
-            onClick = { onEditIntervalClicked?.invoke() },
-        )
-        MangaActionButton(
-            title = if (trackingCount == 0) {
-                stringResource(MR.strings.manga_tracking_tab)
-            } else {
-                pluralStringResource(MR.plurals.num_trackers, count = trackingCount, trackingCount)
-            },
-            icon = if (trackingCount == 0) Icons.Outlined.Sync else Icons.Outlined.Done,
-            color = if (trackingCount == 0) defaultActionButtonColor else MaterialTheme.colorScheme.primary,
-            onClick = onTrackingClicked,
+        if (onEditIntervalClicked != null) {
+            add(
+                DetailActionItem(
+                    MangaDetailAction.UPDATE_INTERVAL,
+                    when (nextUpdateDays) {
+                        null -> stringResource(MR.strings.not_applicable)
+                        0 -> stringResource(MR.strings.manga_interval_expected_update_soon)
+                        else -> pluralStringResource(MR.plurals.day, count = nextUpdateDays, nextUpdateDays)
+                    },
+                    icon = { Icon(Icons.Default.HourglassEmpty, null) },
+                    onClick = onEditIntervalClicked,
+                    active = isUserIntervalMode,
+                ),
+            )
+        }
+        add(
+            DetailActionItem(
+                MangaDetailAction.TRACKING,
+                if (trackingCount ==
+                    0
+                ) {
+                    stringResource(MR.strings.manga_tracking_tab)
+                } else {
+                    pluralStringResource(MR.plurals.num_trackers, count = trackingCount, trackingCount)
+                },
+                icon = { Icon(if (trackingCount == 0) Icons.Outlined.Sync else Icons.Outlined.Done, null) },
+                onClick = onTrackingClicked,
+                active = trackingCount > 0,
+            ),
         )
         if (onWebViewClicked != null) {
-            MangaActionButton(
-                title = stringResource(MR.strings.action_web_view),
-                icon = Icons.Outlined.Public,
-                color = defaultActionButtonColor,
-                onClick = onWebViewClicked,
-                onLongClick = onWebViewLongClicked,
+            add(
+                DetailActionItem(
+                    MangaDetailAction.WEB,
+                    stringResource(MR.strings.action_web_view),
+                    icon = { Icon(Icons.Outlined.Public, null) },
+                    onClick = onWebViewClicked,
+                ),
+            )
+        }
+        if (onWebViewLongClicked != null) {
+            add(
+                DetailActionItem(
+                    MangaDetailAction.COPY_LINK,
+                    stringResource(MR.strings.action_copy_link),
+                    icon = { Icon(Icons.Outlined.ContentCopy, null) },
+                    onClick = onWebViewLongClicked,
+                ),
             )
         }
     }
+    DetailActionStrip(
+        mangaId = mangaId,
+        preferenceStore = store,
+        actions = items,
+        globalDeletionEnabled = globalSlots >= 0,
+        deleteIcon = { Icon(Icons.Outlined.Delete, null) },
+        labels = detailActionLabels { stringResource(it) },
+        deletionOptions = { settings, onChange -> MangaDeletionOptions(settings, onChange) },
+        deletionDialog = { title, onDismiss, content -> MangaDeletionSettingsSheet(title, onDismiss, content) },
+        modifier = modifier.padding(start = 16.dp, top = 8.dp, end = 16.dp),
+    )
 }
 
 @Composable
