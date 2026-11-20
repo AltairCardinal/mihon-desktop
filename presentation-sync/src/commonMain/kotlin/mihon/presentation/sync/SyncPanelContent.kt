@@ -1299,6 +1299,7 @@ private fun MainPage(
         return
     }
     val continuingSetup = state.setupStep !in setOf(SyncSetupStep.SIGN_IN, SyncSetupStep.COMPLETE)
+    val normalSuccess = state.isMainSuccess(presentation)
     LazyColumn(state = listState, modifier = modifier.testTag("sync-pending-list")) {
         if (state.recoveryExternalScopes.isNotEmpty() || state.recoveryOldScopes.isNotEmpty()) {
             item {
@@ -1306,7 +1307,7 @@ private fun MainPage(
             }
         }
         item("summary") {
-            if (state.run == null && !state.busy) {
+            if ((state.run == null || state.syncStoppedBeforeRun) && !state.busy) {
                 SyncStatusHeader(state, continuingSetup, dispatch)
                 if (state.problem != null) {
                     Column(Modifier.padding(horizontal = 24.dp)) {
@@ -1325,7 +1326,7 @@ private fun MainPage(
                 }
                 if (detailsExpanded) SyncQueueSummary(state)
             }
-            if (state.run != null || state.busy) {
+            if (!state.syncStoppedBeforeRun && (state.run != null || state.busy)) {
                 SyncProgressCard(
                     state,
                     presentation,
@@ -1337,7 +1338,11 @@ private fun MainPage(
                 )
             }
             if (!state.showingCompactRun) {
-                NextAutomaticSync(state)
+                NextAutomaticSync(
+                    state,
+                    showManual = normalSuccess && !presentation.currentSuccess && state.queuedTotal == 0L,
+                    dispatch = dispatch,
+                )
             }
             if (state.run == null && state.problem == SyncRunProblem.AUTHORIZATION) {
                 Action("sync-reconnect", MR.strings.sync_reconnect) { dispatch(SyncPanelAction.Authorize) }
@@ -1564,6 +1569,9 @@ private fun SyncStatusHeader(
                     style = MaterialTheme.typography.titleLarge,
                 )
             }
+            if (operation == null && !continuingSetup && state.problem == null && state.queuedTotal > 0L) {
+                PendingOperations(state.queuedTotal)
+            }
             Button(
                 onClick = {
                     dispatch(
@@ -1593,7 +1601,7 @@ private fun SyncStatusHeader(
                             continuingSetup -> MR.strings.sync_setup_continue
                             operation != null -> operation.label
                             state.problem != null -> MR.strings.sync_setup_retry
-                            else -> MR.strings.sync_now
+                            else -> MR.strings.sync_start_action
                         },
                     ),
                 )
@@ -2138,6 +2146,7 @@ private fun DiagnosticPage(
 
 @Composable
 private fun RecordsPage(state: SyncPanelState, modifier: Modifier) {
+    val latestSuccess = state.records.firstOrNull { it.result.status == SyncRunStatus.SUCCESS }
     LazyColumn(
         modifier.padding(24.dp).testTag("sync-records"),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -2145,6 +2154,9 @@ private fun RecordsPage(state: SyncPanelState, modifier: Modifier) {
         if (state.records.isEmpty()) item { Text(syncString(MR.strings.sync_no_records)) }
         items(state.records) { record ->
             Column {
+                if (record === latestSuccess) {
+                    Text(previousSyncText(state.nowMillis, record.time))
+                }
                 Text(syncDate(record.time), style = MaterialTheme.typography.labelMedium)
                 Text(
                     syncString(
@@ -2953,8 +2965,11 @@ private fun ErrorRecoveryExit(
 }
 
 private val SyncPanelState.showingCompactRun: Boolean
-    get() = syncStartRequested || syncPauseRequested || operation?.running == true ||
-        ((run != null || busy) && run?.state !in TERMINAL_STATES)
+    get() = !syncStoppedBeforeRun && (
+        syncStartRequested || syncPauseRequested || syncResumeRequested ||
+            operation?.running == true ||
+            ((run != null || busy) && run?.state !in TERMINAL_STATES)
+        )
 
 private fun syncClockDuration(seconds: Long): String =
     "${(seconds.coerceAtLeast(0) / 60).toString().padStart(2, '0')}:" +
@@ -2968,7 +2983,8 @@ private fun SyncCompactProgressCard(
     horizontalPadding: Dp,
 ) {
     val run = state.run
-    val counting = state.syncStartRequested || (run?.plannedItems == null && presentation.operation == null)
+    val starting = state.syncStartRequested && !state.syncResumeRequested
+    val counting = starting || (run?.plannedItems == null && presentation.operation == null)
     val countingInProgress = counting && (
         presentation.active ||
             (run?.state == SyncRunState.RUNNING && presentation.fact?.hold == SyncProgressHold.RECOVERING) ||
@@ -2976,10 +2992,8 @@ private fun SyncCompactProgressCard(
         )
     val status = if (presentation.status == MR.strings.sync_busy) MR.strings.sync_round_active else presentation.status
     val statusText = syncString(
-        if (state.syncPauseRequested) {
-            MR.strings.sync_pausing_save
-        } else if (state.syncStartRequested) {
-            MR.strings.sync_start_preparing
+        if (state.syncPauseRequested || state.syncResumeRequested || starting) {
+            status
         } else if (countingInProgress ||
             (counting && presentation.status in setOf(MR.strings.sync_busy, MR.strings.sync_wait_start))
         ) {
@@ -3066,13 +3080,17 @@ private fun SyncCompactProgressCard(
                     )
                 }
                 val operationLabel = when {
-                    state.syncPauseRequested -> MR.strings.sync_pausing_save
+                    state.syncPauseRequested || state.syncResumeRequested -> presentation.status
+                    presentation.resumeFailed -> MR.strings.sync_resume_failed
                     run?.state == SyncRunState.PAUSED_USER && !presentation.active -> MR.strings.sync_paused
                     presentation.operation != null -> presentation.action
                     else -> null
                 }
                 if (operationLabel != null) {
                     Text(syncString(operationLabel), Modifier.testTag("sync-operation-stage"), style = textStyle)
+                }
+                state.problem?.takeIf { run?.state == SyncRunState.PAUSED_USER && !state.syncResumeRequested }?.let {
+                    Text(problemText(it), Modifier.testTag("sync-resume-problem"), style = textStyle)
                 }
                 if (!counting) {
                     presentation.attemptConfirmed?.let {
@@ -3149,6 +3167,7 @@ private fun SyncProgressCard(
     val run = state.run
     val fact = presentation.fact
     val terminal = run?.state in TERMINAL_STATES
+    val normalSuccess = state.isMainSuccess(presentation)
     val triggerFocus = remember { FocusRequester() }
     var detailsHaveFocus by remember { mutableStateOf(false) }
     Surface(
@@ -3164,7 +3183,15 @@ private fun SyncProgressCard(
                     Modifier.size(28.dp),
                 )
                 Text(
-                    syncString(presentation.status),
+                    if (normalSuccess) {
+                        if (presentation.currentSuccess) {
+                            syncString(MR.strings.sync_current_success)
+                        } else {
+                            previousSyncText(state.nowMillis, requireNotNull(run).updatedAt)
+                        }
+                    } else {
+                        syncString(presentation.status)
+                    },
                     Modifier.weight(1f).padding(start = 12.dp).testTag("sync-progress-status").semantics {
                         liveRegion = LiveRegionMode.Polite
                     },
@@ -3229,7 +3256,8 @@ private fun SyncProgressCard(
                     ),
                 )
             }
-            SyncMainOperation(state, presentation, dispatch)
+            if (normalSuccess && state.queuedTotal > 0L) PendingOperations(state.queuedTotal)
+            if (!normalSuccess || state.queuedTotal > 0L) SyncMainOperation(state, presentation, dispatch)
             if (run?.state in setOf(SyncRunState.FAILED, SyncRunState.BLOCKED, SyncRunState.PARTIAL) &&
                 state.problem != null
             ) {
@@ -3438,6 +3466,7 @@ private fun syncMainOperationHeight(): Dp {
         MR.strings.sync_resume_run, MR.strings.sync_retry_run, MR.strings.sync_reconnect,
         MR.strings.sync_password_connect, MR.strings.sync_view_reason, MR.strings.sync_now,
         MR.strings.sync_pause_run, MR.strings.sync_pausing_save, MR.strings.sync_wait_start,
+        MR.strings.sync_pausing, MR.strings.sync_pause_saving, MR.strings.sync_resuming,
         MR.strings.sync_connect_space, MR.strings.sync_connection_problem,
         MR.strings.sync_checking_connection, MR.strings.sync_retry_connection_check,
     ).map { syncString(it) }
@@ -3479,7 +3508,14 @@ private fun SyncMainOperation(
         when {
             state.syncPauseRequested -> Action(
                 "sync-wait",
-                MR.strings.sync_pausing_save,
+                presentation.status,
+                false,
+                shape = operationShape,
+                modifier = buttonModifier,
+            ) {}
+            state.syncResumeRequested -> Action(
+                "sync-wait",
+                MR.strings.sync_resuming,
                 false,
                 shape = operationShape,
                 modifier = buttonModifier,
@@ -3518,6 +3554,13 @@ private fun SyncMainOperation(
                 shape = operationShape,
                 modifier = buttonModifier,
             ) { dispatch(SyncPanelAction.RetrySync) }
+            run?.state == SyncRunState.PAUSED_USER && state.problem != null -> Action(
+                "sync-resume-run",
+                MR.strings.sync_setup_retry,
+                state.connection?.enabled == true,
+                modifier = buttonModifier,
+                tonal = true,
+            ) { dispatch(SyncPanelAction.ResumeSync) }
             run?.state == SyncRunState.PAUSED_USER -> SyncPauseResumeButton(
                 paused = true,
                 enabled = state.connection?.enabled == true,
@@ -3915,7 +3958,11 @@ private fun encodeQueryParameter(value: String): String = buildString {
 internal expect fun syncScheduleDateTime(millis: Long): String
 
 @Composable
-private fun NextAutomaticSync(state: SyncPanelState) {
+private fun NextAutomaticSync(
+    state: SyncPanelState,
+    showManual: Boolean,
+    dispatch: (SyncPanelAction) -> Unit,
+) {
     val text = when {
         state.connection?.enabled != true -> return
         state.periodMinutes <= 0 -> syncString(MR.strings.sync_auto_off)
@@ -3927,15 +3974,48 @@ private fun NextAutomaticSync(state: SyncPanelState) {
             duration(((state.nextSyncAtMillis - state.nowMillis - 1) / 60_000) + 1),
         )
     }
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp).testTag("sync-auto-row"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text,
+            Modifier.weight(1f).testTag("sync-next-auto"),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (showManual) {
+            TextButton(
+                { dispatch(SyncPanelAction.Synchronize) },
+                Modifier.heightIn(min = 48.dp).syncUiTag("sync-now"),
+            ) {
+                Text(syncString(MR.strings.sync_now))
+            }
+        }
+    }
+}
+
+private fun SyncPanelState.isMainSuccess(presentation: SyncProgressPresentation): Boolean =
+    page == SyncPanelPage.MAIN && presentation.complete && problem == null && setupProblem == null &&
+        connection?.enabled == true && connectionOperation(this) == null
+
+@Composable
+private fun PendingOperations(count: Long) {
     Text(
-        text,
-        Modifier.fillMaxWidth().padding(
-            horizontal = 24.dp,
-            vertical = 8.dp,
-        ).testTag("sync-next-auto"),
-        style = MaterialTheme.typography.bodyMedium,
+        syncString(MR.strings.sync_pending_operations, count),
+        Modifier.testTag("sync-pending-operations"),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+}
+
+@Composable
+private fun previousSyncText(now: Long, completedAt: Long): String {
+    val minutes = (now - completedAt).coerceAtLeast(0L) / 60_000L
+    return if (minutes == 0L) {
+        syncString(MR.strings.sync_previous_success_just_now)
+    } else {
+        syncString(MR.strings.sync_previous_success_minutes, minutes)
+    }
 }
 
 @Composable
@@ -3945,9 +4025,8 @@ private fun statusText(state: SyncPanelState): String = when {
     state.busy -> syncString(MR.strings.sync_busy)
     state.problem != null -> state.problem?.let { problemText(it) }.orEmpty()
     state.connection?.enabled != true -> syncString(MR.strings.sync_connect)
-    state.queuedTotal > 0 -> syncString(MR.strings.sync_queued, state.queuedTotal)
-    state.pendingTotal > 0 -> syncString(MR.strings.sync_exchanged)
-    else -> syncString(MR.strings.sync_synced)
+    state.syncStoppedBeforeRun -> syncString(MR.strings.sync_stopped_this_run)
+    else -> syncString(MR.strings.sync_no_success)
 }
 
 private fun runPhaseLabel(phase: SyncRunPhase): StringResource = when (phase) {

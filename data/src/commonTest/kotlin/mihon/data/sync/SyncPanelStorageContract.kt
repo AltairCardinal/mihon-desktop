@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
@@ -467,6 +468,99 @@ abstract class SyncPanelStorageContract {
                     }
                 }
                 Unit
+            }
+        }
+    }
+
+    @Test
+    fun `resume acknowledges immediately and failed checkpoint update can be retried`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                val run = f.runtime.runStore.start("space", 1, SyncTrigger.MANUAL)
+                f.runtime.runStore.pause(run.runId)
+                f.panel.act(SyncPanelAction.Open)
+                val entered = CompletableDeferred<Unit>()
+                val release = CompletableDeferred<Unit>()
+                f.secure.nextSpaceRead = entered to release
+                try {
+                    f.panel.dispatch(SyncPanelAction.SetDeviceName("Resume during refresh"))
+                    withTimeout(5_000) { entered.await() }
+                    storage.driver.execute(
+                        null,
+                        "CREATE TRIGGER reject_resume BEFORE UPDATE OF state ON sync_runtime_runs " +
+                            "WHEN OLD.state = 'PAUSED_USER' AND NEW.state = 'RUNNING' " +
+                            "BEGIN SELECT RAISE(ABORT, 'resume rejected'); END",
+                        0,
+                    )
+                    f.panel.dispatch(SyncPanelAction.ResumeSync)
+                    assertTrue(f.panel.state.value.syncResumeRequested, "continue click must acknowledge synchronously")
+                    assertTrue(f.panel.state.value.busy)
+                    withTimeout(5_000) { f.panel.state.first { !it.syncResumeRequested && it.problem != null } }
+                    assertFalse(f.panel.state.value.busy)
+                    assertEquals(SyncRunState.PAUSED_USER, f.runtime.runStore.get(run.runId)?.state)
+                    assertFalse(release.isCompleted, "resume cannot wait behind the full refresh")
+                    storage.driver.execute(null, "DROP TRIGGER reject_resume", 0)
+                    val completion = f.runtime.coordinator.activity.value.completion
+                    f.panel.dispatch(SyncPanelAction.ResumeSync)
+                    assertTrue(f.panel.state.value.syncResumeRequested)
+                    release.complete(Unit)
+                    withTimeout(10_000) {
+                        f.runtime.coordinator.activity.first { !it.running && it.completion > completion }
+                        f.panel.state.first { !it.syncResumeRequested && !it.busy }
+                    }
+                    assertEquals(run.runId, f.runtime.runStore.latest("space", 1)?.runId)
+                } finally {
+                    release.complete(Unit)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `pause before manual job starts stops this request without reviving previous success`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                f.panel.stop()
+                val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+                val dispatcher = executor.asCoroutineDispatcher()
+                val parent = SupervisorJob()
+                val panel = SyncPanelController(f.runtime, storage.handler, CoroutineScope(dispatcher + parent))
+                val release = java.util.concurrent.CountDownLatch(1)
+                try {
+                    panel.act(SyncPanelAction.Open)
+                    val previous = panel.state.value.run!!
+                    assertEquals(SyncRunState.SUCCEEDED, previous.state)
+                    val entered = CompletableDeferred<Unit>()
+                    executor.submit {
+                        entered.complete(Unit)
+                        check(release.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                    }
+                    entered.await()
+                    panel.dispatch(SyncPanelAction.Synchronize)
+                    assertTrue(panel.state.value.syncStartRequested)
+                    panel.dispatch(SyncPanelAction.PauseSync)
+                    assertTrue(panel.state.value.syncPauseRequested)
+                    release.countDown()
+                    withTimeout(5_000) { panel.state.first { !it.syncStartRequested && !it.syncPauseRequested } }
+                    assertTrue(
+                        panel.state.value.syncStoppedBeforeRun,
+                        "stopped request must not display previous success",
+                    )
+                    assertFalse(panel.state.value.busy)
+                    assertEquals(previous.runId, f.runtime.runStore.latest("space", 1)?.runId)
+                    assertEquals(SyncRunState.SUCCEEDED, f.runtime.runStore.get(previous.runId)?.state)
+                } finally {
+                    release.countDown()
+                    panel.stop()
+                    parent.cancelAndJoin()
+                    dispatcher.close()
+                }
             }
         }
     }

@@ -142,6 +142,17 @@ class SyncProgressControllerIntegrationTest {
         }
         try {
             runtime.baseline.connectAndImport("space", 1, SyncRepository("fixture", "sync", "main"), "actor", 1)
+            val previous = runtime.runStore.start("space", 1, SyncTrigger.MANUAL)
+            runtime.runStore.finish(previous.runId, SyncRunState.SUCCEEDED)
+            runtime.preferences.lastSuccess.set(clockMillis)
+            mount()
+            runtime.panel.dispatch(SyncPanelAction.Open)
+            withTimeout(5000) { runtime.panel.state.first { it.loaded && it.run?.runId == previous.runId } }
+            render()
+            assertNotNull(node("sync-auto-row"))
+            assertNotNull(node("sync-now"))
+            runtime.panel.dispatch(SyncPanelAction.Close)
+            withTimeout(5000) { runtime.panel.state.first { !it.visible } }
             val run = runtime.runStore.start("space", 1, SyncTrigger.MANUAL)
             runtime.runStore.progress(run.runId, SyncRunPhase.UPLOADING, 0, 1)
             assertTrue(runtime.runStore.claim(run.runId, "fixture-owner", 1))

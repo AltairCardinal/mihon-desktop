@@ -2167,6 +2167,17 @@
     <string name="sync_pause_bulk">暂停已选处理</string>
     <string name="sync_resume_bulk">继续已选处理</string>
     <string name="sync_result_completed">同步已完成</string>
+    <string name="sync_current_success">刚刚完成同步</string>
+    <string name="sync_previous_success_just_now">上次同步刚刚完成</string>
+    <string name="sync_previous_success_minutes">上次同步完成于 %1$d 分钟前</string>
+    <string name="sync_no_success">尚未完成过同步</string>
+    <string name="sync_pending_operations">有 %1$d 条操作待同步</string>
+    <string name="sync_start_action">开始同步</string>
+    <string name="sync_stopped_this_run">本次同步已停止</string>
+    <string name="sync_pausing">正在暂停</string>
+    <string name="sync_pause_saving">正在保存进度</string>
+    <string name="sync_resuming">正在继续同步</string>
+    <string name="sync_resume_failed">继续同步失败</string>
     <string name="sync_result_summary">已完成%1$d条 · 用时%2$s</string>
     <string name="sync_auto_group">自动同步</string>
     <string name="sync_account_devices">账号与设备</string>

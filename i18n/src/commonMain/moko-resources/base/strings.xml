@@ -2376,6 +2376,17 @@
     <string name="sync_pause_bulk">Pause selected processing</string>
     <string name="sync_resume_bulk">Resume selected processing</string>
     <string name="sync_result_completed">Sync completed</string>
+    <string name="sync_current_success">Sync just completed</string>
+    <string name="sync_previous_success_just_now">Last sync completed just now</string>
+    <string name="sync_previous_success_minutes">Last sync completed %1$d min ago</string>
+    <string name="sync_no_success">No sync has completed yet</string>
+    <string name="sync_pending_operations">Operations waiting to sync: %1$d</string>
+    <string name="sync_start_action">Start sync</string>
+    <string name="sync_stopped_this_run">This sync stopped</string>
+    <string name="sync_pausing">Pausing sync</string>
+    <string name="sync_pause_saving">Saving progress</string>
+    <string name="sync_resuming">Resuming sync</string>
+    <string name="sync_resume_failed">Failed to resume sync</string>
     <string name="sync_result_summary">Completed %1$d items · Time %2$s</string>
     <string name="sync_auto_group">Automatic sync</string>
     <string name="sync_account_devices">Account and device</string>

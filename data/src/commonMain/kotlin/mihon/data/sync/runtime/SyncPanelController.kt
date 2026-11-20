@@ -167,6 +167,8 @@ class SyncPanelController(
                     it.copy(
                         operation = operationFor(it.run?.runId),
                         syncStartRequested = it.syncStartRequested && !activity.running,
+                        syncResumeRequested = it.syncResumeRequested && !activity.running,
+                        syncStoppedBeforeRun = it.syncStoppedBeforeRun && !activity.running,
                         busy =
                         activity.running || local?.running == true || it.syncStartRequested || it.syncPauseRequested,
                     )
@@ -204,6 +206,7 @@ class SyncPanelController(
                 mutableState.update { current ->
                     current.copy(
                         operation = operationFor(current.run?.runId),
+                        syncStoppedBeforeRun = current.syncStoppedBeforeRun && local?.running != true,
                         busy =
                         activity.running || local?.running == true || current.syncStartRequested ||
                             current.syncPauseRequested,
@@ -327,8 +330,16 @@ class SyncPanelController(
             val job = panelScope.launch(start = CoroutineStart.LAZY) {
                 try {
                     startingJob?.cancelAndJoin()
+                    mutableState.update {
+                        it.copy(syncPauseSaving = target.runId != null && it.run?.runId == target.runId)
+                    }
                     runtime.pauseSync(target)
                     pendingMutex.withLock { refreshPendingLocked(updateReferences = false) }
+                    val cancelledOperation = runtime.coordinator.activity.value.operation
+                        ?.takeIf { it.id == target.operationId }
+                    if (!current.syncResumeRequested && target.runId == null && cancelledOperation?.runId == null) {
+                        mutableState.update { it.copy(syncStoppedBeforeRun = true) }
+                    }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (failure: Exception) {
@@ -337,6 +348,10 @@ class SyncPanelController(
                     mutableState.update {
                         it.copy(
                             syncPauseRequested = false,
+                            syncPauseSaving = false,
+                            // A LAZY job cancelled before its first instruction never enters its own finally.
+                            syncStartRequested = it.syncStartRequested && startingJob == null,
+                            syncResumeRequested = it.syncResumeRequested && startingJob == null,
                             progress = it.progress?.let { fact ->
                                 if (fact.hold != SyncProgressHold.PAUSING) {
                                     fact
@@ -351,7 +366,8 @@ class SyncPanelController(
                                 }
                             },
                             busy = runtime.coordinator.activity.value.running ||
-                                runtime.localOperation.value?.running == true || it.syncStartRequested,
+                                runtime.localOperation.value?.running == true ||
+                                (it.syncStartRequested && startingJob == null),
                         )
                     }
                 }
@@ -359,6 +375,7 @@ class SyncPanelController(
             mutableState.update {
                 it.copy(
                     syncPauseRequested = true,
+                    syncPauseSaving = false,
                     busy = true,
                     progress = it.progress?.copy(hold = SyncProgressHold.PAUSING),
                 )
@@ -392,7 +409,57 @@ class SyncPanelController(
             }
             manualStartJob = job
             mutableState.update {
-                it.copy(syncStartRequested = true, busy = true, notice = null, problem = null)
+                it.copy(
+                    syncStartRequested = true,
+                    syncStoppedBeforeRun = false,
+                    busy = true,
+                    notice = null,
+                    problem = null,
+                )
+            }
+            job.start()
+            return
+        }
+        if (action == SyncPanelAction.ResumeSync) {
+            val current = state.value
+            val runId = current.run?.takeIf { it.state == SyncRunState.PAUSED_USER }?.runId ?: return
+            if (current.connection?.enabled != true || current.busy || manualStartJob?.isActive == true ||
+                switchIntent != null || current.pendingRecoveryPurpose != null
+            ) {
+                return
+            }
+            val job = panelScope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    if (runtime.runStore.resumeIfAllowed(runId)) {
+                        val result = runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                        mutableState.update { it.copy(problem = result.problem) }
+                    }
+                    pendingMutex.withLock { refreshPendingLocked(updateReferences = false) }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    mutableState.update { it.copy(problem = failure.syncProblem()) }
+                } finally {
+                    mutableState.update {
+                        it.copy(
+                            syncStartRequested = false,
+                            syncResumeRequested = false,
+                            busy = runtime.coordinator.activity.value.running ||
+                                runtime.localOperation.value?.running == true || it.syncPauseRequested,
+                        )
+                    }
+                }
+            }
+            manualStartJob = job
+            mutableState.update {
+                it.copy(
+                    syncStartRequested = true,
+                    syncResumeRequested = true,
+                    syncStoppedBeforeRun = false,
+                    busy = true,
+                    notice = null,
+                    problem = null,
+                )
             }
             job.start()
             return
@@ -1309,11 +1376,7 @@ class SyncPanelController(
                 runtime.pauseSync()
                 refresh()
             }
-            SyncPanelAction.ResumeSync -> panelScope.launch {
-                val resumed = state.value.run?.let { runtime.runStore.resumeIfAllowed(it.runId) } == true
-                if (resumed) runtime.coordinator.synchronize(SyncTrigger.MANUAL)
-                refresh()
-            }
+            SyncPanelAction.ResumeSync -> dispatch(action)
             SyncPanelAction.PauseImport -> {
                 runtime.preferences.importPaused.set(true)
                 refresh()
