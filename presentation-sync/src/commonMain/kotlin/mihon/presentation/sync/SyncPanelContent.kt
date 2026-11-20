@@ -322,13 +322,7 @@ fun SyncPanelContent(
         if (authorizationVerification != null &&
             (state.page == SyncPanelPage.MAIN || state.page == SyncPanelPage.RECOVERY)
         ) {
-            Column(Modifier.weight(1f).fillMaxWidth()) {
-                AuthorizationVerificationText(
-                    authorizationVerification,
-                    Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
-                )
-                NextAutomaticSync(state, showManual = false, dispatch = dispatch)
-            }
+            AuthorizationVerificationPanel(state, authorizationVerification, dispatch, Modifier.weight(1f))
             return@Column
         }
         if (externalUnavailable) {
@@ -561,6 +555,39 @@ private fun PanelHeader(state: SyncPanelState, dispatch: (SyncPanelAction) -> Un
 private val SyncPanelState.pendingAuthorizationVerification: SyncAuthorizationVerification?
     get() = recovery?.takeIf { it.reason == SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED }
         ?.authorizationVerification
+
+@Composable
+private fun AuthorizationVerificationPanel(
+    state: SyncPanelState,
+    verification: SyncAuthorizationVerification,
+    dispatch: (SyncPanelAction) -> Unit,
+    modifier: Modifier,
+) {
+    LazyColumn(modifier.fillMaxWidth()) {
+        item {
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(24.dp).testTag("sync-authorization-verification-card"),
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Icon(Icons.Outlined.Info, contentDescription = null)
+                        AuthorizationVerificationText(verification)
+                    }
+                    Text(syncString(MR.strings.sync_authorization_verification_retry))
+                    Action("sync-recovery-details", MR.strings.sync_recovery_details) {
+                        dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
+                    }
+                }
+            }
+        }
+        if (state.periodMinutes <= 0) {
+            item { NextAutomaticSync(state, showManual = false, dispatch = dispatch) }
+        }
+        item { SyncHistoryAction(dispatch) }
+    }
+}
 
 @Composable
 private fun AuthorizationVerificationText(
@@ -1515,14 +1542,7 @@ private fun MainPage(
         }
         if (!state.showingCompactRun) {
             item("history") {
-                TextButton(
-                    { dispatch(SyncPanelAction.Navigate(SyncPanelPage.HISTORY)) },
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = 56.dp).syncUiTag("sync-history"),
-                ) {
-                    Icon(Icons.Outlined.History, null)
-                    Text(syncString(MR.strings.sync_records), Modifier.weight(1f).padding(horizontal = 12.dp))
-                    Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null)
-                }
+                SyncHistoryAction(dispatch)
             }
         }
     }
@@ -1532,6 +1552,18 @@ private fun MainPage(
             .distinctUntilChanged()
             .filter { it >= state.pending.size - 3 }
             .collect { dispatch(SyncPanelAction.LoadMore) }
+    }
+}
+
+@Composable
+private fun SyncHistoryAction(dispatch: (SyncPanelAction) -> Unit) {
+    TextButton(
+        { dispatch(SyncPanelAction.Navigate(SyncPanelPage.HISTORY)) },
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = 56.dp).syncUiTag("sync-history"),
+    ) {
+        Icon(Icons.Outlined.History, null)
+        Text(syncString(MR.strings.sync_records), Modifier.weight(1f).padding(horizontal = 12.dp))
+        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null)
     }
 }
 
@@ -4003,12 +4035,9 @@ private fun NextAutomaticSync(
     showManual: Boolean,
     dispatch: (SyncPanelAction) -> Unit,
 ) {
-    val verification = state.pendingAuthorizationVerification
     val text = when {
-        state.connection?.enabled != true && verification == null -> return
+        state.connection?.enabled != true -> return
         state.periodMinutes <= 0 -> syncString(MR.strings.sync_auto_off)
-        verification == SyncAuthorizationVerification.WAITING_NETWORK -> syncString(MR.strings.sync_auto_network)
-        verification == SyncAuthorizationVerification.CHECKING -> syncString(MR.strings.sync_auto_connection_check)
         state.problem == SyncRunProblem.NETWORK -> syncString(MR.strings.sync_auto_network)
         state.nextSyncAtMillis <= state.nowMillis -> syncString(MR.strings.sync_auto_due)
         else -> syncString(

@@ -767,7 +767,7 @@ class SyncRuntime(
         val revision = credentials.read()?.revision
         val saved = observation?.takeIf {
             it.credentialRevision == revision && it.lastCheckProblem == SyncRunProblem.NETWORK
-        }?.lastCheckedAtMillis?.let { it + LOCAL_DATABASE_RETRY_MILLIS } ?: 0L
+        }?.lastCheckedAtMillis?.let { it + AUTHORIZATION_RECHECK_DELAY_MILLIS } ?: 0L
         val key = VerifiedAuthorizationRejection(binding, revision, credentials.authorizationEpoch.value)
         return maxOf(
             saved,
@@ -900,7 +900,7 @@ class SyncRuntime(
             val revision = credentials.read()?.revision
             val evidenceRevision = checked.authorizationCredentialRevision ?: initialCredentialRevision
             if (revision != evidenceRevision) return true
-            val next = clock() + LOCAL_DATABASE_RETRY_MILLIS
+            val next = clock() + AUTHORIZATION_RECHECK_DELAY_MILLIS
             authorizationCheckFallback = VerifiedAuthorizationRejection(binding, revision, epoch) to next
             onboarding.storage.updateRecoveryObservation(current) {
                 it.copy(
@@ -927,6 +927,24 @@ class SyncRuntime(
                     verifiedAuthorizationRejection = VerifiedAuthorizationRejection(binding, revision, epoch)
                 }
             }
+            diagnosticJournal?.record(
+                SyncJournalEventKind.AUTHORIZATION,
+                SyncJournalStage.AUTHORIZATION,
+                code = when (checked.recovery?.reason) {
+                    SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED -> SyncJournalCode.AUTHORIZATION
+                    SyncSpaceRecoveryReason.SPACE_UNAVAILABLE -> SyncJournalCode.SPACE_UNAVAILABLE
+                    SyncSpaceRecoveryReason.SPACE_DATA_INVALID -> SyncJournalCode.INVALID_DATA
+                    SyncSpaceRecoveryReason.SWITCH_PENDING -> SyncJournalCode.FAILED
+                    null -> when (checked.problem) {
+                        null -> SyncJournalCode.SUCCESS
+                        SyncRunProblem.NETWORK -> SyncJournalCode.WAITING_RETRY
+                        SyncRunProblem.STORAGE -> SyncJournalCode.STORAGE
+                        else -> SyncJournalCode.FAILED
+                    }
+                },
+                networkPhase = checked.networkPhase,
+                httpStatus = checked.httpStatus,
+            )
             true
         } finally {
             authorizationCheckBinding = null
@@ -2042,6 +2060,8 @@ class SyncRuntime(
     companion object {
         const val CLIENT_ID = "Iv23liNtj6rhGAXJEwCS"
         const val APP_SLUG = "mihon-desktop"
+
+        private const val AUTHORIZATION_RECHECK_DELAY_MILLIS = 60_000L
 
         /** After the short retry sequence, retain low-frequency automatic recovery. */
         private const val MAX_NETWORK_FAILURES = 4L

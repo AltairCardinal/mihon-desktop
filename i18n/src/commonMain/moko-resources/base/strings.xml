@@ -2070,8 +2070,9 @@
     <string name="sync_recovery_checking">Checking sync space…</string>
     <string name="sync_recovery_check_incomplete">This check could not be completed.</string>
     <string name="sync_recovery_auth_expired">GitHub connection has expired</string>
-    <string name="sync_authorization_verification_checking">Checking the GitHub connection</string>
-    <string name="sync_authorization_verification_waiting">Waiting for the network before checking the GitHub connection</string>
+    <string name="sync_authorization_verification_checking">Checking the sync connection</string>
+    <string name="sync_authorization_verification_waiting">Sync connection could not be verified yet</string>
+    <string name="sync_authorization_verification_retry">Local data is preserved. The app will retry automatically.</string>
     <string name="sync_recovery_data_problem">Space data needs attention</string>
     <string name="sync_recovery_no_spaces">No accessible sync spaces were found. Check GitHub authorization or prepare a new space.</string>
     <string name="sync_recovery_create_body">Your existing local library and reading progress will be used for the first sync to the new space. Data that existed only on other devices or in the deleted remote space cannot be recovered here. Your current connection is kept until the new space is ready.</string>
@@ -2395,7 +2396,6 @@
     <string name="sync_more_group">More</string>
     <string name="sync_auto_off">Automatic sync is off</string>
     <string name="sync_auto_network">Automatic sync is waiting for the connection to recover</string>
-    <string name="sync_auto_connection_check">Automatic sync is waiting for the connection check</string>
     <string name="sync_auto_due">Automatic sync is due; waiting for the system to schedule it</string>
     <string name="sync_auto_next">Next automatic sync (estimated): %1$s · in %2$s</string>
     <string name="sync_review_heading">To review · %1$d</string>

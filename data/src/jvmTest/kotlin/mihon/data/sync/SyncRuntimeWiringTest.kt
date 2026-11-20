@@ -106,7 +106,7 @@ class SyncRuntimeWiringTest {
                 assertNotNull(runtime.spaceRecovery())
                 assertEquals(SyncRunState.BLOCKED, runtime.runStore.get(run.runId)?.state)
                 val reads = userReads
-                assertTrue(runtime.recoveryDelayMillis() > 0)
+                assertEquals(60_000L, runtime.recoveryDelayMillis(), "connection checks use a short bounded retry")
                 runtime.resumeIfNeeded()
                 assertEquals(reads, userReads, "repeated wakeups must respect persisted backoff")
                 val reopened = setup.runtime()
