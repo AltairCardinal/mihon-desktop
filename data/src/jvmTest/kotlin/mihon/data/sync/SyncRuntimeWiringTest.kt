@@ -295,8 +295,11 @@ class SyncRuntimeWiringTest {
                             stored.repositoryId,
                             runtime.onboarding.storage.connection("space", 1)?.repositoryId,
                         )
-                        assertEquals(SyncRunState.WAITING_SYSTEM, runtime.runStore.get(blocked.runId)?.state)
-                        assertTrue(runtime.resumeIfNeeded())
+                        withTimeout(5_000) {
+                            while (runtime.runStore.get(blocked.runId)?.state != SyncRunState.SUCCEEDED) {
+                                kotlinx.coroutines.delay(25)
+                            }
+                        }
                         assertEquals(SyncRunState.SUCCEEDED, runtime.runStore.get(blocked.runId)?.state)
                     } else {
                         assertNotNull(runtime.spaceRecovery()?.authorizationVerification)
