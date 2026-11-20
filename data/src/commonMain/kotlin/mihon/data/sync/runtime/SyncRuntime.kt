@@ -801,7 +801,7 @@ class SyncRuntime(
         )
         if (verifiedAuthorizationRejection == proof) return null
         val observation = onboarding.storage.recoveryObservation(stored)
-        return if (observation?.lastCheckProblem == SyncRunProblem.NETWORK) {
+        return if (observation?.lastCheckProblem != null && observation.credentialRevision == proof.revision) {
             SyncAuthorizationVerification.WAITING_NETWORK
         } else {
             SyncAuthorizationVerification.CHECKING
@@ -1490,8 +1490,15 @@ class SyncRuntime(
     }
 
     /** Explicit recovery is read-only: authenticate, inspect the current App grant, then validate the fixed space. */
-    suspend fun recheckSpace(): SyncSpaceRecoveryCheck {
-        coordinator.cancelAndJoin()
+    suspend fun recheckSpace(authorizationRestore: Boolean = false): SyncSpaceRecoveryCheck {
+        if (authorizationRestore) {
+            val recovery = spaceRecovery()
+            if (recovery?.reason != SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED) {
+                return SyncSpaceRecoveryCheck(recovery)
+            }
+        } else {
+            coordinator.cancelAndJoin()
+        }
         return connectionMutex.withLock {
             recoverSwitchActivation()
             val connection = rawConnection() ?: return@withLock SyncSpaceRecoveryCheck()
@@ -1503,6 +1510,11 @@ class SyncRuntime(
                 throw cancelled
             } catch (_: Exception) {
                 return@withLock SyncSpaceRecoveryCheck(problem = SyncRunProblem.STORAGE)
+            }
+            // The foreground scheduler can already have verified the newly accepted credential.
+            // Reuse that outcome and leave any resumed run alone.
+            if (authorizationRestore && previousRecovery?.reason != SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED) {
+                return@withLock SyncSpaceRecoveryCheck(recoveryFor(connection))
             }
             val switching = onboarding.storage.activeSwitch(stored.accountId)
             if (switching?.stage == SyncSpaceSwitchStage.ACTIVATING) {

@@ -18,6 +18,7 @@ import mihon.data.sync.inbox.SyncInboxStore
 import mihon.data.sync.runtime.StoredSyncMaterial
 import mihon.data.sync.runtime.StoredSyncSetup
 import mihon.data.sync.runtime.SyncPanelAction
+import mihon.data.sync.runtime.SyncPanelPage
 import mihon.data.sync.runtime.SyncProgressDirection
 import mihon.data.sync.runtime.SyncRunState
 import mihon.data.sync.runtime.SyncRuntime
@@ -122,6 +123,11 @@ class SyncRuntimeWiringTest {
                     assertNull(reopened.spaceRecovery())
                     assertEquals(SyncRunState.SUCCEEDED, reopened.runStore.get(run.runId)?.state)
                     assertEquals(run.runId, reopened.runStore.latest("space", 1)?.runId)
+                    val validatedSnapshots = setup.git.snapshotReads
+                    val redundantCheck = reopened.recheckSpace(authorizationRestore = true)
+                    assertNull(redundantCheck.problem)
+                    assertNull(redundantCheck.recovery)
+                    assertEquals(validatedSnapshots, setup.git.snapshotReads)
                 } finally {
                     reopened.coordinator.cancelAndJoin()
                     reopened.stopPanel()
@@ -249,6 +255,8 @@ class SyncRuntimeWiringTest {
                     val delegate = setup.git.server.dispatcher
                     val refreshes = AtomicInteger()
                     val deviceRequests = AtomicInteger()
+                    val recoveryStarted = CompletableDeferred<Unit>()
+                    val releaseRecovery = CountDownLatch(1)
                     setup.git.server.dispatcher = object : Dispatcher() {
                         override fun dispatch(request: RecordedRequest): MockResponse {
                             if (request.url.encodedPath == "/user" && accessRejected &&
@@ -268,6 +276,11 @@ class SyncRuntimeWiringTest {
                                 return MockResponse(body = """{"error":"incorrect_client_credentials"}""")
                             }
                             if (request.url.encodedPath == "/device") deviceRequests.incrementAndGet()
+                            if (deviceRequests.get() > 0 && "/git/blobs/" in request.url.encodedPath &&
+                                recoveryStarted.complete(Unit)
+                            ) {
+                                check(releaseRecovery.await(10, TimeUnit.SECONDS))
+                            }
                             return delegate.dispatch(request)
                         }
                     }
@@ -279,12 +292,26 @@ class SyncRuntimeWiringTest {
                         setup.panel.act(SyncPanelAction.Open)
                         setup.panel.act(SyncPanelAction.CheckAuthorization)
                         withTimeout(8_000) { setup.panel.state.first { it.deviceCode != null } }
+                        try {
+                            withTimeout(8_000) { recoveryStarted.await() }
+                            setup.panel.dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
+                            withTimeout(2_000) { setup.panel.state.first { it.page == SyncPanelPage.DIAGNOSTICS } }
+                            setup.panel.dispatch(SyncPanelAction.Back)
+                            withTimeout(2_000) { setup.panel.state.first { it.page == SyncPanelPage.RECOVERY } }
+                            setup.panel.dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
+                            assertEquals(SyncPanelPage.DIAGNOSTICS, setup.panel.state.value.page)
+                        } finally {
+                            releaseRecovery.countDown()
+                        }
                         withTimeout(8_000) {
                             setup.panel.state.first {
-                                runtime.credentials.read()?.revision != expired.revision &&
-                                    runtime.spaceRecovery() == null
+                                it.recovery == null &&
+                                    runtime.credentials.read()?.revision != expired.revision
                             }
                         }
+                        assertEquals(SyncPanelPage.DIAGNOSTICS, setup.panel.state.value.page)
+                        setup.panel.dispatch(SyncPanelAction.Back)
+                        withTimeout(2_000) { setup.panel.state.first { it.page == SyncPanelPage.MAIN } }
                         assertEquals(1, deviceRequests.get())
                         assertEquals(
                             1,

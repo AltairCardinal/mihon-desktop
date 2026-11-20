@@ -564,7 +564,10 @@ private fun AuthorizationVerificationPanel(
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Icon(Icons.Outlined.Info, contentDescription = null)
-                        AuthorizationVerificationText(verification)
+                        AuthorizationVerificationText(verification, restored = state.recoveryAuthorizationConfirmed)
+                    }
+                    if (verification == SyncAuthorizationVerification.CHECKING) {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
                     }
                     Action("sync-recovery-details", MR.strings.sync_recovery_details) {
                         dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
@@ -583,11 +586,16 @@ private fun AuthorizationVerificationPanel(
 private fun AuthorizationVerificationText(
     verification: SyncAuthorizationVerification,
     modifier: Modifier = Modifier,
+    restored: Boolean = false,
 ) {
     Text(
         syncString(
             when (verification) {
-                SyncAuthorizationVerification.CHECKING -> MR.strings.sync_authorization_verification_checking
+                SyncAuthorizationVerification.CHECKING -> if (restored) {
+                    MR.strings.sync_authorization_verification_restored
+                } else {
+                    MR.strings.sync_authorization_verification_checking
+                }
                 SyncAuthorizationVerification.WAITING_NETWORK -> MR.strings.sync_authorization_verification_waiting
             },
         ),
@@ -599,6 +607,12 @@ private fun AuthorizationVerificationText(
 @Composable
 private fun RecoverySummary(state: SyncPanelState, dispatch: (SyncPanelAction) -> Unit, modifier: Modifier) {
     val recovery = requireNotNull(state.recovery)
+    val title = when (recovery.reason) {
+        SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED -> MR.strings.sync_recovery_auth_expired
+        SyncSpaceRecoveryReason.SPACE_DATA_INVALID -> MR.strings.sync_recovery_data_problem
+        SyncSpaceRecoveryReason.SPACE_UNAVAILABLE -> MR.strings.sync_recovery_title
+        SyncSpaceRecoveryReason.SWITCH_PENDING -> MR.strings.sync_recovery_switch_pending_title
+    }
     LazyColumn(
         modifier.fillMaxWidth().padding(24.dp).testTag("sync-recovery-summary"),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -616,18 +630,11 @@ private fun RecoverySummary(state: SyncPanelState, dispatch: (SyncPanelAction) -
             ) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        syncString(
-                            when (recovery.reason) {
-                                SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED -> MR.strings.sync_recovery_auth_expired
-                                SyncSpaceRecoveryReason.SPACE_DATA_INVALID -> MR.strings.sync_recovery_data_problem
-                                SyncSpaceRecoveryReason.SPACE_UNAVAILABLE -> MR.strings.sync_recovery_title
-                                SyncSpaceRecoveryReason.SWITCH_PENDING -> MR.strings.sync_recovery_switch_pending_title
-                            },
-                        ),
+                        syncString(title),
                         style = MaterialTheme.typography.titleMedium,
                     )
                     recoveryBody(recovery.reason)?.let { Text(syncString(it)) }
-                    RecoveryFacts(state)
+                    RecoveryFacts(state, title, recoveryWaiting(state))
                     RecoveryCheckFeedback(state)
                     if (recovery.reason == SyncSpaceRecoveryReason.SWITCH_PENDING) {
                         ContinueSwitchAction(state, dispatch)
@@ -1231,7 +1238,7 @@ private fun RecoveryCancelAction(state: SyncPanelState, dispatch: (SyncPanelActi
 }
 
 @Composable
-private fun RecoveryFacts(state: SyncPanelState) {
+private fun RecoveryFacts(state: SyncPanelState, title: StringResource? = null, waiting: StringResource? = null) {
     val authorization = when (state.recoveryAuthorization) {
         SyncRecoveryAuthorization.CHECKING -> MR.strings.sync_recovery_authorization_checking
         SyncRecoveryAuthorization.WAITING -> MR.strings.sync_recovery_authorization_waiting
@@ -1247,16 +1254,14 @@ private fun RecoveryFacts(state: SyncPanelState) {
             MR.strings.sync_recovery_authorization_unknown
         }
     }
-    Text(
-        syncString(
-            if (state.recoveryAuthorizationConfirmed) {
-                MR.strings.sync_recovery_authorization_confirmed
-            } else {
-                authorization
-            },
-        ),
-        Modifier.testTag("sync-recovery-authorization-fact"),
-    )
+    val authorizationFact = if (state.recoveryAuthorizationConfirmed) {
+        MR.strings.sync_recovery_authorization_confirmed
+    } else {
+        authorization
+    }
+    if (authorizationFact != title) {
+        Text(syncString(authorizationFact), Modifier.testTag("sync-recovery-authorization-fact"))
+    }
     if (state.recoveryAuthorizationConfirmed &&
         state.recoveryAuthorization !in setOf(SyncRecoveryAuthorization.IDLE, SyncRecoveryAuthorization.CONFIRMED)
     ) {
@@ -1266,25 +1271,26 @@ private fun RecoveryFacts(state: SyncPanelState) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
-    Text(
-        syncString(
-            when (state.recovery?.lastCheckReason ?: state.recovery?.reason) {
-                SyncSpaceRecoveryReason.SPACE_UNAVAILABLE -> MR.strings.sync_recovery_check_unavailable
-                SyncSpaceRecoveryReason.SPACE_DATA_INVALID -> MR.strings.sync_recovery_data_problem
-                SyncSpaceRecoveryReason.SWITCH_PENDING -> MR.strings.sync_recovery_switch_pending_title
-                SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED -> MR.strings.sync_recovery_waiting
-                null -> when {
-                    state.recoveryOutcome == SyncRecoveryOutcome.ORIGINAL_VERIFIED ||
-                        state.recovery?.lastCheckSucceeded == true -> MR.strings.sync_recovery_check_available
-                    state.recoveryOutcome == SyncRecoveryOutcome.NEW_SCOPE_VERIFIED_WITH_OLD_REMAINING ->
-                        MR.strings.sync_recovery_new_verified
-                    else -> MR.strings.sync_recovery_check_pending
-                }
-            },
-        ),
-        Modifier.testTag("sync-recovery-space-fact"),
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    val spaceFact = when (state.recovery?.lastCheckReason ?: state.recovery?.reason) {
+        SyncSpaceRecoveryReason.SPACE_UNAVAILABLE -> MR.strings.sync_recovery_check_unavailable
+        SyncSpaceRecoveryReason.SPACE_DATA_INVALID -> MR.strings.sync_recovery_data_problem
+        SyncSpaceRecoveryReason.SWITCH_PENDING -> MR.strings.sync_recovery_switch_pending_title
+        SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED -> MR.strings.sync_recovery_waiting
+        null -> when {
+            state.recoveryOutcome == SyncRecoveryOutcome.ORIGINAL_VERIFIED ||
+                state.recovery?.lastCheckSucceeded == true -> MR.strings.sync_recovery_check_available
+            state.recoveryOutcome == SyncRecoveryOutcome.NEW_SCOPE_VERIFIED_WITH_OLD_REMAINING ->
+                MR.strings.sync_recovery_new_verified
+            else -> MR.strings.sync_recovery_check_pending
+        }
+    }
+    if (spaceFact != title && spaceFact != waiting) {
+        Text(
+            syncString(spaceFact),
+            Modifier.testTag("sync-recovery-space-fact"),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
     state.recovery?.lastCheckedAtMillis?.let { checkedAt ->
         Text(
             syncString(MR.strings.sync_recovery_last_check, syncScheduleDateTime(checkedAt)),
@@ -2062,6 +2068,9 @@ private fun DiagnosticPage(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
+            state.pendingAuthorizationVerification?.let {
+                AuthorizationVerificationText(it, restored = state.recoveryAuthorizationConfirmed)
+            }
             Text(syncString(MR.strings.sync_diagnostic_intro))
             Action("sync-diagnostic-recovery", MR.strings.sync_recovery_choose, !state.recoveryBusy) {
                 dispatch(SyncPanelAction.OpenRecovery)

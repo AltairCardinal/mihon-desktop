@@ -1537,6 +1537,10 @@ class SyncPanelContentTest {
         assertFalse(hasTag("sync-recovery-manage-authorization"))
         assertTrue(texts().contains("正在检查同步连接"))
         assertTrue(texts().contains("自动同步已关闭"))
+        panel.state.value = panel.state.value.copy(recoveryAuthorization = SyncRecoveryAuthorization.CONFIRMED)
+        render()
+        assertTrue(texts().contains("GitHub 已授权，正在检查原同步空间…"))
+        panel.state.value = panel.state.value.copy(recoveryAuthorization = SyncRecoveryAuthorization.IDLE)
         panel.state.value = panel.state.value.copy(page = SyncPanelPage.SETTINGS)
         awaitTag("sync-settings-list")
         scroll("sync-settings-list", 1)
@@ -1566,7 +1570,8 @@ class SyncPanelContentTest {
         connected().copy(recovery = SyncSpaceRecovery(SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED)),
     ) {
         awaitTag("sync-recovery-authorization")
-        assertTrue(texts().contains(MR.strings.sync_recovery_auth_expired.localized(Locale.US)))
+        assertEquals(1, texts().count { it == MR.strings.sync_recovery_auth_expired.localized(Locale.US) })
+        assertEquals(1, texts().count { it == MR.strings.sync_recovery_waiting.localized(Locale.US) })
         assertFalse(hasTag("sync-now"))
         click("sync-recovery-authorization")
         assertEquals(SyncPanelAction.CheckAuthorization, actions.last())

@@ -93,6 +93,7 @@ class SyncPanelController(
     private var bulkJob: Job? = null
     private var authJob: Job? = null
     private var recoveryJob: Job? = null
+    private var authorizationRestoreInFlight = false
     private var recoveryVersion = 0L
     private var repositoryJob: Job? = null
     private var setupJob: Job? = null
@@ -321,6 +322,32 @@ class SyncPanelController(
     @Synchronized
     override fun dispatch(action: SyncPanelAction) {
         if (!lifetime.isActive) return
+        val currentState = state.value
+        val currentPage = currentState.page
+        // This page only reads current facts, so opening it need not wait for recovery I/O.
+        if (action == SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS) &&
+            currentState.visible && currentState.recovery != null && currentState.question == null &&
+            currentPage in setOf(SyncPanelPage.MAIN, SyncPanelPage.RECOVERY)
+        ) {
+            diagnosticReturnPage = currentPage
+            mutableState.update { it.copy(page = SyncPanelPage.DIAGNOSTICS) }
+            return
+        }
+        if (action == SyncPanelAction.Back && currentPage == SyncPanelPage.DIAGNOSTICS &&
+            currentState.question == null && diagnosticReturnPage in setOf(SyncPanelPage.MAIN, SyncPanelPage.RECOVERY)
+        ) {
+            mutableState.update { current ->
+                val target = if (diagnosticReturnPage == SyncPanelPage.RECOVERY &&
+                    current.recovery == null && current.recoveryAuthorization == SyncRecoveryAuthorization.CONFIRMED
+                ) {
+                    SyncPanelPage.MAIN
+                } else {
+                    diagnosticReturnPage
+                }
+                current.copy(page = target)
+            }
+            return
+        }
         if (state.value.syncPauseRequested && action in setOf(
                 SyncPanelAction.Synchronize,
                 SyncPanelAction.ResumeSync,
@@ -578,7 +605,10 @@ class SyncPanelController(
     }
 
     private val SyncPanelState.visibleAuthorizationCheckTarget: SyncConnection?
-        get() = connection?.takeIf { visible && recovery?.authorizationVerification != null }
+        get() = connection?.takeIf {
+            visible && page != SyncPanelPage.SETUP && recovery?.busy != true &&
+                recovery?.authorizationVerification != null
+        }
 
     /** Bootstrap local rows even while the first full connection check is suspended. */
     private fun queueInitialPendingRefresh() {
@@ -851,7 +881,7 @@ class SyncPanelController(
             mutableState.update { it.copy(canChangeSpace = false) }
             throw failure
         }
-        val workflow = if (recovery?.authorizationVerification == null &&
+        val workflow = if (!authorizationRestoreInFlight && recovery?.authorizationVerification == null &&
             connectionFacts.decode == SyncBindingDecode.OK && connection?.enabled == true &&
             (
                 state.value.page == SyncPanelPage.RECOVERY ||
@@ -1714,6 +1744,7 @@ class SyncPanelController(
 
     private suspend fun authorize() {
         if (authJob?.isActive == true) return
+        val restoringAuthorization = state.value.recovery?.reason == SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED
         cancelRecovery()
         invalidateCreateContext()
         clearPasswordHelp()
@@ -1789,6 +1820,8 @@ class SyncPanelController(
                             // The already created fixed id and name resume before broad discovery.
                         } else if (runtime.activeSwitch() != null) {
                             resumeSwitch(requireNotNull(runtime.activeSwitch()))
+                        } else if (restoringAuthorization) {
+                            recheckSpace(authorizationRestore = true)
                         } else if (runtime.spaceRecovery() != null) {
                             mutableState.update { it.copy(page = SyncPanelPage.RECOVERY) }
                             recheckSpace()
@@ -2225,16 +2258,19 @@ class SyncPanelController(
         // Returning from a page, even with changed facts, is not a completed synchronization run.
     }
 
-    private fun recheckSpace(preserveSetupError: Boolean = false) {
+    private fun recheckSpace(preserveSetupError: Boolean = false, authorizationRestore: Boolean = false) {
         if (recoveryJob?.isActive == true || authJob?.isActive == true) return
         val session = panelSession
         val version = recoveryVersion
-        val page = state.value.page
-        mutableState.update { it.copy(recovery = it.recovery?.copy(busy = true)) }
+        val page = if (authorizationRestore) SyncPanelPage.RECOVERY else state.value.page
+        authorizationRestoreInFlight = authorizationRestore
+        mutableState.update {
+            it.copy(page = page, recovery = it.recovery?.copy(busy = true))
+        }
         recoveryJob = panelScope.launch {
-            val binding = recoveryRead { runtime.recoveryBinding() }
+            val binding = if (authorizationRestore) null else recoveryRead { runtime.recoveryBinding() }
             val result = try {
-                runtime.recheckSpace()
+                runtime.recheckSpace(authorizationRestore)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -2245,9 +2281,13 @@ class SyncPanelController(
                     return@enqueue
                 }
                 recoveryJob = null
-                val checked = result.recovery == null && result.problem == null && binding != null &&
-                    runtime.recoveryWorkflow.conditionsChecked(true, binding)
-                refresh()
+                val succeeded = result.recovery == null && result.problem == null
+                val checked = succeeded && binding != null && runtime.recoveryWorkflow.conditionsChecked(true, binding)
+                try {
+                    refresh()
+                } finally {
+                    authorizationRestoreInFlight = false
+                }
                 mutableState.update {
                     it.copy(
                         recovery = result.recovery ?: it.recovery.takeIf { result.problem != null },
@@ -2255,6 +2295,7 @@ class SyncPanelController(
                         recoveryConditionsVerified = checked,
                         recoveryOfficialAction = if (checked) null else it.recoveryOfficialAction,
                         recoveryStepFailure = if (checked) null else it.recoveryStepFailure,
+                        setupStep = if (authorizationRestore) SyncSetupStep.COMPLETE else it.setupStep,
                         notice = if (result.spaceAddressUpdated) {
                             SyncPanelNotice(spaceAddressUpdated = true)
                         } else {
@@ -2262,12 +2303,19 @@ class SyncPanelController(
                         },
                         page = if (preserveSetupError || it.page != page) {
                             it.page
-                        } else if (result.recovery == null && result.problem == null) {
-                            if (page == SyncPanelPage.RECOVERY) SyncPanelPage.RECOVERY else SyncPanelPage.MAIN
+                        } else if (succeeded) {
+                            if (page == SyncPanelPage.RECOVERY && !authorizationRestore) {
+                                SyncPanelPage.RECOVERY
+                            } else {
+                                SyncPanelPage.MAIN
+                            }
                         } else {
                             SyncPanelPage.RECOVERY
                         },
                     )
+                }
+                if (authorizationRestore && succeeded) {
+                    panelScope.launch { runtime.resumeIfNeeded() }
                 }
             }
         }
@@ -2277,6 +2325,7 @@ class SyncPanelController(
         recoveryVersion++
         recoveryJob?.cancelAndJoin()
         recoveryJob = null
+        authorizationRestoreInFlight = false
         mutableState.update { it.copy(recovery = it.recovery?.copy(busy = false), recoveryBusy = false) }
     }
 
