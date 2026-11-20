@@ -88,6 +88,42 @@ class DesktopDatabaseMigrationSafetyTest {
     }
 
     @Test
+    fun `version 49 startup recreates the missing favorite date table without resuming a user pause`() {
+        val database = File(directory, "mihon.db")
+        createDriver(database).use { driver ->
+            driver.execute(null, "DROP TABLE sync_favorite_date_imports", 0)
+            driver.execute(null, "PRAGMA user_version = 49", 0)
+            driver.execute(
+                null,
+                "INSERT INTO sync_spaces VALUES ('space', 1, 'owner', 'repo', 'main', 1, 1)",
+                0,
+            )
+            driver.execute(
+                null,
+                """
+                INSERT INTO sync_runtime_runs
+                    (run_id, space_id, generation, trigger, state, phase, stop_reason, attempt_id,
+                     created_at, updated_at, last_progress_at)
+                VALUES
+                    ('blocked', 'space', 1, 'PERIODIC', 'BLOCKED', 'CHECKING', 'UNKNOWN', 1, 1, 1, 1),
+                    ('paused', 'space', 1, 'MANUAL', 'PAUSED_USER', 'CHECKING', 'user', 1, 2, 2, 2)
+                """.trimIndent(),
+                0,
+            )
+        }
+
+        repeat(2) {
+            createDriver(database).use { driver ->
+                queryUserVersion(driver) shouldBe 50
+                queryLong(driver, "SELECT COUNT(*) FROM sync_favorite_date_imports") shouldBe 0L
+                queryString(driver, "SELECT state FROM sync_runtime_runs WHERE run_id = 'paused'") shouldBe "PAUSED_USER"
+                queryString(driver, "SELECT state FROM sync_runtime_runs WHERE run_id = 'blocked'") shouldBe "BLOCKED"
+                assertForeignKeysEnforced(driver)
+            }
+        }
+    }
+
+    @Test
     fun `synthetic version 32 without runtime tables opens and preserves existing sync data`() {
         val database = File(directory, "mihon.db")
         JdbcSqliteDriver("jdbc:sqlite:${database.absolutePath}").use { driver ->

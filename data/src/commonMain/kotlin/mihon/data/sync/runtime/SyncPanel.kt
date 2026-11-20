@@ -16,6 +16,9 @@ enum class SyncPanelPage { MAIN, SETTINGS, HISTORY, SETUP, PASSWORD_HELP, DIAGNO
 
 @kotlinx.serialization.Serializable
 enum class SyncSpaceRecoveryReason { AUTHORIZATION_REQUIRED, SPACE_UNAVAILABLE, SPACE_DATA_INVALID, SWITCH_PENDING }
+
+enum class SyncAuthorizationVerification { CHECKING, WAITING_NETWORK }
+
 data class SyncSpaceRecovery(
     val reason: SyncSpaceRecoveryReason,
     val busy: Boolean = false,
@@ -24,6 +27,7 @@ data class SyncSpaceRecovery(
     val lastCheckReason: SyncSpaceRecoveryReason? = null,
     val lastCheckSucceeded: Boolean? = null,
     val authorizationConfirmedAtMillis: Long? = null,
+    val authorizationVerification: SyncAuthorizationVerification? = null,
 )
 
 @kotlinx.serialization.Serializable
@@ -174,6 +178,12 @@ data class SyncPanelState(
     val switchTargetRepository: SyncRepository? = null,
     val switchPendingDecisions: Long = 0,
     val busy: Boolean = false,
+    val operation: mihon.domain.sync.runtime.SyncOperationProgress? = null,
+    val syncStartRequested: Boolean = false,
+    val syncPauseRequested: Boolean = false,
+    val syncPauseSaving: Boolean = false,
+    val syncResumeRequested: Boolean = false,
+    val syncStoppedBeforeRun: Boolean = false,
     val problem: SyncRunProblem? = null,
     val notice: SyncPanelNotice? = null,
     val queuedMembership: Long = 0,

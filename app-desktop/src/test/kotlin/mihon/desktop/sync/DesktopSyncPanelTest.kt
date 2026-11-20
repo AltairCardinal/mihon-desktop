@@ -300,14 +300,15 @@ class DesktopSyncPanelTest {
                 ),
             )
             render()
-            assertEquals(0.4f, find("sync-progress-track")!!.config[SemanticsProperties.ProgressBarRangeInfo].current)
+            // The whole-round track includes preparation and reserves the finishing work.
+            assertEquals(0.46f, find("sync-progress-track")!!.config[SemanticsProperties.ProgressBarRangeInfo].current, 0.001f)
             assertTrue(find("sync-progress-status")!!.config[SemanticsProperties.Text].single().text.contains("4/10"))
             assertTrue(find("sync-round-time") != null)
             assertTrue(find("sync-progress-details-toggle") == null)
             assertTrue(find("sync-pending-list") != null)
             panel.state.value = panel.state.value.copy(page = SyncPanelPage.SETUP, setupStep = SyncSetupStep.MERGING)
             render()
-            assertEquals(0.4f, find("sync-progress-track")!!.config[SemanticsProperties.ProgressBarRangeInfo].current)
+            assertEquals(0.46f, find("sync-progress-track")!!.config[SemanticsProperties.ProgressBarRangeInfo].current, 0.001f)
             click("sync-back")
             panel.state.value = panel.state.value.copy(
                 connection = mihon.data.sync.runtime.SyncConnection(

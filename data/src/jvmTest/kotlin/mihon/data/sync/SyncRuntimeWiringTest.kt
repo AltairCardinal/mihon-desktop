@@ -1,9 +1,14 @@
 package mihon.data.sync
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import mihon.data.sync.http.InMemorySyncMetrics
@@ -13,9 +18,11 @@ import mihon.data.sync.inbox.SyncInboxStore
 import mihon.data.sync.runtime.StoredSyncMaterial
 import mihon.data.sync.runtime.StoredSyncSetup
 import mihon.data.sync.runtime.SyncPanelAction
+import mihon.data.sync.runtime.SyncPanelPage
 import mihon.data.sync.runtime.SyncProgressDirection
 import mihon.data.sync.runtime.SyncRunState
 import mihon.data.sync.runtime.SyncRuntime
+import mihon.data.sync.runtime.SyncSpaceRecoveryReason
 import mihon.data.sync.transport.GitHubSyncTransport
 import mihon.data.sync.transport.SyncBatchSyncService
 import mihon.data.sync.transport.SyncSnapshotManifestBinding
@@ -57,6 +64,7 @@ import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.data.Database
+import tachiyomi.data.DatabaseMigration
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.History
 import tachiyomi.data.JvmDatabaseHandler
@@ -71,6 +79,399 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.prefs.Preferences
 
 class SyncRuntimeWiringTest {
+    @Test
+    fun `persisted authorization block automatically rechecks network and resumes original run`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val runtime = setup.runtime
+                val stored = runtime.onboarding.storage.connection("space", 1)!!
+                val run = runtime.runStore.start("space", 1, SyncTrigger.MANUAL)
+                runtime.runStore.finish(run.runId, SyncRunState.BLOCKED, "AUTHORIZATION")
+                runtime.onboarding.storage.setRecovery(stored, SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED)
+                val original = setup.git.server.dispatcher
+                var offline = true
+                var userReads = 0
+                setup.git.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        if (request.url.encodedPath == "/user") {
+                            userReads++
+                            if (offline) return MockResponse(code = 503)
+                        }
+                        return original.dispatch(request)
+                    }
+                }
+                assertTrue(runtime.hasResumableRun(), "persisted authorization gate must schedule a real recheck")
+                assertTrue(runtime.resumeIfNeeded())
+                assertTrue(userReads > 0, "recovery must use the configured GitHub HTTP route")
+                assertNotNull(runtime.spaceRecovery())
+                assertEquals(SyncRunState.BLOCKED, runtime.runStore.get(run.runId)?.state)
+                val reads = userReads
+                assertEquals(60_000L, runtime.recoveryDelayMillis(), "connection checks use a short bounded retry")
+                runtime.resumeIfNeeded()
+                assertEquals(reads, userReads, "repeated wakeups must respect persisted backoff")
+                val reopened = setup.runtime()
+                try {
+                    assertTrue(reopened.hasResumableRun())
+                    assertTrue(reopened.recoveryDelayMillis() > 0, "deadline must survive runtime restart")
+                    reopened.resumeIfNeeded()
+                    assertEquals(reads, userReads)
+                    offline = false
+                    setup.now += reopened.recoveryDelayMillis() + 1
+                    assertTrue(reopened.resumeIfNeeded())
+                    assertNull(reopened.spaceRecovery())
+                    assertEquals(SyncRunState.SUCCEEDED, reopened.runStore.get(run.runId)?.state)
+                    assertEquals(run.runId, reopened.runStore.latest("space", 1)?.runId)
+                    val validatedSnapshots = setup.git.snapshotReads
+                    val redundantCheck = reopened.recheckSpace(authorizationRestore = true)
+                    assertNull(redundantCheck.problem)
+                    assertNull(redundantCheck.recovery)
+                    assertEquals(validatedSnapshots, setup.git.snapshotReads)
+                } finally {
+                    reopened.coordinator.cancelAndJoin()
+                    reopened.stopPanel()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `persisted authorization check preserves pause and probes offline missing credentials`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val runtime = setup.runtime
+                val stored = runtime.onboarding.storage.connection("space", 1)!!
+                val run = runtime.runStore.start("space", 1, SyncTrigger.MANUAL)
+                runtime.runStore.pause(run.runId)
+                runtime.onboarding.storage.setRecovery(stored, SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED)
+                runtime.credentials.clear()
+                var userReads = 0
+                var offline = true
+                val original = setup.git.server.dispatcher
+                setup.git.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        if (request.url.encodedPath == "/user") {
+                            userReads++
+                            if (offline) return MockResponse(code = 503)
+                        }
+                        return original.dispatch(request)
+                    }
+                }
+                assertTrue(runtime.hasResumableRun(), "read-only authorization health check is independent of pause")
+                assertTrue(runtime.resumeIfNeeded())
+                assertTrue(userReads > 0, "missing local credentials do not prove network authorization rejection")
+                assertEquals(SyncRunState.PAUSED_USER, runtime.runStore.get(run.runId)?.state)
+                assertEquals(SyncRunProblem.NETWORK, runtime.spaceRecovery()?.lastCheckProblem)
+                assertNotNull(runtime.spaceRecovery()?.authorizationVerification)
+                offline = false
+                setup.authorize()
+                val writes = setup.repositoryWrites
+                runtime.resumeIfNeeded()
+                assertNull(runtime.spaceRecovery())
+                assertEquals(SyncRunState.PAUSED_USER, runtime.runStore.get(run.runId)?.state)
+                assertEquals(writes, setup.repositoryWrites, "a read-only recheck preserves the paused checkpoint")
+            }
+        }
+    }
+
+    @Test
+    fun `authorization recheck accepts valid responses and does not replay rejection`() = runBlocking {
+        for (html in listOf(false, true)) {
+            Fixture().use { f ->
+                SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                    setup.existing("")
+                    setup.authorize()
+                    setup.begin()
+                    val runtime = setup.runtime
+                    val stored = runtime.onboarding.storage.connection("space", 1)!!
+                    runtime.onboarding.storage.setRecovery(stored, SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED)
+                    val original = setup.git.server.dispatcher
+                    var reads = 0
+                    setup.git.server.dispatcher = object : Dispatcher() {
+                        override fun dispatch(request: RecordedRequest): MockResponse {
+                            if (request.url.encodedPath == "/user") {
+                                reads++
+                                return if (html) {
+                                    MockResponse(body = "<html>proxy login</html>")
+                                } else {
+                                    MockResponse(
+                                        code = 401,
+                                        body = """
+                                            {"message":"Bad credentials","documentation_url":"https://docs.github.com/rest"}
+                                        """.trimIndent(),
+                                    )
+                                }
+                            }
+                            return original.dispatch(request)
+                        }
+                    }
+                    assertTrue(runtime.resumeIfNeeded())
+                    if (html) {
+                        assertEquals(SyncRunProblem.NETWORK, runtime.spaceRecovery()?.lastCheckProblem)
+                        assertNotNull(runtime.spaceRecovery()?.authorizationVerification)
+                    } else {
+                        assertNull(runtime.spaceRecovery()?.authorizationVerification)
+                        assertFalse(runtime.hasResumableRun(), "fresh confirmed rejection stops automatic checks")
+                        val completedReads = reads
+                        setup.now += 3_600_000
+                        runtime.resumeIfNeeded()
+                        assertEquals(completedReads, reads)
+                        val reopened = setup.runtime()
+                        try {
+                            assertNotNull(reopened.spaceRecovery()?.authorizationVerification)
+                            assertTrue(reopened.hasResumableRun(), "a new process must verify before showing denial")
+                        } finally {
+                            reopened.stopPanel()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `rejected old access and refresh tokens open device authorization for the same space`() = runBlocking {
+        for (accessRejected in listOf(false, true)) {
+            Fixture().use { f ->
+                SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                    setup.existing("")
+                    setup.authorize()
+                    setup.begin()
+                    setup.panel.act(SyncPanelAction.Close)
+                    val runtime = setup.runtime
+                    val stored = runtime.onboarding.storage.connection("space", 1)!!
+                    runtime.onboarding.storage.setRecovery(stored, SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED)
+                    val expired = runtime.credentials.replace(
+                        runtime.credentials.read()!!.revision,
+                        GitHubAccessToken("old-access", "old-refresh", "bearer", emptySet(), 1_000, 10_000_000),
+                    )
+                    val blocked = runtime.runStore.start("space", 1, SyncTrigger.MANUAL)
+                    runtime.runStore.finish(blocked.runId, SyncRunState.BLOCKED, "AUTHORIZATION")
+                    runtime.recordRecoveryAuthorization(mihon.data.sync.runtime.SyncRecoveryAuthorization.CONFIRMED)
+                    val delegate = setup.git.server.dispatcher
+                    val refreshes = AtomicInteger()
+                    val deviceRequests = AtomicInteger()
+                    val recoveryStarted = CompletableDeferred<Unit>()
+                    val releaseRecovery = CountDownLatch(1)
+                    setup.git.server.dispatcher = object : Dispatcher() {
+                        override fun dispatch(request: RecordedRequest): MockResponse {
+                            if (request.url.encodedPath == "/user" && accessRejected &&
+                                request.headers["Authorization"] == "Bearer old-access"
+                            ) {
+                                return MockResponse(
+                                    code = 401,
+                                    body = """
+                                        {"message":"Bad credentials","documentation_url":"https://docs.github.com/rest"}
+                                    """.trimIndent(),
+                                )
+                            }
+                            if (request.url.encodedPath == "/token" &&
+                                request.body?.utf8()?.contains("grant_type=refresh_token") == true
+                            ) {
+                                refreshes.incrementAndGet()
+                                return MockResponse(body = """{"error":"incorrect_client_credentials"}""")
+                            }
+                            if (request.url.encodedPath == "/device") deviceRequests.incrementAndGet()
+                            if (deviceRequests.get() > 0 && "/git/blobs/" in request.url.encodedPath &&
+                                recoveryStarted.complete(Unit)
+                            ) {
+                                check(releaseRecovery.await(10, TimeUnit.SECONDS))
+                            }
+                            return delegate.dispatch(request)
+                        }
+                    }
+                    assertTrue(runtime.recheckAuthorizationIfNeeded())
+                    assertEquals(expired, runtime.credentials.read())
+                    if (accessRejected) {
+                        assertNull(runtime.spaceRecovery()?.authorizationVerification)
+                        assertNull(runtime.recoveryObservation()?.authorizationConfirmedAtMillis)
+                        setup.panel.act(SyncPanelAction.Open)
+                        setup.panel.act(SyncPanelAction.CheckAuthorization)
+                        withTimeout(8_000) { setup.panel.state.first { it.deviceCode != null } }
+                        try {
+                            withTimeout(8_000) { recoveryStarted.await() }
+                            setup.panel.dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
+                            withTimeout(2_000) { setup.panel.state.first { it.page == SyncPanelPage.DIAGNOSTICS } }
+                            setup.panel.dispatch(SyncPanelAction.Back)
+                            withTimeout(2_000) { setup.panel.state.first { it.page == SyncPanelPage.RECOVERY } }
+                            setup.panel.dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
+                            assertEquals(SyncPanelPage.DIAGNOSTICS, setup.panel.state.value.page)
+                        } finally {
+                            releaseRecovery.countDown()
+                        }
+                        withTimeout(8_000) {
+                            setup.panel.state.first {
+                                it.recovery == null &&
+                                    runtime.credentials.read()?.revision != expired.revision
+                            }
+                        }
+                        assertEquals(SyncPanelPage.DIAGNOSTICS, setup.panel.state.value.page)
+                        setup.panel.dispatch(SyncPanelAction.Back)
+                        withTimeout(2_000) { setup.panel.state.first { it.page == SyncPanelPage.MAIN } }
+                        assertEquals(1, deviceRequests.get())
+                        assertEquals(
+                            1,
+                            refreshes.get(),
+                            "Reconnect should use verified evidence without retrying the spent token",
+                        )
+                        assertEquals(
+                            stored.repositoryId,
+                            runtime.onboarding.storage.connection("space", 1)?.repositoryId,
+                        )
+                        withTimeout(5_000) {
+                            while (runtime.runStore.get(blocked.runId)?.state != SyncRunState.SUCCEEDED) {
+                                kotlinx.coroutines.delay(25)
+                            }
+                        }
+                        assertEquals(SyncRunState.SUCCEEDED, runtime.runStore.get(blocked.runId)?.state)
+                    } else {
+                        assertNotNull(runtime.spaceRecovery()?.authorizationVerification)
+                        assertEquals(0, deviceRequests.get())
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `whole operation waits for final head and queued empty exchange in one flight`() = runBlocking {
+        Fixture().use { f ->
+            val historyEntered = CountDownLatch(1)
+            val releaseHistory = CountDownLatch(1)
+            val blockHistory = java.util.concurrent.atomic.AtomicBoolean(false)
+            val blockedOnce = java.util.concurrent.atomic.AtomicBoolean(false)
+            val preferences = object : tachiyomi.core.common.preference.PreferenceStore by f.preferences {
+                override fun getString(key: String, defaultValue: String): Preference<String> {
+                    val delegate = f.preferences.getString(key, defaultValue)
+                    if (key != Preference.appStateKey("sync_history")) return delegate
+                    return object : Preference<String> by delegate {
+                        override fun set(value: String) {
+                            if (blockHistory.get() && blockedOnce.compareAndSet(false, true)) {
+                                historyEntered.countDown()
+                                check(releaseHistory.await(10, TimeUnit.SECONDS))
+                            }
+                            delegate.set(value)
+                        }
+                    }
+                }
+            }
+            SyncOnboardingFixture(f.storage, preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val runtime = setup.runtime
+                f.storage.favorite("/whole-operation")
+                val headEntered = CountDownLatch(1)
+                val releaseHead = CountDownLatch(1)
+                val nextEntered = CountDownLatch(1)
+                val releaseNext = CountDownLatch(1)
+                val previous = setup.git.server.dispatcher
+                val seen = java.util.Collections.synchronizedList(
+                    mutableListOf<mihon.domain.sync.runtime.SyncOperationProgress>(),
+                )
+                val observe = launch(Dispatchers.Unconfined) {
+                    runtime.coordinator.activity.collect { it.operation?.let(seen::add) }
+                }
+                setup.git.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        val op = runtime.coordinator.activity.value.operation
+                        if (request.method == "GET" && op?.segment == 0 &&
+                            op.stage == mihon.domain.sync.runtime.SyncOperationStage.HEAD &&
+                            request.url.encodedPath.contains("/git/ref/heads/")
+                        ) {
+                            headEntered.countDown()
+                            check(releaseHead.await(10, TimeUnit.SECONDS))
+                        }
+                        if (request.method == "GET" && op?.segment == 1 && nextEntered.count > 0) {
+                            nextEntered.countDown()
+                            check(releaseNext.await(10, TimeUnit.SECONDS))
+                        }
+                        return previous.dispatch(request)
+                    }
+                }
+                val baselineCompletion = runtime.coordinator.activity.value.completion
+                blockHistory.set(true)
+                val leader = async(Dispatchers.IO) { runtime.coordinator.synchronize(SyncTrigger.MANUAL) }
+                try {
+                    assertTrue(headEntered.await(10, TimeUnit.SECONDS))
+                    val atHead = runtime.coordinator.activity.value.operation!!
+                    val run = runtime.runStore.latest("space", 1)!!
+                    assertEquals(run.plannedItems, run.confirmedItems)
+                    assertTrue(atHead.fraction >= 0.85 && atHead.fraction < 0.90)
+                    assertTrue(atHead.running)
+                    val follower = async(start = CoroutineStart.UNDISPATCHED) {
+                        runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                    }
+                    releaseHead.countDown()
+                    assertTrue(historyEntered.await(10, TimeUnit.SECONDS))
+                    assertEquals(SyncRunState.SUCCEEDED, runtime.runStore.get(run.runId)!!.state)
+                    assertTrue(runtime.coordinator.activity.value.running)
+                    assertTrue(runtime.coordinator.activity.value.operation!!.fraction < 1.0)
+                    withTimeout(5_000) {
+                        setup.panel.state.first { it.run?.state == SyncRunState.SUCCEEDED && it.busy }
+                    }
+                    releaseHistory.countDown()
+                    assertTrue(nextEntered.await(10, TimeUnit.SECONDS))
+                    val queued = runtime.coordinator.activity.value.operation!!
+                    assertEquals(atHead.id, queued.id)
+                    assertEquals(1, queued.segment)
+                    assertTrue(queued.fraction >= atHead.fraction && queued.fraction < 1.0)
+                    assertTrue(queued.running)
+                    releaseNext.countDown()
+                    assertEquals(SyncRunStatus.SUCCESS, leader.await().status)
+                    assertEquals(SyncRunStatus.SUCCESS, follower.await().status)
+                    val done = runtime.coordinator.activity.value.operation!!
+                    assertEquals(atHead.id, done.id)
+                    assertFalse(done.running)
+                    assertEquals(1.0, done.fraction)
+                    assertTrue(done.durableSuccess)
+                    assertEquals(SyncRunState.SUCCEEDED, runtime.runStore.get(done.runId!!)!!.state)
+                    val stages = seen.filter { it.id == done.id && it.segment == 0 }.map { it.stage }.distinct()
+                    assertEquals(mihon.domain.sync.runtime.SyncOperationStage.entries.toList(), stages)
+                    val fractions = seen.filter { it.id == done.id }.map { it.fraction }
+                    assertTrue(fractions.zipWithNext().all { (a, b) -> b >= a })
+                    assertEquals(baselineCompletion + 1, runtime.coordinator.activity.value.completion)
+                } finally {
+                    releaseHead.countDown()
+                    releaseHistory.countDown()
+                    releaseNext.countDown()
+                    leader.cancelAndJoin()
+                    observe.cancelAndJoin()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `whole operation cannot complete when durable finish downgrades returned success`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                f.storage.driver.execute(
+                    null,
+                    "CREATE TRIGGER incomplete_at_closing AFTER UPDATE OF phase ON sync_runtime_runs " +
+                        "WHEN NEW.phase = 'COMPLETE' BEGIN INSERT OR IGNORE INTO sync_runtime_confirmations " +
+                        "VALUES(NEW.run_id, 'UPLOAD', 'unfinished-at-closing', 1, 'PLANNED'); END",
+                    0,
+                )
+                val runtime = setup.runtime
+                assertEquals(SyncRunStatus.SUCCESS, runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                val done = runtime.coordinator.activity.value.operation!!
+                assertEquals(SyncRunState.PARTIAL, runtime.runStore.get(done.runId!!)!!.state)
+                assertFalse(done.durableSuccess)
+                assertFalse(done.running)
+                assertTrue(done.fraction < 1.0)
+            }
+        }
+    }
+
     @Test
     fun `legacy upload block automatically reconciles a published batch without remote writes`() = runBlocking {
         verifyLegacyUploadReconciliation(remotePresent = true)
@@ -281,6 +682,56 @@ class SyncRuntimeWiringTest {
     }
 
     @Test
+    fun `pausing sync during credential commit preserves the rotation across restart`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                setup.runtime.credentials.replace(
+                    setup.runtime.credentials.read()!!.revision,
+                    GitHubAccessToken("old-access", "old-refresh", "bearer", emptySet(), 1_000, 10_000_000),
+                )
+                val beforeWrite = CompletableDeferred<Unit>()
+                val releaseWrite = CompletableDeferred<Unit>()
+                val secureStore = object : SyncSecureStore by setup.secure {
+                    override suspend fun compareAndSet(key: String, expected: String?, value: String?): Boolean {
+                        if (key == "github-auth") {
+                            beforeWrite.complete(Unit)
+                            releaseWrite.await()
+                        }
+                        return setup.secure.compareAndSet(key, expected, value)
+                    }
+                }
+                val runtime = setup.runtime(secureStore = secureStore)
+                val run = launch { runtime.coordinator.synchronize(SyncTrigger.MANUAL) }
+                try {
+                    withTimeout(5_000) { beforeWrite.await() }
+                    withTimeout(5_000) { runtime.pauseSync() }
+                    run.join()
+                    assertEquals(SyncRunState.PAUSED_USER, runtime.runStore.active("space", 1)?.state)
+                    releaseWrite.complete(Unit)
+                    withTimeout(5_000) {
+                        runtime.credentials.tokenRefreshEpoch.first { it > 0 }
+                    }
+                    assertEquals(SyncRunState.PAUSED_USER, runtime.runStore.active("space", 1)?.state)
+                    val reopened = setup.runtime()
+                    try {
+                        assertEquals("synthetic-refreshed-token", reopened.credentials.read()?.credential?.accessToken)
+                        assertEquals(SyncRunStatus.SUCCESS, reopened.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                    } finally {
+                        reopened.stopPanel()
+                    }
+                } finally {
+                    releaseWrite.complete(Unit)
+                    run.cancelAndJoin()
+                    runtime.stopPanel()
+                }
+            }
+        }
+    }
+
+    @Test
     fun `production sync renews an expiring session before repository requests`() = assertSyncRenewsToken(false)
 
     @Test
@@ -363,6 +814,11 @@ class SyncRuntimeWiringTest {
                 try {
                     assertTrue(enteredRef.await(10, TimeUnit.SECONDS))
                     val beforeRef = requireNotNull(runtime.liveProgress.value)
+                    val batchProgress = requireNotNull(beforeRef.batchProgress)
+                    assertEquals(1, batchProgress.ordinal)
+                    assertEquals(1, batchProgress.batchCount)
+                    assertEquals(1L, batchProgress.processedItems)
+                    assertEquals(1L, batchProgress.plannedRunItems)
                     assertEquals(mihon.data.sync.runtime.SyncProgressStage.CONFIRMING, beforeRef.stage)
                     assertEquals(0L, beforeRef.completedItems)
                     assertTrue(beforeRef.effectiveBytes > 0L, beforeRef.toString())
@@ -428,6 +884,8 @@ class SyncRuntimeWiringTest {
                         val run = requireNotNull(runtime.runStore.latest("space", 1))
                         assertEquals(1, result.downloaded)
                         assertEquals(1L, run.confirmedItems)
+                        assertEquals(1L, run.plannedBatches)
+                        assertEquals(1L, runtime.liveProgress.value?.batchProgress?.processedRunItems)
                         val projected = receiver.storage.handler.await {
                             sync_projectionQueries.getMangaByIdentity("/source-free-download", 1).executeAsOneOrNull()
                         }
@@ -969,18 +1427,21 @@ class SyncRuntimeWiringTest {
                             runtime.authorizationNotBeforeMillis(),
                         )
                     }
-                    auth.enqueue(mockwebserver3.MockResponse(code = 500, body = "private diagnostic"))
+                    auth.enqueue(mockwebserver3.MockResponse(body = """{"error":"temporarily_unavailable"}"""))
                     assertEquals(SyncRunProblem.NETWORK, runtime.coordinator.synchronize(SyncTrigger.PERIODIC).problem)
                     assertEquals(3L, runtime.runStore.active("space", 1)?.networkFailureCount)
+                    assertNull(runtime.spaceRecovery())
+                    assertEquals(expiring, runtime.credentials.read())
                     setup.now = maxOf(
                         requireNotNull(runtime.runStore.active("space", 1)).nextRetryAt,
                         runtime.authorizationNotBeforeMillis(),
                     )
-                    auth.enqueue(mockwebserver3.MockResponse(code = 500, body = "private diagnostic"))
+                    auth.enqueue(mockwebserver3.MockResponse(body = "<html>Temporary gateway response</html>"))
                     assertEquals(SyncRunProblem.NETWORK, runtime.coordinator.synchronize(SyncTrigger.PERIODIC).problem)
                     assertEquals(SyncRunState.WAITING_RETRY, runtime.runStore.latest("space", 1)?.state)
                     assertEquals("NETWORK", runtime.runStore.latest("space", 1)?.stopReason)
                     assertEquals(4L, runtime.runStore.latest("space", 1)?.networkFailureCount)
+                    assertNull(runtime.spaceRecovery())
                     assertTrue(runtime.recoveryDelayMillis() >= 900_000L)
                     setup.now =
                         maxOf(runtime.runStore.active("space", 1)!!.nextRetryAt, runtime.authorizationNotBeforeMillis())
@@ -989,6 +1450,24 @@ class SyncRuntimeWiringTest {
                     assertEquals(SyncRunState.WAITING_RETRY, runtime.runStore.latest("space", 1)?.state)
                     assertEquals(5L, runtime.runStore.latest("space", 1)?.networkFailureCount)
                     assertTrue(runtime.recoveryDelayMillis() >= 900_000L)
+                    auth.enqueue(mockwebserver3.MockResponse(body = """{"error":"temporarily_unavailable"}"""))
+                    val authorization = runtime.checkRecoveryAuthorization()
+                    assertFalse(authorization.required)
+                    assertEquals(SyncRunProblem.NETWORK, authorization.problem)
+                    auth.enqueue(mockwebserver3.MockResponse(body = """{"error":"temporarily_unavailable"}"""))
+                    assertEquals(SyncRunProblem.NETWORK, runtime.recheckSpace().problem)
+                    assertNull(runtime.spaceRecovery())
+                    assertEquals(expiring, runtime.credentials.read())
+
+                    auth.enqueue(mockwebserver3.MockResponse(body = """{"error":"bad_refresh_token"}"""))
+                    val rejected = runtime.checkRecoveryAuthorization()
+                    assertTrue(rejected.required)
+                    assertEquals(SyncRunProblem.AUTHORIZATION, rejected.problem)
+                    auth.enqueue(mockwebserver3.MockResponse(body = """{"error":"bad_refresh_token"}"""))
+                    assertEquals(
+                        SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED,
+                        runtime.recheckSpace().recovery?.reason,
+                    )
                 }
             }
         }
@@ -1256,6 +1735,40 @@ class SyncRuntimeWiringTest {
     }
 
     @Test
+    fun `schema 49 missing favorite date table resumes the blocked sync after migration`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val runtime = setup.runtime
+                val driver = f.storage.driver
+                val runs = runtime.runStore
+                driver.execute(null, "DROP TABLE sync_favorite_date_imports", 0)
+                driver.execute(null, "PRAGMA user_version = 49", 0)
+                val broken = runtime.coordinator.synchronize(SyncTrigger.PERIODIC)
+                assertEquals(SyncRunProblem.UNKNOWN, broken.problem)
+                val run = requireNotNull(runs.active("space", 1))
+                assertEquals(SyncRunState.BLOCKED, run.state)
+                assertEquals("CHECKING", run.phase.name)
+
+                DatabaseMigration.migrateAtomically(driver, 49, Database.Schema.version)
+
+                val reopened = setup.runtime()
+                try {
+                    assertTrue(reopened.hasResumableRun())
+                    assertTrue(reopened.resumeIfNeeded())
+                    assertEquals(SyncRunState.SUCCEEDED, runs.get(run.runId)?.state)
+                    assertEquals(2L, runs.get(run.runId)?.attemptId)
+                    assertNull(runs.active("space", 1))
+                } finally {
+                    reopened.stopPanel()
+                }
+            }
+        }
+    }
+
+    @Test
     fun `unknown outside merging never permits automatic remote recovery`() = runBlocking {
         Fixture().use { f ->
             SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
@@ -1264,7 +1777,9 @@ class SyncRuntimeWiringTest {
                 setup.begin()
                 val runtime = setup.runtime
                 val run = runtime.runStore.start("space", 1, SyncTrigger.MANUAL)
-                runtime.runStore.finish(run.runId, SyncRunState.BLOCKED, "UNKNOWN")
+                assertTrue(runtime.runStore.claim(run.runId, "test-owner", 1))
+                runtime.runStore.finish(run.runId, SyncRunState.BLOCKED, "UNKNOWN", "test-owner")
+                DatabaseMigration.migrateAtomically(f.storage.driver, 49, Database.Schema.version)
                 val requests = setup.git.server.requestCount
                 assertFalse(runtime.resumeIfNeeded())
                 assertEquals(SyncRunState.BLOCKED, runtime.runStore.get(run.runId)!!.state)

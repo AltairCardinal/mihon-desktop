@@ -64,6 +64,8 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.util.ReflectionHelpers
 import org.robolectric.util.ReflectionHelpers.ClassParameter
+import tachiyomi.core.common.feedback.DiagnosticEvents
+import tachiyomi.core.common.feedback.DiagnosticStore
 import tachiyomi.core.common.preference.AndroidPreferenceStore
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.data.AndroidDatabaseHandler
@@ -124,10 +126,13 @@ class AndroidSyncRuntimeWiringTest {
         mockkConstructor(AppModule::class, PreferenceModule::class, DomainModule::class)
         mockkObject(GlobalExceptionHandler.Companion, Notifications, CreatorDiscoveryJob.Companion)
         mockkStatic(Application::class)
+        val diagnosticStore = mockk<DiagnosticStore>()
         try {
             every {
                 with(anyConstructed<AppModule>()) { any<InjektRegistrar>().registerInjectables() }
-            } returns Unit
+            } answers {
+                Injekt.addSingleton(diagnosticStore)
+            }
             every {
                 with(anyConstructed<PreferenceModule>()) { any<InjektRegistrar>().registerInjectables() }
             } returns Unit
@@ -151,6 +156,7 @@ class AndroidSyncRuntimeWiringTest {
             assertSame(sentinel, result.exceptionOrNull())
             assertTrue("App.onCreate must invoke the separately verified asynchronous entry", started)
         } finally {
+            DiagnosticEvents.uninstall(diagnosticStore)
             unmockkStatic(Application::class)
             unmockkObject(GlobalExceptionHandler.Companion, Notifications, CreatorDiscoveryJob.Companion)
             unmockkConstructor(AppModule::class, PreferenceModule::class, DomainModule::class)
@@ -386,7 +392,7 @@ class AndroidSyncRuntimeWiringTest {
             calls++
             SyncRunResult(SyncRunStatus.SKIPPED)
         }
-        coEvery { runtime.hasResumableRun() } returns true
+        coEvery { runtime.hasResumableRun() } returnsMany listOf(true, false)
         coEvery { runtime.isRecoveryDue() } returns true
         coEvery { runtime.resumeIfNeeded() } returns true
         val worker = TestListenableWorkerBuilder<SyncWorker>(context)
@@ -395,6 +401,46 @@ class AndroidSyncRuntimeWiringTest {
 
         assertEquals(ListenableWorker.Result.success(), worker.doWork())
         assertEquals(0, calls)
+    }
+
+    @Test
+    fun `recovery worker retains its durable wake while authorization or local recovery remains`() = runBlocking {
+        val runtime = runtime { SyncRunResult(SyncRunStatus.SKIPPED) }
+        coEvery { runtime.hasResumableRun() } returns true
+        coEvery { runtime.isRecoveryDue() } returns true
+        coEvery { runtime.resumeIfNeeded() } returns true
+        val worker = TestListenableWorkerBuilder<SyncWorker>(context)
+            .setInputData(workDataOf(SyncWorker.RECOVERY_KEY to true))
+            .build()
+
+        assertEquals(ListenableWorker.Result.retry(), worker.doWork())
+        assertEquals(0L, runtime.coordinator.activity.value.completion)
+    }
+
+    @Test
+    fun `foreground local recovery schedules a durable wake without a coordinator completion`() = runBlocking {
+        val runtime = runtime { SyncRunResult(SyncRunStatus.SKIPPED) }
+        coEvery { runtime.hasResumableRun() } returns true
+        coEvery { runtime.recoveryDelayMillis() } returns 15_000L
+        coEvery { runtime.resumeIfNeeded() } returns true
+
+        AndroidSyncScheduler(context, runtime).resumeIfNeeded(scope).join()
+
+        val info = withTimeout(5_000) {
+            var scheduled: WorkInfo? = null
+            while (scheduled == null) {
+                scheduled = manager.getWorkInfosForUniqueWork(AndroidSyncScheduler.RECOVERY_WORK_NAME).get()
+                    .firstOrNull { it.state == WorkInfo.State.ENQUEUED }
+                if (scheduled == null) delay(20)
+            }
+            requireNotNull(scheduled)
+        }
+        assertEquals(0L, runtime.coordinator.activity.value.completion)
+        assertEquals(15_000L, property(spec(info), "initialDelay"))
+        assertEquals(
+            NetworkType.CONNECTED,
+            (property(spec(info), "constraints") as androidx.work.Constraints).requiredNetworkType,
+        )
     }
 
     @Test
@@ -437,6 +483,55 @@ class AndroidSyncRuntimeWiringTest {
                 it as androidx.work.Constraints
             }.requiredNetworkType,
         )
+    }
+
+    @Test
+    fun `foreground recovery leaves a user paused run without a new durable wake`() = runBlocking {
+        val runtime = runtime { SyncRunResult(SyncRunStatus.SKIPPED) }
+
+        AndroidSyncScheduler(context, runtime).resumeIfNeeded(scope).join()
+
+        assertTrue(manager.getWorkInfosForUniqueWork(AndroidSyncScheduler.RECOVERY_WORK_NAME).get().isEmpty())
+        assertEquals(0L, runtime.coordinator.activity.value.completion)
+    }
+
+    @Test
+    fun `recovery observer survives storage failure and schedules non network recovery`() = runBlocking {
+        val startupEntered = CompletableDeferred<Unit>()
+        val failedCheck = CompletableDeferred<Unit>()
+        val runtime = runtime { SyncRunResult(SyncRunStatus.PARTIAL, problem = SyncRunProblem.STORAGE) }
+        runtime.preferences.startup.set(false)
+        coEvery { runtime.resumeIfNeeded() } coAnswers {
+            startupEntered.complete(Unit)
+            awaitCancellation()
+        }
+        val checks = AtomicInteger()
+        coEvery { runtime.hasResumableRun() } answers {
+            if (checks.incrementAndGet() == 1) {
+                failedCheck.complete(Unit)
+                throw IllegalStateException("Temporary secure storage failure")
+            }
+            true
+        }
+        coEvery { runtime.recoveryDelayMillis() } returns 15_000L
+        AndroidSyncScheduler(context, runtime).start(scope)
+        withTimeout(5_000) { startupEntered.await() }
+
+        runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+        withTimeout(5_000) { failedCheck.await() }
+        runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+
+        val info = withTimeout(5_000) {
+            var scheduled: WorkInfo? = null
+            while (scheduled == null) {
+                scheduled = manager.getWorkInfosForUniqueWork(AndroidSyncScheduler.RECOVERY_WORK_NAME).get()
+                    .firstOrNull { it.state == WorkInfo.State.ENQUEUED }
+                if (scheduled == null) delay(20)
+            }
+            requireNotNull(scheduled)
+        }
+        assertTrue(checks.get() >= 2)
+        assertEquals(15_000L, property(spec(info), "initialDelay"))
     }
 
     @Test

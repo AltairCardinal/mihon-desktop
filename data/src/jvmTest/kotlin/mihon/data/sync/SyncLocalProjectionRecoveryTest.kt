@@ -96,6 +96,9 @@ class SyncLocalProjectionRecoveryTest {
                 val waiting = runtime.runStore.get(run.runId)!!
                 assertEquals(SyncRunState.WAITING_RETRY, waiting.state)
                 assertEquals("STORAGE", waiting.stopReason)
+                assertFalse(runtime.localOperation.value!!.running)
+                assertTrue(runtime.localOperation.value!!.fraction < 1.0)
+                assertFalse(runtime.localOperation.value!!.durableSuccess)
                 assertEquals(0L, waiting.confirmedItems)
                 assertTrue(waiting.nextRetryAt >= setup.now + 900_000L)
                 assertTrue(
@@ -107,6 +110,9 @@ class SyncLocalProjectionRecoveryTest {
                 assertTrue(runtime.resumeIfNeeded())
                 assertEquals(SyncRunState.SUCCEEDED, runtime.runStore.get(run.runId)!!.state)
                 assertEquals(1L, runtime.runStore.get(run.runId)!!.confirmedItems)
+                assertEquals(1.0, runtime.localOperation.value!!.fraction)
+                assertTrue(runtime.localOperation.value!!.durableSuccess)
+                assertFalse(runtime.localOperation.value!!.running)
                 assertFalse(runtime.resumeIfNeeded())
                 assertEquals(requests, setup.git.server.requestCount)
             }
@@ -150,6 +156,8 @@ class SyncLocalProjectionRecoveryTest {
                             runtime.runStore.get(run.runId)!!.state,
                         )
                         assertEquals(0L, runtime.runStore.get(run.runId)!!.confirmedItems)
+                        assertFalse(runtime.localOperation.value!!.running)
+                        assertTrue(runtime.localOperation.value!!.fraction < 1.0)
                         assertTrue(
                             storage.handler.await {
                                 sync_inboxQueries.getDirtyFields("space", 1, 50).executeAsList().isNotEmpty()

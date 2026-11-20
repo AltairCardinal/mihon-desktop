@@ -45,6 +45,12 @@ class SyncWorker(context: Context, parameters: WorkerParameters) : CoroutineWork
         } else {
             runtime.coordinator.synchronize(SyncTrigger.PERIODIC)
         }
+        if (recovery && runtime.hasResumableRun()) {
+            // Authorization checks and local projection may not emit a coordinator result.
+            // Keep this durable wake until the runtime's persisted retry deadline is due;
+            // isRecoveryDue and the runtime's attempt budget still gate actual exchanges.
+            return Result.retry()
+        }
         return when {
             result.status == SyncRunStatus.SUCCESS || result.status == SyncRunStatus.SKIPPED ||
                 (result.status == SyncRunStatus.PARTIAL && result.pending > 0 && result.problem == null) ->

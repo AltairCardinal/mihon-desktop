@@ -8,7 +8,11 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.AnnotatedString
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
@@ -22,6 +26,7 @@ import mihon.data.sync.runtime.SyncRuntime
 import mihon.data.sync.runtime.SyncSetupStep
 import mihon.domain.sync.auth.GitHubAccessToken
 import mihon.domain.sync.auth.GitHubAuthEndpoints
+import mihon.domain.sync.runtime.SyncTrigger
 import mihon.domain.sync.security.SyncSecureStore
 import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
@@ -287,6 +292,39 @@ class SyncPanelOnboardingIntegrationTest {
                 click("sync-password-submit")
                 withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
                 assertEquals("password", f.runtime.connection()?.protectionMode)
+            }
+        }
+    }
+
+    @Test
+    fun `real pointer pauses synchronization before its connection check returns`() = runBlocking {
+        SyncPanelUiFixture().use { f ->
+            f.connectExistingPlain()
+            withScene(f) {
+                awaitNode("sync-now")
+                val entered = CompletableDeferred<Unit>()
+                val release = CompletableDeferred<Unit>()
+                val exchangeName = "pause-during-connection-check"
+                f.holdNamedSpaceReadThroughCancellation(exchangeName, entered, release)
+                coroutineScope {
+                    val exchange = launch(CoroutineName(exchangeName)) {
+                        f.runtime.coordinator.synchronize(SyncTrigger.PERIODIC)
+                    }
+                    try {
+                        withTimeout(5_000) { entered.await() }
+                        pointerClick("sync-pause-run")
+                        assertTrue(f.panel.state.value.syncPauseRequested)
+                        assertTrue(awaitNode("sync-wait").config.contains(SemanticsProperties.Disabled))
+                        assertNull(find("sync-pause-run"))
+                        assertFalse(exchange.isCompleted)
+                        release.complete(Unit)
+                        withTimeout(5_000) { exchange.join() }
+                        assertTrue(exchange.isCancelled)
+                        awaitNode("sync-now")
+                    } finally {
+                        release.complete(Unit)
+                    }
+                }
             }
         }
     }

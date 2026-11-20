@@ -3,6 +3,7 @@ package mihon.data.sync.runtime
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -14,12 +15,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
 import mihon.data.sync.auth.DiscoveredSyncSpace
 import mihon.data.sync.auth.EmptySyncRepositoryCandidate
@@ -57,6 +60,18 @@ class SyncPanelController(
 ) : SyncPanel {
     private val lifetime = SupervisorJob(scope.coroutineContext[Job])
     private val panelScope = CoroutineScope(scope.coroutineContext + lifetime)
+    private fun operationFor(runId: String?): mihon.domain.sync.runtime.SyncOperationProgress? {
+        val activity = runtime.coordinator.activity.value
+        val local = runtime.localOperation.value
+        return when {
+            local?.running == true -> local
+            activity.running -> activity.operation
+            else -> listOfNotNull(local, activity.operation)
+                .filter { it.runId == runId && it.outcome != SyncRunStatus.SKIPPED }
+                .maxByOrNull { it.sequence }
+        }
+    }
+
     private val mutableState = MutableStateFlow(SyncPanelState())
     override val state: StateFlow<SyncPanelState> = mutableState
     override val diagnosticDirectory: String? get() = runtime.diagnosticDirectory?.toString()
@@ -78,6 +93,7 @@ class SyncPanelController(
     private var bulkJob: Job? = null
     private var authJob: Job? = null
     private var recoveryJob: Job? = null
+    private var authorizationRestoreInFlight = false
     private var recoveryVersion = 0L
     private var repositoryJob: Job? = null
     private var setupJob: Job? = null
@@ -106,6 +122,7 @@ class SyncPanelController(
     private var switchIntent: StoredSyncSpaceSwitch? = null
     private var switchConfirmation: StoredSyncSpaceSwitch? = null
     private var observedCompletion = runtime.coordinator.activity.value.completion
+    private var manualStartJob: Job? = null
 
     init {
         for (queue in listOf(commands, localCommands)) {
@@ -146,14 +163,32 @@ class SyncPanelController(
             }
         }
         panelScope.launch {
+            var previousStructure: Triple<Boolean, SyncTrigger?, Long>? = null
             runtime.coordinator.activity.collect { activity ->
+                val local = runtime.localOperation.value
+                mutableState.update {
+                    it.copy(
+                        operation = operationFor(it.run?.runId),
+                        syncStartRequested = it.syncStartRequested && !activity.running,
+                        syncResumeRequested = it.syncResumeRequested && !activity.running,
+                        syncStoppedBeforeRun = it.syncStoppedBeforeRun && !activity.running,
+                        busy =
+                        activity.running || local?.running == true || it.syncStartRequested || it.syncPauseRequested,
+                    )
+                }
+                val structure = Triple(activity.running, activity.trigger, activity.completion)
+                if (structure == previousStructure) return@collect
+                previousStructure = structure
                 runtime.diagnostics.recordCoordinator(activity)
                 enqueue {
                     val completed = activity.completion != observedCompletion
                     observedCompletion = activity.completion
                     mutableState.update {
                         it.copy(
-                            busy = activity.running,
+                            busy =
+                            runtime.coordinator.activity.value.running ||
+                                runtime.localOperation.value?.running == true || it.syncStartRequested ||
+                                it.syncPauseRequested,
                             problem = if (completed) activity.result?.problem else it.problem,
                             notice = if (completed && it.visible && activity.completion != setupExchangeCompletion &&
                                 activity.result?.status != SyncRunStatus.SKIPPED
@@ -165,6 +200,20 @@ class SyncPanelController(
                         )
                     }
                     refresh(source = SyncDiagnosticRefreshSource.COORDINATOR)
+                }
+            }
+        }
+        panelScope.launch {
+            runtime.localOperation.collect { local ->
+                val activity = runtime.coordinator.activity.value
+                mutableState.update { current ->
+                    current.copy(
+                        operation = operationFor(current.run?.runId),
+                        syncStoppedBeforeRun = current.syncStoppedBeforeRun && local?.running != true,
+                        busy =
+                        activity.running || local?.running == true || current.syncStartRequested ||
+                            current.syncPauseRequested,
+                    )
                 }
             }
         }
@@ -238,6 +287,26 @@ class SyncPanelController(
             ).collect { queueRefresh() }
         }
         panelScope.launch {
+            runtime.authorizationVerificationRevision.collect { queueRefresh() }
+        }
+        panelScope.launch {
+            state.map { it.visibleAuthorizationCheckTarget }.distinctUntilChanged().collect { target ->
+                if (target == null) return@collect
+                while (state.value.visibleAuthorizationCheckTarget == target) {
+                    val remaining = recoveryRead { runtime.recoveryDelayMillis() } ?: 60_000L
+                    val wakeIn = when {
+                        remaining > 0 -> minOf(remaining, 60_000L)
+                        state.value.visibleAuthorizationCheckTarget != target -> break
+                        recoveryRead { runtime.resumeIfNeeded() } == true -> 1_000L
+                        else -> 10_000L
+                    }
+                    withTimeoutOrNull(wakeIn) {
+                        state.first { it.visibleAuthorizationCheckTarget != target }
+                    }
+                }
+            }
+        }
+        panelScope.launch {
             state.map { it.visible }.distinctUntilChanged().collectLatest { visible ->
                 if (visible) {
                     while (true) {
@@ -253,6 +322,197 @@ class SyncPanelController(
     @Synchronized
     override fun dispatch(action: SyncPanelAction) {
         if (!lifetime.isActive) return
+        val currentState = state.value
+        val currentPage = currentState.page
+        // This page only reads current facts, so opening it need not wait for recovery I/O.
+        if (action == SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS) &&
+            currentState.visible && currentState.recovery != null && currentState.question == null &&
+            currentPage in setOf(SyncPanelPage.MAIN, SyncPanelPage.RECOVERY)
+        ) {
+            diagnosticReturnPage = currentPage
+            mutableState.update { it.copy(page = SyncPanelPage.DIAGNOSTICS) }
+            return
+        }
+        if (action == SyncPanelAction.Back && currentPage == SyncPanelPage.DIAGNOSTICS &&
+            currentState.question == null && diagnosticReturnPage in setOf(SyncPanelPage.MAIN, SyncPanelPage.RECOVERY)
+        ) {
+            mutableState.update { current ->
+                val target = if (diagnosticReturnPage == SyncPanelPage.RECOVERY &&
+                    current.recovery == null && current.recoveryAuthorization == SyncRecoveryAuthorization.CONFIRMED
+                ) {
+                    SyncPanelPage.MAIN
+                } else {
+                    diagnosticReturnPage
+                }
+                current.copy(page = target)
+            }
+            return
+        }
+        if (state.value.syncPauseRequested && action in setOf(
+                SyncPanelAction.Synchronize,
+                SyncPanelAction.ResumeSync,
+                SyncPanelAction.RetrySync,
+            )
+        ) {
+            return
+        }
+        if (action == SyncPanelAction.PauseSync) {
+            val current = state.value
+            val connection = current.connection ?: return
+            val selectedOperation = current.operation?.takeIf { it.running }
+            if (current.syncPauseRequested ||
+                (selectedOperation == null && !current.syncStartRequested && current.run?.state != SyncRunState.RUNNING)
+            ) {
+                return
+            }
+            val startingJob = manualStartJob.takeIf { current.syncStartRequested && selectedOperation == null }
+            val target = SyncPauseTarget(
+                connection.spaceId,
+                connection.generation,
+                if (selectedOperation != null) {
+                    selectedOperation.runId
+                } else {
+                    current.run?.takeIf { it.state == SyncRunState.RUNNING }?.runId
+                },
+                selectedOperation?.takeUnless { it.localOnly }?.id,
+            )
+            val job = panelScope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    startingJob?.cancelAndJoin()
+                    mutableState.update {
+                        it.copy(syncPauseSaving = target.runId != null && it.run?.runId == target.runId)
+                    }
+                    runtime.pauseSync(target)
+                    pendingMutex.withLock { refreshPendingLocked(updateReferences = false) }
+                    val cancelledOperation = runtime.coordinator.activity.value.operation
+                        ?.takeIf { it.id == target.operationId }
+                    if (!current.syncResumeRequested && target.runId == null && cancelledOperation?.runId == null) {
+                        mutableState.update { it.copy(syncStoppedBeforeRun = true) }
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    mutableState.update { it.copy(problem = failure.syncProblem()) }
+                } finally {
+                    mutableState.update {
+                        it.copy(
+                            syncPauseRequested = false,
+                            syncPauseSaving = false,
+                            // A LAZY job cancelled before its first instruction never enters its own finally.
+                            syncStartRequested = it.syncStartRequested && startingJob == null,
+                            syncResumeRequested = it.syncResumeRequested && startingJob == null,
+                            progress = it.progress?.let { fact ->
+                                if (fact.hold != SyncProgressHold.PAUSING) {
+                                    fact
+                                } else {
+                                    fact.copy(
+                                        hold = if (it.run?.state == SyncRunState.PAUSED_USER) {
+                                            SyncProgressHold.PAUSED
+                                        } else {
+                                            current.progress?.hold ?: SyncProgressHold.RECOVERING
+                                        },
+                                    )
+                                }
+                            },
+                            busy = runtime.coordinator.activity.value.running ||
+                                runtime.localOperation.value?.running == true ||
+                                (it.syncStartRequested && startingJob == null),
+                        )
+                    }
+                }
+            }
+            mutableState.update {
+                it.copy(
+                    syncPauseRequested = true,
+                    syncPauseSaving = false,
+                    busy = true,
+                    progress = it.progress?.copy(hold = SyncProgressHold.PAUSING),
+                )
+            }
+            job.start()
+            return
+        }
+        if (action == SyncPanelAction.Synchronize && state.value.connection?.enabled == true) {
+            val current = state.value
+            if (current.busy || current.run?.state == SyncRunState.PAUSED_USER ||
+                manualStartJob?.isActive == true || switchIntent != null || current.pendingRecoveryPurpose != null
+            ) {
+                return
+            }
+            val job = panelScope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    mutableState.update { it.copy(problem = failure.syncProblem()) }
+                } finally {
+                    mutableState.update {
+                        it.copy(
+                            syncStartRequested = false,
+                            busy = runtime.coordinator.activity.value.running ||
+                                runtime.localOperation.value?.running == true || it.syncPauseRequested,
+                        )
+                    }
+                }
+            }
+            manualStartJob = job
+            mutableState.update {
+                it.copy(
+                    syncStartRequested = true,
+                    syncStoppedBeforeRun = false,
+                    busy = true,
+                    notice = null,
+                    problem = null,
+                )
+            }
+            job.start()
+            return
+        }
+        if (action == SyncPanelAction.ResumeSync) {
+            val current = state.value
+            val runId = current.run?.takeIf { it.state == SyncRunState.PAUSED_USER }?.runId ?: return
+            if (current.connection?.enabled != true || current.busy || manualStartJob?.isActive == true ||
+                switchIntent != null || current.pendingRecoveryPurpose != null
+            ) {
+                return
+            }
+            val job = panelScope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    if (runtime.runStore.resumeIfAllowed(runId)) {
+                        val result = runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                        mutableState.update { it.copy(problem = result.problem) }
+                    }
+                    pendingMutex.withLock { refreshPendingLocked(updateReferences = false) }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    mutableState.update { it.copy(problem = failure.syncProblem()) }
+                } finally {
+                    mutableState.update {
+                        it.copy(
+                            syncStartRequested = false,
+                            syncResumeRequested = false,
+                            busy = runtime.coordinator.activity.value.running ||
+                                runtime.localOperation.value?.running == true || it.syncPauseRequested,
+                        )
+                    }
+                }
+            }
+            manualStartJob = job
+            mutableState.update {
+                it.copy(
+                    syncStartRequested = true,
+                    syncResumeRequested = true,
+                    syncStoppedBeforeRun = false,
+                    busy = true,
+                    notice = null,
+                    problem = null,
+                )
+            }
+            job.start()
+            return
+        }
         if (action is SyncPanelAction.PrepareDecision && action.scope == SyncDecisionScope.ITEM) {
             val current = state.value
             val connection = current.connection ?: return
@@ -343,6 +603,12 @@ class SyncPanelController(
             }
         }
     }
+
+    private val SyncPanelState.visibleAuthorizationCheckTarget: SyncConnection?
+        get() = connection?.takeIf {
+            visible && page != SyncPanelPage.SETUP && recovery?.busy != true &&
+                recovery?.authorizationVerification != null
+        }
 
     /** Bootstrap local rows even while the first full connection check is suspended. */
     private fun queueInitialPendingRefresh() {
@@ -496,6 +762,7 @@ class SyncPanelController(
                 },
                 bulk = queue.bulk,
                 run = localRun?.withObservedCounts(it.run),
+                operation = operationFor(localRun?.runId),
                 runSource = when {
                     activeRun != null -> SyncPanelRunSource.ACTIVE
                     localRun != null -> SyncPanelRunSource.LATEST
@@ -614,7 +881,8 @@ class SyncPanelController(
             mutableState.update { it.copy(canChangeSpace = false) }
             throw failure
         }
-        val workflow = if (connectionFacts.decode == SyncBindingDecode.OK && connection?.enabled == true &&
+        val workflow = if (!authorizationRestoreInFlight && recovery?.authorizationVerification == null &&
+            connectionFacts.decode == SyncBindingDecode.OK && connection?.enabled == true &&
             (
                 state.value.page == SyncPanelPage.RECOVERY ||
                     state.value.recoveryPlatformRequest != null ||
@@ -737,6 +1005,7 @@ class SyncPanelController(
                     importPaused = prefs.importPaused.get(),
                     records = runtime.records().asReversed(),
                     run = run?.withObservedCounts(it.run),
+                    operation = operationFor(run?.runId),
                     runSource = when {
                         activeRun != null -> SyncPanelRunSource.ACTIVE
                         run != null -> SyncPanelRunSource.LATEST
@@ -845,6 +1114,14 @@ class SyncPanelController(
     }
 
     private suspend fun handle(action: SyncPanelAction, requestVisibilityVersion: Long = visibilityVersion.get()) {
+        if (state.value.syncPauseRequested && action in setOf(
+                SyncPanelAction.Synchronize,
+                SyncPanelAction.ResumeSync,
+                SyncPanelAction.RetrySync,
+            )
+        ) {
+            return
+        }
         when (action) {
             is SyncPanelAction.ExecuteRecoveryAction -> executeRecoveryAction(action.action)
             is SyncPanelAction.RecoveryPlatformCompleted -> completeRecoveryPlatform(action)
@@ -1155,11 +1432,7 @@ class SyncPanelController(
                 runtime.pauseSync()
                 refresh()
             }
-            SyncPanelAction.ResumeSync -> panelScope.launch {
-                val resumed = state.value.run?.let { runtime.runStore.resumeIfAllowed(it.runId) } == true
-                if (resumed) runtime.coordinator.synchronize(SyncTrigger.MANUAL)
-                refresh()
-            }
+            SyncPanelAction.ResumeSync -> dispatch(action)
             SyncPanelAction.PauseImport -> {
                 runtime.preferences.importPaused.set(true)
                 refresh()
@@ -1471,6 +1744,7 @@ class SyncPanelController(
 
     private suspend fun authorize() {
         if (authJob?.isActive == true) return
+        val restoringAuthorization = state.value.recovery?.reason == SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED
         cancelRecovery()
         invalidateCreateContext()
         clearPasswordHelp()
@@ -1546,6 +1820,8 @@ class SyncPanelController(
                             // The already created fixed id and name resume before broad discovery.
                         } else if (runtime.activeSwitch() != null) {
                             resumeSwitch(requireNotNull(runtime.activeSwitch()))
+                        } else if (restoringAuthorization) {
+                            recheckSpace(authorizationRestore = true)
                         } else if (runtime.spaceRecovery() != null) {
                             mutableState.update { it.copy(page = SyncPanelPage.RECOVERY) }
                             recheckSpace()
@@ -1982,16 +2258,19 @@ class SyncPanelController(
         // Returning from a page, even with changed facts, is not a completed synchronization run.
     }
 
-    private fun recheckSpace(preserveSetupError: Boolean = false) {
+    private fun recheckSpace(preserveSetupError: Boolean = false, authorizationRestore: Boolean = false) {
         if (recoveryJob?.isActive == true || authJob?.isActive == true) return
         val session = panelSession
         val version = recoveryVersion
-        val page = state.value.page
-        mutableState.update { it.copy(recovery = it.recovery?.copy(busy = true)) }
+        val page = if (authorizationRestore) SyncPanelPage.RECOVERY else state.value.page
+        authorizationRestoreInFlight = authorizationRestore
+        mutableState.update {
+            it.copy(page = page, recovery = it.recovery?.copy(busy = true))
+        }
         recoveryJob = panelScope.launch {
-            val binding = recoveryRead { runtime.recoveryBinding() }
+            val binding = if (authorizationRestore) null else recoveryRead { runtime.recoveryBinding() }
             val result = try {
-                runtime.recheckSpace()
+                runtime.recheckSpace(authorizationRestore)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -2002,9 +2281,13 @@ class SyncPanelController(
                     return@enqueue
                 }
                 recoveryJob = null
-                val checked = result.recovery == null && result.problem == null && binding != null &&
-                    runtime.recoveryWorkflow.conditionsChecked(true, binding)
-                refresh()
+                val succeeded = result.recovery == null && result.problem == null
+                val checked = succeeded && binding != null && runtime.recoveryWorkflow.conditionsChecked(true, binding)
+                try {
+                    refresh()
+                } finally {
+                    authorizationRestoreInFlight = false
+                }
                 mutableState.update {
                     it.copy(
                         recovery = result.recovery ?: it.recovery.takeIf { result.problem != null },
@@ -2012,6 +2295,7 @@ class SyncPanelController(
                         recoveryConditionsVerified = checked,
                         recoveryOfficialAction = if (checked) null else it.recoveryOfficialAction,
                         recoveryStepFailure = if (checked) null else it.recoveryStepFailure,
+                        setupStep = if (authorizationRestore) SyncSetupStep.COMPLETE else it.setupStep,
                         notice = if (result.spaceAddressUpdated) {
                             SyncPanelNotice(spaceAddressUpdated = true)
                         } else {
@@ -2019,12 +2303,19 @@ class SyncPanelController(
                         },
                         page = if (preserveSetupError || it.page != page) {
                             it.page
-                        } else if (result.recovery == null && result.problem == null) {
-                            if (page == SyncPanelPage.RECOVERY) SyncPanelPage.RECOVERY else SyncPanelPage.MAIN
+                        } else if (succeeded) {
+                            if (page == SyncPanelPage.RECOVERY && !authorizationRestore) {
+                                SyncPanelPage.RECOVERY
+                            } else {
+                                SyncPanelPage.MAIN
+                            }
                         } else {
                             SyncPanelPage.RECOVERY
                         },
                     )
+                }
+                if (authorizationRestore && succeeded) {
+                    panelScope.launch { runtime.resumeIfNeeded() }
                 }
             }
         }
@@ -2034,6 +2325,7 @@ class SyncPanelController(
         recoveryVersion++
         recoveryJob?.cancelAndJoin()
         recoveryJob = null
+        authorizationRestoreInFlight = false
         mutableState.update { it.copy(recovery = it.recovery?.copy(busy = false), recoveryBusy = false) }
     }
 

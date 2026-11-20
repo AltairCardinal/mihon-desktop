@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
@@ -299,6 +300,291 @@ abstract class SyncPanelStorageContract {
                 } finally {
                     release.complete(Unit)
                 }
+            }
+        }
+    }
+
+    @Test
+    fun `manual sync acknowledges immediately and bypasses a blocked panel refresh`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                f.panel.act(SyncPanelAction.Open)
+                val entered = CompletableDeferred<Unit>()
+                val release = CompletableDeferred<Unit>()
+                f.secure.nextSpaceRead = entered to release
+                try {
+                    f.panel.dispatch(SyncPanelAction.SetDeviceName("Slow refresh"))
+                    withTimeout(5_000) { entered.await() }
+                    val completed = f.runtime.coordinator.activity.value.completion
+                    f.panel.dispatch(SyncPanelAction.Synchronize)
+                    assertTrue(f.panel.state.value.busy, "the click must be acknowledged before any slow read")
+                    repeat(5) { f.panel.dispatch(SyncPanelAction.Synchronize) }
+                    withTimeout(5_000) { f.runtime.coordinator.activity.first { it.running } }
+                    assertFalse(release.isCompleted, "manual start must bypass the panel command queue")
+                    val connection = f.panel.state.value.connection!!
+                    f.runtime.pauseSync(
+                        mihon.data.sync.runtime.SyncPauseTarget(connection.spaceId, connection.generation, null, null),
+                    )
+                    assertTrue(
+                        f.runtime.coordinator.activity.value.running,
+                        "a local-only target must not cancel this flight",
+                    )
+                    release.complete(Unit)
+                    withTimeout(5_000) { f.runtime.coordinator.activity.first { !it.running } }
+                    assertEquals(completed + 1, f.runtime.coordinator.activity.value.completion)
+                } finally {
+                    release.complete(Unit)
+                }
+                withTimeout(5_000) { f.runtime.coordinator.activity.first { !it.running } }
+                f.panel.awaitIdle()
+                assertFalse(f.panel.state.value.busy)
+            }
+        }
+    }
+
+    @Test
+    fun `pause click acknowledges and persists while full panel refresh is blocked`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                val connection = f.runtime.connection()!!
+                val run = f.runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.MANUAL)
+                assertTrue(f.runtime.runStore.claim(run.runId, "pause-owner", 1))
+                f.panel.act(SyncPanelAction.Open)
+                val entered = CompletableDeferred<Unit>()
+                val release = CompletableDeferred<Unit>()
+                f.secure.nextSpaceRead = entered to release
+                try {
+                    f.panel.dispatch(SyncPanelAction.SetDeviceName("Pause during refresh"))
+                    withTimeout(5_000) { entered.await() }
+                    f.panel.dispatch(SyncPanelAction.PauseSync)
+                    assertEquals(
+                        mihon.data.sync.runtime.SyncProgressHold.PAUSING,
+                        f.panel.state.value.progress?.hold,
+                        "pause must acknowledge the click without waiting for the panel queue",
+                    )
+                    repeat(5) { f.panel.dispatch(SyncPanelAction.PauseSync) }
+                    withTimeout(5_000) {
+                        f.panel.state.first { it.run?.state == mihon.data.sync.runtime.SyncRunState.PAUSED_USER }
+                    }
+                    assertFalse(release.isCompleted)
+                    assertEquals(run.runId, f.panel.state.value.run?.runId)
+                } finally {
+                    release.complete(Unit)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `pausing an active run does not wait for secure storage`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                val connection = f.runtime.connection()!!
+                val run = f.runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.MANUAL)
+                assertTrue(f.runtime.runStore.claim(run.runId, "pause-owner", 1))
+                val entered = CompletableDeferred<Unit>()
+                val release = CompletableDeferred<Unit>()
+                f.secure.nextSpaceReadCoroutineName = "pause-no-secret"
+                f.secure.nextSpaceRead = entered to release
+                val pause = async(kotlinx.coroutines.CoroutineName("pause-no-secret")) {
+                    f.runtime.pauseSync()
+                    true
+                }
+                try {
+                    val completed = kotlinx.coroutines.withTimeoutOrNull(1_000) { pause.await() }
+                    assertEquals(true, completed, "local pause must not depend on secure storage")
+                    assertFalse(entered.isCompleted)
+                    assertEquals(
+                        mihon.data.sync.runtime.SyncRunState.PAUSED_USER,
+                        f.runtime.runStore.get(run.runId)?.state,
+                    )
+                } finally {
+                    release.complete(Unit)
+                    pause.cancelAndJoin()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `stale pause target cannot pause a different run or space`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                val connection = f.runtime.connection()!!
+                val run = f.runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.MANUAL)
+                assertTrue(f.runtime.runStore.claim(run.runId, "owner", 1))
+                for (target in listOf(
+                    mihon.data.sync.runtime.SyncPauseTarget("other", connection.generation, run.runId, null),
+                    mihon.data.sync.runtime.SyncPauseTarget(connection.spaceId, connection.generation, "old-run", null),
+                )) {
+                    f.runtime.pauseSync(target)
+                    assertEquals(
+                        mihon.data.sync.runtime.SyncRunState.RUNNING,
+                        f.runtime.runStore.get(run.runId)?.state,
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `failed pause clears request feedback and permits another attempt`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                val connection = f.runtime.connection()!!
+                val run = f.runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.MANUAL)
+                assertTrue(f.runtime.runStore.claim(run.runId, "owner", 1))
+                f.panel.act(SyncPanelAction.Open)
+                storage.driver.execute(
+                    null,
+                    "CREATE TRIGGER reject_pause BEFORE UPDATE OF state ON sync_runtime_runs " +
+                        "WHEN NEW.state = 'PAUSED_USER' BEGIN SELECT RAISE(ABORT, 'pause rejected'); END",
+                    0,
+                )
+                f.panel.dispatch(SyncPanelAction.PauseSync)
+                withTimeout(5_000) { f.panel.state.first { !it.syncPauseRequested } }
+                assertNotNull(f.panel.state.value.problem)
+                assertTrue(f.panel.state.value.progress?.hold != mihon.data.sync.runtime.SyncProgressHold.PAUSING)
+                storage.driver.execute(null, "DROP TRIGGER reject_pause", 0)
+                f.panel.dispatch(SyncPanelAction.PauseSync)
+                withTimeout(5_000) {
+                    f.panel.state.first {
+                        !it.syncPauseRequested && it.run?.state == mihon.data.sync.runtime.SyncRunState.PAUSED_USER
+                    }
+                }
+                Unit
+            }
+        }
+    }
+
+    @Test
+    fun `resume acknowledges immediately and failed checkpoint update can be retried`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                val run = f.runtime.runStore.start("space", 1, SyncTrigger.MANUAL)
+                f.runtime.runStore.pause(run.runId)
+                f.panel.act(SyncPanelAction.Open)
+                val entered = CompletableDeferred<Unit>()
+                val release = CompletableDeferred<Unit>()
+                f.secure.nextSpaceRead = entered to release
+                try {
+                    f.panel.dispatch(SyncPanelAction.SetDeviceName("Resume during refresh"))
+                    withTimeout(5_000) { entered.await() }
+                    storage.driver.execute(
+                        null,
+                        "CREATE TRIGGER reject_resume BEFORE UPDATE OF state ON sync_runtime_runs " +
+                            "WHEN OLD.state = 'PAUSED_USER' AND NEW.state = 'RUNNING' " +
+                            "BEGIN SELECT RAISE(ABORT, 'resume rejected'); END",
+                        0,
+                    )
+                    f.panel.dispatch(SyncPanelAction.ResumeSync)
+                    assertTrue(f.panel.state.value.syncResumeRequested, "continue click must acknowledge synchronously")
+                    assertTrue(f.panel.state.value.busy)
+                    withTimeout(5_000) { f.panel.state.first { !it.syncResumeRequested && it.problem != null } }
+                    assertFalse(f.panel.state.value.busy)
+                    assertEquals(SyncRunState.PAUSED_USER, f.runtime.runStore.get(run.runId)?.state)
+                    assertFalse(release.isCompleted, "resume cannot wait behind the full refresh")
+                    storage.driver.execute(null, "DROP TRIGGER reject_resume", 0)
+                    val completion = f.runtime.coordinator.activity.value.completion
+                    f.panel.dispatch(SyncPanelAction.ResumeSync)
+                    assertTrue(f.panel.state.value.syncResumeRequested)
+                    release.complete(Unit)
+                    withTimeout(10_000) {
+                        f.runtime.coordinator.activity.first { !it.running && it.completion > completion }
+                        f.panel.state.first { !it.syncResumeRequested && !it.busy }
+                    }
+                    assertEquals(run.runId, f.runtime.runStore.latest("space", 1)?.runId)
+                } finally {
+                    release.complete(Unit)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `pause before manual job starts stops this request without reviving previous success`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                f.panel.stop()
+                val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+                val dispatcher = executor.asCoroutineDispatcher()
+                val parent = SupervisorJob()
+                val panel = SyncPanelController(f.runtime, storage.handler, CoroutineScope(dispatcher + parent))
+                val release = java.util.concurrent.CountDownLatch(1)
+                try {
+                    panel.act(SyncPanelAction.Open)
+                    val previous = panel.state.value.run!!
+                    assertEquals(SyncRunState.SUCCEEDED, previous.state)
+                    val entered = CompletableDeferred<Unit>()
+                    executor.submit {
+                        entered.complete(Unit)
+                        check(release.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                    }
+                    entered.await()
+                    panel.dispatch(SyncPanelAction.Synchronize)
+                    assertTrue(panel.state.value.syncStartRequested)
+                    panel.dispatch(SyncPanelAction.PauseSync)
+                    assertTrue(panel.state.value.syncPauseRequested)
+                    release.countDown()
+                    withTimeout(5_000) { panel.state.first { !it.syncStartRequested && !it.syncPauseRequested } }
+                    assertTrue(
+                        panel.state.value.syncStoppedBeforeRun,
+                        "stopped request must not display previous success",
+                    )
+                    assertFalse(panel.state.value.busy)
+                    assertEquals(previous.runId, f.runtime.runStore.latest("space", 1)?.runId)
+                    assertEquals(SyncRunState.SUCCEEDED, f.runtime.runStore.get(previous.runId)?.state)
+                } finally {
+                    release.countDown()
+                    panel.stop()
+                    parent.cancelAndJoin()
+                    dispatcher.close()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `manual start does not resume a durable user pause`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                val connection = f.runtime.connection()!!
+                val run = f.runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.MANUAL)
+                f.runtime.runStore.pause(run.runId)
+                f.panel.act(SyncPanelAction.Open)
+                val completion = f.runtime.coordinator.activity.value.completion
+                f.panel.act(SyncPanelAction.Synchronize)
+                assertFalse(f.panel.state.value.busy)
+                assertFalse(f.panel.state.value.syncStartRequested)
+                assertEquals(completion, f.runtime.coordinator.activity.value.completion)
+                assertEquals(
+                    mihon.data.sync.runtime.SyncRunState.PAUSED_USER,
+                    f.runtime.runStore.get(run.runId)!!.state,
+                )
             }
         }
     }

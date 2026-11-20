@@ -171,6 +171,23 @@ class AndroidLegacySyncMigrationTest {
     }
 
     @Test
+    fun `production Android upgrades a version 49 database missing the favorite date table`() {
+        val file = app.getDatabasePath("tachiyomi.db")
+        file.parentFile!!.mkdirs()
+        JdbcSqliteDriver("jdbc:sqlite:${file.absolutePath}").use { driver ->
+            Database.Schema.create(driver)
+            driver.execute(null, "DROP TABLE sync_favorite_date_imports", 0)
+            driver.execute(null, "PRAGMA user_version = 49", 0)
+        }
+
+        Injekt.importModule(AppModule(app))
+        Injekt.get<SqlDriver>().use { driver ->
+            assertEquals(50L, queryLong(driver, "PRAGMA user_version"))
+            assertEquals(0L, queryLong(driver, "SELECT COUNT(*) FROM sync_favorite_date_imports"))
+        }
+    }
+
+    @Test
     fun `production Android database callback restores missing runtime family from version 32`() {
         prepareLegacyV32(hasRuntime = false)
 
@@ -384,6 +401,14 @@ class AndroidLegacySyncMigrationTest {
                 driver.execute(null, "DROP TABLE chapter_pairing_pairs", 0)
                 driver.execute(null, "ALTER TABLE chapter_pairings DROP COLUMN opening_mode", 0)
             }
+            listOf("sync_upload_groups", "sync_favorite_date_imports").forEach {
+                driver.execute(null, "DROP TABLE $it", 0)
+            }
+            if (hasPause) {
+                listOf("attempt_started_at", "attempt_confirmed_baseline", "attempt_paused_millis").forEach {
+                    driver.execute(null, "ALTER TABLE sync_runtime_pause_clock DROP COLUMN $it", 0)
+                }
+            }
             driver.execute(
                 null,
                 "INSERT INTO sync_remote_guards(space_id, generation, repository_owner, repository_name, " +
@@ -391,7 +416,11 @@ class AndroidLegacySyncMigrationTest {
                     "'main', 'published-head')",
                 0,
             )
-            if (!hasDirectory) LegacySyncSchema32Contract.removeChapterDirectoryAdditions(driver)
+            if (hasDirectory) {
+                LegacySyncSchema32Contract.removeMetadataSnapshotAdditions(driver)
+            } else {
+                LegacySyncSchema32Contract.removeChapterDirectoryAdditions(driver)
+            }
             if (!hasPause) {
                 driver.execute(null, "DROP TABLE sync_repair_failures", 0)
                 driver.execute(null, "DROP TRIGGER sync_runtime_pause_transition", 0)

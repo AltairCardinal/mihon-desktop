@@ -96,6 +96,8 @@ class MangaRepositoryImpl(
     }
 
     private suspend fun tachiyomi.data.Database.applyMembership(update: LibraryMembershipUpdate) {
+        val wasFavorite = update.favorite && update.updateCategories &&
+            mangasQueries.getMangaById(update.mangaId).executeAsOne().favorite
         mangasQueries.update(
             source = null,
             url = null,
@@ -117,7 +119,13 @@ class MangaRepositoryImpl(
             mangas_categoriesQueries.deleteMangaCategoryByMangaId(update.mangaId)
             update.categoryIds.forEach { mangas_categoriesQueries.insert(update.mangaId, it) }
         }
-        appendFavoriteOperation(update.mangaId, update.favorite, update.syncContext, update.updateCategories)
+        appendFavoriteOperation(
+            update.mangaId,
+            update.favorite,
+            update.syncContext,
+            update.updateCategories,
+            wasFavorite,
+        )
     }
 
     override suspend fun commitMigration(commit: mihon.domain.migration.MigrationCommit): Manga =

@@ -85,9 +85,10 @@ abstract class SyncJournalStorageContract {
             storage.connect()
             val manga = storage.insertManga("/favorite")
             val command = UpdateLibraryMembership(storage.repository)
-            assertTrue(command.await(manga, true) is LibraryMembershipResult.Success)
+            assertTrue(command.await(manga, true, nowMillis = 1_234) is LibraryMembershipResult.Success)
             assertTrue(storage.repository.getMangaById(manga.id).favorite)
             val added = storage.journal.pendingEvents("space", 1).single()
+            assertEquals(1_234L, added.occurredAt)
             assertEquals(SyncCategory.FAVORITE, added.category)
             assertEquals(SyncOrigin.USER, added.origin)
             assertEquals(2, added.protocolVersion)
@@ -116,6 +117,23 @@ abstract class SyncJournalStorageContract {
                 }.parents,
             )
             assertEquals(SyncEffectKind.REMOVE, events.last().effects.single { it.field == SyncField.FAVORITE }.kind)
+        }
+    }
+
+    @Test
+    fun `saving categories on an existing favorite dates the edit separately`() = runBlocking {
+        open().use { storage ->
+            storage.connect()
+            val manga = storage.insertManga("/favorite-categories")
+            val command = UpdateLibraryMembership(storage.repository)
+            assertTrue(command.await(manga, true, nowMillis = 1_234) is LibraryMembershipResult.Success)
+            val saved = storage.repository.getMangaById(manga.id)
+            assertTrue(command.await(saved, true) is LibraryMembershipResult.Success)
+            val (favorite, categories) = storage.journal.pendingEvents("space", 1).drop(1)
+            assertEquals(SyncField.FAVORITE, favorite.effects.single().field)
+            assertEquals(1_234L, favorite.occurredAt)
+            assertEquals(SyncField.MANGA_CATEGORIES, categories.effects.single().field)
+            assertTrue(categories.occurredAt > favorite.occurredAt)
         }
     }
 
@@ -227,18 +245,12 @@ abstract class SyncJournalStorageContract {
                 )
             }
             val events = storage.journal.pendingEvents("space", 1)
-            assertEquals(2, events.size)
-            assertEquals(
-                listOf(events.first().ref("categories")),
-                events.last().effects.single { it.field == SyncField.MANGA_CATEGORIES }.parents,
-            )
-            assertEquals(
-                listOf(events.first().ref("favorite")),
-                events.last().effects.single {
-                    it.field ==
-                        SyncField.FAVORITE
-                }.parents,
-            )
+            assertEquals(listOf(1L, 2L, 3L), events.map { it.seq })
+            val (initial, reaffirmedFavorite, categories) = events
+            assertEquals(listOf(initial.ref("favorite")), reaffirmedFavorite.effects.single().parents)
+            assertEquals(SyncField.FAVORITE, reaffirmedFavorite.effects.single().field)
+            assertEquals(listOf(initial.ref("categories")), categories.effects.single().parents)
+            assertEquals(SyncField.MANGA_CATEGORIES, categories.effects.single().field)
         }
     }
 
@@ -280,7 +292,8 @@ abstract class SyncJournalStorageContract {
                 UpdateLibraryMembership(storage.repository).await(manga, false)
                 val events = storage.journal.pendingEvents("space", 1)
                 assertEquals(listOf(1L, 2L), events.map { it.seq })
-                assertEquals(listOf(first.ref("favorite")), events.last().effects.single().parents)
+                val removal = events.last().effects.single { it.field == SyncField.FAVORITE }
+                assertEquals(listOf(first.ref("favorite")), removal.parents)
             }
         } finally {
             assertTrue(file.delete())
@@ -341,7 +354,8 @@ abstract class SyncJournalStorageContract {
             UpdateLibraryMembership(storage.repository).await(retained, false)
             assertEquals(
                 SyncEffectKind.REMOVE,
-                storage.journal.pendingEvents("space", 1).single().effects.single().kind,
+                storage.journal.pendingEvents("space", 1).single().effects
+                    .single { it.field == SyncField.FAVORITE }.kind,
             )
         }
     }
@@ -403,7 +417,7 @@ abstract class SyncJournalStorageContract {
 internal fun removeSyncJournalSchema(driver: SqlDriver) {
     driver.execute(null, "DROP TRIGGER IF EXISTS sync_runtime_pause_transition", 0)
     listOf(
-        "sync_repair_failures",
+        "sync_repair_failures", "sync_upload_groups", "sync_favorite_date_imports",
         "sync_snapshot_manifest_entries", "sync_snapshot_manifest_batches", "sync_snapshot_manifests",
         "sync_http_account_gates",
         "sync_runtime_pause_clock", "sync_runtime_logs", "sync_runtime_confirmations", "sync_runtime_runs",

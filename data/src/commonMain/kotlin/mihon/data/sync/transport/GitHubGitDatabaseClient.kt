@@ -5,6 +5,9 @@ package mihon.data.sync.transport
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -446,7 +449,7 @@ class GitHubSyncTransport(
         val indexEntries = tree.entries.filter { it.type == "blob" && it.path.startsWith(".mihon-sync/index/") }
         if (indexEntries.isEmpty()) throw SyncRemoteDataInvalid("sync index is missing")
         requireRemoteData(indexEntries.size <= 10_000) { "sync index exceeds entry limit" }
-        val shards = indexEntries.map { entry ->
+        val shards = readIndependent(indexEntries) { entry ->
             requireRemoteData(entry.mode == "100644") { "sync index must be a regular file" }
             val bytes = getBlob(repository, entry.sha, validationScope = validationScope).content
             decodeRemoteData { decryptShard(bytes, entry.path, expectedSpaceId, expectedGeneration) }
@@ -458,11 +461,16 @@ class GitHubSyncTransport(
         ) { "sync bootstrap is missing or invalid" }
         val paths = shards.associateBy { it.path }
         val chains = shards.filter { it.batch != null }.groupBy { it.actorId to it.epoch }
-        val heads = tree.entries.filter { it.type == "blob" && it.path.startsWith(".mihon-sync/heads/") }.map { entry ->
-            requireRemoteData(entry.mode == "100644") { "sync head must be a regular file" }
-            val bytes = getBlob(repository, entry.sha, validationScope = validationScope).content
-            decodeRemoteData { decryptHead(bytes, entry.path, expectedSpaceId, expectedGeneration) }
-        }
+        val heads =
+            readIndependent(
+                tree.entries.filter {
+                    it.type == "blob" && it.path.startsWith(".mihon-sync/heads/")
+                },
+            ) { entry ->
+                requireRemoteData(entry.mode == "100644") { "sync head must be a regular file" }
+                val bytes = getBlob(repository, entry.sha, validationScope = validationScope).content
+                decodeRemoteData { decryptHead(bytes, entry.path, expectedSpaceId, expectedGeneration) }
+            }
         requireRemoteData(heads.size == chains.size && heads.map { it.actorId to it.epoch }.toSet() == chains.keys) {
             "sync actor head is missing or duplicated"
         }
@@ -700,30 +708,76 @@ class GitHubSyncTransport(
         snapshot: SyncSnapshot,
         upload: SyncPreparedUpload,
         observeSnapshot: suspend (SyncSnapshot) -> Unit,
-    ): SyncPublishResult = publishInternal(repository, snapshot, upload, observeSnapshot, allowPublish = true)
+    ): SyncPublishResult = publishGroup(repository, snapshot, listOf(upload), observeSnapshot)
 
     override suspend fun confirmPublished(
         repository: SyncRepository,
         snapshot: SyncSnapshot,
         upload: SyncPreparedUpload,
         observeSnapshot: suspend (SyncSnapshot) -> Unit,
-    ): SyncPublishResult = publishInternal(repository, snapshot, upload, observeSnapshot, allowPublish = false)
+    ): SyncPublishResult = publishInternal(repository, snapshot, listOf(upload), observeSnapshot, allowPublish = false)
+
+    internal fun prepareFollowing(
+        snapshot: SyncSnapshot,
+        previous: SyncPreparedUpload,
+        batch: SyncEncryptedBatch,
+    ): SyncPreparedUpload {
+        validatePrepared(previous)
+        require(
+            previous.repository == snapshot.repository &&
+                previous.encryptedBatch.actorId == batch.actorId && previous.encryptedBatch.epoch == batch.epoch,
+        ) { "group uploads must share an actor" }
+        return prepare(snapshot.copy(batches = snapshot.batches + preparedIndex(previous)), batch)
+    }
+
+    internal suspend fun publishGroup(
+        repository: SyncRepository,
+        snapshot: SyncSnapshot,
+        uploads: List<SyncPreparedUpload>,
+        observeSnapshot: suspend (SyncSnapshot) -> Unit,
+    ): SyncPublishResult = publishInternal(repository, snapshot, uploads, observeSnapshot, allowPublish = true)
 
     private suspend fun publishInternal(
         repository: SyncRepository,
         snapshot: SyncSnapshot,
-        upload: SyncPreparedUpload,
+        uploads: List<SyncPreparedUpload>,
         observeSnapshot: suspend (SyncSnapshot) -> Unit,
         allowPublish: Boolean,
     ): SyncPublishResult {
+        require(uploads.size in 1..4) { "publish group exceeds its batch limit" }
+        val upload = uploads.first()
         val batch = upload.encryptedBatch
-        require(repository == snapshot.repository && repository == upload.repository) {
+        require(repository == snapshot.repository && uploads.all { it.repository == repository }) {
             "sync upload repository mismatch"
         }
         require(batch.spaceId == snapshot.spaceId && batch.generation == snapshot.generation) {
             "sync upload scope mismatch"
         }
-        validatePrepared(upload)
+        uploads.forEach { member ->
+            require(
+                member.encryptedBatch.spaceId == snapshot.spaceId &&
+                    member.encryptedBatch.generation == snapshot.generation &&
+                    member.encryptedBatch.actorId == batch.actorId && member.encryptedBatch.epoch == batch.epoch,
+            ) { "publish group scope mismatch" }
+            validatePrepared(member)
+        }
+        uploads.zipWithNext().forEach { (before, after) ->
+            require(
+                after.previousIndexPath == before.indexPath &&
+                    after.previousLastSeq == before.encryptedBatch.lastSeq,
+            ) { "publish group is not contiguous" }
+        }
+        require(uploads.map { it.encryptedBatch.batchId }.distinct().size == uploads.size)
+        val payloads = uploads.flatMap { member ->
+            listOf(
+                member.encryptedBatch.path to StoredSyncBatch.fromDomain(member.encryptedBatch).body(),
+                member.indexPath to member.indexCiphertext.bytes,
+            )
+        } + (uploads.last().headPath to uploads.last().headCiphertext.bytes)
+        val batchPayloadOwners = uploads.associate { it.encryptedBatch.path to it.encryptedBatch.batchId }
+        require(uploads.size == 1 || payloads.sumOf { it.second.size.toLong() } <= 2L * 1024 * 1024) {
+            "publish group exceeds its byte limit"
+        }
         if (spaceMaterial != null) {
             val private = try {
                 getRepositoryInfo(repository).private
@@ -749,11 +803,35 @@ class GitHubSyncTransport(
                 )
             }
         }
-        var current = snapshot
+        var current = if (uploads.size == 1) {
+            snapshot
+        } else {
+            try {
+                if (readCurrentHead(repository, snapshot.spaceId, snapshot.generation).getOrThrow() == snapshot.head) {
+                    snapshot
+                } else {
+                    readSnapshot(repository, snapshot.spaceId, snapshot.generation).getOrThrow()
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                return SyncPublishResult(
+                    SyncPublishStatus.UNCONFIRMED,
+                    batch.batchId,
+                    error = "current ref could not be checked before publishing",
+                    failureClass = publishFailureClass(error),
+                    retryAfterMillis = (error as? SyncHttpException)?.retryAfterMillis,
+                    networkPhase = (error as? SyncHttpException)?.networkPhase,
+                    httpStatus = (error as? SyncHttpException)?.code,
+                )
+            }
+        }
         var blobs: List<SyncGitTreeEntry>? = null
         for (attempt in 1..MAX_PUBLISH_ATTEMPTS) {
-            val existing = current.batches.firstOrNull { it.batchId == batch.batchId }
-            if (existing == null && !allowPublish) {
+            val existing = uploads.filter { member ->
+                current.batches.any { it.batchId == member.encryptedBatch.batchId }
+            }
+            if (existing.isEmpty() && !allowPublish) {
                 return SyncPublishResult(
                     SyncPublishStatus.UNCONFIRMED,
                     batch.batchId,
@@ -761,13 +839,20 @@ class GitHubSyncTransport(
                     failureClass = SyncPublishFailureClass.CONFLICT,
                 )
             }
-            if (existing != null) {
-                require(matches(current, upload)) { "sync batch id already contains different bytes" }
+            if (existing.isNotEmpty()) {
+                if (existing.size != uploads.size) {
+                    return SyncPublishResult(
+                        SyncPublishStatus.CONFLICT,
+                        batch.batchId,
+                        failureClass = SyncPublishFailureClass.CONFLICT,
+                    )
+                }
+                require(uploads.all { matches(current, it) }) { "sync batch id already contains different bytes" }
                 // A caller may pass a historical snapshot after a restart. Only the live ref can confirm delivery.
                 val observedRead = readSnapshot(repository, snapshot.spaceId, snapshot.generation)
                 val observed = observedRead.getOrNull()
                 if (observed != null) observeSnapshot(observed)
-                val matched = observed?.let { suspendResult { matches(it, upload) } }
+                val matched = observed?.let { live -> suspendResult { uploads.all { matches(live, it) } } }
                 val confirmationFailure = (observedRead.exceptionOrNull() ?: matched?.exceptionOrNull()) as? Exception
                 if (observed == null || matched?.getOrDefault(false) != true) {
                     return SyncPublishResult(
@@ -803,17 +888,18 @@ class GitHubSyncTransport(
             }
             if (attempt > 1) runCatching { batchTransferResumed(batch.batchId) }
             val commit = try {
-                val payloads = listOf(
-                    batch.path to StoredSyncBatch.fromDomain(batch).body(),
-                    upload.indexPath to upload.indexCiphertext.bytes,
-                    upload.headPath to upload.headCiphertext.bytes,
-                )
                 val entries = blobs ?: SyncTreeEntryPayloadPlanner.plan(
                     payloads,
                     baseTreeSha = current.tree.sha,
                 ).map { planned ->
+                    val payloadOwner = batchPayloadOwners[planned.path]?.takeIf { uploads.size > 1 }
+                    val blobWorkKey = if (payloadOwner != null) {
+                        "$payloadOwner:batch-payload:${planned.path}"
+                    } else {
+                        "${batch.batchId}:blob:${planned.path}"
+                    }
                     val sha = planned.inlineContent?.let { "" }
-                        ?: createBlob(repository, planned.bytes, "${batch.batchId}:blob:${planned.path}").sha
+                        ?: createBlob(repository, planned.bytes, blobWorkKey).sha
                     SyncGitTreeEntry(
                         planned.path,
                         "100644",
@@ -853,9 +939,15 @@ class GitHubSyncTransport(
             } catch (error: Exception) {
                 refError = error
             }
-            val observed = readSnapshot(repository, snapshot.spaceId, snapshot.generation).getOrNull()
+            var exactConfirmed = false
+            val observed = suspendResult {
+                confirmExactCommit(repository, current, commit, uploads, payloads)?.also { exactConfirmed = true }
+                    ?: readSnapshot(repository, snapshot.spaceId, snapshot.generation).getOrThrow()
+            }.getOrNull()
             if (observed != null) observeSnapshot(observed)
-            if (observed != null && suspendResult { matches(observed, upload) }.getOrDefault(false)) {
+            if (observed != null &&
+                (exactConfirmed || suspendResult { uploads.all { matches(observed, it) } }.getOrDefault(false))
+            ) {
                 return SyncPublishResult(
                     SyncPublishStatus.PUBLISHED,
                     batch.batchId,
@@ -891,6 +983,125 @@ class GitHubSyncTransport(
             )
         }
         error("unreachable publish loop")
+    }
+
+    private fun preparedIndex(upload: SyncPreparedUpload): SyncBatchIndexEntry {
+        val batch = upload.encryptedBatch
+        return SyncBatchIndexEntry(
+            batch.batchId, batch.path, batch.plaintextDigest.toByteString().hex(),
+            batch.firstSeq, batch.lastSeq, batch.actorId, batch.epoch,
+            upload.indexPath, indexEngine.sha256(upload.indexCiphertext.bytes).toByteString().hex(),
+        )
+    }
+
+    /** A matching content-addressed root proves the exact immutable base plus the frozen additions. */
+    private suspend fun confirmExactCommit(
+        repository: SyncRepository,
+        base: SyncSnapshot,
+        commit: SyncGitCommit,
+        uploads: List<SyncPreparedUpload>,
+        payloads: List<Pair<String, ByteArray>>,
+    ): SyncSnapshot? {
+        if (base.tree.truncated ||
+            flattenedTreeOid(base.tree.entries, base.tree.sha.length) != base.tree.sha
+        ) {
+            return null
+        }
+        val files = base.tree.entries.associateByTo(linkedMapOf()) { it.path }
+        for ((path, bytes) in payloads) {
+            val oid = gitBlobOid(bytes, base.tree.sha.length) ?: return null
+            if ((path.startsWith(".mihon-sync/index/") || path.startsWith(".mihon-sync/batches/")) &&
+                path in files
+            ) {
+                return null
+            }
+            files[path] = SyncGitTreeEntry(path, "100644", "blob", oid, bytes.size.toLong())
+        }
+        val tree = SyncGitTree(commit.treeSha, files.values.toList(), false)
+        if (tree.entries.size > maxTreeEntries ||
+            flattenedTreeOid(tree.entries, tree.sha.length) != tree.sha
+        ) {
+            return null
+        }
+        val fence = snapshotFenceProvider(base.spaceId, base.generation)
+        val ref = getRef(repository)
+        require(ref.name == "refs/heads/${repository.branch}")
+        if (ref.objectSha != commit.sha) return null
+        val actual = getCommit(repository, commit.sha)
+        require(actual.treeSha == commit.treeSha && actual.parents == listOf(base.head)) {
+            "published commit does not extend the verified base"
+        }
+        val snapshot = base.copy(head = commit.sha, tree = tree, batches = base.batches + uploads.map(::preparedIndex))
+        fence?.let { rememberSnapshotFence(snapshot, it) }
+        val bindingScope = "space=${base.spaceId};generation=${base.generation}"
+        val validationScope = "$bindingScope;validator=$SYNC_SNAPSHOT_VALIDATOR_VERSION"
+        val binding = snapshotManifestBinding
+        val store = snapshotManifestStore
+        if (binding != null && store != null) {
+            val context = SyncSnapshotManifestContext(
+                binding,
+                repository,
+                apiOrigin,
+                SYNC_SNAPSHOT_VALIDATOR_VERSION,
+                validationScope,
+            )
+            store.prepare(snapshot, context)?.let { prepared ->
+                manifestCandidateMutex.withLock { manifestCandidates += snapshot to prepared }
+            }
+        } else {
+            treeCacheMutex.withLock {
+                snapshotCache = SyncSnapshotCacheKey(
+                    repository,
+                    base.spaceId,
+                    base.generation,
+                    snapshot.head,
+                    apiOrigin,
+                    validationScope,
+                    connectionRevision,
+                ) to snapshot
+            }
+        }
+        return snapshot
+    }
+
+    private fun flattenedTreeOid(files: List<SyncGitTreeEntry>, oidLength: Int): String? {
+        val children = linkedMapOf<String, MutableList<SyncGitTreeEntry>>("" to mutableListOf())
+        val paths = mutableSetOf<String>()
+        for (entry in files) {
+            if (entry.type != "blob" || entry.mode != "100644" || !paths.add(entry.path)) return null
+            val parts = entry.path.split('/')
+            if (parts.size > 257 ||
+                parts.any { it.isEmpty() || it == "." || it == ".." || '\\' in it || '\u0000' in it }
+            ) {
+                return null
+            }
+            val parent = entry.path.substringBeforeLast('/', "")
+            children.getOrPut(parent) { mutableListOf() }.add(entry.copy(path = parts.last()))
+            for (depth in 1 until parts.size) {
+                children.getOrPut(parts.take(depth).joinToString("/")) { mutableListOf() }
+            }
+            if (children.size > maxTreeEntries.toLong() * 4 + 256) return null
+        }
+        for (directory in children.keys.sortedByDescending {
+            it.count { character -> character == '/' } +
+                if (it.isEmpty()) 0 else 1
+        }) {
+            if (directory in paths) return null
+            val oid = gitTreeOid(children.getValue(directory), oidLength) ?: return null
+            if (directory.isEmpty()) return oid
+            val parent = directory.substringBeforeLast('/', "")
+            children.getOrPut(parent) { mutableListOf() }.add(
+                SyncGitTreeEntry(directory.substringAfterLast('/'), "040000", "tree", oid),
+            )
+        }
+        return null
+    }
+
+    /** At most four bounded HTTP bodies are live, and publication retains the original object order. */
+    private suspend fun <T, R> readIndependent(values: List<T>, read: suspend (T) -> R): List<R> = buildList {
+        for (chunk in values.chunked(4)) {
+            addAll(coroutineScope { chunk.map { value -> async { read(value) } }.awaitAll() })
+        }
     }
 
     private suspend fun matches(snapshot: SyncSnapshot, upload: SyncPreparedUpload): Boolean {
@@ -1634,23 +1845,15 @@ class GitHubSyncTransport(
             )
             visitedTrees[key] = persistentKey
             try {
-                val direct = getCachedTree(key) ?: treeLoads.getOrLoad(key) {
-                    getCachedTree(key) ?: persistentKey?.let { loadPersistentTree(it, treeSha) }?.also {
-                        putCachedTree(key, it)
-                    } ?: run {
-                        val response = call(repository, "GET", "/git/trees/$treeSha").requireSuccess()
-                        val raw = response.body
-                        val parsed = parseTree(treeSha, raw)
-                        if (!parsed.truncated) {
-                            persistentKey?.let { persistentObjectCache.write(it, raw) }
-                            putCachedTree(key, parsed)
-                        }
-                        parsed
-                    }
-                }
+                val direct = loadRawTree(repository, treeSha, validationScope)
                 if (direct.truncated) {
                     truncated = true
                     return
+                }
+                // Fetch independent immediate children together, then retain the existing ordered,
+                // bounded graph walk for path budgets, cycles and publication.
+                readIndependent(direct.entries.filter { it.type == "tree" }.distinctBy { it.sha }) { child ->
+                    if (child.sha !in activeTrees) loadRawTree(repository, child.sha, validationScope)
                 }
                 for (entry in direct.entries) {
                     if (flattened.size > maxTreeEntries) {
@@ -1682,6 +1885,35 @@ class GitHubSyncTransport(
             throw error
         }
         return SyncGitTree(sha, flattened.take(maxTreeEntries + 1), truncated || flattened.size > maxTreeEntries)
+    }
+
+    private suspend fun loadRawTree(
+        repository: SyncRepository,
+        treeSha: String,
+        validationScope: String,
+    ): CachedRawTree {
+        val key = SyncTreeCacheKey(
+            apiOrigin,
+            repository.fullName,
+            repository.branch,
+            treeSha,
+            validationScope,
+            connectionRevision,
+        )
+        val persistentKey = persistentGitObjectKey(repository, SyncGitObjectKind.TREE, treeSha, validationScope)
+        return getCachedTree(key) ?: treeLoads.getOrLoad(key) {
+            getCachedTree(key) ?: persistentKey?.let { loadPersistentTree(it, treeSha) }?.also {
+                putCachedTree(key, it)
+            } ?: run {
+                val raw = call(repository, "GET", "/git/trees/$treeSha").requireSuccess().body
+                val parsed = parseTree(treeSha, raw)
+                if (!parsed.truncated) {
+                    persistentKey?.let { persistentObjectCache.write(it, raw) }
+                    putCachedTree(key, parsed)
+                }
+                parsed
+            }
+        }
     }
 
     private suspend fun removeCachedTree(key: SyncTreeCacheKey) = treeCacheMutex.withLock {

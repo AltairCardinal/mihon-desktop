@@ -65,15 +65,24 @@ class SyncInboxStore(private val handler: DatabaseHandler) {
         fence: SyncRemoteSnapshotFence? = null,
     ): Boolean = remoteGuard.confirmWarmSnapshot(snapshot, admission, fence)
 
-    suspend fun ingest(batch: SyncBatch): SyncReceptionResult = ingest(batch, null)
+    suspend fun ingest(batch: SyncBatch): SyncReceptionResult = ingest(batch, null, {})
 
     internal suspend fun ingest(
         batch: SyncBatch,
         snapshot: SyncSnapshot,
         entry: SyncBatchIndexEntry,
-    ): SyncReceptionResult = ingest(batch, DiscoveredBatchKey(snapshot.spaceId, snapshot.generation, entry.batchId))
+        onItemsWritten: (Long) -> Unit = {},
+    ): SyncReceptionResult = ingest(
+        batch,
+        DiscoveredBatchKey(snapshot.spaceId, snapshot.generation, entry.batchId),
+        onItemsWritten,
+    )
 
-    private suspend fun ingest(batch: SyncBatch, discoveredBatch: DiscoveredBatchKey?): SyncReceptionResult {
+    private suspend fun ingest(
+        batch: SyncBatch,
+        discoveredBatch: DiscoveredBatchKey?,
+        onItemsWritten: (Long) -> Unit,
+    ): SyncReceptionResult {
         val encoded = SyncBatchCodec.rawEncode(batch)
         val scope = discoveredBatch ?: handler.await {
             sync_journalQueries.getActiveSpace().executeAsOneOrNull()?.let {
@@ -146,6 +155,7 @@ class SyncInboxStore(private val handler: DatabaseHandler) {
                 return@await SyncReceptionResult(false, error = "conflicting immutable batch or event")
             }
             val inserted = mutableListOf<String>()
+            var processedItems = 0L
             batch.events.forEach { event ->
                 if (sync_inboxQueries.getEvent(batch.spaceId, batch.generation, event.eventId.stableKey)
                         .executeAsOneOrNull() == null
@@ -158,6 +168,7 @@ class SyncInboxStore(private val handler: DatabaseHandler) {
                     indexSyncEvent(event)
                     inserted += event.eventId.stableKey
                 }
+                runCatching { onItemsWritten(++processedItems) }
             }
             batch.objects.forEach { descriptor ->
                 sync_inboxQueries.insertDescription(
@@ -258,9 +269,18 @@ class SyncInboxExchange(private val store: SyncInboxStore, private val service: 
         snapshot: SyncSnapshot,
         entry: SyncBatchIndexEntry,
         snapshotAlreadyObserved: Boolean,
+        onItemsWritten: (Long) -> Unit = {},
     ): SyncReceptionResult {
         if (!snapshotAlreadyObserved) store.observeSnapshot(snapshot)
-        val received = service.receive(snapshot, entry)
+        return storeReceived(snapshot, entry, service.receive(snapshot, entry), onItemsWritten)
+    }
+
+    internal suspend fun storeReceived(
+        snapshot: SyncSnapshot,
+        entry: SyncBatchIndexEntry,
+        received: mihon.domain.sync.transport.SyncReceiveResult,
+        onItemsWritten: (Long) -> Unit = {},
+    ): SyncReceptionResult {
         val batch = received.batch ?: run {
             // A structurally invalid batch is terminal for this discovered entry; network
             // failures throw before this branch and leave it durable for a later retry.
@@ -277,7 +297,7 @@ class SyncInboxExchange(private val store: SyncInboxStore, private val service: 
         }
         // Receipt, rejection, and discovery completion commit together in ingest. Repeating the
         // delete here added a transaction for every normal batch without strengthening recovery.
-        return store.ingest(batch, snapshot, entry)
+        return store.ingest(batch, snapshot, entry, onItemsWritten)
     }
 }
 

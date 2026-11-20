@@ -22,6 +22,11 @@ SET favorite = :favorite,
     is_syncing = 1
 WHERE _id = :mangaId;
 
+setEarlierFavoriteDate:
+UPDATE mangas
+SET date_added = :date
+WHERE _id = :mangaId AND favorite = 1 AND (date_added <= 0 OR date_added > :date);
+
 restoreMangaSyncing:
 UPDATE mangas SET is_syncing = :previous WHERE _id = :mangaId;
 

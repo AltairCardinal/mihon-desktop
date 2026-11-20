@@ -42,6 +42,8 @@ import mihon.data.sync.runtime.SyncRunState
 import mihon.data.sync.runtime.SyncRuntime
 import mihon.data.sync.runtime.SyncSetupStep
 import mihon.domain.sync.auth.GitHubDeviceCode
+import mihon.domain.sync.runtime.SyncOperationProgress
+import mihon.domain.sync.runtime.SyncOperationStage
 import mihon.domain.sync.runtime.SyncTrigger
 import mihon.domain.sync.transport.SyncRepository
 import org.junit.After
@@ -171,7 +173,10 @@ class AndroidSyncPanelTest {
 
     @Test
     fun `native shared sheet renders the same compact plan in main and setup merging`() {
+        val operation = SyncOperationProgress("native-whole-flight", runId = "compact-run")
+            .advance(SyncOperationStage.ITEMS, 0.4)
         panel.state.value = panel.state.value.copy(
+            operation = operation,
             run = SyncRunSnapshot(
                 "compact-run", "space", 1, SyncTrigger.MANUAL, SyncRunState.RUNNING, SyncRunPhase.DOWNLOADING,
                 6, 100, 0, 0, 0, attemptId = 1, nextRetryAt = 0, lastProgressAt = 1000,
@@ -181,24 +186,30 @@ class AndroidSyncPanelTest {
         )
         showToolbar()
         compose.onNodeWithTag("sync-open").performClick()
-        fun assertCompact() {
+        fun assertCompact(fraction: Float, itemCount: String) {
             val track = compose.onNodeWithTag("sync-progress-track", useUnmergedTree = true).fetchSemanticsNode()
             assertEquals(
-                0.4f,
+                fraction,
                 track.config[androidx.compose.ui.semantics.SemanticsProperties.ProgressBarRangeInfo].current,
+                0.0001f,
             )
             val status = compose.onNodeWithTag("sync-progress-status", useUnmergedTree = true).fetchSemanticsNode()
             assertTrue(
-                status.config[androidx.compose.ui.semantics.SemanticsProperties.Text].single().text.contains("4/10"),
+                status.config[androidx.compose.ui.semantics.SemanticsProperties.Text].single().text.contains(itemCount),
             )
             compose.onNodeWithTag("sync-round-time", useUnmergedTree = true).assertExists()
             compose.onNodeWithTag("sync-progress-details-toggle", useUnmergedTree = true).assertDoesNotExist()
         }
-        assertCompact()
+        assertCompact(0.46f, "4/10")
         compose.runOnIdle {
-            panel.state.value = panel.state.value.copy(page = SyncPanelPage.SETUP, setupStep = SyncSetupStep.MERGING)
+            panel.state.value = panel.state.value.copy(
+                page = SyncPanelPage.SETUP,
+                setupStep = SyncSetupStep.MERGING,
+                run = panel.state.value.run!!.copy(confirmedItems = 10),
+                operation = operation.advance(SyncOperationStage.HEAD, 0.0),
+            )
         }
-        assertCompact()
+        assertCompact(0.85f, "10/10")
         compose.onNodeWithTag("sync-back").performClick()
         compose.onNodeWithTag("sync-pause-run").performClick()
         compose.runOnIdle { assertEquals(SyncPanelAction.PauseSync, panel.actions.last()) }

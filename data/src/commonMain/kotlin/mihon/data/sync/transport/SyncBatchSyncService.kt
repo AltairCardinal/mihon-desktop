@@ -65,6 +65,44 @@ class SyncBatchSyncService(
         transport.confirmPublished(repository, snapshot, prepared, observeSnapshot),
     )
 
+    internal val canPublishGroup: Boolean get() = transport is GitHubSyncTransport
+
+    internal fun prepareFollowing(
+        snapshot: SyncSnapshot,
+        previous: SyncPreparedUpload,
+        batch: SyncBatch,
+        path: String,
+    ): SyncPreparedUpload = (transport as GitHubSyncTransport).prepareFollowing(
+        snapshot,
+        previous,
+        SyncBatchEncryption.encrypt(engine, secret, batch, path, spaceMaterial),
+    )
+
+    internal suspend fun uploadGroup(
+        snapshot: SyncSnapshot,
+        uploads: List<SyncPreparedUpload>,
+        allowPublish: Boolean = true,
+        observeSnapshot: suspend (SyncSnapshot) -> Unit,
+    ): mihon.domain.sync.transport.SyncPublishResult {
+        if (allowPublish) {
+            return (transport as GitHubSyncTransport).publishGroup(
+                snapshot.repository,
+                snapshot,
+                uploads,
+                observeSnapshot,
+            )
+        }
+        var confirmed: mihon.domain.sync.transport.SyncPublishResult? = null
+        for (upload in uploads) {
+            val result = transport.confirmPublished(snapshot.repository, snapshot, upload, observeSnapshot)
+            if (result.status != mihon.domain.sync.transport.SyncPublishStatus.PUBLISHED) {
+                return result.copy(batchId = uploads.first().encryptedBatch.batchId)
+            }
+            confirmed = result.copy(batchId = uploads.first().encryptedBatch.batchId)
+        }
+        return requireNotNull(confirmed)
+    }
+
     suspend fun upload(
         repository: SyncRepository,
         snapshot: SyncSnapshot,

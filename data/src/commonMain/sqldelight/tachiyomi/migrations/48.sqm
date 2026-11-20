@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS sync_upload_groups (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    first_batch_id TEXT NOT NULL,
+    members_json TEXT NOT NULL,
+    PRIMARY KEY (space_id, generation, first_batch_id),
+    FOREIGN KEY (space_id, generation, first_batch_id) REFERENCES sync_batches(space_id, generation, batch_id)
+);

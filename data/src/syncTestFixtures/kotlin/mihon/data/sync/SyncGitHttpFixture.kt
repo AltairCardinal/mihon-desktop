@@ -141,11 +141,13 @@ internal open class SyncGitHttpFixture(
         connectionRevision: String = "transport-instance",
         repositoryId: Long? = null,
         maxTreeEntries: Int = 20_000,
+        bodyObserver: mihon.data.sync.http.SyncHttpBodyObserver? = null,
     ) = GitHubSyncTransport(
         OkHttpClient(),
         tokenProvider = { "synthetic-access-token" },
         apiBaseUrl = baseUrl,
         maxTreeEntries = maxTreeEntries,
+        bodyObserver = bodyObserver,
         indexSecret = key,
         indexEngine = engine,
         persistentObjectCacheDirectory = persistentObjectCacheDirectory,

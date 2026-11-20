@@ -39,6 +39,7 @@ import mihon.data.sync.auth.SyncGitHubAccount
 import mihon.data.sync.auth.SyncInstallationAccountType
 import mihon.data.sync.auth.SyncRepositorySelection
 import mihon.data.sync.inbox.SyncPendingItem
+import mihon.data.sync.runtime.SyncAuthorizationVerification
 import mihon.data.sync.runtime.SyncBindingDecode
 import mihon.data.sync.runtime.SyncBulkConfirmation
 import mihon.data.sync.runtime.SyncBulkStatus
@@ -51,6 +52,7 @@ import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncPanelNotice
 import mihon.data.sync.runtime.SyncPanelPage
 import mihon.data.sync.runtime.SyncPanelQuestion
+import mihon.data.sync.runtime.SyncPanelRunSource
 import mihon.data.sync.runtime.SyncPanelState
 import mihon.data.sync.runtime.SyncPasswordHelpSource
 import mihon.data.sync.runtime.SyncPasswordProblem
@@ -97,6 +99,288 @@ import java.util.Locale
 
 @OptIn(ExperimentalComposeUiApi::class)
 class SyncPanelContentTest {
+    @Test
+    fun `whole flight keeps closing and queued work active until the completed projection`() = rendered(
+        connected().copy(
+            busy = true,
+            run = visualRun(SyncRunPhase.COMPLETE).copy(
+                state = SyncRunState.SUCCEEDED,
+                plannedItems = 1,
+                confirmedItems = 1,
+            ),
+            operation = mihon.domain.sync.runtime.SyncOperationProgress("whole-ui", runId = "run-visual")
+                .advance(mihon.domain.sync.runtime.SyncOperationStage.PERSISTING),
+        ),
+    ) {
+        awaitTag("sync-progress-track")
+        assertEquals(0.98f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
+        assertFalse(texts().contains("同步已完成"))
+        assertTrue(hasTag("sync-operation-stage"))
+        assertTrue(texts().contains("正在保存同步结果"))
+        panel.state.value =
+            panel.state.value.copy(operation = panel.state.value.operation!!.copy(durableSuccess = true))
+        render()
+        assertTrue(texts().contains("正在结束同步"))
+        assertFalse(texts().contains("正在保存同步结果"))
+        assertFalse(texts().contains("同步已完成"))
+        val pendingOperation = panel.state.value.operation!!
+        val successfulOperation = pendingOperation
+            .finish(mihon.domain.sync.runtime.SyncRunResult(mihon.domain.sync.runtime.SyncRunStatus.SUCCESS))
+        panel.state.value = panel.state.value.copy(
+            busy = false,
+            run = panel.state.value.run!!.copy(state = SyncRunState.RUNNING),
+            operation = successfulOperation,
+            progress = null,
+        )
+        render()
+        assertTrue(texts().contains("正在结束同步"))
+        assertFalse(texts().contains("正在同步…"))
+        assertFalse(texts().contains("同步已完成"))
+        panel.state.value = panel.state.value.copy(
+            busy = true,
+            run = panel.state.value.run!!.copy(state = SyncRunState.SUCCEEDED),
+            operation = pendingOperation,
+        )
+        val queued = panel.state.value.operation!!.nextSegment()
+        panel.state.value = panel.state.value.copy(operation = queued)
+        render()
+        assertFalse(texts().contains("正在结束同步"))
+        assertEquals(0.98f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
+        assertFalse(texts().contains("同步已完成"))
+        panel.state.value = panel.state.value.copy(
+            busy = false,
+            operation = queued.copy(runId = "run-visual", durableSuccess = true)
+                .finish(mihon.domain.sync.runtime.SyncRunResult(mihon.domain.sync.runtime.SyncRunStatus.SUCCESS)),
+        )
+        render()
+        assertTrue(texts().contains("刚刚完成同步"))
+        assertFalse(hasTag("sync-progress-track"))
+        panel.state.value = panel.state.value.copy(
+            operation = mihon.domain.sync.runtime.SyncOperationProgress("failed-closing", runId = "run-visual")
+                .advance(mihon.domain.sync.runtime.SyncOperationStage.PERSISTING, 0.0)
+                .finish(mihon.domain.sync.runtime.SyncRunResult(mihon.domain.sync.runtime.SyncRunStatus.FAILED)),
+        )
+        render()
+        assertFalse(texts().contains("同步已完成"))
+        click("sync-retry-run")
+        assertEquals(SyncPanelAction.RetrySync, actions.last())
+    }
+
+    @Test
+    fun `UI V4 requested pause remains visible and failed resume can retry the original run`() = rendered(
+        connected().copy(
+            busy = true,
+            syncPauseRequested = true,
+            run = visualRun(SyncRunPhase.UPLOADING).copy(plannedItems = 10, confirmedItems = 4),
+            progress = compactFact(),
+        ),
+    ) {
+        awaitTag("sync-wait")
+        assertTrue(texts().contains("正在暂停"))
+        assertFalse(hasTag("sync-pause-run"))
+        assertFalse(hasTag("sync-resume-run"))
+        panel.state.value = panel.state.value.copy(progress = compactFact().copy(completedItems = 7))
+        render()
+        assertTrue(texts().contains("正在暂停"))
+        panel.state.value = panel.state.value.copy(syncPauseSaving = true)
+        render()
+        assertTrue(texts().contains("正在暂停"))
+        assertFalse(texts().contains("正在保存进度"))
+        panel.state.value = panel.state.value.copy(
+            busy = false,
+            syncPauseRequested = false,
+            syncPauseSaving = false,
+            run = panel.state.value.run!!.copy(state = SyncRunState.PAUSED_USER),
+            progress = compactFact().copy(hold = SyncProgressHold.PAUSED),
+        )
+        render()
+        assertTrue(hasTag("sync-resume-run"))
+        val fraction = node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo]
+        assertFalse(texts().contains("正在保存进度"))
+        click("sync-resume-run")
+        assertEquals(SyncPanelAction.ResumeSync, actions.last())
+        panel.state.value = panel.state.value.copy(busy = true, syncStartRequested = true, syncResumeRequested = true)
+        render()
+        assertTrue(texts().contains("正在继续同步"))
+        assertFalse(texts().contains("正在准备同步"))
+        assertTrue(node("sync-wait").config.contains(SemanticsProperties.Disabled))
+        assertEquals(fraction, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo])
+        panel.state.value = panel.state.value.copy(
+            busy = false,
+            syncStartRequested = false,
+            syncResumeRequested = false,
+            problem = SyncRunProblem.STORAGE,
+        )
+        render()
+        assertTrue(texts().contains("继续同步失败"))
+        assertEquals(fraction, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo])
+        assertTrue(hasTag("sync-resume-problem"))
+        assertTrue(texts().contains("重试"))
+        click("sync-resume-run")
+        assertEquals(SyncPanelAction.ResumeSync, actions.last())
+        panel.state.value = panel.state.value.copy(visible = false)
+        render()
+        panel.state.value = panel.state.value.copy(visible = true)
+        awaitTag("sync-resume-problem")
+        assertTrue(texts().contains("同步已暂停"))
+        assertTrue(texts().contains("重试"))
+        click("sync-resume-run")
+        assertEquals(SyncPanelAction.ResumeSync, actions.last())
+    }
+
+    @Test
+    fun `accepted manual start immediately replaces the previous successful result`() = rendered(
+        connected().copy(
+            busy = true,
+            syncStartRequested = true,
+            run = visualRun(
+                SyncRunPhase.COMPLETE,
+            ).copy(state = SyncRunState.SUCCEEDED, plannedItems = 1, confirmedItems = 1),
+        ),
+    ) {
+        awaitTag("sync-counting-track")
+        assertTrue(texts().contains("正在准备同步"))
+        assertFalse(texts().contains("同步已完成"))
+        assertFalse(hasTag("sync-progress-track"))
+        click("sync-pause-run")
+        assertEquals(SyncPanelAction.PauseSync, actions.last())
+    }
+
+    @Test
+    fun `a new operation can be paused before the previous run is replaced`() = rendered(
+        connected().copy(
+            busy = true,
+            run = visualRun(SyncRunPhase.COMPLETE).copy(state = SyncRunState.PARTIAL),
+            operation = mihon.domain.sync.runtime.SyncOperationProgress("checking-new-run"),
+        ),
+    ) {
+        awaitTag("sync-pause-run")
+        click("sync-pause-run")
+        assertEquals(SyncPanelAction.PauseSync, actions.last())
+        assertFalse(hasTag("sync-retry-run"))
+    }
+
+    @Test
+    fun `upload confirmation feedback refers to the server`() = rendered(
+        connected().copy(
+            busy = true,
+            run = visualRun(SyncRunPhase.CONFIRMING).copy(plannedItems = 1),
+            progress = compactFact().copy(stage = SyncProgressStage.CONFIRMING),
+            operation = mihon.domain.sync.runtime.SyncOperationProgress("server-ui", runId = "run-visual")
+                .advance(mihon.domain.sync.runtime.SyncOperationStage.ITEMS, 0.5),
+        ),
+    ) {
+        awaitTag("sync-operation-stage")
+        assertTrue(texts().contains("正在核对服务器已保存的数据"))
+        assertFalse(texts().any { it.contains("GitHub", ignoreCase = true) && it.contains("正在核对") })
+    }
+
+    @Test
+    fun `waiting for confirmation names the current step on the main card`() = rendered(
+        connected().copy(
+            run = visualRun(SyncRunPhase.CONFIRMING).copy(plannedItems = 10),
+            progress = compactFact().copy(
+                stage = SyncProgressStage.CONFIRMING,
+                direction = SyncProgressDirection.DOWNLOAD,
+                secondsWithoutProgress = 12,
+                mergingReceivedData = true,
+            ),
+        ),
+    ) {
+        awaitTag("sync-operation-stage")
+        assertTrue(texts().contains("正在合并已接收的数据"))
+        assertFalse(texts().any { it.contains("本批处理完成后") })
+    }
+
+    @Test
+    fun `unknown blocked run offers a single details entry and retries in the main panel`() = rendered(
+        connected().copy(
+            run = visualRun(SyncRunPhase.MERGING).copy(state = SyncRunState.BLOCKED),
+            problem = SyncRunProblem.UNKNOWN,
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        assertEquals(1, texts().count { it == "查看详情" })
+        assertFalse(hasTag("sync-resolve-run"))
+        assertFalse(hasTag("sync-main-error-details"))
+        click("sync-retry-run")
+        assertEquals(SyncPanelAction.Synchronize, actions.last())
+        click("sync-progress-details-toggle")
+        awaitTag("sync-main-error-details")
+        click("sync-main-error-details")
+        assertEquals(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS), actions.last())
+    }
+
+    @Test
+    fun `storage blocked run opens inspection instead of guessing password`() = rendered(
+        connected().copy(
+            run = visualRun(SyncRunPhase.MERGING).copy(state = SyncRunState.BLOCKED),
+            problem = SyncRunProblem.STORAGE,
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        assertTrue(hasTag("sync-resolve-run"))
+        click("sync-resolve-run")
+        assertEquals(SyncPanelAction.OpenRecovery, actions.last())
+        assertFalse(hasTag("sync-view-reason"))
+    }
+
+    @Test
+    fun `fine progress shows total item count separately from current batch`() = rendered(
+        connected().copy(
+            run = visualRun(SyncRunPhase.UPLOADING).copy(plannedItems = 6144, confirmedItems = 2048),
+            progress = compactFact().copy(
+                batchProgress = mihon.data.sync.runtime.SyncBatchProgress(
+                    "batch", SyncProgressDirection.DOWNLOAD, 8, 24, 87, 256, 2135, 6144,
+                    mihon.data.sync.runtime.SyncBatchWork.WRITING,
+                ),
+            ),
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        assertTrue(texts().contains("总条目已处理 2135/6144 条"))
+        assertFalse(hasTag("sync-current-batch"))
+        assertEquals(
+            (0.20f + 0.65f * (2135f / 6144)),
+            node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current,
+            0.00001f,
+        )
+        panel.state.value = panel.state.value.copy(
+            progress = panel.state.value.progress!!.copy(
+                batchProgress = panel.state.value.progress!!.batchProgress!!.copy(
+                    processedItems = 121,
+                    processedRunItems = 2169,
+                ),
+            ),
+        )
+        render()
+        assertTrue(texts().contains("总条目已处理 2169/6144 条"))
+        assertEquals(
+            (0.20f + 0.65f * (2169f / 6144)),
+            node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current,
+            0.00001f,
+        )
+        panel.state.value = panel.state.value.copy(
+            run = panel.state.value.run!!.copy(confirmedItems = 0),
+            progress = panel.state.value.progress!!.copy(
+                batchProgress = panel.state.value.progress!!.batchProgress!!.copy(processedRunItems = 87),
+            ),
+        )
+        render()
+        assertTrue(texts().contains("总条目已处理 87/6144 条"))
+        assertEquals(
+            (0.20f + 0.65f * (87f / 6144)),
+            node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current,
+        )
+        assertTextFits("sync-progress-status")
+        System.getProperty("mihon.sync.visualDir")?.let { directory ->
+            File(directory).mkdirs()
+            scene.render().encodeToData(EncodedImageFormat.PNG)?.let {
+                File(directory, "fine-progress.png").writeBytes(it.bytes)
+            }
+        }
+    }
+
     @Test
     fun `one real pointer click on setup pending remove reaches the decision action`() = renderedEnglish(
         connected().copy(
@@ -161,7 +445,7 @@ class SyncPanelContentTest {
     }
 
     @Test
-    fun `setup terminal review explains that batch confirmation is a system status summary`() = renderedEnglish(
+    fun `setup terminal review shows system batch counts only in details`() = renderedEnglish(
         connected().copy(
             page = SyncPanelPage.SETUP,
             setupStep = SyncSetupStep.MERGING,
@@ -170,8 +454,11 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-progress-card")
+        assertFalse(texts().contains("System confirmation pending: 2 download batches, containing 253 changes"))
+        click("sync-progress-details-toggle")
+        render()
         assertTrue(texts().contains("System confirmation pending: 2 download batches, containing 253 changes"))
-        assertTrue(texts().any { it.contains("You do not need to confirm each batch") })
+        assertFalse(texts().any { it.contains("You do not need to confirm each batch") })
     }
 
     @Test
@@ -924,9 +1211,14 @@ class SyncPanelContentTest {
         )
         render()
         assertFalse(hasTag("sync-counting-track"))
-        assertTrue(texts().contains("Syncing, completed 0/100 items"), texts().toString())
-        assertTrue(texts().contains("Elapsed 00:00"), texts().toString())
-        assertEquals(0f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
+        assertTrue(texts().contains("Total items processed 0/100"), texts().toString())
+        assertTrue(
+            texts().any {
+                it.startsWith("Elapsed 00:00") && it.contains("Estimated remaining")
+            },
+            texts().toString(),
+        )
+        assertEquals(0.06f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
     }
 
     @Test
@@ -1059,7 +1351,7 @@ class SyncPanelContentTest {
                 assertTrue(texts().contains(MR.strings.sync_recovery_switch_pending_title.localized(Locale.US)))
                 assertTrue(texts().contains(MR.strings.sync_recovery_switch_pending_body.localized(Locale.US)))
                 assertTrue(texts().contains(MR.strings.sync_recovery_switch_pending_waiting.localized(Locale.US)))
-                assertFalse(texts().contains(MR.strings.sync_recovery_preserved.localized(Locale.US)))
+                assertFalse(texts().contains(MR.strings.sync_recovery_space_unavailable_body.localized(Locale.US)))
                 if (page == SyncPanelPage.RECOVERY) revealRecoveryControl("sync-recovery-recheck")
                 assertTrue(actions.isEmpty())
                 assertTrue(
@@ -1200,7 +1492,7 @@ class SyncPanelContentTest {
         assertFalse(hasTag("sync-progress-card"))
         assertFalse(hasTag("sync-next-auto"))
         assertFalse(hasTag("sync-now"))
-        assertTrue(texts().contains(MR.strings.sync_recovery_preserved.localized(Locale.US)))
+        assertTrue(texts().contains(MR.strings.sync_recovery_space_unavailable_body.localized(Locale.US)))
         click("sync-recovery-open")
         assertEquals(SyncPanelAction.OpenRecovery, actions.last())
         click("sync-recovery-recheck")
@@ -1208,11 +1500,83 @@ class SyncPanelContentTest {
     }
 
     @Test
+    fun `pending authorization verification hides stale recovery prompts until the result is known`() = rendered(
+        connected().copy(
+            periodMinutes = 60,
+            recovery = SyncSpaceRecovery(
+                SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED,
+                authorizationVerification = SyncAuthorizationVerification.WAITING_NETWORK,
+            ),
+            problem = SyncRunProblem.AUTHORIZATION,
+            notice = SyncPanelNotice(
+                exchange = SyncRunResult(SyncRunStatus.FAILED, problem = SyncRunProblem.AUTHORIZATION),
+            ),
+        ),
+    ) {
+        awaitTag("sync-authorization-verification")
+        assertTrue(hasTag("sync-authorization-verification-card"))
+        assertTrue(hasTag("sync-settings"))
+        assertTrue(hasTag("sync-history"))
+        click("sync-recovery-details")
+        assertEquals(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS), actions.last())
+        assertFalse(hasTag("sync-recovery-card"))
+        assertFalse(hasTag("sync-recovery-authorization"))
+        assertFalse(hasTag("sync-now"))
+        assertFalse(hasTag("sync-notice-error"))
+        assertFalse(texts().contains("GitHub 连接已失效"))
+        assertTrue(texts().contains("暂未确认同步连接"))
+        assertFalse(texts().contains("本机资料已保留，客户端会自动重试。"))
+
+        panel.state.value = panel.state.value.copy(
+            recovery = panel.state.value.recovery!!.copy(
+                authorizationVerification = SyncAuthorizationVerification.CHECKING,
+            ),
+        )
+        render()
+        assertFalse(hasTag("sync-recovery-authorization"))
+        assertTrue(texts().contains("正在检查同步连接"))
+        assertFalse(texts().contains("本机资料已保留，客户端会自动重试。"))
+        panel.state.value = panel.state.value.copy(page = SyncPanelPage.RECOVERY, periodMinutes = 0)
+        render()
+        assertFalse(hasTag("sync-recovery-authorization"))
+        assertFalse(hasTag("sync-recovery-manage-authorization"))
+        assertTrue(texts().contains("正在检查同步连接"))
+        assertTrue(texts().contains("自动同步已关闭"))
+        panel.state.value = panel.state.value.copy(recoveryAuthorization = SyncRecoveryAuthorization.CONFIRMED)
+        render()
+        assertTrue(texts().contains("GitHub 已授权，正在检查原同步空间…"))
+        panel.state.value = panel.state.value.copy(recoveryAuthorization = SyncRecoveryAuthorization.IDLE)
+        panel.state.value = panel.state.value.copy(page = SyncPanelPage.SETTINGS)
+        awaitTag("sync-settings-list")
+        scroll("sync-settings-list", 1)
+        awaitTag("sync-settings-account-group")
+        awaitTag("sync-authorization-verification")
+        assertFalse(hasTag("sync-settings-connect"))
+        assertTrue(texts().contains("正在检查同步连接"))
+
+        panel.state.value = panel.state.value.copy(
+            page = SyncPanelPage.MAIN,
+            recovery = panel.state.value.recovery!!.copy(authorizationVerification = null),
+        )
+        awaitTag("sync-recovery-authorization")
+        assertTrue(texts().contains("GitHub 连接已失效"))
+        assertFalse(texts().contains(MR.strings.sync_recovery_space_unavailable_body.localized()))
+        click("sync-recovery-authorization")
+        assertEquals(SyncPanelAction.CheckAuthorization, actions.last())
+        panel.state.value = panel.state.value.copy(recovery = null, problem = null, notice = null)
+        awaitTag("sync-now")
+        assertFalse(hasTag("sync-recovery-authorization"))
+        assertFalse(texts().contains("正在检查同步连接"))
+        assertFalse(texts().contains("GitHub 连接已失效"))
+    }
+
+    @Test
     fun `authorization recovery presents reconnect and does not offer sync`() = renderedEnglish(
         connected().copy(recovery = SyncSpaceRecovery(SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED)),
     ) {
         awaitTag("sync-recovery-authorization")
-        assertTrue(texts().contains(MR.strings.sync_recovery_auth_expired.localized(Locale.US)))
+        assertEquals(1, texts().count { it == MR.strings.sync_recovery_auth_expired.localized(Locale.US) })
+        assertEquals(1, texts().count { it == MR.strings.sync_recovery_waiting.localized(Locale.US) })
         assertFalse(hasTag("sync-now"))
         click("sync-recovery-authorization")
         assertEquals(SyncPanelAction.CheckAuthorization, actions.last())
@@ -1636,6 +2000,9 @@ class SyncPanelContentTest {
         panel.state.value = panel.state.value.copy(problem = null, periodMinutes = 360, nextSyncAtMillis = 21_700_000)
         render()
         assertTrue(texts().any { it.contains(syncScheduleDateTime(21_700_000)) && it.contains("6") })
+        panel.state.value = panel.state.value.copy(nextSyncAtMillis = 100_000)
+        render()
+        assertTrue(texts().contains("Waiting for automatic sync"))
         panel.state.value = panel.state.value.copy(periodMinutes = 0)
         render()
         assertTrue(texts().contains("Automatic sync is off"))
@@ -1688,7 +2055,7 @@ class SyncPanelContentTest {
         awaitTag("sync-progress-card")
         assertFalse(hasTag("sync-progress"), "A completed result has no running track")
         assertFalse(hasTag("sync-whole-eta-value"))
-        assertTrue(texts().contains("Sync completed"))
+        assertTrue(texts().contains("Last sync completed 1 min ago"))
         assertTrue(geometry("sync-progress-card").height < 240f)
         assertTrue(hasTag("sync-next-auto"))
         assertFalse(hasTag("sync-queue-summary"))
@@ -1807,7 +2174,7 @@ class SyncPanelContentTest {
                         val text = fixture.node("sync-next-auto").config[SemanticsProperties.Text].joinToString {
                             it.text
                         }
-                        assertTrue(text.contains("system") || text.contains("系统"))
+                        assertEquals(MR.strings.sync_auto_due.localized(locale), text)
                         assertEquals(3_700_000, fixture.panel.state.value.nextSyncAtMillis)
                     } finally {
                         fixture.scene.close()
@@ -1832,10 +2199,15 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-progress-card")
-        assertTrue(texts().contains("Syncing, completed 40/100 items"), texts().toString())
-        assertTrue(texts().contains("Elapsed 00:10"), texts().toString())
+        assertTrue(texts().contains("Total items processed 40/100"), texts().toString())
+        assertTrue(
+            texts().any {
+                it.startsWith("Elapsed 00:10") && it.contains("Estimated remaining")
+            },
+            texts().toString(),
+        )
         assertEquals(
-            androidx.compose.ui.semantics.ProgressBarRangeInfo(0.4f, 0f..1f),
+            androidx.compose.ui.semantics.ProgressBarRangeInfo(0.20f + 0.65f * 0.4f, 0f..1f),
             node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo],
         )
         for (tag in listOf(
@@ -1871,7 +2243,8 @@ class SyncPanelContentTest {
             ),
         )
         render()
-        assertTrue(texts().contains("Sync paused, completed 40/100 items"), texts().toString())
+        assertTrue(texts().contains("Sync paused"), texts().toString())
+        assertTrue(texts().contains("Total items processed 40/100"), texts().toString())
         assertTrue(hasTag("sync-resume-run"))
         click("sync-resume-run")
         assertTrue(actions.contains(SyncPanelAction.ResumeSync))
@@ -1909,7 +2282,7 @@ class SyncPanelContentTest {
     }
 
     @Test
-    fun `compact whole plan excludes work totals body percentages and local ETA`() = rendered(
+    fun `compact whole plan shows active work separately from durable confirmation`() = rendered(
         connected().copy(
             run = visualRun(SyncRunPhase.UPLOADING).copy(plannedItems = 20_000),
             progress = SyncProgressFact(
@@ -1933,10 +2306,12 @@ class SyncPanelContentTest {
         assertFalse(hasTag("sync-progress-details-toggle"))
         assertFalse(hasTag("sync-stage-count"))
         assertFalse(hasTag("sync-active-body-progress"))
-        assertTrue(texts().contains("同步中，已完成0/20000条"))
-        assertTrue(texts().any { it.startsWith("已用 ") })
-        assertFalse(texts().any { it.contains("剩余估时") })
-        assertFalse(texts().any { it.contains("6144") || it.contains("62%") || it.contains("12 秒") })
+        assertTrue(texts().contains("总条目已处理 0/20000 条"))
+        assertTrue(texts().any { it.startsWith("已用时 ") })
+        assertTrue(texts().any { it.contains("预计剩余 —") })
+        assertTrue(hasTag("sync-active-work"))
+        assertTrue(texts().any { it.contains("6144") || it.contains("6,144") })
+        assertFalse(texts().any { it.contains("62%") || it.contains("12 秒") })
     }
 
     @Test
@@ -1964,8 +2339,11 @@ class SyncPanelContentTest {
         assertFalse(hasTag("sync-progress-details-toggle"))
         assertFalse(hasTag("sync-stage-count"))
         assertFalse(hasTag("sync-active-body-progress"))
-        assertTrue(texts().contains("同步中，已完成4/10条"))
-        assertEquals(0.4f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
+        assertTrue(texts().contains("总条目已处理 4/10 条"))
+        assertEquals(
+            0.20f + 0.65f * 0.4f,
+            node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current,
+        )
         assertFalse(texts().any { it.contains("6 / 10") })
     }
 
@@ -1994,8 +2372,10 @@ class SyncPanelContentTest {
         assertFalse(hasTag("sync-progress-details-toggle"))
         assertFalse(hasTag("sync-stage-count"))
         assertFalse(hasTag("sync-active-body-progress"))
-        assertTrue(texts().any { it.contains("正在恢复并核对进度") && it.contains("7/10条") })
-        assertEquals(0.7f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
+        val live = nodes().single { it.config.contains(SemanticsProperties.LiveRegion) }
+        assertEquals("正在恢复并核对进度", live.config[SemanticsProperties.StateDescription])
+        assertTrue(texts().any { it.contains("7/10") })
+        assertEquals(0.02f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
     }
 
     @Test
@@ -2022,8 +2402,8 @@ class SyncPanelContentTest {
         assertFalse(hasTag("sync-progress-details-toggle"))
         assertFalse(hasTag("sync-stage-count"))
         assertFalse(hasTag("sync-active-body-progress"))
-        assertTrue(texts().contains("同步中，已完成0/10条"))
-        assertEquals(0f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
+        assertTrue(texts().contains("总条目已处理 0/10 条"))
+        assertEquals(0.20f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
         assertFalse(texts().any { it.contains("5 / 10") })
     }
 
@@ -2071,8 +2451,8 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-round-time")
-        assertTrue(texts().contains("Elapsed 00:10"))
-        assertTrue(texts().contains("Syncing, completed 0/2 items"))
+        assertTrue(texts().any { it.startsWith("Elapsed 00:10") && it.contains("Estimated remaining") })
+        assertTrue(texts().contains("Total items processed 0/2"))
         assertFalse(texts().any { it.contains("1 minute") || it.contains("1 second") })
     }
 
@@ -2121,7 +2501,7 @@ class SyncPanelContentTest {
     ) {
         awaitTag("sync-progress-card")
         assertTrue(texts().contains("同步数据已保存，部分内容待本机恢复"))
-        assertTrue(texts().contains("进度已保留，系统会在后续同步时继续核对，无需反复重试。"))
+        assertTrue(texts().contains("下次同步时会继续检查"))
         assertFalse(hasTag("sync-retry-run"))
         assertFalse(texts().any { it.contains("请稍后重试同步") })
         click("sync-check-saved")
@@ -2143,7 +2523,7 @@ class SyncPanelContentTest {
     ) {
         awaitTag("sync-progress-card")
         assertTrue(texts().any { it.contains("本次新增确认0条") })
-        assertTrue(texts().any { it.contains("已保留2170条") })
+        assertFalse(hasTag("sync-retained-confirmed"))
         panel.state.value = panel.state.value.copy(
             run = panel.state.value.run!!.copy(
                 state = SyncRunState.SUCCEEDED,
@@ -2153,6 +2533,10 @@ class SyncPanelContentTest {
         )
         render()
         assertTrue(texts().any { it.contains("本次新增确认253条 · 用时00:02") })
+        assertFalse(hasTag("sync-retained-confirmed"))
+        click("sync-progress-details-toggle")
+        render()
+        assertTrue(texts().contains("此前已确认2170条"))
     }
 
     @Test
@@ -2167,11 +2551,14 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-progress-card")
-        assertTrue(texts().contains("部分同步数据未通过校验，已保留其他进度"))
+        assertTrue(texts().contains("部分同步数据未通过校验"))
         assertFalse(texts().contains("同步数据已保存，部分内容待本机恢复"))
         assertFalse(hasTag("sync-check-saved"))
         assertTrue(hasTag("sync-failure-log-open"))
-        click("sync-invalid-details")
+        assertEquals(1, texts().count { it == "查看详情" })
+        click("sync-progress-details-toggle")
+        awaitTag("sync-main-error-details")
+        click("sync-main-error-details")
         assertEquals(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS), actions.last())
     }
 
@@ -2206,10 +2593,9 @@ class SyncPanelContentTest {
         awaitTag("sync-progress-card")
         assertTrue(texts().contains("同步数据已保存，部分内容等待漫画源恢复"))
         assertTrue(texts().any { it.contains("本次新增确认26778条") })
-        assertTrue(texts().contains("系统确认尚未完成：2 个下载批次，共 512 条变动"))
-        assertTrue(texts().contains("无需逐批确认。需要你决定的内容会单独列出；批次尚未确认不代表其中的变动都已失败。"))
+        assertFalse(texts().contains("系统确认尚未完成：2 个下载批次，共 512 条变动"))
         assertTrue(texts().contains("有10项已保存内容等待漫画源恢复"))
-        assertTrue(texts().contains("进度已保留，系统会在后续同步时继续核对，无需反复重试。"))
+        assertTrue(texts().contains("下次同步时会继续检查"))
         assertTrue(texts().any { it.contains("用时00:05") })
         assertFalse(hasTag("sync-progress"))
         assertFalse(texts().contains("正在接收并校验数据"))
@@ -2323,7 +2709,8 @@ class SyncPanelContentTest {
         assertFalse(hasTag("sync-stage-count"))
         assertFalse(hasTag("sync-active-body-progress"))
         assertTrue(texts().contains("正在统计数据"))
-        assertFalse(texts().any { it.contains("已接收") || it.contains("已检查") || it.contains("4 / 10") })
+        assertTrue(texts().contains("正在合并已接收的数据"))
+        assertFalse(texts().any { it.startsWith("已接收") || it.startsWith("已检查") || it.contains("4 / 10") })
         panel.state.value =
             panel.state.value.copy(progress = panel.state.value.progress!!.copy(secondsSinceLastProgress = 60))
         render()
@@ -2423,14 +2810,20 @@ class SyncPanelContentTest {
         assertFalse(hasTag("sync-progress-details-toggle"))
         assertFalse(hasTag("sync-stage-count"))
         assertFalse(hasTag("sync-active-body-progress"))
-        assertTrue(texts().any { it.contains(MR.strings.sync_waiting_system.localized(Locale.getDefault())) })
-        assertTrue(texts().any { it.startsWith("已用 ") })
-        assertFalse(texts().any { it.contains("剩余估时") })
+        val live = nodes().single { it.config.contains(SemanticsProperties.LiveRegion) }
+        assertEquals(
+            MR.strings.sync_waiting_system.localized(Locale.getDefault()),
+            live.config[SemanticsProperties.StateDescription],
+        )
+        assertTrue(texts().any { it.startsWith("已用时 ") })
+        assertTrue(texts().any { it.contains("预计剩余 —") })
     }
 
     @Test
-    fun `pause request keeps progress and explains that saving is in progress`() = rendered(
+    fun `pause request keeps progress and shows one pause status while saving`() = rendered(
         connected().copy(
+            syncPauseRequested = true,
+            syncPauseSaving = true,
             run = visualRun(SyncRunPhase.UPLOADING).copy(plannedItems = 10),
             progress = SyncProgressFact(
                 scope = "run-visual:1",
@@ -2452,9 +2845,10 @@ class SyncPanelContentTest {
         assertFalse(hasTag("sync-progress-details-toggle"))
         assertFalse(hasTag("sync-stage-count"))
         assertFalse(hasTag("sync-active-body-progress"))
-        assertTrue(texts().any { it.contains("正在暂停，正在保存进度") })
-        assertTrue(texts().any { it.startsWith("已用 ") })
-        assertFalse(texts().any { it.contains("剩余估时") })
+        assertTrue(texts().contains("正在暂停"))
+        assertFalse(texts().contains("正在保存进度"))
+        assertTrue(texts().any { it.startsWith("已用时 ") })
+        assertTrue(texts().any { it.contains("预计剩余 —") })
         assertTrue(node("sync-wait").config.contains(SemanticsProperties.Disabled))
     }
 
@@ -2545,7 +2939,7 @@ class SyncPanelContentTest {
             fixture.setContent()
             fixture.awaitTag("sync-progress-card")
             fixture.assertTextFits("sync-progress-status")
-            assertTrue(fixture.texts().contains("同步中，已完成10299/10300条"))
+            assertTrue(fixture.texts().contains("总条目已处理 10299/10300 条"))
             assertTrue(fixture.node("sync-progress-status").boundsInRoot.right <= 400f)
         } finally {
             fixture.scene.close()
@@ -2580,7 +2974,7 @@ class SyncPanelContentTest {
             assertTrue(fixture.node("sync-progress-card").boundsInRoot.right <= 400f)
             assertFalse(fixture.hasTag("sync-stage-count"))
             assertTrue(fixture.texts().contains("本次同步已结束，部分数据待处理"))
-            assertTrue(fixture.texts().contains("仍有 10300 条待处理，请在下方决定如何保留"))
+            assertTrue(fixture.texts().contains("有 10300 条待确认"))
         } finally {
             fixture.scene.close()
         }
@@ -3038,6 +3432,7 @@ class SyncPanelContentTest {
     fun `empty pending list omits the selection toolbar`() = rendered(connected()) {
         awaitTag("sync-history")
         assertFalse(hasTag("sync-selection-bar"))
+        assertFalse(texts().contains("当前没有待确认的操作"))
     }
 
     @Test
@@ -3372,12 +3767,12 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-notice-counts")
-        assertTrue(texts().contains("仍有 3 条待处理，请在下方决定如何保留"))
+        assertTrue(texts().contains("有 3 条待确认"))
         assertFalse(hasTag("sync-notice-error"))
     }
 
     @Test
-    fun `partial exchange awaiting projection explains retry in session notice`() = rendered(
+    fun `partial exchange awaiting projection explains automatic restoration in result card`() = rendered(
         connected().copy(
             run = visualRun(SyncRunPhase.CONFIRMING).copy(
                 state = SyncRunState.PARTIAL,
@@ -3393,7 +3788,7 @@ class SyncPanelContentTest {
     ) {
         awaitTag("sync-progress-card")
         assertFalse(hasTag("sync-notice-counts"))
-        assertTrue(texts().contains("有数据尚未完成核对，请稍后重试同步"))
+        assertTrue(texts().contains(MR.strings.sync_local_restore_hint.localized(Locale.getDefault())))
         assertFalse(hasTag("sync-notice-error"))
     }
 
@@ -3418,13 +3813,14 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-progress-card")
-        assertTrue(texts().contains("仍有数据待处理，请在下方查看"))
-        assertFalse(texts().any { it.contains("仍有 0 条待处理") })
+        assertTrue(texts().any { it.contains("部分数据待处理") })
+        assertFalse(texts().any { it.contains("请在下方查看") })
+        assertFalse(texts().contains("有 0 条待确认"))
         assertFalse(texts().contains("正在统计数据"))
     }
 
     @Test
-    fun `unresolved projection offers retry without pointing to manual decisions`() = rendered(
+    fun `unresolved projection offers to check saved data without pointing to manual decisions`() = rendered(
         connected().copy(
             run = visualRun(SyncRunPhase.CONFIRMING).copy(
                 state = SyncRunState.PARTIAL,
@@ -3449,9 +3845,11 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-progress-card")
-        assertTrue(texts().contains("有数据尚未完成核对，请稍后重试同步"))
-        assertTrue(texts().any { it.contains("已完成0条") })
-        assertFalse(texts().contains("仍有数据待处理，请在下方查看"))
+        assertTrue(texts().contains("下次同步时会继续检查"))
+        assertTrue(texts().any { it.contains("本次新增确认0条") })
+        assertFalse(texts().contains("有 0 条待确认"))
+        click("sync-check-saved")
+        assertEquals(SyncPanelAction.RetrySync, actions.last())
     }
 
     @Test
@@ -3699,6 +4097,76 @@ class SyncPanelContentTest {
         assertTrue(texts().any { it.contains(MR.strings.sync_waiting_rate_limit.localized(Locale.getDefault())) })
         assertFalse(hasTag("sync-retry-countdown"))
         assertTrue(node("sync-wait").config.contains(SemanticsProperties.Disabled))
+    }
+
+    @Test
+    fun `UI V4 current success has only details and historical success restores the secondary action`() = rendered(
+        connected().copy(
+            run = visualRun(SyncRunPhase.UPLOADING).copy(plannedItems = 10L, confirmedItems = 7L),
+            runSource = SyncPanelRunSource.ACTIVE,
+            nowMillis = 1_000_000L,
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        panel.state.value = panel.state.value.copy(
+            run = panel.state.value.run!!.copy(
+                state = SyncRunState.SUCCEEDED,
+                phase = SyncRunPhase.COMPLETE,
+                updatedAt = 1_000_000L,
+            ),
+            runSource = SyncPanelRunSource.LATEST,
+        )
+        render()
+        assertTrue(texts().contains("刚刚完成同步"))
+        assertTrue(hasTag("sync-progress-details-toggle"))
+        assertFalse(hasTag("sync-now"))
+        assertFalse(hasTag("sync-progress-track"))
+        panel.state.value = panel.state.value.copy(visible = false)
+        render()
+        panel.state.value =
+            panel.state.value.copy(visible = true, runSource = SyncPanelRunSource.LATEST, periodMinutes = 0)
+        awaitTag("sync-now")
+        assertTrue(texts().contains("上次同步刚刚完成"))
+        assertTrue(texts().contains("自动同步已关闭"))
+        assertTrue(geometry("sync-now").top >= geometry("sync-progress-card").bottom)
+        assertEquals(1, nodes().count { tag(it) == "sync-now" })
+        panel.state.value = panel.state.value.copy(nowMillis = 1_720_000L)
+        render()
+        assertTrue(texts().contains("上次同步完成于 12 分钟前"))
+        click("sync-now")
+        assertEquals(SyncPanelAction.Synchronize, actions.last())
+    }
+
+    @Test
+    fun `UI V4 pending operations keep the sole manual action within the result card`() = rendered(
+        connected().copy(
+            run = visualRun(SyncRunPhase.COMPLETE).copy(
+                state = SyncRunState.SUCCEEDED,
+                confirmedItems = 7L,
+                updatedAt = 280_000L,
+            ),
+            runSource = SyncPanelRunSource.LATEST,
+            nowMillis = 1_000_000L,
+            queuedMembership = 2,
+            queuedReading = 1,
+        ),
+    ) {
+        awaitTag("sync-now")
+        assertTrue(texts().contains("上次同步完成于 12 分钟前"))
+        assertTrue(texts().contains("有 3 条操作待同步"))
+        assertTrue(geometry("sync-now").bottom <= geometry("sync-progress-card").bottom)
+        assertEquals(1, nodes().count { tag(it) == "sync-now" })
+        click("sync-now")
+        assertEquals(SyncPanelAction.Synchronize, actions.last())
+    }
+
+    @Test
+    fun `UI V4 connected first use reports no success and offers start`() = rendered(connected()) {
+        awaitTag("sync-now")
+        assertTrue(texts().contains("尚未完成过同步"))
+        assertTrue(texts().contains("开始同步"))
+        click("sync-now")
+        assertEquals(SyncPanelAction.Synchronize, actions.last())
     }
 
     @Test
@@ -3966,7 +4434,7 @@ class SyncPanelContentTest {
             assertEquals(bottom, geometry("sync-progress-card").bottom, 1f)
             assertEquals(button, geometry("sync-pause-run"))
             assertFalse(hasTag("sync-active-body-progress"))
-            assertTrue(texts().contains("同步中，已完成999/1000条"))
+            assertTrue(texts().contains("总条目已处理 999/1000 条"))
         }
     }
 
@@ -4037,9 +4505,9 @@ class SyncPanelContentTest {
     ) {
         awaitTag("sync-progress-card")
         assertFalse(hasTag("sync-reenter-password"))
+        click("sync-progress-details-toggle")
         click("sync-view-reason")
-        render()
-        assertTrue(hasTag("sync-full-reason"))
+        assertEquals(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS), actions.last())
         assertTrue(actions.none { it == SyncPanelAction.BeginSetup })
     }
 
@@ -4058,13 +4526,13 @@ class SyncPanelContentTest {
         assertFalse(hasTag("sync-progress-details-toggle"))
         assertFalse(hasTag("sync-received-count"))
         assertFalse(hasTag("sync-checked-count"))
-        assertTrue(texts().contains("同步中，已完成0/10条"))
+        assertTrue(texts().contains("总条目已处理 0/10 条"))
         assertEquals(0L, panel.state.value.progress!!.receivedItems)
         panel.state.value = panel.state.value.copy(progress = panel.state.value.progress!!.copy(receivedItems = null))
         render()
         assertNull(panel.state.value.progress!!.receivedItems)
-        assertTrue(texts().contains("同步中，已完成0/10条"))
-        assertEquals(0f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
+        assertTrue(texts().contains("总条目已处理 0/10 条"))
+        assertEquals(0.20f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
     }
 
     @Test
@@ -4079,31 +4547,31 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-round-time")
-        assertFalse(texts().any { it.contains("剩余估时") })
-        val initial = texts().single { it.startsWith("已用 ") }
+        assertTrue(texts().any { it.contains("预计剩余 —") })
+        val initial = texts().single { it.startsWith("已用时 ") }
         displayMillis = 1000
         withTimeout(3000) {
-            while (texts().single { it.startsWith("已用 ") } == initial) {
+            while (texts().single { it.startsWith("已用时 ") } == initial) {
                 render()
                 delay(10)
             }
         }
-        assertTrue(texts().any { it.contains("已用 00:01") })
+        assertTrue(texts().any { it.contains("已用时 00:01") })
         for (increment in 1..3) {
             displayMillis = increment * 1000L
             panel.state.value =
                 panel.state.value.copy(run = panel.state.value.run!!.copy(confirmedItems = increment * 10L))
             render()
         }
-        assertTrue(texts().any { it.contains("剩余估时00:07") })
+        assertTrue(texts().any { it.contains("预计剩余 —") })
         displayMillis = 13000
         withTimeout(3000) {
-            while (texts().any { it.contains("剩余估时") }) {
+            while (texts().any { it.contains("预计剩余") && !it.endsWith("—") }) {
                 render()
                 delay(10)
             }
         }
-        assertTrue(texts().any { it.startsWith("已用 ") })
+        assertTrue(texts().any { it.startsWith("已用时 ") })
         panel.state.value = panel.state.value.copy(visible = false)
         render()
         val calls = clockCalls
@@ -4117,7 +4585,7 @@ class SyncPanelContentTest {
                 run = panel.state.value.run!!.copy(state = SyncRunState.SUCCEEDED, confirmedItems = 7),
             )
         render()
-        assertTrue(texts().contains("同步已完成"))
+        assertTrue(texts().contains("上次同步刚刚完成"))
         assertFalse(hasTag("sync-round-time"))
     }
 
@@ -4148,7 +4616,7 @@ class SyncPanelContentTest {
                 run = panel.state.value.run!!.copy(state = SyncRunState.SUCCEEDED, confirmedItems = 7),
             )
         render()
-        assertTrue(texts().contains("同步已完成"))
+        assertTrue(texts().contains("上次同步刚刚完成"))
         assertTrue(texts().any { it.contains("本次新增确认7条") })
         assertFalse(hasTag("sync-progress-details"))
     }
@@ -4252,7 +4720,7 @@ class SyncPanelContentTest {
                 androidx.compose.ui.semantics.ProgressBarRangeInfo.Indeterminate,
                 fixture.node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo],
             )
-            assertTrue(fixture.texts().contains("同步中，已完成0/10条"))
+            assertTrue(fixture.texts().contains("总条目已处理 0/10 条"))
         } finally {
             fixture.scene.close()
         }
@@ -4317,10 +4785,12 @@ class SyncPanelContentTest {
                         .invoke(statusLayouts)
                     val statusRegion = fixture.nodes().single { it.config.contains(SemanticsProperties.LiveRegion) }
                     assertEquals(statusLayouts.single().size.height.toFloat(), statusRegion.size.height.toFloat(), 1f)
-                    assertTrue(fixture.texts().any { it.contains("00:00") })
+                    val timeText = fixture.node("sync-round-time").config[SemanticsProperties.Text].single().text
+                    assertTrue(timeText.contains("00:03"), timeText)
                     assertEquals(
-                        1f,
+                        0.85f,
                         fixture.node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current,
+                        0.0001f,
                     )
                     assertTrue(fixture.node("sync-close").boundsInRoot.right <= width)
                     assertTrue(fixture.node("sync-settings").boundsInRoot.right <= width)
@@ -4625,7 +5095,7 @@ class SyncPanelContentTest {
                     }
                 }
                 assertEquals(
-                    completed / 100f,
+                    0.20f + 0.65f * completed / 100f,
                     node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current,
                 )
             }

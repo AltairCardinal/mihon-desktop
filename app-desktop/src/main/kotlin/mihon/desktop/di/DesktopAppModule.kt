@@ -1587,6 +1587,20 @@ internal suspend fun initUILayer(
             updateScreenModel = updateScreenModel,
         )
         runtime.attachCloseable(nativeSharePort)
+        runtime.attachCloseable(
+            AutoCloseable {
+                // Normal close runs on the IO dispatcher. Stop sync callers before draining
+                // rotations, and leave the shared network client open until they are saved.
+                kotlinx.coroutines.runBlocking {
+                    try {
+                        syncRuntime.stopPanel()
+                        syncRuntime.coordinator.cancelAndJoin()
+                    } finally {
+                        syncRuntime.finishCredentialRotation()
+                    }
+                }
+            },
+        )
         runtime.attachCloseable(networkHelper)
         runtime.attachCloseable(
             AutoCloseable {

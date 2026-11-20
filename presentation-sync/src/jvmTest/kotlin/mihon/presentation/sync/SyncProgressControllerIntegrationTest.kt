@@ -142,6 +142,17 @@ class SyncProgressControllerIntegrationTest {
         }
         try {
             runtime.baseline.connectAndImport("space", 1, SyncRepository("fixture", "sync", "main"), "actor", 1)
+            val previous = runtime.runStore.start("space", 1, SyncTrigger.MANUAL)
+            runtime.runStore.finish(previous.runId, SyncRunState.SUCCEEDED)
+            runtime.preferences.lastSuccess.set(clockMillis)
+            mount()
+            runtime.panel.dispatch(SyncPanelAction.Open)
+            withTimeout(5000) { runtime.panel.state.first { it.loaded && it.run?.runId == previous.runId } }
+            render()
+            assertNotNull(node("sync-auto-row"))
+            assertNotNull(node("sync-now"))
+            runtime.panel.dispatch(SyncPanelAction.Close)
+            withTimeout(5000) { runtime.panel.state.first { !it.visible } }
             val run = runtime.runStore.start("space", 1, SyncTrigger.MANUAL)
             runtime.runStore.progress(run.runId, SyncRunPhase.UPLOADING, 0, 1)
             assertTrue(runtime.runStore.claim(run.runId, "fixture-owner", 1))
@@ -169,7 +180,7 @@ class SyncProgressControllerIntegrationTest {
             )
             withTimeout(5000) { runtime.panel.state.first { it.run?.plannedItems == 1L } }
             withTimeout(5000) { while (node("sync-progress-track") == null) render() }
-            assertEquals(0f, node("sync-progress-track")!!.config[SemanticsProperties.ProgressBarRangeInfo].current)
+            assertEquals(0.20f, node("sync-progress-track")!!.config[SemanticsProperties.ProgressBarRangeInfo].current)
             assertEquals(0L, runtime.panel.state.value.run!!.confirmedItems)
             assertTrue(node("sync-progress-status")!!.config[SemanticsProperties.Text].single().text.contains("0/1"))
             // Feed the production runtime observation stream, retaining the actual controller and database.
@@ -287,8 +298,14 @@ class SyncProgressControllerIntegrationTest {
             assertEquals(0L, SyncProgressDisplaySession().project(runtime.panel.state.value, 0).elapsedSeconds)
             assertNull(node("sync-progress-details"))
             assertEquals(mihon.domain.sync.runtime.SyncRunProblem.STORAGE, runtime.panel.state.value.problem)
-            withTimeout(5000) { while (node("sync-reenter-password") == null) render() }
-            assertNotNull(node("sync-reenter-password"))
+            withTimeout(5000) { while (node("sync-resolve-run") == null) render() }
+            assertNotNull(node("sync-resolve-run"))
+            assertNull(node("sync-reenter-password"))
+            click("sync-resolve-run")
+            withTimeout(5000) {
+                runtime.panel.state.first { it.page == mihon.data.sync.runtime.SyncPanelPage.RECOVERY }
+            }
+            Unit
         } finally {
             scene.close()
             runtime.coordinator.cancelAndJoin()

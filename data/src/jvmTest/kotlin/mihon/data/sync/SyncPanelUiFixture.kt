@@ -1,6 +1,7 @@
 package mihon.data.sync
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import kotlinx.coroutines.CompletableDeferred
 import mihon.data.sync.runtime.SyncPanel
 import mihon.data.sync.runtime.SyncRuntime
 import mihon.domain.sync.crypto.SyncSpaceDescriptor
@@ -47,6 +48,16 @@ class SyncPanelUiFixture : AutoCloseable {
         fixture.authorize()
         fixture.begin()
         fixture.panel.awaitIdle()
+    }
+
+    fun holdNamedSpaceReadThroughCancellation(
+        coroutineName: String,
+        entered: CompletableDeferred<Unit>,
+        release: CompletableDeferred<Unit>,
+    ) {
+        fixture.secure.nextSpaceReadCoroutineName = coroutineName
+        fixture.secure.nextSpaceReadWaitsForReleaseOnCancel = true
+        fixture.secure.nextSpaceRead = entered to release
     }
 
     suspend fun reopenWhileCheckingConnection() {

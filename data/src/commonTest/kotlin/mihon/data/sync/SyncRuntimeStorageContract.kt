@@ -2,17 +2,26 @@ package mihon.data.sync
 
 import app.cash.sqldelight.db.SqlDriver
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import mihon.data.sync.auth.SyncRepositoryScope
 import mihon.data.sync.auth.SyncSpaceDiscovery
+import mihon.data.sync.http.SyncHttpBodyDirection
+import mihon.data.sync.http.SyncHttpBodyObserver
 import mihon.data.sync.inbox.SyncDiscoveryStore
 import mihon.data.sync.inbox.SyncInboxProjector
 import mihon.data.sync.inbox.SyncInboxStore
 import mihon.data.sync.journal.SyncBaselineStore
 import mihon.data.sync.journal.SyncLocalJournal
+import mihon.data.sync.journal.SyncOutboxExchange
+import mihon.data.sync.journal.SyncOutboxStore
 import mihon.data.sync.projection.SyncRemoteProjectionWriter
 import mihon.data.sync.runtime.SyncDatabaseExchange
+import mihon.data.sync.runtime.SyncLiveProgressSession
 import mihon.data.sync.runtime.SyncProgressDirection
+import mihon.data.sync.runtime.SyncProgressFact
 import mihon.data.sync.runtime.SyncProgressReporter
 import mihon.data.sync.runtime.SyncRunPlanBatch
 import mihon.data.sync.runtime.SyncRunState
@@ -51,6 +60,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.data.Database
 import tachiyomi.data.DatabaseHandler
+import tachiyomi.data.DatabaseMigration
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.History
 import tachiyomi.data.Mangas
@@ -627,7 +637,7 @@ abstract class SyncRuntimeStorageContract {
                     progress = reopened.reporter(run.runId, "replacement"),
                 ).exchange("space", 1, repository)
                 assertEquals(SyncRunStatus.SUCCESS, result.status, result.toString())
-                assertEquals(300, result.uploaded)
+                assertEquals(44, result.uploaded, "the first two batches were one durable publication")
                 assertEquals(556L, reopened.get(run.runId)!!.plannedItems)
                 assertEquals(556L, reopened.get(run.runId)!!.confirmedItems)
                 assertEquals(1, SyncLocalJournal(storage.handler).pendingEvents("space", 1).size)
@@ -1223,6 +1233,224 @@ abstract class SyncRuntimeStorageContract {
                     assertEquals(1, result.uploaded)
                     assertEquals(2, second.manga.getLibraryManga().size)
                     assertEquals(1, second.projector.pending("space", 1).size)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `download prefetch overlaps preceding durable receipt`() = runBlocking {
+        SyncGitSafetyContractTest().GitFixture().use { git ->
+            val transport = git.transport()
+            transport.initialize(repository, "space", 1)
+            open().use { sender ->
+                sender.connect("ordered", repository)
+                sender.seedUploadBatch("pipeline-first", 1, 1)
+                assertEquals(1, sender.exchange(transport, secret, repository).uploaded)
+                sender.seedUploadBatch("pipeline-second", 2, 1)
+                assertEquals(1, sender.exchange(transport, secret, repository).uploaded)
+            }
+            open().use { receiver ->
+                receiver.connect("receiver", repository)
+                val runs = SyncRunStore(receiver.handler)
+                val run = runs.start("space", 1, SyncTrigger.MANUAL)
+                assertTrue(runs.claim(run.runId, "owner", 1))
+                val secondRead = CompletableDeferred<Unit>()
+                val receivingTransport = git.transport()
+                val observing = object : SyncTransportPort by receivingTransport {
+                    override suspend fun readBatch(
+                        snapshot: SyncSnapshot,
+                        entry: SyncBatchIndexEntry,
+                    ): Result<SyncEncryptedBatch> {
+                        if (entry.firstSeq == 2L) secondRead.complete(Unit)
+                        return receivingTransport.readBatch(snapshot, entry)
+                    }
+                }
+                val durable = runs.reporter(run.runId, "owner")
+                val reporter = object : SyncProgressReporter by durable {
+                    override suspend fun totals(uploaded: Long, downloaded: Long) {
+                        durable.totals(uploaded, downloaded)
+                        if (downloaded == 1L) withTimeout(2_000) { secondRead.await() }
+                    }
+                }
+                val result = SyncDatabaseExchange(
+                    receiver.handler,
+                    receiver.baseline,
+                    receiver.projector,
+                    observing,
+                    secret,
+                    progress = reporter,
+                ).exchange("space", 1, repository)
+                assertEquals(SyncRunStatus.SUCCESS, result.status, result.toString())
+                assertEquals(2, result.downloaded)
+                assertEquals(2L, runs.get(run.runId)?.confirmedItems)
+            }
+        }
+    }
+
+    @Test
+    fun `continuous frozen uploads publish through a single ref update`() = runBlocking {
+        SyncGitSafetyContractTest().GitFixture().use { git ->
+            val transport = git.transport()
+            transport.initialize(repository, "space", 1)
+            open().use { sender ->
+                sender.connect("ordered", repository)
+                sender.seedUploadBatch("group-one", 1, 24)
+                sender.seedUploadBatch("group-two", 25, 24)
+                val runs = SyncRunStore(sender.handler)
+                val run = runs.start("space", 1, SyncTrigger.MANUAL)
+                assertTrue(runs.claim(run.runId, "owner", 1))
+                val live = MutableStateFlow<SyncProgressFact?>(null)
+                val tick = java.util.concurrent.atomic.AtomicLong()
+                val session = SyncLiveProgressSession(run.runId, live, millis = tick::get)
+                val incremental = java.util.concurrent.ConcurrentLinkedQueue<Long>()
+                val observer = object : SyncHttpBodyObserver by session {
+                    override fun onBodyWorkBytes(
+                        direction: SyncHttpBodyDirection,
+                        requestId: Long,
+                        bytes: Long,
+                        total: Long?,
+                        workKey: String?,
+                    ) {
+                        tick.addAndGet(250)
+                        session.onBodyWorkBytes(direction, requestId, bytes, total, workKey)
+                        if (direction == SyncHttpBodyDirection.UPLOAD && total != null && bytes < total) {
+                            live.value?.batchProgress?.processedRunItems?.let(incremental::add)
+                        }
+                    }
+                }
+                val before = git.refPatchBranches.size
+                val result = SyncDatabaseExchange(
+                    sender.handler,
+                    sender.baseline,
+                    sender.projector,
+                    git.transport(bodyObserver = observer),
+                    secret,
+                    progress = runs.reporter(run.runId, "owner"),
+                    liveProgress = session,
+                ).exchange("space", 1, repository)
+                assertEquals(SyncRunStatus.SUCCESS, result.status, result.toString())
+                assertTrue(incremental.any { it in 1L..23L || it in 25L..47L }, incremental.toString())
+                assertEquals(48, result.uploaded)
+                assertEquals(48L, runs.get(run.runId)?.confirmedItems)
+                assertEquals(1, git.refPatchBranches.size - before)
+                open().use { receiver ->
+                    receiver.connect("receiver", repository)
+                    assertEquals(48, receiver.exchange(transport, secret, repository).downloaded)
+                    assertEquals(48, receiver.manga.getLibraryManga().size)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `durable upload group recovers without downloading itself`() = runBlocking {
+        SyncGitSafetyContractTest().GitFixture().use { git ->
+            val transport = git.transport()
+            transport.initialize(repository, "space", 1)
+            open().use { storage ->
+                storage.driver.execute(null, "DROP TABLE sync_upload_groups", 0)
+                DatabaseMigration.migrateAtomically(storage.driver, 48, Database.Schema.version)
+                storage.connect("ordered", repository)
+                storage.seedUploadBatch("group-one", 1, 2)
+                storage.seedUploadBatch("group-two", 3, 2)
+                val ids = listOf("group-one", "group-two")
+                val base = transport.readSnapshot(repository, "space", 1).getOrThrow()
+                val store = SyncOutboxStore(storage.handler)
+                val exchange = SyncOutboxExchange(store, SyncBatchSyncService(transport, secret))
+                val refs = git.refPatchBranches.size
+                storage.driver.execute(
+                    null,
+                    "CREATE TRIGGER reject_sync_group BEFORE INSERT ON sync_upload_groups " +
+                        "BEGIN SELECT RAISE(ABORT, 'test failure'); END",
+                    0,
+                )
+                assertTrue(
+                    runCatching {
+                        exchange.uploadPlanned(base, ids, { _, _ -> }, {}, {}, {})
+                    }.isFailure,
+                )
+                assertEquals(refs, git.refPatchBranches.size)
+                storage.handler.await {
+                    for (id in ids) {
+                        assertNull(sync_journalQueries.getBatch("space", 1, id).executeAsOne().prepared_upload)
+                    }
+                }
+                storage.driver.execute(null, "DROP TRIGGER reject_sync_group", 0)
+                try {
+                    exchange.uploadPlanned(base, ids, { snapshot, _ ->
+                        if (snapshot.head != base.head) throw CancellationException("interruption before snapshot")
+                    }, {}, {}, {})
+                    error("the group must be published before interruption")
+                } catch (_: CancellationException) {
+                    assertEquals(refs + 1, git.refPatchBranches.size)
+                    assertEquals(ids.toSet(), store.pendingGroupMemberIds("space", 1))
+                }
+                storage.driver.execute(
+                    null,
+                    "CREATE TRIGGER reject_sync_ack BEFORE UPDATE OF status ON sync_batches " +
+                        "WHEN OLD.batch_id = 'group-two' AND NEW.status = 'PUBLISHED' " +
+                        "BEGIN SELECT RAISE(ABORT, 'test failure'); END",
+                    0,
+                )
+                val live = git.transport().readSnapshot(repository, "space", 1).getOrThrow()
+                assertTrue(
+                    runCatching {
+                        exchange.uploadPlanned(live, ids, { _, _ -> }, {}, {}, {})
+                    }.isFailure,
+                )
+                storage.handler.await {
+                    ids.forEach {
+                        assertEquals("SEALED", sync_journalQueries.getBatch("space", 1, it).executeAsOne().status)
+                    }
+                }
+                assertEquals(ids.toSet(), store.pendingGroupMemberIds("space", 1))
+                storage.driver.execute(null, "DROP TRIGGER reject_sync_ack", 0)
+                val runs = SyncRunStore(storage.handler)
+                val run = runs.start("space", 1, SyncTrigger.MANUAL)
+                assertTrue(runs.claim(run.runId, "restart", 1))
+                val result = SyncDatabaseExchange(
+                    storage.handler,
+                    storage.baseline,
+                    storage.projector,
+                    git.transport(),
+                    secret,
+                    progress = runs.reporter(run.runId, "restart"),
+                ).exchange("space", 1, repository)
+                assertEquals(SyncRunStatus.SUCCESS, result.status, result.toString())
+                assertEquals(0, result.downloaded)
+                assertEquals(4, result.uploaded)
+                assertEquals(4L, runs.get(run.runId)?.plannedItems)
+                assertEquals(4L, runs.get(run.runId)?.confirmedItems)
+                assertEquals(refs + 1, git.refPatchBranches.size)
+                assertTrue(store.pendingGroupMemberIds("space", 1).isEmpty())
+            }
+        }
+    }
+
+    @Test
+    fun `automatic favorite date backfill converges across connected devices`() = runBlocking {
+        SyncGitSafetyContractTest().GitFixture().use { git ->
+            val transport = git.transport()
+            transport.initialize(repository, "space", 1)
+            open().use { first ->
+                open().use { second ->
+                    val url = "/favorite-date"
+                    first.connect("a", repository)
+                    second.connect("b", repository)
+                    val firstItem = first.favorite(url)
+                    val secondItem = second.favorite(url)
+                    first.manga.update(MangaUpdate(firstItem.id, dateAdded = 1_000))
+                    second.manga.update(MangaUpdate(secondItem.id, dateAdded = 3_000))
+                    // Both devices have pre-upgrade libraries without a date baseline.
+                    first.driver.execute(null, "DELETE FROM sync_favorite_date_imports", 0)
+                    second.driver.execute(null, "DELETE FROM sync_favorite_date_imports", 0)
+                    assertEquals(SyncRunStatus.SUCCESS, first.exchange(transport, secret, repository).status)
+                    assertEquals(SyncRunStatus.SUCCESS, second.exchange(transport, secret, repository).status)
+                    assertEquals(SyncRunStatus.SUCCESS, first.exchange(transport, secret, repository).status)
+                    assertEquals(1_000L, first.manga.getMangaById(firstItem.id).dateAdded)
+                    assertEquals(1_000L, second.manga.getMangaById(secondItem.id).dateAdded)
+                    assertEquals(0, second.exchange(transport, secret, repository).uploaded)
                 }
             }
         }

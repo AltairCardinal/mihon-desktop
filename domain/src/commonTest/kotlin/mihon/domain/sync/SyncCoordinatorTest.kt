@@ -22,6 +22,55 @@ class SyncCoordinatorTest {
     private val success = SyncRunResult(SyncRunStatus.SUCCESS)
 
     @Test
+    fun `targeted cancellation cannot stop the next flight`() = runTest {
+        var gate = CompletableDeferred<Unit>()
+        val coordinator = SyncCoordinator(
+            SyncRunPort {
+                gate.await()
+                success
+            },
+        )
+        val first = async { coordinator.synchronize(SyncTrigger.MANUAL) }
+        runCurrent()
+        val previous = coordinator.activity.value.operation!!.id
+        gate.complete(Unit)
+        first.await()
+        gate = CompletableDeferred()
+        val next = async { coordinator.synchronize(SyncTrigger.MANUAL) }
+        runCurrent()
+        coordinator.cancelAndJoin(previous)
+        assertTrue(coordinator.activity.value.running)
+        assertFalse(next.isCancelled)
+        coordinator.cancelAndJoin(coordinator.activity.value.operation!!.id)
+        assertTrue(next.isCancelled)
+        assertFalse(coordinator.activity.value.running)
+    }
+
+    @Test
+    fun `operation success requires durable proof and a cancelled flight never releases completion share`() = runTest {
+        lateinit var coordinator: SyncCoordinator
+        val gate = CompletableDeferred<Unit>()
+        coordinator = SyncCoordinator(
+            SyncRunPort {
+                val token = coordinator.activity.value.operation!!.token
+                coordinator.reportProgress(token, mihon.domain.sync.runtime.SyncOperationStage.ITEMS, 0.5, "run")
+                gate.await()
+                success
+            },
+        )
+        val worker = async { coordinator.synchronize(SyncTrigger.MANUAL) }
+        runCurrent()
+        val active = coordinator.activity.value.operation!!
+        assertTrue(active.fraction > 0.20 && active.fraction < 0.85)
+        worker.cancelAndJoin()
+        assertTrue(coordinator.activity.value.operation!!.fraction < 1.0)
+        assertFalse(coordinator.activity.value.operation!!.running)
+        gate.complete(Unit)
+        assertEquals(success, coordinator.synchronize(SyncTrigger.MANUAL))
+        assertTrue(coordinator.activity.value.operation!!.fraction < 1.0)
+    }
+
+    @Test
     fun `overlapping callers share one flight and drain a burst once`() = runTest {
         val first = CompletableDeferred<Unit>()
         val second = CompletableDeferred<Unit>()

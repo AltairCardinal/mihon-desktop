@@ -63,6 +63,8 @@ data class SyncRunSnapshot(
     val attemptStartedAt: Long? = null,
     val attemptConfirmedBaseline: Long = 0,
     val attemptPausedMillis: Long = 0,
+    val plannedBatches: Long? = null,
+    val confirmedBatches: Long = 0,
 )
 
 data class SyncRunPlanBatch(
@@ -139,8 +141,10 @@ class SyncLiveProgressSession(
     private val millis: () -> Long = System::currentTimeMillis,
     private val canPublish: () -> Boolean = { true },
     private var confirmedBaseline: Long? = 0,
+    private val onWorkflowProgress: (Double) -> Unit = {},
 ) : SyncHttpBodyObserver {
     private val timeline = SyncProgressTimeline()
+    private val batchProgress = SyncBatchProgressTracker()
     private var stage = SyncProgressStage.PREPARING
     private var direction = SyncProgressDirection.UPLOAD
     private var scope = "$runId:initial"
@@ -149,12 +153,53 @@ class SyncLiveProgressSession(
 
     fun scope(part: String): String = "$runId:$part"
 
+    internal fun belongsTo(runId: String): Boolean = this.runId == runId
+
     init {
         timeline.begin("$runId:initial", stage, direction, null, atNanos = nanos())
     }
 
     @Synchronized
     fun activate() = emit(force = true)
+
+    @Synchronized
+    fun plan(plan: SyncRunPlan) {
+        observeBatch(force = true) { batchProgress.plan(plan) }
+    }
+
+    @Synchronized
+    fun startBatch(direction: SyncProgressDirection, batchId: String, work: SyncBatchWork) {
+        observeBatch(force = true) { batchProgress.start(direction, batchId, work) }
+    }
+
+    @Synchronized
+    fun startUploadTransfer(batchIds: Collection<String>) {
+        observeBatch(force = true) { batchProgress.startUploadTransfer(batchIds) }
+    }
+
+    @Synchronized
+    fun batchItems(count: Long) {
+        observeBatch(force = false) { batchProgress.items(count) }
+    }
+
+    @Synchronized
+    fun finishBatchWork(successful: Boolean) {
+        observeBatch(force = true) { batchProgress.finish(successful) }
+    }
+
+    @Synchronized
+    fun batchWork(work: SyncBatchWork) {
+        observeBatch(force = true) { batchProgress.phase(work) }
+    }
+
+    private inline fun observeBatch(force: Boolean, update: () -> Unit) {
+        try {
+            update()
+            emit(force)
+        } catch (_: RuntimeException) {
+            // Display observations must not change the transaction or exchange result.
+        }
+    }
 
     @Synchronized
     fun begin(
@@ -185,6 +230,8 @@ class SyncLiveProgressSession(
     @Synchronized
     fun batch(stage: SyncProgressStage, batchKey: String, itemCount: Long) {
         try {
+            if (stage == SyncProgressStage.CONFIRMING) batchProgress.confirmed(direction, batchKey)
+            if (stage == SyncProgressStage.TRANSFERRING) batchProgress.transferred(direction, batchKey)
             when (stage) {
                 SyncProgressStage.PREPARING -> timeline.prepareBatch(batchKey, itemCount, nanos())
                 SyncProgressStage.TRANSFERRING -> timeline.transferBatch(batchKey, itemCount, nanos())
@@ -266,6 +313,7 @@ class SyncLiveProgressSession(
         if (!canPublish()) return
         if (stage != SyncProgressStage.TRANSFERRING) return
         try {
+            if (direction == SyncHttpBodyDirection.UPLOAD) batchProgress.transfer(workKey, bytes, total)
             val attemptKey = "${direction.name}:$requestId"
             if (workKey == null) {
                 timeline.networkProgress(attemptKey, bytes, nanos(), total)
@@ -294,13 +342,18 @@ class SyncLiveProgressSession(
         val now = millis()
         if (force || lastEmissionMillis == Long.MIN_VALUE || now - lastEmissionMillis >= 250L) {
             lastEmissionMillis = now
-            mutable.value = fact()
+            val current = fact()
+            mutable.value = current
+            current.batchProgress?.workflowFraction?.let { runCatching { onWorkflowProgress(it) } }
         }
     }
 
     private fun fact(): SyncProgressFact {
         val snapshot = timeline.snapshot(nanos())
-        return snapshot.copy(confirmedThisRun = confirmedBaseline?.plus(snapshot.confirmedThisRun ?: 0L))
+        return snapshot.copy(
+            confirmedThisRun = confirmedBaseline?.plus(snapshot.confirmedThisRun ?: 0L),
+            batchProgress = batchProgress.snapshot(),
+        )
     }
 
     @Synchronized
@@ -543,6 +596,7 @@ class SyncRunStore(
             it.toSnapshot(
                 sync_runtimeQueries.getRuntimePlannedItems(it.run_id).executeAsOneOrNull(),
                 sync_runtimeQueries.getRuntimePauseClock(it.run_id).executeAsOneOrNull(),
+                sync_runtimeQueries.getRuntimeBatchCounts(it.run_id).executeAsOneOrNull(),
             )
         }
     }
@@ -580,6 +634,7 @@ class SyncRunStore(
             it.toSnapshot(
                 sync_runtimeQueries.getRuntimePlannedItems(it.run_id).executeAsOneOrNull(),
                 sync_runtimeQueries.getRuntimePauseClock(it.run_id).executeAsOneOrNull(),
+                sync_runtimeQueries.getRuntimeBatchCounts(it.run_id).executeAsOneOrNull(),
             )
         }
     }
@@ -589,6 +644,7 @@ class SyncRunStore(
             it.toSnapshot(
                 sync_runtimeQueries.getRuntimePlannedItems(it.run_id).executeAsOneOrNull(),
                 sync_runtimeQueries.getRuntimePauseClock(it.run_id).executeAsOneOrNull(),
+                sync_runtimeQueries.getRuntimeBatchCounts(it.run_id).executeAsOneOrNull(),
             )
         }
     }
@@ -880,6 +936,10 @@ class SyncRunStore(
                 ?: error("sync run owner changed before network failure was persisted")
         }
 
+    internal suspend fun queueVerifiedAuthorizationRecovery(runId: String) = handler.await(inTransaction = true) {
+        sync_runtimeQueries.queueVerifiedAuthorizationRecovery(clock(), runId)
+    }
+
     suspend fun releaseForRecovery(runId: String): Boolean = handler.await(inTransaction = true) {
         sync_runtimeQueries.releaseRuntimeRunForRecovery("process_restart", clock(), runId)
         sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull()?.let {
@@ -901,6 +961,26 @@ class SyncRunStore(
     suspend fun pause(runId: String) {
         state(runId, SyncRunState.PAUSED_USER, "user")
         observe(runId, SyncJournalEventKind.PHASE)
+    }
+
+    internal suspend fun pauseIfActive(expected: SyncRunSnapshot): Boolean {
+        val paused = handler.await(inTransaction = true) {
+            val active = sync_journalQueries.getActiveSpace().executeAsOneOrNull() ?: return@await false
+            if (active.space_id != expected.spaceId || active.generation != expected.generation) return@await false
+            val run = sync_runtimeQueries.getActiveRuntimeRun(expected.spaceId, expected.generation)
+                .executeAsOneOrNull() ?: return@await false
+            if (run.run_id != expected.runId ||
+                (run.owner_session != null && run.owner_session != expected.ownerSession) ||
+                run.state !in
+                setOf("QUEUED", "RUNNING", "WAITING_NETWORK", "WAITING_RETRY", "WAITING_SYSTEM", "BLOCKED")
+            ) {
+                return@await false
+            }
+            sync_runtimeQueries.updateRuntimeState(SyncRunState.PAUSED_USER.name, "user", null, clock(), expected.runId)
+            true
+        }
+        if (paused) observe(expected.runId, SyncJournalEventKind.PHASE)
+        return paused
     }
 
     suspend fun cancel(runId: String) {
@@ -1084,6 +1164,7 @@ class SyncRunStore(
 private fun tachiyomi.data.Sync_runtime_runs.toSnapshot(
     planned: Long? = null,
     pauseClock: tachiyomi.data.Sync_runtime_pause_clock? = null,
+    batches: tachiyomi.data.GetRuntimeBatchCounts? = null,
 ) = SyncRunSnapshot(
     runId = run_id,
     spaceId = space_id,
@@ -1107,6 +1188,8 @@ private fun tachiyomi.data.Sync_runtime_runs.toSnapshot(
     attemptStartedAt = pauseClock?.attempt_started_at,
     attemptConfirmedBaseline = pauseClock?.attempt_confirmed_baseline ?: 0,
     attemptPausedMillis = pauseClock?.attempt_paused_millis ?: 0,
+    plannedBatches = batches?.planned_batches,
+    confirmedBatches = batches?.confirmed_batches ?: 0,
     uploadedBaseline = uploaded_baseline,
     downloadedBaseline = downloaded_baseline,
     attemptId = attempt_id,

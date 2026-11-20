@@ -75,7 +75,7 @@ class SyncBackupRestorer(
                 }
             }
         }) {
-            sync_importQueries.freezeFavorites(id!!, sourceId, url)
+            sync_importQueries.freezeFavorites(id!!, sourceId, url, knownDatesOnly = 0)
             sync_importQueries.freezeReading(id, sourceId, url)
             freezeMetadataSnapshots(id, sourceId, url)
         }

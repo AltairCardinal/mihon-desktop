@@ -1,8 +1,15 @@
 package mihon.data.sync.auth
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -17,6 +24,10 @@ import mihon.data.sync.http.SyncHttpFailureClass
 import mihon.data.sync.http.SyncHttpRequestGate
 import mihon.data.sync.http.SyncHttpResponse
 import mihon.data.sync.http.requireSyncSuccess
+import mihon.data.sync.runtime.SyncJournalContext
+import mihon.data.sync.runtime.SyncJournalEventKind
+import mihon.data.sync.runtime.SyncJournalOperation
+import mihon.data.sync.runtime.SyncJournalRefreshOutcome
 import mihon.domain.sync.auth.GitHubAccessToken
 import mihon.domain.sync.auth.GitHubAuthEndpoints
 import mihon.domain.sync.auth.GitHubAuthException
@@ -44,7 +55,7 @@ class GitHubAuthClient(
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
     private val deviceCodeRequestTimeoutMillis: Long = 30_000,
     requestGate: SyncHttpRequestGate? = null,
-    diagnosticContext: mihon.data.sync.runtime.SyncJournalContext? = null,
+    private val diagnosticContext: SyncJournalContext? = null,
 ) : GitHubAuthPort {
     private val http = SyncHttpClient(
         productionClient,
@@ -179,19 +190,28 @@ class GitHubAuthClient(
         if (response.code !in 200..299) throw GitHubAuthException(httpFailure(response))
         val payload = response.parseObject()
         if (payload?.get("error") != null) {
-            val failure = when (payload.string("error")) {
-                "bad_refresh_token", "invalid_grant", "expired_token" -> revokedFailure()
+            val outcome = when (payload.string("error")) {
+                "bad_refresh_token", "invalid_grant", "expired_token" -> SyncJournalRefreshOutcome.TOKEN_REJECTED
+                "incorrect_client_credentials" -> SyncJournalRefreshOutcome.CLIENT_REJECTED
+                else -> SyncJournalRefreshOutcome.OTHER_ERROR
+            }
+            recordRefreshOutcome(outcome, response.code)
+            val failure = when (outcome) {
+                SyncJournalRefreshOutcome.TOKEN_REJECTED -> revokedFailure()
+                SyncJournalRefreshOutcome.CLIENT_REJECTED ->
+                    GitHubAuthFailure(GitHubAuthFailureReason.REFRESH_CLIENT_REJECTED, "token refresh rejected", false)
                 else -> GitHubAuthFailure(GitHubAuthFailureReason.HTTP, "token refresh rejected", false)
             }
             throw GitHubAuthException(failure)
         }
         val token = payload?.toAccessToken(nowMillis())
-            ?: throw GitHubAuthException(malformed().failure)
-        if (token.refreshToken == null || token.refreshTokenExpiresAtMillis == null ||
+        if (token == null || token.refreshToken == null || token.refreshTokenExpiresAtMillis == null ||
             current.revision == Long.MAX_VALUE
         ) {
+            recordRefreshOutcome(SyncJournalRefreshOutcome.MALFORMED_RESPONSE, response.code)
             throw GitHubAuthException(malformed().failure)
         }
+        recordRefreshOutcome(SyncJournalRefreshOutcome.TOKEN_RECEIVED, response.code)
         Result.success(
             GitHubStoredCredential(
                 token,
@@ -206,6 +226,15 @@ class GitHubAuthClient(
         Result.failure(GitHubAuthException(httpFailure(error)))
     } catch (error: Exception) {
         Result.failure(IllegalStateException("token refresh failed"))
+    }
+
+    private fun recordRefreshOutcome(outcome: SyncJournalRefreshOutcome, status: Int) {
+        diagnosticContext?.record(
+            SyncJournalEventKind.AUTHORIZATION,
+            httpStatus = status,
+            operation = SyncJournalOperation.AUTHORIZATION,
+            refreshOutcome = outcome,
+        )
     }
 
     private suspend fun requestDeviceCode(clientId: String): GitHubDeviceCode {
@@ -294,27 +323,72 @@ class GitHubTokenRefresher(
     private val store: GitHubCredentialStore,
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
 ) {
-    private val mutex = Mutex()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val lifecycle = Any()
+    private val pending = mutableMapOf<Pair<String, Long>, Deferred<Result<GitHubStoredCredential>>>()
+    private var closing = false
 
-    suspend fun refreshIfNeeded(clientId: String): Result<GitHubStoredCredential> = mutex.withLock {
+    suspend fun refreshIfNeeded(clientId: String): Result<GitHubStoredCredential> {
         val current = try {
-            store.read() ?: return@withLock Result.failure(IllegalStateException("authorization required"))
+            store.read() ?: return Result.failure(IllegalStateException("authorization required"))
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            return@withLock Result.failure(IllegalStateException("credential storage failed"))
+            return Result.failure(IllegalStateException("credential storage failed"))
         }
         val expiresAt = current.credential.accessTokenExpiresAtMillis
         val now = nowMillis()
-        if (expiresAt == null || (expiresAt > now && expiresAt - now > 60_000)) return@withLock Result.success(current)
-        val result = auth.refresh(clientId, current)
-        if (result.isFailure) return@withLock result
-        try {
+        if (expiresAt == null || (expiresAt > now && expiresAt - now > 60_000)) return Result.success(current)
+        val key = clientId to current.revision
+        val task = synchronized(lifecycle) {
+            if (closing) return Result.failure(IllegalStateException("credential rotation is closing"))
+            pending[key] ?: scope.async(start = CoroutineStart.LAZY) {
+                rotate(clientId, current)
+            }.also { rotation ->
+                pending[key] = rotation
+                rotation.invokeOnCompletion { synchronized(lifecycle) { pending.remove(key, rotation) } }
+                rotation.start()
+            }
+        }
+        // A paused sync can stop waiting without cancelling a rotation accepted by the server.
+        return task.await()
+    }
+
+    private suspend fun rotate(clientId: String, current: GitHubStoredCredential): Result<GitHubStoredCredential> {
+        return try {
+            val latest = store.read()
+            if (latest?.revision != current.revision) {
+                // A caller may have read the old revision just before another rotation published.
+                // Explicit authorization changes are fenced by the session's authorization epoch.
+                return latest?.let { Result.success(it) }
+                    ?: Result.failure(IllegalStateException("authorization required"))
+            }
+            val result = withTimeoutOrNull(30_000L) { auth.refresh(clientId, current) }
+                ?: return Result.failure(
+                    GitHubAuthException(
+                        GitHubAuthFailure(GitHubAuthFailureReason.HTTP, "token refresh timed out", true),
+                    ),
+                )
+            if (result.isFailure) return result
             Result.success(store.replace(current.revision, result.getOrThrow().credential))
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Exception) {
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
             Result.failure(IllegalStateException("credential storage failed"))
+        }
+    }
+
+    internal suspend fun finishRotations() {
+        val tasks = synchronized(lifecycle) {
+            closing = true
+            pending.values.toList()
+        }
+        try {
+            // Request time is bounded from dispatch. Once the response is known, let the
+            // secure store finish its atomic commit before the application closes the network.
+            tasks.joinAll()
+        } finally {
+            scope.cancel()
         }
     }
 }

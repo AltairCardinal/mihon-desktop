@@ -110,6 +110,15 @@ enum class SyncJournalOperation {
 enum class SyncJournalIoState { OK, UNAVAILABLE, CORRUPT, FAILED }
 
 @Serializable
+enum class SyncJournalRefreshOutcome {
+    CLIENT_REJECTED,
+    TOKEN_REJECTED,
+    OTHER_ERROR,
+    MALFORMED_RESPONSE,
+    TOKEN_RECEIVED,
+}
+
+@Serializable
 data class SyncJournalThrowable(
     val type: String,
     val relation: String = "root",
@@ -133,6 +142,7 @@ data class SyncJournalEvent(
     val operation: SyncJournalOperation? = null,
     val environment: SyncDiagnosticEnvironment? = null,
     val databaseErrorCode: Int? = null,
+    val refreshOutcome: SyncJournalRefreshOutcome? = null,
 )
 
 @Serializable
@@ -183,6 +193,7 @@ class SyncDiagnosticJournal(
         trigger: SyncTrigger? = null,
         attemptId: Long? = null,
         operation: SyncJournalOperation? = null,
+        refreshOutcome: SyncJournalRefreshOutcome? = null,
     ) {
         synchronized(lock) {
             try {
@@ -192,6 +203,7 @@ class SyncDiagnosticJournal(
                     requestId?.let(::runAlias), networkPhase, httpStatus?.takeIf { it in 100..599 },
                     nextRetryAt, failure?.safeThrowableGraph().orEmpty(), trigger, attemptId, operation, environment,
                     databaseErrorCode = failure?.syncDatabaseErrorCode()?.takeIf { it in 1..65_535 },
+                    refreshOutcome = refreshOutcome,
                 )
                 while (json.encodeToString(event).encodeToByteArray().size > MAX_EVENT_BYTES) {
                     val longest = event.exceptions.indices.maxByOrNull { event.exceptions[it].frames.size } ?: break
@@ -353,9 +365,11 @@ data class SyncJournalContext(
         httpStatus: Int? = null,
         requestId: String? = null,
         operation: SyncJournalOperation? = null,
+        refreshOutcome: SyncJournalRefreshOutcome? = null,
     ) = journal.record(
         kind, stage, runId, code, failure, networkPhase, httpStatus,
         requestId = requestId, attemptId = attemptId, trigger = trigger, operation = operation,
+        refreshOutcome = refreshOutcome,
     )
 }
 

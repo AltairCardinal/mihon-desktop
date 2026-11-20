@@ -2,14 +2,90 @@ package mihon.data.sync
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import mihon.data.sync.http.SyncHttpBodyDirection
+import mihon.data.sync.runtime.SyncBatchWork
 import mihon.data.sync.runtime.SyncLiveProgressSession
 import mihon.data.sync.runtime.SyncProgressDirection
 import mihon.data.sync.runtime.SyncProgressFact
 import mihon.data.sync.runtime.SyncProgressStage
+import mihon.data.sync.runtime.SyncRunPlan
+import mihon.data.sync.runtime.SyncRunPlanBatch
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
 class SyncLiveProgressSessionTest {
+    @Test
+    fun `group transfer advances both members and rolls back only unconfirmed work`() {
+        val sink = MutableStateFlow<SyncProgressFact?>(null)
+        val session = SyncLiveProgressSession("group", sink)
+        session.plan(
+            SyncRunPlan(
+                listOf(
+                    SyncRunPlanBatch(SyncProgressDirection.UPLOAD, "confirmed", 3, confirmed = true),
+                    SyncRunPlanBatch(SyncProgressDirection.UPLOAD, "first", 8),
+                    SyncRunPlanBatch(SyncProgressDirection.UPLOAD, "second", 4),
+                ),
+            ),
+        )
+        session.startUploadTransfer(listOf("first", "second"))
+        session.begin(session.scope("upload"), SyncProgressStage.TRANSFERRING, SyncProgressDirection.UPLOAD, 12)
+        fun upload(request: Long, bytes: Long, key: String) {
+            session.onBodyWorkBytes(SyncHttpBodyDirection.UPLOAD, request, bytes, 100, key)
+        }
+        fun processed() = session.snapshot().batchProgress?.processedRunItems
+
+        upload(1, 75, "first:tree:base")
+        assertEquals(12L, processed())
+        upload(2, 50, "first:tree:base")
+        assertEquals(12L, processed())
+        upload(3, 100, "first:commit:metadata")
+        assertEquals(12L, processed())
+        upload(4, 50, "second:batch-payload:path")
+        assertEquals(13L, processed())
+        session.finishBatchWork(false)
+        assertEquals(3L, processed())
+
+        session.startUploadTransfer(listOf("first", "second"))
+        upload(5, 75, "first:tree:base")
+        assertEquals(12L, processed())
+    }
+
+    @Test
+    fun `batch item progress weights unequal batches and rollback retains committed work`() {
+        val sink = MutableStateFlow<SyncProgressFact?>(null)
+        val session = SyncLiveProgressSession("run", sink)
+        session.plan(
+            SyncRunPlan(
+                listOf(
+                    SyncRunPlanBatch(SyncProgressDirection.DOWNLOAD, "small", 32, confirmed = true),
+                    SyncRunPlanBatch(SyncProgressDirection.DOWNLOAD, "large", 256),
+                    SyncRunPlanBatch(SyncProgressDirection.UPLOAD, "last", 3),
+                ),
+            ),
+        )
+        session.startBatch(SyncProgressDirection.DOWNLOAD, "large", SyncBatchWork.WRITING)
+        session.batchItems(87)
+        val partial = requireNotNull(session.snapshot().batchProgress)
+        assertEquals(2, partial.ordinal)
+        assertEquals(3, partial.batchCount)
+        assertEquals(119L, partial.processedRunItems)
+        assertEquals(291L, partial.plannedRunItems)
+        session.finishBatchWork(false)
+        assertEquals(32L, session.snapshot().batchProgress!!.processedRunItems)
+        session.batchItems(256)
+        session.finishBatchWork(true)
+        session.startBatch(SyncProgressDirection.UPLOAD, "last", SyncBatchWork.PREPARING)
+        session.batchItems(2)
+        assertEquals(288L, session.snapshot().batchProgress!!.processedRunItems)
+        session.begin(session.scope("upload"), SyncProgressStage.TRANSFERRING, SyncProgressDirection.UPLOAD, 3)
+        session.onBodyWorkBytes(SyncHttpBodyDirection.UPLOAD, 1, 2, 3, "last:tree")
+        assertEquals(290L, session.snapshot().batchProgress!!.processedRunItems)
+        session.finishBatchWork(false)
+        assertEquals(288L, session.snapshot().batchProgress!!.processedRunItems)
+        session.startBatch(SyncProgressDirection.DOWNLOAD, "outside-plan", SyncBatchWork.WRITING)
+        session.batchItems(999)
+        assertEquals(null, session.snapshot().batchProgress)
+    }
+
     @Test
     fun `rapid byte and batch callbacks publish at most every 250 milliseconds`() {
         var nowMillis = 0L

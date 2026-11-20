@@ -51,6 +51,19 @@ SELECT EXISTS(SELECT 1 FROM sync_metadata_imports WHERE space_id = ? AND generat
 markMetadataImport:
 INSERT INTO sync_metadata_imports(space_id, generation) VALUES (?, ?);
 
+CREATE TABLE sync_favorite_date_imports (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    PRIMARY KEY(space_id, generation),
+    FOREIGN KEY(space_id, generation) REFERENCES sync_spaces(space_id, generation)
+);
+
+hasFavoriteDateImport:
+SELECT EXISTS(SELECT 1 FROM sync_favorite_date_imports WHERE space_id = ? AND generation = ?);
+
+markFavoriteDateImport:
+INSERT OR IGNORE INTO sync_favorite_date_imports(space_id, generation) VALUES (?, ?);
+
 getCategorySnapshotMangas:
 SELECT M._id FROM mangas M WHERE M._id > :afterId
 AND (:sourceId IS NULL OR M.source = :sourceId) AND (:mangaUrl IS NULL OR M.url = :mangaUrl)
@@ -110,13 +123,18 @@ INSERT INTO sync_imports(import_id, space_id, generation, origin, actor_id, epoc
 VALUES (?, ?, ?, ?, ?, ?, ?);
 
 freezeFavorites:
-INSERT INTO sync_import_entries(import_id, category, source_id, object_url, title, author, artist, thumbnail)
-SELECT :importId, 'FAVORITE', M.source, M.url, M.title, M.author, M.artist, M.thumbnail_url
-FROM mangas M WHERE M.favorite = 1
-AND (:sourceId IS NULL OR M.source = :sourceId) AND (:mangaUrl IS NULL OR M.url = :mangaUrl)
-AND M._id = (
-    SELECT min(D._id) FROM mangas D WHERE D.source = M.source AND D.url = M.url AND D.favorite = 1
-);
+-- The import row timestamp becomes the event's occurredAt, as for frozen reading entries.
+INSERT INTO sync_import_entries(import_id, category, source_id, object_url, title, author, artist, thumbnail, read_at)
+SELECT :importId, 'FAVORITE', M.source, M.url, M.title, M.author, M.artist, M.thumbnail_url,
+    coalesce(F.favorite_date, 0)
+FROM (
+    SELECT min(_id) AS manga_id, min(CASE WHEN date_added > 0 THEN date_added END) AS favorite_date
+    FROM mangas WHERE favorite = 1
+    AND (:sourceId IS NULL OR source = :sourceId) AND (:mangaUrl IS NULL OR url = :mangaUrl)
+    GROUP BY source, url
+) F JOIN mangas M ON M._id = F.manga_id
+WHERE (:knownDatesOnly = 0 OR F.favorite_date IS NOT NULL)
+ORDER BY M._id;
 
 freezeFollows:
 INSERT INTO sync_import_entries(import_id, category, portable_key, title)

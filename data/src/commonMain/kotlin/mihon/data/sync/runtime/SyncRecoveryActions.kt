@@ -83,7 +83,9 @@ internal fun SyncPanelState.recoveryDecision(): SyncRecoveryActionDecision {
     }
     authFailure?.takeIf { !recoveryConditionsVerified && !latestSetupObservation }?.let { failure ->
         return when (failure) {
-            GitHubAuthFailureReason.HTTP -> ready(SyncRecoveryAction.NETWORK)
+            GitHubAuthFailureReason.HTTP,
+            GitHubAuthFailureReason.REFRESH_CLIENT_REJECTED,
+            -> ready(SyncRecoveryAction.NETWORK)
             GitHubAuthFailureReason.MALFORMED_RESPONSE -> ready(SyncRecoveryAction.NETWORK)
             GitHubAuthFailureReason.RATE_LIMITED -> SyncRecoveryActionDecision(
                 SyncRecoveryAction.WAIT_EXTERNAL,

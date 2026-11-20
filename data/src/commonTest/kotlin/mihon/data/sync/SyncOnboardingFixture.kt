@@ -2,8 +2,11 @@ package mihon.data.sync
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -151,8 +154,9 @@ internal class SyncOnboardingFixture(
         persistentObjectCacheDirectory: Path? = null,
         progressTelemetryEnabled: Boolean = true,
         failureLogDirectory: Path? = null,
+        secureStore: SyncSecureStore = secure,
     ): SyncRuntime = SyncRuntime(
-        storage.handler, storage.bootstrap, storage.creators, storage.creators, { sourceAvailable(it) }, secure,
+        storage.handler, storage.bootstrap, storage.creators, storage.creators, { sourceAvailable(it) }, secureStore,
         preferences, client, endpoints, clock = { now },
         persistentObjectCacheDirectory = persistentObjectCacheDirectory,
         failureLogDirectory = failureLogDirectory,
@@ -230,6 +234,7 @@ internal class MemorySyncSecureStore : SyncSecureStore {
     var readFailure = false
     var nextSpaceRead: Pair<CompletableDeferred<Unit>, CompletableDeferred<Unit>>? = null
     var nextSpaceReadCoroutineName: String? = null
+    var nextSpaceReadWaitsForReleaseOnCancel = false
     val values = ConcurrentHashMap<String, String>()
     var fail = false
     var rejectConnectedSetup = false
@@ -248,7 +253,12 @@ internal class MemorySyncSecureStore : SyncSecureStore {
         }?.let { gate ->
             nextSpaceRead = null
             gate.first.complete(Unit)
-            gate.second.await()
+            if (nextSpaceReadWaitsForReleaseOnCancel) {
+                withContext(NonCancellable) { gate.second.await() }
+                coroutineContext.ensureActive()
+            } else {
+                gate.second.await()
+            }
         }
         return values[key]
     }
