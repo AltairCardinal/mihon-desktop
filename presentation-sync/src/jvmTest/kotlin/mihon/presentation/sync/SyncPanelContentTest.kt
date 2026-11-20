@@ -2277,7 +2277,7 @@ class SyncPanelContentTest {
     }
 
     @Test
-    fun `compact whole plan excludes work totals body percentages and local ETA`() = rendered(
+    fun `compact whole plan shows active work separately from durable confirmation`() = rendered(
         connected().copy(
             run = visualRun(SyncRunPhase.UPLOADING).copy(plannedItems = 20_000),
             progress = SyncProgressFact(
@@ -2304,7 +2304,9 @@ class SyncPanelContentTest {
         assertTrue(texts().contains("总条目已处理 0/20000 条"))
         assertTrue(texts().any { it.startsWith("已用时 ") })
         assertTrue(texts().any { it.contains("预计剩余 —") })
-        assertFalse(texts().any { it.contains("6144") || it.contains("62%") || it.contains("12 秒") })
+        assertTrue(hasTag("sync-active-work"))
+        assertTrue(texts().any { it.contains("6144") || it.contains("6,144") })
+        assertFalse(texts().any { it.contains("62%") || it.contains("12 秒") })
     }
 
     @Test

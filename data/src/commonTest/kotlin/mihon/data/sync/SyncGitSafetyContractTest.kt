@@ -250,6 +250,106 @@ class SyncGitSafetyContractTest {
     }
 
     @Test
+    fun `contiguous group publishes one ref and recovers the same frozen bytes`() = runTest {
+        GitFixture(realTreeOids = true).use { git ->
+            val transport = git.transport()
+            transport.initialize(repository, "space", 1)
+            val snapshot = transport.readSnapshot(repository, "space", 1).getOrThrow()
+            val firstBatch = batch("device-a")
+            val secondId = "device-a-batch-2"
+            val secondBatch = firstBatch.copy(
+                batchId = secondId,
+                events = firstBatch.events.map { it.copy(seq = 2, batchId = secondId) },
+            )
+            val service = SyncBatchSyncService(transport, secret)
+            val first = service.prepare(snapshot, firstBatch, path(firstBatch))
+            val second = transport.prepareFollowing(
+                snapshot,
+                first,
+                SyncBatchEncryption.encrypt(
+                    SyncAeadEngineFactory.create(),
+                    secret,
+                    secondBatch,
+                    ".mihon-sync/batches/device-a/1/$secondId.json",
+                ),
+            )
+            val refs = git.refPatchBranches.size
+            val published = transport.publishGroup(repository, snapshot, listOf(first, second)) {}
+            assertEquals(SyncPublishStatus.PUBLISHED, published.status)
+            assertEquals(refs + 1, git.refPatchBranches.size)
+            val confirmed = requireNotNull(published.confirmedSnapshot)
+            assertEquals(listOf(firstBatch.batchId, secondId), confirmed.batches.map { it.batchId })
+            val receiver = SyncBatchSyncService(git.transport(), secret)
+            assertEquals(firstBatch, receiver.receive(confirmed, confirmed.batches[0]).batch)
+            assertEquals(secondBatch, receiver.receive(confirmed, confirmed.batches[1]).batch)
+            val restored = git.transport().publishGroup(repository, snapshot, listOf(first, second)) {}
+            assertEquals(SyncPublishStatus.PUBLISHED, restored.status)
+            assertEquals(refs + 1, git.refPatchBranches.size)
+        }
+    }
+
+    @Test
+    fun `published exact commit confirms without rereading tree or blobs`() = runTest {
+        GitFixture(realTreeOids = true).use { git ->
+            val transport = git.transport()
+            transport.initialize(repository, "space", 1)
+            val snapshot = transport.readSnapshot(repository, "space", 1).getOrThrow()
+            val trees = git.treeRequests
+            val blobs = git.blobReads
+            val input = batch("device-a")
+            val result = SyncBatchSyncService(
+                transport,
+                secret,
+            ).upload(repository, snapshot, input, path(input), persist = {
+            })
+            assertEquals(SyncPublishStatus.PUBLISHED, result.publish.status)
+            assertEquals(trees, git.treeRequests)
+            assertEquals(blobs, git.blobReads)
+            val confirmed = requireNotNull(result.publish.confirmedSnapshot)
+            assertEquals(
+                input,
+                SyncBatchSyncService(git.transport(), secret).receive(confirmed, confirmed.batches.single()).batch,
+            )
+        }
+    }
+
+    @Test
+    fun `independent snapshot index objects load concurrently within a bounded window`() = runTest {
+        GitFixture(realTreeOids = true).use { git ->
+            val sender = git.transport()
+            sender.initialize(repository, "space", 1)
+            for (actor in listOf("device-a", "device-b")) {
+                val input = batch(actor)
+                val snapshot = sender.readSnapshot(repository, "space", 1).getOrThrow()
+                assertEquals(
+                    SyncPublishStatus.PUBLISHED,
+                    SyncBatchSyncService(sender, secret).upload(repository, snapshot, input, path(input), persist = {
+                    }).publish.status,
+                )
+            }
+            val original = git.server.dispatcher
+            val pair = CountDownLatch(2)
+            val readers = AtomicInteger()
+            val peak = AtomicInteger()
+            git.server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    if (request.method == "GET" && "/git/blobs/" in request.url.encodedPath) {
+                        val current = readers.incrementAndGet()
+                        peak.accumulateAndGet(current, ::maxOf)
+                        pair.countDown()
+                        val overlapped = pair.await(2, TimeUnit.SECONDS)
+                        readers.decrementAndGet()
+                        if (!overlapped) return MockResponse(code = 500)
+                    }
+                    return original.dispatch(request)
+                }
+            }
+            assertTrue(git.transport().readSnapshot(repository, "space", 1).isSuccess)
+            assertTrue(peak.get() in 2..4)
+        }
+    }
+
+    @Test
     fun `re-reading an unchanged snapshot only probes ref`() = runTest {
         GitFixture().use { git ->
             val transport = git.transport()

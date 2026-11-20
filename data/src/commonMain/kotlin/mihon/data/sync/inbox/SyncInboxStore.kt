@@ -272,7 +272,15 @@ class SyncInboxExchange(private val store: SyncInboxStore, private val service: 
         onItemsWritten: (Long) -> Unit = {},
     ): SyncReceptionResult {
         if (!snapshotAlreadyObserved) store.observeSnapshot(snapshot)
-        val received = service.receive(snapshot, entry)
+        return storeReceived(snapshot, entry, service.receive(snapshot, entry), onItemsWritten)
+    }
+
+    internal suspend fun storeReceived(
+        snapshot: SyncSnapshot,
+        entry: SyncBatchIndexEntry,
+        received: mihon.domain.sync.transport.SyncReceiveResult,
+        onItemsWritten: (Long) -> Unit = {},
+    ): SyncReceptionResult {
         val batch = received.batch ?: run {
             // A structurally invalid batch is terminal for this discovered entry; network
             // failures throw before this branch and leave it durable for a later retry.

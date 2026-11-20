@@ -1,6 +1,9 @@
 package mihon.data.sync.runtime
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.yield
 import mihon.data.sync.http.NoopSyncMetrics
 import mihon.data.sync.http.SyncHttpException
@@ -13,6 +16,7 @@ import mihon.data.sync.inbox.SyncInboxStore
 import mihon.data.sync.journal.SyncBaselineStore
 import mihon.data.sync.journal.SyncOutboxExchange
 import mihon.data.sync.journal.SyncOutboxStore
+import mihon.data.sync.journal.SyncPublishedBatches
 import mihon.data.sync.transport.GitHubSyncTransport
 import mihon.data.sync.transport.SyncBatchSyncService
 import mihon.data.sync.transport.SyncRemoteSnapshotRejected
@@ -68,7 +72,11 @@ class SyncDatabaseExchange(
         runCatching { onOperationProgress(stage, completed) }
     }
 
-    suspend fun exchange(spaceId: String, generation: Long, repository: SyncRepository): SyncRunResult {
+    suspend fun exchange(
+        spaceId: String,
+        generation: Long,
+        repository: SyncRepository,
+    ): SyncRunResult = coroutineScope {
         var diagnosticStage = SyncJournalStage.CHECKING
         var runPlan = progress?.plan()
         val persistentPlan = progress?.supportsFrozenPlan == true
@@ -89,11 +97,11 @@ class SyncDatabaseExchange(
         var uploadRemainingExpected = 0L
         var frozenUploadBatchIds = emptyList<String>()
         var frozenUploadBatchIndex = 0
-        var activeUploadBatchId: String? = null
-        var uploadCount = 0L
-        var uploadTransferFinished = false
+        val uploadCounts = linkedMapOf<String, Long>()
+        val transferredUploads = mutableSetOf<String>()
         var hasUnconfirmedProjection = false
         val receivedThisExchange = mutableSetOf<String>()
+        var snapshotRequest: Job? = null
         var finalHeadVerified = false
         try {
             operation(SyncOperationStage.BASELINE, 0.0)
@@ -102,7 +110,21 @@ class SyncDatabaseExchange(
                     it.active && it.exchange_enabled
                 } == true
             }
-            if (!enabled) return SyncRunResult(SyncRunStatus.SKIPPED)
+            if (!enabled) return@coroutineScope SyncRunResult(SyncRunStatus.SKIPPED)
+            val githubTransport = transport as? GitHubSyncTransport
+            githubTransport?.installSnapshotFenceProvider { candidateSpace, candidateGeneration ->
+                inboxStore.remoteGuard.captureFence(candidateSpace, candidateGeneration, snapshotOwner)
+            }
+            val initialSnapshot = async {
+                try {
+                    transport.readSnapshot(repository, spaceId, generation)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    Result.failure(failure)
+                }
+            }
+            snapshotRequest = initialSnapshot
             if (runPlan == null && allowImport()) {
                 baseline.ensureMetadataBaseline(spaceId, generation)
                 baseline.ensureFavoriteDateBaseline(spaceId, generation)
@@ -153,25 +175,19 @@ class SyncDatabaseExchange(
                         entry.batchId,
                         entry.lastSeq - entry.firstSeq + 1,
                     )
-                    if (downloadScope != null) {
-                        liveProgress?.begin(
-                            requireNotNull(downloadScope),
-                            SyncProgressStage.CONFIRMING,
-                            SyncProgressDirection.DOWNLOAD,
-                            downloadTotal,
-                        )
-                    }
                 },
             )
             val inbox = SyncInboxExchange(store, service)
             val outboxStore = SyncOutboxStore(handler)
             val outbox = SyncOutboxExchange(outboxStore, service)
-            val githubTransport = transport as? GitHubSyncTransport
+            // A previous process may have moved the ref before observing or acknowledging its group.
+            val pendingGroupIds = outboxStore.pendingGroupMemberIds(spaceId, generation)
             githubTransport?.onBatchObjectsUploaded { batchId ->
-                if (batchId == activeUploadBatchId) {
+                if (batchId in uploadCounts) {
                     liveProgress?.batchWork(SyncBatchWork.CONFIRMING)
-                    liveProgress?.batch(SyncProgressStage.TRANSFERRING, batchId, uploadCount)
-                    uploadTransferFinished = true
+                    uploadCounts.forEach { (id, count) ->
+                        if (transferredUploads.add(id)) liveProgress?.batch(SyncProgressStage.TRANSFERRING, id, count)
+                    }
                     liveProgress?.begin(
                         requireNotNull(uploadScope),
                         SyncProgressStage.CONFIRMING,
@@ -181,7 +197,7 @@ class SyncDatabaseExchange(
                 }
             }
             githubTransport?.onBatchTransferResumed { batchId ->
-                if (batchId == activeUploadBatchId && uploadScope != null) {
+                if (batchId in uploadCounts && uploadScope != null) {
                     liveProgress?.begin(
                         requireNotNull(uploadScope),
                         SyncProgressStage.TRANSFERRING,
@@ -190,15 +206,12 @@ class SyncDatabaseExchange(
                     )
                 }
             }
-            githubTransport?.installSnapshotFenceProvider { candidateSpace, candidateGeneration ->
-                store.remoteGuard.captureFence(candidateSpace, candidateGeneration, snapshotOwner)
-            }
-            suspend fun observeSnapshot(snapshot: SyncSnapshot, excludedBatchId: String? = null) {
+            suspend fun observeSnapshot(snapshot: SyncSnapshot, excludedBatchIds: Set<String> = emptySet()) {
                 val fence = githubTransport?.takeSnapshotFence(snapshot)
                 val admission = githubTransport?.takeWarmAdmission(snapshot)
                 if (admission != null && store.confirmWarmSnapshot(snapshot, admission, fence)) return
                 val manifest = githubTransport?.takeSnapshotManifest(snapshot)
-                store.observeSnapshot(snapshot, discovery, manifest, setOfNotNull(excludedBatchId), fence)
+                store.observeSnapshot(snapshot, discovery, manifest, excludedBatchIds + pendingGroupIds, fence)
             }
             suspend fun reconcileTotals() {
                 val published = handler.await {
@@ -224,7 +237,7 @@ class SyncDatabaseExchange(
                 SyncProgressDirection.DOWNLOAD,
             )
             operation(SyncOperationStage.DISCOVERY, 0.0)
-            var snapshot = transport.readSnapshot(repository, spaceId, generation).getOrThrow()
+            var snapshot = initialSnapshot.await().getOrThrow()
             if (persistentPlan) {
                 observeSnapshot(snapshot)
                 operation(SyncOperationStage.DISCOVERY)
@@ -312,72 +325,92 @@ class SyncDatabaseExchange(
                 }
                 val acceptedBatches = mutableListOf<Pair<String, Long>>()
                 if (discovered.isNotEmpty()) performedExchangeWork = true
-                for (entry in discovered) {
-                    liveProgress?.begin(
-                        requireNotNull(downloadScope),
-                        SyncProgressStage.TRANSFERRING,
-                        SyncProgressDirection.DOWNLOAD,
-                        downloadTotal,
-                    )
-                    progress?.expectDownload(entry.batchId, entry.lastSeq - entry.firstSeq + 1)
-                    liveProgress?.startBatch(SyncProgressDirection.DOWNLOAD, entry.batchId, SyncBatchWork.TRANSFERRING)
-                    val result = try {
-                        inbox.receive(
-                            snapshot,
-                            entry,
-                            snapshotAlreadyObserved = true,
-                            onItemsWritten = { count ->
-                                if (count == 1L) liveProgress?.batchWork(SyncBatchWork.WRITING)
-                                liveProgress?.batchItems(count)
-                            },
-                        ).also {
-                            if (it.accepted) liveProgress?.batchItems(entry.lastSeq - entry.firstSeq + 1)
-                            liveProgress?.finishBatchWork(it.accepted)
-                        }
+                fun prefetch(entry: mihon.domain.sync.transport.SyncBatchIndexEntry) = async {
+                    try {
+                        Result.success(service.receive(snapshot, entry))
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
                     } catch (failure: Exception) {
-                        liveProgress?.finishBatchWork(false)
-                        throw failure
+                        Result.failure(failure)
                     }
-                    if (result.accepted) {
-                        if (!result.duplicate) {
-                            liveProgress?.receivedBatch(
-                                entry.batchId,
-                                (entry.lastSeq - entry.firstSeq + 1).coerceAtLeast(0),
-                            )
-                        }
-                        if (!result.duplicate) {
-                            acceptedBatches += entry.batchId to (entry.lastSeq - entry.firstSeq + 1)
-                            receivedThisExchange += entry.batchId
-                        }
-                        if (!result.duplicate) {
-                            downloaded += (entry.lastSeq - entry.firstSeq + 1).toInt()
-                            downloadedTotal += (entry.lastSeq - entry.firstSeq + 1).coerceAtLeast(0)
-                            progress?.totals(uploadedTotal, downloadedTotal)
-                        }
-                        diagnosticStage = SyncJournalStage.MERGING
-                        diagnosticContext?.journal?.record(
-                            SyncJournalEventKind.PHASE,
-                            diagnosticStage,
-                            diagnosticContext.runId,
-                            attemptId = diagnosticContext.attemptId,
-                            trigger = diagnosticContext.trigger,
+                }
+                var prefetched = discovered.firstOrNull()?.let(::prefetch)
+                try {
+                    for ((index, entry) in discovered.withIndex()) {
+                        liveProgress?.begin(
+                            requireNotNull(downloadScope),
+                            SyncProgressStage.TRANSFERRING,
+                            SyncProgressDirection.DOWNLOAD,
+                            downloadTotal,
                         )
-                        progress?.phase(
-                            SyncRunPhase.MERGING,
-                            downloadedTotal,
-                            snapshot.batches.sumOf { (it.lastSeq - it.firstSeq + 1).toInt() }.toLong(),
-                            completed = downloadedTotal,
-                        )
-                        progress.logBatch(
-                            result.batch,
+                        progress?.expectDownload(entry.batchId, entry.lastSeq - entry.firstSeq + 1)
+                        liveProgress?.startBatch(
+                            SyncProgressDirection.DOWNLOAD,
                             entry.batchId,
-                            if (result.duplicate) "已确认重复数据" else "已接收",
+                            SyncBatchWork.TRANSFERRING,
                         )
-                    } else {
-                        problem = SyncRunProblem.INVALID_DATA
-                        progress?.log(entry.batchId, "同步数据", "数据无法读取", SyncRunLogStatus.FAILED)
+                        val result = try {
+                            val received = requireNotNull(prefetched).await().getOrThrow()
+                            prefetched = discovered.getOrNull(index + 1)?.let(::prefetch)
+                            inbox.storeReceived(
+                                snapshot,
+                                entry,
+                                received,
+                                onItemsWritten = { count ->
+                                    if (count == 1L) liveProgress?.batchWork(SyncBatchWork.WRITING)
+                                    liveProgress?.batchItems(count)
+                                },
+                            ).also {
+                                if (it.accepted) liveProgress?.batchItems(entry.lastSeq - entry.firstSeq + 1)
+                                liveProgress?.finishBatchWork(it.accepted)
+                            }
+                        } catch (failure: Exception) {
+                            liveProgress?.finishBatchWork(false)
+                            throw failure
+                        }
+                        if (result.accepted) {
+                            if (!result.duplicate) {
+                                liveProgress?.receivedBatch(
+                                    entry.batchId,
+                                    (entry.lastSeq - entry.firstSeq + 1).coerceAtLeast(0),
+                                )
+                            }
+                            if (!result.duplicate) {
+                                acceptedBatches += entry.batchId to (entry.lastSeq - entry.firstSeq + 1)
+                                receivedThisExchange += entry.batchId
+                            }
+                            if (!result.duplicate) {
+                                downloaded += (entry.lastSeq - entry.firstSeq + 1).toInt()
+                                downloadedTotal += (entry.lastSeq - entry.firstSeq + 1).coerceAtLeast(0)
+                                progress?.totals(uploadedTotal, downloadedTotal)
+                            }
+                            diagnosticStage = SyncJournalStage.MERGING
+                            diagnosticContext?.journal?.record(
+                                SyncJournalEventKind.PHASE,
+                                diagnosticStage,
+                                diagnosticContext.runId,
+                                attemptId = diagnosticContext.attemptId,
+                                trigger = diagnosticContext.trigger,
+                            )
+                            progress?.phase(
+                                SyncRunPhase.MERGING,
+                                downloadedTotal,
+                                snapshot.batches.sumOf { (it.lastSeq - it.firstSeq + 1).toInt() }.toLong(),
+                                completed = downloadedTotal,
+                            )
+                            progress.logBatch(
+                                result.batch,
+                                entry.batchId,
+                                if (result.duplicate) "已确认重复数据" else "已接收",
+                            )
+                        } else {
+                            problem = SyncRunProblem.INVALID_DATA
+                            progress?.log(entry.batchId, "同步数据", "数据无法读取", SyncRunLogStatus.FAILED)
+                        }
+                        yield()
                     }
-                    yield()
+                } finally {
+                    prefetched?.cancel()
                 }
                 liveProgress?.begin(
                     requireNotNull(downloadScope),
@@ -444,67 +477,83 @@ class SyncDatabaseExchange(
                         uploadRemainingExpected = frozen.totalItems
                     }
                 }
-                val frozenBatchId = if (!persistentPlan && liveProgress == null) {
-                    null
-                } else {
-                    frozenUploadBatchIds.getOrNull(frozenUploadBatchIndex)
+                uploadCounts.clear()
+                transferredUploads.clear()
+                val onPreparingBatch: (SyncBatch) -> Unit = { batch ->
+                    uploadCounts[batch.batchId] = batch.events.size.toLong()
+                    if (uploadScope != null) {
+                        liveProgress?.begin(
+                            requireNotNull(uploadScope),
+                            SyncProgressStage.PREPARING,
+                            SyncProgressDirection.UPLOAD,
+                            uploadRoundTotal,
+                            additionalWork = uploadRound > 1,
+                        )
+                    }
                 }
-                val result = if ((persistentPlan || liveProgress != null) && frozenBatchId == null) {
-                    null
-                } else {
-                    outbox.uploadNext(
+                val onPreparedBatch: (SyncBatch) -> Unit = { batch ->
+                    liveProgress?.finishBatchWork(true)
+                    liveProgress?.batchWork(SyncBatchWork.TRANSFERRING)
+                    if (uploadScope != null) {
+                        liveProgress?.batch(
+                            SyncProgressStage.PREPARING,
+                            batch.batchId,
+                            batch.events.size.toLong(),
+                        )
+                        liveProgress?.begin(
+                            requireNotNull(uploadScope),
+                            SyncProgressStage.TRANSFERRING,
+                            SyncProgressDirection.UPLOAD,
+                            uploadRoundTotal,
+                        )
+                    }
+                }
+                val onConfirmedBatch: (SyncBatch) -> Unit = { batch ->
+                    val count = batch.events.size.toLong()
+                    if (uploadScope != null) {
+                        if (transferredUploads.add(batch.batchId)) {
+                            liveProgress?.batch(SyncProgressStage.TRANSFERRING, batch.batchId, count)
+                            liveProgress?.begin(
+                                requireNotNull(uploadScope),
+                                SyncProgressStage.CONFIRMING,
+                                SyncProgressDirection.UPLOAD,
+                                uploadRoundTotal,
+                            )
+                        }
+                    }
+                    uploadRemainingExpected = (uploadRemainingExpected - count).coerceAtLeast(0)
+                }
+                val result = if (persistentPlan || liveProgress != null) {
+                    outbox.uploadPlanned(
                         snapshot,
+                        frozenUploadBatchIds.drop(frozenUploadBatchIndex).take(2),
                         ::observeSnapshot,
-                        allowPublish = allowPublish,
-                        frozenBatchId = frozenBatchId,
+                        onPreparingBatch,
+                        onPreparedBatch,
+                        onConfirmedBatch,
                         onItemRead = { batchId, count ->
                             if (count == 1L) {
                                 liveProgress?.startBatch(SyncProgressDirection.UPLOAD, batchId, SyncBatchWork.PREPARING)
                             }
                             liveProgress?.batchItems(count)
                         },
-                        onPreparingBatch = { batch ->
-                            activeUploadBatchId = batch.batchId
-                            uploadCount = batch.events.size.toLong()
-                            uploadTransferFinished = false
-                            if (uploadScope != null) {
-                                liveProgress?.begin(
-                                    requireNotNull(uploadScope),
-                                    SyncProgressStage.PREPARING,
-                                    SyncProgressDirection.UPLOAD,
-                                    uploadRoundTotal,
-                                    additionalWork = uploadRound > 1,
-                                )
-                            }
-                        },
-                        onPreparedBatch = { batch ->
-                            liveProgress?.finishBatchWork(true)
-                            liveProgress?.batchWork(SyncBatchWork.TRANSFERRING)
-                            if (uploadScope != null) {
-                                liveProgress?.batch(SyncProgressStage.PREPARING, batch.batchId, uploadCount)
-                                liveProgress?.begin(
-                                    requireNotNull(uploadScope),
-                                    SyncProgressStage.TRANSFERRING,
-                                    SyncProgressDirection.UPLOAD,
-                                    uploadRoundTotal,
-                                )
-                            }
-                        },
-                        onConfirmedBatch = { batch ->
-                            if (uploadScope != null) {
-                                if (!uploadTransferFinished) {
-                                    liveProgress?.batch(SyncProgressStage.TRANSFERRING, batch.batchId, uploadCount)
-                                    liveProgress?.begin(
-                                        requireNotNull(uploadScope),
-                                        SyncProgressStage.CONFIRMING,
-                                        SyncProgressDirection.UPLOAD,
-                                        uploadRoundTotal,
-                                    )
-                                }
-                            }
-                            uploadRemainingExpected = (uploadRemainingExpected - uploadCount).coerceAtLeast(0)
-                        },
+                        allowPublish = allowPublish,
                     )
+                } else {
+                    outbox.uploadNext(
+                        snapshot,
+                        { observed, excluded -> observeSnapshot(observed, setOfNotNull(excluded)) },
+                        onPreparingBatch,
+                        onPreparedBatch,
+                        onConfirmedBatch,
+                        onItemRead = { batchId, count ->
+                            if (count == 1L) {
+                                liveProgress?.startBatch(SyncProgressDirection.UPLOAD, batchId, SyncBatchWork.PREPARING)
+                            }
+                            liveProgress?.batchItems(count)
+                        },
+                        allowPublish = allowPublish,
+                    )?.let { SyncPublishedBatches(it.publish, listOf(requireNotNull(it.batch))) }
                 }
                 if (result == null) {
                     // No-op runs stop after their initial snapshot. When this exchange moved data,
@@ -584,18 +633,14 @@ class SyncDatabaseExchange(
                     )
                     break
                 }
-                if (persistentPlan || liveProgress != null) frozenUploadBatchIndex++
-                val publishedCount = handler.await {
-                    sync_journalQueries.getBatch(spaceId, generation, result.publish.batchId).executeAsOne().event_count
-                }.toInt()
-                progress?.confirmed(
-                    SyncProgressDirection.UPLOAD,
-                    result.publish.batchId,
-                    publishedCount.toLong(),
-                )
-                liveProgress?.batch(SyncProgressStage.CONFIRMING, result.publish.batchId, publishedCount.toLong())
-                uploaded += publishedCount
-                uploadedTotal += publishedCount
+                if (persistentPlan || liveProgress != null) frozenUploadBatchIndex += result.batches.size
+                for (batch in result.batches) {
+                    val count = batch.events.size
+                    progress?.confirmed(SyncProgressDirection.UPLOAD, batch.batchId, count.toLong())
+                    liveProgress?.batch(SyncProgressStage.CONFIRMING, batch.batchId, count.toLong())
+                    uploaded += count
+                    uploadedTotal += count
+                }
                 progress?.totals(uploadedTotal, downloadedTotal)
                 diagnosticStage = SyncJournalStage.CONFIRMING
                 diagnosticContext?.journal?.record(
@@ -606,7 +651,7 @@ class SyncDatabaseExchange(
                     trigger = diagnosticContext.trigger,
                 )
                 progress?.phase(SyncRunPhase.CONFIRMING, uploadedTotal + downloadedTotal, 0)
-                progress.logBatch(result.batch, result.publish.batchId, "已确认上传")
+                result.batches.forEach { progress.logBatch(it, it.batchId, "已确认上传") }
                 yield()
                 // A successful publisher already read and authenticated the live ref. Reuse it for the next pass;
                 // transports that cannot return that evidence retain the conservative fresh-read fallback.
@@ -642,9 +687,11 @@ class SyncDatabaseExchange(
                 ?: LOCAL_DATABASE_RETRY_MILLIS.takeIf { failure.isRetryableSyncDatabaseFailure() }
             networkPhase = (failure as? SyncHttpException)?.networkPhase
             httpStatus = (failure as? SyncHttpException)?.code
+        } finally {
+            snapshotRequest?.cancel()
         }
         liveProgress?.let { runCatching { it.snapshot() } }
-        return SyncRunResult(
+        SyncRunResult(
             status = when {
                 problem == null && (pending > 0 || hasUnconfirmedProjection) -> SyncRunStatus.PARTIAL
                 problem == null -> SyncRunStatus.SUCCESS

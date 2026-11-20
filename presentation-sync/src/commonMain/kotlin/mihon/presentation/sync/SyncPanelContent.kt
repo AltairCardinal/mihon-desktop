@@ -3137,8 +3137,29 @@ private fun SyncCompactProgressCard(
                     presentation.operation != null -> presentation.action
                     else -> null
                 }
-                if (operationLabel != null) {
-                    Text(syncString(operationLabel), Modifier.testTag("sync-operation-stage"), style = textStyle)
+                val showActiveWork = !counting && presentation.active && run != null
+                val label = operationLabel ?: run?.takeIf { showActiveWork }?.let { activeRun ->
+                    fact?.let { progressStageAction(activeRun.phase, it) } ?: runPhaseLabel(activeRun.phase)
+                }
+                if (label != null) {
+                    val count = if (showActiveWork) {
+                        when {
+                            fact?.mergingReceivedData == true -> fact.checkedFields
+                            fact?.stage == SyncProgressStage.PREPARING ->
+                                fact.importCompletedItems ?: fact.completedItems
+                            fact?.stage == SyncProgressStage.TRANSFERRING -> fact.completedItems
+                            else -> 0L
+                        }
+                    } else {
+                        0L
+                    }
+                    val work = if (count > 0) {
+                        syncString(MR.strings.sync_active_work_count, syncString(label), count)
+                    } else {
+                        syncString(label)
+                    }
+                    val tag = if (operationLabel != null) "sync-operation-stage" else "sync-active-work"
+                    Text(work, Modifier.fillMaxWidth().testTag(tag), style = textStyle)
                 }
                 state.problem?.takeIf { run?.state == SyncRunState.PAUSED_USER && !state.syncResumeRequested }?.let {
                     Text(problemText(it), Modifier.testTag("sync-resume-problem"), style = textStyle)

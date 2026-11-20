@@ -1,5 +1,6 @@
 package mihon.data.sync.journal
 
+import kotlinx.serialization.json.Json
 import mihon.data.sync.crypto.SyncAeadEngineFactory
 import mihon.data.sync.transport.SyncBatchSyncService
 import mihon.data.sync.transport.SyncRemoteSnapshotGuard
@@ -97,6 +98,45 @@ class SyncOutboxStore(private val handler: DatabaseHandler) {
             upload
         }
 
+    internal suspend fun pendingGroupMemberIds(spaceId: String, generation: Long): Set<String> = handler.await {
+        sync_journalQueries.listUploadGroups(spaceId, generation).executeAsList()
+            .flatMap { Json.decodeFromString<List<String>>(it) }.toSet()
+    }
+
+    internal suspend fun uploadGroupMembers(first: SyncBatch): List<String>? = handler.await {
+        requireActive(first.spaceId, first.generation)
+        sync_journalQueries.getUploadGroup(first.spaceId, first.generation, first.batchId)
+            .executeAsOneOrNull()?.let { Json.decodeFromString<List<String>>(it) }
+    }
+
+    internal suspend fun savePreparedGroup(batches: List<SyncBatch>, uploads: List<SyncPreparedUpload>) =
+        handler.await(inTransaction = true) {
+            val first = batches.first()
+            requireActive(first.spaceId, first.generation)
+            require(batches.size == 2 && uploads.size == batches.size)
+            val ids = batches.map { it.batchId }
+            require(batches.zip(uploads).all { (batch, upload) -> savePrepared(batch, upload) == upload })
+            sync_journalQueries.insertUploadGroup(
+                first.spaceId,
+                first.generation,
+                first.batchId,
+                Json.encodeToString(ids),
+            )
+        }
+
+    internal suspend fun acknowledgeGroup(uploads: List<SyncPreparedUpload>, result: SyncPublishResult) =
+        handler.await(inTransaction = true) {
+            val first = uploads.first().encryptedBatch
+            requireActive(first.spaceId, first.generation)
+            require(result.batchId == first.batchId)
+            val members = sync_journalQueries.getUploadGroup(first.spaceId, first.generation, first.batchId)
+                .executeAsOne()
+            val ids = uploads.map { it.encryptedBatch.batchId }
+            require(ids == Json.decodeFromString<List<String>>(members))
+            uploads.forEach { acknowledge(it, result.copy(batchId = it.encryptedBatch.batchId)) }
+            sync_journalQueries.deleteUploadGroup(first.spaceId, first.generation, first.batchId)
+        }
+
     suspend fun acknowledge(upload: SyncPreparedUpload, result: SyncPublishResult) = handler.await(
         inTransaction = true,
     ) {
@@ -177,8 +217,78 @@ class SyncOutboxStore(private val handler: DatabaseHandler) {
     }
 }
 
-/** One bounded upload; application scheduling and receiving are separate responsibilities. */
+internal data class SyncPublishedBatches(val publish: SyncPublishResult, val batches: List<SyncBatch>)
+
+/** Application scheduling and receiving are separate from durable upload preparation and acknowledgement. */
 class SyncOutboxExchange(private val store: SyncOutboxStore, private val service: SyncBatchSyncService) {
+    internal suspend fun uploadPlanned(
+        snapshot: SyncSnapshot,
+        batchIds: List<String>,
+        observeSnapshot: suspend (SyncSnapshot, Set<String>) -> Unit,
+        onPreparingBatch: (SyncBatch) -> Unit,
+        onPreparedBatch: (SyncBatch) -> Unit,
+        onConfirmedBatch: (SyncBatch) -> Unit,
+        onItemRead: (String, Long) -> Unit = { _, _ -> },
+        allowPublish: Boolean = true,
+    ): SyncPublishedBatches? {
+        val firstId = batchIds.firstOrNull() ?: return null
+        val first = store.nextBatch(snapshot.spaceId, snapshot.generation, firstId, onItemRead) ?: return null
+        val savedIds = store.uploadGroupMembers(first)
+        if (savedIds != null) {
+            require(savedIds.size == 2 && batchIds.take(savedIds.size) == savedIds) {
+                "Durable upload group differs from the frozen plan"
+            }
+        }
+        val canPrepareGroup = allowPublish &&
+            snapshot.batches.none { it.batchId in batchIds.take(2) }
+        if (service.canPublishGroup && batchIds.size >= 2 && (savedIds != null || canPrepareGroup)) {
+            val second = store.nextBatch(snapshot.spaceId, snapshot.generation, batchIds[1], onItemRead)
+            val firstEvent = first.events.first()
+            val secondEvent = second?.events?.first()
+            if (second != null && secondEvent?.actorId == firstEvent.actorId && secondEvent.epoch == firstEvent.epoch &&
+                secondEvent.seq - 1 == first.events.last().seq &&
+                (savedIds != null || (store.prepared(first) == null && store.prepared(second) == null))
+            ) {
+                observeSnapshot(snapshot, emptySet())
+                val batches = listOf(first, second)
+                batches.forEach(onPreparingBatch)
+                val uploads = if (savedIds != null) {
+                    batches.map { requireNotNull(store.prepared(it)) }
+                } else {
+                    val head = service.prepare(snapshot, first, uploadPath(first))
+                    listOf(head, service.prepareFollowing(snapshot, head, second, uploadPath(second))).also {
+                        store.savePreparedGroup(batches, it)
+                    }
+                }
+                batches.forEach(onPreparedBatch)
+                val result = service.uploadGroup(snapshot, uploads, allowPublish) {
+                    observeSnapshot(it, batches.mapTo(mutableSetOf()) { it.batchId })
+                }
+                if (result.status == SyncPublishStatus.PUBLISHED) {
+                    store.acknowledgeGroup(uploads, result)
+                    batches.forEach(onConfirmedBatch)
+                }
+                return SyncPublishedBatches(result, batches)
+            }
+        }
+        check(savedIds == null) { "Durable upload group could not be resumed" }
+        return uploadNext(
+            snapshot,
+            { current, excluded -> observeSnapshot(current, setOfNotNull(excluded)) },
+            onPreparingBatch,
+            onPreparedBatch,
+            onConfirmedBatch,
+            firstId,
+            onItemRead,
+            allowPublish,
+        )?.let { SyncPublishedBatches(it.publish, listOf(requireNotNull(it.batch))) }
+    }
+
+    private fun uploadPath(batch: SyncBatch): String {
+        val first = batch.events.first()
+        return ".mihon-sync/batches/${first.actorId}/${first.epoch}/${batch.batchId}.json"
+    }
+
     suspend fun uploadNext(
         snapshot: SyncSnapshot,
         observeSnapshot: suspend (SyncSnapshot, String?) -> Unit = { current, _ -> store.observeSnapshot(current) },
@@ -191,6 +301,7 @@ class SyncOutboxExchange(private val store: SyncOutboxStore, private val service
     ): SyncUploadResult? {
         observeSnapshot(snapshot, null)
         val batch = store.nextBatch(snapshot.spaceId, snapshot.generation, frozenBatchId, onItemRead) ?: return null
+        check(store.uploadGroupMembers(batch) == null) { "A durable group must be published together" }
         runCatching { onPreparingBatch(batch) }
         if (!allowPublish && snapshot.batches.none { it.batchId == batch.batchId }) {
             throw SyncUploadReconciliationUnavailable()
@@ -200,8 +311,7 @@ class SyncOutboxExchange(private val store: SyncOutboxStore, private val service
             service.prepareRecovering(
                 snapshot,
                 batch,
-                ".mihon-sync/batches/${batch.events.first().actorId}/" +
-                    "${batch.events.first().epoch}/${batch.batchId}.json",
+                uploadPath(batch),
                 allowPublish = allowPublish,
             ),
         )

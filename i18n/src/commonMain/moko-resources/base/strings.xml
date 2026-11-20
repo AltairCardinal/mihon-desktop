@@ -1884,6 +1884,7 @@
     <string name="sync_items_transferred">Transferred %1$d / %2$d items</string>
     <string name="sync_items_confirmed">Confirmed %1$d / %2$d items</string>
     <string name="sync_items_prepared_unknown">Prepared %1$d items</string>
+    <string name="sync_active_work_count">%1$s · %2$d processed</string>
     <string name="sync_items_transferred_unknown">Transferred %1$d items</string>
     <string name="sync_items_confirmed_unknown">Confirmed %1$d items</string>
     <string name="sync_items_confirmed_this_run">Confirmed this run: %1$d items</string>

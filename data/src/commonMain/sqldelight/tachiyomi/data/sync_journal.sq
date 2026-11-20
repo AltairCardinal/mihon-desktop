@@ -44,6 +44,27 @@ CREATE TABLE sync_batches (
         REFERENCES sync_actors(space_id, generation, actor_id, epoch)
 );
 
+CREATE TABLE sync_upload_groups (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    first_batch_id TEXT NOT NULL,
+    members_json TEXT NOT NULL,
+    PRIMARY KEY (space_id, generation, first_batch_id),
+    FOREIGN KEY (space_id, generation, first_batch_id) REFERENCES sync_batches(space_id, generation, batch_id)
+);
+
+listUploadGroups:
+SELECT members_json FROM sync_upload_groups WHERE space_id = ? AND generation = ?;
+
+getUploadGroup:
+SELECT members_json FROM sync_upload_groups WHERE space_id = ? AND generation = ? AND first_batch_id = ?;
+
+insertUploadGroup:
+INSERT INTO sync_upload_groups(space_id, generation, first_batch_id, members_json) VALUES (?, ?, ?, ?);
+
+deleteUploadGroup:
+DELETE FROM sync_upload_groups WHERE space_id = ? AND generation = ? AND first_batch_id = ?;
+
 CREATE UNIQUE INDEX sync_one_open_batch ON sync_batches(space_id, generation, actor_id, epoch) WHERE status = 'OPEN';
 CREATE INDEX sync_pending_upload_round ON sync_batches(
     space_id, generation, actor_id, epoch, first_seq, batch_id, event_count
