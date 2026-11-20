@@ -46,6 +46,7 @@ class SyncBaselineStore(private val handler: DatabaseHandler, private val bootst
             val existing = sync_importQueries.getInitialImport(spaceId, generation).executeAsOneOrNull()
             if (existing != null) {
                 ensureMetadataBaseline(spaceId, generation)
+                ensureFavoriteDateBaseline(spaceId, generation)
                 return@await existing.import_id
             }
             val actor = sync_journalQueries.getActiveActor().executeAsOne()
@@ -59,11 +60,12 @@ class SyncBaselineStore(private val handler: DatabaseHandler, private val bootst
                 actor.epoch,
                 actor.next_seq,
             )
-            sync_importQueries.freezeFavorites(id, null, null)
+            sync_importQueries.freezeFavorites(id, null, null, knownDatesOnly = 0)
             sync_importQueries.freezeFollows(id, null)
             sync_importQueries.freezeReading(id, null, null)
             freezeMetadataSnapshots(id)
             sync_importQueries.markMetadataImport(spaceId, generation)
+            sync_importQueries.markFavoriteDateImport(spaceId, generation)
             sync_importQueries.setImportTotal(id)
             id
         }
@@ -108,7 +110,8 @@ class SyncBaselineStore(private val handler: DatabaseHandler, private val bootst
                 actor.epoch,
                 actor.next_seq,
             )
-            sync_importQueries.freezeFavorites(importId, null, null)
+            sync_importQueries.freezeFavorites(importId, null, null, knownDatesOnly = 0)
+            sync_importQueries.markFavoriteDateImport(spaceId, generation)
             sync_importQueries.freezeFollows(importId, null)
             sync_importQueries.freezeReading(importId, null, null)
             freezeMetadataSnapshots(importId)
@@ -141,6 +144,30 @@ class SyncBaselineStore(private val handler: DatabaseHandler, private val bootst
         val added = sync_importQueries.countImportEntries(importId).executeAsOne() - before
         sync_importQueries.incrementImportTotal(added, importId)
         sync_importQueries.markMetadataImport(spaceId, generation)
+    }
+
+    /** Publish dates from existing libraries through the lower-priority baseline import. */
+    suspend fun ensureFavoriteDateBaseline(spaceId: String, generation: Long) = handler.await(inTransaction = true) {
+        if (sync_importQueries.hasFavoriteDateImport(spaceId, generation).executeAsOne()) return@await
+        val actor = sync_journalQueries.getActiveActor().executeAsOneOrNull() ?: return@await
+        require(actor.space_id == spaceId && actor.generation == generation)
+        val existing = sync_importQueries.getInitialImport(spaceId, generation).executeAsOneOrNull()
+        val importId = existing?.import_id ?: UUID.randomUUID().toString().also {
+            sync_importQueries.insertImport(
+                it,
+                spaceId,
+                generation,
+                SyncOrigin.INITIAL_IMPORT.name,
+                actor.actor_id,
+                actor.epoch,
+                actor.next_seq,
+            )
+        }
+        val before = sync_importQueries.countImportEntries(importId).executeAsOne()
+        sync_importQueries.freezeFavorites(importId, null, null, knownDatesOnly = 1)
+        val added = sync_importQueries.countImportEntries(importId).executeAsOne() - before
+        sync_importQueries.incrementImportTotal(added, importId)
+        sync_importQueries.markFavoriteDateImport(spaceId, generation)
     }
 
     suspend fun process(importId: String, limit: Int = 50): SyncImportProgress {

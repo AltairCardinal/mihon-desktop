@@ -645,6 +645,8 @@ abstract class SyncInboxStorageContract {
         parent: SyncEventEnvelope? = null,
         key: SyncObjectKey = manga,
         actor: String = "device-a",
+        occurredAt: Long = 0,
+        origin: SyncOrigin = SyncOrigin.USER,
     ): SyncBatch {
         val event = SyncEventEnvelope(
             1, "space", 1, actor, 1, seq, SyncCategory.FAVORITE,
@@ -657,7 +659,10 @@ abstract class SyncInboxStorageContract {
                     parent?.let { listOf(it.ref("favorite")) } ?: emptyList(),
                 ),
             ),
-            SyncOrigin.USER, batchId = "$actor-$seq",
+            origin,
+            importId = "baseline".takeIf { origin != SyncOrigin.USER },
+            occurredAt = occurredAt,
+            batchId = "$actor-$seq",
         )
         return SyncBatch(
             1,
@@ -850,6 +855,52 @@ abstract class SyncInboxStorageContract {
             s.projectAll()
             assertEquals(true, s.writer.localMembership(manga))
             assertTrue(s.projector.pending("space", 1).isEmpty())
+        }
+    }
+
+    @Test
+    fun `remote favorite dates use earliest known date and never echo`() = runBlocking {
+        for (dates in listOf(listOf(3_000L, 1_000L, 0L), listOf(0L, 1_000L, 3_000L))) {
+            open().use { s ->
+                s.connect(repository)
+                dates.forEachIndexed { i, date ->
+                    val add = membership(1, SyncEffectKind.ADD, actor = "device-$i", occurredAt = date)
+                    assertTrue(s.inbox.ingest(add).accepted)
+                    s.projectAll()
+                    val local = s.mangas.getMangaByUrlAndSourceId(requireNotNull(manga.originalUrl), 42)
+                    assertEquals(dates.take(i + 1).filter { it > 0 }.minOrNull() ?: 0L, local?.dateAdded)
+                }
+                assertTrue(s.journal.pendingEvents("space", 1).isEmpty())
+            }
+        }
+    }
+
+    @Test
+    fun `favorite date backfill can improve a date but cannot defeat explicit cancellation`() = runBlocking {
+        open().use { s ->
+            s.connect(repository)
+            val add = membership(1, SyncEffectKind.ADD, occurredAt = 3_000)
+            val remove = membership(2, SyncEffectKind.REMOVE, add.events.single())
+            fun baseline(actor: String, date: Long) =
+                membership(1, SyncEffectKind.ADD, actor = actor, occurredAt = date, origin = SyncOrigin.INITIAL_IMPORT)
+            suspend fun date() = s.mangas.getMangaByUrlAndSourceId(requireNotNull(manga.originalUrl), 42)?.dateAdded
+            assertTrue(s.inbox.ingest(add).accepted)
+            s.projectAll()
+            assertTrue(s.inbox.ingest(baseline("device-c", 2_000)).accepted)
+            s.projectAll()
+            assertEquals(2_000L, date())
+            assertTrue(s.inbox.ingest(remove).accepted)
+            s.projectAll()
+            val pending = s.projector.pending("space", 1).single()
+            assertEquals(
+                SyncReceiverDecisionResult.APPLIED,
+                s.projector.decide("space", 1, pending, SyncCancellationDecision.CONFIRM),
+            )
+            assertTrue(s.inbox.ingest(baseline("device-d", 1_000)).accepted)
+            s.projectAll()
+            assertFalse(requireNotNull(s.writer.localMembership(manga)))
+            assertEquals(0L, date())
+            assertTrue(s.journal.pendingEvents("space", 1).isEmpty())
         }
     }
 

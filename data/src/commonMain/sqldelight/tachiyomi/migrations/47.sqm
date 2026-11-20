@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS sync_favorite_date_imports (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    PRIMARY KEY(space_id, generation),
+    FOREIGN KEY(space_id, generation) REFERENCES sync_spaces(space_id, generation)
+);

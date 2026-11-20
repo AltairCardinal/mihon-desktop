@@ -144,9 +144,11 @@ internal fun Database.appendFavoriteOperation(
     favorite: Boolean,
     context: SyncMutationContext,
     includeCategories: Boolean = false,
+    wasFavorite: Boolean = false,
 ) {
     if (!context.uploadAllowed || context.origin != SyncOrigin.USER) return
     val manga = mangasQueries.getMangaById(mangaId).executeAsOne()
+    val separateCategories = favorite && wasFavorite && includeCategories
     appendSyncOperation(
         context,
         SyncCategory.FAVORITE,
@@ -161,6 +163,9 @@ internal fun Database.appendFavoriteOperation(
                 field = SyncField.FAVORITE,
                 kind = if (favorite) SyncEffectKind.ADD else SyncEffectKind.REMOVE,
             ),
-        ) + if (includeCategories) listOf(categorySnapshotEffect(mangaId)) else emptyList(),
+        ) + if (includeCategories && !separateCategories) listOf(categorySnapshotEffect(mangaId)) else emptyList(),
+        occurredAt = if (favorite) manga.date_added.takeIf { it > 0 } ?: 0L else System.currentTimeMillis(),
     )
+    // A category edit on an existing favorite has its own operation time.
+    if (separateCategories) appendCategoryOperation(mangaId, context)
 }

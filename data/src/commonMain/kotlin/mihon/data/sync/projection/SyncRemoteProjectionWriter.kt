@@ -70,12 +70,19 @@ class SyncRemoteProjectionWriter(
         key: SyncObjectKey,
         value: Boolean,
         describe: (SyncObjectKey) -> SyncObjectDescriptor?,
+    ) = applyMembership(key, value, favoriteDate = null, describe)
+
+    internal suspend fun applyMembership(
+        key: SyncObjectKey,
+        value: Boolean,
+        favoriteDate: Long?,
+        describe: (SyncObjectKey) -> SyncObjectDescriptor?,
     ): Unit = handler.await(inTransaction = true) {
         validateIdentity(key)
         when (key.type) {
             SyncObjectType.MANGA -> {
                 val manga = ensureManga(key, describe)
-                sync_projectionQueries.setFavorite(value, clock(), manga._id)
+                sync_projectionQueries.setFavorite(value, favoriteDate ?: clock(), manga._id)
                 val projected = mangasQueries.getMangaById(manga._id, MangaMapper::mapManga).executeAsOne()
                 if (value) {
                     creatorIndexWriter.indexLibraryMangaBatch(
@@ -101,6 +108,13 @@ class SyncRemoteProjectionWriter(
             }
             SyncObjectType.CHAPTER -> unavailable(SyncProjectionUnavailableReason.IDENTITY)
         }
+    }
+
+    internal suspend fun applyEarlierFavoriteDate(key: SyncObjectKey, date: Long) = handler.await(
+        inTransaction = true,
+    ) {
+        val manga = findManga(key) ?: return@await
+        sync_projectionQueries.setEarlierFavoriteDate(date, manga._id)
     }
 
     suspend fun applyReadStatus(

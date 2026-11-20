@@ -85,9 +85,10 @@ abstract class SyncJournalStorageContract {
             storage.connect()
             val manga = storage.insertManga("/favorite")
             val command = UpdateLibraryMembership(storage.repository)
-            assertTrue(command.await(manga, true) is LibraryMembershipResult.Success)
+            assertTrue(command.await(manga, true, nowMillis = 1_234) is LibraryMembershipResult.Success)
             assertTrue(storage.repository.getMangaById(manga.id).favorite)
             val added = storage.journal.pendingEvents("space", 1).single()
+            assertEquals(1_234L, added.occurredAt)
             assertEquals(SyncCategory.FAVORITE, added.category)
             assertEquals(SyncOrigin.USER, added.origin)
             assertEquals(2, added.protocolVersion)
@@ -116,6 +117,23 @@ abstract class SyncJournalStorageContract {
                 }.parents,
             )
             assertEquals(SyncEffectKind.REMOVE, events.last().effects.single { it.field == SyncField.FAVORITE }.kind)
+        }
+    }
+
+    @Test
+    fun `saving categories on an existing favorite dates the edit separately`() = runBlocking {
+        open().use { storage ->
+            storage.connect()
+            val manga = storage.insertManga("/favorite-categories")
+            val command = UpdateLibraryMembership(storage.repository)
+            assertTrue(command.await(manga, true, nowMillis = 1_234) is LibraryMembershipResult.Success)
+            val saved = storage.repository.getMangaById(manga.id)
+            assertTrue(command.await(saved, true) is LibraryMembershipResult.Success)
+            val (favorite, categories) = storage.journal.pendingEvents("space", 1).drop(1)
+            assertEquals(SyncField.FAVORITE, favorite.effects.single().field)
+            assertEquals(1_234L, favorite.occurredAt)
+            assertEquals(SyncField.MANGA_CATEGORIES, categories.effects.single().field)
+            assertTrue(categories.occurredAt > favorite.occurredAt)
         }
     }
 

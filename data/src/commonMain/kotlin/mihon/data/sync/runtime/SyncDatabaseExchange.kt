@@ -103,7 +103,10 @@ class SyncDatabaseExchange(
                 } == true
             }
             if (!enabled) return SyncRunResult(SyncRunStatus.SKIPPED)
-            if (runPlan == null && allowImport()) baseline.ensureMetadataBaseline(spaceId, generation)
+            if (runPlan == null && allowImport()) {
+                baseline.ensureMetadataBaseline(spaceId, generation)
+                baseline.ensureFavoriteDateBaseline(spaceId, generation)
+            }
             diagnosticStage = SyncJournalStage.CHECKING
             diagnosticContext?.journal?.record(
                 SyncJournalEventKind.PHASE,

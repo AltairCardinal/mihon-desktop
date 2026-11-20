@@ -1229,6 +1229,34 @@ abstract class SyncRuntimeStorageContract {
     }
 
     @Test
+    fun `automatic favorite date backfill converges across connected devices`() = runBlocking {
+        SyncGitSafetyContractTest().GitFixture().use { git ->
+            val transport = git.transport()
+            transport.initialize(repository, "space", 1)
+            open().use { first ->
+                open().use { second ->
+                    val url = "/favorite-date"
+                    first.connect("a", repository)
+                    second.connect("b", repository)
+                    val firstItem = first.favorite(url)
+                    val secondItem = second.favorite(url)
+                    first.manga.update(MangaUpdate(firstItem.id, dateAdded = 1_000))
+                    second.manga.update(MangaUpdate(secondItem.id, dateAdded = 3_000))
+                    // Both devices have pre-upgrade libraries without a date baseline.
+                    first.driver.execute(null, "DELETE FROM sync_favorite_date_imports", 0)
+                    second.driver.execute(null, "DELETE FROM sync_favorite_date_imports", 0)
+                    assertEquals(SyncRunStatus.SUCCESS, first.exchange(transport, secret, repository).status)
+                    assertEquals(SyncRunStatus.SUCCESS, second.exchange(transport, secret, repository).status)
+                    assertEquals(SyncRunStatus.SUCCESS, first.exchange(transport, secret, repository).status)
+                    assertEquals(1_000L, first.manga.getMangaById(firstItem.id).dateAdded)
+                    assertEquals(1_000L, second.manga.getMangaById(secondItem.id).dateAdded)
+                    assertEquals(0, second.exchange(transport, secret, repository).uploaded)
+                }
+            }
+        }
+    }
+
+    @Test
     fun `exchange preserves receiver memo without sharing opaque source values`() = runBlocking {
         SyncGitSafetyContractTest().GitFixture().use { git ->
             val transport = git.transport()

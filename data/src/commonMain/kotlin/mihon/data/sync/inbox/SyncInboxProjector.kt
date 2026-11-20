@@ -330,8 +330,24 @@ class SyncInboxProjector(private val handler: DatabaseHandler, private val write
                         effectiveSyncHeads(projection.heads, projection.metadata).any {
                             projection.effectsByRef[it]?.kind == SyncEffectKind.ADD && it.stableKey !in consumed
                         }
+                    // Imported ADDs can supply dates without outranking an explicit membership decision.
+                    val favoriteDate = if (field == SyncField.FAVORITE) {
+                        projection.heads.asSequence()
+                            .filter { projection.effectsByRef[it]?.kind == SyncEffectKind.ADD }
+                            .mapNotNull { projection.metadata[it]?.occurredAt?.takeIf { date -> date > 0 } }
+                            .minOrNull()
+                    } else {
+                        null
+                    }
                     if (local != true && freshFollowing) {
-                        writer.applyMembership(key, true, descriptionLookup(state.space_id, state.generation))
+                        writer.applyMembership(
+                            key,
+                            true,
+                            if (field == SyncField.FAVORITE) favoriteDate ?: 0L else null,
+                            descriptionLookup(state.space_id, state.generation),
+                        )
+                    } else if (favoriteDate != null) {
+                        writer.applyEarlierFavoriteDate(key, favoriteDate)
                     }
                 } else if (projection.value == false && local == true) {
                     val request = SyncReceiver.pendingCancellation(reduced, key, field, true).singleOrNull()

@@ -10,6 +10,7 @@ import mihon.data.sync.journal.SyncOutboxStore
 import mihon.data.sync.projection.SyncRemoteProjectionWriter
 import mihon.domain.sync.SyncCategory
 import mihon.domain.sync.SyncEffectKind
+import mihon.domain.sync.SyncField
 import mihon.domain.sync.SyncMutationContext
 import mihon.domain.sync.SyncObjectDescriptor
 import mihon.domain.sync.SyncObjectKey
@@ -419,6 +420,46 @@ abstract class SyncBaselineStorageContract {
             }
             assertEquals(0L, s.baseline.process(import).remaining)
             assertEquals(events, s.journal.pendingEvents("space", 1))
+        }
+    }
+
+    @Test
+    fun `upgrading a connected library freezes known favorite dates once`() = runBlocking {
+        open().use { s ->
+            val manga = s.manga("/existing-date", true)
+            s.mangas.update(MangaUpdate(manga.id, dateAdded = 1_500L))
+            s.manga("/unknown-date", true)
+            val import = s.baseline.connectAndImport("space", 1, repository, "device", 1)
+            s.driver.execute(null, "UPDATE sync_import_entries SET read_at = 0", 0)
+            s.baseline.process(import)
+            // Simulate the database layout and previously uploaded events of the old client.
+            s.driver.execute(null, "DROP TABLE sync_favorite_date_imports", 0)
+            DatabaseMigration.migrateAtomically(s.driver, 47, Database.Schema.version)
+            repeat(2) { s.baseline.ensureFavoriteDateBaseline("space", 1) }
+            s.mangas.update(MangaUpdate(manga.id, dateAdded = 2_500L))
+            s.baseline.process(import)
+            val dated = s.journal.pendingEvents("space", 1).single { it.occurredAt > 0 }
+            assertEquals(SyncOrigin.INITIAL_IMPORT, dated.origin)
+            assertEquals(1_500L, dated.occurredAt)
+            assertEquals(manga.url, dated.effects.single().objectKey.originalUrl)
+        }
+    }
+
+    @Test
+    fun `favorite baseline freezes the original date before local edits`() = runBlocking {
+        open().use { s ->
+            val manga = s.manga("/frozen-favorite-date", true)
+            s.mangas.update(MangaUpdate(manga.id, dateAdded = 1_000))
+            val import = s.baseline.connectAndImport("space", 1, repository, "device", 1)
+            s.mangas.update(MangaUpdate(manga.id, dateAdded = 2_000))
+            s.baseline.process(import)
+            val events = s.journal.pendingEvents("space", 1)
+            assertEquals(
+                1_000L,
+                events.single {
+                    it.effects.any { effect -> effect.field == SyncField.FAVORITE }
+                }.occurredAt,
+            )
         }
     }
 
