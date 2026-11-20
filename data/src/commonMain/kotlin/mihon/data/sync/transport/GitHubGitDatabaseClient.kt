@@ -774,6 +774,7 @@ class GitHubSyncTransport(
                 member.indexPath to member.indexCiphertext.bytes,
             )
         } + (uploads.last().headPath to uploads.last().headCiphertext.bytes)
+        val batchPayloadOwners = uploads.associate { it.encryptedBatch.path to it.encryptedBatch.batchId }
         require(uploads.size == 1 || payloads.sumOf { it.second.size.toLong() } <= 2L * 1024 * 1024) {
             "publish group exceeds its byte limit"
         }
@@ -891,8 +892,14 @@ class GitHubSyncTransport(
                     payloads,
                     baseTreeSha = current.tree.sha,
                 ).map { planned ->
+                    val payloadOwner = batchPayloadOwners[planned.path]?.takeIf { uploads.size > 1 }
+                    val blobWorkKey = if (payloadOwner != null) {
+                        "$payloadOwner:batch-payload:${planned.path}"
+                    } else {
+                        "${batch.batchId}:blob:${planned.path}"
+                    }
                     val sha = planned.inlineContent?.let { "" }
-                        ?: createBlob(repository, planned.bytes, "${batch.batchId}:blob:${planned.path}").sha
+                        ?: createBlob(repository, planned.bytes, blobWorkKey).sha
                     SyncGitTreeEntry(
                         planned.path,
                         "100644",

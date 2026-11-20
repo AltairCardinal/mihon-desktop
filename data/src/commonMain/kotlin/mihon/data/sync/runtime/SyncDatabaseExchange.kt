@@ -492,20 +492,21 @@ class SyncDatabaseExchange(
                     }
                 }
                 val onPreparedBatch: (SyncBatch) -> Unit = { batch ->
-                    liveProgress?.finishBatchWork(true)
-                    liveProgress?.batchWork(SyncBatchWork.TRANSFERRING)
                     if (uploadScope != null) {
                         liveProgress?.batch(
                             SyncProgressStage.PREPARING,
                             batch.batchId,
                             batch.events.size.toLong(),
                         )
-                        liveProgress?.begin(
-                            requireNotNull(uploadScope),
-                            SyncProgressStage.TRANSFERRING,
-                            SyncProgressDirection.UPLOAD,
-                            uploadRoundTotal,
-                        )
+                        if (batch.batchId == uploadCounts.keys.last()) {
+                            liveProgress?.startUploadTransfer(uploadCounts.keys)
+                            liveProgress?.begin(
+                                requireNotNull(uploadScope),
+                                SyncProgressStage.TRANSFERRING,
+                                SyncProgressDirection.UPLOAD,
+                                uploadRoundTotal,
+                            )
+                        }
                     }
                 }
                 val onConfirmedBatch: (SyncBatch) -> Unit = { batch ->
@@ -596,6 +597,7 @@ class SyncDatabaseExchange(
                 }
                 performedExchangeWork = true
                 if (result.publish.status != SyncPublishStatus.PUBLISHED) {
+                    liveProgress?.finishBatchWork(false)
                     problem = when (result.publish.failureClass) {
                         SyncPublishFailureClass.AUTHORIZATION -> SyncRunProblem.AUTHORIZATION
                         SyncPublishFailureClass.INVALID_REQUEST -> SyncRunProblem.INVALID_DATA

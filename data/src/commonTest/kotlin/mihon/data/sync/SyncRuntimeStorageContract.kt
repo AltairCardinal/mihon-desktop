@@ -3,10 +3,13 @@ package mihon.data.sync
 import app.cash.sqldelight.db.SqlDriver
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import mihon.data.sync.auth.SyncRepositoryScope
 import mihon.data.sync.auth.SyncSpaceDiscovery
+import mihon.data.sync.http.SyncHttpBodyDirection
+import mihon.data.sync.http.SyncHttpBodyObserver
 import mihon.data.sync.inbox.SyncDiscoveryStore
 import mihon.data.sync.inbox.SyncInboxProjector
 import mihon.data.sync.inbox.SyncInboxStore
@@ -16,7 +19,9 @@ import mihon.data.sync.journal.SyncOutboxExchange
 import mihon.data.sync.journal.SyncOutboxStore
 import mihon.data.sync.projection.SyncRemoteProjectionWriter
 import mihon.data.sync.runtime.SyncDatabaseExchange
+import mihon.data.sync.runtime.SyncLiveProgressSession
 import mihon.data.sync.runtime.SyncProgressDirection
+import mihon.data.sync.runtime.SyncProgressFact
 import mihon.data.sync.runtime.SyncProgressReporter
 import mihon.data.sync.runtime.SyncRunPlanBatch
 import mihon.data.sync.runtime.SyncRunState
@@ -1290,28 +1295,49 @@ abstract class SyncRuntimeStorageContract {
             transport.initialize(repository, "space", 1)
             open().use { sender ->
                 sender.connect("ordered", repository)
-                sender.seedUploadBatch("group-one", 1, 2)
-                sender.seedUploadBatch("group-two", 3, 2)
+                sender.seedUploadBatch("group-one", 1, 24)
+                sender.seedUploadBatch("group-two", 25, 24)
                 val runs = SyncRunStore(sender.handler)
                 val run = runs.start("space", 1, SyncTrigger.MANUAL)
                 assertTrue(runs.claim(run.runId, "owner", 1))
+                val live = MutableStateFlow<SyncProgressFact?>(null)
+                val tick = java.util.concurrent.atomic.AtomicLong()
+                val session = SyncLiveProgressSession(run.runId, live, millis = tick::get)
+                val incremental = java.util.concurrent.ConcurrentLinkedQueue<Long>()
+                val observer = object : SyncHttpBodyObserver by session {
+                    override fun onBodyWorkBytes(
+                        direction: SyncHttpBodyDirection,
+                        requestId: Long,
+                        bytes: Long,
+                        total: Long?,
+                        workKey: String?,
+                    ) {
+                        tick.addAndGet(250)
+                        session.onBodyWorkBytes(direction, requestId, bytes, total, workKey)
+                        if (direction == SyncHttpBodyDirection.UPLOAD && total != null && bytes < total) {
+                            live.value?.batchProgress?.processedRunItems?.let(incremental::add)
+                        }
+                    }
+                }
                 val before = git.refPatchBranches.size
                 val result = SyncDatabaseExchange(
                     sender.handler,
                     sender.baseline,
                     sender.projector,
-                    transport,
+                    git.transport(bodyObserver = observer),
                     secret,
                     progress = runs.reporter(run.runId, "owner"),
+                    liveProgress = session,
                 ).exchange("space", 1, repository)
                 assertEquals(SyncRunStatus.SUCCESS, result.status, result.toString())
-                assertEquals(4, result.uploaded)
-                assertEquals(4L, runs.get(run.runId)?.confirmedItems)
+                assertTrue(incremental.any { it in 1L..23L || it in 25L..47L }, incremental.toString())
+                assertEquals(48, result.uploaded)
+                assertEquals(48L, runs.get(run.runId)?.confirmedItems)
                 assertEquals(1, git.refPatchBranches.size - before)
                 open().use { receiver ->
                     receiver.connect("receiver", repository)
-                    assertEquals(4, receiver.exchange(transport, secret, repository).downloaded)
-                    assertEquals(4, receiver.manga.getLibraryManga().size)
+                    assertEquals(48, receiver.exchange(transport, secret, repository).downloaded)
+                    assertEquals(48, receiver.manga.getLibraryManga().size)
                 }
             }
         }

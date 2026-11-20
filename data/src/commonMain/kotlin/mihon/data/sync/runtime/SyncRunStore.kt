@@ -173,6 +173,11 @@ class SyncLiveProgressSession(
     }
 
     @Synchronized
+    fun startUploadTransfer(batchIds: Collection<String>) {
+        observeBatch(force = true) { batchProgress.startUploadTransfer(batchIds) }
+    }
+
+    @Synchronized
     fun batchItems(count: Long) {
         observeBatch(force = false) { batchProgress.items(count) }
     }

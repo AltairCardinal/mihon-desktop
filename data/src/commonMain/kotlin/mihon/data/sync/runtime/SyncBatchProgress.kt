@@ -31,6 +31,7 @@ internal class SyncBatchProgressTracker {
     )
     private val batches = linkedMapOf<Key, Work>()
     private var active: Key? = null
+    private var uploadGroup = emptyList<Key>()
     private var work = SyncBatchWork.PREPARING
     private var processedRunItems = 0L
     private var plannedRunItems = 0L
@@ -52,8 +53,16 @@ internal class SyncBatchProgressTracker {
 
     fun start(direction: SyncProgressDirection, batchId: String, work: SyncBatchWork) {
         val key = Key(direction, batchId)
+        uploadGroup = emptyList()
         active = key.takeIf { it in batches }
         this.work = work
+    }
+
+    fun startUploadTransfer(batchIds: Collection<String>) {
+        uploadGroup = batchIds.map { Key(SyncProgressDirection.UPLOAD, it) }.filter { it in batches }
+        uploadGroup.forEach { finish(batches.getValue(it), successful = true) }
+        active = uploadGroup.firstOrNull()
+        work = SyncBatchWork.TRANSFERRING
     }
 
     fun items(count: Long) {
@@ -67,13 +76,27 @@ internal class SyncBatchProgressTracker {
 
     fun transfer(workKey: String?, offset: Long, total: Long?) {
         val key = active ?: return
-        if (key.direction != SyncProgressDirection.UPLOAD || total == null || total <= 0 ||
-            workKey?.startsWith("${key.id}:") != true
-        ) {
-            return
+        if (key.direction != SyncProgressDirection.UPLOAD || total == null || total <= 0 || workKey == null) return
+        val fraction = offset.toDouble().div(total).coerceIn(0.0, 1.0)
+        if (uploadGroup.size <= 1) {
+            if (workKey.startsWith("${key.id}:")) {
+                val batch = batches.getValue(key)
+                advance(batch, (fraction * batch.total).toLong())
+            }
+        } else if (workKey.startsWith("${key.id}:tree:")) {
+            // A single tree body can carry the encrypted contents of every member.
+            var processed = (fraction * uploadGroup.sumOf { batches.getValue(it).total }).toLong()
+            for (member in uploadGroup) {
+                val batch = batches.getValue(member)
+                val count = minOf(processed, batch.total)
+                advance(batch, count)
+                processed -= count
+            }
+        } else {
+            val member = uploadGroup.firstOrNull { workKey.startsWith("${it.id}:batch-payload:") } ?: return
+            val batch = batches.getValue(member)
+            advance(batch, (fraction * batch.total).toLong())
         }
-        val batch = batches.getValue(key)
-        advance(batch, (offset.toDouble() / total * batch.total).toLong().coerceIn(0, batch.total))
     }
 
     fun transferred(direction: SyncProgressDirection, batchId: String) {
@@ -100,7 +123,15 @@ internal class SyncBatchProgressTracker {
     }
 
     fun finish(successful: Boolean) {
-        val batch = active?.let(batches::get) ?: return
+        val key = active ?: return
+        if (!successful && uploadGroup.size > 1) {
+            uploadGroup.forEach { finish(batches.getValue(it), successful = false) }
+        } else {
+            finish(batches.getValue(key), successful)
+        }
+    }
+
+    private fun finish(batch: Work, successful: Boolean) {
         if (successful) {
             batch.committed = batch.processed
             batch.committedEffective = batch.effective
