@@ -1368,7 +1368,7 @@ private fun MainPage(
                 SyncStatusHeader(state, continuingSetup, dispatch)
                 if (state.problem != null) {
                     Column(Modifier.padding(horizontal = 24.dp)) {
-                        ErrorRecoveryExit(state, dispatch, "sync-main")
+                        ErrorRecoveryExit(state, dispatch, "sync-main", showDiagnostics = false)
                     }
                 }
                 TextButton(
@@ -1381,7 +1381,12 @@ private fun MainPage(
                         ),
                     )
                 }
-                if (detailsExpanded) SyncQueueSummary(state)
+                if (detailsExpanded) {
+                    SyncQueueSummary(state)
+                    if (state.problem != null) {
+                        MainSyncDiagnosticAction(dispatch, Modifier.padding(horizontal = 24.dp))
+                    }
+                }
             }
             if (!state.syncStoppedBeforeRun && (state.run != null || state.busy)) {
                 SyncProgressCard(
@@ -2072,8 +2077,10 @@ private fun DiagnosticPage(
                 AuthorizationVerificationText(it, restored = state.recoveryAuthorizationConfirmed)
             }
             Text(syncString(MR.strings.sync_diagnostic_intro))
-            Action("sync-diagnostic-recovery", MR.strings.sync_recovery_choose, !state.recoveryBusy) {
-                dispatch(SyncPanelAction.OpenRecovery)
+            if (!state.hasUnclassifiedRunBlock) {
+                Action("sync-diagnostic-recovery", MR.strings.sync_recovery_choose, !state.recoveryBusy) {
+                    dispatch(SyncPanelAction.OpenRecovery)
+                }
             }
         }
         item {
@@ -3017,6 +3024,16 @@ private val SyncPanelState.showingCompactRun: Boolean
             ((run != null || busy) && run?.state !in TERMINAL_STATES)
         )
 
+private val SyncPanelState.hasUnclassifiedRunBlock: Boolean
+    get() = run?.state == SyncRunState.BLOCKED && (problem == null || problem == SyncRunProblem.UNKNOWN)
+
+@Composable
+private fun MainSyncDiagnosticAction(dispatch: (SyncPanelAction) -> Unit, modifier: Modifier = Modifier) {
+    Action("sync-main-error-details", MR.strings.sync_diagnostic_information, modifier = modifier) {
+        dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
+    }
+}
+
 private fun syncClockDuration(seconds: Long): String =
     "${(seconds.coerceAtLeast(0) / 60).toString().padStart(2, '0')}:" +
         (seconds.coerceAtLeast(0) % 60).toString().padStart(2, '0')
@@ -3232,6 +3249,8 @@ private fun SyncProgressCard(
     val run = state.run
     val fact = presentation.fact
     val terminal = run?.state in TERMINAL_STATES
+    val showRunProblem = run?.state == SyncRunState.BLOCKED ||
+        (run?.state in setOf(SyncRunState.FAILED, SyncRunState.PARTIAL) && state.problem != null)
     val normalSuccess = state.isMainSuccess(presentation)
     val triggerFocus = remember { FocusRequester() }
     var detailsHaveFocus by remember { mutableStateOf(false) }
@@ -3254,6 +3273,8 @@ private fun SyncProgressCard(
                         } else {
                             previousSyncText(state.nowMillis, requireNotNull(run).updatedAt)
                         }
+                    } else if (state.hasUnclassifiedRunBlock) {
+                        syncString(MR.strings.sync_problem_unknown)
                     } else {
                         syncString(presentation.status)
                     },
@@ -3292,9 +3313,7 @@ private fun SyncProgressCard(
                 Text(syncString(MR.strings.sync_invalid_saved_hint), Modifier.testTag("sync-validation-reason"))
             } else if (run?.state == SyncRunState.FAILED && run.stopReason == "retry_exhausted") {
                 Text(syncString(MR.strings.sync_retry_exhausted))
-            } else if (run?.state == SyncRunState.BLOCKED ||
-                (run?.state in setOf(SyncRunState.FAILED, SyncRunState.PARTIAL) && state.problem != null)
-            ) {
+            } else if (showRunProblem && !state.hasUnclassifiedRunBlock) {
                 Text(problemText(state.problem ?: SyncRunProblem.UNKNOWN), Modifier.testTag("sync-blocked-reason"))
             } else if (run?.state == SyncRunState.PARTIAL) {
                 val detail = when {
@@ -3314,9 +3333,8 @@ private fun SyncProgressCard(
                     state,
                     dispatch,
                     "sync-main",
-                    showRecovery = !(
-                        run?.state == SyncRunState.BLOCKED && state.problem == SyncRunProblem.UNKNOWN
-                        ),
+                    showDiagnostics = false,
+                    showRecovery = run?.state != SyncRunState.BLOCKED,
                 )
             }
             TextButton({
@@ -3404,13 +3422,14 @@ private fun SyncProgressCard(
                             ),
                         )
                     }
-                    if (run?.state == SyncRunState.BLOCKED ||
-                        (run?.state in setOf(SyncRunState.FAILED, SyncRunState.PARTIAL) && state.problem != null)
-                    ) {
+                    if (showRunProblem && !state.hasUnclassifiedRunBlock) {
                         Text(
                             problemText(state.problem ?: SyncRunProblem.UNKNOWN),
                             Modifier.testTag("sync-full-reason"),
                         )
+                    }
+                    if (showRunProblem || state.hasInvalidReceivedData) {
+                        MainSyncDiagnosticAction(dispatch)
                     }
                     if (fact != null && run != null &&
                         !terminal
@@ -3597,12 +3616,7 @@ private fun SyncMainOperation(
             ) {
                 dispatch(operation.action)
             }
-            state.hasInvalidReceivedData -> Action(
-                "sync-invalid-details",
-                MR.strings.sync_recovery_details,
-                shape = operationShape,
-                modifier = buttonModifier,
-            ) { dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS)) }
+            state.hasInvalidReceivedData -> Unit // Diagnosis is available in the single details section.
             state.waitingForLocalRestoration -> Action(
                 "sync-check-saved",
                 MR.strings.sync_check_saved,
@@ -3632,14 +3646,13 @@ private fun SyncMainOperation(
             }
             run?.state == SyncRunState.BLOCKED -> when (state.problem) {
                 SyncRunProblem.UNKNOWN, null -> Action(
-                    "sync-resolve-run",
-                    MR.strings.sync_recovery_choose,
-                    state.recoveryActionsEnabled && !state.busy,
+                    "sync-retry-run",
+                    MR.strings.sync_retry_run,
+                    state.connection?.enabled == true,
                     shape = operationShape,
-                    primary = terminal,
                     modifier = buttonModifier,
                 ) {
-                    dispatch(SyncPanelAction.OpenRecovery)
+                    dispatch(SyncPanelAction.Synchronize)
                 }
                 SyncRunProblem.AUTHORIZATION -> Action(
                     "sync-reconnect",

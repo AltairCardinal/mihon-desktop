@@ -23,6 +23,11 @@ object DatabaseMigration {
             }
             if (newVersion > familyBoundary) {
                 repairPublishedSchema40Families(driver, maxOf(oldVersion, familyBoundary))
+                if (oldVersion in 48L..49L && newVersion >= 50L &&
+                    !hasObject(driver, "table", "sync_favorite_date_imports")
+                ) {
+                    queueRunBlockedBeforeFavoriteDateBaseline(driver)
+                }
                 migratePublishedReaderAndSyncFamilies(driver, maxOf(oldVersion, familyBoundary), newVersion)
             }
             if (newVersion >= COMPATIBILITY_SCHEMA_VERSION) {
@@ -30,6 +35,31 @@ object DatabaseMigration {
             }
             driver.execute(null, "PRAGMA user_version = $newVersion", 0)
         }
+    }
+
+    private fun queueRunBlockedBeforeFavoriteDateBaseline(driver: SqlDriver) {
+        // The missing table is direct evidence that the baseline could not run. Only reopen
+        // the latest first-attempt failure before exchange produced a plan or confirmations.
+        driver.execute(
+            null,
+            """
+            UPDATE sync_runtime_runs
+            SET state = 'WAITING_SYSTEM', stop_reason = 'favorite_date_schema_repaired', next_retry_at = 0
+            WHERE run_id = (
+                SELECT r.run_id FROM sync_runtime_runs r
+                JOIN sync_spaces s USING (space_id, generation)
+                WHERE s.active = 1 AND s.exchange_enabled = 1
+                ORDER BY r.updated_at DESC, r.rowid DESC LIMIT 1
+            )
+            AND state = 'BLOCKED' AND phase = 'CHECKING' AND stop_reason = 'UNKNOWN'
+            AND attempt_id = 1 AND owner_session IS NULL AND confirmed_items = 0
+            AND processed = 0 AND total = 0
+            AND NOT EXISTS (
+                SELECT 1 FROM sync_runtime_confirmations c WHERE c.run_id = sync_runtime_runs.run_id
+            )
+            """.trimIndent(),
+            0,
+        )
     }
 
     /** Migration 42 was independently published for sync repair and reader pairing intent. */

@@ -293,17 +293,22 @@ class SyncPanelContentTest {
     }
 
     @Test
-    fun `unknown blocked run opens guided recovery instead of an inert reason button`() = rendered(
+    fun `unknown blocked run offers a single details entry and retries in the main panel`() = rendered(
         connected().copy(
             run = visualRun(SyncRunPhase.MERGING).copy(state = SyncRunState.BLOCKED),
             problem = SyncRunProblem.UNKNOWN,
         ),
     ) {
         awaitTag("sync-progress-card")
-        assertTrue(hasTag("sync-resolve-run"))
-        click("sync-resolve-run")
-        assertEquals(SyncPanelAction.OpenRecovery, actions.last())
-        assertFalse(hasTag("sync-view-reason"))
+        assertEquals(1, texts().count { it == "查看详情" })
+        assertFalse(hasTag("sync-resolve-run"))
+        assertFalse(hasTag("sync-main-error-details"))
+        click("sync-retry-run")
+        assertEquals(SyncPanelAction.Synchronize, actions.last())
+        click("sync-progress-details-toggle")
+        awaitTag("sync-main-error-details")
+        click("sync-main-error-details")
+        assertEquals(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS), actions.last())
     }
 
     @Test
@@ -2548,7 +2553,10 @@ class SyncPanelContentTest {
         assertFalse(texts().contains("同步数据已保存，部分内容待本机恢复"))
         assertFalse(hasTag("sync-check-saved"))
         assertTrue(hasTag("sync-failure-log-open"))
-        click("sync-invalid-details")
+        assertEquals(1, texts().count { it == "查看详情" })
+        click("sync-progress-details-toggle")
+        awaitTag("sync-main-error-details")
+        click("sync-main-error-details")
         assertEquals(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS), actions.last())
     }
 

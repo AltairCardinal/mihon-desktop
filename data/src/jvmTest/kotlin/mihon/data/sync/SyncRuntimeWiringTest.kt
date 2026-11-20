@@ -64,6 +64,7 @@ import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.data.Database
+import tachiyomi.data.DatabaseMigration
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.History
 import tachiyomi.data.JvmDatabaseHandler
@@ -1734,6 +1735,40 @@ class SyncRuntimeWiringTest {
     }
 
     @Test
+    fun `schema 49 missing favorite date table resumes the blocked sync after migration`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val runtime = setup.runtime
+                val driver = f.storage.driver
+                val runs = runtime.runStore
+                driver.execute(null, "DROP TABLE sync_favorite_date_imports", 0)
+                driver.execute(null, "PRAGMA user_version = 49", 0)
+                val broken = runtime.coordinator.synchronize(SyncTrigger.PERIODIC)
+                assertEquals(SyncRunProblem.UNKNOWN, broken.problem)
+                val run = requireNotNull(runs.active("space", 1))
+                assertEquals(SyncRunState.BLOCKED, run.state)
+                assertEquals("CHECKING", run.phase.name)
+
+                DatabaseMigration.migrateAtomically(driver, 49, Database.Schema.version)
+
+                val reopened = setup.runtime()
+                try {
+                    assertTrue(reopened.hasResumableRun())
+                    assertTrue(reopened.resumeIfNeeded())
+                    assertEquals(SyncRunState.SUCCEEDED, runs.get(run.runId)?.state)
+                    assertEquals(2L, runs.get(run.runId)?.attemptId)
+                    assertNull(runs.active("space", 1))
+                } finally {
+                    reopened.stopPanel()
+                }
+            }
+        }
+    }
+
+    @Test
     fun `unknown outside merging never permits automatic remote recovery`() = runBlocking {
         Fixture().use { f ->
             SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
@@ -1742,7 +1777,9 @@ class SyncRuntimeWiringTest {
                 setup.begin()
                 val runtime = setup.runtime
                 val run = runtime.runStore.start("space", 1, SyncTrigger.MANUAL)
-                runtime.runStore.finish(run.runId, SyncRunState.BLOCKED, "UNKNOWN")
+                assertTrue(runtime.runStore.claim(run.runId, "test-owner", 1))
+                runtime.runStore.finish(run.runId, SyncRunState.BLOCKED, "UNKNOWN", "test-owner")
+                DatabaseMigration.migrateAtomically(f.storage.driver, 49, Database.Schema.version)
                 val requests = setup.git.server.requestCount
                 assertFalse(runtime.resumeIfNeeded())
                 assertEquals(SyncRunState.BLOCKED, runtime.runStore.get(run.runId)!!.state)

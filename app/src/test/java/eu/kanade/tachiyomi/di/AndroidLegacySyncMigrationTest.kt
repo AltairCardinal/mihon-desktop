@@ -171,6 +171,23 @@ class AndroidLegacySyncMigrationTest {
     }
 
     @Test
+    fun `production Android upgrades a version 49 database missing the favorite date table`() {
+        val file = app.getDatabasePath("tachiyomi.db")
+        file.parentFile!!.mkdirs()
+        JdbcSqliteDriver("jdbc:sqlite:${file.absolutePath}").use { driver ->
+            Database.Schema.create(driver)
+            driver.execute(null, "DROP TABLE sync_favorite_date_imports", 0)
+            driver.execute(null, "PRAGMA user_version = 49", 0)
+        }
+
+        Injekt.importModule(AppModule(app))
+        Injekt.get<SqlDriver>().use { driver ->
+            assertEquals(50L, queryLong(driver, "PRAGMA user_version"))
+            assertEquals(0L, queryLong(driver, "SELECT COUNT(*) FROM sync_favorite_date_imports"))
+        }
+    }
+
+    @Test
     fun `production Android database callback restores missing runtime family from version 32`() {
         prepareLegacyV32(hasRuntime = false)
 
