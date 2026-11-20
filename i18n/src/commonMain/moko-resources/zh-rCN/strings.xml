@@ -1769,7 +1769,6 @@
     <string name="sync_recovery_auth_expired">GitHub 连接已失效</string>
     <string name="sync_authorization_verification_checking">正在检查同步连接</string>
     <string name="sync_authorization_verification_waiting">暂未确认同步连接</string>
-    <string name="sync_authorization_verification_retry">本机资料已保留，客户端会自动重试。</string>
     <string name="sync_recovery_data_problem">空间数据需要处理</string>
     <string name="sync_recovery_no_spaces">未找到可访问的同步空间。请检查 GitHub 授权，或准备新空间。</string>
     <string name="sync_recovery_create_body">本机现有书架与阅读进度会用于新空间的首次同步。仅其他设备或已删除远端拥有的数据无法在这里恢复。新空间准备完成前，会保留当前连接。</string>

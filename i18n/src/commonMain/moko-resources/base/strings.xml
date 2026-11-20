@@ -2072,7 +2072,6 @@
     <string name="sync_recovery_auth_expired">GitHub connection has expired</string>
     <string name="sync_authorization_verification_checking">Checking the sync connection</string>
     <string name="sync_authorization_verification_waiting">Sync connection could not be verified yet</string>
-    <string name="sync_authorization_verification_retry">Local data is preserved. The app will retry automatically.</string>
     <string name="sync_recovery_data_problem">Space data needs attention</string>
     <string name="sync_recovery_no_spaces">No accessible sync spaces were found. Check GitHub authorization or prepare a new space.</string>
     <string name="sync_recovery_create_body">Your existing local library and reading progress will be used for the first sync to the new space. Data that existed only on other devices or in the deleted remote space cannot be recovered here. Your current connection is kept until the new space is ready.</string>

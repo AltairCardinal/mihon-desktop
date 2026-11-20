@@ -575,7 +575,6 @@ private fun AuthorizationVerificationPanel(
                         Icon(Icons.Outlined.Info, contentDescription = null)
                         AuthorizationVerificationText(verification)
                     }
-                    Text(syncString(MR.strings.sync_authorization_verification_retry))
                     Action("sync-recovery-details", MR.strings.sync_recovery_details) {
                         dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
                     }

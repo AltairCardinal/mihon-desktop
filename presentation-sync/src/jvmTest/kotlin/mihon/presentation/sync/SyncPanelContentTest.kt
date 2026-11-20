@@ -1499,7 +1499,7 @@ class SyncPanelContentTest {
         assertFalse(hasTag("sync-notice-error"))
         assertFalse(texts().contains("GitHub 连接已失效"))
         assertTrue(texts().contains("暂未确认同步连接"))
-        assertTrue(texts().contains("本机资料已保留，客户端会自动重试。"))
+        assertFalse(texts().contains("本机资料已保留，客户端会自动重试。"))
 
         panel.state.value = panel.state.value.copy(
             recovery = panel.state.value.recovery!!.copy(
@@ -1509,6 +1509,7 @@ class SyncPanelContentTest {
         render()
         assertFalse(hasTag("sync-recovery-authorization"))
         assertTrue(texts().contains("正在检查同步连接"))
+        assertFalse(texts().contains("本机资料已保留，客户端会自动重试。"))
         panel.state.value = panel.state.value.copy(page = SyncPanelPage.RECOVERY, periodMinutes = 0)
         render()
         assertFalse(hasTag("sync-recovery-authorization"))
