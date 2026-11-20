@@ -1,8 +1,15 @@
 package mihon.data.sync.auth
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -315,27 +322,72 @@ class GitHubTokenRefresher(
     private val store: GitHubCredentialStore,
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
 ) {
-    private val mutex = Mutex()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val lifecycle = Any()
+    private val pending = mutableMapOf<Pair<String, Long>, Deferred<Result<GitHubStoredCredential>>>()
+    private var closing = false
 
-    suspend fun refreshIfNeeded(clientId: String): Result<GitHubStoredCredential> = mutex.withLock {
+    suspend fun refreshIfNeeded(clientId: String): Result<GitHubStoredCredential> {
         val current = try {
-            store.read() ?: return@withLock Result.failure(IllegalStateException("authorization required"))
+            store.read() ?: return Result.failure(IllegalStateException("authorization required"))
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            return@withLock Result.failure(IllegalStateException("credential storage failed"))
+            return Result.failure(IllegalStateException("credential storage failed"))
         }
         val expiresAt = current.credential.accessTokenExpiresAtMillis
         val now = nowMillis()
-        if (expiresAt == null || (expiresAt > now && expiresAt - now > 60_000)) return@withLock Result.success(current)
-        val result = auth.refresh(clientId, current)
-        if (result.isFailure) return@withLock result
-        try {
+        if (expiresAt == null || (expiresAt > now && expiresAt - now > 60_000)) return Result.success(current)
+        val key = clientId to current.revision
+        val task = synchronized(lifecycle) {
+            if (closing) return Result.failure(IllegalStateException("credential rotation is closing"))
+            pending[key] ?: scope.async(start = CoroutineStart.LAZY) {
+                rotate(clientId, current)
+            }.also { rotation ->
+                pending[key] = rotation
+                rotation.invokeOnCompletion { synchronized(lifecycle) { pending.remove(key, rotation) } }
+                rotation.start()
+            }
+        }
+        // A paused sync can stop waiting without cancelling a rotation accepted by the server.
+        return task.await()
+    }
+
+    private suspend fun rotate(clientId: String, current: GitHubStoredCredential): Result<GitHubStoredCredential> {
+        return try {
+            val latest = store.read()
+            if (latest?.revision != current.revision) {
+                // A caller may have read the old revision just before another rotation published.
+                // Explicit authorization changes are fenced by the session's authorization epoch.
+                return latest?.let { Result.success(it) }
+                    ?: Result.failure(IllegalStateException("authorization required"))
+            }
+            val result = withTimeoutOrNull(30_000L) { auth.refresh(clientId, current) }
+                ?: return Result.failure(
+                    GitHubAuthException(
+                        GitHubAuthFailure(GitHubAuthFailureReason.HTTP, "token refresh timed out", true),
+                    ),
+                )
+            if (result.isFailure) return result
             Result.success(store.replace(current.revision, result.getOrThrow().credential))
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Exception) {
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
             Result.failure(IllegalStateException("credential storage failed"))
+        }
+    }
+
+    internal suspend fun finishRotations() {
+        val tasks = synchronized(lifecycle) {
+            closing = true
+            pending.values.toList()
+        }
+        try {
+            // Request time is bounded from dispatch. Once the response is known, let the
+            // secure store finish its atomic commit before the application closes the network.
+            tasks.joinAll()
+        } finally {
+            scope.cancel()
         }
     }
 }

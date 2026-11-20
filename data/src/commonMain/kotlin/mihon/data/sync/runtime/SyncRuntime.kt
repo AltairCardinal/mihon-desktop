@@ -676,6 +676,8 @@ class SyncRuntime(
         if (panelDelegate.isInitialized()) panelDelegate.value.stop()
     }
 
+    suspend fun finishCredentialRotation() = refresher.finishRotations()
+
     private val localResumeMutex = Mutex()
     private val localProjectionLock = Any()
     private var localProjectionEpoch = 0L

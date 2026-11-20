@@ -1,12 +1,15 @@
 package mihon.data.sync
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import mihon.data.sync.auth.GitHubAuthClient
 import mihon.data.sync.auth.GitHubTokenRefresher
@@ -21,8 +24,10 @@ import mihon.domain.sync.auth.GitHubAuthWaiter
 import mihon.domain.sync.auth.GitHubCredentialStore
 import mihon.domain.sync.auth.GitHubDeviceAuthResult
 import mihon.domain.sync.auth.GitHubStoredCredential
+import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
+import mockwebserver3.RecordedRequest
 import okhttp3.Call
 import okhttp3.EventListener
 import okhttp3.OkHttpClient
@@ -313,6 +318,73 @@ class AuthProtocolContractTest {
             assertTrue(body.contains("grant_type=refresh_token"))
             assertTrue(body.contains("refresh_token=old-refresh"))
             assertFalse(body.contains("client_secret"))
+        }
+    }
+
+    @Test
+    fun `concurrent refresh callers all receive the same in-flight rejection`() = runBlocking {
+        MockWebServer().use { server ->
+            val requestReceived = CompletableDeferred<Unit>()
+            val release = CountDownLatch(1)
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    requestReceived.complete(Unit)
+                    check(release.await(5, TimeUnit.SECONDS))
+                    return MockResponse(body = """{"error":"bad_refresh_token"}""")
+                }
+            }
+            server.start()
+            val store = InMemoryGitHubCredentialStore(oldCredential())
+            val refresher = GitHubTokenRefresher(auth(server), store) { 1_000 }
+            try {
+                val first = async { refresher.refreshIfNeeded("public-client") }
+                withTimeout(5_000) { requestReceived.await() }
+                val other = async(start = CoroutineStart.UNDISPATCHED) { refresher.refreshIfNeeded("public-client") }
+                release.countDown()
+                assertTrue(first.await().isFailure)
+                assertTrue(other.await().isFailure)
+                assertEquals(1, server.requestCount)
+                assertEquals(oldCredential(), store.read())
+            } finally {
+                release.countDown()
+                refresher.finishRotations()
+            }
+        }
+    }
+
+    @Test
+    fun `shutdown drains a cancelled caller's credential commit`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(MockResponse(body = TOKEN))
+            val delegate = InMemoryGitHubCredentialStore(oldCredential())
+            val beforeWrite = CompletableDeferred<Unit>()
+            val releaseWrite = CompletableDeferred<Unit>()
+            val store = object : GitHubCredentialStore by delegate {
+                override suspend fun replace(
+                    expectedRevision: Long?,
+                    value: GitHubAccessToken,
+                ): GitHubStoredCredential {
+                    beforeWrite.complete(Unit)
+                    releaseWrite.await()
+                    return delegate.replace(expectedRevision, value)
+                }
+            }
+            val refresher = GitHubTokenRefresher(auth(server), store) { 1_000 }
+            try {
+                val caller = async { refresher.refreshIfNeeded("public-client") }
+                withTimeout(5_000) { beforeWrite.await() }
+                caller.cancelAndJoin()
+                val closing = async(start = CoroutineStart.UNDISPATCHED) { refresher.finishRotations() }
+                assertFalse(closing.isCompleted)
+                releaseWrite.complete(Unit)
+                withTimeout(5_000) { closing.await() }
+                assertEquals("new-refresh", delegate.read()?.credential?.refreshToken)
+                assertEquals(1, server.requestCount)
+            } finally {
+                releaseWrite.complete(Unit)
+                refresher.finishRotations()
+            }
         }
     }
 

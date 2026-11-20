@@ -154,8 +154,9 @@ internal class SyncOnboardingFixture(
         persistentObjectCacheDirectory: Path? = null,
         progressTelemetryEnabled: Boolean = true,
         failureLogDirectory: Path? = null,
+        secureStore: SyncSecureStore = secure,
     ): SyncRuntime = SyncRuntime(
-        storage.handler, storage.bootstrap, storage.creators, storage.creators, { sourceAvailable(it) }, secure,
+        storage.handler, storage.bootstrap, storage.creators, storage.creators, { sourceAvailable(it) }, secureStore,
         preferences, client, endpoints, clock = { now },
         persistentObjectCacheDirectory = persistentObjectCacheDirectory,
         failureLogDirectory = failureLogDirectory,

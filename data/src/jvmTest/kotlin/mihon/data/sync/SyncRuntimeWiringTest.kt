@@ -1,6 +1,7 @@
 package mihon.data.sync
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -565,6 +566,56 @@ class SyncRuntimeWiringTest {
                 }
                 assertTrue(result.isFailure)
                 assertEquals(calls, f.networkCalls)
+            }
+        }
+    }
+
+    @Test
+    fun `pausing sync during credential commit preserves the rotation across restart`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                setup.runtime.credentials.replace(
+                    setup.runtime.credentials.read()!!.revision,
+                    GitHubAccessToken("old-access", "old-refresh", "bearer", emptySet(), 1_000, 10_000_000),
+                )
+                val beforeWrite = CompletableDeferred<Unit>()
+                val releaseWrite = CompletableDeferred<Unit>()
+                val secureStore = object : SyncSecureStore by setup.secure {
+                    override suspend fun compareAndSet(key: String, expected: String?, value: String?): Boolean {
+                        if (key == "github-auth") {
+                            beforeWrite.complete(Unit)
+                            releaseWrite.await()
+                        }
+                        return setup.secure.compareAndSet(key, expected, value)
+                    }
+                }
+                val runtime = setup.runtime(secureStore = secureStore)
+                val run = launch { runtime.coordinator.synchronize(SyncTrigger.MANUAL) }
+                try {
+                    withTimeout(5_000) { beforeWrite.await() }
+                    withTimeout(5_000) { runtime.pauseSync() }
+                    run.join()
+                    assertEquals(SyncRunState.PAUSED_USER, runtime.runStore.active("space", 1)?.state)
+                    releaseWrite.complete(Unit)
+                    withTimeout(5_000) {
+                        runtime.credentials.tokenRefreshEpoch.first { it > 0 }
+                    }
+                    assertEquals(SyncRunState.PAUSED_USER, runtime.runStore.active("space", 1)?.state)
+                    val reopened = setup.runtime()
+                    try {
+                        assertEquals("synthetic-refreshed-token", reopened.credentials.read()?.credential?.accessToken)
+                        assertEquals(SyncRunStatus.SUCCESS, reopened.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                    } finally {
+                        reopened.stopPanel()
+                    }
+                } finally {
+                    releaseWrite.complete(Unit)
+                    run.cancelAndJoin()
+                    runtime.stopPanel()
+                }
             }
         }
     }
