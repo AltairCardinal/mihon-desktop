@@ -176,6 +176,8 @@ Desktop 调度器通过 Runtime 的持久可恢复状态及 deadline 安排唤�
 
 有效令牌只在内存中复用，临近到期或 `PersistentGitHubCredentialStore.tokenRefreshEpoch` 改变时才重新读取并续期，避免每个请求都启动 Windows DPAPI 解密子进程。刷新 epoch 仅在新凭据成功持久化后更新；续期失败仍保留原凭据，并沿用网络重试或确认失效后的授权恢复路径。身份确认使用授权 epoch，不能把正常令牌轮换当作账号变更。相关行为由 `SyncRuntimeWiringTest` 的会话续期、缓存和身份隔离用例覆盖。
 
+续期接口的 HTTP 2xx 仅表示收到响应。本地同步诊断以固定枚举记录响应解析结果，用于区分 OAuth 拒绝、响应畸形和收到新令牌。诊断不记录服务端文本、响应体或凭据。收到新令牌后仍需持久化并检查账户与空间，才可确认恢复。
+
 ### 书架分类标签排序
 
 书架分类标签的直接拖动由 `LibraryCategoryTabs` 适配 Desktop 指针，越过 Compose 水平移动阈值即开始，无需长按；保留 Material

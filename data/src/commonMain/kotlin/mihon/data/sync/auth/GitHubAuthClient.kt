@@ -17,6 +17,10 @@ import mihon.data.sync.http.SyncHttpFailureClass
 import mihon.data.sync.http.SyncHttpRequestGate
 import mihon.data.sync.http.SyncHttpResponse
 import mihon.data.sync.http.requireSyncSuccess
+import mihon.data.sync.runtime.SyncJournalContext
+import mihon.data.sync.runtime.SyncJournalEventKind
+import mihon.data.sync.runtime.SyncJournalOperation
+import mihon.data.sync.runtime.SyncJournalRefreshOutcome
 import mihon.domain.sync.auth.GitHubAccessToken
 import mihon.domain.sync.auth.GitHubAuthEndpoints
 import mihon.domain.sync.auth.GitHubAuthException
@@ -44,7 +48,7 @@ class GitHubAuthClient(
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
     private val deviceCodeRequestTimeoutMillis: Long = 30_000,
     requestGate: SyncHttpRequestGate? = null,
-    diagnosticContext: mihon.data.sync.runtime.SyncJournalContext? = null,
+    private val diagnosticContext: SyncJournalContext? = null,
 ) : GitHubAuthPort {
     private val http = SyncHttpClient(
         productionClient,
@@ -179,19 +183,27 @@ class GitHubAuthClient(
         if (response.code !in 200..299) throw GitHubAuthException(httpFailure(response))
         val payload = response.parseObject()
         if (payload?.get("error") != null) {
-            val failure = when (payload.string("error")) {
-                "bad_refresh_token", "invalid_grant", "expired_token" -> revokedFailure()
-                else -> GitHubAuthFailure(GitHubAuthFailureReason.HTTP, "token refresh rejected", false)
+            val outcome = when (payload.string("error")) {
+                "bad_refresh_token", "invalid_grant", "expired_token" -> SyncJournalRefreshOutcome.TOKEN_REJECTED
+                "incorrect_client_credentials" -> SyncJournalRefreshOutcome.CLIENT_REJECTED
+                else -> SyncJournalRefreshOutcome.OTHER_ERROR
+            }
+            recordRefreshOutcome(outcome, response.code)
+            val failure = if (outcome == SyncJournalRefreshOutcome.TOKEN_REJECTED) {
+                revokedFailure()
+            } else {
+                GitHubAuthFailure(GitHubAuthFailureReason.HTTP, "token refresh rejected", false)
             }
             throw GitHubAuthException(failure)
         }
         val token = payload?.toAccessToken(nowMillis())
-            ?: throw GitHubAuthException(malformed().failure)
-        if (token.refreshToken == null || token.refreshTokenExpiresAtMillis == null ||
+        if (token == null || token.refreshToken == null || token.refreshTokenExpiresAtMillis == null ||
             current.revision == Long.MAX_VALUE
         ) {
+            recordRefreshOutcome(SyncJournalRefreshOutcome.MALFORMED_RESPONSE, response.code)
             throw GitHubAuthException(malformed().failure)
         }
+        recordRefreshOutcome(SyncJournalRefreshOutcome.TOKEN_RECEIVED, response.code)
         Result.success(
             GitHubStoredCredential(
                 token,
@@ -206,6 +218,15 @@ class GitHubAuthClient(
         Result.failure(GitHubAuthException(httpFailure(error)))
     } catch (error: Exception) {
         Result.failure(IllegalStateException("token refresh failed"))
+    }
+
+    private fun recordRefreshOutcome(outcome: SyncJournalRefreshOutcome, status: Int) {
+        diagnosticContext?.record(
+            SyncJournalEventKind.AUTHORIZATION,
+            httpStatus = status,
+            operation = SyncJournalOperation.AUTHORIZATION,
+            refreshOutcome = outcome,
+        )
     }
 
     private suspend fun requestDeviceCode(clientId: String): GitHubDeviceCode {

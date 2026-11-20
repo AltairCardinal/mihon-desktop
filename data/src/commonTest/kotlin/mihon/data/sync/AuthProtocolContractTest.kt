@@ -11,6 +11,9 @@ import kotlinx.coroutines.withTimeoutOrNull
 import mihon.data.sync.auth.GitHubAuthClient
 import mihon.data.sync.auth.GitHubTokenRefresher
 import mihon.data.sync.auth.InMemoryGitHubCredentialStore
+import mihon.data.sync.runtime.SyncDiagnosticJournal
+import mihon.data.sync.runtime.SyncJournalContext
+import mihon.data.sync.runtime.SyncJournalStage
 import mihon.domain.sync.auth.GitHubAccessToken
 import mihon.domain.sync.auth.GitHubAuthEndpoints
 import mihon.domain.sync.auth.GitHubAuthFailureReason
@@ -23,15 +26,55 @@ import mockwebserver3.MockWebServer
 import okhttp3.Call
 import okhttp3.EventListener
 import okhttp3.OkHttpClient
+import okio.Path.Companion.toOkioPath
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import java.nio.file.Path
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 class AuthProtocolContractTest {
+    @TempDir
+    lateinit var journalDirectory: Path
+
+    @Test
+    fun `refresh HTTP 200 records the decoded outcome without recording server data`() = runTest {
+        MockWebServer().use { server ->
+            server.start()
+            val url = server.url("/").toString()
+            val journal = SyncDiagnosticJournal(journalDirectory.toOkioPath())
+            val client = GitHubAuthClient(
+                OkHttpClient(),
+                GitHubAuthEndpoints(url, url, url),
+                nowMillis = { 1_000 },
+                diagnosticContext = SyncJournalContext(journal, SyncJournalStage.AUTHORIZATION),
+            )
+            val outcomes = listOf(
+                """{"error":"incorrect_client_credentials","error_description":"$SECRET"}""" to "CLIENT_REJECTED",
+                """{"error":"bad_refresh_token","error_description":"$SECRET"}""" to "TOKEN_REJECTED",
+                """{"error":"$SECRET"}""" to "OTHER_ERROR",
+                "<html>$SECRET</html>" to "MALFORMED_RESPONSE",
+                TOKEN to "TOKEN_RECEIVED",
+            )
+            for ((body, outcome) in outcomes) {
+                server.enqueue(MockResponse(body = body))
+                assertEquals(outcome == "TOKEN_RECEIVED", client.refresh("public-client", oldCredential()).isSuccess)
+            }
+            val saved = journalDirectory.resolve("journal.json").toFile().readText()
+            assertEquals(
+                outcomes.map { it.second },
+                Regex(""""refreshOutcome":"([A-Z_]+)"""").findAll(saved).map { it.groupValues[1] }.toList(),
+            )
+            assertFalse(saved.contains(SECRET))
+            assertFalse(saved.contains("old-refresh"))
+            assertFalse(saved.contains("new-refresh"))
+        }
+    }
+
     @Test
     fun `ordinary forbidden device authorization is denied rather than rate limited`() = runTest {
         MockWebServer().use { server ->
