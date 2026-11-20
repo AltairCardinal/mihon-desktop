@@ -31,7 +31,11 @@
     }
     function nextAuto() {
       if (native && window.parent.MihonPreview.reviewMode === 'baseline') return '';
-      return `<p class="ix-note sync-next-auto" data-testid="sync-next-auto">${esc(nextAutoText())}</p>`;
+      const lifecycle = data().lifecycle;
+      const label = `<p class="ix-note sync-next-auto" data-testid="sync-next-auto">${esc(nextAutoText())}</p>`;
+      if (!lifecycle || lifecycle.lastCompletedAt === null || lifecycle.showCompletion || lifecycle.pendingCount ||
+          (lifecycle.run && lifecycle.run.phase !== 'completed')) return label;
+      return `<div class="sync-schedule-row">${label}${button('立即同步', 'data-action="ix-lifecycle-start"', 'm-button-text')}</div>`;
     }
     function countdownTitle() {
       const minutes = Math.max(0, Math.ceil((data().nextSyncAt - Date.now()) / 60000));
@@ -316,13 +320,14 @@
       const history = phase === 'idle' || phase === 'completed' && !showCompletion;
       const succeeded = phase === 'completed' || history && lastCompletedAt !== null;
       const failed = phase === 'resume-failed';
-      const title = history ? lifecycleHistoryText() : succeeded ? '本次同步已完成' : lifecycleTitles[phase];
+      const title = history ? lifecycleHistoryText() : succeeded ? '刚刚完成同步' : lifecycleTitles[phase];
       const statusIcon = succeeded ? `<span class="sync-check-circle">${view.icon('check')}</span>` : view.icon(failed ? 'info' : 'sync');
       return `<section class="sync-progress-card sync-lifecycle-card sync-lifecycle-result" data-testid="sync-progress-card" data-state="${phase}">
         <div class="sync-lifecycle-heading">${statusIcon}<h3 data-testid="sync-progress-title" aria-live="polite" ${history ? 'data-lifecycle-history' : ''}>${title}</h3></div>
-        ${succeeded ? `<p class="sync-lifecycle-result-copy">已完成${lastCompletedConfirmed}条 · 用时${lifecycleClock(lastCompletedElapsed)}</p>` : ''}
+        ${succeeded ? `<p class="sync-lifecycle-result-copy">本次新增确认 ${lastCompletedConfirmed} 条 · 用时${lifecycleClock(lastCompletedElapsed)}</p>` : ''}
         ${failed ? `<p class="sync-lifecycle-result-copy" data-testid="sync-progress-confirmed">${lifecycleCountText(run.processed)}</p><div class="sync-lifecycle-confirmations">${lifecycleConfirmationRows(run)}</div><p>${lifecycleNotes[phase]}</p>` : ''}
-        ${lifecycleOperation(failed ? '重试' : '开始同步', failed ? 'resume' : 'start', { primary: true })}
+        ${succeeded && d.lifecycle.pendingCount ? `<p>有 ${d.lifecycle.pendingCount} 条操作待同步</p>${lifecycleOperation('立即同步', 'start', { primary: true })}` : ''}
+        ${succeeded ? '' : lifecycleOperation(failed ? '重试' : '开始同步', failed ? 'resume' : 'start', { primary: true })}
         ${button(d.progressDetails ? '收起详情' : '查看详情', `data-action="ix-progress-details" data-testid="sync-progress-toggle" aria-expanded="${Boolean(d.progressDetails)}" aria-controls="sync-lifecycle-details"`, 'm-button-text progress-toggle')}
         <div id="sync-lifecycle-details" class="sync-progress-details native-details" data-testid="sync-progress-details" ${d.progressDetails ? '' : 'hidden'} tabindex="0">${nativeQueue()}</div>
       </section>`;
@@ -344,7 +349,8 @@
           run.phase = 'completed';
           lifecycle.lastCompletedAt = Date.now();
           lifecycle.lastCompletedElapsed = lifecycleElapsed(run, lifecycle.lastCompletedAt);
-          lifecycle.lastCompletedConfirmed = run.confirmed;
+          lifecycle.lastCompletedConfirmed = run.confirmed - run.retainedConfirmed;
+          lifecycle.pendingCount = 0;
           resetCountdown();
           lifecycle.showCompletion = state.ui.syncOpen && !state.ui.syncSettingsOpen && !state.ui.batchReview && !screen() &&
             !window.frameElement?.closest('.device-column')?.hidden;
@@ -894,6 +900,7 @@
           run: null,
           showCompletion: false,
           lastCompletedAt: name === 'lifecycle-first-sync' ? null : Date.now() - 12 * 60000,
+          pendingCount: name === 'lifecycle-pending' ? 3 : 0,
           lastCompletedElapsed: 19000,
           lastCompletedConfirmed: lifecycleTotal,
           failNextResume: name === 'lifecycle-resume-failure',

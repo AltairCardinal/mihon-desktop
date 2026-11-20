@@ -31,7 +31,7 @@ const progress = device => device.getByTestId('sync-progress-confirmed').innerTe
 const percent = device => card(device).getByRole('progressbar').evaluate(track =>
   Number(track.getAttribute('aria-valuenow')) / Number(track.getAttribute('aria-valuemax')) * 100);
 const click = (device, name) => card(device).getByRole('button', { name, exact: true }).click();
-const start = device => click(device, '开始同步');
+const start = device => device.getByRole('button', { name: /^(开始同步|立即同步)$/ }).click();
 const pause = device => click(device, '暂停同步');
 const resume = device => click(device, '继续同步');
 
@@ -51,8 +51,7 @@ test('双端同步面板沿用客户端的结果详情、紧凑运行卡及图�
       const surface = card(device);
       const details = surface.getByRole('button', { name: '查看详情' });
       assert.ok(await details.isVisible(), '结果卡保留原生的查看详情入口');
-      const primary = surface.getByRole('button', { name: '开始同步', exact: true });
-      assert.equal(await primary.evaluate(button => getComputedStyle(button).backgroundColor), 'rgb(176, 198, 255)');
+      assert.ok(await device.getByRole('button', { name: '立即同步' }).isVisible());
       assert.ok(await device.getByText('当前没有待确认的操作', { exact: true }).isVisible());
       await details.click();
       await surface.getByRole('button', { name: '收起详情' }).click();
@@ -156,7 +155,7 @@ test('Android 保存检查点后继续原轮，恢复失败可重试，重开只
     await page.clock.runFor(6050);
     assert.equal(await title(phone), '正在结束同步');
     await page.clock.runFor(5000);
-    assert.equal(await title(phone), '本次同步已完成');
+    assert.equal(await title(phone), '刚刚完成同步');
     assert.equal(await card(phone).getByText('上次同步', { exact: false }).count(), 0);
     await reopen(phone);
     assert.equal(await title(phone), '上次同步刚刚完成');
@@ -177,16 +176,16 @@ test('首次同步收尾不能冒充完成，实际完成可赢过暂停，面�
     await page.clock.runFor(14100);
     assert.equal(await title(pc), '正在结束同步');
     assert.ok(await percent(pc) < 100);
-    assert.equal(await card(pc).getByText('本次同步已完成', { exact: true }).count(), 0);
+    assert.equal(await card(pc).getByText('刚刚完成同步', { exact: true }).count(), 0);
     await page.clock.runFor(4400);
     await pause(pc);
     assert.equal(await title(pc), '正在暂停');
     await page.clock.runFor(600);
-    assert.equal(await title(pc), '本次同步已完成');
+    assert.equal(await title(pc), '刚刚完成同步');
     assert.equal(await card(pc).getByRole('progressbar').count(), 0);
     assert.ok(await card(pc).getByRole('button', { name: '查看详情' }).isVisible());
     await page.clock.runFor(2400);
-    assert.equal(await title(pc), '本次同步已完成');
+    assert.equal(await title(pc), '刚刚完成同步');
 
     await start(phone);
     await phone.getByTestId('sync-close').click();
@@ -218,6 +217,31 @@ test('收尾暂停若先落地，迟到的完成不能覆盖暂停，也不能�
     assert.equal(await title(pc), '正在结束同步');
     assert.equal(await percent(pc), beforePause);
     await page.clock.runFor(5000);
-    assert.equal(await title(pc), '本次同步已完成');
+    assert.equal(await title(pc), '刚刚完成同步');
+  });
+});
+
+test('成功卡让出主操作，只有新增待同步操作才突出立即同步', async () => {
+  await review(async (page, pc, phone) => {
+    for (const device of [pc, phone]) {
+      assert.equal(await card(device).getByRole('button', { name: '开始同步' }).count(), 0);
+      const manual = device.getByRole('button', { name: '立即同步', exact: true });
+      assert.ok(await manual.isVisible());
+      assert.ok(await manual.evaluate(el => el.classList.contains('m-button-text')));
+    }
+    await choose(page, 'pending');
+    const primary = card(pc).getByRole('button', { name: '立即同步' });
+    assert.ok(await card(pc).getByText('有 3 条操作待同步').isVisible());
+    assert.equal(await pc.getByRole('button', { name: '立即同步' }).count(), 1);
+    await primary.click();
+    await page.clock.runFor(20000);
+    assert.equal(await title(pc), '刚刚完成同步');
+    assert.equal(await pc.getByRole('button', { name: /立即同步|开始同步/ }).count(), 0);
+    assert.ok(await card(pc).getByText(/本次新增确认 48 条/).isVisible());
+    await reopen(pc);
+    assert.equal(await title(pc), '上次同步刚刚完成');
+    assert.equal(await card(pc).getByRole('button', { name: '立即同步' }).count(), 0);
+    await pc.getByRole('button', { name: '立即同步' }).click();
+    assert.equal(await title(pc), '正在准备同步');
   });
 });

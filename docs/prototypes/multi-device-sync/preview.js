@@ -65,7 +65,7 @@
     });
   }
   if (lifecycleReview) {
-    root.querySelector('.preview-tool-panel').insertAdjacentHTML('afterbegin', `<div class="tool-group lifecycle-tools"><label for="lifecycle-scene">同步时序场景</label><select id="lifecycle-scene"><option value="history">已有上次成功记录</option><option value="first-sync">首次同步</option><option value="resume-failure">首次继续失败，可重试</option></select><button class="m-button" data-command="lifecycle">载入场景</button></div>`);
+    root.querySelector('.preview-tool-panel').insertAdjacentHTML('afterbegin', `<div class="tool-group lifecycle-tools"><label for="lifecycle-scene">同步时序场景</label><select id="lifecycle-scene"><option value="history">已有上次成功记录</option><option value="pending">有 3 条操作待同步</option><option value="first-sync">首次同步</option><option value="resume-failure">首次继续失败，可重试</option></select><button class="m-button" data-command="lifecycle">载入场景</button></div>`);
   }
   // Only the review container adapts. Existing frame instances own navigation, focus and timers.
   function sizeSingleFrame() {
