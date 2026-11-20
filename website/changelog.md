@@ -5,6 +5,10 @@ description: A traceable history of public feature documentation, separate from 
 
 # Changelog
 
+## 2026-11-21 — Windows and Android sync improvements accepted
+
+The project owner accepted the sync improvements in a private review on November 21, 2026. Candidates were Windows `0.11.24.10.25e0f0f` (source `25e0f0f0d7`) and Android `0.19.4-aex.167 / vc185` (source `c8ca48ba1c`). Sync now shows progress throughout the full run, responds immediately to start, pause, and resume, and shows the last successful sync time. Temporary failures recover automatically and verified authorization failures offer reconnection. Existing saved favorite dates sync automatically, with the earliest known date winning conflicts. This records candidate acceptance for Windows and Android.
+
 ## 2026-11-20 — Android detail button scrolling accepted
 
 The project owner accepted tablet candidate `0.19.4-aex.162 / vc180` (source `e3645f0872`) in a private review on November 20, 2026. The manga detail action row now decelerates to a fully visible button after a swipe, and a faster flick can travel farther. The trailing **Sort** button uses an edit icon. This entry records acceptance of the Android tablet candidate.
