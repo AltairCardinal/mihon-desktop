@@ -1767,6 +1767,8 @@
     <string name="sync_recovery_checking">正在检查同步空间…</string>
     <string name="sync_recovery_check_incomplete">本次检查未完成。</string>
     <string name="sync_recovery_auth_expired">GitHub 连接已失效</string>
+    <string name="sync_authorization_verification_checking">正在检查 GitHub 连接</string>
+    <string name="sync_authorization_verification_waiting">等待网络恢复后检查 GitHub 连接</string>
     <string name="sync_recovery_data_problem">空间数据需要处理</string>
     <string name="sync_recovery_no_spaces">未找到可访问的同步空间。请检查 GitHub 授权，或准备新空间。</string>
     <string name="sync_recovery_create_body">本机现有书架与阅读进度会用于新空间的首次同步。仅其他设备或已删除远端拥有的数据无法在这里恢复。新空间准备完成前，会保留当前连接。</string>
@@ -2184,6 +2186,7 @@
     <string name="sync_more_group">更多</string>
     <string name="sync_auto_off">自动同步已关闭</string>
     <string name="sync_auto_network">自动同步等待网络恢复</string>
+    <string name="sync_auto_connection_check">自动同步等待连接检查</string>
     <string name="sync_auto_due">自动同步已到期，等待系统安排</string>
     <string name="sync_auto_next">预计下次自动同步：%1$s · %2$s后</string>
     <string name="sync_review_heading">待确认 · %1$d</string>

@@ -77,6 +77,156 @@ import java.util.prefs.Preferences
 
 class SyncRuntimeWiringTest {
     @Test
+    fun `persisted authorization block automatically rechecks network and resumes original run`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val runtime = setup.runtime
+                val stored = runtime.onboarding.storage.connection("space", 1)!!
+                val run = runtime.runStore.start("space", 1, SyncTrigger.MANUAL)
+                runtime.runStore.finish(run.runId, SyncRunState.BLOCKED, "AUTHORIZATION")
+                runtime.onboarding.storage.setRecovery(stored, SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED)
+                val original = setup.git.server.dispatcher
+                var offline = true
+                var userReads = 0
+                setup.git.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        if (request.url.encodedPath == "/user") {
+                            userReads++
+                            if (offline) return MockResponse(code = 503)
+                        }
+                        return original.dispatch(request)
+                    }
+                }
+                assertTrue(runtime.hasResumableRun(), "persisted authorization gate must schedule a real recheck")
+                assertTrue(runtime.resumeIfNeeded())
+                assertTrue(userReads > 0, "recovery must use the configured GitHub HTTP route")
+                assertNotNull(runtime.spaceRecovery())
+                assertEquals(SyncRunState.BLOCKED, runtime.runStore.get(run.runId)?.state)
+                val reads = userReads
+                assertTrue(runtime.recoveryDelayMillis() > 0)
+                runtime.resumeIfNeeded()
+                assertEquals(reads, userReads, "repeated wakeups must respect persisted backoff")
+                val reopened = setup.runtime()
+                try {
+                    assertTrue(reopened.hasResumableRun())
+                    assertTrue(reopened.recoveryDelayMillis() > 0, "deadline must survive runtime restart")
+                    reopened.resumeIfNeeded()
+                    assertEquals(reads, userReads)
+                    offline = false
+                    setup.now += reopened.recoveryDelayMillis() + 1
+                    assertTrue(reopened.resumeIfNeeded())
+                    assertNull(reopened.spaceRecovery())
+                    assertEquals(SyncRunState.SUCCEEDED, reopened.runStore.get(run.runId)?.state)
+                    assertEquals(run.runId, reopened.runStore.latest("space", 1)?.runId)
+                } finally {
+                    reopened.coordinator.cancelAndJoin()
+                    reopened.stopPanel()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `persisted authorization check preserves pause and probes offline missing credentials`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val runtime = setup.runtime
+                val stored = runtime.onboarding.storage.connection("space", 1)!!
+                val run = runtime.runStore.start("space", 1, SyncTrigger.MANUAL)
+                runtime.runStore.pause(run.runId)
+                runtime.onboarding.storage.setRecovery(stored, SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED)
+                runtime.credentials.clear()
+                var userReads = 0
+                var offline = true
+                val original = setup.git.server.dispatcher
+                setup.git.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        if (request.url.encodedPath == "/user") {
+                            userReads++
+                            if (offline) return MockResponse(code = 503)
+                        }
+                        return original.dispatch(request)
+                    }
+                }
+                assertTrue(runtime.hasResumableRun(), "read-only authorization health check is independent of pause")
+                assertTrue(runtime.resumeIfNeeded())
+                assertTrue(userReads > 0, "missing local credentials do not prove network authorization rejection")
+                assertEquals(SyncRunState.PAUSED_USER, runtime.runStore.get(run.runId)?.state)
+                assertEquals(SyncRunProblem.NETWORK, runtime.spaceRecovery()?.lastCheckProblem)
+                assertNotNull(runtime.spaceRecovery()?.authorizationVerification)
+                offline = false
+                setup.authorize()
+                val writes = setup.repositoryWrites
+                runtime.resumeIfNeeded()
+                assertNull(runtime.spaceRecovery())
+                assertEquals(SyncRunState.PAUSED_USER, runtime.runStore.get(run.runId)?.state)
+                assertEquals(writes, setup.repositoryWrites, "a read-only recheck preserves the paused checkpoint")
+            }
+        }
+    }
+
+    @Test
+    fun `authorization recheck accepts valid responses and does not replay rejection`() = runBlocking {
+        for (html in listOf(false, true)) {
+            Fixture().use { f ->
+                SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                    setup.existing("")
+                    setup.authorize()
+                    setup.begin()
+                    val runtime = setup.runtime
+                    val stored = runtime.onboarding.storage.connection("space", 1)!!
+                    runtime.onboarding.storage.setRecovery(stored, SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED)
+                    val original = setup.git.server.dispatcher
+                    var reads = 0
+                    setup.git.server.dispatcher = object : Dispatcher() {
+                        override fun dispatch(request: RecordedRequest): MockResponse {
+                            if (request.url.encodedPath == "/user") {
+                                reads++
+                                return if (html) {
+                                    MockResponse(body = "<html>proxy login</html>")
+                                } else {
+                                    MockResponse(
+                                        code = 401,
+                                        body = """
+                                            {"message":"Bad credentials","documentation_url":"https://docs.github.com/rest"}
+                                        """.trimIndent(),
+                                    )
+                                }
+                            }
+                            return original.dispatch(request)
+                        }
+                    }
+                    assertTrue(runtime.resumeIfNeeded())
+                    if (html) {
+                        assertEquals(SyncRunProblem.NETWORK, runtime.spaceRecovery()?.lastCheckProblem)
+                        assertNotNull(runtime.spaceRecovery()?.authorizationVerification)
+                    } else {
+                        assertNull(runtime.spaceRecovery()?.authorizationVerification)
+                        assertFalse(runtime.hasResumableRun(), "fresh confirmed rejection stops automatic checks")
+                        val completedReads = reads
+                        setup.now += 3_600_000
+                        runtime.resumeIfNeeded()
+                        assertEquals(completedReads, reads)
+                        val reopened = setup.runtime()
+                        try {
+                            assertNotNull(reopened.spaceRecovery()?.authorizationVerification)
+                            assertTrue(reopened.hasResumableRun(), "a new process must verify before showing denial")
+                        } finally {
+                            reopened.stopPanel()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
     fun `whole operation waits for final head and queued empty exchange in one flight`() = runBlocking {
         Fixture().use { f ->
             val historyEntered = CountDownLatch(1)

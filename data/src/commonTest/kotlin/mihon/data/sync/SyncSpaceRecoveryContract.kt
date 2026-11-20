@@ -11,6 +11,7 @@ import kotlinx.serialization.json.jsonObject
 import mihon.data.sync.auth.SyncDiscoveryProblem
 import mihon.data.sync.crypto.SyncAeadEngineFactory
 import mihon.data.sync.crypto.SyncSpaceCrypto
+import mihon.data.sync.runtime.SyncAuthorizationVerification
 import mihon.data.sync.runtime.SyncDatabaseExchange
 import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncPanelController
@@ -2103,6 +2104,61 @@ abstract class SyncSpaceRecoveryContract {
                 }
             }
         }
+
+    @Test
+    fun `opening a stale authorization block checks network before confirming rejection`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { fixture ->
+                fixture.existing("")
+                fixture.authorize()
+                fixture.begin()
+                fixture.panel.act(SyncPanelAction.Close)
+                val runtime = fixture.runtime
+                val stored = requireNotNull(runtime.onboarding.storage.connection("space", 1))
+                runtime.onboarding.storage.setRecovery(stored, SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED)
+                val original = fixture.git.server.dispatcher
+                fixture.git.server.dispatcher = failing(original, "/user", 503)
+
+                fixture.panel.act(SyncPanelAction.Open)
+                val checked = withTimeout(5_000) {
+                    fixture.panel.state.first {
+                        it.visible &&
+                            it.recovery?.authorizationVerification == SyncAuthorizationVerification.WAITING_NETWORK
+                    }
+                }
+                assertEquals(SyncRunProblem.NETWORK, checked.recovery?.lastCheckProblem)
+                assertNotNull(runtime.credentials.read())
+
+                fixture.git.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        if (request.url.encodedPath != "/user") return original.dispatch(request)
+                        return MockResponse(
+                            code = 401,
+                            body = """
+                                {"message":"Bad credentials","documentation_url":"https://docs.github.com/rest"}
+                            """.trimIndent(),
+                        )
+                    }
+                }
+                fixture.now += runtime.recoveryDelayMillis() + 1
+                runtime.resumeIfNeeded()
+                val rejected = withTimeout(5_000) {
+                    fixture.panel.state.first {
+                        it.recovery?.lastCheckReason == SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED &&
+                            it.recovery?.authorizationVerification == null
+                    }
+                }
+                assertEquals(true, rejected.recovery?.lastCheckSucceeded)
+                assertTrue(!runtime.hasResumableRun())
+                val reopened = fixture.runtime()
+                try {
+                    assertNotNull(reopened.spaceRecovery()?.authorizationVerification)
+                } finally {
+                    reopened.stopPanel()
+                }
+            }
+        }
+    }
 
     @Test
     fun `recovery check remembers last real fact across failed check and controller recreation`() =

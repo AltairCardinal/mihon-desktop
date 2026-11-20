@@ -931,6 +931,10 @@ class SyncRunStore(
                 ?: error("sync run owner changed before network failure was persisted")
         }
 
+    internal suspend fun queueVerifiedAuthorizationRecovery(runId: String) = handler.await(inTransaction = true) {
+        sync_runtimeQueries.queueVerifiedAuthorizationRecovery(clock(), runId)
+    }
+
     suspend fun releaseForRecovery(runId: String): Boolean = handler.await(inTransaction = true) {
         sync_runtimeQueries.releaseRuntimeRunForRecovery("process_restart", clock(), runId)
         sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull()?.let {

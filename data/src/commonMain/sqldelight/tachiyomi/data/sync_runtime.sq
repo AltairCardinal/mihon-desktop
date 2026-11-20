@@ -328,3 +328,10 @@ WHERE run_id = ?;
 updateRuntimeTotalsOwned:
 UPDATE sync_runtime_runs SET uploaded = ?, downloaded = ?, updated_at = ?
 WHERE run_id = ? AND owner_session = ?;
+
+queueVerifiedAuthorizationRecovery:
+UPDATE sync_runtime_runs SET state = 'WAITING_SYSTEM', stop_reason = 'authorization_rechecked',
+    next_retry_at = 0, updated_at = ?
+WHERE run_id = ? AND state = 'BLOCKED' AND owner_session IS NULL AND stop_reason = 'AUTHORIZATION'
+  AND EXISTS (SELECT 1 FROM sync_spaces WHERE sync_spaces.space_id = sync_runtime_runs.space_id
+    AND sync_spaces.generation = sync_runtime_runs.generation AND active = 1 AND exchange_enabled = 1);

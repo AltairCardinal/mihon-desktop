@@ -15,12 +15,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
 import mihon.data.sync.auth.DiscoveredSyncSpace
 import mihon.data.sync.auth.EmptySyncRepositoryCandidate
@@ -282,6 +284,26 @@ class SyncPanelController(
                 prefs.scheduleAnchor.changes().map { Unit },
                 prefs.deviceName.changes().map { Unit },
             ).collect { queueRefresh() }
+        }
+        panelScope.launch {
+            runtime.authorizationVerificationRevision.collect { queueRefresh() }
+        }
+        panelScope.launch {
+            state.map { it.visibleAuthorizationCheckTarget }.distinctUntilChanged().collect { target ->
+                if (target == null) return@collect
+                while (state.value.visibleAuthorizationCheckTarget == target) {
+                    val remaining = recoveryRead { runtime.recoveryDelayMillis() } ?: 60_000L
+                    val wakeIn = when {
+                        remaining > 0 -> minOf(remaining, 60_000L)
+                        state.value.visibleAuthorizationCheckTarget != target -> break
+                        recoveryRead { runtime.resumeIfNeeded() } == true -> 1_000L
+                        else -> 10_000L
+                    }
+                    withTimeoutOrNull(wakeIn) {
+                        state.first { it.visibleAuthorizationCheckTarget != target }
+                    }
+                }
+            }
         }
         panelScope.launch {
             state.map { it.visible }.distinctUntilChanged().collectLatest { visible ->
@@ -555,6 +577,9 @@ class SyncPanelController(
         }
     }
 
+    private val SyncPanelState.visibleAuthorizationCheckTarget: SyncConnection?
+        get() = connection?.takeIf { visible && recovery?.authorizationVerification != null }
+
     /** Bootstrap local rows even while the first full connection check is suspended. */
     private fun queueInitialPendingRefresh() {
         if (!state.value.loaded && initialPendingRefreshQueued.compareAndSet(false, true)) {
@@ -826,7 +851,8 @@ class SyncPanelController(
             mutableState.update { it.copy(canChangeSpace = false) }
             throw failure
         }
-        val workflow = if (connectionFacts.decode == SyncBindingDecode.OK && connection?.enabled == true &&
+        val workflow = if (recovery?.authorizationVerification == null &&
+            connectionFacts.decode == SyncBindingDecode.OK && connection?.enabled == true &&
             (
                 state.value.page == SyncPanelPage.RECOVERY ||
                     state.value.recoveryPlatformRequest != null ||

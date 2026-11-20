@@ -39,6 +39,7 @@ import mihon.data.sync.auth.SyncGitHubAccount
 import mihon.data.sync.auth.SyncInstallationAccountType
 import mihon.data.sync.auth.SyncRepositorySelection
 import mihon.data.sync.inbox.SyncPendingItem
+import mihon.data.sync.runtime.SyncAuthorizationVerification
 import mihon.data.sync.runtime.SyncBindingDecode
 import mihon.data.sync.runtime.SyncBulkConfirmation
 import mihon.data.sync.runtime.SyncBulkStatus
@@ -1470,6 +1471,67 @@ class SyncPanelContentTest {
         assertEquals(SyncPanelAction.OpenRecovery, actions.last())
         click("sync-recovery-recheck")
         assertEquals(SyncPanelAction.RecheckSpace, actions.last())
+    }
+
+    @Test
+    fun `pending authorization verification hides stale recovery prompts until the result is known`() = rendered(
+        connected().copy(
+            periodMinutes = 60,
+            recovery = SyncSpaceRecovery(
+                SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED,
+                authorizationVerification = SyncAuthorizationVerification.WAITING_NETWORK,
+            ),
+            problem = SyncRunProblem.AUTHORIZATION,
+            notice = SyncPanelNotice(
+                exchange = SyncRunResult(SyncRunStatus.FAILED, problem = SyncRunProblem.AUTHORIZATION),
+            ),
+        ),
+    ) {
+        awaitTag("sync-authorization-verification")
+        assertFalse(hasTag("sync-recovery-card"))
+        assertFalse(hasTag("sync-recovery-authorization"))
+        assertFalse(hasTag("sync-now"))
+        assertFalse(hasTag("sync-notice-error"))
+        assertFalse(texts().contains("GitHub 连接已失效"))
+        assertTrue(texts().contains("等待网络恢复后检查 GitHub 连接"))
+        assertTrue(texts().contains("自动同步等待网络恢复"))
+
+        panel.state.value = panel.state.value.copy(
+            recovery = panel.state.value.recovery!!.copy(
+                authorizationVerification = SyncAuthorizationVerification.CHECKING,
+            ),
+        )
+        render()
+        assertFalse(hasTag("sync-recovery-authorization"))
+        assertTrue(texts().contains("正在检查 GitHub 连接"))
+        assertTrue(texts().contains("自动同步等待连接检查"))
+        panel.state.value = panel.state.value.copy(page = SyncPanelPage.RECOVERY, periodMinutes = 0)
+        render()
+        assertFalse(hasTag("sync-recovery-authorization"))
+        assertFalse(hasTag("sync-recovery-manage-authorization"))
+        assertTrue(texts().contains("正在检查 GitHub 连接"))
+        assertTrue(texts().contains("自动同步已关闭"))
+        panel.state.value = panel.state.value.copy(page = SyncPanelPage.SETTINGS)
+        awaitTag("sync-settings-list")
+        scroll("sync-settings-list", 1)
+        awaitTag("sync-settings-account-group")
+        awaitTag("sync-authorization-verification")
+        assertFalse(hasTag("sync-settings-connect"))
+        assertTrue(texts().contains("正在检查 GitHub 连接"))
+
+        panel.state.value = panel.state.value.copy(
+            page = SyncPanelPage.MAIN,
+            recovery = panel.state.value.recovery!!.copy(authorizationVerification = null),
+        )
+        awaitTag("sync-recovery-authorization")
+        assertTrue(texts().contains("GitHub 连接已失效"))
+        click("sync-recovery-authorization")
+        assertEquals(SyncPanelAction.CheckAuthorization, actions.last())
+        panel.state.value = panel.state.value.copy(recovery = null, problem = null, notice = null)
+        awaitTag("sync-now")
+        assertFalse(hasTag("sync-recovery-authorization"))
+        assertFalse(texts().contains("正在检查 GitHub 连接"))
+        assertFalse(texts().contains("GitHub 连接已失效"))
     }
 
     @Test

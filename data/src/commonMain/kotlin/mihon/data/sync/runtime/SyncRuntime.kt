@@ -11,12 +11,15 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import mihon.data.sync.auth.GitHubAuthClient
@@ -25,6 +28,7 @@ import mihon.data.sync.auth.PersistentGitHubCredentialStore
 import mihon.data.sync.auth.SyncProfileAuthorizationGate
 import mihon.data.sync.http.NoopSyncMetrics
 import mihon.data.sync.http.SyncMetrics
+import mihon.data.sync.http.requireSyncSuccess
 import mihon.data.sync.inbox.SyncInboxProjector
 import mihon.data.sync.journal.SyncBaselineStore
 import mihon.data.sync.journal.SyncLocalIdentity
@@ -51,6 +55,8 @@ import mihon.domain.sync.security.SyncSecureStore
 import mihon.domain.sync.security.SyncSecureStoreException
 import mihon.domain.sync.transport.SyncInitializationStage
 import mihon.domain.sync.transport.SyncRepository
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okio.Path
 import tachiyomi.core.common.preference.PreferenceStore
@@ -722,9 +728,216 @@ class SyncRuntime(
                     )
             )
 
+    private val mutableAuthorizationVerificationRevision = MutableStateFlow(0L)
+    val authorizationVerificationRevision: StateFlow<Long> = mutableAuthorizationVerificationRevision
+    private var authorizationCheckBinding: String? = null
+    private var authorizationCheckFallback: Pair<VerifiedAuthorizationRejection, Long>? = null
+    private data class VerifiedAuthorizationRejection(val binding: String, val revision: Long?, val epoch: Long)
+    private var verifiedAuthorizationRejection: VerifiedAuthorizationRejection? = null
+
+    private suspend fun authorizationRecoveryTarget(connection: SyncConnection): StoredSyncConnection? {
+        return try {
+            if (!connection.enabled || connection.unsupportedFormat) return null
+            val stored = onboarding.storage.connection(connection.spaceId, connection.generation) ?: return null
+            val recovery = onboarding.storage.recovery(stored)
+            if (recovery?.reason != SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED) return null
+            if (onboarding.storage.activeSwitch(stored.accountId)?.stage in
+                setOf(SyncSpaceSwitchStage.PREPARING, SyncSpaceSwitchStage.ACTIVATING)
+            ) {
+                return null
+            }
+            val proof = VerifiedAuthorizationRejection(
+                stored.snapshotManifestBinding().connectionRevision,
+                credentials.read()?.revision,
+                credentials.authorizationEpoch.value,
+            )
+            if (verifiedAuthorizationRejection == proof) return null
+            stored
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Unknown/future recovery or credential records remain gated by recoveryBlocked.
+            null
+        }
+    }
+
+    private suspend fun authorizationRecheckDeadline(stored: StoredSyncConnection): Long {
+        val binding = stored.snapshotManifestBinding().connectionRevision
+        val observation = onboarding.storage.recoveryObservation(stored)
+        val revision = credentials.read()?.revision
+        val saved = observation?.takeIf {
+            it.credentialRevision == revision && it.lastCheckProblem == SyncRunProblem.NETWORK
+        }?.lastCheckedAtMillis?.let { it + LOCAL_DATABASE_RETRY_MILLIS } ?: 0L
+        val key = VerifiedAuthorizationRejection(binding, revision, credentials.authorizationEpoch.value)
+        return maxOf(
+            saved,
+            authorizationCheckFallback?.takeIf { it.first == key }?.second ?: 0L,
+            authorizationNotBeforeMillis(),
+            runStore.accountHttpNotBefore(stored.accountId),
+        )
+    }
+
+    /** Only fresh evidence in this runtime can display a definite authorization rejection. */
+    private suspend fun authorizationVerificationFor(stored: StoredSyncConnection): SyncAuthorizationVerification? {
+        val binding = stored.snapshotManifestBinding().connectionRevision
+        if (authorizationCheckBinding == binding) return SyncAuthorizationVerification.CHECKING
+        val proof = VerifiedAuthorizationRejection(
+            binding,
+            credentials.read()?.revision,
+            credentials.authorizationEpoch.value,
+        )
+        if (verifiedAuthorizationRejection == proof) return null
+        val observation = onboarding.storage.recoveryObservation(stored)
+        return if (observation?.lastCheckProblem == SyncRunProblem.NETWORK) {
+            SyncAuthorizationVerification.WAITING_NETWORK
+        } else {
+            SyncAuthorizationVerification.CHECKING
+        }
+    }
+
+    /** A binding-scoped, read-only health check; it never resumes a user pause or publishes Git objects. */
+    suspend fun recheckAuthorizationIfNeeded(): Boolean = try {
+        connectionMutex.withLock { recheckAuthorizationLocked() }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        diagnosticJournal?.record(SyncJournalEventKind.EXCEPTION, SyncJournalStage.AUTHORIZATION, failure = failure)
+        mutableAuthorizationVerificationRevision.update { it + 1 }
+        false
+    }
+
+    private suspend fun recheckAuthorizationLocked(): Boolean {
+        if (coordinator.activity.value.running || localProjectionStopping) return false
+        val connection = rawConnection() ?: return false
+        val stored = authorizationRecoveryTarget(connection) ?: return false
+        if (authorizationRecheckDeadline(stored) > clock()) return true
+        val binding = stored.snapshotManifestBinding().connectionRevision
+        val initialCredential = credentials.read()
+        val initialCredentialRevision = initialCredential?.revision
+        val epoch = credentials.authorizationEpoch.value
+        authorizationCheckBinding = binding
+        verifiedAuthorizationRejection = null
+        mutableAuthorizationVerificationRevision.update { it + 1 }
+        return try {
+            var checked: SyncSpaceRecoveryCheck
+            try {
+                // Local absence/expiry cannot prove whether the configured GitHub route is usable.
+                val credential = initialCredential
+                val url = endpoints.apiBaseUrl.trimEnd('/') + "/user"
+                val http = mihon.data.sync.http.SyncHttpClient(
+                    productionClient,
+                    setOf(url.toHttpUrl().host),
+                    requestGate = accountHttpRequestGate(stored.accountId),
+                    diagnosticContext = diagnosticJournal?.let {
+                        SyncJournalContext(it, SyncJournalStage.AUTHORIZATION)
+                    },
+                )
+                val response = http.execute(
+                    http.request(
+                        url,
+                        "GET",
+                        headers = buildMap {
+                            put("Accept", "application/vnd.github+json")
+                            credential?.credential?.accessToken?.let { put("Authorization", "Bearer $it") }
+                        },
+                    ),
+                )
+                if (response.code !in 200..299 && response.code !in setOf(401, 403)) {
+                    response.requireSyncSuccess()
+                }
+                if (response.code == 403) {
+                    try {
+                        response.requireSyncSuccess()
+                    } catch (failure: mihon.data.sync.http.SyncHttpException) {
+                        if (failure.failureClass == mihon.data.sync.http.SyncHttpFailureClass.RATE_LIMITED) {
+                            throw failure
+                        }
+                    }
+                }
+                val shapeValid = runCatching {
+                    val body = Json.parseToJsonElement(response.body.decodeToString()) as? JsonObject
+                    if (response.code in 200..299) {
+                        val login = body?.get("login") as? JsonPrimitive
+                        body?.get("id")?.jsonPrimitive?.longOrNull?.let { it > 0 } == true &&
+                            login?.isString == true && login.content.matches(Regex("[A-Za-z0-9-]{1,39}"))
+                    } else {
+                        val message = body?.get("message") as? JsonPrimitive
+                        val documentationField = body?.get("documentation_url") as? JsonPrimitive
+                        val documentation = documentationField?.content?.toHttpUrlOrNull()
+                        message?.isString == true && message.content.isNotBlank() &&
+                            documentation?.isHttps == true && documentation.host == "docs.github.com"
+                    }
+                }.getOrDefault(false)
+                if (!shapeValid) {
+                    throw mihon.data.sync.http.SyncHttpException(
+                        code = response.code,
+                        message = "authorization route response malformed",
+                        retryable = true,
+                        failureClass = mihon.data.sync.http.SyncHttpFailureClass.NETWORK,
+                    )
+                }
+                checked = checkSpace(connection, stored)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                diagnosticJournal?.record(
+                    SyncJournalEventKind.EXCEPTION,
+                    SyncJournalStage.AUTHORIZATION,
+                    failure = failure,
+                )
+                checked = SyncSpaceRecoveryCheck(problem = failure.syncProblem())
+            }
+            // An explicit new login or a replaced binding invalidates every result from this check.
+            val currentConnection = rawConnection() ?: return true
+            val current = onboarding.storage.connection(connection.spaceId, connection.generation) ?: return true
+            if (currentConnection.spaceId != connection.spaceId ||
+                currentConnection.generation != connection.generation ||
+                current.snapshotManifestBinding().connectionRevision != binding ||
+                credentials.authorizationEpoch.value != epoch
+            ) {
+                return true
+            }
+            val revision = credentials.read()?.revision
+            val evidenceRevision = checked.authorizationCredentialRevision ?: initialCredentialRevision
+            if (revision != evidenceRevision) return true
+            val next = clock() + LOCAL_DATABASE_RETRY_MILLIS
+            authorizationCheckFallback = VerifiedAuthorizationRejection(binding, revision, epoch) to next
+            onboarding.storage.updateRecoveryObservation(current) {
+                it.copy(
+                    lastCheckedAtMillis = clock(),
+                    lastCheckSucceeded = checked.problem == null,
+                    lastCheckProblem = checked.problem,
+                    lastCheckReason = checked.recovery?.reason,
+                    credentialRevision = revision,
+                )
+            }
+            if (checked.problem == null) {
+                if (checked.recovery == null) {
+                    // Keep the secure gate until the conditional DB transition is durable.
+                    // A concurrent user pause cannot be overwritten by this query.
+                    runStore.active(connection.spaceId, connection.generation)?.let {
+                        runStore.queueVerifiedAuthorizationRecovery(it.runId)
+                    }
+                }
+                if (credentials.authorizationEpoch.value != epoch || credentials.read()?.revision != revision) {
+                    return true
+                }
+                onboarding.storage.setRecovery(current, checked.recovery?.reason)
+                if (checked.recovery?.reason == SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED) {
+                    verifiedAuthorizationRejection = VerifiedAuthorizationRejection(binding, revision, epoch)
+                }
+            }
+            true
+        } finally {
+            authorizationCheckBinding = null
+            mutableAuthorizationVerificationRevision.update { it + 1 }
+        }
+    }
+
     /** Resumes only an accepted system-interrupted run; a user pause remains paused. */
     suspend fun hasResumableRun(): Boolean {
         val connection = connection() ?: return false
+        if (authorizationRecoveryTarget(connection) != null) return true
         if (recoveryBlocked(connection)) return false
         return runStore.active(connection.spaceId, connection.generation)?.let {
             connection.enabled && !connection.unsupportedFormat && isResumable(it)
@@ -735,6 +948,7 @@ class SyncRuntime(
     suspend fun isRecoveryDue(): Boolean {
         val connection = connection() ?: return false
         if (!connection.enabled || connection.unsupportedFormat) return false
+        authorizationRecoveryTarget(connection)?.let { return authorizationRecheckDeadline(it) <= clock() }
         if (recoveryBlocked(connection)) return false
         return runStore.active(connection.spaceId, connection.generation)?.let {
             isResumable(it) &&
@@ -745,6 +959,9 @@ class SyncRuntime(
     /** Delay used when the platform schedules the durable recovery wake-up. */
     suspend fun recoveryDelayMillis(): Long {
         val connection = connection() ?: return 0L
+        authorizationRecoveryTarget(connection)?.let {
+            return (authorizationRecheckDeadline(it) - clock()).coerceAtLeast(0L)
+        }
         if (recoveryBlocked(connection)) return 0L
         return runStore.active(connection.spaceId, connection.generation)?.let {
             if (isResumable(it)) {
@@ -787,6 +1004,10 @@ class SyncRuntime(
             if (localProjectionStopping) return false
             val localEpoch = synchronized(localProjectionLock) { localProjectionEpoch }
             val connection = connection() ?: return false
+            if (authorizationRecoveryTarget(connection) != null) {
+                recheckAuthorizationIfNeeded()
+                if (recoveryBlocked(connection)) return true
+            }
             if (recoveryBlocked(connection)) return false
             if (runStore.active(connection.spaceId, connection.generation) == null) {
                 completePendingSetupIfSettled()
@@ -1195,13 +1416,27 @@ class SyncRuntime(
         } else {
             onboarding.storage.recovery(stored)
         } ?: return null
-        val observation = recoveryObservation() ?: return recovery
+        val observation = recoveryObservation()
+        if (observation == null) {
+            return recovery.copy(
+                authorizationVerification = if (recovery.reason == SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED) {
+                    authorizationVerificationFor(stored)
+                } else {
+                    null
+                },
+            )
+        }
         return recovery.copy(
             lastCheckedAtMillis = observation.lastCheckedAtMillis,
             lastCheckProblem = observation.lastCheckProblem,
             lastCheckReason = observation.lastCheckReason,
             lastCheckSucceeded = observation.lastCheckSucceeded,
             authorizationConfirmedAtMillis = observation.authorizationConfirmedAtMillis,
+            authorizationVerification = if (recovery.reason == SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED) {
+                authorizationVerificationFor(stored)
+            } else {
+                null
+            },
         )
     }
 

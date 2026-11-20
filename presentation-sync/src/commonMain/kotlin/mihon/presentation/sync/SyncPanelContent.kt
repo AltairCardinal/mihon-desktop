@@ -129,6 +129,7 @@ import mihon.data.sync.crypto.SyncPasswordInputException
 import mihon.data.sync.crypto.SyncPasswordInputIssue
 import mihon.data.sync.crypto.SyncSpaceCrypto
 import mihon.data.sync.inbox.SyncPendingItem
+import mihon.data.sync.runtime.SyncAuthorizationVerification
 import mihon.data.sync.runtime.SyncCreateProtection
 import mihon.data.sync.runtime.SyncDecisionScope
 import mihon.data.sync.runtime.SyncDiagnosticFeedback
@@ -317,6 +318,19 @@ fun SyncPanelContent(
     Column(modifier.fillMaxSize()) {
         PanelHeader(state, dispatch)
         HorizontalDivider()
+        val authorizationVerification = state.pendingAuthorizationVerification
+        if (authorizationVerification != null &&
+            (state.page == SyncPanelPage.MAIN || state.page == SyncPanelPage.RECOVERY)
+        ) {
+            Column(Modifier.weight(1f).fillMaxWidth()) {
+                AuthorizationVerificationText(
+                    authorizationVerification,
+                    Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                )
+                NextAutomaticSync(state, showManual = false, dispatch = dispatch)
+            }
+            return@Column
+        }
         if (externalUnavailable) {
             Text(
                 syncString(MR.strings.sync_external_fallback),
@@ -542,6 +556,27 @@ private fun PanelHeader(state: SyncPanelState, dispatch: (SyncPanelAction) -> Un
             Icon(Icons.Outlined.Close, syncString(MR.strings.sync_close))
         }
     }
+}
+
+private val SyncPanelState.pendingAuthorizationVerification: SyncAuthorizationVerification?
+    get() = recovery?.takeIf { it.reason == SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED }
+        ?.authorizationVerification
+
+@Composable
+private fun AuthorizationVerificationText(
+    verification: SyncAuthorizationVerification,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        syncString(
+            when (verification) {
+                SyncAuthorizationVerification.CHECKING -> MR.strings.sync_authorization_verification_checking
+                SyncAuthorizationVerification.WAITING_NETWORK -> MR.strings.sync_authorization_verification_waiting
+            },
+        ),
+        modifier.testTag("sync-authorization-verification").semantics { liveRegion = LiveRegionMode.Polite },
+        style = MaterialTheme.typography.titleMedium,
+    )
 }
 
 @Composable
@@ -1913,7 +1948,12 @@ private fun SettingsPage(
             SettingsGroup(MR.strings.sync_account_devices, "sync-settings-account-group") {
                 Text(syncString(MR.strings.sync_account), style = MaterialTheme.typography.titleSmall)
                 state.connection?.let { Text("${it.repository.owner}/${it.repository.name}") }
-                Action("sync-settings-connect", MR.strings.sync_reconnect) { dispatch(SyncPanelAction.Authorize) }
+                val verification = state.pendingAuthorizationVerification
+                if (verification == null) {
+                    Action("sync-settings-connect", MR.strings.sync_reconnect) { dispatch(SyncPanelAction.Authorize) }
+                } else {
+                    AuthorizationVerificationText(verification)
+                }
                 OutlinedTextField(
                     state.deviceName,
                     { dispatch(SyncPanelAction.SetDeviceName(it)) },
@@ -3963,9 +4003,12 @@ private fun NextAutomaticSync(
     showManual: Boolean,
     dispatch: (SyncPanelAction) -> Unit,
 ) {
+    val verification = state.pendingAuthorizationVerification
     val text = when {
-        state.connection?.enabled != true -> return
+        state.connection?.enabled != true && verification == null -> return
         state.periodMinutes <= 0 -> syncString(MR.strings.sync_auto_off)
+        verification == SyncAuthorizationVerification.WAITING_NETWORK -> syncString(MR.strings.sync_auto_network)
+        verification == SyncAuthorizationVerification.CHECKING -> syncString(MR.strings.sync_auto_connection_check)
         state.problem == SyncRunProblem.NETWORK -> syncString(MR.strings.sync_auto_network)
         state.nextSyncAtMillis <= state.nowMillis -> syncString(MR.strings.sync_auto_due)
         else -> syncString(
