@@ -20,6 +20,7 @@ import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncProgressDirection
 import mihon.data.sync.runtime.SyncRunState
 import mihon.data.sync.runtime.SyncRuntime
+import mihon.data.sync.runtime.SyncSpaceRecoveryReason
 import mihon.data.sync.transport.GitHubSyncTransport
 import mihon.data.sync.transport.SyncBatchSyncService
 import mihon.data.sync.transport.SyncSnapshotManifestBinding
@@ -1114,18 +1115,21 @@ class SyncRuntimeWiringTest {
                             runtime.authorizationNotBeforeMillis(),
                         )
                     }
-                    auth.enqueue(mockwebserver3.MockResponse(code = 500, body = "private diagnostic"))
+                    auth.enqueue(mockwebserver3.MockResponse(body = """{"error":"temporarily_unavailable"}"""))
                     assertEquals(SyncRunProblem.NETWORK, runtime.coordinator.synchronize(SyncTrigger.PERIODIC).problem)
                     assertEquals(3L, runtime.runStore.active("space", 1)?.networkFailureCount)
+                    assertNull(runtime.spaceRecovery())
+                    assertEquals(expiring, runtime.credentials.read())
                     setup.now = maxOf(
                         requireNotNull(runtime.runStore.active("space", 1)).nextRetryAt,
                         runtime.authorizationNotBeforeMillis(),
                     )
-                    auth.enqueue(mockwebserver3.MockResponse(code = 500, body = "private diagnostic"))
+                    auth.enqueue(mockwebserver3.MockResponse(body = "<html>Temporary gateway response</html>"))
                     assertEquals(SyncRunProblem.NETWORK, runtime.coordinator.synchronize(SyncTrigger.PERIODIC).problem)
                     assertEquals(SyncRunState.WAITING_RETRY, runtime.runStore.latest("space", 1)?.state)
                     assertEquals("NETWORK", runtime.runStore.latest("space", 1)?.stopReason)
                     assertEquals(4L, runtime.runStore.latest("space", 1)?.networkFailureCount)
+                    assertNull(runtime.spaceRecovery())
                     assertTrue(runtime.recoveryDelayMillis() >= 900_000L)
                     setup.now =
                         maxOf(runtime.runStore.active("space", 1)!!.nextRetryAt, runtime.authorizationNotBeforeMillis())
@@ -1134,6 +1138,24 @@ class SyncRuntimeWiringTest {
                     assertEquals(SyncRunState.WAITING_RETRY, runtime.runStore.latest("space", 1)?.state)
                     assertEquals(5L, runtime.runStore.latest("space", 1)?.networkFailureCount)
                     assertTrue(runtime.recoveryDelayMillis() >= 900_000L)
+                    auth.enqueue(mockwebserver3.MockResponse(body = """{"error":"temporarily_unavailable"}"""))
+                    val authorization = runtime.checkRecoveryAuthorization()
+                    assertFalse(authorization.required)
+                    assertEquals(SyncRunProblem.NETWORK, authorization.problem)
+                    auth.enqueue(mockwebserver3.MockResponse(body = """{"error":"temporarily_unavailable"}"""))
+                    assertEquals(SyncRunProblem.NETWORK, runtime.recheckSpace().problem)
+                    assertNull(runtime.spaceRecovery())
+                    assertEquals(expiring, runtime.credentials.read())
+
+                    auth.enqueue(mockwebserver3.MockResponse(body = """{"error":"bad_refresh_token"}"""))
+                    val rejected = runtime.checkRecoveryAuthorization()
+                    assertTrue(rejected.required)
+                    assertEquals(SyncRunProblem.AUTHORIZATION, rejected.problem)
+                    auth.enqueue(mockwebserver3.MockResponse(body = """{"error":"bad_refresh_token"}"""))
+                    assertEquals(
+                        SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED,
+                        runtime.recheckSpace().recovery?.reason,
+                    )
                 }
             }
         }

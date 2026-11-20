@@ -23,6 +23,7 @@ import mihon.domain.sync.SyncField
 import mihon.domain.sync.SyncObjectKey
 import mihon.domain.sync.SyncObjectType
 import mihon.domain.sync.auth.GitHubAuthException
+import mihon.domain.sync.auth.GitHubAuthFailureReason
 import mihon.domain.sync.crypto.SyncSecret
 import mihon.domain.sync.crypto.SyncSpaceMaterial
 import mihon.domain.sync.runtime.SyncOperationStage
@@ -724,6 +725,19 @@ internal fun Exception.syncProblem(): SyncRunProblem = when {
     else -> syncNonDatabaseProblem()
 }
 
+internal val GitHubAuthException.requiresReauthorization: Boolean
+    get() = !failure.retryable && when (failure.reason) {
+        GitHubAuthFailureReason.REVOKED,
+        GitHubAuthFailureReason.PERMISSION_DENIED,
+        GitHubAuthFailureReason.ACCESS_DENIED,
+        GitHubAuthFailureReason.EXPIRED,
+        -> true
+        GitHubAuthFailureReason.HTTP,
+        GitHubAuthFailureReason.MALFORMED_RESPONSE,
+        GitHubAuthFailureReason.RATE_LIMITED,
+        -> false
+    }
+
 private fun Exception.syncNonDatabaseProblem(): SyncRunProblem = when (this) {
     is mihon.data.sync.transport.SyncUploadReconciliationUnavailable -> SyncRunProblem.REMOTE_CHANGED
     is mihon.data.sync.transport.SyncRemoteDataInvalid -> SyncRunProblem.INVALID_DATA
@@ -737,7 +751,7 @@ private fun Exception.syncNonDatabaseProblem(): SyncRunProblem = when (this) {
         -> SyncRunProblem.AUTHORIZATION
         else -> SyncRunProblem.REMOTE_CHANGED
     }
-    is GitHubAuthException -> if (failure.retryable) SyncRunProblem.NETWORK else SyncRunProblem.AUTHORIZATION
+    is GitHubAuthException -> if (requiresReauthorization) SyncRunProblem.AUTHORIZATION else SyncRunProblem.NETWORK
     is SyncSecureStoreException -> SyncRunProblem.STORAGE
     is SyncRemoteSnapshotRejected -> SyncRunProblem.REMOTE_CHANGED
     is SyncRemoteSnapshotStaleCandidate -> SyncRunProblem.REMOTE_CHANGED

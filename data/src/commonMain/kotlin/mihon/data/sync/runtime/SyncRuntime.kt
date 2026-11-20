@@ -367,7 +367,7 @@ class SyncRuntime(
             throw cancelled
         } catch (failure: Exception) {
             val required = (failure is mihon.data.sync.http.SyncHttpException && failure.code == 401) ||
-                (failure is GitHubAuthException && !failure.failure.retryable)
+                (failure is GitHubAuthException && failure.requiresReauthorization)
             SyncRecoveryAuthorizationCheck(required = required, problem = failure.syncProblem())
         }
     }
@@ -1373,10 +1373,10 @@ class SyncRuntime(
                 is mihon.data.sync.transport.SyncRemoteDataInvalid,
                 is mihon.domain.sync.crypto.SyncCryptoException,
                 -> SyncSpaceRecoveryReason.SPACE_DATA_INVALID
-                is GitHubAuthException -> if (failure.failure.retryable) {
-                    null
-                } else {
+                is GitHubAuthException -> if (failure.requiresReauthorization) {
                     SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED
+                } else {
+                    null
                 }
                 else -> null
             }
